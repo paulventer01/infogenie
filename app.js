@@ -496,14 +496,12 @@ function buildCompCard(c) {
             </div>
           </div>
         </div>
-        <div onclick="openDifferentiatorModal('${c.name.replace(/'/g,'')}')" style="margin-top:16px; padding:14px 16px; background:rgba(0,201,200,.04); border:1px solid rgba(0,201,200,.2); border-radius:10px; cursor:pointer; transition:background 0.2s, border-color 0.2s" onmouseover="this.style.background='rgba(0,201,200,.1)'; this.style.borderColor='rgba(0,201,200,.4)'" onmouseout="this.style.background='rgba(0,201,200,.04)'; this.style.borderColor='rgba(0,201,200,.2)'">
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px">
-            <div>
-              <span style="font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--teal);">InfoGenie ROI Opportunity: </span>
-              <span style="font-size:.875rem; color:var(--gray-700);">${c.estimatedROI}</span>
-            </div>
-            <span style="font-size:.75rem; font-weight:700; color:var(--teal); white-space:nowrap; background:rgba(0,201,200,.12); padding:4px 10px; border-radius:20px; border:1px solid rgba(0,201,200,.3)">View Plan →</span>
+        <div class="roi-opportunity-banner">
+          <div class="roi-opp-left">
+            <span class="roi-opp-label">InfoGenie ROI Opportunity:</span>
+            <span class="roi-opp-text">${c.estimatedROI}</span>
           </div>
+          <button class="btn-view-plan" data-comp="${c.name.replace(/"/g,'&quot;')}">View Plan →</button>
         </div>
       </div>
     </div>
@@ -3580,6 +3578,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // View all competitors
   document.getElementById('viewAllCompBtn').addEventListener('click', () => {
     navigateTo('competitors');
+  });
+
+  // ROI Opportunity "View Plan" buttons — event delegation on the competitors wrap
+  document.getElementById('competitorCardsWrap').addEventListener('click', e => {
+    const btn = e.target.closest('.btn-view-plan');
+    if (btn) {
+      const compName = btn.dataset.comp;
+      if (compName) openDifferentiatorModal(compName);
+    }
   });
   
   // Launch campaign button (header)

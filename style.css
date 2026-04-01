@@ -41,7 +41,7 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { height: 100%; width: 100%; scroll-behavior: smooth; }
+html { min-height: 100%; width: 100%; }
 
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -2959,7 +2959,7 @@ body {
 /* ===================================================
    DIFFERENTIATOR CAMPAIGN MODAL
    =================================================== */
-.differentiator-modal-box { max-width: 620px !important; padding: 0 !important; overflow: hidden; }
+.differentiator-modal-box { max-width: 620px !important; padding: 0 !important; max-height: 90vh; overflow-y: auto; }
 .diff-modal-header {
   display: flex;
   align-items: center;
@@ -3034,4 +3034,49 @@ body {
   font-size: 0.75rem;
   color: var(--gray-600);
   line-height: 1.5;
+}
+
+/* ===================================================
+   ROI OPPORTUNITY BANNER
+   =================================================== */
+.roi-opportunity-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: rgba(0,201,200,.04);
+  border: 1px solid rgba(0,201,200,.2);
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+.roi-opp-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.roi-opp-label {
+  font-size: .75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--teal);
+  white-space: nowrap;
+}
+.roi-opp-text { font-size: .875rem; color: var(--gray-700); }
+.btn-view-plan {
+  background: rgba(0,201,200,.12);
+  border: 1px solid rgba(0,201,200,.3);
+  border-radius: 20px;
+  color: var(--teal-dark);
+  font-size: .75rem;
+  font-weight: 700;
+  padding: 5px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: 'Inter', sans-serif;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  flex-shrink: 0;
+}
+.btn-view-plan:hover {
+  background: rgba(0,201,200,.22);
+  border-color: rgba(0,201,200,.5);
+  color: var(--teal);
 }
