@@ -2447,7 +2447,7 @@ function buildIntelligence() {
       </div>
       <div class="sov-wrap">
         <div class="sov-legend">
-          ${intel.shareOfVoice.map(s => `
+          ${displaySov.map(s => `
             <div class="sov-legend-item">
               <div class="sov-dot" style="background:${s.color}"></div>
               <span class="sov-leg-name">${s.name}</span>
