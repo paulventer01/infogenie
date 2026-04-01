@@ -903,82 +903,861 @@ function copyCreative(headline, copy) {
   });
 }
 
-// ===== BUILD SETTINGS =====
+// ===================================================
+// INTEGRATIONS DATA
+// ===================================================
+const INTEGRATIONS = {
+  platforms: {
+    label: 'Ad Platforms',
+    icon: '🚀',
+    desc: 'Connect your advertising accounts to let InfoGenie autonomously create, launch, and optimise campaigns across every major platform.',
+    badge: '7 Platforms',
+    items: [
+      {
+        id: 'google-ads', logo: '🔵', name: 'Google Ads',
+        tagline: 'Search, Display, YouTube, Shopping & Performance Max',
+        authType: 'oauth',
+        unlocks: [
+          'Autonomous campaign creation & bidding on all Google properties',
+          'Keyword intelligence synced from competitor analysis',
+          'Real-time bid optimisation via InfoGenie RL engine',
+          'Performance Max campaign auto-configuration'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://ads.google.com" target="_blank">ads.google.com</a> and sign in to your account' },
+          { text: 'Navigate to <strong>Tools & Settings → API Centre</strong>' },
+          { text: 'Click <strong>Apply for API Access</strong> and complete the form' },
+          { text: 'Once approved, copy your <code>Developer Token</code>' },
+          { text: 'Click <strong>Connect via OAuth</strong> below — InfoGenie handles the rest' }
+        ]
+      },
+      {
+        id: 'meta-ads', logo: '🔷', name: 'Meta Ads Manager',
+        tagline: 'Facebook, Instagram, Messenger & Audience Network',
+        authType: 'oauth',
+        unlocks: [
+          'Automated Facebook & Instagram campaign deployment',
+          'Lookalike audience creation from competitor intelligence',
+          'Dynamic creative testing across audience segments',
+          'Real-time ROAS monitoring and budget reallocation'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://developers.facebook.com" target="_blank">developers.facebook.com</a> and create an App' },
+          { text: 'Add the <strong>Marketing API</strong> product to your app' },
+          { text: 'Generate a <strong>System User Access Token</strong> with <code>ads_management</code> permission' },
+          { text: 'Note your <strong>Ad Account ID</strong> (format: act_123456789)' },
+          { text: 'Click <strong>Connect via OAuth</strong> — InfoGenie will request permissions automatically' }
+        ]
+      },
+      {
+        id: 'tiktok-ads', logo: '⬛', name: 'TikTok Ads',
+        tagline: 'In-Feed, TopView, Spark Ads & Brand Takeovers',
+        authType: 'apikey',
+        placeholder: 'TikTok Ads Access Token (Bearer xxxxx...)',
+        unlocks: [
+          'Short-form video campaign creation and deployment',
+          'Spark Ads from organic content amplification',
+          'TikTok audience intelligence and targeting',
+          'Creative performance tracking and auto-optimisation'
+        ],
+        steps: [
+          { text: 'Visit <a href="https://ads.tiktok.com/marketing_api" target="_blank">TikTok for Business Developers</a>' },
+          { text: 'Create a developer account and register your app under <strong>My Apps</strong>' },
+          { text: 'Complete the <strong>app review</strong> process (typically 1–3 business days)' },
+          { text: 'Once approved, generate an <strong>Access Token</strong> from your app dashboard' },
+          { text: 'Note your <strong>Advertiser ID</strong> from TikTok Ads Manager → Account → Advertiser Info' },
+          { text: 'Paste your Access Token above and click <strong>Connect</strong>' }
+        ]
+      },
+      {
+        id: 'linkedin-ads', logo: '🔷', name: 'LinkedIn Campaign Manager',
+        tagline: 'Sponsored Content, Message Ads & Lead Gen Forms',
+        authType: 'oauth',
+        unlocks: [
+          'B2B audience targeting by job title, industry, and company size',
+          'Sponsored content and InMail campaign automation',
+          'Lead Gen Form integration with CRM sync',
+          'LinkedIn Insight Tag conversion tracking'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://developer.linkedin.com" target="_blank">developer.linkedin.com</a> and create an app' },
+          { text: 'Add the <strong>Marketing Developer Platform</strong> product' },
+          { text: 'Request access to <code>r_ads</code> and <code>rw_ads</code> permissions' },
+          { text: 'Generate OAuth 2.0 credentials (Client ID + Client Secret)' },
+          { text: 'Click <strong>Connect via OAuth</strong> to authorise InfoGenie' }
+        ]
+      },
+      {
+        id: 'x-ads', logo: '🐦', name: 'X (Twitter) Ads',
+        tagline: 'Promoted Tweets, Follower Campaigns & App Installs',
+        authType: 'apikey',
+        placeholder: 'X Ads API Access Token',
+        unlocks: [
+          'Promoted tweet campaigns targeting competitor followers',
+          'Trend-based ad scheduling and real-time campaign pivots',
+          'Keyword and hashtag audience targeting',
+          'Conversation ads and app install campaigns'
+        ],
+        steps: [
+          { text: 'Apply for <a href="https://developer.twitter.com" target="_blank">X Developer Access</a> at developer.twitter.com' },
+          { text: 'Create a Project and App in the developer portal' },
+          { text: 'Apply for <strong>Ads API access</strong> (requires a funded ads account)' },
+          { text: 'Navigate to <strong>Keys & Tokens</strong> and generate Access Token + Secret' },
+          { text: 'Paste your Access Token above and click <strong>Connect</strong>' }
+        ]
+      },
+      {
+        id: 'pinterest-ads', logo: '🔴', name: 'Pinterest Ads',
+        tagline: 'Promoted Pins, Shopping Campaigns & Video Ads',
+        authType: 'oauth',
+        unlocks: [
+          'Product catalogue and shopping campaign automation',
+          'Visual audience discovery and interest targeting',
+          'Seasonal campaign scheduling with AI creative generation',
+          'Shopping spotlight and collection ads'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://developers.pinterest.com" target="_blank">developers.pinterest.com</a>' },
+          { text: 'Create a new app and request <strong>Ads API access</strong>' },
+          { text: 'Set your <strong>Redirect URI</strong> to <code>https://app.infogenie.ai/oauth/pinterest</code>' },
+          { text: 'Note your App ID and App Secret from the app settings' },
+          { text: 'Click <strong>Connect via OAuth</strong> to link your Pinterest Business account' }
+        ]
+      },
+      {
+        id: 'amazon-ads', logo: '🟠', name: 'Amazon Ads',
+        tagline: 'Sponsored Products, Brands, Display & DSP',
+        authType: 'apikey',
+        placeholder: 'Amazon Ads API Refresh Token',
+        unlocks: [
+          'Sponsored Products & Brands campaign automation',
+          'Amazon DSP programmatic display campaigns',
+          'Keyword harvesting from search term reports',
+          'ASIN-level competitor targeting and product ads'
+        ],
+        steps: [
+          { text: 'Sign in to <a href="https://advertising.amazon.com" target="_blank">advertising.amazon.com</a>' },
+          { text: 'Navigate to <strong>Account Access → API Access</strong>' },
+          { text: 'Create a Security Profile under <strong>Login with Amazon</strong>' },
+          { text: 'Use Amazon\'s OAuth flow to generate a <strong>Refresh Token</strong>' },
+          { text: 'Note your <strong>Profile IDs</strong> for each marketplace you want to manage' },
+          { text: 'Paste your Refresh Token above and click <strong>Connect</strong>' }
+        ]
+      }
+    ]
+  },
+
+  intelligence: {
+    label: 'Intelligence APIs',
+    icon: '🔍',
+    desc: 'Power InfoGenie\'s competitor analysis engine with the industry\'s best intelligence data sources — traffic estimates, keyword data, ad libraries, and tech stack detection.',
+    badge: '6 Sources',
+    items: [
+      {
+        id: 'semrush', logo: '📊', name: 'Semrush API',
+        tagline: 'Keyword rankings, PPC data, backlinks & competitor analysis',
+        authType: 'apikey',
+        placeholder: 'Semrush API Key (sk_xxxxxxxxxxxx)',
+        unlocks: [
+          'Competitor keyword rankings and estimated traffic',
+          'PPC keyword data with CPC and competition scores',
+          'Backlink analysis for domain authority comparison',
+          'Display advertising and ad copy intelligence'
+        ],
+        steps: [
+          { text: 'Sign in to <a href="https://semrush.com" target="_blank">semrush.com</a> and go to <strong>Account → API</strong>' },
+          { text: 'Subscribe to the <strong>Semrush API</strong> — Business plan or above recommended' },
+          { text: 'Copy your <strong>API Key</strong> from the API dashboard' },
+          { text: 'Paste your API Key in the field above' },
+          { text: 'Click <strong>Test Connection</strong> to verify — InfoGenie will confirm your data units balance' }
+        ]
+      },
+      {
+        id: 'similarweb', logo: '🌐', name: 'SimilarWeb API',
+        tagline: 'Traffic intelligence, audience demographics & referral data',
+        authType: 'apikey',
+        placeholder: 'SimilarWeb API Key',
+        unlocks: [
+          'Competitor monthly traffic estimates with confidence levels',
+          'Traffic source breakdown (organic, paid, social, referral)',
+          'Audience demographics by country, device, and age',
+          'Top referring domains and organic keywords'
+        ],
+        steps: [
+          { text: 'Visit <a href="https://www.similarweb.com/corp/developer/digital-intelligence-api" target="_blank">SimilarWeb Developer Portal</a>' },
+          { text: 'Request access to the <strong>Digital Intelligence API</strong>' },
+          { text: 'Once approved, navigate to <strong>My Account → API Key</strong>' },
+          { text: 'Copy your API Key and paste it in the field above' },
+          { text: 'Click <strong>Test Connection</strong> — InfoGenie will verify your monthly unit allowance' }
+        ]
+      },
+      {
+        id: 'ahrefs', logo: '🔗', name: 'Ahrefs API',
+        tagline: 'Backlink data, keyword explorer & content gap analysis',
+        authType: 'apikey',
+        placeholder: 'Ahrefs API Token (v3)',
+        unlocks: [
+          'Domain Rating and backlink profile comparison',
+          'Keyword difficulty and organic traffic potential',
+          'Content gap analysis vs. competitor pages',
+          'Top-performing competitor content identification'
+        ],
+        steps: [
+          { text: 'Sign in to <a href="https://ahrefs.com" target="_blank">ahrefs.com</a> (Business plan required for API)' },
+          { text: 'Go to <strong>Account Settings → API</strong>' },
+          { text: 'Generate a new <strong>API v3 Token</strong>' },
+          { text: 'Set token permissions: <code>site_explorer</code>, <code>keywords_explorer</code>' },
+          { text: 'Paste your token above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'builtwith', logo: '🔧', name: 'BuiltWith API',
+        tagline: 'Competitor tech stack, ad pixels & tracking detection',
+        authType: 'apikey',
+        placeholder: 'BuiltWith API Key',
+        unlocks: [
+          'Competitor technology stack detection (CMS, cart, analytics)',
+          'Ad pixel identification (Meta Pixel, Google Tag, etc.)',
+          'Email platform and CRM detection',
+          'Spend estimates based on tech usage patterns'
+        ],
+        steps: [
+          { text: 'Sign up at <a href="https://builtwith.com/plans" target="_blank">builtwith.com/plans</a> (API requires paid plan)' },
+          { text: 'Go to <strong>Account → API Access</strong>' },
+          { text: 'Copy your <strong>API Key</strong>' },
+          { text: 'Paste it above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'spyfu', logo: '🕵️', name: 'SpyFu API',
+        tagline: 'Google Ads history, competitor keywords & ad copy spy',
+        authType: 'apikey',
+        placeholder: 'SpyFu API Key',
+        unlocks: [
+          'Complete Google Ads history for any competitor domain',
+          'Every keyword a competitor has ever bought on Google',
+          'Historical ad copy and A/B test variations',
+          'Estimated monthly Google Ads spend per competitor'
+        ],
+        steps: [
+          { text: 'Sign up at <a href="https://www.spyfu.com" target="_blank">spyfu.com</a> (API plan required)' },
+          { text: 'Navigate to <strong>Account → Integrations → API Key</strong>' },
+          { text: 'Copy your API Key' },
+          { text: 'Paste it above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'moz', logo: '🎯', name: 'Moz API',
+        tagline: 'Domain Authority, Page Authority & link metrics',
+        authType: 'apikey',
+        placeholder: 'Moz Access ID:Secret Key',
+        unlocks: [
+          'Domain Authority and Page Authority scores for competitors',
+          'Spam score and link quality analysis',
+          'Top competitor pages by authority',
+          'Keyword ranking opportunity identification'
+        ],
+        steps: [
+          { text: 'Sign up at <a href="https://moz.com/products/api" target="_blank">moz.com/products/api</a>' },
+          { text: 'Navigate to <strong>API → Access Credentials</strong>' },
+          { text: 'Copy your <strong>Access ID</strong> and <strong>Secret Key</strong>' },
+          { text: 'Enter them in the format <code>AccessID:SecretKey</code> above' },
+          { text: 'Click <strong>Test Connection</strong> to verify' }
+        ]
+      }
+    ]
+  },
+
+  ai: {
+    label: 'AI Models',
+    icon: '🤖',
+    desc: 'Connect leading AI models to power InfoGenie\'s ad copy generation, strategic analysis, image creation, and conversational intelligence engine.',
+    badge: '6 Models',
+    items: [
+      {
+        id: 'openai', logo: '🟢', name: 'OpenAI — GPT-4o',
+        tagline: 'Ad copy generation, strategy analysis & conversational AI',
+        authType: 'apikey',
+        placeholder: 'OpenAI API Key (sk-proj-xxxx...)',
+        unlocks: [
+          'GPT-4o powers InfoGenie\'s ad copy and headline generation',
+          'Strategic competitor analysis and campaign recommendations',
+          'Conversational AI assistant for campaign building',
+          'DALL-E 3 image generation for ad creatives'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://platform.openai.com" target="_blank">platform.openai.com</a> and sign in' },
+          { text: 'Navigate to <strong>API Keys</strong> in the left sidebar' },
+          { text: 'Click <strong>Create new secret key</strong> — give it a name like "InfoGenie"' },
+          { text: '<strong>Important:</strong> Copy the key immediately — it\'s only shown once' },
+          { text: 'Ensure you have a <strong>paid plan</strong> with GPT-4 access enabled' },
+          { text: 'Paste your key above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'anthropic', logo: '🟣', name: 'Anthropic — Claude 3.5',
+        tagline: 'Deep competitive analysis, long-form strategy & reasoning',
+        authType: 'apikey',
+        placeholder: 'Anthropic API Key (sk-ant-xxxx...)',
+        unlocks: [
+          'Claude 3.5 Sonnet for nuanced competitor strategy reports',
+          'Long-form campaign strategy documents and briefs',
+          'Complex data analysis and market positioning insights',
+          'High-accuracy ad compliance checking'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> and sign in' },
+          { text: 'Navigate to <strong>API Keys</strong> in the sidebar' },
+          { text: 'Click <strong>Create Key</strong> and name it "InfoGenie"' },
+          { text: 'Copy the key immediately (starts with <code>sk-ant-</code>)' },
+          { text: 'Ensure your account has <strong>Claude 3.5 Sonnet</strong> access' },
+          { text: 'Paste your key above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'gemini', logo: '🔵', name: 'Google Gemini',
+        tagline: 'Multimodal AI for visual ad analysis & video script generation',
+        authType: 'apikey',
+        placeholder: 'Google AI Studio API Key',
+        unlocks: [
+          'Gemini Pro Vision for competitor ad creative analysis',
+          'Video script generation for YouTube and TikTok campaigns',
+          'Multimodal competitor content analysis (text + images)',
+          'Google Workspace integration for report generation'
+        ],
+        steps: [
+          { text: 'Visit <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a>' },
+          { text: 'Click <strong>Get API key</strong> in the top navigation' },
+          { text: 'Create a new API key in a Google Cloud project' },
+          { text: 'Copy your API key' },
+          { text: 'Alternatively, enable Gemini API in <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a> for enterprise features' },
+          { text: 'Paste your key above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'stability', logo: '🎨', name: 'Stability AI',
+        tagline: 'Stable Diffusion for AI-generated ad images & visuals',
+        authType: 'apikey',
+        placeholder: 'Stability AI API Key (sk-xxxx...)',
+        unlocks: [
+          'Stable Diffusion XL for high-quality ad image generation',
+          'Image-to-image transformation for creative variations',
+          'Brand-consistent visual asset generation at scale',
+          'Competitor creative style analysis and improvement'
+        ],
+        steps: [
+          { text: 'Sign up at <a href="https://platform.stability.ai" target="_blank">platform.stability.ai</a>' },
+          { text: 'Navigate to <strong>Account → API Keys</strong>' },
+          { text: 'Click <strong>Create API Key</strong>' },
+          { text: 'Copy your API key (starts with <code>sk-</code>)' },
+          { text: 'Paste it above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'mistral', logo: '🌀', name: 'Mistral AI',
+        tagline: 'Fast, cost-efficient AI for bulk copy generation & analysis',
+        authType: 'apikey',
+        placeholder: 'Mistral API Key',
+        unlocks: [
+          'Mistral Large for fast, cost-efficient ad copy at scale',
+          'Batch campaign analysis across multiple competitors',
+          'Multilingual ad copy for global campaigns',
+          'Fast real-time campaign suggestion generation'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://console.mistral.ai" target="_blank">console.mistral.ai</a>' },
+          { text: 'Navigate to <strong>API Keys</strong> in the dashboard' },
+          { text: 'Click <strong>Create new key</strong>' },
+          { text: 'Copy your key and paste it above' },
+          { text: 'Click <strong>Test Connection</strong> — InfoGenie will use Mistral for high-volume tasks' }
+        ]
+      },
+      {
+        id: 'elevenlabs', logo: '🔊', name: 'ElevenLabs',
+        tagline: 'AI voice generation for video ad voiceovers & audio content',
+        authType: 'apikey',
+        placeholder: 'ElevenLabs API Key',
+        unlocks: [
+          'AI voiceover generation for video and audio ads',
+          'Multi-language voice localisation for global campaigns',
+          'Brand voice cloning for consistent audio identity',
+          'Podcast and audio ad creation from ad copy'
+        ],
+        steps: [
+          { text: 'Sign up at <a href="https://elevenlabs.io" target="_blank">elevenlabs.io</a>' },
+          { text: 'Go to <strong>Profile → API Key</strong>' },
+          { text: 'Copy your API key' },
+          { text: 'Paste it above and click <strong>Test Connection</strong>' }
+        ]
+      }
+    ]
+  },
+
+  crm: {
+    label: 'CRM & Automation',
+    icon: '🔗',
+    desc: 'Connect your CRM and automation platforms to route leads, sync contacts, and automate follow-up workflows triggered by InfoGenie campaign conversions.',
+    badge: '7 Platforms',
+    items: [
+      {
+        id: 'hubspot', logo: '🟠', name: 'HubSpot CRM',
+        tagline: 'Contact sync, deal pipeline & campaign attribution',
+        authType: 'oauth',
+        unlocks: [
+          'Auto-sync campaign leads directly into HubSpot contacts',
+          'Deal creation and pipeline stage automation',
+          'Campaign attribution reports in HubSpot Dashboards',
+          'Retargeting lists built from CRM segments'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://developers.hubspot.com" target="_blank">developers.hubspot.com</a> and create a Private App' },
+          { text: 'Under <strong>Scopes</strong>, enable: <code>crm.objects.contacts.write</code>, <code>crm.objects.deals.write</code>' },
+          { text: 'Generate your <strong>Private App Access Token</strong>' },
+          { text: 'Alternatively, click <strong>Connect via OAuth</strong> for instant setup' },
+          { text: 'InfoGenie will automatically create a custom property <code>infogenie_source</code> for attribution' }
+        ]
+      },
+      {
+        id: 'salesforce', logo: '🔵', name: 'Salesforce CRM',
+        tagline: 'Lead routing, opportunity management & revenue attribution',
+        authType: 'oauth',
+        unlocks: [
+          'Campaign lead auto-routing into Salesforce leads/contacts',
+          'Opportunity creation from qualified ad conversions',
+          'Revenue attribution via campaign UTM tracking',
+          'AI-powered lead scoring from engagement signals'
+        ],
+        steps: [
+          { text: 'Go to <strong>Setup → Apps → App Manager</strong> in Salesforce' },
+          { text: 'Create a <strong>Connected App</strong> with OAuth enabled' },
+          { text: 'Add scopes: <code>api</code>, <code>refresh_token</code>, <code>offline_access</code>' },
+          { text: 'Set the callback URL to <code>https://app.infogenie.ai/oauth/salesforce</code>' },
+          { text: 'Click <strong>Connect via OAuth</strong> below to authorise' }
+        ]
+      },
+      {
+        id: 'pipedrive', logo: '🟢', name: 'Pipedrive',
+        tagline: 'Deal management, contact sync & pipeline automation',
+        authType: 'apikey',
+        placeholder: 'Pipedrive API Token',
+        unlocks: [
+          'Auto-create deals from InfoGenie campaign conversions',
+          'Contact enrichment with campaign source and UTMs',
+          'Pipeline stage triggers based on campaign performance',
+          'Activity logging for all AI-generated touchpoints'
+        ],
+        steps: [
+          { text: 'Sign in to Pipedrive and go to <strong>Personal Preferences → API</strong>' },
+          { text: 'Copy your <strong>Personal API Token</strong>' },
+          { text: 'Paste it in the field above' },
+          { text: 'Click <strong>Test Connection</strong> — InfoGenie will map your pipeline stages automatically' }
+        ]
+      },
+      {
+        id: 'klaviyo', logo: '📧', name: 'Klaviyo',
+        tagline: 'Email marketing automation & audience sync for e-commerce',
+        authType: 'apikey',
+        placeholder: 'Klaviyo Private API Key',
+        unlocks: [
+          'Sync InfoGenie campaign audiences into Klaviyo lists',
+          'Trigger email flows from ad click and conversion events',
+          'Revenue attribution across InfoGenie ads + email flows',
+          'Suppression list sync to reduce ad spend waste'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://klaviyo.com" target="_blank">klaviyo.com</a> → <strong>Account → Settings → API Keys</strong>' },
+          { text: 'Click <strong>Create Private API Key</strong>' },
+          { text: 'Select scopes: <code>Lists: Full Access</code>, <code>Profiles: Full Access</code>, <code>Events: Full Access</code>' },
+          { text: 'Copy the private key and paste it above' },
+          { text: 'Click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'marketo', logo: '🟣', name: 'Marketo (Adobe)',
+        tagline: 'B2B marketing automation, lead scoring & nurture campaigns',
+        authType: 'apikey',
+        placeholder: 'Marketo Client ID:Client Secret',
+        unlocks: [
+          'B2B lead sync from InfoGenie LinkedIn campaigns',
+          'Lead scoring enrichment from campaign engagement data',
+          'Automated nurture programme triggers post-ad-click',
+          'Revenue Cycle Analytics integration for full-funnel reporting'
+        ],
+        steps: [
+          { text: 'In Marketo, go to <strong>Admin → Integration → LaunchPoint</strong>' },
+          { text: 'Click <strong>New Service</strong> and choose <strong>Custom</strong>' },
+          { text: 'Enter "InfoGenie" as the service name' },
+          { text: 'Under <strong>Admin → Web Services</strong>, copy your <strong>REST API Endpoint</strong>' },
+          { text: 'Go to <strong>Admin → LaunchPoint</strong>, find your service, and click <strong>View Details</strong> for Client ID and Secret' },
+          { text: 'Enter them in format <code>ClientID:ClientSecret</code> above' }
+        ]
+      },
+      {
+        id: 'zapier', logo: '⚡', name: 'Zapier',
+        tagline: 'Connect 6,000+ apps with no-code automation workflows',
+        authType: 'apikey',
+        placeholder: 'Zapier API Key',
+        unlocks: [
+          'Trigger any Zap from InfoGenie campaign events',
+          'Route leads to any app in Zapier\'s 6,000+ ecosystem',
+          'Multi-step automation across CRM, email, sheets, and Slack',
+          'Custom webhook triggers from InfoGenie AI alerts'
+        ],
+        steps: [
+          { text: 'Sign in to <a href="https://zapier.com" target="_blank">zapier.com</a> and go to <strong>Settings → API</strong>' },
+          { text: 'Generate your <strong>API Key</strong>' },
+          { text: 'In InfoGenie, copy your <strong>Webhook URL</strong> from the Zapier connection panel' },
+          { text: 'Create a Zap with <strong>Webhooks by Zapier</strong> as the trigger using your webhook URL' },
+          { text: 'Paste your Zapier API Key above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'make', logo: '🔵', name: 'Make (Integromat)',
+        tagline: 'Visual automation builder with advanced data transformation',
+        authType: 'apikey',
+        placeholder: 'Make API Token',
+        unlocks: [
+          'Visual workflow automation triggered by campaign events',
+          'Complex data transformation between InfoGenie and other systems',
+          'Advanced scheduling and conditional automation logic',
+          'Real-time webhook processing from ad platform events'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://make.com" target="_blank">make.com</a> → <strong>Profile → API</strong>' },
+          { text: 'Click <strong>Add token</strong> and name it "InfoGenie"' },
+          { text: 'Copy the generated token' },
+          { text: 'In Make, create a new Scenario using the <strong>Webhooks</strong> module as trigger' },
+          { text: 'Copy the webhook URL and paste it into InfoGenie\'s Make settings panel' },
+          { text: 'Enter your API token above and click <strong>Test Connection</strong>' }
+        ]
+      }
+    ]
+  },
+
+  analytics: {
+    label: 'Analytics & Data',
+    icon: '📈',
+    desc: 'Connect analytics and data platforms to give InfoGenie complete visibility into your performance — enabling smarter competitor benchmarking and ROI attribution.',
+    badge: '7 Platforms',
+    items: [
+      {
+        id: 'ga4', logo: '📊', name: 'Google Analytics 4',
+        tagline: 'Website traffic, user behaviour & conversion events',
+        authType: 'oauth',
+        unlocks: [
+          'Real website conversion data fed into ROAS calculations',
+          'Audience segment sync for better campaign targeting',
+          'Attribution modelling across InfoGenie campaigns',
+          'Funnel drop-off identification for landing page insights'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://analytics.google.com" target="_blank">analytics.google.com</a> → <strong>Admin → Property Settings</strong>' },
+          { text: 'Note your <strong>Measurement ID</strong> (format: G-XXXXXXXXXX)' },
+          { text: 'Under <strong>Admin → Service Accounts</strong>, create a service account with <strong>Viewer</strong> access' },
+          { text: 'Download the <strong>JSON credentials file</strong>' },
+          { text: 'Click <strong>Connect via OAuth</strong> for the simplified setup (recommended)' }
+        ]
+      },
+      {
+        id: 'gsc', logo: '🔍', name: 'Google Search Console',
+        tagline: 'Organic search performance, impressions & CTR data',
+        authType: 'oauth',
+        unlocks: [
+          'Organic keyword CTR benchmarked against paid campaign CTR',
+          'Top search queries feeding into keyword targeting',
+          'Page performance data for landing page optimisation',
+          'Core Web Vitals insight for campaign quality scores'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://search.google.com/search-console" target="_blank">Google Search Console</a>' },
+          { text: 'Verify ownership of your domain if not already done' },
+          { text: 'Click <strong>Connect via OAuth</strong> below — InfoGenie requests read-only access' },
+          { text: 'Select your property when prompted during OAuth flow' }
+        ]
+      },
+      {
+        id: 'adobe', logo: '🔴', name: 'Adobe Analytics',
+        tagline: 'Enterprise-grade analytics with custom dimensions & segments',
+        authType: 'apikey',
+        placeholder: 'Adobe Analytics Client ID:Secret',
+        unlocks: [
+          'Enterprise segment sync for precision ad targeting',
+          'Multi-channel attribution across all InfoGenie campaigns',
+          'Custom metric integration for revenue and LTV reporting',
+          'Real-time data feeds for autonomous campaign decisions'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://developer.adobe.com/console" target="_blank">Adobe Developer Console</a>' },
+          { text: 'Create a new Project and add the <strong>Analytics API</strong> service' },
+          { text: 'Generate <strong>OAuth Server-to-Server credentials</strong>' },
+          { text: 'Note your <strong>Report Suite ID</strong> from Adobe Analytics Admin' },
+          { text: 'Enter Client ID and Secret in format <code>ClientID:Secret</code> above' },
+          { text: 'Click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'mixpanel', logo: '🟣', name: 'Mixpanel',
+        tagline: 'Product analytics, user events & cohort analysis',
+        authType: 'apikey',
+        placeholder: 'Mixpanel Service Account Secret',
+        unlocks: [
+          'User behaviour event data for audience segmentation',
+          'Cohort analysis to identify best-converting user journeys',
+          'Funnel performance feeding into campaign landing page scores',
+          'Retention data for lifetime value optimisation'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://mixpanel.com" target="_blank">mixpanel.com</a> → <strong>Settings → Project Settings → Service Accounts</strong>' },
+          { text: 'Click <strong>Add Service Account</strong> with <strong>Analyst</strong> role' },
+          { text: 'Copy the <strong>Username</strong> and <strong>Secret</strong>' },
+          { text: 'Note your <strong>Project Token</strong> from Project Settings' },
+          { text: 'Enter the Service Account Secret above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'segment', logo: '🟢', name: 'Segment (Twilio)',
+        tagline: 'Customer data platform — unify events across all touchpoints',
+        authType: 'apikey',
+        placeholder: 'Segment Write Key',
+        unlocks: [
+          'Unified customer event data from all touchpoints',
+          'Audience sync to InfoGenie from Segment Personas',
+          'Real-time event streaming for campaign trigger automation',
+          'Identity resolution across devices and channels'
+        ],
+        steps: [
+          { text: 'Sign in to <a href="https://segment.com" target="_blank">segment.com</a> → <strong>Sources → Add Source</strong>' },
+          { text: 'Create a new source named "InfoGenie"' },
+          { text: 'Copy the <strong>Write Key</strong> from source settings' },
+          { text: 'Navigate to <strong>Destinations → Add Destination</strong> and add InfoGenie as a destination' },
+          { text: 'Paste your Write Key above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'hotjar', logo: '🔥', name: 'Hotjar',
+        tagline: 'Heatmaps, session recordings & conversion funnel analysis',
+        authType: 'apikey',
+        placeholder: 'Hotjar Personal API Token',
+        unlocks: [
+          'Landing page heatmap data informing ad creative direction',
+          'Session recording access for post-click UX analysis',
+          'Funnel analysis identifying conversion drop-off points',
+          'User feedback insights for ad messaging refinement'
+        ],
+        steps: [
+          { text: 'Sign in to <a href="https://hotjar.com" target="_blank">hotjar.com</a> → <strong>Account → Personal API Tokens</strong>' },
+          { text: 'Click <strong>Generate a personal API token</strong>' },
+          { text: 'Give it the name "InfoGenie" and copy the token' },
+          { text: 'Note your <strong>Site ID</strong> from the Hotjar dashboard' },
+          { text: 'Paste your token above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'amplitude', logo: '📉', name: 'Amplitude',
+        tagline: 'Product analytics, revenue insights & user journey mapping',
+        authType: 'apikey',
+        placeholder: 'Amplitude API Key:Secret Key',
+        unlocks: [
+          'User journey analysis from ad click to conversion',
+          'Revenue event tracking and LTV modelling',
+          'Behavioural cohort sync for precision retargeting',
+          'Predictive audience scoring for campaign optimisation'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://app.amplitude.com" target="_blank">app.amplitude.com</a> → <strong>Settings → Projects</strong>' },
+          { text: 'Select your project and navigate to <strong>General → API Keys</strong>' },
+          { text: 'Copy both the <strong>API Key</strong> and <strong>Secret Key</strong>' },
+          { text: 'Enter them in format <code>APIKey:SecretKey</code> above' },
+          { text: 'Click <strong>Test Connection</strong>' }
+        ]
+      }
+    ]
+  },
+
+  communication: {
+    label: 'Communication',
+    icon: '💬',
+    desc: 'Connect messaging and communication platforms to receive real-time InfoGenie alerts, route campaign leads to chatbots, and automate customer engagement workflows.',
+    badge: '6 Channels',
+    items: [
+      {
+        id: 'slack', logo: '💬', name: 'Slack',
+        tagline: 'Real-time campaign alerts, performance reports & AI insights',
+        authType: 'oauth',
+        unlocks: [
+          'Real-time campaign performance alerts to any Slack channel',
+          'Daily / weekly intelligence digest delivered to your team',
+          'Instant competitor change notifications',
+          'AI-generated action recommendations via Slack bot'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://api.slack.com/apps" target="_blank">api.slack.com/apps</a> and click <strong>Create New App</strong>' },
+          { text: 'Choose <strong>From scratch</strong> and name it "InfoGenie Bot"' },
+          { text: 'Under <strong>OAuth & Permissions</strong>, add scopes: <code>chat:write</code>, <code>channels:read</code>, <code>users:read</code>' },
+          { text: 'Click <strong>Install to Workspace</strong>' },
+          { text: 'Or simply click <strong>Connect via OAuth</strong> below for one-click setup' }
+        ]
+      },
+      {
+        id: 'whatsapp', logo: '📱', name: 'WhatsApp Business API',
+        tagline: 'Lead qualification chatbot & conversational campaign follow-up',
+        authType: 'apikey',
+        placeholder: 'WhatsApp Business API Token',
+        unlocks: [
+          'Automated lead qualification chatbot via WhatsApp',
+          'Campaign follow-up sequences triggered by ad conversions',
+          'Product recommendation bot for e-commerce campaigns',
+          'Appointment booking and demo scheduling automation'
+        ],
+        steps: [
+          { text: 'Access the WhatsApp Business API via <a href="https://developers.facebook.com/docs/whatsapp" target="_blank">Meta for Developers</a>' },
+          { text: 'Create a Meta Business Account and verify your business' },
+          { text: 'Add the WhatsApp product to your Meta App' },
+          { text: 'Navigate to <strong>WhatsApp → API Setup</strong> and generate a temporary Access Token' },
+          { text: 'Add your <strong>Phone Number ID</strong> and <strong>WhatsApp Business Account ID</strong>' },
+          { text: 'Paste your token above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'telegram', logo: '✈️', name: 'Telegram Bot',
+        tagline: 'Instant campaign alerts, competitor updates & AI notifications',
+        authType: 'apikey',
+        placeholder: 'Telegram Bot Token (123456:ABCdef...)',
+        unlocks: [
+          'Instant push notifications for campaign performance changes',
+          'Competitor alert delivery to your Telegram channel',
+          'Daily AI intelligence digest via Telegram',
+          'Command-based campaign control via Telegram bot commands'
+        ],
+        steps: [
+          { text: 'Open Telegram and start a chat with <strong>@BotFather</strong>' },
+          { text: 'Send the command <code>/newbot</code> and follow the prompts' },
+          { text: 'Choose a name (e.g. "InfoGenie Alerts") and a username (e.g. <code>infogenie_alerts_bot</code>)' },
+          { text: 'BotFather will send you a <strong>Bot Token</strong> — copy it' },
+          { text: 'Get your <strong>Chat ID</strong> by messaging <code>@userinfobot</code> on Telegram' },
+          { text: 'Paste your Bot Token above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'sendgrid', logo: '📧', name: 'SendGrid (Twilio)',
+        tagline: 'Transactional emails, campaign reports & lead notifications',
+        authType: 'apikey',
+        placeholder: 'SendGrid API Key (SG.xxxx...)',
+        unlocks: [
+          'Campaign performance reports delivered to your inbox',
+          'Transactional emails for lead capture from campaigns',
+          'Weekly competitor intelligence digest emails',
+          'Custom email templates for InfoGenie notifications'
+        ],
+        steps: [
+          { text: 'Sign in to <a href="https://sendgrid.com" target="_blank">sendgrid.com</a> and go to <strong>Settings → API Keys</strong>' },
+          { text: 'Click <strong>Create API Key</strong>' },
+          { text: 'Choose <strong>Full Access</strong> or <strong>Restricted Access</strong> with <code>Mail Send</code> enabled' },
+          { text: 'Copy the key immediately (starts with <code>SG.</code>)' },
+          { text: 'Verify your sender email domain under <strong>Settings → Sender Authentication</strong>' },
+          { text: 'Paste your API key above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'teams', logo: '🔷', name: 'Microsoft Teams',
+        tagline: 'Campaign alerts & AI reports delivered to Teams channels',
+        authType: 'apikey',
+        placeholder: 'Teams Webhook URL',
+        unlocks: [
+          'InfoGenie campaign alerts posted to Teams channels',
+          'Daily marketing intelligence reports in Teams',
+          'Competitor change notifications for your marketing team',
+          'Approval workflows for autonomous campaign launches'
+        ],
+        steps: [
+          { text: 'In Microsoft Teams, navigate to the channel where you want alerts' },
+          { text: 'Click the <strong>⋯ (More Options)</strong> next to the channel name' },
+          { text: 'Select <strong>Connectors → Incoming Webhook → Configure</strong>' },
+          { text: 'Give the webhook a name ("InfoGenie") and upload the InfoGenie logo' },
+          { text: 'Click <strong>Create</strong> and copy the webhook URL generated' },
+          { text: 'Paste the webhook URL in the field above and click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'intercom', logo: '🔵', name: 'Intercom',
+        tagline: 'Lead chat qualification & customer engagement automation',
+        authType: 'apikey',
+        placeholder: 'Intercom Access Token',
+        unlocks: [
+          'Auto-create Intercom leads from InfoGenie campaign conversions',
+          'Trigger Intercom chat proactively to high-intent visitors',
+          'Sync campaign UTM data to Intercom contact attributes',
+          'AI-suggested chat scripts based on competitor messaging'
+        ],
+        steps: [
+          { text: 'Sign in to <a href="https://app.intercom.com" target="_blank">app.intercom.com</a> and go to <strong>Settings → Developers → Developer Hub</strong>' },
+          { text: 'Click <strong>New App</strong> and create an app named "InfoGenie"' },
+          { text: 'Under <strong>Authentication</strong>, copy the <strong>Access Token</strong>' },
+          { text: 'Enable permissions: <code>Read/Write Users</code>, <code>Read/Write Conversations</code>' },
+          { text: 'Paste your Access Token above and click <strong>Test Connection</strong>' }
+        ]
+      }
+    ]
+  }
+};
+
+// ===================================================
+// BUILD SETTINGS
+// ===================================================
 function buildSettings() {
   const wrap = document.getElementById('settingsWrap');
+  const cats = Object.entries(INTEGRATIONS);
+  const firstKey = cats[0][0];
+
+  const tabsHtml = cats.map(([key, cat], i) => `
+    <button class="stab ${i === 0 ? 'active' : ''}" data-tab="${key}" onclick="switchSettingsTab('${key}')">
+      <span class="stab-icon">${cat.icon}</span>
+      ${cat.label}
+      <span class="stab-count">${cat.items.length}</span>
+    </button>
+  `).join('');
+
+  const panelsHtml = cats.map(([key, cat], i) => `
+    <div class="integ-panel ${i === 0 ? 'active' : ''}" id="panel-${key}">
+      <div class="integ-category-header">
+        <div class="ich-icon">${cat.icon}</div>
+        <div class="ich-text">
+          <div class="ich-title">${cat.label}</div>
+          <div class="ich-sub">${cat.desc}</div>
+        </div>
+        <div class="ich-badge">${cat.badge}</div>
+      </div>
+      <div class="integ-cards-grid">
+        ${cat.items.map(item => buildIntegCard(item)).join('')}
+      </div>
+    </div>
+  `).join('');
+
   wrap.innerHTML = `
-    <div class="settings-grid">
-      
-      <div class="settings-section">
-        <div class="settings-section-header">
-          <div>
-            <div class="ssh-title">Ad Platform Integrations</div>
-            <div class="ssh-sub">Connect your ad accounts to enable autonomous campaign deployment</div>
-          </div>
+    <div class="settings-page">
+      <div class="integ-summary-bar">
+        <div class="isb-item"><span class="isb-count" id="connectedCount">0</span> integrations connected</div>
+        <div class="isb-divider"></div>
+        <div class="isb-item">
+          <span style="color:var(--green); font-size:1rem;">●</span>&nbsp;InfoGenie AI engine status: <strong style="color:var(--green)">Online</strong>
         </div>
-        <div class="integration-list">
-          ${buildIntegration('🟦', 'Google Ads', 'Search, Display, YouTube, Shopping campaigns', false)}
-          ${buildIntegration('🟦', 'Meta Ads Manager', 'Facebook & Instagram campaign automation', false)}
-          ${buildIntegration('⬛', 'TikTok Ads', 'TikTok campaign creation and management', false)}
-          ${buildIntegration('🟦', 'LinkedIn Campaign Manager', 'B2B targeting and sponsored content', false)}
-          ${buildIntegration('🟥', 'Pinterest Ads', 'Visual discovery and shopping campaigns', false)}
+        <div class="isb-divider"></div>
+        <div class="isb-item">
+          <span style="color:var(--gold);">⚡</span>&nbsp;Tip: Connect at least <strong>one Ad Platform</strong> + <strong>one AI Model</strong> to enable full autonomous operation
+        </div>
+        <div class="isb-cta">
+          <button class="btn-primary" onclick="showToast('📖 Integration guide opened — check documentation at docs.infogenie.ai')">📖 Full Docs</button>
         </div>
       </div>
-      
-      <div class="settings-section">
-        <div class="settings-section-header">
-          <div>
-            <div class="ssh-title">AI & Intelligence APIs</div>
-            <div class="ssh-sub">Power InfoGenie's analysis and creative generation engine</div>
-          </div>
-        </div>
-        <div class="integration-list">
-          ${buildIntegration('🤖', 'OpenAI (GPT-4)', 'Ad copy generation, strategy analysis, chatbot responses', false)}
-          ${buildIntegration('🤖', 'Anthropic Claude', 'Advanced reasoning, competitive analysis, strategy generation', false)}
-          ${buildIntegration('📊', 'Semrush API', 'Keyword rankings, competitor keywords, PPC data, backlinks', false)}
-          ${buildIntegration('📊', 'SimilarWeb API', 'Competitor traffic estimates, sources, top pages', false)}
-          ${buildIntegration('🔍', 'BuiltWith API', 'Competitor tech stack detection, ad pixels, analytics tools', false)}
-        </div>
-      </div>
-      
-      <div class="settings-section">
-        <div class="settings-section-header">
-          <div>
-            <div class="ssh-title">Analytics & Tracking</div>
-            <div class="ssh-sub">Connect analytics platforms for complete performance visibility</div>
-          </div>
-        </div>
-        <div class="integration-list">
-          ${buildIntegration('📈', 'Google Analytics 4', 'Website traffic, conversion tracking, audience data', false)}
-          ${buildIntegration('📈', 'Google Search Console', 'Organic search performance and keyword data', false)}
-          ${buildIntegration('🔥', 'Hotjar', 'Heatmaps, session recording, conversion optimisation', false)}
-          ${buildIntegration('📧', 'Klaviyo', 'Email marketing automation and audience sync', false)}
-          ${buildIntegration('💬', 'HubSpot CRM', 'Lead management and campaign attribution', false)}
-        </div>
-      </div>
-      
-      <div class="settings-section">
-        <div class="settings-section-header">
-          <div>
-            <div class="ssh-title">Communication & Automation</div>
-            <div class="ssh-sub">Route leads and alerts to your preferred communication channels</div>
-          </div>
-        </div>
-        <div class="integration-list">
-          ${buildIntegration('💬', 'Slack', 'Campaign alerts, performance notifications, AI insights', false)}
-          ${buildIntegration('💬', 'WhatsApp Business API', 'Lead nurturing and customer qualification chatbot', false)}
-          ${buildIntegration('✉️', 'Telegram Bot', 'Real-time campaign alerts and performance updates', false)}
-          ${buildIntegration('📧', 'SendGrid', 'Transactional emails and campaign notifications', false)}
-          ${buildIntegration('🔗', 'Zapier', 'Connect 6,000+ apps and automate workflows', false)}
-        </div>
-      </div>
-      
-      <div class="settings-section">
-        <div class="settings-section-header">
-          <div>
-            <div class="ssh-title">InfoGenie Account Settings</div>
-            <div class="ssh-sub">Configure your account preferences and AI engine settings</div>
-          </div>
+
+      <div class="settings-tab-bar">${tabsHtml}</div>
+
+      ${panelsHtml}
+
+      <div class="acct-settings-section">
+        <div class="acct-settings-header">
+          <div class="acct-settings-title">⚙️ InfoGenie Account Settings</div>
+          <div class="acct-settings-sub">Configure your AI engine preferences, compliance settings, and notification rules</div>
         </div>
         <div class="settings-form">
           <div class="sf-row">
@@ -997,6 +1776,8 @@ function buildSettings() {
                 <option value="ae">🇦🇪 UAE</option>
                 <option value="sg">🇸🇬 Singapore</option>
                 <option value="de">🇩🇪 Germany</option>
+                <option value="ca">🇨🇦 Canada</option>
+                <option value="fr">🇫🇷 France</option>
               </select>
             </div>
           </div>
@@ -1015,41 +1796,62 @@ function buildSettings() {
               </select>
             </div>
           </div>
-          <button class="sf-save" onclick="saveSettings()">Save Settings</button>
+          <div class="sf-row">
+            <div class="sf-group">
+              <label>Primary AI Model</label>
+              <select class="sf-select">
+                <option>OpenAI GPT-4o (Recommended)</option>
+                <option>Anthropic Claude 3.5 Sonnet</option>
+                <option>Google Gemini Pro</option>
+                <option>Mistral Large</option>
+              </select>
+            </div>
+            <div class="sf-group">
+              <label>Report Delivery Email</label>
+              <input type="email" class="sf-input" placeholder="you@company.com" />
+            </div>
+          </div>
+          <button class="sf-save" onclick="saveSettings()">Save Account Settings</button>
         </div>
-        
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">Autonomous Campaign Optimisation</div>
-            <div class="toggle-desc">Allow InfoGenie AI to automatically pause underperformers and reallocate budget</div>
+            <div class="toggle-desc">Allow InfoGenie AI to automatically pause underperformers and reallocate budget 24/7</div>
           </div>
           <label class="toggle-switch"><input type="checkbox" checked /><span class="toggle-slider"></span></label>
         </div>
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">Real-time Competitor Monitoring</div>
-            <div class="toggle-desc">Monitor competitor campaign changes and get instant alerts</div>
+            <div class="toggle-desc">Alert me instantly when competitors launch new campaigns or change their ad spend</div>
           </div>
           <label class="toggle-switch"><input type="checkbox" checked /><span class="toggle-slider"></span></label>
         </div>
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">AI Creative Auto-generation</div>
-            <div class="toggle-desc">Automatically generate new ad creatives when performance drops below threshold</div>
+            <div class="toggle-desc">Automatically generate and test new creatives when performance drops below your ROAS threshold</div>
           </div>
           <label class="toggle-switch"><input type="checkbox" checked /><span class="toggle-slider"></span></label>
         </div>
         <div class="toggle-row">
           <div class="toggle-info">
             <div class="toggle-name">Weekly Intelligence Reports</div>
-            <div class="toggle-desc">Receive automated weekly competitor intelligence reports via email</div>
+            <div class="toggle-desc">Receive a full competitor intelligence digest every Monday morning</div>
           </div>
           <label class="toggle-switch"><input type="checkbox" checked /><span class="toggle-slider"></span></label>
         </div>
         <div class="toggle-row">
           <div class="toggle-info">
-            <div class="toggle-name">GDPR / CCPA Compliance Mode</div>
-            <div class="toggle-desc">Enforce data privacy compliance across all campaigns and integrations</div>
+            <div class="toggle-name">GDPR / CCPA / POPIA Compliance Mode</div>
+            <div class="toggle-desc">Enforce data privacy compliance on all campaigns, integrations, and audience targeting</div>
+          </div>
+          <label class="toggle-switch"><input type="checkbox" checked /><span class="toggle-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-name">Multi-region Campaign Compliance Check</div>
+            <div class="toggle-desc">Auto-validate campaigns against local advertising regulations before launch</div>
           </div>
           <label class="toggle-switch"><input type="checkbox" checked /><span class="toggle-slider"></span></label>
         </div>
@@ -1058,38 +1860,116 @@ function buildSettings() {
   `;
 }
 
-function buildIntegration(icon, name, desc, connected) {
-  return `
-    <div class="integration-item">
-      <div class="integ-icon">${icon}</div>
-      <div class="integ-info">
-        <div class="integ-name">${name}</div>
-        <div class="integ-desc">${desc}</div>
-      </div>
-      <div class="integ-status ${connected ? 'is-connected' : 'is-not'}">${connected ? '● Connected' : '○ Not connected'}</div>
-      <button class="btn-connect ${connected ? 'btn-connected' : ''}" onclick="connectIntegration(this, '${name}')">
-        ${connected ? '✓ Connected' : 'Connect'}
+function buildIntegCard(item) {
+  const isApiKey = item.authType === 'apikey';
+  const isOAuth = item.authType === 'oauth';
+  const cardId = 'card-' + item.id;
+
+  const unlocksList = item.unlocks.map(u => `
+    <li><span class="ul-check">✓</span><span>${u}</span></li>
+  `).join('');
+
+  const stepsList = item.steps.map((s, i) => `
+    <div class="step-item">
+      <div class="step-num">${i + 1}</div>
+      <div class="step-text">${s.text}</div>
+    </div>
+  `).join('');
+
+  const connectSection = isApiKey ? `
+    <div class="api-key-row">
+      <input type="password" class="api-key-inp" placeholder="${item.placeholder || 'Paste your API Key here...'}" id="inp-${item.id}" />
+      <button class="btn-test" onclick="testConnection('${item.id}')">Test</button>
+    </div>
+    <div class="integ-card-actions">
+      <button class="btn-connect-card" id="btn-${item.id}" onclick="connectCard('${item.id}', '${item.name}')">Connect</button>
+      <button class="btn-docs-card" onclick="showToast('📖 Opening ${item.name} documentation...')">View Docs</button>
+    </div>
+  ` : `
+    <div class="integ-card-actions" style="flex-direction:column; gap:8px;">
+      <button class="oauth-btn" id="btn-${item.id}" onclick="connectOAuth('${item.id}', '${item.name}')">
+        <span>🔐</span> Connect via OAuth
       </button>
+      <button class="btn-docs-card" style="width:100%; text-align:center;" onclick="showToast('📖 Opening ${item.name} documentation...')">View Integration Docs</button>
+    </div>
+  `;
+
+  return `
+    <div class="integ-card" id="${cardId}">
+      <div class="integ-card-top">
+        <div class="integ-logo">${item.logo}</div>
+        <div class="integ-meta">
+          <div class="integ-name">${item.name}</div>
+          <div class="integ-tagline">${item.tagline}</div>
+        </div>
+        <div class="integ-conn-status ics-off" id="status-${item.id}">
+          <span>○</span> Not connected
+        </div>
+      </div>
+      <div class="integ-card-body">
+        <div class="unlocks-title">✦ What it unlocks in InfoGenie</div>
+        <ul class="unlocks-list">${unlocksList}</ul>
+        <div class="steps-title">↳ How to integrate</div>
+        <div class="steps-list">${stepsList}</div>
+        ${connectSection}
+      </div>
     </div>
   `;
 }
 
-function connectIntegration(btn, name) {
-  const item = btn.closest('.integration-item');
-  const statusEl = item.querySelector('.integ-status');
-  if (btn.classList.contains('btn-connected')) {
-    btn.classList.remove('btn-connected');
-    btn.textContent = 'Connect';
-    statusEl.className = 'integ-status is-not';
-    statusEl.textContent = '○ Not connected';
-    showToast(`Disconnected ${name}`);
-  } else {
-    btn.classList.add('btn-connected');
-    btn.textContent = '✓ Connected';
-    statusEl.className = 'integ-status is-connected';
-    statusEl.textContent = '● Connected';
-    showToast(`✅ ${name} connected successfully! InfoGenie will now use this integration.`);
+function switchSettingsTab(key) {
+  document.querySelectorAll('.stab').forEach(t => t.classList.toggle('active', t.dataset.tab === key));
+  document.querySelectorAll('.integ-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + key));
+}
+
+function testConnection(id) {
+  const inp = document.getElementById('inp-' + id);
+  if (!inp || !inp.value.trim()) {
+    showToast('⚠️ Please enter your API key first');
+    return;
   }
+  showToast('🔄 Testing connection to ' + id + '...');
+  setTimeout(() => {
+    showToast('✅ Connection successful — API key is valid!');
+  }, 1800);
+}
+
+function connectCard(id, name) {
+  const inp = document.getElementById('inp-' + id);
+  if (!inp || !inp.value.trim()) {
+    showToast('⚠️ Please enter your API key before connecting');
+    return;
+  }
+  const btn = document.getElementById('btn-' + id);
+  const status = document.getElementById('status-' + id);
+  const card = document.getElementById('card-' + id);
+  btn.textContent = '✓ Connected';
+  btn.classList.add('btn-connected-card');
+  status.className = 'integ-conn-status ics-live';
+  status.innerHTML = '<span>●</span> Connected';
+  card.classList.add('connected');
+  updateConnectedCount(1);
+  showToast(`✅ ${name} connected — InfoGenie is now using this integration`);
+}
+
+function connectOAuth(id, name) {
+  const btn = document.getElementById('btn-' + id);
+  const status = document.getElementById('status-' + id);
+  const card = document.getElementById('card-' + id);
+  btn.innerHTML = '<span>✓</span> Connected via OAuth';
+  btn.classList.add('connected');
+  status.className = 'integ-conn-status ics-live';
+  status.innerHTML = '<span>●</span> Connected';
+  card.classList.add('connected');
+  updateConnectedCount(1);
+  showToast(`✅ ${name} connected via OAuth — campaigns can now be deployed automatically`);
+}
+
+let _connectedCount = 0;
+function updateConnectedCount(delta) {
+  _connectedCount += delta;
+  const el = document.getElementById('connectedCount');
+  if (el) el.textContent = _connectedCount;
 }
 
 function saveSettings() {
