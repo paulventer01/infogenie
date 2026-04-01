@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InfoGenie — AI Autonomous Marketing Intelligence Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar" id="navbar">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo" id="navLogo">
+      <div class="logo-mark">
+        <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
+          <circle cx="20" cy="20" r="20" fill="url(#logoGrad)"/>
+          <path d="M13 20 Q20 10 27 20 Q20 30 13 20Z" fill="white" opacity="0.9"/>
+          <circle cx="20" cy="20" r="4" fill="white"/>
+          <defs>
+            <linearGradient id="logoGrad" x1="0" y1="0" x2="40" y2="40">
+              <stop offset="0%" stop-color="#00C9C8"/>
+              <stop offset="100%" stop-color="#0066FF"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <span class="logo-text">Info<span class="logo-genie">Genie</span></span>
+    </a>
+    <div class="nav-links" id="navLinks">
+      <a href="#" class="nav-link" data-view="dashboard">Dashboard</a>
+      <a href="#" class="nav-link" data-view="competitors">Competitors</a>
+      <a href="#" class="nav-link" data-view="campaigns">Campaigns</a>
+      <a href="#" class="nav-link" data-view="audience">Audience</a>
+      <a href="#" class="nav-link" data-view="creative">AI Creative</a>
+      <a href="#" class="nav-link" data-view="settings">Settings</a>
+    </div>
+    <div class="nav-actions">
+      <div class="nav-plan-badge" id="navPlanBadge">Pro Plan</div>
+      <button class="btn-nav-analyse" id="navAnalyseBtn">+ New Analysis</button>
+    </div>
+  </div>
+</nav>
+
+<!-- HOME VIEW -->
+<div class="view active" id="view-home">
+  <section class="hero">
+    <div class="hero-bg">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+      <div class="grid-overlay"></div>
+    </div>
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="badge-dot"></span>
+        AI-Powered Autonomous Marketing Intelligence
+      </div>
+      <h1 class="hero-title">
+        Turn Competitor Intelligence<br/>Into <span class="gradient-text">Autonomous Growth</span>
+      </h1>
+      <p class="hero-subtitle">
+        Analyse 5+ competitors in your exact industry, generate winning campaigns, and let InfoGenie autonomously optimise your ROI — all from one intelligent platform.
+      </p>
+
+      <div class="url-card">
+        <div class="url-card-header">
+          <span class="url-card-icon">🌐</span>
+          <span class="url-card-label">Enter your website — InfoGenie detects your industry and finds real competitors</span>
+        </div>
+        <div class="url-input-row">
+          <div class="url-field-wrap">
+            <span class="url-prefix">https://</span>
+            <input type="text" id="websiteInput" class="url-field" placeholder="yourwebsite.com" autocomplete="off" />
+          </div>
+          <select id="targetCountry" class="country-select">
+            <option value="global">🌍 Global</option>
+            <option value="us">🇺🇸 United States</option>
+            <option value="uk">🇬🇧 United Kingdom</option>
+            <option value="au">🇦🇺 Australia</option>
+            <option value="ca">🇨🇦 Canada</option>
+            <option value="de">🇩🇪 Germany</option>
+            <option value="fr">🇫🇷 France</option>
+            <option value="sg">🇸🇬 Singapore</option>
+            <option value="ae">🇦🇪 UAE</option>
+            <option value="in">🇮🇳 India</option>
+            <option value="za">🇿🇦 South Africa</option>
+            <option value="br">🇧🇷 Brazil</option>
+            <option value="jp">🇯🇵 Japan</option>
+            <option value="nl">🇳🇱 Netherlands</option>
+            <option value="se">🇸🇪 Sweden</option>
+          </select>
+          <button class="btn-analyse" id="analyseBtn">
+            <span>Analyse Now</span>
+            <span class="btn-arrow">→</span>
+          </button>
+        </div>
+        <div class="url-examples">
+          <span class="examples-label">Try:</span>
+          <button class="example-chip" data-url="shopify.com">shopify.com</button>
+          <button class="example-chip" data-url="etoro.com">etoro.com</button>
+          <button class="example-chip" data-url="hubspot.com">hubspot.com</button>
+          <button class="example-chip" data-url="coursera.org">coursera.org</button>
+          <button class="example-chip" data-url="booking.com">booking.com</button>
+          <button class="example-chip" data-url="coinbase.com">coinbase.com</button>
+        </div>
+      </div>
+
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <span class="stat-num">200K+</span>
+          <span class="stat-lbl">Ads Analysed</span>
+        </div>
+        <div class="stat-sep"></div>
+        <div class="hero-stat">
+          <span class="stat-num">35%</span>
+          <span class="stat-lbl">Avg CPA Reduction</span>
+        </div>
+        <div class="stat-sep"></div>
+        <div class="hero-stat">
+          <span class="stat-num">3.2×</span>
+          <span class="stat-lbl">Average ROAS Lift</span>
+        </div>
+        <div class="stat-sep"></div>
+        <div class="hero-stat">
+          <span class="stat-num">180+</span>
+          <span class="stat-lbl">Countries Covered</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="modules-section">
+    <div class="container">
+      <div class="section-label">FIVE CORE MODULES</div>
+      <h2 class="section-title">One Autonomous Intelligence Engine</h2>
+      <p class="section-sub">InfoGenie is the only platform combining competitor intelligence, ad spy, AI generation, campaign automation, and real-time optimisation in one loop.</p>
+      <div class="modules-grid">
+        <div class="module-card mc-blue">
+          <div class="mc-icon">🔍</div>
+          <h3>Competitor Intelligence</h3>
+          <p>Crawl websites, scrape ad libraries (Meta, Google, TikTok), analyse SEO, traffic patterns, and conversion funnels from your exact industry.</p>
+          <div class="mc-tags"><span>CTR Benchmarks</span><span>Ad Spy</span><span>Traffic Data</span></div>
+        </div>
+        <div class="module-card mc-teal">
+          <div class="mc-icon">📊</div>
+          <h3>Ad Performance Analysis</h3>
+          <p>Detect best-performing ads, keywords, ROAS patterns, and creative angles across your industry — updated in near real-time.</p>
+          <div class="mc-tags"><span>ROAS Tracking</span><span>Keyword Intel</span><span>Funnel Analysis</span></div>
+        </div>
+        <div class="module-card mc-purple">
+          <div class="mc-icon">✨</div>
+          <h3>AI Creative Generation</h3>
+          <p>Generate winning ad copy, headlines, visuals, and landing page structures — benchmarked against real competitor performance data.</p>
+          <div class="mc-tags"><span>Ad Copy</span><span>Headlines</span><span>Video Scripts</span></div>
+        </div>
+        <div class="module-card mc-gold">
+          <div class="mc-icon">🚀</div>
+          <h3>Campaign Automation</h3>
+          <p>Deploy to Google, Meta & TikTok. A/B test automatically. RL optimisation runs 24/7 without manual intervention.</p>
+          <div class="mc-tags"><span>Auto-Launch</span><span>A/B Testing</span><span>RL Optimisation</span></div>
+        </div>
+        <div class="module-card mc-green">
+          <div class="mc-icon">🎯</div>
+          <h3>Audience Intelligence</h3>
+          <p>Identify which audience segments competitors are winning with and automatically build improved targeting strategies against them.</p>
+          <div class="mc-tags"><span>Lookalike Audiences</span><span>Interest Targeting</span><span>Geo Segmentation</span></div>
+        </div>
+        <div class="module-card mc-navy">
+          <div class="mc-icon">💬</div>
+          <h3>Conversational AI</h3>
+          <p>Chat with your campaign data, ask questions, get instant strategy recommendations, and build campaigns through conversation.</p>
+          <div class="mc-tags"><span>Chat Interface</span><span>KPI Alerts</span><span>Strategy Builder</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pricing-section">
+    <div class="container">
+      <div class="section-label">PRICING</div>
+      <h2 class="section-title">Simple, Transparent Pricing</h2>
+      <p class="section-sub">USD pricing. No hidden fees. Cancel anytime.</p>
+      <div class="pricing-grid">
+        <div class="price-card">
+          <div class="price-name">Starter</div>
+          <div class="price-amount">$99<span>/mo</span></div>
+          <div class="price-desc">Solo marketers & small teams</div>
+          <ul class="price-features">
+            <li><span class="pf-check">✓</span> 3 competitor websites</li>
+            <li><span class="pf-check">✓</span> Basic AI campaigns</li>
+            <li><span class="pf-check">✓</span> 3 concurrent campaigns</li>
+            <li><span class="pf-check">✓</span> CTR & ROAS tracking</li>
+            <li><span class="pf-check">✓</span> Email support</li>
+          </ul>
+          <button class="btn-price">Get Started</button>
+        </div>
+        <div class="price-card price-popular">
+          <div class="popular-badge">Most Popular</div>
+          <div class="price-name">Professional</div>
+          <div class="price-amount">$399<span>/mo</span></div>
+          <div class="price-desc">Growth teams & startups</div>
+          <ul class="price-features">
+            <li><span class="pf-check">✓</span> Full intelligence engine</li>
+            <li><span class="pf-check">✓</span> 15 concurrent campaigns</li>
+            <li><span class="pf-check">✓</span> AI creative generation</li>
+            <li><span class="pf-check">✓</span> Audience intelligence</li>
+            <li><span class="pf-check">✓</span> Priority support</li>
+          </ul>
+          <button class="btn-price btn-price-featured">Get Started</button>
+        </div>
+        <div class="price-card">
+          <div class="price-name">Agency</div>
+          <div class="price-amount">$999<span>/mo</span></div>
+          <div class="price-desc">Marketing agencies</div>
+          <ul class="price-features">
+            <li><span class="pf-check">✓</span> Multi-client management</li>
+            <li><span class="pf-check">✓</span> Unlimited campaigns</li>
+            <li><span class="pf-check">✓</span> White-label options</li>
+            <li><span class="pf-check">✓</span> Full API access</li>
+            <li><span class="pf-check">✓</span> Dedicated support</li>
+          </ul>
+          <button class="btn-price">Get Started</button>
+        </div>
+        <div class="price-card price-enterprise">
+          <div class="price-name">Enterprise</div>
+          <div class="price-amount">$3K–$10K<span>/mo</span></div>
+          <div class="price-desc">Fintech / global brands</div>
+          <ul class="price-features">
+            <li><span class="pf-check">✓</span> Custom AI models</li>
+            <li><span class="pf-check">✓</span> Dedicated CSM</li>
+            <li><span class="pf-check">✓</span> Bespoke integrations</li>
+            <li><span class="pf-check">✓</span> SLA guarantee</li>
+            <li><span class="pf-check">✓</span> GDPR / POPIA compliance</li>
+          </ul>
+          <button class="btn-price">Contact Sales</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay hidden" id="loadingOverlay">
+  <div class="loading-card">
+    <div class="loading-logo-wrap">
+      <svg width="48" height="48" viewBox="0 0 40 40" fill="none">
+        <circle cx="20" cy="20" r="20" fill="url(#lgGrad)"/>
+        <path d="M13 20 Q20 10 27 20 Q20 30 13 20Z" fill="white" opacity="0.9"/>
+        <circle cx="20" cy="20" r="4" fill="white"/>
+        <defs>
+          <linearGradient id="lgGrad" x1="0" y1="0" x2="40" y2="40">
+            <stop offset="0%" stop-color="#00C9C8"/>
+            <stop offset="100%" stop-color="#0066FF"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <span class="loading-brand">InfoGenie</span>
+    </div>
+    <p class="loading-title">AI Intelligence Engine Running</p>
+    <div class="loading-steps-list">
+      <div class="lstep" id="lst1"><div class="lstep-dot"></div><div class="lstep-text"><strong>Detecting industry & market segment</strong><br/><small>Analysing domain, content & structure</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst2"><div class="lstep-dot"></div><div class="lstep-text"><strong>Identifying top competitors</strong><br/><small>Scanning industry database & ad libraries</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst3"><div class="lstep-dot"></div><div class="lstep-text"><strong>Analysing competitor campaigns</strong><br/><small>CTR, ROAS, ad spend, audience data</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst4"><div class="lstep-dot"></div><div class="lstep-text"><strong>Generating AI recommendations</strong><br/><small>Campaign strategy & creative briefs</small></div><div class="lstep-check hidden">✓</div></div>
+      <div class="lstep" id="lst5"><div class="lstep-dot"></div><div class="lstep-text"><strong>Building intelligence report</strong><br/><small>ROI projections & audience targeting</small></div><div class="lstep-check hidden">✓</div></div>
+    </div>
+    <div class="loading-progress-wrap">
+      <div class="loading-bar-track"><div class="loading-bar-fill" id="loadingBarFill"></div></div>
+      <span class="loading-pct" id="loadingPct">0%</span>
+    </div>
+    <div class="loading-status-text" id="loadingStatusText">Initialising InfoGenie AI Engine...</div>
+  </div>
+</div>
+
+<!-- DASHBOARD VIEW -->
+<div class="view hidden" id="view-dashboard">
+  <div class="view-header">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb">Dashboard</div>
+          <h2 class="view-title" id="dashTitle">Intelligence Report</h2>
+          <p class="view-sub" id="dashSub">Full competitor analysis and AI recommendations</p>
+        </div>
+        <div class="vh-actions">
+          <div class="analysis-tags" id="analysisTags"></div>
+          <button class="btn-secondary" id="reRunBtn">↺ Re-run Analysis</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container">
+    <div class="kpi-grid" id="kpiGrid"></div>
+    <div class="roi-banner" id="roiBanner"></div>
+    <div class="two-charts">
+      <div class="chart-box">
+        <div class="chart-box-header">
+          <h3>Average CTR Comparison <span class="chart-tag ctr-tag">CTR</span></h3>
+        </div>
+        <canvas id="ctrChart" height="240"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-box-header">
+          <h3>ROAS Performance <span class="chart-tag roas-tag">ROAS</span></h3>
+        </div>
+        <canvas id="roasChart" height="240"></canvas>
+      </div>
+    </div>
+    <div class="chart-box full">
+      <div class="chart-box-header">
+        <h3>Traffic & Ad Spend Trends — 12 Months <span class="chart-tag trend-tag">TREND</span></h3>
+      </div>
+      <canvas id="trendChart" height="140"></canvas>
+    </div>
+    <div class="data-table-card">
+      <div class="dtc-header">
+        <h3>Competitor Intelligence Summary</h3>
+        <button class="btn-link" id="viewAllCompBtn">View Full Analysis →</button>
+      </div>
+      <div class="table-scroll">
+        <table class="ig-table">
+          <thead>
+            <tr>
+              <th>Competitor Website</th>
+              <th>Est. Monthly Traffic</th>
+              <th>Avg CTR</th>
+              <th>ROAS</th>
+              <th>Est. Ad Spend/mo</th>
+              <th>Top Channel</th>
+              <th>Threat Level</th>
+            </tr>
+          </thead>
+          <tbody id="compSummaryBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- COMPETITORS VIEW -->
+<div class="view hidden" id="view-competitors">
+  <div class="view-header">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb">Competitors</div>
+          <h2 class="view-title">Competitor Intelligence Engine</h2>
+          <p class="view-sub">Deep analysis of campaigns, audiences, and performance metrics for each competitor</p>
+        </div>
+        <div class="vh-actions">
+          <select class="filter-sel" id="compFilterSel">
+            <option value="all">All Competitors</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="competitorCardsWrap"></div>
+</div>
+
+<!-- CAMPAIGNS VIEW -->
+<div class="view hidden" id="view-campaigns">
+  <div class="view-header">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb">Campaign Analysis</div>
+          <h2 class="view-title">Campaign Intelligence & Recommendations</h2>
+          <p class="view-sub">AI-generated campaign improvements based on real competitor data</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" id="launchCampaignBtn">🚀 Launch Campaign</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="campaignsWrap"></div>
+</div>
+
+<!-- AUDIENCE VIEW -->
+<div class="view hidden" id="view-audience">
+  <div class="view-header">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb">Audience</div>
+          <h2 class="view-title">Audience Intelligence</h2>
+          <p class="view-sub">Identify and automatically target the highest-converting audience segments</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" id="autoTargetBtn">🎯 Auto-Target Best Audience</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="audienceWrap"></div>
+</div>
+
+<!-- AI CREATIVE VIEW -->
+<div class="view hidden" id="view-creative">
+  <div class="view-header">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb">AI Creative</div>
+          <h2 class="view-title">AI Creative Generation Engine</h2>
+          <p class="view-sub">Ad copy, headlines, and campaign briefs generated from real competitor intelligence</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" id="generateMoreBtn">✨ Generate More Creatives</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="creativeWrap"></div>
+</div>
+
+<!-- SETTINGS VIEW -->
+<div class="view hidden" id="view-settings">
+  <div class="view-header">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb">Settings</div>
+          <h2 class="view-title">Integrations & Settings</h2>
+          <p class="view-sub">Connect APIs, AI models, and tools to power InfoGenie's full intelligence engine</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="settingsWrap"></div>
+</div>
+
+<!-- LAUNCH MODAL -->
+<div class="modal-backdrop hidden" id="launchModal">
+  <div class="modal-box">
+    <button class="modal-x" id="modalClose">✕</button>
+    <div class="modal-emoji">🚀</div>
+    <h3 class="modal-title">Launch Campaign</h3>
+    <p class="modal-desc">InfoGenie will configure and deploy your optimised campaign automatically based on competitor intelligence.</p>
+    <div class="modal-form-group">
+      <label>Campaign Budget (USD/month)</label>
+      <input type="number" class="modal-inp" placeholder="e.g. 2000" id="campBudget" />
+    </div>
+    <div class="modal-form-group">
+      <label>Target Platform</label>
+      <select class="modal-inp" id="campPlatform">
+        <option>Google Ads</option>
+        <option>Meta (Facebook / Instagram)</option>
+        <option>TikTok Ads</option>
+        <option>All Platforms (Recommended)</option>
+      </select>
+    </div>
+    <div class="modal-form-group">
+      <label>Target Region</label>
+      <select class="modal-inp" id="campCountry">
+        <option value="global">🌍 Global</option>
+        <option value="us">🇺🇸 United States</option>
+        <option value="uk">🇬🇧 United Kingdom</option>
+        <option value="au">🇦🇺 Australia</option>
+        <option value="ca">🇨🇦 Canada</option>
+        <option value="de">🇩🇪 Germany</option>
+        <option value="sg">🇸🇬 Singapore</option>
+        <option value="ae">🇦🇪 UAE</option>
+        <option value="za">🇿🇦 South Africa</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="modalCancel">Cancel</button>
+      <button class="btn-primary" id="modalConfirm">🚀 Launch Now</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast hidden" id="toast"></div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
