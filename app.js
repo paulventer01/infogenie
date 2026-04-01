@@ -120,10 +120,13 @@ async function runAnalysis(url, country) {
   buildCampaigns();
   buildAudience();
   buildCreative();
-  buildSettings();
   
+  // Navigate first so a settings error never blocks the dashboard
   navigateTo('dashboard');
   showToast(`✅ Analysis complete for ${cleanUrl} — ${industry.competitors.length} competitors found in ${industry.name}`);
+  
+  // Build settings after navigation (non-critical)
+  try { buildSettings(); } catch(e) { console.warn('Settings build error:', e); }
 }
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
