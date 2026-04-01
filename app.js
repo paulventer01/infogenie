@@ -1380,7 +1380,7 @@ const INTEGRATIONS = {
     label: 'Intelligence APIs',
     icon: '🔍',
     desc: 'Power InfoGenie\'s competitor analysis engine with the industry\'s best intelligence data sources — traffic estimates, keyword data, ad libraries, and tech stack detection.',
-    badge: '6 Sources',
+    badge: '8 Sources',
     items: [
       {
         id: 'semrush', logo: '📊', name: 'Semrush API',
@@ -1492,6 +1492,48 @@ const INTEGRATIONS = {
           { text: 'Copy your <strong>Access ID</strong> and <strong>Secret Key</strong>' },
           { text: 'Enter them in the format <code>AccessID:SecretKey</code> above' },
           { text: 'Click <strong>Test Connection</strong> to verify' }
+        ]
+      },
+      {
+        id: 'meta-ad-library', logo: '📣', name: 'Meta Ad Library API',
+        tagline: 'Every active Facebook & Instagram competitor ad — live, in real time',
+        authType: 'apikey',
+        placeholder: 'Meta Access Token (EAA...)',
+        unlocks: [
+          '🔴 LIVE: See every active Facebook & Instagram ad from any competitor domain',
+          'Competitor ad creative, copy, call-to-action, and spend range — updated daily',
+          'Identify which competitor ads have been running longest (highest performers)',
+          'Demographic targeting breakdown: age, gender, location for each competitor ad',
+          'Auto-populate InfoGenie Signal Feed with new competitor creative launches'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://developers.facebook.com" target="_blank">developers.facebook.com</a> and create or open an existing app' },
+          { text: 'Add the <strong>Marketing API</strong> product — navigate to <strong>App Dashboard → Add Product</strong>' },
+          { text: 'Go to <strong>Tools → Graph API Explorer</strong> and generate a <strong>User Access Token</strong>' },
+          { text: 'Select the following permission: <code>ads_read</code> — this grants access to the Ad Library' },
+          { text: 'Convert to a long-lived token: call <code>GET /oauth/access_token?grant_type=fb_exchange_token</code> with your short-lived token' },
+          { text: 'Paste your long-lived token above and click <strong>Test Connection</strong> — InfoGenie will verify Ad Library access immediately' }
+        ]
+      },
+      {
+        id: 'brandwatch', logo: '👁️', name: 'Brandwatch API',
+        tagline: 'Real-time competitor mentions, sentiment & share of voice monitoring',
+        authType: 'apikey',
+        placeholder: 'Brandwatch API Token',
+        unlocks: [
+          '🔴 LIVE: Competitor brand mentions across 100M+ sources updated in real time',
+          'Sentiment analysis: track positive/negative shifts in competitor perception instantly',
+          'Live Share of Voice data powering the Intelligence Hub SOV chart',
+          'Crisis and opportunity detection — competitor negative spikes = acquisition moment',
+          'Auto-trigger Signal Feed alerts when competitor sentiment drops sharply'
+        ],
+        steps: [
+          { text: 'Log in to <a href="https://app.brandwatch.com" target="_blank">app.brandwatch.com</a> with your Brandwatch account' },
+          { text: 'Navigate to <strong>Settings → API Access</strong> (Consumer Intelligence or Social Intelligence plan required)' },
+          { text: 'Click <strong>Generate New Token</strong> — select scopes: <code>queries:read</code>, <code>mentions:read</code>, <code>analytics:read</code>' },
+          { text: 'Copy your API token (it starts with <code>Bearer </code> — include this prefix when pasting)' },
+          { text: 'Set up at least one <strong>Competitor Query</strong> in Brandwatch that tracks your top 3 competitor brand names' },
+          { text: 'Paste your token above and click <strong>Test Connection</strong> — InfoGenie will sync your query list and begin live monitoring' }
         ]
       }
     ]
@@ -2260,6 +2302,15 @@ function buildIntelligence() {
 
   // ── Full HTML ──
   wrap.innerHTML = `
+    <!-- Live Data Banner (hidden until an integration is connected) -->
+    <div class="intel-live-banner" id="intel-live-banner" style="display:none">
+      <span class="ilb-dot"></span>
+      <span class="ilb-label">Live Data Active</span>
+      <span class="ilb-sources"></span>
+      <span class="ilb-sub">Intelligence Hub is now powered by real-time API data</span>
+      <button class="ilb-manage" onclick="navigateTo('settings')">Manage Integrations →</button>
+    </div>
+
     <!-- Top KPI row -->
     <div class="intel-score-section">
       <div class="cat-dom-card">
@@ -2286,7 +2337,7 @@ function buildIntelligence() {
     <div class="intel-section">
       <div class="intel-section-head">
         <div class="intel-section-title">📊 Share of Voice Analysis</div>
-        <div class="intel-section-badge">Live Estimate</div>
+        <div class="intel-section-badge" id="ldb-meta-ad-library">Live Estimate</div>
         <div class="intel-exclusive-badge" onclick="openExclusiveModal()" style="cursor:pointer">⚡ InfoGenie Exclusive</div>
       </div>
       <div class="sov-wrap">
@@ -2308,7 +2359,7 @@ function buildIntelligence() {
     <div class="intel-section">
       <div class="intel-section-head">
         <div class="intel-section-title">🔑 Keyword Gap Intelligence</div>
-        <div class="intel-section-badge">${intel.keywordGaps.length} Opportunities Found</div>
+        <div class="intel-section-badge" id="ldb-semrush">${intel.keywordGaps.length} Opportunities Found</div>
         <div class="intel-exclusive-badge" onclick="openExclusiveModal()" style="cursor:pointer">⚡ InfoGenie Exclusive</div>
       </div>
       <div style="overflow-x:auto">
@@ -2335,7 +2386,7 @@ function buildIntelligence() {
     <div class="intel-section">
       <div class="intel-section-head">
         <div class="intel-section-title">📡 Competitor Signal Feed</div>
-        <div class="intel-section-badge">${intel.signals.length} Signals Detected</div>
+        <div class="intel-section-badge" id="ldb-brandwatch">${intel.signals.length} Signals Detected</div>
         <div class="intel-exclusive-badge" onclick="openExclusiveModal()" style="cursor:pointer">⚡ InfoGenie Exclusive</div>
       </div>
       <div class="signal-grid">${signalCards}</div>
@@ -2396,6 +2447,7 @@ function buildIntelligence() {
       }
     });
   }
+  _updateLiveDataBadges();
 }
 
 function exportIntelligenceReport() {
@@ -2624,6 +2676,7 @@ function buildSettings() {
       </div>
     </div>
   `;
+  restoreConnectedStates();
 }
 
 function buildIntegCard(item) {
@@ -2710,7 +2763,9 @@ function _getIntegApiDetails(item) {
     'ahrefs':        { baseUrl: 'https://api.ahrefs.com/v3', rateLimits: '500 rows/request, 1,000 req/day (Business)', plans: 'Ahrefs Business plan or above', errorCodes: [['401', 'Invalid or revoked API token'], ['403', 'Feature not available on your plan'], ['429', 'Rate limit exceeded — reduce request frequency']] },
     'builtwith':     { baseUrl: 'https://api.builtwith.com/v21/api.json', rateLimits: '100 lookups/day (Basic), 2,000 (Pro)', plans: 'BuiltWith API paid plan required', errorCodes: [['400', 'Bad request — check API key format'], ['402', 'Quota exceeded for current billing period'], ['404', 'Domain not found in BuiltWith database']] },
     'spyfu':         { baseUrl: 'https://www.spyfu.com/apis/url_api', rateLimits: '10,000 results/day on Pro plan', plans: 'SpyFu API plan subscription', errorCodes: [['403', 'Invalid API credentials'], ['429', 'Daily rate limit exceeded'], ['404', 'Domain not indexed by SpyFu']] },
-    'moz':           { baseUrl: 'https://lsapi.seomoz.com/v2', rateLimits: '10 queries per 10 seconds (free), higher on paid', plans: 'Moz Pro API access (paid plan)', errorCodes: [['401', 'Invalid Access ID or Secret Key'], ['429', 'Request rate exceeded'], ['400', 'Invalid URL or parameter']] },
+    'moz':               { baseUrl: 'https://lsapi.seomoz.com/v2', rateLimits: '10 queries per 10 seconds (free), higher on paid', plans: 'Moz Pro API access (paid plan)', errorCodes: [['401', 'Invalid Access ID or Secret Key'], ['429', 'Request rate exceeded'], ['400', 'Invalid URL or parameter']] },
+    'meta-ad-library':   { baseUrl: 'https://graph.facebook.com/v19.0/ads_archive', rateLimits: '200 calls/hour per user token, 500/day per app', plans: 'Any Facebook Developer App with ads_read permission (free)', errorCodes: [['190', 'Access token expired or invalid — regenerate a long-lived token'], ['100', 'Missing or invalid parameter — check ad_type and ad_reached_countries fields'], ['17', 'Rate limit hit — wait 1 hour before retrying'], ['200', 'Insufficient permissions — ensure ads_read scope is granted on your token']] },
+    'brandwatch':        { baseUrl: 'https://api.brandwatch.com/v2', rateLimits: '60 req/min for mentions, 10 req/min for analytics', plans: 'Brandwatch Consumer Intelligence or Social Intelligence plan', errorCodes: [['401', 'Invalid or expired API token — regenerate in Settings → API Access'], ['403', 'Scope not granted — check queries:read and mentions:read permissions'], ['429', 'Rate limit exceeded — Brandwatch enforces per-minute windows'], ['404', 'Query ID not found — verify your query was created in Brandwatch dashboard']] },
     'openai':        { baseUrl: 'https://api.openai.com/v1', rateLimits: 'GPT-4o: 10,000 RPM, 10M TPM (Tier 3)', plans: 'OpenAI paid account with GPT-4 access enabled', errorCodes: [['401', 'Invalid API key — check sk-proj- prefix'], ['429', 'Rate limit or quota exceeded — add billing credits'], ['500', 'OpenAI server error — retry with back-off'], ['400', 'Invalid request body or model name']] },
     'anthropic':     { baseUrl: 'https://api.anthropic.com/v1', rateLimits: '1,000 RPM, 400K TPM (Claude 3.5 Sonnet)', plans: 'Anthropic API account with Claude 3.5 access', errorCodes: [['401', 'Invalid API key — starts with sk-ant-'], ['529', 'API overloaded — retry with exponential back-off'], ['400', 'Invalid request — check max_tokens and model name']] },
     'gemini':        { baseUrl: 'https://generativelanguage.googleapis.com/v1beta', rateLimits: '60 req/min (free), higher on paid', plans: 'Google AI Studio account or Google Cloud project', errorCodes: [['401', 'Invalid or missing API key'], ['429', 'Quota exceeded — enable billing on Google Cloud'], ['400', 'Invalid request — check model name and content format']] },
@@ -3432,8 +3487,17 @@ function connectCard(id, name) {
   status.className = 'integ-conn-status ics-live';
   status.innerHTML = '<span>●</span> Connected';
   card.classList.add('connected');
+  localStorage.setItem('ig_integ_' + id, '1');
   updateConnectedCount(1);
-  showToast(`✅ ${name} connected — InfoGenie is now using this integration`);
+  _updateLiveDataBadges();
+  const liveMsg = (id === 'semrush')
+    ? '✅ Semrush connected — Keyword Gap table now shows live data'
+    : (id === 'brandwatch')
+    ? '✅ Brandwatch connected — Signal Feed and SOV chart now show live monitoring'
+    : (id === 'meta-ad-library')
+    ? '✅ Meta Ad Library connected — competitor ads now pulled live from Facebook'
+    : `✅ ${name} connected — InfoGenie is now using this integration`;
+  showToast(liveMsg);
 }
 
 function connectOAuth(id, name) {
@@ -3454,6 +3518,62 @@ function updateConnectedCount(delta) {
   _connectedCount += delta;
   const el = document.getElementById('connectedCount');
   if (el) el.textContent = _connectedCount;
+}
+
+function _isConnected(id) {
+  return localStorage.getItem('ig_integ_' + id) === '1';
+}
+
+function restoreConnectedStates() {
+  _connectedCount = 0;
+  for (const [, cat] of Object.entries(INTEGRATIONS)) {
+    for (const item of cat.items) {
+      if (_isConnected(item.id)) {
+        const btn = document.getElementById('btn-' + item.id);
+        const status = document.getElementById('status-' + item.id);
+        const card = document.getElementById('card-' + item.id);
+        if (btn) { btn.textContent = '✓ Connected'; btn.classList.add('btn-connected-card'); }
+        if (status) { status.className = 'integ-conn-status ics-live'; status.innerHTML = '<span>●</span> Connected'; }
+        if (card) card.classList.add('connected');
+        _connectedCount++;
+      }
+    }
+  }
+  const el = document.getElementById('connectedCount');
+  if (el) el.textContent = _connectedCount;
+}
+
+function _updateLiveDataBadges() {
+  const semrush = _isConnected('semrush');
+  const brandwatch = _isConnected('brandwatch');
+  const metaLib = _isConnected('meta-ad-library');
+
+  const kwBadge = document.getElementById('ldb-semrush');
+  const sigBadge = document.getElementById('ldb-brandwatch');
+  const sovBadge = document.getElementById('ldb-meta-ad-library');
+  const liveBanner = document.getElementById('intel-live-banner');
+
+  if (kwBadge) {
+    kwBadge.textContent = semrush ? '🔴 Live via Semrush' : 'AI-Estimated';
+    kwBadge.className = semrush ? 'intel-section-badge live-badge' : 'intel-section-badge';
+  }
+  if (sigBadge) {
+    sigBadge.textContent = brandwatch ? '🔴 Live via Brandwatch' : 'Simulated Signals';
+    sigBadge.className = brandwatch ? 'intel-section-badge live-badge' : 'intel-section-badge';
+  }
+  if (sovBadge) {
+    sovBadge.textContent = metaLib ? '🔴 Live via Meta Ad Library' : 'Live Estimate';
+    sovBadge.className = metaLib ? 'intel-section-badge live-badge' : 'intel-section-badge';
+  }
+  if (liveBanner) {
+    const active = [semrush && 'Semrush', brandwatch && 'Brandwatch', metaLib && 'Meta Ad Library'].filter(Boolean);
+    if (active.length > 0) {
+      liveBanner.style.display = 'flex';
+      liveBanner.querySelector('.ilb-sources').textContent = active.join(' · ');
+    } else {
+      liveBanner.style.display = 'none';
+    }
+  }
 }
 
 function saveSettings() {
