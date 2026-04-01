@@ -7,6 +7,10 @@ let analysisData = null;
 let ctrChartInstance = null;
 let roasChartInstance = null;
 let trendChartInstance = null;
+let audienceChartInstance = null;
+let creativeChartInstance = null;
+let _audienceChartTimer = null;
+let _creativeChartTimer = null;
 
 // ===== NAVIGATION =====
 function navigateTo(viewId, updateActive = true) {
@@ -39,7 +43,7 @@ function navigateTo(viewId, updateActive = true) {
     navPlan.style.display = 'block';
     navBtn.style.display = 'block';
   }
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo(0, 0);
 }
 
 // ===== ANALYSIS FLOW =====
@@ -744,10 +748,14 @@ function buildAudience() {
   `;
   
   // Audience chart
-  setTimeout(() => {
-    const ctx = document.getElementById('audienceChart')?.getContext('2d');
+  clearTimeout(_audienceChartTimer);
+  _audienceChartTimer = setTimeout(() => {
+    const canvas = document.getElementById('audienceChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    new Chart(ctx, {
+    if (audienceChartInstance) { audienceChartInstance.destroy(); audienceChartInstance = null; }
+    audienceChartInstance = new Chart(ctx, {
       type: 'doughnut',
       data: {
         labels: audienceSegments.slice(0,6).map(s => s.label),
@@ -853,7 +861,8 @@ function buildCreative() {
     </div>
   `;
 
-  setTimeout(() => renderCreativeChart(aiCards), 100);
+  clearTimeout(_creativeChartTimer);
+  _creativeChartTimer = setTimeout(() => renderCreativeChart(aiCards), 100);
 }
 
 function buildCompetitorVsCards(industry, competitors, domainName) {
@@ -1017,13 +1026,16 @@ function generateCreatives(industry, competitors, domainName) {
 }
 
 function renderCreativeChart(creatives) {
-  const ctx = document.getElementById('creativeChart')?.getContext('2d');
+  const canvas = document.getElementById('creativeChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
   if (!ctx) return;
+  if (creativeChartInstance) { creativeChartInstance.destroy(); creativeChartInstance = null; }
   const labels = creatives.map(c => c.platform + ' · ' + c.format.split(' ')[0]);
   const ctrs = creatives.map(c => parseFloat(c.estCTR));
   const roas = creatives.map(c => parseFloat(c.estROAS));
 
-  new Chart(ctx, {
+  creativeChartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
       labels,
