@@ -707,6 +707,287 @@ function detectIndustry(url) {
   return 'marketing';
 }
 
+// ============================================================
+// INTELLIGENCE HUB DATA — Exclusive InfoGenie Features
+// ============================================================
+const INTELLIGENCE_DB = {
+  ecommerce: {
+    categoryScore: 31,
+    shareOfVoice: [
+      { name: 'Amazon', share: 38, trend: '+2%', color: '#FF9900' },
+      { name: 'eBay', share: 18, trend: '-1%', color: '#86B817' },
+      { name: 'Shopify', share: 14, trend: '+4%', color: '#96BF48' },
+      { name: 'Etsy', share: 11, trend: '+1%', color: '#F56400' },
+      { name: 'You', share: 5, trend: '+0%', color: '#00C9C8' },
+      { name: 'Others', share: 14, trend: '', color: '#E5E7EB' }
+    ],
+    keywordGaps: [
+      { keyword: 'best online store builder', volume: '74,000', topComp: 'Shopify', compCtr: '5.1%', yourRank: 'Not ranking', difficulty: 'Medium', score: 94, cpc: '$4.20' },
+      { keyword: 'free shipping no minimum', volume: '110,000', topComp: 'Amazon', compCtr: '6.8%', yourRank: 'Not ranking', difficulty: 'High', score: 88, cpc: '$2.10' },
+      { keyword: 'handmade gifts online', volume: '49,500', topComp: 'Etsy', compCtr: '4.3%', yourRank: 'Not ranking', difficulty: 'Low', score: 92, cpc: '$1.80' },
+      { keyword: 'dropshipping supplier USA', volume: '33,100', topComp: 'Shopify', compCtr: '3.9%', yourRank: 'Not ranking', difficulty: 'Medium', score: 86, cpc: '$3.50' },
+      { keyword: 'buy electronics online cheap', volume: '90,500', topComp: 'Amazon', compCtr: '4.7%', yourRank: 'Page 3', difficulty: 'High', score: 79, cpc: '$1.90' },
+      { keyword: 'woocommerce vs shopify', volume: '27,100', topComp: 'Shopify', compCtr: '3.2%', yourRank: 'Not ranking', difficulty: 'Low', score: 91, cpc: '$5.80' }
+    ],
+    signals: [
+      { comp: 'Amazon', logo: 'A', type: 'dark_period', severity: 'high', message: 'Amazon reduced Google Ads spend by 38% in the past 72 hours — Electronics category now underserved', detectedAgo: '2h ago', action: 'Attack Electronics Keywords Now', attackOpen: true },
+      { comp: 'eBay', logo: 'e', type: 'new_campaign', severity: 'medium', message: 'eBay launched 4 new Meta carousel ads targeting "collectibles & vintage" audiences — new creative approach', detectedAgo: '6h ago', action: 'Counter with Vintage Positioning', attackOpen: false },
+      { comp: 'Shopify', logo: 'S', type: 'budget_surge', severity: 'medium', message: 'Shopify increased LinkedIn Ads spend by 52% — aggressively targeting SMB owner audiences this week', detectedAgo: '1d ago', action: 'Defend SMB Audience Segments', attackOpen: false },
+      { comp: 'Etsy', logo: 'E', type: 'price_change', severity: 'low', message: 'Etsy raised seller transaction fees from 6.5% to 8% — major seller dissatisfaction emerging on social', detectedAgo: '3d ago', action: 'Target Etsy Seller Migration', attackOpen: true }
+    ],
+    predictions: [
+      { comp: 'Amazon', logo: 'A', prediction: 'Prime Day preparation surge: Amazon historically increases Google Shopping spend by 180% in the 3 weeks before Prime Day. Based on current patterns, this surge is estimated to begin in 11 days.', confidence: 91, timeframe: '11 days', action: 'Pre-bid on Shopping keywords before CPCs spike', impact: 'High' },
+      { comp: 'Shopify', logo: 'S', prediction: 'New pricing tier announcement likely within 21 days based on their 6-month pricing revision cadence. Expect a campaign pushing their "value vs. alternatives" narrative targeting your brand keywords.', confidence: 74, timeframe: '21 days', action: 'Launch preemptive price-match campaign now', impact: 'Medium' },
+      { comp: 'eBay', logo: 'e', prediction: 'eBay typically runs a seasonal clearance push in Q2 with 25–40% higher ad spend. Pattern indicates launch in 6 days targeting deal-seeking audiences.', confidence: 83, timeframe: '6 days', action: 'Counter with "everyday low price" positioning', impact: 'Medium' }
+    ],
+    roadmap: [
+      { week: 'Week 1–2', title: 'Claim the Attack Windows', desc: 'Amazon reduced electronics spend — immediately bid on their vacated keywords. Target their top 12 paused keywords with 40% higher bids. Est. CPA: -22%.', status: 'urgent' },
+      { week: 'Week 3–4', title: 'Capture Etsy Seller Migration', desc: 'Etsy fee increase is driving seller dissatisfaction. Launch a direct migration campaign targeting "Etsy alternative for sellers" keywords. Estimated 15,000 new seller leads/month.', status: 'high' },
+      { week: 'Week 5–8', title: 'Own the Mid-Market Keyword Gap', desc: 'Run aggressive campaigns on the 6 high-opportunity keywords identified in the Keyword Gap table. Combined monthly volume: 384,200. Your current ranking: 0.', status: 'medium' },
+      { week: 'Week 9–12', title: 'Dominate Share of Voice in Target Segments', desc: 'With gaps captured, shift budget to brand-building campaigns. Target: 12% Share of Voice (from 5%) in the handmade, dropshipping, and electronics sub-categories.', status: 'medium' }
+    ],
+    winLoss: [
+      { comp: 'Amazon', message: '"Free 1-day Prime delivery on millions of items"', channel: 'Google Shopping', lossRate: '34%', weakness: 'No personalisation — attack with curated selection messaging' },
+      { comp: 'Etsy', message: '"Unique gifts you won\'t find anywhere else — support independent creators"', channel: 'Meta', lossRate: '28%', weakness: 'High fees now eroding trust — attack with seller profit messaging' },
+      { comp: 'Shopify', message: '"Your business. Your brand. Start free."', channel: 'Google', lossRate: '21%', weakness: 'Generic — attack with specific feature comparison ads' }
+    ]
+  },
+
+  fintech: {
+    categoryScore: 24,
+    shareOfVoice: [
+      { name: 'Revolut', share: 22, trend: '+5%', color: '#0D1B2A' },
+      { name: 'Wise', share: 18, trend: '+3%', color: '#9FE870' },
+      { name: 'Stripe', share: 16, trend: '+2%', color: '#635BFF' },
+      { name: 'PayPal', share: 24, trend: '-3%', color: '#003087' },
+      { name: 'You', share: 4, trend: '+0%', color: '#00C9C8' },
+      { name: 'Others', share: 16, trend: '', color: '#E5E7EB' }
+    ],
+    keywordGaps: [
+      { keyword: 'international money transfer fee', volume: '90,500', topComp: 'Wise', compCtr: '4.8%', yourRank: 'Not ranking', difficulty: 'Medium', score: 95, cpc: '$6.20' },
+      { keyword: 'best crypto debit card', volume: '40,500', topComp: 'Revolut', compCtr: '5.2%', yourRank: 'Not ranking', difficulty: 'Medium', score: 91, cpc: '$4.80' },
+      { keyword: 'paypal alternative lower fees', volume: '33,100', topComp: 'Stripe', compCtr: '3.9%', yourRank: 'Not ranking', difficulty: 'Low', score: 94, cpc: '$7.50' },
+      { keyword: 'freelancer payment solution', volume: '22,200', topComp: 'Wise', compCtr: '4.1%', yourRank: 'Page 2', difficulty: 'Low', score: 89, cpc: '$5.20' },
+      { keyword: 'multi currency business account', volume: '18,100', topComp: 'Revolut', compCtr: '3.7%', yourRank: 'Not ranking', difficulty: 'Medium', score: 87, cpc: '$8.90' }
+    ],
+    signals: [
+      { comp: 'PayPal', logo: 'P', type: 'dark_period', severity: 'high', message: 'PayPal reduced all Google Ads spend by 44% following Q1 earnings revision — major keyword vacuum in payments space', detectedAgo: '4h ago', action: 'Claim PayPal Keyword Vacuum Now', attackOpen: true },
+      { comp: 'Revolut', logo: 'R', type: 'new_campaign', severity: 'medium', message: 'Revolut launched new "Ultra" tier campaign targeting premium banking audiences across 12 EU markets', detectedAgo: '8h ago', action: 'Counter with Transparent Fee Comparison', attackOpen: false },
+      { comp: 'Wise', logo: 'W', type: 'budget_surge', severity: 'medium', message: 'Wise increased TikTok spend by 65% targeting Gen-Z freelancers with "real exchange rate" messaging', detectedAgo: '2d ago', action: 'Compete on TikTok with Fee-Free Positioning', attackOpen: false }
+    ],
+    predictions: [
+      { comp: 'PayPal', logo: 'P', prediction: 'PayPal historically launches aggressive back-to-school merchant campaigns in late Q2. Based on current spend patterns and Q1 reduction, expect a 200% spend increase within 18 days targeting SMB payment keywords.', confidence: 88, timeframe: '18 days', action: 'Pre-capture SMB payment keywords now at low CPC', impact: 'High' },
+      { comp: 'Revolut', logo: 'R', prediction: 'Revolut new market expansion pattern suggests a major US market push within 30 days. Their last 3 expansions were preceded by LinkedIn campaign surges. LinkedIn spend has increased 38% this week.', confidence: 72, timeframe: '30 days', action: 'Strengthen US brand presence before Revolut arrives', impact: 'High' }
+    ],
+    roadmap: [
+      { week: 'Week 1–2', title: 'Capture PayPal Keyword Vacuum', desc: 'PayPal paused $44M/mo in Google Ads — immediately attack their top 15 payment keywords. These CPCs will spike when they return. Window: 2–3 weeks.', status: 'urgent' },
+      { week: 'Week 3–4', title: 'Launch Fee Comparison Campaign', desc: 'Target "PayPal alternative" and "lower fee payment" keywords with transparent fee comparison landing pages. Est. 3,200 qualified leads/week.', status: 'high' },
+      { week: 'Week 5–8', title: 'Own the Freelancer Segment', desc: 'Wise owns freelancer payment keywords. Attack "freelancer payment solution" and related terms with case study ads. Combined volume: 45,000/mo.', status: 'medium' },
+      { week: 'Week 9–12', title: 'Reach 12% Share of Voice', desc: 'With keyword gaps closed, run brand awareness campaigns to grow Share of Voice from 4% to 12% in the SMB payment category.', status: 'medium' }
+    ],
+    winLoss: [
+      { comp: 'Wise', message: '"The real exchange rate. No hidden fees. Ever."', channel: 'Google', lossRate: '41%', weakness: 'Limited business features — attack with full business banking positioning' },
+      { comp: 'Revolut', message: '"One app. All your money. Anywhere in the world."', channel: 'Meta', lossRate: '35%', weakness: 'Customer support issues — attack with dedicated support messaging' },
+      { comp: 'PayPal', message: '"Pay, send money, and shop with confidence."', channel: 'Google', lossRate: '29%', weakness: 'High fees — attack with fee transparency comparison ads' }
+    ]
+  },
+
+  saas: {
+    categoryScore: 28,
+    shareOfVoice: [
+      { name: 'HubSpot', share: 26, trend: '+3%', color: '#FF7A59' },
+      { name: 'Salesforce', share: 22, trend: '-1%', color: '#00A1E0' },
+      { name: 'Zendesk', share: 14, trend: '+1%', color: '#03363D' },
+      { name: 'Intercom', share: 10, trend: '+2%', color: '#1F8EED' },
+      { name: 'You', share: 4, trend: '+0%', color: '#00C9C8' },
+      { name: 'Others', share: 24, trend: '', color: '#E5E7EB' }
+    ],
+    keywordGaps: [
+      { keyword: 'salesforce alternative small business', volume: '27,100', topComp: 'HubSpot', compCtr: '4.9%', yourRank: 'Not ranking', difficulty: 'Low', score: 96, cpc: '$12.40' },
+      { keyword: 'crm with email marketing', volume: '33,100', topComp: 'HubSpot', compCtr: '4.2%', yourRank: 'Not ranking', difficulty: 'Medium', score: 91, cpc: '$8.80' },
+      { keyword: 'zendesk competitor comparison', volume: '9,900', topComp: 'Intercom', compCtr: '5.8%', yourRank: 'Not ranking', difficulty: 'Low', score: 95, cpc: '$15.20' },
+      { keyword: 'b2b saas onboarding software', volume: '14,800', topComp: 'HubSpot', compCtr: '3.6%', yourRank: 'Page 2', difficulty: 'Medium', score: 88, cpc: '$11.60' },
+      { keyword: 'customer success platform', volume: '18,100', topComp: 'Salesforce', compCtr: '3.1%', yourRank: 'Not ranking', difficulty: 'High', score: 82, cpc: '$14.80' }
+    ],
+    signals: [
+      { comp: 'HubSpot', logo: 'H', type: 'dark_period', severity: 'high', message: 'HubSpot paused all TikTok campaigns following brand safety review — TikTok B2B audience now uncontested', detectedAgo: '3h ago', action: 'Own TikTok B2B SaaS Category Now', attackOpen: true },
+      { comp: 'Salesforce', logo: 'S', type: 'price_change', severity: 'high', message: 'Salesforce increased Enterprise pricing by 18% — major enterprise customer dissatisfaction on LinkedIn and G2', detectedAgo: '1d ago', action: 'Target Salesforce Price-Shocked Customers', attackOpen: true },
+      { comp: 'Zendesk', logo: 'Z', type: 'new_campaign', severity: 'medium', message: 'Zendesk launched "AI Customer Service" campaign on Google targeting CX leadership keywords — new territory for them', detectedAgo: '4d ago', action: 'Counter with Superior AI CX Positioning', attackOpen: false }
+    ],
+    predictions: [
+      { comp: 'HubSpot', logo: 'H', prediction: 'HubSpot launches their annual INBOUND marketing push in September with a 250% ad spend increase. Based on pre-event patterns (previous 3 years), brand keyword bidding begins 6 weeks prior — in approximately 14 days.', confidence: 89, timeframe: '14 days', action: 'Pre-bid on HubSpot alternative keywords now', impact: 'High' },
+      { comp: 'Salesforce', logo: 'S', prediction: 'Salesforce pricing controversy will drive 12–18% increase in "Salesforce alternative" searches over the next 30 days based on sentiment analysis and review velocity on G2 and Trustpilot.', confidence: 82, timeframe: '30 days', action: 'Launch "Salesforce Alternative" landing page immediately', impact: 'High' }
+    ],
+    roadmap: [
+      { week: 'Week 1–2', title: 'Capitalise on Salesforce Pricing Backlash', desc: 'Salesforce raised enterprise prices 18% — thousands of customers are actively evaluating alternatives. Launch "Salesforce vs. [Your Brand]" comparison campaigns now. Window is 30–45 days before they stabilise.', status: 'urgent' },
+      { week: 'Week 3–4', title: 'Own the TikTok B2B Vacuum', desc: 'HubSpot paused TikTok — run thought leadership and product demo content on TikTok for B2B buyers aged 25–38. No major competitor currently active.', status: 'high' },
+      { week: 'Week 5–8', title: 'Capture Alternative-Seekers', desc: 'Run campaigns on "Salesforce alternative", "HubSpot alternative", and "Zendesk competitor" keywords. Combined: 47,000 monthly searches at $12–15 CPC.', status: 'medium' },
+      { week: 'Week 9–12', title: 'Grow Share of Voice to 15%', desc: 'From current 4%, a focused 12-week push targeting the keyword gaps above will grow Share of Voice to an estimated 15% in the B2B SaaS category.', status: 'medium' }
+    ],
+    winLoss: [
+      { comp: 'HubSpot', message: '"Everything you need to grow — CRM, marketing, sales, service in one platform."', channel: 'Google', lossRate: '38%', weakness: 'Expensive at scale — attack with SMB-friendly pricing message' },
+      { comp: 'Salesforce', message: '"The world\'s #1 CRM. Grow your business with the platform built for scale."', channel: 'LinkedIn', lossRate: '32%', weakness: 'Complexity and cost — attack with ease-of-use and pricing' },
+      { comp: 'Zendesk', message: '"Beautiful customer service. For teams of any size."', channel: 'Google', lossRate: '24%', weakness: 'Limited proactive support features — attack with AI-first positioning' }
+    ]
+  },
+
+  crypto: {
+    categoryScore: 19,
+    shareOfVoice: [
+      { name: 'Coinbase', share: 28, trend: '+1%', color: '#1652F0' },
+      { name: 'Binance', share: 32, trend: '-2%', color: '#F0B90B' },
+      { name: 'Kraken', share: 12, trend: '+1%', color: '#5741D9' },
+      { name: 'Bybit', share: 10, trend: '+3%', color: '#F7A600' },
+      { name: 'You', share: 3, trend: '+0%', color: '#00C9C8' },
+      { name: 'Others', share: 15, trend: '', color: '#E5E7EB' }
+    ],
+    keywordGaps: [
+      { keyword: 'how to buy bitcoin safely', volume: '135,000', topComp: 'Coinbase', compCtr: '6.1%', yourRank: 'Not ranking', difficulty: 'High', score: 87, cpc: '$3.80' },
+      { keyword: 'best crypto exchange low fees', volume: '74,000', topComp: 'Binance', compCtr: '5.4%', yourRank: 'Not ranking', difficulty: 'Medium', score: 92, cpc: '$4.20' },
+      { keyword: 'crypto staking rewards comparison', volume: '27,100', topComp: 'Kraken', compCtr: '4.2%', yourRank: 'Page 3', difficulty: 'Low', score: 94, cpc: '$2.90' },
+      { keyword: 'coinbase alternative UK', volume: '22,200', topComp: 'Kraken', compCtr: '3.8%', yourRank: 'Not ranking', difficulty: 'Low', score: 96, cpc: '$5.10' },
+      { keyword: 'defi yield farming explained', volume: '33,100', topComp: 'Binance', compCtr: '3.1%', yourRank: 'Not ranking', difficulty: 'Medium', score: 85, cpc: '$1.80' }
+    ],
+    signals: [
+      { comp: 'Binance', logo: 'B', type: 'dark_period', severity: 'high', message: 'Binance pulled all UK and EU advertising following regulatory action — massive regional keyword vacuum now open', detectedAgo: '1h ago', action: 'Claim EU/UK Crypto Keywords Immediately', attackOpen: true },
+      { comp: 'Coinbase', logo: 'C', type: 'budget_surge', severity: 'medium', message: 'Coinbase doubled Google Ads budget targeting Bitcoin Bull Run keywords following BTC price surge above $70K', detectedAgo: '5h ago', action: 'Bid on Long-Tail Bitcoin Intent Keywords', attackOpen: false },
+      { comp: 'Kraken', logo: 'K', type: 'new_campaign', severity: 'low', message: 'Kraken launched educational content campaign "Crypto 101" targeting first-time investor audiences on YouTube', detectedAgo: '2d ago', action: 'Counter with Superior Education Content', attackOpen: false }
+    ],
+    predictions: [
+      { comp: 'Binance', logo: 'B', prediction: 'Binance regulatory pressure is increasing across 4 more EU jurisdictions. Historical pattern shows complete advertising withdrawal precedes regulatory action by 10–15 days. Probability of full EU withdrawal within 2 weeks is high.', confidence: 78, timeframe: '14 days', action: 'Immediately claim EU regulatory-safe positioning', impact: 'High' },
+      { comp: 'Coinbase', logo: 'C', prediction: 'Coinbase launches "Retail Investor" campaign every time BTC crosses a psychological price threshold. At $75K, they historically surge spend by 300%. Based on current price trajectory, this trigger is 8 days away.', confidence: 85, timeframe: '8 days', action: 'Pre-capture retail Bitcoin keywords now at low CPC', impact: 'High' }
+    ],
+    roadmap: [
+      { week: 'Week 1–2', title: 'Claim Binance EU Keyword Vacuum', desc: 'Binance is withdrawing from EU advertising — immediately bid on their top EU keywords at 60–70% lower CPCs than they were previously paying. Window: 3–4 weeks before other competitors respond.', status: 'urgent' },
+      { week: 'Week 3–4', title: 'Launch Compliance & Safety Campaign', desc: 'Position as the compliant, regulated alternative. Target "safe crypto exchange" and "regulated crypto" keywords across Google and LinkedIn. Est. CPA: 35% lower than Binance segments.', status: 'high' },
+      { week: 'Week 5–8', title: 'Own the Staking/Yield Niche', desc: 'Kraken owns staking keywords but underinvests in paid. Run staking comparison campaigns — combined monthly volume: 45,000 highly intent searches.', status: 'medium' },
+      { week: 'Week 9–12', title: 'Grow to 10% Share of Voice in EU', desc: 'From 3% to 10% Share of Voice target in regulated EU crypto market as Binance withdraws and regulatory clarity improves. Focus: UK, Germany, France, Netherlands.', status: 'medium' }
+    ],
+    winLoss: [
+      { comp: 'Coinbase', message: '"The easiest place to buy and sell cryptocurrency."', channel: 'Google', lossRate: '44%', weakness: 'High fees for retail — attack with transparent fee comparison' },
+      { comp: 'Binance', message: '"The world\'s largest crypto exchange by trading volume."', channel: 'Meta', lossRate: '36%', weakness: 'Regulatory issues now a liability — attack with "trusted & regulated" messaging' },
+      { comp: 'Kraken', message: '"Our mission: Bitcoin & crypto for everyone."', channel: 'YouTube', lossRate: '28%', weakness: 'Limited fiat on-ramp options — attack with seamless bank integration' }
+    ]
+  },
+
+  travel: {
+    categoryScore: 22,
+    shareOfVoice: [
+      { name: 'Booking.com', share: 31, trend: '+2%', color: '#003580' },
+      { name: 'Airbnb', share: 22, trend: '+4%', color: '#FF5A5F' },
+      { name: 'Expedia', share: 19, trend: '-2%', color: '#00355F' },
+      { name: 'TripAdvisor', share: 14, trend: '-1%', color: '#34E0A1' },
+      { name: 'You', share: 3, trend: '+0%', color: '#00C9C8' },
+      { name: 'Others', share: 11, trend: '', color: '#E5E7EB' }
+    ],
+    keywordGaps: [
+      { keyword: 'last minute hotel deals tonight', volume: '135,000', topComp: 'Booking.com', compCtr: '6.4%', yourRank: 'Not ranking', difficulty: 'High', score: 88, cpc: '$2.80' },
+      { keyword: 'airbnb alternative cheaper', volume: '49,500', topComp: 'Expedia', compCtr: '4.1%', yourRank: 'Not ranking', difficulty: 'Low', score: 95, cpc: '$3.20' },
+      { keyword: 'best travel insurance compare', volume: '74,000', topComp: 'Expedia', compCtr: '3.8%', yourRank: 'Not ranking', difficulty: 'Medium', score: 91, cpc: '$4.60' },
+      { keyword: 'boutique hotels europe', volume: '40,500', topComp: 'Booking.com', compCtr: '3.2%', yourRank: 'Page 2', difficulty: 'Low', score: 89, cpc: '$2.10' },
+      { keyword: 'eco friendly travel packages', volume: '18,100', topComp: 'TripAdvisor', compCtr: '2.9%', yourRank: 'Not ranking', difficulty: 'Low', score: 93, cpc: '$1.90' }
+    ],
+    signals: [
+      { comp: 'Expedia', logo: 'E', type: 'dark_period', severity: 'high', message: 'Expedia cut Google Ads budget by 52% during rebranding — major hotel search keyword vacuum across all regions', detectedAgo: '6h ago', action: 'Take Expedia\'s Hotel Keywords Now', attackOpen: true },
+      { comp: 'Airbnb', logo: 'A', type: 'price_change', severity: 'medium', message: 'Airbnb introduced "cleaning fee transparency" mandate — causing 28% increase in host churn complaints on social', detectedAgo: '1d ago', action: 'Target Airbnb Host Migration', attackOpen: true },
+      { comp: 'Booking.com', logo: 'B', type: 'budget_surge', severity: 'medium', message: 'Booking.com increased Meta spend by 74% targeting "last minute" travel intent audiences ahead of summer', detectedAgo: '2d ago', action: 'Compete on Last-Minute with Better Pricing UX', attackOpen: false }
+    ],
+    predictions: [
+      { comp: 'Booking.com', logo: 'B', prediction: 'Summer travel surge: Booking.com increases Google Hotel Ads spend by 220% in May–June. CPCs in hotel keywords will spike 80–120%. Based on booking volume indicators, this surge begins in 9 days.', confidence: 93, timeframe: '9 days', action: 'Lock in hotel keyword bids at current low CPCs now', impact: 'High' },
+      { comp: 'Airbnb', logo: 'A', prediction: 'Airbnb host fee controversy will trigger a competitor comparison search surge. "Airbnb vs." searches have increased 34% week-over-week — this accelerates to peak in 12 days.', confidence: 81, timeframe: '12 days', action: 'Launch "Better Than Airbnb" host & guest campaigns', impact: 'Medium' }
+    ],
+    roadmap: [
+      { week: 'Week 1–2', title: 'Capture Expedia Keyword Vacuum', desc: 'Expedia cut 52% of Google Ads — thousands of hotel and flight keywords now undercompeted. Bid aggressively at 40–60% lower CPCs for the next 3 weeks before they return.', status: 'urgent' },
+      { week: 'Week 3–4', title: 'Target Airbnb Host Dissatisfaction', desc: 'Airbnb\'s cleaning fee mandate is driving host churn. Launch a direct host acquisition campaign: "List with us — no surprise fees for guests, fair revenue for hosts." Est. 8,000 new host leads.', status: 'high' },
+      { week: 'Week 5–8', title: 'Own the Eco-Travel Niche', desc: 'No major travel platform owns eco-friendly travel keywords. Launch purpose-driven content + ads targeting "sustainable travel" audiences. Combined volume: 45,000/mo, minimal competition.', status: 'medium' },
+      { week: 'Week 9–12', title: 'Reach 10% Share of Voice', desc: 'From 3% to 10% Share of Voice target focusing on three sub-categories: last-minute deals, boutique/independent hotels, and eco-friendly travel. All currently under-served by the majors.', status: 'medium' }
+    ],
+    winLoss: [
+      { comp: 'Booking.com', message: '"We Price Match. Book with confidence."', channel: 'Google', lossRate: '39%', weakness: 'Generic — attack with curated independent hotel discovery' },
+      { comp: 'Airbnb', message: '"Belong anywhere. Unique stays, local experiences."', channel: 'Meta', lossRate: '33%', weakness: 'Fee transparency issues — attack with honest pricing messaging' },
+      { comp: 'Expedia', message: '"Save big with bundle deals — flight + hotel."', channel: 'Google', lossRate: '25%', weakness: 'Bundle complexity — attack with simplicity and transparency' }
+    ]
+  },
+
+  education: {
+    categoryScore: 26,
+    shareOfVoice: [
+      { name: 'Coursera', share: 24, trend: '+2%', color: '#0056D2' },
+      { name: 'Udemy', share: 28, trend: '+1%', color: '#A435F0' },
+      { name: 'Khan Academy', share: 16, trend: '-1%', color: '#14BF96' },
+      { name: 'Skillshare', share: 12, trend: '+1%', color: '#00C4CC' },
+      { name: 'You', share: 4, trend: '+0%', color: '#00C9C8' },
+      { name: 'Others', share: 16, trend: '', color: '#E5E7EB' }
+    ],
+    keywordGaps: [
+      { keyword: 'learn python for data science free', volume: '135,000', topComp: 'Coursera', compCtr: '5.2%', yourRank: 'Not ranking', difficulty: 'Medium', score: 91, cpc: '$2.40' },
+      { keyword: 'udemy alternative cheaper', volume: '27,100', topComp: 'Skillshare', compCtr: '4.8%', yourRank: 'Not ranking', difficulty: 'Low', score: 96, cpc: '$3.10' },
+      { keyword: 'ai course with certificate', volume: '49,500', topComp: 'Coursera', compCtr: '4.1%', yourRank: 'Not ranking', difficulty: 'Medium', score: 93, cpc: '$4.80' },
+      { keyword: 'online coding bootcamp worth it', volume: '22,200', topComp: 'Udemy', compCtr: '3.7%', yourRank: 'Page 3', difficulty: 'Low', score: 90, cpc: '$5.20' },
+      { keyword: 'corporate training platform comparison', volume: '14,800', topComp: 'Coursera', compCtr: '3.2%', yourRank: 'Not ranking', difficulty: 'Medium', score: 88, cpc: '$8.60' }
+    ],
+    signals: [
+      { comp: 'Udemy', logo: 'U', type: 'price_change', severity: 'high', message: 'Udemy ended its legendary $9.99 sale permanently — thousands of learners searching for alternatives on Reddit and Twitter', detectedAgo: '2h ago', action: 'Target Udemy Price-Shocked Learners Now', attackOpen: true },
+      { comp: 'Coursera', logo: 'C', type: 'new_campaign', severity: 'medium', message: 'Coursera launched aggressive enterprise B2B campaign targeting "employee upskilling" keywords on LinkedIn', detectedAgo: '12h ago', action: 'Counter with Flexible Team Learning Positioning', attackOpen: false },
+      { comp: 'Khan Academy', logo: 'K', type: 'dark_period', severity: 'medium', message: 'Khan Academy reduced paid advertising by 61% — free education keyword searches now less contested', detectedAgo: '3d ago', action: 'Capture "free learning" Intent Searches', attackOpen: true }
+    ],
+    predictions: [
+      { comp: 'Udemy', logo: 'U', prediction: 'Udemy permanently ended $9.99 sales, causing a 28% spike in churn searches week-over-week. Based on social sentiment velocity, "Udemy alternative" searches will peak in 7 days before the audience settles on alternatives.', confidence: 87, timeframe: '7 days', action: 'Launch "Better than Udemy" campaign immediately', impact: 'High' },
+      { comp: 'Coursera', logo: 'C', prediction: 'Coursera increases spend ahead of university enrollment seasons (Aug–Sep). Based on previous 3-year pattern, their Google Ads budget increases 180% in 23 days. CPC in education will spike 60–90%.', confidence: 91, timeframe: '23 days', action: 'Capture education keywords at current low CPCs', impact: 'High' }
+    ],
+    roadmap: [
+      { week: 'Week 1–2', title: 'Capture Udemy Price-Shocked Audience', desc: 'Udemy ended $9.99 sales — 2.4M monthly active learners are now actively looking for alternatives. Launch "Same quality. Honest pricing." campaign targeting "Udemy alternative" searches. Window: 14 days before competitors respond.', status: 'urgent' },
+      { week: 'Week 3–4', title: 'Own the AI/ML Course Category', desc: 'AI certification keywords are the fastest-growing education search category (+185% YoY). Launch dedicated AI course content and campaigns. Combined monthly volume: 180,000. Competition is high but winning here defines your brand.', status: 'high' },
+      { week: 'Week 5–8', title: 'Attack Khan Academy Free Keyword Gap', desc: 'Khan Academy reduced ads — attack "free learning" and "free courses" keywords to capture high-volume traffic, then convert with premium upsell. Funnel: free → certificate track.', status: 'medium' },
+      { week: 'Week 9–12', title: 'Reach 14% Share of Voice', desc: 'From 4% to 14% Share of Voice target in the online learning category. Focus: AI/ML courses, professional certification, and corporate training segments.', status: 'medium' }
+    ],
+    winLoss: [
+      { comp: 'Udemy', message: '"Learn anything. Taught by real-world experts. From $9.99."', channel: 'Google', lossRate: '42%', weakness: 'Price increase backlash — attack with transparent pricing and quality' },
+      { comp: 'Coursera', message: '"Learn from top universities and companies. Get a credential."', channel: 'LinkedIn', lossRate: '35%', weakness: 'Expensive for individuals — attack with accessible certification pricing' },
+      { comp: 'Skillshare', message: '"Unlock your creativity. Explore thousands of classes."', channel: 'Meta', lossRate: '22%', weakness: 'Creative niche only — attack with broader practical skills positioning' }
+    ]
+  },
+
+  marketing: {
+    categoryScore: 33,
+    shareOfVoice: [
+      { name: 'Semrush', share: 29, trend: '+3%', color: '#FF642D' },
+      { name: 'Ahrefs', share: 22, trend: '+2%', color: '#1B67FF' },
+      { name: 'SimilarWeb', share: 16, trend: '+1%', color: '#0099D6' },
+      { name: 'Moz', share: 11, trend: '-3%', color: '#1DB68A' },
+      { name: 'You', share: 6, trend: '+0%', color: '#00C9C8' },
+      { name: 'Others', share: 16, trend: '', color: '#E5E7EB' }
+    ],
+    keywordGaps: [
+      { keyword: 'semrush alternative cheaper', volume: '40,500', topComp: 'Ahrefs', compCtr: '5.8%', yourRank: 'Not ranking', difficulty: 'Low', score: 97, cpc: '$8.40' },
+      { keyword: 'ai marketing intelligence platform', volume: '22,200', topComp: 'Semrush', compCtr: '3.9%', yourRank: 'Not ranking', difficulty: 'Medium', score: 99, cpc: '$11.20' },
+      { keyword: 'competitor ad spy tool', volume: '18,100', topComp: 'SpyFu', compCtr: '4.2%', yourRank: 'Not ranking', difficulty: 'Low', score: 98, cpc: '$9.80' },
+      { keyword: 'autonomous campaign management', volume: '8,100', topComp: 'None ranking', compCtr: '—', yourRank: 'Not ranking', difficulty: 'Low', score: 100, cpc: '$14.60' },
+      { keyword: 'competitor campaign analysis tool', volume: '14,800', topComp: 'Semrush', compCtr: '3.6%', yourRank: 'Page 2', difficulty: 'Medium', score: 95, cpc: '$10.40' }
+    ],
+    signals: [
+      { comp: 'Moz', logo: 'M', type: 'dark_period', severity: 'high', message: 'Moz reduced Google Ads spend by 71% following product pivot — major SEO tool keyword vacuum now open', detectedAgo: '5h ago', action: 'Claim Moz SEO Tool Keywords Now', attackOpen: true },
+      { comp: 'Semrush', logo: 'S', type: 'price_change', severity: 'high', message: 'Semrush raised Pro plan from $119 to $139/mo — significant churn signal emerging on G2 and Reddit', detectedAgo: '1d ago', action: 'Target Semrush Price-Shocked Users', attackOpen: true },
+      { comp: 'Ahrefs', logo: 'A', type: 'new_campaign', severity: 'medium', message: 'Ahrefs launched new "for agencies" campaign on LinkedIn targeting large marketing teams with 200+ seat pricing', detectedAgo: '3d ago', action: 'Counter on LinkedIn with AI-First Agency Positioning', attackOpen: false }
+    ],
+    predictions: [
+      { comp: 'Semrush', logo: 'S', prediction: 'Semrush price increase to $139/mo will trigger a 35–50% spike in "Semrush alternative" searches over the next 21 days based on historical churn patterns from their 2021 pricing change (which triggered a 42% spike).', confidence: 88, timeframe: '21 days', action: 'Launch "Semrush Alternative" campaign immediately', impact: 'High' },
+      { comp: 'Moz', logo: 'M', prediction: 'Moz product pivot suggests potential acquisition or major rebrand within 60 days. Their ad spend drop of 71% and recent layoffs indicate strategic uncertainty — their customer base is vulnerable.', confidence: 69, timeframe: '60 days', action: 'Begin Moz customer outreach campaign now', impact: 'High' }
+    ],
+    roadmap: [
+      { week: 'Week 1–2', title: 'Attack Semrush Price-Shocked Users', desc: 'Semrush raised prices — launch aggressive "Semrush Alternative" campaign targeting their brand keywords and the surge in churn-driven searches. This is the most high-value attack window in 3 years.', status: 'urgent' },
+      { week: 'Week 3–4', title: 'Claim "Autonomous Campaign" Category Ownership', desc: '"Autonomous campaign management" keyword has NO competitor ranking — you can own this entire category with a focused content + PPC campaign. Monthly volume: 8,100 with zero competition.', status: 'urgent' },
+      { week: 'Week 5–8', title: 'Own Moz\'s Vacated Keywords', desc: 'Moz reduced ads 71% — their top SEO tool keywords are now uncontested. Capture "moz alternative", "domain authority checker", and "link analysis tool" — combined: 65,000 monthly searches.', status: 'high' },
+      { week: 'Week 9–12', title: 'Reach 18% Share of Voice', desc: 'From 6% to 18% Share of Voice target in the marketing intelligence category. InfoGenie\'s autonomous AI positioning is unique — no competitor can replicate this in 12 weeks.', status: 'medium' }
+    ],
+    winLoss: [
+      { comp: 'Semrush', message: '"Grow online visibility across all key channels with Semrush."', channel: 'Google', lossRate: '37%', weakness: 'Price increase backlash + no autonomous action — InfoGenie\'s key differentiator' },
+      { comp: 'Ahrefs', message: '"The tools you need to grow search traffic, research your competitors."', channel: 'Google', lossRate: '31%', weakness: 'Intelligence only, no execution — InfoGenie autonomously launches campaigns' },
+      { comp: 'SimilarWeb', message: '"Turn market insights into a competitive edge."', channel: 'LinkedIn', lossRate: '26%', weakness: 'Web-only data, no ad platform integration — InfoGenie connects to all 7 platforms' }
+    ]
+  }
+};
+
 // Generate realistic KPI data based on URL
 function generateWebsiteKPIs(url, industryKey) {
   const hash = url.split('').reduce((a, c) => a + c.charCodeAt(0), 0);

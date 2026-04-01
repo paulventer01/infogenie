@@ -121,6 +121,7 @@ async function runAnalysis(url, country) {
   buildCampaigns();
   buildAudience();
   buildCreative();
+  buildIntelligence();
   
   // Navigate first so a settings error never blocks the dashboard
   navigateTo('dashboard');
@@ -1999,6 +2000,267 @@ const INTEGRATIONS = {
     ]
   }
 };
+
+// ===================================================
+// BUILD INTELLIGENCE HUB
+// ===================================================
+function buildIntelligence() {
+  if (!analysisData) return;
+  const { industryKey } = analysisData;
+  const intel = INTELLIGENCE_DB[industryKey] || INTELLIGENCE_DB['marketing'];
+  const wrap = document.getElementById('intelligenceWrap');
+  if (!wrap) return;
+
+  // ── Signal type helpers ──
+  function signalLabel(type) {
+    if (type === 'dark_period') return '<span class="signal-type-badge sig-dark">📉 Dark Period Detected</span>';
+    if (type === 'budget_surge') return '<span class="signal-type-badge sig-surge">💰 Budget Surge</span>';
+    if (type === 'new_campaign') return '<span class="signal-type-badge sig-new">🆕 New Campaign</span>';
+    if (type === 'price_change') return '<span class="signal-type-badge sig-price">🏷️ Price Change</span>';
+    return '<span class="signal-type-badge sig-new">Signal</span>';
+  }
+
+  // ── SOV chart (built after render) ──
+  const sovLabels  = intel.shareOfVoice.map(s => s.name);
+  const sovData    = intel.shareOfVoice.map(s => s.share);
+  const sovColors  = intel.shareOfVoice.map(s => s.color);
+
+  // ── Keyword gap rows ──
+  const kwRows = intel.keywordGaps.map(k => `
+    <tr>
+      <td><div class="kwgap-keyword">${k.keyword}</div></td>
+      <td>${k.volume}</td>
+      <td>${k.topComp}</td>
+      <td>${k.compCtr}</td>
+      <td>${k.yourRank}</td>
+      <td><span class="diff-badge diff-${k.difficulty.toLowerCase()}">${k.difficulty}</span></td>
+      <td>
+        <div class="kwgap-score-bar"><div class="kwgap-score-fill" style="width:${k.score}%"></div></div>
+        <span class="kwgap-score-num">${k.score}</span>
+      </td>
+      <td>${k.cpc}</td>
+      <td><button class="btn-kwgap-attack" onclick="showToast('🎯 Launching attack campaign for: ${k.keyword.replace(/'/g, '')}')">⚡ Attack</button></td>
+    </tr>
+  `).join('');
+
+  // ── Signal cards ──
+  const signalCards = intel.signals.map(s => `
+    <div class="signal-card${s.attackOpen ? ' attack-open' : ''}">
+      <div class="signal-logo" style="background:${s.severity==='high'?'#991B1B':s.severity==='medium'?'#1E3A5F':'#1F2A3C'}">${s.logo}</div>
+      <div class="signal-body">
+        <div class="signal-top">
+          <span class="signal-comp">${s.comp}</span>
+          ${signalLabel(s.type)}
+          <span class="signal-ago">${s.detectedAgo}</span>
+        </div>
+        <div class="signal-msg">${s.message}</div>
+        <div class="signal-actions">
+          ${s.attackOpen
+            ? `<button class="btn-signal-attack" onclick="showToast('⚡ Launching counter-strategy: ${s.action.replace(/'/g,'')}')">${s.action}</button>`
+            : `<button class="btn-signal-counter" onclick="showToast('📋 Counter-strategy queued: ${s.action.replace(/'/g,'')}')">${s.action}</button>`
+          }
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  // ── Prediction cards ──
+  const predCards = intel.predictions.map(p => `
+    <div class="prediction-card">
+      <div class="pred-logo">${p.logo}</div>
+      <div class="pred-body">
+        <div class="pred-top">
+          <span class="pred-comp">${p.comp}</span>
+          <span class="pred-timeframe">⏱ ${p.timeframe}</span>
+          <div class="pred-confidence">
+            <div class="pred-conf-bar">
+              <div class="pred-conf-track"><div class="pred-conf-fill" style="width:${p.confidence}%"></div></div>
+              <span style="font-size:.75rem;color:var(--teal);font-weight:800">${p.confidence}%</span>
+            </div>
+          </div>
+        </div>
+        <div class="pred-text">${p.prediction}</div>
+        <div class="pred-action">
+          <span class="pred-action-label">💡 Recommended Action</span>
+          <span class="pred-action-text">${p.action}</span>
+          <button class="pred-launch-btn" onclick="showToast('🚀 Pre-emptive campaign queued: ${p.action.replace(/'/g,'')}')">Launch Now</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  // ── Roadmap items ──
+  const roadmapItems = intel.roadmap.map((r, i) => `
+    <div class="roadmap-item">
+      <div class="roadmap-dot ${r.status}">${i + 1}</div>
+      <div class="roadmap-content">
+        <div class="roadmap-week">${r.week} ${r.status === 'urgent' ? '· <span class="roadmap-urgent-label">⚡ Act Now</span>' : ''}</div>
+        <div class="roadmap-title">${r.title}</div>
+        <div class="roadmap-desc">${r.desc}</div>
+      </div>
+    </div>
+  `).join('');
+
+  // ── Win/Loss cards ──
+  const wlCards = intel.winLoss.map(w => `
+    <div class="winloss-card">
+      <div class="wl-top">
+        <span class="wl-comp">${w.comp}</span>
+        <span class="wl-channel">${w.channel}</span>
+        <span class="wl-loss-rate">Lost ${w.lossRate} of deals</span>
+      </div>
+      <div class="wl-message">"${w.message}"</div>
+      <div class="wl-weakness">💡 <strong>Exploitable Weakness:</strong> ${w.weakness}</div>
+      <button class="btn-wl-counter" onclick="showToast('🎯 Counter-campaign against ${w.comp.replace(/'/g,'')} queued — launching creative generation')">Counter This Message</button>
+    </div>
+  `).join('');
+
+  // ── Open attack windows ──
+  const openWindows = intel.signals.filter(s => s.attackOpen).length;
+
+  // ── Full HTML ──
+  wrap.innerHTML = `
+    <!-- Top KPI row -->
+    <div class="intel-score-section">
+      <div class="cat-dom-card">
+        <div class="cat-dom-label">Category Domination Score</div>
+        <div class="cat-dom-score">${intel.categoryScore}<span style="font-size:1.2rem;opacity:.5">/100</span></div>
+        <div class="cat-dom-track"><div class="cat-dom-fill" style="width:${intel.categoryScore}%"></div></div>
+        <div class="cat-dom-sub">You are in the bottom quartile — 90-day roadmap below will target 55+</div>
+      </div>
+      <div class="intel-kpi-card">
+        <div class="ikc-icon">🔑</div>
+        <div class="ikc-val">${intel.keywordGaps.length}</div>
+        <div class="ikc-label">Keyword Gap Opportunities</div>
+        <div class="ikc-urgency medium">Combined vol: ${intel.keywordGaps.reduce((a,k)=>a+parseInt(k.volume.replace(/,/g,'')),0).toLocaleString()}/mo</div>
+      </div>
+      <div class="intel-kpi-card">
+        <div class="ikc-icon">⚡</div>
+        <div class="ikc-val">${openWindows}</div>
+        <div class="ikc-label">Attack Windows Open Right Now</div>
+        <div class="ikc-urgency ${openWindows > 0 ? 'high' : 'low'}">${openWindows > 0 ? '🔴 Urgent — act within 72h' : '✅ Monitor for new windows'}</div>
+      </div>
+    </div>
+
+    <!-- Share of Voice -->
+    <div class="intel-section">
+      <div class="intel-section-head">
+        <div class="intel-section-title">📊 Share of Voice Analysis</div>
+        <div class="intel-section-badge">Live Estimate</div>
+        <div class="intel-exclusive-badge">⚡ InfoGenie Exclusive</div>
+      </div>
+      <div class="sov-wrap">
+        <div class="sov-legend">
+          ${intel.shareOfVoice.map(s => `
+            <div class="sov-legend-item">
+              <div class="sov-dot" style="background:${s.color}"></div>
+              <span class="sov-leg-name">${s.name}</span>
+              <span class="sov-leg-share">${s.share}%</span>
+              ${s.trend ? `<span class="sov-leg-trend ${s.trend.startsWith('+') && s.trend !== '+0%' ? 'up' : s.trend.startsWith('-') ? 'down' : 'flat'}">${s.trend}</span>` : ''}
+            </div>
+          `).join('')}
+        </div>
+        <canvas id="sovChart" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- Keyword Gap Table -->
+    <div class="intel-section">
+      <div class="intel-section-head">
+        <div class="intel-section-title">🔑 Keyword Gap Intelligence</div>
+        <div class="intel-section-badge">${intel.keywordGaps.length} Opportunities Found</div>
+        <div class="intel-exclusive-badge">⚡ InfoGenie Exclusive</div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="kwgap-table">
+          <thead>
+            <tr>
+              <th>Keyword</th>
+              <th>Monthly Vol</th>
+              <th>Top Competitor</th>
+              <th>Their CTR</th>
+              <th>Your Rank</th>
+              <th>Difficulty</th>
+              <th>Gap Score</th>
+              <th>CPC</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>${kwRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Competitor Signal Feed -->
+    <div class="intel-section">
+      <div class="intel-section-head">
+        <div class="intel-section-title">📡 Competitor Signal Feed</div>
+        <div class="intel-section-badge">${intel.signals.length} Signals Detected</div>
+        <div class="intel-exclusive-badge">⚡ InfoGenie Exclusive</div>
+      </div>
+      <div class="signal-grid">${signalCards}</div>
+    </div>
+
+    <!-- Predictive Intelligence -->
+    <div class="intel-section">
+      <div class="intel-section-head">
+        <div class="intel-section-title">🔮 Predictive Competitor Intelligence</div>
+        <div class="intel-section-badge">AI-Powered</div>
+        <div class="intel-exclusive-badge">⚡ InfoGenie Exclusive</div>
+      </div>
+      <div class="prediction-grid">${predCards}</div>
+    </div>
+
+    <!-- 90-Day Roadmap -->
+    <div class="intel-section">
+      <div class="intel-section-head">
+        <div class="intel-section-title">🗺️ 90-Day Category Domination Roadmap</div>
+        <div class="intel-section-badge">AI-Generated for Your Industry</div>
+        <div class="intel-exclusive-badge">⚡ InfoGenie Exclusive</div>
+      </div>
+      <div class="roadmap-track">${roadmapItems}</div>
+    </div>
+
+    <!-- Win/Loss Intelligence -->
+    <div class="intel-section" style="padding-bottom:48px">
+      <div class="intel-section-head">
+        <div class="intel-section-title">🏆 Win/Loss Intelligence</div>
+        <div class="intel-section-badge">Competitor Messages That Beat You</div>
+        <div class="intel-exclusive-badge">⚡ InfoGenie Exclusive</div>
+      </div>
+      <div class="winloss-grid">${wlCards}</div>
+    </div>
+  `;
+
+  // Build Share of Voice donut chart
+  const sovCtx = document.getElementById('sovChart');
+  if (sovCtx) {
+    if (sovCtx._chartInstance) sovCtx._chartInstance.destroy();
+    sovCtx._chartInstance = new Chart(sovCtx, {
+      type: 'doughnut',
+      data: {
+        labels: sovLabels,
+        datasets: [{ data: sovData, backgroundColor: sovColors, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }]
+      },
+      options: {
+        cutout: '62%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.label}: ${ctx.parsed}% share of voice`
+            }
+          }
+        },
+        animation: { animateRotate: true, duration: 900 }
+      }
+    });
+  }
+}
+
+function exportIntelligenceReport() {
+  showToast('📥 Generating Intelligence Report PDF — download will begin shortly...');
+}
 
 // ===================================================
 // BUILD SETTINGS
