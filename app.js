@@ -753,15 +753,20 @@ function targetAudience(label) {
   showToast(`🎯 Auto-targeting "${label}" — InfoGenie will configure and launch this campaign automatically`);
 }
 
-// ===== BUILD CREATIVE =====
+// ===================================================
+// AI CREATIVE — ENHANCED
+// ===================================================
+
 function buildCreative() {
   const { url, industry, competitors } = analysisData;
   const wrap = document.getElementById('creativeWrap');
-  
-  const creatives = generateCreatives(industry, competitors, url);
-  
-  const cards = creatives.map(c => `
-    <div class="creative-card">
+  const domainName = url.split('.')[0];
+
+  const vsCards = buildCompetitorVsCards(industry, competitors, domainName);
+  const aiCards = generateCreatives(industry, competitors, domainName);
+
+  const cardHtml = aiCards.map((c, i) => `
+    <div class="creative-card" id="creative-card-${i}">
       <div class="creative-card-top">
         <div class="creative-type">${c.type}</div>
         <div class="creative-headline">"${c.headline}"</div>
@@ -771,131 +776,421 @@ function buildCreative() {
         <div class="creative-copy">${c.copy}</div>
         <div class="creative-meta">
           <div class="creative-meta-item">
-            <div class="creative-meta-val">${c.estCTR}</div>
+            <div class="creative-meta-val" style="color:var(--teal)">${c.estCTR}</div>
             <div class="creative-meta-lbl">Est. CTR</div>
           </div>
           <div class="creative-meta-item">
             <div class="creative-meta-val">${c.estConv}</div>
-            <div class="creative-meta-lbl">Est. Conv. Rate</div>
+            <div class="creative-meta-lbl">Est. Conv.</div>
+          </div>
+          <div class="creative-meta-item">
+            <div class="creative-meta-val">${c.estROAS}</div>
+            <div class="creative-meta-lbl">Est. ROAS</div>
           </div>
           <div class="creative-meta-item">
             <div class="creative-meta-val">${c.platform}</div>
-            <div class="creative-meta-lbl">Best Platform</div>
-          </div>
-          <div class="creative-meta-item">
-            <div class="creative-meta-val">${c.format}</div>
-            <div class="creative-meta-lbl">Format</div>
+            <div class="creative-meta-lbl">Platform</div>
           </div>
         </div>
         <div class="creative-actions">
-          <button class="btn-creative-use" onclick="showToast('🚀 Campaign launched with this creative — InfoGenie is optimising in real-time')">Use in Campaign</button>
-          <button class="btn-creative-copy" onclick="copyCreative('${c.headline}', '${c.copy}')">Copy</button>
+          <button class="btn-auto-target" onclick="showAudiencePanel(${i}, ${JSON.stringify(c.audiences).replace(/"/g,"'")})">🎯 Auto-Target Audience</button>
+          <button class="btn-creative-use" onclick="launchCreativeCampaign(${i})">🚀 Launch</button>
+          <button class="btn-creative-copy" onclick="copyCreative('${c.headline.replace(/'/g,"\\'")}', '${c.copy.replace(/'/g,"\\'").replace(/\n/g," ")}')">Copy</button>
         </div>
+        <div id="audience-panel-${i}"></div>
       </div>
     </div>
   `).join('');
-  
+
   wrap.innerHTML = `
-    <div class="creative-grid">${cards}</div>
+    <div class="creative-controls">
+      <div class="platform-filter">
+        <button class="pf-btn active" onclick="filterCreatives('all', this)">All Platforms</button>
+        <button class="pf-btn" onclick="filterCreatives('google', this)">Google</button>
+        <button class="pf-btn" onclick="filterCreatives('meta', this)">Meta</button>
+        <button class="pf-btn" onclick="filterCreatives('tiktok', this)">TikTok</button>
+        <button class="pf-btn" onclick="filterCreatives('linkedin', this)">LinkedIn</button>
+      </div>
+      <button class="creative-regen-btn" onclick="regenCreatives()">⚡ Regenerate All</button>
+    </div>
+
+    <div class="comp-vs-section">
+      <div class="comp-vs-label">⚡ InfoGenie vs. Competitor Campaigns — AI-Generated Superior Alternatives</div>
+      <div class="comp-vs-grid" id="vsGrid">
+        ${vsCards}
+      </div>
+    </div>
+
+    <div class="comp-vs-label" style="margin-bottom:16px;">🤖 Standalone AI-Generated Creatives — Ready to Deploy</div>
+    <div class="creative-grid" id="creativeCardGrid">${cardHtml}</div>
+
     <div class="chart-box full">
       <div class="chart-box-header">
         <h3>Creative Performance Prediction <span class="chart-tag ctr-tag">AI SCORE</span></h3>
+        <span style="font-size:0.8125rem;color:var(--gray-400)">Based on competitor CTR benchmarks and audience engagement signals</span>
       </div>
-      <canvas id="creativeChart" height="120"></canvas>
+      <canvas id="creativeChart" height="100"></canvas>
     </div>
   `;
-  
-  setTimeout(() => {
-    const ctx = document.getElementById('creativeChart')?.getContext('2d');
-    if (!ctx) return;
-    const labels = creatives.map(c => c.type.split(' ')[0] + ' ' + c.platform);
-    const ctrs = creatives.map(c => parseFloat(c.estCTR));
-    new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          label: 'Predicted CTR (%)',
-          data: ctrs,
-          backgroundColor: 'rgba(0,201,200,0.75)',
-          borderColor: '#00C9C8',
-          borderWidth: 2,
-          borderRadius: 6
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { beginAtZero: true, ticks: { callback: v => v + '%', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,.04)' } },
-          x: { grid: { display: false }, ticks: { font: { size: 11 } } }
-        }
-      }
-    });
-  }, 100);
+
+  setTimeout(() => renderCreativeChart(aiCards), 100);
 }
 
-function generateCreatives(industry, competitors, url) {
-  const domainName = url.split('.')[0];
-  const industryName = industry.name.split(' ')[0];
+function buildCompetitorVsCards(industry, competitors, domainName) {
+  const improvements = [
+    { ctrBoost: '+1.4%', roasBoost: '+1.2×', cpaReduction: '-28%', audienceBoost: '+35%', reason: 'Hyper-specific value proposition outperforms generic brand messaging' },
+    { ctrBoost: '+1.1%', roasBoost: '+0.9×', cpaReduction: '-22%', audienceBoost: '+28%', reason: 'Urgency-driven copy with social proof converts 2.3× better' },
+    { ctrBoost: '+1.8%', roasBoost: '+1.4×', cpaReduction: '-31%', audienceBoost: '+42%', reason: 'Competitor weakness targeting drives significantly higher intent' },
+    { ctrBoost: '+0.9%', roasBoost: '+0.7×', cpaReduction: '-19%', audienceBoost: '+24%', reason: 'Personalised audience segmentation beats broad targeting' },
+    { ctrBoost: '+1.3%', roasBoost: '+1.1×', cpaReduction: '-26%', audienceBoost: '+33%', reason: 'Outcome-focused headlines outperform feature-based messaging' }
+  ];
+
+  const infoGenieHeadlines = [
+    `Switch from ${competitors[0]?.name} — See Results in 14 Days or Free`,
+    `What ${competitors[1]?.name} Won't Tell You About Their Ad Strategy`,
+    `${competitors[2]?.name} Spends ${competitors[2]?.adSpend} Monthly — Here's How to Beat Them for Less`,
+    `The ${industry.name} Secret That ${competitors[3]?.name} Doesn't Want You to Know`,
+    `Outperform ${competitors[4]?.name} — AI-Powered Campaigns. Zero Guesswork.`
+  ];
+
+  const infoGenieCopies = [
+    `While ${competitors[0]?.name} relies on broad keyword targeting, our AI pinpoints the exact audience segments their campaigns miss — delivering your message at the precise moment they're ready to convert. No wasted spend. No guesswork.`,
+    `${competitors[1]?.name}'s generic creative gets lost in the feed. Our AI generates personalised ad variants tailored to each audience segment's language, pain points, and intent signals — driving 2.3× higher engagement at lower cost.`,
+    `${competitors[2]?.name} is spending ${competitors[2]?.adSpend}/mo on ads — most of it wasted on the wrong audiences. Our competitor intelligence identifies exactly where their budget bleeds, then targets those gaps with precision campaigns that cost a fraction of the price.`,
+    `${competitors[3]?.name}'s audiences are actively looking for a better alternative. Our AI identifies their dissatisfied customer segments and delivers your superior offer at the exact moment they're considering switching. Average CPA reduction: 31%.`,
+    `Stop reacting to ${competitors[4]?.name}'s campaigns. Our autonomous AI monitors their every move — new creatives, budget shifts, audience changes — and automatically rebuilds your campaigns to stay one step ahead, 24/7.`
+  ];
+
+  return competitors.slice(0, 5).map((comp, i) => {
+    if (!comp || !comp.campaigns || !comp.campaigns[0]) return '';
+    const campaign = comp.campaigns[0];
+    const imp = improvements[i] || improvements[0];
+    const ourCTR = (parseFloat(campaign.ctr) + parseFloat(imp.ctrBoost)).toFixed(1) + '%';
+    const ourROAS = (campaign.roas + parseFloat(imp.roasBoost)).toFixed(1) + '×';
+    const panelId = `vs-panel-${i}`;
+    const vsAudiences = comp.audiences || [];
+
+    return `
+      <div>
+        <div class="comp-vs-card">
+          <div class="comp-vs-side theirs">
+            <div class="cvs-label their-label">🏢 ${comp.name}'s Campaign</div>
+            <div class="cvs-comp-name">
+              <div class="cvs-favicon">${comp.logo}</div>
+              <div class="cvs-comp-text">${campaign.name} · ${campaign.channel}</div>
+            </div>
+            <div class="cvs-headline">"${campaign.name}"</div>
+            <div class="cvs-copy">${comp.suggestions?.[0] || 'Generic broad-targeting campaign with standard creative and minimal audience segmentation.'}</div>
+            <div class="cvs-stats">
+              <div class="cvs-stat"><div class="cvs-stat-val">${campaign.ctr}</div><div class="cvs-stat-lbl">Their CTR</div></div>
+              <div class="cvs-stat"><div class="cvs-stat-val">${campaign.roas}×</div><div class="cvs-stat-lbl">Their ROAS</div></div>
+              <div class="cvs-stat"><div class="cvs-stat-val">${campaign.budget}</div><div class="cvs-stat-lbl">Monthly Budget</div></div>
+              <div class="cvs-stat"><div class="cvs-stat-val">${campaign.status}</div><div class="cvs-stat-lbl">Status</div></div>
+            </div>
+            <div style="font-size:0.75rem;color:var(--gray-400);font-style:italic;">⚠️ ${imp.reason}</div>
+          </div>
+
+          <div class="comp-vs-divider">
+            <div class="vs-line"></div>
+            <div class="vs-circle">VS</div>
+            <div class="vs-line"></div>
+          </div>
+
+          <div class="comp-vs-side ours">
+            <div class="cvs-label our-label">✦ InfoGenie Superior Alternative</div>
+            <div class="cvs-beat-badge">▲ CTR ${imp.ctrBoost} · ROAS ${imp.roasBoost} · CPA ${imp.cpaReduction} · Audience ${imp.audienceBoost}</div>
+            <div class="cvs-headline">"${infoGenieHeadlines[i]}"</div>
+            <div class="cvs-copy">${infoGenieCopies[i]}</div>
+            <div class="cvs-stats">
+              <div class="cvs-stat"><div class="cvs-stat-val" style="color:var(--teal)">${ourCTR}</div><div class="cvs-stat-lbl">Est. CTR</div></div>
+              <div class="cvs-stat"><div class="cvs-stat-val" style="color:var(--teal)">${ourROAS}</div><div class="cvs-stat-lbl">Est. ROAS</div></div>
+              <div class="cvs-stat"><div class="cvs-stat-val" style="color:var(--green)">${imp.cpaReduction}</div><div class="cvs-stat-lbl">CPA Change</div></div>
+              <div class="cvs-stat"><div class="cvs-stat-val" style="color:var(--green)">Auto</div><div class="cvs-stat-lbl">Optimisation</div></div>
+            </div>
+            <div class="cvs-actions">
+              <button class="btn-auto-target" onclick="showVsAudiencePanel('${panelId}', '${comp.name}', ${JSON.stringify(vsAudiences).replace(/"/g,"'")})">🎯 Auto-Target Audience</button>
+              <button class="btn-vs-launch" onclick="launchVsCampaign('${comp.name}', '${campaign.channel}')">🚀 Launch This</button>
+              <button class="btn-vs-copy" onclick="copyCreative('${infoGenieHeadlines[i].replace(/'/g,"\\'")}', '${infoGenieCopies[i].replace(/'/g,"\\'").replace(/\n/g," ")}')">Copy</button>
+            </div>
+          </div>
+        </div>
+        <div id="${panelId}"></div>
+      </div>
+    `;
+  }).join('');
+}
+
+function generateCreatives(industry, competitors, domainName) {
   const topComp = competitors[0];
-  
+  const comp2 = competitors[1] || competitors[0];
+  const industryName = industry.name.split(' & ')[0];
+  const totalCamps = competitors.reduce((a, c) => a + (c.campaigns?.length || 0), 0);
+
   return [
     {
       type: 'Search Ad — Google',
       platform: 'Google',
-      format: 'Text Ad',
-      headline: `Beat ${topComp.name} — Try ${domainName} Free`,
-      copy: `Discover why 10,000+ ${industryName.toLowerCase()} businesses switched. Advanced AI intelligence. Launch campaigns 10× faster. 14-day free trial — no credit card needed.`,
-      estCTR: '4.8%',
-      estConv: '3.2%'
+      format: 'Responsive Search Ad',
+      headline: `${topComp.name} Alternative — ${parseFloat(topComp.roas) > 4 ? '2× Better ROAS' : '40% Lower CPA'}`,
+      copy: `Tired of ${topComp.name}'s rising costs and limited transparency? Our AI-powered platform delivers the same reach with ${parseFloat(topComp.ctr)}%+ CTR targeting — at a fraction of the budget. Free 14-day trial. No credit card.`,
+      estCTR: (parseFloat(topComp.ctr) + 1.2).toFixed(1) + '%',
+      estConv: '3.8%',
+      estROAS: (topComp.roas + 1.1).toFixed(1) + '×',
+      audiences: topComp.audiences || []
     },
     {
       type: 'Video Ad — Meta',
       platform: 'Meta',
-      format: 'Video (15s)',
-      headline: `Your Competitors Are Growing Faster — Here's Why`,
-      copy: `While you're manually analysing data, ${topComp.name} is running ${topComp.campaigns?.length || 3} optimised campaigns targeting your audience. InfoGenie gives you the same intelligence — automatically. See what you're missing.`,
-      estCTR: '5.2%',
-      estConv: '2.8%'
+      format: 'Video (15s Reel)',
+      headline: `What ${comp2.name} Doesn't Want You to See`,
+      copy: `${comp2.name} runs ${comp2.campaigns?.length || 3} active campaigns right now targeting your customers — and you can't see any of them. Until now. InfoGenie exposes every competitor campaign and automatically builds you a version that performs better. See it live.`,
+      estCTR: (parseFloat(topComp.ctr) + 1.8).toFixed(1) + '%',
+      estConv: '3.1%',
+      estROAS: (topComp.roas + 0.8).toFixed(1) + '×',
+      audiences: comp2.audiences || []
     },
     {
-      type: 'Display Ad — Google',
-      platform: 'Google Display',
-      format: 'Banner 300×250',
-      headline: `${topComp.name} achieves ${topComp.roas}× ROAS. You can do better.`,
-      copy: `InfoGenie analyses your competitors' winning campaigns and automatically builds improved versions for your brand. Real data. Real results. Start free today.`,
-      estCTR: '3.6%',
-      estConv: '1.9%'
+      type: 'Performance Max — Google',
+      platform: 'Google',
+      format: 'Performance Max',
+      headline: `${industryName} Leaders Are Switching — Here's Why`,
+      copy: `${totalCamps} active competitor campaigns are targeting your customers across Google right now. InfoGenie's Performance Max integration analyses all of them and auto-builds a superior campaign — with better creative, smarter bidding, and 35% lower CPA on average.`,
+      estCTR: (parseFloat(topComp.ctr) + 0.9).toFixed(1) + '%',
+      estConv: '4.2%',
+      estROAS: (topComp.roas + 1.4).toFixed(1) + '×',
+      audiences: (competitors[2] || competitors[0]).audiences || []
     },
     {
       type: 'Sponsored Content — LinkedIn',
       platform: 'LinkedIn',
-      format: 'Sponsored Post',
-      headline: `How ${industryName} Teams Cut CPA by 35% Using AI Intelligence`,
-      copy: `Stop guessing what campaigns to run. InfoGenie analyses every competitor campaign in your industry — CTR, ROAS, creative, audience — and automatically builds a better version for you. Join 10,000+ marketers who've made the switch.`,
-      estCTR: '3.1%',
-      estConv: '4.2%'
+      format: 'Sponsored Post + Lead Form',
+      headline: `How ${industryName} Teams Cut CPA by 35% in 30 Days`,
+      copy: `${comp2.name} achieves ${comp2.roas}× ROAS with a ${comp2.adSpend} monthly budget. Our analysis shows you can outperform that with precision B2B targeting, personalised ad sequences, and autonomous bidding — without their budget. Download the free strategy report.`,
+      estCTR: '3.4%',
+      estConv: '5.1%',
+      estROAS: (topComp.roas + 0.6).toFixed(1) + '×',
+      audiences: (competitors[3] || competitors[0]).audiences || []
     },
     {
-      type: 'TikTok Ad — UGC Style',
+      type: 'TikTok UGC Ad',
       platform: 'TikTok',
       format: 'In-Feed Video (30s)',
-      headline: `POV: You just let AI spy on your competitors' best campaigns`,
-      copy: `InfoGenie automatically finds what's working for ${topComp.name} and the other top players in your space — then builds you a better campaign. This is the unfair advantage your competitors don't want you to have.`,
-      estCTR: '6.1%',
-      estConv: '2.4%'
+      headline: `POV: AI just exposed every ${comp2.name} campaign running right now`,
+      copy: `We analysed ${topComp.name}, ${comp2.name}, and ${competitors[2]?.name || 'all top competitors'} — every ad they're running, every audience they're targeting, every budget they're spending. Then we built you a better version of all of it. Automatically. This is the unfair advantage.`,
+      estCTR: (parseFloat(topComp.ctr) + 2.1).toFixed(1) + '%',
+      estConv: '2.6%',
+      estROAS: (topComp.roas + 0.5).toFixed(1) + '×',
+      audiences: (competitors[4] || competitors[0]).audiences || []
     },
     {
       type: 'Retargeting — Meta',
       platform: 'Meta',
-      format: 'Carousel Ad',
-      headline: `Still Researching? Here's What You're Missing.`,
-      copy: `Your competitors are already running ${(competitors.reduce((a,c) => a + (c.campaigns?.length||0), 0))} active campaigns targeting your audience right now. InfoGenie shows you exactly what they're doing — and automatically builds you a campaign that beats it.`,
-      estCTR: '4.4%',
-      estConv: '3.8%'
+      format: 'Dynamic Carousel',
+      headline: `You Visited ${topComp.name}. Here's What They're Not Telling You.`,
+      copy: `You've seen ${topComp.name}'s campaigns. But what you haven't seen is that their average customer acquisition cost is ${topComp.campaigns?.[0]?.roas ? Math.round(100 / topComp.campaigns[0].roas) + '% higher' : '40% higher'} than alternatives. We can deliver the same results — with full transparency and autonomous AI optimisation — for a fraction of their budget.`,
+      estCTR: (parseFloat(topComp.ctr) + 1.5).toFixed(1) + '%',
+      estConv: '4.6%',
+      estROAS: (topComp.roas + 1.3).toFixed(1) + '×',
+      audiences: topComp.audiences || []
     }
   ];
+}
+
+function renderCreativeChart(creatives) {
+  const ctx = document.getElementById('creativeChart')?.getContext('2d');
+  if (!ctx) return;
+  const labels = creatives.map(c => c.platform + ' · ' + c.format.split(' ')[0]);
+  const ctrs = creatives.map(c => parseFloat(c.estCTR));
+  const roas = creatives.map(c => parseFloat(c.estROAS));
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Est. CTR (%)',
+          data: ctrs,
+          backgroundColor: 'rgba(0,201,200,0.75)',
+          borderColor: '#00C9C8',
+          borderWidth: 2,
+          borderRadius: 6,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Est. ROAS (×)',
+          data: roas,
+          backgroundColor: 'rgba(0,102,255,0.55)',
+          borderColor: '#0066FF',
+          borderWidth: 2,
+          borderRadius: 6,
+          yAxisID: 'y2'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: true, position: 'top', labels: { font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.raw } }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          position: 'left',
+          ticks: { callback: v => v + '%', font: { size: 11 } },
+          grid: { color: 'rgba(0,0,0,.04)' }
+        },
+        y2: {
+          beginAtZero: true,
+          position: 'right',
+          ticks: { callback: v => v + '×', font: { size: 11 } },
+          grid: { display: false }
+        },
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+function showAudiencePanel(cardIndex, audiencesStr) {
+  const panelEl = document.getElementById(`audience-panel-${cardIndex}`);
+  if (panelEl.innerHTML) { panelEl.innerHTML = ''; return; }
+  const audiences = typeof audiencesStr === 'string'
+    ? JSON.parse(audiencesStr.replace(/'/g, '"'))
+    : audiencesStr;
+  panelEl.innerHTML = buildAudiencePanelHtml(`audience-panel-${cardIndex}`, 'InfoGenie AI Creative', audiences);
+  initAudiencePanel(`audience-panel-${cardIndex}`, audiences);
+}
+
+function showVsAudiencePanel(panelId, compName, audiencesStr) {
+  const panelEl = document.getElementById(panelId);
+  if (panelEl.innerHTML) { panelEl.innerHTML = ''; return; }
+  const audiences = typeof audiencesStr === 'string'
+    ? JSON.parse(audiencesStr.replace(/'/g, '"'))
+    : audiencesStr;
+  panelEl.innerHTML = buildAudiencePanelHtml(panelId, compName, audiences);
+  initAudiencePanel(panelId, audiences);
+}
+
+function buildAudiencePanelHtml(panelId, label, audiences) {
+  const segs = audiences.length > 0 ? audiences : [
+    { label: 'High-Intent Converters', pct: 42 },
+    { label: 'Competitor Switchers', pct: 31 },
+    { label: 'Research-Phase Buyers', pct: 17 },
+    { label: 'Brand Loyalists', pct: 10 }
+  ];
+
+  const segHtml = segs.map((s, i) => `
+    <div class="atp-segment selected" id="seg-${panelId}-${i}" onclick="toggleSegment('${panelId}', ${i})">
+      <div class="atp-seg-top">
+        <div class="atp-seg-check" id="check-${panelId}-${i}">✓</div>
+        <div class="atp-seg-name">${s.label}</div>
+      </div>
+      <div class="atp-seg-bar-wrap"><div class="atp-seg-bar" style="width:${s.pct}%"></div></div>
+      <div class="atp-seg-stats">
+        <span>${s.pct}% engagement</span>
+        <span>Est. CPM: $${(8 + s.pct * 0.15).toFixed(2)}</span>
+      </div>
+    </div>
+  `).join('');
+
+  return `
+    <div class="audience-targeting-panel">
+      <div class="atp-header">
+        <span>🎯</span>
+        <div class="atp-title">Audience Auto-Targeting — ${label}</div>
+        <button class="atp-close" onclick="document.getElementById('${panelId}').innerHTML=''">✕</button>
+      </div>
+      <div class="atp-body">
+        <div>
+          <div class="atp-sub-label">Select Audience Segments to Target</div>
+          <div class="atp-segments">${segHtml}</div>
+        </div>
+        <div>
+          <div class="atp-sub-label">Exclusion Audiences (auto-applied)</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <span class="atp-pill active">Existing Customers</span>
+            <span class="atp-pill active">Competitor Employees</span>
+            <span class="atp-pill active">Low-LTV Segments</span>
+            <span class="atp-pill">Bot / Invalid Traffic</span>
+          </div>
+        </div>
+        <div class="atp-row">
+          <div class="atp-row-label">Daily Budget:</div>
+          <input type="number" class="atp-budget-input" placeholder="e.g. 150" value="200" id="budget-${panelId}" />
+          <span style="font-size:0.8125rem;color:var(--gray-400)">USD/day</span>
+        </div>
+        <div class="atp-row">
+          <div class="atp-row-label">Deploy on:</div>
+          <div class="atp-pills">
+            <span class="atp-pill active" onclick="this.classList.toggle('active')">Google Ads</span>
+            <span class="atp-pill active" onclick="this.classList.toggle('active')">Meta Ads</span>
+            <span class="atp-pill" onclick="this.classList.toggle('active')">TikTok</span>
+            <span class="atp-pill" onclick="this.classList.toggle('active')">LinkedIn</span>
+          </div>
+        </div>
+        <button class="btn-activate-targeting" onclick="activateTargeting('${panelId}', '${label}')">
+          🚀 Activate Auto-Targeting Now
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function initAudiencePanel(panelId, audiences) {
+  // All segments pre-selected — interactive toggle is handled via DOM
+}
+
+function toggleSegment(panelId, index) {
+  const seg = document.getElementById(`seg-${panelId}-${index}`);
+  const check = document.getElementById(`check-${panelId}-${index}`);
+  if (!seg) return;
+  const isSelected = seg.classList.toggle('selected');
+  check.textContent = isSelected ? '✓' : '';
+}
+
+function activateTargeting(panelId, label) {
+  const budget = document.getElementById(`budget-${panelId}`)?.value || '200';
+  const selectedSegs = document.querySelectorAll(`#${panelId} .atp-segment.selected`);
+  const count = selectedSegs.length;
+  if (count === 0) { showToast('⚠️ Please select at least one audience segment'); return; }
+  showToast(`🎯 Auto-targeting activated for "${label}" — ${count} audience segments across selected platforms with $${budget}/day budget. InfoGenie is optimising in real-time.`);
+  setTimeout(() => {
+    const panel = document.getElementById(panelId);
+    if (panel) panel.innerHTML = `
+      <div style="background:rgba(16,185,129,.06);border:1.5px solid var(--green);border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:10px;margin-top:10px;">
+        <span style="font-size:1.25rem;">✅</span>
+        <div>
+          <div style="font-size:0.875rem;font-weight:700;color:var(--green);">Auto-Targeting Active</div>
+          <div style="font-size:0.8125rem;color:var(--gray-500);">${count} audience segments · $${budget}/day · InfoGenie monitoring & optimising 24/7</div>
+        </div>
+      </div>
+    `;
+  }, 800);
+}
+
+function launchVsCampaign(compName, channel) {
+  showToast(`🚀 Launching superior campaign vs. ${compName} on ${channel} — InfoGenie AI is configuring targeting and bidding automatically`);
+}
+
+function launchCreativeCampaign(index) {
+  showToast('🚀 Campaign launched with this AI creative — InfoGenie is deploying and optimising in real-time');
+}
+
+function filterCreatives(platform, btn) {
+  document.querySelectorAll('.pf-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#creativeCardGrid .creative-card').forEach(card => {
+    const platformText = card.querySelector('.creative-type')?.textContent?.toLowerCase() || '';
+    const show = platform === 'all' || platformText.includes(platform);
+    card.style.display = show ? '' : 'none';
+  });
+}
+
+function regenCreatives() {
+  showToast('⚡ Regenerating creatives with latest competitor intelligence...');
+  setTimeout(() => { buildCreative(); showToast('✅ 6 new AI creatives generated based on updated competitor data'); }, 1600);
 }
 
 function copyCreative(headline, copy) {
@@ -903,7 +1198,7 @@ function copyCreative(headline, copy) {
   navigator.clipboard.writeText(text).then(() => {
     showToast('📋 Creative copied to clipboard');
   }).catch(() => {
-    showToast('📋 Copy: ' + headline);
+    showToast('📋 Copied: ' + headline);
   });
 }
 
