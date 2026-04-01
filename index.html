@@ -498,6 +498,61 @@
   </div>
 </div>
 
+<!-- PLAN UPGRADE MODAL -->
+<div class="modal-backdrop hidden" id="planModal">
+  <div class="modal-box plan-modal-box">
+    <button class="modal-x" onclick="closePlanModal()">✕</button>
+    <div style="text-align:center; margin-bottom:20px">
+      <div style="font-size:2rem; margin-bottom:8px">⚡</div>
+      <h3 style="font-family:'Sora',sans-serif; font-size:1.25rem; font-weight:800; color:#0A1628; margin-bottom:6px">Upgrade Your InfoGenie Plan</h3>
+      <p style="color:#6B7280; font-size:0.875rem">Unlock more competitors, deeper intelligence, and autonomous campaign management</p>
+    </div>
+    <div class="plan-cards-row">
+      <div class="plan-modal-card">
+        <div class="pmc-name">Starter</div>
+        <div class="pmc-price">$99<span>/mo</span></div>
+        <ul class="pmc-features">
+          <li>✓ 3 competitor analyses/mo</li>
+          <li>✓ 5 competitors tracked</li>
+          <li>✓ Google &amp; Meta Ads</li>
+          <li>✓ Basic Intelligence Hub</li>
+          <li>✗ Autonomous campaigns</li>
+          <li>✗ Predictive signals</li>
+        </ul>
+        <button class="btn-plan-select" onclick="showToast('📋 Redirecting to Starter checkout...')">Select Starter</button>
+      </div>
+      <div class="plan-modal-card plan-modal-card-pro">
+        <div class="pmc-badge">Current Plan</div>
+        <div class="pmc-name">Pro</div>
+        <div class="pmc-price">$399<span>/mo</span></div>
+        <ul class="pmc-features">
+          <li>✓ Unlimited analyses</li>
+          <li>✓ 15 competitors tracked</li>
+          <li>✓ All 7 ad platforms</li>
+          <li>✓ Full Intelligence Hub</li>
+          <li>✓ Campaign automation</li>
+          <li>✓ Predictive signals</li>
+        </ul>
+        <button class="btn-plan-current">✓ Your Current Plan</button>
+      </div>
+      <div class="plan-modal-card">
+        <div class="pmc-name">Agency</div>
+        <div class="pmc-price">$999<span>/mo</span></div>
+        <ul class="pmc-features">
+          <li>✓ Everything in Pro</li>
+          <li>✓ 50 competitors tracked</li>
+          <li>✓ White-label reports</li>
+          <li>✓ Multi-client dashboard</li>
+          <li>✓ Priority support</li>
+          <li>✓ API access</li>
+        </ul>
+        <button class="btn-plan-select btn-plan-upgrade" onclick="showToast('🚀 Redirecting to Agency checkout...')">Upgrade to Agency</button>
+      </div>
+    </div>
+    <p style="text-align:center; font-size:0.75rem; color:#9CA3AF; margin-top:16px">All plans include a 14-day free trial. Cancel anytime. No setup fees.</p>
+  </div>
+</div>
+
 <!-- DOCS MODAL -->
 <div class="modal-backdrop hidden" id="docsModal">
   <div class="modal-box docs-modal-box">

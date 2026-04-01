@@ -2800,3 +2800,79 @@ body {
   .intel-score-section { grid-template-columns: 1fr; }
   .sov-wrap { grid-template-columns: 1fr; }
 }
+
+/* ===================================================
+   PLAN UPGRADE MODAL
+   =================================================== */
+.plan-modal-box { max-width: 760px !important; padding: 32px !important; }
+.plan-cards-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.plan-modal-card {
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+}
+.plan-modal-card-pro {
+  border-color: var(--teal);
+  background: linear-gradient(180deg, rgba(0,201,200,.04), white);
+  box-shadow: 0 4px 20px rgba(0,201,200,.12);
+}
+.pmc-badge {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, var(--teal), var(--blue));
+  color: white;
+  font-size: 0.625rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 10px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.pmc-name { font-size: 0.8125rem; font-weight: 800; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.pmc-price { font-family: 'Sora', sans-serif; font-size: 1.75rem; font-weight: 800; color: var(--navy); margin-bottom: 12px; }
+.pmc-price span { font-size: 0.875rem; font-weight: 500; color: var(--gray-400); }
+.pmc-features { list-style: none; padding: 0; margin: 0 0 14px; display: flex; flex-direction: column; gap: 5px; }
+.pmc-features li { font-size: 0.75rem; color: var(--gray-600); }
+.pmc-features li:first-letter { font-family: monospace; }
+.btn-plan-select {
+  width: 100%;
+  padding: 9px;
+  background: var(--gray-100);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  color: var(--gray-600);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.2s;
+  margin-top: auto;
+}
+.btn-plan-select:hover { background: var(--gray-200); }
+.btn-plan-upgrade {
+  background: linear-gradient(135deg, var(--teal), var(--blue)) !important;
+  color: white !important;
+  border-color: transparent !important;
+}
+.btn-plan-upgrade:hover { opacity: 0.88 !important; }
+.btn-plan-current {
+  width: 100%;
+  padding: 9px;
+  background: rgba(0,201,200,.1);
+  border: 1.5px solid rgba(0,201,200,.3);
+  border-radius: 8px;
+  color: var(--teal-dark);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: default;
+  font-family: 'Inter', sans-serif;
+  margin-top: auto;
+}
+@media (max-width: 640px) { .plan-cards-row { grid-template-columns: 1fr; } }

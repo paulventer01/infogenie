@@ -2015,6 +2015,117 @@ function buildIntelligence() {
   const wrap = document.getElementById('intelligenceWrap');
   if (!wrap) return;
 
+  // ── Use real competitors from analysis to override intelligence display data ──
+  const realComps = (analysisData && analysisData.competitors) ? analysisData.competitors : null;
+
+  // Palette for generated SOV colors
+  const sovPalette = ['#0066FF','#00C9C8','#6366F1','#F59E0B','#10B981','#EF4444','#E5E7EB'];
+
+  function compLogo(c) { return c.logo || (c.name ? c.name[0].toUpperCase() : '?'); }
+
+  // Build Share of Voice: use real competitor names when available
+  let displaySov;
+  if (realComps && realComps.length > 0) {
+    const totalBase = realComps.reduce((a,c) => a + (c.trafficMo || 400000), 0);
+    let usedPct = 0;
+    const compRows = realComps.slice(0,5).map((c, i) => {
+      const raw = Math.round((c.trafficMo || 400000) / totalBase * 72);
+      const share = Math.max(raw, 6);
+      usedPct += share;
+      return { name: c.name, share, trend: i < 2 ? '+2%' : '+1%', color: sovPalette[i] };
+    });
+    const yourShare = 5;
+    const othersShare = Math.max(0, 100 - usedPct - yourShare);
+    displaySov = [
+      ...compRows,
+      { name: 'You', share: yourShare, trend: '+0%', color: '#00E5FF' },
+      { name: 'Others', share: othersShare, trend: '', color: '#E5E7EB' }
+    ];
+  } else {
+    displaySov = intel.shareOfVoice;
+  }
+
+  // Build Signals: use real competitor names/logos but keep signal structure
+  const signalTemplates = [
+    { type: 'dark_period', severity: 'high', attackOpen: true,
+      buildMsg: (c) => `${c.name} reduced Google Ads spend significantly in the past 72 hours — their primary keywords are now underserved and CPCs have dropped`,
+      buildAction: (c) => `Attack ${c.name} Vacated Keywords Now` },
+    { type: 'new_campaign', severity: 'medium', attackOpen: false,
+      buildMsg: (c) => `${c.name} launched new creative campaigns on Meta and TikTok targeting audiences that overlap significantly with your highest-converting segments`,
+      buildAction: (c) => `Counter ${c.name} Creative Approach` },
+    { type: 'budget_surge', severity: 'medium', attackOpen: false,
+      buildMsg: (c) => `${c.name} increased LinkedIn Ads budget by an estimated 45–60% this week, aggressively targeting decision-maker audiences in your target market`,
+      buildAction: (c) => `Defend Against ${c.name} LinkedIn Push` },
+    { type: 'price_change', severity: 'low', attackOpen: true,
+      buildMsg: (c) => `${c.name} modified their pricing structure — social media sentiment shows growing customer dissatisfaction, creating a migration opportunity`,
+      buildAction: (c) => `Target ${c.name} Unhappy Customers` }
+  ];
+  let displaySignals;
+  if (realComps && realComps.length > 0) {
+    displaySignals = realComps.slice(0, 4).map((c, i) => {
+      const tmpl = signalTemplates[i % signalTemplates.length];
+      return {
+        comp: c.name, logo: compLogo(c),
+        type: tmpl.type, severity: tmpl.severity,
+        message: tmpl.buildMsg(c),
+        detectedAgo: ['2h ago','6h ago','1d ago','3d ago'][i] || '1d ago',
+        action: tmpl.buildAction(c),
+        attackOpen: tmpl.attackOpen
+      };
+    });
+  } else {
+    displaySignals = intel.signals;
+  }
+
+  // Build Predictions: use real competitor names
+  const predTemplates = [
+    { confidence: 88, timeframe: '10 days',
+      buildPred: (c) => `${c.name} is showing pre-surge patterns in paid search: increased branded keyword bidding, new landing page variants, and accelerating creative refresh cadence. Historical patterns suggest a major ad spend increase is imminent within 10 days.`,
+      buildAction: (c) => `Pre-capture "${c.name} alternative" keywords before CPC spike` },
+    { confidence: 76, timeframe: '21 days',
+      buildPred: (c) => `Based on ${c.name}'s 6-month campaign cycle pattern, a major product or pricing announcement is likely within 21 days. Expect heavy brand keyword bidding and comparison ad campaigns targeting your audience segments.`,
+      buildAction: (c) => `Launch pre-emptive comparison campaign against ${c.name}` }
+  ];
+  let displayPredictions;
+  if (realComps && realComps.length >= 2) {
+    displayPredictions = realComps.slice(0, 2).map((c, i) => {
+      const tmpl = predTemplates[i];
+      return {
+        comp: c.name, logo: compLogo(c),
+        prediction: tmpl.buildPred(c),
+        confidence: tmpl.confidence,
+        timeframe: tmpl.timeframe,
+        action: tmpl.buildAction(c),
+        impact: 'High'
+      };
+    });
+  } else {
+    displayPredictions = intel.predictions;
+  }
+
+  // Build Win/Loss: use real competitor campaigns and suggestions
+  let displayWinLoss;
+  if (realComps && realComps.length > 0) {
+    const channels = ['Google Ads', 'Meta Ads', 'LinkedIn Ads'];
+    const lossRates = ['38%', '31%', '26%'];
+    displayWinLoss = realComps.slice(0, 3).map((c, i) => {
+      const topCampaign = c.campaigns?.[0];
+      const topSuggestion = c.suggestions?.[0] || `${c.name} has exploitable weaknesses in their ad targeting — InfoGenie can create counter-campaigns`;
+      const msg = topCampaign
+        ? `"${topCampaign.name}" — achieving ${topCampaign.ctr} CTR on ${topCampaign.channel}`
+        : `"${c.name}'s top-performing campaign" — high CTR across primary channels`;
+      return {
+        comp: c.name,
+        message: msg,
+        channel: topCampaign?.channel || channels[i % 3],
+        lossRate: lossRates[i % 3],
+        weakness: topSuggestion.substring(0, 160)
+      };
+    });
+  } else {
+    displayWinLoss = intel.winLoss;
+  }
+
   // ── Signal type helpers ──
   function signalLabel(type) {
     if (type === 'dark_period') return '<span class="signal-type-badge sig-dark">📉 Dark Period Detected</span>';
@@ -2024,10 +2135,10 @@ function buildIntelligence() {
     return '<span class="signal-type-badge sig-new">Signal</span>';
   }
 
-  // ── SOV chart (built after render) ──
-  const sovLabels  = intel.shareOfVoice.map(s => s.name);
-  const sovData    = intel.shareOfVoice.map(s => s.share);
-  const sovColors  = intel.shareOfVoice.map(s => s.color);
+  // ── SOV chart data ──
+  const sovLabels = displaySov.map(s => s.name);
+  const sovData   = displaySov.map(s => s.share);
+  const sovColors = displaySov.map(s => s.color);
 
   // ── Keyword gap rows ──
   const kwRows = intel.keywordGaps.map(k => `
@@ -2048,7 +2159,7 @@ function buildIntelligence() {
   `).join('');
 
   // ── Signal cards ──
-  const signalCards = intel.signals.map(s => `
+  const signalCards = displaySignals.map(s => `
     <div class="signal-card${s.attackOpen ? ' attack-open' : ''}">
       <div class="signal-logo" style="background:${s.severity==='high'?'#991B1B':s.severity==='medium'?'#1E3A5F':'#1F2A3C'}">${s.logo}</div>
       <div class="signal-body">
@@ -2069,7 +2180,7 @@ function buildIntelligence() {
   `).join('');
 
   // ── Prediction cards ──
-  const predCards = intel.predictions.map(p => `
+  const predCards = displayPredictions.map(p => `
     <div class="prediction-card">
       <div class="pred-logo">${p.logo}</div>
       <div class="pred-body">
@@ -2106,21 +2217,21 @@ function buildIntelligence() {
   `).join('');
 
   // ── Win/Loss cards ──
-  const wlCards = intel.winLoss.map(w => `
+  const wlCards = displayWinLoss.map(w => `
     <div class="winloss-card">
       <div class="wl-top">
         <span class="wl-comp">${w.comp}</span>
         <span class="wl-channel">${w.channel}</span>
         <span class="wl-loss-rate">Lost ${w.lossRate} of deals</span>
       </div>
-      <div class="wl-message">"${w.message}"</div>
+      <div class="wl-message">${w.message}</div>
       <div class="wl-weakness">💡 <strong>Exploitable Weakness:</strong> ${w.weakness}</div>
       <button class="btn-wl-counter" onclick="showToast('🎯 Counter-campaign against ${w.comp.replace(/'/g,'')} queued — launching creative generation')">Counter This Message</button>
     </div>
   `).join('');
 
   // ── Open attack windows ──
-  const openWindows = intel.signals.filter(s => s.attackOpen).length;
+  const openWindows = displaySignals.filter(s => s.attackOpen).length;
 
   // ── Full HTML ──
   wrap.innerHTML = `
@@ -2263,7 +2374,72 @@ function buildIntelligence() {
 }
 
 function exportIntelligenceReport() {
-  showToast('📥 Generating Intelligence Report PDF — download will begin shortly...');
+  const industryKey = analysisData ? analysisData.industryKey : 'marketing';
+  const intel = INTELLIGENCE_DB[industryKey] || INTELLIGENCE_DB['marketing'];
+  const domain = analysisData ? analysisData.url : 'demo.com';
+  const industry = analysisData ? analysisData.industry.name : 'Marketing & Analytics';
+  const date = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
+  const realComps = analysisData ? analysisData.competitors : [];
+
+  const lines = [
+    '================================================================',
+    '  INFOGENIE — COMPETITIVE INTELLIGENCE REPORT',
+    '================================================================',
+    `  Domain: ${domain}`,
+    `  Industry: ${industry}`,
+    `  Generated: ${date}`,
+    `  Category Domination Score: ${intel.categoryScore}/100`,
+    '================================================================',
+    '',
+    '1. KEYWORD GAP OPPORTUNITIES',
+    '-----------------------------',
+    ...intel.keywordGaps.map((k,i) =>
+      `  ${i+1}. ${k.keyword}\n     Monthly Volume: ${k.volume}  |  Top Competitor: ${k.topComp}  |  Their CTR: ${k.compCtr}\n     Your Rank: ${k.yourRank}  |  Difficulty: ${k.difficulty}  |  Gap Score: ${k.score}/100  |  CPC: ${k.cpc}`
+    ),
+    '',
+    '2. SHARE OF VOICE',
+    '-----------------',
+    ...intel.shareOfVoice.map(s => `  ${s.name}: ${s.share}% ${s.trend || ''}`),
+    '',
+    '3. COMPETITOR SIGNALS DETECTED',
+    '-------------------------------',
+    ...(realComps.length > 0 ? realComps.slice(0,4) : intel.signals).map((c, i) => {
+      const sigTypes = ['Dark Period Detected','New Campaign Launched','Budget Surge','Price Change'];
+      const name = c.name || c.comp;
+      return `  [${sigTypes[i % 4]}] ${name}\n     Recommended Action: Attack their vacated keywords and target price-dissatisfied customers`;
+    }),
+    '',
+    '4. AI PREDICTIVE INTELLIGENCE',
+    '------------------------------',
+    ...intel.predictions.map((p,i) =>
+      `  ${i+1}. ${p.comp} — ${p.timeframe} warning\n     Confidence: ${p.confidence}%\n     ${p.prediction.substring(0,200)}...\n     Recommended: ${p.action}`
+    ),
+    '',
+    '5. 90-DAY DOMINATION ROADMAP',
+    '-----------------------------',
+    ...intel.roadmap.map(r =>
+      `  [${r.week.toUpperCase()}] ${r.title}\n     ${r.desc.substring(0,200)}`
+    ),
+    '',
+    '6. WIN/LOSS INTELLIGENCE',
+    '-------------------------',
+    ...intel.winLoss.map(w =>
+      `  Competitor: ${w.comp} (${w.channel})\n  Their Winning Message: ${w.message}\n  Loss Rate: ${w.lossRate} of deals\n  Exploitable Weakness: ${w.weakness}`
+    ),
+    '',
+    '================================================================',
+    '  InfoGenie AI Platform — infogenie.io',
+    '  This report is AI-generated competitive intelligence.',
+    '================================================================'
+  ].join('\n');
+
+  const blob = new Blob([lines], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `InfoGenie_Intelligence_Report_${domain.replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('📥 Intelligence Report downloaded successfully');
 }
 
 // ===================================================
@@ -3028,6 +3204,13 @@ function closeDocsModal() {
   document.body.style.overflow = '';
 }
 
+function closePlanModal() {
+  const modal = document.getElementById('planModal');
+  modal.classList.add('hidden');
+  modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
 function switchSettingsTab(key) {
   document.querySelectorAll('.stab').forEach(t => t.classList.toggle('active', t.dataset.tab === key));
   document.querySelectorAll('.integ-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + key));
@@ -3216,6 +3399,20 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => buildCreative(), 1500);
   });
   
+  // Pro Plan badge — open upgrade modal
+  document.getElementById('navPlanBadge').style.cursor = 'pointer';
+  document.getElementById('navPlanBadge').addEventListener('click', () => {
+    const modal = document.getElementById('planModal');
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  });
+
+  // Plan modal — close on backdrop click
+  document.getElementById('planModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('planModal')) closePlanModal();
+  });
+
   // Docs modal — close on backdrop click
   document.getElementById('docsModal').addEventListener('click', e => {
     if (e.target === document.getElementById('docsModal')) closeDocsModal();
