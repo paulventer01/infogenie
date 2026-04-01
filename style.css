@@ -2955,3 +2955,83 @@ body {
 .excl-feat-title { font-size: 0.775rem; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
 .excl-feat-desc { font-size: 0.7rem; color: var(--gray-600); line-height: 1.5; }
 @media (max-width: 480px) { .exclusive-features-grid { grid-template-columns: 1fr; } }
+
+/* ===================================================
+   DIFFERENTIATOR CAMPAIGN MODAL
+   =================================================== */
+.differentiator-modal-box { max-width: 620px !important; padding: 0 !important; overflow: hidden; }
+.diff-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.diff-modal-logo {
+  width: 44px; height: 44px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--navy), #1E3A5F);
+  color: white;
+  font-size: 1rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.diff-modal-title { font-family: 'Sora', sans-serif; font-size: 1rem; font-weight: 800; color: var(--navy); }
+.diff-modal-sub { font-size: 0.8rem; color: var(--gray-400); margin-top: 2px; }
+.diff-roi-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 18px 24px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(0,201,200,.07), rgba(0,102,255,.06));
+  border: 1.5px solid rgba(0,201,200,.25);
+  border-radius: 12px;
+}
+.diff-roi-icon { font-size: 1.5rem; flex-shrink: 0; }
+.diff-roi-headline { font-size: 0.9375rem; font-weight: 800; color: var(--navy); margin-bottom: 3px; }
+.diff-roi-desc { font-size: 0.78rem; color: var(--gray-600); line-height: 1.5; }
+.diff-camps-list { display: flex; flex-direction: column; gap: 10px; padding: 0 24px; }
+.diff-camp-card {
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.diff-camp-card:hover { border-color: rgba(0,201,200,.35); box-shadow: 0 2px 12px rgba(0,201,200,.08); }
+.diff-camp-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.diff-camp-name { font-size: 0.825rem; font-weight: 800; color: var(--navy); }
+.diff-camp-angle { font-size: 0.775rem; color: var(--gray-600); line-height: 1.5; margin-bottom: 10px; }
+.diff-camp-metrics { display: flex; gap: 16px; margin-bottom: 12px; }
+.diff-metric { text-align: center; }
+.diff-metric-val { font-size: 0.9rem; font-weight: 800; color: var(--navy); }
+.diff-metric-lbl { font-size: 0.65rem; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 1px; }
+.btn-diff-launch {
+  width: 100%;
+  padding: 9px 14px;
+  background: linear-gradient(135deg, var(--teal), var(--blue));
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: opacity 0.2s;
+}
+.btn-diff-launch:hover { opacity: 0.88; }
+.diff-footer-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 16px 24px 24px;
+  padding: 12px 14px;
+  background: var(--gray-50);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  color: var(--gray-600);
+  line-height: 1.5;
+}

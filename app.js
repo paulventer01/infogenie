@@ -492,9 +492,14 @@ function buildCompCard(c) {
             </div>
           </div>
         </div>
-        <div style="margin-top:16px; padding:14px 16px; background:rgba(0,201,200,.04); border:1px solid rgba(0,201,200,.2); border-radius:10px;">
-          <span style="font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--teal);">InfoGenie ROI Opportunity: </span>
-          <span style="font-size:.875rem; color:var(--gray-700);">${c.estimatedROI}</span>
+        <div onclick="openDifferentiatorModal('${c.name.replace(/'/g,'')}')" style="margin-top:16px; padding:14px 16px; background:rgba(0,201,200,.04); border:1px solid rgba(0,201,200,.2); border-radius:10px; cursor:pointer; transition:background 0.2s, border-color 0.2s" onmouseover="this.style.background='rgba(0,201,200,.1)'; this.style.borderColor='rgba(0,201,200,.4)'" onmouseout="this.style.background='rgba(0,201,200,.04)'; this.style.borderColor='rgba(0,201,200,.2)'">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px">
+            <div>
+              <span style="font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--teal);">InfoGenie ROI Opportunity: </span>
+              <span style="font-size:.875rem; color:var(--gray-700);">${c.estimatedROI}</span>
+            </div>
+            <span style="font-size:.75rem; font-weight:700; color:var(--teal); white-space:nowrap; background:rgba(0,201,200,.12); padding:4px 10px; border-radius:20px; border:1px solid rgba(0,201,200,.3)">View Plan →</span>
+          </div>
         </div>
       </div>
     </div>
@@ -3221,6 +3226,93 @@ function closePlanModal() {
   document.body.style.overflow = '';
 }
 
+function openDifferentiatorModal(compName) {
+  const c = analysisData && analysisData.competitors.find(x => x.name === compName);
+  if (!c) return;
+
+  const platforms = ['Google Search', 'Meta Ads', 'YouTube', 'LinkedIn Ads', 'Display Network'];
+  const compROAS = c.roas || 4.5;
+  const roiMatch = (c.estimatedROI || '').match(/\+[\d]+%/);
+  const roiPct = roiMatch ? roiMatch[0] : '+35%';
+
+  const diffCampaigns = (c.suggestions || []).slice(0, 3).map((sug, i) => {
+    const plat = platforms[i % platforms.length];
+    const estROAS = (compROAS * (1.1 + i * 0.07)).toFixed(1);
+    const estCTR = (parseFloat(c.ctr || '3.5') * (1.08 + i * 0.05)).toFixed(1) + '%';
+    const estCPA = '$' + Math.round(45 - i * 7);
+    const budgets = ['$5,000/mo', '$8,000/mo', '$4,000/mo'];
+
+    let angle = sug;
+    let campName = `Differentiator ${String.fromCharCode(65+i)}: `;
+    if (sug.toLowerCase().includes('audience') || sug.toLowerCase().includes('segment')) {
+      campName += 'Audience Capture';
+    } else if (sug.toLowerCase().includes('video') || sug.toLowerCase().includes('creative')) {
+      campName += 'Creative Domination';
+    } else if (sug.toLowerCase().includes('local') || sug.toLowerCase().includes('uk') || sug.toLowerCase().includes('market')) {
+      campName += 'Market Takeover';
+    } else if (sug.toLowerCase().includes('price') || sug.toLowerCase().includes('pricing')) {
+      campName += 'Price Positioning';
+    } else {
+      campName += 'Message Differentiation';
+    }
+
+    return { name: campName, platform: plat, angle, estROAS, estCTR, estCPA, budget: budgets[i] };
+  });
+
+  const modal = document.getElementById('differentiatorModal');
+  document.getElementById('differentiatorModalInner').innerHTML = `
+    <div class="diff-modal-header">
+      <div class="diff-modal-logo">${c.logo}</div>
+      <div>
+        <div class="diff-modal-title">Differentiator Campaign Plan</div>
+        <div class="diff-modal-sub">vs. <strong>${c.name}</strong> · ${c.url}</div>
+      </div>
+    </div>
+
+    <div class="diff-roi-banner">
+      <div class="diff-roi-icon">📈</div>
+      <div>
+        <div class="diff-roi-headline">${roiPct} ROAS Improvement Potential</div>
+        <div class="diff-roi-desc">InfoGenie identified ${diffCampaigns.length} direct differentiation angles where you can outperform ${c.name} based on their campaign gaps and audience blind spots.</div>
+      </div>
+    </div>
+
+    <div class="diff-camps-list">
+      ${diffCampaigns.map((dc, i) => `
+        <div class="diff-camp-card">
+          <div class="diff-camp-top">
+            <div class="diff-camp-name">${dc.name}</div>
+            <span class="camp-type-badge badge-google">${dc.platform}</span>
+          </div>
+          <div class="diff-camp-angle">${dc.angle}</div>
+          <div class="diff-camp-metrics">
+            <div class="diff-metric"><div class="diff-metric-val">${dc.estCTR}</div><div class="diff-metric-lbl">Est. CTR</div></div>
+            <div class="diff-metric"><div class="diff-metric-val">${dc.estROAS}×</div><div class="diff-metric-lbl">Est. ROAS</div></div>
+            <div class="diff-metric"><div class="diff-metric-val">${dc.estCPA}</div><div class="diff-metric-lbl">Est. CPA</div></div>
+            <div class="diff-metric"><div class="diff-metric-val">${dc.budget}</div><div class="diff-metric-lbl">Min. Budget</div></div>
+          </div>
+          <button class="btn-diff-launch" onclick="closeDifferentiatorModal(); openCampModal('${dc.name.replace(/'/g,'')}','${dc.platform}','${dc.budget}',0)">🚀 Launch This Campaign</button>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="diff-footer-note">
+      <span>💡</span> These campaigns are ranked by projected impact against ${c.name}'s current weaknesses. Activate all three for maximum category domination.
+    </div>
+  `;
+
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDifferentiatorModal() {
+  const modal = document.getElementById('differentiatorModal');
+  modal.classList.add('hidden');
+  modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
 function openAttackModal(action, competitor, type) {
   const steps = {
     keyword: [
@@ -3509,6 +3601,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Plan modal — close on backdrop click
   document.getElementById('planModal').addEventListener('click', e => {
     if (e.target === document.getElementById('planModal')) closePlanModal();
+  });
+
+  // Differentiator modal — close on backdrop click
+  document.getElementById('differentiatorModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('differentiatorModal')) closeDifferentiatorModal();
   });
 
   // Attack modal — close on backdrop click
