@@ -1750,7 +1750,7 @@ function buildSettings() {
           <span style="color:var(--gold);">⚡</span>&nbsp;Tip: Connect at least <strong>one Ad Platform</strong> + <strong>one AI Model</strong> to enable full autonomous operation
         </div>
         <div class="isb-cta">
-          <button class="btn-primary" onclick="showToast('📖 Integration guide opened — check documentation at docs.infogenie.ai')">📖 Full Docs</button>
+          <button class="btn-primary" onclick="showDocsModal()">📖 Full Docs</button>
         </div>
       </div>
 
@@ -1919,6 +1919,280 @@ function buildIntegCard(item) {
       </div>
     </div>
   `;
+}
+
+// ===================================================
+// DOCS MODAL
+// ===================================================
+function showDocsModal() {
+  const modal = document.getElementById('docsModal');
+  const inner = document.getElementById('docsModalInner');
+
+  inner.innerHTML = `
+    <div class="docs-header">
+      <div class="docs-header-title">📖 InfoGenie Integration Documentation</div>
+      <div class="docs-header-sub">Everything you need to connect InfoGenie to your ad platforms, analytics tools, AI models, and communication channels — and start running autonomous campaigns.</div>
+      <div class="docs-header-badges">
+        <span class="docs-badge green">● Platform Online</span>
+        <span class="docs-badge">v2.4.1</span>
+        <span class="docs-badge">33 Integrations Available</span>
+        <span class="docs-badge">REST API + OAuth 2.0</span>
+      </div>
+    </div>
+
+    <div class="docs-body">
+
+      <!-- QUICK START -->
+      <div>
+        <div class="docs-section-title">🚀 Quick Start — Get live in 15 minutes</div>
+        <div class="docs-steps">
+          <div class="docs-step">
+            <div class="docs-step-num">1</div>
+            <div class="docs-step-content">
+              <div class="docs-step-title">Run your first analysis</div>
+              <div class="docs-step-desc">Enter any competitor or your own website URL on the Home page and click <strong>Analyse Now</strong>. InfoGenie detects your industry and maps the competitive landscape automatically — no setup required.</div>
+            </div>
+          </div>
+          <div class="docs-step">
+            <div class="docs-step-num">2</div>
+            <div class="docs-step-content">
+              <div class="docs-step-title">Connect at least one Ad Platform</div>
+              <div class="docs-step-desc">Go to <strong>Settings → Ad Platforms</strong> and connect Google Ads or Meta Ads via OAuth. This enables InfoGenie to autonomously deploy, pause, and optimise campaigns on your behalf. OAuth takes under 60 seconds.</div>
+            </div>
+          </div>
+          <div class="docs-step">
+            <div class="docs-step-num">3</div>
+            <div class="docs-step-content">
+              <div class="docs-step-title">Connect an AI Model</div>
+              <div class="docs-step-desc">Go to <strong>Settings → AI Models</strong> and paste your OpenAI API key (starts with <code>sk-proj-</code>). This powers ad copy generation, strategic analysis, and creative recommendations. OpenAI GPT-4o is recommended for best results.</div>
+            </div>
+          </div>
+          <div class="docs-step">
+            <div class="docs-step-num">4</div>
+            <div class="docs-step-content">
+              <div class="docs-step-title">Add an Intelligence API (optional but powerful)</div>
+              <div class="docs-step-desc">Connect Semrush or SimilarWeb under <strong>Settings → Intelligence APIs</strong> to enrich competitor data with real keyword rankings, traffic estimates, and ad spend data. Semrush Business plan or above required for API access.</div>
+            </div>
+          </div>
+          <div class="docs-step">
+            <div class="docs-step-num">5</div>
+            <div class="docs-step-content">
+              <div class="docs-step-title">Launch your first autonomous campaign</div>
+              <div class="docs-step-desc">Navigate to <strong>Campaigns</strong>, choose a recommended campaign, and click <strong>Launch Campaign</strong>. InfoGenie will configure targeting, creative, bidding, and budget automatically based on competitor intelligence — then monitor and optimise 24/7.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- INTEGRATION CATEGORIES -->
+      <div>
+        <div class="docs-section-title">🔌 Integration Categories</div>
+        <div class="docs-integ-grid">
+          <div class="docs-integ-tile" onclick="closeDocsModal(); switchSettingsTab('platforms')">
+            <div class="dit-header">
+              <span class="dit-icon">🚀</span>
+              <span class="dit-name">Ad Platforms</span>
+              <span class="dit-count">7</span>
+            </div>
+            <div class="dit-desc">Google Ads, Meta, TikTok, LinkedIn, X, Pinterest, Amazon — deploy campaigns autonomously across all major platforms.</div>
+          </div>
+          <div class="docs-integ-tile" onclick="closeDocsModal(); switchSettingsTab('intelligence')">
+            <div class="dit-header">
+              <span class="dit-icon">🔍</span>
+              <span class="dit-name">Intelligence APIs</span>
+              <span class="dit-count">6</span>
+            </div>
+            <div class="dit-desc">Semrush, SimilarWeb, Ahrefs, BuiltWith, SpyFu, Moz — power competitor analysis with real traffic and keyword data.</div>
+          </div>
+          <div class="docs-integ-tile" onclick="closeDocsModal(); switchSettingsTab('ai')">
+            <div class="dit-header">
+              <span class="dit-icon">🤖</span>
+              <span class="dit-name">AI Models</span>
+              <span class="dit-count">6</span>
+            </div>
+            <div class="dit-desc">OpenAI, Claude, Gemini, Stability AI, Mistral, ElevenLabs — drive ad copy, creative generation, and strategic reasoning.</div>
+          </div>
+          <div class="docs-integ-tile" onclick="closeDocsModal(); switchSettingsTab('crm')">
+            <div class="dit-header">
+              <span class="dit-icon">🔗</span>
+              <span class="dit-name">CRM & Automation</span>
+              <span class="dit-count">7</span>
+            </div>
+            <div class="dit-desc">HubSpot, Salesforce, Pipedrive, Klaviyo, Marketo, Zapier, Make — route leads and automate workflows from campaigns.</div>
+          </div>
+          <div class="docs-integ-tile" onclick="closeDocsModal(); switchSettingsTab('analytics')">
+            <div class="dit-header">
+              <span class="dit-icon">📈</span>
+              <span class="dit-name">Analytics & Data</span>
+              <span class="dit-count">7</span>
+            </div>
+            <div class="dit-desc">GA4, Search Console, Adobe Analytics, Mixpanel, Segment, Hotjar, Amplitude — feed real performance data into InfoGenie.</div>
+          </div>
+          <div class="docs-integ-tile" onclick="closeDocsModal(); switchSettingsTab('communication')">
+            <div class="dit-header">
+              <span class="dit-icon">💬</span>
+              <span class="dit-name">Communication</span>
+              <span class="dit-count">6</span>
+            </div>
+            <div class="dit-desc">Slack, WhatsApp, Telegram, SendGrid, Microsoft Teams, Intercom — receive alerts and route leads via your preferred channels.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUTH METHODS -->
+      <div>
+        <div class="docs-section-title">🔐 Authentication Methods</div>
+        <table class="docs-table">
+          <thead>
+            <tr>
+              <th>Method</th>
+              <th>How it works</th>
+              <th>Used by</th>
+              <th>Security</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="dt-badge dt-oauth">OAuth 2.0</span></td>
+              <td>One-click connect — InfoGenie requests permissions and securely stores refresh tokens. You never share passwords.</td>
+              <td>Google Ads, Meta, LinkedIn, Pinterest, HubSpot, Salesforce, Slack, GA4, GSC</td>
+              <td>Industry standard. Revoke access anytime from the platform's security settings.</td>
+            </tr>
+            <tr>
+              <td><span class="dt-badge dt-apikey">API Key</span></td>
+              <td>Generate a key in the platform's developer console and paste it here. InfoGenie stores it encrypted using AES-256.</td>
+              <td>OpenAI, Semrush, Ahrefs, TikTok, Klaviyo, SendGrid, Slack webhook, Hotjar, and more</td>
+              <td>Keys are stored encrypted. Never share keys with third parties. Rotate keys periodically.</td>
+            </tr>
+            <tr>
+              <td><span class="dt-badge dt-webhook">Webhook URL</span></td>
+              <td>InfoGenie sends event payloads to a URL you provide. Used for one-way notification delivery.</td>
+              <td>Slack, Microsoft Teams, Zapier, Make</td>
+              <td>Webhook URLs are unique per connection. Rotate by generating a new webhook in the platform.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- PLANS -->
+      <div>
+        <div class="docs-section-title">💎 Plan & Integration Limits</div>
+        <div class="docs-plan-grid">
+          <div class="docs-plan-card">
+            <div class="dpc-header">
+              <div class="dpc-name">Starter</div>
+              <div class="dpc-price">$99/mo</div>
+            </div>
+            <div class="dpc-body">
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>2 ad platforms</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>1 AI model</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>1 intelligence API</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>1 communication channel</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>5 competitor analyses/mo</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>Basic AI campaigns</div>
+            </div>
+          </div>
+          <div class="docs-plan-card featured">
+            <div class="dpc-header">
+              <div class="dpc-name">Professional</div>
+              <div class="dpc-price">$399/mo</div>
+            </div>
+            <div class="dpc-body">
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>All ad platforms</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>3 AI models</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>3 intelligence APIs</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>All communication channels</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>Unlimited analyses</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>Autonomous optimisation</div>
+            </div>
+          </div>
+          <div class="docs-plan-card">
+            <div class="dpc-header">
+              <div class="dpc-name">Agency</div>
+              <div class="dpc-price">$999/mo</div>
+            </div>
+            <div class="dpc-body">
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>Everything in Pro</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>All 33 integrations</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>CRM + Analytics sync</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>Up to 25 client accounts</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>White-label reports</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>Priority support</div>
+            </div>
+          </div>
+          <div class="docs-plan-card">
+            <div class="dpc-header">
+              <div class="dpc-name">Enterprise</div>
+              <div class="dpc-price">Custom</div>
+            </div>
+            <div class="dpc-body">
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>Everything in Agency</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>Custom AI model training</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>Dedicated infrastructure</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>Unlimited client accounts</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>SLA guarantee</div>
+              <div class="dpc-feat"><span class="dpc-feat-check">✓</span>Custom integrations</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUPPORT -->
+      <div>
+        <div class="docs-section-title">🛟 Support & Resources</div>
+        <div class="docs-support-grid">
+          <div class="docs-support-card" onclick="showToast('📚 Opening API Reference at docs.infogenie.ai/api...')">
+            <div class="dsc-icon">📚</div>
+            <div class="dsc-title">API Reference</div>
+            <div class="dsc-desc">Full REST API docs, endpoint specs, rate limits, and code examples in Python, JS, and cURL.</div>
+          </div>
+          <div class="docs-support-card" onclick="showToast('🎥 Opening video tutorials at learn.infogenie.ai...')">
+            <div class="dsc-icon">🎥</div>
+            <div class="dsc-title">Video Tutorials</div>
+            <div class="dsc-desc">Step-by-step video walkthroughs for every integration and core InfoGenie workflow.</div>
+          </div>
+          <div class="docs-support-card" onclick="showToast('💬 Opening live chat support...')">
+            <div class="dsc-icon">💬</div>
+            <div class="dsc-title">Live Chat Support</div>
+            <div class="dsc-desc">Chat with our integration engineers Mon–Fri 9am–6pm GMT. Response under 2 minutes on Pro+ plans.</div>
+          </div>
+          <div class="docs-support-card" onclick="showToast('🐛 Opening issue tracker at github.com/infogenie...')">
+            <div class="dsc-icon">🐛</div>
+            <div class="dsc-title">Bug Reports</div>
+            <div class="dsc-desc">Report integration issues on our public GitHub. P1 bugs fixed within 24 hours on Enterprise plans.</div>
+          </div>
+          <div class="docs-support-card" onclick="showToast('🗺️ Opening public roadmap at roadmap.infogenie.ai...')">
+            <div class="dsc-icon">🗺️</div>
+            <div class="dsc-title">Product Roadmap</div>
+            <div class="dsc-desc">Vote on upcoming integrations and features. Snapchat Ads, Reddit Ads, and BigQuery coming Q2 2026.</div>
+          </div>
+          <div class="docs-support-card" onclick="showToast('📧 Opening community at community.infogenie.ai...')">
+            <div class="dsc-icon">🌐</div>
+            <div class="dsc-title">Community Forum</div>
+            <div class="dsc-desc">Connect with 8,000+ InfoGenie users, share integration configs, and get peer advice.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECURITY NOTE -->
+      <div style="background:var(--gray-50); border:1px solid var(--border); border-radius:10px; padding:16px 20px; display:flex; gap:12px; align-items:flex-start;">
+        <span style="font-size:1.25rem; flex-shrink:0;">🔒</span>
+        <div>
+          <div style="font-size:0.875rem; font-weight:700; color:var(--navy); margin-bottom:4px;">Security & Data Handling</div>
+          <div style="font-size:0.8125rem; color:var(--gray-500); line-height:1.6;">All API keys and OAuth tokens are encrypted at rest using AES-256 and in transit using TLS 1.3. InfoGenie never stores raw credentials in plaintext. You can revoke all integration access at any time from this settings page. InfoGenie is SOC 2 Type II compliant and GDPR-ready. Your competitor analysis data is never shared with third parties or used to train our AI models.</div>
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  modal.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDocsModal() {
+  document.getElementById('docsModal').classList.add('hidden');
+  document.body.style.overflow = '';
 }
 
 function switchSettingsTab(key) {
@@ -2105,7 +2379,11 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => buildCreative(), 1500);
   });
   
-  // Modal actions
+  // Docs modal — close on backdrop click
+  document.getElementById('docsModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('docsModal')) closeDocsModal();
+  });
+
   document.getElementById('modalClose').addEventListener('click', closeModal);
   document.getElementById('modalCancel').addEventListener('click', closeModal);
   document.getElementById('modalConfirm').addEventListener('click', () => {
