@@ -30,6 +30,10 @@ function navigateTo(viewId, updateActive = true) {
       l.classList.toggle('active', l.dataset.view === viewId);
     });
   }
+  // Build settings on demand so the page is always populated when navigated to
+  if (viewId === 'settings') {
+    try { buildSettings(); } catch(e) { console.warn('buildSettings error:', e); }
+  }
   // Show/hide navbar links for home vs app
   const navLinks = document.getElementById('navLinks');
   const navPlan = document.getElementById('navPlanBadge');
@@ -2994,6 +2998,11 @@ function showDocsModal() {
   const modal = document.getElementById('docsModal');
   const inner = document.getElementById('docsModalInner');
 
+  // Show modal immediately — content build happens after, so a template error never hides the modal
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+
+  try {
   inner.innerHTML = `
     <div class="docs-header">
       <div class="docs-header-title">📖 InfoGenie Integration Documentation</div>
@@ -3270,9 +3279,13 @@ function showDocsModal() {
 
     </div>
   `;
-
-  modal.classList.remove('hidden');
-  modal.style.display = 'flex';
+  } catch(err) {
+    inner.innerHTML = `<div style="padding:40px 24px;text-align:center;color:#6B7280;font-size:.9rem">
+      <div style="font-size:2rem;margin-bottom:12px">📖</div>
+      <div style="font-weight:700;color:#0A1628;margin-bottom:8px">Integration Docs</div>
+      <p>Go to <strong>Settings → any integration card → View Docs</strong> to view full setup instructions and API reference for each service.</p>
+    </div>`;
+  }
 }
 
 function closeDocsModal() {
@@ -3288,8 +3301,22 @@ function closePlanModal() {
 }
 
 function openDifferentiatorModal(compName) {
-  const c = analysisData && analysisData.competitors.find(x => x.name === compName);
-  if (!c) return;
+  // Always show the modal first so a data-lookup failure never silently swallows the click
+  const modal = document.getElementById('differentiatorModal');
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+
+  const c = analysisData && analysisData.competitors && analysisData.competitors.find(x => x.name === compName);
+  if (!c) {
+    document.getElementById('differentiatorModalInner').innerHTML = `
+      <div style="padding:40px;text-align:center">
+        <div style="font-size:2.5rem;margin-bottom:16px">🎯</div>
+        <div style="font-size:1.1rem;font-weight:800;color:#0A1628;margin-bottom:8px">Run Analysis First</div>
+        <div style="font-size:0.875rem;color:#6B7280;margin-bottom:24px;max-width:340px;margin-left:auto;margin-right:auto">Enter your website URL on the Home page and click Analyse Now to generate a personalised differentiator campaign plan against <strong>${compName || 'this competitor'}</strong>.</div>
+        <button class="btn-primary" onclick="closeDifferentiatorModal(); navigateTo('home')" style="margin:0 auto">Run Analysis →</button>
+      </div>`;
+    return;
+  }
 
   const platforms = ['Google Search', 'Meta Ads', 'YouTube', 'LinkedIn Ads', 'Display Network'];
   const compROAS = c.roas || 4.5;
@@ -3320,7 +3347,6 @@ function openDifferentiatorModal(compName) {
     return { name: campName, platform: plat, angle, estROAS, estCTR, estCPA, budget: budgets[i] };
   });
 
-  const modal = document.getElementById('differentiatorModal');
   document.getElementById('differentiatorModalInner').innerHTML = `
     <div class="diff-modal-header">
       <div class="diff-modal-logo">${c.logo}</div>
@@ -3487,7 +3513,7 @@ function connectCard(id, name) {
   status.className = 'integ-conn-status ics-live';
   status.innerHTML = '<span>●</span> Connected';
   card.classList.add('connected');
-  localStorage.setItem('ig_integ_' + id, '1');
+  try { localStorage.setItem('ig_integ_' + id, '1'); } catch(e) {}
   updateConnectedCount(1);
   _updateLiveDataBadges();
   const liveMsg = (id === 'semrush')
@@ -3521,7 +3547,7 @@ function updateConnectedCount(delta) {
 }
 
 function _isConnected(id) {
-  return localStorage.getItem('ig_integ_' + id) === '1';
+  try { return localStorage.getItem('ig_integ_' + id) === '1'; } catch(e) { return false; }
 }
 
 function restoreConnectedStates() {
@@ -3690,13 +3716,13 @@ document.addEventListener('DOMContentLoaded', () => {
     navigateTo('competitors');
   });
 
-  // ROI Opportunity "View Plan" buttons — event delegation on the competitors wrap
-  document.getElementById('competitorCardsWrap').addEventListener('click', e => {
+  // ROI Opportunity "View Plan" buttons — document-level delegation (works regardless of DOM structure)
+  document.addEventListener('click', e => {
     const btn = e.target.closest('.btn-view-plan');
-    if (btn) {
-      const compName = btn.dataset.comp;
-      if (compName) openDifferentiatorModal(compName);
-    }
+    if (!btn) return;
+    const compName = btn.dataset.comp;
+    if (!compName) { showToast('⚠️ Could not identify competitor — please re-run analysis'); return; }
+    openDifferentiatorModal(compName);
   });
   
   // Launch campaign button (header)
