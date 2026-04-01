@@ -503,8 +503,18 @@ function buildCompCard(c) {
 
 // ===== BUILD CAMPAIGNS =====
 function buildCampaigns() {
-  const { url, industry, websiteKPIs, competitors } = analysisData;
   const wrap = document.getElementById('campaignsWrap');
+  if (!analysisData) {
+    wrap.innerHTML = `
+      <div style="text-align:center; padding:60px 24px">
+        <div style="font-size:3rem; margin-bottom:16px">🎯</div>
+        <h3 style="font-family:'Sora',sans-serif; font-size:1.25rem; font-weight:800; color:#0A1628; margin-bottom:8px">Run an Analysis to See Campaign Recommendations</h3>
+        <p style="color:#6B7280; font-size:0.9rem; margin-bottom:24px; max-width:420px; margin-left:auto; margin-right:auto">Enter your website URL on the home page and click Analyse Now — InfoGenie will generate AI-powered campaign strategies based on your specific competitors.</p>
+        <button class="btn-primary" onclick="navigateTo('home')" style="margin:0 auto">← Run Analysis</button>
+      </div>`;
+    return;
+  }
+  const { url, industry, websiteKPIs, competitors } = analysisData;
   
   const topComp = competitors[0];
   const avgROAS = avg(competitors.map(c => c.roas));
@@ -2154,7 +2164,7 @@ function buildIntelligence() {
         <span class="kwgap-score-num">${k.score}</span>
       </td>
       <td>${k.cpc}</td>
-      <td><button class="btn-kwgap-attack" onclick="showToast('🎯 Launching attack campaign for: ${k.keyword.replace(/'/g, '')}')">⚡ Attack</button></td>
+      <td><button class="btn-kwgap-attack" onclick="openAttackModal('${k.keyword.replace(/'/g,'')}','${k.topComp.replace(/'/g,'')}','keyword')">⚡ Attack</button></td>
     </tr>
   `).join('');
 
@@ -2171,8 +2181,8 @@ function buildIntelligence() {
         <div class="signal-msg">${s.message}</div>
         <div class="signal-actions">
           ${s.attackOpen
-            ? `<button class="btn-signal-attack" onclick="showToast('⚡ Launching counter-strategy: ${s.action.replace(/'/g,'')}')">${s.action}</button>`
-            : `<button class="btn-signal-counter" onclick="showToast('📋 Counter-strategy queued: ${s.action.replace(/'/g,'')}')">${s.action}</button>`
+            ? `<button class="btn-signal-attack" onclick="openAttackModal('${s.action.replace(/'/g,'')}','${s.comp.replace(/'/g,'')}','attack')">${s.action}</button>`
+            : `<button class="btn-signal-counter" onclick="openAttackModal('${s.action.replace(/'/g,'')}','${s.comp.replace(/'/g,'')}','counter')">${s.action}</button>`
           }
         </div>
       </div>
@@ -2262,7 +2272,7 @@ function buildIntelligence() {
       <div class="intel-section-head">
         <div class="intel-section-title">📊 Share of Voice Analysis</div>
         <div class="intel-section-badge">Live Estimate</div>
-        <div class="intel-exclusive-badge">⚡ InfoGenie Exclusive</div>
+        <div class="intel-exclusive-badge" onclick="openExclusiveModal()" style="cursor:pointer">⚡ InfoGenie Exclusive</div>
       </div>
       <div class="sov-wrap">
         <div class="sov-legend">
@@ -2284,7 +2294,7 @@ function buildIntelligence() {
       <div class="intel-section-head">
         <div class="intel-section-title">🔑 Keyword Gap Intelligence</div>
         <div class="intel-section-badge">${intel.keywordGaps.length} Opportunities Found</div>
-        <div class="intel-exclusive-badge">⚡ InfoGenie Exclusive</div>
+        <div class="intel-exclusive-badge" onclick="openExclusiveModal()" style="cursor:pointer">⚡ InfoGenie Exclusive</div>
       </div>
       <div style="overflow-x:auto">
         <table class="kwgap-table">
@@ -2311,7 +2321,7 @@ function buildIntelligence() {
       <div class="intel-section-head">
         <div class="intel-section-title">📡 Competitor Signal Feed</div>
         <div class="intel-section-badge">${intel.signals.length} Signals Detected</div>
-        <div class="intel-exclusive-badge">⚡ InfoGenie Exclusive</div>
+        <div class="intel-exclusive-badge" onclick="openExclusiveModal()" style="cursor:pointer">⚡ InfoGenie Exclusive</div>
       </div>
       <div class="signal-grid">${signalCards}</div>
     </div>
@@ -2321,7 +2331,7 @@ function buildIntelligence() {
       <div class="intel-section-head">
         <div class="intel-section-title">🔮 Predictive Competitor Intelligence</div>
         <div class="intel-section-badge">AI-Powered</div>
-        <div class="intel-exclusive-badge">⚡ InfoGenie Exclusive</div>
+        <div class="intel-exclusive-badge" onclick="openExclusiveModal()" style="cursor:pointer">⚡ InfoGenie Exclusive</div>
       </div>
       <div class="prediction-grid">${predCards}</div>
     </div>
@@ -2331,7 +2341,7 @@ function buildIntelligence() {
       <div class="intel-section-head">
         <div class="intel-section-title">🗺️ 90-Day Category Domination Roadmap</div>
         <div class="intel-section-badge">AI-Generated for Your Industry</div>
-        <div class="intel-exclusive-badge">⚡ InfoGenie Exclusive</div>
+        <div class="intel-exclusive-badge" onclick="openExclusiveModal()" style="cursor:pointer">⚡ InfoGenie Exclusive</div>
       </div>
       <div class="roadmap-track">${roadmapItems}</div>
     </div>
@@ -2341,7 +2351,7 @@ function buildIntelligence() {
       <div class="intel-section-head">
         <div class="intel-section-title">🏆 Win/Loss Intelligence</div>
         <div class="intel-section-badge">Competitor Messages That Beat You</div>
-        <div class="intel-exclusive-badge">⚡ InfoGenie Exclusive</div>
+        <div class="intel-exclusive-badge" onclick="openExclusiveModal()" style="cursor:pointer">⚡ InfoGenie Exclusive</div>
       </div>
       <div class="winloss-grid">${wlCards}</div>
     </div>
@@ -3211,6 +3221,94 @@ function closePlanModal() {
   document.body.style.overflow = '';
 }
 
+function openAttackModal(action, competitor, type) {
+  const steps = {
+    keyword: [
+      { icon: '🎯', title: 'Bid Strategy Activated', desc: `Set up a dedicated Google Ads campaign targeting "${action}" with max CPC bidding. Aim for top-3 position.` },
+      { icon: '✍️', title: 'Ad Copy Generation', desc: `InfoGenie AI will generate 5 high-converting ad variants optimised to outperform ${competitor || 'competitor'} on this keyword.` },
+      { icon: '📈', title: 'Performance Monitoring', desc: `Automated weekly reports tracking your rank, CTR, and cost-per-conversion against ${competitor || 'competitor'} — alerts if they counter-bid.` }
+    ],
+    attack: [
+      { icon: '⚡', title: 'Attack Window Locked In', desc: `${competitor} has vacated spend — your bids will face reduced competition in the next 72 hours. Acting now gives you a 2–3× ROAS advantage.` },
+      { icon: '💰', title: 'Budget Reallocation', desc: `InfoGenie recommends reallocating 30% of your current ad spend to capture the vacated "${action.replace(/Attack|Claim|Now/g,'').trim()}" keywords.` },
+      { icon: '🚀', title: 'Campaign Goes Live', desc: `Auto-create a counter-attack campaign with AI-generated creative targeting ${competitor}'s former audience segments.` }
+    ],
+    counter: [
+      { icon: '🛡️', title: 'Counter-Strategy Queued', desc: `A defensive strategy has been queued to protect your market share while ${competitor} executes their new campaign push.` },
+      { icon: '🔄', title: 'Audience Retargeting', desc: `Activate a retargeting layer for your existing customers to prevent churn to ${competitor}'s new offer.` },
+      { icon: '📊', title: 'Weekly Battlecard Updated', desc: `Your competitor battlecard for ${competitor} will be updated with their new messaging and suggested counter-positioning.` }
+    ]
+  };
+  const plan = steps[type] || steps.counter;
+  const labels = { keyword: 'Keyword Attack Plan', attack: 'Attack Strategy', counter: 'Counter-Strategy Plan' };
+  const icons = { keyword: '🎯', attack: '⚡', counter: '🛡️' };
+  const btnLabels = { keyword: 'Launch Keyword Attack', attack: 'Activate Attack Now', counter: 'Queue Counter-Strategy' };
+  const modal = document.getElementById('attackModal');
+  document.getElementById('attackModalInner').innerHTML = `
+    <div style="text-align:center; margin-bottom:18px">
+      <div style="font-size:2rem; margin-bottom:8px">${icons[type] || '⚡'}</div>
+      <h3 style="font-family:'Sora',sans-serif; font-size:1.1rem; font-weight:800; color:#0A1628; margin-bottom:4px">${labels[type] || 'Strategy Plan'}</h3>
+      <p style="color:#6B7280; font-size:0.8rem; max-width:360px; margin:0 auto">${competitor ? `Targeting <strong>${competitor}</strong> · ` : ''}InfoGenie AI has prepared a 3-step execution plan</p>
+    </div>
+    <div class="attack-steps">
+      ${plan.map((s,i) => `
+        <div class="attack-step">
+          <div class="attack-step-num">${i+1}</div>
+          <div class="attack-step-icon">${s.icon}</div>
+          <div class="attack-step-body">
+            <div class="attack-step-title">${s.title}</div>
+            <div class="attack-step-desc">${s.desc}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="attack-modal-footer">
+      <button class="btn-attack-activate" onclick="activateAttackPlan(this, '${action.replace(/'/g,'')}')">
+        ${btnLabels[type] || 'Activate Now'}
+      </button>
+      <button class="btn-attack-cancel" onclick="closeAttackModal()">Maybe Later</button>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function activateAttackPlan(btn, action) {
+  btn.textContent = '⏳ Activating...';
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.closest('.attack-modal-footer').innerHTML = `
+      <div style="text-align:center; padding:12px 0">
+        <div style="font-size:1.75rem; margin-bottom:8px">✅</div>
+        <div style="font-family:'Sora',sans-serif; font-weight:800; color:#0A1628; margin-bottom:4px">Strategy Activated!</div>
+        <div style="color:#6B7280; font-size:0.8rem; margin-bottom:14px">Your attack plan is live. Check the Campaign Intelligence view for progress.</div>
+        <button class="btn-primary" onclick="closeAttackModal(); navigateTo('campaigns')">View Campaign Intelligence</button>
+      </div>`;
+  }, 1400);
+}
+
+function closeAttackModal() {
+  const modal = document.getElementById('attackModal');
+  modal.classList.add('hidden');
+  modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function openExclusiveModal() {
+  const modal = document.getElementById('exclusiveModal');
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeExclusiveModal() {
+  const modal = document.getElementById('exclusiveModal');
+  modal.classList.add('hidden');
+  modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
 function switchSettingsTab(key) {
   document.querySelectorAll('.stab').forEach(t => t.classList.toggle('active', t.dataset.tab === key));
   document.querySelectorAll('.integ-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + key));
@@ -3330,7 +3428,7 @@ document.addEventListener('DOMContentLoaded', () => {
     link.addEventListener('click', e => {
       e.preventDefault();
       const view = link.dataset.view;
-      const freeViews = ['intelligence', 'settings'];
+      const freeViews = ['intelligence', 'settings', 'campaigns'];
       if (analysisData || freeViews.includes(view)) {
         navigateTo(view);
       } else {
@@ -3411,6 +3509,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Plan modal — close on backdrop click
   document.getElementById('planModal').addEventListener('click', e => {
     if (e.target === document.getElementById('planModal')) closePlanModal();
+  });
+
+  // Attack modal — close on backdrop click
+  document.getElementById('attackModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('attackModal')) closeAttackModal();
+  });
+
+  // Exclusive modal — close on backdrop click
+  document.getElementById('exclusiveModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('exclusiveModal')) closeExclusiveModal();
   });
 
   // Docs modal — close on backdrop click

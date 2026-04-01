@@ -2876,3 +2876,82 @@ body {
   margin-top: auto;
 }
 @media (max-width: 640px) { .plan-cards-row { grid-template-columns: 1fr; } }
+
+/* ===================================================
+   ATTACK STRATEGY MODAL
+   =================================================== */
+.attack-modal-box { max-width: 520px !important; padding: 28px !important; }
+.attack-steps { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+.attack-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--gray-50);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+.attack-step-num {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--teal), var(--blue));
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.attack-step-icon { font-size: 1.125rem; flex-shrink: 0; margin-top: 1px; }
+.attack-step-body { flex: 1; }
+.attack-step-title { font-size: 0.8125rem; font-weight: 700; color: var(--navy); margin-bottom: 3px; }
+.attack-step-desc { font-size: 0.75rem; color: var(--gray-600); line-height: 1.5; }
+.attack-modal-footer { display: flex; flex-direction: column; gap: 8px; }
+.btn-attack-activate {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, var(--teal), var(--blue));
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: opacity 0.2s;
+}
+.btn-attack-activate:hover { opacity: 0.88; }
+.btn-attack-activate:disabled { opacity: 0.6; cursor: default; }
+.btn-attack-cancel {
+  width: 100%;
+  padding: 9px;
+  background: transparent;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--gray-400);
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.2s;
+}
+.btn-attack-cancel:hover { background: var(--gray-50); color: var(--gray-600); }
+
+/* ===================================================
+   INFOGENIE EXCLUSIVE MODAL
+   =================================================== */
+.exclusive-modal-box { max-width: 500px !important; padding: 28px !important; }
+.exclusive-features-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.excl-feat {
+  background: var(--gray-50);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+.excl-feat-icon { font-size: 1.25rem; margin-bottom: 6px; }
+.excl-feat-title { font-size: 0.775rem; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+.excl-feat-desc { font-size: 0.7rem; color: var(--gray-600); line-height: 1.5; }
+@media (max-width: 480px) { .exclusive-features-grid { grid-template-columns: 1fr; } }
