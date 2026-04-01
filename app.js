@@ -2929,7 +2929,6 @@ function showIntegrationDoc(id) {
 
   modal.classList.remove('hidden');
   modal.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
   inner.scrollTop = 0;
 }
 
@@ -3219,21 +3218,18 @@ function showDocsModal() {
 
   modal.classList.remove('hidden');
   modal.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
 }
 
 function closeDocsModal() {
   const modal = document.getElementById('docsModal');
   modal.classList.add('hidden');
   modal.style.display = 'none';
-  document.body.style.overflow = '';
 }
 
 function closePlanModal() {
   const modal = document.getElementById('planModal');
   modal.classList.add('hidden');
   modal.style.display = 'none';
-  document.body.style.overflow = '';
 }
 
 function openDifferentiatorModal(compName) {
@@ -3313,14 +3309,12 @@ function openDifferentiatorModal(compName) {
 
   modal.classList.remove('hidden');
   modal.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
 }
 
 function closeDifferentiatorModal() {
   const modal = document.getElementById('differentiatorModal');
   modal.classList.add('hidden');
   modal.style.display = 'none';
-  document.body.style.overflow = '';
 }
 
 function openAttackModal(action, competitor, type) {
@@ -3373,7 +3367,6 @@ function openAttackModal(action, competitor, type) {
   `;
   modal.classList.remove('hidden');
   modal.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
 }
 
 function activateAttackPlan(btn, action) {
@@ -3394,21 +3387,18 @@ function closeAttackModal() {
   const modal = document.getElementById('attackModal');
   modal.classList.add('hidden');
   modal.style.display = 'none';
-  document.body.style.overflow = '';
 }
 
 function openExclusiveModal() {
   const modal = document.getElementById('exclusiveModal');
   modal.classList.remove('hidden');
   modal.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
 }
 
 function closeExclusiveModal() {
   const modal = document.getElementById('exclusiveModal');
   modal.classList.add('hidden');
   modal.style.display = 'none';
-  document.body.style.overflow = '';
 }
 
 function switchSettingsTab(key) {
@@ -3614,7 +3604,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('planModal');
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
   });
 
   // Plan modal — close on backdrop click
@@ -3640,6 +3629,26 @@ document.addEventListener('DOMContentLoaded', () => {
   // Docs modal — close on backdrop click
   document.getElementById('docsModal').addEventListener('click', e => {
     if (e.target === document.getElementById('docsModal')) closeDocsModal();
+  });
+
+  // Escape key — close whichever modal is open
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    const modals = [
+      { id: 'differentiatorModal', close: closeDifferentiatorModal },
+      { id: 'attackModal',         close: closeAttackModal         },
+      { id: 'exclusiveModal',      close: closeExclusiveModal      },
+      { id: 'planModal',           close: closePlanModal           },
+      { id: 'docsModal',           close: closeDocsModal           },
+      { id: 'launchModal',         close: closeModal               },
+    ];
+    for (const m of modals) {
+      const el = document.getElementById(m.id);
+      if (el && el.style.display !== 'none' && !el.classList.contains('hidden')) {
+        m.close();
+        break;
+      }
+    }
   });
 
   document.getElementById('modalClose').addEventListener('click', closeModal);
