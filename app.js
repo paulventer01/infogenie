@@ -16,6 +16,7 @@ function navigateTo(viewId, updateActive = true) {
   });
   const target = document.getElementById('view-' + viewId);
   if (target) {
+    target.classList.remove('hidden');
     target.style.display = 'block';
     target.classList.add('active');
   }
