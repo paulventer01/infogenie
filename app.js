@@ -2182,14 +2182,14 @@ function buildIntegCard(item) {
     </div>
     <div class="integ-card-actions">
       <button class="btn-connect-card" id="btn-${item.id}" onclick="connectCard('${item.id}', '${item.name}')">Connect</button>
-      <button class="btn-docs-card" onclick="showToast('📖 Opening ${item.name} documentation...')">View Docs</button>
+      <button class="btn-docs-card" onclick="showIntegrationDoc('${item.id}')">📖 View Docs</button>
     </div>
   ` : `
     <div class="integ-card-actions" style="flex-direction:column; gap:8px;">
       <button class="oauth-btn" id="btn-${item.id}" onclick="connectOAuth('${item.id}', '${item.name}')">
         <span>🔐</span> Connect via OAuth
       </button>
-      <button class="btn-docs-card" style="width:100%; text-align:center;" onclick="showToast('📖 Opening ${item.name} documentation...')">View Integration Docs</button>
+      <button class="btn-docs-card" style="width:100%; text-align:center;" onclick="showIntegrationDoc('${item.id}')">📖 View Integration Docs</button>
     </div>
   `;
 
@@ -2214,6 +2214,255 @@ function buildIntegCard(item) {
       </div>
     </div>
   `;
+}
+
+// ===================================================
+// PER-INTEGRATION DOCUMENTATION
+// ===================================================
+
+function _findIntegById(id) {
+  for (const [catKey, cat] of Object.entries(INTEGRATIONS)) {
+    const item = cat.items.find(i => i.id === id);
+    if (item) return { item, catKey, catLabel: cat.label, catIcon: cat.icon };
+  }
+  return null;
+}
+
+function _getIntegApiDetails(item) {
+  const isOAuth = item.authType === 'oauth';
+  const apiDetails = {
+    'google-ads':    { baseUrl: 'https://googleads.googleapis.com/v16', rateLimits: '10,000 req/day per customer', plans: 'Active Google Ads account + API access approval', errorCodes: [['UNAUTHENTICATED', 'OAuth token expired — re-authenticate'], ['INVALID_ARGUMENT', 'Check field names match Google Ads API spec'], ['RESOURCE_EXHAUSTED', 'Daily quota exceeded — reduce request volume'], ['NOT_FOUND', 'Customer ID or campaign ID does not exist']] },
+    'meta-ads':      { baseUrl: 'https://graph.facebook.com/v19.0', rateLimits: '200 calls/hour per ad account', plans: 'Active Meta Business Manager + Marketing API access', errorCodes: [['190', 'Access token expired — reconnect via OAuth'], ['100', 'Invalid parameter — check field names'], ['17', 'API rate limit hit — wait 1 hour'], ['803', 'Ad account ID format must be act_XXXXXXX']] },
+    'tiktok-ads':    { baseUrl: 'https://business-api.tiktok.com/open_api/v1.3', rateLimits: '1,000 req/min (campaign), 100 req/min (reporting)', plans: 'TikTok for Business account + approved API access', errorCodes: [['40100', 'Access token invalid — regenerate in developer portal'], ['40002', 'Missing required parameter'], ['50002', 'Service temporarily unavailable — retry with exponential back-off']] },
+    'linkedin-ads':  { baseUrl: 'https://api.linkedin.com/v2', rateLimits: '100 req/day for free, varies by API product', plans: 'LinkedIn Marketing Developer Platform access required', errorCodes: [['401', 'OAuth token invalid or expired'], ['403', 'Insufficient permissions — check r_ads/rw_ads scope'], ['429', 'Rate limit exceeded'], ['404', 'Campaign or account ID not found']] },
+    'x-ads':         { baseUrl: 'https://ads-api.twitter.com/12', rateLimits: '300 req/15 min window', plans: 'Funded X Ads account + Ads API access (approved)', errorCodes: [['32', 'Authentication required — check token'], ['88', 'Rate limit exceeded'], ['186', 'Tweet text too long'], ['261', 'Application cannot perform write actions']] },
+    'pinterest-ads': { baseUrl: 'https://api.pinterest.com/v5', rateLimits: '1,000 req/min for campaigns', plans: 'Pinterest Business account + Ads API approval', errorCodes: [['401', 'Invalid access token'], ['403', 'Insufficient scope'], ['429', 'Rate limit exceeded'], ['400', 'Invalid request body']] },
+    'amazon-ads':    { baseUrl: 'https://advertising-api.amazon.com', rateLimits: 'Varies by endpoint (50–1000 req/sec)', plans: 'Amazon Seller/Vendor Central account + advertising account', errorCodes: [['401', 'Refresh token expired — re-authenticate'], ['400', 'Invalid profile ID or body'], ['429', 'Throttled — implement exponential back-off'], ['403', 'Insufficient access to this profile']] },
+    'semrush':       { baseUrl: 'https://api.semrush.com', rateLimits: 'Based on API units (Business: 3,000/day)', plans: 'Semrush API subscription (Business plan recommended)', errorCodes: [['ERROR 50 :: NOTHING FOUND', 'Domain has no indexed data in Semrush'], ['ERROR 80 :: NOT ENOUGH UNITS', 'API unit balance depleted — upgrade plan'], ['ERROR 120 :: WRONG KEY', 'Invalid API key — regenerate in account settings']] },
+    'similarweb':    { baseUrl: 'https://api.similarweb.com/v1', rateLimits: 'Depends on plan (typically 1,000 req/month)', plans: 'SimilarWeb Digital Intelligence API subscription', errorCodes: [['401', 'Invalid API key'], ['402', 'Monthly quota exhausted'], ['404', 'Website not found in SimilarWeb database']] },
+    'ahrefs':        { baseUrl: 'https://api.ahrefs.com/v3', rateLimits: '500 rows/request, 1,000 req/day (Business)', plans: 'Ahrefs Business plan or above', errorCodes: [['401', 'Invalid or revoked API token'], ['403', 'Feature not available on your plan'], ['429', 'Rate limit exceeded — reduce request frequency']] },
+    'builtwith':     { baseUrl: 'https://api.builtwith.com/v21/api.json', rateLimits: '100 lookups/day (Basic), 2,000 (Pro)', plans: 'BuiltWith API paid plan required', errorCodes: [['400', 'Bad request — check API key format'], ['402', 'Quota exceeded for current billing period'], ['404', 'Domain not found in BuiltWith database']] },
+    'spyfu':         { baseUrl: 'https://www.spyfu.com/apis/url_api', rateLimits: '10,000 results/day on Pro plan', plans: 'SpyFu API plan subscription', errorCodes: [['403', 'Invalid API credentials'], ['429', 'Daily rate limit exceeded'], ['404', 'Domain not indexed by SpyFu']] },
+    'moz':           { baseUrl: 'https://lsapi.seomoz.com/v2', rateLimits: '10 queries per 10 seconds (free), higher on paid', plans: 'Moz Pro API access (paid plan)', errorCodes: [['401', 'Invalid Access ID or Secret Key'], ['429', 'Request rate exceeded'], ['400', 'Invalid URL or parameter']] },
+    'openai':        { baseUrl: 'https://api.openai.com/v1', rateLimits: 'GPT-4o: 10,000 RPM, 10M TPM (Tier 3)', plans: 'OpenAI paid account with GPT-4 access enabled', errorCodes: [['401', 'Invalid API key — check sk-proj- prefix'], ['429', 'Rate limit or quota exceeded — add billing credits'], ['500', 'OpenAI server error — retry with back-off'], ['400', 'Invalid request body or model name']] },
+    'anthropic':     { baseUrl: 'https://api.anthropic.com/v1', rateLimits: '1,000 RPM, 400K TPM (Claude 3.5 Sonnet)', plans: 'Anthropic API account with Claude 3.5 access', errorCodes: [['401', 'Invalid API key — starts with sk-ant-'], ['529', 'API overloaded — retry with exponential back-off'], ['400', 'Invalid request — check max_tokens and model name']] },
+    'gemini':        { baseUrl: 'https://generativelanguage.googleapis.com/v1beta', rateLimits: '60 req/min (free), higher on paid', plans: 'Google AI Studio account or Google Cloud project', errorCodes: [['401', 'Invalid or missing API key'], ['429', 'Quota exceeded — enable billing on Google Cloud'], ['400', 'Invalid request — check model name and content format']] },
+    'midjourney':    { baseUrl: 'https://api.userapi.ai/midjourney/v2', rateLimits: 'Based on GPU credits purchased', plans: 'Midjourney Pro or Mega plan + API access', errorCodes: [['401', 'Invalid API token'], ['400', 'Malformed prompt or missing parameters'], ['429', 'GPU queue full — retry after delay']] },
+    'stability':     { baseUrl: 'https://api.stability.ai/v1', rateLimits: '150 credits/month (free), purchase additional', plans: 'Stability AI API account with image credits', errorCodes: [['401', 'Invalid API key'], ['402', 'Insufficient credits to complete request'], ['400', 'Invalid aspect ratio or prompt format']] },
+    'perplexity':    { baseUrl: 'https://api.perplexity.ai', rateLimits: '60 req/min (Pro plan)', plans: 'Perplexity API subscription', errorCodes: [['401', 'Invalid or expired API key'], ['429', 'Rate limit exceeded'], ['400', 'Model not available or invalid parameters']] },
+    'hubspot':       { baseUrl: 'https://api.hubapi.com', rateLimits: '100 req/10s, 40,000 req/day', plans: 'HubSpot Marketing Hub (Starter or above recommended)', errorCodes: [['401', 'Invalid API key or OAuth token'], ['403', 'Scope not authorised — check OAuth permissions'], ['429', 'Rate limit exceeded'], ['404', 'Contact or list ID not found']] },
+    'salesforce':    { baseUrl: 'https://{instance}.salesforce.com/services/data/v59.0', rateLimits: '100,000 API calls/24 hours (Enterprise)', plans: 'Salesforce Enterprise or Unlimited edition', errorCodes: [['INVALID_SESSION_ID', 'Session expired — refresh OAuth token'], ['REQUEST_LIMIT_EXCEEDED', 'Daily API limit reached'], ['FIELD_INTEGRITY_EXCEPTION', 'Required field missing or invalid']] },
+    'zapier':        { baseUrl: 'https://hooks.zapier.com/hooks/catch', rateLimits: 'Depends on Zap plan (100–50,000 tasks/month)', plans: 'Zapier Professional plan or above for webhooks', errorCodes: [['410', 'Webhook URL disabled — re-create Zap'], ['400', 'Invalid JSON payload — check Content-Type header']] },
+    'make':          { baseUrl: 'https://hook.eu1.make.com/{webhook-id}', rateLimits: 'Based on Make.com plan (ops/month)', plans: 'Make.com Core plan or above', errorCodes: [['400', 'Invalid payload structure'], ['404', 'Scenario not found or inactive']] },
+    'klaviyo':       { baseUrl: 'https://a.klaviyo.com/api', rateLimits: '75 req/s burst, sustained at 10 req/s', plans: 'Klaviyo account with API key access', errorCodes: [['401', 'Invalid API key prefix — check pk_/sk_ format'], ['403', 'Insufficient scope for this endpoint'], ['429', 'Rate throttled — implement retry logic']] },
+    'mailchimp':     { baseUrl: 'https://{dc}.api.mailchimp.com/3.0', rateLimits: '10 simultaneous connections per key', plans: 'Mailchimp Standard or Premium plan', errorCodes: [['401', 'Invalid API key or data centre prefix'], ['405', 'Method not allowed for this resource'], ['400', 'Invalid field in request body']] },
+    'ga4':           { baseUrl: 'https://analyticsdata.googleapis.com/v1beta', rateLimits: '10,000 tokens/hour, 1 req/s per property', plans: 'Google Analytics 4 property + Google Cloud project', errorCodes: [['401', 'OAuth token expired — re-authenticate'], ['403', 'No access to this GA4 property'], ['429', 'Quota exceeded — reduce sampling rate']] },
+    'segment':       { baseUrl: 'https://api.segment.io/v1', rateLimits: 'No hard limit on tracking; workspace-level throttle', plans: 'Segment Team plan or above for source access', errorCodes: [['401', 'Invalid write key'], ['400', 'Malformed event payload'], ['413', 'Payload too large — keep events under 32KB']] },
+    'mixpanel':      { baseUrl: 'https://data.mixpanel.com/api/2.0', rateLimits: '400 queries/hour (Enterprise)', plans: 'Mixpanel Growth or Enterprise plan', errorCodes: [['403', 'Invalid project secret'], ['400', 'Invalid date range or property name'], ['429', 'Query rate limit exceeded']] },
+    'hotjar':        { baseUrl: 'https://api.hotjar.com/v1', rateLimits: '100 req/min', plans: 'Hotjar Business plan for API access', errorCodes: [['401', 'Invalid personal API key'], ['404', 'Site ID not found'], ['429', 'Rate limit exceeded']] },
+    'bigquery':      { baseUrl: 'https://bigquery.googleapis.com/bigquery/v2', rateLimits: '300 req/min per user, 3,000/min per project', plans: 'Google Cloud project with BigQuery enabled', errorCodes: [['403', 'BigQuery API not enabled in project'], ['400', 'Invalid SQL query syntax'], ['404', 'Dataset or table not found']] },
+    'snowflake':     { baseUrl: 'https://{account}.snowflakecomputing.com/api/v2', rateLimits: 'Based on warehouse credits (compute usage)', plans: 'Snowflake Standard or above, SQL API enabled', errorCodes: [['002003', 'Object does not exist'], ['390100', 'Account not found'], ['250001', 'No active warehouse — resume warehouse first']] },
+    'slack':         { baseUrl: 'https://slack.com/api', rateLimits: '1 req/sec for most methods', plans: 'Slack workspace + Bot Token with channels:write scope', errorCodes: [['invalid_auth', 'Invalid or revoked bot token'], ['channel_not_found', 'Bot not invited to the channel'], ['rate_limited', 'Slow down — implement Retry-After header']] },
+    'teams':         { baseUrl: 'https://smba.trafficmanager.net/apis', rateLimits: '1,500 msgs/sec, 3,600/hour per app', plans: 'Microsoft 365 or Azure AD + Teams app registration', errorCodes: [['401', 'Invalid or expired access token'], ['403', 'Bot not added to team or channel'], ['429', 'Too many requests — respect Retry-After header']] },
+    'twilio':        { baseUrl: 'https://api.twilio.com/2010-04-01', rateLimits: '100 msg/sec on short codes, 1/sec on long codes', plans: 'Twilio paid account with verified number', errorCodes: [['20003', 'Authentication failure — check Account SID and Auth Token'], ['21211', 'Invalid To phone number format'], ['21614', 'Number not SMS-capable'], ['30003', 'Unreachable destination handset']] }
+  };
+  return apiDetails[item.id] || {
+    baseUrl: 'https://api.' + item.id.replace('-', '') + '.com/v1',
+    rateLimits: 'Refer to provider documentation',
+    plans: 'Paid account required',
+    errorCodes: [['401', 'Invalid credentials'], ['429', 'Rate limit exceeded'], ['400', 'Invalid request parameters']]
+  };
+}
+
+function _getCodeExample(item) {
+  const api = _getIntegApiDetails(item);
+  if (item.authType === 'oauth') {
+    return {
+      lang: 'JavaScript (fetch)',
+      code: `<span class="c-comment">// InfoGenie — ${item.name} API request example</span>
+<span class="c-kw">const</span> response = <span class="c-kw">await</span> fetch(
+  <span class="c-str">'${api.baseUrl}/campaigns'</span>,
+  {
+    <span class="c-key">method</span>: <span class="c-str">'GET'</span>,
+    <span class="c-key">headers</span>: {
+      <span class="c-str">'Authorization'</span>: <span class="c-str">'Bearer YOUR_OAUTH_ACCESS_TOKEN'</span>,
+      <span class="c-str">'Content-Type'</span>: <span class="c-str">'application/json'</span>
+    }
+  }
+);
+<span class="c-kw">const</span> data = <span class="c-kw">await</span> response.json();
+console.log(data); <span class="c-comment">// InfoGenie uses this to sync campaign data</span>`
+    };
+  } else {
+    const keyFormat = item.placeholder ? item.placeholder.split(' ')[0] : 'YOUR_API_KEY';
+    return {
+      lang: 'cURL',
+      code: `<span class="c-comment"># InfoGenie — ${item.name} connection test</span>
+curl -X GET <span class="c-str">'${api.baseUrl}'</span> \\
+  -H <span class="c-str">'Authorization: Bearer ${keyFormat}'</span> \\
+  -H <span class="c-str">'Content-Type: application/json'</span>
+
+<span class="c-comment"># Expected: 200 OK with account/profile data</span>
+<span class="c-comment"># If you see 401: your API key is invalid or has no permissions</span>`
+    };
+  }
+}
+
+function _getTroubleshooting(item) {
+  const isOAuth = item.authType === 'oauth';
+  return [
+    {
+      q: isOAuth ? 'OAuth authorisation fails or redirects to an error page' : 'My API key is valid but the Test Connection button fails',
+      a: isOAuth
+        ? 'Make sure you are signed in to the correct account in the browser before clicking Connect via OAuth. Also check that your app has the required permissions/scopes listed in Step 3 above.'
+        : 'Ensure you\'ve copied the full key without leading/trailing spaces. Some keys are environment-specific (e.g. sandbox vs. production). Try pasting into a plain text editor first to check for hidden characters.'
+    },
+    {
+      q: 'Connected successfully but InfoGenie shows no data',
+      a: `Wait 2–5 minutes after first connecting — InfoGenie needs to complete an initial data sync. If data is still missing after 10 minutes, check that your ${item.name} account has at least one active campaign or dataset.`
+    },
+    {
+      q: 'I see a rate limit error in the activity log',
+      a: `${item.name} rate limits: ${_getIntegApiDetails(item).rateLimits}. InfoGenie automatically spaces out requests. If you see persistent rate limit errors, check that no other tools are simultaneously hitting the same API credentials.`
+    },
+    {
+      q: 'How do I disconnect this integration?',
+      a: 'Disconnecting from InfoGenie only removes the credentials from our system — it does not revoke access in your provider account. To fully revoke, also remove the InfoGenie app from your ' + item.name + ' account settings.'
+    }
+  ];
+}
+
+function showIntegrationDoc(id) {
+  const found = _findIntegById(id);
+  if (!found) { showToast('Integration not found'); return; }
+  const { item, catLabel, catIcon } = found;
+
+  const modal = document.getElementById('docsModal');
+  const inner = document.getElementById('docsModalInner');
+  const api = _getIntegApiDetails(item);
+  const codeEx = _getCodeExample(item);
+  const trouble = _getTroubleshooting(item);
+  const authLabel = item.authType === 'oauth' ? 'OAuth 2.0' : 'API Key';
+  const authClass = item.authType === 'oauth' ? 'oauth' : 'apikey';
+
+  const unlocksHtml = item.unlocks.map(u => `
+    <div class="docs-unlock-item">
+      <span class="docs-unlock-check">✓</span>
+      <span class="docs-unlock-text">${u}</span>
+    </div>
+  `).join('');
+
+  const stepsHtml = item.steps.map((s, i) => `
+    <div class="docs-doc-step">
+      <div class="docs-doc-num">${i + 1}</div>
+      <div class="docs-doc-text">${s.text}</div>
+    </div>
+  `).join('');
+
+  const errorHtml = api.errorCodes.map(([code, msg]) => `
+    <tr>
+      <td><code>${code}</code></td>
+      <td>${msg}</td>
+    </tr>
+  `).join('');
+
+  const troubleHtml = trouble.map(t => `
+    <div class="docs-trouble-item">
+      <div class="docs-trouble-q">❓ ${t.q}</div>
+      <div class="docs-trouble-a">${t.a}</div>
+    </div>
+  `).join('');
+
+  inner.innerHTML = `
+    <div class="integ-doc-page">
+      <div class="integ-doc-hero">
+        <div class="integ-doc-hero-top">
+          <button class="integ-doc-back" onclick="showDocsModal()">← All Integrations</button>
+          <div class="integ-doc-logo">${item.logo}</div>
+          <div class="integ-doc-hero-text">
+            <div class="integ-doc-name">${item.name}</div>
+            <div class="integ-doc-tagline">${item.tagline}</div>
+            <div class="integ-doc-badges">
+              <span class="docs-badge">${catIcon} ${catLabel}</span>
+              <span class="docs-badge ${authClass === 'oauth' ? 'green' : ''}">${authLabel}</span>
+              <span class="docs-badge">InfoGenie Integration</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="integ-doc-body">
+
+        <!-- WHAT IT UNLOCKS -->
+        <div>
+          <div class="docs-section-title">✦ What connecting ${item.name} unlocks in InfoGenie</div>
+          <div class="docs-unlocks">${unlocksHtml}</div>
+        </div>
+
+        <!-- STEP BY STEP -->
+        <div>
+          <div class="docs-section-title">↳ Step-by-Step Integration Guide</div>
+          <div class="docs-doc-steps">${stepsHtml}</div>
+        </div>
+
+        <!-- CODE EXAMPLE -->
+        <div>
+          <div class="docs-section-title">{'{'} Code Example — API Request</div>
+          <div class="docs-code-block">
+            <div class="docs-code-bar">
+              <span class="docs-code-lang">${codeEx.lang}</span>
+              <span>• ${item.name} Integration</span>
+              <button class="docs-code-copy" onclick="navigator.clipboard.writeText(document.querySelector('.docs-code-content').innerText).then(()=>showToast('📋 Code copied'))">Copy</button>
+            </div>
+            <div class="docs-code-content">${codeEx.code}</div>
+          </div>
+        </div>
+
+        <!-- API REFERENCE -->
+        <div>
+          <div class="docs-section-title">⚙ API Reference</div>
+          <table class="docs-api-table">
+            <thead><tr><th>Property</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td>Base URL</td><td><code>${api.baseUrl}</code></td></tr>
+              <tr><td>Auth Method</td><td><code>${authLabel}</code></td></tr>
+              <tr><td>Rate Limits</td><td>${api.rateLimits}</td></tr>
+              <tr><td>Plan Required</td><td>${api.plans}</td></tr>
+              <tr><td>InfoGenie Sync Interval</td><td>Every 15 minutes (campaigns), 1 hour (analytics)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ERROR CODES -->
+        <div>
+          <div class="docs-section-title">⚠ Common Error Codes</div>
+          <table class="docs-api-table">
+            <thead><tr><th>Code</th><th>Meaning & Fix</th></tr></thead>
+            <tbody>${errorHtml}</tbody>
+          </table>
+        </div>
+
+        <!-- TROUBLESHOOTING -->
+        <div>
+          <div class="docs-section-title">🔧 Troubleshooting</div>
+          <div class="docs-trouble-list">${troubleHtml}</div>
+        </div>
+
+        <!-- BOTTOM ACTIONS -->
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn-auto-target" onclick="closeDocsModal(); switchSettingsTab('${found.catKey}'); setTimeout(()=>{ const el=document.getElementById('card-${item.id}'); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); }, 200);">
+            Go to ${item.name} Settings →
+          </button>
+          <button class="btn-vs-copy" onclick="showDocsModal()">← Back to All Integrations</button>
+        </div>
+
+      </div>
+    </div>
+  `;
+
+  modal.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  inner.scrollTop = 0;
 }
 
 // ===================================================
@@ -2331,6 +2580,25 @@ function showDocsModal() {
             </div>
             <div class="dit-desc">Slack, WhatsApp, Telegram, SendGrid, Microsoft Teams, Intercom — receive alerts and route leads via your preferred channels.</div>
           </div>
+        </div>
+      </div>
+
+      <!-- INTEGRATION DIRECTORY -->
+      <div>
+        <div class="docs-section-title">📋 All Integrations — Click Any to View Full Docs</div>
+        <div class="docs-dir-grid">
+          ${Object.entries(INTEGRATIONS).flatMap(([catKey, cat]) =>
+            cat.items.map(item => `
+              <div class="docs-dir-item" onclick="showIntegrationDoc('${item.id}')">
+                <div class="docs-dir-logo">${item.logo}</div>
+                <div class="docs-dir-info">
+                  <div class="docs-dir-name">${item.name}</div>
+                  <div class="docs-dir-cat">${cat.icon} ${cat.label}</div>
+                </div>
+                <span class="docs-dir-auth ${item.authType}">${item.authType === 'oauth' ? 'OAuth' : 'API Key'}</span>
+              </div>
+            `)
+          ).join('')}
         </div>
       </div>
 
