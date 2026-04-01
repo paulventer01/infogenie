@@ -1028,6 +1028,35 @@ body {
 .camp-metrics-row { display: flex; gap: 16px; border-top: 1px solid var(--border); padding-top: 14px; margin-top: 4px; }
 .cm-val { font-size: 0.875rem; font-weight: 700; color: var(--navy); }
 .cm-lbl { font-size: 0.6875rem; color: var(--gray-400); font-weight: 500; }
+.camp-card-actions { display: flex; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.btn-camp-launch {
+  flex: 1;
+  padding: 9px 12px;
+  background: linear-gradient(135deg, #0A1628, #0D2A5E);
+  border: none;
+  border-radius: 9px;
+  color: white;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: opacity 0.2s;
+}
+.btn-camp-launch:hover { opacity: 0.88; }
+.btn-camp-preview {
+  padding: 9px 12px;
+  background: transparent;
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  color: var(--gray-600);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-camp-preview:hover { border-color: var(--teal); color: var(--teal-dark); }
 
 /* ===== AUDIENCE VIEW ===== */
 .audience-grid {

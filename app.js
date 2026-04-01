@@ -31,7 +31,7 @@ function navigateTo(viewId, updateActive = true) {
   const navPlan = document.getElementById('navPlanBadge');
   const navBtn = document.getElementById('navAnalyseBtn');
   if (viewId === 'home') {
-    navLinks.style.display = 'none';
+    navLinks.style.display = 'flex';
     navPlan.style.display = 'none';
     navBtn.style.display = 'none';
   } else {
@@ -512,8 +512,8 @@ function buildCampaigns() {
   
   const campaignRecs = generateCampaignRecs(industry, competitors, url);
   
-  const cards = campaignRecs.map(camp => `
-    <div class="camp-card">
+  const cards = campaignRecs.map((camp, idx) => `
+    <div class="camp-card" id="campCard${idx}">
       <span class="camp-type-badge badge-${camp.badgeClass}">${camp.platform}</span>
       <div class="camp-card-title">${camp.name}</div>
       <div class="camp-card-body">${camp.description}</div>
@@ -523,6 +523,10 @@ function buildCampaigns() {
         <div><div class="cm-val">${camp.estROAS}×</div><div class="cm-lbl">Est. ROAS</div></div>
         <div><div class="cm-val">${camp.estCPA}</div><div class="cm-lbl">Est. CPA</div></div>
         <div><div class="cm-val">${camp.budget}</div><div class="cm-lbl">Min. Budget</div></div>
+      </div>
+      <div class="camp-card-actions">
+        <button class="btn-camp-launch" onclick="openCampModal('${camp.name.replace(/'/g,'')}','${camp.platform}','${camp.budget}',${idx})">🚀 Launch this Campaign</button>
+        <button class="btn-camp-preview" onclick="previewCampaignCreative(${idx})">👁 Preview Creative</button>
       </div>
     </div>
   `).join('');
@@ -2005,9 +2009,9 @@ const INTEGRATIONS = {
 // BUILD INTELLIGENCE HUB
 // ===================================================
 function buildIntelligence() {
-  if (!analysisData) return;
-  const { industryKey } = analysisData;
+  const industryKey = analysisData ? analysisData.industryKey : 'marketing';
   const intel = INTELLIGENCE_DB[industryKey] || INTELLIGENCE_DB['marketing'];
+  const analysisDomain = analysisData ? analysisData.url : 'yourdomain.com';
   const wrap = document.getElementById('intelligenceWrap');
   if (!wrap) return;
 
@@ -2723,6 +2727,7 @@ function showIntegrationDoc(id) {
   `;
 
   modal.classList.remove('hidden');
+  modal.style.display = 'flex';
   document.body.style.overflow = 'hidden';
   inner.scrollTop = 0;
 }
@@ -3012,11 +3017,14 @@ function showDocsModal() {
   `;
 
   modal.classList.remove('hidden');
+  modal.style.display = 'flex';
   document.body.style.overflow = 'hidden';
 }
 
 function closeDocsModal() {
-  document.getElementById('docsModal').classList.add('hidden');
+  const modal = document.getElementById('docsModal');
+  modal.classList.add('hidden');
+  modal.style.display = 'none';
   document.body.style.overflow = '';
 }
 
@@ -3126,6 +3134,7 @@ function showToast(msg) {
 // ===== EVENT LISTENERS =====
 document.addEventListener('DOMContentLoaded', () => {
   navigateTo('home');
+  buildIntelligence(); // Pre-populate with demo data so it's accessible immediately
   
   // Nav logo — go home
   document.getElementById('navLogo').addEventListener('click', e => {
@@ -3138,7 +3147,8 @@ document.addEventListener('DOMContentLoaded', () => {
     link.addEventListener('click', e => {
       e.preventDefault();
       const view = link.dataset.view;
-      if (analysisData) {
+      const freeViews = ['intelligence', 'settings'];
+      if (analysisData || freeViews.includes(view)) {
         navigateTo(view);
       } else {
         showToast('⚠️ Please enter your website URL and run an analysis first');
@@ -3187,10 +3197,12 @@ document.addEventListener('DOMContentLoaded', () => {
     navigateTo('competitors');
   });
   
-  // Launch campaign button
+  // Launch campaign button (header)
   document.getElementById('launchCampaignBtn').addEventListener('click', () => {
-    document.getElementById('launchModal').classList.remove('hidden');
-    document.getElementById('launchModal').style.display = 'flex';
+    const modal = document.getElementById('launchModal');
+    modal.querySelector('.modal-title').textContent = 'Launch Campaign';
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
   });
   
   // Auto-target audience
@@ -3212,17 +3224,81 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('modalClose').addEventListener('click', closeModal);
   document.getElementById('modalCancel').addEventListener('click', closeModal);
   document.getElementById('modalConfirm').addEventListener('click', () => {
-    const budget = document.getElementById('campBudget').value;
+    const budget = document.getElementById('campBudget').value || '2,000';
     const platform = document.getElementById('campPlatform').value;
     const country = document.getElementById('campCountry').value;
-    closeModal();
-    showToast(`🚀 Campaign launched! Budget: $${budget || '2,000'} · Platform: ${platform} · Region: ${getCountryLabel(country)} — InfoGenie is optimising in real-time`);
+    const campName = document.getElementById('launchModal').dataset.activeCamp || 'Your Campaign';
+    const box = document.getElementById('launchModal').querySelector('.modal-box');
+    box.dataset.successState = 'true';
+    box.innerHTML = `
+      <div style="text-align:center; padding: 8px 0">
+        <div style="font-size:3rem; margin-bottom:16px">🎉</div>
+        <h3 style="font-family:'Sora',sans-serif; font-size:1.25rem; font-weight:800; color:#0A1628; margin-bottom:8px">Campaign Launched!</h3>
+        <p style="color:#6B7280; font-size:0.875rem; margin-bottom:20px; line-height:1.6">"${campName}" is now live and being optimised by InfoGenie's AI engine in real-time.</p>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:20px; text-align:center">
+          <div style="background:#F0FDF4; border-radius:10px; padding:12px">
+            <div style="font-size:1.1rem; font-weight:800; color:#059669">$${parseInt(budget.replace(/[^0-9]/g,'')).toLocaleString()}</div>
+            <div style="font-size:0.7rem; color:#6B7280; margin-top:2px">Monthly Budget</div>
+          </div>
+          <div style="background:#EFF6FF; border-radius:10px; padding:12px">
+            <div style="font-size:0.85rem; font-weight:800; color:#1D4ED8">${platform.split(' ')[0]}</div>
+            <div style="font-size:0.7rem; color:#6B7280; margin-top:2px">Platform</div>
+          </div>
+          <div style="background:#F5F3FF; border-radius:10px; padding:12px">
+            <div style="font-size:1.1rem; font-weight:800; color:#7C3AED">Live</div>
+            <div style="font-size:0.7rem; color:#6B7280; margin-top:2px">Status</div>
+          </div>
+        </div>
+        <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E); border-radius:12px; padding:14px 16px; margin-bottom:20px; text-align:left">
+          <div style="font-size:0.7rem; font-weight:700; color:rgba(0,201,200,.8); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px">InfoGenie AI Engine is now:</div>
+          <div style="font-size:0.8125rem; color:rgba(255,255,255,.8); display:flex; flex-direction:column; gap:4px">
+            <span>✓ Generating AI ad copy every 72 hours</span>
+            <span>✓ Monitoring competitor spend in real-time</span>
+            <span>✓ Auto-reallocating budget to winning ads</span>
+            <span>✓ A/B testing headlines, CTAs and audiences</span>
+          </div>
+        </div>
+        <button onclick="closeModal(); navigateTo('intelligence')" style="width:100%; padding:12px; background:linear-gradient(135deg,#00C9C8,#0066FF); border:none; border-radius:10px; color:white; font-size:0.9375rem; font-weight:700; cursor:pointer; font-family:'Inter',sans-serif">
+          ⚡ View Intelligence Dashboard →
+        </button>
+        <button onclick="closeModal()" style="width:100%; margin-top:8px; padding:10px; background:transparent; border:1.5px solid #E5E7EB; border-radius:10px; color:#6B7280; font-size:0.875rem; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif">Done</button>
+      </div>
+    `;
   });
 });
 
 function closeModal() {
-  document.getElementById('launchModal').classList.add('hidden');
-  document.getElementById('launchModal').style.display = 'none';
+  const modal = document.getElementById('launchModal');
+  modal.classList.add('hidden');
+  modal.style.display = 'none';
+  // Reset modal state
+  const box = modal.querySelector('.modal-box');
+  if (box && box.dataset.successState === 'true') {
+    box.dataset.successState = '';
+    box.innerHTML = _launchModalOriginalHTML || '';
+  }
+}
+
+// Open the launch modal pre-filled for a specific campaign
+function openCampModal(name, platform, budget, idx) {
+  const modal = document.getElementById('launchModal');
+  const budgetNum = parseInt((budget || '$2000').replace(/[^0-9]/g, '')) || 2000;
+  const platformMap = { 'Google Ads': 'Google Ads', 'Meta Ads': 'Meta (Facebook / Instagram)', 'TikTok Ads': 'TikTok Ads', 'AI Optimised': 'All Platforms (Recommended)' };
+  document.getElementById('campBudget').value = budgetNum;
+  const sel = document.getElementById('campPlatform');
+  const optionText = platformMap[platform] || platform;
+  for (let o of sel.options) { if (o.text === optionText) { sel.value = o.value; break; } }
+  modal.dataset.activeCamp = name;
+  modal.dataset.activeCampIdx = idx;
+  modal.querySelector('.modal-title').textContent = 'Launch: ' + (name.length > 38 ? name.substring(0,38) + '…' : name);
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+}
+
+// Preview creative for a campaign card — navigate to AI Creative view
+function previewCampaignCreative(idx) {
+  navigateTo('creative');
+  showToast('👁 Viewing AI-generated creative for this campaign — all ad formats generated below');
 }
 
 // Init view states
