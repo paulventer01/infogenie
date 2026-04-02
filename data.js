@@ -95,6 +95,63 @@ const INDUSTRY_DB = {
         audiences: [{ label: 'New Homeowners 28–42', pct: 38 }, { label: 'Home Renovators 35–55', pct: 31 }, { label: 'Apartment Dwellers 22–35', pct: 20 }, { label: 'Interior Designers', pct: 11 }],
         topKeywords: ['home furniture', 'online furniture store', 'home decor', 'sofa sale'],
         estimatedROI: '+18% ROAS gain by leading with lifestyle imagery vs. product images'
+      },
+      {
+        name: 'Target', url: 'target.com', logo: 'TG',
+        traffic: '680M', ctr: '3.4%', roas: 4.6, adSpend: '$380M/mo',
+        topChannel: 'Google Shopping', threatLevel: 'high',
+        trafficMo: 680000000,
+        campaigns: [
+          { name: 'Circle Week Sale', channel: 'Google', ctr: '3.8%', roas: 5.1, budget: '$90M', status: 'Active' },
+          { name: 'Drive Up & Pick Up', channel: 'Meta', ctr: '2.9%', roas: 4.2, budget: '$48M', status: 'Active' },
+          { name: 'Target Style', channel: 'TikTok', ctr: '4.2%', roas: 3.6, budget: '$22M', status: 'Active' }
+        ],
+        suggestions: [
+          'Target\'s omnichannel ads blur digital and in-store — pure digital-first convenience messaging outperforms',
+          'Target\'s loyalty (Circle) has low app engagement — position a simpler rewards experience',
+          'Target underperforms in luxury goods — premium aspirational creative converts at 3× in this gap',
+          'Target\'s Gen Z TikTok is growing but still product-focused — lifestyle-led UGC outperforms 4.1×'
+        ],
+        audiences: [{ label: 'Young Families 28–42', pct: 38 }, { label: 'College Students 18–24', pct: 24 }, { label: 'Home Decorators 30–50', pct: 22 }, { label: 'Fashion Conscious 22–35', pct: 16 }],
+        topKeywords: ['target deals', 'target circle week', 'affordable home decor', 'target fashion'],
+        estimatedROI: '+26% digital conversion by targeting Target\'s in-store-only messaging gap'
+      },
+      {
+        name: 'ASOS', url: 'asos.com', logo: 'AS',
+        traffic: '220M', ctr: '4.1%', roas: 4.9, adSpend: '$62M/mo',
+        topChannel: 'Meta Ads', threatLevel: 'medium',
+        trafficMo: 220000000,
+        campaigns: [
+          { name: 'Student Discount', channel: 'Meta', ctr: '4.8%', roas: 5.2, budget: '$16M', status: 'Active' },
+          { name: 'New In Daily', channel: 'TikTok', ctr: '5.1%', roas: 4.1, budget: '$12M', status: 'Active' },
+          { name: 'ASOS Sale', channel: 'Google', ctr: '3.6%', roas: 4.4, budget: '$18M', status: 'Seasonal' }
+        ],
+        suggestions: [
+          'ASOS targets 16–25 heavily — targeting 26–38 fashion-conscious professionals is a whitespace opportunity',
+          'ASOS\'s returns policy is costly — compete on sustainability and conscious fashion messaging',
+          'ASOS underinvests in personalised styling content — AI-curated outfit ads convert 3.8× better'
+        ],
+        audiences: [{ label: 'Gen Z Fashion 16–24', pct: 48 }, { label: 'Millennial Style 25–34', pct: 28 }, { label: 'Plus Size 22–40', pct: 14 }, { label: 'Festival/Occasion', pct: 10 }],
+        topKeywords: ['student fashion discount', 'trendy clothes online', 'fast fashion deals', 'ASOS sale'],
+        estimatedROI: '+31% AOV by targeting ASOS\'s underserved 26–38 demographic'
+      },
+      {
+        name: 'Zalando', url: 'zalando.com', logo: 'ZL',
+        traffic: '380M', ctr: '3.7%', roas: 4.4, adSpend: '$88M/mo',
+        topChannel: 'Google Shopping', threatLevel: 'medium',
+        trafficMo: 380000000,
+        campaigns: [
+          { name: 'Free Returns Always', channel: 'Google', ctr: '3.4%', roas: 4.8, budget: '$26M', status: 'Active' },
+          { name: 'Zalando Lounge Flash', channel: 'Meta', ctr: '4.1%', roas: 5.2, budget: '$18M', status: 'Active' }
+        ],
+        suggestions: [
+          'Zalando\'s free returns policy is expensive and attracts high-return shoppers — curated fit-based ads reduce returns',
+          'Zalando focuses on Europe — US and APAC markets are open whitespace for a similar proposition',
+          'Zalando\'s brand messaging is generic — specific designer collaborations and exclusive drops drive urgency'
+        ],
+        audiences: [{ label: 'European Fashion Buyers 22–40', pct: 42 }, { label: 'Premium Brand Seekers', pct: 26 }, { label: 'Sports Fashion 18–35', pct: 20 }, { label: 'Bargain Hunters', pct: 12 }],
+        topKeywords: ['free returns fashion', 'online fashion store EU', 'designer clothes online', 'Zalando sale'],
+        estimatedROI: '+24% margin improvement by targeting Zalando\'s high-return buyer problem'
       }
     ]
   },
@@ -190,6 +247,60 @@ const INDUSTRY_DB = {
         audiences: [{ label: 'Digital Nomads 25–38', pct: 34 }, { label: 'Travellers 28–45', pct: 28 }, { label: 'SMB Owners 30–50', pct: 22 }, { label: 'Crypto Users 22–35', pct: 16 }],
         topKeywords: ['travel card', 'international banking', 'no foreign fees', 'digital bank'],
         estimatedROI: '+38% lower CPL by targeting Revolut\'s service gaps'
+      },
+      {
+        name: 'Wise', url: 'wise.com', logo: 'WS',
+        traffic: '48M', ctr: '3.8%', roas: 5.2, adSpend: '$38M/mo',
+        topChannel: 'Google Search', threatLevel: 'high',
+        trafficMo: 48000000,
+        campaigns: [
+          { name: 'Real Exchange Rate', channel: 'Google', ctr: '4.4%', roas: 5.9, budget: '$12M', status: 'Active' },
+          { name: 'International Business', channel: 'LinkedIn', ctr: '2.8%', roas: 4.6, budget: '$8M', status: 'Active' }
+        ],
+        suggestions: [
+          'Wise leads with fee transparency — match this with superior customer support as a differentiator',
+          'Wise underperforms in high-volume business FX — target treasury teams with multi-currency bulk transfer messaging',
+          'Wise\'s personal product is strong but SMB product marketing is weak — business financial management ads convert 3.2× better'
+        ],
+        audiences: [{ label: 'Expats & International Workers 25–45', pct: 38 }, { label: 'SMB International Traders', pct: 28 }, { label: 'Freelancers Paid Globally', pct: 22 }, { label: 'Students Abroad', pct: 12 }],
+        topKeywords: ['cheap international transfers', 'real exchange rate', 'send money abroad', 'Wise business account'],
+        estimatedROI: '+34% business account acquisition vs. Wise\'s consumer-only messaging'
+      },
+      {
+        name: 'Robinhood', url: 'robinhood.com', logo: 'RH',
+        traffic: '62M', ctr: '3.2%', roas: 4.4, adSpend: '$28M/mo',
+        topChannel: 'Meta Ads', threatLevel: 'medium',
+        trafficMo: 62000000,
+        campaigns: [
+          { name: 'Commission-Free Stocks', channel: 'Meta', ctr: '3.6%', roas: 4.8, budget: '$10M', status: 'Active' },
+          { name: 'Get a Free Stock', channel: 'Google', ctr: '4.1%', roas: 3.9, budget: '$8M', status: 'Active' }
+        ],
+        suggestions: [
+          'Robinhood\'s 2021 trading halt caused major trust damage — lead with platform stability and fund protection messaging',
+          'Robinhood focuses on retail equity — crypto and options expansion creates counter-campaign opportunities',
+          'Robinhood lacks research tools — attract serious investors with professional-grade analysis differentiator'
+        ],
+        audiences: [{ label: 'First-Time Investors 18–30', pct: 48 }, { label: 'Crypto Beginners 20–32', pct: 26 }, { label: 'Active Retail Traders', pct: 16 }, { label: 'Options Traders 25–40', pct: 10 }],
+        topKeywords: ['free stock trading app', 'no commission stocks', 'invest in stocks', 'free stock'],
+        estimatedROI: '+41% investor retention by targeting Robinhood trust and education gaps'
+      },
+      {
+        name: 'Interactive Brokers', url: 'interactivebrokers.com', logo: 'IB',
+        traffic: '18M', ctr: '2.6%', roas: 4.8, adSpend: '$14M/mo',
+        topChannel: 'Google Search', threatLevel: 'medium',
+        trafficMo: 18000000,
+        campaigns: [
+          { name: 'Low Margin Rates', channel: 'Google', ctr: '2.9%', roas: 5.2, budget: '$5M', status: 'Active' },
+          { name: 'Global Markets Access', channel: 'LinkedIn', ctr: '2.2%', roas: 4.4, budget: '$3M', status: 'Active' }
+        ],
+        suggestions: [
+          'IBKR\'s UI is notoriously complex — simplicity messaging immediately differentiates for 65% of their churned users',
+          'Interactive Brokers ignores mass-market creative — they cater only to professionals, leaving retail traders underserved',
+          'IBKR\'s onboarding is slow and bureaucratic — "trade in 10 minutes" messaging wins against their 3-day approval process'
+        ],
+        audiences: [{ label: 'Professional Traders 35–60', pct: 44 }, { label: 'Institutional Clients', pct: 28 }, { label: 'Active Day Traders', pct: 18 }, { label: 'International Investors', pct: 10 }],
+        topKeywords: ['professional trading platform', 'global stock access', 'low margin rate broker', 'options trading'],
+        estimatedROI: '+29% retail acquisition vs. IBKR\'s professional-only positioning'
       }
     ]
   },
@@ -285,6 +396,61 @@ const INDUSTRY_DB = {
         audiences: [{ label: 'Customer Support Managers 30–48', pct: 44 }, { label: 'SaaS Companies', pct: 26 }, { label: 'E-commerce Support', pct: 18 }, { label: 'Enterprise IT', pct: 12 }],
         topKeywords: ['customer service software', 'help desk software', 'support ticket system', 'live chat'],
         estimatedROI: '+22% conversion rate by targeting Zendesk pricing frustration'
+      },
+      {
+        name: 'Notion', url: 'notion.com', logo: 'NT',
+        traffic: '96M', ctr: '3.8%', roas: 5.1, adSpend: '$32M/mo',
+        topChannel: 'Google Search', threatLevel: 'medium',
+        trafficMo: 96000000,
+        campaigns: [
+          { name: 'All-in-One Workspace', channel: 'Google', ctr: '4.2%', roas: 5.6, budget: '$10M', status: 'Active' },
+          { name: 'Notion AI', channel: 'Meta', ctr: '3.4%', roas: 4.8, budget: '$8M', status: 'Active' },
+          { name: 'Notion for Teams', channel: 'LinkedIn', ctr: '2.6%', roas: 4.2, budget: '$6M', status: 'Active' }
+        ],
+        suggestions: [
+          'Notion\'s flexibility is also its weakness — targeted ads for specific use cases convert 3.4× better than "all-in-one" messaging',
+          'Notion AI adoption is still low — compete by showing genuine AI workflow automation vs. Notion\'s text assistance',
+          'Notion lacks native CRM/client management — B2B client portals are an underserved segment'
+        ],
+        audiences: [{ label: 'Knowledge Workers 25–40', pct: 38 }, { label: 'Startup Teams 22–35', pct: 28 }, { label: 'Freelancers & Consultants', pct: 22 }, { label: 'Students 18–25', pct: 12 }],
+        topKeywords: ['notion alternative', 'all in one workspace', 'team wiki tool', 'notion AI'],
+        estimatedROI: '+33% SMB conversion by targeting Notion\'s too-flexible positioning'
+      },
+      {
+        name: 'Asana', url: 'asana.com', logo: 'AN',
+        traffic: '68M', ctr: '3.1%', roas: 4.4, adSpend: '$38M/mo',
+        topChannel: 'Google Search', threatLevel: 'medium',
+        trafficMo: 68000000,
+        campaigns: [
+          { name: 'Work Without Chaos', channel: 'Google', ctr: '3.4%', roas: 4.8, budget: '$12M', status: 'Active' },
+          { name: 'Asana Intelligence', channel: 'LinkedIn', ctr: '2.4%', roas: 4.1, budget: '$8M', status: 'Active' }
+        ],
+        suggestions: [
+          'Asana\'s enterprise focus misses SMB — SMB project management messaging captures 38% more leads at lower CPL',
+          'Asana\'s AI features are heavily marketed but underdeveloped — practical automation ads outperform Asana\'s AI claims',
+          'Asana is complex for creative teams — purpose-built creative workflow ads convert 2.9× better'
+        ],
+        audiences: [{ label: 'Operations Managers 30–48', pct: 40 }, { label: 'Product Teams 25–42', pct: 28 }, { label: 'Marketing Ops 28–45', pct: 20 }, { label: 'Enterprise PMOs', pct: 12 }],
+        topKeywords: ['project management tool', 'task management software', 'team project tracker', 'Asana vs monday'],
+        estimatedROI: '+27% acquisition by targeting Asana\'s SMB messaging gap'
+      },
+      {
+        name: 'Intercom', url: 'intercom.com', logo: 'IC',
+        traffic: '32M', ctr: '2.8%', roas: 4.2, adSpend: '$22M/mo',
+        topChannel: 'Google Search', threatLevel: 'low',
+        trafficMo: 32000000,
+        campaigns: [
+          { name: 'AI Customer Service', channel: 'Google', ctr: '3.2%', roas: 4.6, budget: '$8M', status: 'Active' },
+          { name: 'Fin AI Agent', channel: 'LinkedIn', ctr: '2.6%', roas: 4.0, budget: '$6M', status: 'Active' }
+        ],
+        suggestions: [
+          'Intercom\'s 2023–24 price hikes caused significant churn — target former users with locked-in pricing guarantees',
+          'Intercom\'s Fin AI is compelling but narrowly positioned — broader customer engagement AI messaging opens wider audience',
+          'Intercom underperforms in APAC and LATAM — localised customer service AI with regional language support is a gap'
+        ],
+        audiences: [{ label: 'SaaS Customer Success 28–45', pct: 42 }, { label: 'E-commerce Support Teams', pct: 24 }, { label: 'Product-Led Growth Teams', pct: 20 }, { label: 'Enterprise Support Ops', pct: 14 }],
+        topKeywords: ['customer messaging platform', 'live chat software', 'AI customer support', 'Intercom alternative'],
+        estimatedROI: '+36% win rate from Intercom pricing-frustrated customers'
       }
     ]
   },
@@ -379,6 +545,60 @@ const INDUSTRY_DB = {
         audiences: [{ label: 'Long-term HODLers 28–50', pct: 46 }, { label: 'Security-First 35–55', pct: 28 }, { label: 'NFT Collectors', pct: 16 }, { label: 'Institutional', pct: 10 }],
         topKeywords: ['hardware wallet', 'cold storage crypto', 'secure bitcoin wallet', 'crypto safe'],
         estimatedROI: '+24% market share by addressing Ledger trust gaps'
+      },
+      {
+        name: 'KuCoin', url: 'kucoin.com', logo: 'KC',
+        traffic: '58M', ctr: '3.1%', roas: 4.3, adSpend: '$22M/mo',
+        topChannel: 'Twitter/X Ads', threatLevel: 'medium',
+        trafficMo: 58000000,
+        campaigns: [
+          { name: 'People\'s Exchange', channel: 'Twitter/X', ctr: '3.4%', roas: 4.8, budget: '$8M', status: 'Active' },
+          { name: 'KuCoin Earn', channel: 'Google', ctr: '2.8%', roas: 3.9, budget: '$6M', status: 'Active' }
+        ],
+        suggestions: [
+          'KuCoin\'s "People\'s Exchange" positioning is populist but lacks trust signals — lead with verified security and insurance',
+          'KuCoin has faced regulatory pressure — target their frustrated users with compliant, jurisdiction-clear alternatives',
+          'KuCoin\'s altcoin selection is massive but discovery is poor — curated altcoin recommendation ads convert 2.8× better'
+        ],
+        audiences: [{ label: 'Altcoin Traders 20–35', pct: 46 }, { label: 'DeFi Explorers 22–32', pct: 26 }, { label: 'Asian Market Investors', pct: 18 }, { label: 'Passive Yield Seekers', pct: 10 }],
+        topKeywords: ['altcoin exchange', 'crypto staking rewards', 'KuCoin trading bot', 'low fee altcoins'],
+        estimatedROI: '+29% compliance-first acquisition vs. KuCoin\'s regulatory uncertainty'
+      },
+      {
+        name: 'OKX', url: 'okx.com', logo: 'OX',
+        traffic: '88M', ctr: '3.4%', roas: 4.7, adSpend: '$36M/mo',
+        topChannel: 'Google Search', threatLevel: 'medium',
+        trafficMo: 88000000,
+        campaigns: [
+          { name: 'Web3 Wallet', channel: 'Google', ctr: '3.8%', roas: 5.1, budget: '$12M', status: 'Active' },
+          { name: 'F1 & Sports Sponsorship', channel: 'Display', ctr: '1.9%', roas: 2.8, budget: '$18M', status: 'Active' }
+        ],
+        suggestions: [
+          'OKX spends heavily on sports sponsorship (F1, Manchester City) but digital performance underperforms — ROI messaging beats brand awareness for this audience',
+          'OKX Web3 wallet is technically strong but confusing to non-technical users — simplified Web3 entry-point ads convert 3.2× better',
+          'OKX is weak in US and EU regulated markets — compliance-forward positioning in these regions captures their unserved demand'
+        ],
+        audiences: [{ label: 'Advanced Traders 25–40', pct: 38 }, { label: 'Web3 Builders 22–35', pct: 28 }, { label: 'Sports Fans Converting to Crypto', pct: 20 }, { label: 'Institutional Asia', pct: 14 }],
+        topKeywords: ['crypto derivatives', 'OKX web3 wallet', 'futures crypto trading', 'low fee crypto'],
+        estimatedROI: '+36% digital ROI vs. OKX\'s brand sponsorship-heavy strategy'
+      },
+      {
+        name: 'Gemini', url: 'gemini.com', logo: 'GM',
+        traffic: '24M', ctr: '2.8%', roas: 4.4, adSpend: '$16M/mo',
+        topChannel: 'Google Search', threatLevel: 'low',
+        trafficMo: 24000000,
+        campaigns: [
+          { name: 'Crypto with Confidence', channel: 'Google', ctr: '3.1%', roas: 4.8, budget: '$6M', status: 'Active' },
+          { name: 'Earn Interest on Crypto', channel: 'Meta', ctr: '2.6%', roas: 3.8, budget: '$4M', status: 'Paused' }
+        ],
+        suggestions: [
+          'Gemini\'s earn product is paused post-regulatory scrutiny — target their yield-seeking users with compliant alternatives',
+          'Gemini focuses on compliance but has high fees — fee-efficiency messaging with equivalent trust signals converts better',
+          'Gemini\'s institutional product is strong but undermarketed — B2B crypto treasury management ads are a gap'
+        ],
+        audiences: [{ label: 'US Compliance-First Investors 28–50', pct: 44 }, { label: 'Institutional Crypto 35–55', pct: 26 }, { label: 'High Net Worth Retail', pct: 18 }, { label: 'NFT Collectors', pct: 12 }],
+        topKeywords: ['regulated crypto exchange', 'secure bitcoin buy', 'crypto custodian', 'Gemini exchange'],
+        estimatedROI: '+24% institutional acquisition vs. Gemini\'s conservative messaging'
       }
     ]
   },
@@ -474,6 +694,60 @@ const INDUSTRY_DB = {
         audiences: [{ label: 'Loyalty Members 30–50', pct: 38 }, { label: 'Weekend Trippers 25–42', pct: 28 }, { label: 'Points Collectors', pct: 22 }, { label: 'Business Travellers', pct: 12 }],
         topKeywords: ['hotel loyalty program', 'free night hotel', 'best hotel deals', 'boutique hotels'],
         estimatedROI: '+26% re-engagement via loyalty program competitive positioning'
+      },
+      {
+        name: 'Agoda', url: 'agoda.com', logo: 'AG',
+        traffic: '180M', ctr: '3.6%', roas: 4.9, adSpend: '$220M/mo',
+        topChannel: 'Google Hotels', threatLevel: 'high',
+        trafficMo: 180000000,
+        campaigns: [
+          { name: 'Asia Deals', channel: 'Google', ctr: '4.2%', roas: 5.6, budget: '$68M', status: 'Active' },
+          { name: 'Secret Deals', channel: 'Meta', ctr: '3.4%', roas: 4.4, budget: '$42M', status: 'Active' }
+        ],
+        suggestions: [
+          'Agoda dominates Asia Pacific but has weak Western brand recognition — English-market positioning is an open gap',
+          'Agoda\'s "secret deals" create urgency but erode perceived value — transparent best-price messaging converts 2.4× better in EU markets',
+          'Agoda underinvests in long-stay and digital nomad segments — remote work accommodation ads are growing 42% annually'
+        ],
+        audiences: [{ label: 'Asia Pacific Travellers 22–45', pct: 48 }, { label: 'Budget Backpackers', pct: 24 }, { label: 'Business Travellers Asia', pct: 16 }, { label: 'Digital Nomads', pct: 12 }],
+        topKeywords: ['cheap hotels Asia', 'hotel deals Bangkok', 'Agoda deals', 'Asia travel accommodation'],
+        estimatedROI: '+31% Western market acquisition by competing with Agoda\'s brand gap'
+      },
+      {
+        name: 'VRBO', url: 'vrbo.com', logo: 'VR',
+        traffic: '96M', ctr: '3.2%', roas: 4.4, adSpend: '$128M/mo',
+        topChannel: 'Google Search', threatLevel: 'medium',
+        trafficMo: 96000000,
+        campaigns: [
+          { name: 'Whole Home Rentals', channel: 'Google', ctr: '3.6%', roas: 4.9, budget: '$38M', status: 'Active' },
+          { name: 'Family Group Travel', channel: 'Meta', ctr: '2.8%', roas: 3.8, budget: '$28M', status: 'Active' }
+        ],
+        suggestions: [
+          'VRBO focuses on families and groups — solo and couple vacation rental travellers are significantly underserved',
+          'VRBO\'s app UX is inferior to Airbnb — app experience ads comparing speed and simplicity convert 3.1× better',
+          'VRBO underinvests in unique/luxury properties — premium villa and resort rental messaging commands 4× higher AOV'
+        ],
+        audiences: [{ label: 'Family Groups 30–50', pct: 46 }, { label: 'Multi-Generational Trips', pct: 24 }, { label: 'Friend Groups 25–40', pct: 18 }, { label: 'Domestic Vacation Renters', pct: 12 }],
+        topKeywords: ['vacation home rental', 'whole house rental holiday', 'family vacation rental', 'VRBO vs Airbnb'],
+        estimatedROI: '+28% bookings from VRBO\'s underserved solo and couple rental segment'
+      },
+      {
+        name: 'Klook', url: 'klook.com', logo: 'KL',
+        traffic: '64M', ctr: '4.1%', roas: 5.2, adSpend: '$62M/mo',
+        topChannel: 'Meta Ads', threatLevel: 'medium',
+        trafficMo: 64000000,
+        campaigns: [
+          { name: 'Book Experiences', channel: 'Meta', ctr: '4.8%', roas: 5.8, budget: '$20M', status: 'Active' },
+          { name: 'Travel Activities Asia', channel: 'Google', ctr: '3.6%', roas: 4.6, budget: '$16M', status: 'Active' }
+        ],
+        suggestions: [
+          'Klook dominates in-destination activities in Asia but has minimal European presence — EU experiences market is an open gap',
+          'Klook\'s affiliate network is strong but brand awareness outside Asia is very low — brand awareness campaigns in EU/US convert 2.6× better than pure performance',
+          'Klook underinvests in luxury experiences — premium once-in-a-lifetime experience ads have 5× higher AOV'
+        ],
+        audiences: [{ label: 'Young Asian Travellers 20–35', pct: 44 }, { label: 'Experience Seekers 22–40', pct: 28 }, { label: 'Families on Holiday', pct: 18 }, { label: 'Adventure Travellers', pct: 10 }],
+        topKeywords: ['travel activities booking', 'things to do Asia', 'Klook experiences', 'tour booking online'],
+        estimatedROI: '+34% European market acquisition by competing with Klook\'s Western brand gap'
       }
     ]
   },
@@ -568,6 +842,60 @@ const INDUSTRY_DB = {
         audiences: [{ label: 'Language Enthusiasts 18–35', pct: 48 }, { label: 'Travellers 25–45', pct: 24 }, { label: 'Students 16–24', pct: 18 }, { label: 'Business Professionals', pct: 10 }],
         topKeywords: ['free language learning', 'learn spanish', 'learn french app', 'language app'],
         estimatedROI: '+19% premium conversion by targeting Duolingo free-tier limitations'
+      },
+      {
+        name: 'LinkedIn Learning', url: 'linkedin.com/learning', logo: 'LL',
+        traffic: '96M', ctr: '2.6%', roas: 4.1, adSpend: '$42M/mo',
+        topChannel: 'LinkedIn Ads', threatLevel: 'high',
+        trafficMo: 96000000,
+        campaigns: [
+          { name: 'Skills for the Future', channel: 'LinkedIn', ctr: '2.9%', roas: 4.6, budget: '$14M', status: 'Active' },
+          { name: 'Learn from Experts', channel: 'Google', ctr: '2.4%', roas: 3.8, budget: '$10M', status: 'Active' }
+        ],
+        suggestions: [
+          'LinkedIn Learning ties courses to career outcomes — compete by showing faster, cheaper paths to the same outcome',
+          'LinkedIn Learning\'s course quality varies significantly — curated expert-only content with quality guarantees converts better',
+          'LinkedIn Learning is overly professional-focused — target the $1.4T personal development market it ignores'
+        ],
+        audiences: [{ label: 'Professionals Upskilling 28–48', pct: 44 }, { label: 'HR/L&D Managers', pct: 24 }, { label: 'Career Changers 25–40', pct: 20 }, { label: 'Corporate Teams', pct: 12 }],
+        topKeywords: ['professional online courses', 'business skills training', 'LinkedIn Learning alternative', 'corporate L&D'],
+        estimatedROI: '+38% corporate enrollment by outcompeting LinkedIn Learning on outcome-specific messaging'
+      },
+      {
+        name: 'edX', url: 'edx.org', logo: 'EX',
+        traffic: '62M', ctr: '2.8%', roas: 3.9, adSpend: '$28M/mo',
+        topChannel: 'Google Search', threatLevel: 'medium',
+        trafficMo: 62000000,
+        campaigns: [
+          { name: 'MIT & Harvard Online', channel: 'Google', ctr: '3.2%', roas: 4.4, budget: '$9M', status: 'Active' },
+          { name: 'MicroBachelors', channel: 'Meta', ctr: '2.4%', roas: 3.6, budget: '$6M', status: 'Active' }
+        ],
+        suggestions: [
+          'edX relies heavily on university brand prestige — practical skill outcome ads outperform institutional prestige by 2.8×',
+          'edX courses are long and expensive — shorter, cheaper, and equally verifiable credentials capture their frustrated audience',
+          'edX has poor course completion rates — accountability-driven learning programs are a strong differentiator'
+        ],
+        audiences: [{ label: 'Degree-Aspiring Adults 22–38', pct: 40 }, { label: 'Career Upskilling 28–45', pct: 28 }, { label: 'STEM Professionals', pct: 20 }, { label: 'Corporate Learners', pct: 12 }],
+        topKeywords: ['university online courses', 'edX alternative', 'MIT online certificate', 'online degree programs'],
+        estimatedROI: '+31% enrollment capture from edX\'s overly long and expensive course structure'
+      },
+      {
+        name: 'Khan Academy', url: 'khanacademy.org', logo: 'KA',
+        traffic: '180M', ctr: '1.8%', roas: 2.4, adSpend: '$4M/mo',
+        topChannel: 'Google Search', threatLevel: 'low',
+        trafficMo: 180000000,
+        campaigns: [
+          { name: 'Free Education for All', channel: 'Google', ctr: '2.1%', roas: 2.8, budget: '$2M', status: 'Active' },
+          { name: 'Khanmigo AI Tutor', channel: 'Meta', ctr: '2.8%', roas: 3.2, budget: '$1M', status: 'Active' }
+        ],
+        suggestions: [
+          'Khan Academy is free and non-commercial — this means they cannot compete on conversion or retargeting. Massive adjacent audience available for premium upsells.',
+          'Khan Academy\'s Khanmigo AI tutor shows demand for AI-assisted learning — a premium version with career tracking would convert heavily from this audience',
+          'Target Khan Academy\'s 12–18 parent audience with structured tutoring programs — parents pay for outcomes that free tools can\'t guarantee'
+        ],
+        audiences: [{ label: 'K-12 Students 10–18', pct: 48 }, { label: 'Parents of Students', pct: 26 }, { label: 'Adult Returners to Education', pct: 16 }, { label: 'Developing World Learners', pct: 10 }],
+        topKeywords: ['free math lessons', 'free online education', 'Khan Academy', 'SAT prep free'],
+        estimatedROI: '+22% premium conversion by targeting Khan Academy\'s free-to-paid upgrade gap'
       }
     ]
   },
@@ -662,6 +990,60 @@ const INDUSTRY_DB = {
         audiences: [{ label: 'SEO Professionals 25–45', pct: 48 }, { label: 'Content Marketers', pct: 24 }, { label: 'Link Building Teams', pct: 16 }, { label: 'Technical SEOs', pct: 12 }],
         topKeywords: ['backlink checker', 'keyword difficulty', 'site audit', 'competitor keywords'],
         estimatedROI: '+35% paid media market capture from Ahrefs\' SEO-only positioning'
+      },
+      {
+        name: 'Moz', url: 'moz.com', logo: 'MZ',
+        traffic: '28M', ctr: '2.8%', roas: 3.9, adSpend: '$10M/mo',
+        topChannel: 'Google Search', threatLevel: 'low',
+        trafficMo: 28000000,
+        campaigns: [
+          { name: 'Domain Authority', channel: 'Google', ctr: '3.1%', roas: 4.2, budget: '$3.5M', status: 'Active' },
+          { name: 'Local SEO', channel: 'Meta', ctr: '2.4%', roas: 3.6, budget: '$2.5M', status: 'Active' }
+        ],
+        suggestions: [
+          'Moz has lost market share to Semrush and Ahrefs — their churned users are actively evaluating alternatives',
+          'Moz is perceived as the "old guard" of SEO — a modern, AI-first positioning captures their disenchanted base',
+          'Moz\'s local SEO product is strong but underadvertised — local business campaigns targeting Moz customers convert 3.2× better'
+        ],
+        audiences: [{ label: 'SEO Agency Teams 25–45', pct: 42 }, { label: 'Local Business Marketers', pct: 28 }, { label: 'In-house SEO 28–42', pct: 18 }, { label: 'SMB Owners', pct: 12 }],
+        topKeywords: ['domain authority checker', 'Moz Pro alternative', 'local SEO tool', 'SEO rank tracker'],
+        estimatedROI: '+28% acquisition from Moz\'s declining market share and churned user base'
+      },
+      {
+        name: 'Sprout Social', url: 'sproutsocial.com', logo: 'SS',
+        traffic: '22M', ctr: '2.4%', roas: 3.8, adSpend: '$14M/mo',
+        topChannel: 'LinkedIn Ads', threatLevel: 'low',
+        trafficMo: 22000000,
+        campaigns: [
+          { name: 'Social Media ROI', channel: 'LinkedIn', ctr: '2.6%', roas: 4.1, budget: '$5M', status: 'Active' },
+          { name: 'Enterprise Social', channel: 'Google', ctr: '2.1%', roas: 3.6, budget: '$3M', status: 'Active' }
+        ],
+        suggestions: [
+          'Sprout Social is enterprise-priced but SMB-needed — SMB social management at 1/5th the price is a massive gap',
+          'Sprout Social has no ad intelligence features — positioning InfoGenie as the ad-aware social intelligence layer is a direct differentiator',
+          'Sprout Social\'s price increases in 2023 caused significant SMB churn — target those users specifically with migration offers'
+        ],
+        audiences: [{ label: 'Social Media Managers 25–40', pct: 42 }, { label: 'Enterprise Marketing Teams', pct: 28 }, { label: 'Agency Social Teams', pct: 18 }, { label: 'Brand Managers', pct: 12 }],
+        topKeywords: ['social media analytics', 'social media management enterprise', 'Sprout Social alternative', 'social listening tool'],
+        estimatedROI: '+33% win rate from Sprout Social\'s pricing-driven churn'
+      },
+      {
+        name: 'Buffer', url: 'buffer.com', logo: 'BF',
+        traffic: '18M', ctr: '2.2%', roas: 3.4, adSpend: '$6M/mo',
+        topChannel: 'Google Search', threatLevel: 'low',
+        trafficMo: 18000000,
+        campaigns: [
+          { name: 'Simple Social Publishing', channel: 'Google', ctr: '2.8%', roas: 3.8, budget: '$2M', status: 'Active' },
+          { name: 'Creator Plans', channel: 'Meta', ctr: '2.4%', roas: 3.2, budget: '$1.5M', status: 'Active' }
+        ],
+        suggestions: [
+          'Buffer is a publisher tool only — no competitor intelligence, no ad data, no AI copy generation. InfoGenie\'s full stack is a direct superior.',
+          'Buffer\'s creator positioning is niche — target their business users who need analytics and campaign performance beyond just scheduling',
+          'Buffer lacks paid media integration — users who scale past organic social are forced to find other tools, creating a perfect upgrade path'
+        ],
+        audiences: [{ label: 'Creators & Solopreneurs 22–38', pct: 46 }, { label: 'Small Marketing Teams', pct: 28 }, { label: 'Startup Founders', pct: 16 }, { label: 'Non-profits', pct: 10 }],
+        topKeywords: ['social media scheduler free', 'Buffer alternative', 'schedule social posts', 'creator social tool'],
+        estimatedROI: '+24% platform upgrade conversion from Buffer\'s limited feature ceiling'
       }
     ]
   }

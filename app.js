@@ -356,10 +356,13 @@ function renderTrendChart(competitors) {
     { bg: 'rgba(0,102,255,0.12)', border: '#0066FF' },
     { bg: 'rgba(124,58,237,0.12)', border: '#7C3AED' },
     { bg: 'rgba(245,158,11,0.12)', border: '#F59E0B' },
-    { bg: 'rgba(16,185,129,0.12)', border: '#10B981' }
+    { bg: 'rgba(16,185,129,0.12)', border: '#10B981' },
+    { bg: 'rgba(239,68,68,0.12)', border: '#EF4444' },
+    { bg: 'rgba(139,92,246,0.12)', border: '#8B5CF6' },
+    { bg: 'rgba(236,72,153,0.12)', border: '#EC4899' }
   ];
   
-  const datasets = competitors.slice(0, 5).map((c, i) => {
+  const datasets = competitors.slice(0, 8).map((c, i) => {
     const baseTraffic = parseFloat(c.traffic.replace(/[^0-9.]/g,''));
     const multiplier = c.traffic.includes('B') ? 1000 : c.traffic.includes('M') ? 1 : 0.001;
     const base = baseTraffic * multiplier;
@@ -874,7 +877,10 @@ function buildCompetitorVsCards(industry, competitors, domainName) {
     { ctrBoost: '+1.1%', roasBoost: '+0.9×', cpaReduction: '-22%', audienceBoost: '+28%', reason: 'Urgency-driven copy with social proof converts 2.3× better' },
     { ctrBoost: '+1.8%', roasBoost: '+1.4×', cpaReduction: '-31%', audienceBoost: '+42%', reason: 'Competitor weakness targeting drives significantly higher intent' },
     { ctrBoost: '+0.9%', roasBoost: '+0.7×', cpaReduction: '-19%', audienceBoost: '+24%', reason: 'Personalised audience segmentation beats broad targeting' },
-    { ctrBoost: '+1.3%', roasBoost: '+1.1×', cpaReduction: '-26%', audienceBoost: '+33%', reason: 'Outcome-focused headlines outperform feature-based messaging' }
+    { ctrBoost: '+1.3%', roasBoost: '+1.1×', cpaReduction: '-26%', audienceBoost: '+33%', reason: 'Outcome-focused headlines outperform feature-based messaging' },
+    { ctrBoost: '+1.6%', roasBoost: '+1.3×', cpaReduction: '-29%', audienceBoost: '+38%', reason: 'Intent-signal bidding captures high-value moments competitors miss' },
+    { ctrBoost: '+1.0%', roasBoost: '+0.8×', cpaReduction: '-21%', audienceBoost: '+27%', reason: 'Creative refresh velocity at 8× competitor cadence lifts CTR' },
+    { ctrBoost: '+2.1%', roasBoost: '+1.6×', cpaReduction: '-34%', audienceBoost: '+45%', reason: 'Autonomous multi-channel orchestration eliminates cross-channel waste' }
   ];
 
   const infoGenieHeadlines = [
@@ -882,7 +888,10 @@ function buildCompetitorVsCards(industry, competitors, domainName) {
     `What ${competitors[1]?.name} Won't Tell You About Their Ad Strategy`,
     `${competitors[2]?.name} Spends ${competitors[2]?.adSpend} Monthly — Here's How to Beat Them for Less`,
     `The ${industry.name} Secret That ${competitors[3]?.name} Doesn't Want You to Know`,
-    `Outperform ${competitors[4]?.name} — AI-Powered Campaigns. Zero Guesswork.`
+    `Outperform ${competitors[4]?.name} — AI-Powered Campaigns. Zero Guesswork.`,
+    `${competitors[5]?.name} Is Losing Ground — Your AI Opportunity Window Is Now`,
+    `We Analysed ${competitors[6]?.name}'s Entire Ad Spend. Here's What We Found.`,
+    `${competitors[7]?.name} Can't Compete With Autonomous AI. Here's Proof.`
   ];
 
   const infoGenieCopies = [
@@ -890,10 +899,13 @@ function buildCompetitorVsCards(industry, competitors, domainName) {
     `${competitors[1]?.name}'s generic creative gets lost in the feed. Our AI generates personalised ad variants tailored to each audience segment's language, pain points, and intent signals — driving 2.3× higher engagement at lower cost.`,
     `${competitors[2]?.name} is spending ${competitors[2]?.adSpend}/mo on ads — most of it wasted on the wrong audiences. Our competitor intelligence identifies exactly where their budget bleeds, then targets those gaps with precision campaigns that cost a fraction of the price.`,
     `${competitors[3]?.name}'s audiences are actively looking for a better alternative. Our AI identifies their dissatisfied customer segments and delivers your superior offer at the exact moment they're considering switching. Average CPA reduction: 31%.`,
-    `Stop reacting to ${competitors[4]?.name}'s campaigns. Our autonomous AI monitors their every move — new creatives, budget shifts, audience changes — and automatically rebuilds your campaigns to stay one step ahead, 24/7.`
+    `Stop reacting to ${competitors[4]?.name}'s campaigns. Our autonomous AI monitors their every move — new creatives, budget shifts, audience changes — and automatically rebuilds your campaigns to stay one step ahead, 24/7.`,
+    `${competitors[5]?.name} is showing early signs of market retreat. Our predictive intelligence detected reduced ad frequency and creative stagnation 3 weeks before their competitors noticed. Your window to capture their audience is open right now.`,
+    `We reverse-engineered ${competitors[6]?.name}'s top-performing campaign. Our AI recreated the intent, fixed the messaging gaps, and built a superior variant that outperforms the original in every benchmark we ran — ready to deploy in one click.`,
+    `${competitors[7]?.name} optimises campaigns once a week. Our AI optimises every 4 hours — adjusting bids, refreshing creatives, and shifting budget based on live conversion signals. That's 42× more optimisation cycles per month.`
   ];
 
-  return competitors.slice(0, 5).map((comp, i) => {
+  return competitors.slice(0, 8).map((comp, i) => {
     if (!comp || !comp.campaigns || !comp.campaigns[0]) return '';
     const campaign = comp.campaigns[0];
     const imp = improvements[i] || improvements[0];
@@ -2190,18 +2202,29 @@ function buildIntelligence() {
   // ── Use real competitors from analysis to override intelligence display data ──
   const realComps = (analysisData && analysisData.competitors) ? analysisData.competitors : null;
 
-  // Palette for generated SOV colors
-  const sovPalette = ['#0066FF','#00C9C8','#6366F1','#F59E0B','#10B981','#EF4444','#E5E7EB'];
+  // Palette for generated SOV colors (10 slots: 8 comps + You + Others)
+  const sovPalette = ['#0066FF','#00C9C8','#6366F1','#F59E0B','#10B981','#EF4444','#8B5CF6','#EC4899','#F97316','#14B8A6'];
+
+  // Parse traffic string (e.g. '148M', '2.4B') to a number
+  function parseTraffic(c) {
+    if (c.trafficMo) return c.trafficMo;
+    if (!c.traffic) return 400000;
+    const t = String(c.traffic).replace(/[, ]/g, '');
+    if (t.endsWith('B')) return parseFloat(t) * 1e9;
+    if (t.endsWith('M')) return parseFloat(t) * 1e6;
+    if (t.endsWith('K')) return parseFloat(t) * 1e3;
+    return parseFloat(t) || 400000;
+  }
 
   function compLogo(c) { return c.logo || (c.name ? c.name[0].toUpperCase() : '?'); }
 
   // Build Share of Voice: use real competitor names when available
   let displaySov;
   if (realComps && realComps.length > 0) {
-    const totalBase = realComps.reduce((a,c) => a + (c.trafficMo || 400000), 0);
+    const totalBase = realComps.reduce((a,c) => a + parseTraffic(c), 0);
     let usedPct = 0;
-    const compRows = realComps.slice(0,5).map((c, i) => {
-      const raw = Math.round((c.trafficMo || 400000) / totalBase * 72);
+    const compRows = realComps.slice(0,8).map((c, i) => {
+      const raw = Math.round(parseTraffic(c) / totalBase * 72);
       const share = Math.max(raw, 6);
       usedPct += share;
       return { name: c.name, share, trend: i < 2 ? '+2%' : '+1%', color: sovPalette[i] };
