@@ -2572,6 +2572,89 @@ body {
 }
 .btn-kwgap-attack:hover { opacity: 0.88; }
 
+/* Keyword Gap Live Fetch Bar */
+.kwgap-live-bar {
+  background: linear-gradient(135deg, rgba(0,201,200,0.06) 0%, rgba(0,102,255,0.06) 100%);
+  border: 1.5px solid rgba(0,201,200,0.25);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.kwgap-live-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8875rem;
+  color: var(--gray-600);
+}
+.kwgap-live-icon { font-size: 1.2rem; }
+.kwgap-live-inputs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.kwgap-domain-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  color: var(--navy);
+  background: white;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.kwgap-domain-input:focus { border-color: var(--teal); }
+.kwgap-domain-input::placeholder { color: #9CA3AF; }
+.kwgap-location-select {
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  color: var(--navy);
+  background: white;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.kwgap-location-select:focus { border-color: var(--teal); }
+.kwgap-fetch-btn {
+  padding: 10px 20px;
+  background: linear-gradient(135deg, var(--teal), var(--blue));
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s, transform 0.15s;
+}
+.kwgap-fetch-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+.kwgap-fetch-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.kwgap-live-note {
+  font-size: 0.775rem;
+  color: #6B7280;
+}
+.kwgap-data-source-label {
+  margin-top: 10px;
+  padding: 8px 14px;
+  background: rgba(245,158,11,0.08);
+  border: 1px solid rgba(245,158,11,0.25);
+  border-radius: 8px;
+  font-size: 0.775rem;
+  color: #92400E;
+}
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
 /* Share of Voice */
 .sov-wrap {
   background: white;

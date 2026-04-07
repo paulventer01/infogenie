@@ -2484,13 +2484,47 @@ function buildIntelligence() {
     </div>
 
     <!-- Keyword Gap Table -->
-    <div class="intel-section">
+    <div class="intel-section" id="kwgap-section">
       <div class="intel-section-head">
         <div class="intel-section-title">🔑 Keyword Gap Intelligence</div>
         <div class="intel-section-badge" id="ldb-semrush">${intel.keywordGaps.length} Opportunities Found</div>
         <div class="intel-exclusive-badge" onclick="openExclusiveModal()" style="cursor:pointer">⚡ InfoGenie Exclusive</div>
       </div>
-      <div style="overflow-x:auto">
+
+      <!-- Live Fetch Bar -->
+      <div class="kwgap-live-bar" id="kwgap-live-bar">
+        <div class="kwgap-live-label">
+          <span class="kwgap-live-icon">🌐</span>
+          <span>Fetch <strong>live keyword gap data</strong> for your domain vs. real competitors</span>
+        </div>
+        <div class="kwgap-live-inputs">
+          <input
+            type="text"
+            id="kwgap-domain-input"
+            class="kwgap-domain-input"
+            placeholder="yourdomain.com"
+            value="${analysisDomain !== 'yourdomain.com' ? analysisDomain : ''}"
+          />
+          <select id="kwgap-location-select" class="kwgap-location-select">
+            <option value="United States">🇺🇸 United States</option>
+            <option value="United Kingdom">🇬🇧 United Kingdom</option>
+            <option value="Australia">🇦🇺 Australia</option>
+            <option value="Canada">🇨🇦 Canada</option>
+            <option value="Germany">🇩🇪 Germany</option>
+            <option value="France">🇫🇷 France</option>
+            <option value="India">🇮🇳 India</option>
+            <option value="Brazil">🇧🇷 Brazil</option>
+          </select>
+          <button class="kwgap-fetch-btn" id="kwgap-fetch-btn" onclick="fetchLiveKeywordGap()">
+            ⚡ Fetch Live Data
+          </button>
+        </div>
+        <div class="kwgap-live-note" id="kwgap-status-note">
+          Live data powered by DataForSEO · Results reflect real search rankings · Pay-per-use pricing
+        </div>
+      </div>
+
+      <div id="kwgap-table-wrap" style="overflow-x:auto">
         <table class="kwgap-table">
           <thead>
             <tr>
@@ -2505,8 +2539,11 @@ function buildIntelligence() {
               <th>Action</th>
             </tr>
           </thead>
-          <tbody>${kwRows}</tbody>
+          <tbody id="kwgap-tbody">${kwRows}</tbody>
         </table>
+      </div>
+      <div id="kwgap-data-source" class="kwgap-data-source-label">
+        ⚠️ Showing illustrative sample data — enter your domain above and click "Fetch Live Data" for real results
       </div>
     </div>
 
@@ -4770,6 +4807,139 @@ function closeCampCreativeModal() {
   modal.classList.add('hidden');
   modal.style.display = 'none';
 }
+
+// ── Live Keyword Gap Fetch (DataForSEO via backend) ──────────────────────────
+
+async function fetchLiveKeywordGap() {
+  const domainInput = document.getElementById('kwgap-domain-input');
+  const locationSelect = document.getElementById('kwgap-location-select');
+  const fetchBtn = document.getElementById('kwgap-fetch-btn');
+  const tbody = document.getElementById('kwgap-tbody');
+  const badge = document.getElementById('ldb-semrush');
+  const statusNote = document.getElementById('kwgap-status-note');
+  const dataSourceLabel = document.getElementById('kwgap-data-source');
+
+  const domain = (domainInput ? domainInput.value.trim() : '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+  if (!domain) {
+    showToast('⚠️ Please enter your domain first');
+    if (domainInput) domainInput.focus();
+    return;
+  }
+
+  // Check if backend is configured
+  try {
+    const statusRes = await fetch('/api/status');
+    const status = await statusRes.json();
+    if (!status.dataforseo) {
+      showToast('⚠️ DataForSEO credentials not configured — add them in Secrets');
+      if (statusNote) statusNote.innerHTML = '❌ DataForSEO not configured. Add <strong>DATAFORSEO_LOGIN</strong> and <strong>DATAFORSEO_PASSWORD</strong> in your Replit Secrets panel.';
+      return;
+    }
+  } catch(e) {
+    showToast('❌ Cannot reach server — please reload the page');
+    return;
+  }
+
+  if (fetchBtn) { fetchBtn.disabled = true; fetchBtn.textContent = '⏳ Fetching…'; }
+  if (statusNote) statusNote.textContent = '🔄 Querying DataForSEO for live keyword gap data…';
+  if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:#6B7280">
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C9C8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>
+      Fetching live keyword gap data for <strong style="color:#00C9C8">${domain}</strong>…
+    </div>
+  </td></tr>`;
+
+  const industryKey = analysisData ? analysisData.industryKey : 'marketing';
+  const location = locationSelect ? locationSelect.value : 'United States';
+
+  try {
+    const res = await fetch('/api/keyword-gap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        yourDomain: domain,
+        industry: industryKey,
+        location,
+        language: 'English',
+        limit: 20
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || `Server error ${res.status}`);
+    }
+
+    const keywords = data.keywords || [];
+
+    if (keywords.length === 0) {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:#6B7280">
+        No keyword gaps found for <strong>${domain}</strong> vs these competitors.<br>
+        <small>Try a different location or check that your domain has established search presence.</small>
+      </td></tr>`;
+      if (badge) badge.textContent = '0 Opportunities Found';
+      if (statusNote) statusNote.textContent = `✅ Live query complete — no gaps found for ${domain}`;
+      if (dataSourceLabel) { dataSourceLabel.textContent = `✅ Live data from DataForSEO · ${domain} vs ${(data.competitors || []).join(', ')}`; dataSourceLabel.style.color = '#10B981'; }
+      return;
+    }
+
+    // Render live rows
+    const rows = keywords.map(k => `
+      <tr>
+        <td><div class="kwgap-keyword">${k.keyword}</div></td>
+        <td>${k.volume}</td>
+        <td>${k.topComp}</td>
+        <td>${k.compCtr}</td>
+        <td>${k.yourRank}</td>
+        <td><span class="diff-badge diff-${k.difficulty.toLowerCase()}">${k.difficulty}</span></td>
+        <td>
+          <div class="kwgap-score-bar"><div class="kwgap-score-fill" style="width:${k.score}%"></div></div>
+          <span class="kwgap-score-num">${k.score}</span>
+        </td>
+        <td>${k.cpc}</td>
+        <td><button class="btn-kwgap-attack" onclick="openAttackModal('${k.keyword.replace(/'/g,'')}','${k.topComp.replace(/'/g,'')}','keyword')">⚡ Attack</button></td>
+      </tr>
+    `).join('');
+
+    if (tbody) tbody.innerHTML = rows;
+    if (badge) badge.textContent = `${keywords.length} Live Opportunities`;
+    if (statusNote) statusNote.textContent = `✅ Live · Fetched ${new Date().toLocaleTimeString()} · ${keywords.length} keyword gaps found`;
+    if (dataSourceLabel) {
+      dataSourceLabel.innerHTML = `✅ <strong>Live data from DataForSEO</strong> · ${domain} vs ${(data.competitors || []).slice(0,4).join(', ')}${(data.competitors || []).length > 4 ? ` +${(data.competitors||[]).length - 4} more` : ''} · Updated ${new Date().toLocaleTimeString()}`;
+      dataSourceLabel.style.color = '#10B981';
+    }
+
+    // Save domain for future use
+    try { localStorage.setItem('ig_kwgap_domain', domain); } catch(e) {}
+    showToast(`✅ ${keywords.length} live keyword gaps found for ${domain}`);
+
+  } catch(err) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:#EF4444">
+      ❌ ${err.message}
+    </td></tr>`;
+    if (statusNote) statusNote.textContent = `❌ Error: ${err.message}`;
+    showToast('❌ ' + err.message);
+  } finally {
+    if (fetchBtn) { fetchBtn.disabled = false; fetchBtn.textContent = '⚡ Fetch Live Data'; }
+  }
+}
+
+// Allow pressing Enter in domain input to trigger fetch
+document.addEventListener('DOMContentLoaded', () => {
+  document.body.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.id === 'kwgap-domain-input') {
+      fetchLiveKeywordGap();
+    }
+  });
+
+  // Pre-fill from localStorage if available
+  const savedDomain = localStorage.getItem('ig_kwgap_domain');
+  if (savedDomain) {
+    const inp = document.getElementById('kwgap-domain-input');
+    if (inp && !inp.value) inp.value = savedDomain;
+  }
+});
 
 // Init view states
 document.addEventListener('DOMContentLoaded', () => {
