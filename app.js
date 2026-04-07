@@ -3751,16 +3751,325 @@ function switchSettingsTab(key) {
   document.querySelectorAll('.integ-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + key));
 }
 
-function testConnection(id) {
+// ── API Key Validators ───────────────────────────────────────────────────────
+// Returns: { valid: bool, live: bool, message: string }
+// live=true  → result came from a real network call to the 3rd-party API
+// live=false → result is format/pattern validation only (CORS blocked or OAuth-based)
+
+const API_VALIDATORS = {
+
+  // ── OpenAI: real CORS-enabled call ──────────────────────────────────────
+  openai: async (key) => {
+    if (!key.startsWith('sk-')) return { valid: false, live: false, message: 'Invalid format — OpenAI keys must start with "sk-"' };
+    try {
+      const r = await fetch('https://api.openai.com/v1/models', {
+        headers: { Authorization: 'Bearer ' + key }
+      });
+      if (r.status === 200) return { valid: true, live: true, message: 'OpenAI key verified — live connection confirmed' };
+      if (r.status === 401) return { valid: false, live: true, message: 'OpenAI rejected this key — check it is copied correctly and has not been revoked' };
+      return { valid: false, live: true, message: `OpenAI returned status ${r.status} — key may lack required permissions` };
+    } catch(e) {
+      return { valid: false, live: false, message: 'Could not reach OpenAI — check your internet connection' };
+    }
+  },
+
+  // ── Anthropic/Claude: format only (CORS blocked on their API) ────────────
+  anthropic: (key) => {
+    if (!key.startsWith('sk-ant-')) return { valid: false, live: false, message: 'Invalid format — Anthropic keys must start with "sk-ant-"' };
+    if (key.length < 40) return { valid: false, live: false, message: 'Key too short — Anthropic keys are typically 80+ characters' };
+    return { valid: true, live: false, message: 'Anthropic key format is valid — live connection will be confirmed on first model call' };
+  },
+
+  // ── Google Gemini: real CORS-enabled call ────────────────────────────────
+  gemini: async (key) => {
+    if (!key.startsWith('AIza') || key.length < 30) return { valid: false, live: false, message: 'Invalid format — Gemini API keys start with "AIza" and are 39 characters' };
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1/models?key=${encodeURIComponent(key)}`);
+      if (r.status === 200) return { valid: true, live: true, message: 'Gemini API key verified — live connection confirmed' };
+      if (r.status === 400 || r.status === 403) return { valid: false, live: true, message: 'Gemini rejected this key — verify it is enabled for Generative Language API in Google Cloud Console' };
+      return { valid: false, live: true, message: `Gemini returned status ${r.status}` };
+    } catch(e) {
+      return { valid: false, live: false, message: 'Could not reach Google AI — check your internet connection' };
+    }
+  },
+
+  // ── OpenRouter: format only ──────────────────────────────────────────────
+  openrouter: (key) => {
+    if (!key.startsWith('sk-or-')) return { valid: false, live: false, message: 'Invalid format — OpenRouter keys must start with "sk-or-"' };
+    if (key.length < 40) return { valid: false, live: false, message: 'Key too short — OpenRouter keys are typically 60+ characters' };
+    return { valid: true, live: false, message: 'OpenRouter key format is valid — live connection will be confirmed on first model call' };
+  },
+
+  // ── Mistral: format only ─────────────────────────────────────────────────
+  mistral: (key) => {
+    if (key.length < 32) return { valid: false, live: false, message: 'Key too short — Mistral API keys are 32 characters' };
+    if (!/^[A-Za-z0-9]+$/.test(key)) return { valid: false, live: false, message: 'Invalid characters — Mistral keys are alphanumeric only' };
+    return { valid: true, live: false, message: 'Mistral key format is valid — live connection will be confirmed on first model call' };
+  },
+
+  // ── ElevenLabs: format only ──────────────────────────────────────────────
+  elevenlabs: (key) => {
+    if (key.length < 32) return { valid: false, live: false, message: 'Key too short — ElevenLabs API keys are at least 32 characters' };
+    if (!/^[a-f0-9]+$/i.test(key)) return { valid: false, live: false, message: 'Invalid format — ElevenLabs API keys are hexadecimal strings' };
+    return { valid: true, live: false, message: 'ElevenLabs key format is valid — live connection will be confirmed on first voice call' };
+  },
+
+  // ── AdCreative.ai: format only ───────────────────────────────────────────
+  adcreative: (key) => {
+    if (key.length < 20) return { valid: false, live: false, message: 'Key too short — AdCreative.ai API keys are typically 40+ characters' };
+    return { valid: true, live: false, message: 'AdCreative.ai key format is valid — live connection will be confirmed on first creative request' };
+  },
+
+  // ── Jasper AI: format only ───────────────────────────────────────────────
+  jasper: (key) => {
+    if (key.length < 20) return { valid: false, live: false, message: 'Key too short — Jasper API keys are typically 40+ characters' };
+    return { valid: true, live: false, message: 'Jasper key format is valid — live connection will be confirmed on first copy generation' };
+  },
+
+  // ── Copy.ai: format only ─────────────────────────────────────────────────
+  copyai: (key) => {
+    if (key.length < 20) return { valid: false, live: false, message: 'Key too short — Copy.ai API keys are typically 40+ characters' };
+    return { valid: true, live: false, message: 'Copy.ai key format is valid — live connection will be confirmed on first workflow run' };
+  },
+
+  // ── Artlist: format only ─────────────────────────────────────────────────
+  artlist: (key) => {
+    if (key.length < 20) return { valid: false, live: false, message: 'Key too short — Artlist Enterprise keys are 40+ characters' };
+    return { valid: true, live: false, message: 'Artlist key format is valid — live connection will be confirmed on first asset request' };
+  },
+
+  // ── Semrush: format only ─────────────────────────────────────────────────
+  semrush: (key) => {
+    if (!/^[a-f0-9]{32}$/i.test(key) && key.length < 30) return { valid: false, live: false, message: 'Invalid format — Semrush API keys are 32-character hexadecimal strings' };
+    return { valid: true, live: false, message: 'Semrush key format is valid — live data will flow when InfoGenie makes its first keyword request' };
+  },
+
+  // ── Brandwatch: format only ──────────────────────────────────────────────
+  brandwatch: (key) => {
+    if (key.length < 20) return { valid: false, live: false, message: 'Key too short — Brandwatch API tokens are typically 40+ characters' };
+    return { valid: true, live: false, message: 'Brandwatch token format is valid — live social listening will begin on first query' };
+  },
+
+  // ── Meta Ad Library: real CORS-enabled call via Graph API ────────────────
+  'meta-ad-library': async (key) => {
+    if (key.length < 20) return { valid: false, live: false, message: 'Token too short — Meta access tokens are typically 100+ characters' };
+    try {
+      const r = await fetch(`https://graph.facebook.com/me?access_token=${encodeURIComponent(key)}`);
+      const data = await r.json();
+      if (data.id) return { valid: true, live: true, message: `Meta token verified — connected as user ${data.id}. Ad Library access is live.` };
+      if (data.error) return { valid: false, live: true, message: `Meta rejected this token: ${data.error.message}` };
+      return { valid: false, live: true, message: 'Meta token validation failed — check it has Ad Library permissions' };
+    } catch(e) {
+      return { valid: false, live: false, message: 'Could not reach Meta Graph API — check your internet connection' };
+    }
+  },
+
+  // ── Google Ads: format only (OAuth refresh token) ────────────────────────
+  'google-ads': (key) => {
+    if (key.length < 40) return { valid: false, live: false, message: 'Token too short — Google OAuth refresh tokens are typically 100+ characters' };
+    return { valid: true, live: false, message: 'Google Ads OAuth token format is valid — live connection will be confirmed on first campaign sync' };
+  },
+
+  // ── Meta Ads (Facebook): same as meta-ad-library ─────────────────────────
+  'meta-ads': async (key) => {
+    if (key.length < 20) return { valid: false, live: false, message: 'Token too short — Meta access tokens are typically 100+ characters' };
+    try {
+      const r = await fetch(`https://graph.facebook.com/me?access_token=${encodeURIComponent(key)}`);
+      const data = await r.json();
+      if (data.id) return { valid: true, live: true, message: `Meta token verified — connected as user ${data.id}. Campaigns can now be deployed.` };
+      if (data.error) return { valid: false, live: true, message: `Meta rejected this token: ${data.error.message}` };
+      return { valid: false, live: true, message: 'Meta token validation failed — ensure it has ads_management permission' };
+    } catch(e) {
+      return { valid: false, live: false, message: 'Could not reach Meta Graph API — check your internet connection' };
+    }
+  },
+
+  // ── TikTok Ads: format only ──────────────────────────────────────────────
+  'tiktok-ads': (key) => {
+    if (key.length < 30) return { valid: false, live: false, message: 'Token too short — TikTok access tokens are typically 80+ characters' };
+    return { valid: true, live: false, message: 'TikTok access token format is valid — live deployment will be confirmed on first ad push' };
+  },
+
+  // ── LinkedIn Ads: format only ─────────────────────────────────────────────
+  'linkedin-ads': (key) => {
+    if (key.length < 50) return { valid: false, live: false, message: 'Token too short — LinkedIn OAuth tokens are typically 100+ characters' };
+    return { valid: true, live: false, message: 'LinkedIn access token format is valid — live deployment will be confirmed on first campaign push' };
+  },
+
+  // ── Twitter/X Ads: format only ───────────────────────────────────────────
+  'twitter-ads': (key) => {
+    if (key.length < 40) return { valid: false, live: false, message: 'Token too short — Twitter Bearer tokens are typically 100+ characters' };
+    return { valid: true, live: false, message: 'Twitter Bearer token format is valid — live data will be confirmed on first ad push' };
+  },
+
+  // ── Snapchat Ads: format only ─────────────────────────────────────────────
+  'snapchat-ads': (key) => {
+    if (key.length < 30) return { valid: false, live: false, message: 'Token too short — Snapchat OAuth tokens are typically 80+ characters' };
+    return { valid: true, live: false, message: 'Snapchat token format is valid — live deployment will be confirmed on first ad push' };
+  },
+
+  // ── Pinterest Ads: format only ────────────────────────────────────────────
+  'pinterest-ads': (key) => {
+    if (key.length < 30) return { valid: false, live: false, message: 'Token too short — Pinterest access tokens are typically 80+ characters' };
+    return { valid: true, live: false, message: 'Pinterest token format is valid — live deployment will be confirmed on first ad push' };
+  },
+
+  // ── Stripe: format only ───────────────────────────────────────────────────
+  stripe: (key) => {
+    if (!key.startsWith('sk_live_') && !key.startsWith('sk_test_')) return { valid: false, live: false, message: 'Invalid format — Stripe secret keys must start with "sk_live_" (production) or "sk_test_" (testing)' };
+    if (key.length < 30) return { valid: false, live: false, message: 'Key too short — Stripe keys are typically 32+ characters after the prefix' };
+    const mode = key.startsWith('sk_test_') ? 'TEST MODE' : 'LIVE MODE';
+    return { valid: true, live: false, message: `Stripe key format is valid [${mode}] — live connection will be confirmed on first billing action` };
+  },
+
+  // ── HubSpot: format only ─────────────────────────────────────────────────
+  hubspot: (key) => {
+    if (!key.startsWith('pat-') && !/^[a-f0-9-]{36}$/i.test(key)) return { valid: false, live: false, message: 'Invalid format — HubSpot Private App tokens start with "pat-" followed by region and identifier' };
+    return { valid: true, live: false, message: 'HubSpot token format is valid — live CRM sync will be confirmed on first contact pull' };
+  },
+
+  // ── Salesforce: format only ───────────────────────────────────────────────
+  salesforce: (key) => {
+    if (key.length < 40) return { valid: false, live: false, message: 'Token too short — Salesforce access tokens are typically 100+ characters' };
+    return { valid: true, live: false, message: 'Salesforce token format is valid — live CRM sync will be confirmed on first campaign pull' };
+  },
+
+  // ── Pipedrive: format only ────────────────────────────────────────────────
+  pipedrive: (key) => {
+    if (!/^[a-f0-9]{40}$/i.test(key)) return { valid: false, live: false, message: 'Invalid format — Pipedrive API tokens are 40-character hexadecimal strings' };
+    return { valid: true, live: false, message: 'Pipedrive key format is valid — live pipeline sync will be confirmed on first deal pull' };
+  },
+
+  // ── Slack: real CORS-enabled call ────────────────────────────────────────
+  slack: async (key) => {
+    if (!key.startsWith('xoxb-') && !key.startsWith('xoxp-')) return { valid: false, live: false, message: 'Invalid format — Slack bot tokens start with "xoxb-" and user tokens start with "xoxp-"' };
+    try {
+      const body = new URLSearchParams({ token: key });
+      const r = await fetch('https://slack.com/api/auth.test', { method: 'POST', body });
+      const data = await r.json();
+      if (data.ok) return { valid: true, live: true, message: `Slack verified — connected to workspace "${data.team}" as ${data.user}` };
+      return { valid: false, live: true, message: `Slack rejected this token: ${data.error}` };
+    } catch(e) {
+      return { valid: false, live: false, message: 'Could not reach Slack API — check your internet connection' };
+    }
+  },
+
+  // ── SendGrid: format only ─────────────────────────────────────────────────
+  sendgrid: (key) => {
+    if (!key.startsWith('SG.')) return { valid: false, live: false, message: 'Invalid format — SendGrid API keys always start with "SG."' };
+    if (key.length < 50) return { valid: false, live: false, message: 'Key too short — SendGrid keys are typically 70+ characters' };
+    return { valid: true, live: false, message: 'SendGrid key format is valid — live email delivery will be confirmed on first send' };
+  },
+
+  // ── Mailchimp: format only ────────────────────────────────────────────────
+  mailchimp: (key) => {
+    if (!/^[a-f0-9]{32}-us\d+$/i.test(key)) return { valid: false, live: false, message: 'Invalid format — Mailchimp API keys end with "-usN" (e.g. "abc123...-us6") matching your data centre' };
+    return { valid: true, live: false, message: 'Mailchimp key format is valid — live audience sync will be confirmed on first list pull' };
+  },
+
+  // ── Intercom: format only ─────────────────────────────────────────────────
+  intercom: (key) => {
+    if (key.length < 30) return { valid: false, live: false, message: 'Token too short — Intercom access tokens are typically 50+ characters' };
+    return { valid: true, live: false, message: 'Intercom token format is valid — live conversation sync will be confirmed on first contact pull' };
+  },
+
+  // ── WhatsApp Business: format only ────────────────────────────────────────
+  whatsapp: (key) => {
+    if (key.length < 50) return { valid: false, live: false, message: 'Token too short — WhatsApp Business API tokens are typically 100+ characters' };
+    return { valid: true, live: false, message: 'WhatsApp token format is valid — live messaging will be confirmed on first API call' };
+  },
+
+  // ── Telegram Bot: format check ────────────────────────────────────────────
+  telegram: (key) => {
+    if (!/^\d{8,12}:[A-Za-z0-9_-]{35}$/.test(key)) return { valid: false, live: false, message: 'Invalid format — Telegram bot tokens follow the pattern "123456789:ABCDef..." (numeric ID, colon, 35-character string)' };
+    return { valid: true, live: false, message: 'Telegram bot token format is valid — live notifications will be confirmed on first message send' };
+  },
+
+  // ── Microsoft Teams webhook: URL format check ─────────────────────────────
+  teams: (key) => {
+    if (!key.startsWith('https://')) return { valid: false, live: false, message: 'Invalid format — Teams webhook URLs must start with "https://"' };
+    if (!key.includes('webhook.office.com') && !key.includes('logic.azure.com')) return { valid: false, live: false, message: 'Invalid URL — Teams webhook URLs should contain "webhook.office.com" or "logic.azure.com"' };
+    return { valid: true, live: false, message: 'Teams webhook URL format is valid — live alerts will be confirmed on first event' };
+  },
+
+  // ── Notion: format only ───────────────────────────────────────────────────
+  notion: (key) => {
+    if (!key.startsWith('secret_') && !key.startsWith('ntn_')) return { valid: false, live: false, message: 'Invalid format — Notion integration tokens start with "secret_" (internal) or "ntn_" (OAuth)' };
+    return { valid: true, live: false, message: 'Notion token format is valid — live workspace sync will be confirmed on first page pull' };
+  },
+
+  // ── Airtable: format only ─────────────────────────────────────────────────
+  airtable: (key) => {
+    if (!key.startsWith('pat')) return { valid: false, live: false, message: 'Invalid format — Airtable Personal Access Tokens start with "pat"' };
+    if (key.length < 40) return { valid: false, live: false, message: 'Key too short — Airtable Personal Access Tokens are typically 80+ characters' };
+    return { valid: true, live: false, message: 'Airtable PAT format is valid — live base sync will be confirmed on first table pull' };
+  },
+
+  // ── Zapier: format only ───────────────────────────────────────────────────
+  zapier: (key) => {
+    if (key.length < 20) return { valid: false, live: false, message: 'Key too short — Zapier API keys are typically 40+ characters' };
+    return { valid: true, live: false, message: 'Zapier key format is valid — live Zap triggers will be confirmed on first webhook call' };
+  },
+
+  // ── Segment: format only ──────────────────────────────────────────────────
+  segment: (key) => {
+    if (key.length < 20) return { valid: false, live: false, message: 'Write Key too short — Segment write keys are typically 22+ characters' };
+    return { valid: true, live: false, message: 'Segment write key format is valid — live event tracking will be confirmed on first event send' };
+  },
+
+  // ── Google Analytics: format only ────────────────────────────────────────
+  'google-analytics': (key) => {
+    if (!key.startsWith('G-') && !key.startsWith('UA-')) return { valid: false, live: false, message: 'Invalid format — GA4 Measurement IDs start with "G-" and Universal Analytics IDs start with "UA-"' };
+    return { valid: true, live: false, message: 'Google Analytics ID format is valid — live data connection will be confirmed on first report pull' };
+  },
+
+  // ── Runway ML: format only ────────────────────────────────────────────────
+  runway: (key) => {
+    if (key.length < 20) return { valid: false, live: false, message: 'Key too short — Runway ML API keys are typically 40+ characters' };
+    return { valid: true, live: false, message: 'Runway ML key format is valid — live video generation will be confirmed on first Gen request' };
+  }
+};
+
+// Default fallback validator for any integration not listed above
+function _defaultValidator(key) {
+  if (key.length < 16) return { valid: false, live: false, message: 'Key too short — most API keys are at least 20 characters. Please check you copied it in full.' };
+  if (/^\s|\s$/.test(key)) return { valid: false, live: false, message: 'Key has leading or trailing spaces — please paste it again without extra whitespace.' };
+  return { valid: true, live: false, message: 'Key format looks valid — live connection will be confirmed when InfoGenie first calls this API' };
+}
+
+async function testConnection(id) {
   const inp = document.getElementById('inp-' + id);
   if (!inp || !inp.value.trim()) {
     showToast('⚠️ Please enter your API key first');
     return;
   }
-  showToast('🔄 Testing connection to ' + id + '...');
-  setTimeout(() => {
-    showToast('✅ Connection successful — API key is valid!');
-  }, 1800);
+  const key = inp.value.trim();
+
+  const testBtn = document.querySelector(`.int-detail-card .btn-test`);
+  if (testBtn) { testBtn.disabled = true; testBtn.textContent = 'Testing…'; }
+
+  showToast('🔄 Verifying ' + id + ' API key…');
+
+  try {
+    const validator = API_VALIDATORS[id];
+    let result;
+    if (typeof validator === 'function') {
+      result = await Promise.resolve(validator(key));
+    } else {
+      result = _defaultValidator(key);
+    }
+
+    if (result.valid) {
+      const liveTag = result.live ? ' ✓ Live verified' : ' (format validated)';
+      showToast('✅ ' + result.message);
+    } else {
+      showToast('❌ ' + result.message);
+    }
+  } catch(e) {
+    showToast('⚠️ Validation error — ' + (e.message || 'unexpected error'));
+  } finally {
+    if (testBtn) { testBtn.disabled = false; testBtn.textContent = 'Test'; }
+  }
 }
 
 function connectCard(id, name) {
