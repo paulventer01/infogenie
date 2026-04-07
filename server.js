@@ -5,8 +5,22 @@ const https = require('https');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Headers required for Replit proxy/preview to work correctly
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  // Allow embedding in iframes (needed for Replit preview pane)
+  res.removeHeader('X-Frame-Options');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
 
 // ── DataForSEO helpers ────────────────────────────────────────────────────────
 
