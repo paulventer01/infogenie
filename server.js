@@ -289,7 +289,20 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`InfoGenie server running on port ${PORT}`);
-  console.log(`DataForSEO: ${process.env.DATAFORSEO_LOGIN ? 'CONFIGURED' : 'NOT CONFIGURED — add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD secrets'}`);
+const startMsg = () => {
+  console.log(`DataForSEO: ${process.env.DATAFORSEO_LOGIN ? 'CONFIGURED ✓' : 'NOT CONFIGURED — add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD secrets'}`);
+};
+
+// Port 5000 — Replit preview pane (webview)
+app.listen(5000, '0.0.0.0', () => {
+  console.log('InfoGenie listening on port 5000 (preview pane)');
+  startMsg();
+});
+
+// Port 80 — external URL (*.spock.replit.dev / new tab)
+app.listen(80, '0.0.0.0', () => {
+  console.log('InfoGenie listening on port 80 (external URL)');
+}).on('error', (err) => {
+  // Port 80 may be unavailable in some environments; non-fatal
+  console.warn(`Port 80 unavailable (${err.code}) — external URL will use port 5000`);
 });
