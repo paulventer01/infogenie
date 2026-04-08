@@ -522,7 +522,7 @@ function buildCompCard(c) {
             <span class="roi-opp-label">InfoGenie ROI Opportunity:</span>
             <span class="roi-opp-text">${c.estimatedROI}</span>
           </div>
-          <button class="btn-view-plan" data-comp="${c.name.replace(/"/g,'&quot;')}">View Plan →</button>
+          <button class="btn-view-plan" onclick="openDifferentiatorModal(this.dataset.comp)" data-comp="${c.name.replace(/'/g,"\\'").replace(/"/g,'&quot;')}">View Plan →</button>
         </div>
       </div>
     </div>
