@@ -3246,3 +3246,122 @@ body {
   border-color: rgba(34,197,94,.3) !important;
   cursor: default !important;
 }
+
+/* ── Queued Counter-Campaigns Section ─────────────────────────────────────── */
+.queued-campaigns-section {
+  background: linear-gradient(135deg, rgba(0,201,200,.08), rgba(0,102,255,.06));
+  border: 1.5px solid rgba(0,201,200,.35);
+  border-radius: var(--radius-xl);
+  padding: 20px 24px;
+  margin-bottom: 24px;
+}
+.queued-campaigns-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.queued-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #F59E0B;
+  box-shadow: 0 0 0 3px rgba(245,158,11,.25);
+  flex-shrink: 0;
+  animation: pulse 1.8s ease-in-out infinite;
+}
+.queued-title {
+  font-weight: 700;
+  font-size: 0.9375rem;
+  color: var(--navy);
+}
+.queued-sub {
+  font-size: 0.8rem;
+  color: var(--gray-500);
+  margin-left: auto;
+}
+.queued-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.queued-camp-card {
+  background: white;
+  border: 1.5px solid rgba(245,158,11,.3);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  position: relative;
+  transition: box-shadow .2s;
+}
+.queued-camp-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+.qcc-badge {
+  display: inline-block;
+  background: #F59E0B;
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  padding: 2px 8px;
+  border-radius: 99px;
+  margin-bottom: 10px;
+}
+.qcc-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--navy);
+  margin-bottom: 4px;
+}
+.qcc-channel {
+  font-size: 0.775rem;
+  color: var(--teal);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.qcc-weakness {
+  font-size: 0.775rem;
+  color: var(--gray-600);
+  line-height: 1.5;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: var(--gray-50);
+  border-radius: 8px;
+}
+.qcc-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.75rem;
+  color: var(--gray-500);
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.qcc-actions { display: flex; gap: 8px; }
+.btn-qcc-launch {
+  flex: 1;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, var(--teal), var(--blue));
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: opacity .2s;
+}
+.btn-qcc-launch:hover { opacity: .88; }
+.btn-qcc-launch:disabled { opacity: .6; cursor: default; }
+.btn-qcc-discard {
+  padding: 8px 12px;
+  background: white;
+  color: var(--gray-500);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: all .2s;
+}
+.btn-qcc-discard:hover { background: #FEF2F2; color: #991B1B; border-color: #FECACA; }
+.btn-qcc-discard:disabled { opacity: .5; cursor: default; background: white; color: var(--gray-500); }

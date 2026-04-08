@@ -11,6 +11,8 @@ let audienceChartInstance = null;
 let creativeChartInstance = null;
 let _audienceChartTimer = null;
 let _creativeChartTimer = null;
+let queuedCampaigns = [];
+let creativeRound = 0;
 
 // ===== NAVIGATION =====
 function navigateTo(viewId, updateActive = true) {
@@ -120,8 +122,20 @@ async function runAnalysis(url, country) {
   overlay.style.display = 'none';
   overlay.classList.add('hidden');
   
+  // Shuffle competitor pool so every analysis shows a different selection
+  const compPool = [...industry.competitors];
+  for (let i = compPool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [compPool[i], compPool[j]] = [compPool[j], compPool[i]];
+  }
+  const selectedComps = compPool.slice(0, Math.min(8, compPool.length));
+
+  // Reset campaign queue and creative round for fresh analysis
+  queuedCampaigns = [];
+  creativeRound = 0;
+
   // Store analysis data
-  analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: industry.competitors };
+  analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps };
   
   // Build all views
   buildDashboard();
@@ -556,7 +570,36 @@ function buildCampaigns() {
     </div>
   `).join('');
   
+  const queuedSection = queuedCampaigns.length > 0 ? `
+    <div class="queued-campaigns-section">
+      <div class="queued-campaigns-header">
+        <span class="queued-dot"></span>
+        <span class="queued-title">📋 ${queuedCampaigns.length} Counter-Campaign${queuedCampaigns.length > 1 ? 's' : ''} Queued for Review</span>
+        <span class="queued-sub">Review and approve before launching — no charges until you confirm</span>
+      </div>
+      <div class="queued-cards-grid">
+        ${queuedCampaigns.map(qc => `
+          <div class="queued-camp-card" id="${qc.id}">
+            <div class="qcc-badge">DRAFT</div>
+            <div class="qcc-title">Counter-Campaign vs. ${qc.comp}</div>
+            <div class="qcc-channel">${qc.channel}</div>
+            <div class="qcc-weakness">💡 Targeting: ${qc.weakness}</div>
+            <div class="qcc-meta">
+              <span>📉 Deals lost: ${qc.lossRate}</span>
+              <span>🕐 Queued at ${qc.createdAt}</span>
+            </div>
+            <div class="qcc-actions">
+              <button class="btn-qcc-launch" onclick="launchQueuedCampaign('${qc.id}', '${qc.comp.replace(/'/g,'')}', this)">🚀 Review &amp; Launch</button>
+              <button class="btn-qcc-discard" onclick="discardQueuedCampaign('${qc.id}')">✕ Discard</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  ` : '';
+
   wrap.innerHTML = `
+    ${queuedSection}
     <div class="camp-hero">
       <div class="camp-hero-title">AI-Powered Campaign Strategy for ${url}</div>
       <div class="camp-hero-sub">Based on analysis of ${competitors.length} competitors in ${industry.name}. Recommendations ranked by projected ROI impact.</div>
@@ -797,7 +840,7 @@ function buildCreative() {
   const domainName = url.split('.')[0];
 
   const vsCards = buildCompetitorVsCards(industry, competitors, domainName);
-  const aiCards = generateCreatives(industry, competitors, domainName);
+  const aiCards = generateCreatives(industry, competitors, domainName, creativeRound);
 
   const cardHtml = aiCards.map((c, i) => `
     <div class="creative-card" id="creative-card-${i}">
@@ -964,80 +1007,134 @@ function buildCompetitorVsCards(industry, competitors, domainName) {
   }).join('');
 }
 
-function generateCreatives(industry, competitors, domainName) {
+function generateCreatives(industry, competitors, domainName, round = 0) {
   const topComp = competitors[0];
   const comp2 = competitors[1] || competitors[0];
+  const comp3 = competitors[2] || competitors[0];
   const industryName = industry.name.split(' & ')[0];
   const totalCamps = competitors.reduce((a, c) => a + (c.campaigns?.length || 0), 0);
+  const ctr = parseFloat(topComp.ctr);
+  const roas = topComp.roas;
 
-  return [
+  // Full pool of 18 creative templates split into 3 batches of 6
+  const allCreatives = [
+    // ── Batch 0 (original) ──
     {
-      type: 'Search Ad — Google',
-      platform: 'Google',
-      format: 'Responsive Search Ad',
-      headline: `${topComp.name} Alternative — ${parseFloat(topComp.roas) > 4 ? '2× Better ROAS' : '40% Lower CPA'}`,
-      copy: `Tired of ${topComp.name}'s rising costs and limited transparency? Our AI-powered platform delivers the same reach with ${parseFloat(topComp.ctr)}%+ CTR targeting — at a fraction of the budget. Free 14-day trial. No credit card.`,
-      estCTR: (parseFloat(topComp.ctr) + 1.2).toFixed(1) + '%',
-      estConv: '3.8%',
-      estROAS: (topComp.roas + 1.1).toFixed(1) + '×',
-      audiences: topComp.audiences || []
+      type: 'Search Ad — Google', platform: 'Google', format: 'Responsive Search Ad',
+      headline: `${topComp.name} Alternative — ${roas > 4 ? '2× Better ROAS' : '40% Lower CPA'}`,
+      copy: `Tired of ${topComp.name}'s rising costs and limited transparency? Our AI-powered platform delivers the same reach with ${ctr}%+ CTR targeting — at a fraction of the budget. Free 14-day trial. No credit card.`,
+      estCTR: (ctr + 1.2).toFixed(1) + '%', estConv: '3.8%', estROAS: (roas + 1.1).toFixed(1) + '×', audiences: topComp.audiences || []
     },
     {
-      type: 'Video Ad — Meta',
-      platform: 'Meta',
-      format: 'Video (15s Reel)',
+      type: 'Video Ad — Meta', platform: 'Meta', format: 'Video (15s Reel)',
       headline: `What ${comp2.name} Doesn't Want You to See`,
-      copy: `${comp2.name} runs ${comp2.campaigns?.length || 3} active campaigns right now targeting your customers — and you can't see any of them. Until now. InfoGenie exposes every competitor campaign and automatically builds you a version that performs better. See it live.`,
-      estCTR: (parseFloat(topComp.ctr) + 1.8).toFixed(1) + '%',
-      estConv: '3.1%',
-      estROAS: (topComp.roas + 0.8).toFixed(1) + '×',
-      audiences: comp2.audiences || []
+      copy: `${comp2.name} runs ${comp2.campaigns?.length || 3} active campaigns right now targeting your customers — and you can't see any of them. Until now. InfoGenie exposes every competitor campaign and automatically builds a better version for you.`,
+      estCTR: (ctr + 1.8).toFixed(1) + '%', estConv: '3.1%', estROAS: (roas + 0.8).toFixed(1) + '×', audiences: comp2.audiences || []
     },
     {
-      type: 'Performance Max — Google',
-      platform: 'Google',
-      format: 'Performance Max',
+      type: 'Performance Max — Google', platform: 'Google', format: 'Performance Max',
       headline: `${industryName} Leaders Are Switching — Here's Why`,
-      copy: `${totalCamps} active competitor campaigns are targeting your customers across Google right now. InfoGenie's Performance Max integration analyses all of them and auto-builds a superior campaign — with better creative, smarter bidding, and 35% lower CPA on average.`,
-      estCTR: (parseFloat(topComp.ctr) + 0.9).toFixed(1) + '%',
-      estConv: '4.2%',
-      estROAS: (topComp.roas + 1.4).toFixed(1) + '×',
-      audiences: (competitors[2] || competitors[0]).audiences || []
+      copy: `${totalCamps} active competitor campaigns are targeting your customers right now. InfoGenie's Performance Max integration analyses all of them and auto-builds a superior campaign — better creative, smarter bidding, 35% lower CPA.`,
+      estCTR: (ctr + 0.9).toFixed(1) + '%', estConv: '4.2%', estROAS: (roas + 1.4).toFixed(1) + '×', audiences: (comp3).audiences || []
     },
     {
-      type: 'Sponsored Content — LinkedIn',
-      platform: 'LinkedIn',
-      format: 'Sponsored Post + Lead Form',
+      type: 'Sponsored Content — LinkedIn', platform: 'LinkedIn', format: 'Sponsored Post + Lead Form',
       headline: `How ${industryName} Teams Cut CPA by 35% in 30 Days`,
-      copy: `${comp2.name} achieves ${comp2.roas}× ROAS with a ${comp2.adSpend} monthly budget. Our analysis shows you can outperform that with precision B2B targeting, personalised ad sequences, and autonomous bidding — without their budget. Download the free strategy report.`,
-      estCTR: '3.4%',
-      estConv: '5.1%',
-      estROAS: (topComp.roas + 0.6).toFixed(1) + '×',
-      audiences: (competitors[3] || competitors[0]).audiences || []
+      copy: `${comp2.name} achieves ${comp2.roas}× ROAS with a ${comp2.adSpend} monthly budget. InfoGenie shows you how to outperform that with precision targeting and autonomous bidding — without their budget.`,
+      estCTR: '3.4%', estConv: '5.1%', estROAS: (roas + 0.6).toFixed(1) + '×', audiences: (competitors[3] || competitors[0]).audiences || []
     },
     {
-      type: 'TikTok UGC Ad',
-      platform: 'TikTok',
-      format: 'In-Feed Video (30s)',
+      type: 'TikTok UGC Ad', platform: 'TikTok', format: 'In-Feed Video (30s)',
       headline: `POV: AI just exposed every ${comp2.name} campaign running right now`,
-      copy: `We analysed ${topComp.name}, ${comp2.name}, and ${competitors[2]?.name || 'all top competitors'} — every ad they're running, every audience they're targeting, every budget they're spending. Then we built you a better version of all of it. Automatically. This is the unfair advantage.`,
-      estCTR: (parseFloat(topComp.ctr) + 2.1).toFixed(1) + '%',
-      estConv: '2.6%',
-      estROAS: (topComp.roas + 0.5).toFixed(1) + '×',
-      audiences: (competitors[4] || competitors[0]).audiences || []
+      copy: `We analysed ${topComp.name}, ${comp2.name}, and ${comp3.name} — every ad they're running, every audience they're targeting. Then we built you a better version automatically. This is the unfair advantage.`,
+      estCTR: (ctr + 2.1).toFixed(1) + '%', estConv: '2.6%', estROAS: (roas + 0.5).toFixed(1) + '×', audiences: (competitors[4] || competitors[0]).audiences || []
     },
     {
-      type: 'Retargeting — Meta',
-      platform: 'Meta',
-      format: 'Dynamic Carousel',
+      type: 'Retargeting — Meta', platform: 'Meta', format: 'Dynamic Carousel',
       headline: `You Visited ${topComp.name}. Here's What They're Not Telling You.`,
-      copy: `You've seen ${topComp.name}'s campaigns. But what you haven't seen is that their average customer acquisition cost is ${topComp.campaigns?.[0]?.roas ? Math.round(100 / topComp.campaigns[0].roas) + '% higher' : '40% higher'} than alternatives. We can deliver the same results — with full transparency and autonomous AI optimisation — for a fraction of their budget.`,
-      estCTR: (parseFloat(topComp.ctr) + 1.5).toFixed(1) + '%',
-      estConv: '4.6%',
-      estROAS: (topComp.roas + 1.3).toFixed(1) + '×',
-      audiences: topComp.audiences || []
+      copy: `${topComp.name}'s customer acquisition cost is ${topComp.campaigns?.[0]?.roas ? Math.round(100 / topComp.campaigns[0].roas) + '% higher' : '40% higher'} than alternatives. We deliver the same results with full transparency and autonomous AI optimisation.`,
+      estCTR: (ctr + 1.5).toFixed(1) + '%', estConv: '4.6%', estROAS: (roas + 1.3).toFixed(1) + '×', audiences: topComp.audiences || []
+    },
+    // ── Batch 1 (new angles) ──
+    {
+      type: 'Search Ad — Google', platform: 'Google', format: 'Exact Match Search',
+      headline: `Beat ${topComp.name} on Their Own Keywords`,
+      copy: `${topComp.name} bids on ${topComp.topKeywords?.slice(0,2).join(' & ') || 'high-intent keywords'} every day. InfoGenie identifies exactly where their bid strategy has gaps — and auto-launches winning ads into those gaps in minutes, not months.`,
+      estCTR: (ctr + 1.6).toFixed(1) + '%', estConv: '4.1%', estROAS: (roas + 1.3).toFixed(1) + '×', audiences: topComp.audiences || []
+    },
+    {
+      type: 'Story Ad — Meta', platform: 'Meta', format: 'Story (Full Screen)',
+      headline: `${comp2.name} Just Lost 38% of Their Ad Spend`,
+      copy: `When ${comp2.name} pulls back their campaigns — which our AI tracks in real time — InfoGenie automatically bids into the vacuum. Your budget goes further. Your reach expands. Your CPA drops. All without lifting a finger.`,
+      estCTR: (ctr + 2.3).toFixed(1) + '%', estConv: '3.4%', estROAS: (roas + 0.9).toFixed(1) + '×', audiences: comp2.audiences || []
+    },
+    {
+      type: 'YouTube Pre-Roll', platform: 'Google', format: 'Skippable In-Stream (15s)',
+      headline: `The Tool ${comp3.name} Doesn't Want You to Have`,
+      copy: `${comp3.name} spends ${comp3.adSpend} per month on ads. InfoGenie reads every campaign they launch and generates a higher-performing counter-campaign for you automatically — for a fraction of their budget. Skip the guessing. Start winning.`,
+      estCTR: (ctr + 0.7).toFixed(1) + '%', estConv: '3.9%', estROAS: (roas + 1.1).toFixed(1) + '×', audiences: comp3.audiences || []
+    },
+    {
+      type: 'Thought Leadership — LinkedIn', platform: 'LinkedIn', format: 'Document Ad',
+      headline: `Why ${industryName} CMOs Are Abandoning Manual Bidding`,
+      copy: `We analysed ${competitors.length} competitors in ${industryName}. The ones gaining share all have one thing in common: autonomous AI bidding. Download the free benchmark report — see where ${topComp.name} and ${comp2.name} are spending and where their gaps are.`,
+      estCTR: '2.9%', estConv: '6.2%', estROAS: (roas + 0.4).toFixed(1) + '×', audiences: (competitors[3] || competitors[0]).audiences || []
+    },
+    {
+      type: 'TikTok Comparison', platform: 'TikTok', format: 'Duet / Reaction (30s)',
+      headline: `Reacting to ${topComp.name}'s Biggest Ad of the Year`,
+      copy: `We pulled ${topComp.name}'s top-performing campaign. It's good. But our AI found 4 specific weaknesses in their copy, targeting, and timing — and built a version that outperforms it. We'll show you exactly what we changed and why.`,
+      estCTR: (ctr + 2.8).toFixed(1) + '%', estConv: '2.2%', estROAS: (roas + 0.3).toFixed(1) + '×', audiences: topComp.audiences || []
+    },
+    {
+      type: 'Dynamic Remarketing — Google', platform: 'Google', format: 'Display Network',
+      headline: `${industryName} Ads That Auto-Optimise While You Sleep`,
+      copy: `Competitor ${comp2.name} adjusts bids 47× per day. You can't match that manually — but InfoGenie can. Our autonomous bidding engine analyses every competitor move in real time and auto-adjusts your campaigns to stay ahead. Set it once. Win continuously.`,
+      estCTR: (ctr + 1.1).toFixed(1) + '%', estConv: '4.8%', estROAS: (roas + 1.6).toFixed(1) + '×', audiences: comp2.audiences || []
+    },
+    // ── Batch 2 (emotional / urgency hooks) ──
+    {
+      type: 'Search — Competitor Brand Bidding', platform: 'Google', format: 'Brand Conquest Search',
+      headline: `Searching for ${topComp.name}? Try This First`,
+      copy: `Before committing to ${topComp.name}, see how our platform delivers ${(ctr + 1.5).toFixed(1)}% CTR vs their ${ctr}% — with 40% lower spend and AI that self-optimises in real time. Free 14-day trial. No setup fee. Cancel anytime.`,
+      estCTR: (ctr + 2.0).toFixed(1) + '%', estConv: '4.5%', estROAS: (roas + 1.8).toFixed(1) + '×', audiences: topComp.audiences || []
+    },
+    {
+      type: 'Reels Ad — Meta', platform: 'Meta', format: 'Reels (9:16 Video)',
+      headline: `Your ${industryName} Competitors Are Running Ads RIGHT NOW`,
+      copy: `While you're reading this, ${topComp.name} and ${comp2.name} are running campaigns targeting your exact audience. InfoGenie detects every new competitor ad within 2 hours of launch and builds you a better version instantly. Try it free — no card needed.`,
+      estCTR: (ctr + 2.5).toFixed(1) + '%', estConv: '3.3%', estROAS: (roas + 0.7).toFixed(1) + '×', audiences: comp2.audiences || []
+    },
+    {
+      type: 'Connected TV — Google', platform: 'Google', format: 'CTV / YouTube TV (30s)',
+      headline: `${industryName} Intelligence That Actually Moves Budget`,
+      copy: `Most "intelligence" platforms give you data. InfoGenie gives you done — competitor campaign analysis, counter-ad creation, and autonomous bidding all in one. ${totalCamps} competitor campaigns analysed. ${competitors.length} weakness maps generated. Your move.`,
+      estCTR: (ctr + 0.6).toFixed(1) + '%', estConv: '4.0%', estROAS: (roas + 1.2).toFixed(1) + '×', audiences: comp3.audiences || []
+    },
+    {
+      type: 'InMail — LinkedIn', platform: 'LinkedIn', format: 'Sponsored Message',
+      headline: `We Mapped Every ${industryName} Competitor Ad — For Free`,
+      copy: `${competitors.length} competitors. ${totalCamps} active campaigns. ${topComp.topKeywords?.length || 4} keyword gaps worth ${(Math.floor(Math.random() * 500) + 200).toLocaleString()}K monthly searches. Your free ${industryName} competitor intelligence report is ready — click to claim it before your competitors see it.`,
+      estCTR: '4.1%', estConv: '7.3%', estROAS: (roas + 0.8).toFixed(1) + '×', audiences: (competitors[3] || competitors[0]).audiences || []
+    },
+    {
+      type: 'Spark Ad — TikTok', platform: 'TikTok', format: 'Creator Boost (45s)',
+      headline: `I Switched from ${topComp.name} to InfoGenie — Here's My ROAS`,
+      copy: `After 6 months on ${topComp.name}'s platform, my ROAS was stuck at ${(roas - 0.8).toFixed(1)}×. InfoGenie's AI rebuilt my campaigns from competitor data in 4 hours. By week 2, I was at ${(roas + 1.4).toFixed(1)}×. I'll show you exactly what changed — and what it would look like for your industry.`,
+      estCTR: (ctr + 3.1).toFixed(1) + '%', estConv: '2.8%', estROAS: (roas + 1.0).toFixed(1) + '×', audiences: topComp.audiences || []
+    },
+    {
+      type: 'Retargeting — Google Display', platform: 'Google', format: 'Custom Intent Audience',
+      headline: `Still Considering ${comp2.name}? See the Full Comparison`,
+      copy: `${comp2.name} vs. InfoGenie: their platform shows you what's happening. Ours acts on it — autonomously launching and optimising counter-campaigns in real time. ${comp2.roas}× ROAS vs ${(comp2.roas + 1.4).toFixed(1)}× on the same budget. See the full breakdown.`,
+      estCTR: (ctr + 1.9).toFixed(1) + '%', estConv: '5.2%', estROAS: (roas + 1.5).toFixed(1) + '×', audiences: comp2.audiences || []
     }
   ];
+
+  // Pick 6 creatives from the correct batch
+  const batchSize = 6;
+  const batchIndex = round % 3;
+  return allCreatives.slice(batchIndex * batchSize, batchIndex * batchSize + batchSize);
 }
 
 function renderCreativeChart(creatives) {
@@ -2411,8 +2508,12 @@ function buildIntelligence() {
     </div>
   `).join('');
 
-  // ── Win/Loss cards ──
-  const wlCards = displayWinLoss.map(w => `
+  // ── Win/Loss cards — store data for modal lookup ──
+  window._wlData = window._wlData || {};
+  const wlCards = displayWinLoss.map((w, idx) => {
+    const id = `wl_${idx}`;
+    window._wlData[id] = w;
+    return `
     <div class="winloss-card">
       <div class="wl-top">
         <span class="wl-comp">${w.comp}</span>
@@ -2421,9 +2522,10 @@ function buildIntelligence() {
       </div>
       <div class="wl-message">${w.message}</div>
       <div class="wl-weakness">💡 <strong>Exploitable Weakness:</strong> ${w.weakness}</div>
-      <button class="btn-wl-counter" onclick="showToast('🎯 Counter-campaign against ${w.comp.replace(/'/g,'')} queued — launching creative generation')">Counter This Message</button>
+      <button class="btn-wl-counter" onclick="openWLCounterModal('${id}')">Counter This Message</button>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   // ── Open attack windows ──
   const openWindows = displaySignals.filter(s => s.attackOpen).length;
@@ -3789,6 +3891,105 @@ function closeAttackModal() {
   modal.style.display = 'none';
 }
 
+function openWLCounterModal(wlId) {
+  const w = (window._wlData || {})[wlId];
+  if (!w) { showToast('⚠️ No counter data found — try refreshing the Intelligence Hub'); return; }
+  const modal = document.getElementById('attackModal');
+  document.getElementById('attackModalInner').innerHTML = `
+    <div style="text-align:center; margin-bottom:18px">
+      <div style="font-size:2rem; margin-bottom:8px">🛡️</div>
+      <h3 style="font-family:'Sora',sans-serif; font-size:1.1rem; font-weight:800; color:#0A1628; margin-bottom:4px">Counter-Campaign vs. ${w.comp}</h3>
+      <p style="color:#6B7280; font-size:0.8rem; max-width:360px; margin:0 auto">InfoGenie has built a 3-step counter-strategy targeting <strong>${w.comp}'s</strong> exploitable weakness</p>
+    </div>
+    <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:14px 16px; margin-bottom:16px; font-size:0.8125rem; color:#166534;">
+      <strong>Their Winning Message:</strong> ${w.message}<br/>
+      <strong style="color:#991B1B;">Their Weakness:</strong> ${w.weakness}
+    </div>
+    <div class="attack-steps">
+      <div class="attack-step">
+        <div class="attack-step-num">1</div>
+        <div class="attack-step-icon">✍️</div>
+        <div class="attack-step-body">
+          <div class="attack-step-title">Counter-Messaging Created</div>
+          <div class="attack-step-desc">InfoGenie AI has drafted 5 ad variants that directly counter ${w.comp}'s "${(w.message||'').substring(0,60)}…" messaging with your superior positioning.</div>
+        </div>
+      </div>
+      <div class="attack-step">
+        <div class="attack-step-num">2</div>
+        <div class="attack-step-icon">🎯</div>
+        <div class="attack-step-body">
+          <div class="attack-step-title">Audience Targeting Prepared</div>
+          <div class="attack-step-desc">Targeting ${w.comp}'s audiences on ${w.channel} — the same segments where you're currently losing ${w.lossRate} of deals. Counter-bid strategy pre-configured.</div>
+        </div>
+      </div>
+      <div class="attack-step">
+        <div class="attack-step-num">3</div>
+        <div class="attack-step-icon">📊</div>
+        <div class="attack-step-body">
+          <div class="attack-step-title">Campaign Ready for Review</div>
+          <div class="attack-step-desc">The full counter-campaign will appear in your Campaigns view as a Queued Draft — review the creative, budget, and targeting before launching.</div>
+        </div>
+      </div>
+    </div>
+    <div class="attack-modal-footer">
+      <button class="btn-attack-activate" onclick="queueCounterCampaign('${wlId}', this)">
+        📋 Add to Campaign Queue
+      </button>
+      <button class="btn-attack-cancel" onclick="closeAttackModal()">Maybe Later</button>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+}
+
+function queueCounterCampaign(wlId, btn) {
+  const w = (window._wlData || {})[wlId];
+  if (!w) return;
+  btn.disabled = true;
+  btn.textContent = '⏳ Queuing…';
+  setTimeout(() => {
+    queuedCampaigns.push({
+      id: 'qc_' + Date.now(),
+      comp: w.comp,
+      channel: w.channel,
+      weakness: w.weakness,
+      message: w.message,
+      lossRate: w.lossRate,
+      status: 'draft',
+      createdAt: new Date().toLocaleTimeString()
+    });
+    closeAttackModal();
+    if (analysisData) buildCampaigns();
+    navigateTo('campaigns');
+    showToast('📋 Counter-campaign queued — review it at the top of Campaigns before launching');
+  }, 900);
+}
+
+function launchQueuedCampaign(qcId, comp, btn) {
+  btn.disabled = true;
+  btn.textContent = '⏳ Launching…';
+  setTimeout(() => {
+    const card = document.getElementById(qcId);
+    if (card) {
+      card.style.transition = 'opacity 0.4s';
+      card.style.opacity = '0.4';
+      card.querySelector('.qcc-badge').textContent = 'LIVE';
+      card.querySelector('.qcc-badge').style.background = '#10B981';
+      card.querySelector('.qcc-badge').style.color = '#fff';
+      card.querySelector('.btn-qcc-launch').style.display = 'none';
+      card.querySelector('.btn-qcc-discard').textContent = '✅ Live — monitoring';
+      card.querySelector('.btn-qcc-discard').disabled = true;
+    }
+    showToast(`🚀 Counter-campaign vs. ${comp} is now live — monitoring performance`);
+  }, 1200);
+}
+
+function discardQueuedCampaign(qcId) {
+  queuedCampaigns = queuedCampaigns.filter(qc => qc.id !== qcId);
+  if (analysisData) buildCampaigns();
+  showToast('🗑️ Counter-campaign discarded');
+}
+
 function openExclusiveModal() {
   const modal = document.getElementById('exclusiveModal');
   modal.classList.remove('hidden');
@@ -4459,10 +4660,22 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast('🎯 InfoGenie is targeting all high-performing audience segments automatically — campaigns launching...');
   });
   
-  // Generate more creatives
+  // Generate more creatives — cycles through creative batches
   document.getElementById('generateMoreBtn').addEventListener('click', () => {
-    showToast('✨ Generating 6 new AI creatives based on latest competitor data...');
-    setTimeout(() => buildCreative(), 1500);
+    if (!analysisData) {
+      showToast('⚠️ Run an analysis first to generate creatives');
+      return;
+    }
+    creativeRound++;
+    const batchNum = creativeRound + 1;
+    showToast(`✨ Generating creative batch ${batchNum} — new angles, hooks & messaging variants…`);
+    const btn = document.getElementById('generateMoreBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+    setTimeout(() => {
+      buildCreative();
+      if (btn) { btn.disabled = false; btn.textContent = '✨ Generate More Creatives'; }
+      showToast(`✅ Batch ${batchNum} ready — ${6} new creative variants generated`);
+    }, 1600);
   });
   
   // Pro Plan badge — open upgrade modal

@@ -4,21 +4,30 @@
 InfoGenie is a comprehensive AI-powered marketing intelligence and campaign automation platform built as a static single-page application. It enables businesses to analyse competitor marketing strategies, generate high-performing ad campaigns, and autonomously optimise results.
 
 ## Architecture
-- **Type**: Static SPA (Single Page Application)
-- **Server**: static-web-server on port 80
+- **Type**: Node.js/Express backend + Static SPA frontend
+- **Server**: `server.js` listens on port 5000 (preview) AND port 80 (external)
 - **Frontend**: Pure HTML5 + CSS3 + Vanilla JavaScript
 - **Charts**: Chart.js v4.4.0 (CDN)
 - **Fonts**: Google Fonts — Inter + Sora (CDN)
+- **Backend API**: DataForSEO integration via `/api/keyword-gap`, `/api/domain-overview`, `/api/sov`, `/api/status`
 
 ## File Structure
 ```
 /
 ├── index.html          # Main SPA with all view templates
 ├── style.css           # Complete styling (Deep Navy + Teal + Cyan brand)
-├── data.js             # Industry intelligence database + competitor data
-├── app.js              # Main application controller
-└── attached_assets/    # Business plan documents
+├── data.js             # Industry intelligence database + competitor data (7 industries, 11 competitor pool per industry)
+├── app.js              # Main application controller (~5100 lines)
+├── server.js           # Express backend (DataForSEO integration, dual-port)
+└── package.json        # Node.js dependencies
 ```
+
+## Key Globals (app.js)
+- `analysisData` — current analysis session data
+- `queuedCampaigns` — counter-campaigns queued from Win/Loss Intelligence (shown at top of Campaigns view)
+- `creativeRound` — current creative batch (0=original, 1=new angles, 2=urgency hooks; wraps every 3)
+- `window._wlData` — Win/Loss card data map for modal lookup
+- `window._lastCampRecs` — last campaign recommendations for modal access
 
 ## Features
 1. **Website URL Input** — Enter any website, detect industry automatically

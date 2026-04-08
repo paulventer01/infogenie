@@ -152,6 +152,62 @@ const INDUSTRY_DB = {
         audiences: [{ label: 'European Fashion Buyers 22–40', pct: 42 }, { label: 'Premium Brand Seekers', pct: 26 }, { label: 'Sports Fashion 18–35', pct: 20 }, { label: 'Bargain Hunters', pct: 12 }],
         topKeywords: ['free returns fashion', 'online fashion store EU', 'designer clothes online', 'Zalando sale'],
         estimatedROI: '+24% margin improvement by targeting Zalando\'s high-return buyer problem'
+      },
+      {
+        name: 'Walmart', url: 'walmart.com', logo: 'WM',
+        traffic: '1.1B', ctr: '3.1%', roas: 4.9, adSpend: '$540M/mo',
+        topChannel: 'Google Shopping', threatLevel: 'high',
+        trafficMo: 1100000000,
+        campaigns: [
+          { name: 'Rollback Prices', channel: 'Google', ctr: '3.4%', roas: 5.2, budget: '$120M', status: 'Active' },
+          { name: 'Walmart+ Membership', channel: 'Meta', ctr: '2.8%', roas: 4.1, budget: '$60M', status: 'Active' },
+          { name: 'Grocery Delivery', channel: 'TikTok', ctr: '3.9%', roas: 3.7, budget: '$28M', status: 'Active' }
+        ],
+        suggestions: [
+          'Walmart dominates on price but has weak premium messaging — luxury and quality positioning is an open whitespace',
+          'Walmart+ has low perceived value vs Amazon Prime — attack with better membership benefit storytelling',
+          'Walmart\'s digital creative is outdated — modern UGC-style ads outperform their product-grid format by 3.4×',
+          'Walmart focuses on grocery — non-grocery categories like electronics and fashion are underleveraged'
+        ],
+        audiences: [{ label: 'Value Shoppers 35–55', pct: 44 }, { label: 'Families 28–45', pct: 30 }, { label: 'Grocery Buyers 25–60', pct: 18 }, { label: 'Budget Conscious 18–30', pct: 8 }],
+        topKeywords: ['walmart deals', 'cheap groceries online', 'walmart plus', 'everyday low price'],
+        estimatedROI: '+22% CTR by targeting Walmart\'s weak premium and non-grocery messaging'
+      },
+      {
+        name: 'H&M', url: 'hm.com', logo: 'HM',
+        traffic: '280M', ctr: '3.8%', roas: 4.3, adSpend: '$76M/mo',
+        topChannel: 'Instagram Ads', threatLevel: 'medium',
+        trafficMo: 280000000,
+        campaigns: [
+          { name: 'Conscious Collection', channel: 'Instagram', ctr: '4.2%', roas: 4.8, budget: '$22M', status: 'Active' },
+          { name: 'Members Exclusive', channel: 'Meta', ctr: '3.1%', roas: 3.9, budget: '$18M', status: 'Active' }
+        ],
+        suggestions: [
+          'H&M\'s sustainability messaging is weak relative to actual practice — authentic eco-positioning wins',
+          'H&M targets 18–28 heavily — the 29–40 professional segment is underserved by fast fashion brands',
+          'H&M\'s loyalty programme has low engagement — gamified rewards messaging converts 2.8× better'
+        ],
+        audiences: [{ label: 'Young Adults 18–28', pct: 52 }, { label: 'Fashion Conscious 25–35', pct: 26 }, { label: 'Eco Shoppers 22–40', pct: 14 }, { label: 'Students 17–22', pct: 8 }],
+        topKeywords: ['affordable fashion', 'H&M sale', 'sustainable fashion', 'trendy clothes cheap'],
+        estimatedROI: '+28% engagement targeting H&M\'s underserved 29–40 professional demographic'
+      },
+      {
+        name: 'Shein', url: 'shein.com', logo: 'SH',
+        traffic: '420M', ctr: '5.2%', roas: 3.8, adSpend: '$68M/mo',
+        topChannel: 'TikTok Ads', threatLevel: 'medium',
+        trafficMo: 420000000,
+        campaigns: [
+          { name: 'TikTok Hauls', channel: 'TikTok', ctr: '6.1%', roas: 4.2, budget: '$28M', status: 'Active' },
+          { name: 'Daily New In', channel: 'Instagram', ctr: '4.8%', roas: 3.6, budget: '$22M', status: 'Active' }
+        ],
+        suggestions: [
+          'Shein wins on price/volume but has serious trust and quality perception problems — quality assurance messaging dominates',
+          'Shein\'s sustainability backlash is growing — eco-conscious positioning directly counter-positions effectively',
+          'Shein customers show high return rates due to quality issues — guaranteed quality messaging converts at 4.1× against them'
+        ],
+        audiences: [{ label: 'Gen Z Shoppers 16–24', pct: 58 }, { label: 'Bargain Fashion 20–32', pct: 26 }, { label: 'TikTok Fashion Fans', pct: 12 }, { label: 'Ultra-Budget 16–28', pct: 4 }],
+        topKeywords: ['shein alternative', 'cheap trendy clothes', 'fast fashion online', 'affordable women clothing'],
+        estimatedROI: '+34% conversion by targeting Shein\'s quality and ethics-conscious audience segments'
       }
     ]
   },
@@ -301,6 +357,42 @@ const INDUSTRY_DB = {
         audiences: [{ label: 'Professional Traders 35–60', pct: 44 }, { label: 'Institutional Clients', pct: 28 }, { label: 'Active Day Traders', pct: 18 }, { label: 'International Investors', pct: 10 }],
         topKeywords: ['professional trading platform', 'global stock access', 'low margin rate broker', 'options trading'],
         estimatedROI: '+29% retail acquisition vs. IBKR\'s professional-only positioning'
+      },
+      {
+        name: 'Monzo', url: 'monzo.com', logo: 'MZ',
+        traffic: '22M', ctr: '4.6%', roas: 5.2, adSpend: '$18M/mo',
+        topChannel: 'Meta Ads', threatLevel: 'medium',
+        trafficMo: 22000000,
+        campaigns: [
+          { name: 'No Hidden Fees', channel: 'Meta', ctr: '5.1%', roas: 5.8, budget: '$8M', status: 'Active' },
+          { name: 'Travel Money Made Easy', channel: 'Google', ctr: '3.8%', roas: 4.6, budget: '$6M', status: 'Active' }
+        ],
+        suggestions: [
+          'Monzo targets UK millennials heavily — US and EU expansion messaging is a direct whitespace opportunity',
+          'Monzo\'s business account has lower awareness than personal — B2B fintech positioning converts 3.2× higher',
+          'Monzo\'s customer service is rated poorly in app stores — "real human support" messaging directly counters'
+        ],
+        audiences: [{ label: 'UK Millennials 22–35', pct: 48 }, { label: 'Frequent Travellers', pct: 26 }, { label: 'Freelancers 24–40', pct: 16 }, { label: 'Students 18–24', pct: 10 }],
+        topKeywords: ['digital bank uk', 'monzo alternative', 'no fee bank account', 'challenger bank'],
+        estimatedROI: '+31% new account acquisition targeting Monzo\'s UK-only positioning gap'
+      },
+      {
+        name: 'N26', url: 'n26.com', logo: 'N6',
+        traffic: '18M', ctr: '3.9%', roas: 4.8, adSpend: '$14M/mo',
+        topChannel: 'Google Search', threatLevel: 'low',
+        trafficMo: 18000000,
+        campaigns: [
+          { name: 'Bank Like a Pro', channel: 'Google', ctr: '4.1%', roas: 5.0, budget: '$6M', status: 'Active' },
+          { name: 'Zero Fees Europe', channel: 'Meta', ctr: '3.6%', roas: 4.2, budget: '$5M', status: 'Active' }
+        ],
+        suggestions: [
+          'N26 exited the US market — ex-N26 users in the US are actively searching for alternatives right now',
+          'N26\'s premium tiers have weak differentiation — clear ROI-based tier messaging outperforms their features-list approach',
+          'N26 has low brand recall vs Revolut — "N26 alternative" conquest keywords have very low competition'
+        ],
+        audiences: [{ label: 'European Professionals 25–40', pct: 46 }, { label: 'Digital Nomads', pct: 24 }, { label: 'Expats in Europe', pct: 20 }, { label: 'Students Abroad', pct: 10 }],
+        topKeywords: ['n26 alternative', 'digital bank europe', 'online bank no fees', 'bank account abroad'],
+        estimatedROI: '+38% conquest from N26 US exit — high-intent search terms with minimal competition'
       }
     ]
   },
