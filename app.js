@@ -2349,7 +2349,7 @@ function buildIntelligence() {
         <span class="kwgap-score-num">${k.score}</span>
       </td>
       <td>${k.cpc}</td>
-      <td><button class="btn-kwgap-attack" onclick="openAttackModal('${k.keyword.replace(/'/g,'')}','${k.topComp.replace(/'/g,'')}','keyword')">⚡ Attack</button></td>
+      <td><button class="btn-kwgap-attack" data-kw="${k.keyword.replace(/"/g,'')}" data-comp="${k.topComp.replace(/"/g,'')}" onclick="openAttackModal('${k.keyword.replace(/'/g,'')}','${k.topComp.replace(/'/g,'')}','keyword')">⚡ Attack</button></td>
     </tr>
   `).join('');
 
@@ -2366,8 +2366,8 @@ function buildIntelligence() {
         <div class="signal-msg">${s.message}</div>
         <div class="signal-actions">
           ${s.attackOpen
-            ? `<button class="btn-signal-attack" onclick="openAttackModal('${s.action.replace(/'/g,'')}','${s.comp.replace(/'/g,'')}','attack')">${s.action}</button>`
-            : `<button class="btn-signal-counter" onclick="openAttackModal('${s.action.replace(/'/g,'')}','${s.comp.replace(/'/g,'')}','counter')">${s.action}</button>`
+            ? `<button class="btn-signal-attack" data-action="${s.action.replace(/"/g,'')}" data-comp="${s.comp.replace(/"/g,'')}" onclick="openAttackModal('${s.action.replace(/'/g,'')}','${s.comp.replace(/'/g,'')}','attack')">${s.action}</button>`
+            : `<button class="btn-signal-counter" data-action="${s.action.replace(/"/g,'')}" data-comp="${s.comp.replace(/"/g,'')}" onclick="openAttackModal('${s.action.replace(/'/g,'')}','${s.comp.replace(/'/g,'')}','counter')">${s.action}</button>`
           }
         </div>
       </div>
@@ -2506,14 +2506,32 @@ function buildIntelligence() {
             value="${analysisDomain !== 'yourdomain.com' ? analysisDomain : ''}"
           />
           <select id="kwgap-location-select" class="kwgap-location-select">
+            <option value="Global">🌐 Global (All Regions)</option>
             <option value="United States">🇺🇸 United States</option>
             <option value="United Kingdom">🇬🇧 United Kingdom</option>
             <option value="Australia">🇦🇺 Australia</option>
             <option value="Canada">🇨🇦 Canada</option>
             <option value="Germany">🇩🇪 Germany</option>
             <option value="France">🇫🇷 France</option>
+            <option value="Spain">🇪🇸 Spain</option>
+            <option value="Italy">🇮🇹 Italy</option>
+            <option value="Netherlands">🇳🇱 Netherlands</option>
+            <option value="Sweden">🇸🇪 Sweden</option>
+            <option value="Norway">🇳🇴 Norway</option>
+            <option value="Denmark">🇩🇰 Denmark</option>
+            <option value="Switzerland">🇨🇭 Switzerland</option>
+            <option value="Poland">🇵🇱 Poland</option>
             <option value="India">🇮🇳 India</option>
+            <option value="Singapore">🇸🇬 Singapore</option>
+            <option value="Japan">🇯🇵 Japan</option>
+            <option value="South Korea">🇰🇷 South Korea</option>
+            <option value="United Arab Emirates">🇦🇪 United Arab Emirates</option>
+            <option value="South Africa">🇿🇦 South Africa</option>
             <option value="Brazil">🇧🇷 Brazil</option>
+            <option value="Mexico">🇲🇽 Mexico</option>
+            <option value="Argentina">🇦🇷 Argentina</option>
+            <option value="Colombia">🇨🇴 Colombia</option>
+            <option value="New Zealand">🇳🇿 New Zealand</option>
           </select>
           <button class="kwgap-fetch-btn" id="kwgap-fetch-btn" onclick="fetchLiveKeywordGap()">
             ⚡ Fetch Live Data
@@ -4335,7 +4353,28 @@ function showToast(msg) {
 // ===== EVENT LISTENERS =====
 document.addEventListener('DOMContentLoaded', () => {
   navigateTo('home');
-  buildIntelligence(); // Pre-populate with demo data so it's accessible immediately
+  try { buildIntelligence(); } catch(e) { console.warn('buildIntelligence error:', e); }
+
+  // Event delegation — attack & signal buttons rendered inside dynamic innerHTML
+  document.addEventListener('click', e => {
+    const atk = e.target.closest('.btn-kwgap-attack');
+    if (atk) {
+      const kw = atk.dataset.kw || atk.textContent;
+      const comp = atk.dataset.comp || '';
+      openAttackModal(kw, comp, 'keyword');
+      return;
+    }
+    const sig = e.target.closest('.btn-signal-attack');
+    if (sig) {
+      openAttackModal(sig.dataset.action || '', sig.dataset.comp || '', 'attack');
+      return;
+    }
+    const counter = e.target.closest('.btn-signal-counter');
+    if (counter) {
+      openAttackModal(counter.dataset.action || '', counter.dataset.comp || '', 'counter');
+      return;
+    }
+  });
   
   // Nav logo — go home
   document.getElementById('navLogo').addEventListener('click', e => {
@@ -4831,8 +4870,14 @@ async function fetchLiveKeywordGap() {
     const statusRes = await fetch('/api/status');
     const status = await statusRes.json();
     if (!status.dataforseo) {
-      showToast('⚠️ DataForSEO credentials not configured — add them in Secrets');
-      if (statusNote) statusNote.innerHTML = '❌ DataForSEO not configured. Add <strong>DATAFORSEO_LOGIN</strong> and <strong>DATAFORSEO_PASSWORD</strong> in your Replit Secrets panel.';
+      if (statusNote) statusNote.innerHTML = `
+        <span style="color:#EF4444;font-weight:600">⚡ DataForSEO credentials required to fetch live data.</span>
+        Add two secrets in your Replit project: <code style="background:#F3F4F6;padding:2px 6px;border-radius:4px;font-size:0.8rem">DATAFORSEO_LOGIN</code> and
+        <code style="background:#F3F4F6;padding:2px 6px;border-radius:4px;font-size:0.8rem">DATAFORSEO_PASSWORD</code>
+        — sign up free at <a href="https://dataforseo.com" target="_blank" style="color:#0066FF;text-decoration:underline">dataforseo.com</a>,
+        then restart the app and click Fetch Live Data again.
+      `;
+      if (fetchBtn) { fetchBtn.disabled = false; fetchBtn.textContent = '⚡ Fetch Live Data'; }
       return;
     }
   } catch(e) {
@@ -4898,7 +4943,7 @@ async function fetchLiveKeywordGap() {
           <span class="kwgap-score-num">${k.score}</span>
         </td>
         <td>${k.cpc}</td>
-        <td><button class="btn-kwgap-attack" onclick="openAttackModal('${k.keyword.replace(/'/g,'')}','${k.topComp.replace(/'/g,'')}','keyword')">⚡ Attack</button></td>
+        <td><button class="btn-kwgap-attack" data-kw="${k.keyword.replace(/"/g,'')}" data-comp="${k.topComp.replace(/"/g,'')}" onclick="openAttackModal('${k.keyword.replace(/'/g,'')}','${k.topComp.replace(/'/g,'')}','keyword')">⚡ Attack</button></td>
       </tr>
     `).join('');
 

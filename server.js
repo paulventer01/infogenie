@@ -110,14 +110,16 @@ app.post('/api/keyword-gap', async (req, res) => {
       ...compDomains.map(d => ({ target: d, target_type: 'site' }))
     ];
 
-    const payload = [{
+    const taskObj = {
       targets,
-      location_name: location,
       language_name: language,
       limit: parseInt(limit),
       filters: [['keyword_data.keyword_info.search_volume', '>', 500]],
       order_by: ['keyword_data.keyword_info.search_volume,desc']
-    }];
+    };
+    if (location && location !== 'Global') taskObj.location_name = location;
+
+    const payload = [taskObj];
 
     const raw = await callDataForSEO('/v3/dataforseo_labs/google/keyword_gap/live', payload);
 
