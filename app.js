@@ -2671,10 +2671,53 @@ function buildIntelligence() {
     <div class="intel-section">
       <div class="intel-section-head">
         <div class="intel-section-title">📡 Competitor Signal Feed</div>
-        <div class="intel-section-badge" id="ldb-brandwatch">${intel.signals.length} Signals Detected</div>
+        <div class="intel-section-badge" id="ldb-brandwatch">${displaySignals.length} Signals Detected</div>
         <div class="intel-exclusive-badge" onclick="openExclusiveModal()" style="cursor:pointer">⚡ InfoGenie Exclusive</div>
       </div>
-      <div class="signal-grid">${signalCards}</div>
+      <!-- Live news fetch bar -->
+      <div class="kwgap-live-bar" style="margin-bottom:16px">
+        <div class="kwgap-live-label">
+          <span class="kwgap-live-icon">📰</span>
+          <span>Fetch <strong>live competitor news</strong> from the web to surface real signals</span>
+        </div>
+        <div class="kwgap-live-inputs">
+          <button class="kwgap-fetch-btn" id="news-fetch-btn" onclick="fetchLiveCompetitorNews()">
+            📡 Refresh Live Signals
+          </button>
+        </div>
+        <div class="kwgap-live-note" id="news-status-note" style="color:#6B7280">
+          Powered by Real-Time News Data via RapidAPI · Live competitor news and industry signals
+        </div>
+      </div>
+      <div class="signal-grid" id="signal-grid-wrap">${signalCards}</div>
+    </div>
+
+    <!-- Social Intelligence (Reddit) -->
+    <div class="intel-section" id="reddit-signals-section">
+      <div class="intel-section-head">
+        <div class="intel-section-title">💬 Social Intelligence Feed</div>
+        <div class="intel-section-badge" id="ldb-reddit">Community Signals</div>
+        <div class="intel-exclusive-badge" onclick="openExclusiveModal()" style="cursor:pointer">⚡ InfoGenie Exclusive</div>
+      </div>
+      <div class="kwgap-live-bar" style="margin-bottom:16px">
+        <div class="kwgap-live-label">
+          <span class="kwgap-live-icon">🔥</span>
+          <span>Live <strong>Reddit community signals</strong> from your industry — what real users are discussing</span>
+        </div>
+        <div class="kwgap-live-inputs">
+          <button class="kwgap-fetch-btn" id="reddit-fetch-btn" onclick="fetchRedditSignals()">
+            🔥 Load Community Signals
+          </button>
+        </div>
+        <div class="kwgap-live-note" id="reddit-status-note" style="color:#6B7280">
+          Powered by Reddit Scraper via RapidAPI · Top posts from industry subreddits
+        </div>
+      </div>
+      <div id="reddit-feed-wrap" style="display:grid;gap:10px">
+        <div style="text-align:center;padding:32px;color:#94A3B8;font-size:0.875rem">
+          Click "Load Community Signals" to fetch live Reddit discussions from your industry
+        </div>
+      </div>
     </div>
 
     <!-- Predictive Intelligence -->
@@ -5180,6 +5223,158 @@ async function fetchLiveKeywordGap() {
     showToast('❌ ' + err.message);
   } finally {
     if (fetchBtn) { fetchBtn.disabled = false; fetchBtn.textContent = '⚡ Fetch Live Data'; }
+  }
+}
+
+// ── RAPIDAPI: Live Competitor News ────────────────────────────────────────────
+async function fetchLiveCompetitorNews() {
+  const btn = document.getElementById('news-fetch-btn');
+  const statusNote = document.getElementById('news-status-note');
+  const grid = document.getElementById('signal-grid-wrap');
+  const badge = document.getElementById('ldb-brandwatch');
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Fetching…'; }
+  if (statusNote) statusNote.innerHTML = '🔄 Pulling live competitor news from the web…';
+
+  const competitors = analysisData ? analysisData.competitors.slice(0, 4).map(c => c.name) : [];
+  const industryKey = analysisData ? analysisData.industryKey : 'marketing';
+  const country = (analysisData && analysisData.country === 'United Kingdom') ? 'GB'
+    : (analysisData && analysisData.country === 'Australia') ? 'AU'
+    : (analysisData && analysisData.country === 'Canada') ? 'CA'
+    : 'US';
+
+  try {
+    const res = await fetch('/api/competitor-news', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ competitors, industry: industryKey, country })
+    });
+    const data = await res.json();
+
+    if (data.source === 'not_subscribed' || (data.articles && data.articles.length === 0 && data.source !== 'live')) {
+      if (statusNote) statusNote.innerHTML = `⚠️ Subscribe to <a href="https://rapidapi.com/letscrape-6bRBa3QguO5/api/real-time-news-data" target="_blank" style="color:#0066FF;text-decoration:underline">Real-Time News Data</a> on RapidAPI (free tier) then click refresh again.`;
+      if (btn) { btn.disabled = false; btn.textContent = '📡 Refresh Live Signals'; }
+      return;
+    }
+
+    const articles = data.articles || [];
+    if (articles.length === 0) {
+      if (statusNote) statusNote.textContent = 'No recent news found — try again later.';
+      if (btn) { btn.disabled = false; btn.textContent = '📡 Refresh Live Signals'; }
+      return;
+    }
+
+    // Build live signal cards from news articles
+    const SIGNAL_ICONS = { new_campaign: '🆕', budget_surge: '💰', price_change: '🏷️', competitor_signal: '📡', industry_trend: '📈' };
+    const SIGNAL_LABELS = { new_campaign: 'New Campaign Detected', budget_surge: 'Budget/Investment Signal', price_change: 'Pricing Signal', competitor_signal: 'Competitor Signal', industry_trend: 'Industry Trend' };
+    const SIGNAL_COLORS = { new_campaign: '#1E3A5F', budget_surge: '#1E3A5F', price_change: '#3B1F2B', competitor_signal: '#1F2A3C', industry_trend: '#0A2818' };
+
+    const liveCards = articles.map(a => {
+      const icon = SIGNAL_ICONS[a.signal] || '📡';
+      const label = SIGNAL_LABELS[a.signal] || 'Signal';
+      const bg = SIGNAL_COLORS[a.signal] || '#1F2A3C';
+      const compLetter = a.competitor ? a.competitor[0].toUpperCase() : '📰';
+      const timeAgo = a.publishedAt ? (() => {
+        try {
+          const d = new Date(a.publishedAt);
+          const diff = Math.floor((Date.now() - d) / 60000);
+          if (diff < 60) return `${diff}m ago`;
+          if (diff < 1440) return `${Math.floor(diff/60)}h ago`;
+          return `${Math.floor(diff/1440)}d ago`;
+        } catch(e) { return 'Recently'; }
+      })() : 'Live';
+
+      return `
+        <div class="signal-card">
+          <div class="signal-logo" style="background:${bg};font-size:1rem">${compLetter}</div>
+          <div class="signal-body">
+            <div class="signal-top">
+              <span class="signal-comp">${a.competitor || a.source}</span>
+              <span class="signal-type-badge sig-new">${icon} ${label}</span>
+              <span class="signal-ago">${timeAgo}</span>
+            </div>
+            <div class="signal-msg" style="font-weight:600;color:#1E293B;margin-bottom:4px">${a.title}</div>
+            ${a.snippet ? `<div class="signal-msg" style="font-size:0.8rem;color:#64748B;margin-bottom:8px">${a.snippet.slice(0, 180)}${a.snippet.length > 180 ? '…' : ''}</div>` : ''}
+            <div class="signal-actions">
+              <a href="${a.url}" target="_blank" style="font-size:.75rem;color:#0066FF;text-decoration:none;font-weight:600">Read Full Article →</a>
+              <span style="color:#E2E8F0;margin:0 8px">|</span>
+              <span style="font-size:.75rem;color:#94A3B8">Source: ${a.source}</span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    if (grid) grid.innerHTML = liveCards;
+    if (badge) badge.textContent = `${articles.length} Live Signals · Updated ${new Date().toLocaleTimeString()}`;
+    if (statusNote) statusNote.innerHTML = `✅ <strong>Live data from RapidAPI</strong> · ${articles.length} signals fetched · ${new Date().toLocaleTimeString()}`;
+    showToast(`✅ ${articles.length} live competitor signals loaded`);
+
+  } catch(err) {
+    if (statusNote) statusNote.textContent = `❌ Error: ${err.message}`;
+    showToast('❌ Failed to fetch live signals — ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📡 Refresh Live Signals'; }
+  }
+}
+
+// ── RAPIDAPI: Reddit Social Intelligence ─────────────────────────────────────
+async function fetchRedditSignals() {
+  const btn = document.getElementById('reddit-fetch-btn');
+  const statusNote = document.getElementById('reddit-status-note');
+  const wrap = document.getElementById('reddit-feed-wrap');
+  const badge = document.getElementById('ldb-reddit');
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Fetching…'; }
+  if (statusNote) statusNote.textContent = '🔄 Loading live Reddit community signals…';
+
+  const industryKey = analysisData ? analysisData.industryKey : 'marketing';
+  const competitors = analysisData ? analysisData.competitors.slice(0, 4).map(c => c.name) : [];
+
+  try {
+    const res = await fetch('/api/reddit-signals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ industry: industryKey, competitors })
+    });
+    const data = await res.json();
+
+    if (data.source === 'not_subscribed' || !data.posts || data.posts.length === 0) {
+      if (wrap) wrap.innerHTML = `
+        <div style="text-align:center;padding:32px;color:#94A3B8;font-size:0.875rem">
+          ⚠️ Subscribe to <a href="https://rapidapi.com/search/reddit-scraper" target="_blank" style="color:#0066FF">Reddit Scraper</a> on RapidAPI (free tier) then click refresh again.
+        </div>`;
+      if (statusNote) statusNote.innerHTML = `Subscribe to Reddit Scraper on RapidAPI to enable community signals`;
+      return;
+    }
+
+    const SENTIMENT_COLOR = { positive: '#10B981', neutral: '#6B7280', negative: '#EF4444' };
+    const posts = data.posts || [];
+    const cards = posts.map(p => `
+      <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px 16px;display:flex;gap:14px;align-items:flex-start">
+        <div style="min-width:36px;height:36px;border-radius:8px;background:#FF4500;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:0.875rem">r/</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.875rem;font-weight:700;color:#0A1628;margin-bottom:4px;line-height:1.35">${p.title}</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+            <span style="font-size:.75rem;color:#64748B">${p.subreddit}</span>
+            <span style="font-size:.75rem;color:#64748B">▲ ${(p.score||0).toLocaleString()} upvotes</span>
+            <span style="font-size:.75rem;color:#64748B">💬 ${(p.comments||0).toLocaleString()} comments</span>
+            <span style="font-size:.75rem;color:${SENTIMENT_COLOR[p.sentiment]||'#6B7280'};font-weight:700;text-transform:uppercase;letter-spacing:.04em">${p.sentiment || 'neutral'}</span>
+          </div>
+        </div>
+        <a href="${p.url}" target="_blank" style="font-size:.75rem;color:#0066FF;text-decoration:none;font-weight:600;white-space:nowrap;margin-top:2px">View →</a>
+      </div>
+    `).join('');
+
+    if (wrap) wrap.innerHTML = cards;
+    if (badge) badge.textContent = `${posts.length} Live Posts · ${data.subreddit || ''}`;
+    if (statusNote) statusNote.innerHTML = `✅ Live from Reddit · ${posts.length} posts from ${data.subreddit || 'industry subreddits'} · ${new Date().toLocaleTimeString()}`;
+    showToast(`✅ ${posts.length} Reddit signals loaded from ${data.subreddit || 'your industry'}`);
+
+  } catch(err) {
+    if (statusNote) statusNote.textContent = `❌ Error: ${err.message}`;
+    showToast('❌ Reddit fetch failed — ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔥 Load Community Signals'; }
   }
 }
 

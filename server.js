@@ -297,13 +297,273 @@ app.post('/api/sov', async (req, res) => {
   }
 });
 
+// ── RapidAPI helper ───────────────────────────────────────────────────────────
+
+async function callRapidAPI(host, path, method = 'GET', body = null) {
+  const key = process.env.RAPIDAPI_KEY;
+  if (!key) throw new Error('RAPIDAPI_KEY not configured');
+
+  return new Promise((resolve, reject) => {
+    const data = body ? JSON.stringify(body) : null;
+    const options = {
+      hostname: host,
+      path,
+      method,
+      headers: {
+        'X-RapidAPI-Key': key,
+        'X-RapidAPI-Host': host,
+        'Content-Type': 'application/json'
+      }
+    };
+    if (data) options.headers['Content-Length'] = Buffer.byteLength(data);
+
+    const req = https.request(options, (res) => {
+      let raw = '';
+      res.on('data', chunk => { raw += chunk; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(raw)); }
+        catch(e) { resolve({ _raw: raw }); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('RapidAPI timeout')); });
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
+// ── POST /api/competitor-news ─────────────────────────────────────────────────
+// Powers the live signal feed — uses Real-Time News Data API on RapidAPI
+// Subscribe free at: https://rapidapi.com/letscrape-6bRBa3QguO5/api/real-time-news-data
+
+app.post('/api/competitor-news', async (req, res) => {
+  try {
+    const { competitors = [], industry = 'marketing', country = 'US' } = req.body;
+    const key = process.env.RAPIDAPI_KEY;
+    if (!key) return res.json({ articles: [], source: 'no_key' });
+
+    // Build search queries for each competitor
+    const queries = competitors.slice(0, 4).map(name => ({
+      name,
+      q: encodeURIComponent(`"${name}" marketing OR advertising OR campaign`)
+    }));
+
+    // Also add an industry trend query
+    const INDUSTRY_TOPICS = {
+      ecommerce: 'ecommerce retail online shopping marketing',
+      fintech:   'fintech banking payments marketing',
+      saas:      'saas software B2B marketing',
+      crypto:    'crypto blockchain web3 marketing',
+      travel:    'travel hospitality marketing campaigns',
+      education: 'edtech e-learning marketing',
+      marketing: 'digital marketing advertising trends'
+    };
+    const industryQ = encodeURIComponent(INDUSTRY_TOPICS[industry] || INDUSTRY_TOPICS.marketing);
+
+    const articles = [];
+
+    // Fetch industry trend news
+    try {
+      const newsRes = await callRapidAPI(
+        'real-time-news-data.p.rapidapi.com',
+        `/search?query=${industryQ}&limit=6&country=${country}&lang=en`,
+        'GET'
+      );
+      if (newsRes.status === 'OK' && Array.isArray(newsRes.data)) {
+        for (const a of newsRes.data.slice(0, 3)) {
+          articles.push({
+            type: 'trend',
+            competitor: null,
+            title: a.title,
+            snippet: a.snippet || a.description || '',
+            url: a.link || a.url || '#',
+            source: a.source_name || a.publisher || 'News',
+            publishedAt: a.published_datetime_utc || a.date || '',
+            signal: 'industry_trend'
+          });
+        }
+      }
+    } catch(e) { console.warn('news trend fetch failed:', e.message); }
+
+    // Fetch competitor-specific news
+    for (const { name, q } of queries) {
+      try {
+        const newsRes = await callRapidAPI(
+          'real-time-news-data.p.rapidapi.com',
+          `/search?query=${q}&limit=3&country=${country}&lang=en`,
+          'GET'
+        );
+        if (newsRes.status === 'OK' && Array.isArray(newsRes.data)) {
+          const top = newsRes.data[0];
+          if (top) {
+            const title = (top.title || '').toLowerCase();
+            const signalType = title.includes('launch') || title.includes('new') ? 'new_campaign'
+              : title.includes('fund') || title.includes('raise') || title.includes('invest') ? 'budget_surge'
+              : title.includes('price') || title.includes('fee') || title.includes('cost') ? 'price_change'
+              : 'competitor_signal';
+            articles.push({
+              type: 'competitor',
+              competitor: name,
+              title: top.title,
+              snippet: top.snippet || top.description || '',
+              url: top.link || top.url || '#',
+              source: top.source_name || top.publisher || 'News',
+              publishedAt: top.published_datetime_utc || top.date || '',
+              signal: signalType
+            });
+          }
+        }
+      } catch(e) { console.warn(`news fetch failed for ${name}:`, e.message); }
+    }
+
+    res.json({ articles, source: 'live', timestamp: new Date().toISOString() });
+
+  } catch(err) {
+    console.error('/api/competitor-news error:', err.message);
+    res.json({ articles: [], source: 'error', error: err.message });
+  }
+});
+
+// ── GET /api/trends ───────────────────────────────────────────────────────────
+// Powers trending keywords — uses Google Trends API on RapidAPI
+// Subscribe free at: https://rapidapi.com/exploreapi/api/google-trends-api
+
+app.post('/api/trends', async (req, res) => {
+  try {
+    const { keywords = [], geo = 'US' } = req.body;
+    const key = process.env.RAPIDAPI_KEY;
+    if (!key) return res.json({ trends: [], source: 'no_key' });
+
+    const query = keywords.slice(0, 3).join(',') || 'digital marketing';
+    const results = [];
+
+    // Try Google Trends API (exploreAPI version)
+    try {
+      const r = await callRapidAPI(
+        'google-trends8.p.rapidapi.com',
+        `/trending?geo=${geo}`,
+        'GET'
+      );
+      if (Array.isArray(r) && r.length > 0) {
+        for (const item of r.slice(0, 8)) {
+          results.push({
+            keyword: item.title || item.query || item,
+            traffic: item.traffic || item.formattedTraffic || '+1,000%',
+            articles: item.articles ? item.articles.slice(0, 1) : []
+          });
+        }
+        return res.json({ trends: results, source: 'live_trends', timestamp: new Date().toISOString() });
+      }
+    } catch(e) { console.warn('google-trends8 failed:', e.message); }
+
+    // Fallback: use interest over time endpoint
+    try {
+      const encoded = encodeURIComponent(query);
+      const r = await callRapidAPI(
+        'google-trends-api4.p.rapidapi.com',
+        `/interestovertime?keyword=${encoded}&geo=${geo}&startTime=now+7-d`,
+        'GET'
+      );
+      if (r && r.default) {
+        results.push({ keyword: query, trend: 'rising', source: 'interest_over_time' });
+        return res.json({ trends: results, source: 'live_interest', timestamp: new Date().toISOString() });
+      }
+    } catch(e) { console.warn('google-trends-api4 failed:', e.message); }
+
+    res.json({ trends: [], source: 'not_subscribed' });
+
+  } catch(err) {
+    console.error('/api/trends error:', err.message);
+    res.json({ trends: [], source: 'error', error: err.message });
+  }
+});
+
+// ── POST /api/reddit-signals ──────────────────────────────────────────────────
+// Powers social intelligence — uses Reddit Scraper API on RapidAPI
+// Subscribe free at: https://rapidapi.com/search/reddit-scraper
+
+app.post('/api/reddit-signals', async (req, res) => {
+  try {
+    const { industry = 'marketing', competitors = [] } = req.body;
+    const key = process.env.RAPIDAPI_KEY;
+    if (!key) return res.json({ posts: [], source: 'no_key' });
+
+    const INDUSTRY_SUBS = {
+      ecommerce:  ['ecommerce', 'shopify', 'entrepreneur'],
+      fintech:    ['personalfinance', 'fintech', 'investing'],
+      saas:       ['saas', 'entrepreneur', 'startups'],
+      crypto:     ['CryptoCurrency', 'Bitcoin', 'ethereum'],
+      travel:     ['travel', 'solotravel', 'digitalnomad'],
+      education:  ['learnprogramming', 'OnlineLearning', 'edtech'],
+      marketing:  ['marketing', 'digital_marketing', 'PPC']
+    };
+
+    const sub = (INDUSTRY_SUBS[industry] || INDUSTRY_SUBS.marketing)[0];
+    const posts = [];
+
+    // Try Reddit Scraper v2
+    try {
+      const r = await callRapidAPI(
+        'reddit-scraper2.p.rapidapi.com',
+        `/sub_posts?sub=${sub}&sort=hot&time=week&cursor=`,
+        'GET'
+      );
+      if (Array.isArray(r) && r.length > 0) {
+        for (const post of r.slice(0, 6)) {
+          posts.push({
+            title: post.title,
+            url: `https://reddit.com${post.permalink || ''}`,
+            subreddit: post.subreddit_name_prefixed || `r/${sub}`,
+            score: post.score || 0,
+            comments: post.num_comments || 0,
+            created: post.created_utc || null,
+            sentiment: (post.score || 0) > 500 ? 'positive' : 'neutral'
+          });
+        }
+        return res.json({ posts, subreddit: sub, source: 'live', timestamp: new Date().toISOString() });
+      }
+    } catch(e) { console.warn('reddit-scraper2 failed:', e.message); }
+
+    // Fallback: try alternative Reddit API
+    try {
+      const r = await callRapidAPI(
+        'reddit34.p.rapidapi.com',
+        `/v1/subreddit/posts?subreddit=${sub}&sort=hot&time=week&limit=6`,
+        'GET'
+      );
+      if (r && r.data && Array.isArray(r.data.children)) {
+        for (const child of r.data.children.slice(0, 6)) {
+          const p = child.data || child;
+          posts.push({
+            title: p.title,
+            url: `https://reddit.com${p.permalink || ''}`,
+            subreddit: p.subreddit_name_prefixed || `r/${sub}`,
+            score: p.score || 0,
+            comments: p.num_comments || 0,
+            sentiment: (p.score || 0) > 200 ? 'positive' : 'neutral'
+          });
+        }
+        return res.json({ posts, subreddit: sub, source: 'live', timestamp: new Date().toISOString() });
+      }
+    } catch(e) { console.warn('reddit34 failed:', e.message); }
+
+    res.json({ posts: [], source: 'not_subscribed' });
+
+  } catch(err) {
+    console.error('/api/reddit-signals error:', err.message);
+    res.json({ posts: [], source: 'error', error: err.message });
+  }
+});
+
 // ── GET /api/status ───────────────────────────────────────────────────────────
 
 app.get('/api/status', (req, res) => {
   const hasCredentials = !!(process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD);
+  const hasRapidAPI = !!process.env.RAPIDAPI_KEY;
   res.json({
     ok: true,
     dataforseo: hasCredentials,
+    rapidapi: hasRapidAPI,
     timestamp: new Date().toISOString()
   });
 });
