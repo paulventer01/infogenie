@@ -250,51 +250,79 @@ function buildDashboard() {
   const yourCTR = websiteKPIs.ctr;
   const yourROAS = websiteKPIs.roas;
   
+  // Use real DataForSEO traffic if available, otherwise fall back to AI estimate
+  const realTraffic   = analysisData._yourRealData && analysisData._yourRealData.organicTraffic;
+  const trafficVal    = realTraffic || websiteKPIs.trafficMo;
+  const trafficSource = realTraffic ? '📡 DataForSEO live data' : 'AI industry benchmark';
+  const trafficBadge  = realTraffic
+    ? `<span style="font-size:.65rem;background:#10B98120;color:#10B981;padding:2px 6px;border-radius:10px;font-weight:700">LIVE</span>`
+    : `<span style="font-size:.65rem;background:#F1F5F9;color:#94A3B8;padding:2px 6px;border-radius:10px;font-weight:700">AI EST.</span>`;
+
+  const aiBadge = `<span style="font-size:.65rem;background:#F1F5F9;color:#94A3B8;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px">AI EST.</span>`;
+
   const kpiGrid = document.getElementById('kpiGrid');
   kpiGrid.innerHTML = `
-    <div class="kpi-card kpi-blue">
+    <div class="kpi-card kpi-blue" title="Click-Through Rate: the % of people who click your ad after seeing it. Industry avg for ${industry.name} competitors is ${avgCTR.toFixed(2)}%.">
+      ${aiBadge}
       <div class="kpi-icon">📊</div>
-      <div class="kpi-label">Your Avg CTR</div>
+      <div class="kpi-label">Avg CTR Benchmark</div>
       <div class="kpi-value">${yourCTR}%</div>
       <div class="kpi-change ${yourCTR >= avgCTR ? 'kpi-up' : 'kpi-down'}">
-        ${yourCTR >= avgCTR ? '▲' : '▼'} ${Math.abs(yourCTR - avgCTR).toFixed(2)}% vs. market avg
+        ${yourCTR >= avgCTR ? '▲' : '▼'} ${Math.abs(yourCTR - avgCTR).toFixed(2)}% vs. ${industry.name} avg
       </div>
     </div>
-    <div class="kpi-card kpi-teal">
+    <div class="kpi-card kpi-teal" title="Return on Ad Spend: revenue earned per £/$1 spent on ads. Your competitors average ${avgROAS.toFixed(1)}× ROAS.">
+      ${aiBadge}
       <div class="kpi-icon">🎯</div>
-      <div class="kpi-label">Your ROAS</div>
+      <div class="kpi-label">ROAS Benchmark</div>
       <div class="kpi-value">${yourROAS}×</div>
       <div class="kpi-change ${yourROAS >= avgROAS ? 'kpi-up' : 'kpi-down'}">
-        ${yourROAS >= avgROAS ? '▲' : '▼'} ${Math.abs(yourROAS - avgROAS).toFixed(1)}× vs. market avg
+        ${yourROAS >= avgROAS ? '▲' : '▼'} ${Math.abs(yourROAS - avgROAS).toFixed(1)}× vs. ${industry.name} avg
       </div>
     </div>
-    <div class="kpi-card kpi-green">
+    <div class="kpi-card kpi-green" title="Cost Per Acquisition: estimated ad spend to win one new customer in your industry.">
+      ${aiBadge}
       <div class="kpi-icon">💰</div>
-      <div class="kpi-label">Your CPA</div>
+      <div class="kpi-label">CPA Benchmark</div>
       <div class="kpi-value">$${websiteKPIs.cpa}</div>
-      <div class="kpi-change kpi-up">▼ 35% improvement possible</div>
+      <div class="kpi-change kpi-up">▼ 35% reduction possible with AI optimisation</div>
     </div>
-    <div class="kpi-card kpi-gold">
+    <div class="kpi-card kpi-gold" title="Estimated organic visits per month${realTraffic ? ' — sourced from DataForSEO live data' : ' — AI-estimated industry benchmark for your domain'}.">
+      ${trafficBadge}
       <div class="kpi-icon">👥</div>
       <div class="kpi-label">Est. Monthly Traffic</div>
-      <div class="kpi-value">${formatNum(websiteKPIs.trafficMo)}</div>
-      <div class="kpi-change kpi-up">▲ 22% growth opportunity</div>
+      <div class="kpi-value">${formatNum(trafficVal)}</div>
+      <div class="kpi-change kpi-up" style="font-size:.7rem">${trafficSource}</div>
     </div>
-    <div class="kpi-card kpi-purple">
+    <div class="kpi-card kpi-purple" title="Conversion Rate: % of visitors who take a desired action (sign up, purchase). ${industry.name} market average is 3.1%.">
+      ${aiBadge}
       <div class="kpi-icon">📈</div>
-      <div class="kpi-label">Conversion Rate</div>
+      <div class="kpi-label">Conv. Rate Benchmark</div>
       <div class="kpi-value">${websiteKPIs.convRate}%</div>
       <div class="kpi-change ${websiteKPIs.convRate >= 3 ? 'kpi-up' : 'kpi-down'}">
-        Market avg: ${(3.1).toFixed(1)}%
+        ${industry.name} avg: 3.1%
       </div>
     </div>
-    <div class="kpi-card kpi-blue">
+    <div class="kpi-card kpi-blue" title="AI-calculated score combining your CTR, ROAS and conversion benchmarks vs. competitor averages. Higher = more growth opportunity.">
+      <span style="font-size:.65rem;background:#0066FF20;color:#0066FF;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px">AI SCORE</span>
       <div class="kpi-icon">🚀</div>
       <div class="kpi-label">AI Opportunity Score</div>
       <div class="kpi-value">${calcOpportunityScore(websiteKPIs, avgCTR, avgROAS)}/100</div>
       <div class="kpi-change kpi-up">▲ High growth potential</div>
     </div>
   `;
+
+  // Data source notice below KPI grid
+  const noticeEl = document.getElementById('kpiDataNotice');
+  if (noticeEl) {
+    noticeEl.innerHTML = `
+      <span style="color:#64748B;font-size:0.75rem">
+        ⚠️ <strong>AI Estimated benchmarks</strong> — CTR, ROAS, CPA and Conversion Rate are industry benchmark ranges for <strong>${industry.name}</strong>, not pulled from your ad accounts.
+        ${realTraffic ? `Monthly Traffic is <strong style="color:#10B981">live from DataForSEO</strong>.` : 'Connect Google Analytics or Google Ads to replace estimates with your real figures.'}
+        Hover any card for a full explanation.
+      </span>
+    `;
+  }
   
   // ROI Banner
   const improvedROAS = (avgROAS * 1.28).toFixed(1);
