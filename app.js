@@ -565,7 +565,7 @@ function buildCampaigns() {
       </div>
       <div class="camp-card-actions">
         <button class="btn-camp-launch" onclick="openCampModal('${camp.name.replace(/'/g,'')}','${camp.platform}','${camp.budget}',${idx})">🚀 Launch this Campaign</button>
-        <button class="btn-camp-preview" onclick="previewCampaignCreative(${idx})">👁 Preview Creative</button>
+        <button class="btn-camp-preview" onclick="previewCampaignCreative(${idx})">🎨 Creative Studio</button>
       </div>
     </div>
   `).join('');
@@ -5002,99 +5002,480 @@ function confirmCampLaunch(name, platform, budget) {
   showToast('✅ Campaign "' + name + '" launched on ' + platform + ' — AI optimisation active');
 }
 
-// Preview creative for a campaign card
+// ── CREATIVE STUDIO ────────────────────────────────────────────────────────────
+// Stores current creative content for copy/download
+window._creativeStudio = {};
+
 function previewCampaignCreative(idx) {
   const modal = document.getElementById('campCreativeModal');
   modal.classList.remove('hidden');
   modal.style.display = 'flex';
   const inner = document.getElementById('campCreativeModalInner');
 
-  const camp = analysisData && window._lastCampRecs ? window._lastCampRecs[idx] : null;
-  const campName  = camp?.name  || 'AI Campaign';
-  const platform  = camp?.platform || 'Google Ads';
-  const domain    = analysisData?.url || 'yourdomain.com';
-  const indName   = analysisData?.industry?.name || 'your industry';
-  const tagline   = camp?.description?.split('.')[0] || 'Outperform competitors with AI-powered targeting';
+  const camp     = analysisData && window._lastCampRecs ? window._lastCampRecs[idx] : null;
+  const campName = camp?.name  || 'AI Campaign';
+  const platform = camp?.platform || 'Google Ads';
+  const budget   = camp?.budget || '$2,000/mo';
+  const domain   = analysisData?.url || 'yourdomain.com';
+  const indName  = analysisData?.industry?.name || 'your industry';
+  const topComp  = analysisData?.competitors?.[0]?.name || 'your top competitor';
+  const comp2    = analysisData?.competitors?.[1]?.name || topComp;
+  const projROAS = camp?.estROAS ? `${camp.estROAS}×` : '3.8×';
+  const estCTR   = camp?.estCTR || '4.2%';
+  const estCPA   = camp?.estCPA || '$38';
 
-  const adFormats = [
-    {
-      label: 'Search Ad — Google',
-      icon: '🔵',
-      preview: `
-        <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px;background:white;font-family:arial,sans-serif">
-          <div style="font-size:0.68rem;color:#006621;margin-bottom:2px">Ad · ${domain}</div>
-          <div style="font-size:0.95rem;color:#1a0dab;font-weight:400;margin-bottom:3px">Stop Overpaying — Switch & Save 30% | ${indName}</div>
-          <div style="font-size:0.78rem;color:#4d5156;line-height:1.4">${tagline}. Try free for 14 days — no credit card required. Trusted by 10,000+ businesses.</div>
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <span style="font-size:0.7rem;color:#1a0dab;border:1px solid #1a0dab;border-radius:4px;padding:2px 6px">Free Trial</span>
-            <span style="font-size:0.7rem;color:#1a0dab;border:1px solid #1a0dab;border-radius:4px;padding:2px 6px">See Pricing</span>
-          </div>
-        </div>`
-    },
-    {
-      label: 'Display Banner — 728×90',
-      icon: '🟡',
-      preview: `
-        <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:8px;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px">
-          <div>
-            <div style="font-family:'Sora',sans-serif;font-size:0.9rem;font-weight:800;color:white;margin-bottom:4px">Beat the Competition — Starting Today</div>
-            <div style="font-size:0.72rem;color:rgba(255,255,255,.7)">${domain} · AI-Powered ${indName} Platform</div>
-          </div>
-          <button style="background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:8px;padding:8px 16px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">Start Free →</button>
-        </div>`
-    },
-    {
-      label: 'Instagram Story — 1080×1920',
-      icon: '📱',
-      preview: `
-        <div style="background:linear-gradient(160deg,#667eea,#764ba2);border-radius:8px;padding:24px 16px;text-align:center;min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px">
-          <div style="font-size:0.7rem;font-weight:700;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.08em">Sponsored</div>
-          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white;line-height:1.3">Join 10,000+ Businesses<br>Seeing 4× ROAS</div>
-          <div style="font-size:0.75rem;color:rgba(255,255,255,.8)">${domain}</div>
-          <div style="background:white;color:#764ba2;border-radius:20px;padding:6px 18px;font-size:0.8rem;font-weight:700;margin-top:4px">Swipe Up to Learn More ↑</div>
-        </div>`
-    },
-    {
-      label: 'Video Ad Script — 15 sec',
-      icon: '🎬',
-      preview: `
-        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:14px">
-          <div style="font-size:0.7rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Script</div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <div style="display:flex;gap:8px"><span style="font-size:0.68rem;color:#6B7280;min-width:40px;padding-top:1px">0–3s</span><span style="font-size:0.79rem;color:#0A1628">Hook: "Tired of watching your ad budget disappear?"</span></div>
-            <div style="display:flex;gap:8px"><span style="font-size:0.68rem;color:#6B7280;min-width:40px;padding-top:1px">3–10s</span><span style="font-size:0.79rem;color:#0A1628">Problem + solution: Show competitor wasted spend vs. InfoGenie ROAS graph climbing.</span></div>
-            <div style="display:flex;gap:8px"><span style="font-size:0.68rem;color:#6B7280;min-width:40px;padding-top:1px">10–15s</span><span style="font-size:0.79rem;color:#0A1628">CTA: "${domain} — Start your free trial today."</span></div>
-          </div>
-        </div>`
-    }
-  ];
+  // Platform-aware copy pools
+  const headlineSets = {
+    'Google Ads':      ['Stop Overpaying — Switch & Save 30%', 'Faster Results. Lower Costs. Proven ROI.', `The Smarter Alternative to ${topComp}`],
+    'Google Search':   ['Beat the Competition Starting Today', '#1 Rated Alternative — See Why', 'Get More for Less — Free 14-Day Trial'],
+    'Meta Ads':        ['Join 10,000+ Businesses Seeing 4× ROAS', 'Your Competitors Are Scaling With This', 'Finally — Ads That Actually Convert'],
+    'TikTok Ads':      ['POV: Your ROAS just hit 4×', `This is what ${topComp} doesn't want you to know`, 'Real results. Real brands. Real ROI.'],
+    'YouTube':         ['The Ad Strategy Your Competitors Hope You Never See', 'How Top Brands Are Hitting 5× ROAS This Year', 'Stop Wasting Ad Spend — Here\'s the Fix'],
+    'AI Optimised':    ['AI-Optimised. Always On. Always Winning.', 'Every £1 Working Harder With AI Bidding', 'Your Campaign Never Sleeps — Neither Does Our AI'],
+    'LinkedIn Ads':    [`Reach 500+ Decision-Makers in ${indName} This Week`, 'The B2B Growth Strategy CFOs Are Approving', 'Enterprise ROI — Without Enterprise Costs'],
+    'Display Network': ['Your Brand. Everywhere Your Customers Are.', `Outperform ${topComp} on Every Screen`, 'Display + Intent = Unstoppable Growth'],
+  };
+  const descSets = {
+    'Google Ads':      [`Cut wasteful ad spend and redirect it to campaigns that convert. Beat ${topComp} on the keywords that matter most.`, `See exactly where ${topComp} is winning — then outbid them at the right moment with AI-powered precision.`],
+    'Meta Ads':        [`Reach the audiences ${topComp} is missing. InfoGenie builds lookalike segments from your best customers automatically.`, 'Dynamic creative that tests and learns continuously — your best-performing ad is always running.'],
+    'TikTok Ads':      [`${indName} on TikTok is untapped. Get in front of your audience before ${topComp} realises what they\'re missing.`, 'Short-form video that converts — UGC-style ads at a fraction of the CPM you\'re paying on Google or Meta.'],
+    'YouTube':         [`Show your brand story to in-market buyers searching for alternatives to ${topComp}. High-intent, low-cost impressions.`, 'Video builds trust fast — and trust converts. Reach decision-makers before they click a competitor ad.'],
+    'AI Optimised':    [`InfoGenie's reinforcement learning engine manages your entire ad portfolio — pausing losers, scaling winners, every 6 hours.`, `Set your ROAS target, connect your accounts, and let AI run. Average clients see +31% ROAS improvement in 30 days.`],
+    'LinkedIn Ads':    [`Connect with VP-level decision-makers in ${indName} who are actively evaluating solutions like yours. Beat ${topComp} in the B2B funnel.`, 'Sponsored InMail + Content campaigns that nurture prospects from awareness to signed contract.'],
+    'Display Network': [`Your brand on 2M+ premium websites — following your best prospects everywhere they browse online.`, `Retarget ${topComp} visitors and convert them before they go back. Smart display at CPA you can afford.`],
+  };
+  const headlines = headlineSets[platform] || headlineSets['Google Ads'];
+  const descs     = descSets[platform] || descSets['Google Ads'];
 
+  const tagline   = camp?.description?.split('.')[0] || headlines[0];
+
+  // Build all creative content strings
+  const googleSearchCopy = `HEADLINE 1: ${headlines[0]}
+HEADLINE 2: ${headlines[1]}
+HEADLINE 3: ${headlines[2]}
+DESCRIPTION 1: ${descs[0]}
+DESCRIPTION 2: ${descs[1]}
+DISPLAY URL: ${domain}
+SITELINKS: Free Trial | See Pricing | Case Studies | Book Demo`;
+
+  const displayCopy = `HEADLINE: Beat the Competition — Starting Today
+SUB-HEADLINE: ${domain} · AI-Powered ${indName} Platform
+CTA BUTTON: Start Free →
+SIZE: 728×90 leaderboard`;
+
+  const instagramCopy = `CAPTION:
+🚀 ${headlines[0]}
+
+${descs[0]}
+
+✅ ${projROAS} projected ROAS
+✅ Est. CTR: ${estCTR}
+✅ Est. CPA: ${estCPA}
+
+👉 Link in bio to get started free.
+
+#${indName.replace(/\s+/g,'')} #DigitalMarketing #ROAS #MarketingStrategy #GrowthHacking`;
+
+  const tiktokScript = `[0–3s] HOOK: "Tired of watching your ${indName} ad budget disappear?"
+[3–8s] PROBLEM: Show competitor ad waste piling up. Text overlay: "${topComp} charges you more and delivers less."
+[8–13s] SOLUTION: InfoGenie ROAS graph climbing. Voice-over: "There's a smarter way — and it's already working for thousands of brands."
+[13–15s] CTA: "${domain} — Start free today." Logo + URL on screen.`;
+
+  const videoScript = `[0–3s]   HOOK: "What if your ad budget worked twice as hard — automatically?"
+[3–8s]   PROBLEM: Animated chart showing competitor overspend vs. flat results.
+[8–13s]  SOLUTION: Your brand logo. ROAS graph climbing. Text: "InfoGenie's AI outmanoeuvres ${topComp} 24/7."
+[13–20s] SOCIAL PROOF: "10,000+ brands. ${projROAS} average ROAS. Zero guesswork."
+[20–25s] CTA: Visit ${domain}. Free 14-day trial — no credit card required.`;
+
+  const linkedinPost = `🚀 We just ran a competitive analysis on the ${indName} space — and the results are eye-opening.
+
+${topComp} and ${comp2} are outperforming most brands not because of bigger budgets, but because of smarter targeting and creative strategy.
+
+Here's what we found:
+→ ${headlines[0]}
+→ ${descs[0]}
+→ The gap? ${estCTR} CTR vs. industry average of 2.1%
+
+If you're spending on ${platform} and not seeing ${projROAS} ROAS, your strategy needs a second look.
+
+We've built InfoGenie to fix exactly this. Check it out: ${domain}
+
+#${indName.replace(/\s+/g,'')} #MarketingStrategy #CompetitorAnalysis #PaidMedia`;
+
+  const twitterThread = `🧵 THREAD: How ${topComp} is winning the ${indName} ad game — and what to do about it
+
+1/ After analysing ${topComp}'s campaign strategy, one thing is clear: ${descs[0]}
+
+2/ Their secret? ${headlines[1]}
+
+3/ The fix is straightforward: ${descs[1]}
+
+4/ We built InfoGenie to automate this entire process. Projected CTR: ${estCTR}. Projected ROAS: ${projROAS}.
+
+5/ Free 14-day trial at ${domain} — takes 3 minutes to set up. 🔗`;
+
+  const emailSubject = `[Campaign Brief] ${campName} — Ready to Review`;
+  const emailBody = `Hi [Name],
+
+Your InfoGenie campaign brief is ready for review.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMPAIGN: ${campName}
+PLATFORM: ${platform}
+BUDGET: ${budget}
+PROJECTED ROAS: ${projROAS} | CTR: ${estCTR} | CPA: ${estCPA}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+AD COPY — HEADLINES
+H1: ${headlines[0]}
+H2: ${headlines[1]}
+H3: ${headlines[2]}
+
+AD COPY — DESCRIPTIONS
+D1: ${descs[0]}
+D2: ${descs[1]}
+
+TARGETING INSIGHT
+Industry: ${indName}
+Primary Competitor: ${topComp}
+Strategy: ${camp?.description || 'AI-optimised competitor gap targeting'}
+
+CREATIVE FORMATS
+• Google Search Ad (RSA) — 3 headlines, 2 descriptions
+• Display Banner 728×90
+• Instagram Story / Feed Post
+• Video Ad Script (15–25 seconds)
+• LinkedIn Sponsored Content
+• Twitter/X Thread
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generated by InfoGenie · ${new Date().toLocaleDateString()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+
+  // Store for download/copy
+  window._creativeStudio = { campName, platform, budget, domain, indName, topComp,
+    googleSearchCopy, displayCopy, instagramCopy, tiktokScript, videoScript,
+    linkedinPost, twitterThread, emailSubject, emailBody, idx };
+
+  // ── RENDER ────────────────────────────────────────────────────────────────
   inner.innerHTML = `
-    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:22px 26px;border-radius:20px 20px 0 0">
-      <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:4px">👁 AI Creative Preview</div>
-      <div style="font-size:0.78rem;color:rgba(255,255,255,.6)">${campName} · 4 Format Variants Generated</div>
-    </div>
-    <div style="padding:22px 26px;display:flex;flex-direction:column;gap:18px">
-      ${adFormats.map(f => `
+    <!-- HEADER -->
+    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:22px 26px 0;border-radius:20px 20px 0 0">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
         <div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-            <span>${f.icon}</span>
-            <span style="font-size:0.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em">${f.label}</span>
-          </div>
-          ${f.preview}
+          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:4px">🎨 Creative Studio</div>
+          <div style="font-size:0.78rem;color:rgba(255,255,255,.55)">${campName} · ${platform} · ${budget}</div>
         </div>
-      `).join('')}
+        <div style="display:flex;gap:8px">
+          <button onclick="_csDownload()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 12px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer">⬇ Download</button>
+          <button onclick="_csSendEmail()" style="background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:8px;padding:7px 14px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer">📤 Send by Email</button>
+        </div>
+      </div>
+      <!-- TABS -->
+      <div style="display:flex;gap:0;border-bottom:1px solid rgba(255,255,255,.12)">
+        ${[['ad','🗂 Ad Creatives'],['email','📧 Email'],['social','💬 Social Posts'],['export','📤 Export']].map(([id,label],i) => `
+          <button id="cstab-${id}" onclick="_csTab('${id}')" style="background:${i===0?'rgba(255,255,255,.1)':'transparent'};border:none;border-bottom:${i===0?'2px solid #00E5FF':'2px solid transparent'};padding:10px 16px;font-size:0.78rem;font-weight:700;color:${i===0?'white':'rgba(255,255,255,.5)'};cursor:pointer;transition:all .2s">${label}</button>
+        `).join('')}
+      </div>
+    </div>
 
-      <div style="background:#EFF6FF;border-radius:10px;padding:12px 14px;font-size:0.78rem;color:#1D4ED8;line-height:1.5">
-        <strong>🤖 AI Creative Engine:</strong> These creatives are generated by InfoGenie using AdCreative.ai + Jasper AI. Connect these integrations in Settings to auto-generate 50+ variations per campaign and run live A/B tests.
+    <!-- TAB PANELS -->
+    <div style="padding:22px 26px;display:flex;flex-direction:column;gap:16px">
+
+      <!-- AD CREATIVES -->
+      <div id="cspanel-ad">
+        ${_csFmt('🔵 Google Search Ad — Responsive (RSA)', googleSearchCopy, `
+          <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px;background:white;font-family:arial,sans-serif">
+            <div style="font-size:0.65rem;color:#188038;margin-bottom:3px">Ad · ${domain}</div>
+            <div style="font-size:0.92rem;color:#1a0dab;margin-bottom:4px;line-height:1.3">${headlines[0]} | ${headlines[1]}</div>
+            <div style="font-size:0.76rem;color:#4d5156;line-height:1.45">${descs[0].slice(0,120)}…</div>
+            <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+              <span style="font-size:0.66rem;color:#1a0dab;border:1px solid #1a0dab;border-radius:4px;padding:2px 7px">Free Trial</span>
+              <span style="font-size:0.66rem;color:#1a0dab;border:1px solid #1a0dab;border-radius:4px;padding:2px 7px">See Pricing</span>
+              <span style="font-size:0.66rem;color:#1a0dab;border:1px solid #1a0dab;border-radius:4px;padding:2px 7px">Book Demo</span>
+            </div>
+          </div>`)}
+
+        ${_csFmt('🟡 Display Banner — 728×90', displayCopy, `
+          <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:8px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+            <div>
+              <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:800;color:white;margin-bottom:3px">Beat the Competition — Starting Today</div>
+              <div style="font-size:0.7rem;color:rgba(255,255,255,.65)">${domain} · AI-Powered ${indName}</div>
+            </div>
+            <button style="background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:8px;padding:8px 16px;font-size:0.78rem;font-weight:700;color:white;white-space:nowrap">Start Free →</button>
+          </div>`)}
+
+        ${_csFmt('📱 Instagram Story/Feed Caption', instagramCopy, `
+          <div style="background:linear-gradient(160deg,#667eea,#764ba2);border-radius:8px;padding:22px 16px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px">
+            <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.08em">Sponsored</div>
+            <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:white;line-height:1.3">Join 10,000+ Businesses<br>Seeing ${projROAS} ROAS</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,.8)">${domain}</div>
+            <div style="background:white;color:#764ba2;border-radius:20px;padding:6px 18px;font-size:0.78rem;font-weight:700">Swipe Up to Learn More ↑</div>
+          </div>`)}
+
+        ${_csFmt('🎬 Video Ad Script — 15–25 sec', videoScript, `
+          <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px">
+            <div style="font-size:0.66rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Storyboard Script</div>
+            ${videoScript.split('\n').map(line => {
+              const [time,...rest] = line.split(']');
+              return `<div style="display:flex;gap:10px;margin-bottom:6px"><span style="font-size:0.66rem;color:#6B7280;min-width:52px;padding-top:1px">${time.replace('[','')}]</span><span style="font-size:0.78rem;color:#0A1628;line-height:1.4">${rest.join(']').trim()}</span></div>`;
+            }).join('')}
+          </div>`)}
+
+        ${_csFmt('⬛ TikTok Ad Script — 15 sec', tiktokScript, `
+          <div style="background:#000;border-radius:8px;padding:14px 16px">
+            <div style="font-size:0.66rem;font-weight:700;color:#ff2d55;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">TikTok Script</div>
+            ${tiktokScript.split('\n').map(line => {
+              const [time,...rest] = line.split(']');
+              return `<div style="display:flex;gap:10px;margin-bottom:6px"><span style="font-size:0.66rem;color:#888;min-width:52px;padding-top:1px">${time.replace('[','')}]</span><span style="font-size:0.78rem;color:#eee;line-height:1.4">${rest.join(']').trim()}</span></div>`;
+            }).join('')}
+          </div>`)}
       </div>
 
-      <div style="display:flex;gap:10px">
-        <button onclick="closeCampCreativeModal()" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
-        <button onclick="closeCampCreativeModal(); openCampLaunchRich('${campName.replace(/'/g,'')}','${platform}','${camp?.budget||'$2,000/mo'}',${idx})" style="flex:2;padding:11px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer">🚀 Launch This Campaign</button>
+      <!-- EMAIL PANEL -->
+      <div id="cspanel-email" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:0.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em">📧 Campaign Email Brief</div>
+          <button onclick="_csCopy('${emailSubject.replace(/'/g,'\\\'')}\n\n' + window._creativeStudio.emailBody)" style="background:#F3F4F6;border:1px solid #E5E7EB;border-radius:7px;padding:5px 12px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">📋 Copy All</button>
+        </div>
+        <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;overflow:hidden">
+          <!-- Email preview header -->
+          <div style="background:#E2E8F0;padding:10px 14px;font-size:0.72rem;color:#64748B;display:flex;gap:16px">
+            <span><strong>To:</strong> [Your Team / Agency]</span>
+            <span><strong>Subject:</strong> ${emailSubject}</span>
+          </div>
+          <div style="padding:18px 20px;font-family:Georgia,serif;font-size:0.84rem;line-height:1.7;color:#1E293B;white-space:pre-wrap">${emailBody.replace(/━/g,'─')}</div>
+        </div>
+        <button onclick="_csSendEmail()" style="width:100%;margin-top:12px;padding:12px;background:linear-gradient(135deg,#0066FF,#0044CC);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer">📤 Open in Email Client</button>
       </div>
+
+      <!-- SOCIAL POSTS PANEL -->
+      <div id="cspanel-social" style="display:none;flex-direction:column;gap:16px">
+        ${_csFmt('🔵 LinkedIn Post', linkedinPost, `
+          <div style="background:white;border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px">
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+              <div style="width:36px;height:36px;border-radius:50%;background:#0077B5;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:0.875rem">in</div>
+              <div><div style="font-size:0.8rem;font-weight:700;color:#0A1628">Your Brand</div><div style="font-size:0.7rem;color:#64748B">${indName} · Sponsored</div></div>
+            </div>
+            <div style="font-size:0.8rem;color:#1E293B;line-height:1.6;white-space:pre-line">${linkedinPost.slice(0,300)}…</div>
+          </div>`)}
+
+        ${_csFmt('🐦 Twitter / X Thread', twitterThread, `
+          <div style="background:white;border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px">
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+              <div style="width:36px;height:36px;border-radius:50%;background:#000;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:0.875rem">𝕏</div>
+              <div><div style="font-size:0.8rem;font-weight:700;color:#0A1628">@YourBrand</div><div style="font-size:0.7rem;color:#64748B">Thread · ${new Date().toLocaleDateString()}</div></div>
+            </div>
+            <div style="font-size:0.8rem;color:#1E293B;line-height:1.6;white-space:pre-line">${twitterThread.slice(0,280)}…</div>
+          </div>`)}
+
+        ${_csFmt('📸 Instagram Caption', instagramCopy, `
+          <div style="background:white;border:1px solid #E5E7EB;border-radius:8px;padding:14px 16px">
+            <div style="background:linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);border-radius:8px;height:80px;display:flex;align-items:center;justify-content:center;margin-bottom:10px">
+              <span style="color:white;font-weight:800;font-size:0.875rem">Your Creative Here 📸</span>
+            </div>
+            <div style="font-size:0.78rem;color:#1E293B;line-height:1.6;white-space:pre-line">${instagramCopy.slice(0,200)}…</div>
+          </div>`)}
+      </div>
+
+      <!-- EXPORT PANEL -->
+      <div id="cspanel-export" style="display:none">
+        <div style="display:grid;gap:12px">
+          <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:16px 18px;display:flex;gap:14px;align-items:center">
+            <div style="font-size:2rem">📄</div>
+            <div style="flex:1">
+              <div style="font-size:0.875rem;font-weight:700;color:#14532D;margin-bottom:3px">Download Full Creative Pack</div>
+              <div style="font-size:0.78rem;color:#166534">All ad copy, scripts, social posts and email brief in one .txt file — ready to hand to your agency or upload to your ad platform.</div>
+            </div>
+            <button onclick="_csDownload()" style="background:#16A34A;border:none;border-radius:8px;padding:10px 16px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">⬇ Download</button>
+          </div>
+
+          <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:16px 18px;display:flex;gap:14px;align-items:center">
+            <div style="font-size:2rem">📋</div>
+            <div style="flex:1">
+              <div style="font-size:0.875rem;font-weight:700;color:#1E3A8A;margin-bottom:3px">Copy All to Clipboard</div>
+              <div style="font-size:0.78rem;color:#1D4ED8">Paste directly into Google Docs, Notion, Slack, or your ad platform's creative brief tool.</div>
+            </div>
+            <button onclick="_csCopyAll()" style="background:#2563EB;border:none;border-radius:8px;padding:10px 16px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">📋 Copy All</button>
+          </div>
+
+          <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:12px;padding:16px 18px;display:flex;gap:14px;align-items:center">
+            <div style="font-size:2rem">📧</div>
+            <div style="flex:1">
+              <div style="font-size:0.875rem;font-weight:700;color:#78350F;margin-bottom:3px">Send by Email</div>
+              <div style="font-size:0.78rem;color:#92400E">Opens your email client pre-filled with the full campaign brief — ready to send to your team, client, or agency.</div>
+            </div>
+            <button onclick="_csSendEmail()" style="background:#D97706;border:none;border-radius:8px;padding:10px 16px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">📤 Send Email</button>
+          </div>
+
+          <div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:12px;padding:16px 18px;display:flex;gap:14px;align-items:center">
+            <div style="font-size:2rem">🚀</div>
+            <div style="flex:1">
+              <div style="font-size:0.875rem;font-weight:700;color:#4C1D95;margin-bottom:3px">Launch Campaign</div>
+              <div style="font-size:0.78rem;color:#5B21B6">Review full campaign brief, set your budget, and launch directly from InfoGenie.</div>
+            </div>
+            <button onclick="closeCampCreativeModal(); openCampLaunchRich('${campName.replace(/'/g,'\\\'').replace(/"/g,'')}','${platform}','${budget}',${idx})" style="background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:8px;padding:10px 16px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">🚀 Launch</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- FOOTER -->
+    <div style="padding:0 26px 20px;display:flex;gap:10px">
+      <button onclick="closeCampCreativeModal()" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">✕ Close</button>
+      <button onclick="closeCampCreativeModal(); openCampLaunchRich('${campName.replace(/'/g,'\\\'').replace(/"/g,'')}','${platform}','${budget}',${idx})" style="flex:2;padding:11px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer">🚀 Launch This Campaign</button>
     </div>
   `;
+}
+
+// Tab switcher for Creative Studio
+function _csTab(id) {
+  ['ad','email','social','export'].forEach(t => {
+    const panel = document.getElementById('cspanel-' + t);
+    const tab   = document.getElementById('cstab-' + t);
+    if (panel) {
+      if (t === id) { panel.style.display = 'flex'; panel.style.flexDirection = 'column'; panel.style.gap = '16px'; }
+      else           { panel.style.display = 'none'; }
+    }
+    if (tab) {
+      tab.style.background   = t === id ? 'rgba(255,255,255,.1)' : 'transparent';
+      tab.style.borderBottom = t === id ? '2px solid #00E5FF' : '2px solid transparent';
+      tab.style.color        = t === id ? 'white' : 'rgba(255,255,255,.5)';
+    }
+  });
+}
+
+// Helper: render a titled creative block with copy button
+function _csFmt(label, copyText, previewHTML) {
+  const safeId = 'cs_' + Math.random().toString(36).slice(2,8);
+  // Store text for copy
+  window._creativeStudio['_block_' + safeId] = copyText;
+  return `
+    <div style="border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;margin-bottom:4px">
+      <div style="background:#F8FAFC;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #E2E8F0">
+        <span style="font-size:0.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em">${label}</span>
+        <button onclick="_csCopy(window._creativeStudio['_block_${safeId}'])" style="background:white;border:1px solid #D1D5DB;border-radius:6px;padding:4px 10px;font-size:0.7rem;font-weight:600;color:#374151;cursor:pointer;display:flex;align-items:center;gap:4px">📋 Copy</button>
+      </div>
+      <div style="padding:14px">${previewHTML}</div>
+      <div style="padding:0 14px 12px">
+        <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 12px;font-size:0.73rem;color:#4B5563;white-space:pre-line;font-family:'Courier New',monospace;line-height:1.6;max-height:110px;overflow-y:auto">${copyText}</div>
+      </div>
+    </div>`;
+}
+
+// Copy helper
+function _csCopy(text) {
+  navigator.clipboard.writeText(text).then(() => showToast('✅ Copied to clipboard!')).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    showToast('✅ Copied!');
+  });
+}
+
+// Copy all creative content
+function _csCopyAll() {
+  const s = window._creativeStudio;
+  if (!s) return;
+  const all = `═══ INFOGENIE CREATIVE PACK ═══
+Campaign: ${s.campName}
+Platform: ${s.platform} | Budget: ${s.budget}
+Generated: ${new Date().toLocaleString()}
+
+═══ GOOGLE SEARCH AD ═══
+${s.googleSearchCopy}
+
+═══ DISPLAY BANNER ═══
+${s.displayCopy}
+
+═══ INSTAGRAM CAPTION ═══
+${s.instagramCopy}
+
+═══ VIDEO AD SCRIPT ═══
+${s.videoScript}
+
+═══ TIKTOK SCRIPT ═══
+${s.tiktokScript}
+
+═══ LINKEDIN POST ═══
+${s.linkedinPost}
+
+═══ TWITTER / X THREAD ═══
+${s.twitterThread}
+
+═══ EMAIL BRIEF ═══
+Subject: ${s.emailSubject}
+${s.emailBody}`;
+  _csCopy(all);
+}
+
+// Download all as .txt
+function _csDownload() {
+  const s = window._creativeStudio;
+  if (!s) return;
+  const all = `INFOGENIE CREATIVE PACK
+Campaign: ${s.campName} | Platform: ${s.platform} | Budget: ${s.budget}
+Generated: ${new Date().toLocaleString()}
+
+─────────────────────────────────────────
+GOOGLE SEARCH AD (RSA)
+─────────────────────────────────────────
+${s.googleSearchCopy}
+
+─────────────────────────────────────────
+DISPLAY BANNER 728x90
+─────────────────────────────────────────
+${s.displayCopy}
+
+─────────────────────────────────────────
+INSTAGRAM STORY / FEED CAPTION
+─────────────────────────────────────────
+${s.instagramCopy}
+
+─────────────────────────────────────────
+VIDEO AD SCRIPT (15-25 sec)
+─────────────────────────────────────────
+${s.videoScript}
+
+─────────────────────────────────────────
+TIKTOK SCRIPT (15 sec)
+─────────────────────────────────────────
+${s.tiktokScript}
+
+─────────────────────────────────────────
+LINKEDIN POST
+─────────────────────────────────────────
+${s.linkedinPost}
+
+─────────────────────────────────────────
+TWITTER / X THREAD
+─────────────────────────────────────────
+${s.twitterThread}
+
+─────────────────────────────────────────
+EMAIL CAMPAIGN BRIEF
+─────────────────────────────────────────
+Subject: ${s.emailSubject}
+
+${s.emailBody}`;
+
+  const blob = new Blob([all], { type: 'text/plain' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `InfoGenie_Creative_${s.campName.replace(/[^a-z0-9]/gi,'_').slice(0,40)}_${new Date().toISOString().slice(0,10)}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('✅ Creative pack downloaded!');
+}
+
+// Send by email via mailto
+function _csSendEmail() {
+  const s = window._creativeStudio;
+  if (!s) return;
+  const subject = encodeURIComponent(s.emailSubject);
+  const body    = encodeURIComponent(s.emailBody);
+  window.open(`mailto:?subject=${subject}&body=${body}`);
 }
 
 function closeCampCreativeModal() {

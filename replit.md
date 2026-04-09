@@ -28,6 +28,7 @@ InfoGenie is a comprehensive AI-powered marketing intelligence and campaign auto
 - `creativeRound` — current creative batch (0=original, 1=new angles, 2=urgency hooks; wraps every 3)
 - `window._wlData` — Win/Loss card data map for modal lookup
 - `window._lastCampRecs` — last campaign recommendations for modal access
+- `window._creativeStudio` — Creative Studio state (current campaign's full copy, scripts, email brief — used by _csDownload/_csCopyAll/_csSendEmail)
 
 ## Features
 1. **Website URL Input** — Enter any website, detect industry automatically
@@ -35,7 +36,7 @@ InfoGenie is a comprehensive AI-powered marketing intelligence and campaign auto
 3. **Competitor Analysis** — 5+ real competitors per industry with actual website names
 4. **Dashboard** — KPI cards, CTR/ROAS charts, trend analysis, competitor table
 5. **Competitor Intelligence** — Deep dive with campaigns, suggestions, audiences per competitor
-6. **Campaign Analysis** — AI-generated campaign recommendations with projected metrics
+6. **Campaign Analysis** — AI-generated campaign recommendations with projected metrics; each card has a "🎨 Creative Studio" button
 7. **Audience Intelligence** — Aggregate audience segments with targeting recommendations
 8. **AI Creative Generation** — Competitor vs. InfoGenie side-by-side cards, auto-target audience panels, CTR/ROAS dual-axis chart
 9. **⚡ Intelligence Hub** — Exclusive AI features: keyword gap analysis, share of voice donut chart, competitor signal feed (dark periods/budget surges/price changes/new campaigns), predictive moves with confidence %, 90-day category domination roadmap, win/loss intelligence
