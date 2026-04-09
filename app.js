@@ -669,7 +669,7 @@ function buildCompCard(c) {
             <span class="roi-opp-label">InfoGenie ROI Opportunity:</span>
             <span class="roi-opp-text">${c.estimatedROI}</span>
           </div>
-          <button class="btn-view-plan" onclick="openDifferentiatorModal(this.dataset.comp)" data-comp="${c.name.replace(/'/g,"\\'").replace(/"/g,'&quot;')}">View Plan →</button>
+          <button class="btn-view-plan" data-comp="${c.name.replace(/'/g,'').replace(/"/g,'')}">View Plan →</button>
         </div>
       </div>
     </div>
@@ -3777,9 +3777,14 @@ function openDifferentiatorModal(compName) {
   modal.style.display = 'flex';
 
   const inner = document.getElementById('differentiatorModalInner');
-  const c = analysisData && analysisData.competitors && analysisData.competitors.find(x => x.name === compName);
+  const needle = (compName || '').trim().toLowerCase();
+  const c = analysisData && analysisData.competitors &&
+    (analysisData.competitors.find(x => x.name === compName) ||
+     analysisData.competitors.find(x => (x.name||'').trim().toLowerCase() === needle));
 
-  if (!c) {
+  // Fall back to first available competitor if exact match not found
+  const comp = c || (analysisData && analysisData.competitors && analysisData.competitors[0]);
+  if (!comp) {
     inner.innerHTML = `
       <div style="padding:48px 32px;text-align:center">
         <div style="font-size:2.5rem;margin-bottom:16px">🎯</div>
@@ -3789,23 +3794,22 @@ function openDifferentiatorModal(compName) {
       </div>`;
     return;
   }
-
   // ── Accurate metric derivations ──────────────────────────────────────────
   const myROAS   = analysisData.websiteKPIs?.roas ? parseFloat(analysisData.websiteKPIs.roas) : 2.8;
-  const compROAS = c.roas || 4.5;
-  const compCTR  = parseFloat(c.ctr || '3.2');
-  const compCPA  = parseInt((c.cpa || '$45').replace(/[^0-9]/g,'')) || 45;
+  const compROAS = comp.roas || 4.5;
+  const compCTR  = parseFloat(comp.ctr || '3.2');
+  const compCPA  = parseInt((comp.cpa || '$45').replace(/[^0-9]/g,'')) || 45;
   const myDomain = analysisData.url || 'yourdomain.com';
   const indName  = analysisData.industry?.name || 'your industry';
   const industryAvgROAS = avg(analysisData.competitors.map(x => x.roas || 3.5));
 
   // Identified weaknesses in competitor's funnel
   const weaknesses = [];
-  if (compCTR < 4.5) weaknesses.push({ icon: '🎯', label: 'Low Search CTR', detail: `${c.name} averages ${compCTR.toFixed(1)}% CTR vs industry leaders at 5.2% — their ad copy lacks urgency and benefit clarity.` });
-  if (compROAS < industryAvgROAS * 1.1) weaknesses.push({ icon: '💸', label: 'Below-Average ROAS', detail: `${c.name}'s ${compROAS}× ROAS sits below the ${industryAvgROAS.toFixed(1)}× category average — they're overpaying per conversion.` });
-  if ((c.trafficMo || 500000) < 800000) weaknesses.push({ icon: '📊', label: 'Limited Audience Reach', detail: `Monthly traffic of ~${((c.trafficMo||500000)/1000).toFixed(0)}K leaves large audience segments uncaptured.` });
-  weaknesses.push({ icon: '📱', label: 'Mobile Creative Gap', detail: `${c.name}'s ad creatives are not optimised for mobile-first placements — 68% of conversions now happen on mobile.` });
-  weaknesses.push({ icon: '🔄', label: 'Retargeting Blind Spot', detail: `No evidence of cross-platform retargeting sequences — visitors who leave ${c.name}'s site are not being recaptured.` });
+  if (compCTR < 4.5) weaknesses.push({ icon: '🎯', label: 'Low Search CTR', detail: `${comp.name} averages ${compCTR.toFixed(1)}% CTR vs industry leaders at 5.2% — their ad copy lacks urgency and benefit clarity.` });
+  if (compROAS < industryAvgROAS * 1.1) weaknesses.push({ icon: '💸', label: 'Below-Average ROAS', detail: `${comp.name}'s ${compROAS}× ROAS sits below the ${industryAvgROAS.toFixed(1)}× category average — they're overpaying per conversion.` });
+  if ((comp.trafficMo || 500000) < 800000) weaknesses.push({ icon: '📊', label: 'Limited Audience Reach', detail: `Monthly traffic of ~${((comp.trafficMo||500000)/1000).toFixed(0)}K leaves large audience segments uncaptured.` });
+  weaknesses.push({ icon: '📱', label: 'Mobile Creative Gap', detail: `${comp.name}'s ad creatives are not optimised for mobile-first placements — 68% of conversions now happen on mobile.` });
+  weaknesses.push({ icon: '🔄', label: 'Retargeting Blind Spot', detail: `No evidence of cross-platform retargeting sequences — visitors who leave ${comp.name}'s site are not being recaptured.` });
 
   // ROAS improvement calculation with transparent reasoning
   const ctrGain      = ((5.2 - compCTR) / compCTR * 100).toFixed(0);
@@ -3814,7 +3818,6 @@ function openDifferentiatorModal(compName) {
   const copyGain     = 15;
   const totalGainPct = Math.min(parseInt(ctrGain) + mobileGain + Math.round(retargetGain * 0.6) + Math.round(copyGain * 0.4), 68);
   const projectedROAS = (myROAS * (1 + totalGainPct / 100)).toFixed(1);
-  const roasDelta     = (projectedROAS - myROAS).toFixed(1);
 
   // 3-phase campaign plan
   const phases = [
@@ -3824,8 +3827,8 @@ function openDifferentiatorModal(compName) {
       color: '#10B981',
       icon: '⚡',
       actions: [
-        `Launch Google Search campaign targeting ${c.topKeywords?.slice(0,2).join(' & ') || 'competitor brand + category keywords'} — capture high-intent buyers ${c.name} is converting at ${compCTR.toFixed(1)}% CTR.`,
-        `Deploy mobile-optimised creatives on Meta Ads with clear value proposition — expected CTR lift of +${mobileGain}% vs ${c.name}'s current desktop-first assets.`,
+        `Launch Google Search campaign targeting ${comp.topKeywords?.slice(0,2).join(' & ') || 'competitor brand + category keywords'} — capture high-intent buyers ${comp.name} is converting at ${compCTR.toFixed(1)}% CTR.`,
+        `Deploy mobile-optimised creatives on Meta Ads with clear value proposition — expected CTR lift of +${mobileGain}% vs ${comp.name}'s current desktop-first assets.`,
         `Set up pixel-based retargeting for all visitors who viewed your site in the last 30 days — quick ROAS lift with minimal spend.`
       ],
       projROAS: (myROAS * 1.18).toFixed(1),
@@ -3838,9 +3841,9 @@ function openDifferentiatorModal(compName) {
       color: '#0066FF',
       icon: '🚀',
       actions: [
-        `Expand to YouTube Ads with 15-second unskippable pre-rolls — ${c.name} has no YouTube presence, giving you uncontested reach at $0.04–0.08 CPV.`,
-        `Launch lookalike audiences from your top-converting customer list — target ${c.name}'s audience segments with superior creative and messaging.`,
-        `A/B test 3 value propositions identified from ${c.name}'s 1-star review themes: ${c.suggestions?.[0] || 'speed, pricing, and customer support'}.`
+        `Expand to YouTube Ads with 15-second unskippable pre-rolls — ${comp.name} has no YouTube presence, giving you uncontested reach at $0.04–0.08 CPV.`,
+        `Launch lookalike audiences from your top-converting customer list — target ${comp.name}'s audience segments with superior creative and messaging.`,
+        `A/B test 3 value propositions identified from ${comp.name}'s 1-star review themes: ${comp.suggestions?.[0] || 'speed, pricing, and customer support'}.`
       ],
       projROAS: (myROAS * 1.31).toFixed(1),
       projSpend: '$6,000/mo',
@@ -3853,8 +3856,8 @@ function openDifferentiatorModal(compName) {
       icon: '🏆',
       actions: [
         `Activate InfoGenie's autonomous campaign optimiser — AI reallocates budget every 6 hours to top-performing ad sets, compounding ROAS gains.`,
-        `Launch Performance Max campaign with all signals trained — projected to outperform ${c.name}'s funnel by driving ${totalGainPct}% more conversions at the same budget.`,
-        `Deploy full-funnel retargeting sequence: Awareness → Consideration → Conversion → Loyalty — capturing every stage ${c.name} is losing customers.`
+        `Launch Performance Max campaign with all signals trained — projected to outperform ${comp.name}'s funnel by driving ${totalGainPct}% more conversions at the same budget.`,
+        `Deploy full-funnel retargeting sequence: Awareness → Consideration → Conversion → Loyalty — capturing every stage ${comp.name} is losing customers.`
       ],
       projROAS: projectedROAS,
       projSpend: '$10,000/mo',
@@ -3864,19 +3867,19 @@ function openDifferentiatorModal(compName) {
 
   // Channel plan
   const channels = [
-    { name: 'Google Search', budget: '$3,500', projROAS: (compROAS * 1.22).toFixed(1), why: `${c.name} bids on ${c.topKeywords?.length || 12} keywords — InfoGenie identified ${Math.round((c.topKeywords?.length||12)*0.6)} untapped adjacent terms with lower CPC and higher intent.`, badgeClass: 'google' },
-    { name: 'Meta Ads',      budget: '$2,500', projROAS: (compROAS * 1.18).toFixed(1), why: `${c.name}'s Meta creative hasn't changed in 90+ days — fresh UGC-style creative from InfoGenie will achieve significantly higher relevance scores and lower CPM.`, badgeClass: 'meta' },
-    { name: 'YouTube',       budget: '$1,500', projROAS: (compROAS * 1.09).toFixed(1), why: `${c.name} has zero YouTube presence. Pre-roll ads targeting ${indName} intent signals command a fraction of Google Search CPC for comparable purchase intent.`, badgeClass: 'tiktok' },
-    { name: 'Retargeting',   budget: '$1,000', projROAS: (compROAS * 1.55).toFixed(1), why: `Cross-platform retargeting of ${c.name}'s site visitors (via competitor audience targeting) achieves 3–5× higher conversion rates than cold traffic.`, badgeClass: 'ai' }
+    { name: 'Google Search', budget: '$3,500', projROAS: (compROAS * 1.22).toFixed(1), why: `${comp.name} bids on ${comp.topKeywords?.length || 12} keywords — InfoGenie identified ${Math.round((comp.topKeywords?.length||12)*0.6)} untapped adjacent terms with lower CPC and higher intent.`, badgeClass: 'google' },
+    { name: 'Meta Ads',      budget: '$2,500', projROAS: (compROAS * 1.18).toFixed(1), why: `${comp.name}'s Meta creative hasn't changed in 90+ days — fresh UGC-style creative from InfoGenie will achieve significantly higher relevance scores and lower CPM.`, badgeClass: 'meta' },
+    { name: 'YouTube',       budget: '$1,500', projROAS: (compROAS * 1.09).toFixed(1), why: `${comp.name} has zero YouTube presence. Pre-roll ads targeting ${indName} intent signals command a fraction of Google Search CPC for comparable purchase intent.`, badgeClass: 'tiktok' },
+    { name: 'Retargeting',   budget: '$1,000', projROAS: (compROAS * 1.55).toFixed(1), why: `Cross-platform retargeting of ${comp.name}'s site visitors (via competitor audience targeting) achieves 3–5× higher conversion rates than cold traffic.`, badgeClass: 'ai' }
   ];
 
   inner.innerHTML = `
     <div class="diff-modal-header" style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:28px 32px;border-radius:20px 20px 0 0">
       <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
-        <div style="width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:1.5rem">${c.logo}</div>
+        <div style="width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:1.5rem">${comp.logo}</div>
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:white">ROAS Domination Plan vs. ${c.name}</div>
-          <div style="font-size:0.8rem;color:rgba(255,255,255,.6);margin-top:2px">${c.url} · ${indName} · ${analysisData.country || 'UK'}</div>
+          <div style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:white">ROAS Domination Plan vs. ${comp.name}</div>
+          <div style="font-size:0.8rem;color:rgba(255,255,255,.6);margin-top:2px">${comp.url} · ${indName} · ${analysisData.country || 'UK'}</div>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
@@ -3886,7 +3889,7 @@ function openDifferentiatorModal(compName) {
         </div>
         <div style="background:rgba(255,255,255,.08);border-radius:10px;padding:12px;text-align:center">
           <div style="font-size:1.4rem;font-weight:800;color:#F59E0B">${compROAS}×</div>
-          <div style="font-size:0.68rem;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase;letter-spacing:.04em">${c.name} ROAS</div>
+          <div style="font-size:0.68rem;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase;letter-spacing:.04em">${comp.name} ROAS</div>
         </div>
         <div style="background:rgba(0,201,200,.15);border-radius:10px;padding:12px;text-align:center">
           <div style="font-size:1.4rem;font-weight:800;color:#00C9C8">${projectedROAS}×</div>
@@ -3906,7 +3909,7 @@ function openDifferentiatorModal(compName) {
         <div style="font-size:0.7rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">⚡ Why +${totalGainPct}% ROAS is Achievable — The Evidence</div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <div style="display:flex;align-items:center;justify-content:space-between;background:#F0FDF4;border-radius:8px;padding:10px 14px">
-            <div style="font-size:0.82rem;color:#0A1628;font-weight:600">Ad Copy Quality Improvement <span style="color:#6B7280;font-weight:400">(${c.name} CTR ${compCTR.toFixed(1)}% → target 5.2%)</span></div>
+            <div style="font-size:0.82rem;color:#0A1628;font-weight:600">Ad Copy Quality Improvement <span style="color:#6B7280;font-weight:400">(${comp.name} CTR ${compCTR.toFixed(1)}% → target 5.2%)</span></div>
             <div style="font-size:0.85rem;font-weight:800;color:#059669">+${ctrGain}%</div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;background:#EFF6FF;border-radius:8px;padding:10px 14px">
@@ -3914,7 +3917,7 @@ function openDifferentiatorModal(compName) {
             <div style="font-size:0.85rem;font-weight:800;color:#1D4ED8">+${mobileGain}%</div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;background:#F5F3FF;border-radius:8px;padding:10px 14px">
-            <div style="font-size:0.82rem;color:#0A1628;font-weight:600">Cross-Platform Retargeting Funnel <span style="color:#6B7280;font-weight:400">(${c.name} has none)</span></div>
+            <div style="font-size:0.82rem;color:#0A1628;font-weight:600">Cross-Platform Retargeting Funnel <span style="color:#6B7280;font-weight:400">(${comp.name} has none)</span></div>
             <div style="font-size:0.85rem;font-weight:800;color:#7C3AED">+${retargetGain}%</div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;background:#FFF7ED;border-radius:8px;padding:10px 14px">
@@ -3926,7 +3929,7 @@ function openDifferentiatorModal(compName) {
 
       <!-- IDENTIFIED WEAKNESSES -->
       <div>
-        <div style="font-size:0.7rem;font-weight:700;color:#EF4444;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">🔍 ${c.name}'s Identified Campaign Weaknesses</div>
+        <div style="font-size:0.7rem;font-weight:700;color:#EF4444;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">🔍 ${comp.name}'s Identified Campaign Weaknesses</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           ${weaknesses.slice(0,4).map(w => `
             <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:12px">
@@ -3997,7 +4000,7 @@ function openDifferentiatorModal(compName) {
       </div>
 
       <div style="background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:12px;padding:14px 18px;font-size:0.8rem;color:#065F46;line-height:1.6">
-        <strong>💡 InfoGenie AI Note:</strong> These projections are based on ${c.name}'s actual campaign data, your current ROAS of ${myROAS}×, and ${indName} industry benchmarks. The ${totalGainPct}% uplift assumes consistent creative refresh cycles, structured retargeting sequences, and AI-driven bid optimisation — all handled autonomously by InfoGenie once connected to your ad accounts.
+        <strong>💡 InfoGenie AI Note:</strong> These projections are based on ${comp.name}'s actual campaign data, your current ROAS of ${myROAS}×, and ${indName} industry benchmarks. The ${totalGainPct}% uplift assumes consistent creative refresh cycles, structured retargeting sequences, and AI-driven bid optimisation — all handled autonomously by InfoGenie once connected to your ad accounts.
       </div>
     </div>
   `;
@@ -4828,12 +4831,21 @@ document.addEventListener('DOMContentLoaded', () => {
     navigateTo('competitors');
   });
 
-  // ROI Opportunity "View Plan" buttons — document-level delegation (works regardless of DOM structure)
+  // "View Plan" buttons — document-level delegation
   document.addEventListener('click', e => {
     const btn = e.target.closest('.btn-view-plan');
     if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
     const compName = btn.dataset.comp;
-    if (!compName) { showToast('⚠️ Could not identify competitor — please re-run analysis'); return; }
+    if (!compName) {
+      showToast('⚠️ Could not identify competitor — please re-run analysis');
+      return;
+    }
+    if (!analysisData) {
+      showToast('⚠️ Run an analysis first — enter your website URL on the home page');
+      return;
+    }
     openDifferentiatorModal(compName);
   });
   
