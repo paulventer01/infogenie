@@ -656,76 +656,90 @@ app.post('/api/trends', async (req, res) => {
   }
 });
 
+// ── Hacker News / community signal helper (Algolia, no key needed) ────────────
+function callHNSearch(query, limit = 8) {
+  return new Promise((resolve, reject) => {
+    const encoded = encodeURIComponent(query);
+    const options = {
+      hostname: 'hn.algolia.com',
+      path: `/api/v1/search?query=${encoded}&tags=story&hitsPerPage=${limit}&numericFilters=points%3E1`,
+      method: 'GET',
+      headers: { 'Accept': 'application/json', 'User-Agent': 'InfoGenie/1.0' }
+    };
+    const req = https.request(options, (apiRes) => {
+      let raw = '';
+      apiRes.on('data', chunk => { raw += chunk; });
+      apiRes.on('end', () => {
+        try { resolve(JSON.parse(raw)); }
+        catch(e) { reject(new Error('HN parse failed')); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(10000, () => { req.destroy(); reject(new Error('HN timeout')); });
+    req.end();
+  });
+}
+
 // ── POST /api/reddit-signals ──────────────────────────────────────────────────
-// Powers social intelligence — uses Reddit Scraper API on RapidAPI
-// Subscribe free at: https://rapidapi.com/search/reddit-scraper
+// Powered by Hacker News community (free, no key required)
 
 app.post('/api/reddit-signals', async (req, res) => {
   try {
     const { industry = 'marketing', competitors = [] } = req.body;
-    const key = process.env.RAPIDAPI_KEY;
-    if (!key) return res.json({ posts: [], source: 'no_key' });
 
-    const INDUSTRY_SUBS = {
-      ecommerce:  ['ecommerce', 'shopify', 'entrepreneur'],
-      fintech:    ['personalfinance', 'fintech', 'investing'],
-      saas:       ['saas', 'entrepreneur', 'startups'],
-      crypto:     ['CryptoCurrency', 'Bitcoin', 'ethereum'],
-      travel:     ['travel', 'solotravel', 'digitalnomad'],
-      education:  ['learnprogramming', 'OnlineLearning', 'edtech'],
-      marketing:  ['marketing', 'digital_marketing', 'PPC']
+    // Industry-specific search queries for HN
+    const INDUSTRY_QUERIES = {
+      ecommerce:  ['ecommerce growth strategy', 'shopify conversion', 'online store marketing'],
+      fintech:    ['fintech startup', 'payments technology', 'banking disruption'],
+      saas:       ['SaaS growth', 'B2B software pricing', 'startup acquisition'],
+      crypto:     ['cryptocurrency regulation', 'DeFi protocol', 'web3 startup'],
+      travel:     ['travel tech startup', 'hospitality innovation', 'booking platform'],
+      education:  ['edtech startup', 'online learning platform', 'skills gap'],
+      marketing:  ['growth marketing', 'SEO strategy', 'content marketing ROI']
     };
 
-    const sub = (INDUSTRY_SUBS[industry] || INDUSTRY_SUBS.marketing)[0];
+    const queries = INDUSTRY_QUERIES[industry] || INDUSTRY_QUERIES.marketing;
+
+    // Add competitor-specific query if competitors provided
+    if (competitors.length > 0) {
+      queries.unshift(competitors.slice(0, 2).join(' '));
+    }
+
+    // Fetch from 2 queries in parallel
+    const [r1, r2] = await Promise.all(
+      queries.slice(0, 2).map(q => callHNSearch(q, 5).catch(() => null))
+    );
+
+    const seen  = new Set();
     const posts = [];
 
-    // Try Reddit Scraper v2
-    try {
-      const r = await callRapidAPI(
-        'reddit-scraper2.p.rapidapi.com',
-        `/sub_posts?sub=${sub}&sort=hot&time=week&cursor=`,
-        'GET'
-      );
-      if (Array.isArray(r) && r.length > 0) {
-        for (const post of r.slice(0, 6)) {
-          posts.push({
-            title: post.title,
-            url: `https://reddit.com${post.permalink || ''}`,
-            subreddit: post.subreddit_name_prefixed || `r/${sub}`,
-            score: post.score || 0,
-            comments: post.num_comments || 0,
-            created: post.created_utc || null,
-            sentiment: (post.score || 0) > 500 ? 'positive' : 'neutral'
-          });
-        }
-        return res.json({ posts, subreddit: sub, source: 'live', timestamp: new Date().toISOString() });
+    for (const result of [r1, r2]) {
+      if (!result || !Array.isArray(result.hits)) continue;
+      for (const h of result.hits) {
+        if (!h.title || seen.has(h.objectID)) continue;
+        seen.add(h.objectID);
+        const pts = h.points || 0;
+        posts.push({
+          title:     h.title,
+          url:       h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
+          subreddit: 'Hacker News',
+          score:     pts,
+          comments:  h.num_comments || 0,
+          created:   h.created_at_i || null,
+          sentiment: pts > 200 ? 'positive' : pts > 50 ? 'neutral' : 'neutral',
+          author:    h.author || ''
+        });
       }
-    } catch(e) { console.warn('reddit-scraper2 failed:', e.message); }
+    }
 
-    // Fallback: try alternative Reddit API
-    try {
-      const r = await callRapidAPI(
-        'reddit34.p.rapidapi.com',
-        `/v1/subreddit/posts?subreddit=${sub}&sort=hot&time=week&limit=6`,
-        'GET'
-      );
-      if (r && r.data && Array.isArray(r.data.children)) {
-        for (const child of r.data.children.slice(0, 6)) {
-          const p = child.data || child;
-          posts.push({
-            title: p.title,
-            url: `https://reddit.com${p.permalink || ''}`,
-            subreddit: p.subreddit_name_prefixed || `r/${sub}`,
-            score: p.score || 0,
-            comments: p.num_comments || 0,
-            sentiment: (p.score || 0) > 200 ? 'positive' : 'neutral'
-          });
-        }
-        return res.json({ posts, subreddit: sub, source: 'live', timestamp: new Date().toISOString() });
-      }
-    } catch(e) { console.warn('reddit34 failed:', e.message); }
+    posts.sort((a, b) => b.score - a.score);
+    const top = posts.slice(0, 8);
 
-    res.json({ posts: [], source: 'not_subscribed' });
+    if (top.length > 0) {
+      return res.json({ posts: top, subreddit: 'Hacker News', source: 'live', timestamp: new Date().toISOString() });
+    }
+
+    res.json({ posts: [], source: 'no_data' });
 
   } catch(err) {
     console.error('/api/reddit-signals error:', err.message);

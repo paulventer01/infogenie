@@ -2821,7 +2821,7 @@ function buildIntelligence() {
       <div class="kwgap-live-bar" style="margin-bottom:16px">
         <div class="kwgap-live-label">
           <span class="kwgap-live-icon">🔥</span>
-          <span>Live <strong>Reddit community signals</strong> from your industry — what real users are discussing</span>
+          <span>Live <strong>community discussions</strong> from Hacker News — what the tech community is saying about your industry</span>
         </div>
         <div class="kwgap-live-inputs">
           <button class="kwgap-fetch-btn" id="reddit-fetch-btn" onclick="fetchRedditSignals()">
@@ -2829,12 +2829,12 @@ function buildIntelligence() {
           </button>
         </div>
         <div class="kwgap-live-note" id="reddit-status-note" style="color:#6B7280">
-          Powered by Reddit Scraper via RapidAPI · Top posts from industry subreddits
+          Powered by Hacker News · Live discussions relevant to your industry and competitors
         </div>
       </div>
       <div id="reddit-feed-wrap" style="display:grid;gap:10px">
         <div style="text-align:center;padding:32px;color:#94A3B8;font-size:0.875rem">
-          Click "Load Community Signals" to fetch live Reddit discussions from your industry
+          Click "Load Community Signals" to fetch live Hacker News discussions from your industry
         </div>
       </div>
     </div>
@@ -5875,26 +5875,27 @@ async function fetchRedditSignals() {
 
     const SENTIMENT_COLOR = { positive: '#10B981', neutral: '#6B7280', negative: '#EF4444' };
     const posts = data.posts || [];
+    const isHN  = (data.subreddit === 'Hacker News');
     const cards = posts.map(p => `
       <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px 16px;display:flex;gap:14px;align-items:flex-start">
-        <div style="min-width:36px;height:36px;border-radius:8px;background:#FF4500;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:0.875rem">r/</div>
+        <div style="min-width:36px;height:36px;border-radius:8px;background:${isHN ? '#FF6600' : '#FF4500'};display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:0.8rem;flex-shrink:0">${isHN ? 'HN' : 'r/'}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:0.875rem;font-weight:700;color:#0A1628;margin-bottom:4px;line-height:1.35">${p.title}</div>
+          <div style="font-size:0.875rem;font-weight:700;color:#0A1628;margin-bottom:6px;line-height:1.35">${p.title}</div>
           <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-            <span style="font-size:.75rem;color:#64748B">${p.subreddit}</span>
-            <span style="font-size:.75rem;color:#64748B">▲ ${(p.score||0).toLocaleString()} upvotes</span>
+            <span style="font-size:.75rem;color:#64748B;font-weight:600">${p.subreddit}</span>
+            <span style="font-size:.75rem;color:#64748B">▲ ${(p.score||0).toLocaleString()} points</span>
             <span style="font-size:.75rem;color:#64748B">💬 ${(p.comments||0).toLocaleString()} comments</span>
-            <span style="font-size:.75rem;color:${SENTIMENT_COLOR[p.sentiment]||'#6B7280'};font-weight:700;text-transform:uppercase;letter-spacing:.04em">${p.sentiment || 'neutral'}</span>
+            <span style="font-size:.72rem;background:${SENTIMENT_COLOR[p.sentiment]||'#6B7280'}22;color:${SENTIMENT_COLOR[p.sentiment]||'#6B7280'};font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:20px">${p.sentiment || 'neutral'}</span>
           </div>
         </div>
-        <a href="${p.url}" target="_blank" style="font-size:.75rem;color:#0066FF;text-decoration:none;font-weight:600;white-space:nowrap;margin-top:2px">View →</a>
+        <a href="${p.url}" target="_blank" rel="noopener" style="font-size:.75rem;color:#0066FF;text-decoration:none;font-weight:600;white-space:nowrap;margin-top:2px;flex-shrink:0">View →</a>
       </div>
     `).join('');
 
     if (wrap) wrap.innerHTML = cards;
-    if (badge) badge.textContent = `${posts.length} Live Posts · ${data.subreddit || ''}`;
-    if (statusNote) statusNote.innerHTML = `✅ Live from Reddit · ${posts.length} posts from ${data.subreddit || 'industry subreddits'} · ${new Date().toLocaleTimeString()}`;
-    showToast(`✅ ${posts.length} Reddit signals loaded from ${data.subreddit || 'your industry'}`);
+    if (badge) badge.textContent = `${posts.length} Live Signals · ${data.subreddit || 'Community'}`;
+    if (statusNote) statusNote.innerHTML = `✅ Live from ${data.subreddit || 'Community'} · ${posts.length} discussions · ${new Date().toLocaleTimeString()}`;
+    showToast(`✅ ${posts.length} live community signals loaded from ${data.subreddit || 'Hacker News'}`);
 
   } catch(err) {
     if (statusNote) statusNote.textContent = `❌ Error: ${err.message}`;
