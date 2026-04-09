@@ -151,43 +151,55 @@ app.post('/api/keyword-gap', async (req, res) => {
       ...kfsCallsPerComp
     ]);
 
-    // Collect related keywords (no specific competitor source)
-    const kwPool = new Set(seedKws);
+    // ── Collect related/seed keywords (no specific competitor source) ──────────
+    const relatedPool = new Set(seedKws);
     if (relatedRaw && relatedRaw.status_code === 20000) {
       for (const task of (relatedRaw.tasks || [])) {
         const taskResult = (task.result || [])[0] || {};
         for (const item of (taskResult.items || [])) {
-          if (item.keyword_data && item.keyword_data.keyword) kwPool.add(item.keyword_data.keyword);
+          if (item.keyword_data && item.keyword_data.keyword) relatedPool.add(item.keyword_data.keyword);
           if (Array.isArray(item.related_keywords)) {
-            item.related_keywords.forEach(rk => { if (typeof rk === 'string') kwPool.add(rk); });
+            item.related_keywords.forEach(rk => { if (typeof rk === 'string') relatedPool.add(rk); });
           }
         }
       }
-      console.log('related_keywords pool:', kwPool.size);
+      console.log('related_keywords pool:', relatedPool.size);
     }
 
-    // Collect per-competitor keywords and record their source
+    // ── Collect per-competitor keywords and record their source ───────────────
+    // These go into compPool — sourced keywords are PRIORITISED over generic seeds
+    const compPool = [];
     for (const { compDomain, raw } of kfsResults) {
       if (!raw || raw.status_code !== 20000) continue;
-      const compName = compDomain.replace(/^www\./, '').split('.')[0];
+      const compName    = compDomain.replace(/^www\./, '').split('.')[0];
       const topCompName = compName.charAt(0).toUpperCase() + compName.slice(1);
       for (const task of (raw.tasks || [])) {
         const items = (task.result || [])[0]?.items || [];
         for (const item of items) {
           const kw = item.keyword;
           if (!kw || kw.startsWith('http') || kw.includes('www.') || kw.length > 80) continue;
-          kwPool.add(kw);
-          // First competitor to claim a keyword wins (highest traffic competitor is listed first)
+          compPool.push(kw);
           if (!kwSourceMap[kw]) kwSourceMap[kw] = topCompName;
         }
       }
-      console.log(`keywords_for_site(${compDomain}): pool now ${kwPool.size}`);
+      console.log(`keywords_for_site(${compDomain}): ${compPool.length} sourced keywords`);
     }
 
-    const allKws = [...kwPool]
-      .filter(kw => !kw.startsWith('http') && !kw.includes('www.') && kw.length <= 80)
-      .slice(0, 60);
-    console.log('Final keyword pool:', allKws.length, '— sources mapped:', Object.keys(kwSourceMap).length);
+    // Build final list: sourced competitor keywords first, then fill with related/seeds
+    const seen = new Set();
+    const allKws = [];
+    for (const kw of compPool) {
+      if (!seen.has(kw)) { seen.add(kw); allKws.push(kw); }
+      if (allKws.length >= 60) break;
+    }
+    for (const kw of relatedPool) {
+      if (allKws.length >= 60) break;
+      if (!seen.has(kw) && !kw.startsWith('http') && !kw.includes('www.') && kw.length <= 80) {
+        seen.add(kw); allKws.push(kw);
+      }
+    }
+    console.log('Final keyword pool:', allKws.length, '— sources mapped:', Object.keys(kwSourceMap).length,
+      '— sourced in final list:', allKws.filter(k => kwSourceMap[k]).length);
 
     // ── Steps 3 + 4 in PARALLEL: Search volume AND bulk difficulty ───────────
     const volumePayload = [{ keywords: allKws, language_name: language }];
