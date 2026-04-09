@@ -156,29 +156,39 @@ app.post('/api/keyword-gap', async (req, res) => {
       console.warn('related_keywords step failed, using seeds only:', relatedErr.message);
     }
 
-    // ── Step 2: Expand further using keywords_for_keywords if pool is still small ──
-    if (kwPool.size < 15) {
+    // ── Step 2: Expand with keywords_for_site (real keywords from competitor domain) ──
+    if (kwPool.size < 20) {
+      const cleanYourDomain = yourDomain.replace(/^www\./, '').toLowerCase();
+      // Pick first competitor domain that is NOT the user's own domain
+      const kfsDomain = compDomains.find(d => d.replace(/^www\./,'').toLowerCase() !== cleanYourDomain) || compDomains[0];
       try {
-        const kfkTask = { keywords: seedKws.slice(0, 5), language_name: language };
-        if (location && location !== 'Global') kfkTask.location_name = location;
-        const kfkRaw = await callDataForSEO('/v3/dataforseo_labs/google/keywords_for_keywords/live', [kfkTask]);
-        console.log('keywords_for_keywords status:', kfkRaw.status_code);
+        const kfsTask = { target: kfsDomain, language_name: language, limit: 50 };
+        if (location && location !== 'Global') kfsTask.location_name = location;
+        const kfsRaw = await callDataForSEO('/v3/dataforseo_labs/google/keywords_for_site/live', [kfsTask]);
+        console.log('keywords_for_site status:', kfsRaw.status_code, 'for', kfsDomain);
 
-        if (kfkRaw.status_code === 20000) {
-          for (const task of (kfkRaw.tasks || [])) {
+        if (kfsRaw.status_code === 20000) {
+          for (const task of (kfsRaw.tasks || [])) {
             const taskResult = (task.result || [])[0] || {};
             for (const item of (taskResult.items || [])) {
-              if (item.keyword) kwPool.add(item.keyword);
+              // Skip URL-like junk and very long keyword strings
+              const kw = item.keyword;
+              if (kw && !kw.startsWith('http') && !kw.includes('www.') && kw.length <= 80) {
+                kwPool.add(kw);
+              }
             }
           }
-          console.log('After keywords_for_keywords pool size:', kwPool.size);
+          console.log('After keywords_for_site pool size:', kwPool.size);
         }
-      } catch (kfkErr) {
-        console.warn('keywords_for_keywords step failed:', kfkErr.message);
+      } catch (kfsErr) {
+        console.warn('keywords_for_site step failed:', kfsErr.message);
       }
     }
 
-    const allKws = [...kwPool].slice(0, 60);
+    // Also filter the full pool for quality
+    const allKws = [...kwPool]
+      .filter(kw => !kw.startsWith('http') && !kw.includes('www.') && kw.length <= 80)
+      .slice(0, 60);
     console.log('Final keyword pool size:', allKws.length, '— first 5:', allKws.slice(0,5));
 
     // ── Step 3: Search volume + CPC ──────────────────────────────────────────
@@ -303,6 +313,107 @@ app.post('/api/domain-overview', async (req, res) => {
     res.json({ results });
   } catch(err) {
     console.error('/api/domain-overview error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/real-competitors ────────────────────────────────────────────────
+// Finds real competing domains for a target domain via DataForSEO, then fetches
+// real traffic metrics for each.  Used to enrich the competitor analysis view.
+// Body: { domain, industry, location?, language? }
+
+app.post('/api/real-competitors', async (req, res) => {
+  try {
+    const { domain, industry, location = 'United States', language = 'English' } = req.body;
+    if (!domain) return res.status(400).json({ error: 'domain is required' });
+
+    // ── Step 1: find real competitor domains ─────────────────────────────────
+    const compTask = { target: domain, language_name: language, limit: 10 };
+    if (location && location !== 'Global') compTask.location_name = location;
+
+    const compRaw = await callDataForSEO('/v3/dataforseo_labs/google/competitors_domain/live', [compTask]);
+    console.log('competitors_domain status:', compRaw.status_code, compRaw.status_message);
+
+    let realDomains = [];
+    if (compRaw.status_code === 20000) {
+      const items = (compRaw.tasks?.[0]?.result?.[0]?.items || []);
+      // Filter out generic domains, social sites, and the user's own domain
+      const SKIP = ['google.com','youtube.com','facebook.com','wikipedia.org','twitter.com','instagram.com','linkedin.com','reddit.com','amazon.com'];
+      const cleanDomain = domain.replace(/^www\./, '').toLowerCase();
+      realDomains = items
+        .map(i => i.domain)
+        .filter(d => d && !SKIP.some(s => d.includes(s)) && d.replace(/^www\./,'') !== cleanDomain)
+        .slice(0, 8);
+    }
+    console.log('Real competitors found:', realDomains);
+
+    // If domain has no competition data, fall back to industry defaults
+    if (realDomains.length < 2) {
+      realDomains = (COMPETITOR_DOMAINS[industry] || COMPETITOR_DOMAINS.ecommerce).slice(0, 6);
+      console.log('Using industry fallback competitors:', realDomains);
+    }
+
+    // ── Step 2: get domain_rank_overview for each competitor ─────────────────
+    const competitors = [];
+    for (const d of realDomains.slice(0, 6)) {
+      try {
+        const taskObj = { target: d, language_name: language };
+        if (location && location !== 'Global') taskObj.location_name = location;
+        const raw = await callDataForSEO('/v3/dataforseo_labs/google/domain_rank_overview/live', [taskObj]);
+        const item = raw.tasks?.[0]?.result?.[0]?.items?.[0];
+        const organic = item?.metrics?.organic || {};
+        const paid    = item?.metrics?.paid    || {};
+
+        const etv       = Math.round(organic.etv  || 0);
+        const kwCount   = organic.count || 0;
+        const paidKws   = paid.count    || 0;
+        const domainRank = raw.tasks?.[0]?.result?.[0]?.domain_rank || 0;
+
+        // Format traffic display
+        const formatNum = n => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : String(n);
+
+        competitors.push({
+          domain: d,
+          name: d.replace(/^www\./, '').split('.')[0].charAt(0).toUpperCase() + d.replace(/^www\./, '').split('.')[0].slice(1),
+          organicTraffic: etv,
+          organicTrafficFmt: formatNum(etv),
+          organicKeywords: kwCount,
+          organicKeywordsFmt: formatNum(kwCount),
+          paidKeywords: paidKws,
+          domainRank,
+          realData: true,
+          dataSource: 'DataForSEO'
+        });
+        console.log(`  ${d}: traffic=${etv}, keywords=${kwCount}`);
+      } catch(e) {
+        console.warn(`  ${d} overview failed:`, e.message);
+        competitors.push({ domain: d, name: d.split('.')[0], organicTraffic: 0, realData: false });
+      }
+    }
+
+    // Also get real data for the user's own domain
+    let yourData = null;
+    try {
+      const taskObj = { target: domain, language_name: language };
+      if (location && location !== 'Global') taskObj.location_name = location;
+      const raw = await callDataForSEO('/v3/dataforseo_labs/google/domain_rank_overview/live', [taskObj]);
+      const item = raw.tasks?.[0]?.result?.[0]?.items?.[0];
+      const organic = item?.metrics?.organic || {};
+      yourData = {
+        domain,
+        organicTraffic: Math.round(organic.etv || 0),
+        organicKeywords: organic.count || 0,
+        domainRank: raw.tasks?.[0]?.result?.[0]?.domain_rank || 0
+      };
+      console.log(`Your domain ${domain}: traffic=${yourData.organicTraffic}, keywords=${yourData.organicKeywords}`);
+    } catch(e) {
+      console.warn('Your domain overview failed:', e.message);
+    }
+
+    res.json({ competitors, yourDomain: yourData, source: 'live', timestamp: new Date().toISOString() });
+
+  } catch(err) {
+    console.error('/api/real-competitors error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

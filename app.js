@@ -151,6 +151,77 @@ async function runAnalysis(url, country) {
   
   // Build settings after navigation (non-critical)
   try { buildSettings(); } catch(e) { console.warn('Settings build error:', e); }
+
+  // ── Enrich with real live competitor data from DataForSEO (async, non-blocking) ──
+  enrichWithRealCompetitorData(cleanUrl, industryKey, country);
+}
+
+// ── Real Competitor Data Enrichment ──────────────────────────────────────────
+// Calls /api/real-competitors to get live DataForSEO data, then overlays real
+// traffic/keyword numbers onto the competitor cards. Non-blocking — runs after UI is shown.
+async function enrichWithRealCompetitorData(domain, industryKey, country) {
+  const location = country === 'United Kingdom' ? 'United Kingdom'
+    : country === 'Australia' ? 'Australia'
+    : country === 'Canada' ? 'Canada'
+    : 'United States';
+
+  try {
+    const res = await fetch('/api/real-competitors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain, industry: industryKey, location, language: 'English' })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.competitors || data.competitors.length === 0) return;
+
+    // Store real competitor data on analysisData for use elsewhere
+    analysisData._realCompetitors = data.competitors;
+    analysisData._yourRealData    = data.yourDomain;
+
+    // Enrich existing competitor cards with real traffic numbers
+    // Match by domain name similarity
+    const realMap = {};
+    (data.competitors || []).forEach(rc => { realMap[rc.domain.toLowerCase()] = rc; });
+
+    let enriched = 0;
+    analysisData.competitors.forEach(comp => {
+      const compDomain = (comp.url || '').toLowerCase().replace(/^www\./, '');
+      const match = realMap[compDomain] || realMap['www.' + compDomain];
+      if (match && match.realData && match.organicTraffic > 0) {
+        comp._realTraffic  = match.organicTrafficFmt;
+        comp._realKeywords = match.organicKeywordsFmt;
+        comp._realDomainRank = match.domainRank;
+        comp._dataSource   = 'DataForSEO';
+        enriched++;
+      }
+    });
+
+    if (enriched > 0) {
+      console.log(`Enriched ${enriched} competitors with real DataForSEO data`);
+      // Re-render competitors view with real data badges
+      buildCompetitors();
+      buildDashboard();
+    }
+
+    // Update your own domain metrics in dashboard if available
+    if (data.yourDomain && data.yourDomain.organicTraffic > 0) {
+      analysisData.websiteKPIs._realTraffic  = _fmt(data.yourDomain.organicTraffic);
+      analysisData.websiteKPIs._realKeywords = _fmt(data.yourDomain.organicKeywords);
+    }
+
+    showToast(`📡 Real data loaded — ${enriched} competitors enriched with live DataForSEO metrics`);
+
+  } catch(err) {
+    console.warn('Real competitor enrichment failed (non-fatal):', err.message);
+  }
+}
+
+// Format large numbers
+function _fmt(n) {
+  if (!n) return '—';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
+  return String(n);
 }
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -446,7 +517,47 @@ function buildCompetitors() {
 
 function renderCompetitorCards(comps) {
   const wrap = document.getElementById('competitorCardsWrap');
-  wrap.innerHTML = `<div class="comp-cards-grid">${comps.map(c => buildCompCard(c)).join('')}</div>`;
+  const hasRealData = comps.some(c => c._dataSource === 'DataForSEO');
+  const realCount   = comps.filter(c => c._dataSource === 'DataForSEO').length;
+
+  // Real competitors panel (shown when DataForSEO found additional real competitors)
+  const realCompetitors = analysisData._realCompetitors || [];
+  const yourReal        = analysisData._yourRealData;
+  const realCompsPanel  = (realCompetitors.length > 0 && yourReal) ? `
+    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:14px;padding:18px 20px;margin-bottom:18px;border:1px solid rgba(0,201,200,.2)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+        <span style="font-family:'Sora',sans-serif;font-size:0.875rem;font-weight:800;color:white">📡 Live Competitor Intelligence</span>
+        <span style="background:linear-gradient(135deg,#00C9C8,#0066FF);border-radius:20px;padding:3px 10px;font-size:0.68rem;font-weight:700;color:white">REAL DATA · DataForSEO</span>
+        <span style="font-size:0.72rem;color:rgba(255,255,255,.5);margin-left:auto">Updated ${new Date().toLocaleTimeString()}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">
+        ${yourReal ? `
+          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(0,201,200,.3);border-radius:10px;padding:12px;text-align:center">
+            <div style="font-size:0.68rem;font-weight:700;color:#00C9C8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🏠 Your Domain</div>
+            <div style="font-size:0.78rem;font-weight:700;color:white;margin-bottom:4px">${yourReal.domain}</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,.6)">${_fmt(yourReal.organicTraffic)} traffic/mo</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,.6)">${_fmt(yourReal.organicKeywords)} keywords</div>
+          </div>
+        ` : ''}
+        ${realCompetitors.slice(0, 4).map(rc => `
+          <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px;text-align:center">
+            <div style="font-size:0.68rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Competitor</div>
+            <div style="font-size:0.78rem;font-weight:700;color:white;margin-bottom:4px">${rc.domain}</div>
+            <div style="font-size:0.72rem;color:#10B981">${rc.organicTrafficFmt || '—'} traffic/mo</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,.5)">${rc.organicKeywordsFmt || '—'} keywords</div>
+          </div>
+        `).join('')}
+      </div>
+      <div style="margin-top:10px;font-size:0.7rem;color:rgba(255,255,255,.35)">📊 Traffic = estimated organic visits/month from Google search · Source: DataForSEO Labs · Campaign metrics below are AI-estimated industry benchmarks</div>
+    </div>
+  ` : `
+    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:0.78rem;color:#64748B;display:flex;align-items:center;gap:10px">
+      <span>⚙️</span>
+      <span>Loading live competitor intelligence from DataForSEO… <strong>Traffic data</strong> will update automatically · Campaign metrics are AI-estimated benchmarks</span>
+    </div>
+  `;
+
+  wrap.innerHTML = realCompsPanel + `<div class="comp-cards-grid">${comps.map(c => buildCompCard(c)).join('')}</div>`;
 }
 
 function buildCompCard(c) {
@@ -493,10 +604,18 @@ function buildCompCard(c) {
         <div class="comp-card-kpis">
           <div class="ckpi"><div class="ckpi-val">${c.ctr}</div><div class="ckpi-lbl">Avg CTR</div></div>
           <div class="ckpi"><div class="ckpi-val">${c.roas}×</div><div class="ckpi-lbl">ROAS</div></div>
-          <div class="ckpi"><div class="ckpi-val">${c.traffic}</div><div class="ckpi-lbl">Mo. Traffic</div></div>
-          <div class="ckpi"><div class="ckpi-val">${c.adSpend}</div><div class="ckpi-lbl">Ad Spend</div></div>
+          <div class="ckpi">
+            <div class="ckpi-val" style="${c._realTraffic ? 'color:#00C9C8' : ''}">${c._realTraffic || c.traffic}</div>
+            <div class="ckpi-lbl">${c._realTraffic ? '📡 Live Traffic' : 'Mo. Traffic'}</div>
+          </div>
+          <div class="ckpi">
+            ${c._realKeywords
+              ? `<div class="ckpi-val" style="color:#10B981">${c._realKeywords}</div><div class="ckpi-lbl">📡 Organic Kwds</div>`
+              : `<div class="ckpi-val">${c.adSpend}</div><div class="ckpi-lbl">Ad Spend</div>`}
+          </div>
           <div class="ckpi"><span class="threat-badge threat-${c.threatLevel}">${cap(c.threatLevel)}</span></div>
         </div>
+        ${c._dataSource ? `<div style="background:linear-gradient(135deg,#0A2818,#0D3320);border-radius:8px;padding:6px 12px;margin-top:8px;display:flex;align-items:center;gap:8px;font-size:0.72rem;color:#10B981;font-weight:600"><span>📡</span><span>Real data from DataForSEO · Organic traffic: ${c._realTraffic} · Ranking keywords: ${c._realKeywords}</span></div>` : ''}
       </div>
       <div class="comp-card-body">
         <div class="comp-sections-grid">
