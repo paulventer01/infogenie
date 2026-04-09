@@ -124,79 +124,70 @@ app.post('/api/keyword-gap', async (req, res) => {
       : (COMPETITOR_DOMAINS[industry] || COMPETITOR_DOMAINS.ecommerce).slice(0, 5);
 
     const seedKws = INDUSTRY_SEED_KEYWORDS[industry] || INDUSTRY_SEED_KEYWORDS.marketing;
+    const cleanYourDomain = yourDomain.replace(/^www\./, '').toLowerCase();
 
-    // ── Step 1: related_keywords to expand seed pool ──────────────────────────
-    // Send only ONE task at a time (some plans reject batch requests for this endpoint)
-    const kwPool = new Set();
+    // kwSourceMap: keyword → competitor display name (who ranks for it)
+    const kwSourceMap = {};
 
-    // Always add seeds as fallback
-    seedKws.forEach(k => kwPool.add(k));
+    // ── Steps 1 + 2 in PARALLEL: related_keywords AND keywords_for_site per competitor ──
+    const relatedTask = { keyword: seedKws[0], language_name: language, limit: 50, include_seed_keyword: true };
+    if (location && location !== 'Global') relatedTask.location_name = location;
 
-    try {
-      // Call with just the first seed to stay within plan limits
-      const firstSeed = seedKws[0];
-      const relatedTask = { keyword: firstSeed, language_name: language, limit: 50, include_seed_keyword: true };
-      if (location && location !== 'Global') relatedTask.location_name = location;
+    // Fetch keywords for each competitor domain simultaneously
+    const kfsCallsPerComp = compDomains
+      .filter(d => d.replace(/^www\./,'').toLowerCase() !== cleanYourDomain)
+      .slice(0, 3)  // max 3 competitors to stay fast
+      .map(compDomain => {
+        const task = { target: compDomain, language_name: language, limit: 40 };
+        if (location && location !== 'Global') task.location_name = location;
+        return callDataForSEO('/v3/dataforseo_labs/google/keywords_for_site/live', [task], 14000)
+          .then(raw => ({ compDomain, raw }))
+          .catch(e => { console.warn(`keywords_for_site failed for ${compDomain}:`, e.message); return { compDomain, raw: null }; });
+      });
 
-      const relatedRaw = await callDataForSEO('/v3/dataforseo_labs/google/related_keywords/live', [relatedTask]);
-      console.log('related_keywords status:', relatedRaw.status_code, relatedRaw.status_message);
+    const [relatedRaw, ...kfsResults] = await Promise.all([
+      callDataForSEO('/v3/dataforseo_labs/google/related_keywords/live', [relatedTask], 14000)
+        .catch(e => { console.warn('related_keywords failed:', e.message); return null; }),
+      ...kfsCallsPerComp
+    ]);
 
-      if (relatedRaw.status_code === 20000) {
-        for (const task of (relatedRaw.tasks || [])) {
-          const taskResult = (task.result || [])[0] || {};
-          for (const item of (taskResult.items || [])) {
-            // 1) The item's own keyword
-            if (item.keyword_data && item.keyword_data.keyword) {
-              kwPool.add(item.keyword_data.keyword);
-            }
-            // 2) All strings in the related_keywords array
-            if (Array.isArray(item.related_keywords)) {
-              item.related_keywords.forEach(rk => { if (typeof rk === 'string') kwPool.add(rk); });
-            }
+    // Collect related keywords (no specific competitor source)
+    const kwPool = new Set(seedKws);
+    if (relatedRaw && relatedRaw.status_code === 20000) {
+      for (const task of (relatedRaw.tasks || [])) {
+        const taskResult = (task.result || [])[0] || {};
+        for (const item of (taskResult.items || [])) {
+          if (item.keyword_data && item.keyword_data.keyword) kwPool.add(item.keyword_data.keyword);
+          if (Array.isArray(item.related_keywords)) {
+            item.related_keywords.forEach(rk => { if (typeof rk === 'string') kwPool.add(rk); });
           }
-          console.log('related_keywords items collected so far:', kwPool.size);
         }
-      } else {
-        console.warn('related_keywords non-200:', relatedRaw.status_code, relatedRaw.status_message);
       }
-    } catch (relatedErr) {
-      console.warn('related_keywords step failed, using seeds only:', relatedErr.message);
+      console.log('related_keywords pool:', kwPool.size);
     }
 
-    // ── Step 2: Expand with keywords_for_site (real keywords from competitor domain) ──
-    if (kwPool.size < 20) {
-      const cleanYourDomain = yourDomain.replace(/^www\./, '').toLowerCase();
-      // Pick first competitor domain that is NOT the user's own domain
-      const kfsDomain = compDomains.find(d => d.replace(/^www\./,'').toLowerCase() !== cleanYourDomain) || compDomains[0];
-      try {
-        const kfsTask = { target: kfsDomain, language_name: language, limit: 50 };
-        if (location && location !== 'Global') kfsTask.location_name = location;
-        const kfsRaw = await callDataForSEO('/v3/dataforseo_labs/google/keywords_for_site/live', [kfsTask]);
-        console.log('keywords_for_site status:', kfsRaw.status_code, 'for', kfsDomain);
-
-        if (kfsRaw.status_code === 20000) {
-          for (const task of (kfsRaw.tasks || [])) {
-            const taskResult = (task.result || [])[0] || {};
-            for (const item of (taskResult.items || [])) {
-              // Skip URL-like junk and very long keyword strings
-              const kw = item.keyword;
-              if (kw && !kw.startsWith('http') && !kw.includes('www.') && kw.length <= 80) {
-                kwPool.add(kw);
-              }
-            }
-          }
-          console.log('After keywords_for_site pool size:', kwPool.size);
+    // Collect per-competitor keywords and record their source
+    for (const { compDomain, raw } of kfsResults) {
+      if (!raw || raw.status_code !== 20000) continue;
+      const compName = compDomain.replace(/^www\./, '').split('.')[0];
+      const topCompName = compName.charAt(0).toUpperCase() + compName.slice(1);
+      for (const task of (raw.tasks || [])) {
+        const items = (task.result || [])[0]?.items || [];
+        for (const item of items) {
+          const kw = item.keyword;
+          if (!kw || kw.startsWith('http') || kw.includes('www.') || kw.length > 80) continue;
+          kwPool.add(kw);
+          // First competitor to claim a keyword wins (highest traffic competitor is listed first)
+          if (!kwSourceMap[kw]) kwSourceMap[kw] = topCompName;
         }
-      } catch (kfsErr) {
-        console.warn('keywords_for_site step failed:', kfsErr.message);
       }
+      console.log(`keywords_for_site(${compDomain}): pool now ${kwPool.size}`);
     }
 
-    // Also filter the full pool for quality
     const allKws = [...kwPool]
       .filter(kw => !kw.startsWith('http') && !kw.includes('www.') && kw.length <= 80)
       .slice(0, 60);
-    console.log('Final keyword pool size:', allKws.length, '— first 5:', allKws.slice(0,5));
+    console.log('Final keyword pool:', allKws.length, '— sources mapped:', Object.keys(kwSourceMap).length);
 
     // ── Steps 3 + 4 in PARALLEL: Search volume AND bulk difficulty ───────────
     const volumePayload = [{ keywords: allKws, language_name: language }];
@@ -230,29 +221,31 @@ app.post('/api/keyword-gap', async (req, res) => {
 
     // ── Step 5: Build results ─────────────────────────────────────────────────
     const ctrTable = [0, 28.5, 15.7, 11.0, 8.0, 5.9, 4.4, 3.3, 2.6, 2.2, 1.9];
-
-    // Lower the threshold: if no volume data at all, assign synthetic volumes
     const hasVolumeData = Object.keys(volumeMap).length > 0;
 
+    // Helper: get display name for a competitor domain
+    const domainToName = d => {
+      const n = d.replace(/^www\./, '').split('.')[0];
+      return n.charAt(0).toUpperCase() + n.slice(1);
+    };
+
     const keywords = allKws
-      .map(kw => {
-        const volData  = volumeMap[kw];
-        const rawVol   = volData ? (volData.search_volume || 0) : 0;
-        // If we have no real volume data, assign synthetic volumes to still show results
-        const vol      = hasVolumeData ? rawVol : (500 + Math.abs(kw.split('').reduce((a,c) => a + c.charCodeAt(0), 0)) % 9500);
-        const minVol   = hasVolumeData ? 100 : 0; // lower threshold when we have real data
+      .map((kw, i) => {
+        const volData = volumeMap[kw];
+        const rawVol  = volData ? (volData.search_volume || 0) : 0;
+        const vol     = hasVolumeData ? rawVol : (500 + Math.abs(kw.split('').reduce((a,c) => a + c.charCodeAt(0), 0)) % 9500);
+        const minVol  = hasVolumeData ? 100 : 0;
         if (vol < minVol) return null;
 
         const cpcRaw = volData && volData.cpc;
         const cpc    = cpcRaw ? `$${parseFloat(cpcRaw).toFixed(2)}` : '—';
         const diff   = diffMap[kw] || 0;
 
-        const compIdx      = Math.abs(kw.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % compDomains.length;
-        const topCompDomain = compDomains[compIdx];
-        const topCompName  = topCompDomain.replace(/^www\./, '').split('.')[0];
-        const topComp      = topCompName.charAt(0).toUpperCase() + topCompName.slice(1);
-        const simulatedPos = 1 + (Math.abs(kw.length * 3 + compIdx) % 6);
-        const compCtr      = simulatedPos <= 10 ? ctrTable[simulatedPos].toFixed(1) + '%' : '1.5%';
+        // Use real source competitor; fall back to round-robin through the identified competitors only
+        const topComp = kwSourceMap[kw] || domainToName(compDomains[i % compDomains.length]);
+        const compIdx = compDomains.findIndex(d => domainToName(d) === topComp);
+        const simulatedPos = 1 + (Math.abs(kw.length * 3 + Math.max(0, compIdx)) % 6);
+        const compCtr = simulatedPos <= 10 ? ctrTable[simulatedPos].toFixed(1) + '%' : '1.5%';
 
         const score = Math.round(
           (vol / 1000 * 0.4) +
