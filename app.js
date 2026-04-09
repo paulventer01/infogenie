@@ -5653,6 +5653,18 @@ async function fetchLiveKeywordGap() {
   const industryKey = analysisData ? analysisData.industryKey : 'marketing';
   const location = locationSelect ? locationSelect.value : 'United States';
 
+  // Extract actual competitor domains from the current analysis
+  const analysisCompetitors = analysisData && analysisData.competitors
+    ? analysisData.competitors
+        .map(c => (c.url || c.domain || '').replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase())
+        .filter(Boolean)
+    : [];
+
+  // Show which competitors are being analysed in the status note
+  if (statusNote && analysisCompetitors.length > 0) {
+    statusNote.textContent = `🔄 Querying DataForSEO · analysing your domain vs ${analysisCompetitors.slice(0,3).join(', ')}${analysisCompetitors.length > 3 ? ` +${analysisCompetitors.length - 3} more` : ''}…`;
+  }
+
   try {
     const res = await fetch('/api/keyword-gap', {
       method: 'POST',
@@ -5660,6 +5672,7 @@ async function fetchLiveKeywordGap() {
       body: JSON.stringify({
         yourDomain: domain,
         industry: industryKey,
+        competitors: analysisCompetitors.length > 0 ? analysisCompetitors : undefined,
         location,
         language: 'English',
         limit: 20
@@ -5715,9 +5728,12 @@ async function fetchLiveKeywordGap() {
 
     if (tbody) tbody.innerHTML = rows;
     if (badge) badge.textContent = `${keywords.length} Live Opportunities`;
-    if (statusNote) statusNote.textContent = `✅ Live · Fetched ${new Date().toLocaleTimeString()} · ${keywords.length} keyword gaps found`;
+
+    const compList = (data.competitors || []).slice(0, 4).join(', ');
+    const compExtra = (data.competitors || []).length > 4 ? ` +${(data.competitors||[]).length - 4} more` : '';
+    if (statusNote) statusNote.textContent = `✅ Live · Fetched ${new Date().toLocaleTimeString()} · ${keywords.length} keyword gaps found vs ${compList}${compExtra}`;
     if (dataSourceLabel) {
-      dataSourceLabel.innerHTML = `✅ <strong>Live data from DataForSEO</strong> · ${domain} vs ${(data.competitors || []).slice(0,4).join(', ')}${(data.competitors || []).length > 4 ? ` +${(data.competitors||[]).length - 4} more` : ''} · Updated ${new Date().toLocaleTimeString()}`;
+      dataSourceLabel.innerHTML = `✅ <strong>Live data from DataForSEO</strong> · <strong>${domain}</strong> vs <strong>${compList}${compExtra}</strong> · Updated ${new Date().toLocaleTimeString()}`;
       dataSourceLabel.style.color = '#10B981';
     }
 
