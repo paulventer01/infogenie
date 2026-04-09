@@ -31,7 +31,7 @@ function getDataForSEOAuth() {
   return 'Basic ' + Buffer.from(`${login}:${password}`).toString('base64');
 }
 
-async function callDataForSEO(endpoint, body) {
+async function callDataForSEO(endpoint, body, timeoutMs = 18000) {
   const auth = getDataForSEOAuth();
   if (!auth) throw new Error('DataForSEO credentials not configured');
 
@@ -48,10 +48,10 @@ async function callDataForSEO(endpoint, body) {
       }
     };
 
-    const req = https.request(options, (res) => {
+    const req = https.request(options, (apiRes) => {
       let raw = '';
-      res.on('data', chunk => { raw += chunk; });
-      res.on('end', () => {
+      apiRes.on('data', chunk => { raw += chunk; });
+      apiRes.on('end', () => {
         try {
           resolve(JSON.parse(raw));
         } catch(e) {
@@ -61,7 +61,7 @@ async function callDataForSEO(endpoint, body) {
     });
 
     req.on('error', reject);
-    req.setTimeout(30000, () => { req.destroy(); reject(new Error('DataForSEO request timed out')); });
+    req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error('DataForSEO request timed out')); });
     req.write(data);
     req.end();
   });
@@ -100,6 +100,13 @@ const INDUSTRY_SEED_KEYWORDS = {
 };
 
 app.post('/api/keyword-gap', async (req, res) => {
+  // Hard 25s timeout — send JSON error before any proxy can send HTML
+  const safetyTimer = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(504).json({ error: 'Request timed out — DataForSEO took too long. Try again in a moment.' });
+    }
+  }, 25000);
+
   try {
     const {
       yourDomain,
@@ -110,7 +117,7 @@ app.post('/api/keyword-gap', async (req, res) => {
       limit = 20
     } = req.body;
 
-    if (!yourDomain) return res.status(400).json({ error: 'yourDomain is required' });
+    if (!yourDomain) { clearTimeout(safetyTimer); return res.status(400).json({ error: 'yourDomain is required' }); }
 
     const compDomains = (competitors && competitors.length > 0)
       ? competitors.slice(0, 5)
@@ -191,15 +198,21 @@ app.post('/api/keyword-gap', async (req, res) => {
       .slice(0, 60);
     console.log('Final keyword pool size:', allKws.length, '— first 5:', allKws.slice(0,5));
 
-    // ── Step 3: Search volume + CPC ──────────────────────────────────────────
+    // ── Steps 3 + 4 in PARALLEL: Search volume AND bulk difficulty ───────────
     const volumePayload = [{ keywords: allKws, language_name: language }];
     if (location && location !== 'Global') volumePayload[0].location_name = location;
 
-    const volumeRaw = await callDataForSEO('/v3/keywords_data/google_ads/search_volume/live', volumePayload);
-    console.log('search_volume status:', volumeRaw.status_code);
+    const diffPayload = [{ keywords: allKws, language_name: language }];
+    if (location && location !== 'Global') diffPayload[0].location_name = location;
 
+    const [volumeRaw, diffRaw] = await Promise.all([
+      callDataForSEO('/v3/keywords_data/google_ads/search_volume/live', volumePayload).catch(e => { console.warn('search_volume failed:', e.message); return null; }),
+      callDataForSEO('/v3/dataforseo_labs/google/bulk_keyword_difficulty/live', diffPayload).catch(e => { console.warn('bulk_difficulty failed:', e.message); return null; })
+    ]);
+
+    console.log('search_volume status:', volumeRaw && volumeRaw.status_code);
     const volumeMap = {};
-    if (volumeRaw.status_code === 20000) {
+    if (volumeRaw && volumeRaw.status_code === 20000) {
       const volTask = volumeRaw.tasks && volumeRaw.tasks[0];
       for (const item of (volTask && volTask.result || [])) {
         if (item.keyword) volumeMap[item.keyword] = item;
@@ -207,20 +220,12 @@ app.post('/api/keyword-gap', async (req, res) => {
     }
     console.log('volume entries returned:', Object.keys(volumeMap).length);
 
-    // ── Step 4: Bulk keyword difficulty (optional — don't fail if unavailable) ──
     const diffMap = {};
-    try {
-      const diffPayload = [{ keywords: allKws, language_name: language }];
-      if (location && location !== 'Global') diffPayload[0].location_name = location;
-      const diffRaw = await callDataForSEO('/v3/dataforseo_labs/google/bulk_keyword_difficulty/live', diffPayload);
-      if (diffRaw.status_code === 20000) {
-        const diffTask = diffRaw.tasks && diffRaw.tasks[0];
-        for (const item of (diffTask && diffTask.result || [])) {
-          if (item.keyword) diffMap[item.keyword] = item.keyword_difficulty || 0;
-        }
+    if (diffRaw && diffRaw.status_code === 20000) {
+      const diffTask = diffRaw.tasks && diffRaw.tasks[0];
+      for (const item of (diffTask && diffTask.result || [])) {
+        if (item.keyword) diffMap[item.keyword] = item.keyword_difficulty || 0;
       }
-    } catch (diffErr) {
-      console.warn('bulk_keyword_difficulty failed (non-fatal):', diffErr.message);
     }
 
     // ── Step 5: Build results ─────────────────────────────────────────────────
@@ -272,11 +277,15 @@ app.post('/api/keyword-gap', async (req, res) => {
       .slice(0, parseInt(limit));
 
     console.log('Keyword gap rows returned:', keywords.length);
-    res.json({ keywords, domain: yourDomain, competitors: compDomains, timestamp: new Date().toISOString() });
+    clearTimeout(safetyTimer);
+    if (!res.headersSent) {
+      res.json({ keywords, domain: yourDomain, competitors: compDomains, timestamp: new Date().toISOString() });
+    }
 
   } catch(err) {
+    clearTimeout(safetyTimer);
     console.error('/api/keyword-gap error:', err.message);
-    res.status(500).json({ error: err.message });
+    if (!res.headersSent) res.status(500).json({ error: err.message });
   }
 });
 

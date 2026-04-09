@@ -5666,7 +5666,17 @@ async function fetchLiveKeywordGap() {
       })
     });
 
-    const data = await res.json();
+    // Guard against proxy timeouts returning HTML instead of JSON
+    const rawText = await res.text();
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch(parseErr) {
+      if (res.status === 504 || rawText.includes('<!DOCTYPE') || rawText.startsWith('<')) {
+        throw new Error('Request timed out — DataForSEO took too long. Please try again.');
+      }
+      throw new Error(`Unexpected server response (status ${res.status}). Please try again.`);
+    }
 
     if (!res.ok) {
       throw new Error(data.error || `Server error ${res.status}`);
