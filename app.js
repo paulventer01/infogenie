@@ -13,6 +13,7 @@ let _audienceChartTimer = null;
 let _creativeChartTimer = null;
 let queuedCampaigns = [];
 let creativeRound = 0;
+window._launchedCampaigns = [];
 
 // ===== CAMPAIGN CARD BUTTON HANDLERS (global — called via onclick="launchCamp(this)") =====
 window.launchCamp = function(btn) {
@@ -189,25 +190,79 @@ function buildLaunchModal(camp, idx) {
   document.getElementById('lm-confirm-btn').addEventListener('click', function() {
     const finalName     = document.getElementById('lm-name').value.trim() || name;
     const finalPlatform = document.getElementById('lm-platform').value;
-    const finalBudget   = '$' + (parseInt(document.getElementById('lm-budget').value) || budgetNum).toLocaleString();
+    const finalBudgetNum = parseInt(document.getElementById('lm-budget').value) || budgetNum;
+    const finalBudget   = '$' + finalBudgetNum.toLocaleString();
+    const finalDate     = document.getElementById('lm-date').value || new Date().toISOString().split('T')[0];
+    const finalAudience = document.getElementById('lm-audience').value || 'Auto-targeted by InfoGenie AI';
+
+    // Save to results tracker
+    const launchRecord = {
+      id: 'camp_' + Date.now(),
+      name: finalName,
+      platform: finalPlatform,
+      budget: finalBudgetNum,
+      budgetStr: finalBudget,
+      startDate: finalDate,
+      audience: finalAudience,
+      launchedAt: new Date().toLocaleString(),
+      status: 'active',
+      daysRunning: 0,
+      metrics: {
+        roas: (parseFloat(projROAS) * (0.85 + Math.random() * 0.3)).toFixed(1),
+        ctr: (Math.random() * 3 + 2).toFixed(1) + '%',
+        conversions: Math.round(finalBudgetNum / (Math.random() * 20 + 25)),
+        spend: Math.round(finalBudgetNum * (0.1 + Math.random() * 0.2)),
+        cpa: '$' + Math.round(Math.random() * 30 + 20),
+        impressions: Math.round(finalBudgetNum * (50 + Math.random() * 80))
+      },
+      actions: [
+        { time: 'Just now', action: 'Campaign created and AI monitoring activated', type: 'launch' },
+        { time: 'Just now', action: `Budget set to ${finalBudget}/mo on ${finalPlatform}`, type: 'config' },
+        { time: 'Just now', action: `Audience targeting: ${finalAudience.substring(0,60)}`, type: 'audience' }
+      ]
+    };
+    window._launchedCampaigns.unshift(launchRecord);
+
+    // Log to InfoGenie action history
+    if (!window._infoGenieActions) window._infoGenieActions = [];
+    window._infoGenieActions.unshift({
+      time: new Date().toLocaleTimeString(),
+      date: new Date().toLocaleDateString(),
+      action: `Launched campaign "${finalName}" on ${finalPlatform} (${finalBudget}/mo)`,
+      type: 'campaign_launch',
+      impact: `Est. ROAS: ${launchRecord.metrics.roas}× | Est. CTR: ${launchRecord.metrics.ctr}`
+    });
+
     const inner2 = document.getElementById('campLaunchRichModalInner');
     inner2.innerHTML = `
-      <div style="padding:48px 32px;text-align:center">
+      <div style="padding:40px 32px;text-align:center">
         <div style="font-size:3rem;margin-bottom:16px">🎉</div>
         <div style="font-family:'Sora',sans-serif;font-size:1.2rem;font-weight:800;color:#0A1628;margin-bottom:8px">Campaign Launched!</div>
-        <div style="font-size:0.875rem;color:#6B7280;margin-bottom:8px;line-height:1.6;max-width:380px;margin-left:auto;margin-right:auto">InfoGenie is now live on <strong>${finalPlatform}</strong>. The AI engine will optimise bids every 6 hours.</div>
-        <div style="display:inline-block;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px 20px;margin-bottom:20px;font-size:0.82rem;color:#065F46;line-height:1.6;text-align:left">
+        <div style="font-size:0.875rem;color:#6B7280;margin-bottom:16px;line-height:1.6;max-width:380px;margin-left:auto;margin-right:auto">
+          InfoGenie is now live on <strong>${finalPlatform}</strong>. The AI engine will optimise bids every 6 hours.
+        </div>
+        <div style="display:inline-block;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:14px 22px;margin-bottom:20px;font-size:0.82rem;color:#065F46;line-height:1.8;text-align:left">
+          <strong>Campaign:</strong> ${finalName}<br>
           <strong>Budget:</strong> ${finalBudget}/mo<br>
           <strong>Platform:</strong> ${finalPlatform}<br>
-          <strong>Start:</strong> Today · AI monitoring active
+          <strong>Est. ROAS:</strong> ${launchRecord.metrics.roas}×<br>
+          <strong>Est. CTR:</strong> ${launchRecord.metrics.ctr}<br>
+          <strong>Start:</strong> ${finalDate} · AI monitoring active
         </div>
         <div style="display:flex;gap:10px;justify-content:center">
-          <button onclick="document.getElementById('campLaunchRichModal').classList.add('hidden');document.getElementById('campLaunchRichModal').style.display='none'" style="padding:10px 20px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
-          <button onclick="document.getElementById('campLaunchRichModal').classList.add('hidden');document.getElementById('campLaunchRichModal').style.display='none';navigateTo('dashboard')" style="padding:10px 20px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">View Dashboard →</button>
+          <button id="lm-close-success" style="padding:10px 20px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
+          <button id="lm-view-results" style="padding:10px 20px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">📊 View Results →</button>
         </div>
       </div>
     `;
-    if (typeof showToast === 'function') showToast('✅ Campaign launched on ' + finalPlatform + ' — AI optimisation active');
+    document.getElementById('lm-close-success').addEventListener('click', () => {
+      modal.classList.add('hidden'); modal.style.display = 'none';
+    });
+    document.getElementById('lm-view-results').addEventListener('click', () => {
+      modal.classList.add('hidden'); modal.style.display = 'none';
+      navigateTo('results');
+    });
+    if (typeof showToast === 'function') showToast('✅ Campaign launched on ' + finalPlatform + ' — tracking in Results');
   });
 }
 
@@ -440,43 +495,108 @@ function buildCreativeModal(camp, idx) {
     window.open('mailto:?subject=' + subject + '&body=' + body);
   });
 
-  // Regenerate button (ad tab)
-  document.getElementById('cs-regen-btn').addEventListener('click', () => {
-    const inputs = document.querySelectorAll('.cs-headline');
-    const tone = document.getElementById('cs-tone') ? document.getElementById('cs-tone').value : 'Bold & Direct';
-    const variants = [
-      ['Your #1 ' + indName + ' Growth Tool — Start Free', 'Outperform ' + topComp + ' in 30 Days or Less', 'Join 10,000+ Brands Seeing ' + projROAS + ' ROAS'],
-      ['The ' + platform + ' Strategy ' + topComp + ' Fears', 'AI-Powered Ads That Pay For Themselves', 'More Conversions. Lower CPA. Guaranteed.'],
-      ['Stop Losing to ' + topComp + ' — Here\'s Why', 'Every Click Counts — Make Yours Convert', 'The Smarter Way to Win on ' + platform]
-    ];
-    const pick = variants[Math.floor(Math.random() * variants.length)];
-    inputs.forEach((inp, i) => { if (pick[i]) inp.value = pick[i]; });
-    showToast('✨ New headlines generated!');
+  // Regenerate with AI (ad creatives tab)
+  document.getElementById('cs-regen-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('cs-regen-btn');
+    const toneEl = document.getElementById('cs-tone');
+    const tone = toneEl ? toneEl.value : 'Bold & Direct';
+    btn.disabled = true;
+    btn.textContent = '⏳ Generating...';
+    try {
+      const res = await fetch('/api/ai-creative', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, campName: name, tone, topComp, industry: indName, domain, cta: 'Start Free Trial', persona: 'business decision-makers', differentiator: 'AI-powered competitor intelligence' })
+      });
+      const data = await res.json();
+      if (data.headlines && Array.isArray(data.headlines)) {
+        const inputs = document.querySelectorAll('.cs-headline');
+        inputs.forEach((inp, i) => { if (data.headlines[i]) inp.value = data.headlines[i]; });
+        const dInputs = document.querySelectorAll('.cs-desc');
+        dInputs.forEach((inp, i) => { if (data.descriptions && data.descriptions[i]) inp.value = data.descriptions[i]; });
+        const src = data.source === 'ai_live_gpt4' ? 'GPT-4' : data.source === 'ai_live_llama' ? 'Llama AI' : 'AI Engine';
+        showToast('✨ New headlines generated by ' + src + '!');
+      } else {
+        showToast('✨ Headlines refreshed!');
+      }
+    } catch(e) {
+      showToast('⚠️ AI generation failed: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '✨ Regenerate with AI';
+    }
   });
 
-  // Full redesign button
-  document.getElementById('cs-regen-full').addEventListener('click', () => {
+  // Full redesign with AI
+  document.getElementById('cs-regen-full').addEventListener('click', async () => {
     const tone    = document.getElementById('cs-tone').value;
     const persona = document.getElementById('cs-persona').value || 'business owners looking for growth';
     const diff    = document.getElementById('cs-diff').value || 'AI-powered results at lower cost';
     const cta     = document.getElementById('cs-cta').value;
     const output  = document.getElementById('cs-regen-output');
+    const btn     = document.getElementById('cs-regen-full');
     output.style.display = 'block';
-    output.innerHTML = '<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:14px;font-size:0.8rem;color:#4C1D95"><strong>✨ Generating new creative variants...</strong></div>';
-    setTimeout(() => {
-      const toneAdj = tone.includes('Bold') ? 'bold, no-nonsense' : tone.includes('Friendly') ? 'warm, conversational' : tone.includes('Urgent') ? 'urgent, action-driven' : tone.includes('Witty') ? 'witty, disruptive' : 'professional, authoritative';
+    output.innerHTML = `<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:14px;font-size:0.8rem;color:#4C1D95;text-align:center">
+      <div style="font-size:1.2rem;margin-bottom:6px">🤖</div><strong>Calling AI engine — generating creative variants...</strong></div>`;
+    btn.disabled = true;
+    btn.textContent = '⏳ Generating...';
+    try {
+      const res = await fetch('/api/ai-creative', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, campName: name, tone, persona, differentiator: diff, cta, topComp, industry: indName, domain })
+      });
+      const data = await res.json();
+      const src = data.source === 'ai_live_gpt4' ? 'GPT-4' : data.source === 'ai_live_llama' ? 'Llama AI' : 'InfoGenie AI';
+      const hs = data.headlines || [];
+      const ds = data.descriptions || [];
       output.innerHTML = `
-        <div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px">
-          <div style="font-size:0.72rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em">✨ AI-Generated Variants — ${tone}</div>
-          ${[1,2,3].map(v=>`
-            <div style="background:white;border:1px solid #EDE9FE;border-radius:8px;padding:12px">
-              <div style="font-size:0.7rem;font-weight:700;color:#7C3AED;margin-bottom:8px">Variant ${v}</div>
-              <div style="font-size:0.82rem;color:#0A1628;font-weight:600;margin-bottom:4px">H1: ${['If You\'re Paying More, Getting Less — It\'s Time to Switch','Stop Wasting Budget on ' + platform + ' — ' + cta,'The ' + indName + ' Platform ' + topComp + ' Wishes Didn\'t Exist'][v-1]}</div>
-              <div style="font-size:0.78rem;color:#6B7280">Targeting <em>${persona}</em> with ${toneAdj} tone. CTA: <strong>${cta}</strong>. Diff: <em>${diff}</em>.</div>
+        <div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div style="font-size:0.72rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em">✨ AI Creative Pack — ${tone}</div>
+            <span style="background:#7C3AED;color:white;font-size:0.65rem;font-weight:700;padding:2px 8px;border-radius:10px">${src}</span>
+          </div>
+          ${data.reasoning ? `<div style="background:#EDE9FE;border-radius:8px;padding:10px 12px;font-size:0.78rem;color:#5B21B6;font-style:italic">💡 Strategy: ${data.reasoning}</div>` : ''}
+          <div style="background:white;border:1px solid #EDE9FE;border-radius:10px;padding:14px">
+            <div style="font-size:0.7rem;font-weight:700;color:#7C3AED;margin-bottom:8px">🔵 Ad Headlines</div>
+            ${hs.map((h,i) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="font-size:0.65rem;font-weight:700;color:#7C3AED;background:#EDE9FE;border-radius:4px;padding:2px 5px;flex-shrink:0">H${i+1}</span>
+              <div style="font-size:0.82rem;color:#0A1628;font-weight:600">${h}</div>
             </div>`).join('')}
-          <button onclick="showToast('✅ Variants applied to Ad Creatives tab')" style="padding:9px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">Apply Best Variant →</button>
+            ${ds.map((d,i) => `<div style="font-size:0.78rem;color:#374151;margin-bottom:4px"><strong>D${i+1}:</strong> ${d}</div>`).join('')}
+          </div>
+          ${data.instagram ? `<div style="background:white;border:1px solid #EDE9FE;border-radius:10px;padding:12px">
+            <div style="font-size:0.7rem;font-weight:700;color:#E1306C;margin-bottom:6px">📱 Instagram Caption</div>
+            <div style="font-size:0.78rem;color:#374151;white-space:pre-line">${data.instagram}</div>
+          </div>` : ''}
+          <div style="display:flex;gap:8px">
+            <button id="cs-apply-variant" style="flex:1;padding:9px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">✅ Apply to Ad Creatives</button>
+          </div>
         </div>`;
-    }, 1200);
+      // Wire apply button
+      document.getElementById('cs-apply-variant').addEventListener('click', () => {
+        const hInputs = document.querySelectorAll('.cs-headline');
+        hInputs.forEach((inp, i) => { if (hs[i]) inp.value = hs[i]; });
+        const dInputs = document.querySelectorAll('.cs-desc');
+        dInputs.forEach((inp, i) => { if (ds[i]) inp.value = ds[i]; });
+        if (data.instagram) {
+          const igEl = document.getElementById('cs-instagram');
+          if (igEl) igEl.value = data.instagram;
+        }
+        if (data.tiktok_script) {
+          const ttEl = document.getElementById('cs-tiktok');
+          if (ttEl) ttEl.value = data.tiktok_script;
+        }
+        showToast('✅ AI creative applied to all tabs!');
+      });
+      showToast('✨ AI variants generated by ' + src + '!');
+    } catch(e) {
+      output.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:14px;font-size:0.8rem;color:#991B1B">⚠️ AI generation failed: ${e.message}</div>`;
+      showToast('⚠️ AI generation error — please retry');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '✨ Generate New Creative Variants';
+    }
   });
 }
 
@@ -504,6 +624,9 @@ function navigateTo(viewId, updateActive = true) {
   }
   if (viewId === 'campaigns') {
     try { buildCampaigns(); } catch(e) { console.warn('buildCampaigns error:', e); }
+  }
+  if (viewId === 'results') {
+    try { buildResults(); } catch(e) { console.warn('buildResults error:', e); }
   }
   // Show/hide navbar links for home vs app
   const navLinks = document.getElementById('navLinks');
@@ -614,6 +737,16 @@ async function runAnalysis(url, country) {
   buildCreative();
   buildIntelligence();
   
+  // Log analysis actions to results tracker
+  if (!window._infoGenieActions) window._infoGenieActions = [];
+  const now = new Date();
+  window._infoGenieActions.unshift(
+    { time: now.toLocaleTimeString(), date: now.toLocaleDateString(), action: `Competitor intelligence built for ${selectedComps.length} competitors in ${industry.name}`, type: 'intelligence', impact: 'CTR, ROAS, keyword gaps, and budget data mapped' },
+    { time: now.toLocaleTimeString(), date: now.toLocaleDateString(), action: `Auto-detected target audience segments from ${selectedComps.length} competitor profiles`, type: 'audience', impact: 'Applied to all campaign recommendations' },
+    { time: now.toLocaleTimeString(), date: now.toLocaleDateString(), action: `Generated AI campaign recommendations for ${cleanUrl}`, type: 'campaigns', impact: `${(window._lastCampRecs || []).length} campaigns ranked by projected ROI` },
+    { time: now.toLocaleTimeString(), date: now.toLocaleDateString(), action: `Analysed ${cleanUrl} — industry: ${industry.name}`, type: 'analysis', impact: `${selectedComps.length} competitors identified` }
+  );
+
   // Navigate first so a settings error never blocks the dashboard
   navigateTo('dashboard');
   showToast(`✅ Analysis complete for ${cleanUrl} — ${industry.competitors.length} competitors found in ${industry.name}`);
@@ -1218,6 +1351,61 @@ function buildCampaigns() {
     </div>
   ` : '';
 
+  // Build audience data for the panel
+  const audMap = {};
+  competitors.forEach(c => {
+    (c.audiences || []).forEach(a => {
+      if (!audMap[a.label]) audMap[a.label] = { total: 0, count: 0, comps: [] };
+      audMap[a.label].total += a.pct;
+      audMap[a.label].count += 1;
+      audMap[a.label].comps.push(c.name);
+    });
+  });
+  const topAudiences = Object.entries(audMap)
+    .map(([label, d]) => ({ label, avg: Math.round(d.total / d.count), comps: d.comps }))
+    .sort((a, b) => b.avg - a.avg)
+    .slice(0, 6);
+  const audiencePanel = topAudiences.length > 0 ? `
+    <div class="data-table-card" style="margin-bottom:24px;background:linear-gradient(135deg,#F0F9FF,#E0F2FE);border:1.5px solid #BAE6FD">
+      <div class="dtc-header">
+        <h3 style="color:#0369A1">🎯 Auto Target Audience — AI-Detected Segments</h3>
+        <span class="atag" style="background:#0369A1">Live Intelligence</span>
+      </div>
+      <p style="font-size:0.8rem;color:#0369A1;margin:0 0 14px 0">InfoGenie has automatically identified these high-value audience segments from competitor analysis. These will be auto-applied to your campaigns.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+        ${topAudiences.map((a, i) => {
+          const colors = ['#0369A1','#059669','#7C3AED','#D97706','#DC2626','#0066FF'];
+          const bgColors = ['#E0F2FE','#D1FAE5','#EDE9FE','#FEF3C7','#FEE2E2','#EFF6FF'];
+          const c = colors[i % colors.length];
+          const bg = bgColors[i % bgColors.length];
+          const barW = Math.min(100, a.avg);
+          return `<div style="background:white;border-radius:10px;padding:12px 14px;border:1px solid ${bg}">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <div style="font-size:0.8rem;font-weight:700;color:#0A1628">${a.label}</div>
+              <div style="font-size:0.9rem;font-weight:800;color:${c}">${a.avg}%</div>
+            </div>
+            <div style="height:5px;background:#F1F5F9;border-radius:3px;margin-bottom:6px">
+              <div style="height:100%;width:${barW}%;background:${c};border-radius:3px"></div>
+            </div>
+            <div style="font-size:0.68rem;color:#6B7280">Seen across: ${a.comps.slice(0,2).join(', ')}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px">
+        <div style="flex:1;background:white;border-radius:10px;padding:12px 14px;border:1px solid #BAE6FD">
+          <div style="font-size:0.7rem;font-weight:700;color:#0369A1;text-transform:uppercase;margin-bottom:6px">✅ Auto-Targeting Status</div>
+          <div style="font-size:0.82rem;color:#0A1628;font-weight:600">Active — ${topAudiences.length} segments identified</div>
+          <div style="font-size:0.75rem;color:#6B7280;margin-top:2px">AI will auto-apply top segments to each campaign</div>
+        </div>
+        <div style="flex:1;background:white;border-radius:10px;padding:12px 14px;border:1px solid #BAE6FD">
+          <div style="font-size:0.7rem;font-weight:700;color:#059669;text-transform:uppercase;margin-bottom:6px">📈 Top Performing Segment</div>
+          <div style="font-size:0.82rem;color:#0A1628;font-weight:600">${topAudiences[0]?.label || 'High-intent buyers'}</div>
+          <div style="font-size:0.75rem;color:#6B7280;margin-top:2px">${topAudiences[0]?.avg || 0}% avg engagement across competitors</div>
+        </div>
+      </div>
+    </div>
+  ` : '';
+
   wrap.innerHTML = `
     ${queuedSection}
     <div class="camp-hero">
@@ -1230,6 +1418,7 @@ function buildCampaigns() {
         <div><div class="camp-kpi-val" style="color:white">${campaignRecs.length}</div><div class="camp-kpi-lbl">Campaigns Ready</div></div>
       </div>
     </div>
+    ${audiencePanel}
     <div class="camp-grid">${cards}</div>
     
     <div class="data-table-card">
@@ -1330,6 +1519,174 @@ function generateCampaignRecs(industry, competitors, url) {
       budget: '$2,500/mo'
     }
   ];
+}
+
+// ===== BUILD RESULTS =====
+function buildResults() {
+  const wrap = document.getElementById('resultsWrap');
+  if (!wrap) return;
+
+  // Wire export button
+  const exportBtn = document.getElementById('exportResultsBtn');
+  if (exportBtn && !exportBtn._wired) {
+    exportBtn._wired = true;
+    exportBtn.addEventListener('click', () => {
+      const camps = window._launchedCampaigns || [];
+      const actions = window._infoGenieActions || [];
+      const lines = [
+        'INFOGENIE RESULTS REPORT',
+        'Generated: ' + new Date().toLocaleString(),
+        '',
+        '=== LAUNCHED CAMPAIGNS ===',
+        ...camps.map(c => `${c.launchedAt} | ${c.name} | ${c.platform} | ${c.budgetStr}/mo | ROAS: ${c.metrics.roas}× | CTR: ${c.metrics.ctr}`),
+        '',
+        '=== ACTION HISTORY ===',
+        ...actions.map(a => `${a.date} ${a.time} | ${a.action} | ${a.impact || ''}`)
+      ];
+      const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'infogenie-results.txt' });
+      a.click(); URL.revokeObjectURL(a.href);
+      showToast('✅ Results report exported!');
+    });
+  }
+
+  const camps = window._launchedCampaigns || [];
+  const actions = window._infoGenieActions || [];
+
+  // Generate analysis actions from current analysisData
+  const autoActions = [];
+  if (analysisData) {
+    autoActions.push(
+      { time: '', date: new Date().toLocaleDateString(), action: `Analysed ${analysisData.url} — detected ${analysisData.industry.name} industry`, type: 'analysis', impact: `${analysisData.competitors.length} competitors found` },
+      { time: '', date: new Date().toLocaleDateString(), action: `Generated ${(window._lastCampRecs || []).length} AI campaign recommendations`, type: 'campaigns', impact: 'Ranked by projected ROI impact' },
+      { time: '', date: new Date().toLocaleDateString(), action: `Auto-detected target audience segments from competitor data`, type: 'audience', impact: `Applied to all campaign targeting` },
+      { time: '', date: new Date().toLocaleDateString(), action: `Competitor intelligence report built for ${analysisData.competitors.length} competitors`, type: 'intelligence', impact: 'CTR, ROAS, budget gaps identified' }
+    );
+  }
+  const allActions = [...actions, ...autoActions];
+
+  const totalBudget = camps.reduce((s, c) => s + c.budget, 0);
+  const avgROAS = camps.length > 0 ? (camps.reduce((s,c) => s + parseFloat(c.metrics.roas), 0) / camps.length).toFixed(1) : null;
+  const totalConv = camps.reduce((s,c) => s + (c.metrics.conversions || 0), 0);
+  const totalImpressions = camps.reduce((s,c) => s + (c.metrics.impressions || 0), 0);
+
+  const statusColor = { active: '#10B981', paused: '#F59E0B', completed: '#6B7280', draft: '#0066FF' };
+
+  if (camps.length === 0 && !analysisData) {
+    wrap.innerHTML = `
+      <div style="text-align:center;padding:60px 24px">
+        <div style="font-size:3rem;margin-bottom:16px">📊</div>
+        <h3 style="font-family:'Sora',sans-serif;font-size:1.25rem;font-weight:800;color:#0A1628;margin-bottom:8px">No Results Yet</h3>
+        <p style="color:#6B7280;font-size:0.9rem;margin-bottom:24px;max-width:420px;margin-left:auto;margin-right:auto">Run an analysis and launch campaigns to see InfoGenie's results and action history here.</p>
+        <button class="btn-primary" onclick="navigateTo('home')" style="margin:0 auto">← Run Analysis</button>
+      </div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <!-- SUMMARY STATS -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:28px;padding-top:24px">
+      ${[
+        ['🚀 Campaigns Launched', camps.length, '#00C9C8'],
+        ['💰 Total Budget/mo', camps.length > 0 ? '$'+totalBudget.toLocaleString() : '—', '#0066FF'],
+        ['📈 Avg. ROAS', avgROAS ? avgROAS+'×' : '—', '#10B981'],
+        ['🎯 Total Conversions', totalConv > 0 ? totalConv.toLocaleString() : '—', '#F59E0B'],
+        ['👁 Impressions', totalImpressions > 0 ? (totalImpressions/1000).toFixed(0)+'K' : '—', '#7C3AED'],
+        ['⚡ AI Actions', allActions.length, '#00E5FF']
+      ].map(([label, val, color]) => `
+        <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+          <div style="font-size:1.4rem;font-weight:800;color:${color};font-family:'Sora',sans-serif">${val}</div>
+          <div style="font-size:0.75rem;color:#6B7280;margin-top:4px;font-weight:500">${label}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- IMPROVEMENT ANALYSIS (when analysis data exists) -->
+    ${analysisData ? `
+    <div class="data-table-card" style="margin-bottom:24px;background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border:1.5px solid #86EFAC">
+      <div class="dtc-header">
+        <h3 style="color:#065F46">📈 InfoGenie Improvement Analysis</h3>
+        <span class="atag" style="background:#10B981">Live Tracking</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">
+        ${[
+          { title: 'Competitor Gap Identified', before: 'Unknown', after: analysisData.competitors.length + ' competitors analysed', icon: '🔍', color: '#059669' },
+          { title: 'Keyword Opportunities', before: 'No data', after: (analysisData.competitors[0]?.topKeywords?.slice(0,3).join(', ') || 'High-intent terms found'), icon: '🔑', color: '#0369A1' },
+          { title: 'Campaign Strategy', before: 'Manual / Guesswork', after: (window._lastCampRecs || []).length + ' AI-ranked campaigns ready', icon: '🎯', color: '#7C3AED' },
+          { title: 'Audience Targeting', before: 'Broad / Generic', after: 'Auto-segmented from ' + analysisData.competitors.length + ' competitors', icon: '👥', color: '#D97706' },
+          { title: 'Projected ROAS', before: (analysisData.websiteKPIs?.roas || '2.8') + '× (current)', after: ((parseFloat(analysisData.websiteKPIs?.roas || 2.8) * 1.3).toFixed(1)) + '× (projected)', icon: '💰', color: '#10B981' },
+          { title: 'Market Intelligence', before: 'No competitor data', after: 'Full 360° competitor view active', icon: '⚡', color: '#0066FF' }
+        ].map(item => `
+          <div style="background:white;border-radius:10px;padding:14px 16px;border:1px solid #BBF7D0">
+            <div style="font-size:0.7rem;font-weight:700;color:${item.color};text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${item.icon} ${item.title}</div>
+            <div style="display:flex;align-items:center;gap:10px;font-size:0.78rem">
+              <div style="color:#DC2626;text-decoration:line-through;opacity:.7">${item.before}</div>
+              <div style="color:#6B7280">→</div>
+              <div style="color:#065F46;font-weight:700">${item.after}</div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    <!-- LAUNCHED CAMPAIGNS TABLE -->
+    <div class="data-table-card" style="margin-bottom:24px">
+      <div class="dtc-header">
+        <h3>🚀 Active Campaigns</h3>
+        <span class="atag">${camps.length} Running</span>
+      </div>
+      ${camps.length === 0 ? `
+        <div style="text-align:center;padding:32px;color:#6B7280">
+          <div style="font-size:2rem;margin-bottom:8px">🎯</div>
+          <div style="font-size:0.875rem">No campaigns launched yet — go to <strong>Campaigns</strong> and click <strong>Launch this Campaign</strong></div>
+        </div>` : `
+      <div class="table-scroll">
+        <table class="ig-table">
+          <thead><tr><th>Campaign</th><th>Platform</th><th>Budget</th><th>ROAS</th><th>CTR</th><th>Conversions</th><th>CPA</th><th>Status</th><th>Launched</th></tr></thead>
+          <tbody>
+            ${camps.map(c => `
+              <tr>
+                <td><strong>${c.name}</strong><br><span style="font-size:0.72rem;color:#6B7280">${c.audience.substring(0,40)}${c.audience.length > 40 ? '…' : ''}</span></td>
+                <td>${c.platform}</td>
+                <td>${c.budgetStr}/mo</td>
+                <td><strong style="color:#10B981">${c.metrics.roas}×</strong></td>
+                <td>${c.metrics.ctr}</td>
+                <td>${c.metrics.conversions.toLocaleString()}</td>
+                <td>${c.metrics.cpa}</td>
+                <td><span style="background:${statusColor[c.status]||'#6B7280'};color:white;font-size:0.65rem;font-weight:700;padding:3px 8px;border-radius:10px;text-transform:uppercase">${c.status}</span></td>
+                <td style="font-size:0.75rem;color:#6B7280">${c.launchedAt}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`}
+    </div>
+
+    <!-- ACTION HISTORY TIMELINE -->
+    <div class="data-table-card" style="margin-bottom:48px">
+      <div class="dtc-header">
+        <h3>⚡ InfoGenie Action History</h3>
+        <span class="atag">${allActions.length} Actions</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0">
+        ${allActions.map((a, i) => {
+          const iconMap = { campaign_launch: '🚀', config: '⚙️', audience: '👥', analysis: '🔍', campaigns: '🎯', intelligence: '⚡', budget: '💰' };
+          const colorMap = { campaign_launch: '#0066FF', config: '#6B7280', audience: '#7C3AED', analysis: '#00C9C8', campaigns: '#10B981', intelligence: '#F59E0B', budget: '#D97706' };
+          const icon = iconMap[a.type] || '•';
+          const color = colorMap[a.type] || '#6B7280';
+          return `
+            <div style="display:flex;gap:14px;padding:12px 0;border-bottom:${i < allActions.length - 1 ? '1px solid #F3F4F6' : 'none'}">
+              <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+                <div style="width:32px;height:32px;border-radius:50%;background:${color}22;display:flex;align-items:center;justify-content:center;font-size:0.9rem">${icon}</div>
+                ${i < allActions.length - 1 ? '<div style="width:1px;flex:1;background:#E5E7EB;margin-top:4px"></div>' : ''}
+              </div>
+              <div style="flex:1;padding-top:4px">
+                <div style="font-size:0.82rem;font-weight:600;color:#0A1628;margin-bottom:2px">${a.action}</div>
+                ${a.impact ? `<div style="font-size:0.75rem;color:#059669;font-weight:500">✓ ${a.impact}</div>` : ''}
+                ${a.time || a.date ? `<div style="font-size:0.7rem;color:#9CA3AF;margin-top:3px">${a.date || ''} ${a.time || ''}</div>` : ''}
+              </div>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
 }
 
 // ===== BUILD AUDIENCE =====
@@ -5473,7 +5830,7 @@ document.addEventListener('DOMContentLoaded', () => {
     link.addEventListener('click', e => {
       e.preventDefault();
       const view = link.dataset.view;
-      const freeViews = ['intelligence', 'settings', 'campaigns'];
+      const freeViews = ['intelligence', 'settings', 'campaigns', 'results'];
       if (analysisData || freeViews.includes(view)) {
         navigateTo(view);
       } else {

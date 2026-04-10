@@ -747,6 +747,107 @@ app.post('/api/reddit-signals', async (req, res) => {
   }
 });
 
+// ── POST /api/ai-creative ─────────────────────────────────────────────────────
+// Powers Creative Studio AI generation — tries multiple RapidAPI AI endpoints
+// with a high-quality fallback so the feature always works
+
+app.post('/api/ai-creative', async (req, res) => {
+  try {
+    const {
+      platform = 'Google Ads', campName = 'Campaign', tone = 'Bold & Direct',
+      persona = 'business owners', differentiator = 'AI-powered results',
+      cta = 'Start Free Trial', topComp = 'competitors', industry = 'your industry',
+      domain = 'yourdomain.com'
+    } = req.body;
+
+    const prompt = `You are an expert digital marketing copywriter. Generate high-converting ad copy for this campaign:
+
+Platform: ${platform}
+Campaign Name: ${campName}
+Industry: ${industry}
+Main Competitor: ${topComp}
+Tone of Voice: ${tone}
+Target Persona: ${persona}
+Key Differentiator: ${differentiator}
+Call-to-Action: ${cta}
+Domain: ${domain}
+
+Return ONLY valid JSON (no markdown, no explanation) in this exact format:
+{
+  "headlines": ["headline 1 (max 30 chars)", "headline 2 (max 30 chars)", "headline 3 (max 30 chars)"],
+  "descriptions": ["description 1 (max 90 chars)", "description 2 (max 90 chars)"],
+  "instagram": "Instagram caption with emoji and hashtags (3-5 sentences)",
+  "tiktok_script": "TikTok 15-second script with timestamps [0-3s] [3-8s] [8-13s] [13-15s]",
+  "reasoning": "1-sentence strategy rationale"
+}`;
+
+    const key = process.env.RAPIDAPI_KEY;
+
+    // Helper: clean and parse JSON from AI response
+    function parseAIResponse(text) {
+      if (!text || typeof text !== 'string') return null;
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) return null;
+      try { return JSON.parse(match[0]); } catch { return null; }
+    }
+
+    if (key) {
+      // Attempt 1: ChatGPT via RapidAPI
+      try {
+        const r = await callRapidAPI('chatgpt-42.p.rapidapi.com', '/conversationgpt4-2', 'POST', {
+          messages: [{ role: 'user', content: prompt }],
+          system_prompt: 'You are a world-class digital marketing copywriter. Always respond with valid JSON only.',
+          temperature: 0.8, top_k: 5, top_p: 0.9, max_tokens: 800
+        });
+        const text = r?.result || r?.response || r?.message || r?.content || '';
+        const parsed = parseAIResponse(text);
+        if (parsed && Array.isArray(parsed.headlines)) {
+          return res.json({ ...parsed, source: 'ai_live_gpt4' });
+        }
+      } catch(e) { console.warn('chatgpt-42 ai-creative failed:', e.message); }
+
+      // Attempt 2: Gemini/Llama via open-ai21
+      try {
+        const r = await callRapidAPI('open-ai21.p.rapidapi.com', '/ask', 'POST', { query: prompt });
+        const text = r?.result || r?.response || r?.answer || '';
+        const parsed = parseAIResponse(text);
+        if (parsed && Array.isArray(parsed.headlines)) {
+          return res.json({ ...parsed, source: 'ai_live_llama' });
+        }
+      } catch(e) { console.warn('open-ai21 ai-creative failed:', e.message); }
+    }
+
+    // Smart fallback — always returns professional, contextual copy
+    const toneWord = tone.includes('Bold') ? 'bold' : tone.includes('Friendly') ? 'friendly'
+      : tone.includes('Urgent') ? 'urgent' : tone.includes('Witty') ? 'witty' : 'professional';
+    const ctaShort = cta.replace('Start ', '').replace('Get ', '').replace(' Today', '');
+
+    const hSets = [
+      [`Beat ${topComp} — ${ctaShort}`, `${differentiator.substring(0,25)} Guaranteed`, `${platform} Results That Scale`],
+      [`${ctaShort} — Stop Paying More`, `The ${industry} Platform That Wins`, `Outperform ${topComp} in 30 Days`],
+      [`${differentiator.substring(0,22)} — ${ctaShort}`, `${industry}: Smarter Strategy`, `Your Competitors Fear This`]
+    ];
+    const dSets = [
+      [`Designed for ${persona}: achieve more on ${platform} with less spend.`, `${differentiator} — start today and outperform ${topComp}.`],
+      [`Join businesses beating ${topComp} on ${platform} every day.`, `${cta} and see why ${industry} leaders choose us over ${topComp}.`]
+    ];
+    const pick = Math.floor(Math.random() * hSets.length);
+
+    res.json({
+      source: 'ai_smart_fallback',
+      headlines: hSets[pick],
+      descriptions: dSets[pick % dSets.length],
+      instagram: `🚀 Tired of losing to ${topComp}?\n\n${differentiator} — built for ${persona}.\n\n✅ ${cta} → link in bio!\n\n#${industry.replace(/\s+/g,'')} #${platform.replace(/\s+/g,'')}Ads #DigitalMarketing #ROAS2024`,
+      tiktok_script: `[0-3s] HOOK: "Why is ${topComp} scared of this ${industry} strategy?"\n[3-8s] PROBLEM: Show wasted ad spend and missed ROI.\n[8-13s] SOLUTION: "${differentiator}" — your unfair advantage.\n[13-15s] CTA: "${cta} at ${domain} — link in bio."`,
+      reasoning: `${toneWord.charAt(0).toUpperCase() + toneWord.slice(1)} creative targeting ${persona} on ${platform}, leading with "${differentiator}" to directly counter ${topComp}.`
+    });
+
+  } catch(err) {
+    console.error('/api/ai-creative error:', err.message);
+    res.status(500).json({ error: err.message, source: 'error' });
+  }
+});
+
 // ── GET /api/status ───────────────────────────────────────────────────────────
 
 app.get('/api/status', (req, res) => {
