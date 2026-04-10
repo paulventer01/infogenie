@@ -545,43 +545,47 @@ function buildCompetitors() {
 
 function renderCompetitorCards(comps) {
   const wrap = document.getElementById('competitorCardsWrap');
-  const hasRealData = comps.some(c => c._dataSource === 'DataForSEO');
-  const realCount   = comps.filter(c => c._dataSource === 'DataForSEO').length;
+  const yourReal   = analysisData._yourRealData;
+  const liveCount  = comps.filter(c => c._dataSource === 'DataForSEO').length;
 
-  // Real competitors panel (shown when DataForSEO found additional real competitors)
-  const realCompetitors = analysisData._realCompetitors || [];
-  const yourReal        = analysisData._yourRealData;
-  const realCompsPanel  = (realCompetitors.length > 0 && yourReal) ? `
+  // Build the benchmark competitor tiles — same list used across dashboard, using real DataForSEO
+  // traffic where available, clearly labelled as AI-estimated where not
+  const compTiles = comps.slice(0, 6).map(c => {
+    const hasLive = !!c._realTraffic;
+    return `
+      <div style="background:${hasLive ? 'rgba(16,185,129,.08)' : 'rgba(255,255,255,.04)'};border:1px solid ${hasLive ? 'rgba(16,185,129,.3)' : 'rgba(255,255,255,.1)'};border-radius:10px;padding:12px;text-align:center">
+        <div style="font-size:0.68rem;font-weight:700;color:${hasLive ? '#10B981' : 'rgba(255,255,255,.4)'};text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${hasLive ? '📡 Live' : '📊 Benchmark'}</div>
+        <div style="font-size:0.78rem;font-weight:700;color:white;margin-bottom:2px">${c.name}</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.4);margin-bottom:6px">${c.url}</div>
+        <div style="font-size:0.72rem;color:${hasLive ? '#10B981' : 'rgba(255,255,255,.5)'};">${hasLive ? c._realTraffic + ' traffic/mo' : c.traffic + ' traffic'}</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.4);">${hasLive ? c._realKeywords + ' keywords' : c.ctr + ' CTR · ' + c.roas + '× ROAS'}</div>
+      </div>`;
+  }).join('');
+
+  const realCompsPanel = `
     <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:14px;padding:18px 20px;margin-bottom:18px;border:1px solid rgba(0,201,200,.2)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
         <span style="font-family:'Sora',sans-serif;font-size:0.875rem;font-weight:800;color:white">📡 Live Competitor Intelligence</span>
-        <span style="background:linear-gradient(135deg,#00C9C8,#0066FF);border-radius:20px;padding:3px 10px;font-size:0.68rem;font-weight:700;color:white">REAL DATA · DataForSEO</span>
-        <span style="font-size:0.72rem;color:rgba(255,255,255,.5);margin-left:auto">Updated ${new Date().toLocaleTimeString()}</span>
+        ${liveCount > 0
+          ? `<span style="background:linear-gradient(135deg,#00C9C8,#0066FF);border-radius:20px;padding:3px 10px;font-size:0.68rem;font-weight:700;color:white">${liveCount} LIVE · DataForSEO</span>`
+          : `<span style="background:rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:0.68rem;font-weight:600;color:rgba(255,255,255,.6)">AI BENCHMARKS</span>`}
+        <span style="font-size:0.72rem;color:rgba(255,255,255,.4);margin-left:auto">Same competitors used across all views · Updated ${new Date().toLocaleTimeString()}</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
         ${yourReal ? `
-          <div style="background:rgba(255,255,255,.06);border:1px solid rgba(0,201,200,.3);border-radius:10px;padding:12px;text-align:center">
+          <div style="background:rgba(0,201,200,.1);border:1px solid rgba(0,201,200,.4);border-radius:10px;padding:12px;text-align:center">
             <div style="font-size:0.68rem;font-weight:700;color:#00C9C8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🏠 Your Domain</div>
-            <div style="font-size:0.78rem;font-weight:700;color:white;margin-bottom:4px">${yourReal.domain}</div>
-            <div style="font-size:0.72rem;color:rgba(255,255,255,.6)">${_fmt(yourReal.organicTraffic)} traffic/mo</div>
-            <div style="font-size:0.72rem;color:rgba(255,255,255,.6)">${_fmt(yourReal.organicKeywords)} keywords</div>
+            <div style="font-size:0.78rem;font-weight:700;color:white;margin-bottom:2px">${yourReal.domain}</div>
+            <div style="font-size:0.72rem;color:#00C9C8">${_fmt(yourReal.organicTraffic)} traffic/mo</div>
+            <div style="font-size:0.7rem;color:rgba(255,255,255,.5)">${_fmt(yourReal.organicKeywords)} keywords</div>
           </div>
         ` : ''}
-        ${realCompetitors.slice(0, 4).map(rc => `
-          <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px;text-align:center">
-            <div style="font-size:0.68rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Competitor</div>
-            <div style="font-size:0.78rem;font-weight:700;color:white;margin-bottom:4px">${rc.domain}</div>
-            <div style="font-size:0.72rem;color:#10B981">${rc.organicTrafficFmt || '—'} traffic/mo</div>
-            <div style="font-size:0.72rem;color:rgba(255,255,255,.5)">${rc.organicKeywordsFmt || '—'} keywords</div>
-          </div>
-        `).join('')}
+        ${compTiles}
       </div>
-      <div style="margin-top:10px;font-size:0.7rem;color:rgba(255,255,255,.35)">📊 Traffic = estimated organic visits/month from Google search · Source: DataForSEO Labs · Campaign metrics below are AI-estimated industry benchmarks</div>
-    </div>
-  ` : `
-    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:0.78rem;color:#64748B;display:flex;align-items:center;gap:10px">
-      <span>⚙️</span>
-      <span>Loading live competitor intelligence from DataForSEO… <strong>Traffic data</strong> will update automatically · Campaign metrics are AI-estimated benchmarks</span>
+      <div style="margin-top:10px;font-size:0.7rem;color:rgba(255,255,255,.3)">
+        📊 These are the same competitors benchmarked in your Dashboard, Campaigns, and Audience views.
+        ${liveCount > 0 ? `${liveCount} have live traffic data from DataForSEO —` : 'Traffic data is DataForSEO where available,'} campaign metrics (CTR, ROAS) are AI-estimated industry benchmarks.
+      </div>
     </div>
   `;
 
