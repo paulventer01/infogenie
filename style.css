@@ -100,26 +100,28 @@ body {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   flex: 1;
 }
 .nav-link {
-  color: rgba(255,255,255,.65);
+  color: rgba(255,255,255,.6);
   text-decoration: none;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-weight: 500;
-  padding: 6px 14px;
-  border-radius: 8px;
-  transition: all 0.2s;
+  padding: 5px 10px;
+  border-radius: 7px;
+  transition: all 0.18s;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 .nav-link:hover, .nav-link.active {
   color: var(--white);
-  background: rgba(255,255,255,.08);
+  background: rgba(255,255,255,.09);
 }
 .nav-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-shrink: 0;
 }
 .nav-plan-badge {
@@ -134,12 +136,13 @@ body {
   background: var(--teal);
   color: var(--navy);
   border: none;
-  padding: 8px 18px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 0.875rem;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-weight: 700;
+  font-size: 0.78rem;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 .btn-nav-analyse:hover { background: var(--cyan); transform: translateY(-1px); }
 
@@ -2406,12 +2409,11 @@ body {
 
 /* Nav badge for intelligence */
 .nav-link-intel {
-  background: linear-gradient(135deg, rgba(0,201,200,.15), rgba(0,102,255,.15));
-  border: 1px solid rgba(0,201,200,.3);
-  border-radius: 20px;
-  padding: 4px 12px !important;
-  color: var(--teal-dark) !important;
-  font-weight: 700 !important;
+  background: linear-gradient(135deg, rgba(0,201,200,.12), rgba(0,102,255,.12));
+  border: 1px solid rgba(0,201,200,.25);
+  border-radius: 7px;
+  color: #00C9C8 !important;
+  font-weight: 600 !important;
 }
 .nav-link-intel:hover, .nav-link-intel.active {
   background: linear-gradient(135deg, var(--teal), var(--blue)) !important;

@@ -1306,7 +1306,7 @@ function buildCompCard(c) {
       <div class="comp-card-body">
         <div class="comp-sections-grid">
           <div>
-            <div class="comp-section-title">Active Campaigns</div>
+            <div class="comp-section-title">Their Running Campaigns</div>
             <div class="comp-campaigns">${campaigns}</div>
           </div>
           <div>
@@ -5869,9 +5869,10 @@ function connectOAuth(id, name) {
   const card = document.getElementById('card-' + id);
   btn.innerHTML = '<span>✓</span> Connected via OAuth';
   btn.classList.add('connected');
-  status.className = 'integ-conn-status ics-live';
-  status.innerHTML = '<span>●</span> Connected';
-  card.classList.add('connected');
+  if (status) { status.className = 'integ-conn-status ics-live'; status.innerHTML = '<span>●</span> Connected'; }
+  if (card) card.classList.add('connected');
+  // Persist so it survives re-renders
+  try { localStorage.setItem('ig_integ_' + id, 'oauth'); } catch(e) {}
   updateConnectedCount(1);
   showToast(`✅ ${name} connected via OAuth — campaigns can now be deployed automatically`);
 }
@@ -5884,7 +5885,11 @@ function updateConnectedCount(delta) {
 }
 
 function _isConnected(id) {
-  try { return localStorage.getItem('ig_integ_' + id) === '1'; } catch(e) { return false; }
+  try { const v = localStorage.getItem('ig_integ_' + id); return v === '1' || v === 'oauth'; } catch(e) { return false; }
+}
+
+function _isOAuth(id) {
+  try { return localStorage.getItem('ig_integ_' + id) === 'oauth'; } catch(e) { return false; }
 }
 
 function restoreConnectedStates() {
@@ -5895,7 +5900,15 @@ function restoreConnectedStates() {
         const btn = document.getElementById('btn-' + item.id);
         const status = document.getElementById('status-' + item.id);
         const card = document.getElementById('card-' + item.id);
-        if (btn) { btn.textContent = '✓ Connected'; btn.classList.add('btn-connected-card'); }
+        if (btn) {
+          if (_isOAuth(item.id)) {
+            btn.innerHTML = '<span>✓</span> Connected via OAuth';
+            btn.classList.add('connected');
+          } else {
+            btn.textContent = '✓ Connected';
+            btn.classList.add('btn-connected-card');
+          }
+        }
         if (status) { status.className = 'integ-conn-status ics-live'; status.innerHTML = '<span>●</span> Connected'; }
         if (card) card.classList.add('connected');
         _connectedCount++;
@@ -6153,7 +6166,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const idx  = parseInt(launchBtn.dataset.campIdx, 10);
       const camp = window._lastCampRecs?.[idx];
       if (!camp) { showToast('⚠️ Run an analysis first to launch a campaign'); return; }
-      try { openCampLaunchRich(camp.name, camp.platform, camp.budget, idx); }
+      try { buildLaunchModal(camp, idx); }
       catch(err) { console.error('Launch modal error:', err); showToast('⚠️ Could not open launch brief — ' + err.message); }
       return;
     }
