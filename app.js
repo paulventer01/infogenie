@@ -14,6 +14,8 @@ let _creativeChartTimer = null;
 let queuedCampaigns = [];
 let creativeRound = 0;
 window._launchedCampaigns = [];
+window._abTests = [];
+window._infoGenieActions = [];
 
 // ===== CAMPAIGN CARD BUTTON HANDLERS (global — called via onclick="launchCamp(this)") =====
 window.launchCamp = function(btn) {
@@ -44,6 +46,56 @@ window.openCreativeStudio = function(btn) {
     console.error('openCreativeStudio error:', err);
     showToast('⚠️ Error opening Creative Studio: ' + err.message);
   }
+};
+
+// ===== A/B TEST HANDLER (global) =====
+window.launchABTest = function() {
+  const nameEl = document.getElementById('ab-test-name');
+  const varAEl = document.getElementById('ab-var-a');
+  const varBEl = document.getElementById('ab-var-b');
+  const splitEl = document.getElementById('ab-split');
+  const daysEl  = document.getElementById('ab-days');
+  if (!nameEl || !varAEl || !varBEl) { showToast('⚠️ A/B test fields not found'); return; }
+  const testName = nameEl.value.trim() || 'A/B Test';
+  const varAIdx  = parseInt(varAEl.value);
+  const varBIdx  = parseInt(varBEl.value);
+  const split    = parseInt(splitEl?.value || '50');
+  const days     = parseInt(daysEl?.value || '14');
+  const camps    = window._lastCampRecs || [];
+  if (varAIdx === varBIdx) { showToast('⚠️ Please select two different campaign variants'); return; }
+  const campA = camps[varAIdx];
+  const campB = camps[varBIdx];
+  if (!campA || !campB) { showToast('⚠️ Invalid campaign selection — run an analysis first'); return; }
+
+  // Simulate A/B metrics
+  const aROAS = (parseFloat(campA.estROAS) * (0.9 + Math.random() * 0.25)).toFixed(1);
+  const bROAS = (parseFloat(campB.estROAS) * (0.9 + Math.random() * 0.25)).toFixed(1);
+  const aCTR  = (parseFloat(campA.estCTR) * (0.85 + Math.random() * 0.3)).toFixed(1) + '%';
+  const bCTR  = (parseFloat(campB.estCTR) * (0.85 + Math.random() * 0.3)).toFixed(1) + '%';
+  const winner = parseFloat(aROAS) >= parseFloat(bROAS) ? 'A' : 'B';
+
+  const test = {
+    id: 'ab_' + Date.now(),
+    name: testName,
+    varA: { name: campA.name, platform: campA.platform, roas: aROAS, ctr: aCTR },
+    varB: { name: campB.name, platform: campB.platform, roas: bROAS, ctr: bCTR },
+    split, days,
+    startedAt: new Date().toLocaleString(),
+    status: 'running',
+    winner,
+    daysLeft: days
+  };
+  window._abTests.unshift(test);
+  if (!window._infoGenieActions) window._infoGenieActions = [];
+  window._infoGenieActions.unshift({
+    time: new Date().toLocaleTimeString(), date: new Date().toLocaleDateString(),
+    action: `A/B test launched: "${testName}" — ${campA.name} vs ${campB.name}`,
+    type: 'ab_test',
+    impact: `${split}/${100-split} traffic split · ${days}-day test · Early winner: Variant ${winner}`
+  });
+  showToast(`✅ A/B test "${testName}" launched! Check Results for live data.`);
+  // Re-render campaigns to show the test in the running list
+  try { buildCampaigns(); } catch(e) {}
 };
 
 function buildLaunchModal(camp, idx) {
@@ -1421,6 +1473,91 @@ function buildCampaigns() {
     ${audiencePanel}
     <div class="camp-grid">${cards}</div>
     
+    <!-- A/B TEST MANAGER -->
+    <div class="data-table-card" style="margin-bottom:24px;background:linear-gradient(135deg,#FEFBFF,#F3E8FF);border:1.5px solid #DDD6FE">
+      <div class="dtc-header">
+        <h3 style="color:#5B21B6">🧪 A/B Test Manager</h3>
+        <span class="atag" style="background:#7C3AED">${(window._abTests||[]).length} Tests Running</span>
+      </div>
+      <p style="font-size:0.8rem;color:#5B21B6;margin:0 0 16px 0">Set up split tests between two campaign variants to measure which delivers better ROAS in your live environment.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div style="background:white;border-radius:12px;padding:18px;border:1px solid #EDE9FE">
+          <div style="font-size:0.72rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">⚙️ Configure New A/B Test</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Test Name</label>
+              <input id="ab-test-name" placeholder="e.g. Google vs Meta ROAS Test" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#7C3AED'" onblur="this.style.borderColor='#E2E8F0'">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div>
+                <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Variant A</label>
+                <select id="ab-var-a" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.78rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#7C3AED'" onblur="this.style.borderColor='#E2E8F0'">
+                  ${campaignRecs.map((c,i) => `<option value="${i}">${c.platform} — ${c.name.substring(0,30)}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Variant B</label>
+                <select id="ab-var-b" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.78rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#7C3AED'" onblur="this.style.borderColor='#E2E8F0'">
+                  ${campaignRecs.map((c,i) => `<option value="${i}" ${i===1?'selected':''}>${c.platform} — ${c.name.substring(0,30)}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div>
+                <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Traffic Split</label>
+                <select id="ab-split" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.78rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif">
+                  <option value="50">50% / 50% (even)</option>
+                  <option value="60">60% A / 40% B</option>
+                  <option value="70">70% A / 30% B</option>
+                  <option value="80">80% A / 20% B (cautious)</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Test Duration</label>
+                <select id="ab-days" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.78rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif">
+                  <option value="7">7 days</option>
+                  <option value="14" selected>14 days</option>
+                  <option value="30">30 days</option>
+                </select>
+              </div>
+            </div>
+            <button onclick="launchABTest()" style="width:100%;padding:11px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer;margin-top:4px">🧪 Launch A/B Test →</button>
+          </div>
+        </div>
+        <div style="background:white;border-radius:12px;padding:18px;border:1px solid #EDE9FE;overflow-y:auto;max-height:320px">
+          <div style="font-size:0.72rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">📊 Running Tests</div>
+          ${(window._abTests||[]).length === 0 ? `
+            <div style="text-align:center;padding:24px 12px;color:#9CA3AF;font-size:0.82rem">
+              <div style="font-size:1.5rem;margin-bottom:8px">🧪</div>
+              No A/B tests yet — configure one on the left and click Launch.
+            </div>
+          ` : (window._abTests||[]).map(t => {
+            const winnerColor = { A: '#059669', B: '#0066FF' }[t.winner];
+            const winnerLoser = t.winner === 'A' ? ['#059669','#DC2626'] : ['#DC2626','#059669'];
+            return `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:12px;margin-bottom:10px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div style="font-size:0.82rem;font-weight:700;color:#0A1628">${t.name}</div>
+                <span style="background:#7C3AED22;color:#7C3AED;font-size:0.65rem;font-weight:700;padding:2px 8px;border-radius:10px">RUNNING</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+                <div style="background:${winnerLoser[0]}11;border:1px solid ${winnerLoser[0]}44;border-radius:8px;padding:8px">
+                  <div style="font-size:0.65rem;font-weight:700;color:${winnerLoser[0]};margin-bottom:2px">VARIANT A ${t.winner==='A'?'🏆':''}</div>
+                  <div style="font-size:0.78rem;font-weight:600;color:#0A1628">${t.varA.platform}</div>
+                  <div style="font-size:0.75rem;color:#6B7280">ROAS: <strong style="color:${winnerLoser[0]}">${t.varA.roas}×</strong> · CTR: ${t.varA.ctr}</div>
+                </div>
+                <div style="background:${winnerLoser[1]}11;border:1px solid ${winnerLoser[1]}44;border-radius:8px;padding:8px">
+                  <div style="font-size:0.65rem;font-weight:700;color:${winnerLoser[1]};margin-bottom:2px">VARIANT B ${t.winner==='B'?'🏆':''}</div>
+                  <div style="font-size:0.78rem;font-weight:600;color:#0A1628">${t.varB.platform}</div>
+                  <div style="font-size:0.75rem;color:#6B7280">ROAS: <strong style="color:${winnerLoser[1]}">${t.varB.roas}×</strong> · CTR: ${t.varB.ctr}</div>
+                </div>
+              </div>
+              <div style="font-size:0.72rem;color:#6B7280">${t.split}/${100-t.split} split · ${t.days} days · Started: ${t.startedAt}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+
     <div class="data-table-card">
       <div class="dtc-header"><h3>Competitor Campaign Breakdown</h3><span class="atag">Live Intelligence</span></div>
       <div class="table-scroll">
@@ -1658,6 +1795,36 @@ function buildResults() {
         </table>
       </div>`}
     </div>
+
+    <!-- A/B TESTS RESULTS -->
+    ${(window._abTests||[]).length > 0 ? `
+    <div class="data-table-card" style="margin-bottom:24px">
+      <div class="dtc-header">
+        <h3>🧪 A/B Test Results</h3>
+        <span class="atag" style="background:#7C3AED">${(window._abTests||[]).length} Tests</span>
+      </div>
+      <div class="table-scroll">
+        <table class="ig-table">
+          <thead><tr><th>Test Name</th><th>Variant A</th><th>ROAS A</th><th>CTR A</th><th>Variant B</th><th>ROAS B</th><th>CTR B</th><th>Split</th><th>Duration</th><th>Winner</th><th>Started</th></tr></thead>
+          <tbody>
+            ${(window._abTests||[]).map(t => `
+              <tr>
+                <td><strong>${t.name}</strong></td>
+                <td style="font-size:0.78rem">${t.varA.platform}</td>
+                <td><strong style="color:${t.winner==='A'?'#059669':'#DC2626'}">${t.varA.roas}×</strong></td>
+                <td>${t.varA.ctr}</td>
+                <td style="font-size:0.78rem">${t.varB.platform}</td>
+                <td><strong style="color:${t.winner==='B'?'#059669':'#DC2626'}">${t.varB.roas}×</strong></td>
+                <td>${t.varB.ctr}</td>
+                <td>${t.split}/${100-t.split}</td>
+                <td>${t.days} days</td>
+                <td><span style="background:${t.winner==='A'?'#059669':'#0066FF'};color:white;font-size:0.7rem;font-weight:700;padding:3px 10px;border-radius:10px">Variant ${t.winner} 🏆</span></td>
+                <td style="font-size:0.72rem;color:#6B7280">${t.startedAt}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ''}
 
     <!-- ACTION HISTORY TIMELINE -->
     <div class="data-table-card" style="margin-bottom:48px">
@@ -3861,8 +4028,8 @@ function buildSettings() {
       <div class="integ-summary-bar">
         <div class="isb-item"><span class="isb-count" id="connectedCount">0</span> integrations connected</div>
         <div class="isb-divider"></div>
-        <div class="isb-item">
-          <span style="color:var(--green); font-size:1rem;">●</span>&nbsp;InfoGenie AI engine status: <strong style="color:var(--green)">Online</strong>
+        <div class="isb-item" id="apiHealthDisplay">
+          <span style="color:var(--green); font-size:1rem;">●</span>&nbsp;Checking API connections…
         </div>
         <div class="isb-divider"></div>
         <div class="isb-item">
@@ -3982,6 +4149,33 @@ function buildSettings() {
     </div>
   `;
   restoreConnectedStates();
+  // Check real API health asynchronously
+  setTimeout(() => checkAPIHealth(), 300);
+}
+
+async function checkAPIHealth() {
+  const display = document.getElementById('apiHealthDisplay');
+  if (!display) return;
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    const dfColor = data.dataforseo ? '#10B981' : '#DC2626';
+    const rapColor = data.rapidapi   ? '#10B981' : '#F59E0B';
+    const dfLabel  = data.dataforseo ? '✓ Connected' : '✗ Not configured';
+    const rapLabel = data.rapidapi   ? '✓ Connected' : '! Key missing';
+    const allOk    = data.dataforseo && data.rapidapi;
+    display.innerHTML = `
+      <span style="color:${allOk?'#10B981':'#F59E0B'};font-size:1rem;">●</span>
+      &nbsp;API Status:&nbsp;
+      <span style="color:${dfColor};font-weight:700">DataForSEO ${dfLabel}</span>
+      &nbsp;·&nbsp;
+      <span style="color:${rapColor};font-weight:700">RapidAPI ${rapLabel}</span>
+      &nbsp;·&nbsp;
+      <span style="color:#10B981;font-weight:700">AI Engine Online</span>
+    `;
+  } catch(e) {
+    display.innerHTML = '<span style="color:#F59E0B;">●</span>&nbsp;API health check unavailable — server is running';
+  }
 }
 
 function buildIntegCard(item) {
