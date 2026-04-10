@@ -16,23 +16,33 @@ let creativeRound = 0;
 
 // ===== CAMPAIGN CARD BUTTON HANDLERS (global — called via onclick="launchCamp(this)") =====
 window.launchCamp = function(btn) {
-  const idx  = parseInt(btn.dataset.campIdx, 10);
-  const camp = window._lastCampRecs && window._lastCampRecs[idx];
-  if (!camp) {
-    alert('Please run an analysis first — enter your website URL on the home page.');
-    return;
+  try {
+    const idx  = parseInt(btn.dataset.campIdx, 10);
+    const camp = window._lastCampRecs && window._lastCampRecs[idx];
+    if (!camp) {
+      showToast('⚠️ Run an analysis first — enter your website URL on the home page');
+      return;
+    }
+    buildLaunchModal(camp, idx);
+  } catch(err) {
+    console.error('launchCamp error:', err);
+    showToast('⚠️ Error opening launch modal: ' + err.message);
   }
-  buildLaunchModal(camp, idx);
 };
 
 window.openCreativeStudio = function(btn) {
-  const idx  = parseInt(btn.dataset.campIdx, 10);
-  const camp = window._lastCampRecs && window._lastCampRecs[idx];
-  if (!camp) {
-    alert('Please run an analysis first — enter your website URL on the home page.');
-    return;
+  try {
+    const idx  = parseInt(btn.dataset.campIdx, 10);
+    const camp = window._lastCampRecs && window._lastCampRecs[idx];
+    if (!camp) {
+      showToast('⚠️ Run an analysis first — enter your website URL on the home page');
+      return;
+    }
+    buildCreativeModal(camp, idx);
+  } catch(err) {
+    console.error('openCreativeStudio error:', err);
+    showToast('⚠️ Error opening Creative Studio: ' + err.message);
   }
-  buildCreativeModal(camp, idx);
 };
 
 function buildLaunchModal(camp, idx) {
@@ -488,9 +498,12 @@ function navigateTo(viewId, updateActive = true) {
       l.classList.toggle('active', l.dataset.view === viewId);
     });
   }
-  // Build settings on demand so the page is always populated when navigated to
+  // Rebuild views on demand so they're always populated when navigated to
   if (viewId === 'settings') {
     try { buildSettings(); } catch(e) { console.warn('buildSettings error:', e); }
+  }
+  if (viewId === 'campaigns') {
+    try { buildCampaigns(); } catch(e) { console.warn('buildCampaigns error:', e); }
   }
   // Show/hide navbar links for home vs app
   const navLinks = document.getElementById('navLinks');
