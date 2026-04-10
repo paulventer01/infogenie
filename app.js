@@ -1369,8 +1369,8 @@ function buildCampaigns() {
         <div><div class="cm-val">${camp.budget}</div><div class="cm-lbl">Min. Budget</div></div>
       </div>
       <div class="camp-card-actions">
-        <button class="btn-camp-launch" data-camp-idx="${idx}" onclick="launchCamp(this)">🚀 Launch this Campaign</button>
-        <button class="btn-camp-preview" data-camp-idx="${idx}" onclick="openCreativeStudio(this)">🎨 Creative Studio</button>
+        <button class="btn-camp-launch" data-camp-idx="${idx}">🚀 Launch this Campaign</button>
+        <button class="btn-camp-preview" data-camp-idx="${idx}">🎨 Creative Studio</button>
       </div>
     </div>
   `).join('');
@@ -6389,7 +6389,7 @@ function openCampLaunchRich(name, platform, budget, idx) {
     </div>
   `;
   // Wire confirm button — no string params needed, reads from stored global
-  window._pendingCampaignLaunch = { name, platform, budget: '$' + budgetNum };
+  window._pendingCampaignLaunch = { name, platform, budget: '$' + budgetNum, idx };
   const confirmBtn = document.getElementById('confirmLaunchBtn');
   if (confirmBtn) {
     confirmBtn.addEventListener('click', () => {
@@ -6406,15 +6406,46 @@ function closeCampLaunchRichModal() {
 }
 
 function confirmCampLaunch(name, platform, budget) {
+  // Save to Results state
+  const pending = window._pendingCampaignLaunch || {};
+  const campIdx = pending.idx;
+  const camp    = (window._lastCampRecs && campIdx !== undefined) ? window._lastCampRecs[campIdx] : null;
+  const roas    = camp?.estROAS || '3.8';
+  const ctr     = camp?.estCTR  || '4.2%';
+  const cpa     = camp?.estCPA  || '$38';
+  const budgetNum = parseInt((budget || '$2000').replace(/[^0-9]/g,'')) || 2000;
+  const launchedAt = new Date().toLocaleString();
+
+  window._launchedCampaigns = window._launchedCampaigns || [];
+  window._launchedCampaigns.push({
+    name, platform, budget,
+    launchedAt,
+    estROAS: roas, estCTR: ctr, estCPA: cpa,
+    projRevenue: '$' + (budgetNum * parseFloat(roas)).toLocaleString(undefined, {maximumFractionDigits:0}),
+    status: 'Live 🟢'
+  });
+
+  window._infoGenieActions = window._infoGenieActions || [];
+  window._infoGenieActions.unshift({
+    type: 'campaign_launch', icon: '🚀',
+    text: `Campaign "${name}" launched on ${platform} — Budget: ${budget} · Est. ROAS: ${roas}× · Est. CTR: ${ctr}`,
+    ts: launchedAt
+  });
+
   const inner = document.getElementById('campLaunchRichModalInner');
   inner.innerHTML = `
     <div style="padding:48px 32px;text-align:center">
       <div style="font-size:3rem;margin-bottom:16px">🎉</div>
       <div style="font-family:'Sora',sans-serif;font-size:1.2rem;font-weight:800;color:#0A1628;margin-bottom:8px">Campaign Launched!</div>
-      <div style="font-size:0.875rem;color:#6B7280;margin-bottom:24px;line-height:1.6;max-width:380px;margin-left:auto;margin-right:auto">"${name}" is now live on ${platform}. InfoGenie's AI engine is monitoring performance and will optimise bids every 6 hours.</div>
+      <div style="font-size:0.875rem;color:#6B7280;margin-bottom:8px;line-height:1.6;max-width:380px;margin-left:auto;margin-right:auto">"${name}" is now live on ${platform}. InfoGenie's AI engine is monitoring performance and will optimise bids every 6 hours.</div>
+      <div style="display:inline-flex;gap:24px;background:#F0FDF4;border-radius:12px;padding:16px 24px;margin-bottom:24px">
+        <div><div style="font-size:1.1rem;font-weight:800;color:#059669">${roas}×</div><div style="font-size:0.7rem;color:#6B7280">Est. ROAS</div></div>
+        <div><div style="font-size:1.1rem;font-weight:800;color:#059669">${ctr}</div><div style="font-size:0.7rem;color:#6B7280">Est. CTR</div></div>
+        <div><div style="font-size:1.1rem;font-weight:800;color:#059669">${cpa}</div><div style="font-size:0.7rem;color:#6B7280">Est. CPA</div></div>
+      </div>
       <div style="display:flex;gap:10px;justify-content:center">
         <button onclick="closeCampLaunchRichModal()" style="padding:10px 20px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
-        <button onclick="closeCampLaunchRichModal();navigateTo('dashboard')" style="padding:10px 20px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">View Dashboard →</button>
+        <button onclick="closeCampLaunchRichModal();navigateTo('results')" style="padding:10px 20px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">View Results →</button>
       </div>
     </div>
   `;
