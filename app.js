@@ -779,7 +779,7 @@ function buildCampaigns() {
                 <td><strong>${camp.ctr}</strong></td>
                 <td><strong>${camp.roas}×</strong></td>
                 <td>${camp.budget}</td>
-                <td style="font-size:.8125rem;color:var(--teal);max-width:240px">${c.suggestions[0]?.substring(0,80)}...</td>
+                <td style="font-size:.8125rem;color:var(--teal);max-width:260px;line-height:1.5">${c.suggestions[0] || ''}</td>
               </tr>
             `)).join('')}
           </tbody>
