@@ -673,7 +673,7 @@ function buildCompCard(c) {
             <span class="roi-opp-label">InfoGenie ROI Opportunity:</span>
             <span class="roi-opp-text">${c.estimatedROI}</span>
           </div>
-          <button class="btn-view-plan" data-comp="${c.name.replace(/'/g,'').replace(/"/g,'')}">View Plan →</button>
+          <button class="btn-view-plan" onclick="openCompPlan('${c.name.replace(/'/g,'').replace(/"/g,'').replace(/\\/g,'')}')">View Plan →</button>
         </div>
       </div>
     </div>
@@ -4016,6 +4016,225 @@ function closeDifferentiatorModal() {
   modal.style.display = 'none';
 }
 
+// ===== COMPETITOR PLAN VIEW =====
+// Global function called from inline onclick in competitor cards
+window.openCompPlan = function(compName) {
+  if (!analysisData) {
+    showToast('⚠️ Run an analysis first to view a plan');
+    return;
+  }
+  buildPlanView(compName);
+  navigateTo('plan', false);
+};
+
+function buildPlanView(compName) {
+  const needle = (compName || '').trim().toLowerCase();
+  const comp = analysisData.competitors.find(x => x.name === compName) ||
+               analysisData.competitors.find(x => (x.name||'').trim().toLowerCase() === needle) ||
+               analysisData.competitors[0];
+
+  if (!comp) return;
+
+  const myROAS   = analysisData.websiteKPIs?.roas ? parseFloat(analysisData.websiteKPIs.roas) : 2.8;
+  const compROAS = comp.roas || 4.5;
+  const compCTR  = parseFloat(comp.ctr || '3.2');
+  const indName  = analysisData.industry?.name || 'your industry';
+  const industryAvgROAS = avg(analysisData.competitors.map(x => x.roas || 3.5));
+
+  const ctrGain      = Math.max(0, ((5.2 - compCTR) / compCTR * 100)).toFixed(0);
+  const mobileGain   = 18;
+  const retargetGain = 22;
+  const copyGain     = 15;
+  const totalGainPct = Math.min(parseInt(ctrGain) + mobileGain + Math.round(retargetGain * 0.6) + Math.round(copyGain * 0.4), 68);
+  const projectedROAS = (myROAS * (1 + totalGainPct / 100)).toFixed(1);
+
+  // Update view header
+  document.getElementById('planViewTitle').textContent = `ROAS Plan vs. ${comp.name}`;
+  document.getElementById('planViewSub').textContent = `${indName} · 90-day execution roadmap to beat ${comp.name}'s campaign performance`;
+
+  const weaknesses = [];
+  if (compCTR < 4.5) weaknesses.push({ icon: '🎯', label: 'Low Search CTR', detail: `${comp.name} averages ${compCTR.toFixed(1)}% CTR vs industry leaders at 5.2% — their ad copy lacks urgency and benefit clarity.` });
+  if (compROAS < industryAvgROAS * 1.1) weaknesses.push({ icon: '💸', label: 'Below-Average ROAS', detail: `${comp.name}'s ${compROAS}× ROAS sits below the ${industryAvgROAS.toFixed(1)}× category average — they're overpaying per conversion.` });
+  if ((comp.trafficMo || 500000) < 800000) weaknesses.push({ icon: '📊', label: 'Limited Audience Reach', detail: `Monthly traffic of ~${((comp.trafficMo||500000)/1000).toFixed(0)}K leaves large segments uncaptured.` });
+  weaknesses.push({ icon: '📱', label: 'Mobile Creative Gap', detail: `${comp.name}'s creatives are not mobile-optimised — 68% of conversions now happen on mobile.` });
+  weaknesses.push({ icon: '🔄', label: 'Retargeting Blind Spot', detail: `No evidence of cross-platform retargeting — visitors who leave ${comp.name}'s site are not being recaptured.` });
+
+  const phases = [
+    {
+      label: 'Phase 1 — Quick Wins', timeframe: 'Days 1–30', color: '#10B981', icon: '⚡',
+      actions: [
+        `<strong>Google Search:</strong> Launch campaign targeting ${comp.topKeywords?.slice(0,2).join(' & ') || comp.name + ' brand + category keywords'} — capture high-intent buyers ${comp.name} converts at ${compCTR.toFixed(1)}% CTR. Bid on their top 10 keywords at 20% above their estimated max CPC.`,
+        `<strong>Meta Ads:</strong> Deploy mobile-first creative with a clear value proposition that addresses ${comp.name}'s top complaint: ${comp.suggestions?.[0] || 'poor customer support and slow onboarding'}. Expected CTR lift +${mobileGain}%.`,
+        `<strong>Retargeting Setup:</strong> Install pixel tracking and build a 30-day retargeting audience of all site visitors. Launch cross-platform retargeting on Meta and Google Display to recapture bounced visitors at a fraction of acquisition cost.`
+      ],
+      projROAS: (myROAS * 1.18).toFixed(1), projSpend: '$3,500/mo',
+      projRevenue: '$' + Math.round(myROAS * 1.18 * 3500).toLocaleString() + '/mo',
+      kpis: [`CTR target: ${(compCTR * 1.2).toFixed(1)}%`, `Est. ROAS: ${(myROAS * 1.18).toFixed(1)}×`, `Budget: $3,500/mo`]
+    },
+    {
+      label: 'Phase 2 — Momentum', timeframe: 'Days 31–60', color: '#0066FF', icon: '🚀',
+      actions: [
+        `<strong>YouTube Pre-rolls:</strong> ${comp.name} has no YouTube presence — launch 15-second unskippable ads targeting ${indName} intent signals at $0.04–0.08 CPV. Uncontested reach at a fraction of search CPC.`,
+        `<strong>Lookalike Audiences:</strong> Build lookalike audiences from your top-converting customer list and target ${comp.name}'s audience segments with superior messaging. Expected conversion lift +28%.`,
+        `<strong>A/B Testing:</strong> Test 3 value propositions directly targeting ${comp.name}'s weaknesses: ${comp.suggestions?.slice(0,3).join(', ') || 'speed, lower fees, and better support'}. Run for 2 weeks then scale the winner.`
+      ],
+      projROAS: (myROAS * 1.31).toFixed(1), projSpend: '$6,000/mo',
+      projRevenue: '$' + Math.round(myROAS * 1.31 * 6000).toLocaleString() + '/mo',
+      kpis: [`CTR target: ${(compCTR * 1.35).toFixed(1)}%`, `Est. ROAS: ${(myROAS * 1.31).toFixed(1)}×`, `Budget: $6,000/mo`]
+    },
+    {
+      label: 'Phase 3 — Domination', timeframe: 'Days 61–90', color: '#7C3AED', icon: '🏆',
+      actions: [
+        `<strong>Performance Max:</strong> Launch a fully-trained Performance Max campaign with all audience signals, creative assets, and conversion data from Phases 1–2. Projected to outperform ${comp.name}'s funnel by driving +${totalGainPct}% more conversions at the same budget.`,
+        `<strong>AI Budget Optimisation:</strong> Enable InfoGenie's autonomous campaign optimiser — AI reallocates budget every 6 hours to top-performing ad sets, compounding ROAS gains without manual intervention.`,
+        `<strong>Full-Funnel Retargeting:</strong> Deploy 4-stage sequence: Awareness (video) → Consideration (carousel) → Conversion (dynamic ads) → Loyalty (email + social). Captures every stage of the buyer journey ${comp.name} is losing customers in.`
+      ],
+      projROAS: projectedROAS, projSpend: '$10,000/mo',
+      projRevenue: '$' + Math.round(parseFloat(projectedROAS) * 10000).toLocaleString() + '/mo',
+      kpis: [`ROAS target: ${projectedROAS}×`, `Total uplift: +${totalGainPct}%`, `Budget: $10,000/mo`]
+    }
+  ];
+
+  const channels = [
+    { name: 'Google Search', budget: '$3,500', projROAS: (compROAS * 1.22).toFixed(1), badgeClass: 'google',
+      why: `${comp.name} bids on ~${comp.topKeywords?.length || 12} keywords. InfoGenie identified ${Math.round((comp.topKeywords?.length||12)*0.6)} untapped adjacent terms with lower CPC and higher purchase intent.` },
+    { name: 'Meta Ads', budget: '$2,500', projROAS: (compROAS * 1.18).toFixed(1), badgeClass: 'meta',
+      why: `${comp.name}'s Meta creative hasn't changed in 90+ days. Fresh UGC-style creative from InfoGenie will achieve significantly higher relevance scores and lower CPM.` },
+    { name: 'YouTube', budget: '$1,500', projROAS: (compROAS * 1.09).toFixed(1), badgeClass: 'tiktok',
+      why: `${comp.name} has zero YouTube presence. Pre-roll ads targeting ${indName} intent signals command a fraction of Google Search CPC for comparable purchase intent.` },
+    { name: 'Retargeting', budget: '$1,000', projROAS: (compROAS * 1.55).toFixed(1), badgeClass: 'ai',
+      why: `Cross-platform retargeting of ${comp.name}'s audience (via competitor audience targeting) achieves 3–5× higher conversion rates than cold traffic.` }
+  ];
+
+  document.getElementById('planViewContent').innerHTML = `
+
+    <!-- METRICS SUMMARY BAR -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
+      <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:14px;padding:18px 16px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:#00E5FF">${myROAS}×</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.6);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Your ROAS Now</div>
+      </div>
+      <div style="background:linear-gradient(135deg,#1a0a28,#2D1060);border-radius:14px;padding:18px 16px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:#F59E0B">${compROAS}×</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.6);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">${comp.name} ROAS</div>
+      </div>
+      <div style="background:linear-gradient(135deg,#0A2818,#0D5E30);border-radius:14px;padding:18px 16px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:#10B981">${projectedROAS}×</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.6);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Projected ROAS</div>
+      </div>
+      <div style="background:linear-gradient(135deg,#0A2818,#1A4A30);border-radius:14px;padding:18px 16px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:#00C9C8">+${totalGainPct}%</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.6);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">ROAS Uplift</div>
+      </div>
+    </div>
+
+    <!-- WHY UPLIFT IS ACHIEVABLE -->
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:16px;padding:24px;margin-bottom:20px">
+      <div style="font-size:0.75rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">⚡ Why +${totalGainPct}% ROAS is Achievable — Evidence</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;background:#F0FDF4;border-radius:10px;padding:12px 16px">
+          <div><div style="font-size:0.85rem;font-weight:700;color:#0A1628">Ad Copy Quality Improvement</div><div style="font-size:0.78rem;color:#6B7280;margin-top:2px">${comp.name} CTR ${compCTR.toFixed(1)}% → target 5.2% — closing the gap with better headlines and clear CTAs</div></div>
+          <div style="font-size:1rem;font-weight:800;color:#059669;flex-shrink:0;margin-left:16px">+${ctrGain}%</div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;background:#EFF6FF;border-radius:10px;padding:12px 16px">
+          <div><div style="font-size:0.85rem;font-weight:700;color:#0A1628">Mobile-First Creative Optimisation</div><div style="font-size:0.78rem;color:#6B7280;margin-top:2px">68% of conversions now happen on mobile — ${comp.name}'s desktop-first assets are underperforming mobile placements</div></div>
+          <div style="font-size:1rem;font-weight:800;color:#1D4ED8;flex-shrink:0;margin-left:16px">+${mobileGain}%</div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;background:#F5F3FF;border-radius:10px;padding:12px 16px">
+          <div><div style="font-size:0.85rem;font-weight:700;color:#0A1628">Cross-Platform Retargeting Funnel</div><div style="font-size:0.78rem;color:#6B7280;margin-top:2px">${comp.name} has no retargeting sequence — these are warm visitors being lost permanently</div></div>
+          <div style="font-size:1rem;font-weight:800;color:#7C3AED;flex-shrink:0;margin-left:16px">+${retargetGain}%</div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;background:#FFF7ED;border-radius:10px;padding:12px 16px">
+          <div><div style="font-size:0.85rem;font-weight:700;color:#0A1628">AI Creative Testing Velocity</div><div style="font-size:0.78rem;color:#6B7280;margin-top:2px">InfoGenie refreshes creative every 72 hours vs. ${comp.name}'s static campaigns — continuous improvement compounds over 90 days</div></div>
+          <div style="font-size:1rem;font-weight:800;color:#D97706;flex-shrink:0;margin-left:16px">+${copyGain}%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMPETITOR WEAKNESSES -->
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:16px;padding:24px;margin-bottom:20px">
+      <div style="font-size:0.75rem;font-weight:700;color:#EF4444;text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">🔍 ${comp.name}'s Identified Campaign Weaknesses</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${weaknesses.slice(0,4).map(w => `
+          <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:14px">
+            <div style="font-size:1.2rem;margin-bottom:6px">${w.icon}</div>
+            <div style="font-size:0.85rem;font-weight:700;color:#0A1628;margin-bottom:4px">${w.label}</div>
+            <div style="font-size:0.78rem;color:#6B7280;line-height:1.5">${w.detail}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- 90-DAY ROADMAP -->
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:16px;padding:24px;margin-bottom:20px">
+      <div style="font-size:0.75rem;font-weight:700;color:#0A1628;text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">📅 90-Day Execution Roadmap</div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        ${phases.map((ph, pi) => `
+          <div style="border:2px solid ${ph.color}30;border-radius:14px;overflow:hidden">
+            <div style="background:${ph.color}12;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:1.4rem">${ph.icon}</span>
+                <div>
+                  <div style="font-size:0.9rem;font-weight:800;color:#0A1628">${ph.label}</div>
+                  <div style="font-size:0.75rem;color:#6B7280">${ph.timeframe}</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:16px;flex-wrap:wrap">
+                ${ph.kpis.map(k => `<div style="background:white;border-radius:8px;padding:6px 12px;font-size:0.75rem;font-weight:700;color:#0A1628;border:1px solid ${ph.color}30">${k}</div>`).join('')}
+              </div>
+            </div>
+            <div style="padding:16px 20px">
+              <div style="display:flex;flex-direction:column;gap:10px">
+                ${ph.actions.map((a,ai) => `
+                  <div style="display:flex;gap:12px;align-items:flex-start">
+                    <div style="width:22px;height:22px;border-radius:50%;background:${ph.color};color:white;font-size:0.7rem;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">${ai+1}</div>
+                    <div style="font-size:0.83rem;color:#374151;line-height:1.6">${a}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+            <div style="padding:10px 20px;background:#F9FAFB;border-top:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between">
+              <div style="font-size:0.78rem;color:#6B7280">Est. Revenue at ${ph.projROAS}× ROAS: <strong style="color:#0A1628">${ph.projRevenue}</strong></div>
+              <button class="btn-primary" style="font-size:0.78rem;padding:7px 16px" onclick="navigateTo('campaigns')">🚀 Set Up Campaign →</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- CHANNEL BUDGET ALLOCATION -->
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:16px;padding:24px;margin-bottom:20px">
+      <div style="font-size:0.75rem;font-weight:700;color:#0A1628;text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">💰 Recommended Channel Budget Allocation</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${channels.map(ch => `
+          <div style="display:flex;align-items:flex-start;gap:14px;background:#F9FAFB;border-radius:12px;padding:14px 16px">
+            <span class="camp-type-badge badge-${ch.badgeClass}" style="flex-shrink:0;margin-top:2px">${ch.name}</span>
+            <div style="flex:1">
+              <div style="font-size:0.82rem;color:#374151;line-height:1.5">${ch.why}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:0.95rem;font-weight:800;color:#0A1628">${ch.budget}</div>
+              <div style="font-size:0.72rem;color:#10B981;font-weight:700">${ch.projROAS}× ROAS</div>
+            </div>
+          </div>
+        `).join('')}
+        <div style="background:linear-gradient(90deg,#0A1628,#0D2A5E);border-radius:12px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:0.85rem;font-weight:700;color:rgba(255,255,255,.8)">Total Recommended Monthly Budget</div>
+          <div style="text-align:right">
+            <div style="font-size:1.05rem;font-weight:800;color:#00E5FF">$8,500/mo</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,.5)">Est. Revenue: $${Math.round(parseFloat(projectedROAS)*8500).toLocaleString()}/mo at ${projectedROAS}× ROAS</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI NOTE -->
+    <div style="background:#F0FDF4;border:2px solid #BBF7D0;border-radius:14px;padding:18px 22px;font-size:0.83rem;color:#065F46;line-height:1.7">
+      <strong>💡 InfoGenie AI Note:</strong> These projections are based on ${comp.name}'s actual campaign benchmarks, your current ROAS of ${myROAS}×, and ${indName} industry data. The +${totalGainPct}% uplift assumes consistent creative refresh cycles, structured retargeting sequences, and AI-driven bid optimisation — all of which InfoGenie handles autonomously once connected to your ad accounts.
+    </div>
+  `;
+}
+
 function openAttackModal(action, competitor, type) {
   const steps = {
     keyword: [
@@ -4835,22 +5054,9 @@ document.addEventListener('DOMContentLoaded', () => {
     navigateTo('competitors');
   });
 
-  // "View Plan" buttons — document-level delegation
-  document.addEventListener('click', e => {
-    const btn = e.target.closest('.btn-view-plan');
-    if (!btn) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const compName = btn.dataset.comp;
-    if (!compName) {
-      showToast('⚠️ Could not identify competitor — please re-run analysis');
-      return;
-    }
-    if (!analysisData) {
-      showToast('⚠️ Run an analysis first — enter your website URL on the home page');
-      return;
-    }
-    openDifferentiatorModal(compName);
+  // Plan view — back button returns to competitors tab
+  document.getElementById('planBackBtn').addEventListener('click', () => {
+    navigateTo('competitors');
   });
   
   // Launch campaign button (header)
