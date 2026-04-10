@@ -808,6 +808,8 @@ async function runAnalysis(url, country) {
 
   // ── Enrich with real live competitor data from DataForSEO (async, non-blocking) ──
   enrichWithRealCompetitorData(cleanUrl, industryKey, country);
+  // ── Upgrade KPI cards to live DataForSEO data (async, non-blocking) ──
+  enrichKPIsWithLiveData(cleanUrl, industryKey, country);
 }
 
 // ── Real Competitor Data Enrichment ──────────────────────────────────────────
@@ -869,6 +871,121 @@ async function enrichWithRealCompetitorData(domain, industryKey, country) {
     console.warn('Real competitor enrichment failed (non-fatal):', err.message);
   }
 }
+
+// ── Live KPI Enrichment ───────────────────────────────────────────────────────
+// Calls /api/live-kpis to get DataForSEO-derived CTR, CPA, ROAS and Conv. Rate
+// then updates the KPI cards in the DOM without a full rebuild.
+async function enrichKPIsWithLiveData(domain, industryKey, country) {
+  const location = country === 'United Kingdom' ? 'United Kingdom'
+    : country === 'Australia' ? 'Australia'
+    : country === 'Canada'    ? 'Canada'
+    : 'United States';
+
+  const liveBadge = (title) => `<span title="${title}" style="font-size:.65rem;background:#10B98120;color:#10B981;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px">LIVE</span>`;
+
+  try {
+    const res = await fetch('/api/live-kpis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain, industryKey, location })
+    });
+    if (!res.ok) return;
+    const d = await res.json();
+    if (d.error) return;
+
+    const industry    = analysisData?.industry;
+    const competitors = analysisData?.competitors || [];
+    const avgCTR  = avg(competitors.map(c => parseFloat(c.ctr)));
+    const avgROAS = avg(competitors.map(c => c.roas));
+    const src = `DataForSEO · avg position ${d.meta?.avgPosition || '—'} · avg CPC $${d.meta?.avgCPC || '—'}`;
+
+    // Store live values back onto analysisData for downstream use
+    if (!analysisData.websiteKPIs) analysisData.websiteKPIs = {};
+    if (d.ctr      !== null) analysisData.websiteKPIs._liveCTR      = d.ctr;
+    if (d.roas     !== null) analysisData.websiteKPIs._liveROAS     = d.roas;
+    if (d.cpa      !== null) analysisData.websiteKPIs._liveCPA      = d.cpa;
+    if (d.convRate !== null) analysisData.websiteKPIs._liveConvRate = d.convRate;
+
+    // Update each KPI card in-place
+    const kpiGrid = document.getElementById('kpiGrid');
+    if (!kpiGrid) return;
+    const cards = kpiGrid.querySelectorAll('.kpi-card');
+    // Cards order: CTR (0), ROAS (1), CPA (2), Traffic (3 — already live), Conv.Rate (4), Score (5)
+
+    // CTR card
+    if (cards[0] && d.ctr !== null) {
+      const ctr = parseFloat(d.ctr);
+      const ctrChange = ctr >= avgCTR ? `▲ ${(ctr - avgCTR).toFixed(2)}% above ${industry?.name || 'industry'} avg` : `▼ ${(avgCTR - ctr).toFixed(2)}% below ${industry?.name || 'industry'} avg`;
+      cards[0].innerHTML = `
+        ${liveBadge(src)}
+        <div class="kpi-icon">📊</div>
+        <div class="kpi-label">Avg CTR Benchmark</div>
+        <div class="kpi-value">${ctr}%</div>
+        <div class="kpi-change ${ctr >= avgCTR ? 'kpi-up' : 'kpi-down'}">${ctrChange}</div>
+      `;
+    }
+
+    // ROAS card
+    if (cards[1] && d.roas !== null) {
+      const roas = parseFloat(d.roas);
+      const roasChange = roas >= avgROAS ? `▲ ${(roas - avgROAS).toFixed(1)}× above ${industry?.name || 'industry'} avg` : `▼ ${(avgROAS - roas).toFixed(1)}× below ${industry?.name || 'industry'} avg`;
+      cards[1].innerHTML = `
+        ${liveBadge(src)}
+        <div class="kpi-icon">🎯</div>
+        <div class="kpi-label">ROAS Benchmark</div>
+        <div class="kpi-value">${roas}×</div>
+        <div class="kpi-change ${roas >= avgROAS ? 'kpi-up' : 'kpi-down'}">${roasChange}</div>
+      `;
+    }
+
+    // CPA card
+    if (cards[2] && d.cpa !== null) {
+      const cpa = parseFloat(d.cpa);
+      const cpaReduction = (cpa * 0.35).toFixed(0);
+      cards[2].innerHTML = `
+        ${liveBadge(src)}
+        <div class="kpi-icon">💰</div>
+        <div class="kpi-label">CPA Benchmark</div>
+        <div class="kpi-value">$${cpa}</div>
+        <div class="kpi-change kpi-up">▼ $${cpaReduction} saving possible with AI optimisation</div>
+      `;
+    }
+
+    // Conv. Rate card (index 4)
+    if (cards[4] && d.convRate !== null) {
+      const cr = parseFloat(d.convRate);
+      cards[4].innerHTML = `
+        ${liveBadge(src)}
+        <div class="kpi-icon">📈</div>
+        <div class="kpi-label">Conv. Rate Benchmark</div>
+        <div class="kpi-value">${cr}%</div>
+        <div class="kpi-change ${cr >= 3 ? 'kpi-up' : 'kpi-down'}">${industry?.name || 'Industry'} avg: ${(industryConvRates[industryKey] || 3).toFixed(1)}%</div>
+      `;
+    }
+
+    // Update data notice
+    const noticeEl = document.getElementById('kpiDataNotice');
+    if (noticeEl) {
+      noticeEl.innerHTML = `
+        <span style="color:#059669;font-size:0.75rem">
+          📡 <strong>Live DataForSEO data</strong> — CTR, ROAS, CPA and Conversion Rate derived from real keyword positions and CPC data for <strong>${domain}</strong>.
+          Avg keyword position: <strong>${d.meta?.avgPosition || '—'}</strong> · Avg CPC: <strong>$${d.meta?.avgCPC || '—'}</strong> · Keywords analysed: <strong>${d.meta?.keywordsWithCPC || 0}</strong>
+        </span>`;
+    }
+
+    showToast('📡 KPI metrics upgraded to live DataForSEO data');
+
+  } catch(err) {
+    console.warn('enrichKPIsWithLiveData failed (non-fatal):', err.message);
+  }
+}
+
+// Industry conv rates reference (mirrors server-side table)
+const industryConvRates = {
+  finance: 3.1, fintech: 3.4, ecommerce: 2.4, retail: 1.8,
+  saas: 4.2, software: 3.8, health: 2.8, healthcare: 2.8,
+  travel: 2.1, education: 3.6, realestate: 2.3, default: 3.0
+};
 
 // Format large numbers
 function _fmt(n) {
