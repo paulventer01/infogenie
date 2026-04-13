@@ -2,24 +2,44 @@
 // InfoGenie — Main Application Controller
 // ============================================================
 
-// ── Amplitude Analytics ───────────────────────────────────────────────────────
+// ── Analytics (Amplitude + PostHog) ──────────────────────────────────────────
 window._ampReady = false;
+window._phReady  = false;
+
 (async () => {
   try {
     const cfg = await fetch('/api/config').then(r => r.json());
+
+    // Amplitude
     if (cfg.amplitudeApiKey && window.amplitude) {
       await window.amplitude.init(cfg.amplitudeApiKey, {
         defaultTracking: { sessions: true, pageViews: false, formInteractions: false, fileDownloads: false }
       }).promise;
       window._ampReady = true;
-      igTrack('App Loaded', { version: '1.0', platform: 'web' });
     }
-  } catch(e) { console.warn('[Amplitude] init failed:', e.message); }
+
+    // PostHog
+    if (cfg.posthogApiKey && window.posthog) {
+      window.posthog.init(cfg.posthogApiKey, {
+        api_host: 'https://us.i.posthog.com',
+        autocapture: false,
+        capture_pageview: false,
+        capture_pageleave: true,
+        session_recording: { maskAllInputs: false }
+      });
+      window._phReady = true;
+    }
+
+    igTrack('App Loaded', { version: '1.0', platform: 'web' });
+  } catch(e) { console.warn('[Analytics] init failed:', e.message); }
 })();
 
 function igTrack(eventName, props = {}) {
   if (window._ampReady && window.amplitude) {
     window.amplitude.track(eventName, props);
+  }
+  if (window._phReady && window.posthog) {
+    window.posthog.capture(eventName, props);
   }
 }
 
