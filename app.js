@@ -1228,13 +1228,18 @@ async function runAnalysis(url, country) {
   overlay.style.display = 'none';
   overlay.classList.add('hidden');
   
-  // Shuffle competitor pool so every analysis shows a different selection
-  const compPool = [...industry.competitors];
-  for (let i = compPool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [compPool[i], compPool[j]] = [compPool[j], compPool[i]];
-  }
-  const selectedComps = compPool.slice(0, Math.min(8, compPool.length));
+  // Pick a different set of competitors on every re-run:
+  // 1. Split pool into "not seen last run" vs "seen last run"
+  // 2. Shuffle each group independently
+  // 3. Take fresh competitors first, then fill from seen ones if needed
+  const _prevNames = window._lastCompetitorNames || [];
+  const fresh = industry.competitors.filter(c => !_prevNames.includes(c.name));
+  const seen  = industry.competitors.filter(c =>  _prevNames.includes(c.name));
+  const shuffle = arr => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const poolOrdered = [...shuffle(fresh), ...shuffle(seen)];
+  const pickCount   = Math.min(5, poolOrdered.length);
+  const selectedComps = poolOrdered.slice(0, pickCount);
+  window._lastCompetitorNames = selectedComps.map(c => c.name);
 
   // Reset campaign queue and creative round for fresh analysis
   queuedCampaigns = [];
@@ -1264,7 +1269,7 @@ async function runAnalysis(url, country) {
 
   // Navigate first so a settings error never blocks the dashboard
   navigateTo('dashboard');
-  showToast(`✅ Analysis complete for ${cleanUrl} — ${industry.competitors.length} competitors found in ${industry.name}`);
+  showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
   
   // Build settings after navigation (non-critical)
   try { buildSettings(); } catch(e) { console.warn('Settings build error:', e); }
