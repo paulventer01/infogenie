@@ -17,7 +17,36 @@ window._launchedCampaigns = [];
 window._abTests = [];
 window._infoGenieActions = [];
 
-// ===== CAMPAIGN CARD BUTTON HANDLERS (global — called via onclick="launchCamp(this)") =====
+// ===== PRIMARY CAMPAIGN BUTTON HANDLERS — called directly via onclick in buildCampaigns() =====
+window._igLaunch = function(idx) {
+  try {
+    const camp = window._lastCampRecs && window._lastCampRecs[idx];
+    if (!camp) {
+      alert('Please run an analysis first — enter your website URL on the home page and click Analyse Now.');
+      return;
+    }
+    buildLaunchModal(camp, idx);
+  } catch(err) {
+    console.error('_igLaunch error:', err);
+    alert('Could not open Launch modal: ' + err.message);
+  }
+};
+
+window._igCreative = function(idx) {
+  try {
+    const camp = window._lastCampRecs && window._lastCampRecs[idx];
+    if (!camp) {
+      alert('Please run an analysis first — enter your website URL on the home page and click Analyse Now.');
+      return;
+    }
+    buildCreativeModal(camp, idx);
+  } catch(err) {
+    console.error('_igCreative error:', err);
+    alert('Could not open Creative Studio: ' + err.message);
+  }
+};
+
+// ===== LEGACY CAMPAIGN CARD BUTTON HANDLERS =====
 window.launchCamp = function(btn) {
   try {
     const idx  = parseInt(btn.dataset.campIdx, 10);
@@ -1486,8 +1515,8 @@ function buildCampaigns() {
         <div><div class="cm-val">${camp.budget}</div><div class="cm-lbl">Min. Budget</div></div>
       </div>
       <div class="camp-card-actions">
-        <button class="btn-camp-launch" data-camp-idx="${idx}">🚀 Launch this Campaign</button>
-        <button class="btn-camp-preview" data-camp-idx="${idx}">🎨 Creative Studio</button>
+        <button class="btn-camp-launch" onclick="window._igLaunch(${idx})">🚀 Launch this Campaign</button>
+        <button class="btn-camp-preview" onclick="window._igCreative(${idx})">🎨 Creative Studio</button>
       </div>
     </div>
   `).join('');
@@ -6276,26 +6305,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === document.getElementById('campLaunchRichModal')) closeCampLaunchRichModal();
   });
 
-  // Campaign card buttons — delegated to avoid HTML-escaping issues with special chars in names
-  document.addEventListener('click', e => {
-    const launchBtn = e.target.closest('.btn-camp-launch[data-camp-idx]');
-    if (launchBtn) {
-      const idx  = parseInt(launchBtn.dataset.campIdx, 10);
-      const camp = window._lastCampRecs?.[idx];
-      if (!camp) { showToast('⚠️ Run an analysis first to launch a campaign'); return; }
-      try { buildLaunchModal(camp, idx); }
-      catch(err) { console.error('Launch modal error:', err); showToast('⚠️ Could not open launch brief — ' + err.message); }
-      return;
-    }
-    const previewBtn = e.target.closest('.btn-camp-preview[data-camp-idx]');
-    if (previewBtn) {
-      const idx = parseInt(previewBtn.dataset.campIdx, 10);
-      if (!window._lastCampRecs) { showToast('⚠️ Run an analysis first to open Creative Studio'); return; }
-      try { previewCampaignCreative(idx); }
-      catch(err) { console.error('Creative Studio error:', err); showToast('⚠️ Could not open Creative Studio — ' + err.message); }
-      return;
-    }
-  });
+  // Campaign card buttons now use direct onclick="window._igLaunch(idx)" and window._igCreative(idx)
+  // — defined at top of app.js, no delegation needed
 
   // Docs modal — close on backdrop click
   document.getElementById('docsModal').addEventListener('click', e => {
