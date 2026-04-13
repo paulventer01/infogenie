@@ -2,19 +2,9 @@
 // InfoGenie — Main Application Controller
 // ============================================================
 
-// ── Analytics (Amplitude + PostHog + Algolia AI Analytics) ───────────────────
+// ── Analytics (Amplitude + PostHog) ──────────────────────────────────────────
 window._ampReady = false;
 window._phReady  = false;
-window._aaReady  = false;   // Algolia Insights
-
-// Generate a stable anonymous user token for Algolia event attribution
-window._aaUserToken = (() => {
-  try {
-    let t = localStorage.getItem('_ig_aa_token');
-    if (!t) { t = 'u-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('_ig_aa_token', t); }
-    return t;
-  } catch(e) { return 'u-anon-' + Math.random().toString(36).slice(2); }
-})();
 
 (async () => {
   try {
@@ -41,46 +31,16 @@ window._aaUserToken = (() => {
       window._phReady = true;
     }
 
-    // Algolia AI Analytics (search-insights)
-    if (cfg.algoliaAppId && cfg.algoliaSearchKey && window.aa) {
-      window.aa('init', {
-        appId:   cfg.algoliaAppId,
-        apiKey:  cfg.algoliaSearchKey,
-        userHasOptedOut: false
-      });
-      window.aa('setUserToken', window._aaUserToken);
-      window._aaReady = true;
-      console.log('[Algolia] AI Analytics ready — user token:', window._aaUserToken);
-    }
-
     igTrack('App Loaded', { version: '1.0', platform: 'web' });
   } catch(e) { console.warn('[Analytics] init failed:', e.message); }
 })();
 
-// ── Central tracking helper — fires Amplitude + PostHog + Algolia in sync ────
 function igTrack(eventName, props = {}) {
   if (window._ampReady && window.amplitude) {
     window.amplitude.track(eventName, props);
   }
   if (window._phReady && window.posthog) {
     window.posthog.capture(eventName, props);
-  }
-  // Algolia: map InfoGenie events to standard Insights event types
-  if (window._aaReady && window.aa) {
-    try {
-      const base = { eventName, index: 'infogenie_events', userToken: window._aaUserToken };
-      // Conversions = high-value actions (launch, purchase-intent)
-      const conversionEvents = ['Campaign Launched', 'Ad Platform Connected', 'Creative Generated'];
-      // Clicks = user intent signals
-      const clickEvents = ['Analysis Started', 'Creative Studio Opened', 'Competitor Viewed', 'Keyword Clicked'];
-      if (conversionEvents.includes(eventName)) {
-        window.aa('convertedObjectIDs', { ...base, objectIDs: [props.campName || props.platform || eventName] });
-      } else if (clickEvents.includes(eventName)) {
-        window.aa('clickedObjectIDs', { ...base, objectIDs: [props.domain || props.competitor || eventName] });
-      } else {
-        window.aa('viewedObjectIDs', { ...base, objectIDs: [eventName] });
-      }
-    } catch(e) { /* Algolia event tracking is non-critical */ }
   }
 }
 
@@ -4328,7 +4288,7 @@ const INTEGRATIONS = {
     label: 'Analytics & Data',
     icon: '📈',
     desc: 'Connect analytics and data platforms to give InfoGenie complete visibility into your performance — enabling smarter competitor benchmarking and ROI attribution.',
-    badge: '8 Platforms',
+    badge: '7 Platforms',
     items: [
       {
         id: 'ga4', logo: '📊', name: 'Google Analytics 4',
@@ -4478,26 +4438,6 @@ const INTEGRATIONS = {
           { text: 'Select scopes: <code>query:read</code> and <code>project:read</code>' },
           { text: 'Copy the key (starts with <code>phx_</code>) and paste it above' },
           { text: 'Click <strong>Test Connection</strong>' }
-        ]
-      },
-      {
-        id: 'algolia', logo: '🔍', name: 'Algolia AI Analytics',
-        tagline: 'AI-powered search insights — NeuralSearch, Dynamic Re-Ranking & Personalisation',
-        authType: 'apikey',
-        placeholder: 'Algolia App ID · Search API Key (comma-separated)',
-        unlocks: [
-          'AI-powered NeuralSearch to surface the highest-converting competitor keywords',
-          'Dynamic Re-Ranking — automatically boost campaigns with the highest click-through signals',
-          'Personalisation engine that maps user intent to InfoGenie audience segments',
-          'A/B test result attribution via Algolia Insights event stream',
-          'Real-time conversion funnel events synced from every InfoGenie action'
-        ],
-        steps: [
-          { text: 'Sign in at <a href="https://www.algolia.com" target="_blank">algolia.com</a> and open your <strong>Dashboard → Settings → API Keys</strong>' },
-          { text: 'Copy your <strong>Application ID</strong> (e.g. <code>ABCDEF1234</code>)' },
-          { text: 'Copy the <strong>Search-Only API Key</strong> (safe to expose client-side)' },
-          { text: 'Add both as Replit secrets: <code>ALGOLIA_APP_ID</code> and <code>ALGOLIA_SEARCH_KEY</code>' },
-          { text: 'Restart the app — InfoGenie will automatically initialise Algolia Insights and begin tracking events' }
         ]
       }
     ]

@@ -36,10 +36,8 @@ app.get('/api/config', (req, res) => {
   const posthogApiKey = phMatch ? phMatch[0] : rawPh;
 
   res.json({
-    amplitudeApiKey:  process.env.AMPLITUDE_API_KEY || '',
-    posthogApiKey,
-    algoliaAppId:     process.env.ALGOLIA_APP_ID || '',
-    algoliaSearchKey: process.env.ALGOLIA_SEARCH_KEY || ''
+    amplitudeApiKey: process.env.AMPLITUDE_API_KEY || '',
+    posthogApiKey
   });
 });
 
@@ -335,7 +333,6 @@ app.get('/api/integrations/status', (req, res) => {
   if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) configured.push('openai');
   if (process.env.AMPLITUDE_API_KEY) configured.push('amplitude');
   if (process.env.POSTHOG_API_KEY) configured.push('posthog');
-  if (process.env.ALGOLIA_APP_ID && process.env.ALGOLIA_SEARCH_KEY) configured.push('algolia');
   if (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD) configured.push('dataforseo');
   if (process.env.RAPIDAPI_KEY) configured.push('rapidapi');
   res.json({ configured });
