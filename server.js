@@ -1537,22 +1537,6 @@ app.get('/api/status', (req, res) => {
   });
 });
 
-// ── Catch-all → SPA ──────────────────────────────────────────────────────────
-
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-const startMsg = () => {
-  console.log(`DataForSEO: ${process.env.DATAFORSEO_LOGIN ? 'CONFIGURED ✓' : 'NOT CONFIGURED — add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD secrets'}`);
-};
-
-// Port 5000 — Replit preview pane (webview)
-app.listen(5000, '0.0.0.0', () => {
-  console.log('InfoGenie listening on port 5000 (preview pane)');
-  startMsg();
-});
-
 // ── GET /download-source — serves the full source code as a downloadable file ─
 app.get('/download-source', (req, res) => {
   const files = ['package.json','server.js','data.js','index.html','style.css','app.js'];
@@ -1568,6 +1552,22 @@ app.get('/download-source', (req, res) => {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="infogenie-source.txt"');
   res.send(out);
+});
+
+// ── Catch-all → SPA ──────────────────────────────────────────────────────────
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+const startMsg = () => {
+  console.log(`DataForSEO: ${process.env.DATAFORSEO_LOGIN ? 'CONFIGURED ✓' : 'NOT CONFIGURED — add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD secrets'}`);
+};
+
+// Port 5000 — Replit preview pane (webview)
+app.listen(5000, '0.0.0.0', () => {
+  console.log('InfoGenie listening on port 5000 (preview pane)');
+  startMsg();
 });
 
 // Port 80 — external URL (*.spock.replit.dev / new tab)
