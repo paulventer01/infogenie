@@ -1,6 +1,12 @@
 const express = require('express');
 const path = require('path');
 const https = require('https');
+const OpenAI = require('openai');
+
+const openai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || 'dummy',
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+});
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -865,8 +871,7 @@ app.post('/api/reddit-signals', async (req, res) => {
 });
 
 // ── POST /api/ai-creative ─────────────────────────────────────────────────────
-// Powers Creative Studio AI generation — tries multiple RapidAPI AI endpoints
-// with a high-quality fallback so the feature always works
+// Powers Creative Studio — uses GPT-4 via Replit AI Integrations with smart fallback
 
 app.post('/api/ai-creative', async (req, res) => {
   try {
@@ -874,96 +879,144 @@ app.post('/api/ai-creative', async (req, res) => {
       platform = 'Google Ads', campName = 'Campaign', tone = 'Bold & Direct',
       persona = 'business owners', differentiator = 'AI-powered results',
       cta = 'Start Free Trial', topComp = 'competitors', industry = 'your industry',
-      domain = 'yourdomain.com'
+      domain = 'yourdomain.com', competitors = [], tags = []
     } = req.body;
 
-    const prompt = `You are an expert digital marketing copywriter. Generate high-converting ad copy for this campaign:
+    const compList = competitors.length > 0 ? competitors.join(', ') : topComp;
+    const tagList  = tags.length > 0 ? tags.join(', ') : '';
 
-Platform: ${platform}
-Campaign Name: ${campName}
-Industry: ${industry}
-Main Competitor: ${topComp}
-Tone of Voice: ${tone}
-Target Persona: ${persona}
-Key Differentiator: ${differentiator}
-Call-to-Action: ${cta}
-Domain: ${domain}
+    const systemPrompt = `You are a world-class performance marketing copywriter with 15 years experience creating ads that achieve 4-6× ROAS on Google, Meta, TikTok, LinkedIn, and YouTube. You deeply understand competitor positioning and write copy that directly exploits competitor weaknesses while highlighting the brand's unique advantages. Always respond with valid JSON only — no markdown, no explanation, just the JSON object.`;
 
-Return ONLY valid JSON (no markdown, no explanation) in this exact format:
+    const userPrompt = `Generate a complete multi-platform creative pack for this campaign:
+
+BRAND: ${domain}
+INDUSTRY: ${industry}
+CAMPAIGN: ${campName}
+PLATFORM FOCUS: ${platform}
+COMPETITORS TO BEAT: ${compList}
+AD TONE: ${tone}
+TARGET PERSONA: ${persona}
+KEY DIFFERENTIATOR: ${differentiator}
+CALL-TO-ACTION: ${cta}
+CAMPAIGN TAGS/THEMES: ${tagList}
+
+Return ONLY this JSON (no markdown fences, no extra text):
 {
-  "headlines": ["headline 1 (max 30 chars)", "headline 2 (max 30 chars)", "headline 3 (max 30 chars)"],
-  "descriptions": ["description 1 (max 90 chars)", "description 2 (max 90 chars)"],
-  "instagram": "Instagram caption with emoji and hashtags (3-5 sentences)",
-  "tiktok_script": "TikTok 15-second script with timestamps [0-3s] [3-8s] [8-13s] [13-15s]",
-  "reasoning": "1-sentence strategy rationale"
+  "headlines": [
+    "Google headline 1 (MAX 30 chars, high-intent keyword)",
+    "Google headline 2 (MAX 30 chars, benefit-led)",
+    "Google headline 3 (MAX 30 chars, competitor contrast)"
+  ],
+  "descriptions": [
+    "Google description 1 (MAX 90 chars, pain → solution)",
+    "Google description 2 (MAX 90 chars, social proof + CTA)"
+  ],
+  "instagram": "Full Instagram/Meta caption with opening hook, 3 benefit bullets with ✅, social proof stat, CTA, 6-8 relevant hashtags. 150-200 words.",
+  "tiktok_script": "15-second TikTok script:\\n[0-3s] HOOK: text\\n[3-8s] PROBLEM: text\\n[8-13s] SOLUTION: text\\n[13-15s] CTA: text",
+  "youtube_script": "25-second YouTube pre-roll:\\n[0-5s] HOOK: text\\n[5-12s] PROBLEM: text\\n[12-20s] SOLUTION: text\\n[20-25s] CTA: text",
+  "linkedin": "LinkedIn Sponsored Content post: professional tone, industry insight opening, 2-3 pain points for ${persona}, how ${domain} solves them, ${cta}. 100-130 words.",
+  "email_subjects": [
+    "Email subject line 1 — curiosity-led",
+    "Email subject line 2 — benefit-led",
+    "Email subject line 3 — urgency-led"
+  ],
+  "strategy_reasoning": "2-sentence explanation of why this creative angle beats ${topComp} for ${persona}",
+  "competitor_angle": "1 specific ad copy hook that directly calls out a known ${topComp} weakness"
 }`;
-
-    const key = process.env.RAPIDAPI_KEY;
 
     // Helper: clean and parse JSON from AI response
     function parseAIResponse(text) {
       if (!text || typeof text !== 'string') return null;
-      const match = text.match(/\{[\s\S]*\}/);
+      const clean = text.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+      const match = clean.match(/\{[\s\S]*\}/);
       if (!match) return null;
       try { return JSON.parse(match[0]); } catch { return null; }
     }
 
+    // ── Attempt 1: GPT-4 via Replit AI Integrations ────────────────────────
+    if (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) {
+      try {
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user',   content: userPrompt }
+          ],
+          temperature: 0.82,
+          max_tokens: 1400,
+          response_format: { type: 'json_object' }
+        });
+        const text = completion.choices?.[0]?.message?.content || '';
+        const parsed = parseAIResponse(text);
+        if (parsed && Array.isArray(parsed.headlines) && parsed.headlines.length >= 3) {
+          console.log('[ai-creative] GPT-4 success');
+          return res.json({ ...parsed, source: 'gpt4' });
+        }
+      } catch(e) { console.warn('[ai-creative] GPT-4 failed:', e.message); }
+    }
+
+    // ── Attempt 2: RapidAPI ChatGPT fallback ──────────────────────────────
+    const key = process.env.RAPIDAPI_KEY;
     if (key) {
-      // Attempt 1: ChatGPT via RapidAPI
       try {
         const r = await callRapidAPI('chatgpt-42.p.rapidapi.com', '/conversationgpt4-2', 'POST', {
-          messages: [{ role: 'user', content: prompt }],
-          system_prompt: 'You are a world-class digital marketing copywriter. Always respond with valid JSON only.',
-          temperature: 0.8, top_k: 5, top_p: 0.9, max_tokens: 800
+          messages: [{ role: 'user', content: userPrompt }],
+          system_prompt: systemPrompt,
+          temperature: 0.8, top_k: 5, top_p: 0.9, max_tokens: 1200
         });
         const text = r?.result || r?.response || r?.message || r?.content || '';
         const parsed = parseAIResponse(text);
         if (parsed && Array.isArray(parsed.headlines)) {
-          return res.json({ ...parsed, source: 'ai_live_gpt4' });
+          return res.json({ ...parsed, source: 'rapidapi_gpt' });
         }
-      } catch(e) { console.warn('chatgpt-42 ai-creative failed:', e.message); }
-
-      // Attempt 2: Gemini/Llama via open-ai21
-      try {
-        const r = await callRapidAPI('open-ai21.p.rapidapi.com', '/ask', 'POST', { query: prompt });
-        const text = r?.result || r?.response || r?.answer || '';
-        const parsed = parseAIResponse(text);
-        if (parsed && Array.isArray(parsed.headlines)) {
-          return res.json({ ...parsed, source: 'ai_live_llama' });
-        }
-      } catch(e) { console.warn('open-ai21 ai-creative failed:', e.message); }
+      } catch(e) { console.warn('[ai-creative] RapidAPI failed:', e.message); }
     }
 
-    // Smart fallback — always returns professional, contextual copy
+    // ── Smart fallback — always returns professional contextual copy ───────
     const toneWord = tone.includes('Bold') ? 'bold' : tone.includes('Friendly') ? 'friendly'
       : tone.includes('Urgent') ? 'urgent' : tone.includes('Witty') ? 'witty' : 'professional';
-    const ctaShort = cta.replace('Start ', '').replace('Get ', '').replace(' Today', '');
+    const ctaShort = cta.replace('Start ', '').replace('Get ', '').replace(' Today', '').replace(' Free', '');
+    const ind = industry.replace(/\s+/g,'');
 
     const hSets = [
-      [`Beat ${topComp} — ${ctaShort}`, `${differentiator.substring(0,25)} Guaranteed`, `${platform} Results That Scale`],
+      [`Beat ${topComp} — ${ctaShort}`, `${differentiator.substring(0,25)} Proven`, `${platform} Results That Scale`],
       [`${ctaShort} — Stop Paying More`, `The ${industry} Platform That Wins`, `Outperform ${topComp} in 30 Days`],
-      [`${differentiator.substring(0,22)} — ${ctaShort}`, `${industry}: Smarter Strategy`, `Your Competitors Fear This`]
+      [`${differentiator.substring(0,22)} Now`, `${industry}: Smarter Strategy`, `Competitors Fear This Method`]
     ];
     const dSets = [
-      [`Designed for ${persona}: achieve more on ${platform} with less spend.`, `${differentiator} — start today and outperform ${topComp}.`],
-      [`Join businesses beating ${topComp} on ${platform} every day.`, `${cta} and see why ${industry} leaders choose us over ${topComp}.`]
+      [`Built for ${persona} — get more from ${platform} while spending less than ${topComp}.`, `${differentiator}. ${cta} and see why ${industry} leaders switch from ${topComp}.`],
+      [`Stop losing budget to ${topComp}. ${differentiator} — zero risk, full results.`, `Join 10,000+ ${industry} businesses that chose us over ${topComp}. ${cta}.`]
     ];
     const pick = Math.floor(Math.random() * hSets.length);
 
     res.json({
-      source: 'ai_smart_fallback',
+      source: 'smart_fallback',
       headlines: hSets[pick],
       descriptions: dSets[pick % dSets.length],
-      instagram: `🚀 Tired of losing to ${topComp}?\n\n${differentiator} — built for ${persona}.\n\n✅ ${cta} → link in bio!\n\n#${industry.replace(/\s+/g,'')} #${platform.replace(/\s+/g,'')}Ads #DigitalMarketing #ROAS2024`,
-      tiktok_script: `[0-3s] HOOK: "Why is ${topComp} scared of this ${industry} strategy?"\n[3-8s] PROBLEM: Show wasted ad spend and missed ROI.\n[8-13s] SOLUTION: "${differentiator}" — your unfair advantage.\n[13-15s] CTA: "${cta} at ${domain} — link in bio."`,
-      reasoning: `${toneWord.charAt(0).toUpperCase() + toneWord.slice(1)} creative targeting ${persona} on ${platform}, leading with "${differentiator}" to directly counter ${topComp}.`
+      instagram: `🚀 Tired of watching ${topComp} win?\n\n${differentiator} — built specifically for ${persona}.\n\n✅ ${projectedStat(industry)} ROAS achieved\n✅ ${cta} — no credit card needed\n✅ Beat ${topComp} in your first 30 days\n\n💡 The ${industry} brands growing fastest right now aren't spending more — they're spending smarter.\n\n👉 Link in bio to start free today.\n\n#${ind} #DigitalMarketing #ROAS #MarketingStrategy #${platform.replace(/\s+/g,'')}Ads #GrowthHacking #MarketingROI #Ecommerce`,
+      tiktok_script: `[0-3s] HOOK: "Why is ${topComp} scared of this ${industry} strategy?"\n[3-8s] PROBLEM: Every day you run ads without this, you lose money to ${topComp}.\n[8-13s] SOLUTION: "${differentiator}" — your unfair advantage on ${platform}.\n[13-15s] CTA: "${cta} at ${domain} — link in bio."`,
+      youtube_script: `[0-5s] HOOK: "What if your ${platform} budget worked 3× harder — automatically?"\n[5-12s] PROBLEM: Animated chart showing ${topComp} overspend vs flat results for most ${industry} brands.\n[12-20s] SOLUTION: ${domain}: ${differentiator}. ROAS graph climbing.\n[20-25s] CTA: "${cta} at ${domain}. Free 14-day trial."`,
+      linkedin: `Most ${industry} teams are losing pipeline to ${topComp} — not because their product is worse, but because their ad strategy is.\n\n${differentiator} changes that.\n\nFor ${persona}, this means:\n→ Lower CPA on every channel\n→ Campaigns that adapt to competitor moves in real time\n→ ${cta} with measurable results in week one\n\nIf you're running ${platform} campaigns right now, let's talk. ${cta} at ${domain}.`,
+      email_subjects: [
+        `Why ${topComp} is beating you on ${platform} (and how to flip it)`,
+        `${differentiator} — ${persona} are switching`,
+        `⏰ Last chance: ${cta} before your competitors do`
+      ],
+      strategy_reasoning: `${toneWord.charAt(0).toUpperCase() + toneWord.slice(1)} creative targeting ${persona} on ${platform}, leading with "${differentiator}" to directly counter ${topComp}. Positioning as the smarter, more ROI-efficient alternative drives high-intent clicks from audiences already evaluating competitors.`,
+      competitor_angle: `"Still using ${topComp}? See why 10,000+ ${industry} brands switched — and never looked back."`
     });
 
   } catch(err) {
-    console.error('/api/ai-creative error:', err.message);
+    console.error('[ai-creative] error:', err.message);
     res.status(500).json({ error: err.message, source: 'error' });
   }
 });
+
+function projectedStat(industry) {
+  const stats = { 'Fintech': '4.6×', 'E-commerce': '5.2×', 'SaaS': '3.8×', 'Finance': '4.1×', 'Health': '3.9×' };
+  for (const [k, v] of Object.entries(stats)) { if (industry.toLowerCase().includes(k.toLowerCase())) return v; }
+  return '4.2×';
+}
 
 // ── GET /api/status ───────────────────────────────────────────────────────────
 

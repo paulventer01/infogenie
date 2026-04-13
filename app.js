@@ -360,123 +360,155 @@ function buildCreativeModal(camp, idx) {
   const domain   = (analysisData && analysisData.url) ? analysisData.url : 'yourdomain.com';
   const indName  = (analysisData && analysisData.industry) ? analysisData.industry.name : 'your industry';
   const topComp  = (analysisData && analysisData.competitors && analysisData.competitors[0]) ? analysisData.competitors[0].name : 'your competitor';
+  const allComps = (analysisData && analysisData.competitors) ? analysisData.competitors.map(c=>c.name) : [topComp];
   const projROAS = camp.estROAS ? camp.estROAS + '×' : '3.8×';
   const estCTR   = camp.estCTR || '4.2%';
   const estCPA   = camp.estCPA || '$38';
+  const campTags = camp.tags || [];
+  const campDesc = camp.description || '';
 
-  const headlineMap = {
-    'Google Ads':      ['Stop Overpaying — Switch & Save 30%', 'Faster Results. Lower Costs. Proven ROI.', 'The Smarter Alternative to ' + topComp],
-    'Google Search':   ['Beat the Competition Starting Today', '#1 Rated Alternative — See Why', 'Get More for Less — Free 14-Day Trial'],
-    'Meta Ads':        ['Join 10,000+ Businesses Seeing 4× ROAS', 'Your Competitors Are Scaling With This', 'Finally — Ads That Actually Convert'],
-    'TikTok Ads':      ['POV: Your ROAS just hit 4×', topComp + ' doesn\'t want you to know this', 'Real results. Real brands. Real ROI.'],
-    'YouTube':         ['Stop Wasting Ad Spend', 'Top Brands Hit 5× ROAS This Year', 'The Ad Strategy ' + topComp + ' Fears'],
-    'AI Optimised':    ['AI-Optimised. Always On. Always Winning.', 'Every £1 Working Harder With AI', 'Your Campaign Never Sleeps'],
-    'LinkedIn Ads':    ['Reach 500+ Decision-Makers This Week', 'The B2B Strategy CFOs Are Approving', 'Enterprise ROI — Without Enterprise Costs'],
-    'Display Network': ['Your Brand Everywhere Customers Are', 'Outperform ' + topComp + ' On Every Screen', 'Display + Intent = Unstoppable Growth']
+  // Seed content (shown instantly, replaced by GPT within seconds)
+  const seedHeadlines = {
+    'Google Ads':      ['Beat ' + topComp + ' — Start Free', 'AI Marketing Intelligence', 'The Smarter Alternative'],
+    'Meta Ads':        ['4× ROAS — Starting Today', 'Your Rivals Are Doing This', 'Ads That Actually Convert'],
+    'TikTok Ads':      ['ROAS just hit 4×', topComp + ' hates this', 'Real results. Real ROI.'],
+    'LinkedIn Ads':    ['500+ Decision-Makers/Week', 'B2B Growth CFOs Approve', 'Enterprise ROI — Less Cost'],
+    'YouTube':         ['Stop Wasting Ad Budget', '5× ROAS This Year', 'Strategy ' + topComp + ' Fears'],
+    'AI Optimised':    ['AI-Optimised. Always Winning.', '£1 Working Harder With AI', 'Campaigns That Never Sleep'],
+    'Display Network': ['Your Brand Everywhere', 'Beat ' + topComp + ' On Every Screen', 'Display + Intent = Growth']
   };
-  const descMap = {
-    'Google Ads':      ['Cut wasteful ad spend and redirect it to campaigns that convert. Beat ' + topComp + ' on the keywords that matter most.', 'See exactly where ' + topComp + ' is winning — then outbid them at the right moment with AI-powered precision.'],
-    'Meta Ads':        ['Reach the audiences ' + topComp + ' is missing. InfoGenie builds lookalike segments from your best customers automatically.', 'Dynamic creative that tests and learns — your best-performing ad is always running.'],
-    'TikTok Ads':      [indName + ' on TikTok is untapped. Get in front of your audience before ' + topComp + ' realises what they\'re missing.', 'Short-form video that converts — UGC-style ads at a fraction of Google/Meta CPM.'],
-    'YouTube':         ['Show your brand story to in-market buyers searching for alternatives to ' + topComp + '. High-intent, low-cost impressions.', 'Video builds trust fast — and trust converts. Reach decision-makers before they click a competitor ad.'],
-    'AI Optimised':    ['InfoGenie\'s RL engine manages your entire ad portfolio — pausing losers, scaling winners, every 6 hours.', 'Set your ROAS target, connect your accounts, and let AI run. Average clients see +31% ROAS improvement in 30 days.'],
-    'LinkedIn Ads':    ['Connect with VP-level decision-makers in ' + indName + ' who are actively evaluating solutions like yours.', 'Sponsored InMail + Content campaigns that nurture prospects from awareness to signed contract.'],
-    'Display Network': ['Your brand on 2M+ premium websites — following your best prospects everywhere they browse online.', 'Retarget ' + topComp + ' visitors and convert them before they go back.']
+  const seedDescs = {
+    'Google Ads':      ['Cut wasteful spend and beat ' + topComp + ' on the keywords that matter most.', 'See exactly where ' + topComp + ' wins — then outbid them with AI precision.'],
+    'Meta Ads':        ['Reach audiences ' + topComp + ' is missing. AI-built lookalike segments from your best customers.', 'Dynamic creative that tests and learns — your best-performing ad always runs.'],
+    'TikTok Ads':      [indName + ' on TikTok is untapped. Beat ' + topComp + ' before they realise what they\'re missing.', 'Short-form video that converts — at a fraction of Google/Meta CPM.'],
+    'LinkedIn Ads':    ['Connect with VP-level decision-makers in ' + indName + ' who are evaluating solutions like yours.', 'Sponsored content that nurtures prospects from awareness to signed contract.'],
+    'YouTube':         ['Show your brand story to in-market buyers searching for alternatives to ' + topComp + '.', 'Video builds trust fast. Reach decision-makers before they click a competitor ad.'],
+    'AI Optimised':    ['AI manages your entire ad portfolio — pausing losers, scaling winners, every 6 hours.', 'Set your ROAS target, connect accounts, let AI run. Average: +31% ROAS in 30 days.'],
+    'Display Network': ['Your brand on 2M+ premium sites — following your best prospects everywhere they browse.', 'Retarget ' + topComp + ' visitors and convert them before they go back.']
   };
-  const headlines = headlineMap[platform] || headlineMap['Google Ads'];
-  const descs     = descMap[platform]     || descMap['Google Ads'];
+  const hSeed = seedHeadlines[platform] || seedHeadlines['Google Ads'];
+  const dSeed = seedDescs[platform]     || seedDescs['Google Ads'];
 
-  const googleCopy = `HEADLINE 1: ${headlines[0]}\nHEADLINE 2: ${headlines[1]}\nHEADLINE 3: ${headlines[2]}\nDESCRIPTION 1: ${descs[0]}\nDESCRIPTION 2: ${descs[1]}\nDISPLAY URL: ${domain}\nSITELINKS: Free Trial | See Pricing | Case Studies | Book Demo`;
+  const loadingSpin = `<span style="display:inline-block;width:14px;height:14px;border:2px solid rgba(99,102,241,.3);border-top-color:#6366F1;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px"></span>`;
 
-  const instagramCopy = `CAPTION:\n🚀 ${headlines[0]}\n\n${descs[0]}\n\n✅ ${projROAS} projected ROAS\n✅ Est. CTR: ${estCTR}\n✅ Est. CPA: ${estCPA}\n\n👉 Link in bio to get started free.\n\n#${indName.replace(/\s+/g,'')} #DigitalMarketing #ROAS #MarketingStrategy`;
+  const emailBrief = `Campaign: ${name}\nPlatform: ${platform}\nBudget: ${budget}\nProjected ROAS: ${projROAS} | CTR: ${estCTR} | CPA: ${estCPA}\n\nHEADLINES (GPT-4 generating...)\n\nDESCRIPTIONS (GPT-4 generating...)\n\nGenerated by InfoGenie Creative Studio · ${new Date().toLocaleDateString()}`;
 
-  const tiktokScript = `[0–3s] HOOK: "Tired of watching your ${indName} ad budget disappear?"\n[3–8s] PROBLEM: Show competitor ad waste. Text: "${topComp} charges more, delivers less."\n[8–13s] SOLUTION: ROAS graph climbing. Voice-over: "There's a smarter way."\n[13–15s] CTA: "${domain} — Start free today."`;
-
-  const videoScript  = `[0–3s]   HOOK: "What if your ad budget worked twice as hard — automatically?"\n[3–8s]   PROBLEM: Animated chart showing competitor overspend vs flat results.\n[8–13s]  SOLUTION: Your brand logo. ROAS graph climbing. "InfoGenie outmanoeuvres ${topComp} 24/7."\n[13–20s] SOCIAL PROOF: "10,000+ brands. ${projROAS} ROAS. Zero guesswork."\n[20–25s] CTA: Visit ${domain}. Free 14-day trial.`;
-
-  const emailBrief   = `Campaign: ${name}\nPlatform: ${platform}\nBudget: ${budget}\nProjected ROAS: ${projROAS} | CTR: ${estCTR} | CPA: ${estCPA}\n\nHEADLINES\nH1: ${headlines[0]}\nH2: ${headlines[1]}\nH3: ${headlines[2]}\n\nDESCRIPTIONS\nD1: ${descs[0]}\nD2: ${descs[1]}\n\nGenerated by InfoGenie · ${new Date().toLocaleDateString()}`;
-
-  // Store for download
-  window._creativeStudio = { campName: name, platform, budget, domain, indName, topComp, googleCopy, instagramCopy, tiktokScript, videoScript, emailBrief };
+  window._creativeStudio = { campName: name, platform, budget, domain, indName, topComp };
 
   inner.innerHTML = `
+    <style>@keyframes spin{to{transform:rotate(360deg)}} @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}</style>
     <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:22px 26px 0;border-radius:20px 20px 0 0">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:4px">🎨 Creative Studio</div>
+          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:4px">🎨 AI Creative Studio</div>
           <div style="font-size:0.78rem;color:rgba(255,255,255,.55)">${name} · ${platform} · ${budget}</div>
         </div>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="cs-ai-badge" style="background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.4);border-radius:6px;padding:4px 10px;font-size:0.68rem;font-weight:700;color:#A5B4FC">${loadingSpin}GPT-4 Writing...</span>
           <button id="cs-dl-btn" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 12px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer">⬇ Download</button>
-          <button id="cs-launch-btn" style="background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:8px;padding:7px 14px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer">🚀 Launch Campaign</button>
+          <button id="cs-launch-btn" style="background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:8px;padding:7px 14px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer">🚀 Launch</button>
         </div>
       </div>
       <div style="display:flex;border-bottom:1px solid rgba(255,255,255,.12)">
-        ${[['ad','🗂 Ad Creatives'],['social','💬 Social & Video'],['email','📧 Email Brief'],['settings','⚙️ Redesign']].map(([id,label],i)=>`
-          <button class="cs-tab-btn" data-tab="${id}" style="background:${i===0?'rgba(255,255,255,.1)':'transparent'};border:none;border-bottom:${i===0?'2px solid #00E5FF':'2px solid transparent'};padding:10px 14px;font-size:0.78rem;font-weight:700;color:${i===0?'white':'rgba(255,255,255,.5)'};cursor:pointer;transition:all .2s">${label}</button>
+        ${[['ad','🗂 Ad Copy'],['social','💬 Social & Video'],['linkedin','💼 LinkedIn'],['email','📧 Brief'],['settings','⚙️ Redesign']].map(([id,label],i)=>`
+          <button class="cs-tab-btn" data-tab="${id}" style="background:${i===0?'rgba(255,255,255,.1)':'transparent'};border:none;border-bottom:${i===0?'2px solid #00E5FF':'2px solid transparent'};padding:10px 14px;font-size:0.75rem;font-weight:700;color:${i===0?'white':'rgba(255,255,255,.5)'};cursor:pointer;transition:all .2s">${label}</button>
         `).join('')}
       </div>
     </div>
 
     <div style="padding:20px 26px;display:flex;flex-direction:column;gap:14px;max-height:60vh;overflow-y:auto">
 
-      <!-- AD CREATIVES TAB -->
+      <!-- AD COPY TAB -->
       <div class="cs-panel" id="csp-ad">
-        <div style="font-size:0.7rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">🔵 Google / Search Ad — Edit headlines &amp; descriptions below</div>
-        ${headlines.map((h,i)=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:0.7rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.06em">🔵 Google / Search Ad — GPT-4 Generated</div>
+          <span id="cs-ad-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}Generating...</span>
+        </div>
+        ${hSeed.map((h,i)=>`
           <div style="display:flex;align-items:center;gap:8px;background:#EFF6FF;border-radius:8px;padding:8px 10px;margin-bottom:6px">
             <span style="font-size:0.7rem;font-weight:700;color:#1D4ED8;background:#DBEAFE;border-radius:4px;padding:2px 6px;flex-shrink:0">H${i+1}</span>
             <input class="cs-headline" value="${h.replace(/"/g,'&quot;')}" style="flex:1;border:none;background:transparent;font-size:0.82rem;color:#0A1628;font-weight:600;outline:none;font-family:'Inter',sans-serif">
           </div>`).join('')}
-        ${descs.map((d,i)=>`
+        ${dSeed.map((d,i)=>`
           <div style="background:#F0FDF4;border-radius:8px;padding:8px 10px;margin-bottom:6px">
             <span style="font-size:0.7rem;font-weight:700;color:#059669;background:#DCFCE7;border-radius:4px;padding:2px 6px;margin-right:8px">D${i+1}</span>
-            <input class="cs-desc" value="${d.replace(/"/g,'&quot;')}" style="width:calc(100% - 40px);border:none;background:transparent;font-size:0.8rem;color:#374151;outline:none;font-family:'Inter',sans-serif">
+            <input class="cs-desc" value="${d.replace(/"/g,'&quot;')}" style="width:calc(100% - 44px);border:none;background:transparent;font-size:0.8rem;color:#374151;outline:none;font-family:'Inter',sans-serif">
           </div>`).join('')}
-        <div style="background:#F9FAFB;border:1px solid #E2E8F0;border-radius:10px;padding:14px;margin-top:10px">
+        <div id="cs-ad-preview" style="background:#F9FAFB;border:1px solid #E2E8F0;border-radius:10px;padding:14px;margin-top:10px">
           <div style="font-size:0.68rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Ad Preview</div>
           <div style="font-size:0.65rem;color:#188038;">Ad · ${domain}</div>
-          <div style="font-size:0.88rem;color:#1a0dab;font-weight:600;line-height:1.3;margin:4px 0">${headlines[0]} | ${headlines[1]}</div>
-          <div style="font-size:0.76rem;color:#4d5156;line-height:1.4">${descs[0].substring(0,120)}</div>
+          <div style="font-size:0.88rem;color:#1a0dab;font-weight:600;line-height:1.3;margin:4px 0" id="cs-preview-h">${hSeed[0]} | ${hSeed[1]}</div>
+          <div style="font-size:0.76rem;color:#4d5156;line-height:1.4" id="cs-preview-d">${dSeed[0].substring(0,120)}</div>
+        </div>
+        <div id="cs-competitor-angle" style="display:none;background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:12px;margin-top:8px">
+          <div style="font-size:0.68rem;font-weight:700;color:#C2410C;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">⚡ Competitor Attack Hook — GPT-4</div>
+          <div id="cs-competitor-text" style="font-size:0.82rem;color:#7C2D12;font-style:italic;line-height:1.5"></div>
         </div>
         <div style="margin-top:10px;display:flex;gap:8px">
           <button id="cs-copy-ad" style="flex:1;padding:9px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;font-size:0.78rem;font-weight:700;color:#1D4ED8;cursor:pointer">📋 Copy Ad Copy</button>
-          <button id="cs-regen-btn" style="flex:1;padding:9px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">✨ Regenerate with AI</button>
+          <button id="cs-regen-btn" style="flex:1;padding:9px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">✨ Regenerate</button>
         </div>
       </div>
 
       <!-- SOCIAL & VIDEO TAB -->
       <div class="cs-panel" id="csp-social" style="display:none">
         <div style="margin-bottom:12px">
-          <div style="font-size:0.7rem;font-weight:700;color:#E1306C;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">📱 Instagram / Meta Caption</div>
-          <textarea id="cs-instagram" rows="6" style="width:100%;box-sizing:border-box;background:#FFF5F7;border:1px solid #FECDD3;border-radius:8px;padding:10px;font-size:0.8rem;color:#1E293B;font-family:'Inter',sans-serif;resize:vertical;outline:none">${instagramCopy}</textarea>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div style="font-size:0.7rem;font-weight:700;color:#E1306C;text-transform:uppercase;letter-spacing:.06em">📱 Instagram / Meta Caption</div>
+            <span id="cs-ig-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}GPT-4...</span>
+          </div>
+          <textarea id="cs-instagram" rows="7" style="width:100%;box-sizing:border-box;background:#FFF5F7;border:1px solid #FECDD3;border-radius:8px;padding:10px;font-size:0.8rem;color:#1E293B;font-family:'Inter',sans-serif;resize:vertical;outline:none">✨ GPT-4 is writing your Instagram caption...</textarea>
           <button id="cs-copy-instagram" style="margin-top:6px;padding:7px 16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">📋 Copy Caption</button>
         </div>
         <div style="margin-bottom:12px">
-          <div style="font-size:0.7rem;font-weight:700;color:#010101;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">⬛ TikTok Ad Script — 15 sec</div>
-          <textarea id="cs-tiktok" rows="5" style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:10px;font-size:0.8rem;color:#1E293B;font-family:'Courier New',monospace;resize:vertical;outline:none">${tiktokScript}</textarea>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div style="font-size:0.7rem;font-weight:700;color:#010101;text-transform:uppercase;letter-spacing:.06em">⬛ TikTok Script — 15 sec</div>
+            <span id="cs-tt-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}GPT-4...</span>
+          </div>
+          <textarea id="cs-tiktok" rows="5" style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:10px;font-size:0.8rem;color:#1E293B;font-family:'Courier New',monospace;resize:vertical;outline:none">✨ GPT-4 is writing your TikTok script...</textarea>
           <button id="cs-copy-tiktok" style="margin-top:6px;padding:7px 16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">📋 Copy Script</button>
         </div>
         <div>
-          <div style="font-size:0.7rem;font-weight:700;color:#FF0000;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🎬 YouTube / Video Ad Script</div>
-          <textarea id="cs-video" rows="6" style="width:100%;box-sizing:border-box;background:#FFF5F5;border:1px solid #FECACA;border-radius:8px;padding:10px;font-size:0.8rem;color:#1E293B;font-family:'Courier New',monospace;resize:vertical;outline:none">${videoScript}</textarea>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div style="font-size:0.7rem;font-weight:700;color:#FF0000;text-transform:uppercase;letter-spacing:.06em">🎬 YouTube Pre-Roll — 25 sec</div>
+            <span id="cs-yt-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}GPT-4...</span>
+          </div>
+          <textarea id="cs-video" rows="6" style="width:100%;box-sizing:border-box;background:#FFF5F5;border:1px solid #FECACA;border-radius:8px;padding:10px;font-size:0.8rem;color:#1E293B;font-family:'Courier New',monospace;resize:vertical;outline:none">✨ GPT-4 is writing your YouTube script...</textarea>
           <button id="cs-copy-video" style="margin-top:6px;padding:7px 16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">📋 Copy Script</button>
+        </div>
+      </div>
+
+      <!-- LINKEDIN TAB -->
+      <div class="cs-panel" id="csp-linkedin" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-size:0.7rem;font-weight:700;color:#0A66C2;text-transform:uppercase;letter-spacing:.06em">💼 LinkedIn Sponsored Content</div>
+          <span id="cs-li-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}GPT-4...</span>
+        </div>
+        <textarea id="cs-linkedin" rows="9" style="width:100%;box-sizing:border-box;background:#F0F7FF;border:1px solid #BAE0FF;border-radius:8px;padding:12px;font-size:0.82rem;color:#1E293B;font-family:'Inter',sans-serif;resize:vertical;outline:none">✨ GPT-4 is writing your LinkedIn copy...</textarea>
+        <button id="cs-copy-linkedin" style="margin-top:6px;padding:7px 16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">📋 Copy LinkedIn Post</button>
+        <div id="cs-strategy-box" style="display:none;margin-top:14px;background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border:1px solid #BBF7D0;border-radius:10px;padding:14px">
+          <div style="font-size:0.68rem;font-weight:700;color:#065F46;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🧠 GPT-4 Strategy Reasoning</div>
+          <div id="cs-strategy-text" style="font-size:0.82rem;color:#064E3B;line-height:1.6"></div>
         </div>
       </div>
 
       <!-- EMAIL BRIEF TAB -->
       <div class="cs-panel" id="csp-email" style="display:none">
-        <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📧 Campaign Email Brief — edit and send to your team</div>
-        <textarea id="cs-email" rows="14" style="width:100%;box-sizing:border-box;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px;font-size:0.8rem;color:#1E293B;font-family:'Courier New',monospace;resize:vertical;outline:none">${emailBrief}</textarea>
+        <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">📧 Email Subject Lines — GPT-4 Generated</div>
+        <div id="cs-email-subjects" style="margin-bottom:14px;display:flex;flex-direction:column;gap:8px">
+          <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;font-size:0.82rem;color:#6B7280;font-style:italic">${loadingSpin} GPT-4 writing subject lines...</div>
+        </div>
+        <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📋 Full Campaign Brief</div>
+        <textarea id="cs-email" rows="12" style="width:100%;box-sizing:border-box;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px;font-size:0.8rem;color:#1E293B;font-family:'Courier New',monospace;resize:vertical;outline:none">${emailBrief}</textarea>
         <div style="display:flex;gap:8px;margin-top:8px">
           <button id="cs-copy-email" style="flex:1;padding:9px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;font-size:0.78rem;font-weight:700;color:#1D4ED8;cursor:pointer">📋 Copy Brief</button>
-          <button id="cs-send-email" style="flex:1;padding:9px;background:linear-gradient(135deg,#0066FF,#0044CC);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">📤 Open in Email Client</button>
+          <button id="cs-send-email" style="flex:1;padding:9px;background:linear-gradient(135deg,#0066FF,#0044CC);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">📤 Open in Email</button>
         </div>
       </div>
 
       <!-- REDESIGN TAB -->
       <div class="cs-panel" id="csp-settings" style="display:none">
-        <div style="font-size:0.7rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">✨ AI Creative Redesign</div>
+        <div style="font-size:0.7rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">✨ Custom GPT-4 Redesign</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           <div>
             <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Tone of Voice</label>
@@ -490,11 +522,11 @@ function buildCreativeModal(camp, idx) {
           </div>
           <div>
             <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Target Persona</label>
-            <input id="cs-persona" placeholder="e.g. CFO at mid-size SaaS, 35-50yo, values ROI and efficiency" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
+            <input id="cs-persona" placeholder="e.g. CFO at mid-size SaaS, 35-50yo, values ROI" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
           </div>
           <div>
-            <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Key Differentiator to Highlight</label>
-            <input id="cs-diff" placeholder="e.g. 3x cheaper than competitors, fastest setup, AI-powered" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
+            <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Key Differentiator</label>
+            <input id="cs-diff" placeholder="e.g. 3× cheaper, fastest setup, AI-powered" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
           </div>
           <div>
             <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Call-to-Action</label>
@@ -507,7 +539,7 @@ function buildCreativeModal(camp, idx) {
               <option>Claim Your Offer</option>
             </select>
           </div>
-          <button id="cs-regen-full" style="width:100%;padding:12px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer">✨ Generate New Creative Variants</button>
+          <button id="cs-regen-full" style="width:100%;padding:12px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer">✨ Generate New Variants with GPT-4</button>
         </div>
         <div id="cs-regen-output" style="margin-top:12px;display:none"></div>
       </div>
@@ -520,19 +552,168 @@ function buildCreativeModal(camp, idx) {
     </div>
   `;
 
-  // Wire all internal buttons via addEventListener (no onclick string injection)
+  // ── Helper: apply GPT-4 response to all panels ────────────────────────────
+  function applyAICreative(data) {
+    const src = data.source === 'gpt4' ? 'GPT-4' : data.source === 'rapidapi_gpt' ? 'GPT-4' : 'AI Engine';
+
+    // Ad Copy tab
+    if (data.headlines && Array.isArray(data.headlines)) {
+      document.querySelectorAll('.cs-headline').forEach((inp, i) => {
+        if (data.headlines[i]) { inp.value = data.headlines[i]; inp.style.animation = 'fadeIn .4s'; }
+      });
+    }
+    if (data.descriptions && Array.isArray(data.descriptions)) {
+      document.querySelectorAll('.cs-desc').forEach((inp, i) => {
+        if (data.descriptions[i]) { inp.value = data.descriptions[i]; inp.style.animation = 'fadeIn .4s'; }
+      });
+    }
+    // Update live preview
+    const h0 = data.headlines?.[0] || hSeed[0];
+    const h1 = data.headlines?.[1] || hSeed[1];
+    const d0 = data.descriptions?.[0] || dSeed[0];
+    const prevH = document.getElementById('cs-preview-h');
+    const prevD = document.getElementById('cs-preview-d');
+    if (prevH) prevH.textContent = h0 + ' | ' + h1;
+    if (prevD) prevD.textContent = d0.substring(0, 120);
+    // Loading indicators off
+    const adLoad = document.getElementById('cs-ad-loading');
+    if (adLoad) adLoad.style.display = 'none';
+
+    // Competitor hook
+    if (data.competitor_angle) {
+      const box = document.getElementById('cs-competitor-angle');
+      const txt = document.getElementById('cs-competitor-text');
+      if (box) box.style.display = 'block';
+      if (txt) txt.textContent = '"' + data.competitor_angle + '"';
+    }
+
+    // Social & Video tab
+    const igEl = document.getElementById('cs-instagram');
+    if (igEl && data.instagram) { igEl.value = data.instagram; }
+    const igLoad = document.getElementById('cs-ig-loading');
+    if (igLoad) igLoad.style.display = 'none';
+
+    const ttEl = document.getElementById('cs-tiktok');
+    if (ttEl && data.tiktok_script) { ttEl.value = data.tiktok_script; }
+    const ttLoad = document.getElementById('cs-tt-loading');
+    if (ttLoad) ttLoad.style.display = 'none';
+
+    const ytEl = document.getElementById('cs-video');
+    if (ytEl && data.youtube_script) { ytEl.value = data.youtube_script; }
+    const ytLoad = document.getElementById('cs-yt-loading');
+    if (ytLoad) ytLoad.style.display = 'none';
+
+    // LinkedIn tab
+    const liEl = document.getElementById('cs-linkedin');
+    if (liEl && data.linkedin) { liEl.value = data.linkedin; }
+    const liLoad = document.getElementById('cs-li-loading');
+    if (liLoad) liLoad.style.display = 'none';
+
+    // Strategy reasoning
+    if (data.strategy_reasoning) {
+      const stBox = document.getElementById('cs-strategy-box');
+      const stTxt = document.getElementById('cs-strategy-text');
+      if (stBox) stBox.style.display = 'block';
+      if (stTxt) stTxt.textContent = data.strategy_reasoning;
+    }
+
+    // Email tab — subject lines
+    if (data.email_subjects && Array.isArray(data.email_subjects)) {
+      const subjectEl = document.getElementById('cs-email-subjects');
+      if (subjectEl) {
+        subjectEl.innerHTML = data.email_subjects.map((s, i) => `
+          <div style="display:flex;align-items:center;gap:8px;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;padding:10px 12px">
+            <span style="font-size:0.68rem;font-weight:700;color:#0369A1;background:#E0F2FE;border-radius:4px;padding:2px 6px;flex-shrink:0">SL${i+1}</span>
+            <span style="flex:1;font-size:0.82rem;color:#0A1628;font-weight:500">${s}</span>
+            <button onclick="navigator.clipboard.writeText('${s.replace(/'/g,"\\'")}').then(()=>window.showToast && showToast('✅ Subject copied!'))" style="background:none;border:none;font-size:0.75rem;cursor:pointer;color:#0369A1;padding:2px 6px">📋</button>
+          </div>`).join('');
+      }
+    }
+    // Update the email brief textarea
+    const emailEl = document.getElementById('cs-email');
+    if (emailEl) {
+      const hs = data.headlines || [];
+      const ds = data.descriptions || [];
+      emailEl.value = `Campaign: ${name}\nPlatform: ${platform}\nBudget: ${budget}\nProjected ROAS: ${projROAS} | CTR: ${estCTR} | CPA: ${estCPA}\nGenerated by: ${src}\n\nGOOGLE AD HEADLINES\nH1: ${hs[0]||''}\nH2: ${hs[1]||''}\nH3: ${hs[2]||''}\n\nGOOGLE DESCRIPTIONS\nD1: ${ds[0]||''}\nD2: ${ds[1]||''}\n\nEMAIL SUBJECT LINES\n${(data.email_subjects||[]).join('\n')}\n\nSTRATEGY\n${data.strategy_reasoning||''}\n\nGenerated by InfoGenie AI Creative Studio · ${new Date().toLocaleDateString()}`;
+    }
+
+    // Badge
+    const badge = document.getElementById('cs-ai-badge');
+    if (badge) {
+      badge.style.background = 'rgba(16,185,129,.15)';
+      badge.style.borderColor = 'rgba(16,185,129,.4)';
+      badge.style.color = '#6EE7B7';
+      badge.innerHTML = '✨ ' + src + ' — Live Creative';
+    }
+
+    // Store for download
+    window._creativeStudio = {
+      campName: name, platform, budget, domain, indName, topComp,
+      googleCopy: `H1: ${(data.headlines||[])[0]}\nH2: ${(data.headlines||[])[1]}\nH3: ${(data.headlines||[])[2]}\nD1: ${(data.descriptions||[])[0]}\nD2: ${(data.descriptions||[])[1]}`,
+      instagramCopy: data.instagram || '',
+      tiktokScript: data.tiktok_script || '',
+      videoScript: data.youtube_script || '',
+      linkedin: data.linkedin || '',
+      emailSubjects: (data.email_subjects||[]).join('\n'),
+      strategy: data.strategy_reasoning || ''
+    };
+  }
+
+  // ── Auto-generate on open ──────────────────────────────────────────────────
+  (async () => {
+    try {
+      const res = await fetch('/api/ai-creative', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform, campName: name, tone: 'Bold & Direct',
+          persona: 'growth-focused marketing and business decision-makers',
+          differentiator: campDesc.split('.')[0] || 'AI-powered competitor intelligence',
+          cta: 'Start Free Trial', topComp,
+          competitors: allComps.slice(0, 4),
+          tags: campTags,
+          industry: indName, domain
+        })
+      });
+      const data = await res.json();
+      if (data.headlines) applyAICreative(data);
+    } catch(e) {
+      console.warn('Auto-generate failed:', e.message);
+      const badge = document.getElementById('cs-ai-badge');
+      if (badge) { badge.innerHTML = '⚠️ Using template copy'; badge.style.color = '#F59E0B'; }
+    }
+  })();
+
+  // ── Close & launch buttons ────────────────────────────────────────────────
   const closeModal = () => { modal.classList.add('hidden'); modal.style.display = 'none'; };
   document.getElementById('cs-close-btn').addEventListener('click', closeModal);
   document.getElementById('cs-launch-btn').addEventListener('click', () => { closeModal(); buildLaunchModal(camp, idx); });
   document.getElementById('cs-launch-footer-btn').addEventListener('click', () => { closeModal(); buildLaunchModal(camp, idx); });
+
+  // ── Download ───────────────────────────────────────────────────────────────
   document.getElementById('cs-dl-btn').addEventListener('click', () => {
-    const s = window._creativeStudio;
-    const blob = new Blob([`INFOGENIE CREATIVE PACK\nCampaign: ${s.campName} | Platform: ${s.platform}\nGenerated: ${new Date().toLocaleString()}\n\n${s.googleCopy}\n\n${s.instagramCopy}\n\n${s.tiktokScript}\n\n${s.videoScript}\n\n${s.emailBrief}`], {type:'text/plain'});
-    const a = Object.assign(document.createElement('a'), {href:URL.createObjectURL(blob), download:'infogenie-creative-pack.txt'});
+    const s = window._creativeStudio || {};
+    const txt = [
+      'INFOGENIE AI CREATIVE PACK', '─'.repeat(50),
+      `Campaign: ${s.campName || name} | Platform: ${s.platform || platform}`,
+      `Generated: ${new Date().toLocaleString()}`, '',
+      '── GOOGLE ADS ──', s.googleCopy || '', '',
+      '── INSTAGRAM / META ──', s.instagramCopy || '', '',
+      '── TIKTOK SCRIPT ──', s.tiktokScript || '', '',
+      '── YOUTUBE SCRIPT ──', s.videoScript || '', '',
+      '── LINKEDIN ──', s.linkedin || '', '',
+      '── EMAIL SUBJECTS ──', s.emailSubjects || '', '',
+      '── GPT-4 STRATEGY ──', s.strategy || ''
+    ].join('\n');
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([txt], {type:'text/plain'})),
+      download: 'infogenie-creative-pack.txt'
+    });
     a.click(); URL.revokeObjectURL(a.href);
+    showToast('⬇ Creative pack downloaded!');
   });
 
-  // Tab switching
+  // ── Tab switching ──────────────────────────────────────────────────────────
   document.querySelectorAll('.cs-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.cs-tab-btn').forEach(b => {
@@ -546,137 +727,78 @@ function buildCreativeModal(camp, idx) {
       const tabId = btn.dataset.tab;
       document.querySelectorAll('.cs-panel').forEach(p => p.style.display = 'none');
       const panel = document.getElementById('csp-' + tabId);
-      if (panel) panel.style.display = 'flex';
-      if (panel) { panel.style.flexDirection = 'column'; panel.style.gap = '0'; }
+      if (panel) { panel.style.display = 'flex'; panel.style.flexDirection = 'column'; panel.style.gap = '0'; }
     });
   });
 
-  // Copy buttons
+  // ── Copy buttons ───────────────────────────────────────────────────────────
   document.getElementById('cs-copy-ad').addEventListener('click', () => {
     const h = Array.from(document.querySelectorAll('.cs-headline')).map(i=>i.value);
     const d = Array.from(document.querySelectorAll('.cs-desc')).map(i=>i.value);
-    const txt = `HEADLINE 1: ${h[0]}\nHEADLINE 2: ${h[1]}\nHEADLINE 3: ${h[2]}\nDESCRIPTION 1: ${d[0]}\nDESCRIPTION 2: ${d[1]}`;
-    navigator.clipboard.writeText(txt).then(()=>showToast('✅ Ad copy copied!')).catch(()=>showToast('✅ Copied!'));
+    navigator.clipboard.writeText(`HEADLINE 1: ${h[0]}\nHEADLINE 2: ${h[1]}\nHEADLINE 3: ${h[2]}\nDESCRIPTION 1: ${d[0]}\nDESCRIPTION 2: ${d[1]}`)
+      .then(()=>showToast('✅ Ad copy copied!')).catch(()=>showToast('✅ Copied!'));
   });
   document.getElementById('cs-copy-instagram').addEventListener('click', () => {
     navigator.clipboard.writeText(document.getElementById('cs-instagram').value).then(()=>showToast('✅ Caption copied!')).catch(()=>showToast('✅ Copied!'));
   });
   document.getElementById('cs-copy-tiktok').addEventListener('click', () => {
-    navigator.clipboard.writeText(document.getElementById('cs-tiktok').value).then(()=>showToast('✅ Script copied!')).catch(()=>showToast('✅ Copied!'));
+    navigator.clipboard.writeText(document.getElementById('cs-tiktok').value).then(()=>showToast('✅ TikTok script copied!')).catch(()=>showToast('✅ Copied!'));
   });
   document.getElementById('cs-copy-video').addEventListener('click', () => {
-    navigator.clipboard.writeText(document.getElementById('cs-video').value).then(()=>showToast('✅ Script copied!')).catch(()=>showToast('✅ Copied!'));
+    navigator.clipboard.writeText(document.getElementById('cs-video').value).then(()=>showToast('✅ YouTube script copied!')).catch(()=>showToast('✅ Copied!'));
+  });
+  document.getElementById('cs-copy-linkedin').addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('cs-linkedin').value).then(()=>showToast('✅ LinkedIn copy copied!')).catch(()=>showToast('✅ Copied!'));
   });
   document.getElementById('cs-copy-email').addEventListener('click', () => {
     navigator.clipboard.writeText(document.getElementById('cs-email').value).then(()=>showToast('✅ Brief copied!')).catch(()=>showToast('✅ Copied!'));
   });
   document.getElementById('cs-send-email').addEventListener('click', () => {
-    const subject = encodeURIComponent('Campaign Brief: ' + name);
-    const body = encodeURIComponent(document.getElementById('cs-email').value);
-    window.open('mailto:?subject=' + subject + '&body=' + body);
+    window.open('mailto:?subject=' + encodeURIComponent('Campaign Brief: ' + name) + '&body=' + encodeURIComponent(document.getElementById('cs-email').value));
   });
 
-  // Regenerate with AI (ad creatives tab)
+  // ── Regenerate (Ad Copy tab quick regen) ──────────────────────────────────
   document.getElementById('cs-regen-btn').addEventListener('click', async () => {
     const btn = document.getElementById('cs-regen-btn');
-    const toneEl = document.getElementById('cs-tone');
-    const tone = toneEl ? toneEl.value : 'Bold & Direct';
-    btn.disabled = true;
-    btn.textContent = '⏳ Generating...';
+    btn.disabled = true; btn.textContent = '⏳ GPT-4...';
+    const badge = document.getElementById('cs-ai-badge');
+    if (badge) badge.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(165,180,252,.3);border-top-color:#A5B4FC;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:5px"></span>Regenerating...';
     try {
       const res = await fetch('/api/ai-creative', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ platform, campName: name, tone, topComp, industry: indName, domain, cta: 'Start Free Trial', persona: 'business decision-makers', differentiator: 'AI-powered competitor intelligence' })
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, campName: name, tone: 'Bold & Direct', topComp, competitors: allComps.slice(0,4), tags: campTags, industry: indName, domain, cta: 'Start Free Trial', persona: 'marketing decision-makers', differentiator: campDesc.split('.')[0] || 'AI-powered results' })
       });
       const data = await res.json();
-      if (data.headlines && Array.isArray(data.headlines)) {
-        const inputs = document.querySelectorAll('.cs-headline');
-        inputs.forEach((inp, i) => { if (data.headlines[i]) inp.value = data.headlines[i]; });
-        const dInputs = document.querySelectorAll('.cs-desc');
-        dInputs.forEach((inp, i) => { if (data.descriptions && data.descriptions[i]) inp.value = data.descriptions[i]; });
-        const src = data.source === 'ai_live_gpt4' ? 'GPT-4' : data.source === 'ai_live_llama' ? 'Llama AI' : 'AI Engine';
-        showToast('✨ New headlines generated by ' + src + '!');
-      } else {
-        showToast('✨ Headlines refreshed!');
-      }
-    } catch(e) {
-      showToast('⚠️ AI generation failed: ' + e.message);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = '✨ Regenerate with AI';
-    }
+      if (data.headlines) { applyAICreative(data); showToast('✨ GPT-4 generated new creative pack!'); }
+    } catch(e) { showToast('⚠️ Regenerate failed: ' + e.message); }
+    finally { btn.disabled = false; btn.textContent = '✨ Regenerate'; }
   });
 
-  // Full redesign with AI
+  // ── Custom Redesign (Settings tab) ────────────────────────────────────────
   document.getElementById('cs-regen-full').addEventListener('click', async () => {
     const tone    = document.getElementById('cs-tone').value;
-    const persona = document.getElementById('cs-persona').value || 'business owners looking for growth';
-    const diff    = document.getElementById('cs-diff').value || 'AI-powered results at lower cost';
+    const persona = document.getElementById('cs-persona').value || 'growth-focused marketing teams';
+    const diff    = document.getElementById('cs-diff').value || 'AI-powered competitor intelligence at scale';
     const cta     = document.getElementById('cs-cta').value;
     const output  = document.getElementById('cs-regen-output');
     const btn     = document.getElementById('cs-regen-full');
     output.style.display = 'block';
-    output.innerHTML = `<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:14px;font-size:0.8rem;color:#4C1D95;text-align:center">
-      <div style="font-size:1.2rem;margin-bottom:6px">🤖</div><strong>Calling AI engine — generating creative variants...</strong></div>`;
-    btn.disabled = true;
-    btn.textContent = '⏳ Generating...';
+    output.innerHTML = `<div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:18px;font-size:0.82rem;color:#4C1D95;text-align:center"><span style="display:inline-block;width:18px;height:18px;border:3px solid rgba(124,58,237,.2);border-top-color:#7C3AED;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px"></span>GPT-4 writing custom creative pack...</div>`;
+    btn.disabled = true; btn.textContent = '⏳ GPT-4 Working...';
     try {
       const res = await fetch('/api/ai-creative', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ platform, campName: name, tone, persona, differentiator: diff, cta, topComp, industry: indName, domain })
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, campName: name, tone, persona, differentiator: diff, cta, topComp, competitors: allComps.slice(0,4), tags: campTags, industry: indName, domain })
       });
       const data = await res.json();
-      const src = data.source === 'ai_live_gpt4' ? 'GPT-4' : data.source === 'ai_live_llama' ? 'Llama AI' : 'InfoGenie AI';
-      const hs = data.headlines || [];
-      const ds = data.descriptions || [];
-      output.innerHTML = `
-        <div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div style="font-size:0.72rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em">✨ AI Creative Pack — ${tone}</div>
-            <span style="background:#7C3AED;color:white;font-size:0.65rem;font-weight:700;padding:2px 8px;border-radius:10px">${src}</span>
-          </div>
-          ${data.reasoning ? `<div style="background:#EDE9FE;border-radius:8px;padding:10px 12px;font-size:0.78rem;color:#5B21B6;font-style:italic">💡 Strategy: ${data.reasoning}</div>` : ''}
-          <div style="background:white;border:1px solid #EDE9FE;border-radius:10px;padding:14px">
-            <div style="font-size:0.7rem;font-weight:700;color:#7C3AED;margin-bottom:8px">🔵 Ad Headlines</div>
-            ${hs.map((h,i) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-              <span style="font-size:0.65rem;font-weight:700;color:#7C3AED;background:#EDE9FE;border-radius:4px;padding:2px 5px;flex-shrink:0">H${i+1}</span>
-              <div style="font-size:0.82rem;color:#0A1628;font-weight:600">${h}</div>
-            </div>`).join('')}
-            ${ds.map((d,i) => `<div style="font-size:0.78rem;color:#374151;margin-bottom:4px"><strong>D${i+1}:</strong> ${d}</div>`).join('')}
-          </div>
-          ${data.instagram ? `<div style="background:white;border:1px solid #EDE9FE;border-radius:10px;padding:12px">
-            <div style="font-size:0.7rem;font-weight:700;color:#E1306C;margin-bottom:6px">📱 Instagram Caption</div>
-            <div style="font-size:0.78rem;color:#374151;white-space:pre-line">${data.instagram}</div>
-          </div>` : ''}
-          <div style="display:flex;gap:8px">
-            <button id="cs-apply-variant" style="flex:1;padding:9px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">✅ Apply to Ad Creatives</button>
-          </div>
-        </div>`;
-      // Wire apply button
-      document.getElementById('cs-apply-variant').addEventListener('click', () => {
-        const hInputs = document.querySelectorAll('.cs-headline');
-        hInputs.forEach((inp, i) => { if (hs[i]) inp.value = hs[i]; });
-        const dInputs = document.querySelectorAll('.cs-desc');
-        dInputs.forEach((inp, i) => { if (ds[i]) inp.value = ds[i]; });
-        if (data.instagram) {
-          const igEl = document.getElementById('cs-instagram');
-          if (igEl) igEl.value = data.instagram;
-        }
-        if (data.tiktok_script) {
-          const ttEl = document.getElementById('cs-tiktok');
-          if (ttEl) ttEl.value = data.tiktok_script;
-        }
-        showToast('✅ AI creative applied to all tabs!');
-      });
-      showToast('✨ AI variants generated by ' + src + '!');
+      applyAICreative(data);
+      const src = data.source === 'gpt4' ? 'GPT-4' : 'AI Engine';
+      output.innerHTML = `<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:14px;font-size:0.82rem;color:#065F46;text-align:center">✅ ${src} creative pack applied to all tabs — check Ad Copy, Social & Video, LinkedIn, and Email Brief!</div>`;
+      showToast('✨ Custom GPT-4 creative pack applied to all tabs!');
     } catch(e) {
-      output.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:14px;font-size:0.8rem;color:#991B1B">⚠️ AI generation failed: ${e.message}</div>`;
-      showToast('⚠️ AI generation error — please retry');
+      output.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:14px;font-size:0.8rem;color:#991B1B">⚠️ Generation failed: ${e.message}</div>`;
     } finally {
-      btn.disabled = false;
-      btn.textContent = '✨ Generate New Creative Variants';
+      btn.disabled = false; btn.textContent = '✨ Generate New Variants with GPT-4';
     }
   });
 }
