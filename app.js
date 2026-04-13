@@ -2187,7 +2187,7 @@ function generateCampaignRecs(industry, competitors, url) {
       platform: 'Google Ads',
       badgeClass: 'google',
       name: `Performance Max — Full Funnel Automation`,
-      description: `Google's Performance Max campaigns combined with InfoGenie's competitor keyword intelligence. Target all Google properties (Search, Display, YouTube, Gmail, Maps) with AI-optimised creative that outperforms the ${competitors[1]?.name} funnel by design.`,
+      description: `Google's Performance Max campaigns combined with InfoGenie's competitor keyword intelligence. Target all Google properties (Search, Display, YouTube, Gmail, Maps) with AI-optimised creative that outperforms market leaders' funnels by design.`,
       tags: ['PMax', 'All Google Properties', 'AI Bidding', 'Conversion Focus'],
       estCTR: '3.9%',
       estROAS: (avg(competitors.map(c=>c.roas)) * 1.22).toFixed(1),
@@ -2745,25 +2745,25 @@ function buildCompetitorVsCards(industry, competitors, domainName) {
   ];
 
   const infoGenieHeadlines = [
-    `Switch from ${competitors[0]?.name} — See Results in 14 Days or Free`,
-    `What ${competitors[1]?.name} Won't Tell You About Their Ad Strategy`,
-    `${competitors[2]?.name} Spends ${competitors[2]?.adSpend} Monthly — Here's How to Beat Them for Less`,
-    `The ${industry.name} Secret That ${competitors[3]?.name} Doesn't Want You to Know`,
-    `Outperform ${competitors[4]?.name} — AI-Powered Campaigns. Zero Guesswork.`,
-    `${competitors[5]?.name} Is Losing Ground — Your AI Opportunity Window Is Now`,
-    `We Analysed ${competitors[6]?.name}'s Entire Ad Spend. Here's What We Found.`,
-    `${competitors[7]?.name} Can't Compete With Autonomous AI. Here's Proof.`
+    `The Smarter ${industry.name} Platform — See Results in 14 Days or Free`,
+    `What the Market Leaders Won't Tell You About Their Ad Strategy`,
+    `Your Top Competitor Outspends You — Here's How to Beat Them for Less`,
+    `The ${industry.name} Playbook That Established Players Don't Want You to Know`,
+    `Outperform the Market — AI-Powered Campaigns. Zero Guesswork.`,
+    `The Market Leader Is Losing Ground — Your AI Opportunity Window Is Now`,
+    `We Mapped Every Competitor Campaign in ${industry.name}. Here's What We Found.`,
+    `Manual Campaign Management Can't Compete With Autonomous AI. Here's Proof.`
   ];
 
   const infoGenieCopies = [
-    `While ${competitors[0]?.name} relies on broad keyword targeting, our AI pinpoints the exact audience segments their campaigns miss — delivering your message at the precise moment they're ready to convert. No wasted spend. No guesswork.`,
-    `${competitors[1]?.name}'s generic creative gets lost in the feed. Our AI generates personalised ad variants tailored to each audience segment's language, pain points, and intent signals — driving 2.3× higher engagement at lower cost.`,
-    `${competitors[2]?.name} is spending ${competitors[2]?.adSpend}/mo on ads — most of it wasted on the wrong audiences. Our competitor intelligence identifies exactly where their budget bleeds, then targets those gaps with precision campaigns that cost a fraction of the price.`,
-    `${competitors[3]?.name}'s audiences are actively looking for a better alternative. Our AI identifies their dissatisfied customer segments and delivers your superior offer at the exact moment they're considering switching. Average CPA reduction: 31%.`,
-    `Stop reacting to ${competitors[4]?.name}'s campaigns. Our autonomous AI monitors their every move — new creatives, budget shifts, audience changes — and automatically rebuilds your campaigns to stay one step ahead, 24/7.`,
-    `${competitors[5]?.name} is showing early signs of market retreat. Our predictive intelligence detected reduced ad frequency and creative stagnation 3 weeks before their competitors noticed. Your window to capture their audience is open right now.`,
-    `We reverse-engineered ${competitors[6]?.name}'s top-performing campaign. Our AI recreated the intent, fixed the messaging gaps, and built a superior variant that outperforms the original in every benchmark we ran — ready to deploy in one click.`,
-    `${competitors[7]?.name} optimises campaigns once a week. Our AI optimises every 4 hours — adjusting bids, refreshing creatives, and shifting budget based on live conversion signals. That's 42× more optimisation cycles per month.`
+    `While market leaders rely on broad keyword targeting, our AI pinpoints the exact audience segments their campaigns miss — delivering your message at the precise moment prospects are ready to convert. No wasted spend. No guesswork.`,
+    `Generic competitor creatives get lost in the feed. Our AI generates personalised ad variants tailored to each audience segment's language, pain points, and intent signals — driving 2.3× higher engagement at lower cost.`,
+    `Your top competitor invests heavily in ads — most of it wasted on the wrong audiences. Our competitor intelligence identifies exactly where their budget bleeds, then targets those gaps with precision campaigns that cost a fraction of their spend.`,
+    `Market-leading brands' audiences are actively seeking a better alternative. Our AI identifies dissatisfied customer segments and delivers your superior offer at the exact moment they're considering a switch. Average CPA reduction: 31%.`,
+    `Stop reacting to competitors' campaigns. Our autonomous AI monitors the market 24/7 — detecting new creatives, budget shifts, and audience changes — then automatically rebuilds your campaigns to stay one step ahead. Always.`,
+    `Your primary competitor is showing early signs of market retreat. Our predictive intelligence detected reduced ad frequency and creative stagnation weeks before their rivals noticed. Your window to capture their audience is open right now.`,
+    `We reverse-engineered the top-performing campaigns in ${industry.name}. Our AI identified every messaging gap and built superior variants that outperform the originals across every benchmark we ran — ready to deploy in one click.`,
+    `Most competitors optimise campaigns once a week. Our AI optimises every 4 hours — adjusting bids, refreshing creatives, and shifting budget based on live conversion signals. That's 42× more optimisation cycles every month.`
   ];
 
   return competitors.slice(0, 8).map((comp, i) => {
@@ -2839,14 +2839,14 @@ function generateCreatives(industry, competitors, domainName, round = 0) {
     // ── Batch 0 (original) ──
     {
       type: 'Search Ad — Google', platform: 'Google', format: 'Responsive Search Ad',
-      headline: `${topComp.name} Alternative — ${roas > 4 ? '2× Better ROAS' : '40% Lower CPA'}`,
-      copy: `Tired of ${topComp.name}'s rising costs and limited transparency? Our AI-powered platform delivers the same reach with ${ctr}%+ CTR targeting — at a fraction of the budget. Free 14-day trial. No credit card.`,
+      headline: `The Smarter ${industryName} Platform — ${roas > 4 ? '2× Better ROAS' : '40% Lower CPA'}`,
+      copy: `Tired of rising ad costs and limited transparency? InfoGenie's AI-powered platform delivers superior reach with ${ctr}%+ CTR targeting — at a fraction of the budget. Free 14-day trial. No credit card.`,
       estCTR: (ctr + 1.2).toFixed(1) + '%', estConv: '3.8%', estROAS: (roas + 1.1).toFixed(1) + '×', audiences: topComp.audiences || []
     },
     {
       type: 'Video Ad — Meta', platform: 'Meta', format: 'Video (15s Reel)',
-      headline: `What ${comp2.name} Doesn't Want You to See`,
-      copy: `${comp2.name} runs ${comp2.campaigns?.length || 3} active campaigns right now targeting your customers — and you can't see any of them. Until now. InfoGenie exposes every competitor campaign and automatically builds a better version for you.`,
+      headline: `What Your Competitors Don't Want You to See`,
+      copy: `Your top competitors are running multiple active campaigns targeting your customers — and you can't see any of them. Until now. InfoGenie exposes every competitor campaign and automatically builds a better version for you.`,
       estCTR: (ctr + 1.8).toFixed(1) + '%', estConv: '3.1%', estROAS: (roas + 0.8).toFixed(1) + '×', audiences: comp2.audiences || []
     },
     {
@@ -2858,69 +2858,69 @@ function generateCreatives(industry, competitors, domainName, round = 0) {
     {
       type: 'Sponsored Content — LinkedIn', platform: 'LinkedIn', format: 'Sponsored Post + Lead Form',
       headline: `How ${industryName} Teams Cut CPA by 35% in 30 Days`,
-      copy: `${comp2.name} achieves ${comp2.roas}× ROAS with a ${comp2.adSpend} monthly budget. InfoGenie shows you how to outperform that with precision targeting and autonomous bidding — without their budget.`,
+      copy: `Market leaders in ${industryName} achieve strong ROAS with heavy monthly budgets. InfoGenie shows you how to outperform them with precision targeting and autonomous bidding — at a fraction of their spend.`,
       estCTR: '3.4%', estConv: '5.1%', estROAS: (roas + 0.6).toFixed(1) + '×', audiences: (competitors[3] || competitors[0]).audiences || []
     },
     {
       type: 'TikTok UGC Ad', platform: 'TikTok', format: 'In-Feed Video (30s)',
-      headline: `POV: AI just exposed every ${comp2.name} campaign running right now`,
-      copy: `We analysed ${topComp.name}, ${comp2.name}, and ${comp3.name} — every ad they're running, every audience they're targeting. Then we built you a better version automatically. This is the unfair advantage.`,
+      headline: `POV: AI just exposed every competitor campaign running right now`,
+      copy: `We analysed your top ${competitors.length} competitors — every ad they're running, every audience they're targeting. Then we built you a better version automatically. This is the unfair advantage.`,
       estCTR: (ctr + 2.1).toFixed(1) + '%', estConv: '2.6%', estROAS: (roas + 0.5).toFixed(1) + '×', audiences: (competitors[4] || competitors[0]).audiences || []
     },
     {
       type: 'Retargeting — Meta', platform: 'Meta', format: 'Dynamic Carousel',
-      headline: `You Visited ${topComp.name}. Here's What They're Not Telling You.`,
-      copy: `${topComp.name}'s customer acquisition cost is ${topComp.campaigns?.[0]?.roas ? Math.round(100 / topComp.campaigns[0].roas) + '% higher' : '40% higher'} than alternatives. We deliver the same results with full transparency and autonomous AI optimisation.`,
+      headline: `Still Researching ${industryName} Platforms? Here's the Full Picture.`,
+      copy: `Market leaders' customer acquisition cost is typically 40% higher than alternatives. InfoGenie delivers the same results with full transparency and autonomous AI optimisation — no wasted spend, no guesswork.`,
       estCTR: (ctr + 1.5).toFixed(1) + '%', estConv: '4.6%', estROAS: (roas + 1.3).toFixed(1) + '×', audiences: topComp.audiences || []
     },
     // ── Batch 1 (new angles) ──
     {
       type: 'Search Ad — Google', platform: 'Google', format: 'Exact Match Search',
-      headline: `Beat ${topComp.name} on Their Own Keywords`,
-      copy: `${topComp.name} bids on ${topComp.topKeywords?.slice(0,2).join(' & ') || 'high-intent keywords'} every day. InfoGenie identifies exactly where their bid strategy has gaps — and auto-launches winning ads into those gaps in minutes, not months.`,
+      headline: `Win on the Keywords Your Competitors Bid On`,
+      copy: `Your top competitors bid on high-intent ${industryName} keywords every day. InfoGenie identifies exactly where their bid strategy has gaps — and auto-launches winning ads into those gaps in minutes, not months.`,
       estCTR: (ctr + 1.6).toFixed(1) + '%', estConv: '4.1%', estROAS: (roas + 1.3).toFixed(1) + '×', audiences: topComp.audiences || []
     },
     {
       type: 'Story Ad — Meta', platform: 'Meta', format: 'Story (Full Screen)',
-      headline: `${comp2.name} Just Lost 38% of Their Ad Spend`,
-      copy: `When ${comp2.name} pulls back their campaigns — which our AI tracks in real time — InfoGenie automatically bids into the vacuum. Your budget goes further. Your reach expands. Your CPA drops. All without lifting a finger.`,
+      headline: `Your Biggest Competitor Just Pulled Back Their Ad Spend`,
+      copy: `When market leaders pull back their campaigns — which our AI tracks in real time — InfoGenie automatically bids into the vacuum. Your budget goes further. Your reach expands. Your CPA drops. All without lifting a finger.`,
       estCTR: (ctr + 2.3).toFixed(1) + '%', estConv: '3.4%', estROAS: (roas + 0.9).toFixed(1) + '×', audiences: comp2.audiences || []
     },
     {
       type: 'YouTube Pre-Roll', platform: 'Google', format: 'Skippable In-Stream (15s)',
-      headline: `The Tool ${comp3.name} Doesn't Want You to Have`,
-      copy: `${comp3.name} spends ${comp3.adSpend} per month on ads. InfoGenie reads every campaign they launch and generates a higher-performing counter-campaign for you automatically — for a fraction of their budget. Skip the guessing. Start winning.`,
+      headline: `The ${industryName} Tool Market Leaders Don't Want You to Have`,
+      copy: `Your top competitors spend heavily on ads every month. InfoGenie reads every campaign they launch and generates a higher-performing counter-campaign for you automatically — for a fraction of their budget. Skip the guessing. Start winning.`,
       estCTR: (ctr + 0.7).toFixed(1) + '%', estConv: '3.9%', estROAS: (roas + 1.1).toFixed(1) + '×', audiences: comp3.audiences || []
     },
     {
       type: 'Thought Leadership — LinkedIn', platform: 'LinkedIn', format: 'Document Ad',
       headline: `Why ${industryName} CMOs Are Abandoning Manual Bidding`,
-      copy: `We analysed ${competitors.length} competitors in ${industryName}. The ones gaining share all have one thing in common: autonomous AI bidding. Download the free benchmark report — see where ${topComp.name} and ${comp2.name} are spending and where their gaps are.`,
+      copy: `We analysed ${competitors.length} competitors in ${industryName}. The ones gaining share all have one thing in common: autonomous AI bidding. Download the free benchmark report — see where the market leaders are spending and where their gaps are.`,
       estCTR: '2.9%', estConv: '6.2%', estROAS: (roas + 0.4).toFixed(1) + '×', audiences: (competitors[3] || competitors[0]).audiences || []
     },
     {
       type: 'TikTok Comparison', platform: 'TikTok', format: 'Duet / Reaction (30s)',
-      headline: `Reacting to ${topComp.name}'s Biggest Ad of the Year`,
-      copy: `We pulled ${topComp.name}'s top-performing campaign. It's good. But our AI found 4 specific weaknesses in their copy, targeting, and timing — and built a version that outperforms it. We'll show you exactly what we changed and why.`,
+      headline: `Reacting to the Biggest ${industryName} Ad of the Year`,
+      copy: `We pulled the top-performing campaign in ${industryName} right now. It's good. But our AI found 4 specific weaknesses in the copy, targeting, and timing — and built a version that outperforms it. We'll show you exactly what we changed and why.`,
       estCTR: (ctr + 2.8).toFixed(1) + '%', estConv: '2.2%', estROAS: (roas + 0.3).toFixed(1) + '×', audiences: topComp.audiences || []
     },
     {
       type: 'Dynamic Remarketing — Google', platform: 'Google', format: 'Display Network',
       headline: `${industryName} Ads That Auto-Optimise While You Sleep`,
-      copy: `Competitor ${comp2.name} adjusts bids 47× per day. You can't match that manually — but InfoGenie can. Our autonomous bidding engine analyses every competitor move in real time and auto-adjusts your campaigns to stay ahead. Set it once. Win continuously.`,
+      copy: `Market leaders adjust bids dozens of times per day. You can't match that manually — but InfoGenie can. Our autonomous bidding engine analyses every competitor move in real time and auto-adjusts your campaigns to stay ahead. Set it once. Win continuously.`,
       estCTR: (ctr + 1.1).toFixed(1) + '%', estConv: '4.8%', estROAS: (roas + 1.6).toFixed(1) + '×', audiences: comp2.audiences || []
     },
     // ── Batch 2 (emotional / urgency hooks) ──
     {
-      type: 'Search — Competitor Brand Bidding', platform: 'Google', format: 'Brand Conquest Search',
-      headline: `Searching for ${topComp.name}? Try This First`,
-      copy: `Before committing to ${topComp.name}, see how our platform delivers ${(ctr + 1.5).toFixed(1)}% CTR vs their ${ctr}% — with 40% lower spend and AI that self-optimises in real time. Free 14-day trial. No setup fee. Cancel anytime.`,
+      type: 'Search — Intent Capture', platform: 'Google', format: 'High-Intent Search',
+      headline: `Comparing ${industryName} Platforms? Try InfoGenie First`,
+      copy: `Before committing to a market leader, see how InfoGenie delivers ${(ctr + 1.5).toFixed(1)}% CTR vs the industry average of ${ctr}% — with 40% lower spend and AI that self-optimises in real time. Free 14-day trial. No setup fee. Cancel anytime.`,
       estCTR: (ctr + 2.0).toFixed(1) + '%', estConv: '4.5%', estROAS: (roas + 1.8).toFixed(1) + '×', audiences: topComp.audiences || []
     },
     {
       type: 'Reels Ad — Meta', platform: 'Meta', format: 'Reels (9:16 Video)',
       headline: `Your ${industryName} Competitors Are Running Ads RIGHT NOW`,
-      copy: `While you're reading this, ${topComp.name} and ${comp2.name} are running campaigns targeting your exact audience. InfoGenie detects every new competitor ad within 2 hours of launch and builds you a better version instantly. Try it free — no card needed.`,
+      copy: `While you're reading this, your top competitors are running campaigns targeting your exact audience. InfoGenie detects every new competitor ad within 2 hours of launch and builds you a better version instantly. Try it free — no card needed.`,
       estCTR: (ctr + 2.5).toFixed(1) + '%', estConv: '3.3%', estROAS: (roas + 0.7).toFixed(1) + '×', audiences: comp2.audiences || []
     },
     {
@@ -2932,19 +2932,19 @@ function generateCreatives(industry, competitors, domainName, round = 0) {
     {
       type: 'InMail — LinkedIn', platform: 'LinkedIn', format: 'Sponsored Message',
       headline: `We Mapped Every ${industryName} Competitor Ad — For Free`,
-      copy: `${competitors.length} competitors. ${totalCamps} active campaigns. ${topComp.topKeywords?.length || 4} keyword gaps worth ${(Math.floor(Math.random() * 500) + 200).toLocaleString()}K monthly searches. Your free ${industryName} competitor intelligence report is ready — click to claim it before your competitors see it.`,
+      copy: `${competitors.length} competitors. ${totalCamps} active campaigns. Multiple keyword gaps worth hundreds of thousands of monthly searches. Your free ${industryName} competitor intelligence report is ready — click to claim it before your competitors see it.`,
       estCTR: '4.1%', estConv: '7.3%', estROAS: (roas + 0.8).toFixed(1) + '×', audiences: (competitors[3] || competitors[0]).audiences || []
     },
     {
       type: 'Spark Ad — TikTok', platform: 'TikTok', format: 'Creator Boost (45s)',
-      headline: `I Switched from ${topComp.name} to InfoGenie — Here's My ROAS`,
-      copy: `After 6 months on ${topComp.name}'s platform, my ROAS was stuck at ${(roas - 0.8).toFixed(1)}×. InfoGenie's AI rebuilt my campaigns from competitor data in 4 hours. By week 2, I was at ${(roas + 1.4).toFixed(1)}×. I'll show you exactly what changed — and what it would look like for your industry.`,
+      headline: `I Switched My ${industryName} Platform to InfoGenie — Here's My ROAS`,
+      copy: `After 6 months on a legacy platform, my ROAS was stuck at ${(roas - 0.8).toFixed(1)}×. InfoGenie's AI rebuilt my campaigns from competitor data in 4 hours. By week 2, I was at ${(roas + 1.4).toFixed(1)}×. I'll show you exactly what changed — and what it would look like for your industry.`,
       estCTR: (ctr + 3.1).toFixed(1) + '%', estConv: '2.8%', estROAS: (roas + 1.0).toFixed(1) + '×', audiences: topComp.audiences || []
     },
     {
       type: 'Retargeting — Google Display', platform: 'Google', format: 'Custom Intent Audience',
-      headline: `Still Considering ${comp2.name}? See the Full Comparison`,
-      copy: `${comp2.name} vs. InfoGenie: their platform shows you what's happening. Ours acts on it — autonomously launching and optimising counter-campaigns in real time. ${comp2.roas}× ROAS vs ${(comp2.roas + 1.4).toFixed(1)}× on the same budget. See the full breakdown.`,
+      headline: `Still Comparing ${industryName} Options? See the Full Breakdown`,
+      copy: `Traditional platforms show you what's happening. InfoGenie acts on it — autonomously launching and optimising counter-campaigns in real time. Industry average ${roas}× ROAS vs ${(roas + 1.4).toFixed(1)}× with InfoGenie on the same budget. See the full breakdown.`,
       estCTR: (ctr + 1.9).toFixed(1) + '%', estConv: '5.2%', estROAS: (roas + 1.5).toFixed(1) + '×', audiences: comp2.audiences || []
     }
   ];

@@ -1178,6 +1178,7 @@ body {
 .comp-vs-card:hover { box-shadow: var(--shadow); }
 .comp-vs-side { padding: 20px; }
 .comp-vs-side.theirs { background: #FAFAFA; border-right: 1px solid var(--border); }
+.comp-vs-side.ours { background: linear-gradient(135deg, rgba(0,201,200,.05) 0%, rgba(0,229,255,.08) 100%); border-left: 3px solid var(--teal); }
 .cvs-label {
   font-size: 0.6875rem;
   font-weight: 800;
