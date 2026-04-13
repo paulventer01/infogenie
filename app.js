@@ -1530,21 +1530,57 @@ function buildDashboard() {
     if (fsEl) fsEl.textContent = `Confidence: ${data.confidenceLevel || 'Medium'} · $${Math.round((data.totalProjectedRevenue||0)/1000)}K projected over 90 days`;
     if (forecastChartInstance) forecastChartInstance.destroy();
     const fCtx = document.getElementById('forecastChart');
+    const labels = data.weeks || data.months || ['Wk 1','Wk 2','Wk 3','Wk 4','Wk 5','Wk 6','Wk 7','Wk 8','Wk 9','Wk 10','Wk 11','Wk 12','Wk 13'];
     if (fCtx) {
       forecastChartInstance = new Chart(fCtx.getContext('2d'), {
         type: 'line',
         data: {
-          labels: data.months || ['Month 1','Month 2','Month 3'],
+          labels,
           datasets: [
-            { label: 'Optimistic',    data: data.optimisticRevenue,   borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.06)', tension: 0.4, borderWidth: 2, pointRadius: 4, fill: false },
-            { label: 'Projected',     data: data.projectedRevenue,    borderColor: '#0066FF', backgroundColor: 'rgba(0,102,255,0.1)',   tension: 0.4, borderWidth: 3, pointRadius: 5, fill: true },
-            { label: 'Conservative',  data: data.conservativeRevenue, borderColor: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.05)', tension: 0.4, borderWidth: 2, pointRadius: 4, fill: false, borderDash: [5,4] }
+            {
+              label: 'Optimistic', data: data.optimisticRevenue,
+              borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.08)',
+              tension: 0.42, borderWidth: 2, pointRadius: 2, pointHoverRadius: 5,
+              fill: '+1'
+            },
+            {
+              label: 'Projected', data: data.projectedRevenue,
+              borderColor: '#0066FF', backgroundColor: 'rgba(0,102,255,0.12)',
+              tension: 0.42, borderWidth: 3, pointRadius: 3, pointHoverRadius: 6,
+              fill: '+1'
+            },
+            {
+              label: 'Conservative', data: data.conservativeRevenue,
+              borderColor: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.06)',
+              tension: 0.42, borderWidth: 2, pointRadius: 2, pointHoverRadius: 5,
+              fill: false, borderDash: [5, 4]
+            }
           ]
         },
         options: {
           responsive: true,
-          plugins: { legend: { position: 'top', labels: { font: { size: 10 }, usePointStyle: true, boxWidth: 8 } }, tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: $${Number(ctx.raw).toLocaleString()}` } } },
-          scales: { y: { grid: { color: 'rgba(0,0,0,.04)' }, ticks: { callback: v => '$'+(v/1000).toFixed(0)+'K', font: { size: 10 } } }, x: { grid: { display: false } } }
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'top', labels: { font: { size: 10 }, usePointStyle: true, boxWidth: 8 } },
+            tooltip: {
+              callbacks: {
+                label: ctx => ` ${ctx.dataset.label}: $${Number(ctx.raw).toLocaleString()}`
+              }
+            }
+          },
+          scales: {
+            y: {
+              grid: { color: 'rgba(0,0,0,.04)' },
+              ticks: { callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0)+'K' : v), font: { size: 10 } }
+            },
+            x: {
+              grid: { display: false },
+              ticks: {
+                font: { size: 9 },
+                maxTicksLimit: labels.length <= 13 ? 13 : 7
+              }
+            }
+          }
         }
       });
     }
@@ -4400,14 +4436,7 @@ function buildIntelligence() {
           `).join('')}
         </div>
         <div class="sov-charts-col">
-          <div class="sov-donut-wrap">
-            <canvas id="sovChartIntel"></canvas>
-            <div class="sov-donut-center">
-              <div class="sov-donut-pct">${displaySov.find(s=>s.name==='You')?.share || 5}%</div>
-              <div class="sov-donut-lbl">YOUR SHARE</div>
-            </div>
-          </div>
-          <canvas id="sovBarChartIntel" height="140"></canvas>
+          <canvas id="sovBarChartIntel"></canvas>
         </div>
       </div>
     </div>
@@ -4577,31 +4606,6 @@ function buildIntelligence() {
       <div class="winloss-grid">${wlCards}</div>
     </div>
   `;
-
-  // Build Share of Voice donut chart (Intelligence view)
-  const sovCtx = document.getElementById('sovChartIntel');
-  if (sovCtx) {
-    if (sovCtx._chartInstance) sovCtx._chartInstance.destroy();
-    sovCtx._chartInstance = new Chart(sovCtx, {
-      type: 'doughnut',
-      data: {
-        labels: sovLabels,
-        datasets: [{ data: sovData, backgroundColor: sovColors, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }]
-      },
-      options: {
-        cutout: '65%',
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: ctx => ` ${ctx.label}: ${ctx.parsed}% share of voice`
-            }
-          }
-        },
-        animation: { animateRotate: true, duration: 900 }
-      }
-    });
-  }
 
   // Build Share of Voice horizontal bar chart
   const sovBarCtx = document.getElementById('sovBarChartIntel');
