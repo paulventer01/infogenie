@@ -1553,6 +1553,23 @@ app.listen(5000, '0.0.0.0', () => {
   startMsg();
 });
 
+// ── GET /download-source — serves the full source code as a downloadable file ─
+app.get('/download-source', (req, res) => {
+  const files = ['package.json','server.js','data.js','index.html','style.css','app.js'];
+  const sep = '='.repeat(64);
+  let out = 'InfoGenie — Complete Source Code Backup\n';
+  out += `Generated: ${new Date().toUTCString()}\n\n`;
+  for (const f of files) {
+    try {
+      const content = require('fs').readFileSync(path.join(__dirname, f), 'utf8');
+      out += `\n\n${sep}\nFILE: ${f}\n${sep}\n\n${content}`;
+    } catch(e) { out += `\n\n[Could not read ${f}: ${e.message}]`; }
+  }
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="infogenie-source.txt"');
+  res.send(out);
+});
+
 // Port 80 — external URL (*.spock.replit.dev / new tab)
 app.listen(80, '0.0.0.0', () => {
   console.log('InfoGenie listening on port 80 (external URL)');
