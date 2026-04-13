@@ -124,7 +124,16 @@ app.post('/api/launch/google-ads', async (req, res) => {
     });
   } catch(e) {
     console.error('[Google Ads launch]', e.message);
-    res.json({ success: false, error: e.message });
+    // Map common OAuth/API errors to actionable messages
+    let friendlyError = e.message;
+    if (e.message.includes('client was not found') || e.message.includes('invalid_client')) {
+      friendlyError = 'Google Ads OAuth client not found — your Client ID or Client Secret is incorrect. Update them in Settings → Google Ads.';
+    } else if (e.message.includes('invalid_grant') || e.message.includes('Token has been expired')) {
+      friendlyError = 'Google Ads refresh token expired — re-authorise your account in Settings → Google Ads.';
+    } else if (e.message.includes('PERMISSION_DENIED') || e.message.includes('not authorized')) {
+      friendlyError = 'Google Ads permission denied — ensure your developer token and customer ID are correct in Settings.';
+    }
+    res.json({ success: false, error: friendlyError });
   }
 });
 
@@ -158,7 +167,13 @@ app.post('/api/launch/meta', async (req, res) => {
     });
   } catch(e) {
     console.error('[Meta launch]', e.message);
-    res.json({ success: false, error: e.message });
+    let friendlyError = e.message;
+    if (e.message.includes('OAuthException') || e.message.includes('Invalid OAuth') || e.message.includes('access token')) {
+      friendlyError = 'Meta access token invalid or expired — update it in Settings → Meta Ads Manager.';
+    } else if (e.message.includes('permission') || e.message.includes('#200')) {
+      friendlyError = 'Meta API permission denied — ensure your access token has ads_management permission.';
+    }
+    res.json({ success: false, error: friendlyError });
   }
 });
 
@@ -191,7 +206,11 @@ app.post('/api/launch/tiktok', async (req, res) => {
     });
   } catch(e) {
     console.error('[TikTok launch]', e.message);
-    res.json({ success: false, error: e.message });
+    let friendlyError = e.message;
+    if (e.message.includes('access_token') || e.message.includes('Unauthorized') || e.message.includes('40001')) {
+      friendlyError = 'TikTok access token invalid or expired — update it in Settings → TikTok Ads.';
+    }
+    res.json({ success: false, error: friendlyError });
   }
 });
 

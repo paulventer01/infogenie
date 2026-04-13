@@ -517,11 +517,26 @@ function buildLaunchModal(camp, idx) {
             if (emojiEl) emojiEl.textContent = '🚀';
             showToast(`🚀 Campaign pushed live to ${apiResult.platform}!`);
           } else {
-            statusEl.innerHTML = `<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:12px 16px;font-size:0.8rem;color:#92400E;line-height:1.7">
-              <div style="font-weight:700;margin-bottom:4px">⚠️ Ad platform error — tracked internally</div>
-              <div style="margin-bottom:6px">${apiResult.error}</div>
-              <a href="#" onclick="navigateTo('settings');document.getElementById('campLaunchRichModal').classList.add('hidden');return false;" style="color:#D97706;font-weight:600;font-size:0.78rem">Connect credentials in Settings →</a>
-            </div>`;
+            // Determine if it's a credentials/auth issue or a real error
+            const errMsg  = apiResult.error || '';
+            const isAuth  = errMsg.toLowerCase().includes('oauth') || errMsg.toLowerCase().includes('credentials') ||
+                            errMsg.toLowerCase().includes('not found') || errMsg.toLowerCase().includes('unauthor') ||
+                            errMsg.toLowerCase().includes('not configured') || errMsg.toLowerCase().includes('token');
+            if (isAuth) {
+              // Soft info note — campaign is safely tracked, this is just a credentials gap
+              statusEl.innerHTML = `<div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:12px 16px;font-size:0.8rem;color:#0C4A6E;line-height:1.7">
+                <div style="font-weight:700;margin-bottom:4px">📊 Campaign tracked in InfoGenie</div>
+                <div style="margin-bottom:6px">Your ${finalPlatform} ad account credentials need connecting to push campaigns live automatically.</div>
+                <a href="#" onclick="closeCampLaunchRichModal();navigateTo('settings');return false;" style="color:#0369A1;font-weight:600;font-size:0.78rem">Connect ${finalPlatform} in Settings →</a>
+              </div>`;
+            } else {
+              // Actual API error — show detail but still reassure
+              statusEl.innerHTML = `<div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:12px 16px;font-size:0.8rem;color:#0C4A6E;line-height:1.7">
+                <div style="font-weight:700;margin-bottom:4px">📊 Campaign saved — platform sync pending</div>
+                <div style="font-size:0.75rem;color:#64748B;margin-bottom:6px">${errMsg.substring(0, 120)}</div>
+                <a href="#" onclick="closeCampLaunchRichModal();navigateTo('settings');return false;" style="color:#0369A1;font-weight:600;font-size:0.78rem">Review credentials in Settings →</a>
+              </div>`;
+            }
           }
         })
         .catch(() => {}); // silently fail — campaign is already in Results
