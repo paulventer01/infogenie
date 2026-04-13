@@ -21,7 +21,8 @@ window._phReady  = false;
     // PostHog
     if (cfg.posthogApiKey && window.posthog) {
       window.posthog.init(cfg.posthogApiKey, {
-        api_host: 'https://us.i.posthog.com',
+        api_host: 'https://eu.i.posthog.com',
+        ui_host: 'https://eu.posthog.com',
         autocapture: false,
         capture_pageview: false,
         capture_pageleave: true,
