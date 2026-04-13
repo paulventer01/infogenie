@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "Vy3Sem690SIpbg8VvFm3F"
+uri = "file://infogenie-backup.tar.gz"
+type = "unspecified"
+title = "InfoGenie — Full Source Code Backup"
