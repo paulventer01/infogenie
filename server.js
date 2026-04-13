@@ -275,6 +275,50 @@ Return only this JSON:
   }
 });
 
+// ── Competitor Ad Spend (DataForSEO paid traffic value) ───────────────────────
+app.post('/api/competitor-spend', async (req, res) => {
+  const { domains = [], yourDomain = '', yourBudget = 5000 } = req.body;
+  if (!domains.length) return res.json({ success: false, error: 'No domains provided' });
+
+  const clean = d => d.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].trim();
+  const allDomains = [yourDomain, ...domains].filter(Boolean).map(clean).slice(0, 7);
+
+  const results = await Promise.all(allDomains.map(async domain => {
+    try {
+      const raw = await callDataForSEO('/v3/dataforseo_labs/google/domain_rank_overview/live', [{ target: domain }], 10000);
+      const item = raw?.tasks?.[0]?.result?.[0]?.items?.[0];
+      const paid = item?.metrics?.paid;
+      // paid.etv = estimated monthly value of paid search traffic ≈ ad spend
+      const adSpend = paid ? Math.max(Math.round(paid.etv || 0), 0) : 0;
+      return { domain, adSpend, source: 'DataForSEO' };
+    } catch(e) {
+      return { domain, adSpend: 0, source: 'fallback' };
+    }
+  }));
+
+  // First entry is "you", rest are competitors
+  const yourSpend = results[0]?.adSpend || yourBudget;
+  const compSpend = results.slice(1);
+  res.json({ success: true, yourDomain: allDomains[0], yourSpend, competitors: compSpend });
+});
+
+// ── Integrations status (which env vars are configured) ───────────────────────
+app.get('/api/integrations/status', (req, res) => {
+  const configured = [];
+  if (process.env.GOOGLE_ADS_DEVELOPER_TOKEN && process.env.GOOGLE_ADS_REFRESH_TOKEN) configured.push('google-ads');
+  if (process.env.META_ACCESS_TOKEN && process.env.META_AD_ACCOUNT_ID) {
+    configured.push('meta-ads');
+    configured.push('meta-ad-library');
+  }
+  if (process.env.TIKTOK_ACCESS_TOKEN && process.env.TIKTOK_ADVERTISER_ID) configured.push('tiktok-ads');
+  if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) configured.push('openai');
+  if (process.env.AMPLITUDE_API_KEY) configured.push('amplitude');
+  if (process.env.POSTHOG_API_KEY) configured.push('posthog');
+  if (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD) configured.push('dataforseo');
+  if (process.env.RAPIDAPI_KEY) configured.push('rapidapi');
+  res.json({ configured });
+});
+
 // ── DataForSEO helpers ────────────────────────────────────────────────────────
 
 function getDataForSEOAuth() {

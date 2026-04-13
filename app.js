@@ -1474,8 +1474,8 @@ function buildDashboard() {
       </div>
       <div class="chart-box">
         <div class="chart-box-header">
-          <h3>Competitor Ad Spend Estimate <span class="chart-tag" style="background:#F59E0B20;color:#F59E0B">INTEL</span></h3>
-          <span style="font-size:0.72rem;color:#9CA3AF">Monthly estimate from competitor data</span>
+          <h3>Competitor Ad Spend <span class="chart-tag" style="background:#10B98120;color:#10B981">DATAFORSEO</span></h3>
+          <span id="spendChartStatus" style="font-size:0.72rem;color:#9CA3AF">Monthly paid traffic value estimate</span>
         </div>
         <canvas id="spendChart" height="180"></canvas>
       </div>
@@ -1502,23 +1502,53 @@ function buildDashboard() {
     });
   }
 
-  // ── Render competitor ad spend chart immediately ───────────────────────────
-  if (spendChartInstance) spendChartInstance.destroy();
+  // ── Render competitor ad spend chart — async DataForSEO ────────────────────
   const spendCtx = document.getElementById('spendChart');
-  if (spendCtx) {
-    const spendLabels = ['You', ...competitors.slice(0,6).map(c => c.name)];
-    const spendVals   = [analysisData.websiteKPIs.adSpend || 4500, ...competitors.slice(0,6).map(c => parseAdSpend(c.adSpend))];
-    const spendColors = ['rgba(0,229,255,0.85)', ...sovPalette.map(p => p + 'BB')];
+  const spendStatusEl = document.getElementById('spendChartStatus');
+  if (spendStatusEl) spendStatusEl.textContent = '⏳ Fetching live data…';
+
+  const _renderSpendChart = (labels, vals, source) => {
+    if (spendChartInstance) spendChartInstance.destroy();
+    if (!spendCtx) return;
+    const colors = labels.map((l, i) => l === 'You' ? 'rgba(0,229,255,0.9)' : (sovPalette[i-1] || '#6B7280') + 'BB');
     spendChartInstance = new Chart(spendCtx.getContext('2d'), {
       type: 'bar',
-      data: { labels: spendLabels, datasets: [{ label: 'Est. Ad Spend/mo', data: spendVals, backgroundColor: spendColors, borderRadius: 6, borderWidth: 0 }] },
+      data: { labels, datasets: [{ label: 'Est. Ad Spend/mo', data: vals, backgroundColor: colors, borderRadius: 6, borderWidth: 0 }] },
       options: {
         responsive: true, indexAxis: 'y',
         plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` $${Number(ctx.raw).toLocaleString()}/mo` } } },
-        scales: { x: { grid: { color: 'rgba(0,0,0,.04)' }, ticks: { callback: v => '$'+(v/1000).toFixed(0)+'K', font: { size: 10 } } }, y: { grid: { display: false }, ticks: { font: { size: 10 } } } }
+        scales: { x: { grid: { color: 'rgba(0,0,0,.04)' }, ticks: { callback: v => '$'+(v>=1000?(v/1000).toFixed(0)+'K':v), font: { size: 10 } } }, y: { grid: { display: false }, ticks: { font: { size: 10 } } } }
       }
     });
-  }
+    if (spendStatusEl) spendStatusEl.innerHTML = source === 'DataForSEO'
+      ? '<span style="color:#10B981;font-weight:700">🔴 Live via DataForSEO</span>'
+      : '<span style="color:#9CA3AF">Estimated from competitor data</span>';
+  };
+
+  // Render static immediately so chart is visible
+  const staticLabels = ['You', ...competitors.slice(0,6).map(c => c.name)];
+  const staticVals   = [analysisData.websiteKPIs.adSpend || 4500, ...competitors.slice(0,6).map(c => parseAdSpend(c.adSpend))];
+  _renderSpendChart(staticLabels, staticVals, 'static');
+
+  // Fetch live DataForSEO data and upgrade the chart
+  const compDomains = competitors.slice(0,6).map(c => (c.url || c.name.toLowerCase().replace(/\s+/g,'')+'.com'));
+  fetch('/api/competitor-spend', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ domains: compDomains, yourDomain: url, yourBudget: analysisData.websiteKPIs.adSpend || 4500 })
+  }).then(r => r.json()).then(data => {
+    if (!data.success) return;
+    const liveLabels = ['You', ...data.competitors.map(c => {
+      const match = competitors.find(x => (x.url || '').includes(c.domain.split('.')[0]));
+      return match ? match.name : c.domain;
+    })];
+    const liveVals = [data.yourSpend || analysisData.websiteKPIs.adSpend || 4500,
+      ...data.competitors.map(c => c.adSpend || parseAdSpend(competitors.find(x=>(x.url||'').includes(c.domain.split('.')[0]))?.adSpend || '$0'))
+    ];
+    // Only update if we got non-zero data from DataForSEO
+    const hasRealData = liveVals.slice(1).some(v => v > 0);
+    if (hasRealData) _renderSpendChart(liveLabels, liveVals, 'DataForSEO');
+  }).catch(() => {});  // Keep static chart on error
 
   // ── Async: 90-day forecast ────────────────────────────────────────────────
   const compNames = competitors.map(c => c.name);
@@ -3484,6 +3514,24 @@ const INTEGRATIONS = {
         ]
       },
       {
+        id: 'dataforseo', logo: '📡', name: 'DataForSEO',
+        tagline: 'Live competitor ad spend, keyword data & SERP intelligence — powering InfoGenie\'s core analytics',
+        authType: 'apikey',
+        placeholder: 'DataForSEO Login:Password',
+        unlocks: [
+          '🔴 LIVE: Real competitor paid ad spend estimates updated daily',
+          'Domain rank overview with organic & paid traffic value per competitor',
+          'Keyword gap analysis with CPC and competition scores',
+          'SERP feature detection: ads, shopping, local packs per keyword'
+        ],
+        steps: [
+          { text: 'Sign up at <a href="https://dataforseo.com" target="_blank">dataforseo.com</a> — pay-as-you-go plans start from $0.0001/request' },
+          { text: 'After signup, your <strong>Login</strong> (email) and <strong>Password</strong> are your API credentials' },
+          { text: 'Enter them in the format <code>email@domain.com:YourPassword</code> above' },
+          { text: 'Click <strong>Test Connection</strong> — InfoGenie will immediately begin pulling live competitor data' }
+        ]
+      },
+      {
         id: 'brandwatch', logo: '👁️', name: 'Brandwatch API',
         tagline: 'Real-time competitor mentions, sentiment & share of voice monitoring',
         authType: 'apikey',
@@ -4007,6 +4055,25 @@ const INTEGRATIONS = {
           { text: 'Select your project and navigate to <strong>General → API Keys</strong>' },
           { text: 'Copy both the <strong>API Key</strong> and <strong>Secret Key</strong>' },
           { text: 'Enter them in format <code>APIKey:SecretKey</code> above' },
+          { text: 'Click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'posthog', logo: '🦔', name: 'PostHog',
+        tagline: 'Open-source product analytics, session replay & feature flags',
+        authType: 'apikey',
+        placeholder: 'PostHog Personal API Key (phx_...)',
+        unlocks: [
+          'Ad campaign → conversion funnel tracking end-to-end',
+          'Session replay of post-click user journeys',
+          'Feature flag integration for A/B test targeting',
+          'Cohort export for precision retargeting audiences'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://app.posthog.com" target="_blank">app.posthog.com</a> → <strong>Settings → Personal API Keys</strong>' },
+          { text: 'Click <strong>Create personal API key</strong> and give it a descriptive name' },
+          { text: 'Select scopes: <code>query:read</code> and <code>project:read</code>' },
+          { text: 'Copy the key (starts with <code>phx_</code>) and paste it above' },
           { text: 'Click <strong>Test Connection</strong>' }
         ]
       }
@@ -4889,6 +4956,7 @@ function buildSettings() {
     </div>
   `;
   restoreConnectedStates();
+  autoDetectServerIntegrations();
   // Check real API health asynchronously
   setTimeout(() => checkAPIHealth(), 300);
 }
@@ -6657,6 +6725,27 @@ function restoreConnectedStates() {
   }
   const el = document.getElementById('connectedCount');
   if (el) el.textContent = _connectedCount;
+}
+
+// Auto-detect server-configured integrations and mark them connected
+let _serverIntegStatusFetched = false;
+function autoDetectServerIntegrations() {
+  if (_serverIntegStatusFetched) return;
+  _serverIntegStatusFetched = true;
+  fetch('/api/integrations/status').then(r => r.json()).then(data => {
+    if (!data.configured || !data.configured.length) return;
+    let newlyConnected = 0;
+    data.configured.forEach(id => {
+      if (!_isConnected(id)) {
+        try { localStorage.setItem('ig_integ_' + id, '1'); } catch(e) {}
+        newlyConnected++;
+      }
+    });
+    if (newlyConnected > 0) {
+      // Rebuild settings UI to reflect newly connected integrations
+      restoreConnectedStates();
+    }
+  }).catch(() => {});
 }
 
 function _updateLiveDataBadges() {
