@@ -68,31 +68,65 @@ window._infoGenieActions = [];
 // ===== PRIMARY CAMPAIGN BUTTON HANDLERS — called directly via onclick in buildCampaigns() =====
 window._igLaunch = function(idx) {
   try {
+    // If _lastCampRecs is missing but we have analysisData, rebuild it
+    if ((!window._lastCampRecs || !window._lastCampRecs[idx]) && window.analysisData) {
+      try { buildCampaigns(); } catch(e) {}
+    }
     const camp = window._lastCampRecs && window._lastCampRecs[idx];
     if (!camp) {
-      showToast('⚠️ Please run an analysis first — enter your website URL on the home page and click Analyse Now');
+      showToast('⚠️ Please run an analysis first — enter your website URL on the home page');
       navigateTo('home');
       return;
     }
     buildLaunchModal(camp, idx);
   } catch(err) {
     console.error('_igLaunch error:', err);
-    showToast('⚠️ Could not open Launch modal: ' + err.message);
+    // Show an inline error in the modal instead of just a toast
+    const inner = document.getElementById('campLaunchRichModalInner');
+    const modal  = document.getElementById('campLaunchRichModal');
+    if (inner && modal) {
+      modal.classList.remove('hidden');
+      modal.style.cssText = 'display:flex !important; position:fixed; inset:0; z-index:9999; align-items:center; justify-content:center; background:rgba(0,0,0,.65); padding:20px;';
+      inner.innerHTML = `<div style="background:white;border-radius:16px;padding:32px;max-width:460px;width:100%;text-align:center">
+        <div style="font-size:2rem;margin-bottom:12px">⚠️</div>
+        <div style="font-weight:800;font-size:1rem;color:#0A1628;margin-bottom:8px">Couldn't open Launch modal</div>
+        <div style="font-size:0.82rem;color:#6B7280;margin-bottom:20px">${err.message}</div>
+        <button onclick="document.getElementById('campLaunchRichModal').classList.add('hidden');document.getElementById('campLaunchRichModal').removeAttribute('style')" style="padding:10px 24px;background:#0066FF;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:700">Close</button>
+      </div>`;
+    } else {
+      alert('Error opening launch: ' + err.message);
+    }
   }
 };
 
 window._igCreative = function(idx) {
   try {
+    if ((!window._lastCampRecs || !window._lastCampRecs[idx]) && window.analysisData) {
+      try { buildCampaigns(); } catch(e) {}
+    }
     const camp = window._lastCampRecs && window._lastCampRecs[idx];
     if (!camp) {
-      showToast('⚠️ Please run an analysis first — enter your website URL on the home page and click Analyse Now');
+      showToast('⚠️ Please run an analysis first — enter your website URL on the home page');
       navigateTo('home');
       return;
     }
     buildCreativeModal(camp, idx);
   } catch(err) {
     console.error('_igCreative error:', err);
-    showToast('⚠️ Could not open Creative Studio: ' + err.message);
+    const inner = document.getElementById('campCreativeModalInner');
+    const modal  = document.getElementById('campCreativeModal');
+    if (inner && modal) {
+      modal.classList.remove('hidden');
+      modal.style.cssText = 'display:flex !important; position:fixed; inset:0; z-index:9999; align-items:center; justify-content:center; background:rgba(0,0,0,.65); padding:20px;';
+      inner.innerHTML = `<div style="background:white;border-radius:16px;padding:32px;max-width:460px;width:100%;text-align:center">
+        <div style="font-size:2rem;margin-bottom:12px">⚠️</div>
+        <div style="font-weight:800;font-size:1rem;color:#0A1628;margin-bottom:8px">Couldn't open Creative Studio</div>
+        <div style="font-size:0.82rem;color:#6B7280;margin-bottom:20px">${err.message}</div>
+        <button onclick="document.getElementById('campCreativeModal').classList.add('hidden');document.getElementById('campCreativeModal').removeAttribute('style')" style="padding:10px 24px;background:#0066FF;color:white;border:none;border-radius:8px;cursor:pointer;font-weight:700">Close</button>
+      </div>`;
+    } else {
+      alert('Error opening Creative Studio: ' + err.message);
+    }
   }
 };
 
@@ -178,12 +212,16 @@ window.launchABTest = function() {
 };
 
 function buildLaunchModal(camp, idx) {
-  // Show the modal shell
+  // Bulletproof modal show
   const modal = document.getElementById('campLaunchRichModal');
   const inner = document.getElementById('campLaunchRichModalInner');
-  if (!modal || !inner) { showToast('⚠️ Modal not found — please refresh the page'); return; }
+  if (!modal || !inner) {
+    alert('Launch modal not found. Please refresh the page and try again.');
+    return;
+  }
   modal.classList.remove('hidden');
-  modal.style.display = 'flex';
+  modal.removeAttribute('style');
+  modal.style.cssText = 'display:flex !important; position:fixed; inset:0; z-index:9999; align-items:center; justify-content:center; background:rgba(0,0,0,.65); backdrop-filter:blur(4px); padding:20px;';
 
   // Data
   const name       = camp.name || 'Campaign';
@@ -210,29 +248,28 @@ function buildLaunchModal(camp, idx) {
   };
   const pm = platformMeta[platform] || platformMeta['Google Ads'];
 
-  // AI headlines
-  const headlineMap = {
-    'Google Ads':      ['Stop Overpaying — Switch & Save 30%', 'Faster Results. Lower Costs. Proven ROI.', 'The Smarter Alternative'],
-    'Google Search':   ['Beat the Competition Starting Today',  '#1 Rated Alternative — See Why',           'Get More for Less — Free 14-Day Trial'],
-    'Meta Ads':        ['Join 10,000+ Businesses Seeing 4× ROAS', 'Your Competitors Are Scaling With This', 'Finally — Ads That Actually Convert'],
-    'TikTok Ads':      ['POV: Your ROAS just hit 4×',           'Real results. Real brands. Real ROI.',     'The strategy competitors hope you never see'],
-    'YouTube':         ['Stop Wasting Ad Spend — Here\'s the Fix', 'Top Brands Are Hitting 5× ROAS This Year', 'The Ad Strategy Competitors Fear'],
-    'AI Optimised':    ['AI-Optimised. Always On. Always Winning.', 'Every £1 Working Harder With AI Bidding', 'Your Campaign Never Sleeps'],
-    'LinkedIn Ads':    ['Reach 500+ Decision-Makers This Week', 'The B2B Growth Strategy CFOs Are Approving', 'Enterprise ROI — Without Enterprise Costs'],
-    'Display Network': ['Your Brand. Everywhere Your Customers Are.', 'Outperform Competitors On Every Screen', 'Display + Intent = Unstoppable Growth']
-  };
-  const headlines = headlineMap[platform] || headlineMap['Google Ads'];
+  // Seed/fallback headlines (shown instantly, replaced by GPT-4o)
+  const topCompName = analysisData?.competitors?.[0]?.name || 'top competitor';
+  const indName = analysisData?.industry?.name || 'your industry';
+  const seedHeadlines = [
+    `Beat ${topCompName} — Switch Free`,
+    `${indName}: ${projROAS}× ROAS Proven`,
+    `${platform.split(' ')[0]} Results That Scale`
+  ];
+  const seedDescs = [
+    `Cut wasteful spend and outperform ${topCompName} on the keywords that matter most to ${indName} buyers.`,
+    `${camp.description ? camp.description.split('.')[0] + '.' : 'AI-powered campaign intelligence that converts.'}`
+  ];
 
-  const descMap = {
-    'Google Ads':   ['Cut wasteful ad spend and redirect it to campaigns that convert. InfoGenie\'s AI optimises every bid in real time.', 'See exactly where competitors are winning — then outbid them at the right moment with AI-powered precision.'],
-    'Meta Ads':     ['Reach the audiences your competitors are missing. InfoGenie builds lookalike segments from your best customers automatically.', 'Dynamic creative that tests and learns continuously — your best-performing ad is always running.'],
-    'AI Optimised': ['InfoGenie\'s reinforcement learning engine manages your entire ad portfolio autonomously — pausing losers, scaling winners, every 6 hours.', 'Set your ROAS target, connect your accounts, and let the AI run. Average clients see +31% ROAS improvement in 30 days.']
-  };
-  const descs = descMap[platform] || descMap['Google Ads'];
+  const spin = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(99,102,241,.3);border-top-color:#6366F1;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:5px"></span>';
 
   inner.innerHTML = `
+    <style>@keyframes spin{to{transform:rotate(360deg)}} @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}</style>
     <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:24px 28px;border-radius:20px 20px 0 0">
-      <div style="font-size:1rem;font-weight:800;font-family:'Sora',sans-serif;color:white;margin-bottom:4px">🚀 Campaign Launch Brief</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-size:1rem;font-weight:800;font-family:'Sora',sans-serif;color:white">🚀 Campaign Launch Brief</div>
+        <span id="lm-ai-badge" style="background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.4);border-radius:6px;padding:3px 10px;font-size:0.68rem;font-weight:700;color:#A5B4FC">${spin}GPT-4 Building Brief...</span>
+      </div>
       <div style="font-size:0.8rem;color:rgba(255,255,255,.6);margin-bottom:16px">${name} · ${platform}</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
         ${[['Proj. ROAS', projROAS+'×','#00E5FF'],['Est. Conversions',projConv,'#10B981'],['Est. Revenue',projRev,'#F59E0B'],['Daily Budget','$'+dailyBudg+'/day','white']].map(([k,v,c])=>`
@@ -243,7 +280,7 @@ function buildLaunchModal(camp, idx) {
       </div>
     </div>
 
-    <div style="padding:22px 28px;display:flex;flex-direction:column;gap:18px">
+    <div style="padding:22px 28px;display:flex;flex-direction:column;gap:16px;max-height:68vh;overflow-y:auto">
 
       <!-- EDITABLE CAMPAIGN SETTINGS -->
       <div>
@@ -251,7 +288,7 @@ function buildLaunchModal(camp, idx) {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div>
             <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Campaign Name</label>
-            <input id="lm-name" value="${name.substring(0,60)}" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#0066FF'" onblur="this.style.borderColor='#E2E8F0'">
+            <input id="lm-name" value="${name.substring(0,60).replace(/"/g,'&quot;')}" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#0066FF'" onblur="this.style.borderColor='#E2E8F0'">
           </div>
           <div>
             <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Platform</label>
@@ -286,16 +323,70 @@ function buildLaunchModal(camp, idx) {
         </div>
       </div>
 
-      <!-- AI HEADLINES -->
+      <!-- AI HEADLINES — seed shown instantly, replaced by GPT-4 -->
       <div>
-        <div style="font-size:0.68rem;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">🤖 AI-Generated Headlines (click to edit)</div>
-        <div style="display:flex;flex-direction:column;gap:6px">
-          ${headlines.map((h,i)=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:0.68rem;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.08em">🤖 GPT-4 Headlines (click to edit)</div>
+          <span id="lm-hl-loading" style="font-size:0.65rem;color:#6366F1">${spin}Writing...</span>
+        </div>
+        <div id="lm-headlines-wrap" style="display:flex;flex-direction:column;gap:6px">
+          ${seedHeadlines.map((h,i)=>`
             <div style="display:flex;align-items:center;gap:8px;background:#F0FDF4;border-radius:8px;padding:8px 10px">
               <span style="font-size:0.7rem;font-weight:700;color:#059669;background:#DCFCE7;border-radius:4px;padding:2px 6px;flex-shrink:0">H${i+1}</span>
-              <input value="${h.replace(/"/g,'&quot;')}" style="flex:1;border:none;background:transparent;font-size:0.82rem;color:#0A1628;font-weight:600;outline:none;font-family:'Inter',sans-serif">
+              <input class="lm-headline" value="${h.replace(/"/g,'&quot;')}" style="flex:1;border:none;background:transparent;font-size:0.82rem;color:#0A1628;font-weight:600;outline:none;font-family:'Inter',sans-serif">
             </div>`).join('')}
         </div>
+        <div id="lm-descs-wrap" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+          ${seedDescs.map((d,i)=>`
+            <div style="display:flex;align-items:center;gap:8px;background:#F0F9FF;border-radius:8px;padding:8px 10px">
+              <span style="font-size:0.7rem;font-weight:700;color:#0369A1;background:#E0F2FE;border-radius:4px;padding:2px 6px;flex-shrink:0">D${i+1}</span>
+              <input class="lm-desc" value="${d.replace(/"/g,'&quot;')}" style="flex:1;border:none;background:transparent;font-size:0.8rem;color:#374151;outline:none;font-family:'Inter',sans-serif">
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- PLATFORM STRATEGY -->
+      <div>
+        <div style="font-size:0.68rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">${pm.icon} ${platform} Strategy</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          ${[['Bid Strategy',pm.bid],['Target Audience',pm.aud],['Primary KPI',pm.kpi],['Creative Format',pm.creative]].map(([k,v])=>`
+            <div style="background:#F9FAFB;border-radius:8px;padding:10px 12px">
+              <div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em">${k}</div>
+              <div style="font-size:0.78rem;color:#0A1628;font-weight:600;margin-top:3px">${v}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- GPT-4 STRATEGY INTELLIGENCE — populated after API call -->
+      <div id="lm-ai-intel" style="display:none;animation:fadeIn .5s">
+        <div style="font-size:0.68rem;font-weight:700;color:#DC2626;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">🧠 GPT-4 Campaign Intelligence</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:12px 14px">
+            <div style="font-size:0.65rem;font-weight:700;color:#C2410C;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">⚡ Competitor Gap</div>
+            <div id="lm-comp-gap" style="font-size:0.82rem;color:#7C2D12;line-height:1.5;font-style:italic"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px 14px">
+              <div style="font-size:0.65rem;font-weight:700;color:#065F46;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">🎯 Target Audience</div>
+              <div id="lm-audience-ai" style="font-size:0.8rem;color:#064E3B;line-height:1.5"></div>
+            </div>
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px">
+              <div style="font-size:0.65rem;font-weight:700;color:#1E40AF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">💡 Creative Angle</div>
+              <div id="lm-creative-angle" style="font-size:0.8rem;color:#1E3A8A;line-height:1.5"></div>
+            </div>
+          </div>
+          <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px">
+            <div style="font-size:0.65rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">📋 Strategy Summary</div>
+            <div id="lm-strategy" style="font-size:0.82rem;color:#374151;line-height:1.6"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPI TARGETS — populated by GPT-4 -->
+      <div id="lm-kpi-targets" style="display:none;animation:fadeIn .5s">
+        <div style="font-size:0.68rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">📊 KPI Targets — GPT-4 Calculated</div>
+        <div id="lm-kpi-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>
+        <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px" id="lm-goal-grid"></div>
       </div>
 
       <!-- BUDGET BREAKDOWN -->
@@ -310,12 +401,24 @@ function buildLaunchModal(camp, idx) {
         </div>
       </div>
 
-      <div style="display:flex;gap:10px">
-        <button onclick="document.getElementById('campLaunchRichModal').classList.add('hidden');document.getElementById('campLaunchRichModal').style.display='none'" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
+      <!-- LAUNCH CHECKLIST — populated by GPT-4 -->
+      <div id="lm-checklist-wrap" style="display:none;animation:fadeIn .5s">
+        <div style="font-size:0.68rem;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">✅ Pre-Launch Checklist — GPT-4 Generated</div>
+        <div id="lm-checklist" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+
+      <div style="display:flex;gap:10px;padding-top:4px">
+        <button id="lm-cancel-btn" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
         <button id="lm-confirm-btn" style="flex:2;padding:12px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer">🚀 Confirm &amp; Launch Campaign</button>
       </div>
     </div>
   `;
+
+  // Wire cancel button
+  document.getElementById('lm-cancel-btn').addEventListener('click', () => {
+    modal.classList.add('hidden');
+    modal.removeAttribute('style');
+  });
 
   // Wire confirm button
   document.getElementById('lm-confirm-btn').addEventListener('click', function() {
@@ -424,14 +527,121 @@ function buildLaunchModal(camp, idx) {
         .catch(() => {}); // silently fail — campaign is already in Results
     }
   });
+
+  // ── Async GPT-4 brief — runs immediately after modal opens ─────────────────
+  (async () => {
+    try {
+      const domain     = analysisData?.url || 'yourdomain.com';
+      const competitors = (analysisData?.competitors || []).map(c => c.name).slice(0, 5);
+      const res = await fetch('/api/ai-campaign-brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campName: name, platform, budget: budgetStr,
+          industry: indName, domain,
+          competitors, topComp: topCompName,
+          description: camp.description || '',
+          estROAS: String(camp.estROAS || projROAS),
+          estCTR: camp.estCTR || '4.2%',
+          estCPA: camp.estCPA || '$38',
+          tags: camp.tags || []
+        })
+      });
+      const brief = await res.json();
+
+      // Update headlines
+      if (brief.headlines && Array.isArray(brief.headlines)) {
+        const hlInputs = document.querySelectorAll('.lm-headline');
+        brief.headlines.forEach((h, i) => { if (hlInputs[i]) hlInputs[i].value = h; });
+      }
+      // Update descriptions
+      if (brief.descriptions && Array.isArray(brief.descriptions)) {
+        const dInputs = document.querySelectorAll('.lm-desc');
+        brief.descriptions.forEach((d, i) => { if (dInputs[i]) dInputs[i].value = d; });
+      }
+      // Hide loading spinner
+      const hlLoad = document.getElementById('lm-hl-loading');
+      if (hlLoad) hlLoad.style.display = 'none';
+
+      // Show AI intelligence panel
+      const intelEl = document.getElementById('lm-ai-intel');
+      if (intelEl && (brief.competitor_gap || brief.target_audience || brief.strategy_summary)) {
+        intelEl.style.display = 'block';
+        const gapEl = document.getElementById('lm-comp-gap');
+        const audEl = document.getElementById('lm-audience-ai');
+        const angEl = document.getElementById('lm-creative-angle');
+        const stEl  = document.getElementById('lm-strategy');
+        if (gapEl && brief.competitor_gap) gapEl.textContent = '"' + brief.competitor_gap + '"';
+        if (audEl && brief.target_audience) audEl.textContent = brief.target_audience;
+        if (angEl && brief.creative_angle)  angEl.textContent = brief.creative_angle;
+        if (stEl  && brief.strategy_summary) stEl.textContent = brief.strategy_summary;
+      }
+
+      // Show KPI targets
+      const kpiWrap = document.getElementById('lm-kpi-targets');
+      const kpiGrid = document.getElementById('lm-kpi-grid');
+      const goalGrid = document.getElementById('lm-goal-grid');
+      if (kpiWrap && brief.kpi_targets) {
+        const kt = brief.kpi_targets;
+        kpiGrid.innerHTML = [
+          ['Target ROAS', kt.roas + '×', '#00E5FF'],
+          ['Target CTR', kt.ctr, '#10B981'],
+          ['Target CPA', kt.cpa, '#F59E0B']
+        ].map(([k,v,c]) => `
+          <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:1rem;font-weight:800;color:${c}">${v}</div>
+            <div style="font-size:0.65rem;color:#6B7280;margin-top:2px">${k}</div>
+          </div>`).join('');
+        goalGrid.innerHTML = [
+          ['Week 1 Goal', kt.week1_goal, '#EFF6FF', '#1D4ED8'],
+          ['Month 1 Goal', kt.month1_goal, '#F0FDF4', '#065F46']
+        ].map(([k,v,bg,col]) => `
+          <div style="background:${bg};border-radius:8px;padding:10px 12px">
+            <div style="font-size:0.65rem;font-weight:700;color:${col};text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${k}</div>
+            <div style="font-size:0.78rem;color:#0A1628;line-height:1.4">${v || ''}</div>
+          </div>`).join('');
+        kpiWrap.style.display = 'block';
+      }
+
+      // Show launch checklist
+      const clWrap = document.getElementById('lm-checklist-wrap');
+      const clEl   = document.getElementById('lm-checklist');
+      if (clWrap && clEl && brief.launch_checklist && brief.launch_checklist.length > 0) {
+        clEl.innerHTML = brief.launch_checklist.map(item => `
+          <div style="display:flex;align-items:flex-start;gap:8px;background:#F0FDF4;border-radius:8px;padding:8px 12px">
+            <span style="color:#059669;font-size:1rem;flex-shrink:0">☐</span>
+            <span style="font-size:0.8rem;color:#374151;line-height:1.4">${item}</span>
+          </div>`).join('');
+        clWrap.style.display = 'block';
+      }
+
+      // Update AI badge
+      const badge = document.getElementById('lm-ai-badge');
+      if (badge) {
+        badge.style.background = 'rgba(16,185,129,.15)';
+        badge.style.borderColor = 'rgba(16,185,129,.4)';
+        badge.style.color = '#6EE7B7';
+        badge.innerHTML = '✨ GPT-4 Brief Ready';
+      }
+
+    } catch(e) {
+      console.warn('GPT-4 brief failed:', e.message);
+      const hlLoad = document.getElementById('lm-hl-loading');
+      if (hlLoad) { hlLoad.innerHTML = '⚠️ Using template'; hlLoad.style.color = '#F59E0B'; }
+    }
+  })();
 }
 
 function buildCreativeModal(camp, idx) {
   const modal = document.getElementById('campCreativeModal');
   const inner = document.getElementById('campCreativeModalInner');
-  if (!modal || !inner) { showToast('⚠️ Creative Studio modal not found — please refresh'); return; }
+  if (!modal || !inner) {
+    alert('Creative Studio modal not found. Please refresh the page.');
+    return;
+  }
   modal.classList.remove('hidden');
-  modal.style.display = 'flex';
+  modal.removeAttribute('style');
+  modal.style.cssText = 'display:flex !important; position:fixed; inset:0; z-index:9999; align-items:center; justify-content:center; background:rgba(0,0,0,.65); backdrop-filter:blur(4px); padding:20px;';
 
   const name     = camp.name || 'Campaign';
   const platform = camp.platform || 'Google Ads';
@@ -2216,8 +2426,14 @@ function buildCampaigns() {
 }
 
 function generateCampaignRecs(industry, competitors, url) {
-  const topCTR = competitors.reduce((a,c) => parseFloat(c.ctr) > parseFloat(a.ctr) ? c : a);
-  const topROAS = competitors.reduce((a,c) => c.roas > a.roas ? c : a);
+  // Safety: ensure competitors is a non-empty array
+  if (!Array.isArray(competitors) || competitors.length === 0) {
+    competitors = [{ name: 'top competitor', ctr: '4.2%', roas: 3.5, topKeywords: ['your keywords'], audiences: [{ label: 'High-value segment', pct: '48' }] }];
+  }
+  const safe = c => ({ name: c.name || 'competitor', ctr: c.ctr || '4%', roas: c.roas || 3, topKeywords: c.topKeywords || [], audiences: c.audiences || [] });
+  const comps = competitors.map(safe);
+  const topCTR = comps.reduce((a,c) => parseFloat(c.ctr) > parseFloat(a.ctr) ? c : a);
+  const topROAS = comps.reduce((a,c) => c.roas > a.roas ? c : a);
   
   return [
     {
@@ -2260,7 +2476,7 @@ function generateCampaignRecs(industry, competitors, url) {
       description: `InfoGenie's reinforcement learning engine will continuously test and optimise your campaigns across all platforms. The AI automatically pauses underperformers, reallocates budget to winners, and generates new creatives every 72 hours.`,
       tags: ['Auto-optimise', 'Real-time RL', 'Multi-platform', 'Zero Manual Work'],
       estCTR: '5.2%',
-      estROAS: (avg(competitors.map(c=>c.roas)) * 1.32).toFixed(1),
+      estROAS: (avg(comps.map(c=>c.roas)) * 1.32).toFixed(1),
       estCPA: '$' + Math.floor(Math.random() * 22 + 12),
       budget: '$5,000/mo'
     },
@@ -2271,7 +2487,7 @@ function generateCampaignRecs(industry, competitors, url) {
       description: `Google's Performance Max campaigns combined with InfoGenie's competitor keyword intelligence. Target all Google properties (Search, Display, YouTube, Gmail, Maps) with AI-optimised creative that outperforms market leaders' funnels by design.`,
       tags: ['PMax', 'All Google Properties', 'AI Bidding', 'Conversion Focus'],
       estCTR: '3.9%',
-      estROAS: (avg(competitors.map(c=>c.roas)) * 1.22).toFixed(1),
+      estROAS: (avg(comps.map(c=>c.roas)) * 1.22).toFixed(1),
       estCPA: '$' + Math.floor(Math.random() * 38 + 22),
       budget: '$4,000/mo'
     },
@@ -2279,10 +2495,10 @@ function generateCampaignRecs(industry, competitors, url) {
       platform: 'Meta Ads',
       badgeClass: 'meta',
       name: `Retargeting Funnel — Competitor Traffic Capture`,
-      description: `Deploy cross-platform retargeting to capture users who visited competitor sites. InfoGenie's audience intelligence shows ${competitors[0]?.audiences?.[0]?.label} is your highest-converting competitor audience segment with ${competitors[0]?.audiences?.[0]?.pct}% engagement rate.`,
+      description: `Deploy cross-platform retargeting to capture users who visited competitor sites. InfoGenie's audience intelligence shows ${comps[0]?.audiences?.[0]?.label || 'high-value audience'} is your highest-converting competitor audience segment with ${comps[0]?.audiences?.[0]?.pct || '48'}% engagement rate.`,
       tags: ['Retargeting', 'Custom Audiences', 'Competitor Targeting', 'Dynamic Ads'],
       estCTR: '4.1%',
-      estROAS: (avg(competitors.map(c=>c.roas)) * 1.28).toFixed(1),
+      estROAS: (avg(comps.map(c=>c.roas)) * 1.28).toFixed(1),
       estCPA: '$' + Math.floor(Math.random() * 32 + 18),
       budget: '$2,500/mo'
     }
@@ -7251,8 +7467,9 @@ function openCampLaunchRich(name, platform, budget, idx) {
 
 function closeCampLaunchRichModal() {
   const modal = document.getElementById('campLaunchRichModal');
+  if (!modal) return;
   modal.classList.add('hidden');
-  modal.style.display = 'none';
+  modal.removeAttribute('style');
 }
 
 function confirmCampLaunch(name, platform, budget) {
@@ -7810,8 +8027,9 @@ function _csSendEmail() {
 
 function closeCampCreativeModal() {
   const modal = document.getElementById('campCreativeModal');
+  if (!modal) return;
   modal.classList.add('hidden');
-  modal.style.display = 'none';
+  modal.removeAttribute('style');
 }
 
 // ── Live Keyword Gap Fetch (DataForSEO via backend) ──────────────────────────

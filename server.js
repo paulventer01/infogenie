@@ -1309,6 +1309,137 @@ function projectedStat(industry) {
   return '4.2×';
 }
 
+// ── POST /api/ai-campaign-brief ───────────────────────────────────────────────
+// Powers the Launch Campaign modal — generates a full AI campaign brief via GPT-4o
+
+app.post('/api/ai-campaign-brief', async (req, res) => {
+  try {
+    const {
+      campName = 'Campaign', platform = 'Google Ads', budget = '$2,000/mo',
+      industry = 'your industry', domain = 'yourdomain.com',
+      competitors = [], topComp = 'competitor', description = '',
+      estROAS = '3.8', estCTR = '4.2%', estCPA = '$38', tags = []
+    } = req.body;
+
+    const compList = competitors.slice(0, 5).join(', ') || topComp;
+    const tagList  = tags.slice(0, 5).join(', ') || '';
+
+    const systemPrompt = `You are a senior performance marketing strategist with 15+ years running campaigns for major brands on Google, Meta, TikTok, YouTube and LinkedIn. You create precise, data-driven campaign briefs that achieve 4-6× ROAS. You write copy that exploits specific competitor weaknesses and speaks directly to high-intent buyers. Always respond with valid JSON only — no markdown, no extra text.`;
+
+    const userPrompt = `Create a complete campaign launch brief for this campaign:
+
+BRAND DOMAIN: ${domain}
+INDUSTRY: ${industry}
+CAMPAIGN NAME: ${campName}
+AD PLATFORM: ${platform}
+MONTHLY BUDGET: ${budget}
+TOP COMPETITORS TO BEAT: ${compList}
+CAMPAIGN DESCRIPTION: ${description || 'AI-powered campaign strategy'}
+CAMPAIGN THEMES/TAGS: ${tagList}
+PROJECTED METRICS: ROAS ${estROAS}× | CTR ${estCTR} | CPA ${estCPA}
+
+Return ONLY this exact JSON structure:
+{
+  "headlines": [
+    "Headline 1 — MAX 30 chars, high-intent keyword targeting ${topComp} weakness",
+    "Headline 2 — MAX 30 chars, benefit-led with a specific stat or differentiator",
+    "Headline 3 — MAX 30 chars, strong CTA or competitive contrast"
+  ],
+  "descriptions": [
+    "Description 1 — MAX 90 chars, pain point → your solution vs ${topComp}",
+    "Description 2 — MAX 90 chars, social proof stat + call to action"
+  ],
+  "strategy_summary": "2-3 sentence strategic rationale: why this campaign angle beats ${topComp} on ${platform} specifically, including the targeting method and expected outcome.",
+  "target_audience": "Specific audience segment description (demographics, interests, intent signals) — 1-2 sentences.",
+  "bid_strategy": "Recommended ${platform} bidding strategy and why it maximises ROAS for this budget.",
+  "creative_angle": "The core creative hook/angle — what emotional trigger or insight makes this ad stop the scroll.",
+  "competitor_gap": "1-2 sentences on a specific ${topComp} weakness this campaign exploits.",
+  "kpi_targets": {
+    "roas": "${estROAS}",
+    "ctr": "${estCTR}",
+    "cpa": "${estCPA}",
+    "week1_goal": "Specific measurable goal for the first 7 days",
+    "month1_goal": "Specific measurable goal for the first 30 days"
+  },
+  "launch_checklist": [
+    "Specific pre-launch action item 1 for ${platform}",
+    "Specific pre-launch action item 2",
+    "Specific pre-launch action item 3",
+    "Specific pre-launch action item 4"
+  ]
+}`;
+
+    // Helper to clean/parse AI JSON
+    function parseJSON(text) {
+      if (!text) return null;
+      const clean = text.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+      const m = clean.match(/\{[\s\S]*\}/);
+      if (!m) return null;
+      try { return JSON.parse(m[0]); } catch { return null; }
+    }
+
+    // GPT-4o via Replit AI Integration
+    if (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) {
+      try {
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user',   content: userPrompt }
+          ],
+          temperature: 0.75,
+          max_tokens: 1200,
+          response_format: { type: 'json_object' }
+        });
+        const text = completion.choices?.[0]?.message?.content || '';
+        const parsed = parseJSON(text);
+        if (parsed && Array.isArray(parsed.headlines) && parsed.headlines.length >= 2) {
+          console.log('[ai-campaign-brief] GPT-4o success');
+          return res.json({ ...parsed, source: 'gpt4o' });
+        }
+      } catch(e) { console.warn('[ai-campaign-brief] GPT-4o failed:', e.message); }
+    }
+
+    // Smart fallback — always contextual, never generic
+    console.log('[ai-campaign-brief] Using smart fallback');
+    const budgetNum = parseInt((budget || '2000').replace(/[^0-9]/g,'')) || 2000;
+    res.json({
+      source: 'fallback',
+      headlines: [
+        `Beat ${topComp} — ${platform === 'Google Ads' ? 'Search' : 'Start'} Free`,
+        `${industry} Results: ${estROAS}× ROAS Proven`,
+        `${topComp} Alternative — Switch Today`
+      ],
+      descriptions: [
+        `Cut wasteful ad spend and beat ${topComp} on the keywords that matter most to ${industry} buyers.`,
+        `${domain}: trusted by ${industry} brands. Est. ${estROAS}× ROAS · CPA ${estCPA}. Start free today.`
+      ],
+      strategy_summary: `Target high-intent ${industry} buyers who are actively evaluating ${topComp} by positioning ${domain} as the smarter, higher-ROI alternative. Use ${platform}'s AI bidding to automatically find the most cost-efficient conversions within the ${budget} budget.`,
+      target_audience: `${industry} decision-makers aged 25–55, actively searching for alternatives to ${topComp}. High commercial intent, mid-to-bottom funnel.`,
+      bid_strategy: `Target ROAS bidding at ${estROAS}× — let the platform algorithm find conversions while your budget scales only to profitable auctions.`,
+      creative_angle: `Lead with the specific cost/efficiency gap vs ${topComp}. Buyers who are already considering ${topComp} respond strongest to direct comparison angles with concrete outcome stats.`,
+      competitor_gap: `${topComp} has high brand recognition but weak performance on cost-per-conversion for ${industry} buyers. This gap is your opening — lead with ROI proof.`,
+      kpi_targets: {
+        roas: estROAS,
+        ctr: estCTR,
+        cpa: estCPA,
+        week1_goal: `Achieve ${estCTR} CTR and collect first 20+ conversion signals to train the algorithm`,
+        month1_goal: `Hit ${estROAS}× ROAS at scale with ${Math.round(budgetNum / parseInt(estCPA.replace(/[^0-9]/g,'') || '38'))} conversions`
+      },
+      launch_checklist: [
+        `Connect ${platform} account and verify conversion tracking is firing correctly`,
+        `Upload 3 headline variants and 2 descriptions — test bold vs benefit-led angles`,
+        `Set audience exclusions to avoid wasted spend on existing customers`,
+        `Schedule weekly performance review against ${estROAS}× ROAS target`
+      ]
+    });
+
+  } catch(err) {
+    console.error('[ai-campaign-brief] error:', err.message);
+    res.status(500).json({ error: err.message, source: 'error' });
+  }
+});
+
 // ── GET /api/status ───────────────────────────────────────────────────────────
 
 app.get('/api/status', (req, res) => {
