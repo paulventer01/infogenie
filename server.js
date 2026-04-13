@@ -36,8 +36,10 @@ app.get('/api/config', (req, res) => {
   const posthogApiKey = phMatch ? phMatch[0] : rawPh;
 
   res.json({
-    amplitudeApiKey: process.env.AMPLITUDE_API_KEY || '',
-    posthogApiKey
+    amplitudeApiKey:  process.env.AMPLITUDE_API_KEY || '',
+    posthogApiKey,
+    algoliaAppId:     process.env.ALGOLIA_APP_ID || '',
+    algoliaSearchKey: process.env.ALGOLIA_SEARCH_KEY || ''
   });
 });
 
@@ -333,6 +335,7 @@ app.get('/api/integrations/status', (req, res) => {
   if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) configured.push('openai');
   if (process.env.AMPLITUDE_API_KEY) configured.push('amplitude');
   if (process.env.POSTHOG_API_KEY) configured.push('posthog');
+  if (process.env.ALGOLIA_APP_ID && process.env.ALGOLIA_SEARCH_KEY) configured.push('algolia');
   if (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD) configured.push('dataforseo');
   if (process.env.RAPIDAPI_KEY) configured.push('rapidapi');
   res.json({ configured });
@@ -1327,6 +1330,70 @@ function projectedStat(industry) {
   for (const [k, v] of Object.entries(stats)) { if (industry.toLowerCase().includes(k.toLowerCase())) return v; }
   return '4.2×';
 }
+
+// ── POST /api/backlinks ───────────────────────────────────────────────────────
+// Returns backlink summary for one or more competitor domains via DataForSEO
+
+app.post('/api/backlinks', async (req, res) => {
+  try {
+    const { domains = [] } = req.body;
+    if (!domains.length) return res.json({ results: {} });
+
+    const auth = getDataForSEOAuth();
+    if (!auth) return res.json({ results: {}, error: 'DataForSEO not configured' });
+
+    // Build batch request — one task per domain (max 10)
+    const tasks = domains.slice(0, 10).map(d => ({
+      target: d.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase(),
+      include_subdomains: true,
+      backlinks_status_type: 'live'
+    }));
+
+    let raw;
+    try {
+      raw = await callDataForSEO('/v3/backlinks/summary/live', tasks, 20000);
+    } catch(e) {
+      console.warn('[backlinks] DataForSEO error:', e.message);
+      return res.json({ results: {}, error: e.message });
+    }
+
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch(e) {
+      return res.json({ results: {}, error: 'Invalid JSON from DataForSEO' });
+    }
+
+    // Map each task result back to its domain
+    const results = {};
+    (parsed.tasks || []).forEach((task, i) => {
+      const domain = domains[i];
+      const r = task?.result?.[0];
+      if (!r || task.status_code !== 20000) {
+        results[domain] = null;
+        return;
+      }
+      const total    = r.backlinks || 0;
+      const domains_ = r.referring_domains || 0;
+      const dofollow = r.dofollow || 0;
+      const rank     = r.rank || 0;
+      results[domain] = {
+        total,
+        referringDomains: domains_,
+        dofollow,
+        nofollow: r.nofollow || 0,
+        rank,
+        dofollowPct: total > 0 ? Math.round((dofollow / total) * 100) : 0,
+        newBacklinks:  r.new_backlinks || 0,
+        lostBacklinks: r.lost_backlinks || 0
+      };
+    });
+
+    console.log(`[backlinks] Returned data for ${Object.keys(results).length} domains`);
+    res.json({ results });
+  } catch(err) {
+    console.error('[backlinks] error:', err.message);
+    res.json({ results: {}, error: err.message });
+  }
+});
 
 // ── POST /api/ai-campaign-brief ───────────────────────────────────────────────
 // Powers the Launch Campaign modal — generates a full AI campaign brief via GPT-4o

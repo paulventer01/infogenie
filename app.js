@@ -2,9 +2,19 @@
 // InfoGenie — Main Application Controller
 // ============================================================
 
-// ── Analytics (Amplitude + PostHog) ──────────────────────────────────────────
+// ── Analytics (Amplitude + PostHog + Algolia AI Analytics) ───────────────────
 window._ampReady = false;
 window._phReady  = false;
+window._aaReady  = false;   // Algolia Insights
+
+// Generate a stable anonymous user token for Algolia event attribution
+window._aaUserToken = (() => {
+  try {
+    let t = localStorage.getItem('_ig_aa_token');
+    if (!t) { t = 'u-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('_ig_aa_token', t); }
+    return t;
+  } catch(e) { return 'u-anon-' + Math.random().toString(36).slice(2); }
+})();
 
 (async () => {
   try {
@@ -31,16 +41,46 @@ window._phReady  = false;
       window._phReady = true;
     }
 
+    // Algolia AI Analytics (search-insights)
+    if (cfg.algoliaAppId && cfg.algoliaSearchKey && window.aa) {
+      window.aa('init', {
+        appId:   cfg.algoliaAppId,
+        apiKey:  cfg.algoliaSearchKey,
+        userHasOptedOut: false
+      });
+      window.aa('setUserToken', window._aaUserToken);
+      window._aaReady = true;
+      console.log('[Algolia] AI Analytics ready — user token:', window._aaUserToken);
+    }
+
     igTrack('App Loaded', { version: '1.0', platform: 'web' });
   } catch(e) { console.warn('[Analytics] init failed:', e.message); }
 })();
 
+// ── Central tracking helper — fires Amplitude + PostHog + Algolia in sync ────
 function igTrack(eventName, props = {}) {
   if (window._ampReady && window.amplitude) {
     window.amplitude.track(eventName, props);
   }
   if (window._phReady && window.posthog) {
     window.posthog.capture(eventName, props);
+  }
+  // Algolia: map InfoGenie events to standard Insights event types
+  if (window._aaReady && window.aa) {
+    try {
+      const base = { eventName, index: 'infogenie_events', userToken: window._aaUserToken };
+      // Conversions = high-value actions (launch, purchase-intent)
+      const conversionEvents = ['Campaign Launched', 'Ad Platform Connected', 'Creative Generated'];
+      // Clicks = user intent signals
+      const clickEvents = ['Analysis Started', 'Creative Studio Opened', 'Competitor Viewed', 'Keyword Clicked'];
+      if (conversionEvents.includes(eventName)) {
+        window.aa('convertedObjectIDs', { ...base, objectIDs: [props.campName || props.platform || eventName] });
+      } else if (clickEvents.includes(eventName)) {
+        window.aa('clickedObjectIDs', { ...base, objectIDs: [props.domain || props.competitor || eventName] });
+      } else {
+        window.aa('viewedObjectIDs', { ...base, objectIDs: [eventName] });
+      }
+    } catch(e) { /* Algolia event tracking is non-critical */ }
   }
 }
 
@@ -2124,10 +2164,66 @@ function renderCompetitorCards(comps) {
     </div>
   `;
 
-  wrap.innerHTML = realCompsPanel + `<div class="comp-cards-grid">${comps.map(c => buildCompCard(c)).join('')}</div>`;
+  wrap.innerHTML = realCompsPanel + `<div class="comp-cards-grid">${comps.map((c, i) => buildCompCard(c, i)).join('')}</div>`;
+
+  // Async-load backlink data for each competitor domain
+  loadBacklinks(comps);
 }
 
-function buildCompCard(c) {
+// ── Async backlinks loader — fetches DataForSEO summary for competitor domains ─
+async function loadBacklinks(comps) {
+  try {
+    const domains = comps.map(c => (c.url || c.name).replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase());
+    const res = await fetch('/api/backlinks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domains })
+    });
+    const data = await res.json();
+    if (!data.results) return;
+
+    comps.forEach((c, i) => {
+      const domain = domains[i];
+      const bl = data.results[domain];
+      if (!bl) return;
+      // Update the backlinks panel in the already-rendered card
+      const el = document.getElementById(`bl-panel-${i}`);
+      if (!el) return;
+      const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : String(n);
+      el.innerHTML = `
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div style="flex:1;min-width:90px;background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:10px;padding:10px 12px;text-align:center">
+            <div style="font-size:1rem;font-weight:800;color:#065F46">${fmt(bl.total)}</div>
+            <div style="font-size:0.68rem;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-top:2px">Total Backlinks</div>
+          </div>
+          <div style="flex:1;min-width:90px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;padding:10px 12px;text-align:center">
+            <div style="font-size:1rem;font-weight:800;color:#1D4ED8">${fmt(bl.referringDomains)}</div>
+            <div style="font-size:0.68rem;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-top:2px">Referring Domains</div>
+          </div>
+          <div style="flex:1;min-width:90px;background:#FFF7ED;border:1.5px solid #FED7AA;border-radius:10px;padding:10px 12px;text-align:center">
+            <div style="font-size:1rem;font-weight:800;color:#C2410C">${bl.dofollowPct}%</div>
+            <div style="font-size:0.68rem;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-top:2px">DoFollow</div>
+          </div>
+          <div style="flex:1;min-width:90px;background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:10px;padding:10px 12px;text-align:center">
+            <div style="font-size:1rem;font-weight:800;color:#6D28D9">${bl.rank}</div>
+            <div style="font-size:0.68rem;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-top:2px">Domain Rank</div>
+          </div>
+        </div>
+        ${bl.newBacklinks > 0 || bl.lostBacklinks > 0 ? `
+        <div style="display:flex;gap:8px;margin-top:8px">
+          ${bl.newBacklinks > 0 ? `<span style="font-size:0.72rem;font-weight:600;color:#059669;background:#D1FAE5;border-radius:6px;padding:2px 8px">↑ ${fmt(bl.newBacklinks)} new</span>` : ''}
+          ${bl.lostBacklinks > 0 ? `<span style="font-size:0.72rem;font-weight:600;color:#DC2626;background:#FEE2E2;border-radius:6px;padding:2px 8px">↓ ${fmt(bl.lostBacklinks)} lost</span>` : ''}
+          <span style="font-size:0.72rem;color:#9CA3AF;margin-left:auto">via DataForSEO</span>
+        </div>` : '<div style="margin-top:6px;font-size:0.7rem;color:#9CA3AF;text-align:right">via DataForSEO</div>'}
+      `;
+    });
+    console.log('[backlinks] Live data applied to competitor cards');
+  } catch(e) {
+    console.warn('[backlinks] failed to load:', e.message);
+  }
+}
+
+function buildCompCard(c, cardIdx = 0) {
   const campaigns = (c.campaigns || []).map(camp => `
     <div class="campaign-item">
       <div class="ci-name">${camp.name}</div>
@@ -2213,7 +2309,22 @@ function buildCompCard(c) {
             </div>
           </div>
         </div>
-        <div class="roi-opportunity-banner">
+
+        <!-- Backlinks panel — populated async by loadBacklinks() -->
+        <div style="margin-top:16px">
+          <div class="comp-section-title" style="display:flex;align-items:center;gap:7px">
+            🔗 Backlink Authority
+            <span style="font-size:0.68rem;background:rgba(0,201,200,.12);color:#0099AA;border-radius:5px;padding:2px 7px;font-weight:600">DataForSEO Live</span>
+          </div>
+          <div id="bl-panel-${cardIdx}" style="margin-top:8px">
+            <div style="display:flex;gap:8px;align-items:center;padding:10px 0;color:#9CA3AF;font-size:0.78rem">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:spin 1s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+              Loading backlink data…
+            </div>
+          </div>
+        </div>
+
+        <div class="roi-opportunity-banner" style="margin-top:14px">
           <div class="roi-opp-left">
             <span class="roi-opp-label">InfoGenie ROI Opportunity:</span>
             <span class="roi-opp-text">${c.estimatedROI}</span>
@@ -4217,7 +4328,7 @@ const INTEGRATIONS = {
     label: 'Analytics & Data',
     icon: '📈',
     desc: 'Connect analytics and data platforms to give InfoGenie complete visibility into your performance — enabling smarter competitor benchmarking and ROI attribution.',
-    badge: '7 Platforms',
+    badge: '8 Platforms',
     items: [
       {
         id: 'ga4', logo: '📊', name: 'Google Analytics 4',
@@ -4367,6 +4478,26 @@ const INTEGRATIONS = {
           { text: 'Select scopes: <code>query:read</code> and <code>project:read</code>' },
           { text: 'Copy the key (starts with <code>phx_</code>) and paste it above' },
           { text: 'Click <strong>Test Connection</strong>' }
+        ]
+      },
+      {
+        id: 'algolia', logo: '🔍', name: 'Algolia AI Analytics',
+        tagline: 'AI-powered search insights — NeuralSearch, Dynamic Re-Ranking & Personalisation',
+        authType: 'apikey',
+        placeholder: 'Algolia App ID · Search API Key (comma-separated)',
+        unlocks: [
+          'AI-powered NeuralSearch to surface the highest-converting competitor keywords',
+          'Dynamic Re-Ranking — automatically boost campaigns with the highest click-through signals',
+          'Personalisation engine that maps user intent to InfoGenie audience segments',
+          'A/B test result attribution via Algolia Insights event stream',
+          'Real-time conversion funnel events synced from every InfoGenie action'
+        ],
+        steps: [
+          { text: 'Sign in at <a href="https://www.algolia.com" target="_blank">algolia.com</a> and open your <strong>Dashboard → Settings → API Keys</strong>' },
+          { text: 'Copy your <strong>Application ID</strong> (e.g. <code>ABCDEF1234</code>)' },
+          { text: 'Copy the <strong>Search-Only API Key</strong> (safe to expose client-side)' },
+          { text: 'Add both as Replit secrets: <code>ALGOLIA_APP_ID</code> and <code>ALGOLIA_SEARCH_KEY</code>' },
+          { text: 'Restart the app — InfoGenie will automatically initialise Algolia Insights and begin tracking events' }
         ]
       }
     ]
