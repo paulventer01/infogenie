@@ -138,11 +138,13 @@ app.post('/api/launch/meta', async (req, res) => {
     return res.json({ success: false, error: 'Meta credentials not configured — connect them in Settings → Meta Ads Manager.' });
 
   try {
+    const cleanToken  = String(accessToken).trim();
+    const cleanAccId  = String(adAccountId).trim().replace(/\s/g, '');
     const dailyCents  = String(Math.round((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) * 100 / 30));
-    const accountId   = adAccountId.startsWith('act_') ? adAccountId : 'act_' + adAccountId;
+    const accountId   = cleanAccId.startsWith('act_') ? cleanAccId : 'act_' + cleanAccId;
     const params      = new URLSearchParams({
       name: campaignName, objective: 'OUTCOME_TRAFFIC', status: 'PAUSED',
-      daily_budget: dailyCents, special_ad_categories: '[]', access_token: accessToken
+      daily_budget: dailyCents, special_ad_categories: '[]', access_token: cleanToken
     });
     const campRaw  = await callHttpsGeneric('graph.facebook.com', `/v19.0/${accountId}/campaigns`, 'POST', params.toString(), { 'Content-Type': 'application/x-www-form-urlencoded' });
     const campData = JSON.parse(campRaw);
@@ -170,9 +172,10 @@ app.post('/api/launch/tiktok', async (req, res) => {
     return res.json({ success: false, error: 'TikTok credentials not configured — connect them in Settings → TikTok Ads.' });
 
   try {
+    const cleanAdvertiserId = String(advertiserId).replace(/[^0-9]/g, '');
     const dailyBudget = Math.max(Math.round((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30), 50);
     const payload = JSON.stringify({
-      advertiser_id: advertiserId, campaign_name: campaignName,
+      advertiser_id: cleanAdvertiserId, campaign_name: campaignName,
       objective_type: 'TRAFFIC', budget_mode: 'BUDGET_MODE_DAY',
       budget: dailyBudget, operation_status: 'DISABLE'
     });
