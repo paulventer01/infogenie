@@ -6,3 +6,9 @@ id = "Vy3Sem690SIpbg8VvFm3F"
 uri = "file://infogenie-backup.tar.gz"
 type = "unspecified"
 title = "InfoGenie — Full Source Code Backup"
+
+[[outputs]]
+id = "cV4y0z-pEjKFlrPOaoa_t"
+uri = "file://infogenie-full-code.txt"
+type = "text"
+title = "InfoGenie — Complete Source Code (all files)"
