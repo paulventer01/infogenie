@@ -311,27 +311,24 @@ function buildLaunchModal(camp, idx) {
     </div>
   `;
 
-  // Wire confirm button without any string injection
-  document.getElementById('lm-confirm-btn').addEventListener('click', function() {
-    const finalName     = document.getElementById('lm-name').value.trim() || name;
-    const finalPlatform = document.getElementById('lm-platform').value;
-    const finalBudgetNum = parseInt(document.getElementById('lm-budget').value) || budgetNum;
-    const finalBudget   = '$' + finalBudgetNum.toLocaleString();
-    const finalDate     = document.getElementById('lm-date').value || new Date().toISOString().split('T')[0];
-    const finalAudience = document.getElementById('lm-audience').value || 'Auto-targeted by InfoGenie AI';
+  // Wire confirm button
+  document.getElementById('lm-confirm-btn').addEventListener('click', async function() {
+    const btn = document.getElementById('lm-confirm-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Launching...';
 
-    // Save to results tracker
+    const finalName      = document.getElementById('lm-name').value.trim() || name;
+    const finalPlatform  = document.getElementById('lm-platform').value;
+    const finalBudgetNum = parseInt(document.getElementById('lm-budget').value) || budgetNum;
+    const finalBudget    = '$' + finalBudgetNum.toLocaleString();
+    const finalDate      = document.getElementById('lm-date').value || new Date().toISOString().split('T')[0];
+    const finalAudience  = document.getElementById('lm-audience').value || 'Auto-targeted by InfoGenie AI';
+
+    // Save to internal results tracker
     const launchRecord = {
-      id: 'camp_' + Date.now(),
-      name: finalName,
-      platform: finalPlatform,
-      budget: finalBudgetNum,
-      budgetStr: finalBudget,
-      startDate: finalDate,
-      audience: finalAudience,
-      launchedAt: new Date().toLocaleString(),
-      status: 'active',
-      daysRunning: 0,
+      id: 'camp_' + Date.now(), name: finalName, platform: finalPlatform,
+      budget: finalBudgetNum, budgetStr: finalBudget, startDate: finalDate, audience: finalAudience,
+      launchedAt: new Date().toLocaleString(), status: 'active', daysRunning: 0,
       metrics: {
         roas: (parseFloat(projROAS) * (0.85 + Math.random() * 0.3)).toFixed(1),
         ctr: (Math.random() * 3 + 2).toFixed(1) + '%',
@@ -343,51 +340,68 @@ function buildLaunchModal(camp, idx) {
       actions: [
         { time: 'Just now', action: 'Campaign created and AI monitoring activated', type: 'launch' },
         { time: 'Just now', action: `Budget set to ${finalBudget}/mo on ${finalPlatform}`, type: 'config' },
-        { time: 'Just now', action: `Audience targeting: ${finalAudience.substring(0,60)}`, type: 'audience' }
+        { time: 'Just now', action: `Audience: ${finalAudience.substring(0, 60)}`, type: 'audience' }
       ]
     };
     window._launchedCampaigns.unshift(launchRecord);
-
-    // Log to InfoGenie action history
     if (!window._infoGenieActions) window._infoGenieActions = [];
     window._infoGenieActions.unshift({
-      time: new Date().toLocaleTimeString(),
-      date: new Date().toLocaleDateString(),
+      time: new Date().toLocaleTimeString(), date: new Date().toLocaleDateString(),
       action: `Launched campaign "${finalName}" on ${finalPlatform} (${finalBudget}/mo)`,
       type: 'campaign_launch',
       impact: `Est. ROAS: ${launchRecord.metrics.roas}× | Est. CTR: ${launchRecord.metrics.ctr}`
     });
+    igTrack('Campaign Launched', { campaignName: finalName, platform: finalPlatform, budget: finalBudget });
 
+    // ── Call real ad platform API if credentials are connected ────────────────
+    let apiResult = null;
+    const platformKey = finalPlatform.toLowerCase();
+    if (platformKey.includes('google')) {
+      try { apiResult = await fetch('/api/launch/google-ads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignName: finalName, budget: finalBudgetNum, startDate: finalDate }) }).then(r => r.json()); } catch(e) { apiResult = { success: false, error: e.message }; }
+    } else if (platformKey.includes('meta') || platformKey.includes('facebook') || platformKey.includes('instagram')) {
+      try { apiResult = await fetch('/api/launch/meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignName: finalName, budget: finalBudgetNum }) }).then(r => r.json()); } catch(e) { apiResult = { success: false, error: e.message }; }
+    } else if (platformKey.includes('tiktok')) {
+      try { apiResult = await fetch('/api/launch/tiktok', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campaignName: finalName, budget: finalBudgetNum }) }).then(r => r.json()); } catch(e) { apiResult = { success: false, error: e.message }; }
+    }
+
+    // ── Build success screen ──────────────────────────────────────────────────
     const inner2 = document.getElementById('campLaunchRichModalInner');
+    const apiBlock = apiResult
+      ? apiResult.success
+        ? `<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:0.8rem;color:#065F46;line-height:1.7">
+             <div style="font-weight:700;margin-bottom:4px">✅ Pushed live to ${apiResult.platform}</div>
+             <div>${apiResult.message}</div>
+             ${apiResult.dashboardUrl ? `<a href="${apiResult.dashboardUrl}" target="_blank" style="color:#059669;font-weight:600;font-size:0.78rem">Open in ${apiResult.platform} dashboard →</a>` : ''}
+           </div>`
+        : `<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:0.8rem;color:#92400E;line-height:1.7">
+             <div style="font-weight:700;margin-bottom:4px">⚠️ API not connected — tracked internally</div>
+             <div>${apiResult.error}</div>
+             <a href="#" onclick="navigateTo('settings');document.getElementById('campLaunchRichModal').classList.add('hidden');return false;" style="color:#D97706;font-weight:600;font-size:0.78rem">Connect in Settings →</a>
+           </div>`
+      : `<div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:0.8rem;color:#0C4A6E;line-height:1.7">
+           <div style="font-weight:700;margin-bottom:4px">📊 Tracked internally by InfoGenie</div>
+           <div>This platform doesn't have a direct API — campaign is tracked in Results. Connect Google Ads, Meta, or TikTok in Settings to push campaigns live.</div>
+         </div>`;
+
     inner2.innerHTML = `
-      <div style="padding:40px 32px;text-align:center">
-        <div style="font-size:3rem;margin-bottom:16px">🎉</div>
-        <div style="font-family:'Sora',sans-serif;font-size:1.2rem;font-weight:800;color:#0A1628;margin-bottom:8px">Campaign Launched!</div>
-        <div style="font-size:0.875rem;color:#6B7280;margin-bottom:16px;line-height:1.6;max-width:380px;margin-left:auto;margin-right:auto">
-          InfoGenie is now live on <strong>${finalPlatform}</strong>. The AI engine will optimise bids every 6 hours.
-        </div>
-        <div style="display:inline-block;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:14px 22px;margin-bottom:20px;font-size:0.82rem;color:#065F46;line-height:1.8;text-align:left">
-          <strong>Campaign:</strong> ${finalName}<br>
-          <strong>Budget:</strong> ${finalBudget}/mo<br>
-          <strong>Platform:</strong> ${finalPlatform}<br>
-          <strong>Est. ROAS:</strong> ${launchRecord.metrics.roas}×<br>
-          <strong>Est. CTR:</strong> ${launchRecord.metrics.ctr}<br>
-          <strong>Start:</strong> ${finalDate} · AI monitoring active
+      <div style="padding:36px 32px;text-align:center">
+        <div style="font-size:3rem;margin-bottom:12px">${apiResult && apiResult.success ? '🚀' : '🎉'}</div>
+        <div style="font-family:'Sora',sans-serif;font-size:1.2rem;font-weight:800;color:#0A1628;margin-bottom:6px">${apiResult && apiResult.success ? 'Campaign is Live!' : 'Campaign Launched!'}</div>
+        <div style="font-size:0.82rem;color:#6B7280;margin-bottom:18px">"${finalName}" · ${finalPlatform} · ${finalBudget}/mo</div>
+        ${apiBlock}
+        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:12px 16px;margin-bottom:18px;font-size:0.8rem;color:#374151;line-height:1.8;text-align:left">
+          <strong>Est. ROAS:</strong> ${launchRecord.metrics.roas}× &nbsp;·&nbsp;
+          <strong>Est. CTR:</strong> ${launchRecord.metrics.ctr} &nbsp;·&nbsp;
+          <strong>Start:</strong> ${finalDate}
         </div>
         <div style="display:flex;gap:10px;justify-content:center">
           <button id="lm-close-success" style="padding:10px 20px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
           <button id="lm-view-results" style="padding:10px 20px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">📊 View Results →</button>
         </div>
-      </div>
-    `;
-    document.getElementById('lm-close-success').addEventListener('click', () => {
-      modal.classList.add('hidden'); modal.style.display = 'none';
-    });
-    document.getElementById('lm-view-results').addEventListener('click', () => {
-      modal.classList.add('hidden'); modal.style.display = 'none';
-      navigateTo('results');
-    });
-    if (typeof showToast === 'function') showToast('✅ Campaign launched on ' + finalPlatform + ' — tracking in Results');
+      </div>`;
+    document.getElementById('lm-close-success').addEventListener('click', () => { modal.classList.add('hidden'); modal.style.display = 'none'; });
+    document.getElementById('lm-view-results').addEventListener('click', () => { modal.classList.add('hidden'); modal.style.display = 'none'; navigateTo('results'); });
+    showToast(apiResult && apiResult.success ? `🚀 Campaign pushed live to ${apiResult.platform}!` : `✅ Campaign launched on ${finalPlatform} — tracking in Results`);
   });
 }
 

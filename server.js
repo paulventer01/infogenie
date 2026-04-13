@@ -41,6 +41,157 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// ── Generic HTTPS helper ──────────────────────────────────────────────────────
+function callHttpsGeneric(hostname, path, method, body, headers, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const data = body || '';
+    const opts = {
+      hostname, path, method: method || 'GET',
+      headers: { 'Content-Length': Buffer.byteLength(data), ...headers }
+    };
+    const req = https.request(opts, res => {
+      let out = '';
+      res.on('data', d => out += d);
+      res.on('end', () => resolve(out));
+    });
+    req.on('error', reject);
+    req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error('Request timed out')); });
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
+// ── Ad platform connection status ─────────────────────────────────────────────
+app.get('/api/ad-platforms/status', (req, res) => {
+  res.json({
+    googleAds: !!(process.env.GOOGLE_ADS_DEVELOPER_TOKEN && process.env.GOOGLE_ADS_REFRESH_TOKEN &&
+                  process.env.GOOGLE_ADS_CUSTOMER_ID && process.env.GOOGLE_ADS_CLIENT_ID &&
+                  process.env.GOOGLE_ADS_CLIENT_SECRET),
+    meta:      !!(process.env.META_AD_ACCOUNT_ID && process.env.META_ACCESS_TOKEN),
+    tiktok:    !!(process.env.TIKTOK_ADVERTISER_ID && process.env.TIKTOK_ACCESS_TOKEN)
+  });
+});
+
+// ── Google Ads campaign launch ────────────────────────────────────────────────
+app.post('/api/launch/google-ads', async (req, res) => {
+  const { campaignName, budget, startDate } = req.body;
+  const devToken     = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+  const clientId     = process.env.GOOGLE_ADS_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
+  const customerId   = process.env.GOOGLE_ADS_CUSTOMER_ID;
+
+  if (!devToken || !clientId || !clientSecret || !refreshToken || !customerId)
+    return res.json({ success: false, error: 'Google Ads credentials not configured — connect them in Settings → Google Ads.' });
+
+  try {
+    // 1. Exchange refresh token for access token
+    const tokenBody = `client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&refresh_token=${encodeURIComponent(refreshToken)}&grant_type=refresh_token`;
+    const tokenRaw = await callHttpsGeneric('oauth2.googleapis.com', '/token', 'POST', tokenBody, { 'Content-Type': 'application/x-www-form-urlencoded' });
+    const tokenData = JSON.parse(tokenRaw);
+    if (!tokenData.access_token) throw new Error('OAuth token refresh failed: ' + (tokenData.error_description || tokenData.error || 'unknown'));
+    const accessToken = tokenData.access_token;
+
+    const cleanId = String(customerId).replace(/-/g, '');
+    const authHeaders = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'developer-token': devToken };
+
+    // 2. Create campaign budget
+    const dailyMicros = String(Math.round((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) * 1e6 / 30));
+    const budgetRaw = await callHttpsGeneric('googleads.googleapis.com',
+      `/v16/customers/${cleanId}/campaignBudgets:mutate`, 'POST',
+      JSON.stringify({ operations: [{ create: { name: campaignName + ' Budget', amountMicros: dailyMicros, deliveryMethod: 'STANDARD' } }] }),
+      authHeaders);
+    const budgetData = JSON.parse(budgetRaw);
+    if (!budgetData.results) throw new Error('Budget creation failed: ' + JSON.stringify(budgetData.partialFailureError || budgetData));
+
+    // 3. Create campaign
+    const sd = startDate ? startDate.replace(/-/g, '') : new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const campRaw = await callHttpsGeneric('googleads.googleapis.com',
+      `/v16/customers/${cleanId}/campaigns:mutate`, 'POST',
+      JSON.stringify({ operations: [{ create: {
+        name: campaignName, status: 'PAUSED', advertisingChannelType: 'SEARCH',
+        manualCpc: { enhancedCpcEnabled: false },
+        campaignBudget: budgetData.results[0].resourceName, startDate: sd
+      }}] }), authHeaders);
+    const campData = JSON.parse(campRaw);
+    if (!campData.results) throw new Error('Campaign creation failed: ' + JSON.stringify(campData));
+    const campaignId = campData.results[0].resourceName.split('/').pop();
+
+    res.json({
+      success: true, platform: 'Google Ads', campaignId, status: 'PAUSED',
+      message: `Campaign "${campaignName}" created in Google Ads (ID: ${campaignId}). It's paused — activate it in your Google Ads dashboard.`,
+      dashboardUrl: `https://ads.google.com/aw/campaigns?campaignId=${campaignId}`
+    });
+  } catch(e) {
+    console.error('[Google Ads launch]', e.message);
+    res.json({ success: false, error: e.message });
+  }
+});
+
+// ── Meta Marketing API campaign launch ───────────────────────────────────────
+app.post('/api/launch/meta', async (req, res) => {
+  const { campaignName, budget } = req.body;
+  const adAccountId = process.env.META_AD_ACCOUNT_ID;
+  const accessToken = process.env.META_ACCESS_TOKEN;
+
+  if (!adAccountId || !accessToken)
+    return res.json({ success: false, error: 'Meta credentials not configured — connect them in Settings → Meta Ads Manager.' });
+
+  try {
+    const dailyCents  = String(Math.round((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) * 100 / 30));
+    const accountId   = adAccountId.startsWith('act_') ? adAccountId : 'act_' + adAccountId;
+    const params      = new URLSearchParams({
+      name: campaignName, objective: 'OUTCOME_TRAFFIC', status: 'PAUSED',
+      daily_budget: dailyCents, special_ad_categories: '[]', access_token: accessToken
+    });
+    const campRaw  = await callHttpsGeneric('graph.facebook.com', `/v19.0/${accountId}/campaigns`, 'POST', params.toString(), { 'Content-Type': 'application/x-www-form-urlencoded' });
+    const campData = JSON.parse(campRaw);
+    if (campData.error) throw new Error(campData.error.message || 'Meta API error');
+    if (!campData.id)   throw new Error('No campaign ID returned from Meta');
+
+    res.json({
+      success: true, platform: 'Meta Ads', campaignId: campData.id, status: 'PAUSED',
+      message: `Campaign "${campaignName}" created in Meta Ads Manager (ID: ${campData.id}). Add an Ad Set and Ads in Business Manager to go live.`,
+      dashboardUrl: `https://business.facebook.com/adsmanager/manage/campaigns?act=${adAccountId}&selected_campaign_ids=${campData.id}`
+    });
+  } catch(e) {
+    console.error('[Meta launch]', e.message);
+    res.json({ success: false, error: e.message });
+  }
+});
+
+// ── TikTok Ads campaign launch ────────────────────────────────────────────────
+app.post('/api/launch/tiktok', async (req, res) => {
+  const { campaignName, budget } = req.body;
+  const advertiserId = process.env.TIKTOK_ADVERTISER_ID;
+  const accessToken  = process.env.TIKTOK_ACCESS_TOKEN;
+
+  if (!advertiserId || !accessToken)
+    return res.json({ success: false, error: 'TikTok credentials not configured — connect them in Settings → TikTok Ads.' });
+
+  try {
+    const dailyBudget = Math.max(Math.round((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30), 50);
+    const payload = JSON.stringify({
+      advertiser_id: advertiserId, campaign_name: campaignName,
+      objective_type: 'TRAFFIC', budget_mode: 'BUDGET_MODE_DAY',
+      budget: dailyBudget, operation_status: 'DISABLE'
+    });
+    const campRaw  = await callHttpsGeneric('business-api.tiktok.com', '/open_api/v1.3/campaign/create/', 'POST', payload, { 'Content-Type': 'application/json', 'Access-Token': accessToken });
+    const campData = JSON.parse(campRaw);
+    if (campData.code !== 0) throw new Error(campData.message || 'TikTok error code ' + campData.code);
+    const campaignId = campData.data && campData.data.campaign_id;
+
+    res.json({
+      success: true, platform: 'TikTok Ads', campaignId, status: 'DISABLED',
+      message: `Campaign "${campaignName}" created in TikTok Ads Manager (ID: ${campaignId}). Enable it and add an Ad Group in TikTok Business Center.`,
+      dashboardUrl: `https://ads.tiktok.com/i18n/perf/campaign?aadvid=${advertiserId}`
+    });
+  } catch(e) {
+    console.error('[TikTok launch]', e.message);
+    res.json({ success: false, error: e.message });
+  }
+});
+
 // ── DataForSEO helpers ────────────────────────────────────────────────────────
 
 function getDataForSEOAuth() {
