@@ -30,9 +30,14 @@ app.use(express.static(path.join(__dirname), { etag: false, lastModified: false 
 
 // ── Public config (non-secret browser keys) ───────────────────────────────────
 app.get('/api/config', (req, res) => {
+  // Extract just the phc_... token in case the user pasted the full curl example
+  const rawPh = process.env.POSTHOG_API_KEY || '';
+  const phMatch = rawPh.match(/phc_[A-Za-z0-9_\-]+/);
+  const posthogApiKey = phMatch ? phMatch[0] : rawPh;
+
   res.json({
     amplitudeApiKey: process.env.AMPLITUDE_API_KEY || '',
-    posthogApiKey:   process.env.POSTHOG_API_KEY   || ''
+    posthogApiKey
   });
 });
 
