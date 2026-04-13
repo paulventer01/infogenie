@@ -546,8 +546,16 @@ function buildLaunchModal(camp, idx) {
   // ── Async GPT-4 brief — runs immediately after modal opens ─────────────────
   (async () => {
     try {
-      const domain     = analysisData?.url || 'yourdomain.com';
+      const domain      = analysisData?.url || 'yourdomain.com';
       const competitors = (analysisData?.competitors || []).map(c => c.name).slice(0, 5);
+      // Extract the winning audience segment from competitors for persona targeting
+      const _briefAudience = (() => {
+        let best = null;
+        (analysisData?.competitors || []).forEach(c => (c.audiences || []).forEach(a => {
+          if (!best || parseFloat(a.pct) > parseFloat(best.pct)) best = a;
+        }));
+        return best ? best.label : 'growth-focused marketing decision-makers';
+      })();
       const res = await fetch('/api/ai-campaign-brief', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -555,6 +563,7 @@ function buildLaunchModal(camp, idx) {
           campName: name, platform, budget: budgetStr,
           industry: indName, domain,
           competitors, topComp: topCompName,
+          persona: _briefAudience,
           description: camp.description || '',
           estROAS: String(camp.estROAS || projROAS),
           estCTR: camp.estCTR || '4.2%',
@@ -663,8 +672,16 @@ function buildCreativeModal(camp, idx) {
   const budget   = camp.budget || '$2,000/mo';
   const domain   = (analysisData && analysisData.url) ? analysisData.url : 'yourdomain.com';
   const indName  = (analysisData && analysisData.industry) ? analysisData.industry.name : 'your industry';
-  const topComp  = (analysisData && analysisData.competitors && analysisData.competitors[0]) ? analysisData.competitors[0].name : 'your competitor';
-  const allComps = (analysisData && analysisData.competitors) ? analysisData.competitors.map(c=>c.name) : [topComp];
+  const topComp      = (analysisData && analysisData.competitors && analysisData.competitors[0]) ? analysisData.competitors[0].name : 'your competitor';
+  const allComps     = (analysisData && analysisData.competitors) ? analysisData.competitors.map(c=>c.name) : [topComp];
+  // Pull the #1 winning audience segment from competitors to pre-fill Target Persona
+  const _winAudience = (() => {
+    const comps = analysisData?.competitors || [];
+    // Collect all audiences across competitors, pick the highest percentage one
+    let best = null;
+    comps.forEach(c => (c.audiences || []).forEach(a => { if (!best || (parseFloat(a.pct) > parseFloat(best.pct))) best = a; }));
+    return best ? best.label : 'growth-focused marketing decision-makers';
+  })();
   igTrack('Creative Studio Opened', { campaignName: name, platform, industry: indName, domain });
   const projROAS = camp.estROAS ? camp.estROAS + '×' : '3.8×';
   const estCTR   = camp.estCTR || '4.2%';
@@ -972,7 +989,7 @@ function buildCreativeModal(camp, idx) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           platform, campName: name, tone: 'Bold & Direct',
-          persona: 'growth-focused marketing and business decision-makers',
+          persona: _winAudience,
           differentiator: campDesc.split('.')[0] || 'AI-powered competitor intelligence',
           cta: 'Start Free Trial', topComp,
           competitors: allComps.slice(0, 4),
@@ -997,6 +1014,9 @@ function buildCreativeModal(camp, idx) {
   document.getElementById('cs-close-btn').addEventListener('click', closeModal);
   document.getElementById('cs-launch-btn').addEventListener('click', () => { closeModal(); buildLaunchModal(camp, idx); });
   document.getElementById('cs-launch-footer-btn').addEventListener('click', () => { closeModal(); buildLaunchModal(camp, idx); });
+  // Pre-fill Target Persona with the #1 winning audience from competitors
+  const _personaEl = document.getElementById('cs-persona');
+  if (_personaEl && _winAudience) { _personaEl.value = _winAudience; }
 
   // ── Download ───────────────────────────────────────────────────────────────
   document.getElementById('cs-dl-btn').addEventListener('click', () => {
@@ -2121,12 +2141,22 @@ function buildCompCard(c) {
     </div>
   `).join('');
   
-  const suggestions = (c.suggestions || []).map(s => `
-    <div class="suggestion-item">
-      <div class="sug-icon">💡</div>
-      <div class="sug-text">${s}</div>
-    </div>
-  `).join('');
+  // Prefer adCopy (actual usable ad wording) over generic suggestions
+  const adCopyItems = c.adCopy && c.adCopy.length > 0
+    ? c.adCopy.map((ac, i) => `
+      <div class="suggestion-item" style="flex-direction:column;align-items:flex-start;gap:4px;padding:10px 12px;background:#F8FAFF;border:1.5px solid #E0E7FF;border-radius:10px;margin-bottom:6px">
+        <div style="font-weight:700;font-size:0.82rem;color:#0A1628;line-height:1.4">"${ac.headline}"</div>
+        <div style="font-size:0.78rem;color:#4B5563;line-height:1.5">${ac.body}</div>
+        <button onclick="navigator.clipboard?.writeText('${ac.headline.replace(/'/g,'\\\'').replace(/"/g,'&quot;')} — ${ac.body.replace(/'/g,'\\\'').replace(/"/g,'&quot;')}').then(()=>{this.textContent='✅ Copied';setTimeout(()=>this.textContent='📋 Copy Ad Copy',1200)})" style="margin-top:4px;padding:3px 10px;font-size:0.72rem;font-weight:600;color:#4F46E5;background:#EEF2FF;border:1px solid #C7D2FE;border-radius:6px;cursor:pointer">📋 Copy Ad Copy</button>
+      </div>
+    `)
+    : (c.suggestions || []).map(s => `
+      <div class="suggestion-item">
+        <div class="sug-icon">💡</div>
+        <div class="sug-text">${s}</div>
+      </div>
+    `);
+  const suggestions = adCopyItems.join('');
   
   const audiences = (c.audiences || []).map(a => `
     <div class="aud-item">
@@ -2171,7 +2201,7 @@ function buildCompCard(c) {
             <div class="comp-campaigns">${campaigns}</div>
           </div>
           <div>
-            <div class="comp-section-title">AI Improvement Suggestions</div>
+            <div class="comp-section-title">✍️ Suggested Ad Copy</div>
             <div class="comp-suggestions">${suggestions}</div>
           </div>
           <div>

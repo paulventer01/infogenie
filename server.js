@@ -1337,13 +1337,13 @@ app.post('/api/ai-campaign-brief', async (req, res) => {
       campName = 'Campaign', platform = 'Google Ads', budget = '$2,000/mo',
       industry = 'your industry', domain = 'yourdomain.com',
       competitors = [], topComp = 'competitor', description = '',
-      estROAS = '3.8', estCTR = '4.2%', estCPA = '$38', tags = []
+      persona = 'high-intent buyers', estROAS = '3.8', estCTR = '4.2%', estCPA = '$38', tags = []
     } = req.body;
 
     const compList = competitors.slice(0, 5).join(', ') || topComp;
     const tagList  = tags.slice(0, 5).join(', ') || '';
 
-    const systemPrompt = `You are a senior performance marketing strategist with 15+ years running campaigns for major brands on Google, Meta, TikTok, YouTube and LinkedIn. You create precise, data-driven campaign briefs that achieve 4-6× ROAS. You write copy that exploits specific competitor weaknesses and speaks directly to high-intent buyers. Always respond with valid JSON only — no markdown, no extra text.`;
+    const systemPrompt = `You are a senior performance marketing strategist with 15+ years running campaigns for major brands on Google, Meta, TikTok, YouTube and LinkedIn. You create precise, data-driven campaign briefs that achieve 4-6× ROAS. You write copy that speaks directly to high-intent buyers. IMPORTANT: Never mention competitor brand names in ad headlines or descriptions — focus on the value and benefits. Always respond with valid JSON only — no markdown, no extra text.`;
 
     const userPrompt = `Create a complete campaign launch brief for this campaign:
 
@@ -1352,7 +1352,8 @@ INDUSTRY: ${industry}
 CAMPAIGN NAME: ${campName}
 AD PLATFORM: ${platform}
 MONTHLY BUDGET: ${budget}
-TOP COMPETITORS TO BEAT: ${compList}
+TARGET AUDIENCE / PERSONA: ${persona}
+COMPETITORS TO OUTPERFORM: ${compList}
 CAMPAIGN DESCRIPTION: ${description || 'AI-powered campaign strategy'}
 CAMPAIGN THEMES/TAGS: ${tagList}
 PROJECTED METRICS: ROAS ${estROAS}× | CTR ${estCTR} | CPA ${estCPA}
