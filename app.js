@@ -64,13 +64,14 @@ window._igLaunch = function(idx) {
   try {
     const camp = window._lastCampRecs && window._lastCampRecs[idx];
     if (!camp) {
-      alert('Please run an analysis first — enter your website URL on the home page and click Analyse Now.');
+      showToast('⚠️ Please run an analysis first — enter your website URL on the home page and click Analyse Now');
+      navigateTo('home');
       return;
     }
     buildLaunchModal(camp, idx);
   } catch(err) {
     console.error('_igLaunch error:', err);
-    alert('Could not open Launch modal: ' + err.message);
+    showToast('⚠️ Could not open Launch modal: ' + err.message);
   }
 };
 
@@ -78,13 +79,14 @@ window._igCreative = function(idx) {
   try {
     const camp = window._lastCampRecs && window._lastCampRecs[idx];
     if (!camp) {
-      alert('Please run an analysis first — enter your website URL on the home page and click Analyse Now.');
+      showToast('⚠️ Please run an analysis first — enter your website URL on the home page and click Analyse Now');
+      navigateTo('home');
       return;
     }
     buildCreativeModal(camp, idx);
   } catch(err) {
     console.error('_igCreative error:', err);
-    alert('Could not open Creative Studio: ' + err.message);
+    showToast('⚠️ Could not open Creative Studio: ' + err.message);
   }
 };
 
@@ -173,7 +175,7 @@ function buildLaunchModal(camp, idx) {
   // Show the modal shell
   const modal = document.getElementById('campLaunchRichModal');
   const inner = document.getElementById('campLaunchRichModalInner');
-  if (!modal || !inner) { alert('Modal not found — please refresh the page.'); return; }
+  if (!modal || !inner) { showToast('⚠️ Modal not found — please refresh the page'); return; }
   modal.classList.remove('hidden');
   modal.style.display = 'flex';
 
@@ -392,7 +394,7 @@ function buildLaunchModal(camp, idx) {
 function buildCreativeModal(camp, idx) {
   const modal = document.getElementById('campCreativeModal');
   const inner = document.getElementById('campCreativeModalInner');
-  if (!modal || !inner) { alert('Creative Studio modal not found — please refresh.'); return; }
+  if (!modal || !inner) { showToast('⚠️ Creative Studio modal not found — please refresh'); return; }
   modal.classList.remove('hidden');
   modal.style.display = 'flex';
 
