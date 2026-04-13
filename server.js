@@ -28,6 +28,13 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
 
+// ── Public config (non-secret browser keys) ───────────────────────────────────
+app.get('/api/config', (req, res) => {
+  res.json({
+    amplitudeApiKey: process.env.AMPLITUDE_API_KEY || ''
+  });
+});
+
 // ── DataForSEO helpers ────────────────────────────────────────────────────────
 
 function getDataForSEOAuth() {

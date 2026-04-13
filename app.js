@@ -2,6 +2,27 @@
 // InfoGenie — Main Application Controller
 // ============================================================
 
+// ── Amplitude Analytics ───────────────────────────────────────────────────────
+window._ampReady = false;
+(async () => {
+  try {
+    const cfg = await fetch('/api/config').then(r => r.json());
+    if (cfg.amplitudeApiKey && window.amplitude) {
+      await window.amplitude.init(cfg.amplitudeApiKey, {
+        defaultTracking: { sessions: true, pageViews: false, formInteractions: false, fileDownloads: false }
+      }).promise;
+      window._ampReady = true;
+      igTrack('App Loaded', { version: '1.0', platform: 'web' });
+    }
+  } catch(e) { console.warn('[Amplitude] init failed:', e.message); }
+})();
+
+function igTrack(eventName, props = {}) {
+  if (window._ampReady && window.amplitude) {
+    window.amplitude.track(eventName, props);
+  }
+}
+
 let currentView = 'home';
 let analysisData = null;
 let ctrChartInstance = null;
@@ -361,6 +382,7 @@ function buildCreativeModal(camp, idx) {
   const indName  = (analysisData && analysisData.industry) ? analysisData.industry.name : 'your industry';
   const topComp  = (analysisData && analysisData.competitors && analysisData.competitors[0]) ? analysisData.competitors[0].name : 'your competitor';
   const allComps = (analysisData && analysisData.competitors) ? analysisData.competitors.map(c=>c.name) : [topComp];
+  igTrack('Creative Studio Opened', { campaignName: name, platform, industry: indName, domain });
   const projROAS = camp.estROAS ? camp.estROAS + '×' : '3.8×';
   const estCTR   = camp.estCTR || '4.2%';
   const estCPA   = camp.estCPA || '$38';
@@ -676,7 +698,10 @@ function buildCreativeModal(camp, idx) {
         })
       });
       const data = await res.json();
-      if (data.headlines) applyAICreative(data);
+      if (data.headlines) {
+        applyAICreative(data);
+        igTrack('AI Creative Generated', { campaignName: name, platform, industry: indName, source: data.source || 'gpt4' });
+      }
     } catch(e) {
       console.warn('Auto-generate failed:', e.message);
       const badge = document.getElementById('cs-ai-badge');
@@ -710,6 +735,7 @@ function buildCreativeModal(camp, idx) {
       download: 'infogenie-creative-pack.txt'
     });
     a.click(); URL.revokeObjectURL(a.href);
+    igTrack('Creative Pack Downloaded', { campaignName: name, platform, industry: indName });
     showToast('⬇ Creative pack downloaded!');
   });
 
@@ -816,6 +842,7 @@ function navigateTo(viewId, updateActive = true) {
     target.classList.add('active');
   }
   currentView = viewId;
+  igTrack('Page Viewed', { page: viewId });
   if (updateActive) {
     document.querySelectorAll('.nav-link').forEach(l => {
       l.classList.toggle('active', l.dataset.view === viewId);
@@ -858,6 +885,7 @@ async function runAnalysis(url, country) {
   const industryKey = detectIndustry(cleanUrl);
   const industry = INDUSTRY_DB[industryKey];
   const websiteKPIs = generateWebsiteKPIs(cleanUrl, industryKey);
+  igTrack('Analysis Started', { domain: cleanUrl, country, industry: industry.name });
   
   // Show loading
   const overlay = document.getElementById('loadingOverlay');
@@ -931,7 +959,8 @@ async function runAnalysis(url, country) {
 
   // Store analysis data
   analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps };
-  
+  igTrack('Analysis Completed', { domain: cleanUrl, industry: industry.name, competitorCount: selectedComps.length, country });
+
   // Build all views
   buildDashboard();
   buildCompetitors();
@@ -6694,6 +6723,7 @@ function confirmCampLaunch(name, platform, budget) {
     text: `Campaign "${name}" launched on ${platform} — Budget: ${budget} · Est. ROAS: ${roas}× · Est. CTR: ${ctr}`,
     ts: launchedAt
   });
+  igTrack('Campaign Launched', { campaignName: name, platform, budget, estROAS: roas, estCTR: ctr, estCPA: cpa });
 
   const inner = document.getElementById('campLaunchRichModalInner');
   inner.innerHTML = `
