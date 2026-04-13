@@ -4399,7 +4399,16 @@ function buildIntelligence() {
             </div>
           `).join('')}
         </div>
-        <canvas id="sovChart" height="200"></canvas>
+        <div class="sov-charts-col">
+          <div class="sov-donut-wrap">
+            <canvas id="sovChartIntel"></canvas>
+            <div class="sov-donut-center">
+              <div class="sov-donut-pct">${displaySov.find(s=>s.name==='You')?.share || 5}%</div>
+              <div class="sov-donut-lbl">YOUR SHARE</div>
+            </div>
+          </div>
+          <canvas id="sovBarChartIntel" height="140"></canvas>
+        </div>
       </div>
     </div>
 
@@ -4569,8 +4578,8 @@ function buildIntelligence() {
     </div>
   `;
 
-  // Build Share of Voice donut chart
-  const sovCtx = document.getElementById('sovChart');
+  // Build Share of Voice donut chart (Intelligence view)
+  const sovCtx = document.getElementById('sovChartIntel');
   if (sovCtx) {
     if (sovCtx._chartInstance) sovCtx._chartInstance.destroy();
     sovCtx._chartInstance = new Chart(sovCtx, {
@@ -4580,7 +4589,7 @@ function buildIntelligence() {
         datasets: [{ data: sovData, backgroundColor: sovColors, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }]
       },
       options: {
-        cutout: '62%',
+        cutout: '65%',
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -4593,6 +4602,59 @@ function buildIntelligence() {
       }
     });
   }
+
+  // Build Share of Voice horizontal bar chart
+  const sovBarCtx = document.getElementById('sovBarChartIntel');
+  if (sovBarCtx) {
+    if (sovBarCtx._chartInstance) sovBarCtx._chartInstance.destroy();
+    const barLabels = displaySov.filter(s => s.name !== 'Others').map(s => s.name);
+    const barData   = displaySov.filter(s => s.name !== 'Others').map(s => s.share);
+    const barColors = displaySov.filter(s => s.name !== 'Others').map(s =>
+      s.name === 'You' ? '#00C9C8' : s.color
+    );
+    sovBarCtx._chartInstance = new Chart(sovBarCtx, {
+      type: 'bar',
+      data: {
+        labels: barLabels,
+        datasets: [{
+          label: 'Share of Voice %',
+          data: barData,
+          backgroundColor: barColors,
+          borderRadius: 5,
+          borderSkipped: false,
+          barThickness: 14
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.parsed.x}% share of voice`
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            max: Math.max(...barData) + 5,
+            grid: { color: 'rgba(0,0,0,.05)' },
+            ticks: { callback: v => v + '%', font: { size: 10 }, color: '#9CA3AF' }
+          },
+          y: {
+            grid: { display: false },
+            ticks: {
+              font: { size: 11, weight: '600' },
+              color: ctx => barLabels[ctx.index] === 'You' ? '#00C9C8' : '#374151'
+            }
+          }
+        },
+        animation: { duration: 800 }
+      }
+    });
+  }
+
   _updateLiveDataBadges();
 }
 

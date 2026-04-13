@@ -2665,11 +2665,11 @@ body {
   border-radius: var(--radius-lg);
   padding: 20px 24px;
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 260px 1fr;
   gap: 28px;
-  align-items: center;
+  align-items: start;
 }
-.sov-legend { display: flex; flex-direction: column; gap: 8px; }
+.sov-legend { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
 .sov-legend-item { display: flex; align-items: center; gap: 10px; }
 .sov-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
 .sov-leg-name { font-size: 0.875rem; font-weight: 700; color: var(--navy); flex: 1; }
@@ -2678,6 +2678,29 @@ body {
 .sov-leg-trend.up { color: var(--green); }
 .sov-leg-trend.down { color: #DC2626; }
 .sov-leg-trend.flat { color: var(--gray-400); }
+.sov-charts-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.sov-donut-wrap {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  align-self: center;
+  margin: 0 auto;
+}
+.sov-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.sov-donut-pct { font-size: 1.2rem; font-weight: 800; color: var(--navy); }
+.sov-donut-lbl { font-size: 0.55rem; font-weight: 800; letter-spacing: .06em; color: var(--gray-400); text-transform: uppercase; }
 
 /* Competitor Signal Feed */
 .signal-grid { display: flex; flex-direction: column; gap: 10px; }
