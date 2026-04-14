@@ -939,7 +939,13 @@ function buildCreativeModal(camp, idx) {
             <span id="cs-ig-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}GPT-4...</span>
           </div>
           <textarea id="cs-instagram" rows="7" style="width:100%;box-sizing:border-box;background:#FFF5F7;border:1px solid #FECDD3;border-radius:8px;padding:10px;font-size:0.8rem;color:#1E293B;font-family:'Inter',sans-serif;resize:vertical;outline:none">✨ GPT-4 is writing your Instagram caption...</textarea>
-          <button id="cs-copy-instagram" style="margin-top:6px;padding:7px 16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">📋 Copy Caption</button>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+            <button id="cs-copy-instagram" style="padding:7px 16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">📋 Copy Caption</button>
+            <input type="file" id="cs-upload-ig" accept="image/*,video/*" style="display:none">
+            <button id="cs-upload-ig-btn" style="padding:7px 16px;background:linear-gradient(135deg,#E1306C,#C13584);border:none;border-radius:7px;font-size:0.73rem;font-weight:700;color:white;cursor:pointer;display:flex;align-items:center;gap:5px">📎 Upload Creative</button>
+            <span id="cs-ig-filename" style="font-size:0.7rem;color:#6B7280;font-style:italic"></span>
+          </div>
+          <div id="cs-ig-preview" style="display:none;margin-top:8px;border-radius:8px;overflow:hidden;max-height:160px;background:#F9FAFB;border:1px dashed #FECDD3;text-align:center"></div>
         </div>
         <div style="margin-bottom:12px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
@@ -947,7 +953,13 @@ function buildCreativeModal(camp, idx) {
             <span id="cs-tt-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}GPT-4...</span>
           </div>
           <textarea id="cs-tiktok" rows="5" style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:10px;font-size:0.8rem;color:#1E293B;font-family:'Courier New',monospace;resize:vertical;outline:none">✨ GPT-4 is writing your TikTok script...</textarea>
-          <button id="cs-copy-tiktok" style="margin-top:6px;padding:7px 16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">📋 Copy Script</button>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+            <button id="cs-copy-tiktok" style="padding:7px 16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">📋 Copy Script</button>
+            <input type="file" id="cs-upload-tt" accept="image/*,video/*" style="display:none">
+            <button id="cs-upload-tt-btn" style="padding:7px 16px;background:linear-gradient(135deg,#010101,#2D2D2D);border:none;border-radius:7px;font-size:0.73rem;font-weight:700;color:white;cursor:pointer;display:flex;align-items:center;gap:5px">📎 Upload Creative</button>
+            <span id="cs-tt-filename" style="font-size:0.7rem;color:#6B7280;font-style:italic"></span>
+          </div>
+          <div id="cs-tt-preview" style="display:none;margin-top:8px;border-radius:8px;overflow:hidden;max-height:160px;background:#F9FAFB;border:1px dashed #E5E7EB;text-align:center"></div>
         </div>
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
@@ -955,7 +967,13 @@ function buildCreativeModal(camp, idx) {
             <span id="cs-yt-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}GPT-4...</span>
           </div>
           <textarea id="cs-video" rows="6" style="width:100%;box-sizing:border-box;background:#FFF5F5;border:1px solid #FECACA;border-radius:8px;padding:10px;font-size:0.8rem;color:#1E293B;font-family:'Courier New',monospace;resize:vertical;outline:none">✨ GPT-4 is writing your YouTube script...</textarea>
-          <button id="cs-copy-video" style="margin-top:6px;padding:7px 16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">📋 Copy Script</button>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+            <button id="cs-copy-video" style="padding:7px 16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">📋 Copy Script</button>
+            <input type="file" id="cs-upload-yt" accept="image/*,video/*" style="display:none">
+            <button id="cs-upload-yt-btn" style="padding:7px 16px;background:linear-gradient(135deg,#FF0000,#CC0000);border:none;border-radius:7px;font-size:0.73rem;font-weight:700;color:white;cursor:pointer;display:flex;align-items:center;gap:5px">📎 Upload Creative</button>
+            <span id="cs-yt-filename" style="font-size:0.7rem;color:#6B7280;font-style:italic"></span>
+          </div>
+          <div id="cs-yt-preview" style="display:none;margin-top:8px;border-radius:8px;overflow:hidden;max-height:160px;background:#F9FAFB;border:1px dashed #FECACA;text-align:center"></div>
         </div>
       </div>
 
@@ -1235,6 +1253,39 @@ function buildCreativeModal(camp, idx) {
   document.getElementById('cs-copy-video').addEventListener('click', () => {
     navigator.clipboard.writeText(document.getElementById('cs-video').value).then(()=>showToast('✅ YouTube script copied!')).catch(()=>showToast('✅ Copied!'));
   });
+  // ── Upload Creative buttons (Social & Video tab) ────────────────────────────
+  function setupCreativeUpload(btnId, inputId, filenameId, previewId, label) {
+    const btn = document.getElementById(btnId);
+    const inp = document.getElementById(inputId);
+    const fnEl = document.getElementById(filenameId);
+    const pvEl = document.getElementById(previewId);
+    if (!btn || !inp) return;
+    btn.addEventListener('click', () => inp.click());
+    inp.addEventListener('change', () => {
+      const file = inp.files[0];
+      if (!file) return;
+      fnEl.textContent = file.name;
+      pvEl.innerHTML = '';
+      const url = URL.createObjectURL(file);
+      if (file.type.startsWith('video/')) {
+        const vid = document.createElement('video');
+        vid.src = url; vid.controls = true;
+        vid.style.cssText = 'max-width:100%;max-height:150px;border-radius:6px';
+        pvEl.appendChild(vid);
+      } else {
+        const img = document.createElement('img');
+        img.src = url;
+        img.style.cssText = 'max-width:100%;max-height:150px;object-fit:contain;border-radius:6px';
+        pvEl.appendChild(img);
+      }
+      pvEl.style.display = 'block';
+      showToast(`✅ ${label} creative attached: ${file.name}`);
+    });
+  }
+  setupCreativeUpload('cs-upload-ig-btn','cs-upload-ig','cs-ig-filename','cs-ig-preview','Instagram');
+  setupCreativeUpload('cs-upload-tt-btn','cs-upload-tt','cs-tt-filename','cs-tt-preview','TikTok');
+  setupCreativeUpload('cs-upload-yt-btn','cs-upload-yt','cs-yt-filename','cs-yt-preview','YouTube');
+
   document.getElementById('cs-copy-linkedin').addEventListener('click', () => {
     navigator.clipboard.writeText(document.getElementById('cs-linkedin').value).then(()=>showToast('✅ LinkedIn copy copied!')).catch(()=>showToast('✅ Copied!'));
   });
