@@ -631,6 +631,11 @@ function buildLaunchModal(camp, idx) {
       const clWrap = document.getElementById('lm-checklist-wrap');
       const clEl   = document.getElementById('lm-checklist');
       if (clWrap && clEl && brief.launch_checklist && brief.launch_checklist.length > 0) {
+        // Always ensure the creative upload item is present
+        const uploadPhrase = 'Upload your ad creatives — video or image assets for this campaign';
+        const hasUpload = brief.launch_checklist.some(i => /upload|creative|video/i.test(i));
+        if (!hasUpload) brief.launch_checklist.unshift(uploadPhrase);
+
         clEl.innerHTML = brief.launch_checklist.map((item, ii) => {
           const low = item.toLowerCase();
           let actionBtn = '';
