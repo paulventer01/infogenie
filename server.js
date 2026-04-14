@@ -1514,6 +1514,7 @@ Return ONLY this exact JSON structure:
         `Upload high-quality video creatives and static image assets for ${platform}`,
         `Set up lookalike audiences from your highest-converting customer segments`,
         `Implement conversion tracking and revenue attribution before launch`,
+        `Set daily spend caps to maintain consistent pacing within monthly budget`,
         `Launch A/B test variants for ad copy headlines and audience targeting`
       ]
     });

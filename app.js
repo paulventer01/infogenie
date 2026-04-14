@@ -670,6 +670,31 @@ function buildLaunchModal(camp, idx) {
                 navigateTo('results');
               " style="flex-shrink:0;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#059669;background:#D1FAE5;border:1px solid #6EE7B7;border-radius:6px;cursor:pointer;white-space:nowrap">→ View Results</button>`;
 
+          // ── Daily spend cap ────────────────────────────────────────────────
+          } else if (low.includes('daily spend') || low.includes('spend cap') || low.includes('pacing') || low.includes('daily cap')) {
+            const capId  = `cl-cap-input-${ii}`;
+            const capBtn = `cl-cap-btn-${ii}`;
+            const sugCap = dailyBudg || Math.round(budgetNum / 30) || 100;
+            actionBtn = `
+              <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap">
+                <span style="font-size:0.71rem;color:#6B7280;font-weight:600">$</span>
+                <input id="${capId}" type="number" value="${sugCap}" min="10" step="10"
+                  style="width:70px;padding:3px 7px;font-size:0.78rem;font-weight:700;color:#0A1628;border:1.5px solid #D1D5DB;border-radius:6px;outline:none;font-family:'Inter',sans-serif"
+                  onfocus="this.style.borderColor='#0066FF'" onblur="this.style.borderColor='#D1D5DB'">
+                <span style="font-size:0.71rem;color:#6B7280">/day</span>
+                <button id="${capBtn}" onclick="
+                  const v=document.getElementById('${capId}').value;
+                  window._dailySpendCap=parseFloat(v)||${sugCap};
+                  this.textContent='✅ Cap Set';
+                  this.style.background='#D1FAE5';
+                  this.style.color='#059669';
+                  this.style.borderColor='#6EE7B7';
+                  this.closest('.cl-item').querySelector('.cl-check').textContent='☑';
+                  this.closest('.cl-item').style.background='#D1FAE5';
+                  document.getElementById('lm-budget').value=Math.round(parseFloat(v)*30)||${budgetNum};
+                " style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#0A1628;background:#F3F4F6;border:1.5px solid #D1D5DB;border-radius:6px;cursor:pointer;white-space:nowrap">Set Cap</button>
+              </div>`;
+
           // ── A/B testing ────────────────────────────────────────────────────
           } else if (low.includes('a/b') || low.includes('ab test') || low.includes('split test') || low.includes('variant')) {
             actionBtn = `<button onclick="
