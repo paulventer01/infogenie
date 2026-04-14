@@ -433,11 +433,28 @@ function buildLaunchModal(camp, idx) {
     const finalDate      = document.getElementById('lm-date').value || new Date().toISOString().split('T')[0];
     const finalAudience  = (document.getElementById('lm-audience').value || 'Auto-targeted by InfoGenie AI').trim();
 
+    // Capture Creative Studio content at launch time
+    const csHeadlines = Array.from(document.querySelectorAll('.cs-headline')).map(el => el.value).filter(Boolean);
+    const csDescs     = Array.from(document.querySelectorAll('.cs-desc')).map(el => el.value).filter(Boolean);
+    const launchCreatives = {
+      headlines:    csHeadlines,
+      descriptions: csDescs,
+      instagram:    document.getElementById('cs-instagram')?.value || '',
+      tiktok:       document.getElementById('cs-tiktok')?.value || '',
+      youtube:      document.getElementById('cs-video')?.value || '',
+      linkedin:     document.getElementById('cs-linkedin')?.value || '',
+      email:        document.getElementById('cs-email')?.value || '',
+      igFile:       document.getElementById('cs-upload-ig')?.files?.[0]?.name || null,
+      ttFile:       document.getElementById('cs-upload-tt')?.files?.[0]?.name || null,
+      ytFile:       document.getElementById('cs-upload-yt')?.files?.[0]?.name || null,
+    };
+
     // Save to internal results tracker IMMEDIATELY (before API call)
     const launchRecord = {
       id: 'camp_' + Date.now(), name: finalName, platform: finalPlatform,
       budget: finalBudgetNum, budgetStr: finalBudget, startDate: finalDate, audience: finalAudience,
       launchedAt: new Date().toLocaleString(), status: 'active', daysRunning: 0,
+      creatives: launchCreatives,
       metrics: {
         roas: (parseFloat(projROAS) * (0.85 + Math.random() * 0.3)).toFixed(1),
         ctr: (Math.random() * 3 + 2).toFixed(1) + '%',
@@ -2743,6 +2760,135 @@ function buildCampaigns() {
       </div>
     </div>
 
+    <!-- LAUNCHED CAMPAIGNS SECTION -->
+    ${(window._launchedCampaigns||[]).length > 0 ? (() => {
+      const statColor = { active:'#10B981', paused:'#F59E0B', ended:'#6B7280', draft:'#6366F1' };
+      const platIcons = { google:'🔍', meta:'📘', facebook:'📘', tiktok:'🎵', linkedin:'💼', youtube:'🎬' };
+      return `<div class="data-table-card" id="launched-campaigns-section" style="margin-bottom:24px;border:1.5px solid #00C9C8">
+        <div class="dtc-header">
+          <h3 style="color:#0A1628">🚀 Launched Campaigns</h3>
+          <span class="atag" style="background:linear-gradient(135deg,#00C9C8,#0066FF)">${(window._launchedCampaigns||[]).length} Live</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          ${(window._launchedCampaigns||[]).map((c, ci) => {
+            const m = c.metrics || {};
+            const cr = c.creatives || {};
+            const stat = c.status || 'active';
+            const platKey = (c.platform || '').toLowerCase();
+            const platIcon = Object.entries(platIcons).find(([k]) => platKey.includes(k))?.[1] || '📣';
+            const hasAdCopy = (cr.headlines||[]).filter(Boolean).length > 0 || (cr.descriptions||[]).filter(Boolean).length > 0;
+            const hasSocial = cr.instagram || cr.tiktok || cr.youtube || cr.linkedin;
+            const hasFiles  = cr.igFile || cr.ttFile || cr.ytFile;
+            return `<div id="lc-card-${ci}" style="background:#FAFAFA;border:1px solid #E5E7EB;border-radius:14px;overflow:hidden">
+              <!-- Card Header -->
+              <div style="background:linear-gradient(135deg,#0A1628,#0D2140);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+                <div>
+                  <div style="font-size:0.65rem;font-weight:700;color:#00C9C8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">${platIcon} ${c.platform||'Campaign'}</div>
+                  <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white">${c.name||'Campaign'}</div>
+                  <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
+                    <span style="background:${statColor[stat]||'#10B981'};color:white;font-size:0.6rem;font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase">${stat}</span>
+                    <span style="font-size:0.72rem;color:#94A3B8">Launched ${c.launchedAt||'—'}</span>
+                  </div>
+                </div>
+                <button onclick="document.getElementById('lc-body-${ci}').style.display=document.getElementById('lc-body-${ci}').style.display==='none'?'block':'none';this.textContent=document.getElementById('lc-body-${ci}').style.display==='none'?'▼ Expand':'▲ Collapse'" style="padding:7px 14px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);border-radius:8px;font-size:0.72rem;font-weight:700;color:white;cursor:pointer">▼ Expand</button>
+              </div>
+
+              <!-- Collapsed summary -->
+              <div style="padding:12px 20px;display:flex;gap:20px;flex-wrap:wrap;border-bottom:1px solid #E5E7EB">
+                ${[['ROAS',(m.roas||'—')+'×','#10B981'],['CTR',m.ctr||'—','#0066FF'],['Conv.',(m.conversions||0).toLocaleString(),'#7C3AED'],['CPA',m.cpa||'—','#F59E0B']].map(([l,v,col])=>
+                  `<div style="text-align:center"><div style="font-size:1rem;font-weight:800;color:${col}">${v}</div><div style="font-size:0.62rem;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">${l}</div></div>`
+                ).join('')}
+                <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  ${hasAdCopy ? `<span style="background:#EFF6FF;color:#0066FF;font-size:0.65rem;font-weight:700;padding:3px 8px;border-radius:6px">📝 Ad Copy</span>` : ''}
+                  ${hasSocial ? `<span style="background:#FFF5F7;color:#E1306C;font-size:0.65rem;font-weight:700;padding:3px 8px;border-radius:6px">📱 Social</span>` : ''}
+                  ${hasFiles  ? `<span style="background:#F0FDF4;color:#059669;font-size:0.65rem;font-weight:700;padding:3px 8px;border-radius:6px">📎 Files</span>` : ''}
+                </div>
+              </div>
+
+              <!-- Expandable Body -->
+              <div id="lc-body-${ci}" style="display:none;padding:20px">
+
+                <!-- Metrics full grid -->
+                <div style="margin-bottom:20px">
+                  <div style="font-size:0.68rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">📊 Performance Metrics</div>
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+                    ${[['ROAS',(m.roas||'—')+'×','#10B981'],['CTR',m.ctr||'—','#0066FF'],['Conversions',(m.conversions||0).toLocaleString(),'#7C3AED'],['CPA',m.cpa||'—','#F59E0B'],['Impressions',m.impressions?Number(m.impressions).toLocaleString():'—','#00C9C8'],['Spend','$'+(m.spend||0).toLocaleString(),'#E1306C']].map(([l,v,col])=>
+                      `<div style="background:white;border:1px solid #E5E7EB;border-radius:10px;padding:12px;text-align:center"><div style="font-size:1.1rem;font-weight:800;color:${col}">${v}</div><div style="font-size:0.62rem;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">${l}</div></div>`
+                    ).join('')}
+                  </div>
+                </div>
+
+                <!-- Campaign Settings -->
+                <div style="background:white;border:1px solid #E5E7EB;border-radius:10px;padding:14px;margin-bottom:20px">
+                  <div style="font-size:0.68rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">⚙️ Campaign Settings</div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:0.8rem;color:#374151">
+                    <div><span style="color:#9CA3AF;font-size:0.7rem">Budget</span><br><strong>${c.budgetStr||'—'}/mo</strong></div>
+                    <div><span style="color:#9CA3AF;font-size:0.7rem">Start Date</span><br><strong>${c.startDate||'—'}</strong></div>
+                    <div><span style="color:#9CA3AF;font-size:0.7rem">Audience</span><br><strong>${(c.audience||'Auto-targeted').substring(0,60)}</strong></div>
+                    <div><span style="color:#9CA3AF;font-size:0.7rem">Campaign ID</span><br><strong style="font-family:monospace;font-size:0.7rem">${c._platformCampaignId||c.id||'—'}</strong></div>
+                  </div>
+                </div>
+
+                ${hasAdCopy ? `
+                <!-- Ad Copy Creatives -->
+                <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:14px;margin-bottom:20px">
+                  <div style="font-size:0.68rem;font-weight:700;color:#065F46;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">✍️ Ad Copy Creatives</div>
+                  ${(cr.headlines||[]).filter(Boolean).map((h,i)=>`
+                    <div style="background:white;border:1px solid #BBF7D0;border-radius:7px;padding:9px 12px;margin-bottom:6px;display:flex;align-items:center;gap:8px">
+                      <span style="font-size:0.65rem;font-weight:700;color:#059669;background:#D1FAE5;border-radius:4px;padding:2px 6px;flex-shrink:0">H${i+1}</span>
+                      <span style="font-size:0.82rem;color:#0A1628;font-weight:600">${h}</span>
+                    </div>`).join('')}
+                  ${(cr.descriptions||[]).filter(Boolean).map((d,i)=>`
+                    <div style="background:white;border:1px solid #BAE6FD;border-radius:7px;padding:9px 12px;margin-bottom:6px;display:flex;align-items:center;gap:8px">
+                      <span style="font-size:0.65rem;font-weight:700;color:#0369A1;background:#E0F2FE;border-radius:4px;padding:2px 6px;flex-shrink:0">D${i+1}</span>
+                      <span style="font-size:0.8rem;color:#374151">${d}</span>
+                    </div>`).join('')}
+                </div>` : ''}
+
+                ${hasSocial ? `
+                <!-- Social & Video Creatives -->
+                <div style="background:#FFF5F7;border:1px solid #FECDD3;border-radius:10px;padding:14px;margin-bottom:20px">
+                  <div style="font-size:0.68rem;font-weight:700;color:#9D174D;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">📱 Social & Video Creatives</div>
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    ${cr.instagram ? `<div><div style="font-size:0.65rem;font-weight:700;color:#E1306C;margin-bottom:5px">📸 Instagram Caption</div><div style="background:white;border:1px solid #FECDD3;border-radius:7px;padding:10px;font-size:0.8rem;color:#374151;line-height:1.6;white-space:pre-wrap;max-height:100px;overflow-y:auto">${cr.instagram}</div></div>` : ''}
+                    ${cr.tiktok   ? `<div><div style="font-size:0.65rem;font-weight:700;color:#010101;margin-bottom:5px">⬛ TikTok Script</div><div style="background:white;border:1px solid #E5E7EB;border-radius:7px;padding:10px;font-size:0.78rem;color:#374151;font-family:'Courier New',monospace;line-height:1.5;white-space:pre-wrap;max-height:100px;overflow-y:auto">${cr.tiktok}</div></div>` : ''}
+                    ${cr.youtube  ? `<div><div style="font-size:0.65rem;font-weight:700;color:#FF0000;margin-bottom:5px">🎬 YouTube Pre-Roll</div><div style="background:white;border:1px solid #FECACA;border-radius:7px;padding:10px;font-size:0.78rem;color:#374151;font-family:'Courier New',monospace;line-height:1.5;white-space:pre-wrap;max-height:100px;overflow-y:auto">${cr.youtube}</div></div>` : ''}
+                    ${cr.linkedin ? `<div><div style="font-size:0.65rem;font-weight:700;color:#0A66C2;margin-bottom:5px">💼 LinkedIn Post</div><div style="background:white;border:1px solid #BAE0FF;border-radius:7px;padding:10px;font-size:0.8rem;color:#374151;line-height:1.6;white-space:pre-wrap;max-height:100px;overflow-y:auto">${cr.linkedin}</div></div>` : ''}
+                  </div>
+                </div>` : ''}
+
+                ${hasFiles ? `
+                <!-- Attached Creative Files -->
+                <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:14px;margin-bottom:20px">
+                  <div style="font-size:0.68rem;font-weight:700;color:#065F46;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">📎 Attached Creative Files</div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    ${cr.igFile ? `<span style="background:white;border:1px solid #BBF7D0;border-radius:7px;padding:7px 12px;font-size:0.75rem;color:#0A1628;font-weight:600">📸 ${cr.igFile}</span>` : ''}
+                    ${cr.ttFile ? `<span style="background:white;border:1px solid #BBF7D0;border-radius:7px;padding:7px 12px;font-size:0.75rem;color:#0A1628;font-weight:600">⬛ ${cr.ttFile}</span>` : ''}
+                    ${cr.ytFile ? `<span style="background:white;border:1px solid #BBF7D0;border-radius:7px;padding:7px 12px;font-size:0.75rem;color:#0A1628;font-weight:600">🎬 ${cr.ytFile}</span>` : ''}
+                  </div>
+                </div>` : ''}
+
+                <!-- Action Timeline -->
+                <div style="background:white;border:1px solid #E5E7EB;border-radius:10px;padding:14px;margin-bottom:14px">
+                  <div style="font-size:0.68rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">⚡ Action Timeline</div>
+                  ${(c.actions||[]).map(a=>`
+                    <div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #F3F4F6">
+                      <div style="width:6px;height:6px;background:#00C9C8;border-radius:50%;margin-top:6px;flex-shrink:0"></div>
+                      <div><div style="font-size:0.78rem;color:#1E293B">${a.action}</div><div style="font-size:0.67rem;color:#9CA3AF;margin-top:1px">${a.time}</div></div>
+                    </div>`).join('') || '<div style="color:#9CA3AF;font-size:0.78rem;padding:6px 0">No actions logged</div>'}
+                </div>
+
+                <!-- Platform Link -->
+                ${c._platformCampaignId ? `
+                  <a href="${platKey.includes('google') ? 'https://ads.google.com' : platKey.includes('meta')||platKey.includes('facebook') ? 'https://adsmanager.facebook.com' : 'https://ads.tiktok.com'}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;background:linear-gradient(135deg,#00C9C8,#0066FF);border-radius:8px;font-size:0.78rem;font-weight:700;color:white;text-decoration:none">🔗 Open in ${c.platform} Dashboard →</a>
+                ` : `<div style="font-size:0.75rem;color:#9CA3AF">Connect ad account in Settings to push future campaigns live automatically.</div>`}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    })() : ''}
+
     <div class="data-table-card">
       <div class="dtc-header"><h3>Competitor Campaign Breakdown</h3><span class="atag">Live Intelligence</span></div>
       <div class="table-scroll">
@@ -3785,102 +3931,34 @@ function activateTargeting(panelId, label) {
   }, 800);
 }
 
-// ── View Campaign Modal ──────────────────────────────────────────────────────
+// ── View Campaign — navigates to Campaigns page and expands the card ─────────
 window.openViewCampaignModal = function(record) {
   if (!record) return;
-  const m   = record.metrics || {};
-  const stat = record.status || 'active';
-  const statColor = { active:'#10B981', paused:'#F59E0B', ended:'#6B7280', draft:'#6366F1' };
-  const platIcons = { google:'🔍', meta:'📘', facebook:'📘', tiktok:'🎵', linkedin:'💼', youtube:'🎬' };
-  const platKey = (record.platform || '').toLowerCase();
-  const platIcon = Object.entries(platIcons).find(([k]) => platKey.includes(k))?.[1] || '📣';
-
-  // Build actions HTML
-  const actionsHtml = (record.actions || []).map(a => `
-    <div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #F3F4F6">
-      <div style="width:6px;height:6px;background:#00C9C8;border-radius:50%;margin-top:6px;flex-shrink:0"></div>
-      <div style="flex:1">
-        <div style="font-size:0.78rem;color:#1E293B">${a.action}</div>
-        <div style="font-size:0.68rem;color:#9CA3AF;margin-top:2px">${a.time}</div>
-      </div>
-    </div>`).join('') || '<div style="color:#9CA3AF;font-size:0.8rem;padding:8px 0">No actions yet</div>';
-
-  // Platform dashboard link
-  const dashLink = record._platformCampaignId
-    ? `<a href="${platKey.includes('google') ? 'https://ads.google.com' : platKey.includes('meta')||platKey.includes('facebook') ? 'https://adsmanager.facebook.com' : 'https://ads.tiktok.com'}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:linear-gradient(135deg,#00C9C8,#0066FF);border-radius:8px;font-size:0.78rem;font-weight:700;color:white;text-decoration:none">🔗 Open in ${record.platform} Dashboard</a>`
-    : `<span style="font-size:0.75rem;color:#9CA3AF">Connect ad account in Settings to push live</span>`;
-
-  // Overlay
-  const overlay = document.createElement('div');
-  overlay.id = 'vc-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
-  overlay.innerHTML = `
-    <div style="background:white;border-radius:18px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.35)">
-      <!-- Header -->
-      <div style="background:linear-gradient(135deg,#0A1628,#0D2140);border-radius:18px 18px 0 0;padding:22px 24px;display:flex;align-items:flex-start;justify-content:space-between">
-        <div>
-          <div style="font-size:0.68rem;font-weight:700;color:#00C9C8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">${platIcon} ${record.platform || 'Campaign'}</div>
-          <div style="font-family:'Sora',sans-serif;font-size:1.3rem;font-weight:800;color:white;margin-bottom:6px">${record.name || 'Campaign'}</div>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <span style="background:${statColor[stat]||'#10B981'};color:white;font-size:0.65rem;font-weight:700;padding:3px 10px;border-radius:10px;text-transform:uppercase">${stat}</span>
-            <span style="font-size:0.75rem;color:#94A3B8">Launched ${record.launchedAt || '—'}</span>
-          </div>
-        </div>
-        <button id="vc-close" style="background:rgba(255,255,255,0.1);border:none;border-radius:50%;width:32px;height:32px;font-size:1.1rem;color:white;cursor:pointer;flex-shrink:0;line-height:32px;text-align:center">✕</button>
-      </div>
-
-      <div style="padding:22px 24px">
-        <!-- Metrics Grid -->
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
-          ${[
-            ['ROAS', (m.roas||'—')+'×', '#10B981'],
-            ['CTR', m.ctr||'—', '#0066FF'],
-            ['Conversions', (m.conversions||0).toLocaleString(), '#7C3AED'],
-            ['CPA', m.cpa||'—', '#F59E0B'],
-            ['Impressions', m.impressions ? Number(m.impressions).toLocaleString() : '—', '#00C9C8'],
-            ['Spend so far', m.spend ? '$'+Number(m.spend).toLocaleString() : '—', '#E1306C']
-          ].map(([label, val, col]) => `
-            <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:14px;text-align:center">
-              <div style="font-size:1.25rem;font-weight:800;color:${col};margin-bottom:2px">${val}</div>
-              <div style="font-size:0.65rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">${label}</div>
-            </div>`).join('')}
-        </div>
-
-        <!-- Campaign Settings -->
-        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:20px">
-          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">Campaign Settings</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:0.8rem;color:#374151">
-            <div><span style="color:#9CA3AF;font-size:0.72rem">Budget</span><br><strong>${record.budgetStr||('$'+(record.budget||0))}/mo</strong></div>
-            <div><span style="color:#9CA3AF;font-size:0.72rem">Start Date</span><br><strong>${record.startDate||'—'}</strong></div>
-            <div><span style="color:#9CA3AF;font-size:0.72rem">Audience</span><br><strong>${(record.audience||'Auto-targeted').substring(0,50)}</strong></div>
-            <div><span style="color:#9CA3AF;font-size:0.72rem">Campaign ID</span><br><strong style="font-family:monospace;font-size:0.72rem">${record._platformCampaignId||record.id||'—'}</strong></div>
-          </div>
-        </div>
-
-        <!-- Platform Link -->
-        <div style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em">Platform</div>
-          ${dashLink}
-        </div>
-
-        <!-- Action Timeline -->
-        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:20px">
-          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">⚡ Action Timeline</div>
-          ${actionsHtml}
-        </div>
-
-        <!-- Footer Buttons -->
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button id="vc-close-footer" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
-          <button onclick="navigateTo('results');document.getElementById('vc-overlay').remove()" style="flex:2;padding:11px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">📊 Full Results Dashboard →</button>
-        </div>
-      </div>
-    </div>`;
-
-  document.body.appendChild(overlay);
-  document.getElementById('vc-close').addEventListener('click', () => overlay.remove());
-  document.getElementById('vc-close-footer').addEventListener('click', () => overlay.remove());
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  // Find the index of this record in the launched campaigns list
+  const idx = (window._launchedCampaigns || []).findIndex(c => c.id === record.id);
+  // Navigate to campaigns page (buildCampaigns re-renders the launched section)
+  navigateTo('campaigns');
+  // After navigation re-renders, scroll to and expand the card
+  setTimeout(() => {
+    const section = document.getElementById('launched-campaigns-section');
+    if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (idx >= 0) {
+      const body = document.getElementById(`lc-body-${idx}`);
+      const btn  = body?.previousElementSibling?.querySelector('button') ||
+                   document.querySelector(`#lc-card-${idx} button`);
+      if (body && body.style.display === 'none') {
+        body.style.display = 'block';
+        if (btn) btn.textContent = '▲ Collapse';
+      }
+      const card = document.getElementById(`lc-card-${idx}`);
+      if (card) {
+        setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+        card.style.outline = '2.5px solid #00C9C8';
+        card.style.boxShadow = '0 0 0 4px rgba(0,201,200,0.18)';
+        setTimeout(() => { card.style.outline = ''; card.style.boxShadow = ''; }, 2500);
+      }
+    }
+  }, 350);
 };
 
 function launchVsCampaign(compName, channel) {
