@@ -1216,7 +1216,7 @@ app.post('/api/ai-creative', async (req, res) => {
     const compList = competitors.length > 0 ? competitors.join(', ') : topComp;
     const tagList  = tags.length > 0 ? tags.join(', ') : '';
 
-    const systemPrompt = `You are a world-class performance marketing copywriter with 15 years experience creating ads that achieve 4-6× ROAS on Google, Meta, TikTok, LinkedIn, and YouTube. You deeply understand competitor positioning and write copy that directly exploits competitor weaknesses while highlighting the brand's unique advantages. Always respond with valid JSON only — no markdown, no explanation, just the JSON object.`;
+    const systemPrompt = `You are a world-class performance marketing copywriter with 15 years experience creating ads that achieve 4-6× ROAS on Google, Meta, TikTok, LinkedIn, and YouTube. You write compelling copy that highlights brand strengths, speaks directly to buyer pain-points, and drives high-intent conversions. CRITICAL LEGAL RULE: You must NEVER mention any competitor brand names, product names, or company names in any ad copy — not in headlines, descriptions, scripts, captions, email subjects, or any other field. Use generic terms like "the alternatives", "other solutions", "traditional methods", or "the competition" instead. Always respond with valid JSON only — no markdown, no explanation, just the JSON object.`;
 
     const userPrompt = `Generate a complete multi-platform creative pack for this campaign:
 
@@ -1224,35 +1224,37 @@ BRAND: ${domain}
 INDUSTRY: ${industry}
 CAMPAIGN: ${campName}
 PLATFORM FOCUS: ${platform}
-COMPETITORS TO BEAT: ${compList}
+MARKET CONTEXT: Competing in ${industry} — focus on our unique strengths vs generic alternatives
 AD TONE: ${tone}
 TARGET PERSONA: ${persona}
 KEY DIFFERENTIATOR: ${differentiator}
 CALL-TO-ACTION: ${cta}
 CAMPAIGN TAGS/THEMES: ${tagList}
 
+IMPORTANT: Do NOT name any competitor brands. Use "the alternatives", "other ${industry} tools", or "traditional methods" if contrast is needed.
+
 Return ONLY this JSON (no markdown fences, no extra text):
 {
   "headlines": [
     "Google headline 1 (MAX 30 chars, high-intent keyword)",
     "Google headline 2 (MAX 30 chars, benefit-led)",
-    "Google headline 3 (MAX 30 chars, competitor contrast)"
+    "Google headline 3 (MAX 30 chars, value contrast — NO competitor names)"
   ],
   "descriptions": [
-    "Google description 1 (MAX 90 chars, pain → solution)",
-    "Google description 2 (MAX 90 chars, social proof + CTA)"
+    "Google description 1 (MAX 90 chars, pain → solution, no competitor names)",
+    "Google description 2 (MAX 90 chars, social proof + CTA, no competitor names)"
   ],
-  "instagram": "Full Instagram/Meta caption with opening hook, 3 benefit bullets with ✅, social proof stat, CTA, 6-8 relevant hashtags. 150-200 words.",
-  "tiktok_script": "15-second TikTok script:\\n[0-3s] HOOK: text\\n[3-8s] PROBLEM: text\\n[8-13s] SOLUTION: text\\n[13-15s] CTA: text",
-  "youtube_script": "25-second YouTube pre-roll:\\n[0-5s] HOOK: text\\n[5-12s] PROBLEM: text\\n[12-20s] SOLUTION: text\\n[20-25s] CTA: text",
-  "linkedin": "LinkedIn Sponsored Content post: professional tone, industry insight opening, 2-3 pain points for ${persona}, how ${domain} solves them, ${cta}. 100-130 words.",
+  "instagram": "Full Instagram/Meta caption with opening hook, 3 benefit bullets with ✅, social proof stat, CTA, 6-8 relevant hashtags. 150-200 words. No competitor names.",
+  "tiktok_script": "15-second TikTok script:\\n[0-3s] HOOK: text\\n[3-8s] PROBLEM: text\\n[8-13s] SOLUTION: text\\n[13-15s] CTA: text. No competitor names.",
+  "youtube_script": "25-second YouTube pre-roll:\\n[0-5s] HOOK: text\\n[5-12s] PROBLEM: text\\n[12-20s] SOLUTION: text\\n[20-25s] CTA: text. No competitor names.",
+  "linkedin": "LinkedIn Sponsored Content post: professional tone, industry insight opening, 2-3 pain points for ${persona}, how ${domain} solves them, ${cta}. 100-130 words. No competitor names.",
   "email_subjects": [
-    "Email subject line 1 — curiosity-led",
-    "Email subject line 2 — benefit-led",
-    "Email subject line 3 — urgency-led"
+    "Email subject line 1 — curiosity-led, no competitor names",
+    "Email subject line 2 — benefit-led, no competitor names",
+    "Email subject line 3 — urgency-led, no competitor names"
   ],
-  "strategy_reasoning": "2-sentence explanation of why this creative angle beats ${topComp} for ${persona}",
-  "competitor_angle": "1 specific ad copy hook that directly calls out a known ${topComp} weakness"
+  "strategy_reasoning": "2-sentence explanation of why this creative angle resonates with ${persona} and drives conversions in ${industry}",
+  "competitor_angle": "1 ad copy hook that calls out a common industry pain-point WITHOUT naming any competitor brand"
 }`;
 
     // Helper: clean and parse JSON from AI response
@@ -1262,6 +1264,34 @@ Return ONLY this JSON (no markdown fences, no extra text):
       const match = clean.match(/\{[\s\S]*\}/);
       if (!match) return null;
       try { return JSON.parse(match[0]); } catch { return null; }
+    }
+
+    // Safety net: strip any competitor brand name that GPT-4 may have included
+    // despite instructions. Replaces names with "the competition" generically.
+    const allCompNames = [...new Set([
+      ...(competitors || []),
+      topComp
+    ])].filter(n => n && n.length > 2);
+
+    function sanitiseAdCopy(obj) {
+      if (!obj || typeof obj !== 'object') return obj;
+      const scrub = str => {
+        if (typeof str !== 'string') return str;
+        let out = str;
+        for (const name of allCompNames) {
+          // Case-insensitive whole-word replacement
+          const re = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`, 'gi');
+          out = out.replace(re, 'the competition');
+        }
+        return out;
+      };
+      const result = {};
+      for (const [k, v] of Object.entries(obj)) {
+        if (typeof v === 'string') result[k] = scrub(v);
+        else if (Array.isArray(v)) result[k] = v.map(i => scrub(i));
+        else result[k] = v;
+      }
+      return result;
     }
 
     // ── Attempt 1: GPT-4 via Replit AI Integrations ────────────────────────
@@ -1281,7 +1311,7 @@ Return ONLY this JSON (no markdown fences, no extra text):
         const parsed = parseAIResponse(text);
         if (parsed && Array.isArray(parsed.headlines) && parsed.headlines.length >= 3) {
           console.log('[ai-creative] GPT-4 success');
-          return res.json({ ...parsed, source: 'gpt4' });
+          return res.json({ ...sanitiseAdCopy(parsed), source: 'gpt4' });
         }
       } catch(e) { console.warn('[ai-creative] GPT-4 failed:', e.message); }
     }
@@ -1298,7 +1328,7 @@ Return ONLY this JSON (no markdown fences, no extra text):
         const text = r?.result || r?.response || r?.message || r?.content || '';
         const parsed = parseAIResponse(text);
         if (parsed && Array.isArray(parsed.headlines)) {
-          return res.json({ ...parsed, source: 'rapidapi_gpt' });
+          return res.json({ ...sanitiseAdCopy(parsed), source: 'rapidapi_gpt' });
         }
       } catch(e) { console.warn('[ai-creative] RapidAPI failed:', e.message); }
     }
@@ -1310,13 +1340,13 @@ Return ONLY this JSON (no markdown fences, no extra text):
     const ind = industry.replace(/\s+/g,'');
 
     const hSets = [
-      [`Beat ${topComp} — ${ctaShort}`, `${differentiator.substring(0,25)} Proven`, `${platform} Results That Scale`],
-      [`${ctaShort} — Stop Paying More`, `The ${industry} Platform That Wins`, `Outperform ${topComp} in 30 Days`],
-      [`${differentiator.substring(0,22)} Now`, `${industry}: Smarter Strategy`, `Competitors Fear This Method`]
+      [`${ctaShort} — Smarter ${industry}`, `${differentiator.substring(0,25)} Proven`, `${platform} Results That Scale`],
+      [`${ctaShort} — Stop Paying More`, `The ${industry} Platform That Wins`, `Outperform the Market in 30 Days`],
+      [`${differentiator.substring(0,22)} Now`, `${industry}: Smarter Strategy`, `The Approach Your Market Fears`]
     ];
     const dSets = [
-      [`Built for ${persona} — get more from ${platform} while spending less than ${topComp}.`, `${differentiator}. ${cta} and see why ${industry} leaders switch from ${topComp}.`],
-      [`Stop losing budget to ${topComp}. ${differentiator} — zero risk, full results.`, `Join 10,000+ ${industry} businesses that chose us over ${topComp}. ${cta}.`]
+      [`Built for ${persona} — get more from ${platform} while other solutions fall short.`, `${differentiator}. ${cta} and see why ${industry} leaders are making the switch.`],
+      [`Stop wasting budget on outdated strategies. ${differentiator} — zero risk, full results.`, `Join 10,000+ ${industry} businesses that chose a smarter approach. ${cta}.`]
     ];
     const pick = Math.floor(Math.random() * hSets.length);
 
@@ -1324,17 +1354,17 @@ Return ONLY this JSON (no markdown fences, no extra text):
       source: 'smart_fallback',
       headlines: hSets[pick],
       descriptions: dSets[pick % dSets.length],
-      instagram: `🚀 Tired of watching ${topComp} win?\n\n${differentiator} — built specifically for ${persona}.\n\n✅ ${projectedStat(industry)} ROAS achieved\n✅ ${cta} — no credit card needed\n✅ Beat ${topComp} in your first 30 days\n\n💡 The ${industry} brands growing fastest right now aren't spending more — they're spending smarter.\n\n👉 Link in bio to start free today.\n\n#${ind} #DigitalMarketing #ROAS #MarketingStrategy #${platform.replace(/\s+/g,'')}Ads #GrowthHacking #MarketingROI #Ecommerce`,
-      tiktok_script: `[0-3s] HOOK: "Why is ${topComp} scared of this ${industry} strategy?"\n[3-8s] PROBLEM: Every day you run ads without this, you lose money to ${topComp}.\n[8-13s] SOLUTION: "${differentiator}" — your unfair advantage on ${platform}.\n[13-15s] CTA: "${cta} at ${domain} — link in bio."`,
-      youtube_script: `[0-5s] HOOK: "What if your ${platform} budget worked 3× harder — automatically?"\n[5-12s] PROBLEM: Animated chart showing ${topComp} overspend vs flat results for most ${industry} brands.\n[12-20s] SOLUTION: ${domain}: ${differentiator}. ROAS graph climbing.\n[20-25s] CTA: "${cta} at ${domain}. Free 14-day trial."`,
-      linkedin: `Most ${industry} teams are losing pipeline to ${topComp} — not because their product is worse, but because their ad strategy is.\n\n${differentiator} changes that.\n\nFor ${persona}, this means:\n→ Lower CPA on every channel\n→ Campaigns that adapt to competitor moves in real time\n→ ${cta} with measurable results in week one\n\nIf you're running ${platform} campaigns right now, let's talk. ${cta} at ${domain}.`,
+      instagram: `🚀 Tired of ${industry} strategies that don't deliver?\n\n${differentiator} — built specifically for ${persona}.\n\n✅ ${projectedStat(industry)} ROAS achieved\n✅ ${cta} — no credit card needed\n✅ Real results in your first 30 days\n\n💡 The ${industry} brands growing fastest right now aren't spending more — they're spending smarter.\n\n👉 Link in bio to start free today.\n\n#${ind} #DigitalMarketing #ROAS #MarketingStrategy #${platform.replace(/\s+/g,'')}Ads #GrowthHacking #MarketingROI #Ecommerce`,
+      tiktok_script: `[0-3s] HOOK: "Why do most ${industry} brands waste 40% of their ad budget?"\n[3-8s] PROBLEM: Every day you run ads without real intelligence, you leave money on the table.\n[8-13s] SOLUTION: "${differentiator}" — your unfair advantage on ${platform}.\n[13-15s] CTA: "${cta} at ${domain} — link in bio."`,
+      youtube_script: `[0-5s] HOOK: "What if your ${platform} budget worked 3× harder — automatically?"\n[5-12s] PROBLEM: Most ${industry} brands overspend on ${platform} with no real optimisation strategy — flat results, wasted budget.\n[12-20s] SOLUTION: ${domain}: ${differentiator}. ROAS graph climbing.\n[20-25s] CTA: "${cta} at ${domain}. Free 14-day trial."`,
+      linkedin: `Most ${industry} teams are leaving pipeline on the table — not because their product is worse, but because their ad strategy hasn't kept up.\n\n${differentiator} changes that.\n\nFor ${persona}, this means:\n→ Lower CPA on every channel\n→ Campaigns that adapt to market shifts in real time\n→ ${cta} with measurable results in week one\n\nIf you're running ${platform} campaigns right now, let's talk. ${cta} at ${domain}.`,
       email_subjects: [
-        `Why ${topComp} is beating you on ${platform} (and how to flip it)`,
-        `${differentiator} — ${persona} are switching`,
-        `⏰ Last chance: ${cta} before your competitors do`
+        `Why most ${industry} brands waste 40% of their ${platform} budget (and how to fix it)`,
+        `${differentiator} — ${persona} are making the switch`,
+        `⏰ Last chance: ${cta} before the market moves without you`
       ],
-      strategy_reasoning: `${toneWord.charAt(0).toUpperCase() + toneWord.slice(1)} creative targeting ${persona} on ${platform}, leading with "${differentiator}" to directly counter ${topComp}. Positioning as the smarter, more ROI-efficient alternative drives high-intent clicks from audiences already evaluating competitors.`,
-      competitor_angle: `"Still using ${topComp}? See why 10,000+ ${industry} brands switched — and never looked back."`
+      strategy_reasoning: `${toneWord.charAt(0).toUpperCase() + toneWord.slice(1)} creative targeting ${persona} on ${platform}, leading with "${differentiator}" as the core value proposition. Positioning as the smarter, more ROI-efficient choice drives high-intent clicks from audiences already evaluating their options.`,
+      competitor_angle: `"Most ${industry} tools lock you into long contracts with no performance guarantee — we don't. ${cta} and see the difference in week one."`
     });
 
   } catch(err) {
@@ -1443,22 +1473,24 @@ CAMPAIGN DESCRIPTION: ${description || 'AI-powered campaign strategy'}
 CAMPAIGN THEMES/TAGS: ${tagList}
 PROJECTED METRICS: ROAS ${estROAS}× | CTR ${estCTR} | CPA ${estCPA}
 
+CRITICAL: Do NOT include any competitor brand names in headlines, descriptions, strategy_summary, creative_angle, competitor_gap, or launch_checklist. Use "the competition", "other solutions", or generic industry phrases instead.
+
 Return ONLY this exact JSON structure:
 {
   "headlines": [
-    "Headline 1 — MAX 30 chars, high-intent keyword targeting ${topComp} weakness",
+    "Headline 1 — MAX 30 chars, high-intent keyword focusing on YOUR brand value (NO competitor names)",
     "Headline 2 — MAX 30 chars, benefit-led with a specific stat or differentiator",
-    "Headline 3 — MAX 30 chars, strong CTA or competitive contrast"
+    "Headline 3 — MAX 30 chars, strong CTA or value contrast (NO competitor names)"
   ],
   "descriptions": [
-    "Description 1 — MAX 90 chars, pain point → your solution vs ${topComp}",
+    "Description 1 — MAX 90 chars, pain point → your solution (NO competitor names)",
     "Description 2 — MAX 90 chars, social proof stat + call to action"
   ],
-  "strategy_summary": "2-3 sentence strategic rationale: why this campaign angle beats ${topComp} on ${platform} specifically, including the targeting method and expected outcome.",
+  "strategy_summary": "2-3 sentence strategic rationale: why this campaign angle wins on ${platform} specifically, including the targeting method and expected outcome. No competitor names.",
   "target_audience": "Specific audience segment description (demographics, interests, intent signals) — 1-2 sentences.",
   "bid_strategy": "Recommended ${platform} bidding strategy and why it maximises ROAS for this budget.",
-  "creative_angle": "The core creative hook/angle — what emotional trigger or insight makes this ad stop the scroll.",
-  "competitor_gap": "1-2 sentences on a specific ${topComp} weakness this campaign exploits.",
+  "creative_angle": "The core creative hook/angle — what emotional trigger or insight makes this ad stop the scroll. No competitor names.",
+  "competitor_gap": "1-2 sentences on the market opportunity and gap this campaign targets — describe the problem generically, no competitor brand names.",
   "kpi_targets": {
     "roas": "${estROAS}",
     "ctr": "${estCTR}",
