@@ -308,8 +308,16 @@ app.post('/api/competitor-spend', async (req, res) => {
       const item = raw?.tasks?.[0]?.result?.[0]?.items?.[0];
       const paid = item?.metrics?.paid;
       // paid.etv = estimated monthly value of paid search traffic ≈ ad spend
-      const adSpend = paid ? Math.max(Math.round(paid.etv || 0), 0) : 0;
-      return { domain, adSpend, source: 'DataForSEO' };
+      const paidEtv   = paid ? Math.round(paid.etv || 0) : 0;
+      const paidCount = paid ? (paid.count || 0) : 0;
+      // If ETV is 0 but domain runs paid keywords, estimate from keyword count
+      // paidKeywords × avg_cpc ($2.50) × estimated_ctr (5%) × 30 days
+      const adSpend = paidEtv > 0
+        ? paidEtv
+        : paidCount > 0
+          ? Math.round(paidCount * 2.5 * 0.05 * 30)
+          : 0;
+      return { domain, adSpend, paidKeywords: paidCount, source: paidEtv > 0 ? 'DataForSEO-ETV' : paidCount > 0 ? 'DataForSEO-Est' : 'fallback' };
     } catch(e) {
       return { domain, adSpend: 0, source: 'fallback' };
     }
@@ -819,6 +827,17 @@ app.post('/api/real-competitors', async (req, res) => {
         // Format traffic display
         const formatNum = n => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : String(n);
 
+        // Estimate monthly ad spend from paid.etv (estimated traffic value)
+        // If etv is 0 but domain has paid keywords, use a fallback formula:
+        // paidKeywords × avg_cpc ($2.50) × click_through_rate (5%) × 30 days
+        const paidEtv   = Math.round(paid.etv || 0);
+        const paidCount = paid.count || paidKws || 0;
+        const adSpendEst = paidEtv > 0
+          ? paidEtv
+          : paidCount > 0
+            ? Math.round(paidCount * 2.5 * 0.05 * 30)
+            : 0;
+
         competitors.push({
           domain: d,
           name: d.replace(/^www\./, '').split('.')[0].charAt(0).toUpperCase() + d.replace(/^www\./, '').split('.')[0].slice(1),
@@ -827,6 +846,8 @@ app.post('/api/real-competitors', async (req, res) => {
           organicKeywords: kwCount,
           organicKeywordsFmt: formatNum(kwCount),
           paidKeywords: paidKws,
+          adSpendEst,
+          adSpend: '$' + (adSpendEst >= 1000 ? (adSpendEst/1000).toFixed(1)+'K' : adSpendEst) + '/mo',
           domainRank,
           realData: true,
           dataSource: 'DataForSEO'

@@ -1949,27 +1949,38 @@ function buildDashboard() {
       : '<span style="color:#9CA3AF">Estimated from competitor data</span>';
   };
 
-  // Render static immediately so chart is visible
+  // Render static immediately — use adSpendEst (from real-competitors DataForSEO data) when available
   const staticLabels = ['You', ...competitors.slice(0,6).map(c => c.name)];
-  const staticVals   = [analysisData.websiteKPIs.adSpend || 4500, ...competitors.slice(0,6).map(c => parseAdSpend(c.adSpend))];
+  const yourEstSpend = analysisData.websiteKPIs.adSpend || 4500;
+  const staticVals   = [
+    typeof yourEstSpend === 'number' ? yourEstSpend : parseAdSpend(yourEstSpend),
+    ...competitors.slice(0,6).map(c => {
+      if (typeof c.adSpendEst === 'number' && c.adSpendEst > 0) return c.adSpendEst;
+      return parseAdSpend(c.adSpend);
+    })
+  ];
   _renderSpendChart(staticLabels, staticVals, 'static');
 
   // Fetch live DataForSEO data and upgrade the chart
-  const compDomains = competitors.slice(0,6).map(c => (c.url || c.name.toLowerCase().replace(/\s+/g,'')+'.com'));
+  const compDomains = competitors.slice(0,6).map(c => c.domain || c.url || c.name.toLowerCase().replace(/\s+/g,'')+'.com');
   fetch('/api/competitor-spend', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ domains: compDomains, yourDomain: url, yourBudget: analysisData.websiteKPIs.adSpend || 4500 })
+    body: JSON.stringify({ domains: compDomains, yourDomain: url, yourBudget: yourEstSpend })
   }).then(r => r.json()).then(data => {
     if (!data.success) return;
-    const liveLabels = ['You', ...data.competitors.map(c => {
-      const match = competitors.find(x => (x.url || '').includes(c.domain.split('.')[0]));
-      return match ? match.name : c.domain;
-    })];
-    const liveVals = [data.yourSpend || analysisData.websiteKPIs.adSpend || 4500,
-      ...data.competitors.map(c => c.adSpend || parseAdSpend(competitors.find(x=>(x.url||'').includes(c.domain.split('.')[0]))?.adSpend || '$0'))
+    const liveLabels = ['You', ...data.competitors.map((c, ci) => competitors[ci]?.name || c.domain)];
+    const liveVals = [
+      data.yourSpend || yourEstSpend,
+      ...data.competitors.map((c, ci) => {
+        // Prefer live DataForSEO value; fall back to adSpendEst from analysis; then static estimate
+        if (c.adSpend > 0) return c.adSpend;
+        const comp = competitors[ci];
+        if (comp?.adSpendEst > 0) return comp.adSpendEst;
+        return parseAdSpend(comp?.adSpend || '$0');
+      })
     ];
-    // Only update if we got non-zero data from DataForSEO
+    // Update chart if we have any meaningful competitor data
     const hasRealData = liveVals.slice(1).some(v => v > 0);
     if (hasRealData) _renderSpendChart(liveLabels, liveVals, 'DataForSEO');
   }).catch(() => {});  // Keep static chart on error
