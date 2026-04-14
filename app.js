@@ -484,12 +484,14 @@ function buildLaunchModal(camp, idx) {
           <strong>Est. CTR:</strong> ${launchRecord.metrics.ctr} &nbsp;·&nbsp;
           <strong>Start:</strong> ${finalDate}
         </div>
-        <div style="display:flex;gap:10px;justify-content:center">
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
           <button id="lm-close-success" style="padding:10px 20px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
+          <button id="lm-view-campaign" style="padding:10px 20px;background:#0A1628;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">👁 View Campaign</button>
           <button id="lm-view-results" style="padding:10px 20px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">📊 View Results →</button>
         </div>
       </div>`;
     document.getElementById('lm-close-success').addEventListener('click', () => { modal.classList.add('hidden'); modal.style.display = 'none'; });
+    document.getElementById('lm-view-campaign').addEventListener('click', () => { modal.classList.add('hidden'); modal.style.display = 'none'; openViewCampaignModal(launchRecord); });
     document.getElementById('lm-view-results').addEventListener('click', () => { modal.classList.add('hidden'); modal.style.display = 'none'; navigateTo('results'); });
     showToast(`✅ Campaign "${finalName}" launched — tracking in Results`);
 
@@ -3030,9 +3032,9 @@ function buildResults() {
         </div>` : `
       <div class="table-scroll">
         <table class="ig-table">
-          <thead><tr><th>Campaign</th><th>Platform</th><th>Budget</th><th>ROAS</th><th>CTR</th><th>Conversions</th><th>CPA</th><th>Status</th><th>Launched</th></tr></thead>
+          <thead><tr><th>Campaign</th><th>Platform</th><th>Budget</th><th>ROAS</th><th>CTR</th><th>Conversions</th><th>CPA</th><th>Status</th><th>Launched</th><th></th></tr></thead>
           <tbody>
-            ${camps.map(c => {
+            ${camps.map((c, ci) => {
               try {
                 const m = c.metrics || {};
                 const aud = c.audience || '';
@@ -3052,6 +3054,7 @@ function buildResults() {
                   <td>${cpa}</td>
                   <td><span style="background:${statusColor[stat]||'#10B981'};color:white;font-size:0.65rem;font-weight:700;padding:3px 8px;border-radius:10px;text-transform:uppercase">${stat}</span></td>
                   <td style="font-size:0.75rem;color:#6B7280">${c.launchedAt || '—'}</td>
+                  <td><button onclick="openViewCampaignModal(window._launchedCampaigns[${ci}])" style="padding:5px 12px;background:#0A1628;border:none;border-radius:7px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">👁 View</button></td>
                 </tr>`;
               } catch(e) { return ''; }
             }).join('')}
@@ -3781,6 +3784,104 @@ function activateTargeting(panelId, label) {
     `;
   }, 800);
 }
+
+// ── View Campaign Modal ──────────────────────────────────────────────────────
+window.openViewCampaignModal = function(record) {
+  if (!record) return;
+  const m   = record.metrics || {};
+  const stat = record.status || 'active';
+  const statColor = { active:'#10B981', paused:'#F59E0B', ended:'#6B7280', draft:'#6366F1' };
+  const platIcons = { google:'🔍', meta:'📘', facebook:'📘', tiktok:'🎵', linkedin:'💼', youtube:'🎬' };
+  const platKey = (record.platform || '').toLowerCase();
+  const platIcon = Object.entries(platIcons).find(([k]) => platKey.includes(k))?.[1] || '📣';
+
+  // Build actions HTML
+  const actionsHtml = (record.actions || []).map(a => `
+    <div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #F3F4F6">
+      <div style="width:6px;height:6px;background:#00C9C8;border-radius:50%;margin-top:6px;flex-shrink:0"></div>
+      <div style="flex:1">
+        <div style="font-size:0.78rem;color:#1E293B">${a.action}</div>
+        <div style="font-size:0.68rem;color:#9CA3AF;margin-top:2px">${a.time}</div>
+      </div>
+    </div>`).join('') || '<div style="color:#9CA3AF;font-size:0.8rem;padding:8px 0">No actions yet</div>';
+
+  // Platform dashboard link
+  const dashLink = record._platformCampaignId
+    ? `<a href="${platKey.includes('google') ? 'https://ads.google.com' : platKey.includes('meta')||platKey.includes('facebook') ? 'https://adsmanager.facebook.com' : 'https://ads.tiktok.com'}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:linear-gradient(135deg,#00C9C8,#0066FF);border-radius:8px;font-size:0.78rem;font-weight:700;color:white;text-decoration:none">🔗 Open in ${record.platform} Dashboard</a>`
+    : `<span style="font-size:0.75rem;color:#9CA3AF">Connect ad account in Settings to push live</span>`;
+
+  // Overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'vc-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:18px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.35)">
+      <!-- Header -->
+      <div style="background:linear-gradient(135deg,#0A1628,#0D2140);border-radius:18px 18px 0 0;padding:22px 24px;display:flex;align-items:flex-start;justify-content:space-between">
+        <div>
+          <div style="font-size:0.68rem;font-weight:700;color:#00C9C8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">${platIcon} ${record.platform || 'Campaign'}</div>
+          <div style="font-family:'Sora',sans-serif;font-size:1.3rem;font-weight:800;color:white;margin-bottom:6px">${record.name || 'Campaign'}</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="background:${statColor[stat]||'#10B981'};color:white;font-size:0.65rem;font-weight:700;padding:3px 10px;border-radius:10px;text-transform:uppercase">${stat}</span>
+            <span style="font-size:0.75rem;color:#94A3B8">Launched ${record.launchedAt || '—'}</span>
+          </div>
+        </div>
+        <button id="vc-close" style="background:rgba(255,255,255,0.1);border:none;border-radius:50%;width:32px;height:32px;font-size:1.1rem;color:white;cursor:pointer;flex-shrink:0;line-height:32px;text-align:center">✕</button>
+      </div>
+
+      <div style="padding:22px 24px">
+        <!-- Metrics Grid -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+          ${[
+            ['ROAS', (m.roas||'—')+'×', '#10B981'],
+            ['CTR', m.ctr||'—', '#0066FF'],
+            ['Conversions', (m.conversions||0).toLocaleString(), '#7C3AED'],
+            ['CPA', m.cpa||'—', '#F59E0B'],
+            ['Impressions', m.impressions ? Number(m.impressions).toLocaleString() : '—', '#00C9C8'],
+            ['Spend so far', m.spend ? '$'+Number(m.spend).toLocaleString() : '—', '#E1306C']
+          ].map(([label, val, col]) => `
+            <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:14px;text-align:center">
+              <div style="font-size:1.25rem;font-weight:800;color:${col};margin-bottom:2px">${val}</div>
+              <div style="font-size:0.65rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">${label}</div>
+            </div>`).join('')}
+        </div>
+
+        <!-- Campaign Settings -->
+        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:20px">
+          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">Campaign Settings</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:0.8rem;color:#374151">
+            <div><span style="color:#9CA3AF;font-size:0.72rem">Budget</span><br><strong>${record.budgetStr||('$'+(record.budget||0))}/mo</strong></div>
+            <div><span style="color:#9CA3AF;font-size:0.72rem">Start Date</span><br><strong>${record.startDate||'—'}</strong></div>
+            <div><span style="color:#9CA3AF;font-size:0.72rem">Audience</span><br><strong>${(record.audience||'Auto-targeted').substring(0,50)}</strong></div>
+            <div><span style="color:#9CA3AF;font-size:0.72rem">Campaign ID</span><br><strong style="font-family:monospace;font-size:0.72rem">${record._platformCampaignId||record.id||'—'}</strong></div>
+          </div>
+        </div>
+
+        <!-- Platform Link -->
+        <div style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em">Platform</div>
+          ${dashLink}
+        </div>
+
+        <!-- Action Timeline -->
+        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:20px">
+          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">⚡ Action Timeline</div>
+          ${actionsHtml}
+        </div>
+
+        <!-- Footer Buttons -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button id="vc-close-footer" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
+          <button onclick="navigateTo('results');document.getElementById('vc-overlay').remove()" style="flex:2;padding:11px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">📊 Full Results Dashboard →</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  document.getElementById('vc-close').addEventListener('click', () => overlay.remove());
+  document.getElementById('vc-close-footer').addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+};
 
 function launchVsCampaign(compName, channel) {
   showToast(`🚀 Launching superior campaign vs. ${compName} on ${channel} — InfoGenie AI is configuring targeting and bidding automatically`);
