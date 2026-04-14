@@ -1511,10 +1511,10 @@ Return ONLY this exact JSON structure:
         month1_goal: `Hit ${estROAS}× ROAS at scale with ${Math.round(budgetNum / parseInt(estCPA.replace(/[^0-9]/g,'') || '38'))} conversions`
       },
       launch_checklist: [
-        `Connect ${platform} account and verify conversion tracking is firing correctly`,
-        `Upload 3 headline variants and 2 descriptions — test bold vs benefit-led angles`,
-        `Set audience exclusions to avoid wasted spend on existing customers`,
-        `Schedule weekly performance review against ${estROAS}× ROAS target`
+        `Upload high-quality video creatives and static image assets for ${platform}`,
+        `Set up lookalike audiences from your highest-converting customer segments`,
+        `Implement conversion tracking and revenue attribution before launch`,
+        `Launch A/B test variants for ad copy headlines and audience targeting`
       ]
     });
 

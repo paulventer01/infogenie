@@ -627,15 +627,70 @@ function buildLaunchModal(camp, idx) {
         kpiWrap.style.display = 'block';
       }
 
-      // Show launch checklist
+      // Show launch checklist — with smart action buttons per item
       const clWrap = document.getElementById('lm-checklist-wrap');
       const clEl   = document.getElementById('lm-checklist');
       if (clWrap && clEl && brief.launch_checklist && brief.launch_checklist.length > 0) {
-        clEl.innerHTML = brief.launch_checklist.map(item => `
-          <div style="display:flex;align-items:flex-start;gap:8px;background:#F0FDF4;border-radius:8px;padding:8px 12px">
-            <span style="color:#059669;font-size:1rem;flex-shrink:0">☐</span>
-            <span style="font-size:0.8rem;color:#374151;line-height:1.4">${item}</span>
-          </div>`).join('');
+        clEl.innerHTML = brief.launch_checklist.map((item, ii) => {
+          const low = item.toLowerCase();
+          let actionBtn = '';
+          let extraHtml = '';
+
+          // ── Video creative upload ──────────────────────────────────────────
+          if (low.includes('video') || low.includes('creative') || low.includes('upload')) {
+            const inputId = `cl-video-input-${ii}`;
+            const labelId = `cl-video-label-${ii}`;
+            extraHtml = `<input type="file" id="${inputId}" accept="video/*,image/*" style="display:none"
+              onchange="
+                const f=this.files[0];
+                if(f){
+                  document.getElementById('${labelId}').textContent='✅ '+f.name;
+                  document.getElementById('${labelId}').style.color='#059669';
+                  this.closest('.cl-item').querySelector('.cl-check').textContent='☑';
+                  this.closest('.cl-item').style.background='#D1FAE5';
+                  window._uploadedCreative=f;
+                }
+              ">`;
+            actionBtn = `<label for="${inputId}" style="flex-shrink:0;cursor:pointer;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#7C3AED;background:#EDE9FE;border:1px solid #C4B5FD;border-radius:6px;white-space:nowrap">📎 Upload Creative</label>
+              <span id="${labelId}" style="font-size:0.7rem;color:#9CA3AF;margin-left:4px"></span>`;
+
+          // ── Lookalike / audience setup ─────────────────────────────────────
+          } else if (low.includes('lookalike') || low.includes('audience') || low.includes('segment')) {
+            actionBtn = `<button onclick="
+                document.getElementById('launchModal').classList.add('hidden');
+                document.getElementById('launchModal').removeAttribute('style');
+                navigateTo('audience');
+              " style="flex-shrink:0;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#0066FF;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;cursor:pointer;white-space:nowrap">→ Open Audience</button>`;
+
+          // ── Conversion tracking / attribution ──────────────────────────────
+          } else if (low.includes('tracking') || low.includes('attribution') || low.includes('conversion') || low.includes('revenue')) {
+            actionBtn = `<button onclick="
+                document.getElementById('launchModal').classList.add('hidden');
+                document.getElementById('launchModal').removeAttribute('style');
+                navigateTo('results');
+              " style="flex-shrink:0;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#059669;background:#D1FAE5;border:1px solid #6EE7B7;border-radius:6px;cursor:pointer;white-space:nowrap">→ View Results</button>`;
+
+          // ── A/B testing ────────────────────────────────────────────────────
+          } else if (low.includes('a/b') || low.includes('ab test') || low.includes('split test') || low.includes('variant')) {
+            actionBtn = `<button onclick="
+                document.getElementById('launchModal').classList.add('hidden');
+                document.getElementById('launchModal').removeAttribute('style');
+                navigateTo('campaigns');
+                setTimeout(()=>{
+                  const abBtn=document.getElementById('abTestBtn');
+                  if(abBtn) abBtn.click();
+                },600);
+              " style="flex-shrink:0;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#D97706;background:#FEF3C7;border:1px solid #FCD34D;border-radius:6px;cursor:pointer;white-space:nowrap">→ Launch A/B Test</button>`;
+          }
+
+          return `
+            <div class="cl-item" style="display:flex;align-items:flex-start;gap:8px;background:#F0FDF4;border-radius:8px;padding:8px 12px;flex-wrap:wrap">
+              <span class="cl-check" style="color:#059669;font-size:1rem;flex-shrink:0;margin-top:1px">☐</span>
+              <span style="font-size:0.8rem;color:#374151;line-height:1.5;flex:1;min-width:120px">${item}</span>
+              ${actionBtn}
+              ${extraHtml}
+            </div>`;
+        }).join('');
         clWrap.style.display = 'block';
       }
 
