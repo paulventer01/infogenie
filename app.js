@@ -711,6 +711,80 @@ function buildLaunchModal(camp, idx) {
                   if(abBtn) abBtn.click();
                 },600);
               " style="flex-shrink:0;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#D97706;background:#FEF3C7;border:1px solid #FCD34D;border-radius:6px;cursor:pointer;white-space:nowrap">→ Launch A/B Test</button>`;
+
+          // ── Keyword research / targeting ───────────────────────────────────
+          } else if (low.includes('keyword') || low.includes('search term') || low.includes('targeting') || low.includes('intent') || low.includes('bid') || low.includes('cpc')) {
+            const kwId = `cl-kw-input-${ii}`;
+            const kwBtn = `cl-kw-btn-${ii}`;
+            extraHtml = `<div id="cl-kw-panel-${ii}" style="display:none;width:100%;margin-top:6px">
+              <textarea id="${kwId}" rows="2" placeholder="Paste or type your target keywords, one per line…" style="width:100%;box-sizing:border-box;padding:7px 10px;font-size:0.76rem;color:#0A1628;border:1.5px solid #BFDBFE;border-radius:7px;outline:none;resize:vertical;font-family:'Inter',sans-serif"></textarea>
+              <div style="display:flex;gap:6px;margin-top:5px">
+                <button onclick="
+                  const v=document.getElementById('${kwId}').value.trim();
+                  if(v){window._clKeywords_${ii}=v;this.textContent='✅ Saved';this.style.background='#D1FAE5';this.style.color='#059669';
+                  this.closest('.cl-item').querySelector('.cl-check').textContent='☑';
+                  this.closest('.cl-item').style.background='#D1FAE5';}
+                " style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#1D4ED8;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;cursor:pointer">💾 Save Keywords</button>
+                <button onclick="document.getElementById('launchModal').classList.add('hidden');document.getElementById('launchModal').removeAttribute('style');navigateTo('competitors');"
+                  style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#6B7280;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer">→ Keyword Gap Analysis</button>
+              </div>
+            </div>`;
+            actionBtn = `<button onclick="const p=document.getElementById('cl-kw-panel-${ii}');p.style.display=p.style.display==='none'?'block':'none';"
+              style="flex-shrink:0;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#1D4ED8;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;cursor:pointer;white-space:nowrap">🔍 Edit Keywords</button>`;
+
+          // ── Ad copy / copy writing / ad groups ────────────────────────────
+          } else if (low.includes('ad copy') || low.includes('copy') || low.includes('headline') || low.includes('proposition') || low.includes('ad group') || low.includes('compelling') || low.includes('message') || low.includes('wording')) {
+            const cpId = `cl-copy-input-${ii}`;
+            extraHtml = `<div id="cl-copy-panel-${ii}" style="display:none;width:100%;margin-top:6px">
+              <textarea id="${cpId}" rows="3" placeholder="Draft your ad copy here — headline, body text, CTA…" style="width:100%;box-sizing:border-box;padding:7px 10px;font-size:0.76rem;color:#0A1628;border:1.5px solid #DDD6FE;border-radius:7px;outline:none;resize:vertical;font-family:'Inter',sans-serif"></textarea>
+              <div style="display:flex;gap:6px;margin-top:5px">
+                <button onclick="
+                  const v=document.getElementById('${cpId}').value.trim();
+                  if(v){window._clAdCopy_${ii}=v;this.textContent='✅ Saved';this.style.background='#D1FAE5';this.style.color='#059669';
+                  this.closest('.cl-item').querySelector('.cl-check').textContent='☑';
+                  this.closest('.cl-item').style.background='#D1FAE5';}
+                " style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#7C3AED;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:6px;cursor:pointer">💾 Save Copy</button>
+                <button onclick="document.getElementById('launchModal').classList.add('hidden');document.getElementById('launchModal').removeAttribute('style');navigateTo('creative');"
+                  style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#6B7280;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer">→ AI Creative Studio</button>
+              </div>
+            </div>`;
+            actionBtn = `<button onclick="const p=document.getElementById('cl-copy-panel-${ii}');p.style.display=p.style.display==='none'?'block':'none';"
+              style="flex-shrink:0;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#7C3AED;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:6px;cursor:pointer;white-space:nowrap">✍️ Draft Copy</button>`;
+
+          // ── Landing page / mobile / optimise ──────────────────────────────
+          } else if (low.includes('landing') || low.includes('mobile') || low.includes('optimis') || low.includes('optimize') || low.includes('page speed') || low.includes('url')) {
+            const urlId = `cl-url-input-${ii}`;
+            extraHtml = `<div id="cl-url-panel-${ii}" style="display:none;width:100%;margin-top:6px">
+              <input id="${urlId}" type="url" placeholder="https://yourlandingpage.com/offer" style="width:100%;box-sizing:border-box;padding:7px 10px;font-size:0.76rem;color:#0A1628;border:1.5px solid #FED7AA;border-radius:7px;outline:none;font-family:'Inter',sans-serif">
+              <div style="display:flex;gap:6px;margin-top:5px">
+                <button onclick="
+                  const v=document.getElementById('${urlId}').value.trim();
+                  if(v){window._clLandingUrl_${ii}=v;this.textContent='✅ URL Saved';this.style.background='#D1FAE5';this.style.color='#059669';
+                  this.closest('.cl-item').querySelector('.cl-check').textContent='☑';
+                  this.closest('.cl-item').style.background='#D1FAE5';}
+                " style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#D97706;background:#FEF3C7;border:1px solid #FCD34D;border-radius:6px;cursor:pointer">💾 Save URL</button>
+                <button onclick="const u=document.getElementById('${urlId}').value;if(u)window.open(u,'_blank');"
+                  style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#6B7280;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer">↗ Preview Page</button>
+              </div>
+            </div>`;
+            actionBtn = `<button onclick="const p=document.getElementById('cl-url-panel-${ii}');p.style.display=p.style.display==='none'?'block':'none';"
+              style="flex-shrink:0;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#D97706;background:#FEF3C7;border:1px solid #FCD34D;border-radius:6px;cursor:pointer;white-space:nowrap">🌐 Set Landing URL</button>`;
+
+          // ── Universal fallback — every item gets an Edit Notes button ──────
+          } else {
+            const noteId = `cl-note-input-${ii}`;
+            extraHtml = `<div id="cl-note-panel-${ii}" style="display:none;width:100%;margin-top:6px">
+              <textarea id="${noteId}" rows="2" placeholder="Add your notes or details for this step…" style="width:100%;box-sizing:border-box;padding:7px 10px;font-size:0.76rem;color:#0A1628;border:1.5px solid #E5E7EB;border-radius:7px;outline:none;resize:vertical;font-family:'Inter',sans-serif"></textarea>
+              <button onclick="
+                const v=document.getElementById('${noteId}').value.trim();
+                window._clNote_${ii}=v||'done';
+                this.textContent='✅ Noted';this.style.background='#D1FAE5';this.style.color='#059669';
+                this.closest('.cl-item').querySelector('.cl-check').textContent='☑';
+                this.closest('.cl-item').style.background='#D1FAE5';
+              " style="margin-top:5px;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#374151;background:#F3F4F6;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer">✓ Mark Done</button>
+            </div>`;
+            actionBtn = `<button onclick="const p=document.getElementById('cl-note-panel-${ii}');p.style.display=p.style.display==='none'?'block':'none';"
+              style="flex-shrink:0;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#374151;background:#F3F4F6;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer;white-space:nowrap">✏️ Edit Notes</button>`;
           }
 
           return `
