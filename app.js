@@ -161,6 +161,33 @@ window.openCreativeStudio = function(btn) {
   }
 };
 
+// Opens Creative Studio with a specific ad pre-loaded (from Campaigns "InfoGenie Improved Ads")
+window.openAdInCreativeStudio = function(headline, body, platform) {
+  try {
+    // Use the first campaign rec that matches the platform, or fall back to the first available
+    const recs = window._lastCampRecs || [];
+    const platformMatch = platform ? recs.find(r => (r.platform||'').toLowerCase().includes((platform||'').toLowerCase())) : null;
+    const camp = platformMatch || recs[0] || {
+      name: headline, platform: platform || 'Google Ads', budget: '$2,000/mo',
+      estROAS: '3.8', estCTR: '4.2%', estCPA: '$38', tags: [], description: body
+    };
+    // Open the Creative Studio modal
+    buildCreativeModal(camp, recs.indexOf(camp));
+    // After modal renders, pre-fill persona with the headline and trigger GPT-4 generation
+    setTimeout(() => {
+      const personaEl = document.getElementById('cs-persona');
+      const diffEl    = document.getElementById('cs-diff');
+      const regenBtn  = document.getElementById('cs-regen-full');
+      if (personaEl) personaEl.value = headline;
+      if (diffEl && body)    diffEl.value = body.substring(0, 80);
+      if (regenBtn) regenBtn.click();
+    }, 400);
+  } catch(err) {
+    console.error('openAdInCreativeStudio error:', err);
+    showToast('⚠️ Error opening Creative Studio: ' + err.message);
+  }
+};
+
 // ===== A/B TEST HANDLER (global) =====
 window.launchABTest = function() {
   const nameEl = document.getElementById('ab-test-name');
@@ -2709,7 +2736,7 @@ function buildCampaigns() {
             <div style="font-size:0.78rem;color:#4B5563;line-height:1.5">${ad.body}</div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
               <button onclick="navigator.clipboard?.writeText('${safeH} — ${safeB}').then(()=>{this.textContent='✅ Copied';setTimeout(()=>this.textContent='📋 Copy Ad Copy',1200)})" style="padding:5px 12px;font-size:0.72rem;font-weight:600;color:#4F46E5;background:#EEF2FF;border:1px solid #C7D2FE;border-radius:6px;cursor:pointer">📋 Copy Ad Copy</button>
-              <button onclick="(function(){const el=document.getElementById('cs-persona');if(el){el.value='${safeH}';navigateTo('creative');setTimeout(()=>{const btn=document.getElementById('cs-regen-full');if(btn)btn.click();},500);}})()" style="padding:5px 12px;font-size:0.72rem;font-weight:600;color:white;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:6px;cursor:pointer">✨ Use in Creative Studio →</button>
+              <button onclick="openAdInCreativeStudio('${safeH}','${safeB}','${ad.platform}')" style="padding:5px 12px;font-size:0.72rem;font-weight:600;color:white;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:6px;cursor:pointer">✨ Use in Creative Studio →</button>
             </div>
           </div>`;
       }).join('');
