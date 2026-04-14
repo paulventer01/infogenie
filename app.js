@@ -6202,6 +6202,39 @@ function openDifferentiatorModal(compName) {
         </div>
       </div>
 
+      <!-- DRAFTED AD COPY -->
+      <div>
+        <div style="font-size:0.7rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">✍️ Your Ready-to-Launch Ad Copy — AI Drafted</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${(() => {
+            const drafts = (comp.adCopy && comp.adCopy.length >= 3) ? comp.adCopy.slice(0,3) : [
+              { headline: `Stop Overpaying — Switch to Smarter ${indName}`, body: `Join thousands who already switched. No hidden fees, no long contracts. Results in the first 30 days or your money back.` },
+              { headline: `The ${indName} Alternative That Actually Delivers`, body: `Our customers see real results — not just promises. Try free for 14 days and see the difference for yourself.` },
+              { headline: `Beat the ${indName} Average — See How We Do It`, body: `AI-powered campaigns that continuously optimise, so you compound gains every week without lifting a finger.` }
+            ];
+            const plats = [
+              { label: 'Google Search', bg: '#EFF6FF', border: '#BFDBFE', badge: '#1D4ED8' },
+              { label: 'Meta / Instagram', bg: '#F5F3FF', border: '#DDD6FE', badge: '#7C3AED' },
+              { label: 'TikTok', bg: '#FFF7ED', border: '#FED7AA', badge: '#D97706' }
+            ];
+            return drafts.map((d, di) => {
+              const p = plats[di] || plats[0];
+              const safeHL = (d.headline || '').replace(/'/g, '\\u0027');
+              const safeBD = (d.body || '').replace(/'/g, '\\u0027');
+              return `
+              <div style="background:${p.bg};border:1.5px solid ${p.border};border-radius:10px;padding:12px 14px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+                  <span style="font-size:0.68rem;font-weight:800;color:${p.badge};background:${p.border};padding:2px 8px;border-radius:4px;text-transform:uppercase;letter-spacing:.06em">${p.label}</span>
+                  <button onclick="window._intelAdSeed={hl:'${safeHL}',bd:'${safeBD}'};navigateTo('creative');setTimeout(()=>{const p=document.getElementById('cs-persona');const btn=document.getElementById('cs-regen-full');if(p)p.value='${safeHL}';if(btn)btn.click();},550)" style="font-size:0.69rem;font-weight:700;color:${p.badge};background:white;border:1px solid ${p.border};border-radius:5px;padding:2px 9px;cursor:pointer;white-space:nowrap">Use in Creative Studio →</button>
+                </div>
+                <div style="font-size:0.84rem;font-weight:800;color:#0A1628;margin-bottom:4px;line-height:1.35">${d.headline}</div>
+                <div style="font-size:0.78rem;color:#374151;line-height:1.55">${d.body}</div>
+              </div>`;
+            }).join('');
+          })()}
+        </div>
+      </div>
+
       <!-- IDENTIFIED WEAKNESSES -->
       <div>
         <div style="font-size:0.7rem;font-weight:700;color:#EF4444;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">🔍 ${comp.name}'s Identified Campaign Weaknesses</div>
@@ -6419,6 +6452,39 @@ function buildPlanView(compName) {
           <div><div style="font-size:0.85rem;font-weight:700;color:#0A1628">AI Creative Testing Velocity</div><div style="font-size:0.78rem;color:#6B7280;margin-top:2px">InfoGenie refreshes creative every 72 hours vs. ${comp.name}'s static campaigns — continuous improvement compounds over 90 days</div></div>
           <div style="font-size:1rem;font-weight:800;color:#D97706;flex-shrink:0;margin-left:16px">+${copyGain}%</div>
         </div>
+      </div>
+    </div>
+
+    <!-- DRAFTED AD COPY -->
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:16px;padding:24px;margin-bottom:20px">
+      <div style="font-size:0.75rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px">✍️ Your Ready-to-Launch Ad Copy — AI Drafted</div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        ${(() => {
+          const drafts = (comp.adCopy && comp.adCopy.length >= 3) ? comp.adCopy.slice(0,3) : [
+            { headline: `Stop Overpaying — Switch to Smarter ${indName}`, body: `Join thousands who already switched. No hidden fees, no long contracts. Results in the first 30 days or your money back.` },
+            { headline: `The ${indName} Alternative That Actually Delivers`, body: `Our customers see real results — not just promises. Try free for 14 days and see the difference for yourself.` },
+            { headline: `Beat the ${indName} Average — See How We Do It`, body: `AI-powered campaigns that continuously optimise, so you compound gains every week without lifting a finger.` }
+          ];
+          const plats = [
+            { label: 'Google Search', bg: '#EFF6FF', border: '#BFDBFE', badge: '#1D4ED8' },
+            { label: 'Meta / Instagram', bg: '#F5F3FF', border: '#DDD6FE', badge: '#7C3AED' },
+            { label: 'TikTok', bg: '#FFF7ED', border: '#FED7AA', badge: '#D97706' }
+          ];
+          return drafts.map((d, di) => {
+            const p = plats[di] || plats[0];
+            const safeHL = (d.headline || '').replace(/'/g, '\\u0027');
+            const safeBD = (d.body || '').replace(/'/g, '\\u0027');
+            return `
+            <div style="background:${p.bg};border:1.5px solid ${p.border};border-radius:12px;padding:16px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+                <span style="font-size:0.7rem;font-weight:800;color:${p.badge};background:${p.border};padding:3px 10px;border-radius:5px;text-transform:uppercase;letter-spacing:.06em">${p.label}</span>
+                <button onclick="window._intelAdSeed={hl:'${safeHL}',bd:'${safeBD}'};navigateTo('creative');setTimeout(()=>{const p=document.getElementById('cs-persona');const btn=document.getElementById('cs-regen-full');if(p)p.value='${safeHL}';if(btn)btn.click();},550)" style="font-size:0.72rem;font-weight:700;color:${p.badge};background:white;border:1.5px solid ${p.border};border-radius:6px;padding:4px 12px;cursor:pointer;white-space:nowrap">Use in Creative Studio →</button>
+              </div>
+              <div style="font-size:0.9rem;font-weight:800;color:#0A1628;margin-bottom:6px;line-height:1.35">${d.headline}</div>
+              <div style="font-size:0.81rem;color:#374151;line-height:1.6">${d.body}</div>
+            </div>`;
+          }).join('');
+        })()}
       </div>
     </div>
 
