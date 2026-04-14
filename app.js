@@ -2674,7 +2674,59 @@ function buildCampaigns() {
     </div>
     ${audiencePanel}
     <div class="camp-grid">${cards}</div>
-    
+
+    <!-- INFOGENIE IMPROVED ADS -->
+    ${(() => {
+      // Collect all adCopy items across competitors
+      const allAds = [];
+      competitors.forEach(c => {
+        (c.adCopy || []).forEach(ac => {
+          if (ac.headline && ac.body) {
+            allAds.push({ headline: ac.headline, body: ac.body, comp: c.name, platform: (c.campaigns||[])[0]?.channel || 'Multi-Platform' });
+          }
+        });
+      });
+      if (allAds.length === 0) return '';
+
+      // Platform colour mapping
+      const platBg  = { Google:'#EFF6FF', Meta:'#FFF5F7', TikTok:'#F5F5F5', LinkedIn:'#F0F7FF', 'Multi-Platform':'#F0FDF4' };
+      const platCol = { Google:'#0066FF', Meta:'#E1306C', TikTok:'#010101', LinkedIn:'#0A66C2', 'Multi-Platform':'#059669' };
+      const platIcon = { Google:'🔍', Meta:'📘', TikTok:'⬛', LinkedIn:'💼', 'Multi-Platform':'📣' };
+
+      const adCards = allAds.map((ad, i) => {
+        const bg   = platBg[ad.platform]  || platBg['Multi-Platform'];
+        const col  = platCol[ad.platform] || platCol['Multi-Platform'];
+        const icon = platIcon[ad.platform]|| platIcon['Multi-Platform'];
+        const safeH = ad.headline.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const safeB = ad.body.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        return `
+          <div style="background:${bg};border:1.5px solid ${col}22;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+              <span style="font-size:0.65rem;font-weight:700;color:${col};background:${col}18;border-radius:5px;padding:2px 7px">${icon} ${ad.platform}</span>
+              <span style="font-size:0.62rem;color:#9CA3AF">vs. ${ad.comp}</span>
+            </div>
+            <div style="font-weight:700;font-size:0.85rem;color:#0A1628;line-height:1.4">"${ad.headline}"</div>
+            <div style="font-size:0.78rem;color:#4B5563;line-height:1.5">${ad.body}</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+              <button onclick="navigator.clipboard?.writeText('${safeH} — ${safeB}').then(()=>{this.textContent='✅ Copied';setTimeout(()=>this.textContent='📋 Copy Ad Copy',1200)})" style="padding:5px 12px;font-size:0.72rem;font-weight:600;color:#4F46E5;background:#EEF2FF;border:1px solid #C7D2FE;border-radius:6px;cursor:pointer">📋 Copy Ad Copy</button>
+              <button onclick="(function(){const el=document.getElementById('cs-persona');if(el){el.value='${safeH}';navigateTo('creative');setTimeout(()=>{const btn=document.getElementById('cs-regen-full');if(btn)btn.click();},500);}})()" style="padding:5px 12px;font-size:0.72rem;font-weight:600;color:white;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:6px;cursor:pointer">✨ Use in Creative Studio →</button>
+            </div>
+          </div>`;
+      }).join('');
+
+      return `
+      <div class="data-table-card" style="margin-bottom:24px;background:linear-gradient(135deg,#F8FAFF,#EFF6FF);border:1.5px solid #BFDBFE">
+        <div class="dtc-header">
+          <h3 style="color:#1D4ED8">✍️ InfoGenie Improved Ads</h3>
+          <span class="atag" style="background:#1D4ED8">${allAds.length} Ready-to-Use</span>
+        </div>
+        <p style="font-size:0.8rem;color:#1D4ED8;margin:0 0 16px 0">InfoGenie's AI-improved ad copy — the same ads shown in your Competitor intelligence, ready to copy or send directly to the Creative Studio.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
+          ${adCards}
+        </div>
+      </div>`;
+    })()}
+
     <!-- A/B TEST MANAGER -->
     <div class="data-table-card" style="margin-bottom:24px;background:linear-gradient(135deg,#FEFBFF,#F3E8FF);border:1.5px solid #DDD6FE">
       <div class="dtc-header">
