@@ -5282,14 +5282,23 @@ function buildRedditIntel() {
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px">
         <div>
           <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">Your Brand / Domain</label>
-          <input id="rdt-brand" value="${brand}" placeholder="yourbrand.com" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
+          <input id="rdt-brand" value="${brand}" placeholder="yourbrand.com"
+            onblur="autoFillRedditFields(this.value)"
+            onkeydown="if(event.key==='Enter'){this.blur()}"
+            style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
         </div>
         <div>
-          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">Keywords to Monitor</label>
+          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">
+            Keywords to Monitor
+            <span id="rdt-kw-loader" style="display:none;margin-left:6px;font-size:0.6rem;color:#00C9C8;font-weight:600">✦ auto-filling…</span>
+          </label>
           <input id="rdt-keywords" value="${kwList}" placeholder="e.g. email marketing, CRM, automation" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
         </div>
         <div>
-          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">Competitors to Watch</label>
+          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">
+            Competitors to Watch
+            <span id="rdt-comp-loader" style="display:none;margin-left:6px;font-size:0.6rem;color:#FF6B35;font-weight:600">✦ auto-filling…</span>
+          </label>
           <input id="rdt-competitors" value="${competitors}" placeholder="e.g. HubSpot, Mailchimp" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
         </div>
       </div>
@@ -5400,6 +5409,49 @@ function buildRedditIntel() {
         </div>
       </div>
     </div>`;
+
+  // Auto-fill keywords & competitors if brand is set but fields are empty
+  if (brand && (!kwList || !competitors)) {
+    setTimeout(() => autoFillRedditFields(brand), 200);
+  }
+}
+
+let _rdtAutoFillTimer = null;
+async function autoFillRedditFields(domain) {
+  if (!domain || domain.trim().length < 3) return;
+  const kwEl   = document.getElementById('rdt-keywords');
+  const compEl = document.getElementById('rdt-competitors');
+  const kwLdr  = document.getElementById('rdt-kw-loader');
+  const compLdr= document.getElementById('rdt-comp-loader');
+  if (!kwEl || !compEl) return;
+
+  // Skip if both fields already have content
+  if (kwEl.value.trim() && compEl.value.trim()) return;
+
+  // Show loaders
+  if (kwLdr)   kwLdr.style.display   = 'inline';
+  if (compLdr) compLdr.style.display = 'inline';
+  kwEl.style.borderColor   = 'rgba(0,201,200,.4)';
+  compEl.style.borderColor = 'rgba(255,107,53,.4)';
+
+  try {
+    const resp = await fetch('/api/reddit-autofill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: domain.trim() })
+    });
+    const data = await resp.json();
+    if (data.keywords  && !kwEl.value.trim())   kwEl.value   = data.keywords;
+    if (data.competitors && !compEl.value.trim()) compEl.value = data.competitors;
+    kwEl.style.borderColor   = 'rgba(0,201,200,.35)';
+    compEl.style.borderColor = 'rgba(255,107,53,.35)';
+  } catch(e) {
+    kwEl.style.borderColor   = 'rgba(255,255,255,.12)';
+    compEl.style.borderColor = 'rgba(255,255,255,.12)';
+  } finally {
+    if (kwLdr)   kwLdr.style.display   = 'none';
+    if (compLdr) compLdr.style.display = 'none';
+  }
 }
 
 function switchRedditTab(tab) {

@@ -1342,6 +1342,48 @@ Return JSON only: { "reply": "...", "tone_note": "brief note on how this matches
   }
 });
 
+// ── POST /api/reddit-autofill ─────────────────────────────────────────────────
+// Auto-suggests keywords and competitors for a given domain using GPT-4o
+app.post('/api/reddit-autofill', async (req, res) => {
+  try {
+    const { domain = '' } = req.body;
+    if (!domain) return res.json({ keywords: '', competitors: '' });
+
+    const { OpenAI } = require('openai');
+    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{
+        role: 'user',
+        content: `You are a marketing intelligence expert. Given the domain "${domain}", identify:
+1. The 6 most relevant keywords/topics that people discuss on Reddit related to this brand's industry and use case
+2. The 5 main competitors or alternative brands that users compare with this domain on Reddit
+
+Return ONLY valid JSON (no markdown):
+{
+  "keywords": "keyword1, keyword2, keyword3, keyword4, keyword5, keyword6",
+  "competitors": "Competitor1, Competitor2, Competitor3, Competitor4, Competitor5"
+}
+
+Rules:
+- Keywords should be topics/phrases Reddit users actually discuss (e.g. "forex trading", "CFD broker review", "online trading platform")
+- Competitors should be real brand/domain names that compete with ${domain}
+- Be specific to this exact domain and its industry — no generic answers`
+      }],
+      max_tokens: 200,
+      response_format: { type: 'json_object' }
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim() || '{}';
+    let result;
+    try { result = JSON.parse(raw); } catch { result = {}; }
+    res.json({ keywords: result.keywords || '', competitors: result.competitors || '' });
+  } catch(err) {
+    res.json({ keywords: '', competitors: '', error: err.message });
+  }
+});
+
 // ── POST /api/ai-channel-ad ───────────────────────────────────────────────────
 app.post('/api/ai-channel-ad', async (req, res) => {
   try {
