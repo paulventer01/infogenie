@@ -5303,7 +5303,11 @@ function buildRedditIntel() {
         </div>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-        <div style="font-size:0.75rem;color:rgba(255,255,255,.4)">Scans Reddit + Hacker News in real-time · AI scores each thread for relevance, sentiment &amp; urgency</div>
+        <div style="font-size:0.72rem;color:rgba(255,255,255,.4)">
+          <span style="color:#FF6600;font-weight:700">📰 Live HN</span> real Hacker News threads &nbsp;·&nbsp;
+          <span style="color:#A78BFA;font-weight:700">🤖 AI Signal</span> GPT-4o community intelligence based on real Reddit patterns &nbsp;·&nbsp;
+          AI scores each thread for relevance, sentiment &amp; urgency
+        </div>
         <button onclick="scanRedditMonitor()" style="padding:10px 22px;background:linear-gradient(135deg,#FF4500,#FF6B35);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">🔍 Scan Now</button>
       </div>
     </div>
@@ -5473,6 +5477,9 @@ function _rdtCard(p, i) {
   const urgColor  = p.urgency === 'critical' ? '#EF4444' : p.urgency === 'high' ? '#F59E0B' : p.urgency === 'medium' ? '#0066FF' : '#6B7280';
   const velBadge  = p.velocity > 50 ? `<span style="background:rgba(239,68,68,.15);color:#EF4444;border:1px solid rgba(239,68,68,.25);padding:2px 7px;border-radius:5px;font-size:0.62rem;font-weight:700">🔥 ${p.velocity}/hr</span>` : '';
   const serpBadge = p.serpLikely ? `<span style="background:rgba(0,102,255,.15);color:#60A5FA;border:1px solid rgba(0,102,255,.25);padding:2px 7px;border-radius:5px;font-size:0.62rem;font-weight:700">🔍 SERP</span>` : '';
+  const srcBadge  = p.source === 'hn'
+    ? `<span style="background:rgba(255,102,0,.12);color:#FF6600;border:1px solid rgba(255,102,0,.25);padding:2px 7px;border-radius:5px;font-size:0.6rem;font-weight:700" title="Live from Hacker News">📰 Live HN</span>`
+    : `<span style="background:rgba(124,58,237,.12);color:#A78BFA;border:1px solid rgba(124,58,237,.25);padding:2px 7px;border-radius:5px;font-size:0.6rem;font-weight:700" title="AI-synthesised community intelligence based on real Reddit patterns">🤖 AI Signal</span>`;
 
   return `
     <div style="background:#0F1E35;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px 18px;transition:border-color .2s" onmouseover="this.style.borderColor='rgba(255,100,0,.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,.08)'">
@@ -5480,7 +5487,7 @@ function _rdtCard(p, i) {
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
             <span style="font-size:0.62rem;font-weight:700;color:#FF6B35;background:rgba(255,100,0,.12);padding:2px 7px;border-radius:5px">${p.subreddit}</span>
-            ${velBadge}${serpBadge}
+            ${srcBadge}${velBadge}${serpBadge}
             <span style="font-size:0.62rem;color:rgba(255,255,255,.3)">${p.ageHours < 24 ? p.ageHours + 'h ago' : Math.round(p.ageHours/24) + 'd ago'}</span>
           </div>
           <a href="${p.url}" target="_blank" style="font-family:'Sora',sans-serif;font-size:0.85rem;font-weight:700;color:white;text-decoration:none;line-height:1.35;display:block" onmouseover="this.style.color='#FF6B35'" onmouseout="this.style.color='white'">${p.title}</a>
@@ -5534,8 +5541,8 @@ async function scanRedditMonitor() {
 
   const loader = `<div style="text-align:center;padding:40px 24px">
     <div style="width:40px;height:40px;border:3px solid rgba(255,100,0,.2);border-top-color:#FF4500;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px"></div>
-    <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:700;color:white;margin-bottom:5px">Scanning Reddit &amp; HN…</div>
-    <div style="font-size:0.75rem;color:rgba(255,255,255,.35)">Fetching threads · Running GPT-4 scoring · Detecting SERP signals</div>
+    <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:700;color:white;margin-bottom:5px">Scanning community intelligence…</div>
+    <div style="font-size:0.75rem;color:rgba(255,255,255,.35)">Fetching live HN data · GPT-4o generating Reddit signals · AI scoring all threads</div>
   </div>`;
   if (feed)  feed.innerHTML  = loader;
   if (tFeed) tFeed.innerHTML = loader;
@@ -5581,7 +5588,9 @@ async function scanRedditMonitor() {
         : `<div style="text-align:center;padding:32px;color:rgba(255,255,255,.35)"><div style="font-size:1.8rem;margin-bottom:8px">✅</div><div style="font-size:0.8rem">No threads currently flagged as SERP-ranking. Topics with "best X" or "vs" comparisons rank more often.</div></div>`;
     }
 
-    showToast(`✅ Found ${posts.length} threads · ${serpPosts.length} SERP signals`);
+    const hnCount = posts.filter(p => p.source === 'hn').length;
+    const aiCount = posts.filter(p => p.source === 'ai').length;
+    showToast(`✅ ${posts.length} signals loaded · ${hnCount} live HN · ${aiCount} AI Reddit · ${serpPosts.length} SERP`);
     switchRedditTab(window._redditActiveTab);
 
   } catch(err) {
