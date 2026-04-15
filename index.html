@@ -727,6 +727,14 @@
   </div>
 </div>
 
+<!-- THREAT LEVEL DETAIL MODAL -->
+<div class="modal-backdrop hidden" id="threatModal" onclick="if(event.target===this)closeThreatModal()">
+  <div class="modal-box threat-modal-box">
+    <button class="modal-x" onclick="closeThreatModal()">✕</button>
+    <div id="threatModalInner"></div>
+  </div>
+</div>
+
 <!-- DOCS MODAL -->
 <div class="modal-backdrop hidden" id="docsModal">
   <div class="modal-box docs-modal-box">

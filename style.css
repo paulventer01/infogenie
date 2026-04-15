@@ -901,6 +901,31 @@ body {
 .threat-high { background: rgba(239,68,68,.1); color: var(--red); }
 .threat-medium { background: rgba(245,158,11,.1); color: var(--gold); }
 .threat-low { background: rgba(16,185,129,.1); color: var(--green); }
+.threat-badge-clickable { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+.threat-badge-clickable:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.12); }
+
+/* ===== THREAT MODAL ===== */
+.threat-modal-box { max-width: 560px !important; padding: 0 !important; overflow: hidden; }
+.threat-signal-card {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.tsc-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: #9CA3AF;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.tsc-value {
+  font-family: 'Sora', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0A1628;
+}
 
 /* ===== COMPETITOR CARDS ===== */
 .comp-cards-grid {

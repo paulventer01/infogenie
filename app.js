@@ -1887,8 +1887,9 @@ function buildDashboard() {
   renderTrendChart(competitors);
   
   // Summary table
+  window._threatCompetitors = competitors;
   const tbody = document.getElementById('compSummaryBody');
-  tbody.innerHTML = competitors.map(c => `
+  tbody.innerHTML = competitors.map((c, i) => `
     <tr>
       <td>
         <div class="comp-name-cell">
@@ -1901,7 +1902,7 @@ function buildDashboard() {
       <td><strong>${c.roas}×</strong></td>
       <td>${c.adSpend}</td>
       <td>${c.topChannel}</td>
-      <td><span class="threat-badge threat-${c.threatLevel}">${cap(c.threatLevel)} Threat</span></td>
+      <td><span class="threat-badge threat-${c.threatLevel} threat-badge-clickable" onclick="openThreatModal(${i})" title="Click for threat details">${cap(c.threatLevel)} Threat ↗</span></td>
     </tr>
   `).join('');
 
@@ -8175,6 +8176,119 @@ function closeAttackModal() {
   const modal = document.getElementById('attackModal');
   modal.classList.add('hidden');
   modal.style.display = 'none';
+}
+
+// ── Threat Level Detail Modal ──────────────────────────────────────────────
+function openThreatModal(idx) {
+  const competitors = window._threatCompetitors;
+  if (!competitors || !competitors[idx]) return;
+  const c = competitors[idx];
+  const lvl = (c.threatLevel || 'medium').toLowerCase();
+
+  const lvlCfg = {
+    high: {
+      icon: '🔴', label: 'High Threat', color: '#EF4444',
+      bg: 'rgba(239,68,68,.06)', border: 'rgba(239,68,68,.18)',
+      urgency: 'Immediate action recommended — this competitor is actively gaining ground in your market.',
+      why: `${c.name} is rated High Threat due to aggressive ad investment (${c.adSpend}/mo), a strong efficiency ratio of ${c.roas}× ROAS, and dominant positioning on ${c.topChannel}. Their traffic of ${c.traffic}/mo signals significant reach that directly overlaps with your target audience, making them your most urgent competitive priority.`
+    },
+    medium: {
+      icon: '🟡', label: 'Medium Threat', color: '#F59E0B',
+      bg: 'rgba(245,158,11,.06)', border: 'rgba(245,158,11,.18)',
+      urgency: 'Monitor closely — this competitor could escalate to High Threat within 60–90 days.',
+      why: `${c.name} is rated Medium Threat with a steady ad presence (${c.adSpend}/mo) and a competitive ROAS of ${c.roas}×. While not yet dominating your core keywords, their growing ${c.topChannel} investment and ${c.traffic}/mo traffic signals increasing intent to compete in your primary market segments.`
+    },
+    low: {
+      icon: '🟢', label: 'Low Threat', color: '#10B981',
+      bg: 'rgba(16,185,129,.06)', border: 'rgba(16,185,129,.18)',
+      urgency: 'Currently manageable — review quarterly to catch any early escalation signals.',
+      why: `${c.name} poses a Low Threat at present. Their ad spend of ${c.adSpend}/mo and ROAS of ${c.roas}× indicate limited direct competition in your core keyword set. Their ${c.topChannel} activity is below the level that would threaten your share of voice, but periodic monitoring is advisable.`
+    }
+  };
+  const cfg = lvlCfg[lvl] || lvlCfg.medium;
+
+  const counterStrategies = {
+    high: [
+      { icon: '⚡', title: 'Outbid on core keywords', desc: `Increase bids 15–25% on "${(c.topKeywords || []).slice(0,2).join('", "')}" to reclaim top ad positions before ${c.name} cements their dominance.` },
+      { icon: '🎯', title: `Flood ${c.topChannel}`, desc: `Launch a high-frequency counter-campaign on ${c.topChannel} with a differentiated value proposition and creative refresh every 7 days.` },
+      { icon: '🛡️', title: 'Lock down your brand terms', desc: `Run branded keyword campaigns to prevent ${c.name} capturing your direct search traffic with competitor targeting.` },
+      { icon: '📊', title: 'Weekly intelligence alerts', desc: `Set automated monitoring for ${c.name}'s ad copy changes, new creatives, landing page updates, and budget shifts.` }
+    ],
+    medium: [
+      { icon: '🔍', title: 'Capture keyword gaps now', desc: `Target long-tail variants of "${(c.topKeywords || []).slice(0,2).join('", "')}" before ${c.name} scales up their bid strategy.` },
+      { icon: '🎨', title: 'Creative differentiation', desc: `A/B test messaging that directly contrasts your strengths against ${c.name}'s known gaps — act before they iterate their creative.` },
+      { icon: '📈', title: 'Diversify beyond their channels', desc: `${c.name} leans on ${c.topChannel} — establish a strong presence on complementary channels where they have low activity.` }
+    ],
+    low: [
+      { icon: '👁️', title: 'Quarterly review cadence', desc: `Monitor ${c.name}'s spend trajectory and keyword overlap every 90 days to catch any escalation before it impacts your positions.` },
+      { icon: '🚀', title: 'Pre-empt their growth channels', desc: `Identify and establish presence in channels ${c.name} hasn't invested in yet, before they do.` },
+      { icon: '💡', title: 'Content opportunity window', desc: `Create SEO and ad content targeting ${c.name}'s keyword territory while competition is still low and CPCs are affordable.` }
+    ]
+  };
+  const strats = counterStrategies[lvl] || counterStrategies.medium;
+  const keywords = (c.topKeywords || []).slice(0, 5);
+  const activeCampaigns = (c.campaigns || []).filter(x => x.status === 'Active').length;
+
+  document.getElementById('threatModalInner').innerHTML = `
+    <div style="background:${cfg.bg}; border-bottom:1px solid ${cfg.border}; padding:22px 26px; border-radius:20px 20px 0 0">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px">
+        <span style="font-size:1.5rem">${cfg.icon}</span>
+        <div style="flex:1">
+          <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.09em; color:${cfg.color}; text-transform:uppercase; margin-bottom:2px">${cfg.label}</div>
+          <div style="font-family:'Sora',sans-serif; font-size:1.2rem; font-weight:800; color:#0A1628">${c.name}</div>
+        </div>
+        <div style="font-size:1.6rem">${c.logo}</div>
+      </div>
+      <div style="font-size:0.8rem; color:#6B7280; background:rgba(0,0,0,.04); padding:8px 12px; border-radius:8px">${cfg.urgency}</div>
+    </div>
+    <div style="padding:22px 26px; max-height:72vh; overflow-y:auto">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px">
+        <div class="threat-signal-card"><div class="tsc-label">Monthly Traffic</div><div class="tsc-value">${c.traffic}</div></div>
+        <div class="threat-signal-card"><div class="tsc-label">Est. Ad Spend</div><div class="tsc-value">${c.adSpend}</div></div>
+        <div class="threat-signal-card"><div class="tsc-label">ROAS</div><div class="tsc-value">${c.roas}×</div></div>
+        <div class="threat-signal-card"><div class="tsc-label">Primary Channel</div><div class="tsc-value" style="font-size:0.82rem">${c.topChannel}</div></div>
+      </div>
+      ${keywords.length ? `<div style="margin-bottom:18px">
+        <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.08em; color:#9CA3AF; text-transform:uppercase; margin-bottom:8px">Keywords They Target</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px">${keywords.map(k => `<span style="background:#F1F5F9; color:#334155; padding:3px 10px; border-radius:12px; font-size:0.73rem; font-weight:500">${k}</span>`).join('')}</div>
+      </div>` : ''}
+      ${activeCampaigns ? `<div style="margin-bottom:18px; padding:10px 14px; background:#FFF7ED; border-radius:10px; border:1px solid #FED7AA; display:flex; align-items:center; gap:10px">
+        <span style="font-size:1rem">📢</span>
+        <span style="font-size:0.8rem; color:#92400E; font-weight:500">${activeCampaigns} active campaign${activeCampaigns > 1 ? 's' : ''} currently running — intelligence is live.</span>
+      </div>` : ''}
+      <div style="margin-bottom:18px">
+        <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.08em; color:#9CA3AF; text-transform:uppercase; margin-bottom:8px">Why This Rating</div>
+        <p style="font-size:0.82rem; color:#374151; line-height:1.65; margin:0">${cfg.why}</p>
+      </div>
+      <div style="margin-bottom:22px">
+        <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.08em; color:#9CA3AF; text-transform:uppercase; margin-bottom:10px">Counter-Strategies</div>
+        <div style="display:flex; flex-direction:column; gap:9px">
+          ${strats.map(s => `
+            <div style="display:flex; align-items:flex-start; gap:12px; padding:11px 13px; background:#F8FAFC; border-radius:10px; border:1px solid #E2E8F0">
+              <span style="font-size:1.05rem; flex-shrink:0; margin-top:1px">${s.icon}</span>
+              <div>
+                <div style="font-size:0.8rem; font-weight:700; color:#0A1628; margin-bottom:2px">${s.title}</div>
+                <div style="font-size:0.76rem; color:#6B7280; line-height:1.55">${s.desc}</div>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div style="display:flex; gap:10px">
+        <button class="btn-primary" style="flex:1; font-size:0.8rem; padding:10px" onclick="closeThreatModal(); navigateTo('competitors')">View Full Analysis →</button>
+        <button class="btn-secondary" style="flex:1; font-size:0.8rem; padding:10px" onclick="closeThreatModal(); navigateTo('campaigns')">Launch Counter-Ad ⚡</button>
+      </div>
+    </div>
+  `;
+
+  const backdrop = document.getElementById('threatModal');
+  backdrop.classList.remove('hidden');
+  backdrop.style.cssText = 'display:flex !important;';
+}
+
+function closeThreatModal() {
+  const m = document.getElementById('threatModal');
+  m.classList.add('hidden');
+  m.removeAttribute('style');
 }
 
 function openWLCounterModal(wlId) {
