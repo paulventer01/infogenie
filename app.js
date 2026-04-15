@@ -3653,12 +3653,12 @@ function buildContent() {
     return `
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
         ${[
-          ['Traffic Health', trafficHealth+'%', trafficHealth>70?'#10B981':trafficHealth>50?'#F59E0B':'#DC2626','📈'],
-          ['Content Score', contentScore+'/100', contentScore>70?'#10B981':contentScore>50?'#F59E0B':'#DC2626','📝'],
-          ['AI Visibility', aiVisibility+'%', aiVisibility>70?'#10B981':aiVisibility>50?'#F59E0B':'#DC2626','🤖'],
-          ['Content Gaps', gapCount+' found', '#7C3AED','🔍'],
-        ].map(([l,v,c,ic])=>`
-          <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+          ['Traffic Health', trafficHealth+'%', trafficHealth>70?'#10B981':trafficHealth>50?'#F59E0B':'#DC2626','📈', 'Traffic Health — how well your site\'s organic, referral and paid traffic is performing. Green = 70%+, Amber = 50–70%, Red = below 50%.'],
+          ['Content Score', contentScore+'/100', contentScore>70?'#10B981':contentScore>50?'#F59E0B':'#DC2626','📝', 'Content Score — overall quality and depth rating of your published content. 100 = exceptional, 70+ = good, below 50 = needs significant improvement.'],
+          ['AI Visibility', aiVisibility+'%', aiVisibility>70?'#10B981':aiVisibility>50?'#F59E0B':'#DC2626','🤖', 'AI Visibility — percentage of key industry queries where AI assistants (ChatGPT, Gemini, Perplexity) cite or recommend your brand. Higher = better LLM presence.'],
+          ['Content Gaps', gapCount+' found', '#7C3AED','🔍', 'Content Gaps — number of topics your competitors rank for where you currently have no content. Each gap is a missed traffic opportunity.'],
+        ].map(([l,v,c,ic,tip])=>`
+          <div title="${tip}" style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.04);cursor:help">
             <div style="font-size:1.8rem;margin-bottom:4px">${ic}</div>
             <div style="font-size:1.5rem;font-weight:800;color:${c}">${v}</div>
             <div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em">${l}</div>
@@ -3708,9 +3708,10 @@ function buildContent() {
             <div style="font-size:0.65rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px">Topical Cluster</div>
             <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628">${cl.pillar}</div>
           </div>
-          <div style="display:flex;gap:8px">
-            <span style="font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:6px;background:#EFF6FF;color:#0066FF">${cl.topics?.length||0} Topics</span>
-            <span style="font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:6px;background:#F3E8FF;color:#7C3AED">${cl.questions?.length||0} Questions</span>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            ${cl._dualAI ? `<span title="Synthesised from GPT-4o + Claude Sonnet" style="font-size:0.6rem;font-weight:700;padding:3px 9px;border-radius:6px;background:linear-gradient(135deg,#EFF6FF,#F3E8FF);color:#6D28D9;border:1px solid #C4B5FD">✨ GPT-4o + Claude</span>` : ''}
+            <span title="Number of subtopic pages in this cluster" style="font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:6px;background:#EFF6FF;color:#0066FF">${cl.topics?.length||0} Topics</span>
+            <span title="Number of user questions to target for AI citation" style="font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:6px;background:#F3E8FF;color:#7C3AED">${cl.questions?.length||0} Questions</span>
             <button onclick="window._contentClusters.splice(${ci},1);buildContent()" style="font-size:0.65rem;font-weight:700;padding:3px 9px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:6px;color:#DC2626;cursor:pointer">Remove</button>
           </div>
         </div>
@@ -3739,7 +3740,7 @@ function buildContent() {
           <input id="cluster-seed" placeholder="e.g. email marketing automation, AI SEO tools, SaaS pricing strategies…" value="${prefill}" style="flex:1;min-width:200px;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
           <button id="cluster-gen-btn" onclick="generateCluster()" style="padding:11px 22px;background:linear-gradient(135deg,#065F46,#059669);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">🧩 Build Cluster</button>
         </div>
-        <div id="cluster-gen-status" style="display:none;margin-top:10px;font-size:0.78rem;color:#059669;font-weight:600">⏳ Building topical cluster with GPT-4…</div>
+        <div id="cluster-gen-status" style="display:none;margin-top:10px;font-size:0.78rem;color:#059669;font-weight:600">⏳ Building topical cluster with GPT-4o + Claude Sonnet…</div>
       </div>
       <div id="clusters-output">
         ${existingClusters || `<div style="text-align:center;padding:40px 16px;color:#9CA3AF"><div style="font-size:2.5rem;margin-bottom:10px">🧩</div><div style="font-size:0.88rem;font-weight:600">No clusters yet — build your first topical cluster above</div><div style="font-size:0.75rem;margin-top:6px">Try: "marketing automation", "competitor analysis", or "AI content creation"</div></div>`}

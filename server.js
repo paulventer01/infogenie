@@ -1441,9 +1441,12 @@ app.post('/api/ai-content-clusters', async (req, res) => {
   try {
     const { seed, domain='yourdomain.com', industry='your industry' } = req.body;
     const { OpenAI } = require('openai');
-    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+    const Anthropic = require('@anthropic-ai/sdk');
+    const openai    = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+    const anthropic = new Anthropic.default({ baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY });
+
     const systemPrompt = `You are an expert SEO strategist and content architect specialising in topical authority and LLM visibility. Return JSON only.`;
-    const userPrompt = `Build a comprehensive topical cluster for the seed topic: "${seed}"
+    const gptPrompt = `Build a comprehensive topical cluster for the seed topic: "${seed}"
 Context: domain=${domain}, industry=${industry}
 
 Return JSON: {
@@ -1452,9 +1455,44 @@ Return JSON: {
   "questions": ["6-8 real user questions people ask ChatGPT/Google about this topic"],
   "aiNote": "1-2 sentence tip for maximising LLM citation chances for this cluster"
 }`;
-    const completion = await openai.chat.completions.create({ model:'gpt-4o', messages:[{role:'system',content:systemPrompt},{role:'user',content:userPrompt}], max_tokens:700, response_format:{type:'json_object'} });
-    const cluster = JSON.parse(completion.choices[0]?.message?.content||'{}');
+
+    const claudePrompt = `You are a content strategy expert specialising in AI-answer engine optimisation. For the topic "${seed}" in the "${industry}" industry on the domain "${domain}":
+
+Generate 4 ADDITIONAL user questions — different from standard SEO questions — that people commonly ask AI assistants (ChatGPT, Perplexity, Gemini) about this topic.
+Also provide 1 unique LLM citation tip that complements standard SEO advice.
+
+Return ONLY raw JSON: {
+  "extraQuestions": ["4 questions"],
+  "llmTip": "one additional LLM citation tip sentence"
+}`;
+
+    const [gptResult, claudeResult] = await Promise.allSettled([
+      openai.chat.completions.create({ model:'gpt-4o', messages:[{role:'system',content:systemPrompt},{role:'user',content:gptPrompt}], max_tokens:700, response_format:{type:'json_object'} }),
+      anthropic.messages.create({ model:'claude-sonnet-4-6', max_tokens:350, messages:[{role:'user', content:claudePrompt}] })
+    ]);
+
+    let cluster = {};
+    if (gptResult.status === 'fulfilled') {
+      try { cluster = JSON.parse(gptResult.value.choices[0]?.message?.content || '{}'); } catch {}
+    }
     if (!cluster.pillar) cluster.pillar = seed;
+
+    if (claudeResult.status === 'fulfilled') {
+      try {
+        const raw = claudeResult.value.content?.[0]?.text || '{}';
+        const claudeData = JSON.parse(raw.replace(/```json|```/g,'').trim());
+        if (claudeData.extraQuestions?.length) {
+          const existing = new Set((cluster.questions||[]).map(q => q.toLowerCase().slice(0,35)));
+          const newQs = claudeData.extraQuestions.filter(q => !existing.has(q.toLowerCase().slice(0,35)));
+          cluster.questions = [...(cluster.questions||[]), ...newQs];
+        }
+        if (claudeData.llmTip && cluster.aiNote) {
+          cluster.aiNote = cluster.aiNote + ' ' + claudeData.llmTip;
+        }
+        cluster._dualAI = true;
+      } catch {}
+    }
+
     res.json({ cluster });
   } catch(err) {
     res.json({ cluster: null, error: err.message });
