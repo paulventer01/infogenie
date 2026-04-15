@@ -4820,6 +4820,13 @@ function buildResults() {
   const wrap = document.getElementById('resultsWrap');
   if (!wrap) return;
 
+  // Load lead data from localStorage
+  try {
+    const saved = localStorage.getItem('ig_lead_data');
+    if (saved) window._leadData = JSON.parse(saved);
+  } catch(e) {}
+  window._leadData = window._leadData || { messages: 0, calls: 0, budget: 0 };
+
   // Wire export button
   const exportBtn = document.getElementById('exportResultsBtn');
   if (exportBtn && !exportBtn._wired) {
@@ -4929,6 +4936,76 @@ function buildResults() {
           <div style="font-size:1.4rem;font-weight:800;color:${color};font-family:'Sora',sans-serif">${val}</div>
           <div style="font-size:0.75rem;color:#6B7280;margin-top:4px;font-weight:500">${label}</div>
         </div>`).join('')}
+    </div>
+
+    <!-- LEAD REPORTING PANEL -->
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:18px;padding:22px 24px;margin-bottom:28px;box-shadow:0 1px 6px rgba(0,0,0,.06)">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:18px">
+        <div>
+          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📋 Lead Reporting Dashboard</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">Log your messages, calls and InfoGenie calculates your cost-per-lead automatically</div>
+        </div>
+        <button onclick="saveLeadData()" style="padding:9px 20px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">💾 Save Lead Data</button>
+      </div>
+
+      <!-- KPI Tiles Row -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
+        ${(()=>{
+          const ld = window._leadData || {};
+          const msgs   = ld.messages   || 0;
+          const calls  = ld.calls      || 0;
+          const total  = msgs + calls;
+          const cpl    = totalBudget > 0 && total > 0 ? '$'+(totalBudget/total).toFixed(2) : '—';
+          const cpm    = totalBudget > 0 && msgs  > 0 ? '$'+(totalBudget/msgs).toFixed(2)  : '—';
+          const cpc2   = totalBudget > 0 && calls > 0 ? '$'+(totalBudget/calls).toFixed(2) : '—';
+          const convRate = total > 0 && totalConv > 0 ? ((totalConv/total)*100).toFixed(1)+'%' : '—';
+          return [
+            ['💬 Messages',      msgs,       '#0066FF'],
+            ['📞 Calls',         calls,      '#10B981'],
+            ['🧲 Total Leads',   total,      '#7C3AED'],
+            ['💰 Cost-per-Lead', cpl,        '#F59E0B'],
+            ['💬 Cost/Message',  cpm,        '#0066FF'],
+            ['📞 Cost/Call',     cpc2,       '#10B981'],
+            ['📈 Lead→Conv Rate',convRate,   '#00C9C8'],
+          ].map(([label,val,color])=>`
+            <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:14px;text-align:center">
+              <div style="font-size:1.3rem;font-weight:800;color:${color};font-family:'Sora',sans-serif">${val}</div>
+              <div style="font-size:0.65rem;color:#6B7280;margin-top:3px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">${label}</div>
+            </div>`).join('');
+        })()}
+      </div>
+
+      <!-- Input Row -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;padding:16px;background:#F9FAFB;border-radius:12px">
+        <div>
+          <label style="font-size:0.72rem;font-weight:700;color:#374151;display:block;margin-bottom:6px">💬 Messages Received</label>
+          <input id="leadMsgsInput" type="number" min="0" placeholder="e.g. 34" value="${(window._leadData||{}).messages||''}"
+            style="width:100%;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.88rem;color:#0A1628;font-weight:600;box-sizing:border-box"
+            oninput="updateLeadCalc()">
+          <div style="font-size:0.68rem;color:#9CA3AF;margin-top:4px">Total inbound messages from all ad campaigns</div>
+        </div>
+        <div>
+          <label style="font-size:0.72rem;font-weight:700;color:#374151;display:block;margin-bottom:6px">📞 Calls Received</label>
+          <input id="leadCallsInput" type="number" min="0" placeholder="e.g. 18" value="${(window._leadData||{}).calls||''}"
+            style="width:100%;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.88rem;color:#0A1628;font-weight:600;box-sizing:border-box"
+            oninput="updateLeadCalc()">
+          <div style="font-size:0.68rem;color:#9CA3AF;margin-top:4px">Total inbound calls from all ad campaigns</div>
+        </div>
+        <div>
+          <label style="font-size:0.72rem;font-weight:700;color:#374151;display:block;margin-bottom:6px">💰 Monthly Ad Spend</label>
+          <input id="leadBudgetInput" type="number" min="0" placeholder="e.g. 3000" value="${(window._leadData||{}).budget||totalBudget||''}"
+            style="width:100%;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.88rem;color:#0A1628;font-weight:600;box-sizing:border-box"
+            oninput="updateLeadCalc()">
+          <div style="font-size:0.68rem;color:#9CA3AF;margin-top:4px">Leave blank to use total campaign budgets above</div>
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:center;gap:6px">
+          <div style="font-size:0.72rem;font-weight:700;color:#374151;margin-bottom:2px">⚡ Live CPL Preview</div>
+          <div id="cplLivePreview" style="font-size:1.6rem;font-weight:800;color:#0066FF;font-family:'Sora',sans-serif">
+            ${(()=>{const ld=window._leadData||{};const t=(ld.messages||0)+(ld.calls||0);const b=ld.budget||totalBudget;return t>0&&b>0?'$'+(b/t).toFixed(2):'—';})()}
+          </div>
+          <div id="cplLiveLabel" style="font-size:0.68rem;color:#6B7280">Cost per lead (messages + calls)</div>
+        </div>
+      </div>
     </div>
 
     <!-- PERFORMANCE PANELS (campaigns-driven) -->
@@ -5146,6 +5223,34 @@ function buildResults() {
         }
       });
     }
+  }
+}
+
+// ── Lead Reporting Helpers ─────────────────────────────────────────────────────
+function saveLeadData() {
+  const msgs   = parseInt(document.getElementById('leadMsgsInput')?.value   || '0') || 0;
+  const calls  = parseInt(document.getElementById('leadCallsInput')?.value  || '0') || 0;
+  const budget = parseInt(document.getElementById('leadBudgetInput')?.value || '0') || 0;
+  window._leadData = { messages: msgs, calls: calls, budget: budget };
+  try { localStorage.setItem('ig_lead_data', JSON.stringify(window._leadData)); } catch(e) {}
+  showToast('✅ Lead data saved!');
+  buildResults(); // refresh tiles
+}
+
+function updateLeadCalc() {
+  const msgs   = parseInt(document.getElementById('leadMsgsInput')?.value   || '0') || 0;
+  const calls  = parseInt(document.getElementById('leadCallsInput')?.value  || '0') || 0;
+  const budgetInput = parseInt(document.getElementById('leadBudgetInput')?.value || '0') || 0;
+  const total  = msgs + calls;
+  const camps  = window._launchedCampaigns || [];
+  const autoBudget = camps.reduce((s,c) => s + c.budget, 0);
+  const budget = budgetInput || autoBudget;
+  const preview = document.getElementById('cplLivePreview');
+  const label   = document.getElementById('cplLiveLabel');
+  if (preview) {
+    const cpl = total > 0 && budget > 0 ? '$' + (budget / total).toFixed(2) : '—';
+    preview.textContent = cpl;
+    if (label) label.textContent = `Cost per lead (${msgs} msg + ${calls} calls = ${total} leads)`;
   }
 }
 
@@ -7415,6 +7520,17 @@ function buildBattlePlan() {
   const c = comps[idx];
   const threat = c.threatLevel || 'medium';
 
+  // Cache competitor data for safe global wrapper calls (avoids onclick escaping issues)
+  window._bpCache = window._bpCache || {};
+  window._bpCache[idx] = {
+    name: c.name || 'Competitor',
+    channel: c.topChannel || 'Google Ads',
+    keywords: (c.topKeywords || ['competitor brand alternative','industry best tool','vs competitor','top rated solution']).slice(0, 8),
+    campaigns: (c.campaigns || []).slice(0, 4),
+    audiences: (c.audiences || [{label:'High-Intent Buyers',pct:38},{label:'Decision Makers',pct:24},{label:'Mid-Market Segment',pct:22}]).slice(0, 3),
+    suggestions: (c.suggestions || []).slice(0, 4)
+  };
+
   const fmtT = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : String(n||0);
   const traffic = c.trafficMo ? fmtT(c.trafficMo) : (c.traffic || '—');
   const oppBase = threat === 'high' ? 74 : threat === 'medium' ? 55 : 38;
@@ -7462,17 +7578,14 @@ function buildBattlePlan() {
   const ghostBtn    = (label, fn) => btn(label, fn, 'background:#F3F4F6;border:1px solid #E5E7EB;color:#374151');
 
   // ── 1. Exploit Weaknesses ───────────────────────────────────────────────────
-  const ch = (c.topChannel || 'Google Ads').replace(/'/g, "\\'");
-  const cName = c.name.replace(/'/g, "\\'");
   const weakCards = (c.suggestions || ['Competitor has weak personalisation in search ads','Generic creative with low audience specificity','No TikTok or Reels presence','Over-indexed on branded keywords']).slice(0,4).map((s,i) => {
     const priority = i < 2 ? 'HIGH' : 'MEDIUM';
     const badgeStyle = i < 2 ? 'background:#FEE2E2;color:#991B1B' : 'background:#FEF3C7;color:#92400E';
-    const safe = s.replace(/'/g,"\\'").replace(/"/g,'&quot;').slice(0,80);
     return card(i<2?'#EF4444':'#F59E0B', badgeStyle, priority,
       s.length > 70 ? s.slice(0,70)+'…' : s,
       `${c.name} leaves this gap unaddressed. A targeted counter-campaign on ${c.topChannel||'Google Ads'} can capture this audience now.`,
-      dangerBtn('⚡ Launch Counter-Campaign', `openCampLaunchRich('Counter ${cName}','${ch}','$2,000/mo',${idx})`) +
-      purpleBtn('✨ Creative Studio', `openAdInCreativeStudio('Counter ${cName}','${safe}','${ch}')`)
+      dangerBtn('⚡ Launch Counter-Campaign', `bpLC(${idx},${i})`) +
+      purpleBtn('✨ Creative Studio', `bpCS(${idx},${i})`)
     );
   }).join('');
 
@@ -7485,37 +7598,32 @@ function buildBattlePlan() {
     const cpc   = (0.9 + (_blSeed(kw) % 320) / 100).toFixed(2);
     const diff  = kwDifficulties[i % kwDifficulties.length];
     const diffColor = diff==='Low'?'#059669':diff==='Medium'?'#D97706':'#EF4444';
-    const diffBg    = diff==='Low'?'#D1FAE5':diff==='Medium'?'#FEF3C7':'#FEE2E2';
-    const safeKw = kw.replace(/'/g,"\\'");
     return card(kwColors[i], 'background:#EFF6FF;color:#1D4ED8', `${vol.toLocaleString()}/mo · CPC $${cpc}`,
       `"${kw}"`,
       `${c.name} is actively bidding here with suboptimal relevance scores — you can capture traffic at <strong style="color:#059669">lower CPC</strong> with tighter ad groups. Difficulty: <span style="color:${diffColor};font-weight:700">${diff}</span>.`,
-      primaryBtn('🔑 Build Google Ads', `openCampLaunchRich('${safeKw} Campaign','Google Ads','$1,200/mo',${idx})`) +
-      ghostBtn('📝 Build Content', `window._clusterSeedPrefill='${safeKw}';navigateTo('content')`)
+      primaryBtn('🔑 Build Google Ads', `bpGA(${idx},${i})`) +
+      ghostBtn('📝 Build Content', `bpBC(${idx},${i})`)
     );
   }).join('');
 
   // ── 3. Creative Counter-Strategy ────────────────────────────────────────────
   const angles = ['Pain-Point Contrast','Benefit Superiority','Social Proof Attack','Value Proposition'];
   const adItems = c.adCopy && c.adCopy.length > 0 ? c.adCopy.slice(0,3) : null;
+  // Store adCopy and suggestion text in cache for creative studio use
+  window._bpCache[idx].adCopy = c.adCopy || null;
   const creativeCards = adItems
     ? adItems.map((ac,i) => {
-        const safeH = (ac.headline||'Counter Creative').replace(/'/g,"\\'").replace(/"/g,'&quot;');
-        const safeB = (ac.body||'').replace(/'/g,"\\'").replace(/"/g,'&quot;').slice(0,120);
         return card('#7C3AED','background:#F5F3FF;color:#6D28D9', angles[i]||'Creative Angle',
           `"${ac.headline||'Counter Creative'}"`,
           (ac.body||'').slice(0,110),
-          purpleBtn('✨ Open Creative Studio', `openAdInCreativeStudio('${safeH}','${safeB}','${ch}')`)
+          purpleBtn('✨ Open Creative Studio', `bpCS(${idx},${i})`)
         );
       }).join('')
     : (c.suggestions||['Exploit their weak personalisation with hyper-targeted messaging']).slice(0,3).map((s,i)=>{
-        const hl = `Beat ${c.name}: ${s.slice(0,30)}${s.length>30?'…':''}`;
-        const bd = `Stop settling for ${c.name}'s limitations. ${s.slice(0,80)}.`;
-        const safeH = hl.replace(/'/g,"\\'").replace(/"/g,'&quot;');
-        const safeB = bd.replace(/'/g,"\\'").replace(/"/g,'&quot;');
         return card('#7C3AED','background:#F5F3FF;color:#6D28D9', angles[i]||'Creative Angle',
-          hl, bd,
-          purpleBtn('✨ Open Creative Studio', `openAdInCreativeStudio('${safeH}','${safeB}','${ch}')`)
+          `Beat ${c.name}: ${s.slice(0,35)}${s.length>35?'…':''}`,
+          `Outperform ${c.name} by addressing this gap with superior creative.`,
+          purpleBtn('✨ Open Creative Studio', `bpCS(${idx},${i})`)
         );
       }).join('');
 
@@ -7524,11 +7632,10 @@ function buildBattlePlan() {
   const audGaps = ['Underserved by competitor — low ad frequency in this segment','Poor creative resonance — competitor uses generic messaging here','Budget mismatch — competitor over-spends on lower-intent tiers'];
   const audCards = (c.audiences || [{label:'High-Intent Buyers',pct:38},{label:'Decision Makers',pct:24},{label:'Mid-Market Segment',pct:22}]).slice(0,3).map((a,i)=>{
     const aCh = audChannels[i % audChannels.length];
-    const safeA = a.label.replace(/'/g,"\\'");
     return card('#0066FF','background:#EFF6FF;color:#1D4ED8', `${a.pct}% of market`,
       a.label,
       `${audGaps[i%audGaps.length].replace('competitor', c.name)}. Best capture channel: <strong>${aCh}</strong>.`,
-      primaryBtn('🎯 Target This Audience', `openCampLaunchRich('${safeA} Campaign','${aCh}','$1,500/mo',${idx})`) +
+      primaryBtn('🎯 Target This Audience', `bpTA(${idx},${i})`) +
       ghostBtn('👥 Audience Deep-Dive', `navigateTo('audience')`)
     );
   }).join('');
@@ -7536,17 +7643,16 @@ function buildBattlePlan() {
   // ── 5. Campaign Counter-Moves ───────────────────────────────────────────────
   const campCards = (c.campaigns || []).slice(0,3).map((camp,i)=>{
     const roasTarget = (camp.roas * 1.2).toFixed(1);
-    const safeCamp = (camp.name||'Campaign').replace(/'/g,"\\'");
     return card('#10B981', camp.status==='Active'?'background:#D1FAE5;color:#065F46':'background:#FEF3C7;color:#92400E', camp.status,
-      `Counter: "${camp.name}"`,
+      `Counter: "${(camp.name||'Campaign').slice(0,40)}"`,
       `${c.name} runs this on <strong>${camp.channel}</strong> at ${camp.ctr} CTR / ${camp.roas}× ROAS. Launch a counter-campaign targeting the same audience with superior creative — target ROAS: <strong style="color:#059669">${roasTarget}×</strong>.`,
-      greenBtn('📣 Launch Counter-Campaign', `openCampLaunchRich('Counter: ${safeCamp}','${camp.channel}','${camp.budget}',${idx})`)
+      greenBtn('📣 Launch Counter-Campaign', `bpCC(${idx},${i})`)
     );
   }).join('') || `<div style="color:rgba(255,255,255,.4);font-size:0.82rem;padding:12px 0">No active campaigns detected — run full analysis for live campaign data.</div>`;
 
   // ── 6. Quick Wins ───────────────────────────────────────────────────────────
   const qwItems = [
-    { t: c.estimatedROI || `+25% CTR improvement via tighter audience segmentation`, fn: `openCampLaunchRich('Quick Win vs ${cName}','${ch}','$1,000/mo',${idx})`, btnLabel: '⚡ Execute' },
+    { t: c.estimatedROI || `+25% CTR improvement via tighter audience segmentation`, fn: `bpQW(${idx},0)`, btnLabel: '⚡ Execute' },
     { t: `Capture ${c.name}'s branded search traffic with non-branded alternatives at lower CPC`, fn: `navigateTo('intelligence')`, btnLabel: '🔑 View Keywords' },
     { t: `Expand to channels where ${c.name} has minimal presence for uncontested reach`, fn: `navigateTo('social')`, btnLabel: '📣 Plan Social' },
   ];
@@ -7579,7 +7685,7 @@ function buildBattlePlan() {
           <div style="color:rgba(255,255,255,.45);font-size:0.8rem">${domain} · ${industry} · ${comps.length} competitors · Click any action card to execute directly</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button onclick="openCampLaunchRich('All-Front Attack vs ${cName}','${ch}','$5,000/mo',${idx})" style="padding:10px 20px;background:linear-gradient(135deg,#EF4444,#DC2626);border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer">⚡ Execute Top Priority</button>
+          <button onclick="bpLC(${idx},0)" style="padding:10px 20px;background:linear-gradient(135deg,#EF4444,#DC2626);border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer">⚡ Execute Top Priority</button>
           <button onclick="navigateTo('campaigns')" style="padding:10px 20px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:10px;font-size:0.8rem;font-weight:600;color:white;cursor:pointer">📋 All Campaigns</button>
         </div>
       </div>
@@ -7661,6 +7767,73 @@ function buildBattlePlan() {
 
     </div>
   </div>`;
+}
+
+// ── Battle Plan Global Action Wrappers ────────────────────────────────────────
+// These are called from onclick attributes with just integer indexes, avoiding
+// all string-escaping issues with competitor names and channel names.
+
+function _bpGet(compIdx) {
+  return (window._bpCache && window._bpCache[compIdx]) || null;
+}
+
+// bpLC — Launch Counter-Campaign (weakness card)
+function bpLC(compIdx, itemIdx) {
+  const d = _bpGet(compIdx); if (!d) { showToast('⚠️ Run analysis first'); return; }
+  const label = (d.suggestions[itemIdx] || d.name + ' counter').slice(0,40);
+  openCampLaunchRich('Counter: ' + label, d.channel, '$2,000/mo', compIdx);
+}
+
+// bpGA — Build Google Ads (keyword card)
+function bpGA(compIdx, kwIdx) {
+  const d = _bpGet(compIdx); if (!d) { showToast('⚠️ Run analysis first'); return; }
+  const kw = d.keywords[kwIdx] || d.name + ' campaign';
+  openCampLaunchRich(kw + ' Campaign', 'Google Ads', '$1,200/mo', compIdx);
+}
+
+// bpBC — Build Content (keyword card)
+function bpBC(compIdx, kwIdx) {
+  const d = _bpGet(compIdx); if (!d) { showToast('⚠️ Run analysis first'); return; }
+  const kw = d.keywords[kwIdx] || '';
+  window._clusterSeedPrefill = kw;
+  navigateTo('content');
+}
+
+// bpCS — Open Creative Studio (creative card)
+function bpCS(compIdx, itemIdx) {
+  const d = _bpGet(compIdx); if (!d) { showToast('⚠️ Run analysis first'); return; }
+  let headline = 'Counter Creative vs ' + d.name;
+  let body = 'Beat ' + d.name + ' with superior creative.';
+  if (d.adCopy && d.adCopy[itemIdx]) {
+    headline = d.adCopy[itemIdx].headline || headline;
+    body = d.adCopy[itemIdx].body || body;
+  } else if (d.suggestions[itemIdx]) {
+    headline = 'Beat ' + d.name + ': ' + d.suggestions[itemIdx].slice(0,40);
+    body = 'Outperform ' + d.name + ' by addressing: ' + d.suggestions[itemIdx].slice(0,80);
+  }
+  openAdInCreativeStudio(headline, body, d.channel);
+}
+
+// bpTA — Target This Audience (audience card)
+function bpTA(compIdx, audIdx) {
+  const d = _bpGet(compIdx); if (!d) { showToast('⚠️ Run analysis first'); return; }
+  const channels = ['Meta Ads','Google Ads','LinkedIn Ads','TikTok Ads'];
+  const aud = d.audiences[audIdx] || { label: 'Target Audience' };
+  openCampLaunchRich(aud.label + ' Campaign', channels[audIdx % channels.length], '$1,500/mo', compIdx);
+}
+
+// bpCC — Launch Counter-Campaign (campaign counter-moves card)
+function bpCC(compIdx, campIdx) {
+  const d = _bpGet(compIdx); if (!d) { showToast('⚠️ Run analysis first'); return; }
+  const camp = d.campaigns[campIdx];
+  if (!camp) { bpLC(compIdx, 0); return; }
+  openCampLaunchRich('Counter: ' + (camp.name||'Campaign').slice(0,35), camp.channel || d.channel, camp.budget || '$2,000/mo', compIdx);
+}
+
+// bpQW — Execute Quick Win
+function bpQW(compIdx, winIdx) {
+  const d = _bpGet(compIdx); if (!d) { showToast('⚠️ Run analysis first'); return; }
+  openCampLaunchRich('Quick Win vs ' + d.name, d.channel, '$1,000/mo', compIdx);
 }
 
 // ── Full Attack Plan Modal ─────────────────────────────────────────────────────
@@ -10342,9 +10515,11 @@ function openCampModal(name, platform, budget, idx) {
 
 function openCampLaunchRich(name, platform, budget, idx) {
   const modal = document.getElementById('campLaunchRichModal');
+  if (!modal) { showToast('⚠️ Page error — please refresh'); return; }
   modal.classList.remove('hidden');
-  modal.style.display = 'flex';
+  modal.style.cssText = 'display:flex !important';
   const inner = document.getElementById('campLaunchRichModalInner');
+  if (!inner) { showToast('⚠️ Page error — please refresh'); return; }
 
   const budgetNum  = parseInt((budget || '$2000').replace(/[^0-9]/g, '')) || 2000;
   const dailyBudg  = Math.round(budgetNum / 30);
