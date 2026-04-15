@@ -1687,17 +1687,17 @@ ${sharedContext}
 ${jsonSchema}
 IMPORTANT: ${baseInstruction}${prefillSuffix}`;
 
-    // ── Run GPT-4o and Claude Haiku in parallel (fastest possible) ───────────
+    // ── Run GPT-4o and Claude Sonnet in parallel ─────────────────────────────
     const [gptResult, claudeResult] = await Promise.allSettled([
       openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [{ role: 'user', content: gptPrompt }],
-        max_tokens: 1600,
+        max_tokens: 2000,
         response_format: { type: 'json_object' }
       }),
       anthropic.messages.create({
-        model: 'claude-haiku-4-5',
-        max_tokens: 1600,
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2200,
         messages: [{ role: 'user', content: claudePrompt + '\n\nReturn ONLY the raw JSON object — no markdown fences, no explanation.' }]
       })
     ]);
