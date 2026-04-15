@@ -3011,7 +3011,8 @@ function buildCampaigns() {
 // ADVERTISE HUB
 // ═══════════════════════════════════════════════════════════════════════════════
 if (!window._advertiseConnections) {
-  window._advertiseConnections = {
+  const _advSaved = (() => { try { const s = localStorage.getItem('ig_adv_conn'); return s ? JSON.parse(s) : null; } catch(e) { return null; } })();
+  window._advertiseConnections = _advSaved || {
     'Meta': true, 'Instagram': true, 'Messenger & WhatsApp': true, 'Meta Calls': true,
     'Catalog Ads': true, 'Meta Boost': true, 'Google Search': true, 'Google Pmax': true,
     'YouTube': true, 'Google Display': true, 'Google Calls': true, 'LinkedIn': true,
@@ -3019,6 +3020,9 @@ if (!window._advertiseConnections) {
     'Local Services': true, 'Snapchat': false, 'Spotify': false, 'Pinterest': false,
     'X (Twitter)': false, 'Threads': false,
   };
+}
+function _saveAdvConn() {
+  try { localStorage.setItem('ig_adv_conn', JSON.stringify(window._advertiseConnections)); } catch(e) {}
 }
 
 const ADV_PLATFORMS = [
@@ -3062,9 +3066,9 @@ function buildAdvertise() {
         <div style="font-size:0.6rem;font-weight:600;color:${isConn ? p.color : '#9CA3AF'}">${isConn ? '● Connected' : '○ Not Connected'}</div>
         ${isConn ? `
         <button onclick="openChannelCampaign('${p.name.replace(/'/g,"\\'")}','${p.icon}','${p.color}','${p.bg}')" style="width:100%;padding:7px 0;font-size:0.7rem;font-weight:800;color:white;background:${p.color};border:none;border-radius:8px;cursor:pointer;margin-top:2px">🎯 3-Step Campaign</button>
-        <button onclick="window._advertiseConnections['${p.name}']=false;buildAdvertise()" style="width:100%;padding:4px 0;font-size:0.62rem;font-weight:600;color:#DC2626;background:white;border:1px solid #FCA5A5;border-radius:6px;cursor:pointer">Disconnect</button>
+        <button onclick="window._advertiseConnections['${p.name}']=false;_saveAdvConn();buildAdvertise()" style="width:100%;padding:4px 0;font-size:0.62rem;font-weight:600;color:#DC2626;background:white;border:1px solid #FCA5A5;border-radius:6px;cursor:pointer">Disconnect</button>
         ` : `
-        <button onclick="window._advertiseConnections['${p.name}']=true;buildAdvertise()" style="width:100%;padding:7px 0;font-size:0.7rem;font-weight:700;color:${p.color};background:white;border:1.5px solid ${p.color}55;border-radius:8px;cursor:pointer;margin-top:2px">Connect</button>
+        <button onclick="window._advertiseConnections['${p.name}']=true;_saveAdvConn();buildAdvertise()" style="width:100%;padding:7px 0;font-size:0.7rem;font-weight:700;color:${p.color};background:white;border:1.5px solid ${p.color}55;border-radius:8px;cursor:pointer;margin-top:2px">Connect</button>
         `}
       </div>`;
   }).join('');
@@ -3094,7 +3098,7 @@ function buildAdvertise() {
             <h3 style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin:0 0 4px">📡 Connected Accounts — Click to Launch Per-Channel Campaign</h3>
             <div style="font-size:0.78rem;color:#6B7280">${connCount} of ${ADV_PLATFORMS.length} channels connected · Each channel has its own 3-step lead-gen flow</div>
           </div>
-          <button onclick="Object.keys(window._advertiseConnections).forEach(k=>window._advertiseConnections[k]=true);buildAdvertise()" style="padding:8px 18px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚡ Connect All</button>
+          <button onclick="Object.keys(window._advertiseConnections).forEach(k=>window._advertiseConnections[k]=true);_saveAdvConn();buildAdvertise()" style="padding:8px 18px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚡ Connect All</button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px">
           ${platformCards}
