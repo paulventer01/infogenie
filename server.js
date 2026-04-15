@@ -1804,8 +1804,152 @@ app.get('/download-source', (req, res) => {
   res.send(out);
 });
 
-// ── Catch-all → SPA ──────────────────────────────────────────────────────────
+// ── GET /source — Syntax-highlighted source code viewer ───────────────────────
+app.get('/source', (req, res) => {
+  const fs = require('fs');
+  const files = [
+    { name: 'server.js',   lang: 'javascript' },
+    { name: 'app.js',      lang: 'javascript' },
+    { name: 'data.js',     lang: 'javascript' },
+    { name: 'index.html',  lang: 'html' },
+    { name: 'style.css',   lang: 'css' },
+    { name: 'package.json', lang: 'json' },
+  ];
 
+  const loaded = files.map(f => {
+    try {
+      const content = fs.readFileSync(path.join(__dirname, f.name), 'utf8');
+      const lines   = content.split('\n').length;
+      const kb      = (Buffer.byteLength(content, 'utf8') / 1024).toFixed(1);
+      return { ...f, content, lines, kb };
+    } catch(e) {
+      return { ...f, content: `// Could not read ${f.name}: ${e.message}`, lines: 1, kb: '0' };
+    }
+  });
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InfoGenie — Source Code</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: #0A1628; color: #E5E7EB; min-height: 100vh; }
+
+  .header { background: linear-gradient(135deg, #0A1628, #0D2A5E); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 18px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .logo-dot { width: 32px; height: 32px; background: linear-gradient(135deg, #00C9C8, #0066FF); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .logo-text { font-family: 'Sora', sans-serif; font-size: 1.1rem; font-weight: 800; color: white; }
+  .logo-text span { color: #00C9C8; }
+  .header-badge { background: rgba(0,201,200,0.15); border: 1px solid rgba(0,201,200,0.3); padding: 5px 14px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; color: #00C9C8; }
+  .stats-bar { display: flex; gap: 24px; }
+  .stat { text-align: center; }
+  .stat-val { font-family: 'Sora', sans-serif; font-size: 1rem; font-weight: 800; color: #00E5FF; }
+  .stat-lbl { font-size: 0.6rem; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: .06em; margin-top: 1px; }
+
+  .tabs-bar { background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.07); padding: 0 24px; display: flex; gap: 2px; overflow-x: auto; }
+  .tab { padding: 13px 20px; font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.45); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; transition: all .15s; display: flex; align-items: center; gap: 8px; border-top: none; border-left: none; border-right: none; background: none; font-family: 'Inter', sans-serif; }
+  .tab:hover { color: rgba(255,255,255,0.75); }
+  .tab.active { color: #00C9C8; border-bottom-color: #00C9C8; }
+  .tab-badge { font-size: 0.58rem; background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; color: rgba(255,255,255,0.4); font-weight: 600; }
+  .tab.active .tab-badge { background: rgba(0,201,200,0.15); color: #00C9C8; }
+
+  .file-panel { display: none; }
+  .file-panel.active { display: flex; flex-direction: column; height: calc(100vh - 116px); }
+  .file-meta { padding: 12px 28px; background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+  .file-name { font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; font-weight: 500; color: #93C5FD; }
+  .file-stat { font-size: 0.7rem; color: rgba(255,255,255,0.35); }
+  .file-stat span { color: rgba(255,255,255,0.6); font-weight: 600; }
+  .copy-btn { margin-left: auto; padding: 5px 14px; background: rgba(0,102,255,0.2); border: 1px solid rgba(0,102,255,0.35); border-radius: 7px; font-size: 0.7rem; font-weight: 700; color: #93C5FD; cursor: pointer; font-family: 'Inter', sans-serif; transition: all .15s; }
+  .copy-btn:hover { background: rgba(0,102,255,0.35); }
+
+  .code-wrap { flex: 1; overflow: auto; }
+  pre[class*="language-"] { margin: 0 !important; padding: 24px 28px !important; border-radius: 0 !important; background: #0d1117 !important; font-family: 'JetBrains Mono', monospace !important; font-size: 0.78rem !important; line-height: 1.7 !important; min-height: 100%; }
+  code[class*="language-"] { font-family: 'JetBrains Mono', monospace !important; font-size: 0.78rem !important; }
+
+  .icon-js   { color: #F7DF1E; }
+  .icon-html { color: #E44D26; }
+  .icon-css  { color: #264DE4; }
+  .icon-json { color: #10B981; }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo-dot">🧞</div>
+    <div class="logo-text">Info<span>Genie</span></div>
+    <div class="header-badge">Source Code Viewer</div>
+  </div>
+  <div class="stats-bar">
+    <div class="stat"><div class="stat-val">${loaded.length}</div><div class="stat-lbl">Files</div></div>
+    <div class="stat"><div class="stat-val">${loaded.reduce((a,f)=>a+f.lines,0).toLocaleString()}</div><div class="stat-lbl">Lines</div></div>
+    <div class="stat"><div class="stat-val">${(loaded.reduce((a,f)=>a+parseFloat(f.kb),0)).toFixed(0)} KB</div><div class="stat-lbl">Total Size</div></div>
+  </div>
+</div>
+
+<div class="tabs-bar">
+  ${loaded.map((f,i) => {
+    const icons = { javascript:'⬡', html:'◈', css:'◉', json:'{}' };
+    const iconCls = { javascript:'icon-js', html:'icon-html', css:'icon-css', json:'icon-json' };
+    return `<button class="tab${i===0?' active':''}" onclick="switchTab(${i})" id="tab-${i}">
+      <span class="${iconCls[f.lang]||''}">${icons[f.lang]||'·'}</span>
+      ${f.name}
+      <span class="tab-badge">${f.lines.toLocaleString()} lines</span>
+    </button>`;
+  }).join('')}
+</div>
+
+${loaded.map((f,i) => `
+<div class="file-panel${i===0?' active':''}" id="panel-${i}">
+  <div class="file-meta">
+    <div class="file-name">📄 ${f.name}</div>
+    <div class="file-stat"><span>${f.lines.toLocaleString()}</span> lines &nbsp;·&nbsp; <span>${f.kb} KB</span></div>
+    <button class="copy-btn" onclick="copyCode(${i})">📋 Copy</button>
+  </div>
+  <div class="code-wrap">
+    <pre class="language-${f.lang} line-numbers"><code class="language-${f.lang}" id="code-${i}">${f.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code></pre>
+  </div>
+</div>`).join('')}
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet">
+<script>
+  function switchTab(idx) {
+    document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===idx));
+    document.querySelectorAll('.file-panel').forEach((p,i) => p.classList.toggle('active', i===idx));
+  }
+  function copyCode(idx) {
+    const el = document.getElementById('code-'+idx);
+    const text = el.innerText || el.textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = event.target;
+      btn.textContent = '✅ Copied!';
+      setTimeout(() => { btn.textContent = '📋 Copy'; }, 1800);
+    });
+  }
+</script>
+</body>
+</html>`;
+
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// ── Catch-all → SPA ──────────────────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
