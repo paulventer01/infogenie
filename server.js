@@ -1281,6 +1281,53 @@ Keep the entire response under 350 words. Be specific and actionable.`;
   }
 });
 
+// ── POST /api/ai-brand-monitor ────────────────────────────────────────────────
+app.post('/api/ai-brand-monitor', async (req, res) => {
+  try {
+    const { domain = 'yourdomain.com', industry = 'your industry' } = req.body;
+    const { OpenAI } = require('openai');
+    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+    const prompt = `You are an elite AI brand monitoring expert specialising in LLM Optimisation (LLMO), brand perception analysis and Generative Engine Optimisation (GEO).
+
+Produce a comprehensive Brand Monitor report for the brand "${domain}" in the "${industry}" industry.
+
+Format as plain text (no markdown, use emoji bullets). Structure EXACTLY as below:
+
+🔵 BRAND PERCEPTION SUMMARY
+• How AI engines currently perceive ${domain} (2-3 sentences, be specific about the brand narrative)
+• Overall brand sentiment in AI: positive / mixed / absent
+• The "narrative frame" AI has formed around this brand
+
+🔴 CRITICAL BRAND GAPS (2-3 specific issues)
+• [specific gap affecting AI brand perception with context]
+
+🟡 CITATION OPPORTUNITIES (3-4 specific actions to get more AI mentions)
+• [action with expected impact]
+
+🟢 BRAND STRENGTHS IN AI (1-2 things already working)
+• [strength]
+
+📣 COMPETITOR THREAT IN AI
+• Which competitor currently dominates AI share of voice in this category and why
+• One specific tactic to reclaim citations from them
+
+📋 30-DAY BRAND MONITOR ACTION PLAN
+1. [Week 1 — highest priority]
+2. [Week 2 — brand narrative]
+3. [Week 3 — citation building]
+4. [Week 4 — measurement]
+
+⭐ BRAND VISIBILITY SCORE: [X/100] — [1-line explanation]
+
+Keep the entire response under 420 words. Be specific and actionable.`;
+    const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], max_tokens: 620 });
+    const report = completion.choices[0]?.message?.content?.trim() || '';
+    res.json({ report });
+  } catch(err) {
+    res.json({ report: null, error: err.message });
+  }
+});
+
 // ── POST /api/ai-content-brief ────────────────────────────────────────────────
 app.post('/api/ai-content-brief', async (req, res) => {
   try {
