@@ -1245,6 +1245,42 @@ Return JSON: {
   }
 });
 
+// ── POST /api/ai-visibility-audit ─────────────────────────────────────────────
+app.post('/api/ai-visibility-audit', async (req, res) => {
+  try {
+    const { domain = 'yourdomain.com', industry = 'your industry' } = req.body;
+    const { OpenAI } = require('openai');
+    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+    const prompt = `You are an AI visibility strategist specialising in LLM optimisation (LLMO) and Generative Engine Optimisation (GEO).
+
+Analyse the brand "${domain}" in the "${industry}" industry and produce a concise AI Visibility Audit report.
+
+Structure your response EXACTLY as plain text (no markdown headers, use emoji bullets):
+
+🔴 CRITICAL GAPS (2-3 specific issues preventing AI citation)
+• [specific gap with metric estimate]
+
+🟡 IMPROVEMENT OPPORTUNITIES (3-4 actionable areas)
+• [opportunity with expected uplift]
+
+🟢 CURRENT STRENGTHS (1-2 things working well)
+• [strength]
+
+📋 30-DAY ACTION PLAN
+1. [Week 1 action]
+2. [Week 2 action]
+3. [Week 3 action]
+4. [Week 4 action]
+
+Keep the entire response under 350 words. Be specific and actionable.`;
+    const completion = await openai.chat.completions.create({ model:'gpt-4o', messages:[{ role:'user', content:prompt }], max_tokens:500 });
+    const audit = completion.choices[0]?.message?.content?.trim() || '';
+    res.json({ audit });
+  } catch(err) {
+    res.json({ audit: null, error: err.message });
+  }
+});
+
 // ── POST /api/ai-social-caption ──────────────────────────────────────────────
 app.post('/api/ai-social-caption', async (req, res) => {
   try {

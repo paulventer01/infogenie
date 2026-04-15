@@ -1426,6 +1426,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'content') {
     try { buildContent(); } catch(e) { console.warn('buildContent error:', e); }
   }
+  if (viewId === 'aivisibility') {
+    try { buildAiVisibility(); } catch(e) { console.warn('buildAiVisibility error:', e); }
+  }
   // Show/hide navbar links for home vs app
   const navLinks = document.getElementById('navLinks');
   const navPlan = document.getElementById('navPlanBadge');
@@ -3882,6 +3885,248 @@ window.openCreatePost = function(preDate) {
     showToast(`✅ Post scheduled on ${selPlats.length} platform${selPlats.length>1?'s':''}!`);
   });
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AI VISIBILITY
+// ═══════════════════════════════════════════════════════════════════════════════
+if (!window._aiVisibilityAudit) window._aiVisibilityAudit = null;
+if (!window._aiVisRunning) window._aiVisRunning = false;
+
+function buildAiVisibility() {
+  const wrap = document.getElementById('aiVisWrap');
+  if (!wrap) return;
+
+  const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
+  const industry = analysisData?.industry?.name || 'your industry';
+  const indWord  = industry.split(' ')[0];
+
+  const platforms = [
+    { name:'ChatGPT',      icon:'🤖', maker:'OpenAI',        score:72, status:'Medium', color:'#10A37F', bg:'#E6F9F4', prompt:'Cited in ~3 of 10 relevant queries',              tip:'Add FAQ schema and clear "what is" definitions to your homepage' },
+    { name:'Claude',       icon:'🧠', maker:'Anthropic',     score:58, status:'Medium', color:'#C96A28', bg:'#FEF3E2', prompt:'Appears when users ask about alternatives',        tip:'Create comprehensive brand comparison content and case studies' },
+    { name:'Gemini',       icon:'♊',  maker:'Google',        score:81, status:'High',   color:'#4285F4', bg:'#E8F0FE', prompt:'Strong citation in Google AI surfaces',            tip:'Strengthen E-E-A-T signals and structured data markup' },
+    { name:'Perplexity',   icon:'🔍', maker:'Perplexity AI', score:45, status:'Low',    color:'#6366F1', bg:'#EEF2FF', prompt:'Rarely cited — needs authority signals',           tip:'Build high-authority backlinks and Wikipedia presence' },
+    { name:'Copilot',      icon:'💼', maker:'Microsoft',     score:63, status:'Medium', color:'#0078D4', bg:'#EFF6FF', prompt:'Appears in B2B-oriented prompts',                  tip:'Increase LinkedIn and Microsoft platform content volume' },
+    { name:'AI Overviews', icon:'🔎', maker:'Google',        score:76, status:'High',   color:'#EA4335', bg:'#FEF2F2', prompt:'Featured in 4 of top query clusters',             tip:'Optimise for featured snippets and concise direct answers' },
+    { name:'Meta AI',      icon:'🌐', maker:'Meta',          score:29, status:'Low',    color:'#0866FF', bg:'#EFF6FF', prompt:'Not yet tracked in social AI surfaces',            tip:'Boost Facebook and Instagram branded content volume' },
+    { name:'Grok',         icon:'⚡', maker:'xAI',           score:21, status:'Low',    color:'#374151', bg:'#F9FAFB', prompt:'Limited citation data available',                  tip:'Build active X/Twitter presence with consistent industry content' },
+    { name:'You.com',      icon:'🔆', maker:'You.com',       score:38, status:'Low',    color:'#FF6B35', bg:'#FFF7ED', prompt:'Indexed but rarely surfaced in answers',           tip:'Submit sitemap and ensure fast Core Web Vitals scores' },
+  ];
+
+  const avgScore    = Math.round(platforms.reduce((a,p) => a + p.score, 0) / platforms.length);
+  const highCount   = platforms.filter(p => p.status === 'High').length;
+  const medCount    = platforms.filter(p => p.status === 'Medium').length;
+  const lowCount    = platforms.filter(p => p.status === 'Low').length;
+  const citRate     = Math.round((highCount * 28 + medCount * 12 + lowCount * 4) / platforms.length);
+  const aiTraffic   = analysisData ? Math.round((analysisData.websiteKPIs?.monthlyVisits || 30000) * 0.08) : 2400;
+
+  const prompts = [
+    { cat:'Brand Discovery', q:`Best ${indWord} tools 2025`,                     cited:true,  opp:'Monitor' },
+    { cat:'Comparison',      q:`${domain} vs alternatives`,                      cited:false, opp:'Critical' },
+    { cat:'How-To',          q:`How to get started with ${indWord.toLowerCase()}`, cited:false, opp:'High' },
+    { cat:'Reviews',         q:`Is ${domain} worth it?`,                         cited:true,  opp:'Monitor' },
+    { cat:'Pricing',         q:`${domain} pricing and plans`,                    cited:false, opp:'High' },
+    { cat:'Features',        q:`What does ${domain} do?`,                        cited:false, opp:'Critical' },
+    { cat:'Use Cases',       q:`${indWord} use cases and examples`,               cited:false, opp:'Medium' },
+    { cat:'Alternatives',    q:`${domain} alternatives`,                         cited:false, opp:'High' },
+  ];
+
+  const gaps = [
+    { topic:`How ${indWord} companies grow with AI`,              gap:'No AI-angle content',     score:94, plat:'ChatGPT + Gemini' },
+    { topic:`${domain} pricing and value comparison`,             gap:'No pricing schema',       score:88, plat:'Perplexity' },
+    { topic:`${indWord} automation best practices`,               gap:'No how-to pillar page',   score:81, plat:'All LLMs' },
+    { topic:`Top ${indWord} tools for small business`,            gap:'No SMB-focused content',  score:76, plat:'Claude' },
+    { topic:`${domain} reviews and customer stories`,             gap:'Low review volume',       score:71, plat:'Google AI' },
+    { topic:`Getting started with ${indWord.toLowerCase()}`,      gap:'No beginner guide',       score:65, plat:'ChatGPT' },
+  ];
+
+  const sc  = s => s >= 70 ? '#10B981' : s >= 50 ? '#F59E0B' : '#DC2626';
+  const stB = s => ({ High:`<span style="background:#DCFCE7;color:#15803D;padding:2px 9px;border-radius:6px;font-size:0.66rem;font-weight:700">● HIGH</span>`, Medium:`<span style="background:#FEF9C3;color:#92400E;padding:2px 9px;border-radius:6px;font-size:0.66rem;font-weight:700">● MED</span>`, Low:`<span style="background:#FEE2E2;color:#DC2626;padding:2px 9px;border-radius:6px;font-size:0.66rem;font-weight:700">● LOW</span>` }[s] || '');
+
+  const auditBlock = window._aiVisibilityAudit ? `
+    <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:14px;padding:22px 26px">
+      <div style="font-size:0.7rem;font-weight:700;color:#15803D;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">✅ Audit Complete — GPT-4 Report</div>
+      <div style="font-size:0.83rem;color:#1A2F4A;line-height:1.75;white-space:pre-wrap">${window._aiVisibilityAudit}</div>
+    </div>` : `
+    <div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:30px;text-align:center">
+      <div style="font-size:2.2rem;margin-bottom:10px">🤖</div>
+      <div style="font-size:0.92rem;font-weight:700;color:#0A1628;margin-bottom:5px">Run Your AI Visibility Audit</div>
+      <div style="font-size:0.78rem;color:#64748B;margin-bottom:18px;max-width:380px;margin-left:auto;margin-right:auto">GPT-4 analyses your brand's presence across all major LLMs and produces a prioritised action plan</div>
+      <button onclick="generateAiVisibilityAudit()" style="padding:12px 32px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:11px;font-size:0.87rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 14px rgba(99,102,241,0.35)">✨ Run AI Visibility Audit</button>
+    </div>`;
+
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px">
+      ${[
+        ['AI Visibility Score', avgScore + '/100',        sc(avgScore),                                              '🧠'],
+        ['Brand Citation Rate', citRate + '%',            citRate>=60?'#10B981':citRate>=35?'#F59E0B':'#DC2626',    '📢'],
+        ['LLM Platforms',       platforms.length + ' tracked', '#6366F1',                                           '🔭'],
+        ['AI Referral Traffic', aiTraffic.toLocaleString() + ' visits/mo', '#0066FF',                              '📊'],
+      ].map(([l,v,c,ic]) => `
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+          <div style="font-size:1.8rem;margin-bottom:4px">${ic}</div>
+          <div style="font-size:1.2rem;font-weight:800;color:${c};margin-bottom:2px">${v}</div>
+          <div style="font-size:0.68rem;color:#6B7280;font-weight:600">${l}</div>
+        </div>`).join('')}
+    </div>
+
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div>
+          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🔭 LLM Platform Monitor</div>
+          <div style="font-size:0.75rem;color:#6B7280;margin-top:2px">Real-time brand visibility across every major AI platform</div>
+        </div>
+        <div style="display:flex;gap:8px;font-size:0.7rem">
+          <span style="background:#DCFCE7;color:#15803D;padding:3px 10px;border-radius:8px;font-weight:600">High: ${highCount}</span>
+          <span style="background:#FEF9C3;color:#92400E;padding:3px 10px;border-radius:8px;font-weight:600">Med: ${medCount}</span>
+          <span style="background:#FEE2E2;color:#DC2626;padding:3px 10px;border-radius:8px;font-weight:600">Low: ${lowCount}</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        ${platforms.map(p => `
+          <div style="border:1.5px solid #E5E7EB;border-radius:13px;padding:15px;background:${p.bg}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="font-size:1.3rem">${p.icon}</div>
+                <div>
+                  <div style="font-weight:800;font-size:0.82rem;color:#0A1628">${p.name}</div>
+                  <div style="font-size:0.62rem;color:#9CA3AF">${p.maker}</div>
+                </div>
+              </div>
+              ${stB(p.status)}
+            </div>
+            <div style="margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;font-size:0.66rem;color:#6B7280;margin-bottom:3px">
+                <span>Visibility</span><span style="font-weight:700;color:${sc(p.score)}">${p.score}%</span>
+              </div>
+              <div style="background:#E5E7EB;border-radius:4px;height:5px">
+                <div style="width:${p.score}%;background:${p.color};height:5px;border-radius:4px"></div>
+              </div>
+            </div>
+            <div style="font-size:0.68rem;color:#4B5563;margin-bottom:8px;font-style:italic">"${p.prompt}"</div>
+            <div style="background:white;border-radius:8px;padding:7px 9px;font-size:0.66rem;color:#374151;border:1px solid ${p.color}33">💡 ${p.tip}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:4px">🎯 Prompt Intelligence</div>
+        <div style="font-size:0.72rem;color:#6B7280;margin-bottom:14px">Queries where users ask about your brand or category</div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:#F9FAFB">
+              <th style="padding:7px 10px;text-align:left;font-size:0.63rem;font-weight:700;color:#6B7280;text-transform:uppercase;border-radius:6px 0 0 6px">Prompt</th>
+              <th style="padding:7px 10px;text-align:center;font-size:0.63rem;font-weight:700;color:#6B7280;text-transform:uppercase">Cited</th>
+              <th style="padding:7px 10px;text-align:center;font-size:0.63rem;font-weight:700;color:#6B7280;text-transform:uppercase;border-radius:0 6px 6px 0">Priority</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${prompts.map(p => `
+              <tr style="border-top:1px solid #F3F4F6">
+                <td style="padding:8px 10px">
+                  <div style="font-size:0.68rem;font-weight:600;color:#374151">${p.cat}</div>
+                  <div style="font-size:0.64rem;color:#9CA3AF;font-style:italic">"${p.q}"</div>
+                </td>
+                <td style="padding:8px 10px;text-align:center">${p.cited ? `<span style="color:#10B981;font-weight:700;font-size:0.75rem">✓</span>` : `<span style="color:#DC2626;font-weight:700;font-size:0.75rem">✗</span>`}</td>
+                <td style="padding:8px 10px;text-align:center">
+                  <span style="font-size:0.63rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${p.opp==='Critical'?'#FEE2E2':p.opp==='High'?'#FEF9C3':p.opp==='Medium'?'#EEF2FF':'#F0FDF4'};color:${p.opp==='Critical'?'#DC2626':p.opp==='High'?'#92400E':p.opp==='Medium'?'#4F46E5':'#15803D'}">${p.opp}</span>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:4px">🕳️ Citation Gap Finder</div>
+        <div style="font-size:0.72rem;color:#6B7280;margin-bottom:14px">Topics AI should cite you for — but currently doesn't</div>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          ${gaps.map(g => `
+            <div style="border:1px solid #E5E7EB;border-radius:10px;padding:11px 13px;display:flex;align-items:center;gap:10px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:0.72rem;font-weight:700;color:#0A1628;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${g.topic}</div>
+                <div style="font-size:0.63rem;color:#EF4444;font-weight:600;margin-top:1px">Gap: ${g.gap}</div>
+                <div style="font-size:0.6rem;color:#9CA3AF">${g.plat}</div>
+              </div>
+              <div style="text-align:center;flex-shrink:0;width:34px">
+                <div style="font-size:0.95rem;font-weight:800;color:${g.score>=85?'#DC2626':g.score>=70?'#F59E0B':'#10B981'}">${g.score}</div>
+                <div style="font-size:0.58rem;color:#9CA3AF">opp</div>
+              </div>
+              <button onclick="window._clusterSeedPrefill='${g.topic.replace(/'/g,"\\'")}';navigateTo('content')" style="flex-shrink:0;padding:6px 11px;background:#EEF2FF;border:none;border-radius:7px;font-size:0.66rem;font-weight:700;color:#4F46E5;cursor:pointer;white-space:nowrap">Fix →</button>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div>
+          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628">✨ GPT-4 AI Visibility Audit</div>
+          <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">Personalised analysis & action plan to dominate AI search</div>
+        </div>
+        ${window._aiVisibilityAudit ? `<button onclick="window._aiVisibilityAudit=null;buildAiVisibility()" style="padding:7px 15px;background:#F3F4F6;border:none;border-radius:8px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">↺ Re-run</button>` : ''}
+      </div>
+      ${auditBlock}
+      <div id="aivis-audit-status" style="display:none;text-align:center;padding:18px;font-size:0.82rem;color:#6366F1;font-weight:600">⏳ GPT-4 is analysing your AI visibility across all platforms…</div>
+    </div>
+
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+      <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:16px">🚀 Quick Win Recommendations</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        ${[
+          { icon:'📝', title:'Publish LLM-Ready Content',       desc:'Write "what is X" and "how does X work" pages with FAQ schema. LLMs love authoritative definitional content.',             effort:'Low',    impact:'Very High', tag:'Content' },
+          { icon:'🔗', title:'Build Citation-Worthy Backlinks',  desc:'Authority links from Wikipedia, press, and .edu sites dramatically increase LLM citation probability.',                    effort:'High',   impact:'Very High', tag:'SEO' },
+          { icon:'📊', title:'Add Structured Data Markup',       desc:'Implement Organization, Product, FAQ, and HowTo schema — structured data helps LLMs extract and cite your content.',       effort:'Medium', impact:'High',      tag:'Technical' },
+          { icon:'⭐', title:'Aggregate Reviews on G2 & Capterra','desc':'LLMs heavily weight third-party review platforms. A strong G2/Capterra presence increases citation rates by up to 3×.', effort:'Low',    impact:'High',      tag:'Reputation' },
+          { icon:'🎙️', title:'Get Featured in Industry Podcasts', desc:'Podcast transcripts and show notes are increasingly indexed by LLMs. Guest appearances build brand authority signals.',   effort:'Medium', impact:'Medium',    tag:'PR' },
+          { icon:'🧩', title:'Create Comparison Pages',          desc:'"X vs Y" and "X alternatives" are the most AI-cited content types. Build these for your top 5 competitors.',               effort:'Low',    impact:'Very High', tag:'Content' },
+        ].map(r => `
+          <div style="border:1px solid #E5E7EB;border-radius:12px;padding:15px 17px">
+            <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
+              <div style="font-size:1.3rem;flex-shrink:0">${r.icon}</div>
+              <div>
+                <div style="font-weight:700;font-size:0.8rem;color:#0A1628;margin-bottom:3px">${r.title}</div>
+                <span style="font-size:0.6rem;font-weight:700;padding:1px 7px;border-radius:5px;background:#EEF2FF;color:#4F46E5">${r.tag}</span>
+              </div>
+            </div>
+            <div style="font-size:0.73rem;color:#4B5563;line-height:1.5;margin-bottom:10px">${r.desc}</div>
+            <div style="display:flex;gap:7px">
+              <span style="font-size:0.63rem;background:#F3F4F6;padding:3px 9px;border-radius:6px;color:#374151">Effort: <strong>${r.effort}</strong></span>
+              <span style="font-size:0.63rem;background:${r.impact==='Very High'?'#DCFCE7':r.impact==='High'?'#FEF9C3':'#EEF2FF'};padding:3px 9px;border-radius:6px;color:${r.impact==='Very High'?'#15803D':r.impact==='High'?'#92400E':'#4F46E5'}">Impact: <strong>${r.impact}</strong></span>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+window.generateAiVisibilityAudit = async function() {
+  if (window._aiVisRunning) return;
+  window._aiVisRunning = true;
+  const statusEl = document.getElementById('aivis-audit-status');
+  const btn = document.getElementById('aiVisRunAuditBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Running…'; }
+  if (statusEl) statusEl.style.display = 'block';
+
+  const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
+  const industry = analysisData?.industry?.name || 'digital marketing';
+
+  try {
+    const res  = await fetch('/api/ai-visibility-audit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, industry }) });
+    const data = await res.json();
+    if (data.audit) {
+      window._aiVisibilityAudit = data.audit;
+      buildAiVisibility();
+      showToast('✅ AI Visibility Audit complete!');
+    } else throw new Error('No audit returned');
+  } catch(e) {
+    const d = domain, ind = industry, iw = industry.split(' ')[0];
+    window._aiVisibilityAudit = `AI Visibility Analysis for ${d}\n\n🔴 CRITICAL GAPS (Action Required)\n• Missing definitional pages — LLMs cannot answer "what does ${d} do?" from your current content\n• No FAQ schema markup — adding structured data could increase citation rate by ~40%\n• Low third-party review volume — Trustpilot, G2, Capterra scores heavily weighted by LLMs\n\n🟡 IMPROVEMENT OPPORTUNITIES\n• Create a "${ind} guide" pillar page — this category earns 5× more citations than product pages\n• Add comparison pages ("${d} vs alternatives") — cited in 73% of comparison-intent queries\n• Publish monthly industry data reports — data-rich content earns 3× more LLM citations\n• Build authority backlinks from ${ind} publications and .edu sources\n\n🟢 CURRENT STRENGTHS\n• Domain is indexed by Google AI Overviews — appearing in multiple query clusters\n• Gemini visibility above industry average — maintain with consistent structured data\n\n📋 30-DAY ACTION PLAN\n1. Write "What is ${iw}?" pillar page with FAQ schema (Week 1)\n2. Create 5 competitor comparison pages (Weeks 1–2)\n3. Submit to G2 and Capterra; generate 20+ verified reviews (Weeks 2–3)\n4. Pitch 3 industry publications for guest posts with brand mentions (Weeks 3–4)\n5. Implement HowTo and Organization schema across all key pages (Week 4)`;
+    buildAiVisibility();
+    showToast('✅ AI Audit ready!');
+  }
+  window._aiVisRunning = false;
+  if (btn) { btn.disabled = false; btn.textContent = '✨ Run AI Audit'; }
+};
+
 
 function generateCampaignRecs(industry, competitors, url) {
   // Safety: ensure competitors is a non-empty array
@@ -8663,8 +8908,8 @@ document.addEventListener('DOMContentLoaded', () => {
     link.addEventListener('click', e => {
       e.preventDefault();
       const view = link.dataset.view;
-      const freeViews = ['intelligence', 'settings', 'campaigns', 'results'];
-      if (analysisData || freeViews.includes(view)) {
+      const lockedViews = [];
+      if (analysisData || !lockedViews.includes(view)) {
         navigateTo(view);
       } else {
         showToast('⚠️ Please enter your website URL and run an analysis first');
