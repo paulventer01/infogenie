@@ -9,8 +9,9 @@ InfoGenie is a comprehensive AI-powered marketing intelligence and campaign auto
 - **Frontend**: Pure HTML5 + CSS3 + Vanilla JavaScript
 - **Charts**: Chart.js v4.4.0 (CDN)
 - **Fonts**: Google Fonts — Inter + Sora (CDN)
-- **Backend API**: DataForSEO + OpenAI GPT-4 (Replit AI Integrations) + RapidAPI social intelligence
-- **AI**: `openai` npm package v6.34.0; uses `AI_INTEGRATIONS_OPENAI_BASE_URL` + `AI_INTEGRATIONS_OPENAI_API_KEY` env vars (set automatically by Replit, no user key needed)
+- **Backend API**: DataForSEO + OpenAI GPT-4o + Anthropic Claude (both via Replit AI Integrations) + RapidAPI social intelligence
+- **Dual-AI Attack Plan**: `/api/ai-attack-plan` runs GPT-4o and Claude in parallel via `Promise.allSettled`, then merges the two plans with a third GPT-4o synthesis call — badge shown in UI ("Synthesised from GPT-4o + Claude")
+- **AI**: `openai` npm package + `@anthropic-ai/sdk`; uses `AI_INTEGRATIONS_OPENAI_BASE_URL` / `AI_INTEGRATIONS_OPENAI_API_KEY` and `AI_INTEGRATIONS_ANTHROPIC_BASE_URL` / `AI_INTEGRATIONS_ANTHROPIC_API_KEY` env vars (set automatically by Replit, no user keys needed)
 
 ## File Structure
 ```

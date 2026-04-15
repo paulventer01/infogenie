@@ -1548,17 +1548,22 @@ app.post('/api/ai-attack-plan', async (req, res) => {
   try {
     const { myDomain = 'yourdomain.com', competitor = 'competitor', industry = 'your industry', competitorData = {}, prefillKeywords = [], prefillContext = '' } = req.body;
     const { OpenAI } = require('openai');
+    const Anthropic = require('@anthropic-ai/sdk');
+
     const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+    const anthropic = new Anthropic.default({ baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY });
 
-    const prompt = `You are a world-class performance marketing strategist. Create a comprehensive, actionable "Full Attack Plan" for ${myDomain} to outperform their competitor ${competitor} in the ${industry} industry.
+    const prefillSuffix = (prefillContext ? '\n\nSTRATEGIC CONTEXT — HIGHEST PRIORITY: ' + prefillContext : '') +
+      (prefillKeywords.length > 0 ? '\n\nMANDATORY KEYWORDS — MUST appear in keywordTargets as Critical priority: ' + prefillKeywords.join(', ') : '');
 
+    const sharedContext = `
 Competitor data context:
 - Estimated monthly traffic: ${competitorData.traffic || 'unknown'}
 - Ad spend estimate: ${competitorData.adSpend || 'unknown'}
 - Top channels: ${(competitorData.channels || []).join(', ') || 'Google, Meta, SEO'}
-- Known weaknesses: ${(competitorData.weaknesses || []).join(', ') || 'general market gaps'}
+- Known weaknesses: ${(competitorData.weaknesses || []).join(', ') || 'general market gaps'}`;
 
-Return ONLY valid JSON (no markdown), structured exactly like this:
+    const jsonSchema = `Return ONLY valid JSON (no markdown), structured exactly like this:
 {
   "executiveSummary": "2-3 sentence strategic overview of the attack plan and expected outcomes",
   "opportunityScore": 78,
@@ -1578,10 +1583,10 @@ Return ONLY valid JSON (no markdown), structured exactly like this:
     { "keyword": "example keyword 5", "volume": "6,700/mo", "cpc": "$2.80", "intent": "Commercial", "priority": "High" }
   ],
   "channelStrategy": [
-    { "channel": "Google Search", "budgetPct": 40, "tactic": "Specific tactic", "expectedROAS": "4.2×" },
-    { "channel": "Meta Ads", "budgetPct": 30, "tactic": "Specific tactic", "expectedROAS": "3.8×" },
-    { "channel": "SEO / Content", "budgetPct": 20, "tactic": "Specific tactic", "expectedROAS": "6.1×" },
-    { "channel": "LinkedIn", "budgetPct": 10, "tactic": "Specific tactic", "expectedROAS": "3.2×" }
+    { "channel": "Google Search", "budgetPct": 40, "tactic": "Specific tactic", "expectedROAS": "4.2x" },
+    { "channel": "Meta Ads", "budgetPct": 30, "tactic": "Specific tactic", "expectedROAS": "3.8x" },
+    { "channel": "SEO / Content", "budgetPct": 20, "tactic": "Specific tactic", "expectedROAS": "6.1x" },
+    { "channel": "LinkedIn", "budgetPct": 10, "tactic": "Specific tactic", "expectedROAS": "3.2x" }
   ],
   "contentAttacks": [
     { "title": "Content piece title", "type": "Blog Post", "angle": "Specific angle to attack competitor", "cta": "Call to action" },
@@ -1593,20 +1598,83 @@ Return ONLY valid JSON (no markdown), structured exactly like this:
     { "win": "Specific actionable win 2", "impact": "High", "effort": "Medium", "timeframe": "Week 2" },
     { "win": "Specific actionable win 3", "impact": "Medium", "effort": "Low", "timeframe": "This week" }
   ]
-}
+}`;
 
-IMPORTANT: "budgetPct" is a whole-number percentage (0-100) of total monthly budget to allocate to that channel. All channelStrategy budgetPct values must sum to 100. Make all recommendations highly specific to ${competitor} and ${industry}. Use real marketing tactics. No generic advice.${prefillContext ? '\n\nSTRATEGIC CONTEXT — HIGHEST PRIORITY: ' + prefillContext : ''}${prefillKeywords.length > 0 ? '\n\nMANDATORY KEYWORDS — MUST appear in keywordTargets as Critical priority: ' + prefillKeywords.join(', ') : ''}`;
+    const baseInstruction = `"budgetPct" is whole-number percentage (0-100); all channelStrategy budgetPct values must sum to 100. Make all recommendations highly specific to ${competitor} and ${industry}. Use real marketing tactics. No generic advice.`;
 
-    const completion = await openai.chat.completions.create({
+    const gptPrompt = `You are a world-class performance marketing strategist. Create a comprehensive, actionable "Full Attack Plan" for ${myDomain} to outperform their competitor ${competitor} in the ${industry} industry.
+${sharedContext}
+${jsonSchema}
+IMPORTANT: ${baseInstruction}${prefillSuffix}`;
+
+    const claudePrompt = `You are an elite marketing intelligence analyst specialising in competitive strategy. Develop a precise, data-driven "Full Attack Plan" for ${myDomain} to capture market share from ${competitor} in the ${industry} sector. Focus on finding non-obvious strategic angles and underutilised channels.
+${sharedContext}
+${jsonSchema}
+IMPORTANT: ${baseInstruction}${prefillSuffix}`;
+
+    // ── Run GPT-4o and Claude in parallel ────────────────────────────────────
+    const [gptResult, claudeResult] = await Promise.allSettled([
+      openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: gptPrompt }],
+        max_tokens: 2000,
+        response_format: { type: 'json_object' }
+      }),
+      anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 8192,
+        messages: [{ role: 'user', content: claudePrompt + '\n\nReturn ONLY the raw JSON object — no markdown fences, no explanation.' }]
+      })
+    ]);
+
+    let gptPlan = null, claudePlan = null;
+    if (gptResult.status === 'fulfilled') {
+      try { gptPlan = JSON.parse(gptResult.value.choices[0]?.message?.content?.trim() || '{}'); } catch {}
+    }
+    if (claudeResult.status === 'fulfilled') {
+      const claudeText = claudeResult.value.content?.[0]?.text?.trim() || '{}';
+      const jsonMatch = claudeText.match(/\{[\s\S]*\}/);
+      try { claudePlan = JSON.parse(jsonMatch ? jsonMatch[0] : claudeText); } catch {}
+    }
+
+    // ── If only one succeeded, return it directly ────────────────────────────
+    if (!gptPlan && !claudePlan) throw new Error('Both AI models failed to generate a plan');
+    if (!gptPlan) return res.json({ plan: claudePlan, sources: ['Claude'] });
+    if (!claudePlan) return res.json({ plan: gptPlan, sources: ['GPT-4o'] });
+
+    // ── Both succeeded — synthesise into one superior plan ───────────────────
+    const mergePrompt = `You are a chief marketing strategist synthesising two expert attack plans into one superior unified strategy.
+
+PLAN A (from GPT-4o):
+${JSON.stringify(gptPlan, null, 2)}
+
+PLAN B (from Claude):
+${JSON.stringify(claudePlan, null, 2)}
+
+Your task:
+1. Write a stronger executiveSummary that blends the best insights from both plans
+2. Take the BEST opportunityScore (higher one if both are reasonable, average if they differ wildly)
+3. Merge weeklyPlan actions — keep unique high-value actions from each, remove true duplicates, max 4 actions per week
+4. Merge keywordTargets — combine unique keywords, keep all Critical ones, deduplicate exact matches, keep up to 8 keywords sorted by priority
+5. Build the best channelStrategy — take the strongest tactical insights from each, ensure budgetPct values sum to exactly 100
+6. Merge contentAttacks — keep the most creative/impactful pieces, remove duplicates, keep up to 5
+7. Merge criticalWins — keep the highest-impact lowest-effort wins, remove duplicates, keep up to 5
+
+${jsonSchema}
+IMPORTANT: ${baseInstruction}${prefillSuffix}
+Return ONLY valid JSON. No markdown. No explanation.`;
+
+    const mergeCompletion = await openai.chat.completions.create({
       model: 'gpt-4o',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1800,
+      messages: [{ role: 'user', content: mergePrompt }],
+      max_tokens: 2500,
       response_format: { type: 'json_object' }
     });
-    const raw = completion.choices[0]?.message?.content?.trim() || '{}';
-    let plan;
-    try { plan = JSON.parse(raw); } catch { plan = null; }
-    res.json({ plan });
+
+    let mergedPlan;
+    try { mergedPlan = JSON.parse(mergeCompletion.choices[0]?.message?.content?.trim() || '{}'); } catch { mergedPlan = gptPlan; }
+
+    res.json({ plan: mergedPlan, sources: ['GPT-4o', 'Claude'] });
   } catch(err) {
     res.json({ plan: null, error: err.message });
   }
