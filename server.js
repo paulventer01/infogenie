@@ -1281,6 +1281,62 @@ Keep the entire response under 350 words. Be specific and actionable.`;
   }
 });
 
+// ── POST /api/ai-content-brief ────────────────────────────────────────────────
+app.post('/api/ai-content-brief', async (req, res) => {
+  try {
+    const { type = 'what-is', domain = 'yourdomain.com', industry = 'your industry' } = req.body;
+    const { OpenAI } = require('openai');
+    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+    const typeGuides = {
+      'what-is':    `a "What Is ${industry}?" definitional page. This page should clearly define the category, how it works, who uses it, and contain FAQ schema. It is the #1 most-cited content type by LLMs.`,
+      'comparison': `a "${domain} vs Alternatives" comparison page. Include a side-by-side feature table, honest pros/cons, and a clear verdict section. These are cited in 73% of comparison-intent AI queries.`,
+      'how-to':     `a step-by-step "How to Get Started with ${domain}" guide with numbered steps (≤7), HowTo schema markup, time estimates, and an FAQ section. How-to guides earn 3× more LLM citations for task-based queries.`,
+    };
+    const guide = typeGuides[type] || typeGuides['what-is'];
+    const prompt = `You are a content strategist specialising in LLM Optimisation (LLMO) and Generative Engine Optimisation (GEO). Create a detailed, actionable content brief for ${guide}
+
+Brand: ${domain}
+Industry: ${industry}
+
+Structure your brief as plain text with these sections (use ALL CAPS for section headers, no markdown):
+
+CONTENT BRIEF: [Page Title]
+TARGET URL: /suggested-url-slug
+TARGET LLMs: [which AI platforms this will rank on]
+
+PRIMARY GOAL
+[1–2 sentences on the exact outcome]
+
+RECOMMENDED TITLE
+[SEO + LLM optimised title]
+
+META DESCRIPTION (≤155 chars)
+[meta description]
+
+CONTENT STRUCTURE
+[H1, H2, H3 outline with bullet points under each — be specific and detailed]
+
+SCHEMA MARKUP REQUIRED
+[list schema types needed]
+
+INTERNAL LINKS
+[3–4 suggested internal links]
+
+E-E-A-T SIGNALS
+[specific trust signals to include]
+
+WORD COUNT TARGET
+[recommended length]
+
+Keep the total response under 500 words. Be specific, not generic.`;
+    const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], max_tokens: 700 });
+    const brief = completion.choices[0]?.message?.content?.trim() || '';
+    res.json({ brief });
+  } catch(err) {
+    res.json({ brief: null, error: err.message });
+  }
+});
+
 // ── POST /api/ai-social-caption ──────────────────────────────────────────────
 app.post('/api/ai-social-caption', async (req, res) => {
   try {

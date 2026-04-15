@@ -4100,7 +4100,217 @@ function buildAiVisibility() {
             </div>
           </div>`).join('')}
       </div>
+    </div>
+
+    <!-- ── ACTION CENTER ──────────────────────────────────────────────── -->
+    <div style="background:linear-gradient(135deg,#1E1B4B 0%,#312E81 55%,#4338CA 100%);border-radius:20px;padding:28px 30px;margin-top:4px;position:relative;overflow:hidden">
+      <div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;background:rgba(255,255,255,0.04);border-radius:50%"></div>
+      <div style="position:absolute;bottom:-30px;left:40%;width:120px;height:120px;background:rgba(255,255,255,0.03);border-radius:50%"></div>
+      <div style="position:relative">
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="background:rgba(255,255,255,0.12);padding:10px;border-radius:12px;font-size:1.3rem;line-height:1">⚡</div>
+            <div>
+              <div style="font-family:'Sora',sans-serif;font-size:1.15rem;font-weight:800;color:white;margin-bottom:2px">Action Center</div>
+              <div style="font-size:0.75rem;color:rgba(255,255,255,0.55)">Create &amp; Optimize Content That AI Picks</div>
+            </div>
+          </div>
+          <span style="background:rgba(255,255,255,0.1);padding:5px 14px;border-radius:20px;font-size:0.69rem;font-weight:700;color:#A5B4FC">GPT-4 Powered</span>
+        </div>
+        <p style="font-size:0.78rem;color:rgba(255,255,255,0.6);margin:0 0 22px;line-height:1.65;max-width:700px">AI engines prioritise authoritative, structured, and directly-answerable content. Use these tools to build pages that get cited across ChatGPT, Claude, Gemini &amp; every major LLM.</p>
+
+        <!-- Content Type Cards -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px">
+          ${[
+            { icon:'📖', type:'what-is',    title:'"What Is" Definition Pages',    cite:'4× more cited by LLMs',   desc:'The #1 most-cited content type. Definitional pages answering "What is X?" dominate AI responses.',       keys:['Clear 1-sentence definition at top','FAQ schema markup','Authority citations & sources','Structured H2/H3 headings'] },
+            { icon:'⚖️', type:'comparison', title:'"X vs Y" Comparison Pages',      cite:'73% comparison queries',   desc:'When users ask LLMs to compare tools, structured comparison pages win citations in nearly all queries.', keys:['Side-by-side comparison table','Honest pros/cons for both','Clear verdict & recommendation','Verdict/Review schema'] },
+            { icon:'📋', type:'how-to',     title:'How-To & Step-by-Step Guides',  cite:'3× more task citations',   desc:'LLMs favour procedural content. How-to guides with HowTo schema earn dramatically more citations.',       keys:['Numbered steps (7 or fewer)','HowTo schema markup','Time & difficulty estimate','Video or visual support'] },
+          ].map(c => `
+          <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.11);border-radius:14px;padding:18px;display:flex;flex-direction:column">
+            <div style="font-size:1.5rem;margin-bottom:8px">${c.icon}</div>
+            <div style="font-weight:800;font-size:0.83rem;color:white;margin-bottom:5px">${c.title}</div>
+            <div style="display:inline-block;background:rgba(99,102,241,0.35);padding:2px 9px;border-radius:6px;font-size:0.62rem;font-weight:700;color:#C7D2FE;margin-bottom:9px">${c.cite}</div>
+            <div style="font-size:0.7rem;color:rgba(255,255,255,0.55);line-height:1.55;margin-bottom:12px;flex:1">${c.desc}</div>
+            <div style="background:rgba(0,0,0,0.2);border-radius:9px;padding:10px 12px;margin-bottom:14px">
+              <div style="font-size:0.6rem;color:#A5B4FC;font-weight:700;margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em">Key Elements</div>
+              ${c.keys.map(k => `<div style="font-size:0.66rem;color:rgba(255,255,255,0.65);margin-bottom:3px">✓ ${k}</div>`).join('')}
+            </div>
+            <button onclick="openAiContentBrief('${c.type}','${domain}','${industry}')" style="width:100%;padding:9px 0;background:linear-gradient(135deg,#6366F1,#4338CA);border:none;border-radius:9px;font-size:0.73rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 3px 10px rgba(99,102,241,0.3)">✨ Generate Brief →</button>
+          </div>`).join('')}
+        </div>
+
+        <!-- E-E-A-T Tracker + Schema Generator -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+          <!-- E-E-A-T Checklist -->
+          <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.11);border-radius:14px;padding:18px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+              <div>
+                <div style="font-weight:800;font-size:0.85rem;color:white">🏆 E-E-A-T Signal Tracker</div>
+                <div style="font-size:0.63rem;color:rgba(255,255,255,0.45);margin-top:2px">Experience · Expertise · Authority · Trust</div>
+              </div>
+              <div style="text-align:center">
+                <div id="eeaTScore" style="font-family:'Sora',sans-serif;font-size:1.4rem;font-weight:800;color:#A5B4FC">0%</div>
+                <div style="font-size:0.58rem;color:rgba(255,255,255,0.4)">score</div>
+              </div>
+            </div>
+            <div style="background:rgba(0,0,0,0.25);border-radius:6px;height:5px;margin-bottom:14px">
+              <div id="eeaTBar" style="height:5px;border-radius:6px;background:linear-gradient(90deg,#6366F1,#00C9C8);width:0%;transition:width .4s"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${[
+                ['eeaT0','Author bio with credentials on all pages'],
+                ['eeaT1','Linked LinkedIn / social profiles'],
+                ['eeaT2','G2, Capterra, or Trustpilot reviews'],
+                ['eeaT3','Press mentions &amp; news citations'],
+                ['eeaT4','FAQ schema on key pages'],
+                ['eeaT5','Organization schema on homepage'],
+                ['eeaT6','HowTo schema on guide pages'],
+                ['eeaT7','Wikipedia brand page or mention'],
+              ].map(([id,label]) => `
+              <label style="display:flex;align-items:center;gap:9px;cursor:pointer;padding:7px 10px;background:rgba(255,255,255,0.05);border-radius:8px;border:1px solid rgba(255,255,255,0.07)">
+                <input type="checkbox" id="${id}" onchange="updateEeaT()" ${(window._eeaT||{})[id]?'checked':''} style="width:14px;height:14px;accent-color:#6366F1;cursor:pointer;flex-shrink:0">
+                <span style="font-size:0.68rem;color:rgba(255,255,255,0.75)">${label}</span>
+              </label>`).join('')}
+            </div>
+          </div>
+
+          <!-- Schema Generator -->
+          <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.11);border-radius:14px;padding:18px;display:flex;flex-direction:column">
+            <div style="font-weight:800;font-size:0.85rem;color:white;margin-bottom:3px">🔧 Schema Markup Generator</div>
+            <div style="font-size:0.63rem;color:rgba(255,255,255,0.45);margin-bottom:14px">Pick a schema type → get ready-to-paste JSON-LD</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:14px">
+              ${['FAQ','HowTo','Organization','Product','Article','BreadcrumbList'].map(t => `
+              <button onclick="generateSchemaSnippet('${t}','${domain}')" style="padding:8px 4px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:8px;font-size:0.68rem;font-weight:700;color:rgba(255,255,255,0.82);cursor:pointer" onmouseover="this.style.background='rgba(99,102,241,0.4)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'">${t}</button>`).join('')}
+            </div>
+            <div id="schemaOutput" style="flex:1;background:rgba(0,0,0,0.35);border-radius:10px;padding:12px 14px;font-size:0.61rem;font-family:monospace;color:#86EFAC;line-height:1.7;overflow-y:auto;max-height:200px;min-height:80px;white-space:pre-wrap;word-break:break-all">// Select a schema type above to generate\n// ready-to-paste JSON-LD for your website</div>
+            <button onclick="copySchemaOutput()" id="schemaCopyBtn" style="margin-top:10px;padding:8px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:8px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer">📋 Copy to Clipboard</button>
+          </div>
+        </div>
+
+      </div>
     </div>`;
+
+  // Restore E-E-A-T state
+  setTimeout(() => { if (typeof updateEeaT === 'function') updateEeaT(); }, 80);
+}
+
+// ── Action Center helpers ──────────────────────────────────────────────────
+
+function updateEeaT() {
+  if (!window._eeaT) window._eeaT = {};
+  const ids = ['eeaT0','eeaT1','eeaT2','eeaT3','eeaT4','eeaT5','eeaT6','eeaT7'];
+  let checked = 0;
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { window._eeaT[id] = el.checked; if (el.checked) checked++; }
+  });
+  try { localStorage.setItem('ig_eeaT', JSON.stringify(window._eeaT)); } catch(e) {}
+  const pct = Math.round(checked / ids.length * 100);
+  const scoreEl = document.getElementById('eeaTScore');
+  const barEl   = document.getElementById('eeaTBar');
+  if (scoreEl) scoreEl.textContent = pct + '%';
+  if (scoreEl) scoreEl.style.color = pct >= 75 ? '#86EFAC' : pct >= 40 ? '#FDE68A' : '#FCA5A5';
+  if (barEl) barEl.style.width = pct + '%';
+}
+
+// Load saved E-E-A-T state
+window._eeaT = (() => { try { const s = localStorage.getItem('ig_eeaT'); return s ? JSON.parse(s) : {}; } catch(e) { return {}; } })();
+
+function generateSchemaSnippet(type, domain) {
+  const d = domain || 'yourdomain.com';
+  const schemas = {
+    FAQ: `{\n  "@context": "https://schema.org",\n  "@type": "FAQPage",\n  "mainEntity": [\n    {\n      "@type": "Question",\n      "name": "What is ${d}?",\n      "acceptedAnswer": {\n        "@type": "Answer",\n        "text": "Describe what ${d} does in 1-2 clear sentences."\n      }\n    },\n    {\n      "@type": "Question",\n      "name": "How does ${d} work?",\n      "acceptedAnswer": {\n        "@type": "Answer",\n        "text": "Explain the process step-by-step in plain language."\n      }\n    },\n    {\n      "@type": "Question",\n      "name": "How much does ${d} cost?",\n      "acceptedAnswer": {\n        "@type": "Answer",\n        "text": "Describe your pricing tiers and what each includes."\n      }\n    }\n  ]\n}`,
+    HowTo: `{\n  "@context": "https://schema.org",\n  "@type": "HowTo",\n  "name": "How to get started with ${d}",\n  "description": "A step-by-step guide to using ${d} effectively.",\n  "totalTime": "PT10M",\n  "step": [\n    {\n      "@type": "HowToStep",\n      "name": "Step 1: Sign up",\n      "text": "Create your free account at ${d}."\n    },\n    {\n      "@type": "HowToStep",\n      "name": "Step 2: Configure",\n      "text": "Set up your profile and preferences."\n    },\n    {\n      "@type": "HowToStep",\n      "name": "Step 3: Launch",\n      "text": "Start using ${d} to achieve your goals."\n    }\n  ]\n}`,
+    Organization: `{\n  "@context": "https://schema.org",\n  "@type": "Organization",\n  "name": "${d}",\n  "url": "https://www.${d}",\n  "logo": "https://www.${d}/logo.png",\n  "description": "Describe what ${d} does in 1-2 sentences.",\n  "foundingDate": "2020",\n  "sameAs": [\n    "https://twitter.com/${d.split('.')[0]}",\n    "https://linkedin.com/company/${d.split('.')[0]}",\n    "https://www.crunchbase.com/organization/${d.split('.')[0]}"\n  ],\n  "contactPoint": {\n    "@type": "ContactPoint",\n    "contactType": "customer support",\n    "email": "support@${d}"\n  }\n}`,
+    Product: `{\n  "@context": "https://schema.org",\n  "@type": "Product",\n  "name": "${d}",\n  "description": "What your product does and who it's for.",\n  "brand": {\n    "@type": "Brand",\n    "name": "${d.split('.')[0]}"\n  },\n  "offers": {\n    "@type": "Offer",\n    "priceCurrency": "USD",\n    "price": "0",\n    "priceValidUntil": "2026-12-31",\n    "availability": "https://schema.org/InStock"\n  },\n  "aggregateRating": {\n    "@type": "AggregateRating",\n    "ratingValue": "4.8",\n    "reviewCount": "127"\n  }\n}`,
+    Article: `{\n  "@context": "https://schema.org",\n  "@type": "Article",\n  "headline": "Your Article Headline Here",\n  "description": "A short description of what this article covers.",\n  "author": {\n    "@type": "Person",\n    "name": "Author Name",\n    "url": "https://www.${d}/about"\n  },\n  "publisher": {\n    "@type": "Organization",\n    "name": "${d.split('.')[0]}",\n    "logo": {\n      "@type": "ImageObject",\n      "url": "https://www.${d}/logo.png"\n    }\n  },\n  "datePublished": "${new Date().toISOString().split('T')[0]}",\n  "dateModified": "${new Date().toISOString().split('T')[0]}"\n}`,
+    BreadcrumbList: `{\n  "@context": "https://schema.org",\n  "@type": "BreadcrumbList",\n  "itemListElement": [\n    {\n      "@type": "ListItem",\n      "position": 1,\n      "name": "Home",\n      "item": "https://www.${d}"\n    },\n    {\n      "@type": "ListItem",\n      "position": 2,\n      "name": "Blog",\n      "item": "https://www.${d}/blog"\n    },\n    {\n      "@type": "ListItem",\n      "position": 3,\n      "name": "This Article",\n      "item": "https://www.${d}/blog/this-article"\n    }\n  ]\n}`,
+  };
+  const out = document.getElementById('schemaOutput');
+  if (out) {
+    out.textContent = schemas[type] || '// Schema not found';
+    out.style.color = '#86EFAC';
+  }
+  showToast(`✅ ${type} schema generated — edit placeholders then copy`);
+}
+
+function copySchemaOutput() {
+  const out = document.getElementById('schemaOutput');
+  const btn = document.getElementById('schemaCopyBtn');
+  if (!out) return;
+  navigator.clipboard?.writeText(out.textContent).then(() => {
+    if (btn) { btn.textContent = '✅ Copied!'; setTimeout(() => { btn.textContent = '📋 Copy to Clipboard'; }, 1800); }
+  }).catch(() => {
+    showToast('⚠️ Copy failed — please select and copy manually');
+  });
+}
+
+async function openAiContentBrief(type, domain, industry) {
+  const typeLabels = { 'what-is': '"What Is" Definition Page', 'comparison': '"X vs Y" Comparison Page', 'how-to': 'How-To Step-by-Step Guide' };
+  const label = typeLabels[type] || type;
+  const modal = document.getElementById('contentBriefModal');
+  const inner = document.getElementById('contentBriefInner');
+  if (!modal || !inner) return;
+
+  inner.innerHTML = `
+    <div style="padding:28px 30px">
+      <div style="font-size:0.68rem;font-weight:700;color:#6366F1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Action Center · Content Brief</div>
+      <div style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin-bottom:4px">${label}</div>
+      <div style="font-size:0.78rem;color:#6B7280;margin-bottom:20px">GPT-4 is writing your AI-optimised content brief for <strong>${domain}</strong> in <strong>${industry}</strong>…</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:32px;background:#F8FAFC;border-radius:12px;color:#6366F1;font-weight:600;font-size:0.82rem">
+        <span style="animation:spin 1s linear infinite;display:inline-block">⏳</span> Generating brief with GPT-4…
+      </div>
+    </div>`;
+  modal.classList.remove('hidden');
+  modal.style.cssText = 'display:flex !important;';
+
+  try {
+    const res = await fetch('/api/ai-content-brief', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, domain, industry })
+    });
+    const data = await res.json();
+    const brief = data.brief || generateFallbackBrief(type, domain, industry);
+    inner.innerHTML = `
+      <div style="padding:26px 30px;max-height:85vh;overflow-y:auto">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div>
+            <div style="font-size:0.68rem;font-weight:700;color:#6366F1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Content Brief · GPT-4 Generated</div>
+            <div style="font-family:'Sora',sans-serif;font-size:1.05rem;font-weight:800;color:#0A1628">${label}</div>
+          </div>
+          <button onclick="navigator.clipboard?.writeText(document.getElementById('briefText').innerText).then(()=>showToast('✅ Brief copied!'))" style="padding:7px 14px;background:#EEF2FF;border:none;border-radius:8px;font-size:0.72rem;font-weight:700;color:#4F46E5;cursor:pointer">📋 Copy Brief</button>
+        </div>
+        <div id="briefText" style="font-size:0.82rem;color:#1A2F4A;line-height:1.78;white-space:pre-wrap;background:#F8FAFC;border-radius:12px;padding:20px 22px;border:1px solid #E5E7EB">${brief}</div>
+        <div style="display:flex;gap:10px;margin-top:18px">
+          <button onclick="closeContentBriefModal();navigateTo('content')" style="flex:1;padding:10px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer">Open Content AI →</button>
+          <button onclick="closeContentBriefModal()" style="flex:1;padding:10px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.8rem;font-weight:600;color:#374151;cursor:pointer">Close</button>
+        </div>
+      </div>`;
+  } catch(e) {
+    const brief = generateFallbackBrief(type, domain, industry);
+    inner.innerHTML = `
+      <div style="padding:26px 30px;max-height:85vh;overflow-y:auto">
+        <div style="font-family:'Sora',sans-serif;font-size:1.05rem;font-weight:800;color:#0A1628;margin-bottom:16px">${label} — Content Brief</div>
+        <div id="briefText" style="font-size:0.82rem;color:#1A2F4A;line-height:1.78;white-space:pre-wrap;background:#F8FAFC;border-radius:12px;padding:20px 22px;border:1px solid #E5E7EB">${brief}</div>
+        <button onclick="closeContentBriefModal()" style="width:100%;margin-top:16px;padding:10px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.8rem;font-weight:600;color:#374151;cursor:pointer">Close</button>
+      </div>`;
+  }
+}
+
+function closeContentBriefModal() {
+  const m = document.getElementById('contentBriefModal');
+  if (m) { m.classList.add('hidden'); m.removeAttribute('style'); }
+}
+
+function generateFallbackBrief(type, domain, industry) {
+  const d = domain || 'yourdomain.com', ind = industry || 'your industry';
+  const ind0 = ind.split(' ')[0];
+  if (type === 'what-is') return `CONTENT BRIEF: "What Is ${ind0}?" Definition Page\nTarget URL: /${ind0.toLowerCase().replace(/ /g,'-')}-guide\nTarget LLMs: ChatGPT, Gemini, Perplexity, Claude\n\nPRIMARY GOAL\nCreate the definitive, citable answer to "What is ${ind0}?" so LLMs cite ${domain} when users ask this question.\n\nTITLE\n"What is ${ind0}? A Complete Guide for 2025"\n\nMETA DESCRIPTION (≤155 chars)\n"${ind0} explained clearly. Learn what it is, how it works, who it's for, and why it matters — with real examples."\n\nCONTENT STRUCTURE\nH1: What is ${ind0}?\n• Opening paragraph: 1–2 sentence direct definition (LLM-ready)\n• Quick facts box: key stats, founding year, category, who uses it\n\nH2: How Does ${ind0} Work?\n• 3–5 clear bullet points explaining the mechanism\n• Avoid jargon — write for a 10th-grade reading level\n\nH2: Who Uses ${ind0}?\n• Segment: SMBs, Enterprises, Individuals\n• Include real use case per segment\n\nH2: Key Benefits of ${ind0}\n• Numbered list, benefit-oriented language\n\nH2: ${ind0} vs Alternatives\n• Short comparison table (3–4 alternatives)\n• Link to dedicated comparison pages\n\nH2: Frequently Asked Questions\n• Min. 5 Q&As with FAQ schema markup\n• Include: "Is ${domain} free?", "How do I get started?", "What makes ${domain} different?"\n\nSCHEMA MARKUP REQUIRED\n✓ FAQPage schema\n✓ Organization schema\n✓ BreadcrumbList schema\n\nINTERNAL LINKS\n• Link to pricing page\n• Link to comparison pages\n• Link to how-to guides\n\nE-E-A-T SIGNALS\n• Add author bio with credentials\n• Include citations from authoritative sources\n• Add last-updated date`;
+  if (type === 'comparison') return `CONTENT BRIEF: "${domain} vs Competitors" Comparison Page\nTarget URL: /${domain.split('.')[0]}-vs-alternatives\nTarget LLMs: Perplexity, ChatGPT, Claude (comparison queries)\n\nPRIMARY GOAL\nCapture "X vs Y" comparison queries — cited in 73% of comparison-intent AI responses.\n\nTITLE\n"${domain} vs Top Alternatives: Which Is Best in 2025?"\n\nCONTENT STRUCTURE\nH1: ${domain} vs [Competitor 1] vs [Competitor 2] — Full Comparison\n• Opening: who should read this, what you'll learn\n\nH2: Quick Comparison Table\n• Side-by-side table: features, pricing, ease of use, support, integrations\n• Highlight your strengths clearly\n\nH2: ${domain} — Full Review\n• Pros (4–5 points)\n• Cons (2–3 points, be honest — LLMs distrust one-sided content)\n• Best for: specific user type\n\nH2: [Competitor 1] — Full Review (repeat pattern)\nH2: [Competitor 2] — Full Review (repeat pattern)\n\nH2: Our Verdict — Which Should You Choose?\n• Clear recommendation matrix by use case\n• Quote from real customer review\n\nH2: Frequently Asked Questions\n• "Is ${domain} better than [Competitor]?"\n• "Does ${domain} offer a free trial?"\n• "What's the main difference between ${domain} and alternatives?"\n\nSCHEMA MARKUP REQUIRED\n✓ FAQPage schema\n✓ Review/AggregateRating schema\n✓ BreadcrumbList schema\n\nE-E-A-T SIGNALS\n• Link to independent review sites (G2, Capterra)\n• Include verified customer quotes\n• Add publication date and review methodology`;
+  return `CONTENT BRIEF: How-To Guide for ${domain}\nTarget URL: /how-to-get-started-with-${domain.split('.')[0]}\nTarget LLMs: ChatGPT, Gemini (task-based queries)\n\nPRIMARY GOAL\nCreate a step-by-step guide that gets cited when users ask LLMs how to accomplish tasks in ${ind}.\n\nTITLE\n"How to Get Started with ${domain}: Step-by-Step Guide (2025)"\n\nCONTENT STRUCTURE\nH1: How to Get Started with ${domain} (Step-by-Step)\n• Intro: what you'll achieve, time required, difficulty level\n\nH2: Before You Begin\n• Prerequisites checklist (3–5 items)\n• What you'll need\n\nH2: Step 1 — [Action]\n• Clear instruction\n• Screenshot or visual recommended\n• Pro tip\n\nH2: Step 2 — [Action] (repeat for 5–7 steps)\n\nH2: Common Mistakes to Avoid\n• 3–4 pitfalls with solutions\n\nH2: Next Steps & Advanced Tips\n• What to do after completing the guide\n• Links to related guides\n\nH2: Frequently Asked Questions\n• "How long does it take to set up ${domain}?"\n• "Do I need technical skills to use ${domain}?"\n• "What if I get stuck?"\n\nSCHEMA MARKUP REQUIRED\n✓ HowTo schema with all steps\n✓ FAQPage schema\n✓ BreadcrumbList schema\n\nE-E-A-T SIGNALS\n• Author bio: specify who wrote this and their expertise\n• Add "Last updated" date\n• Link to official ${domain} documentation`;
 }
 
 window.generateAiVisibilityAudit = async function() {
