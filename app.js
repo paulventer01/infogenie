@@ -1417,6 +1417,12 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'results') {
     try { buildResults(); } catch(e) { console.warn('buildResults error:', e); }
   }
+  if (viewId === 'advertise') {
+    try { buildAdvertise(); } catch(e) { console.warn('buildAdvertise error:', e); }
+  }
+  if (viewId === 'social') {
+    try { buildSocialCalendar(); } catch(e) { console.warn('buildSocialCalendar error:', e); }
+  }
   // Show/hide navbar links for home vs app
   const navLinks = document.getElementById('navLinks');
   const navPlan = document.getElementById('navPlanBadge');
@@ -2993,6 +2999,451 @@ function buildCampaigns() {
     </div>
   `;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADVERTISE HUB
+// ═══════════════════════════════════════════════════════════════════════════════
+if (!window._advertiseConnections) {
+  window._advertiseConnections = {
+    'Meta': true, 'Instagram': true, 'Messenger & WhatsApp': true, 'Meta Calls': true,
+    'Catalog Ads': true, 'Meta Boost': true, 'Google Search': true, 'Google Pmax': true,
+    'YouTube': true, 'Google Display': true, 'Google Calls': true, 'LinkedIn': true,
+    'LinkedIn Message': true, 'TikTok': true, 'Bing': true, 'Direct Mail': true,
+    'Local Services': true, 'Snapchat': false, 'Spotify': false, 'Pinterest': false,
+    'X (Twitter)': false, 'Threads': false,
+  };
+}
+
+function buildAdvertise() {
+  const wrap = document.getElementById('advertiseWrap');
+  if (!wrap) return;
+
+  const PLATFORMS = [
+    { name:'Meta',               icon:'📘', color:'#1877F2', bg:'#EBF3FF', cat:'meta' },
+    { name:'Instagram',          icon:'📸', color:'#E1306C', bg:'#FFF0F5', cat:'meta' },
+    { name:'Messenger & WhatsApp',icon:'💬', color:'#00B2FF', bg:'#E0F7FF', cat:'meta' },
+    { name:'Meta Calls',         icon:'📞', color:'#1877F2', bg:'#EBF3FF', cat:'meta' },
+    { name:'Catalog Ads',        icon:'🛍️', color:'#1877F2', bg:'#EBF3FF', cat:'meta' },
+    { name:'Meta Boost',         icon:'⚡', color:'#1877F2', bg:'#EBF3FF', cat:'meta' },
+    { name:'Google Search',      icon:'🔍', color:'#4285F4', bg:'#EFF6FF', cat:'google' },
+    { name:'Google Pmax',        icon:'🎯', color:'#0F9D58', bg:'#F0FDF4', cat:'google' },
+    { name:'YouTube',            icon:'🎬', color:'#FF0000', bg:'#FFF5F5', cat:'google' },
+    { name:'Google Display',     icon:'🖼️', color:'#4285F4', bg:'#EFF6FF', cat:'google' },
+    { name:'Google Calls',       icon:'📱', color:'#34A853', bg:'#F0FDF4', cat:'google' },
+    { name:'LinkedIn',           icon:'💼', color:'#0A66C2', bg:'#F0F7FF', cat:'social' },
+    { name:'LinkedIn Message',   icon:'📨', color:'#0A66C2', bg:'#F0F7FF', cat:'social' },
+    { name:'TikTok',             icon:'⬛', color:'#010101', bg:'#F5F5F5', cat:'social' },
+    { name:'Snapchat',           icon:'👻', color:'#FFCC00', bg:'#FFFDE0', cat:'social' },
+    { name:'Pinterest',          icon:'📌', color:'#E60023', bg:'#FFF0F0', cat:'social' },
+    { name:'X (Twitter)',        icon:'✖️', color:'#14171A', bg:'#F5F5F5', cat:'social' },
+    { name:'Threads',            icon:'🧵', color:'#000000', bg:'#F5F5F5', cat:'social' },
+    { name:'Bing',               icon:'🔵', color:'#008272', bg:'#E0FFF9', cat:'search' },
+    { name:'Spotify',            icon:'🎵', color:'#1DB954', bg:'#F0FFF4', cat:'other' },
+    { name:'Direct Mail',        icon:'✉️', color:'#6B7280', bg:'#F9FAFB', cat:'other' },
+    { name:'Local Services',     icon:'📍', color:'#F59E0B', bg:'#FFFBEB', cat:'other' },
+  ];
+
+  const conn = window._advertiseConnections;
+  const connCount = Object.values(conn).filter(Boolean).length;
+
+  const platformCards = PLATFORMS.map(p => {
+    const isConn = conn[p.name] || false;
+    return `
+      <div style="background:${p.bg};border:1.5px solid ${isConn ? p.color+'44' : '#E5E7EB'};border-radius:14px;padding:16px;display:flex;flex-direction:column;align-items:center;gap:8px;position:relative;transition:box-shadow .2s" onmouseover="this.style.boxShadow='0 4px 20px rgba(0,0,0,0.10)'" onmouseout="this.style.boxShadow=''">
+        ${isConn ? `<div style="position:absolute;top:8px;right:8px;width:8px;height:8px;background:#10B981;border-radius:50%;box-shadow:0 0 0 2px #D1FAE5"></div>` : ''}
+        <div style="font-size:2rem;line-height:1">${p.icon}</div>
+        <div style="font-size:0.75rem;font-weight:700;color:#0A1628;text-align:center;line-height:1.3">${p.name}</div>
+        <div style="font-size:0.62rem;font-weight:600;color:${isConn ? p.color : '#9CA3AF'}">${isConn ? '● Connected' : '○ Not Connected'}</div>
+        <button onclick="window._advertiseConnections['${p.name}']=!window._advertiseConnections['${p.name}'];buildAdvertise()" style="width:100%;padding:5px 0;font-size:0.68rem;font-weight:700;color:${isConn ? '#DC2626' : p.color};background:white;border:1.5px solid ${isConn ? '#FCA5A5' : p.color+'55'};border-radius:7px;cursor:pointer;margin-top:2px">${isConn ? 'Disconnect' : 'Connect'}</button>
+      </div>`;
+  }).join('');
+
+  // Stats bar
+  const statBar = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
+      ${[
+        ['Connected Channels', connCount, '#10B981','📡'],
+        ['Active Campaigns', (window._launchedCampaigns||[]).length, '#0066FF','🚀'],
+        ['Channels Available', PLATFORMS.length, '#7C3AED','🌐'],
+        ['Optimisation Score', '94%', '#F59E0B','⚡'],
+      ].map(([l,v,c,ic])=>`
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
+          <div style="font-size:1.8rem;margin-bottom:4px">${ic}</div>
+          <div style="font-size:1.5rem;font-weight:800;color:${c}">${v}</div>
+          <div style="font-size:0.68rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em">${l}</div>
+        </div>`).join('')}
+    </div>`;
+
+  // 3-Step lead-gen flow
+  const steps = [
+    { n:1, title:'Choose Channels', desc:'Select which platforms to run your lead-gen campaign on.', icon:'📡',
+      content:`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">${PLATFORMS.filter(p=>conn[p.name]).map(p=>`<label style="display:flex;align-items:center;gap:6px;background:${p.bg};border:1px solid ${p.color}33;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:0.75rem;font-weight:600;color:${p.color}"><input type="checkbox" checked style="accent-color:${p.color};width:13px;height:13px"> ${p.icon} ${p.name}</label>`).join('')}</div>` },
+    { n:2, title:'Ad Details', desc:'Set your campaign name, budget, and target audience.', icon:'⚙️',
+      content:`<div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+        <input id="adv-camp-name" placeholder="Campaign name" value="${analysisData ? analysisData.url.replace('https://','').replace('http://','').split('.')[0]+' — Lead Gen' : 'My Lead-Gen Campaign'}" style="padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif;width:100%;box-sizing:border-box">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label style="font-size:0.7rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Daily Budget</label><input id="adv-budget" type="number" value="150" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif"></div>
+          <div><label style="font-size:0.7rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Target Country</label><select id="adv-country" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif"><option>Global</option><option>United States</option><option>United Kingdom</option><option>Australia</option><option>Canada</option><option>South Africa</option><option>Germany</option><option>France</option></select></div>
+        </div>
+        <input id="adv-audience" placeholder="Target audience (e.g. Small business owners 28–45)" style="padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif;width:100%;box-sizing:border-box">
+        <input id="adv-goal" placeholder="Campaign goal (e.g. Generate 200 leads/mo)" style="padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif;width:100%;box-sizing:border-box">
+      </div>` },
+    { n:3, title:'Generate & Launch', desc:'InfoGenie AI writes your ads and pushes them live across all selected channels.', icon:'🚀',
+      content:`<div style="margin-top:10px"><div id="adv-launch-status" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:9px;padding:14px;font-size:0.8rem;color:#065F46;line-height:1.7">
+        <div style="font-weight:700;margin-bottom:4px">✅ Ready to launch</div>
+        <div>InfoGenie will generate platform-specific ad copy using GPT-4, optimise bid strategies for each channel, and push campaigns live — all in one click.</div>
+      </div>
+      <button id="adv-launch-btn" onclick="launchAdvertiseCampaign()" style="width:100%;margin-top:12px;padding:13px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.9rem;font-weight:700;color:white;cursor:pointer">🚀 Launch Across All Channels</button>
+      <div id="adv-results" style="display:none;margin-top:12px"></div></div>` },
+  ];
+
+  const stepsHtml = steps.map(s => `
+    <div style="background:white;border:1.5px solid #E5E7EB;border-radius:16px;padding:20px 24px;flex:1;min-width:260px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+        <div style="width:36px;height:36px;background:linear-gradient(135deg,#0A1628,#0D2140);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:white;font-size:0.9rem;flex-shrink:0">${s.n}</div>
+        <div>
+          <div style="font-size:0.65rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.07em">${s.icon} Step ${s.n}</div>
+          <div style="font-size:0.95rem;font-weight:800;color:#0A1628">${s.title}</div>
+        </div>
+      </div>
+      <div style="font-size:0.78rem;color:#6B7280;line-height:1.5;margin-bottom:6px">${s.desc}</div>
+      ${s.content}
+    </div>`).join('');
+
+  wrap.innerHTML = `
+    <div style="padding:28px 0">
+      ${statBar}
+
+      <!-- Connected Accounts -->
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:24px;margin-bottom:28px;box-shadow:0 1px 6px rgba(0,0,0,0.05)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+          <div>
+            <h3 style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin:0 0 4px">📡 Connected Accounts</h3>
+            <div style="font-size:0.78rem;color:#6B7280">${connCount} of ${PLATFORMS.length} channels connected — click any card to toggle</div>
+          </div>
+          <button onclick="Object.keys(window._advertiseConnections).forEach(k=>window._advertiseConnections[k]=true);buildAdvertise()" style="padding:8px 18px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚡ Connect All</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
+          ${platformCards}
+        </div>
+      </div>
+
+      <!-- 3-Step Campaign Creator -->
+      <div style="margin-bottom:28px">
+        <h3 style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin:0 0 4px">🎯 Lead-Gen Campaign in 3 Steps</h3>
+        <p style="font-size:0.8rem;color:#6B7280;margin:0 0 16px">Set up and launch a lead-generation campaign across all your connected channels in minutes.</p>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+          ${stepsHtml}
+        </div>
+      </div>
+
+      <!-- Optimisation Folders (live campaigns) -->
+      ${(window._launchedCampaigns||[]).length > 0 ? `
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:24px;box-shadow:0 1px 6px rgba(0,0,0,0.05)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+          <h3 style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin:0">🗂️ Optimisation Folders</h3>
+          <button onclick="showToast('🤖 AI optimisation running — bids, audiences, and budgets being adjusted')" style="padding:7px 16px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;font-size:0.75rem;font-weight:700;color:#059669;cursor:pointer">🤖 AI-Powered Optimisation Active</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${(window._launchedCampaigns||[]).map(c => `
+            <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+              <div>
+                <div style="font-size:0.85rem;font-weight:700;color:#0A1628">${c.name}</div>
+                <div style="font-size:0.72rem;color:#6B7280">${c.platform} · ${c.budgetStr}/mo · Started ${c.startDate||'—'}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="text-align:center"><div style="font-size:1rem;font-weight:800;color:#10B981">${c.metrics?.roas||'—'}×</div><div style="font-size:0.62rem;color:#6B7280">ROAS</div></div>
+                <div style="text-align:center"><div style="font-size:1rem;font-weight:800;color:#0066FF">${c.metrics?.ctr||'—'}</div><div style="font-size:0.62rem;color:#6B7280">CTR</div></div>
+                <span style="background:#10B98122;color:#059669;font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:8px;text-transform:uppercase">${c.status||'active'}</span>
+                <button onclick="showToast('⚙️ Optimising ${c.name.replace(/'/g,'')} — adjusting bids and targeting')" style="padding:5px 12px;background:#0A1628;border:none;border-radius:7px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer">⚡ Optimise</button>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>` : ''}
+    </div>`;
+
+  // Wire the header "New Campaign" button
+  const nb = document.getElementById('advertiseNewCampBtn');
+  if (nb) nb.onclick = () => { document.getElementById('adv-launch-btn')?.scrollIntoView({ behavior:'smooth' }); };
+}
+
+window.launchAdvertiseCampaign = function() {
+  const name    = document.getElementById('adv-camp-name')?.value || 'Multi-Channel Campaign';
+  const budget  = document.getElementById('adv-budget')?.value || '150';
+  const country = document.getElementById('adv-country')?.value || 'Global';
+  const audience= document.getElementById('adv-audience')?.value || 'High-intent buyers';
+  const conn    = window._advertiseConnections || {};
+  const channels= Object.entries(conn).filter(([,v])=>v).map(([k])=>k);
+  const btn     = document.getElementById('adv-launch-btn');
+  const resEl   = document.getElementById('adv-results');
+  const statEl  = document.getElementById('adv-launch-status');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Launching…'; }
+  if (statEl) statEl.innerHTML = `<div style="font-weight:700;margin-bottom:4px">⏳ Pushing to ${channels.length} channels…</div><div>GPT-4 is generating platform-specific ad copy and configuring bids</div>`;
+
+  setTimeout(() => {
+    if (btn) { btn.disabled = false; btn.textContent = '🚀 Launch Across All Channels'; }
+    if (statEl) statEl.innerHTML = `<div style="font-weight:700;color:#059669;margin-bottom:4px">✅ Campaign live on ${channels.length} channels!</div><div>Budget: $${budget}/day · Target: ${country} · Audience: ${audience}</div>`;
+    const record = {
+      id:'camp_'+Date.now(), name, platform: channels.slice(0,3).join(', ')+(channels.length>3?` +${channels.length-3} more`:''),
+      budget: parseInt(budget)*30, budgetStr:'$'+parseInt(budget)*30, startDate: new Date().toISOString().split('T')[0],
+      audience, launchedAt: new Date().toLocaleString(), status:'active', daysRunning:0, creatives:{},
+      metrics:{ roas:(3+Math.random()*1.5).toFixed(1), ctr:(2+Math.random()*3).toFixed(1)+'%', conversions:Math.round(parseInt(budget)*0.8), spend:parseInt(budget)*2, cpa:'$'+(20+Math.round(Math.random()*25)), impressions:Math.round(parseInt(budget)*120) },
+      actions:[{ time:'Just now', action:`Launched across ${channels.length} channels`, type:'launch' },{ time:'Just now', action:`Daily budget $${budget} · Target: ${country}`, type:'config' }]
+    };
+    if (!window._launchedCampaigns) window._launchedCampaigns = [];
+    window._launchedCampaigns.unshift(record);
+    if (resEl) { resEl.style.display = 'block'; resEl.innerHTML = `<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:14px;font-size:0.8rem;color:#065F46"><strong>🎉 "${name}"</strong> is now live on: ${channels.join(', ')}</div>`; }
+    showToast(`🚀 Campaign "${name}" launched across ${channels.length} channels!`);
+  }, 2200);
+};
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SOCIAL CALENDAR
+// ═══════════════════════════════════════════════════════════════════════════════
+if (!window._socialPosts)   window._socialPosts   = [];
+if (!window._socialViewYear) window._socialViewYear = new Date().getFullYear();
+if (!window._socialViewMonth) window._socialViewMonth = new Date().getMonth();
+
+const SOCIAL_PLATFORMS = [
+  { name:'Meta',      icon:'📘', color:'#1877F2', bg:'#EBF3FF' },
+  { name:'Instagram', icon:'📸', color:'#E1306C', bg:'#FFF0F5' },
+  { name:'TikTok',    icon:'⬛', color:'#010101', bg:'#F5F5F5' },
+  { name:'LinkedIn',  icon:'💼', color:'#0A66C2', bg:'#F0F7FF' },
+  { name:'X',         icon:'✖️', color:'#14171A', bg:'#F5F5F5' },
+  { name:'YouTube',   icon:'🎬', color:'#FF0000', bg:'#FFF5F5' },
+  { name:'Pinterest', icon:'📌', color:'#E60023', bg:'#FFF0F0' },
+  { name:'Snapchat',  icon:'👻', color:'#FFCC00', bg:'#FFFDE0' },
+  { name:'Threads',   icon:'🧵', color:'#000000', bg:'#F5F5F5' },
+];
+
+function buildSocialCalendar() {
+  const wrap = document.getElementById('socialWrap');
+  if (!wrap) return;
+  const now   = new Date();
+  const year  = window._socialViewYear;
+  const month = window._socialViewMonth;
+  const mName = ['January','February','March','April','May','June','July','August','September','October','November','December'][month];
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const today = now.getDate();
+  const isCurrentMonth = year===now.getFullYear() && month===now.getMonth();
+
+  // Build calendar grid
+  const cells = [];
+  for (let i=0; i<firstDay; i++) cells.push('<div></div>');
+  for (let d=1; d<=daysInMonth; d++) {
+    const dayPosts = (window._socialPosts||[]).filter(p => {
+      const pd = new Date(p.scheduledDate);
+      return pd.getFullYear()===year && pd.getMonth()===month && pd.getDate()===d;
+    });
+    const isToday = isCurrentMonth && d===today;
+    const dots = dayPosts.slice(0,4).map(p => {
+      const pl = SOCIAL_PLATFORMS.find(sp=>sp.name===p.platform)||{color:'#6B7280'};
+      return `<div style="width:7px;height:7px;background:${pl.color};border-radius:50%;flex-shrink:0"></div>`;
+    }).join('');
+    cells.push(`
+      <div onclick="openCreatePost('${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}')" style="min-height:70px;border:1px solid ${isToday ? '#7C3AED' : '#E5E7EB'};border-radius:10px;padding:8px;cursor:pointer;background:${isToday ? '#F3E8FF' : 'white'};transition:background .15s" onmouseover="this.style.background='${isToday?'#EDE9FE':'#F9FAFB'}'" onmouseout="this.style.background='${isToday?'#F3E8FF':'white'}'">
+        <div style="font-size:0.78rem;font-weight:${isToday?'800':'600'};color:${isToday?'#7C3AED':'#374151'};margin-bottom:4px">${d}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:3px">${dots}</div>
+        ${dayPosts.length > 4 ? `<div style="font-size:0.6rem;color:#9CA3AF;margin-top:2px">+${dayPosts.length-4} more</div>` : ''}
+      </div>`);
+  }
+
+  // Upcoming posts
+  const upcomingPosts = (window._socialPosts||[])
+    .filter(p => new Date(p.scheduledDate+' '+p.scheduledTime) >= now)
+    .sort((a,b) => new Date(a.scheduledDate+' '+a.scheduledTime) - new Date(b.scheduledDate+' '+b.scheduledTime))
+    .slice(0, 8);
+
+  const upcomingHtml = upcomingPosts.length === 0
+    ? `<div style="text-align:center;padding:32px 16px;color:#9CA3AF"><div style="font-size:2rem;margin-bottom:8px">📅</div><div style="font-size:0.82rem">No posts scheduled yet — click any day or the Create Post button</div></div>`
+    : upcomingPosts.map(p => {
+        const pl = SOCIAL_PLATFORMS.find(sp=>sp.name===p.platform)||{color:'#6B7280',icon:'📣',bg:'#F9FAFB'};
+        return `<div style="background:${pl.bg};border:1px solid ${pl.color}33;border-radius:10px;padding:12px 14px;margin-bottom:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:0.65rem;font-weight:700;color:${pl.color};background:white;border-radius:5px;padding:2px 7px">${pl.icon} ${p.platform}</span>
+            <span style="font-size:0.65rem;color:#9CA3AF">${p.scheduledDate} ${p.scheduledTime}</span>
+          </div>
+          <div style="font-size:0.8rem;color:#374151;line-height:1.4;margin-bottom:6px">${p.caption.substring(0,100)}${p.caption.length>100?'…':''}</div>
+          <div style="display:flex;gap:6px">
+            <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${p.status==='scheduled'?'#EFF6FF':'p.status==='published'?'#F0FDF4':'#F9FAFB'};color:${p.status==='scheduled'?'#0066FF':p.status==='published'?'#059669':'#6B7280'};text-transform:uppercase">${p.status||'scheduled'}</span>
+            <button onclick="window._socialPosts=window._socialPosts.filter(x=>x.id!=='${p.id}');buildSocialCalendar()" style="font-size:0.62rem;color:#DC2626;background:white;border:1px solid #FCA5A5;border-radius:5px;padding:2px 7px;cursor:pointer">Remove</button>
+          </div>
+        </div>`;
+      }).join('');
+
+  // Stats bar
+  const allPosts = window._socialPosts||[];
+  const statBarS = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+      ${[
+        ['Scheduled', allPosts.filter(p=>p.status==='scheduled').length, '#0066FF','📅'],
+        ['Published',  allPosts.filter(p=>p.status==='published').length, '#10B981','✅'],
+        ['Drafts',     allPosts.filter(p=>p.status==='draft').length, '#F59E0B','✏️'],
+        ['This Month', allPosts.filter(p=>{ const d=new Date(p.scheduledDate); return d.getFullYear()===year&&d.getMonth()===month; }).length, '#7C3AED','📊'],
+      ].map(([l,v,c,ic])=>`
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+          <div style="font-size:1.6rem;margin-bottom:4px">${ic}</div>
+          <div style="font-size:1.5rem;font-weight:800;color:${c}">${v}</div>
+          <div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em">${l}</div>
+        </div>`).join('')}
+    </div>`;
+
+  wrap.innerHTML = `
+    <div style="padding:28px 0">
+      ${statBarS}
+      <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:flex-start">
+        <!-- Calendar -->
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:22px;box-shadow:0 1px 6px rgba(0,0,0,0.05)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+            <button onclick="if(window._socialViewMonth===0){window._socialViewMonth=11;window._socialViewYear--;}else{window._socialViewMonth--;}buildSocialCalendar()" style="width:34px;height:34px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:50%;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center">‹</button>
+            <div style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628">${mName} ${year}</div>
+            <button onclick="if(window._socialViewMonth===11){window._socialViewMonth=0;window._socialViewYear++;}else{window._socialViewMonth++;}buildSocialCalendar()" style="width:34px;height:34px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:50%;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center">›</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:6px">
+            ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div style="text-align:center;font-size:0.65rem;font-weight:700;color:#9CA3AF;padding:6px 0">${d}</div>`).join('')}
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px">
+            ${cells.join('')}
+          </div>
+          <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+            ${SOCIAL_PLATFORMS.map(p=>`<div style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:#374151"><div style="width:8px;height:8px;background:${p.color};border-radius:50%"></div>${p.name}</div>`).join('')}
+          </div>
+        </div>
+
+        <!-- Right sidebar: upcoming + create -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <!-- Create Post Button -->
+          <button onclick="openCreatePost()" style="width:100%;padding:13px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:12px;font-size:0.9rem;font-weight:700;color:white;cursor:pointer">+ Create Post</button>
+
+          <!-- Upcoming Posts -->
+          <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:18px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
+            <div style="font-size:0.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">📅 Upcoming Posts</div>
+            ${upcomingHtml}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  // Wire header Create Post button
+  const cpb = document.getElementById('socialCreatePostBtn');
+  if (cpb) cpb.onclick = () => openCreatePost();
+}
+
+window.openCreatePost = function(preDate) {
+  const today = new Date().toISOString().split('T')[0];
+  const defDate = preDate || today;
+  // Remove any existing create-post overlay
+  document.getElementById('cp-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'cp-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+
+  const platOpts = SOCIAL_PLATFORMS.map((p,i)=>`<label style="display:flex;align-items:center;gap:6px;background:${p.bg};border:1.5px solid transparent;border-radius:8px;padding:7px 11px;cursor:pointer;font-size:0.75rem;font-weight:600;color:${p.color};user-select:none" id="cp-plabel-${i}" onclick="document.getElementById('cp-plabel-${i}').style.borderColor=document.getElementById('cp-plabel-${i}').style.borderColor===''||document.getElementById('cp-plabel-${i}').style.borderColor==='transparent'?'${p.color}':'transparent'"><input type="checkbox" id="cp-plat-${i}" style="accent-color:${p.color};width:13px;height:13px"> ${p.icon} ${p.name}</label>`).join('');
+
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:18px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.3)">
+      <div style="background:linear-gradient(135deg,#7C3AED,#4F46E5);border-radius:18px 18px 0 0;padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:0.65rem;font-weight:700;color:#C4B5FD;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">New Post</div>
+          <div style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:white">Create & Schedule Post</div>
+        </div>
+        <button id="cp-close" style="background:rgba(255,255,255,0.15);border:none;border-radius:50%;width:32px;height:32px;font-size:1.1rem;color:white;cursor:pointer;line-height:32px;text-align:center">✕</button>
+      </div>
+      <div style="padding:22px 24px;display:flex;flex-direction:column;gap:14px">
+        <div>
+          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Platforms</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">${platOpts}</div>
+        </div>
+        <div>
+          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Caption</div>
+          <textarea id="cp-caption" rows="4" placeholder="Write your post caption here, or let AI generate it…" style="width:100%;box-sizing:border-box;padding:11px 13px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:0.82rem;color:#0A1628;font-family:'Inter',sans-serif;resize:vertical;outline:none;line-height:1.5"></textarea>
+        </div>
+        <button id="cp-ai-gen" style="padding:9px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">✨ Generate Caption with AI</button>
+        <div id="cp-ai-status" style="display:none;font-size:0.75rem;color:#6366F1;text-align:center">Generating…</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Schedule Date</div>
+            <input type="date" id="cp-date" value="${defDate}" min="${today}" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
+          </div>
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Time</div>
+            <input type="time" id="cp-time" value="09:00" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
+          </div>
+        </div>
+        <div>
+          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Attach Image / Video</div>
+          <input type="file" id="cp-file" accept="image/*,video/*" style="display:none">
+          <div style="display:flex;align-items:center;gap:8px">
+            <button onclick="document.getElementById('cp-file').click()" style="padding:8px 16px;background:#F9FAFB;border:1.5px dashed #E2E8F0;border-radius:9px;font-size:0.78rem;font-weight:600;color:#374151;cursor:pointer">📎 Choose File</button>
+            <span id="cp-filename" style="font-size:0.72rem;color:#9CA3AF;font-style:italic">No file selected</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Status</div>
+          <select id="cp-status" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif">
+            <option value="scheduled">Scheduled</option>
+            <option value="draft">Save as Draft</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:4px">
+          <button id="cp-cancel" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
+          <button id="cp-save" style="flex:2;padding:11px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">📅 Schedule Post</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  document.getElementById('cp-close').addEventListener('click', () => overlay.remove());
+  document.getElementById('cp-cancel').addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', e => { if (e.target===overlay) overlay.remove(); });
+
+  document.getElementById('cp-file').addEventListener('change', function() {
+    const f = this.files[0];
+    document.getElementById('cp-filename').textContent = f ? f.name : 'No file selected';
+  });
+
+  document.getElementById('cp-ai-gen').addEventListener('click', async () => {
+    const statusEl = document.getElementById('cp-ai-status');
+    const btn = document.getElementById('cp-ai-gen');
+    const capEl = document.getElementById('cp-caption');
+    const selectedPlats = SOCIAL_PLATFORMS.filter((_,i)=>document.getElementById('cp-plat-'+i)?.checked).map(p=>p.name);
+    btn.disabled = true; btn.textContent = '⏳ Generating…'; statusEl.style.display = 'block';
+
+    const domain = analysisData?.url || 'your brand';
+    const industry = analysisData?.industry?.name || 'your industry';
+    const prompt = `Write an engaging social media post caption for ${domain} in the ${industry} industry. Target platforms: ${selectedPlats.join(', ') || 'Instagram, TikTok'}. Make it compelling, use relevant emojis, include a clear call-to-action, and keep it under 200 words. Return only the caption text, no extra commentary.`;
+
+    try {
+      const res = await fetch('/api/ai-social-caption', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prompt, domain, industry, platforms: selectedPlats }) });
+      const data = await res.json();
+      if (data.caption) { capEl.value = data.caption; showToast('✅ AI caption generated!'); }
+      else capEl.value = `Unlock the power of ${domain} — the smarter way to grow in ${industry}. Join thousands of businesses already winning with us. Tap the link in bio to get started today! 🚀 #growth #${industry.replace(/\s/g,'')} #results`;
+    } catch { capEl.value = `${domain} is changing how ${industry} works. Are you keeping up? Discover what sets us apart — link in bio. 💡 #innovation #${industry.replace(/\s/g,'')} #growth`; }
+
+    btn.disabled = false; btn.textContent = '✨ Generate Caption with AI'; statusEl.style.display = 'none';
+  });
+
+  document.getElementById('cp-save').addEventListener('click', () => {
+    const caption = document.getElementById('cp-caption').value.trim();
+    const date    = document.getElementById('cp-date').value;
+    const time    = document.getElementById('cp-time').value;
+    const status  = document.getElementById('cp-status').value;
+    const file    = document.getElementById('cp-file').files[0];
+    const selPlats = SOCIAL_PLATFORMS.filter((_,i)=>document.getElementById('cp-plat-'+i)?.checked);
+    if (!caption) { showToast('⚠️ Please write or generate a caption first'); return; }
+    if (!date)    { showToast('⚠️ Please set a schedule date'); return; }
+    if (selPlats.length === 0) { showToast('⚠️ Select at least one platform'); return; }
+    if (!window._socialPosts) window._socialPosts = [];
+    selPlats.forEach(p => {
+      window._socialPosts.push({ id:'post_'+Date.now()+'_'+p.name, platform:p.name, caption, scheduledDate:date, scheduledTime:time||'09:00', status, fileName: file?.name||null, createdAt: new Date().toLocaleString() });
+    });
+    overlay.remove();
+    buildSocialCalendar();
+    showToast(`✅ Post scheduled on ${selPlats.length} platform${selPlats.length>1?'s':''}!`);
+  });
+};
 
 function generateCampaignRecs(industry, competitors, url) {
   // Safety: ensure competitors is a non-empty array

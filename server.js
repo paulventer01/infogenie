@@ -1201,6 +1201,24 @@ app.post('/api/reddit-signals', async (req, res) => {
   }
 });
 
+// ── POST /api/ai-social-caption ──────────────────────────────────────────────
+app.post('/api/ai-social-caption', async (req, res) => {
+  try {
+    const { prompt, domain = 'your brand', industry = 'your industry', platforms = [] } = req.body;
+    const { OpenAI } = require('openai');
+    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+    const msgs = [
+      { role:'system', content:'You are an expert social media copywriter. Write engaging, platform-optimised social media captions that drive engagement. Never mention competitor brand names. Return only the caption text.' },
+      { role:'user', content: prompt || `Write an engaging social media caption for ${domain} in the ${industry} industry. Platforms: ${platforms.join(', ')||'Instagram'}. Use relevant emojis, a clear call-to-action, under 200 words.` }
+    ];
+    const completion = await openai.chat.completions.create({ model:'gpt-4o', messages: msgs, max_tokens: 350 });
+    const caption = completion.choices[0]?.message?.content?.trim() || '';
+    res.json({ caption });
+  } catch(err) {
+    res.json({ caption: '', error: err.message });
+  }
+});
+
 // ── POST /api/ai-creative ─────────────────────────────────────────────────────
 // Powers Creative Studio — uses GPT-4 via Replit AI Integrations with smart fallback
 

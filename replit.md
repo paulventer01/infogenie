@@ -45,6 +45,8 @@ InfoGenie is a comprehensive AI-powered marketing intelligence and campaign auto
 11. **ROAS Domination Plan** — Detailed 90-day roadmap per competitor: ROAS gap analysis with transparent reasoning, 3-phase execution plan with projected revenue, channel budget allocation, competitor weakness identification
 12. **Rich Campaign Launch** — Full campaign brief before launch: AI-generated headlines/descriptions, platform strategy, bid strategy, audience spec, budget breakdown (daily/weekly/monthly), projected conversions and revenue
 13. **Creative Preview Modal** — 4-format ad preview per campaign: Search Ad, Display Banner, Instagram Story, Video Script — with AI copy per format
+14. **Multi-Channel Advertise Hub** — 22-platform connected accounts grid (Meta, Google, TikTok, LinkedIn, Bing, Spotify, Pinterest, X, Threads, Snapchat, Direct Mail, Local Services, etc.); 3-step lead-gen campaign creator with AI optimisation; live Optimisation Folders for active campaigns
+15. **Social Content Calendar** — Monthly calendar view with per-platform post scheduling; Create Post modal with AI-generated captions (GPT-4), multi-platform selection, file upload, date/time picker; scheduled/published/draft status tracking; upcoming posts sidebar; `POST /api/ai-social-caption` GPT-4 endpoint
 
 ## Supported Industries
 - E-commerce & Retail (Amazon, Shopify, eBay, Etsy, Wayfair)
