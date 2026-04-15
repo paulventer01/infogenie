@@ -3784,7 +3784,7 @@ function buildContent() {
             <div style="font-size:0.75rem;color:#6B7280;font-weight:500">${g.intent}</div>
             <div style="font-size:0.78rem;font-weight:700;color:#0A1628">${g.volume}</div>
             <div><span style="font-size:0.65rem;font-weight:700;padding:3px 8px;border-radius:6px;background:${g.priority==='Critical'?'#FEF2F2':g.priority==='High'?'#FFFBEB':'#F0FDF4'};color:${g.priority==='Critical'?'#DC2626':g.priority==='High'?'#D97706':'#059669'}">${g.priority}</span></div>
-            <div><button onclick="window._contentTab='clusters';window._clusterSeedPrefill='${g.topic.replace(/'/g,"\\'")}';buildContent()" style="padding:5px 11px;background:#0A1628;border:none;border-radius:7px;font-size:0.68rem;font-weight:700;color:white;cursor:pointer">Build Content</button></div>
+            <div><button onclick="openBuildContentModal('${g.topic.replace(/'/g,"\\'")}','${g.intent}')" style="padding:5px 11px;background:#059669;border:none;border-radius:7px;font-size:0.68rem;font-weight:700;color:white;cursor:pointer">✍️ Build Content</button></div>
           </div>`).join('')}
       </div>`;
   })();
@@ -3888,6 +3888,180 @@ window.generateCluster = async function() {
   if (btn) { btn.disabled = false; btn.textContent = '🧩 Build Cluster'; }
 };
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONTENT BUILDER MODAL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window.openBuildContentModal = function(topic, intent) {
+  let modal = document.getElementById('bcModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'bcModal';
+    document.body.appendChild(modal);
+  }
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.82);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  const types = [
+    { id:'article',    label:'📄 Blog Article',       desc:'Full authoritative article with FAQ' },
+    { id:'howto',      label:'🛠️ How-To Guide',        desc:'Step-by-step practical guide' },
+    { id:'comparison', label:'⚖️ Comparison Page',     desc:'Side-by-side competitor comparison' },
+    { id:'landing',    label:'🚀 Landing Page',        desc:'High-converting page copy' },
+  ];
+  modal.innerHTML = `
+    <div style="background:#0A1628;border:1px solid rgba(255,255,255,.1);border-radius:20px;width:100%;max-width:720px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.6)">
+      <!-- Header -->
+      <div style="padding:20px 24px 16px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-shrink:0">
+        <div>
+          <div style="font-size:0.6rem;font-weight:700;color:#00C9C8;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">AI Content Builder · GPT-4o + Claude Sonnet</div>
+          <div style="font-family:'Sora',sans-serif;font-size:1.05rem;font-weight:800;color:white;line-height:1.3">${topic}</div>
+          <div style="font-size:0.72rem;color:rgba(255,255,255,.4);margin-top:3px">Intent: ${intent}</div>
+        </div>
+        <button onclick="document.getElementById('bcModal').style.display='none'" style="background:rgba(255,255,255,.06);border:none;border-radius:8px;color:rgba(255,255,255,.5);font-size:1.1rem;width:32px;height:32px;cursor:pointer;flex-shrink:0">✕</button>
+      </div>
+      <!-- Content type selector -->
+      <div style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0">
+        <div style="font-size:0.7rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Content Type</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px" id="bcTypeGrid">
+          ${types.map(t=>`
+            <button onclick="window._bcType='${t.id}';document.querySelectorAll('.bcTypeBtn').forEach(b=>b.style.background='rgba(255,255,255,.05)');this.style.background='rgba(0,201,200,.15)';this.style.borderColor='#00C9C8'"
+              class="bcTypeBtn" style="padding:10px 8px;background:${t.id==='article'?'rgba(0,201,200,.15)':'rgba(255,255,255,.05)'};border:1.5px solid ${t.id==='article'?'#00C9C8':'rgba(255,255,255,.1)'};border-radius:10px;color:white;font-size:0.7rem;font-weight:700;cursor:pointer;text-align:center;transition:all .15s">
+              <div style="font-size:1rem;margin-bottom:3px">${t.label.split(' ')[0]}</div>
+              <div>${t.label.split(' ').slice(1).join(' ')}</div>
+              <div style="font-size:0.58rem;color:rgba(255,255,255,.35);margin-top:2px;font-weight:400">${t.desc}</div>
+            </button>`).join('')}
+        </div>
+      </div>
+      <!-- Output area -->
+      <div id="bcOutput" style="flex:1;overflow-y:auto;padding:20px 24px;min-height:200px">
+        <div style="text-align:center;padding:40px 16px;color:rgba(255,255,255,.25)">
+          <div style="font-size:2.5rem;margin-bottom:10px">✍️</div>
+          <div style="font-size:0.85rem;font-weight:600">Choose a content type above, then click Generate</div>
+        </div>
+      </div>
+      <!-- Footer -->
+      <div style="padding:14px 24px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0">
+        <div id="bcStatus" style="font-size:0.72rem;color:rgba(255,255,255,.35)">Ready to generate</div>
+        <div style="display:flex;gap:8px">
+          <button id="bcCopyBtn" onclick="bcCopy()" style="display:none;padding:9px 16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:9px;color:rgba(255,255,255,.7);font-size:0.75rem;font-weight:700;cursor:pointer">📋 Copy</button>
+          <button id="bcDlBtn" onclick="bcDownload('${topic.replace(/'/g,"\\'")}','${intent}')" style="display:none;padding:9px 16px;background:rgba(0,201,200,.12);border:1px solid rgba(0,201,200,.25);border-radius:9px;color:#00C9C8;font-size:0.75rem;font-weight:700;cursor:pointer">⬇️ Download</button>
+          <button onclick="runBuildContent('${topic.replace(/'/g,"\\'")}','${intent}')" id="bcGenBtn" style="padding:9px 20px;background:linear-gradient(135deg,#059669,#065F46);border:none;border-radius:9px;color:white;font-size:0.78rem;font-weight:700;cursor:pointer">⚡ Generate Content</button>
+        </div>
+      </div>
+    </div>`;
+  window._bcType = 'article';
+  window._bcContent = '';
+};
+
+window.runBuildContent = async function(topic, intent) {
+  const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
+  const industry = analysisData?.industry?.name || 'digital marketing';
+  const contentType = window._bcType || 'article';
+  const output   = document.getElementById('bcOutput');
+  const status   = document.getElementById('bcStatus');
+  const genBtn   = document.getElementById('bcGenBtn');
+  const copyBtn  = document.getElementById('bcCopyBtn');
+  const dlBtn    = document.getElementById('bcDlBtn');
+  if (!output) return;
+
+  if (genBtn)  { genBtn.disabled = true; genBtn.textContent = '⏳ Generating…'; }
+  if (status)  status.textContent = 'GPT-4o + Claude Sonnet generating in parallel…';
+  if (copyBtn) copyBtn.style.display = 'none';
+  if (dlBtn)   dlBtn.style.display = 'none';
+
+  let sec = 0;
+  const tick = setInterval(() => {
+    sec++;
+    if (status) status.textContent = `GPT-4o + Claude Sonnet generating… ${sec}s`;
+    output.innerHTML = `<div style="text-align:center;padding:40px 16px">
+      <div style="width:44px;height:44px;border:3px solid rgba(0,201,200,.2);border-top-color:#00C9C8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px"></div>
+      <div style="font-size:0.85rem;font-weight:700;color:white;margin-bottom:5px">Building your content… <span style="color:#00C9C8">${sec}s</span></div>
+      <div style="font-size:0.72rem;color:rgba(255,255,255,.35)">GPT-4o writing the article · Claude Sonnet adding expert insights</div>
+    </div>`;
+  }, 1000);
+
+  try {
+    const resp = await fetch('/api/ai-build-content', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ topic, intent, domain, industry, contentType })
+    });
+    const data = await resp.json();
+    clearInterval(tick);
+    if (genBtn) { genBtn.disabled = false; genBtn.textContent = '🔄 Regenerate'; }
+
+    if (!data.article) throw new Error(data.error || 'No content returned');
+    window._bcContent = data.article;
+
+    // Render markdown-style content as HTML
+    const html = data.article
+      .replace(/^# (.+)$/gm, '<h1 style="font-family:\'Sora\',sans-serif;font-size:1.35rem;font-weight:800;color:white;margin:0 0 14px;line-height:1.3">$1</h1>')
+      .replace(/^## (.+)$/gm, '<h2 style="font-family:\'Sora\',sans-serif;font-size:1rem;font-weight:700;color:#00C9C8;margin:22px 0 8px">$1</h2>')
+      .replace(/^### (.+)$/gm, '<h3 style="font-size:0.88rem;font-weight:700;color:rgba(255,255,255,.7);margin:14px 0 6px">$1</h3>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong style="color:white">$1</strong>')
+      .replace(/^- (.+)$/gm, '<li style="font-size:0.82rem;color:rgba(255,255,255,.75);margin:4px 0;padding-left:6px">$1</li>')
+      .replace(/(<li[^>]*>.*<\/li>\n?)+/g, m => `<ul style="margin:8px 0 12px;padding-left:18px">${m}</ul>`)
+      .replace(/^\d+\. (.+)$/gm, '<li style="font-size:0.82rem;color:rgba(255,255,255,.75);margin:6px 0">$1</li>')
+      .replace(/^(?!<[h|u|l|s]).+$/gm, m => m.trim() ? `<p style="font-size:0.83rem;color:rgba(255,255,255,.75);line-height:1.7;margin:6px 0">${m}</p>` : '')
+      .trim();
+
+    let claudeHtml = '';
+    if (data.claudeExtras) {
+      const ex = data.claudeExtras;
+      claudeHtml = `
+        <div style="margin-top:24px;padding:16px;background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.25);border-radius:12px">
+          <div style="font-size:0.65rem;font-weight:700;color:#A78BFA;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">✨ Claude Sonnet Additions</div>
+          ${ex.altTitles?.length ? `
+            <div style="margin-bottom:12px">
+              <div style="font-size:0.72rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:6px">Alternative Headlines</div>
+              ${ex.altTitles.map(t=>`<div style="font-size:0.82rem;color:white;padding:6px 10px;background:rgba(255,255,255,.05);border-radius:7px;margin-bottom:4px;font-weight:600">${t}</div>`).join('')}
+            </div>` : ''}
+          ${ex.expertInsight ? `
+            <div style="margin-bottom:12px">
+              <div style="font-size:0.72rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:6px">Expert Insight</div>
+              <div style="font-size:0.82rem;color:rgba(255,255,255,.75);line-height:1.6;padding:8px 12px;background:rgba(255,255,255,.04);border-left:3px solid #A78BFA;border-radius:0 8px 8px 0">${ex.expertInsight}</div>
+            </div>` : ''}
+          ${ex.extraFAQs?.length ? `
+            <div>
+              <div style="font-size:0.72rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:6px">Additional FAQ Questions</div>
+              ${ex.extraFAQs.map(f=>`<div style="margin-bottom:8px;padding:8px 10px;background:rgba(255,255,255,.04);border-radius:8px"><div style="font-size:0.78rem;font-weight:700;color:#A78BFA;margin-bottom:3px">${f.q}</div><div style="font-size:0.75rem;color:rgba(255,255,255,.65);line-height:1.5">${f.a}</div></div>`).join('')}
+            </div>` : ''}
+        </div>`;
+    }
+
+    const wordCount = data.article.split(/\s+/).length;
+    output.innerHTML = `
+      <div style="margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        ${data.dualAI ? `<span style="font-size:0.62rem;font-weight:700;padding:3px 10px;border-radius:6px;background:linear-gradient(135deg,rgba(0,201,200,.15),rgba(124,58,237,.15));color:#A78BFA;border:1px solid rgba(167,139,250,.3)">✨ GPT-4o + Claude Sonnet</span>` : ''}
+        <span style="font-size:0.62rem;font-weight:700;padding:3px 10px;border-radius:6px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.5)">${wordCount} words</span>
+        <span style="font-size:0.62rem;font-weight:700;padding:3px 10px;border-radius:6px;background:rgba(5,150,105,.12);color:#10B981">${contentType.charAt(0).toUpperCase()+contentType.slice(1)}</span>
+      </div>
+      <div style="padding:20px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px">${html}</div>
+      ${claudeHtml}`;
+
+    if (status) status.textContent = `✅ ${wordCount} words generated in ${sec}s`;
+    if (copyBtn) copyBtn.style.display = 'inline-flex';
+    if (dlBtn)   dlBtn.style.display = 'inline-flex';
+
+  } catch(err) {
+    clearInterval(tick);
+    if (genBtn) { genBtn.disabled = false; genBtn.textContent = '🔄 Try Again'; }
+    output.innerHTML = `<div style="text-align:center;padding:32px;color:#EF4444;font-size:0.82rem">⚠️ ${err.message}</div>`;
+    if (status) status.textContent = 'Generation failed';
+  }
+};
+
+window.bcCopy = function() {
+  if (!window._bcContent) return;
+  navigator.clipboard.writeText(window._bcContent).then(() => showToast('📋 Content copied to clipboard!'));
+};
+
+window.bcDownload = function(topic) {
+  if (!window._bcContent) return;
+  const blob = new Blob([window._bcContent], { type:'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (topic||'content').replace(/[^a-z0-9]/gi,'_').toLowerCase() + '.txt';
+  a.click();
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SOCIAL CALENDAR

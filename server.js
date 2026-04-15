@@ -1582,6 +1582,78 @@ Keep the entire response under 420 words. Be specific and actionable.`;
   }
 });
 
+// ── POST /api/ai-build-content ────────────────────────────────────────────────
+app.post('/api/ai-build-content', async (req, res) => {
+  try {
+    const { topic, intent='Informational', domain='yourdomain.com', industry='your industry', contentType='article' } = req.body;
+    const { OpenAI } = require('openai');
+    const Anthropic   = require('@anthropic-ai/sdk');
+    const openai      = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+    const anthropic   = new Anthropic.default({ baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY });
+
+    const typeInstructions = {
+      article:    `Write a comprehensive, authoritative blog article. Include: engaging H1 title, intro paragraph (hook + problem + promise), 3-4 main H2 sections each with 2-3 paragraphs, a FAQ section with 4 questions and detailed answers, and a conclusion with a clear CTA mentioning ${domain}.`,
+      howto:      `Write a practical step-by-step how-to guide. Include: clear H1 title, brief intro, 5-7 numbered steps each with explanation and tips, common mistakes to avoid, a FAQ section with 3 questions, and a conclusion with CTA mentioning ${domain}.`,
+      comparison: `Write a detailed comparison article. Include: H1 title, intro explaining why the comparison matters, comparison table (formatted as text rows), pros and cons of each option, a "Who Should Choose What" section, and a verdict/conclusion mentioning ${domain}.`,
+      landing:    `Write a high-converting landing page. Include: powerful H1 headline, value proposition paragraph, 3 key benefits with descriptions, social proof section, FAQ with 3 questions, and a strong CTA paragraph mentioning ${domain}.`,
+    };
+    const instruction = typeInstructions[contentType] || typeInstructions.article;
+
+    const gptPrompt = `You are an expert content writer specialising in SEO, LLM optimisation, and conversion. 
+Topic: "${topic}"
+Intent: ${intent}
+Brand: ${domain}
+Industry: ${industry}
+
+${instruction}
+
+Format using plain text with section markers:
+- Use # for H1 (main title)
+- Use ## for H2 (sections)
+- Use ### for H3 (subsections)
+- Use **text** for bold
+- Use regular paragraphs for body text
+- Use - for bullet points
+- Keep the full piece 700–900 words
+- Tone: professional, authoritative, helpful`;
+
+    const claudePrompt = `You are a content strategy expert. For the topic "${topic}" in the ${industry} industry:
+
+Provide ONLY the following additions (do not rewrite the full article):
+1. Two alternative H1 title options (punchier/more click-worthy)
+2. Three additional FAQ questions with concise answers not typically covered
+3. One "Expert Insight" paragraph that adds a unique angle or surprising statistic
+
+Return ONLY raw JSON: {
+  "altTitles": ["title1","title2"],
+  "extraFAQs": [{"q":"question","a":"answer"},{"q":"question","a":"answer"},{"q":"question","a":"answer"}],
+  "expertInsight": "one insightful paragraph"
+}`;
+
+    const [gptRes, claudeRes] = await Promise.allSettled([
+      openai.chat.completions.create({ model:'gpt-4o', messages:[{role:'user',content:gptPrompt}], max_tokens:1800 }),
+      anthropic.messages.create({ model:'claude-sonnet-4-6', max_tokens:600, messages:[{role:'user',content:claudePrompt}] })
+    ]);
+
+    let article = '';
+    if (gptRes.status === 'fulfilled') {
+      article = gptRes.value.choices[0]?.message?.content?.trim() || '';
+    }
+
+    let claudeExtras = null;
+    if (claudeRes.status === 'fulfilled') {
+      try {
+        const raw = claudeRes.value.content?.[0]?.text || '{}';
+        claudeExtras = JSON.parse(raw.replace(/```json|```/g,'').trim());
+      } catch {}
+    }
+
+    res.json({ article, claudeExtras, dualAI: !!claudeExtras });
+  } catch(err) {
+    res.json({ article: null, error: err.message });
+  }
+});
+
 // ── POST /api/ai-content-brief ────────────────────────────────────────────────
 app.post('/api/ai-content-brief', async (req, res) => {
   try {
