@@ -5,7 +5,7 @@ generated = []
 id = "Vy3Sem690SIpbg8VvFm3F"
 uri = "file://infogenie-backup.tar.gz"
 type = "unspecified"
-title = "InfoGenie Complete Source Backup"
+title = "InfoGenie Full Source Backup"
 
 [[outputs]]
 id = "cV4y0z-pEjKFlrPOaoa_t"
