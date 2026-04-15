@@ -1201,6 +1201,50 @@ app.post('/api/reddit-signals', async (req, res) => {
   }
 });
 
+// ── POST /api/ai-channel-ad ───────────────────────────────────────────────────
+app.post('/api/ai-channel-ad', async (req, res) => {
+  try {
+    const { platform='Meta', format='Image Ad', goal='Lead Generation', audience='business owners', domain='yourdomain.com', industry='your industry', budget='100' } = req.body;
+    const { OpenAI } = require('openai');
+    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+    const systemPrompt = `You are an expert performance marketing copywriter. Write concise, high-converting ad copy for ${platform} ${format} ads. Never mention competitor brand names. Return JSON only.`;
+    const userPrompt = `Write a ${platform} ${format} ad for ${domain} in the ${industry} industry.
+Goal: ${goal}. Target audience: ${audience}. Daily budget: $${budget}.
+Return JSON: { "headline": "...", "body": "...", "cta": "...", "hashtags": "..." }
+Headline: 5-10 words. Body: 1-3 sentences. CTA: 3-5 words. Hashtags: 3-5 relevant (for social platforms).`;
+    const completion = await openai.chat.completions.create({ model:'gpt-4o', messages:[{role:'system',content:systemPrompt},{role:'user',content:userPrompt}], max_tokens:300, response_format:{type:'json_object'} });
+    const ad = JSON.parse(completion.choices[0]?.message?.content||'{}');
+    res.json({ ad });
+  } catch(err) {
+    res.json({ ad: { headline:`Grow with ${req.body?.domain||'us'}`, body:`The smart way to drive leads in ${req.body?.industry||'your industry'}. Start your campaign today.`, cta:'Get Started Free', hashtags:'#marketing #growth #leads' }, error: err.message });
+  }
+});
+
+// ── POST /api/ai-content-clusters ─────────────────────────────────────────────
+app.post('/api/ai-content-clusters', async (req, res) => {
+  try {
+    const { seed, domain='yourdomain.com', industry='your industry' } = req.body;
+    const { OpenAI } = require('openai');
+    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+    const systemPrompt = `You are an expert SEO strategist and content architect specialising in topical authority and LLM visibility. Return JSON only.`;
+    const userPrompt = `Build a comprehensive topical cluster for the seed topic: "${seed}"
+Context: domain=${domain}, industry=${industry}
+
+Return JSON: {
+  "pillar": "pillar page title",
+  "topics": ["7-10 subtopic page titles"],
+  "questions": ["6-8 real user questions people ask ChatGPT/Google about this topic"],
+  "aiNote": "1-2 sentence tip for maximising LLM citation chances for this cluster"
+}`;
+    const completion = await openai.chat.completions.create({ model:'gpt-4o', messages:[{role:'system',content:systemPrompt},{role:'user',content:userPrompt}], max_tokens:700, response_format:{type:'json_object'} });
+    const cluster = JSON.parse(completion.choices[0]?.message?.content||'{}');
+    if (!cluster.pillar) cluster.pillar = seed;
+    res.json({ cluster });
+  } catch(err) {
+    res.json({ cluster: null, error: err.message });
+  }
+});
+
 // ── POST /api/ai-social-caption ──────────────────────────────────────────────
 app.post('/api/ai-social-caption', async (req, res) => {
   try {

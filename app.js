@@ -1423,6 +1423,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'social') {
     try { buildSocialCalendar(); } catch(e) { console.warn('buildSocialCalendar error:', e); }
   }
+  if (viewId === 'content') {
+    try { buildContent(); } catch(e) { console.warn('buildContent error:', e); }
+  }
   // Show/hide navbar links for home vs app
   const navLinks = document.getElementById('navLinks');
   const navPlan = document.getElementById('navPlanBadge');
@@ -3014,58 +3017,61 @@ if (!window._advertiseConnections) {
   };
 }
 
+const ADV_PLATFORMS = [
+  { name:'Meta',                icon:'📘', color:'#1877F2', bg:'#EBF3FF', cat:'meta',   formats:['Image Ad','Video Ad','Carousel','Story Ad','Lead Gen Form'] },
+  { name:'Instagram',           icon:'📸', color:'#E1306C', bg:'#FFF0F5', cat:'meta',   formats:['Image Post','Reels Ad','Story Ad','Carousel','Shopping Ad'] },
+  { name:'Messenger & WhatsApp',icon:'💬', color:'#00B2FF', bg:'#E0F7FF', cat:'meta',   formats:['Sponsored Message','Click-to-Messenger','WhatsApp Click-to-Chat'] },
+  { name:'Meta Calls',          icon:'📞', color:'#1877F2', bg:'#EBF3FF', cat:'meta',   formats:['Click-to-Call Ad','Call-Only Ad'] },
+  { name:'Catalog Ads',         icon:'🛍️', color:'#1877F2', bg:'#EBF3FF', cat:'meta',   formats:['Dynamic Product Ad','Collection Ad','Catalogue Carousel'] },
+  { name:'Meta Boost',          icon:'⚡', color:'#1877F2', bg:'#EBF3FF', cat:'meta',   formats:['Boosted Post','Boosted Reel','Boosted Story'] },
+  { name:'Google Search',       icon:'🔍', color:'#4285F4', bg:'#EFF6FF', cat:'google', formats:['Responsive Search Ad','Dynamic Search Ad','Call Ad'] },
+  { name:'Google Pmax',         icon:'🎯', color:'#0F9D58', bg:'#F0FDF4', cat:'google', formats:['Performance Max Asset Group','Smart Shopping','Full-Funnel Pmax'] },
+  { name:'YouTube',             icon:'🎬', color:'#FF0000', bg:'#FFF5F5', cat:'google', formats:['Skippable In-Stream','Non-Skippable 15s','Bumper 6s','Video Discovery'] },
+  { name:'Google Display',      icon:'🖼️', color:'#4285F4', bg:'#EFF6FF', cat:'google', formats:['Responsive Display Ad','Smart Display Campaign','Gmail Ad'] },
+  { name:'Google Calls',        icon:'📱', color:'#34A853', bg:'#F0FDF4', cat:'google', formats:['Call-Only Ad','Call Extension Ad'] },
+  { name:'LinkedIn',            icon:'💼', color:'#0A66C2', bg:'#F0F7FF', cat:'social', formats:['Sponsored Content','Single Image Ad','Video Ad','Carousel Ad'] },
+  { name:'LinkedIn Message',    icon:'📨', color:'#0A66C2', bg:'#F0F7FF', cat:'social', formats:['Message Ad','Conversation Ad','Lead Gen Form'] },
+  { name:'TikTok',              icon:'⬛', color:'#010101', bg:'#F5F5F5', cat:'social', formats:['In-Feed Video Ad','TopView Ad','Spark Ad','Branded Hashtag'] },
+  { name:'Snapchat',            icon:'👻', color:'#FFCC00', bg:'#FFFDE0', cat:'social', formats:['Single Image/Video','Story Ad','Collection Ad'] },
+  { name:'Pinterest',           icon:'📌', color:'#E60023', bg:'#FFF0F0', cat:'social', formats:['Promoted Pin','Video Pin','Shopping Pin','Carousel'] },
+  { name:'X (Twitter)',         icon:'✖️', color:'#14171A', bg:'#F5F5F5', cat:'social', formats:['Promoted Tweet','Carousel Ad','Video Ad'] },
+  { name:'Threads',             icon:'🧵', color:'#000000', bg:'#F5F5F5', cat:'social', formats:['Promoted Post','Story Ad'] },
+  { name:'Bing',                icon:'🔵', color:'#008272', bg:'#E0FFF9', cat:'search', formats:['Responsive Search Ad','Dynamic Search Ad','Shopping Ad'] },
+  { name:'Spotify',             icon:'🎵', color:'#1DB954', bg:'#F0FFF4', cat:'other',  formats:['Audio Ad','Video Ad','Podcast Ad'] },
+  { name:'Direct Mail',         icon:'✉️', color:'#6B7280', bg:'#F9FAFB', cat:'other',  formats:['Postcard','Letter','Brochure'] },
+  { name:'Local Services',      icon:'📍', color:'#F59E0B', bg:'#FFFBEB', cat:'other',  formats:['Local Service Ad','Google Screened Ad'] },
+];
+
 function buildAdvertise() {
   const wrap = document.getElementById('advertiseWrap');
   if (!wrap) return;
-
-  const PLATFORMS = [
-    { name:'Meta',               icon:'📘', color:'#1877F2', bg:'#EBF3FF', cat:'meta' },
-    { name:'Instagram',          icon:'📸', color:'#E1306C', bg:'#FFF0F5', cat:'meta' },
-    { name:'Messenger & WhatsApp',icon:'💬', color:'#00B2FF', bg:'#E0F7FF', cat:'meta' },
-    { name:'Meta Calls',         icon:'📞', color:'#1877F2', bg:'#EBF3FF', cat:'meta' },
-    { name:'Catalog Ads',        icon:'🛍️', color:'#1877F2', bg:'#EBF3FF', cat:'meta' },
-    { name:'Meta Boost',         icon:'⚡', color:'#1877F2', bg:'#EBF3FF', cat:'meta' },
-    { name:'Google Search',      icon:'🔍', color:'#4285F4', bg:'#EFF6FF', cat:'google' },
-    { name:'Google Pmax',        icon:'🎯', color:'#0F9D58', bg:'#F0FDF4', cat:'google' },
-    { name:'YouTube',            icon:'🎬', color:'#FF0000', bg:'#FFF5F5', cat:'google' },
-    { name:'Google Display',     icon:'🖼️', color:'#4285F4', bg:'#EFF6FF', cat:'google' },
-    { name:'Google Calls',       icon:'📱', color:'#34A853', bg:'#F0FDF4', cat:'google' },
-    { name:'LinkedIn',           icon:'💼', color:'#0A66C2', bg:'#F0F7FF', cat:'social' },
-    { name:'LinkedIn Message',   icon:'📨', color:'#0A66C2', bg:'#F0F7FF', cat:'social' },
-    { name:'TikTok',             icon:'⬛', color:'#010101', bg:'#F5F5F5', cat:'social' },
-    { name:'Snapchat',           icon:'👻', color:'#FFCC00', bg:'#FFFDE0', cat:'social' },
-    { name:'Pinterest',          icon:'📌', color:'#E60023', bg:'#FFF0F0', cat:'social' },
-    { name:'X (Twitter)',        icon:'✖️', color:'#14171A', bg:'#F5F5F5', cat:'social' },
-    { name:'Threads',            icon:'🧵', color:'#000000', bg:'#F5F5F5', cat:'social' },
-    { name:'Bing',               icon:'🔵', color:'#008272', bg:'#E0FFF9', cat:'search' },
-    { name:'Spotify',            icon:'🎵', color:'#1DB954', bg:'#F0FFF4', cat:'other' },
-    { name:'Direct Mail',        icon:'✉️', color:'#6B7280', bg:'#F9FAFB', cat:'other' },
-    { name:'Local Services',     icon:'📍', color:'#F59E0B', bg:'#FFFBEB', cat:'other' },
-  ];
-
   const conn = window._advertiseConnections;
   const connCount = Object.values(conn).filter(Boolean).length;
 
-  const platformCards = PLATFORMS.map(p => {
+  const platformCards = ADV_PLATFORMS.map(p => {
     const isConn = conn[p.name] || false;
     return `
-      <div style="background:${p.bg};border:1.5px solid ${isConn ? p.color+'44' : '#E5E7EB'};border-radius:14px;padding:16px;display:flex;flex-direction:column;align-items:center;gap:8px;position:relative;transition:box-shadow .2s" onmouseover="this.style.boxShadow='0 4px 20px rgba(0,0,0,0.10)'" onmouseout="this.style.boxShadow=''">
-        ${isConn ? `<div style="position:absolute;top:8px;right:8px;width:8px;height:8px;background:#10B981;border-radius:50%;box-shadow:0 0 0 2px #D1FAE5"></div>` : ''}
+      <div style="background:${p.bg};border:1.5px solid ${isConn ? p.color+'55' : '#E5E7EB'};border-radius:16px;padding:18px 14px;display:flex;flex-direction:column;align-items:center;gap:8px;position:relative;transition:box-shadow .2s;min-width:0" onmouseover="this.style.boxShadow='0 6px 24px rgba(0,0,0,0.11)'" onmouseout="this.style.boxShadow=''">
+        ${isConn ? `<div style="position:absolute;top:9px;right:9px;width:9px;height:9px;background:#10B981;border-radius:50%;box-shadow:0 0 0 2px #D1FAE5"></div>` : ''}
         <div style="font-size:2rem;line-height:1">${p.icon}</div>
-        <div style="font-size:0.75rem;font-weight:700;color:#0A1628;text-align:center;line-height:1.3">${p.name}</div>
-        <div style="font-size:0.62rem;font-weight:600;color:${isConn ? p.color : '#9CA3AF'}">${isConn ? '● Connected' : '○ Not Connected'}</div>
-        <button onclick="window._advertiseConnections['${p.name}']=!window._advertiseConnections['${p.name}'];buildAdvertise()" style="width:100%;padding:5px 0;font-size:0.68rem;font-weight:700;color:${isConn ? '#DC2626' : p.color};background:white;border:1.5px solid ${isConn ? '#FCA5A5' : p.color+'55'};border-radius:7px;cursor:pointer;margin-top:2px">${isConn ? 'Disconnect' : 'Connect'}</button>
+        <div style="font-size:0.73rem;font-weight:800;color:#0A1628;text-align:center;line-height:1.3">${p.name}</div>
+        <div style="font-size:0.6rem;font-weight:600;color:${isConn ? p.color : '#9CA3AF'}">${isConn ? '● Connected' : '○ Not Connected'}</div>
+        ${isConn ? `
+        <button onclick="openChannelCampaign('${p.name.replace(/'/g,"\\'")}','${p.icon}','${p.color}','${p.bg}')" style="width:100%;padding:7px 0;font-size:0.7rem;font-weight:800;color:white;background:${p.color};border:none;border-radius:8px;cursor:pointer;margin-top:2px">🎯 3-Step Campaign</button>
+        <button onclick="window._advertiseConnections['${p.name}']=false;buildAdvertise()" style="width:100%;padding:4px 0;font-size:0.62rem;font-weight:600;color:#DC2626;background:white;border:1px solid #FCA5A5;border-radius:6px;cursor:pointer">Disconnect</button>
+        ` : `
+        <button onclick="window._advertiseConnections['${p.name}']=true;buildAdvertise()" style="width:100%;padding:7px 0;font-size:0.7rem;font-weight:700;color:${p.color};background:white;border:1.5px solid ${p.color}55;border-radius:8px;cursor:pointer;margin-top:2px">Connect</button>
+        `}
       </div>`;
   }).join('');
 
-  // Stats bar
   const statBar = `
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
       ${[
         ['Connected Channels', connCount, '#10B981','📡'],
         ['Active Campaigns', (window._launchedCampaigns||[]).length, '#0066FF','🚀'],
-        ['Channels Available', PLATFORMS.length, '#7C3AED','🌐'],
-        ['Optimisation Score', '94%', '#F59E0B','⚡'],
+        ['Channels Available', ADV_PLATFORMS.length, '#7C3AED','🌐'],
+        ['AI Optimisation', '94%', '#F59E0B','⚡'],
       ].map(([l,v,c,ic])=>`
         <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
           <div style="font-size:1.8rem;margin-bottom:4px">${ic}</div>
@@ -3074,78 +3080,31 @@ function buildAdvertise() {
         </div>`).join('')}
     </div>`;
 
-  // 3-Step lead-gen flow
-  const steps = [
-    { n:1, title:'Choose Channels', desc:'Select which platforms to run your lead-gen campaign on.', icon:'📡',
-      content:`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">${PLATFORMS.filter(p=>conn[p.name]).map(p=>`<label style="display:flex;align-items:center;gap:6px;background:${p.bg};border:1px solid ${p.color}33;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:0.75rem;font-weight:600;color:${p.color}"><input type="checkbox" checked style="accent-color:${p.color};width:13px;height:13px"> ${p.icon} ${p.name}</label>`).join('')}</div>` },
-    { n:2, title:'Ad Details', desc:'Set your campaign name, budget, and target audience.', icon:'⚙️',
-      content:`<div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
-        <input id="adv-camp-name" placeholder="Campaign name" value="${analysisData ? analysisData.url.replace('https://','').replace('http://','').split('.')[0]+' — Lead Gen' : 'My Lead-Gen Campaign'}" style="padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif;width:100%;box-sizing:border-box">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div><label style="font-size:0.7rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Daily Budget</label><input id="adv-budget" type="number" value="150" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif"></div>
-          <div><label style="font-size:0.7rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Target Country</label><select id="adv-country" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif"><option>Global</option><option>United States</option><option>United Kingdom</option><option>Australia</option><option>Canada</option><option>South Africa</option><option>Germany</option><option>France</option></select></div>
-        </div>
-        <input id="adv-audience" placeholder="Target audience (e.g. Small business owners 28–45)" style="padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif;width:100%;box-sizing:border-box">
-        <input id="adv-goal" placeholder="Campaign goal (e.g. Generate 200 leads/mo)" style="padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif;width:100%;box-sizing:border-box">
-      </div>` },
-    { n:3, title:'Generate & Launch', desc:'InfoGenie AI writes your ads and pushes them live across all selected channels.', icon:'🚀',
-      content:`<div style="margin-top:10px"><div id="adv-launch-status" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:9px;padding:14px;font-size:0.8rem;color:#065F46;line-height:1.7">
-        <div style="font-weight:700;margin-bottom:4px">✅ Ready to launch</div>
-        <div>InfoGenie will generate platform-specific ad copy using GPT-4, optimise bid strategies for each channel, and push campaigns live — all in one click.</div>
-      </div>
-      <button id="adv-launch-btn" onclick="launchAdvertiseCampaign()" style="width:100%;margin-top:12px;padding:13px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.9rem;font-weight:700;color:white;cursor:pointer">🚀 Launch Across All Channels</button>
-      <div id="adv-results" style="display:none;margin-top:12px"></div></div>` },
-  ];
-
-  const stepsHtml = steps.map(s => `
-    <div style="background:white;border:1.5px solid #E5E7EB;border-radius:16px;padding:20px 24px;flex:1;min-width:260px">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-        <div style="width:36px;height:36px;background:linear-gradient(135deg,#0A1628,#0D2140);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:white;font-size:0.9rem;flex-shrink:0">${s.n}</div>
-        <div>
-          <div style="font-size:0.65rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.07em">${s.icon} Step ${s.n}</div>
-          <div style="font-size:0.95rem;font-weight:800;color:#0A1628">${s.title}</div>
-        </div>
-      </div>
-      <div style="font-size:0.78rem;color:#6B7280;line-height:1.5;margin-bottom:6px">${s.desc}</div>
-      ${s.content}
-    </div>`).join('');
-
   wrap.innerHTML = `
     <div style="padding:28px 0">
       ${statBar}
-
-      <!-- Connected Accounts -->
+      <!-- Channel Grid -->
       <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:24px;margin-bottom:28px;box-shadow:0 1px 6px rgba(0,0,0,0.05)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
           <div>
-            <h3 style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin:0 0 4px">📡 Connected Accounts</h3>
-            <div style="font-size:0.78rem;color:#6B7280">${connCount} of ${PLATFORMS.length} channels connected — click any card to toggle</div>
+            <h3 style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin:0 0 4px">📡 Connected Accounts — Click to Launch Per-Channel Campaign</h3>
+            <div style="font-size:0.78rem;color:#6B7280">${connCount} of ${ADV_PLATFORMS.length} channels connected · Each channel has its own 3-step lead-gen flow</div>
           </div>
           <button onclick="Object.keys(window._advertiseConnections).forEach(k=>window._advertiseConnections[k]=true);buildAdvertise()" style="padding:8px 18px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚡ Connect All</button>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px">
           ${platformCards}
         </div>
       </div>
-
-      <!-- 3-Step Campaign Creator -->
-      <div style="margin-bottom:28px">
-        <h3 style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin:0 0 4px">🎯 Lead-Gen Campaign in 3 Steps</h3>
-        <p style="font-size:0.8rem;color:#6B7280;margin:0 0 16px">Set up and launch a lead-generation campaign across all your connected channels in minutes.</p>
-        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
-          ${stepsHtml}
-        </div>
-      </div>
-
-      <!-- Optimisation Folders (live campaigns) -->
+      <!-- Optimisation Folders -->
       ${(window._launchedCampaigns||[]).length > 0 ? `
       <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:24px;box-shadow:0 1px 6px rgba(0,0,0,0.05)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-          <h3 style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin:0">🗂️ Optimisation Folders</h3>
-          <button onclick="showToast('🤖 AI optimisation running — bids, audiences, and budgets being adjusted')" style="padding:7px 16px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;font-size:0.75rem;font-weight:700;color:#059669;cursor:pointer">🤖 AI-Powered Optimisation Active</button>
+          <h3 style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin:0">🗂️ Live Campaign Optimisation Folders</h3>
+          <button onclick="showToast('🤖 AI optimisation running — bids, audiences, and budgets being adjusted')" style="padding:7px 16px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;font-size:0.75rem;font-weight:700;color:#059669;cursor:pointer">🤖 AI Optimisation Active</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          ${(window._launchedCampaigns||[]).map(c => `
+          ${(window._launchedCampaigns||[]).map(c=>`
             <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
               <div>
                 <div style="font-size:0.85rem;font-weight:700;color:#0A1628">${c.name}</div>
@@ -3155,17 +3114,204 @@ function buildAdvertise() {
                 <div style="text-align:center"><div style="font-size:1rem;font-weight:800;color:#10B981">${c.metrics?.roas||'—'}×</div><div style="font-size:0.62rem;color:#6B7280">ROAS</div></div>
                 <div style="text-align:center"><div style="font-size:1rem;font-weight:800;color:#0066FF">${c.metrics?.ctr||'—'}</div><div style="font-size:0.62rem;color:#6B7280">CTR</div></div>
                 <span style="background:#10B98122;color:#059669;font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:8px;text-transform:uppercase">${c.status||'active'}</span>
-                <button onclick="showToast('⚙️ Optimising ${c.name.replace(/'/g,'')} — adjusting bids and targeting')" style="padding:5px 12px;background:#0A1628;border:none;border-radius:7px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer">⚡ Optimise</button>
+                <button onclick="showToast('⚙️ Optimising — adjusting bids and targeting')" style="padding:5px 12px;background:#0A1628;border:none;border-radius:7px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer">⚡ Optimise</button>
               </div>
             </div>`).join('')}
         </div>
       </div>` : ''}
     </div>`;
 
-  // Wire the header "New Campaign" button
   const nb = document.getElementById('advertiseNewCampBtn');
-  if (nb) nb.onclick = () => { document.getElementById('adv-launch-btn')?.scrollIntoView({ behavior:'smooth' }); };
+  if (nb) nb.onclick = () => { if (Object.values(conn).some(Boolean)) { const p = ADV_PLATFORMS.find(x=>conn[x.name]); if(p) openChannelCampaign(p.name, p.icon, p.color, p.bg); } else showToast('Connect at least one channel first'); };
 }
+
+// ── Per-channel 3-step lead-gen modal ────────────────────────────────────────
+window.openChannelCampaign = function(platName, platIcon, platColor, platBg) {
+  const plat = ADV_PLATFORMS.find(p => p.name === platName);
+  const formats = plat?.formats || ['Standard Ad'];
+  let currentStep = 1;
+  document.getElementById('ch-camp-overlay')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'ch-camp-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+
+  function stepDot(n) {
+    const active = n === currentStep;
+    const done   = n < currentStep;
+    return `<div style="display:flex;align-items:center;gap:6px"><div style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:800;background:${done?platColor:active?platColor:'#E5E7EB'};color:${done||active?'white':'#9CA3AF'}">${done?'✓':n}</div>${n<3?`<div style="width:30px;height:2px;background:${n<currentStep?platColor:'#E5E7EB'}"></div>`:''}</div>`;
+  }
+
+  function stepLabel(n, label) {
+    return `<div style="font-size:0.62rem;font-weight:${n===currentStep?'700':'500'};color:${n===currentStep?platColor:'#9CA3AF'};text-align:center;margin-top:3px">${label}</div>`;
+  }
+
+  const defaultName = analysisData ? analysisData.url.replace(/https?:\/\//,'').split('.')[0]+` — ${platName} Lead Gen` : `${platName} Lead Gen`;
+
+  function renderModal() {
+    const s1 = `
+      <div>
+        <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Primary Goal</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+          ${['Lead Generation','Website Traffic','Brand Awareness','Sales & Conversions','App Installs','Event Promotion'].map((g,i)=>`
+            <label style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:${i===0?platBg:'#F9FAFB'};border:1.5px solid ${i===0?platColor+'55':'#E5E7EB'};border-radius:9px;cursor:pointer;font-size:0.78rem;font-weight:600;color:${i===0?platColor:'#374151'}" id="goal-opt-${i}" onclick="document.querySelectorAll('[id^=goal-opt-]').forEach(el=>{el.style.background='#F9FAFB';el.style.borderColor='#E5E7EB';el.style.color='#374151'});this.style.background='${platBg}';this.style.borderColor='${platColor}55';this.style.color='${platColor}'">
+              <input type="radio" name="ch-goal" value="${g}" ${i===0?'checked':''} style="accent-color:${platColor}">${g}
+            </label>`).join('')}
+        </div>
+        <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Target Audience</div>
+        <input id="ch-audience" placeholder="e.g. Small business owners 28–45 interested in automation" style="width:100%;box-sizing:border-box;padding:10px 13px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif" value="${analysisData?.audience||''}">
+        <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px">Campaign Name</div>
+        <input id="ch-name" value="${defaultName}" style="width:100%;box-sizing:border-box;padding:10px 13px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
+      </div>`;
+
+    const s2 = `
+      <div>
+        <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Ad Format</div>
+        <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px">
+          ${formats.map((f,i)=>`
+            <label style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${i===0?platBg:'#F9FAFB'};border:1.5px solid ${i===0?platColor+'66':'#E5E7EB'};border-radius:9px;cursor:pointer;font-size:0.82rem;font-weight:600;color:${i===0?platColor:'#374151'}" id="fmt-opt-${i}" onclick="document.querySelectorAll('[id^=fmt-opt-]').forEach(el=>{el.style.background='#F9FAFB';el.style.borderColor='#E5E7EB';el.style.color='#374151'});this.style.background='${platBg}';this.style.borderColor='${platColor}66';this.style.color='${platColor}'">
+              <input type="radio" name="ch-format" value="${f}" ${i===0?'checked':''} style="accent-color:${platColor}">${f}
+            </label>`).join('')}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Daily Budget (USD)</div>
+            <input id="ch-budget" type="number" value="100" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
+          </div>
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Country</div>
+            <select id="ch-country" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif"><option>Global</option><option>United States</option><option>United Kingdom</option><option>Australia</option><option>Canada</option><option>South Africa</option><option>Germany</option><option>France</option></select>
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Landing Page URL</div>
+          <input id="ch-url" placeholder="https://" value="${analysisData?.url||''}" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
+        </div>
+      </div>`;
+
+    const s3 = `
+      <div>
+        <div id="ch-gen-status" style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:14px;font-size:0.8rem;color:#0369A1;line-height:1.6;margin-bottom:12px">
+          <div style="font-weight:700;margin-bottom:4px">✅ Ready to generate</div>
+          <div>InfoGenie AI will write <strong>${platName}-optimised</strong> ad copy for your selected format, then push the campaign live with one click.</div>
+        </div>
+        <button id="ch-gen-btn" onclick="generateChannelAd('${platName}','${platIcon}','${platColor}')" style="width:100%;padding:12px;background:linear-gradient(135deg,${platColor},${platColor}CC);border:none;border-radius:10px;font-size:0.88rem;font-weight:800;color:white;cursor:pointer;margin-bottom:10px">✨ Generate ${platName} Ad Copy with AI</button>
+        <div id="ch-ad-preview" style="display:none"></div>
+        <div id="ch-launch-wrap" style="display:none;margin-top:10px">
+          <button id="ch-launch-btn" onclick="confirmChannelLaunch('${platName}','${platIcon}','${platColor}')" style="width:100%;padding:13px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.9rem;font-weight:800;color:white;cursor:pointer">🚀 Launch ${platName} Campaign</button>
+        </div>
+      </div>`;
+
+    const stepContent = [s1, s2, s3][currentStep - 1];
+    const stepLabels  = ['Goal & Audience','Budget & Format','Generate & Launch'];
+
+    ov.innerHTML = `
+      <div style="background:white;border-radius:20px;width:100%;max-width:540px;max-height:92vh;overflow-y:auto;box-shadow:0 28px 90px rgba(0,0,0,0.3)">
+        <div style="background:linear-gradient(135deg,${platColor},${platColor}99);border-radius:20px 20px 0 0;padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="font-size:2.2rem">${platIcon}</div>
+            <div>
+              <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:.08em">3-Step Lead Gen</div>
+              <div style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:white">${platName} Campaign</div>
+            </div>
+          </div>
+          <button id="ch-close" style="background:rgba(255,255,255,0.2);border:none;border-radius:50%;width:32px;height:32px;font-size:1.1rem;color:white;cursor:pointer">✕</button>
+        </div>
+        <!-- Step indicators -->
+        <div style="padding:16px 24px 0;display:flex;align-items:flex-start;justify-content:center;gap:0">
+          ${[1,2,3].map(n=>`<div style="display:flex;flex-direction:column;align-items:center">${stepDot(n)}<div style="font-size:0.6rem;font-weight:${n===currentStep?'700':'500'};color:${n===currentStep?platColor:'#9CA3AF'};text-align:center;margin-top:3px;max-width:70px;line-height:1.2">${stepLabels[n-1]}</div></div>${n<3?`<div style="width:40px;height:2px;background:${n<currentStep?platColor:'#E5E7EB'};margin-top:14px;flex-shrink:0"></div>`:''}`).join('')}
+        </div>
+        <!-- Step content -->
+        <div style="padding:20px 24px">
+          <div style="font-size:0.7rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Step ${currentStep} of 3</div>
+          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:14px">${stepLabels[currentStep-1]}</div>
+          ${stepContent}
+        </div>
+        <!-- Nav buttons -->
+        <div style="padding:0 24px 20px;display:flex;gap:10px">
+          ${currentStep > 1 ? `<button id="ch-back" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">← Back</button>` : `<button id="ch-cancel" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>`}
+          ${currentStep < 3 ? `<button id="ch-next" style="flex:2;padding:11px;background:${platColor};border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">Next →</button>` : ''}
+        </div>
+      </div>`;
+
+    document.getElementById('ch-close').onclick = () => ov.remove();
+    document.getElementById('ch-cancel')?.addEventListener('click', () => ov.remove());
+    document.getElementById('ch-back')?.addEventListener('click', () => { currentStep--; renderModal(); });
+    document.getElementById('ch-next')?.addEventListener('click', () => { currentStep++; renderModal(); });
+    ov.addEventListener('click', e => { if(e.target===ov) ov.remove(); });
+  }
+
+  renderModal();
+  document.body.appendChild(ov);
+};
+
+window.generateChannelAd = async function(platName, platIcon, platColor) {
+  const btn = document.getElementById('ch-gen-btn');
+  const statusEl = document.getElementById('ch-gen-status');
+  const previewEl = document.getElementById('ch-ad-preview');
+  const launchWrap = document.getElementById('ch-launch-wrap');
+  if (!btn) return;
+  const audience  = document.getElementById('ch-audience')?.value || 'business owners';
+  const goal      = document.querySelector('input[name="ch-goal"]:checked')?.value || 'Lead Generation';
+  const format    = document.querySelector('input[name="ch-format"]:checked')?.value || 'Standard Ad';
+  const budget    = document.getElementById('ch-budget')?.value || '100';
+  const url       = document.getElementById('ch-url')?.value || (analysisData?.url||'yourdomain.com');
+  const domain    = url.replace(/https?:\/\//,'').split('/')[0];
+  const industry  = analysisData?.industry?.name || 'your industry';
+
+  btn.disabled = true; btn.textContent = '⏳ Generating…';
+  if (statusEl) statusEl.innerHTML = `<div style="font-weight:700;margin-bottom:4px">⏳ Writing ${platName} ad copy…</div><div>GPT-4 is crafting ${format} copy optimised for ${goal.toLowerCase()} on ${platName}</div>`;
+
+  try {
+    const res = await fetch('/api/ai-channel-ad', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ platform: platName, format, goal, audience, domain, industry, budget }) });
+    const data = await res.json();
+    const ad = data.ad || {};
+    if (statusEl) statusEl.innerHTML = `<div style="font-weight:700;color:#059669;margin-bottom:4px">✅ ${platName} ad copy generated!</div><div>Review and edit below, then launch when ready.</div>`;
+    if (previewEl) {
+      previewEl.style.display = 'block';
+      previewEl.innerHTML = `
+        <div style="background:#F9FAFB;border:1.5px solid ${platColor}44;border-radius:12px;padding:16px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <div style="font-size:1.2rem">${platIcon}</div>
+            <div style="font-size:0.72rem;font-weight:700;color:${platColor};text-transform:uppercase">${platName} — ${format}</div>
+          </div>
+          ${ad.headline ? `<div style="font-size:0.9rem;font-weight:800;color:#0A1628;margin-bottom:6px" contenteditable="true">${ad.headline}</div>` : ''}
+          ${ad.body ? `<div style="font-size:0.8rem;color:#374151;line-height:1.5;margin-bottom:8px" contenteditable="true">${ad.body}</div>` : ''}
+          ${ad.cta ? `<div style="display:inline-block;background:${platColor};color:white;font-size:0.75rem;font-weight:700;padding:6px 14px;border-radius:8px">${ad.cta}</div>` : ''}
+          ${ad.hashtags ? `<div style="font-size:0.72rem;color:${platColor};margin-top:8px">${ad.hashtags}</div>` : ''}
+        </div>`;
+    }
+    if (launchWrap) launchWrap.style.display = 'block';
+  } catch(e) {
+    if (statusEl) statusEl.innerHTML = `<div style="font-weight:700;color:#DC2626;margin-bottom:4px">⚠️ Generation failed — using fallback</div><div>Connection issue — you can still launch with default copy</div>`;
+    if (launchWrap) launchWrap.style.display = 'block';
+  }
+  btn.disabled = false; btn.textContent = '✨ Regenerate Ad Copy';
+};
+
+window.confirmChannelLaunch = function(platName, platIcon, platColor) {
+  const name    = document.getElementById('ch-name')?.value || `${platName} Campaign`;
+  const budget  = document.getElementById('ch-budget')?.value || '100';
+  const country = document.getElementById('ch-country')?.value || 'Global';
+  const audience= document.getElementById('ch-audience')?.value || 'High-intent buyers';
+  const format  = document.querySelector('input[name="ch-format"]:checked')?.value || 'Standard Ad';
+  const btn     = document.getElementById('ch-launch-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Launching…'; }
+  setTimeout(() => {
+    const record = {
+      id:'camp_'+Date.now(), name, platform: `${platIcon} ${platName} — ${format}`,
+      budget: parseInt(budget)*30, budgetStr:'$'+parseInt(budget)*30, startDate: new Date().toISOString().split('T')[0],
+      audience, launchedAt: new Date().toLocaleString(), status:'active', daysRunning:0, creatives:{},
+      metrics:{ roas:(3.2+Math.random()*1.8).toFixed(1), ctr:(1.8+Math.random()*3.5).toFixed(1)+'%', conversions:Math.round(parseInt(budget)*0.9), spend:parseInt(budget)*2, cpa:'$'+(18+Math.round(Math.random()*22)), impressions:Math.round(parseInt(budget)*130) },
+      actions:[{ time:'Just now', action:`Launched ${format} on ${platName}`, type:'launch' }]
+    };
+    if (!window._launchedCampaigns) window._launchedCampaigns = [];
+    window._launchedCampaigns.unshift(record);
+    document.getElementById('ch-camp-overlay')?.remove();
+    showToast(`🚀 "${name}" is now live on ${platIcon} ${platName}!`);
+    buildAdvertise();
+  }, 1800);
+};
 
 window.launchAdvertiseCampaign = function() {
   const name    = document.getElementById('adv-camp-name')?.value || 'Multi-Channel Campaign';
@@ -3195,6 +3341,297 @@ window.launchAdvertiseCampaign = function() {
     if (resEl) { resEl.style.display = 'block'; resEl.innerHTML = `<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:14px;font-size:0.8rem;color:#065F46"><strong>🎉 "${name}"</strong> is now live on: ${channels.join(', ')}</div>`; }
     showToast(`🚀 Campaign "${name}" launched across ${channels.length} channels!`);
   }, 2200);
+};
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONTENT AI — INTELLIGENCE, SEO & LLM VISIBILITY
+// ═══════════════════════════════════════════════════════════════════════════════
+if (!window._contentTab) window._contentTab = 'overview';
+if (!window._contentClusters) window._contentClusters = [];
+if (!window._contentGapList) window._contentGapList = null;
+if (!window._pageAuditList) window._pageAuditList = null;
+
+function buildContent() {
+  const wrap = document.getElementById('contentWrap');
+  if (!wrap) return;
+  const tab = window._contentTab;
+  const domain = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
+  const industry = analysisData?.industry?.name || 'your industry';
+
+  // Simulate traffic + visibility data derived from analysisData
+  const trafficHealth = analysisData ? 78 : 65;
+  const aiVisibility  = analysisData ? 61 : 44;
+  const contentScore  = analysisData ? 72 : 55;
+  const gapCount      = analysisData ? 23 : 18;
+
+  const tabs = [
+    { id:'overview', label:'📊 Overview' },
+    { id:'clusters', label:'🧩 Topical Clusters' },
+    { id:'gaps',     label:'🔍 Content Gaps' },
+    { id:'audit',    label:'🛠️ Page Audit' },
+  ];
+
+  const tabBar = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:24px">
+    ${tabs.map(t=>`<button onclick="window._contentTab='${t.id}';buildContent()" style="padding:9px 18px;border-radius:9px;font-size:0.8rem;font-weight:700;cursor:pointer;border:1.5px solid ${tab===t.id?'#059669':'#E5E7EB'};background:${tab===t.id?'#065F46':'white'};color:${tab===t.id?'white':'#374151'}">${t.label}</button>`).join('')}
+  </div>`;
+
+  // ── OVERVIEW ───────────────────────────────────────────────────────────────
+  const overviewHtml = (() => {
+    const kShifts = analysisData?.competitors?.slice(0,4).map((c,i) => ({
+      term: `${c.name||'competitor'} ${['vs','alternatives','pricing','review'][i%4]}`,
+      change: ['+34%','+19%','-12%','+47%'][i%4],
+      dir: [true,true,false,true][i%4],
+    })) || [
+      { term:'best marketing platform', change:'+41%', dir:true },
+      { term:'ai marketing tools 2025', change:'+67%', dir:true },
+      { term:'marketing software review', change:'-8%', dir:false },
+      { term:'marketing automation free', change:'+29%', dir:true },
+    ];
+
+    const llmGaps = [
+      { topic:'What is the best tool for '+industry.split(' ')[0].toLowerCase()+' automation?', cited: false, opportunity:'High' },
+      { topic:'How does '+domain+' compare to alternatives?', cited: false, opportunity:'Critical' },
+      { topic:'Best practices for '+industry.split(' ')[0].toLowerCase()+' in 2025', cited: false, opportunity:'High' },
+      { topic:domain+' pricing and plans breakdown', cited: true, opportunity:'Existing' },
+      { topic:'AI-powered '+industry.split(' ')[0].toLowerCase()+' tools comparison', cited: false, opportunity:'Critical' },
+    ];
+
+    return `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+        ${[
+          ['Traffic Health', trafficHealth+'%', trafficHealth>70?'#10B981':trafficHealth>50?'#F59E0B':'#DC2626','📈'],
+          ['Content Score', contentScore+'/100', contentScore>70?'#10B981':contentScore>50?'#F59E0B':'#DC2626','📝'],
+          ['AI Visibility', aiVisibility+'%', aiVisibility>70?'#10B981':aiVisibility>50?'#F59E0B':'#DC2626','🤖'],
+          ['Content Gaps', gapCount+' found', '#7C3AED','🔍'],
+        ].map(([l,v,c,ic])=>`
+          <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+            <div style="font-size:1.8rem;margin-bottom:4px">${ic}</div>
+            <div style="font-size:1.5rem;font-weight:800;color:${c}">${v}</div>
+            <div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em">${l}</div>
+          </div>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <!-- Keyword Shifts -->
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:14px">📉 Keyword Shift Monitor</div>
+          <div style="font-size:0.75rem;color:#6B7280;margin-bottom:12px">Trending shifts in your industry — act before traffic drops.</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${kShifts.map(k=>`
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:${k.dir?'#F0FDF4':'#FFF5F5'};border:1px solid ${k.dir?'#BBF7D0':'#FCA5A5'};border-radius:9px">
+                <div style="font-size:0.78rem;font-weight:600;color:#374151;flex:1">${k.term}</div>
+                <div style="font-size:0.78rem;font-weight:800;color:${k.dir?'#059669':'#DC2626'};margin-left:10px">${k.change}</div>
+                <button onclick="window._contentTab='clusters';window._clusterSeedPrefill='${k.term.replace(/'/g,"\\'")}';buildContent()" style="margin-left:10px;padding:3px 9px;background:${k.dir?'#059669':'#DC2626'};border:none;border-radius:6px;font-size:0.62rem;font-weight:700;color:white;cursor:pointer">${k.dir?'Capitalise':'Defend'}</button>
+              </div>`).join('')}
+          </div>
+        </div>
+        <!-- LLM Citation Gaps -->
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:6px">🤖 AI Visibility Gaps</div>
+          <div style="font-size:0.75rem;color:#6B7280;margin-bottom:12px">Topics where ChatGPT, Gemini & Perplexity are NOT citing your site — fix these to capture LLM traffic.</div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            ${llmGaps.map(g=>`
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:${g.cited?'#F0FDF4':'#FFF5F5'};border:1px solid ${g.cited?'#BBF7D0':'#FECACA'};border-radius:9px">
+                <div style="flex:1">
+                  <div style="font-size:0.75rem;font-weight:600;color:#0A1628;margin-bottom:2px">${g.topic}</div>
+                  <div style="font-size:0.62rem;font-weight:700;color:${g.cited?'#059669':g.opportunity==='Critical'?'#DC2626':'#D97706'}">${g.cited?'✅ Cited':'⚠️ Not Cited'} · ${g.opportunity} Opportunity</div>
+                </div>
+                ${!g.cited?`<button onclick="window._contentTab='clusters';window._clusterSeedPrefill='${g.topic.replace(/'/g,"\\'")}';buildContent()" style="margin-left:8px;padding:4px 10px;background:#7C3AED;border:none;border-radius:6px;font-size:0.62rem;font-weight:700;color:white;cursor:pointer;flex-shrink:0">Fix Gap</button>`:''}
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>`;
+  })();
+
+  // ── TOPICAL CLUSTERS ───────────────────────────────────────────────────────
+  const clustersHtml = (() => {
+    const prefill = window._clusterSeedPrefill || '';
+    if (prefill) { window._clusterSeedPrefill = ''; }
+
+    const existingClusters = (window._contentClusters||[]).map((cl, ci) => `
+      <div style="background:white;border:1.5px solid #E5E7EB;border-radius:16px;padding:20px;margin-bottom:16px;box-shadow:0 1px 6px rgba(0,0,0,0.05)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-size:0.65rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px">Topical Cluster</div>
+            <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628">${cl.pillar}</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <span style="font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:6px;background:#EFF6FF;color:#0066FF">${cl.topics?.length||0} Topics</span>
+            <span style="font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:6px;background:#F3E8FF;color:#7C3AED">${cl.questions?.length||0} Questions</span>
+            <button onclick="window._contentClusters.splice(${ci},1);buildContent()" style="font-size:0.65rem;font-weight:700;padding:3px 9px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:6px;color:#DC2626;cursor:pointer">Remove</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div>
+            <div style="font-size:0.68rem;font-weight:700;color:#065F46;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📄 Subtopics & Pages</div>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              ${(cl.topics||[]).map(t=>`<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:7px;font-size:0.75rem;color:#065F46;font-weight:500"><div style="width:6px;height:6px;background:#10B981;border-radius:50%;flex-shrink:0"></div>${t}</div>`).join('')}
+            </div>
+          </div>
+          <div>
+            <div style="font-size:0.68rem;font-weight:700;color:#6D28D9;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">❓ Real User Questions</div>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              ${(cl.questions||[]).map(q=>`<div style="display:flex;align-items:flex-start;gap:6px;padding:7px 10px;background:#F3E8FF;border:1px solid #DDD6FE;border-radius:7px;font-size:0.74rem;color:#5B21B6;font-weight:500;line-height:1.4"><div style="margin-top:2px;flex-shrink:0">❓</div>${q}</div>`).join('')}
+            </div>
+          </div>
+        </div>
+        ${cl.aiNote ? `<div style="margin-top:12px;padding:10px 14px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;font-size:0.75rem;color:#92400E;line-height:1.5"><strong>💡 LLM Tip:</strong> ${cl.aiNote}</div>` : ''}
+      </div>`).join('');
+
+    return `
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px">🧩 AI Topical Cluster Builder</div>
+        <div style="font-size:0.78rem;color:#6B7280;margin-bottom:14px">Enter a seed topic — InfoGenie AI will generate a full topical cluster with subtopics, question prompts, and LLM optimisation tips.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <input id="cluster-seed" placeholder="e.g. email marketing automation, AI SEO tools, SaaS pricing strategies…" value="${prefill}" style="flex:1;min-width:200px;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
+          <button id="cluster-gen-btn" onclick="generateCluster()" style="padding:11px 22px;background:linear-gradient(135deg,#065F46,#059669);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">🧩 Build Cluster</button>
+        </div>
+        <div id="cluster-gen-status" style="display:none;margin-top:10px;font-size:0.78rem;color:#059669;font-weight:600">⏳ Building topical cluster with GPT-4…</div>
+      </div>
+      <div id="clusters-output">
+        ${existingClusters || `<div style="text-align:center;padding:40px 16px;color:#9CA3AF"><div style="font-size:2.5rem;margin-bottom:10px">🧩</div><div style="font-size:0.88rem;font-weight:600">No clusters yet — build your first topical cluster above</div><div style="font-size:0.75rem;margin-top:6px">Try: "marketing automation", "competitor analysis", or "AI content creation"</div></div>`}
+      </div>`;
+  })();
+
+  // ── CONTENT GAPS ──────────────────────────────────────────────────────────
+  const gapsHtml = (() => {
+    const gaps = window._contentGapList || [
+      { type:'Missing Page',   topic:'What is '+industry.split(' ')[0]+' automation?',       intent:'Informational', volume:'8.2K/mo',  priority:'Critical', llm:true },
+      { type:'Thin Content',   topic:domain+' vs alternatives comparison',                    intent:'Comparison',    volume:'4.1K/mo',  priority:'Critical', llm:true },
+      { type:'Missing Page',   topic:'Best '+industry.split(' ')[0].toLowerCase()+' tools 2025', intent:'Commercial', volume:'11.5K/mo', priority:'High',     llm:true },
+      { type:'Outdated',       topic:'Getting started with '+domain,                          intent:'Navigational',  volume:'2.8K/mo',  priority:'Medium',   llm:false },
+      { type:'Missing Page',   topic:industry.split(' ')[0]+' ROI calculator',                intent:'Tool',          volume:'3.4K/mo',  priority:'High',     llm:false },
+      { type:'Thin Content',   topic:domain+' case studies and success stories',              intent:'Trust',         volume:'1.9K/mo',  priority:'Medium',   llm:true },
+      { type:'Missing Page',   topic:'How to choose a '+industry.split(' ')[0].toLowerCase()+' platform', intent:'Educational', volume:'6.7K/mo', priority:'High', llm:true },
+      { type:'Outdated',       topic:domain+' pricing guide',                                 intent:'Commercial',    volume:'5.3K/mo',  priority:'High',     llm:false },
+    ];
+    window._contentGapList = gaps;
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🔍 Content Gap Analysis</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">Pages your competitors rank for and AI engines cite — but you're missing or underperforming on</div>
+        </div>
+        <button onclick="window._contentTab='clusters';buildContent()" style="padding:9px 18px;background:linear-gradient(135deg,#065F46,#059669);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🧩 Generate Clusters for All Gaps</button>
+      </div>
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;padding:10px 16px;background:#F9FAFB;border-bottom:1px solid #E5E7EB;font-size:0.65rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">
+          <div>Topic / Page</div><div>Intent</div><div>Volume</div><div>Priority</div><div>Action</div>
+        </div>
+        ${gaps.map(g=>`
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;padding:12px 16px;border-bottom:1px solid #F3F4F6;align-items:center;gap:8px">
+            <div>
+              <div style="font-size:0.8rem;font-weight:600;color:#0A1628;margin-bottom:2px">${g.topic}</div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;background:${g.type==='Missing Page'?'#FEF2F2':g.type==='Outdated'?'#FFFBEB':'#EFF6FF'};color:${g.type==='Missing Page'?'#DC2626':g.type==='Outdated'?'#D97706':'#0066FF'};border-radius:4px">${g.type}</span>
+                ${g.llm?`<span style="font-size:0.6rem;font-weight:700;padding:2px 7px;background:#F3E8FF;color:#7C3AED;border-radius:4px">🤖 LLM Gap</span>`:''}
+              </div>
+            </div>
+            <div style="font-size:0.75rem;color:#6B7280;font-weight:500">${g.intent}</div>
+            <div style="font-size:0.78rem;font-weight:700;color:#0A1628">${g.volume}</div>
+            <div><span style="font-size:0.65rem;font-weight:700;padding:3px 8px;border-radius:6px;background:${g.priority==='Critical'?'#FEF2F2':g.priority==='High'?'#FFFBEB':'#F0FDF4'};color:${g.priority==='Critical'?'#DC2626':g.priority==='High'?'#D97706':'#059669'}">${g.priority}</span></div>
+            <div><button onclick="window._contentTab='clusters';window._clusterSeedPrefill='${g.topic.replace(/'/g,"\\'")}';buildContent()" style="padding:5px 11px;background:#0A1628;border:none;border-radius:7px;font-size:0.68rem;font-weight:700;color:white;cursor:pointer">Build Content</button></div>
+          </div>`).join('')}
+      </div>`;
+  })();
+
+  // ── PAGE AUDIT ────────────────────────────────────────────────────────────
+  const auditHtml = (() => {
+    const pages = window._pageAuditList || [
+      { url:'/blog/getting-started',      title:'Getting Started Guide',           issue:'Outdated — last updated 18 months ago', crawl:62, fix:'Refresh with 2025 data and add FAQ schema' },
+      { url:'/pricing',                   title:'Pricing Page',                    issue:'Thin content — no comparison table',    crawl:74, fix:'Add competitor pricing comparison + schema' },
+      { url:'/features',                  title:'Features Overview',               issue:'Missing H2 structure, no internal links', crawl:55, fix:'Add subheadings, internal links, FAQ block' },
+      { url:'/blog/ai-tools-comparison',  title:'AI Tools Comparison (2023)',      issue:'Outdated year in title and body content', crawl:48, fix:'Update to 2025, add new tools, refresh stats' },
+      { url:'/about',                     title:'About Us',                        issue:'No structured data or social proof',    crawl:80, fix:'Add LocalBusiness schema + team profiles' },
+      { url:'/blog/roi-guide',            title:'Marketing ROI Guide',             issue:'No internal links pointing here',       crawl:66, fix:'Add internal links from 5 related blog posts' },
+    ];
+    window._pageAuditList = pages;
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🛠️ Page Crawlability & Content Audit</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">Outdated content and crawlability issues hurting your rankings and LLM visibility</div>
+        </div>
+        <button onclick="showToast('🤖 AI crawl audit started — this may take 30–60 seconds in production')" style="padding:9px 18px;background:linear-gradient(135deg,#065F46,#059669);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚡ Run Full Audit</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        ${pages.map(p=>{
+          const score = p.crawl;
+          const sc = score>=75?'#10B981':score>=55?'#F59E0B':'#DC2626';
+          return `
+            <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;box-shadow:0 1px 4px rgba(0,0,0,0.04);display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center">
+              <div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+                  <div style="font-size:0.85rem;font-weight:700;color:#0A1628">${p.title}</div>
+                  <code style="font-size:0.68rem;color:#6B7280;background:#F3F4F6;padding:1px 7px;border-radius:4px">${p.url}</code>
+                </div>
+                <div style="font-size:0.75rem;color:#DC2626;font-weight:600;margin-bottom:4px">⚠️ ${p.issue}</div>
+                <div style="font-size:0.74rem;color:#059669;line-height:1.4"><strong>AI Fix:</strong> ${p.fix}</div>
+              </div>
+              <div style="text-align:center;flex-shrink:0">
+                <div style="width:52px;height:52px;border-radius:50%;background:conic-gradient(${sc} ${score*3.6}deg,#E5E7EB ${score*3.6}deg);display:flex;align-items:center;justify-content:center;position:relative;margin:0 auto 4px">
+                  <div style="width:36px;height:36px;background:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.78rem;font-weight:800;color:${sc}">${score}</div>
+                </div>
+                <div style="font-size:0.62rem;color:#6B7280;font-weight:600">Crawl Score</div>
+              </div>
+            </div>`;
+        }).join('')}
+      </div>`;
+  })();
+
+  const tabContent = { overview: overviewHtml, clusters: clustersHtml, gaps: gapsHtml, audit: auditHtml };
+
+  wrap.innerHTML = `
+    <div style="padding:28px 0">
+      ${tabBar}
+      ${tabContent[tab] || overviewHtml}
+    </div>`;
+
+  // Wire header button
+  const ab = document.getElementById('contentAnalyseBtn');
+  if (ab) ab.onclick = () => {
+    window._contentTab = 'gaps';
+    window._contentGapList = null;
+    window._pageAuditList = null;
+    buildContent();
+    showToast('⚡ Content analysis refreshed!');
+  };
+}
+
+window.generateCluster = async function() {
+  const seed = document.getElementById('cluster-seed')?.value?.trim();
+  if (!seed) { showToast('⚠️ Enter a seed topic first'); return; }
+  const btn = document.getElementById('cluster-gen-btn');
+  const statusEl = document.getElementById('cluster-gen-status');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Building…'; }
+  if (statusEl) statusEl.style.display = 'block';
+
+  const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
+  const industry = analysisData?.industry?.name || 'digital marketing';
+
+  try {
+    const res = await fetch('/api/ai-content-clusters', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ seed, domain, industry }) });
+    const data = await res.json();
+    if (data.cluster) {
+      if (!window._contentClusters) window._contentClusters = [];
+      window._contentClusters.unshift(data.cluster);
+      buildContent();
+      showToast(`✅ Topical cluster built for "${seed}"!`);
+    } else throw new Error('No cluster returned');
+  } catch(e) {
+    // Fallback cluster
+    if (!window._contentClusters) window._contentClusters = [];
+    window._contentClusters.unshift({
+      pillar: seed,
+      topics: [`What is ${seed}?`, `${seed} best practices`, `${seed} for beginners`, `Advanced ${seed} strategies`, `${seed} tools and software`, `${seed} ROI and metrics`, `${seed} case studies`],
+      questions: [`What is the best way to get started with ${seed}?`, `How does ${seed} improve business results?`, `What are the most common ${seed} mistakes to avoid?`, `How long does it take to see results from ${seed}?`, `What budget do I need for ${seed}?`, `How does ${seed} compare to traditional methods?`],
+      aiNote: `Create a pillar page on "${seed}" and link to all subtopics. Include FAQ schema to maximise LLM citation chances. Publish one supporting page per week for best cluster authority.`,
+    });
+    buildContent();
+    showToast(`✅ Cluster built for "${seed}" (AI offline — using smart template)`);
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '🧩 Build Cluster'; }
 };
 
 
@@ -3267,7 +3704,7 @@ function buildSocialCalendar() {
           </div>
           <div style="font-size:0.8rem;color:#374151;line-height:1.4;margin-bottom:6px">${p.caption.substring(0,100)}${p.caption.length>100?'…':''}</div>
           <div style="display:flex;gap:6px">
-            <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${p.status==='scheduled'?'#EFF6FF':'p.status==='published'?'#F0FDF4':'#F9FAFB'};color:${p.status==='scheduled'?'#0066FF':p.status==='published'?'#059669':'#6B7280'};text-transform:uppercase">${p.status||'scheduled'}</span>
+            <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${p.status==='scheduled'?'#EFF6FF':p.status==='published'?'#F0FDF4':'#F9FAFB'};color:${p.status==='scheduled'?'#0066FF':p.status==='published'?'#059669':'#6B7280'};text-transform:uppercase">${p.status||'scheduled'}</span>
             <button onclick="window._socialPosts=window._socialPosts.filter(x=>x.id!=='${p.id}');buildSocialCalendar()" style="font-size:0.62rem;color:#DC2626;background:white;border:1px solid #FCA5A5;border-radius:5px;padding:2px 7px;cursor:pointer">Remove</button>
           </div>
         </div>`;
