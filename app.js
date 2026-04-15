@@ -1429,6 +1429,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'aivisibility') {
     try { buildAiVisibility(); } catch(e) { console.warn('buildAiVisibility error:', e); }
   }
+  if (viewId === 'battleplan') {
+    try { buildBattlePlan(); } catch(e) { console.warn('buildBattlePlan error:', e); }
+  }
   // Show/hide navbar links for home vs app
   const navLinks = document.getElementById('navLinks');
   const navPlan = document.getElementById('navPlanBadge');
@@ -1544,6 +1547,8 @@ async function runAnalysis(url, country) {
   buildAudience();
   buildCreative();
   buildIntelligence();
+  window._bpIdx = 0;
+  try { buildBattlePlan(); } catch(e) { console.warn('buildBattlePlan error:', e); }
   
   // Log analysis actions to results tracker
   if (!window._infoGenieActions) window._infoGenieActions = [];
@@ -2802,7 +2807,10 @@ function buildCompCard(c, cardIdx = 0) {
             <span class="roi-opp-label">InfoGenie ROI Opportunity:</span>
             <span class="roi-opp-text">${c.estimatedROI}</span>
           </div>
-          <button class="btn-view-plan" onclick="openCompPlan('${c.name.replace(/'/g,'').replace(/"/g,'').replace(/\\/g,'')}')">View Plan →</button>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn-view-plan" onclick="openCompPlan('${c.name.replace(/'/g,'').replace(/"/g,'').replace(/\\/g,'')}')">View Plan →</button>
+            <button onclick="window._bpIdx=${cardIdx};navigateTo('battleplan')" style="padding:7px 14px;background:linear-gradient(135deg,#0A1628,#0D2A5E);border:1px solid rgba(0,201,200,.4);border-radius:8px;font-size:0.75rem;font-weight:700;color:#00C9C8;cursor:pointer;white-space:nowrap">⚔️ Battle Plan</button>
+          </div>
         </div>
       </div>
     </div>
@@ -7376,6 +7384,275 @@ function exportIntelligenceReport() {
 // ===================================================
 // BUILD SETTINGS
 // ===================================================
+// ── Battle Plan ───────────────────────────────────────────────────────────────
+window._bpIdx = 0;
+
+function switchBattlePlanComp(idx) {
+  window._bpIdx = idx;
+  buildBattlePlan();
+  window.scrollTo(0, 0);
+}
+
+function buildBattlePlan() {
+  const wrap = document.getElementById('battlePlanWrap');
+  if (!wrap) return;
+
+  if (!analysisData || !analysisData.competitors || !analysisData.competitors.length) {
+    wrap.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;text-align:center;gap:20px;padding:40px">
+        <div style="font-size:3.5rem">⚔️</div>
+        <div style="font-family:'Sora',sans-serif;font-size:1.5rem;font-weight:900;color:white">No Analysis Yet</div>
+        <div style="color:rgba(255,255,255,.5);max-width:420px;font-size:0.9rem;line-height:1.6">Run a competitor analysis first to generate your personalised Battle Plan — with actions you can take directly from this page.</div>
+        <button onclick="navigateTo('home')" style="padding:13px 30px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:12px;color:white;font-weight:700;font-size:0.9rem;cursor:pointer">Run Analysis →</button>
+      </div>`;
+    return;
+  }
+
+  const comps = analysisData.competitors;
+  const domain = analysisData.url || 'yourdomain.com';
+  const industry = (analysisData.industry || {}).name || 'your industry';
+  const idx = Math.min(window._bpIdx || 0, comps.length - 1);
+  const c = comps[idx];
+  const threat = c.threatLevel || 'medium';
+
+  const fmtT = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : String(n||0);
+  const traffic = c.trafficMo ? fmtT(c.trafficMo) : (c.traffic || '—');
+  const oppBase = threat === 'high' ? 74 : threat === 'medium' ? 55 : 38;
+  const oppScore = oppBase + Math.floor((_blSeed(c.name) % 18));
+
+  // ── Competitor tabs ─────────────────────────────────────────────────────────
+  const tabs = comps.map((comp, i) => {
+    const t = comp.threatLevel || 'medium';
+    const dotColor = t === 'high' ? '#EF4444' : t === 'medium' ? '#F59E0B' : '#10B981';
+    const active = i === idx;
+    return `<button onclick="switchBattlePlanComp(${i})" style="display:flex;align-items:center;gap:8px;padding:10px 18px;border:none;border-bottom:3px solid ${active?'#00C9C8':'transparent'};background:${active?'rgba(0,201,200,.08)':'transparent'};cursor:pointer;color:${active?'#00C9C8':'rgba(255,255,255,.5)'};font-size:0.8rem;font-weight:${active?700:500};white-space:nowrap;font-family:'Inter',sans-serif;transition:all .15s">
+      <span style="width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#0066FF,#00C9C8);display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:white">${(comp.logo||comp.name[0]).toString()[0]}</span>
+      ${comp.name}
+      <span style="width:7px;height:7px;border-radius:50%;background:${dotColor}"></span>
+    </button>`;
+  }).join('');
+
+  // ── Section builder helper ──────────────────────────────────────────────────
+  function section(icon, title, sub, items) {
+    return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:20px">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px">
+        <span style="font-size:1.2rem;line-height:1">${icon}</span>
+        <div><div style="font-family:'Sora',sans-serif;font-size:0.9rem;font-weight:800;color:white">${title}</div><div style="font-size:0.7rem;color:rgba(255,255,255,.4);margin-top:2px">${sub}</div></div>
+      </div>
+      ${items}
+    </div>`;
+  }
+  function card(borderColor, badgeStyle, badgeLabel, title, body, btns) {
+    return `<div style="background:white;border:1px solid #E5E7EB;border-left:4px solid ${borderColor};border-radius:12px;padding:14px 16px;margin-bottom:10px">
+      <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
+        <span style="font-size:0.62rem;font-weight:800;padding:3px 8px;border-radius:5px;flex-shrink:0;${badgeStyle}">${badgeLabel}</span>
+        <div style="font-size:0.82rem;font-weight:700;color:#0A1628;line-height:1.4">${title}</div>
+      </div>
+      <div style="font-size:0.78rem;color:#6B7280;line-height:1.55;margin-bottom:10px">${body}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${btns}</div>
+    </div>`;
+  }
+  function btn(label, onclick, style) {
+    return `<button onclick="${onclick}" style="padding:6px 14px;border:none;border-radius:8px;font-size:0.72rem;font-weight:700;cursor:pointer;${style}">${label}</button>`;
+  }
+  const primaryBtn  = (label, fn) => btn(label, fn, 'background:linear-gradient(135deg,#0066FF,#00C9C8);color:white');
+  const dangerBtn   = (label, fn) => btn(label, fn, 'background:linear-gradient(135deg,#EF4444,#DC2626);color:white');
+  const purpleBtn   = (label, fn) => btn(label, fn, 'background:linear-gradient(135deg,#7C3AED,#4F46E5);color:white');
+  const greenBtn    = (label, fn) => btn(label, fn, 'background:linear-gradient(135deg,#10B981,#059669);color:white');
+  const ghostBtn    = (label, fn) => btn(label, fn, 'background:#F3F4F6;border:1px solid #E5E7EB;color:#374151');
+
+  // ── 1. Exploit Weaknesses ───────────────────────────────────────────────────
+  const ch = (c.topChannel || 'Google Ads').replace(/'/g, "\\'");
+  const cName = c.name.replace(/'/g, "\\'");
+  const weakCards = (c.suggestions || ['Competitor has weak personalisation in search ads','Generic creative with low audience specificity','No TikTok or Reels presence','Over-indexed on branded keywords']).slice(0,4).map((s,i) => {
+    const priority = i < 2 ? 'HIGH' : 'MEDIUM';
+    const badgeStyle = i < 2 ? 'background:#FEE2E2;color:#991B1B' : 'background:#FEF3C7;color:#92400E';
+    const safe = s.replace(/'/g,"\\'").replace(/"/g,'&quot;').slice(0,80);
+    return card(i<2?'#EF4444':'#F59E0B', badgeStyle, priority,
+      s.length > 70 ? s.slice(0,70)+'…' : s,
+      `${c.name} leaves this gap unaddressed. A targeted counter-campaign on ${c.topChannel||'Google Ads'} can capture this audience now.`,
+      dangerBtn('⚡ Launch Counter-Campaign', `openCampLaunchRich('Counter ${cName}','${ch}','$2,000/mo',${idx})`) +
+      purpleBtn('✨ Creative Studio', `openAdInCreativeStudio('Counter ${cName}','${safe}','${ch}')`)
+    );
+  }).join('');
+
+  // ── 2. Keyword Attack ───────────────────────────────────────────────────────
+  const kwVolumes  = [14800,8200,22000,6600,18400,4400,9800,12000];
+  const kwDifficulties = ['Low','Medium','Medium','High'];
+  const kwColors   = ['#0066FF','#7C3AED','#059669','#D97706'];
+  const kwCards = (c.topKeywords || ['competitor brand + alternative','industry best tool','vs competitor keyword','top rated solution']).slice(0,4).map((kw,i) => {
+    const vol   = kwVolumes[i % kwVolumes.length];
+    const cpc   = (0.9 + (_blSeed(kw) % 320) / 100).toFixed(2);
+    const diff  = kwDifficulties[i % kwDifficulties.length];
+    const diffColor = diff==='Low'?'#059669':diff==='Medium'?'#D97706':'#EF4444';
+    const diffBg    = diff==='Low'?'#D1FAE5':diff==='Medium'?'#FEF3C7':'#FEE2E2';
+    const safeKw = kw.replace(/'/g,"\\'");
+    return card(kwColors[i], 'background:#EFF6FF;color:#1D4ED8', `${vol.toLocaleString()}/mo · CPC $${cpc}`,
+      `"${kw}"`,
+      `${c.name} is actively bidding here with suboptimal relevance scores — you can capture traffic at <strong style="color:#059669">lower CPC</strong> with tighter ad groups. Difficulty: <span style="color:${diffColor};font-weight:700">${diff}</span>.`,
+      primaryBtn('🔑 Build Google Ads', `openCampLaunchRich('${safeKw} Campaign','Google Ads','$1,200/mo',${idx})`) +
+      ghostBtn('📝 Build Content', `window._clusterSeedPrefill='${safeKw}';navigateTo('content')`)
+    );
+  }).join('');
+
+  // ── 3. Creative Counter-Strategy ────────────────────────────────────────────
+  const angles = ['Pain-Point Contrast','Benefit Superiority','Social Proof Attack','Value Proposition'];
+  const adItems = c.adCopy && c.adCopy.length > 0 ? c.adCopy.slice(0,3) : null;
+  const creativeCards = adItems
+    ? adItems.map((ac,i) => {
+        const safeH = (ac.headline||'Counter Creative').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+        const safeB = (ac.body||'').replace(/'/g,"\\'").replace(/"/g,'&quot;').slice(0,120);
+        return card('#7C3AED','background:#F5F3FF;color:#6D28D9', angles[i]||'Creative Angle',
+          `"${ac.headline||'Counter Creative'}"`,
+          (ac.body||'').slice(0,110),
+          purpleBtn('✨ Open Creative Studio', `openAdInCreativeStudio('${safeH}','${safeB}','${ch}')`)
+        );
+      }).join('')
+    : (c.suggestions||['Exploit their weak personalisation with hyper-targeted messaging']).slice(0,3).map((s,i)=>{
+        const hl = `Beat ${c.name}: ${s.slice(0,30)}${s.length>30?'…':''}`;
+        const bd = `Stop settling for ${c.name}'s limitations. ${s.slice(0,80)}.`;
+        const safeH = hl.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+        const safeB = bd.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+        return card('#7C3AED','background:#F5F3FF;color:#6D28D9', angles[i]||'Creative Angle',
+          hl, bd,
+          purpleBtn('✨ Open Creative Studio', `openAdInCreativeStudio('${safeH}','${safeB}','${ch}')`)
+        );
+      }).join('');
+
+  // ── 4. Audience Gaps ────────────────────────────────────────────────────────
+  const audChannels = ['Meta Ads','Google Ads','LinkedIn Ads','TikTok Ads'];
+  const audGaps = ['Underserved by competitor — low ad frequency in this segment','Poor creative resonance — competitor uses generic messaging here','Budget mismatch — competitor over-spends on lower-intent tiers'];
+  const audCards = (c.audiences || [{label:'High-Intent Buyers',pct:38},{label:'Decision Makers',pct:24},{label:'Mid-Market Segment',pct:22}]).slice(0,3).map((a,i)=>{
+    const aCh = audChannels[i % audChannels.length];
+    const safeA = a.label.replace(/'/g,"\\'");
+    return card('#0066FF','background:#EFF6FF;color:#1D4ED8', `${a.pct}% of market`,
+      a.label,
+      `${audGaps[i%audGaps.length].replace('competitor', c.name)}. Best capture channel: <strong>${aCh}</strong>.`,
+      primaryBtn('🎯 Target This Audience', `openCampLaunchRich('${safeA} Campaign','${aCh}','$1,500/mo',${idx})`) +
+      ghostBtn('👥 Audience Deep-Dive', `navigateTo('audience')`)
+    );
+  }).join('');
+
+  // ── 5. Campaign Counter-Moves ───────────────────────────────────────────────
+  const campCards = (c.campaigns || []).slice(0,3).map((camp,i)=>{
+    const roasTarget = (camp.roas * 1.2).toFixed(1);
+    const safeCamp = (camp.name||'Campaign').replace(/'/g,"\\'");
+    return card('#10B981', camp.status==='Active'?'background:#D1FAE5;color:#065F46':'background:#FEF3C7;color:#92400E', camp.status,
+      `Counter: "${camp.name}"`,
+      `${c.name} runs this on <strong>${camp.channel}</strong> at ${camp.ctr} CTR / ${camp.roas}× ROAS. Launch a counter-campaign targeting the same audience with superior creative — target ROAS: <strong style="color:#059669">${roasTarget}×</strong>.`,
+      greenBtn('📣 Launch Counter-Campaign', `openCampLaunchRich('Counter: ${safeCamp}','${camp.channel}','${camp.budget}',${idx})`)
+    );
+  }).join('') || `<div style="color:rgba(255,255,255,.4);font-size:0.82rem;padding:12px 0">No active campaigns detected — run full analysis for live campaign data.</div>`;
+
+  // ── 6. Quick Wins ───────────────────────────────────────────────────────────
+  const qwItems = [
+    { t: c.estimatedROI || `+25% CTR improvement via tighter audience segmentation`, fn: `openCampLaunchRich('Quick Win vs ${cName}','${ch}','$1,000/mo',${idx})`, btnLabel: '⚡ Execute' },
+    { t: `Capture ${c.name}'s branded search traffic with non-branded alternatives at lower CPC`, fn: `navigateTo('intelligence')`, btnLabel: '🔑 View Keywords' },
+    { t: `Expand to channels where ${c.name} has minimal presence for uncontested reach`, fn: `navigateTo('social')`, btnLabel: '📣 Plan Social' },
+  ];
+  const qwCards = qwItems.map(w => card('#00C9C8','background:#ECFEFF;color:#0E7490','QUICK WIN',
+    w.t.length > 80 ? w.t.slice(0,80)+'…' : w.t,
+    `Low effort, high impact. Act on this before competitors do.`,
+    btn(w.btnLabel, w.fn, 'background:linear-gradient(135deg,#00C9C8,#00E5FF);color:#0A1628;font-weight:700')
+  )).join('');
+
+  // ── Priority summary banner ─────────────────────────────────────────────────
+  const topRows = (c.suggestions||[]).slice(0,3).map((s,i) => `
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)">
+      <span style="font-size:0.62rem;font-weight:800;padding:2px 8px;border-radius:5px;flex-shrink:0;background:${i===0?'#FEE2E2':'rgba(255,255,255,.1)'};color:${i===0?'#EF4444':'rgba(255,255,255,.6)'}">#${i+1}</span>
+      <div style="font-size:0.8rem;color:rgba(255,255,255,.8);line-height:1.45">${s}</div>
+    </div>`).join('');
+
+  // ── Final render ────────────────────────────────────────────────────────────
+  wrap.innerHTML = `
+  <div style="background:#0A1628;min-height:100vh;padding-bottom:40px">
+
+    <!-- Page Header -->
+    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-bottom:1px solid rgba(255,255,255,.08);padding:22px 28px">
+      <div style="max-width:1200px;margin:0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
+            <span style="font-size:1.4rem">⚔️</span>
+            <h1 style="font-family:'Sora',sans-serif;font-size:1.35rem;font-weight:900;color:white;margin:0">Battle Plan</h1>
+            <span style="background:linear-gradient(135deg,#00C9C8,#0066FF);padding:3px 12px;border-radius:20px;font-size:0.67rem;font-weight:700;color:white">AI-GENERATED</span>
+          </div>
+          <div style="color:rgba(255,255,255,.45);font-size:0.8rem">${domain} · ${industry} · ${comps.length} competitors · Click any action card to execute directly</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button onclick="openCampLaunchRich('All-Front Attack vs ${cName}','${ch}','$5,000/mo',${idx})" style="padding:10px 20px;background:linear-gradient(135deg,#EF4444,#DC2626);border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer">⚡ Execute Top Priority</button>
+          <button onclick="navigateTo('campaigns')" style="padding:10px 20px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:10px;font-size:0.8rem;font-weight:600;color:white;cursor:pointer">📋 All Campaigns</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Competitor Tabs -->
+    <div style="background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.07);overflow-x:auto">
+      <div style="display:flex;padding:0 20px;max-width:1200px;margin:0 auto">${tabs}</div>
+    </div>
+
+    <!-- Selected Competitor Summary -->
+    <div style="background:rgba(0,201,200,.06);border-bottom:1px solid rgba(0,201,200,.12);padding:14px 28px">
+      <div style="max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#0066FF,#00C9C8);display:flex;align-items:center;justify-content:center;font-weight:900;color:white;font-size:0.9rem">${(c.logo||c.name[0]).toString()[0]}</div>
+          <div>
+            <div style="font-weight:800;color:white;font-size:0.95rem">${c.name}</div>
+            <div style="font-size:0.68rem;color:rgba(255,255,255,.4)">${c.url||''}</div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;gap:24px;flex-wrap:wrap">
+          <div style="text-align:center"><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${traffic}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Traffic/mo</div></div>
+          <div style="text-align:center"><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.ctr||'—'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">CTR</div></div>
+          <div style="text-align:center"><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.roas||'—'}×</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">ROAS</div></div>
+          <div style="text-align:center"><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.adSpend||'—'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Ad Spend</div></div>
+          <div style="text-align:center"><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.topChannel||'Google'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Top Channel</div></div>
+          <div style="text-align:center"><div style="font-size:0.92rem;font-weight:800;color:${threat==='high'?'#EF4444':threat==='medium'?'#F59E0B':'#10B981'}">${threat.toUpperCase()}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Threat</div></div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:0.67rem;color:rgba(255,255,255,.4);margin-bottom:2px;text-transform:uppercase;letter-spacing:.05em">Opportunity Score</div>
+          <div style="font-size:2rem;font-weight:900;font-family:'Sora',sans-serif;color:${oppScore>=70?'#10B981':oppScore>=50?'#F59E0B':'#60A5FA'};line-height:1">${oppScore}</div>
+          <div style="font-size:0.62rem;color:rgba(255,255,255,.3)">out of 100</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div style="max-width:1200px;margin:0 auto;padding:24px 28px">
+
+      <!-- Priority Summary Banner -->
+      <div style="background:linear-gradient(135deg,rgba(239,68,68,.1),rgba(220,38,38,.04));border:1px solid rgba(239,68,68,.18);border-radius:14px;padding:16px 20px;margin-bottom:24px">
+        <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:800;color:white;margin-bottom:10px">🎯 Top Priority Actions vs ${c.name}</div>
+        ${topRows || '<div style="color:rgba(255,255,255,.4);font-size:0.82rem">Run analysis for full recommendations</div>'}
+      </div>
+
+      <!-- 2-Column Action Grid -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:20px">
+
+        ${section('🎯','Exploit Their Weaknesses',`${(c.suggestions||[]).length || 4} identified gaps in ${c.name}&apos;s strategy`, weakCards)}
+        ${section('🔑','Keyword Attack Windows',`Keywords ${c.name} is over-bidding — steal their traffic at lower CPC`, kwCards)}
+        ${section('🎨','Creative Counter-Strategy',`Ad angles that out-perform ${c.name}&apos;s current creative`, creativeCards)}
+        ${section('👥','Untapped Audience Segments',`Segments ${c.name} is under-serving or ignoring`, audCards)}
+        ${section('📣','Campaign Counter-Moves',`Live ${c.name} campaigns to counter right now`, campCards)}
+        ${section('💰','High-ROI Quick Wins','Low effort, high impact — act before competitors do', qwCards)}
+
+      </div>
+
+      <!-- Bottom CTA -->
+      <div style="margin-top:24px;background:linear-gradient(135deg,rgba(0,201,200,.1),rgba(0,102,255,.06));border:1px solid rgba(0,201,200,.2);border-radius:14px;padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <div>
+          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:white;margin-bottom:4px">Ready to outperform ${c.name}?</div>
+          <div style="font-size:0.8rem;color:rgba(255,255,255,.45)">${c.estimatedROI || 'Execute the recommendations above to drive measurable ROI gains against '+c.name+'.'}</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button onclick="openCampLaunchRich('Beat ${cName}','${ch}','$3,000/mo',${idx})" style="padding:11px 22px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">🚀 Launch Full Attack Plan</button>
+          <button onclick="navigateTo('intelligence')" style="padding:11px 22px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:10px;font-size:0.82rem;font-weight:600;color:white;cursor:pointer">📊 Deep Intelligence</button>
+        </div>
+      </div>
+
+    </div>
+  </div>`;
+}
+
 function buildSettings() {
   const wrap = document.getElementById('settingsWrap');
   const cats = Object.entries(INTEGRATIONS);
