@@ -1437,10 +1437,10 @@ Return ONLY valid JSON (no markdown), structured exactly like this:
     { "keyword": "example keyword 5", "volume": "6,700/mo", "cpc": "$2.80", "intent": "Commercial", "priority": "High" }
   ],
   "channelStrategy": [
-    { "channel": "Google Search", "budget": "$1,200/mo", "tactic": "Specific tactic", "expectedROAS": "4.2×" },
-    { "channel": "Meta Ads", "budget": "$800/mo", "tactic": "Specific tactic", "expectedROAS": "3.8×" },
-    { "channel": "SEO / Content", "budget": "$600/mo", "tactic": "Specific tactic", "expectedROAS": "6.1×" },
-    { "channel": "LinkedIn", "budget": "$400/mo", "tactic": "Specific tactic", "expectedROAS": "3.2×" }
+    { "channel": "Google Search", "budgetPct": 40, "tactic": "Specific tactic", "expectedROAS": "4.2×" },
+    { "channel": "Meta Ads", "budgetPct": 30, "tactic": "Specific tactic", "expectedROAS": "3.8×" },
+    { "channel": "SEO / Content", "budgetPct": 20, "tactic": "Specific tactic", "expectedROAS": "6.1×" },
+    { "channel": "LinkedIn", "budgetPct": 10, "tactic": "Specific tactic", "expectedROAS": "3.2×" }
   ],
   "contentAttacks": [
     { "title": "Content piece title", "type": "Blog Post", "angle": "Specific angle to attack competitor", "cta": "Call to action" },
@@ -1454,7 +1454,7 @@ Return ONLY valid JSON (no markdown), structured exactly like this:
   ]
 }
 
-Make all recommendations highly specific to ${competitor} and ${industry}. Use real marketing tactics. No generic advice.`;
+IMPORTANT: "budgetPct" is a whole-number percentage (0-100) of total monthly budget to allocate to that channel. All channelStrategy budgetPct values must sum to 100. Make all recommendations highly specific to ${competitor} and ${industry}. Use real marketing tactics. No generic advice.`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',

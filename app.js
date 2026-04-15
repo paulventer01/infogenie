@@ -7754,8 +7754,8 @@ function buildBattlePlan() {
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px">
             <label style="font-size:0.68rem;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.07em">Select Competitor</label>
-            <select id="attackPlanCompSelect" style="padding:10px 14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:9px;font-size:0.82rem;font-weight:600;color:white;cursor:pointer;width:100%">
-              ${(analysisData?.competitors||[]).map((cc,i)=>`<option value="${i}" ${i===idx?'selected':''}>${cc.name||'Competitor '+(i+1)}</option>`).join('')}
+            <select id="attackPlanCompSelect" style="padding:10px 14px;background:#1A2E4A;border:1px solid rgba(0,201,200,.3);border-radius:9px;font-size:0.82rem;font-weight:600;color:white;cursor:pointer;width:100%;appearance:auto">
+              ${(analysisData?.competitors||[]).map((cc,i)=>`<option value="${i}" ${i===idx?'selected':''} style="background:#1A2E4A;color:white">${cc.name||'Competitor '+(i+1)}</option>`).join('')}
             </select>
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding-top:18px">
@@ -7837,6 +7837,20 @@ function bpQW(compIdx, winIdx) {
 }
 
 // ── Full Attack Plan Modal ─────────────────────────────────────────────────────
+function _apCloseModal() {
+  const m = document.getElementById('fullAttackPlanModal');
+  if (m) { m.style.display = 'none'; }
+}
+function _apSwitchTab(t) {
+  ['overview','roadmap','keywords','channels','content','wins'].forEach(id => {
+    const panel = document.getElementById('apt-' + id);
+    const btn   = document.getElementById('aptb-' + id);
+    if (panel) panel.style.display = id === t ? 'block' : 'none';
+    if (btn)   { btn.style.background = id === t ? 'rgba(0,201,200,.2)' : 'transparent';
+                 btn.style.color      = id === t ? '#00C9C8' : 'rgba(255,255,255,.5)';
+                 btn.style.borderColor= id === t ? 'rgba(0,201,200,.35)' : 'transparent'; }
+  });
+}
 async function openFullAttackPlanModal(idx) {
   idx = (typeof idx === 'number' && !isNaN(idx)) ? idx : (window._bpIdx || 0);
   const comps = analysisData?.competitors || [];
@@ -7845,31 +7859,48 @@ async function openFullAttackPlanModal(idx) {
   const industry = analysisData?.industry?.name || 'your industry';
   const cName = c.name || 'Competitor';
 
-  // Show modal in loading state
   let modal = document.getElementById('fullAttackPlanModal');
   if (!modal) {
     modal = document.createElement('div');
     modal.id = 'fullAttackPlanModal';
     document.body.appendChild(modal);
   }
-  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(10,22,40,.92);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 16px';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(10,22,40,.93);display:flex;align-items:center;justify-content:center;padding:16px';
+
+  const tabBtn = (id, icon, label) =>
+    `<button id="aptb-${id}" onclick="_apSwitchTab('${id}')" style="padding:7px 14px;border-radius:8px;border:1px solid transparent;font-size:0.74rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s;color:rgba(255,255,255,.5);background:transparent">${icon} ${label}</button>`;
+
   modal.innerHTML = `
-    <div style="background:#0F1E35;border:1px solid rgba(0,201,200,.2);border-radius:20px;width:100%;max-width:900px;margin:auto;overflow:hidden">
-      <div style="background:linear-gradient(135deg,#0A1628,#0F2240);padding:24px 28px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between">
+    <div style="background:#0F1E35;border:1px solid rgba(0,201,200,.22);border-radius:18px;width:100%;max-width:860px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
+      <!-- Header -->
+      <div style="background:linear-gradient(135deg,#0A1628,#0F2240);padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:1.2rem;font-weight:800;color:white">⚔️ Full Attack Plan vs ${cName}</div>
-          <div style="font-size:0.78rem;color:rgba(255,255,255,.45);margin-top:4px">GPT-4 generating your complete 8-week strategy…</div>
+          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white">⚔️ Full Attack Plan — vs ${cName}</div>
+          <div style="font-size:0.74rem;color:rgba(255,255,255,.4);margin-top:2px">GPT-4 generating your complete 8-week strategy…</div>
         </div>
-        <button onclick="document.getElementById('fullAttackPlanModal').style.display='none'" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:7px 14px;color:white;font-size:0.8rem;cursor:pointer">✕ Close</button>
+        <button onclick="_apCloseModal()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:7px 14px;color:white;font-size:0.78rem;cursor:pointer;flex-shrink:0">✕ Close</button>
       </div>
-      <div id="attackPlanBody" style="padding:28px;display:flex;align-items:center;justify-content:center;min-height:300px">
+      <!-- Tab Bar (hidden during load) -->
+      <div id="apTabBar" style="display:none;padding:10px 18px;border-bottom:1px solid rgba(255,255,255,.07);background:rgba(0,0,0,.15);flex-shrink:0;overflow-x:auto;white-space:nowrap">
+        ${tabBtn('overview','📊','Overview')}
+        ${tabBtn('roadmap','🗓️','Roadmap')}
+        ${tabBtn('keywords','🔑','Keywords')}
+        ${tabBtn('channels','📡','Channels')}
+        ${tabBtn('content','✍️','Content')}
+        ${tabBtn('wins','⚡','Quick Wins')}
+      </div>
+      <!-- Scrollable body -->
+      <div id="attackPlanBody" style="flex:1;overflow-y:auto;padding:24px;display:flex;align-items:center;justify-content:center;min-height:260px">
         <div style="text-align:center">
-          <div style="width:48px;height:48px;border:3px solid rgba(0,201,200,.3);border-top-color:#00C9C8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px"></div>
-          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:700;color:white;margin-bottom:6px">Building your attack plan…</div>
-          <div style="font-size:0.8rem;color:rgba(255,255,255,.4)">GPT-4 is analysing ${cName} and crafting a personalised 8-week strategy</div>
+          <div style="width:44px;height:44px;border:3px solid rgba(0,201,200,.3);border-top-color:#00C9C8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px"></div>
+          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:700;color:white;margin-bottom:5px">Building your attack plan…</div>
+          <div style="font-size:0.78rem;color:rgba(255,255,255,.4)">GPT-4 is analysing ${cName} and crafting a personalised 8-week strategy</div>
         </div>
       </div>
     </div>`;
+
+  // Capture body reference immediately after setting innerHTML
+  const planBody = document.getElementById('attackPlanBody');
 
   // Call API
   try {
@@ -7888,12 +7919,13 @@ async function openFullAttackPlanModal(idx) {
         }
       })
     });
+    if (!resp.ok) throw new Error(`Server error ${resp.status}`);
     const data = await resp.json();
     const plan = data.plan;
-    if (!plan) throw new Error(data.error || 'No plan returned');
-    renderAttackPlan(plan, cName, myDomain);
+    if (!plan) throw new Error(data.error || 'No plan returned from AI');
+    renderAttackPlan(plan, cName, myDomain, planBody);
   } catch(err) {
-    document.getElementById('attackPlanBody').innerHTML = `
+    if (planBody) planBody.innerHTML = `
       <div style="text-align:center;padding:40px 24px">
         <div style="font-size:2rem;margin-bottom:12px">⚠️</div>
         <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:700;color:white;margin-bottom:8px">Plan generation failed</div>
@@ -7903,70 +7935,164 @@ async function openFullAttackPlanModal(idx) {
   }
 }
 
-function renderAttackPlan(plan, cName, myDomain) {
-  const scoreColor = plan.opportunityScore >= 75 ? '#10B981' : plan.opportunityScore >= 50 ? '#F59E0B' : '#EF4444';
+function renderAttackPlan(plan, cName, myDomain, planBody) {
+  if (!planBody) planBody = document.getElementById('attackPlanBody');
+  if (!planBody) return;
+
+  const scoreColor   = plan.opportunityScore >= 75 ? '#10B981' : plan.opportunityScore >= 50 ? '#F59E0B' : '#EF4444';
   const priorityColor = p => p === 'Critical' ? '#EF4444' : p === 'High' ? '#F59E0B' : '#10B981';
-  const impactColor  = p => p === 'High' ? '#10B981' : p === 'Medium' ? '#F59E0B' : '#6B7280';
+  const impactColor   = p => p === 'High' ? '#10B981' : p === 'Medium' ? '#F59E0B' : '#6B7280';
+  const sec = label => `<div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:800;color:white;margin-bottom:12px">${label}</div>`;
+  const actionBar = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;padding-top:14px;margin-top:14px;border-top:1px solid rgba(255,255,255,.07)">
+      <button onclick="window._apExportPlan()" style="padding:9px 18px;background:linear-gradient(135deg,#059669,#10B981);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⬇️ Export Plan</button>
+      <button onclick="navigateTo('campaigns');_apCloseModal()" style="padding:9px 18px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🚀 Launch Campaigns</button>
+      <button onclick="navigateTo('content');_apCloseModal()" style="padding:9px 16px;background:rgba(124,58,237,.25);border:1px solid rgba(124,58,237,.3);border-radius:9px;font-size:0.78rem;font-weight:600;color:#A78BFA;cursor:pointer">📝 Build Content</button>
+    </div>`;
 
-  const weeklyHtml = (plan.weeklyPlan || []).map((w, i) => `
-    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:16px 18px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        <div style="width:28px;height:28px;background:linear-gradient(135deg,#0066FF,#00C9C8);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:800;color:white;flex-shrink:0">${i+1}</div>
+  // ── Tab: Overview ───────────────────────────────────────────────
+  const overviewHtml = `
+    <div id="apt-overview">
+      <div style="background:linear-gradient(135deg,rgba(0,102,255,.12),rgba(0,201,200,.08));border:1px solid rgba(0,201,200,.2);border-radius:14px;padding:18px 22px;margin-bottom:16px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:0.82rem;font-weight:800;color:white">${w.week}</div>
-          <div style="font-size:0.72rem;color:#00C9C8;font-weight:600">${w.focus}</div>
+          <div style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Executive Summary</div>
+          <div style="font-size:0.88rem;color:rgba(255,255,255,.85);line-height:1.55">${plan.executiveSummary||'Full attack plan generated.'}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:center;flex-shrink:0">
+          <div style="width:64px;height:64px;border-radius:50%;background:conic-gradient(${scoreColor} ${plan.opportunityScore||0}%,rgba(255,255,255,.08) 0);display:flex;align-items:center;justify-content:center">
+            <div style="width:50px;height:50px;background:#0F1E35;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column">
+              <div style="font-size:0.95rem;font-weight:800;color:${scoreColor}">${plan.opportunityScore||0}</div>
+              <div style="font-size:0.46rem;color:rgba(255,255,255,.35);font-weight:600">/100</div>
+            </div>
+          </div>
+          <div style="font-size:0.84rem;font-weight:800;color:#10B981">${plan.estimatedROILift||''}</div>
+          <div style="font-size:0.62rem;color:rgba(255,255,255,.35)">⏱ ${plan.timeToResults||'8 weeks'}</div>
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
-        ${(w.actions||[]).map(a=>`<div style="font-size:0.77rem;color:rgba(255,255,255,.75);padding:4px 0;padding-left:12px;border-left:2px solid rgba(0,201,200,.3)">• ${a}</div>`).join('')}
-      </div>
-      <div style="font-size:0.7rem;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.06em">📊 KPI: <span style="color:#00C9C8">${w.kpi||'Track progress'}</span></div>
-    </div>`).join('');
-
-  const kwHtml = (plan.keywordTargets || []).map(k => `
-    <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;align-items:center;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.05);gap:8px">
-      <div style="font-size:0.78rem;font-weight:600;color:white">${k.keyword}</div>
-      <div style="font-size:0.75rem;color:rgba(255,255,255,.5)">${k.volume}</div>
-      <div style="font-size:0.75rem;color:#00C9C8;font-weight:700">${k.cpc}</div>
-      <div style="font-size:0.68rem;color:rgba(255,255,255,.4)">${k.intent}</div>
-      <span style="font-size:0.62rem;font-weight:700;padding:2px 8px;border-radius:5px;background:${priorityColor(k.priority)}22;color:${priorityColor(k.priority)};white-space:nowrap">${k.priority}</span>
-    </div>`).join('');
-
-  const chHtml = (plan.channelStrategy || []).map(ch => `
-    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px 16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <div style="font-family:'Sora',sans-serif;font-size:0.82rem;font-weight:800;color:white">${ch.channel}</div>
-        <div style="font-size:0.78rem;font-weight:700;color:#00C9C8">${ch.expectedROAS} ROAS</div>
-      </div>
-      <div style="font-size:0.74rem;color:rgba(255,255,255,.55);margin-bottom:8px;line-height:1.4">${ch.tactic}</div>
-      <div style="font-size:0.7rem;font-weight:700;color:rgba(255,255,255,.35)">Budget: <span style="color:white">${ch.budget}</span></div>
-    </div>`).join('');
-
-  const contentHtml = (plan.contentAttacks || []).map(ct => `
-    <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start">
-      <div style="font-size:0.65rem;font-weight:700;padding:3px 8px;border-radius:5px;background:rgba(124,58,237,.25);color:#A78BFA;white-space:nowrap;margin-top:2px">${ct.type}</div>
-      <div style="flex:1">
-        <div style="font-size:0.82rem;font-weight:700;color:white;margin-bottom:3px">${ct.title}</div>
-        <div style="font-size:0.74rem;color:rgba(255,255,255,.5);margin-bottom:6px">${ct.angle}</div>
-        <div style="font-size:0.7rem;font-weight:600;color:#00C9C8">CTA: ${ct.cta}</div>
-      </div>
-      <button onclick="window._contentTab='clusters';window._clusterSeedPrefill='${(ct.title||'').replace(/'/g,"\\'")}';navigateTo('content');document.getElementById('fullAttackPlanModal').style.display='none'" style="padding:5px 11px;background:rgba(0,102,255,.25);border:none;border-radius:7px;font-size:0.68rem;font-weight:700;color:#60A5FA;cursor:pointer;white-space:nowrap">Build →</button>
-    </div>`).join('');
-
-  const winsHtml = (plan.criticalWins || []).map(w => `
-    <div style="display:flex;gap:12px;align-items:flex-start;padding:10px 14px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);border-radius:10px">
-      <div style="font-size:1rem;flex-shrink:0">⚡</div>
-      <div style="flex:1">
-        <div style="font-size:0.8rem;font-weight:600;color:white;margin-bottom:3px">${w.win}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <span style="font-size:0.65rem;font-weight:700;padding:2px 7px;border-radius:4px;background:${impactColor(w.impact)}22;color:${impactColor(w.impact)}">Impact: ${w.impact}</span>
-          <span style="font-size:0.65rem;color:rgba(255,255,255,.35)">Effort: ${w.effort}</span>
-          <span style="font-size:0.65rem;color:rgba(255,255,255,.35)">⏱ ${w.timeframe}</span>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 14px;text-align:center">
+          <div style="font-size:1.1rem;font-weight:800;color:#00C9C8">${(plan.weeklyPlan||[]).length * 2}</div>
+          <div style="font-size:0.66rem;color:rgba(255,255,255,.4);margin-top:2px">Weeks of Strategy</div>
+        </div>
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 14px;text-align:center">
+          <div style="font-size:1.1rem;font-weight:800;color:#0066FF">${(plan.keywordTargets||[]).length}</div>
+          <div style="font-size:0.66rem;color:rgba(255,255,255,.4);margin-top:2px">Target Keywords</div>
+        </div>
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 14px;text-align:center">
+          <div style="font-size:1.1rem;font-weight:800;color:#10B981">${(plan.criticalWins||[]).length}</div>
+          <div style="font-size:0.66rem;color:rgba(255,255,255,.4);margin-top:2px">Quick Wins</div>
         </div>
       </div>
-    </div>`).join('');
+      ${actionBar}
+    </div>`;
 
-  const exportPlan = () => {
+  // ── Tab: Roadmap ────────────────────────────────────────────────
+  const roadmapHtml = `
+    <div id="apt-roadmap" style="display:none">
+      ${sec('🗓️ 8-Week Attack Roadmap')}
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${(plan.weeklyPlan||[]).map((w,i) => `
+          <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px 16px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+              <div style="width:26px;height:26px;background:linear-gradient(135deg,#0066FF,#00C9C8);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:0.68rem;font-weight:800;color:white;flex-shrink:0">${i+1}</div>
+              <div>
+                <div style="font-family:'Sora',sans-serif;font-size:0.8rem;font-weight:800;color:white">${w.week}</div>
+                <div style="font-size:0.7rem;color:#00C9C8;font-weight:600">${w.focus}</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px">
+              ${(w.actions||[]).map(a=>`<div style="font-size:0.75rem;color:rgba(255,255,255,.7);padding:3px 0 3px 12px;border-left:2px solid rgba(0,201,200,.25)">• ${a}</div>`).join('')}
+            </div>
+            <div style="font-size:0.67rem;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em">KPI: <span style="color:#00C9C8">${w.kpi||'Track progress'}</span></div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+
+  // ── Tab: Keywords ───────────────────────────────────────────────
+  const kwHtml = `
+    <div id="apt-keywords" style="display:none">
+      ${sec('🔑 Priority Keyword Targets')}
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;overflow:hidden">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;padding:8px 14px;background:rgba(255,255,255,.05);font-size:0.62rem;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;gap:8px">
+          <div>Keyword</div><div>Volume</div><div>CPC</div><div>Intent</div><div>Priority</div>
+        </div>
+        ${(plan.keywordTargets||[]).map(k => `
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;align-items:center;padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.05);gap:8px">
+            <div style="font-size:0.76rem;font-weight:600;color:white">${k.keyword}</div>
+            <div style="font-size:0.72rem;color:rgba(255,255,255,.5)">${k.volume}</div>
+            <div style="font-size:0.72rem;color:#00C9C8;font-weight:700">${k.cpc}</div>
+            <div style="font-size:0.66rem;color:rgba(255,255,255,.4)">${k.intent}</div>
+            <span style="font-size:0.6rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${priorityColor(k.priority)}22;color:${priorityColor(k.priority)};white-space:nowrap">${k.priority}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+
+  // ── Tab: Channels ───────────────────────────────────────────────
+  const channelHtml = `
+    <div id="apt-channels" style="display:none">
+      ${sec('📡 Channel Budget Allocation')}
+      <div style="font-size:0.74rem;color:rgba(255,255,255,.4);margin-bottom:14px;margin-top:-6px">AI-recommended % of your monthly ad spend per channel</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${(plan.channelStrategy||[]).map(ch => {
+          const pct = Math.max(1, Math.min(100, parseInt(ch.budgetPct) || 25));
+          return `
+            <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px 16px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <div style="font-family:'Sora',sans-serif;font-size:0.82rem;font-weight:800;color:white">${ch.channel}</div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="font-size:0.8rem;font-weight:800;color:#00E5FF">${pct}%</div>
+                  <div style="font-size:0.72rem;font-weight:600;color:#10B981">${ch.expectedROAS} ROAS</div>
+                </div>
+              </div>
+              <div style="height:6px;background:rgba(255,255,255,.08);border-radius:4px;margin-bottom:8px;overflow:hidden">
+                <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#0066FF,#00C9C8);border-radius:4px;transition:width .4s ease"></div>
+              </div>
+              <div style="font-size:0.73rem;color:rgba(255,255,255,.5);line-height:1.4">${ch.tactic}</div>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+
+  // ── Tab: Content ────────────────────────────────────────────────
+  const contentHtml = `
+    <div id="apt-content" style="display:none">
+      ${sec('📝 Content Attack Plan')}
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${(plan.contentAttacks||[]).map(ct => `
+          <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start">
+            <div style="font-size:0.62rem;font-weight:700;padding:3px 8px;border-radius:5px;background:rgba(124,58,237,.25);color:#A78BFA;white-space:nowrap;margin-top:2px">${ct.type}</div>
+            <div style="flex:1">
+              <div style="font-size:0.8rem;font-weight:700;color:white;margin-bottom:3px">${ct.title}</div>
+              <div style="font-size:0.72rem;color:rgba(255,255,255,.5);margin-bottom:6px">${ct.angle}</div>
+              <div style="font-size:0.68rem;font-weight:600;color:#00C9C8">CTA: ${ct.cta}</div>
+            </div>
+            <button onclick="window._contentTab='clusters';window._clusterSeedPrefill='${(ct.title||'').replace(/'/g,"\\'")}';navigateTo('content');_apCloseModal()" style="padding:5px 10px;background:rgba(0,102,255,.25);border:none;border-radius:7px;font-size:0.66rem;font-weight:700;color:#60A5FA;cursor:pointer;white-space:nowrap;flex-shrink:0">Build →</button>
+          </div>`).join('')}
+      </div>
+    </div>`;
+
+  // ── Tab: Quick Wins ─────────────────────────────────────────────
+  const winsHtml = `
+    <div id="apt-wins" style="display:none">
+      ${sec('⚡ Critical Quick Wins')}
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${(plan.criticalWins||[]).map(w => `
+          <div style="display:flex;gap:12px;align-items:flex-start;padding:12px 14px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);border-radius:10px">
+            <div style="font-size:1rem;flex-shrink:0">⚡</div>
+            <div style="flex:1">
+              <div style="font-size:0.78rem;font-weight:600;color:white;margin-bottom:4px">${w.win}</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:4px;background:${impactColor(w.impact)}22;color:${impactColor(w.impact)}">Impact: ${w.impact}</span>
+                <span style="font-size:0.62rem;color:rgba(255,255,255,.35)">Effort: ${w.effort}</span>
+                <span style="font-size:0.62rem;color:rgba(255,255,255,.35)">⏱ ${w.timeframe}</span>
+              </div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+
+  // Wire export
+  window._apExportPlan = () => {
     const lines = [
       `FULL ATTACK PLAN — ${myDomain} vs ${cName}`,
       `Generated: ${new Date().toLocaleString()}`,
@@ -7979,7 +8105,7 @@ function renderAttackPlan(plan, cName, myDomain) {
       '== KEYWORD TARGETS ==',
       ...(plan.keywordTargets||[]).map(k=>`  ${k.keyword} | ${k.volume} | CPC ${k.cpc} | ${k.intent} | ${k.priority}`),
       '', '== CHANNEL STRATEGY ==',
-      ...(plan.channelStrategy||[]).map(ch=>`  ${ch.channel} | ${ch.budget} | ROAS ${ch.expectedROAS} | ${ch.tactic}`),
+      ...(plan.channelStrategy||[]).map(ch=>`  ${ch.channel} | ${ch.budgetPct}% of budget | ROAS ${ch.expectedROAS} | ${ch.tactic}`),
       '', '== CRITICAL WINS ==',
       ...(plan.criticalWins||[]).map(w=>`  ⚡ ${w.win} (Impact: ${w.impact}, Effort: ${w.effort}, ${w.timeframe})`)
     ];
@@ -7989,70 +8115,14 @@ function renderAttackPlan(plan, cName, myDomain) {
     showToast('✅ Attack plan exported!');
   };
 
-  document.getElementById('attackPlanBody').innerHTML = `
-    <!-- Summary Banner -->
-    <div style="background:linear-gradient(135deg,rgba(0,102,255,.12),rgba(0,201,200,.08));border:1px solid rgba(0,201,200,.2);border-radius:14px;padding:18px 22px;margin-bottom:24px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center">
-      <div>
-        <div style="font-family:'Sora',sans-serif;font-size:0.7rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Executive Summary</div>
-        <div style="font-size:0.9rem;color:rgba(255,255,255,.85);line-height:1.55">${plan.executiveSummary||'Full attack plan generated.'}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px;align-items:center;flex-shrink:0">
-        <div style="width:72px;height:72px;border-radius:50%;background:conic-gradient(${scoreColor} ${plan.opportunityScore||0}%,rgba(255,255,255,.08) 0);display:flex;align-items:center;justify-content:center;position:relative">
-          <div style="width:56px;height:56px;background:#0F1E35;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column">
-            <div style="font-size:1.05rem;font-weight:800;color:${scoreColor}">${plan.opportunityScore||0}</div>
-            <div style="font-size:0.5rem;color:rgba(255,255,255,.35);font-weight:600">/100</div>
-          </div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:0.9rem;font-weight:800;color:#10B981">${plan.estimatedROILift||''}</div>
-          <div style="font-size:0.62rem;color:rgba(255,255,255,.35)">Est. ROI Lift</div>
-        </div>
-        <div style="font-size:0.68rem;color:rgba(255,255,255,.4);text-align:center">⏱ ${plan.timeToResults||'8 weeks'}</div>
-      </div>
-    </div>
+  // Render all tabs into the body
+  planBody.style.cssText = 'flex:1;overflow-y:auto;padding:20px 22px;display:block';
+  planBody.innerHTML = overviewHtml + roadmapHtml + kwHtml + channelHtml + contentHtml + winsHtml;
 
-    <!-- 8-Week Roadmap -->
-    <div style="margin-bottom:24px">
-      <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:white;margin-bottom:12px">🗓️ 8-Week Attack Roadmap</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">${weeklyHtml}</div>
-    </div>
-
-    <!-- Keyword Targets -->
-    <div style="margin-bottom:24px">
-      <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:white;margin-bottom:12px">🔑 Priority Keyword Targets</div>
-      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:12px;overflow:hidden">
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;padding:9px 14px;background:rgba(255,255,255,.05);font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.05em;gap:8px">
-          <div>Keyword</div><div>Volume</div><div>CPC</div><div>Intent</div><div>Priority</div>
-        </div>
-        ${kwHtml}
-      </div>
-    </div>
-
-    <!-- Channel Strategy -->
-    <div style="margin-bottom:24px">
-      <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:white;margin-bottom:12px">📡 Channel Strategy</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">${chHtml}</div>
-    </div>
-
-    <!-- Content Attack Plan -->
-    <div style="margin-bottom:24px">
-      <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:white;margin-bottom:12px">📝 Content Attack Plan</div>
-      <div style="display:flex;flex-direction:column;gap:10px">${contentHtml}</div>
-    </div>
-
-    <!-- Critical Wins -->
-    <div style="margin-bottom:24px">
-      <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:white;margin-bottom:12px">⚡ Critical Quick Wins</div>
-      <div style="display:flex;flex-direction:column;gap:8px">${winsHtml}</div>
-    </div>
-
-    <!-- Action Bar -->
-    <div style="display:flex;gap:10px;flex-wrap:wrap;padding-top:8px;border-top:1px solid rgba(255,255,255,.07)">
-      <button onclick="(${exportPlan.toString()})()" style="padding:11px 22px;background:linear-gradient(135deg,#059669,#10B981);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">⬇️ Export Plan</button>
-      <button onclick="navigateTo('campaigns');document.getElementById('fullAttackPlanModal').style.display='none'" style="padding:11px 22px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">🚀 Launch Campaigns</button>
-      <button onclick="navigateTo('content');document.getElementById('fullAttackPlanModal').style.display='none'" style="padding:11px 20px;background:rgba(124,58,237,.25);border:1px solid rgba(124,58,237,.3);border-radius:10px;font-size:0.82rem;font-weight:600;color:#A78BFA;cursor:pointer">📝 Build Content</button>
-      <button onclick="document.getElementById('fullAttackPlanModal').style.display='none'" style="padding:11px 20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;font-size:0.82rem;font-weight:600;color:rgba(255,255,255,.6);cursor:pointer">✕ Close</button>
-    </div>`;
+  // Show tab bar and activate Overview
+  const tabBar = document.getElementById('apTabBar');
+  if (tabBar) tabBar.style.display = 'flex';
+  _apSwitchTab('overview');
 }
 
 function buildSettings() {
