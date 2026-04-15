@@ -1402,6 +1402,75 @@ app.post('/api/ai-social-caption', async (req, res) => {
   }
 });
 
+// ── POST /api/ai-attack-plan ─────────────────────────────────────────────────
+app.post('/api/ai-attack-plan', async (req, res) => {
+  try {
+    const { myDomain = 'yourdomain.com', competitor = 'competitor', industry = 'your industry', competitorData = {} } = req.body;
+    const { OpenAI } = require('openai');
+    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+
+    const prompt = `You are a world-class performance marketing strategist. Create a comprehensive, actionable "Full Attack Plan" for ${myDomain} to outperform their competitor ${competitor} in the ${industry} industry.
+
+Competitor data context:
+- Estimated monthly traffic: ${competitorData.traffic || 'unknown'}
+- Ad spend estimate: ${competitorData.adSpend || 'unknown'}
+- Top channels: ${(competitorData.channels || []).join(', ') || 'Google, Meta, SEO'}
+- Known weaknesses: ${(competitorData.weaknesses || []).join(', ') || 'general market gaps'}
+
+Return ONLY valid JSON (no markdown), structured exactly like this:
+{
+  "executiveSummary": "2-3 sentence strategic overview of the attack plan and expected outcomes",
+  "opportunityScore": 78,
+  "estimatedROILift": "+34%",
+  "timeToResults": "6-8 weeks",
+  "weeklyPlan": [
+    { "week": "Week 1–2", "focus": "Foundation & Quick Wins", "actions": ["action 1", "action 2", "action 3"], "kpi": "Metric to track" },
+    { "week": "Week 3–4", "focus": "Campaign Launch", "actions": ["action 1", "action 2", "action 3"], "kpi": "Metric to track" },
+    { "week": "Week 5–6", "focus": "Scale & Optimise", "actions": ["action 1", "action 2", "action 3"], "kpi": "Metric to track" },
+    { "week": "Week 7–8", "focus": "Dominate & Expand", "actions": ["action 1", "action 2", "action 3"], "kpi": "Metric to track" }
+  ],
+  "keywordTargets": [
+    { "keyword": "example keyword", "volume": "8,200/mo", "cpc": "$2.40", "intent": "Commercial", "priority": "Critical" },
+    { "keyword": "example keyword 2", "volume": "4,100/mo", "cpc": "$1.80", "intent": "Informational", "priority": "High" },
+    { "keyword": "example keyword 3", "volume": "12,500/mo", "cpc": "$3.10", "intent": "Transactional", "priority": "Critical" },
+    { "keyword": "example keyword 4", "volume": "2,900/mo", "cpc": "$1.20", "intent": "Navigational", "priority": "Medium" },
+    { "keyword": "example keyword 5", "volume": "6,700/mo", "cpc": "$2.80", "intent": "Commercial", "priority": "High" }
+  ],
+  "channelStrategy": [
+    { "channel": "Google Search", "budget": "$1,200/mo", "tactic": "Specific tactic", "expectedROAS": "4.2×" },
+    { "channel": "Meta Ads", "budget": "$800/mo", "tactic": "Specific tactic", "expectedROAS": "3.8×" },
+    { "channel": "SEO / Content", "budget": "$600/mo", "tactic": "Specific tactic", "expectedROAS": "6.1×" },
+    { "channel": "LinkedIn", "budget": "$400/mo", "tactic": "Specific tactic", "expectedROAS": "3.2×" }
+  ],
+  "contentAttacks": [
+    { "title": "Content piece title", "type": "Blog Post", "angle": "Specific angle to attack competitor", "cta": "Call to action" },
+    { "title": "Content piece title 2", "type": "Comparison Page", "angle": "Specific angle", "cta": "Call to action" },
+    { "title": "Content piece title 3", "type": "Video Ad", "angle": "Specific angle", "cta": "Call to action" }
+  ],
+  "criticalWins": [
+    { "win": "Specific actionable win", "impact": "High", "effort": "Low", "timeframe": "This week" },
+    { "win": "Specific actionable win 2", "impact": "High", "effort": "Medium", "timeframe": "Week 2" },
+    { "win": "Specific actionable win 3", "impact": "Medium", "effort": "Low", "timeframe": "This week" }
+  ]
+}
+
+Make all recommendations highly specific to ${competitor} and ${industry}. Use real marketing tactics. No generic advice.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 1800,
+      response_format: { type: 'json_object' }
+    });
+    const raw = completion.choices[0]?.message?.content?.trim() || '{}';
+    let plan;
+    try { plan = JSON.parse(raw); } catch { plan = null; }
+    res.json({ plan });
+  } catch(err) {
+    res.json({ plan: null, error: err.message });
+  }
+});
+
 // ── POST /api/ai-creative ─────────────────────────────────────────────────────
 // Powers Creative Studio — uses GPT-4 via Replit AI Integrations with smart fallback
 
