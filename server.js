@@ -1201,6 +1201,147 @@ app.post('/api/reddit-signals', async (req, res) => {
   }
 });
 
+// ── POST /api/reddit-monitor ──────────────────────────────────────────────────
+app.post('/api/reddit-monitor', async (req, res) => {
+  try {
+    const { keywords = [], brand = '', competitors = [], industry = 'marketing' } = req.body;
+
+    const queries = [...new Set([
+      brand,
+      ...keywords.slice(0, 3),
+      ...competitors.slice(0, 2)
+    ].filter(Boolean))].slice(0, 5);
+
+    if (queries.length === 0) return res.json({ posts: [] });
+
+    // Fetch from Reddit public JSON API (no auth required)
+    const fetchReddit = async (query) => {
+      try {
+        const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=hot&t=week&limit=15&restrict_sr=false`;
+        const r = await fetch(url, {
+          headers: { 'User-Agent': 'InfoGenie/1.0 (marketing intelligence tool)' },
+          signal: AbortSignal.timeout(8000)
+        });
+        if (!r.ok) return [];
+        const data = await r.json();
+        return (data?.data?.children || []).map(c => c.data).filter(p => p.title && !p.over_18);
+      } catch { return []; }
+    };
+
+    // Also fetch from HN Algolia (free, reliable fallback)
+    const fetchHN = async (query) => {
+      try {
+        const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(query)}&tags=story&hitsPerPage=10`;
+        const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        if (!r.ok) return [];
+        const data = await r.json();
+        return (data.hits || []).filter(h => h.title).map(h => ({
+          title: h.title, subreddit: 'HackerNews', score: h.points || 0,
+          num_comments: h.num_comments || 0, created_utc: h.created_at_i || Date.now() / 1000,
+          permalink: `https://news.ycombinator.com/item?id=${h.objectID}`,
+          url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`, selftext: ''
+        }));
+      } catch { return []; }
+    };
+
+    const results = await Promise.all([
+      ...queries.map(q => fetchReddit(q)),
+      fetchHN(queries[0])
+    ]);
+
+    const seen = new Set();
+    const posts = [];
+    for (const batch of results) {
+      for (const p of batch) {
+        const key = (p.permalink || '') + p.title;
+        if (seen.has(key) || !p.title) continue;
+        seen.add(key);
+        const now = Date.now() / 1000;
+        const ageHrs = Math.max(0.1, (now - (p.created_utc || now)) / 3600);
+        posts.push({
+          title: p.title,
+          subreddit: p.subreddit ? `r/${p.subreddit}` : 'HackerNews',
+          score: p.score || 0,
+          comments: p.num_comments || 0,
+          ageHours: Math.round(ageHrs),
+          velocity: parseFloat(((p.score || 0) / ageHrs).toFixed(1)),
+          url: p.subreddit ? `https://reddit.com${p.permalink}` : (p.permalink || p.url || ''),
+          preview: (p.selftext || '').slice(0, 200)
+        });
+      }
+    }
+
+    posts.sort((a, b) => b.score - a.score);
+    const top = posts.slice(0, 20);
+    if (top.length === 0) return res.json({ posts: [] });
+
+    // GPT-4 batch scoring
+    const { OpenAI } = require('openai');
+    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+
+    const scorePrompt = `You are a Reddit intelligence analyst for the brand "${brand || 'our company'}" in the "${industry}" industry.
+Score each post for engagement opportunity. Posts:
+${top.map((p, i) => `${i}: "${p.title}" [${p.subreddit}, ${p.score} pts]`).join('\n')}
+
+Return a JSON object: { "scores": [ ...${top.length} items... ] }
+Each item: { "relevance": 0-100, "sentiment": "positive"|"neutral"|"negative", "urgency": "critical"|"high"|"medium"|"low", "serpLikely": true|false, "opportunity": "one sentence engagement tip" }
+Order must match the input exactly.`;
+
+    let scored = top.map(p => ({ ...p, relevance: 50, sentiment: 'neutral', urgency: 'medium', serpLikely: false, opportunity: 'Monitor this thread.' }));
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o', messages: [{ role: 'user', content: scorePrompt }],
+        max_tokens: 1400, response_format: { type: 'json_object' }
+      });
+      const raw = completion.choices[0]?.message?.content || '{}';
+      const obj = JSON.parse(raw);
+      const arr = Array.isArray(obj) ? obj : (obj.scores || obj.posts || Object.values(obj)[0] || []);
+      scored = top.map((p, i) => ({ ...p, ...(arr[i] || {}), relevance: arr[i]?.relevance ?? 50 }));
+    } catch(e) { /* use defaults */ }
+
+    res.json({ posts: scored });
+  } catch(err) {
+    console.error('/api/reddit-monitor error:', err.message);
+    res.json({ posts: [], error: err.message });
+  }
+});
+
+// ── POST /api/reddit-reply ────────────────────────────────────────────────────
+app.post('/api/reddit-reply', async (req, res) => {
+  try {
+    const { postTitle = '', postPreview = '', brand = 'our brand', tone = 'Helpful', persona = '', industry = 'marketing' } = req.body;
+    const { OpenAI } = require('openai');
+    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+
+    const prompt = `You are managing Reddit presence for the brand "${brand}" in the "${industry}" industry.
+Tone: ${tone}. Persona: ${persona || 'knowledgeable industry expert who adds genuine value'}.
+
+Reddit post: "${postTitle}"
+Post context: "${postPreview || 'No preview available'}"
+
+Write a genuine, helpful Reddit reply that:
+1. Directly addresses the post topic with real insight
+2. Subtly mentions ${brand} only if it fits naturally (no spam)
+3. Matches the tone (${tone}) and sounds like a real human
+4. Is 3-5 sentences — concise but valuable
+5. Does NOT open with "Great post!" or any flattery
+
+Return JSON only: { "reply": "...", "tone_note": "brief note on how this matches brand voice" }`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o', messages: [{ role: 'user', content: prompt }],
+      max_tokens: 400, response_format: { type: 'json_object' }
+    });
+    const raw = completion.choices[0]?.message?.content || '{}';
+    let result;
+    try { result = JSON.parse(raw); } catch { result = { reply: raw.replace(/[{}'"]/g, ''), tone_note: '' }; }
+    res.json(result);
+  } catch(err) {
+    console.error('/api/reddit-reply error:', err.message);
+    res.json({ reply: '', error: err.message });
+  }
+});
+
 // ── POST /api/ai-channel-ad ───────────────────────────────────────────────────
 app.post('/api/ai-channel-ad', async (req, res) => {
   try {

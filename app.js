@@ -1432,6 +1432,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'battleplan') {
     try { buildBattlePlan(); } catch(e) { console.warn('buildBattlePlan error:', e); }
   }
+  if (viewId === 'reddit') {
+    try { buildRedditIntel(); } catch(e) { console.warn('buildRedditIntel error:', e); }
+  }
   // Show/hide navbar links for home vs app
   const navLinks = document.getElementById('navLinks');
   const navPlan = document.getElementById('navPlanBadge');
@@ -5251,6 +5254,332 @@ function updateLeadCalc() {
     const cpl = total > 0 && budget > 0 ? '$' + (budget / total).toFixed(2) : '—';
     preview.textContent = cpl;
     if (label) label.textContent = `Cost per lead (${msgs} msg + ${calls} calls = ${total} leads)`;
+  }
+}
+
+// ===== REDDIT INTELLIGENCE =====
+window._redditPosts     = [];
+window._redditPersona   = { brand: '', tone: 'Helpful', persona: '' };
+window._redditSelPost   = null;
+window._redditActiveTab = 'monitor';
+
+function buildRedditIntel() {
+  const wrap = document.getElementById('redditWrap');
+  if (!wrap) return;
+
+  const brand       = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || '';
+  const competitors = (analysisData?.competitors || []).map(c => c.name).join(', ');
+  const industry    = analysisData?.industry?.name || 'marketing';
+  const kwList      = (analysisData?.keywords || []).slice(0, 5).map(k => typeof k === 'string' ? k : (k.keyword || k.term || '')).filter(Boolean).join(', ');
+
+  // Save persona defaults
+  if (brand && !window._redditPersona.brand) window._redditPersona.brand = brand;
+
+  wrap.innerHTML = `
+    <!-- Config Panel -->
+    <div style="background:#0F1E35;border:1px solid rgba(255,100,0,.25);border-radius:16px;padding:20px 24px;margin-bottom:20px">
+      <div style="font-family:'Sora',sans-serif;font-size:0.85rem;font-weight:800;color:white;margin-bottom:14px">⚙️ Monitor Settings</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px">
+        <div>
+          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">Your Brand / Domain</label>
+          <input id="rdt-brand" value="${brand}" placeholder="yourbrand.com" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">Keywords to Monitor</label>
+          <input id="rdt-keywords" value="${kwList}" placeholder="e.g. email marketing, CRM, automation" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">Competitors to Watch</label>
+          <input id="rdt-competitors" value="${competitors}" placeholder="e.g. HubSpot, Mailchimp" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div style="font-size:0.75rem;color:rgba(255,255,255,.4)">Scans Reddit + Hacker News in real-time · AI scores each thread for relevance, sentiment &amp; urgency</div>
+        <button onclick="scanRedditMonitor()" style="padding:10px 22px;background:linear-gradient(135deg,#FF4500,#FF6B35);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">🔍 Scan Now</button>
+      </div>
+    </div>
+
+    <!-- Tab Bar -->
+    <div style="display:flex;gap:4px;margin-bottom:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:5px">
+      ${['monitor','trending','serp','reply'].map((t, i) => {
+        const icons = ['📡','🔥','🔍','✍️'];
+        const labels = ['Monitor','Trending','SERP Signals','Reply Studio'];
+        return `<button id="rdttb-${t}" onclick="switchRedditTab('${t}')" style="flex:1;padding:9px 12px;border-radius:9px;border:none;font-size:0.77rem;font-weight:700;cursor:pointer;transition:all .15s;${t==='monitor'?'background:rgba(255,100,0,.2);color:#FF6B35':'background:transparent;color:rgba(255,255,255,.45)'}">${icons[i]} ${labels[i]}</button>`;
+      }).join('')}
+    </div>
+
+    <!-- Tab: Monitor -->
+    <div id="rdtpanel-monitor">
+      <div id="rdt-feed" style="display:flex;flex-direction:column;gap:12px">
+        <div style="text-align:center;padding:48px 24px;color:rgba(255,255,255,.3)">
+          <div style="font-size:2.5rem;margin-bottom:10px">🔴</div>
+          <div style="font-family:'Sora',sans-serif;font-size:0.9rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:6px">Ready to scan</div>
+          <div style="font-size:0.78rem">Click <strong style="color:#FF6B35">Scan Now</strong> to find brand mentions, competitor threads &amp; rising discussions</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Trending -->
+    <div id="rdtpanel-trending" style="display:none">
+      <div id="rdt-trending-feed" style="display:flex;flex-direction:column;gap:12px">
+        <div style="text-align:center;padding:48px 24px;color:rgba(255,255,255,.3)">
+          <div style="font-size:2.5rem;margin-bottom:10px">🔥</div>
+          <div style="font-size:0.78rem">Run a scan first to see trending threads sorted by upvote velocity</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: SERP Signals -->
+    <div id="rdtpanel-serp" style="display:none">
+      <div style="background:rgba(0,102,255,.08);border:1px solid rgba(0,102,255,.2);border-radius:12px;padding:14px 18px;margin-bottom:16px">
+        <div style="font-size:0.78rem;color:rgba(255,255,255,.65);line-height:1.5">
+          <span style="color:#60A5FA;font-weight:700">🔍 What is SERP Discovery?</span> Reddit posts often rank on page 1 of Google for high-intent keywords. These threads are prime opportunities — engage early to drive organic traffic and shape perception before your competitors do.
+        </div>
+      </div>
+      <div id="rdt-serp-feed" style="display:flex;flex-direction:column;gap:12px">
+        <div style="text-align:center;padding:48px 24px;color:rgba(255,255,255,.3)">
+          <div style="font-size:2.5rem;margin-bottom:10px">🔍</div>
+          <div style="font-size:0.78rem">Run a scan to surface threads likely ranking in Google SERPs</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Reply Studio -->
+    <div id="rdtpanel-reply" style="display:none">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <!-- Left: Persona Settings -->
+        <div style="background:#0F1E35;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px">
+          <div style="font-family:'Sora',sans-serif;font-size:0.84rem;font-weight:800;color:white;margin-bottom:14px">🎭 Brand Persona</div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div>
+              <label style="font-size:0.63rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Brand Name</label>
+              <input id="rpl-brand" value="${window._redditPersona.brand || brand}" placeholder="Your brand name" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:0.63rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Tone</label>
+              <select id="rpl-tone" style="width:100%;padding:9px 12px;background:#1A2E4A;border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
+                <option value="Helpful" ${window._redditPersona.tone==='Helpful'?'selected':''}>Helpful Expert</option>
+                <option value="Professional" ${window._redditPersona.tone==='Professional'?'selected':''}>Professional</option>
+                <option value="Friendly" ${window._redditPersona.tone==='Friendly'?'selected':''}>Friendly &amp; Conversational</option>
+                <option value="Educational" ${window._redditPersona.tone==='Educational'?'selected':''}>Educational</option>
+                <option value="Direct" ${window._redditPersona.tone==='Direct'?'selected':''}>Direct &amp; Confident</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:0.63rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Persona Description</label>
+              <textarea id="rpl-persona" rows="3" placeholder="e.g. Senior SaaS consultant who focuses on ROI and practical solutions. Never mention competitors by name." style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.78rem;box-sizing:border-box;resize:vertical">${window._redditPersona.persona}</textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Reply Generator -->
+        <div style="background:#0F1E35;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px">
+          <div style="font-family:'Sora',sans-serif;font-size:0.84rem;font-weight:800;color:white;margin-bottom:14px">✍️ Reply Generator</div>
+          <div id="rpl-thread-display" style="background:rgba(255,100,0,.07);border:1px solid rgba(255,100,0,.2);border-radius:10px;padding:12px 14px;margin-bottom:12px;min-height:60px">
+            <div id="rpl-thread-title" style="font-size:0.8rem;font-weight:600;color:rgba(255,255,255,.7);margin-bottom:4px">${window._redditSelPost ? window._redditSelPost.title : 'Select a thread from Monitor tab or paste a title below'}</div>
+            <div id="rpl-thread-sub" style="font-size:0.68rem;color:#FF6B35">${window._redditSelPost ? window._redditSelPost.subreddit : ''}</div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label style="font-size:0.63rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Or paste a post title manually</label>
+            <input id="rpl-manual-title" placeholder="Paste Reddit post title here…" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.78rem;box-sizing:border-box">
+          </div>
+          <button onclick="generateRedditReply()" style="width:100%;padding:11px;background:linear-gradient(135deg,#FF4500,#FF6B35);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;margin-bottom:14px">✍️ Generate Brand Reply</button>
+          <div id="rpl-result" style="display:none">
+            <div style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Generated Reply</div>
+            <div id="rpl-reply-text" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;font-size:0.8rem;color:rgba(255,255,255,.85);line-height:1.55;margin-bottom:8px;white-space:pre-wrap"></div>
+            <div id="rpl-tone-note" style="font-size:0.68rem;color:rgba(255,100,0,.7);font-style:italic;margin-bottom:10px"></div>
+            <div style="display:flex;gap:8px">
+              <button onclick="navigator.clipboard.writeText(document.getElementById('rpl-reply-text').textContent).then(()=>showToast('✅ Reply copied!'))" style="flex:1;padding:9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">📋 Copy Reply</button>
+              <button onclick="generateRedditReply()" style="padding:9px 16px;background:rgba(255,100,0,.2);border:1px solid rgba(255,100,0,.3);border-radius:8px;font-size:0.76rem;font-weight:700;color:#FF6B35;cursor:pointer">↺ Regenerate</button>
+            </div>
+          </div>
+          <div id="rpl-loading" style="display:none;text-align:center;padding:20px">
+            <div style="width:28px;height:28px;border:3px solid rgba(255,100,0,.2);border-top-color:#FF4500;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 10px"></div>
+            <div style="font-size:0.76rem;color:rgba(255,255,255,.4)">GPT-4 crafting your brand reply…</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function switchRedditTab(tab) {
+  window._redditActiveTab = tab;
+  ['monitor','trending','serp','reply'].forEach(t => {
+    const panel = document.getElementById('rdtpanel-' + t);
+    const btn   = document.getElementById('rdttb-' + t);
+    if (panel) panel.style.display = t === tab ? 'block' : 'none';
+    if (btn) {
+      btn.style.background  = t === tab ? 'rgba(255,100,0,.2)' : 'transparent';
+      btn.style.color       = t === tab ? '#FF6B35' : 'rgba(255,255,255,.45)';
+    }
+  });
+}
+
+function _rdtCard(p, i) {
+  const relColor  = p.relevance >= 70 ? '#10B981' : p.relevance >= 40 ? '#F59E0B' : '#6B7280';
+  const sentColor = p.sentiment === 'positive' ? '#10B981' : p.sentiment === 'negative' ? '#EF4444' : '#6B7280';
+  const urgColor  = p.urgency === 'critical' ? '#EF4444' : p.urgency === 'high' ? '#F59E0B' : p.urgency === 'medium' ? '#0066FF' : '#6B7280';
+  const velBadge  = p.velocity > 50 ? `<span style="background:rgba(239,68,68,.15);color:#EF4444;border:1px solid rgba(239,68,68,.25);padding:2px 7px;border-radius:5px;font-size:0.62rem;font-weight:700">🔥 ${p.velocity}/hr</span>` : '';
+  const serpBadge = p.serpLikely ? `<span style="background:rgba(0,102,255,.15);color:#60A5FA;border:1px solid rgba(0,102,255,.25);padding:2px 7px;border-radius:5px;font-size:0.62rem;font-weight:700">🔍 SERP</span>` : '';
+
+  return `
+    <div style="background:#0F1E35;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px 18px;transition:border-color .2s" onmouseover="this.style.borderColor='rgba(255,100,0,.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,.08)'">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
+            <span style="font-size:0.62rem;font-weight:700;color:#FF6B35;background:rgba(255,100,0,.12);padding:2px 7px;border-radius:5px">${p.subreddit}</span>
+            ${velBadge}${serpBadge}
+            <span style="font-size:0.62rem;color:rgba(255,255,255,.3)">${p.ageHours < 24 ? p.ageHours + 'h ago' : Math.round(p.ageHours/24) + 'd ago'}</span>
+          </div>
+          <a href="${p.url}" target="_blank" style="font-family:'Sora',sans-serif;font-size:0.85rem;font-weight:700;color:white;text-decoration:none;line-height:1.35;display:block" onmouseover="this.style.color='#FF6B35'" onmouseout="this.style.color='white'">${p.title}</a>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0">
+          <div style="font-size:0.95rem;font-weight:800;color:${relColor}">${p.relevance || 0}</div>
+          <div style="font-size:0.56rem;color:rgba(255,255,255,.3);font-weight:600">AI SCORE</div>
+        </div>
+      </div>
+      <div style="height:4px;background:rgba(255,255,255,.06);border-radius:3px;margin-bottom:10px;overflow:hidden">
+        <div style="height:100%;width:${p.relevance||0}%;background:${relColor};border-radius:3px"></div>
+      </div>
+      <div style="font-size:0.73rem;color:rgba(255,255,255,.5);margin-bottom:10px;line-height:1.4">${p.opportunity || ''}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${sentColor}18;color:${sentColor};border:1px solid ${sentColor}30">${p.sentiment||'neutral'}</span>
+          <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${urgColor}18;color:${urgColor};border:1px solid ${urgColor}30">⚡ ${p.urgency||'medium'}</span>
+          <span style="font-size:0.62rem;color:rgba(255,255,255,.35)">▲ ${p.score} · 💬 ${p.comments}</span>
+        </div>
+        <button onclick="rdtOpenReply(${i})" style="padding:5px 12px;background:rgba(255,100,0,.18);border:1px solid rgba(255,100,0,.3);border-radius:7px;font-size:0.7rem;font-weight:700;color:#FF6B35;cursor:pointer">✍️ Reply</button>
+      </div>
+    </div>`;
+}
+
+function rdtOpenReply(idx) {
+  const post = window._redditPosts[idx];
+  if (!post) return;
+  window._redditSelPost = post;
+  const titleEl = document.getElementById('rpl-thread-title');
+  const subEl   = document.getElementById('rpl-thread-sub');
+  if (titleEl) titleEl.textContent = post.title;
+  if (subEl)   subEl.textContent   = post.subreddit;
+  const manEl = document.getElementById('rpl-manual-title');
+  if (manEl) manEl.value = '';
+  switchRedditTab('reply');
+}
+
+async function scanRedditMonitor() {
+  const brand       = (document.getElementById('rdt-brand')?.value || '').trim();
+  const kwRaw       = (document.getElementById('rdt-keywords')?.value || '').trim();
+  const compRaw     = (document.getElementById('rdt-competitors')?.value || '').trim();
+  const industry    = analysisData?.industry?.name || 'marketing';
+  const keywords    = kwRaw.split(',').map(s=>s.trim()).filter(Boolean);
+  const competitors = compRaw.split(',').map(s=>s.trim()).filter(Boolean);
+
+  if (!brand && keywords.length === 0) { showToast('⚠️ Enter a brand name or keywords first'); return; }
+
+  const feed    = document.getElementById('rdt-feed');
+  const tFeed   = document.getElementById('rdt-trending-feed');
+  const sFeed   = document.getElementById('rdt-serp-feed');
+
+  const loader = `<div style="text-align:center;padding:40px 24px">
+    <div style="width:40px;height:40px;border:3px solid rgba(255,100,0,.2);border-top-color:#FF4500;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px"></div>
+    <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:700;color:white;margin-bottom:5px">Scanning Reddit &amp; HN…</div>
+    <div style="font-size:0.75rem;color:rgba(255,255,255,.35)">Fetching threads · Running GPT-4 scoring · Detecting SERP signals</div>
+  </div>`;
+  if (feed)  feed.innerHTML  = loader;
+  if (tFeed) tFeed.innerHTML = loader;
+  if (sFeed) sFeed.innerHTML = loader;
+
+  try {
+    const resp = await fetch('/api/reddit-monitor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brand, keywords, competitors, industry })
+    });
+    const data = await resp.json();
+    const posts = data.posts || [];
+    window._redditPosts = posts;
+
+    if (posts.length === 0) {
+      const empty = `<div style="text-align:center;padding:40px 24px;color:rgba(255,255,255,.35)"><div style="font-size:2rem;margin-bottom:10px">🕳️</div><div style="font-size:0.8rem">No threads found. Try broader keywords.</div></div>`;
+      if (feed)  feed.innerHTML  = empty;
+      if (tFeed) tFeed.innerHTML = empty;
+      if (sFeed) sFeed.innerHTML = empty;
+      return;
+    }
+
+    // Monitor tab: sorted by relevance
+    const byRelevance = [...posts].sort((a,b) => (b.relevance||0) - (a.relevance||0));
+    if (feed) feed.innerHTML = byRelevance.map((p,i) => _rdtCard(p, posts.indexOf(p))).join('');
+
+    // Trending tab: sorted by velocity
+    const byVelocity = [...posts].sort((a,b) => (b.velocity||0) - (a.velocity||0));
+    if (tFeed) {
+      if (byVelocity.every(p => !p.velocity)) {
+        tFeed.innerHTML = `<div style="text-align:center;padding:32px;color:rgba(255,255,255,.35);font-size:0.8rem">Velocity data unavailable for these results</div>`;
+      } else {
+        tFeed.innerHTML = byVelocity.map((p,i) => _rdtCard(p, posts.indexOf(p))).join('');
+      }
+    }
+
+    // SERP tab: only SERP-flagged posts
+    const serpPosts = posts.filter(p => p.serpLikely);
+    if (sFeed) {
+      sFeed.innerHTML = serpPosts.length > 0
+        ? serpPosts.map((p,i) => _rdtCard(p, posts.indexOf(p))).join('')
+        : `<div style="text-align:center;padding:32px;color:rgba(255,255,255,.35)"><div style="font-size:1.8rem;margin-bottom:8px">✅</div><div style="font-size:0.8rem">No threads currently flagged as SERP-ranking. Topics with "best X" or "vs" comparisons rank more often.</div></div>`;
+    }
+
+    showToast(`✅ Found ${posts.length} threads · ${serpPosts.length} SERP signals`);
+    switchRedditTab(window._redditActiveTab);
+
+  } catch(err) {
+    const errHtml = `<div style="text-align:center;padding:32px;color:#EF4444;font-size:0.8rem">⚠️ Scan failed: ${err.message}</div>`;
+    if (feed)  feed.innerHTML  = errHtml;
+    if (tFeed) tFeed.innerHTML = errHtml;
+    if (sFeed) sFeed.innerHTML = errHtml;
+  }
+}
+
+async function generateRedditReply() {
+  const brand    = (document.getElementById('rpl-brand')?.value  || '').trim();
+  const tone     = document.getElementById('rpl-tone')?.value    || 'Helpful';
+  const persona  = (document.getElementById('rpl-persona')?.value || '').trim();
+  const manual   = (document.getElementById('rpl-manual-title')?.value || '').trim();
+  const post     = window._redditSelPost;
+
+  const postTitle   = manual || post?.title   || '';
+  const postPreview = post?.preview || '';
+  const industry    = analysisData?.industry?.name || 'marketing';
+
+  if (!postTitle) { showToast('⚠️ Select a thread or paste a post title'); return; }
+
+  // Save persona
+  window._redditPersona = { brand, tone, persona };
+
+  const loading = document.getElementById('rpl-loading');
+  const result  = document.getElementById('rpl-result');
+  if (loading) loading.style.display = 'block';
+  if (result)  result.style.display  = 'none';
+
+  try {
+    const resp = await fetch('/api/reddit-reply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postTitle, postPreview, brand, tone, persona, industry })
+    });
+    const data = await resp.json();
+    if (!data.reply) throw new Error(data.error || 'No reply generated');
+
+    const replyEl    = document.getElementById('rpl-reply-text');
+    const toneNoteEl = document.getElementById('rpl-tone-note');
+    if (replyEl)    replyEl.textContent    = data.reply;
+    if (toneNoteEl) toneNoteEl.textContent = data.tone_note ? `💡 ${data.tone_note}` : '';
+    if (loading) loading.style.display = 'none';
+    if (result)  result.style.display  = 'block';
+
+  } catch(err) {
+    if (loading) loading.style.display = 'none';
+    showToast('⚠️ Reply generation failed: ' + err.message);
   }
 }
 
