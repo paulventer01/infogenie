@@ -1249,13 +1249,13 @@ app.post('/api/reddit-monitor', async (req, res) => {
       const brandCtx   = brand ? `brand "${brand}"` : 'this company';
       const kwCtx      = keywords.slice(0,5).join(', ') || industry;
       const compCtx    = competitors.slice(0,3).join(', ') || 'competitors';
-      const prompt = `You are a Reddit community intelligence analyst. Generate 14 realistic, highly specific Reddit thread simulations representing what real users are currently discussing about ${brandCtx} and topics like: ${kwCtx}. Competitors mentioned: ${compCtx}. Industry: ${industry}.
+      const prompt = `You are a Reddit community intelligence analyst. Generate exactly 8 realistic, highly specific Reddit thread simulations representing what real users are currently discussing about ${brandCtx} and topics like: ${kwCtx}. Competitors mentioned: ${compCtx}. Industry: ${industry}.
 
 These should reflect REAL patterns seen on Reddit: complaints, comparisons, how-to questions, success stories, controversies, recommendations.
 
 Use these real relevant subreddits: r/Forex, r/investing, r/personalfinance, r/stocks, r/financialindependence, r/algotrading, r/CFD, r/UKPersonalFinance, r/options, r/wallstreetbets, r/TradingView — adapt subreddits to the actual industry.
 
-Return JSON: { "posts": [ ...14 items... ] }
+Return JSON: { "posts": [ ...exactly 8 items... ] }
 Each item must have:
 {
   "title": "realistic reddit post title (question, complaint, comparison, or discussion)",
@@ -1276,7 +1276,7 @@ Make titles highly specific and realistic — they should mention real concerns,
         const completion = await openai.chat.completions.create({
           model: 'gpt-4o',
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 2200,
+          max_tokens: 1200,
           response_format: { type: 'json_object' }
         });
         const raw = completion.choices[0]?.message?.content || '{}';

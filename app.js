@@ -5539,26 +5539,38 @@ async function scanRedditMonitor() {
   const tFeed   = document.getElementById('rdt-trending-feed');
   const sFeed   = document.getElementById('rdt-serp-feed');
 
-  const loader = `<div style="text-align:center;padding:40px 24px">
+  const loaderHtml = (sec) => `<div style="text-align:center;padding:40px 24px">
     <div style="width:40px;height:40px;border:3px solid rgba(255,100,0,.2);border-top-color:#FF4500;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px"></div>
-    <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:700;color:white;margin-bottom:5px">Scanning community intelligence…</div>
-    <div style="font-size:0.75rem;color:rgba(255,255,255,.35)">Fetching live HN data · GPT-4o generating Reddit signals · AI scoring all threads</div>
+    <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:700;color:white;margin-bottom:5px">Scanning community intelligence… <span id="rdt-timer" style="color:#FF4500">${sec}s</span></div>
+    <div style="font-size:0.75rem;color:rgba(255,255,255,.35);margin-bottom:8px">Fetching live HN data · GPT-4o generating Reddit signals</div>
+    <div style="font-size:0.7rem;color:rgba(255,180,0,.5)">⏱ This usually takes 10–20 seconds</div>
   </div>`;
-  if (feed)  feed.innerHTML  = loader;
-  if (tFeed) tFeed.innerHTML = loader;
-  if (sFeed) sFeed.innerHTML = loader;
+  if (feed)  feed.innerHTML  = loaderHtml(0);
+  if (tFeed) tFeed.innerHTML = loaderHtml(0);
+  if (sFeed) sFeed.innerHTML = loaderHtml(0);
+
+  let _rdtSec = 0;
+  const _rdtTick = setInterval(() => {
+    _rdtSec++;
+    document.querySelectorAll('#rdt-timer').forEach(el => el.textContent = _rdtSec + 's');
+  }, 1000);
+
+  const _rdtAbort = new AbortController();
+  const _rdtTimeout = setTimeout(() => _rdtAbort.abort(), 50000);
 
   try {
     const resp = await fetch('/api/reddit-monitor', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brand, keywords, competitors, industry })
+      body: JSON.stringify({ brand, keywords, competitors, industry }),
+      signal: _rdtAbort.signal
     });
     const data = await resp.json();
     const posts = data.posts || [];
     window._redditPosts = posts;
 
     if (posts.length === 0) {
+      clearInterval(_rdtTick); clearTimeout(_rdtTimeout);
       const empty = `<div style="text-align:center;padding:40px 24px;color:rgba(255,255,255,.35)"><div style="font-size:2rem;margin-bottom:10px">🕳️</div><div style="font-size:0.8rem">No threads found. Try broader keywords.</div></div>`;
       if (feed)  feed.innerHTML  = empty;
       if (tFeed) tFeed.innerHTML = empty;
@@ -5588,13 +5600,22 @@ async function scanRedditMonitor() {
         : `<div style="text-align:center;padding:32px;color:rgba(255,255,255,.35)"><div style="font-size:1.8rem;margin-bottom:8px">✅</div><div style="font-size:0.8rem">No threads currently flagged as SERP-ranking. Topics with "best X" or "vs" comparisons rank more often.</div></div>`;
     }
 
+    clearInterval(_rdtTick); clearTimeout(_rdtTimeout);
     const hnCount = posts.filter(p => p.source === 'hn').length;
     const aiCount = posts.filter(p => p.source === 'ai').length;
     showToast(`✅ ${posts.length} signals loaded · ${hnCount} live HN · ${aiCount} AI Reddit · ${serpPosts.length} SERP`);
     switchRedditTab(window._redditActiveTab);
 
   } catch(err) {
-    const errHtml = `<div style="text-align:center;padding:32px;color:#EF4444;font-size:0.8rem">⚠️ Scan failed: ${err.message}</div>`;
+    clearInterval(_rdtTick); clearTimeout(_rdtTimeout);
+    const isTimeout = err.name === 'AbortError';
+    const errHtml = `<div style="text-align:center;padding:32px">
+      <div style="font-size:1.8rem;margin-bottom:10px">${isTimeout ? '⏱️' : '⚠️'}</div>
+      <div style="color:${isTimeout ? '#FF8C00' : '#EF4444'};font-size:0.85rem;font-weight:700;margin-bottom:8px">
+        ${isTimeout ? 'Scan timed out — AI took too long' : 'Scan failed: ' + err.message}
+      </div>
+      <button onclick="scanRedditMonitor()" style="margin-top:8px;padding:8px 18px;background:#FF4500;color:white;border:none;border-radius:8px;font-size:0.8rem;cursor:pointer;font-weight:700">🔄 Try Again</button>
+    </div>`;
     if (feed)  feed.innerHTML  = errHtml;
     if (tFeed) tFeed.innerHTML = errHtml;
     if (sFeed) sFeed.innerHTML = errHtml;
