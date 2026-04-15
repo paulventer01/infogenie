@@ -4665,17 +4665,6 @@ function targetAudience(label) {
 // AI CREATIVE — ENHANCED
 // ===================================================
 
-function openAdInCreativeStudio(headline, body, platform) {
-  window._intelAdSeed = { hl: headline, bd: body, platform };
-  navigateTo('creative');
-  setTimeout(() => {
-    const personaEl = document.getElementById('cs-persona');
-    const regenBtn  = document.getElementById('cs-regen-full');
-    if (personaEl && headline) personaEl.value = headline;
-    if (regenBtn) regenBtn.click();
-  }, 600);
-}
-
 function buildCreative() {
   const { url, industry, competitors } = analysisData;
   const wrap = document.getElementById('creativeWrap');
@@ -7770,7 +7759,7 @@ function openDifferentiatorModal(compName) {
               <div style="background:${p.bg};border:1.5px solid ${p.border};border-radius:10px;padding:12px 14px">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
                   <span style="font-size:0.68rem;font-weight:800;color:${p.badge};background:${p.border};padding:2px 8px;border-radius:4px;text-transform:uppercase;letter-spacing:.06em">${p.label}</span>
-                  <button onclick="window._intelAdSeed={hl:'${safeHL}',bd:'${safeBD}'};navigateTo('creative');setTimeout(()=>{const p=document.getElementById('cs-persona');const btn=document.getElementById('cs-regen-full');if(p)p.value='${safeHL}';if(btn)btn.click();},550)" style="font-size:0.69rem;font-weight:700;color:${p.badge};background:white;border:1px solid ${p.border};border-radius:5px;padding:2px 9px;cursor:pointer;white-space:nowrap">Use in Creative Studio →</button>
+                  <button onclick="openAdInCreativeStudio('${safeHL}','${safeBD}','${p.label}')" style="font-size:0.69rem;font-weight:700;color:${p.badge};background:white;border:1px solid ${p.border};border-radius:5px;padding:2px 9px;cursor:pointer;white-space:nowrap">Use in Creative Studio →</button>
                 </div>
                 <div style="font-size:0.84rem;font-weight:800;color:#0A1628;margin-bottom:4px;line-height:1.35">${d.headline}</div>
                 <div style="font-size:0.78rem;color:#374151;line-height:1.55">${d.body}</div>
@@ -8023,7 +8012,7 @@ function buildPlanView(compName) {
             <div style="background:${p.bg};border:1.5px solid ${p.border};border-radius:12px;padding:16px">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
                 <span style="font-size:0.7rem;font-weight:800;color:${p.badge};background:${p.border};padding:3px 10px;border-radius:5px;text-transform:uppercase;letter-spacing:.06em">${p.label}</span>
-                <button onclick="window._intelAdSeed={hl:'${safeHL}',bd:'${safeBD}'};navigateTo('creative');setTimeout(()=>{const p=document.getElementById('cs-persona');const btn=document.getElementById('cs-regen-full');if(p)p.value='${safeHL}';if(btn)btn.click();},550)" style="font-size:0.72rem;font-weight:700;color:${p.badge};background:white;border:1.5px solid ${p.border};border-radius:6px;padding:4px 12px;cursor:pointer;white-space:nowrap">Use in Creative Studio →</button>
+                <button onclick="openAdInCreativeStudio('${safeHL}','${safeBD}','${p.label}')" style="font-size:0.72rem;font-weight:700;color:${p.badge};background:white;border:1.5px solid ${p.border};border-radius:6px;padding:4px 12px;cursor:pointer;white-space:nowrap">Use in Creative Studio →</button>
               </div>
               <div style="font-size:0.9rem;font-weight:800;color:#0A1628;margin-bottom:6px;line-height:1.35">${d.headline}</div>
               <div style="font-size:0.81rem;color:#374151;line-height:1.6">${d.body}</div>
