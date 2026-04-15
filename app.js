@@ -4665,6 +4665,17 @@ function targetAudience(label) {
 // AI CREATIVE — ENHANCED
 // ===================================================
 
+function openAdInCreativeStudio(headline, body, platform) {
+  window._intelAdSeed = { hl: headline, bd: body, platform };
+  navigateTo('creative');
+  setTimeout(() => {
+    const personaEl = document.getElementById('cs-persona');
+    const regenBtn  = document.getElementById('cs-regen-full');
+    if (personaEl && headline) personaEl.value = headline;
+    if (regenBtn) regenBtn.click();
+  }, 600);
+}
+
 function buildCreative() {
   const { url, industry, competitors } = analysisData;
   const wrap = document.getElementById('creativeWrap');
