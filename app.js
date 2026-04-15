@@ -5487,12 +5487,16 @@ function buildRedditIntel() {
       </div>
     </div>
 
+    <!-- Dark shell wrapping tabs + content -->
+    <div style="background:#0F1E35;border:1px solid rgba(255,100,0,.15);border-radius:16px;padding:16px 20px">
+
     <!-- Tab Bar -->
-    <div style="display:flex;gap:4px;margin-bottom:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:5px">
+    <div style="display:flex;gap:4px;margin-bottom:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:5px">
       ${['monitor','trending','serp','reply'].map((t, i) => {
         const icons = ['📡','🔥','🔍','✍️'];
         const labels = ['Monitor','Trending','SERP Signals','Reply Studio'];
-        return `<button id="rdttb-${t}" onclick="switchRedditTab('${t}')" style="flex:1;padding:9px 12px;border-radius:9px;border:none;font-size:0.77rem;font-weight:700;cursor:pointer;transition:all .15s;${t==='monitor'?'background:rgba(255,100,0,.2);color:#FF6B35':'background:transparent;color:rgba(255,255,255,.45)'}">${icons[i]} ${labels[i]}</button>`;
+        const active = t === 'monitor';
+        return `<button id="rdttb-${t}" onclick="switchRedditTab('${t}')" style="flex:1;padding:9px 12px;border-radius:9px;border:none;font-size:0.77rem;font-weight:700;cursor:pointer;transition:all .15s;background:${active?'rgba(255,100,0,.25)':'rgba(255,255,255,.05)'};color:${active?'#FF6B35':'rgba(255,255,255,.6)'}">${icons[i]} ${labels[i]}</button>`;
       }).join('')}
     </div>
 
@@ -5587,6 +5591,8 @@ function buildRedditIntel() {
           </div>
         </div>
       </div>
+    </div>
+
     </div>`;
 
   // Auto-fill keywords & competitors if brand is set but fields are empty
@@ -5640,8 +5646,8 @@ function switchRedditTab(tab) {
     const btn   = document.getElementById('rdttb-' + t);
     if (panel) panel.style.display = t === tab ? 'block' : 'none';
     if (btn) {
-      btn.style.background  = t === tab ? 'rgba(255,100,0,.2)' : 'transparent';
-      btn.style.color       = t === tab ? '#FF6B35' : 'rgba(255,255,255,.45)';
+      btn.style.background  = t === tab ? 'rgba(255,100,0,.25)' : 'rgba(255,255,255,.05)';
+      btn.style.color       = t === tab ? '#FF6B35' : 'rgba(255,255,255,.6)';
     }
   });
 }
