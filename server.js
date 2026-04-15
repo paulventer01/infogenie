@@ -1546,7 +1546,7 @@ app.post('/api/ai-social-caption', async (req, res) => {
 // ── POST /api/ai-attack-plan ─────────────────────────────────────────────────
 app.post('/api/ai-attack-plan', async (req, res) => {
   try {
-    const { myDomain = 'yourdomain.com', competitor = 'competitor', industry = 'your industry', competitorData = {} } = req.body;
+    const { myDomain = 'yourdomain.com', competitor = 'competitor', industry = 'your industry', competitorData = {}, prefillKeywords = [], prefillContext = '' } = req.body;
     const { OpenAI } = require('openai');
     const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
 
@@ -1595,7 +1595,7 @@ Return ONLY valid JSON (no markdown), structured exactly like this:
   ]
 }
 
-IMPORTANT: "budgetPct" is a whole-number percentage (0-100) of total monthly budget to allocate to that channel. All channelStrategy budgetPct values must sum to 100. Make all recommendations highly specific to ${competitor} and ${industry}. Use real marketing tactics. No generic advice.`;
+IMPORTANT: "budgetPct" is a whole-number percentage (0-100) of total monthly budget to allocate to that channel. All channelStrategy budgetPct values must sum to 100. Make all recommendations highly specific to ${competitor} and ${industry}. Use real marketing tactics. No generic advice.${prefillContext ? '\n\nSTRATEGIC CONTEXT — HIGHEST PRIORITY: ' + prefillContext : ''}${prefillKeywords.length > 0 ? '\n\nMANDATORY KEYWORDS — MUST appear in keywordTargets as Critical priority: ' + prefillKeywords.join(', ') : ''}`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',

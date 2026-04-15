@@ -8231,6 +8231,12 @@ async function openFullAttackPlanModal(idx) {
   // Capture body reference immediately after setting innerHTML
   const planBody = document.getElementById('attackPlanBody');
 
+  // Read and clear prefill globals set by openAttackModal
+  const prefillKeywords = window._apPrefillKeywords || [];
+  const prefillContext  = window._apPrefillContext  || '';
+  window._apPrefillKeywords = [];
+  window._apPrefillContext  = '';
+
   // Call API
   try {
     const resp = await fetch('/api/ai-attack-plan', {
@@ -8240,6 +8246,8 @@ async function openFullAttackPlanModal(idx) {
         myDomain,
         competitor: cName,
         industry,
+        prefillKeywords,
+        prefillContext,
         competitorData: {
           traffic: c.traffic || c.monthlyTraffic || 'N/A',
           adSpend: c.adSpend || 'N/A',
@@ -9784,36 +9792,50 @@ function buildPlanView(compName) {
 }
 
 function openAttackModal(action, competitor, type) {
-  const steps = {
-    keyword: [
-      { icon: '🎯', title: 'Bid Strategy Activated', desc: `Set up a dedicated Google Ads campaign targeting "${action}" with max CPC bidding. Aim for top-3 position.` },
-      { icon: '✍️', title: 'Ad Copy Generation', desc: `InfoGenie AI will generate 5 high-converting ad variants optimised to outperform ${competitor || 'competitor'} on this keyword.` },
-      { icon: '📈', title: 'Performance Monitoring', desc: `Automated weekly reports tracking your rank, CTR, and cost-per-conversion against ${competitor || 'competitor'} — alerts if they counter-bid.` }
-    ],
-    attack: [
-      { icon: '⚡', title: 'Attack Window Locked In', desc: `${competitor} has vacated spend — your bids will face reduced competition in the next 72 hours. Acting now gives you a 2–3× ROAS advantage.` },
-      { icon: '💰', title: 'Budget Reallocation', desc: `InfoGenie recommends reallocating 30% of your current ad spend to capture the vacated "${action.replace(/Attack|Claim|Now/g,'').trim()}" keywords.` },
-      { icon: '🚀', title: 'Campaign Goes Live', desc: `Auto-create a counter-attack campaign with AI-generated creative targeting ${competitor}'s former audience segments.` }
-    ],
-    counter: [
-      { icon: '🛡️', title: 'Counter-Strategy Queued', desc: `A defensive strategy has been queued to protect your market share while ${competitor} executes their new campaign push.` },
-      { icon: '🔄', title: 'Audience Retargeting', desc: `Activate a retargeting layer for your existing customers to prevent churn to ${competitor}'s new offer.` },
-      { icon: '📊', title: 'Weekly Battlecard Updated', desc: `Your competitor battlecard for ${competitor} will be updated with their new messaging and suggested counter-positioning.` }
-    ]
-  };
-  const plan = steps[type] || steps.counter;
-  const labels = { keyword: 'Keyword Attack Plan', attack: 'Attack Strategy', counter: 'Counter-Strategy Plan' };
-  const icons = { keyword: '🎯', attack: '⚡', counter: '🛡️' };
-  const btnLabels = { keyword: 'Launch Keyword Attack', attack: 'Activate Attack Now', counter: 'Queue Counter-Strategy' };
+  // ── 'attack' and 'keyword' types → go straight to Full Attack Plan ──────────
+  if (type === 'attack' || type === 'keyword') {
+    const comps = analysisData?.competitors || [];
+    let compIdx = comps.findIndex(c =>
+      c.name === competitor ||
+      (c.name || '').toLowerCase().includes((competitor || '').toLowerCase())
+    );
+    if (compIdx < 0) compIdx = 0;
+
+    // Set keyword prefill context so the GPT prompt prioritises these
+    if (type === 'keyword') {
+      window._apPrefillKeywords = [action];
+      window._apPrefillContext  = `The user has identified a specific keyword gap opportunity: "${action}" — prioritise this keyword in keywordTargets and build the strategy around capturing it from ${competitor || 'the competitor'}.`;
+    } else {
+      // 'attack' type: signal like "Attack X Vacated Keywords Now"
+      window._apPrefillKeywords = [];
+      window._apPrefillContext  = `URGENT: ${competitor} has recently reduced ad spend and vacated key search positions. Focus the attack plan on immediately capturing their vacated keywords, audience segments, and traffic within the next 72 hours.`;
+    }
+
+    // Show a brief toast so the user knows what's happening
+    showToast(`⚔️ Generating Full Attack Plan vs ${competitor || 'competitor'}…`);
+
+    // Navigate to Battle Plan then fire the modal
+    navigateTo('battleplan');
+    // Small delay lets buildBattlePlan() render first
+    setTimeout(() => openFullAttackPlanModal(compIdx), 300);
+    return;
+  }
+
+  // ── 'counter' type → keep existing 3-step modal ───────────────────────────
+  const counterSteps = [
+    { icon: '🛡️', title: 'Counter-Strategy Queued', desc: `A defensive strategy has been queued to protect your market share while ${competitor} executes their new campaign push.` },
+    { icon: '🔄', title: 'Audience Retargeting', desc: `Activate a retargeting layer for your existing customers to prevent churn to ${competitor}'s new offer.` },
+    { icon: '📊', title: 'Weekly Battlecard Updated', desc: `Your competitor battlecard for ${competitor} will be updated with their new messaging and suggested counter-positioning.` }
+  ];
   const modal = document.getElementById('attackModal');
   document.getElementById('attackModalInner').innerHTML = `
     <div style="text-align:center; margin-bottom:18px">
-      <div style="font-size:2rem; margin-bottom:8px">${icons[type] || '⚡'}</div>
-      <h3 style="font-family:'Sora',sans-serif; font-size:1.1rem; font-weight:800; color:#0A1628; margin-bottom:4px">${labels[type] || 'Strategy Plan'}</h3>
+      <div style="font-size:2rem; margin-bottom:8px">🛡️</div>
+      <h3 style="font-family:'Sora',sans-serif; font-size:1.1rem; font-weight:800; color:#0A1628; margin-bottom:4px">Counter-Strategy Plan</h3>
       <p style="color:#6B7280; font-size:0.8rem; max-width:360px; margin:0 auto">${competitor ? `Targeting <strong>${competitor}</strong> · ` : ''}InfoGenie AI has prepared a 3-step execution plan</p>
     </div>
     <div class="attack-steps">
-      ${plan.map((s,i) => `
+      ${counterSteps.map((s,i) => `
         <div class="attack-step">
           <div class="attack-step-num">${i+1}</div>
           <div class="attack-step-icon">${s.icon}</div>
@@ -9825,9 +9847,7 @@ function openAttackModal(action, competitor, type) {
       `).join('')}
     </div>
     <div class="attack-modal-footer">
-      <button class="btn-attack-activate" onclick="activateAttackPlan(this, '${action.replace(/'/g,'')}')">
-        ${btnLabels[type] || 'Activate Now'}
-      </button>
+      <button class="btn-attack-activate" onclick="activateAttackPlan(this, '${action.replace(/'/g,'')}')">Queue Counter-Strategy</button>
       <button class="btn-attack-cancel" onclick="closeAttackModal()">Maybe Later</button>
     </div>
   `;
