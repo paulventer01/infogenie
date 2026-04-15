@@ -8431,7 +8431,7 @@ function buildPlanView(compName) {
             </div>
             <div style="padding:10px 20px;background:#F9FAFB;border-top:1px solid #F1F5F9;display:flex;align-items:center;justify-content:space-between">
               <div style="font-size:0.78rem;color:#6B7280">Est. Revenue at ${ph.projROAS}× ROAS: <strong style="color:#0A1628">${ph.projRevenue}</strong></div>
-              <button class="btn-primary" style="font-size:0.78rem;padding:7px 16px" onclick="navigateTo('campaigns')">🚀 Set Up Campaign →</button>
+              <button class="btn-primary" style="font-size:0.78rem;padding:7px 16px" onclick="openCampLaunchRich('${ph.label.replace(/'/g,'\\&apos;').split('—')[0].trim()}','Google Ads','${ph.projSpend}',${pi})">🚀 Set Up Campaign →</button>
             </div>
           </div>
         `).join('')}
