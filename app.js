@@ -8281,16 +8281,43 @@ async function openFullAttackPlanModal(idx) {
       </div>
       <!-- Scrollable body -->
       <div id="attackPlanBody" style="flex:1;overflow-y:auto;padding:24px;display:flex;align-items:center;justify-content:center;min-height:260px">
-        <div style="text-align:center">
-          <div style="width:44px;height:44px;border:3px solid rgba(0,201,200,.3);border-top-color:#00C9C8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px"></div>
-          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:700;color:white;margin-bottom:5px">Running dual-AI synthesis…</div>
-          <div style="font-size:0.78rem;color:rgba(255,255,255,.4)">GPT-4o &amp; Claude are analysing ${cName} in parallel — merging the best insights into one strategy</div>
+        <div style="text-align:center;max-width:340px">
+          <div style="width:48px;height:48px;border:3px solid rgba(0,201,200,.2);border-top-color:#00C9C8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 18px"></div>
+          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:700;color:white;margin-bottom:12px" id="apLoadTitle">Launching dual-AI engines…</div>
+          <div style="display:flex;flex-direction:column;gap:7px;text-align:left">
+            <div id="apStep1" style="display:flex;align-items:center;gap:9px;font-size:0.76rem;color:rgba(255,255,255,.5)">
+              <span id="apS1icon" style="font-size:0.9rem">⏳</span>
+              <span>GPT-4o analysing <strong style="color:#60A5FA">${cName}</strong> strategy</span>
+            </div>
+            <div id="apStep2" style="display:flex;align-items:center;gap:9px;font-size:0.76rem;color:rgba(255,255,255,.5)">
+              <span id="apS2icon" style="font-size:0.9rem">⏳</span>
+              <span>Claude finding non-obvious attack angles</span>
+            </div>
+            <div id="apStep3" style="display:flex;align-items:center;gap:9px;font-size:0.76rem;color:rgba(255,255,255,.5)">
+              <span id="apS3icon" style="font-size:0.9rem">⏳</span>
+              <span>Merging best insights, deduplicating</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>`;
 
   // Capture body reference immediately after setting innerHTML
   const planBody = document.getElementById('attackPlanBody');
+
+  // Animate the loading steps to show progress
+  const markStep = (id, iconId, done) => {
+    const el = document.getElementById(id), ic = document.getElementById(iconId);
+    if (el) el.style.color = done ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.5)';
+    if (ic) ic.textContent = done ? '✅' : '⏳';
+  };
+  setTimeout(() => markStep('apStep1','apS1icon',true), 800);
+  setTimeout(() => markStep('apStep2','apS2icon',true), 2500);
+  setTimeout(() => {
+    markStep('apStep3','apS3icon',true);
+    const t = document.getElementById('apLoadTitle');
+    if (t) t.textContent = 'Almost done…';
+  }, 5000);
 
   // Read and clear prefill globals set by openAttackModal
   const prefillKeywords = window._apPrefillKeywords || [];

@@ -1687,17 +1687,17 @@ ${sharedContext}
 ${jsonSchema}
 IMPORTANT: ${baseInstruction}${prefillSuffix}`;
 
-    // ── Run GPT-4o and Claude in parallel ────────────────────────────────────
+    // ── Run GPT-4o and Claude Haiku in parallel (fastest possible) ───────────
     const [gptResult, claudeResult] = await Promise.allSettled([
       openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [{ role: 'user', content: gptPrompt }],
-        max_tokens: 2000,
+        max_tokens: 1600,
         response_format: { type: 'json_object' }
       }),
       anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 8192,
+        model: 'claude-haiku-4-5',
+        max_tokens: 1600,
         messages: [{ role: 'user', content: claudePrompt + '\n\nReturn ONLY the raw JSON object — no markdown fences, no explanation.' }]
       })
     ]);
@@ -1717,37 +1717,58 @@ IMPORTANT: ${baseInstruction}${prefillSuffix}`;
     if (!gptPlan) return res.json({ plan: claudePlan, sources: ['Claude'] });
     if (!claudePlan) return res.json({ plan: gptPlan, sources: ['GPT-4o'] });
 
-    // ── Both succeeded — synthesise into one superior plan ───────────────────
-    const mergePrompt = `You are a chief marketing strategist synthesising two expert attack plans into one superior unified strategy.
+    // ── Both succeeded — merge in code (no extra API call) ───────────────────
+    const normKey = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-PLAN A (from GPT-4o):
-${JSON.stringify(gptPlan, null, 2)}
+    // Keywords: GPT-4o base + unique ones from Claude (dedup by keyword text)
+    const gptKws    = gptPlan.keywordTargets   || [];
+    const claudeKws = claudePlan.keywordTargets || [];
+    const seenKw    = new Set(gptKws.map(k => normKey(k.keyword)));
+    const extraKws  = claudeKws.filter(k => !seenKw.has(normKey(k.keyword)));
+    const mergedKws = [...gptKws, ...extraKws].slice(0, 8);
 
-PLAN B (from Claude):
-${JSON.stringify(claudePlan, null, 2)}
-
-Your task:
-1. Write a stronger executiveSummary that blends the best insights from both plans
-2. Take the BEST opportunityScore (higher one if both are reasonable, average if they differ wildly)
-3. Merge weeklyPlan actions — keep unique high-value actions from each, remove true duplicates, max 4 actions per week
-4. Merge keywordTargets — combine unique keywords, keep all Critical ones, deduplicate exact matches, keep up to 8 keywords sorted by priority
-5. Build the best channelStrategy — take the strongest tactical insights from each, ensure budgetPct values sum to exactly 100
-6. Merge contentAttacks — keep the most creative/impactful pieces, remove duplicates, keep up to 5
-7. Merge criticalWins — keep the highest-impact lowest-effort wins, remove duplicates, keep up to 5
-
-${jsonSchema}
-IMPORTANT: ${baseInstruction}${prefillSuffix}
-Return ONLY valid JSON. No markdown. No explanation.`;
-
-    const mergeCompletion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [{ role: 'user', content: mergePrompt }],
-      max_tokens: 2500,
-      response_format: { type: 'json_object' }
+    // Weekly plan: GPT-4o base + unique actions from Claude per week
+    const mergedWeekly = (gptPlan.weeklyPlan || []).map((week, i) => {
+      const claudeWeek   = (claudePlan.weeklyPlan || [])[i] || {};
+      const existingActs = new Set((week.actions || []).map(a => normKey(a)));
+      const newActs      = (claudeWeek.actions || []).filter(a => !existingActs.has(normKey(a)));
+      return { ...week, actions: [...(week.actions || []), ...newActs].slice(0, 4) };
     });
 
-    let mergedPlan;
-    try { mergedPlan = JSON.parse(mergeCompletion.choices[0]?.message?.content?.trim() || '{}'); } catch { mergedPlan = gptPlan; }
+    // Channel strategy: GPT-4o wins on budget structure (must sum to 100)
+    const mergedChannels = (gptPlan.channelStrategy || []).map(ch => {
+      const claudeCh = (claudePlan.channelStrategy || []).find(c => normKey(c.channel) === normKey(ch.channel));
+      // Prefer Claude's tactic if it's more detailed
+      const tactic = (claudeCh?.tactic?.length || 0) > (ch.tactic?.length || 0) ? claudeCh.tactic : ch.tactic;
+      return { ...ch, tactic };
+    });
+
+    // Critical wins: merge, dedup, keep up to 5
+    const gptWins    = gptPlan.criticalWins   || [];
+    const claudeWins = claudePlan.criticalWins || [];
+    const seenWin    = new Set(gptWins.map(w => normKey(w.win)));
+    const extraWins  = claudeWins.filter(w => !seenWin.has(normKey(w.win)));
+    const mergedWins = [...gptWins, ...extraWins].slice(0, 5);
+
+    // Content attacks: merge, dedup, keep up to 5
+    const gptContent    = gptPlan.contentAttacks   || [];
+    const claudeContent = claudePlan.contentAttacks || [];
+    const seenContent   = new Set(gptContent.map(c => normKey(c.title)));
+    const extraContent  = claudeContent.filter(c => !seenContent.has(normKey(c.title)));
+    const mergedContent = [...gptContent, ...extraContent].slice(0, 5);
+
+    // Scores: take higher opportunity score
+    const bestScore = Math.max(gptPlan.opportunityScore || 0, claudePlan.opportunityScore || 0);
+
+    const mergedPlan = {
+      ...gptPlan,
+      opportunityScore:  bestScore,
+      weeklyPlan:        mergedWeekly,
+      keywordTargets:    mergedKws,
+      channelStrategy:   mergedChannels,
+      contentAttacks:    mergedContent,
+      criticalWins:      mergedWins
+    };
 
     res.json({ plan: mergedPlan, sources: ['GPT-4o', 'Claude'] });
   } catch(err) {
