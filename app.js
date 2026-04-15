@@ -7208,8 +7208,9 @@ function buildSettings() {
         <div class="isb-item">
           <span style="color:var(--gold);">⚡</span>&nbsp;Tip: Connect at least <strong>one Ad Platform</strong> + <strong>one AI Model</strong> to enable full autonomous operation
         </div>
-        <div class="isb-cta">
+        <div class="isb-cta" style="display:flex;gap:10px;align-items:center;">
           <button class="btn-primary" onclick="showDocsModal()">📖 Full Docs</button>
+          <button class="btn-primary" onclick="window.open('/source','_blank')" style="background:linear-gradient(135deg,#0f2a5e,#1a3a7a);border:1px solid rgba(0,229,255,0.3);">🧾 View Source Code</button>
         </div>
       </div>
 
