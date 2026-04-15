@@ -3378,11 +3378,12 @@ function buildContent() {
 
   // ── OVERVIEW ───────────────────────────────────────────────────────────────
   const overviewHtml = (() => {
-    const kShifts = analysisData?.competitors?.slice(0,4).map((c,i) => ({
+    const _kShiftBase = (analysisData?.competitors || []).slice(0,4);
+    const kShifts = _kShiftBase.length ? _kShiftBase.map((c,i) => ({
       term: `${c.name||'competitor'} ${['vs','alternatives','pricing','review'][i%4]}`,
       change: ['+34%','+19%','-12%','+47%'][i%4],
       dir: [true,true,false,true][i%4],
-    })) || [
+    })) : [
       { term:'best marketing platform', change:'+41%', dir:true },
       { term:'ai marketing tools 2025', change:'+67%', dir:true },
       { term:'marketing software review', change:'-8%', dir:false },
