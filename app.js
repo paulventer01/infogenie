@@ -2424,12 +2424,38 @@ async function loadBacklinks(comps) {
 
     comps.forEach((c, i) => {
       const domain = domains[i];
-      const bl = data.results[domain];
-      if (!bl) return;
+      let bl = data.results[domain];
+      let isEstimate = false;
+
+      // If live data isn't available, generate a smart estimate from comp traffic data
+      if (!bl) {
+        isEstimate = true;
+        const traffic = c.trafficMo || 120000;
+        const logT    = Math.log10(Math.max(1000, traffic));
+        const total   = Math.round(traffic * 0.13);
+        const refDoms = Math.round(total * 0.068);
+        const dofollow = Math.round(total * 0.64);
+        const rank    = Math.min(97, Math.max(28, Math.round(38 + logT * 6.2)));
+        bl = {
+          total,
+          referringDomains: refDoms,
+          dofollow,
+          nofollow: total - dofollow,
+          rank,
+          dofollowPct: 64,
+          newBacklinks:  Math.round(total * 0.018),
+          lostBacklinks: Math.round(total * 0.009)
+        };
+      }
+
       // Update the backlinks panel in the already-rendered card
       const el = document.getElementById(`bl-panel-${i}`);
       if (!el) return;
       const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : String(n);
+      const badge = isEstimate
+        ? `<span style="font-size:0.63rem;background:#FEF9C3;color:#92400E;border-radius:5px;padding:2px 7px;font-weight:600">Estimated</span>`
+        : `<span style="font-size:0.63rem;background:rgba(0,201,200,.12);color:#0099AA;border-radius:5px;padding:2px 7px;font-weight:600">DataForSEO Live</span>`;
+
       el.innerHTML = `
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <div style="flex:1;min-width:90px;background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:10px;padding:10px 12px;text-align:center">
@@ -2449,15 +2475,14 @@ async function loadBacklinks(comps) {
             <div style="font-size:0.68rem;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-top:2px">Domain Rank</div>
           </div>
         </div>
-        ${bl.newBacklinks > 0 || bl.lostBacklinks > 0 ? `
-        <div style="display:flex;gap:8px;margin-top:8px">
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
           ${bl.newBacklinks > 0 ? `<span style="font-size:0.72rem;font-weight:600;color:#059669;background:#D1FAE5;border-radius:6px;padding:2px 8px">↑ ${fmt(bl.newBacklinks)} new</span>` : ''}
           ${bl.lostBacklinks > 0 ? `<span style="font-size:0.72rem;font-weight:600;color:#DC2626;background:#FEE2E2;border-radius:6px;padding:2px 8px">↓ ${fmt(bl.lostBacklinks)} lost</span>` : ''}
-          <span style="font-size:0.72rem;color:#9CA3AF;margin-left:auto">via DataForSEO</span>
-        </div>` : '<div style="margin-top:6px;font-size:0.7rem;color:#9CA3AF;text-align:right">via DataForSEO</div>'}
+          <span style="margin-left:auto">${badge}</span>
+        </div>
       `;
     });
-    console.log('[backlinks] Live data applied to competitor cards');
+    console.log('[backlinks] Backlink panels populated');
   } catch(e) {
     console.warn('[backlinks] failed to load:', e.message);
   }
@@ -2554,7 +2579,6 @@ function buildCompCard(c, cardIdx = 0) {
         <div style="margin-top:16px">
           <div class="comp-section-title" style="display:flex;align-items:center;gap:7px">
             🔗 Backlink Authority
-            <span style="font-size:0.68rem;background:rgba(0,201,200,.12);color:#0099AA;border-radius:5px;padding:2px 7px;font-weight:600">DataForSEO Live</span>
           </div>
           <div id="bl-panel-${cardIdx}" style="margin-top:8px">
             <div style="display:flex;gap:8px;align-items:center;padding:10px 0;color:#9CA3AF;font-size:0.78rem">

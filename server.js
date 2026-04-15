@@ -1598,17 +1598,12 @@ app.post('/api/backlinks', async (req, res) => {
       backlinks_status_type: 'live'
     }));
 
-    let raw;
+    let parsed;
     try {
-      raw = await callDataForSEO('/v3/backlinks/summary/live', tasks, 20000);
+      parsed = await callDataForSEO('/v3/backlinks/summary/live', tasks, 20000);
     } catch(e) {
       console.warn('[backlinks] DataForSEO error:', e.message);
       return res.json({ results: {}, error: e.message });
-    }
-
-    let parsed;
-    try { parsed = JSON.parse(raw); } catch(e) {
-      return res.json({ results: {}, error: 'Invalid JSON from DataForSEO' });
     }
 
     // Map each task result back to its domain
