@@ -3656,12 +3656,39 @@ function buildCampaigns() {
                 ${hasSocial ? `
                 <!-- Social & Video Creatives -->
                 <div style="background:#FFF5F7;border:1px solid #FECDD3;border-radius:10px;padding:14px;margin-bottom:20px">
-                  <div style="font-size:0.68rem;font-weight:700;color:#9D174D;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">📱 Social & Video Creatives</div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                    <div style="font-size:0.68rem;font-weight:700;color:#9D174D;text-transform:uppercase;letter-spacing:.07em">📱 Social & Video Creatives</div>
+                    <button onclick="(function(){var i=document.createElement('input');i.type='file';i.accept='image/*,video/*';i.onchange=function(){if(i.files[0])showToast('✅ Creative pack attached: '+i.files[0].name);};i.click();})()" style="padding:5px 12px;background:linear-gradient(135deg,#E1306C,#C13584);border:none;border-radius:7px;font-size:0.68rem;font-weight:700;color:white;cursor:pointer;display:inline-flex;align-items:center;gap:4px">📎 Upload Creative</button>
+                  </div>
                   <div style="display:flex;flex-direction:column;gap:10px">
-                    ${cr.instagram ? `<div><div style="font-size:0.65rem;font-weight:700;color:#E1306C;margin-bottom:5px">📸 Instagram Caption</div><div style="background:white;border:1px solid #FECDD3;border-radius:7px;padding:10px;font-size:0.8rem;color:#374151;line-height:1.6;white-space:pre-wrap;max-height:100px;overflow-y:auto">${cr.instagram}</div></div>` : ''}
-                    ${cr.tiktok   ? `<div><div style="font-size:0.65rem;font-weight:700;color:#010101;margin-bottom:5px">⬛ TikTok Script</div><div style="background:white;border:1px solid #E5E7EB;border-radius:7px;padding:10px;font-size:0.78rem;color:#374151;font-family:'Courier New',monospace;line-height:1.5;white-space:pre-wrap;max-height:100px;overflow-y:auto">${cr.tiktok}</div></div>` : ''}
-                    ${cr.youtube  ? `<div><div style="font-size:0.65rem;font-weight:700;color:#FF0000;margin-bottom:5px">🎬 YouTube Pre-Roll</div><div style="background:white;border:1px solid #FECACA;border-radius:7px;padding:10px;font-size:0.78rem;color:#374151;font-family:'Courier New',monospace;line-height:1.5;white-space:pre-wrap;max-height:100px;overflow-y:auto">${cr.youtube}</div></div>` : ''}
-                    ${cr.linkedin ? `<div><div style="font-size:0.65rem;font-weight:700;color:#0A66C2;margin-bottom:5px">💼 LinkedIn Post</div><div style="background:white;border:1px solid #BAE0FF;border-radius:7px;padding:10px;font-size:0.8rem;color:#374151;line-height:1.6;white-space:pre-wrap;max-height:100px;overflow-y:auto">${cr.linkedin}</div></div>` : ''}
+                    ${cr.instagram ? `<div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+                        <div style="font-size:0.65rem;font-weight:700;color:#E1306C">📸 Instagram Caption</div>
+                        <button onclick="(function(){var i=document.createElement('input');i.type='file';i.accept='image/*,video/*';i.onchange=function(){if(i.files[0])showToast('✅ Instagram creative attached: '+i.files[0].name);};i.click();})()" style="padding:3px 8px;background:linear-gradient(135deg,#E1306C,#C13584);border:none;border-radius:5px;font-size:0.6rem;font-weight:700;color:white;cursor:pointer">📎 Upload</button>
+                      </div>
+                      <div style="background:white;border:1px solid #FECDD3;border-radius:7px;padding:10px;font-size:0.8rem;color:#374151;line-height:1.6;white-space:pre-wrap;max-height:100px;overflow-y:auto">${cr.instagram}</div>
+                    </div>` : ''}
+                    ${cr.tiktok ? `<div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+                        <div style="font-size:0.65rem;font-weight:700;color:#010101">⬛ TikTok Script</div>
+                        <button onclick="(function(){var i=document.createElement('input');i.type='file';i.accept='image/*,video/*';i.onchange=function(){if(i.files[0])showToast('✅ TikTok creative attached: '+i.files[0].name);};i.click();})()" style="padding:3px 8px;background:linear-gradient(135deg,#010101,#2D2D2D);border:none;border-radius:5px;font-size:0.6rem;font-weight:700;color:white;cursor:pointer">📎 Upload</button>
+                      </div>
+                      <div style="background:white;border:1px solid #E5E7EB;border-radius:7px;padding:10px;font-size:0.78rem;color:#374151;font-family:'Courier New',monospace;line-height:1.5;white-space:pre-wrap;max-height:100px;overflow-y:auto">${cr.tiktok}</div>
+                    </div>` : ''}
+                    ${cr.youtube ? `<div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+                        <div style="font-size:0.65rem;font-weight:700;color:#FF0000">🎬 YouTube Pre-Roll</div>
+                        <button onclick="(function(){var i=document.createElement('input');i.type='file';i.accept='image/*,video/*';i.onchange=function(){if(i.files[0])showToast('✅ YouTube creative attached: '+i.files[0].name);};i.click();})()" style="padding:3px 8px;background:linear-gradient(135deg,#FF0000,#CC0000);border:none;border-radius:5px;font-size:0.6rem;font-weight:700;color:white;cursor:pointer">📎 Upload</button>
+                      </div>
+                      <div style="background:white;border:1px solid #FECACA;border-radius:7px;padding:10px;font-size:0.78rem;color:#374151;font-family:'Courier New',monospace;line-height:1.5;white-space:pre-wrap;max-height:100px;overflow-y:auto">${cr.youtube}</div>
+                    </div>` : ''}
+                    ${cr.linkedin ? `<div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+                        <div style="font-size:0.65rem;font-weight:700;color:#0A66C2">💼 LinkedIn Post</div>
+                        <button onclick="(function(){var i=document.createElement('input');i.type='file';i.accept='image/*,video/*';i.onchange=function(){if(i.files[0])showToast('✅ LinkedIn creative attached: '+i.files[0].name);};i.click();})()" style="padding:3px 8px;background:linear-gradient(135deg,#0A66C2,#004182);border:none;border-radius:5px;font-size:0.6rem;font-weight:700;color:white;cursor:pointer">📎 Upload</button>
+                      </div>
+                      <div style="background:white;border:1px solid #BAE0FF;border-radius:7px;padding:10px;font-size:0.8rem;color:#374151;line-height:1.6;white-space:pre-wrap;max-height:100px;overflow-y:auto">${cr.linkedin}</div>
+                    </div>` : ''}
                   </div>
                 </div>` : ''}
 
@@ -12665,63 +12692,88 @@ ${s.emailBody}`;
 }
 
 // Download all as .txt
-function _csDownload() {
+function _csDownload(format) {
   const s = window._creativeStudio;
   if (!s) return;
-  const all = `INFOGENIE CREATIVE PACK
-Campaign: ${s.campName} | Platform: ${s.platform} | Budget: ${s.budget}
-Generated: ${new Date().toLocaleString()}
 
-─────────────────────────────────────────
-GOOGLE SEARCH AD (RSA)
-─────────────────────────────────────────
-${s.googleSearchCopy}
+  // If no format specified, show a small picker
+  if (!format) {
+    // Remove any existing picker
+    const old = document.getElementById('_csDlPicker');
+    if (old) { old.remove(); return; }
+    const picker = document.createElement('div');
+    picker.id = '_csDlPicker';
+    picker.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;border:1px solid #E5E7EB;border-radius:16px;padding:24px 28px;z-index:99999;box-shadow:0 20px 60px rgba(0,0,0,.25);min-width:280px;text-align:center';
+    picker.innerHTML = `
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px">⬇ Download Creative Pack</div>
+      <div style="font-size:0.78rem;color:#6B7280;margin-bottom:20px">Choose your preferred format</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button onclick="_csDownload('pdf')" style="padding:12px;background:linear-gradient(135deg,#DC2626,#B91C1C);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+          📄 Download as PDF
+        </button>
+        <button onclick="_csDownload('word')" style="padding:12px;background:linear-gradient(135deg,#2563EB,#1D4ED8);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+          📝 Download as Word (.doc)
+        </button>
+      </div>
+      <button onclick="document.getElementById('_csDlPicker').remove()" style="margin-top:14px;padding:8px 20px;background:#F3F4F6;border:none;border-radius:8px;font-size:0.78rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
+    `;
+    document.body.appendChild(picker);
+    return;
+  }
 
-─────────────────────────────────────────
-DISPLAY BANNER 728x90
-─────────────────────────────────────────
-${s.displayCopy}
+  // Remove picker if open
+  const old2 = document.getElementById('_csDlPicker');
+  if (old2) old2.remove();
 
-─────────────────────────────────────────
-INSTAGRAM STORY / FEED CAPTION
-─────────────────────────────────────────
-${s.instagramCopy}
+  const safeName = (s.campName || 'Creative').replace(/[^a-z0-9]/gi,'_').slice(0,40);
+  const dateStr  = new Date().toISOString().slice(0,10);
 
-─────────────────────────────────────────
-VIDEO AD SCRIPT (15-25 sec)
-─────────────────────────────────────────
-${s.videoScript}
+  const section = (title, content) => content ? `
+    <h2 style="font-family:Arial,sans-serif;font-size:13pt;font-weight:bold;color:#0A1628;border-bottom:2px solid #00C9C8;padding-bottom:6px;margin-top:24px;margin-bottom:10px">${title}</h2>
+    <p style="font-family:Arial,sans-serif;font-size:11pt;color:#374151;line-height:1.7;white-space:pre-wrap;margin:0">${content}</p>` : '';
 
-─────────────────────────────────────────
-TIKTOK SCRIPT (15 sec)
-─────────────────────────────────────────
-${s.tiktokScript}
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>InfoGenie Creative Pack — ${s.campName}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; color: #0A1628; background: white; }
+    .header { background: linear-gradient(135deg, #0A1628, #0D2A5E); color: white; padding: 24px 28px; border-radius: 12px; margin-bottom: 28px; }
+    .header h1 { margin: 0 0 6px; font-size: 18pt; }
+    .header p  { margin: 0; font-size: 10pt; opacity: 0.7; }
+    .badge { display: inline-block; background: #00C9C8; color: white; font-size: 8pt; font-weight: bold; padding: 3px 10px; border-radius: 20px; margin-left: 8px; vertical-align: middle; }
+    @media print { body { margin: 20px; } }
+  </style></head><body>
+  <div class="header">
+    <h1>🎨 InfoGenie Creative Pack <span class="badge">AI-GENERATED</span></h1>
+    <p>Campaign: ${s.campName} &nbsp;|&nbsp; Platform: ${s.platform} &nbsp;|&nbsp; Budget: ${s.budget} &nbsp;|&nbsp; Generated: ${new Date().toLocaleString()}</p>
+  </div>
+  ${section('📢 Google Search Ad (RSA)', s.googleSearchCopy)}
+  ${section('🖼️ Display Banner 728×90', s.displayCopy)}
+  ${section('📸 Instagram Story / Feed Caption', s.instagramCopy)}
+  ${section('⬛ TikTok Script (15 sec)', s.tiktokScript)}
+  ${section('🎬 YouTube Pre-Roll (25 sec)', s.videoScript)}
+  ${section('💼 LinkedIn Post', s.linkedinPost)}
+  ${section('🐦 Twitter / X Thread', s.twitterThread)}
+  ${s.emailSubject ? `${section('📧 Email Campaign Brief', 'Subject: ' + s.emailSubject + '\n\n' + (s.emailBody || ''))}` : ''}
+  </body></html>`;
 
-─────────────────────────────────────────
-LINKEDIN POST
-─────────────────────────────────────────
-${s.linkedinPost}
-
-─────────────────────────────────────────
-TWITTER / X THREAD
-─────────────────────────────────────────
-${s.twitterThread}
-
-─────────────────────────────────────────
-EMAIL CAMPAIGN BRIEF
-─────────────────────────────────────────
-Subject: ${s.emailSubject}
-
-${s.emailBody}`;
-
-  const blob = new Blob([all], { type: 'text/plain' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = `InfoGenie_Creative_${s.campName.replace(/[^a-z0-9]/gi,'_').slice(0,40)}_${new Date().toISOString().slice(0,10)}.txt`;
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast('✅ Creative pack downloaded!');
+  if (format === 'pdf') {
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 500);
+    showToast('✅ PDF print dialog opened — choose "Save as PDF"');
+  } else {
+    // Word .doc via HTML blob
+    const blob = new Blob(['\ufeff' + html], { type: 'application/msword' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `InfoGenie_Creative_${safeName}_${dateStr}.doc`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('✅ Word document downloaded!');
+  }
 }
 
 // Send by email via mailto
