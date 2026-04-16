@@ -2790,7 +2790,7 @@ function buildCompMonitor(comps) {
                   <span style="background:${row.sigBg};color:${row.sigColor};border-radius:6px;padding:2px 9px;font-size:0.64rem;font-weight:800">${row.significance}</span>
                 </td>
                 <td style="text-align:center;padding:10px 12px">
-                  <button onclick="generatePageResponse('${row.comp.name}','${row.pt.type}','${row.slug}')" style="padding:4px 12px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:7px;font-size:0.68rem;font-weight:700;color:white;cursor:pointer">Respond →</button>
+                  <button onclick="generatePageResponse('${row.comp.name}','${row.pt.type}','${row.slug}')" style="padding:4px 12px;background:linear-gradient(135deg,#7C3AED,#0066FF);border:none;border-radius:7px;font-size:0.68rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">⚔️ Counter Ad →</button>
                 </td>
               </tr>`).join('')}
           </tbody>
@@ -2846,39 +2846,37 @@ Format as a clean, actionable report with clear sections per competitor. Use bol
 }
 
 async function generatePageResponse(compName, pageType, slug) {
-  showToast(`🤖 Generating counter-strategy for ${compName}'s ${pageType}...`);
-  try {
-    const domain = analysisData ? analysisData.url : 'your site';
-    const industry = analysisData && analysisData.industry ? analysisData.industry.name : 'your industry';
-    const resp = await fetch('/api/openai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        max_tokens: 500,
-        messages: [{
-          role: 'user',
-          content: `${compName} just published a new ${pageType} page at ${slug} in the ${industry} space. Give ${domain} a quick 3-step counter-strategy: what page to create/update, what angle to take, and what keyword to target. Be direct and specific. Under 200 words.`
-        }]
-      })
-    });
-    const data = await resp.json();
-    const text = data.choices?.[0]?.message?.content || '';
-    if (text) {
-      const modal = document.createElement('div');
-      modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);padding:20px';
-      modal.innerHTML = `
-        <div style="background:white;border-radius:16px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25)">
-          <div style="font-family:'Space Grotesk','Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:4px">⚔️ Counter-Strategy: ${compName} ${pageType}</div>
-          <div style="font-size:0.73rem;color:#6B7280;margin-bottom:16px">AI-generated response plan</div>
-          <div style="font-size:0.82rem;color:#374151;line-height:1.7;white-space:pre-wrap;background:#F8FAFC;border-radius:10px;padding:14px">${text}</div>
-          <button onclick="this.closest('[style*=fixed]').remove()" style="margin-top:16px;width:100%;padding:10px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-weight:700;color:white;cursor:pointer;font-size:0.85rem">Got It — Dismiss</button>
-        </div>`;
-      document.body.appendChild(modal);
-    }
-  } catch(e) {
-    showToast('⚠️ Could not generate counter-strategy. Try again.');
-  }
+  const domain   = analysisData ? analysisData.url : 'your site';
+  const industry = analysisData && analysisData.industry ? analysisData.industry.name : 'your industry';
+
+  // Build counter-ad context headline + body based on page type
+  const headlineMap = {
+    'Pricing Change':   `${compName} changed their pricing — here's why ${domain} is the smarter choice`,
+    'Product Launch':   `${compName} just launched something new — we already do it better`,
+    'New Feature Page': `${compName} added a feature — ${domain} has had it since day one`,
+    'Comparison Page':  `${compName} compared themselves to us — let's set the record straight`,
+    'New Blog Post':    `${compName} published on ${industry} — here's the counterpoint`,
+    'Case Study':       `${compName} shared results — here are ours, unfiltered`,
+  };
+  const bodyMap = {
+    'Pricing Change':   `${compName} just updated their pricing at ${slug}. Counter now: position ${domain} as the transparent, better-value alternative. Highlight your pricing clarity and ROI.`,
+    'Product Launch':   `${compName} launched a new product page at ${slug}. Counter now: outrank them on comparison keywords and push your differentiators hard in paid search.`,
+    'New Feature Page': `${compName} added a new feature page at ${slug}. Counter now: create a direct comparison page targeting "${compName} vs ${domain}" searchers.`,
+    'Comparison Page':  `${compName} published a comparison page at ${slug} targeting your brand. Counter now: own the "${compName} vs ${domain}" keyword with your own page.`,
+    'New Blog Post':    `${compName} published new content at ${slug}. Counter now: write a deeper, more authoritative response targeting the same keywords.`,
+    'Case Study':       `${compName} published a case study at ${slug}. Counter now: publish a competing case study with stronger ROI proof points.`,
+  };
+
+  const headline = headlineMap[pageType] || `Counter ${compName}'s ${pageType} — ${domain} responds`;
+  const body     = bodyMap[pageType]     || `${compName} published a new ${pageType} at ${slug}. Generate counter-ad copy targeting the same audience.`;
+
+  showToast(`⚔️ Opening AI Creative Studio — generating counter-ad for ${compName}'s ${pageType}...`);
+
+  // Navigate to Campaigns tab then open Creative Studio with pre-filled counter-ad context
+  navigateTo('campaigns');
+  setTimeout(() => {
+    openAdInCreativeStudio(headline, body, 'Google Ads');
+  }, 600);
 }
 
 // ── Backlinks detail modal helpers ────────────────────────────────────────────
