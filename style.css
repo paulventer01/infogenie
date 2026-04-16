@@ -332,6 +332,40 @@ body {
 }
 .btn-analyse:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,201,200,.4); }
 .btn-arrow { font-size: 1.1rem; }
+.url-industry-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 10px;
+  padding: 9px 14px;
+  transition: border-color 0.2s;
+}
+.url-industry-row:focus-within {
+  border-color: rgba(0,201,200,.4);
+  background: rgba(0,201,200,.04);
+}
+.industry-row-icon { font-size: 0.95rem; flex-shrink: 0; }
+.industry-field {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: white;
+  font-size: 0.85rem;
+  font-family: 'Inter', sans-serif;
+  min-width: 0;
+}
+.industry-field::placeholder { color: rgba(255,255,255,.28); }
+.industry-row-hint {
+  font-size: 0.7rem;
+  color: rgba(0,201,200,.55);
+  white-space: nowrap;
+  font-style: italic;
+  flex-shrink: 0;
+}
 .url-examples {
   display: flex;
   align-items: center;

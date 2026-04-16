@@ -31,10 +31,11 @@ InfoGenie is a comprehensive AI-powered marketing intelligence and campaign auto
 - `window._wlData` — Win/Loss card data map for modal lookup
 - `window._lastCampRecs` — last campaign recommendations for modal access
 - `window._creativeStudio` — Creative Studio state (current campaign's full copy, scripts, email brief — used by _csDownload/_csCopyAll/_csSendEmail)
+- **Battle Plan timer**: `_apSecs` counter ticks every 1s; `apElapsed` is an inline `<span style="color:#00E5FF">` inside `apLoadTitle`; any innerHTML update to the title must re-embed the span or use `apElapsed` ID for the querySelector (consistent with Reddit scanner style)
 
 ## Features
-1. **Website URL Input** — Enter any website, detect industry automatically
-2. **Industry Detection** — Identifies industry from URL/domain (6 industries supported)
+1. **Website URL Input** — Enter any website, detect industry automatically; optional industry text field below URL row refines competitor targeting — `#industryInput` passes typed text to `detectIndustryFromText()` in data.js, which overrides URL auto-detection; hint label updates to confirm detected industry
+2. **Industry Detection** — Identifies industry from URL/domain (7 industries supported); `detectIndustryFromText(text)` in data.js fuzzy-matches typed industry text against alias tables and INDUSTRY_DB keywords, falling back to URL-based `detectIndustry(url)` if no override supplied; `runAnalysis(url, country, industryOverride)` resolves final industry key
 3. **Competitor Analysis** — 5+ real competitors per industry with actual website names
 4. **Dashboard** — KPI cards, CTR/ROAS charts, trend analysis, competitor table
 5. **Competitor Intelligence** — Deep dive with campaigns, suggestions, audiences per competitor

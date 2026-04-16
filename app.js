@@ -1630,27 +1630,51 @@ function navigateTo(viewId, updateActive = true) {
 }
 
 // ===== ANALYSIS FLOW =====
-async function runAnalysis(url, country) {
+async function runAnalysis(url, country, industryOverride) {
   if (!url || url.trim().length < 3) {
     showToast('⚠️ Please enter a valid website URL to analyse');
     return;
   }
   
   const cleanUrl = url.replace(/https?:\/\//,'').replace(/www\./,'').trim();
-  const industryKey = detectIndustry(cleanUrl);
+
+  // Resolve industry: manual override → auto-detect from URL
+  let industryKey = null;
+  let industrySource = 'auto-detected';
+  if (industryOverride && industryOverride.trim()) {
+    const overrideKey = detectIndustryFromText(industryOverride.trim());
+    if (overrideKey) {
+      industryKey = overrideKey;
+      industrySource = 'user-specified';
+    }
+  }
+  if (!industryKey) {
+    industryKey = detectIndustry(cleanUrl);
+  }
+
   const industry = INDUSTRY_DB[industryKey];
   const websiteKPIs = generateWebsiteKPIs(cleanUrl, industryKey);
-  igTrack('Analysis Started', { domain: cleanUrl, country, industry: industry.name });
-  
+  igTrack('Analysis Started', { domain: cleanUrl, country, industry: industry.name, industrySource });
+
+  // Update the hint label to confirm detected industry
+  const hintEl = document.getElementById('industryHint');
+  if (hintEl) {
+    hintEl.textContent = `✓ ${industrySource === 'user-specified' ? 'Industry set' : 'Auto-detected'}: ${industry.name}`;
+    hintEl.style.color = '#00C9C8';
+  }
+
   // Show loading
   const overlay = document.getElementById('loadingOverlay');
   overlay.classList.remove('hidden');
   overlay.style.display = 'flex';
   
   // Animate loading steps
+  const detectionLabel = industrySource === 'user-specified'
+    ? `Industry set to: ${industry.name} ✓`
+    : `Auto-detected industry: ${industry.name}`;
   const steps = [
-    { id: 'lst1', label: `Detecting industry: ${industry.name}`, duration: 1200 },
-    { id: 'lst2', label: `Found ${industry.competitors.length} top competitors in ${industry.name}`, duration: 1400 },
+    { id: 'lst1', label: detectionLabel, duration: 1200 },
+    { id: 'lst2', label: `Found ${industry.competitors.length} targeted competitors in ${industry.name}`, duration: 1400 },
     { id: 'lst3', label: 'Analysing campaign performance, CTR, and ROAS...', duration: 1600 },
     { id: 'lst4', label: 'Generating AI campaign recommendations...', duration: 1400 },
     { id: 'lst5', label: 'Building full intelligence report...', duration: 1000 }
@@ -8665,11 +8689,12 @@ async function openFullAttackPlanModal(idx) {
       </div>
       <!-- Scrollable body -->
       <div id="attackPlanBody" style="flex:1;overflow-y:auto;padding:24px;display:flex;align-items:center;justify-content:center;min-height:260px">
-        <div style="text-align:center;max-width:360px">
+        <div style="text-align:center;max-width:400px">
           <div style="width:48px;height:48px;border:3px solid rgba(0,201,200,.2);border-top-color:#00C9C8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 18px"></div>
-          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:700;color:white;margin-bottom:4px" id="apLoadTitle">Launching dual-AI engines…</div>
-          <div style="font-size:0.74rem;color:rgba(0,201,200,.7);margin-bottom:14px" id="apElapsed">0s elapsed</div>
-          <div style="display:flex;flex-direction:column;gap:8px;text-align:left">
+          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:700;color:white;margin-bottom:6px" id="apLoadTitle">Generating battle plan… <span id="apElapsed" style="color:#00E5FF;font-weight:800">0s</span></div>
+          <div style="font-size:0.76rem;color:rgba(255,255,255,.38);margin-bottom:7px">GPT-4o + Claude dual AI · synthesising your 8-week strategy</div>
+          <div style="font-size:0.7rem;color:rgba(255,180,0,.55);margin-bottom:18px">⏱ This usually takes 20–45 seconds</div>
+          <div style="display:flex;flex-direction:column;gap:10px;text-align:left">
             <div id="apStep1" style="display:flex;align-items:center;gap:9px;font-size:0.76rem;color:rgba(255,255,255,.5)">
               <span id="apS1icon" style="font-size:0.9rem">⏳</span>
               <span>GPT-4o analysing <strong style="color:#60A5FA">${cName}</strong> strategy</span>
@@ -8694,11 +8719,12 @@ async function openFullAttackPlanModal(idx) {
   // Capture body reference immediately after setting innerHTML
   const planBody = document.getElementById('attackPlanBody');
 
-  // Live elapsed timer
-  const _apStart = Date.now();
+  // Live elapsed timer — updates the inline cyan span
+  let _apSecs = 0;
   const _apTimer = setInterval(() => {
+    _apSecs++;
     const el = document.getElementById('apElapsed');
-    if (el) el.textContent = Math.round((Date.now() - _apStart) / 1000) + 's elapsed';
+    if (el) el.textContent = _apSecs + 's';
   }, 1000);
 
   // Steps 1-3: animated indicators of in-flight AI work
@@ -8711,7 +8737,7 @@ async function openFullAttackPlanModal(idx) {
   setTimeout(() => {
     markStep('apStep2','apS2icon',true);
     const t = document.getElementById('apLoadTitle');
-    if (t) t.textContent = 'AI models working in parallel…';
+    if (t) t.innerHTML = `AI models working in parallel… <span id="apElapsed" style="color:#00E5FF;font-weight:800">${_apSecs}s</span>`;
   }, 4000);
   setTimeout(() => markStep('apStep3','apS3icon',true), 7000);
 
@@ -8749,7 +8775,7 @@ async function openFullAttackPlanModal(idx) {
     markStep('apStep3','apS3icon',true);
     markStep('apStep4','apS4icon',true);
     const tDone = document.getElementById('apLoadTitle');
-    if (tDone) tDone.textContent = 'Rendering your plan…';
+    if (tDone) tDone.innerHTML = `Rendering your plan… <span style="color:#00E5FF;font-weight:800">${_apSecs}s</span>`;
     // Small yield so the browser can paint the ✅ before rendering
     await new Promise(r => setTimeout(r, 60));
     renderAttackPlan(plan, cName, myDomain, planBody, data.sources || ['GPT-4o']);
@@ -11232,28 +11258,40 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   
   // Main analyse button
+  const _getAnalyseInputs = () => ({
+    url: document.getElementById('websiteInput').value,
+    country: document.getElementById('targetCountry').value,
+    industry: (document.getElementById('industryInput')?.value || '').trim(),
+  });
+
   document.getElementById('analyseBtn').addEventListener('click', () => {
-    const url = document.getElementById('websiteInput').value;
-    const country = document.getElementById('targetCountry').value;
-    runAnalysis(url, country);
+    const { url, country, industry } = _getAnalyseInputs();
+    runAnalysis(url, country, industry);
   });
   
-  // Enter key on input
-  document.getElementById('websiteInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      const url = document.getElementById('websiteInput').value;
-      const country = document.getElementById('targetCountry').value;
-      runAnalysis(url, country);
-    }
+  // Enter key on input — trigger from both inputs
+  ['websiteInput','industryInput'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const { url, country, industry } = _getAnalyseInputs();
+        runAnalysis(url, country, industry);
+      }
+    });
   });
   
-  // Example chips
+  // Example chips — clear industry input so auto-detect takes over
   document.querySelectorAll('.example-chip').forEach(chip => {
     chip.addEventListener('click', () => {
       const url = chip.dataset.url;
       document.getElementById('websiteInput').value = url;
-      const country = document.getElementById('targetCountry').value;
-      runAnalysis(url, country);
+      const industryInput = document.getElementById('industryInput');
+      if (industryInput) industryInput.value = '';
+      const hintEl = document.getElementById('industryHint');
+      if (hintEl) { hintEl.textContent = 'Leave blank for auto-detection'; hintEl.style.color = ''; }
+      const { country, industry } = _getAnalyseInputs();
+      runAnalysis(url, country, industry);
     });
   });
   

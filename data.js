@@ -1142,6 +1142,37 @@ const INDUSTRY_DB = {
 };
 
 // Detect industry from URL
+function detectIndustryFromText(text) {
+  if (!text) return null;
+  const t = text.toLowerCase().trim();
+  if (!t) return null;
+
+  const aliases = {
+    ecommerce: ['ecommerce','e-commerce','online store','online retail','retail','shop','marketplace','fashion','clothing','apparel','footwear','shoes','jewellery','jewelry','furniture','home decor','beauty','cosmetics','skincare','electronics','dropshipping','wholesale','consumer goods','grocery','supermarket','d2c','direct to consumer'],
+    fintech: ['fintech','finance','financial','trading','investment','invest','bank','banking','neobank','digital bank','money transfer','remittance','forex','broker','brokerage','payment','payments','insurance','insuretech','insurtech','lending','loan','mortgage','wealth management','robo advisor','proptech finance','stock','equities','options'],
+    saas: ['saas','software','crm','erp','project management','hr software','human resources','hris','payroll','productivity','collaboration','marketing software','platform','b2b software','cloud software','subscription software','enterprise software','helpdesk','customer support','workflow','automation software','no-code','low-code','devops','it management'],
+    crypto: ['crypto','cryptocurrency','blockchain','defi','nft','web3','bitcoin','ethereum','token','dao','metaverse','digital asset','wallet','decentralised','decentralized','layer 2','l2','exchange crypto','staking'],
+    travel: ['travel','hotel','flight','booking','tourism','vacation','airline','accommodation','hospitality','tour operator','resort','holiday','cruise','car rental','travel agency','travel tech','traveltech','airbnb','b&b','backpacker'],
+    education: ['education','edtech','learning','online course','online learning','training','university','school','tutoring','tutor','e-learning','elearning','mooc','skill','teaching','certification','bootcamp','coding bootcamp','coaching','lms','learning management'],
+    marketing: ['marketing','advertising','seo','digital marketing','content marketing','agency','media agency','pr agency','social media','analytics','lead generation','growth','martech','adtech','ad tech','programmatic','performance marketing','influencer','affiliate','email marketing'],
+  };
+
+  for (const [key, terms] of Object.entries(aliases)) {
+    if (terms.some(term => t.includes(term) || term.includes(t))) return key;
+  }
+
+  let bestKey = null, bestScore = 0;
+  for (const [key, data] of Object.entries(INDUSTRY_DB)) {
+    let score = 0;
+    if (data.name.toLowerCase().includes(t)) score += 3;
+    score += data.keywords.filter(kw => t.includes(kw) || kw.includes(t)).length;
+    if (score > bestScore) { bestScore = score; bestKey = key; }
+  }
+  if (bestScore >= 1) return bestKey;
+
+  return null;
+}
+
 function detectIndustry(url) {
   const clean = url.toLowerCase().replace(/https?:\/\//, '').replace(/www\./, '');
   
