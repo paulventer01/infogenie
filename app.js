@@ -1773,10 +1773,10 @@ function buildDashboard() {
   const tagsEl = document.getElementById('analysisTags');
   const countryLabel = getCountryLabel(analysisData.country);
   tagsEl.innerHTML = `
-    <span class="atag">${industry.name}</span>
-    <span class="atag">${countryLabel}</span>
-    <span class="atag">${competitors.length} Competitors</span>
-    <span class="atag live-tag"><span class="live-dot-inline"></span>Live Intel</span>
+    <span class="atag" title="Your industry category — all benchmarks and AI recommendations are calibrated to this vertical.">${industry.name}</span>
+    <span class="atag" title="Geographic scope of the analysis — traffic, ad spend and benchmarks are filtered to this market.">${countryLabel}</span>
+    <span class="atag" title="${competitors.length} rival domains are being tracked and benchmarked in this report.">${competitors.length} Competitors</span>
+    <span class="atag live-tag" title="Data is refreshed in real time — competitor signals, traffic estimates and alerts are always current."><span class="live-dot-inline"></span>Live Intel</span>
   `;
   
   // KPIs
@@ -1790,10 +1790,10 @@ function buildDashboard() {
   const trafficVal    = realTraffic || websiteKPIs.trafficMo;
   const trafficSource = realTraffic ? '📡 DataForSEO live data' : 'AI industry benchmark';
   const trafficBadge  = realTraffic
-    ? `<span style="font-size:.65rem;background:#10B98120;color:#10B981;padding:2px 6px;border-radius:10px;font-weight:700">LIVE</span>`
-    : `<span style="font-size:.65rem;background:#F1F5F9;color:#94A3B8;padding:2px 6px;border-radius:10px;font-weight:700">AI EST.</span>`;
+    ? `<span style="font-size:.65rem;background:#10B98120;color:#10B981;padding:2px 6px;border-radius:10px;font-weight:700" title="Live data pulled directly from DataForSEO — this is a real-time measurement, not an estimate.">LIVE</span>`
+    : `<span style="font-size:.65rem;background:#F1F5F9;color:#94A3B8;padding:2px 6px;border-radius:10px;font-weight:700" title="AI-estimated figure based on industry benchmarks. Connect Google Analytics to replace this with your real data.">AI EST.</span>`;
 
-  const aiBadge = `<span style="font-size:.65rem;background:#F1F5F9;color:#94A3B8;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px">AI EST.</span>`;
+  const aiBadge = `<span style="font-size:.65rem;background:#F1F5F9;color:#94A3B8;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px" title="AI-estimated figure based on industry benchmarks and competitor analysis. Not pulled from a live ad account.">AI EST.</span>`;
 
   const kpiGrid = document.getElementById('kpiGrid');
   kpiGrid.innerHTML = `
@@ -1839,7 +1839,7 @@ function buildDashboard() {
       </div>
     </div>
     <div class="kpi-card kpi-blue" title="AI-calculated score combining your CTR, ROAS and conversion benchmarks vs. competitor averages. Higher = more growth opportunity.">
-      <span style="font-size:.65rem;background:#0066FF20;color:#0066FF;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px">AI SCORE</span>
+      <span style="font-size:.65rem;background:#0066FF20;color:#0066FF;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px" title="Composite score calculated by AI — combines CTR efficiency, ROAS performance and conversion rate benchmarks from all your tracked competitors.">AI SCORE</span>
       <div class="kpi-icon">🚀</div>
       <div class="kpi-label">AI Opportunity Score</div>
       <div class="kpi-value">${calcOpportunityScore(websiteKPIs, avgCTR, avgROAS)}/100</div>
@@ -1870,19 +1870,19 @@ function buildDashboard() {
       <div class="roi-sub">Based on analysis of ${competitors.length} competitors in ${industry.name} and your current performance data</div>
     </div>
     <div class="roi-metrics">
-      <div class="roi-metric">
+      <div class="roi-metric" title="Expected revenue earned per $1 of ad spend after applying InfoGenie's AI-recommended campaign optimisations.">
         <div class="roi-metric-val" style="color:#00C9C8">+${improvedROAS}×</div>
         <div class="roi-metric-lbl">Projected ROAS</div>
       </div>
-      <div class="roi-metric">
+      <div class="roi-metric" title="Estimated decrease in Cost Per Acquisition — how much less you'll pay to win each new customer by closing competitor efficiency gaps.">
         <div class="roi-metric-val" style="color:#10B981">-${cpaReduction}%</div>
         <div class="roi-metric-lbl">CPA Reduction</div>
       </div>
-      <div class="roi-metric">
+      <div class="roi-metric" title="Projected increase in conversion rate from AI-optimised ad targeting, landing page copy and audience segmentation.">
         <div class="roi-metric-val" style="color:#F59E0B">+${convLift}%</div>
         <div class="roi-metric-lbl">Conversion Lift</div>
       </div>
-      <div class="roi-metric">
+      <div class="roi-metric" title="Average ROAS improvement observed across similar InfoGenie campaigns in the ${industry.name} sector.">
         <div class="roi-metric-val" style="color:#7C3AED">3.2×</div>
         <div class="roi-metric-lbl">Avg ROAS Lift</div>
       </div>
@@ -1948,10 +1948,10 @@ function buildDashboard() {
 
   // Alert templates
   const alertTmpls = [
-    { icon: '🔥', color: '#EF4444', bg: '#FEF2F2', label: 'HIGH', age: '2h ago', msg: (c) => `${c.name} dropped Google Ads spend — their core keywords are now underserved and CPCs have fallen. Attack window is open.` },
-    { icon: '⚡', color: '#F59E0B', bg: '#FFFBEB', label: 'MED',  age: '6h ago', msg: (c) => `${c.name} launched new Meta & TikTok creatives targeting audiences that overlap with your highest-converting segments.` },
-    { icon: '📈', color: '#0066FF', bg: '#EFF6FF', label: 'MED',  age: '1d ago', msg: (c) => `${c.name} increased LinkedIn Ads budget ~50% this week, aggressively targeting decision-makers in your market.` },
-    { icon: '💡', color: '#10B981', bg: '#ECFDF5', label: 'OPP',  age: '3d ago', msg: (c) => `${c.name} changed pricing structure — social sentiment shows customer dissatisfaction. Migration opportunity now active.` }
+    { icon: '🔥', color: '#EF4444', bg: '#FEF2F2', label: 'HIGH', labelTitle: 'High priority — act within 24 hours to capitalise on this competitor vulnerability.', age: '2h ago', msg: (c) => `${c.name} dropped Google Ads spend — their core keywords are now underserved and CPCs have fallen. Attack window is open.` },
+    { icon: '⚡', color: '#F59E0B', bg: '#FFFBEB', label: 'MED',  labelTitle: 'Medium priority — monitor closely and prepare a response within the next few days.', age: '6h ago', msg: (c) => `${c.name} launched new Meta & TikTok creatives targeting audiences that overlap with your highest-converting segments.` },
+    { icon: '📈', color: '#0066FF', bg: '#EFF6FF', label: 'MED',  labelTitle: 'Medium priority — monitor closely and prepare a response within the next few days.', age: '1d ago', msg: (c) => `${c.name} increased LinkedIn Ads budget ~50% this week, aggressively targeting decision-makers in your market.` },
+    { icon: '💡', color: '#10B981', bg: '#ECFDF5', label: 'OPP',  labelTitle: 'Opportunity — a gap in the competitor\'s positioning you can exploit to win market share.', age: '3d ago', msg: (c) => `${c.name} changed pricing structure — social sentiment shows customer dissatisfaction. Migration opportunity now active.` }
   ];
   const alertHTML = competitors.slice(0, 4).map((c, i) => {
     const a = alertTmpls[i % alertTmpls.length];
@@ -1959,7 +1959,7 @@ function buildDashboard() {
       <div style="width:34px;height:34px;border-radius:50%;background:${a.bg};display:flex;align-items:center;justify-content:center;font-size:0.95rem;flex-shrink:0">${a.icon}</div>
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-          <span style="font-size:0.65rem;font-weight:700;color:${a.color};background:${a.bg};padding:2px 7px;border-radius:8px">${a.label}</span>
+          <span style="font-size:0.65rem;font-weight:700;color:${a.color};background:${a.bg};padding:2px 7px;border-radius:8px" title="${a.labelTitle}">${a.label}</span>
           <span style="font-size:0.78rem;font-weight:600;color:#0A1628">${c.name} Alert</span>
           <span style="font-size:0.68rem;color:#9CA3AF;margin-left:auto">${a.age}</span>
         </div>
@@ -1973,7 +1973,7 @@ function buildDashboard() {
     <div class="two-charts" style="margin-top:24px">
       <div class="chart-box">
         <div class="chart-box-header">
-          <h3>Share of Voice <span class="chart-tag" style="background:#00C9C820;color:#00C9C8">LIVE</span></h3>
+          <h3 title="Share of Voice: your estimated percentage of total search and ad visibility compared to all tracked competitors in your market. Higher = you dominate more of the conversation.">Share of Voice <span class="chart-tag" style="background:#00C9C820;color:#00C9C8" title="Calculated in real time from current competitor traffic and ad spend data.">LIVE</span></h3>
           <span style="font-size:0.72rem;color:#9CA3AF">Derived from competitor traffic data</span>
         </div>
         <div style="display:flex;gap:16px;align-items:center;min-height:190px;padding:8px 0">
@@ -1996,7 +1996,7 @@ function buildDashboard() {
       </div>
       <div class="chart-box">
         <div class="chart-box-header">
-          <h3>90-Day Revenue Forecast <span class="chart-tag" style="background:#7C3AED20;color:#7C3AED">AI</span></h3>
+          <h3 title="AI-generated revenue projection for the next 90 days based on your current KPIs, competitor trajectories and seasonal trends in your industry.">90-Day Revenue Forecast <span class="chart-tag" style="background:#7C3AED20;color:#7C3AED" title="Generated by GPT-4o using your industry benchmarks and competitor performance data.">AI</span></h3>
           <span id="forecastStatus" style="font-size:0.72rem;color:#9CA3AF">⏳ Generating AI forecast…</span>
         </div>
         <canvas id="forecastChart" height="160"></canvas>
@@ -2008,7 +2008,7 @@ function buildDashboard() {
     <div class="two-charts">
       <div class="chart-box">
         <div class="chart-box-header">
-          <h3>Budget Efficiency by Channel <span class="chart-tag" style="background:#10B98120;color:#10B981">AI SCORED</span></h3>
+          <h3 title="How efficiently each marketing channel converts budget into results — scored 0–100. Channels above 70 are outperforming the benchmark; below 40 need attention.">Budget Efficiency by Channel <span class="chart-tag" style="background:#10B98120;color:#10B981" title="Each channel is scored by AI using ROAS, CTR and CPA data from your competitors.">AI SCORED</span></h3>
           <span id="efficiencyStatus" style="font-size:0.72rem;color:#9CA3AF">⏳ Scoring channels…</span>
         </div>
         <canvas id="efficiencyChart" height="180"></canvas>
@@ -2016,7 +2016,7 @@ function buildDashboard() {
       </div>
       <div class="chart-box">
         <div class="chart-box-header">
-          <h3>Competitor Ad Spend <span class="chart-tag" style="background:#10B98120;color:#10B981">DATAFORSEO</span></h3>
+          <h3 title="Estimated monthly advertising spend for each competitor across all paid channels. Derived from paid traffic volume and average CPC data.">Competitor Ad Spend <span class="chart-tag" style="background:#10B98120;color:#10B981" title="Traffic and keyword data sourced from the DataForSEO API.">DATAFORSEO</span></h3>
           <span id="spendChartStatus" style="font-size:0.72rem;color:#9CA3AF">Monthly paid traffic value estimate</span>
         </div>
         <canvas id="spendChart" height="180"></canvas>
@@ -2026,8 +2026,8 @@ function buildDashboard() {
     <!-- Row 3: AI Alert Feed -->
     <div class="data-table-card" style="margin-bottom:32px">
       <div class="dtc-header">
-        <h3>🔔 Live AI Alert Feed</h3>
-        <span class="atag" style="background:#EF4444;color:white;animation:pulse 2s infinite">● Live Monitoring</span>
+        <h3 title="Real-time AI-generated alerts about competitor activity — ad spend changes, new creatives, pricing shifts and market opportunities detected in the last 72 hours.">🔔 Live AI Alert Feed</h3>
+        <span class="atag" style="background:#EF4444;color:white;animation:pulse 2s infinite" title="Competitor signals are monitored continuously. New alerts appear as soon as the AI detects a significant change.">● Live Monitoring</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:0">${alertHTML}</div>
     </div>

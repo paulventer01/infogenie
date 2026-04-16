@@ -302,7 +302,7 @@
         </div>
         <div class="vh-actions">
           <div class="analysis-tags" id="analysisTags"></div>
-          <button class="btn-secondary" id="reRunBtn">↺ Re-run Analysis</button>
+          <button class="btn-secondary" id="reRunBtn" title="Refresh all competitor data and regenerate AI recommendations from scratch. Takes 30–60 seconds.">↺ Re-run Analysis</button>
         </div>
       </div>
     </div>
@@ -314,39 +314,39 @@
     <div class="two-charts">
       <div class="chart-box">
         <div class="chart-box-header">
-          <h3>Average CTR Comparison <span class="chart-tag ctr-tag">CTR</span></h3>
+          <h3 title="Side-by-side Click-Through Rate comparison — your domain vs each tracked competitor. A higher CTR means ads are more compelling and relevant to the target audience.">Average CTR Comparison <span class="chart-tag ctr-tag" title="Click-Through Rate: % of ad impressions that result in a click.">CTR</span></h3>
         </div>
         <canvas id="ctrChart" height="240"></canvas>
       </div>
       <div class="chart-box">
         <div class="chart-box-header">
-          <h3>ROAS Performance <span class="chart-tag roas-tag">ROAS</span></h3>
+          <h3 title="Return on Ad Spend comparison across all competitors. A 3× ROAS means $3 revenue generated for every $1 spent on ads.">ROAS Performance <span class="chart-tag roas-tag" title="Return on Ad Spend: revenue generated per $1 of advertising budget.">ROAS</span></h3>
         </div>
         <canvas id="roasChart" height="240"></canvas>
       </div>
     </div>
     <div class="chart-box full">
       <div class="chart-box-header">
-        <h3>Traffic & Ad Spend Trends — 12 Months <span class="chart-tag trend-tag">TREND</span></h3>
+        <h3 title="12-month trend lines showing how competitor website traffic and estimated ad spend have evolved. Rising lines indicate aggressive growth; flat or falling lines signal vulnerability.">Traffic & Ad Spend Trends — 12 Months <span class="chart-tag trend-tag" title="Historical trend data — AI-interpolated from available competitor signals.">TREND</span></h3>
       </div>
       <canvas id="trendChart" height="140"></canvas>
     </div>
     <div class="data-table-card">
       <div class="dtc-header">
-        <h3>Competitor Intelligence Summary</h3>
-        <button class="btn-link" id="viewAllCompBtn">View Full Analysis →</button>
+        <h3 title="A snapshot of all tracked competitors with their key performance metrics. Click any Threat Level badge for a detailed threat breakdown.">Competitor Intelligence Summary</h3>
+        <button class="btn-link" id="viewAllCompBtn" title="Open the full Competitors page for in-depth analysis, attack plans and ad creative insights.">View Full Analysis →</button>
       </div>
       <div class="table-scroll">
         <table class="ig-table">
           <thead>
             <tr>
-              <th>Competitor Website</th>
-              <th>Est. Monthly Traffic</th>
-              <th>Avg CTR</th>
-              <th>ROAS</th>
-              <th>Est. Ad Spend/mo</th>
-              <th>Top Channel</th>
-              <th>Threat Level</th>
+              <th title="The competitor domain being tracked and benchmarked.">Competitor Website</th>
+              <th title="Estimated total monthly visits — organic search + paid traffic combined. Sourced from DataForSEO where available.">Est. Monthly Traffic</th>
+              <th title="Average Click-Through Rate across this competitor's active ad campaigns. Higher % = more compelling ads.">Avg CTR</th>
+              <th title="Return on Ad Spend — estimated revenue earned per $1 spent on ads. 2× means $2 back for every $1 spent.">ROAS</th>
+              <th title="Estimated monthly advertising budget across Google, Meta, TikTok and other paid channels.">Est. Ad Spend/mo</th>
+              <th title="The marketing channel driving the most traffic or conversions for this competitor.">Top Channel</th>
+              <th title="AI-assessed threat level: how directly this competitor threatens your market position. Click for a detailed breakdown.">Threat Level</th>
             </tr>
           </thead>
           <tbody id="compSummaryBody"></tbody>
