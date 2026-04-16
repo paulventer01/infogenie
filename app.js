@@ -1671,19 +1671,13 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'agency') {
     try { buildAgency(); } catch(e) { console.warn('buildAgency error:', e); }
   }
-  // Show/hide navbar links for home vs app
-  const navLinks = document.getElementById('navLinks');
-  const navPlan = document.getElementById('navPlanBadge');
-  const navBtn = document.getElementById('navAnalyseBtn');
-  if (viewId === 'home') {
-    navLinks.style.display = 'flex';
-    navPlan.style.display = 'none';
-    navBtn.style.display = 'none';
-  } else {
-    navLinks.style.display = 'flex';
-    navPlan.style.display = 'block';
-    navBtn.style.display = 'block';
-  }
+  // Show/hide navbar for home vs app
+  const navGroups = document.getElementById('navGroups');
+  const navPlan   = document.getElementById('navPlanBadge');
+  const navBtn    = document.getElementById('navAnalyseBtn');
+  if (navGroups) navGroups.style.display = 'flex';
+  if (navPlan)   navPlan.style.display   = viewId === 'home' ? 'none'  : 'block';
+  if (navBtn)    navBtn.style.display    = viewId === 'home' ? 'none'  : 'block';
   window.scrollTo(0, 0);
 }
 
