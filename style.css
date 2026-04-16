@@ -174,7 +174,7 @@ body {
 .btn-nav-analyse:hover { background: linear-gradient(135deg, var(--cyan), var(--teal)); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,201,200,.45); }
 
 /* ===== VIEWS ===== */
-.view { display: none; padding-top: 64px; }
+.view { display: none; padding-top: 88px; }
 .view.active { display: block; }
 
 /* ===== HERO ===== */
@@ -3805,53 +3805,103 @@ h1, h2, h3 {
 }
 
 /* ─── Navbar 3.0 — compact, scrollable, modern ─── */
+/* ── Two-row navbar redesign ─────────────────────────────────────────── */
 .navbar {
-  height: 56px !important;
-  background: rgba(5, 12, 28, 0.98) !important;
-  border-bottom: 1px solid rgba(0,201,200,.15) !important;
+  height: auto !important;
+  background: rgba(5, 12, 28, 0.99) !important;
+  border-bottom: none !important;
+  box-shadow: 0 1px 0 rgba(0,201,200,.12), 0 4px 16px rgba(0,0,0,.3) !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 1000 !important;
 }
 
 .navbar::after {
-  background: linear-gradient(90deg, transparent 0%, rgba(0,201,200,.6) 25%, rgba(0,229,255,.9) 50%, rgba(0,201,200,.6) 75%, transparent 100%) !important;
+  display: block !important;
+  content: '' !important;
   height: 1.5px !important;
+  background: linear-gradient(90deg, transparent 0%, rgba(0,201,200,.5) 20%, rgba(0,229,255,.85) 50%, rgba(0,201,200,.5) 80%, transparent 100%) !important;
 }
 
 .nav-inner {
-  height: 56px !important;
-  gap: 16px !important;
-  max-width: 1440px !important;
-  padding: 0 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: auto !important;
+  gap: 0 !important;
+  max-width: 100% !important;
+  padding: 0 !important;
 }
 
-.logo-text {
-  font-family: 'Space Grotesk', sans-serif !important;
-  font-size: 1.15rem !important;
-  font-weight: 800 !important;
-  letter-spacing: -0.04em !important;
+/* Row 1: logo + actions */
+.nav-top-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  padding: 9px 20px !important;
+  height: 48px !important;
+  box-sizing: border-box !important;
+  border-bottom: 1px solid rgba(255,255,255,.05) !important;
 }
 
+/* Row 2: all nav links */
 .nav-links {
+  display: flex !important;
+  align-items: center !important;
+  gap: 2px !important;
+  padding: 0 16px !important;
+  height: 36px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
   overflow-x: auto !important;
+  overflow-y: hidden !important;
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
-  flex-shrink: 1 !important;
   flex-wrap: nowrap !important;
+  flex-shrink: 0 !important;
+  background: rgba(0,0,0,.18) !important;
 }
 .nav-links::-webkit-scrollbar { display: none !important; }
 
 .nav-link {
-  font-size: 0.68rem !important;
+  font-size: 0.7rem !important;
   font-weight: 600 !important;
-  padding: 4px 8px !important;
+  padding: 4px 9px !important;
   border-radius: 6px !important;
   flex-shrink: 0 !important;
+  white-space: nowrap !important;
   letter-spacing: 0.01em !important;
   font-family: 'Plus Jakarta Sans', sans-serif !important;
+  color: rgba(255,255,255,.65) !important;
+  transition: color .15s, background .15s !important;
+  text-decoration: none !important;
 }
-
+.nav-link:hover {
+  color: white !important;
+  background: rgba(255,255,255,.07) !important;
+}
 .nav-link.active {
   background: rgba(0,201,200,.15) !important;
   color: #00D8D7 !important;
+  font-weight: 700 !important;
+}
+
+/* Group separator */
+.nav-sep {
+  display: inline-block !important;
+  width: 1px !important;
+  height: 16px !important;
+  background: rgba(255,255,255,.1) !important;
+  margin: 0 4px !important;
+  flex-shrink: 0 !important;
+  align-self: center !important;
+}
+
+.logo-text {
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 1.12rem !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.04em !important;
 }
 
 .nav-plan-badge {

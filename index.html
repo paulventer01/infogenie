@@ -20,44 +20,55 @@
 <!-- NAVBAR -->
 <nav class="navbar" id="navbar">
   <div class="nav-inner">
-    <a href="#" class="nav-logo" id="navLogo">
-      <div class="logo-mark">
-        <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
-          <circle cx="20" cy="20" r="20" fill="url(#logoGrad)"/>
-          <path d="M13 20 Q20 10 27 20 Q20 30 13 20Z" fill="white" opacity="0.9"/>
-          <circle cx="20" cy="20" r="4" fill="white"/>
-          <defs>
-            <linearGradient id="logoGrad" x1="0" y1="0" x2="40" y2="40">
-              <stop offset="0%" stop-color="#00C9C8"/>
-              <stop offset="100%" stop-color="#0066FF"/>
-            </linearGradient>
-          </defs>
-        </svg>
+    <!-- Row 1: logo + actions -->
+    <div class="nav-top-row">
+      <a href="#" class="nav-logo" id="navLogo">
+        <div class="logo-mark">
+          <svg width="26" height="26" viewBox="0 0 40 40" fill="none">
+            <circle cx="20" cy="20" r="20" fill="url(#logoGrad)"/>
+            <path d="M13 20 Q20 10 27 20 Q20 30 13 20Z" fill="white" opacity="0.9"/>
+            <circle cx="20" cy="20" r="4" fill="white"/>
+            <defs>
+              <linearGradient id="logoGrad" x1="0" y1="0" x2="40" y2="40">
+                <stop offset="0%" stop-color="#00C9C8"/>
+                <stop offset="100%" stop-color="#0066FF"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <span class="logo-text">Info<span class="logo-genie">Genie</span></span>
+      </a>
+      <div class="nav-actions">
+        <div class="nav-plan-badge" id="navPlanBadge">Pro</div>
+        <button class="btn-nav-analyse" id="navAnalyseBtn">+ Analyse</button>
       </div>
-      <span class="logo-text">Info<span class="logo-genie">Genie</span></span>
-    </a>
+    </div>
+    <!-- Row 2: all nav links -->
     <div class="nav-links" id="navLinks">
+      <!-- Core -->
       <a href="#" class="nav-link" data-view="dashboard">Dashboard</a>
       <a href="#" class="nav-link" data-view="competitors">Competitors</a>
       <a href="#" class="nav-link" data-view="campaigns">Campaigns</a>
       <a href="#" class="nav-link" data-view="audience">Audience</a>
       <a href="#" class="nav-link" data-view="creative">AI Creative</a>
+      <span class="nav-sep"></span>
+      <!-- Intelligence -->
       <a href="#" class="nav-link nav-link-intel" data-view="intelligence">Intelligence</a>
       <a href="#" class="nav-link" data-view="advertise">Advertise</a>
-      <a href="#" class="nav-link" data-view="social">Social</a>
-      <a href="#" class="nav-link" data-view="reddit" style="color:#FF6B35;font-weight:700">🔴 Reddit</a>
-      <a href="#" class="nav-link" data-view="content">Content AI</a>
       <a href="#" class="nav-link" data-view="aivisibility">AI Visibility</a>
+      <a href="#" class="nav-link" data-view="reddit" style="color:#FF6B35">🔴 Reddit</a>
+      <span class="nav-sep"></span>
+      <!-- Content & Social -->
+      <a href="#" class="nav-link" data-view="social">Social</a>
+      <a href="#" class="nav-link" data-view="content">Content AI</a>
       <a href="#" class="nav-link" data-view="results">Results</a>
-      <a href="#" class="nav-link" data-view="battleplan" style="color:#00C9C8;font-weight:700">⚔️ Battle Plan</a>
-      <a href="#" class="nav-link" data-view="reengage" style="color:#F59E0B;font-weight:700">🔁 Re-Engage</a>
-      <a href="#" class="nav-link" data-view="automations" style="color:#10B981;font-weight:700">⚡ Automations</a>
-      <a href="#" class="nav-link" data-view="agency" style="color:#818CF8;font-weight:700">🏢 Agency</a>
+      <span class="nav-sep"></span>
+      <!-- Advanced -->
+      <a href="#" class="nav-link" data-view="battleplan" style="color:#00C9C8">⚔️ Battle Plan</a>
+      <a href="#" class="nav-link" data-view="reengage" style="color:#F59E0B">🔁 Re-Engage</a>
+      <a href="#" class="nav-link" data-view="automations" style="color:#10B981">⚡ Auto</a>
+      <a href="#" class="nav-link" data-view="agency" style="color:#818CF8">🏢 Agency</a>
       <a href="#" class="nav-link" data-view="settings">Settings</a>
-    </div>
-    <div class="nav-actions">
-      <div class="nav-plan-badge" id="navPlanBadge">Pro</div>
-      <button class="btn-nav-analyse" id="navAnalyseBtn">+ Analyse</button>
     </div>
   </div>
 </nav>

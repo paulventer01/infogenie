@@ -3485,7 +3485,7 @@ function buildCampaigns() {
           <h3 style="color:#1D4ED8">✍️ InfoGenie Improved Ads</h3>
           <span class="atag" style="background:#1D4ED8">${allAds.length} Ready-to-Use</span>
         </div>
-        <p style="font-size:0.8rem;color:#1D4ED8;margin:0 0 16px 0">InfoGenie's AI-improved ad copy — the same ads shown in your Competitor intelligence, ready to copy or send directly to the Creative Studio.</p>
+        <p style="font-size:0.73rem;color:#3B82F6;margin:0 0 16px 0;line-height:1.5;max-width:640px">AI-refined versions of your competitors' top ads · Copy to clipboard or send straight to the Creative Studio for launch.</p>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
           ${adCards}
         </div>
