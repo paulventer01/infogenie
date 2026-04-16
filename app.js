@@ -1627,6 +1627,19 @@ function navigateTo(viewId, updateActive = true) {
     document.querySelectorAll('.nav-link').forEach(l => {
       l.classList.toggle('active', l.dataset.view === viewId);
     });
+    // Scroll active nav link into view (centre it)
+    const activeLink = document.querySelector('.nav-link.active');
+    const navLinks  = document.getElementById('navLinks');
+    const navWrap   = document.getElementById('navScrollWrap');
+    if (activeLink && navLinks) {
+      const linkLeft   = activeLink.offsetLeft;
+      const linkWidth  = activeLink.offsetWidth;
+      const wrapWidth  = navLinks.offsetWidth;
+      navLinks.scrollLeft = linkLeft - (wrapWidth / 2) + (linkWidth / 2);
+    }
+    if (navLinks && navWrap) {
+      navWrap.classList.toggle('scrolled', navLinks.scrollLeft > 8);
+    }
   }
   // Rebuild views on demand so they're always populated when navigated to
   if (viewId === 'settings') {
@@ -12121,6 +12134,15 @@ function showToast(msg) {
 document.addEventListener('DOMContentLoaded', () => {
   navigateTo('home');
   try { buildIntelligence(); } catch(e) { console.warn('buildIntelligence error:', e); }
+
+  // Keep left-fade on nav wrapper in sync with scroll position
+  const navLinks = document.getElementById('navLinks');
+  const navWrap  = document.getElementById('navScrollWrap');
+  if (navLinks && navWrap) {
+    navLinks.addEventListener('scroll', () => {
+      navWrap.classList.toggle('scrolled', navLinks.scrollLeft > 8);
+    }, { passive: true });
+  }
 
   // Event delegation — attack & signal buttons rendered inside dynamic innerHTML
   document.addEventListener('click', e => {
