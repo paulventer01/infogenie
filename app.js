@@ -10548,6 +10548,15 @@ function buildPlanView(compName) {
 
   if (!comp) return;
 
+  // Populate / sync the competitor dropdown
+  const dd = document.getElementById('planCompDropdown');
+  if (dd) {
+    const comps = analysisData.competitors || [];
+    dd.innerHTML = comps.map(c =>
+      `<option value="${c.name.replace(/"/g,'&quot;')}" ${c.name === comp.name ? 'selected' : ''} style="background:#0D2A5E;color:white">${c.name}</option>`
+    ).join('');
+  }
+
   const myROAS   = analysisData.websiteKPIs?.roas ? parseFloat(analysisData.websiteKPIs.roas) : 2.8;
   const compROAS = comp.roas || 4.5;
   const compCTR  = parseFloat(comp.ctr || '3.2');

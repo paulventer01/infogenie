@@ -466,10 +466,20 @@
   <div class="view-header">
     <div class="container">
       <div class="vh-inner">
-        <div>
+        <div style="flex:1">
           <div class="breadcrumb"><span style="cursor:pointer;color:var(--teal)" id="planBackBtn">← Competitors</span> &nbsp;/ Execution Plan</div>
-          <h2 class="view-title" id="planViewTitle">ROAS Domination Plan</h2>
-          <p class="view-sub" id="planViewSub">90-day actionable implementation roadmap</p>
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:4px">
+            <div>
+              <h2 class="view-title" id="planViewTitle" style="margin:0">ROAS Domination Plan</h2>
+              <p class="view-sub" id="planViewSub" style="margin:4px 0 0">90-day actionable implementation roadmap</p>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;min-width:180px">
+              <label style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.07em">Viewing Competitor</label>
+              <select id="planCompDropdown" onchange="buildPlanView(this.options[this.selectedIndex].value)" style="padding:8px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(0,201,200,.35);border-radius:9px;font-size:0.82rem;font-weight:600;color:white;cursor:pointer;outline:none;-webkit-appearance:none;appearance:none;background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%228%22 viewBox=%220 0 12 8%22><path fill=%22%2300C9C8%22 d=%22M6 8L0 0h12z%22/></svg>');background-repeat:no-repeat;background-position:right 10px center;padding-right:28px">
+                <option value="" disabled style="background:#0A1628">Select a competitor…</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
     </div>
