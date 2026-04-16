@@ -11542,96 +11542,174 @@ function openCampLaunchRich(name, platform, budget, idx) {
   const descriptions = descSets[platform] || descSets['Google Ads'];
 
   inner.innerHTML = `
-    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:24px 28px;border-radius:20px 20px 0 0">
-      <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:4px">🚀 Campaign Launch Brief</div>
-      <div style="font-size:0.8rem;color:rgba(255,255,255,.6)">${name}</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px">
+    <style>
+      .clb-field { width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;font-family:'Plus Jakarta Sans','Inter',sans-serif;outline:none;transition:border-color .18s,background .18s; }
+      .clb-field:focus { border-color:#0066FF;background:#F0F7FF; }
+      .clb-label { font-size:0.66rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px; }
+      .clb-edit-pill { display:inline-block;font-size:0.58rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle;letter-spacing:.04em; }
+    </style>
+
+    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:22px 28px;border-radius:20px 20px 0 0">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div style="font-family:'Space Grotesk','Sora',sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:2px">🚀 Campaign Launch Brief</div>
+          <div style="font-size:0.8rem;color:rgba(255,255,255,.55)">${name} · ${platform}</div>
+        </div>
+        <div>
+          <div style="font-size:0.62rem;color:rgba(255,255,255,.4);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;text-align:right">Monthly Budget</div>
+          <div style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:9px;padding:5px 10px">
+            <span style="color:rgba(255,255,255,.5);font-size:0.9rem;font-weight:600">$</span>
+            <input id="clb-budget" type="number" value="${budgetNum}" min="100" step="100"
+              style="background:transparent;border:none;color:white;font-size:0.95rem;font-weight:800;width:100px;outline:none;font-family:'Plus Jakarta Sans','Inter',sans-serif"
+              oninput="clbUpdateMetrics()"
+              onfocus="this.parentElement.style.borderColor='rgba(0,229,255,.6)'"
+              onblur="this.parentElement.style.borderColor='rgba(255,255,255,.18)'">
+            <span style="color:rgba(255,255,255,.35);font-size:0.75rem">/mo</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
         <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:1.1rem;font-weight:800;color:#00E5FF">${projROAS}×</div>
-          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Proj. ROAS</div>
+          <div id="clb-roas" style="font-size:1.1rem;font-weight:800;color:#00E5FF">${projROAS}×</div>
+          <div style="font-size:0.62rem;color:rgba(255,255,255,.45);margin-top:2px">Proj. ROAS</div>
         </div>
         <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:1.1rem;font-weight:800;color:#10B981">${projConv}</div>
-          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Est. Conversions</div>
+          <div id="clb-conv" style="font-size:1.1rem;font-weight:800;color:#10B981">${projConv}</div>
+          <div style="font-size:0.62rem;color:rgba(255,255,255,.45);margin-top:2px">Est. Conversions</div>
         </div>
         <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:1.1rem;font-weight:800;color:#F59E0B">${projRevenue}</div>
-          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Est. Revenue</div>
+          <div id="clb-rev" style="font-size:1.1rem;font-weight:800;color:#F59E0B">${projRevenue}</div>
+          <div style="font-size:0.62rem;color:rgba(255,255,255,.45);margin-top:2px">Est. Revenue</div>
         </div>
         <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center">
-          <div style="font-size:1.1rem;font-weight:800;color:white">$${dailyBudg}/day</div>
-          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Daily Budget</div>
+          <div id="clb-daily-top" style="font-size:1.1rem;font-weight:800;color:white">$${dailyBudg}/day</div>
+          <div style="font-size:0.62rem;color:rgba(255,255,255,.45);margin-top:2px">Daily Budget</div>
         </div>
       </div>
     </div>
 
-    <div style="padding:22px 28px;display:flex;flex-direction:column;gap:20px">
+    <div style="padding:20px 28px;display:flex;flex-direction:column;gap:16px;max-height:60vh;overflow-y:auto">
 
-      <!-- PLATFORM STRATEGY -->
+      <!-- EDITABLE STRATEGY FIELDS -->
       <div>
-        <div style="font-size:0.68rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">${pd.icon} ${platform} Strategy</div>
+        <div style="font-size:0.67rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">
+          ${pd.icon} ${platform} Strategy
+          <span class="clb-edit-pill" style="background:#EEF2FF;color:#4F46E5">EDITABLE</span>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          ${[['Bid Strategy', pd.bidStrategy],['Target Audience', pd.audience],['Primary KPI', pd.kpi],['Creative Format', pd.creative]].map(([k,v]) => `
-            <div style="background:#F9FAFB;border-radius:8px;padding:10px 12px">
-              <div style="font-size:0.68rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em">${k}</div>
-              <div style="font-size:0.8rem;color:#0A1628;font-weight:600;margin-top:3px">${v}</div>
-            </div>
-          `).join('')}
+          <div>
+            <label class="clb-label">Bid Strategy</label>
+            <input id="clb-bid" class="clb-field" value="${pd.bidStrategy.replace(/"/g,'&quot;')}">
+          </div>
+          <div>
+            <label class="clb-label">Target Audience</label>
+            <input id="clb-audience" class="clb-field" value="${pd.audience.replace(/"/g,'&quot;')}">
+          </div>
+          <div>
+            <label class="clb-label">Primary KPI</label>
+            <input id="clb-kpi" class="clb-field" value="${pd.kpi.replace(/"/g,'&quot;')}">
+          </div>
+          <div>
+            <label class="clb-label">Creative Format</label>
+            <input id="clb-creative" class="clb-field" value="${pd.creative.replace(/"/g,'&quot;')}">
+          </div>
         </div>
       </div>
 
-      <!-- AI HEADLINES -->
+      <!-- EDITABLE HEADLINES -->
       <div>
-        <div style="font-size:0.68rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">🤖 AI-Generated Headlines</div>
+        <div style="font-size:0.67rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">
+          🤖 AI-Generated Headlines
+          <span class="clb-edit-pill" style="background:#EDE9FE;color:#7C3AED">CLICK TO EDIT</span>
+        </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           ${headlines.map((h,i) => `
-            <div style="display:flex;align-items:center;gap:10px;background:#F5F3FF;border-radius:8px;padding:9px 12px">
-              <span style="font-size:0.7rem;font-weight:700;color:#7C3AED;background:#EDE9FE;border-radius:4px;padding:2px 6px">H${i+1}</span>
-              <span style="font-size:0.82rem;color:#0A1628;font-weight:600">${h}</span>
+            <div style="display:flex;align-items:center;gap:8px;background:#F5F3FF;border:1.5px solid transparent;border-radius:8px;padding:6px 10px;transition:border-color .15s" onfocus-within="this.style.borderColor='#7C3AED'">
+              <span style="font-size:0.68rem;font-weight:700;color:#7C3AED;background:#EDE9FE;border-radius:4px;padding:2px 6px;flex-shrink:0;line-height:1.4">H${i+1}</span>
+              <input id="clb-h${i+1}" value="${h.replace(/"/g,'&quot;')}"
+                style="flex:1;border:none;background:transparent;outline:none;font-size:0.82rem;font-weight:600;color:#0A1628;font-family:'Plus Jakarta Sans','Inter',sans-serif"
+                onfocus="this.closest('div').style.borderColor='#7C3AED'"
+                onblur="this.closest('div').style.borderColor='transparent'">
             </div>
           `).join('')}
         </div>
       </div>
 
-      <!-- AI DESCRIPTIONS -->
+      <!-- EDITABLE DESCRIPTIONS -->
       <div>
-        <div style="font-size:0.68rem;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">✍️ AI-Generated Descriptions</div>
-        <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="font-size:0.67rem;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">
+          ✍️ AI-Generated Descriptions
+          <span class="clb-edit-pill" style="background:#DCFCE7;color:#059669">CLICK TO EDIT</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
           ${descriptions.map((d,i) => `
-            <div style="background:#F0FDF4;border-radius:8px;padding:9px 12px">
-              <span style="font-size:0.7rem;font-weight:700;color:#059669;background:#DCFCE7;border-radius:4px;padding:2px 6px;margin-right:8px">D${i+1}</span>
-              <span style="font-size:0.8rem;color:#374151;line-height:1.5">${d}</span>
+            <div style="background:#F0FDF4;border:1.5px solid transparent;border-radius:8px;padding:8px 12px;transition:border-color .15s">
+              <span style="font-size:0.68rem;font-weight:700;color:#059669;background:#DCFCE7;border-radius:4px;padding:2px 6px">D${i+1}</span>
+              <textarea id="clb-d${i+1}" rows="2"
+                style="display:block;width:100%;box-sizing:border-box;margin-top:6px;border:none;background:transparent;outline:none;font-size:0.8rem;color:#374151;line-height:1.55;resize:vertical;font-family:'Plus Jakarta Sans','Inter',sans-serif"
+                onfocus="this.closest('div').style.borderColor='#059669'"
+                onblur="this.closest('div').style.borderColor='transparent'">${d}</textarea>
             </div>
           `).join('')}
         </div>
       </div>
 
-      <!-- BUDGET BREAKDOWN -->
+      <!-- LIVE BUDGET BREAKDOWN -->
       <div>
-        <div style="font-size:0.68rem;font-weight:700;color:#D97706;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">💰 Budget Breakdown</div>
+        <div style="font-size:0.67rem;font-weight:700;color:#D97706;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">💰 Budget Breakdown</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-          ${[['Daily', '$'+dailyBudg],['Weekly', '$'+weeklyBudg.toLocaleString()],['Monthly', '$'+budgetNum.toLocaleString()]].map(([k,v]) => `
-            <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px;text-align:center">
-              <div style="font-size:0.9rem;font-weight:800;color:#D97706">${v}</div>
-              <div style="font-size:0.7rem;color:#6B7280;margin-top:2px">${k} Spend</div>
-            </div>
-          `).join('')}
+          <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px;text-align:center">
+            <div id="clb-bkd-daily" style="font-size:0.95rem;font-weight:800;color:#D97706">$${dailyBudg}</div>
+            <div style="font-size:0.68rem;color:#6B7280;margin-top:2px">Daily Spend</div>
+          </div>
+          <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px;text-align:center">
+            <div id="clb-bkd-weekly" style="font-size:0.95rem;font-weight:800;color:#D97706">$${weeklyBudg.toLocaleString()}</div>
+            <div style="font-size:0.68rem;color:#6B7280;margin-top:2px">Weekly Spend</div>
+          </div>
+          <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px;text-align:center">
+            <div id="clb-bkd-monthly" style="font-size:0.95rem;font-weight:800;color:#D97706">$${budgetNum.toLocaleString()}</div>
+            <div style="font-size:0.68rem;color:#6B7280;margin-top:2px">Monthly Spend</div>
+          </div>
         </div>
       </div>
 
       <div style="display:flex;gap:10px">
-        <button onclick="closeCampLaunchRichModal()" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
-        <button id="confirmLaunchBtn" style="flex:2;padding:12px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer">🚀 Confirm &amp; Launch Campaign</button>
+        <button onclick="closeCampLaunchRichModal()" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer;font-family:'Plus Jakarta Sans','Inter',sans-serif">Cancel</button>
+        <button id="confirmLaunchBtn" style="flex:2;padding:12px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer;font-family:'Plus Jakarta Sans','Inter',sans-serif">🚀 Confirm &amp; Launch Campaign</button>
       </div>
     </div>
   `;
-  // Wire confirm button — no string params needed, reads from stored global
+
+  // Live-recalc metrics when budget input changes
+  window.clbUpdateMetrics = function() {
+    const bInput = document.getElementById('clb-budget');
+    if (!bInput) return;
+    const nb = Math.max(100, parseInt(bInput.value) || 100);
+    const roasBase = analysisData && analysisData.websiteKPIs && analysisData.websiteKPIs.roas ? parseFloat(analysisData.websiteKPIs.roas) : 2.8;
+    const newROAS = (roasBase * 1.25).toFixed(1);
+    const newConv = Math.round(nb / 35);
+    const newRev  = '$' + (nb * parseFloat(newROAS)).toLocaleString(undefined, {maximumFractionDigits:0});
+    const newDaily = Math.round(nb / 30);
+    const newWeekly = Math.round(nb / 4.3);
+    const el = id => document.getElementById(id);
+    if (el('clb-roas'))       el('clb-roas').textContent       = newROAS + '×';
+    if (el('clb-conv'))       el('clb-conv').textContent       = newConv;
+    if (el('clb-rev'))        el('clb-rev').textContent        = newRev;
+    if (el('clb-daily-top'))  el('clb-daily-top').textContent  = '$' + newDaily + '/day';
+    if (el('clb-bkd-daily'))  el('clb-bkd-daily').textContent  = '$' + newDaily;
+    if (el('clb-bkd-weekly')) el('clb-bkd-weekly').textContent = '$' + newWeekly.toLocaleString();
+    if (el('clb-bkd-monthly'))el('clb-bkd-monthly').textContent= '$' + nb.toLocaleString();
+  };
+
+  // Wire confirm button — reads live editable values
   window._pendingCampaignLaunch = { name, platform, budget: '$' + budgetNum, idx };
   const confirmBtn = document.getElementById('confirmLaunchBtn');
   if (confirmBtn) {
     confirmBtn.addEventListener('click', () => {
+      const budgetEl = document.getElementById('clb-budget');
+      const finalBudget = '$' + (budgetEl ? (parseInt(budgetEl.value) || budgetNum) : budgetNum);
       const p = window._pendingCampaignLaunch;
-      confirmCampLaunch(p.name, p.platform, p.budget);
+      confirmCampLaunch(p.name, p.platform, finalBudget);
     });
   }
 }
