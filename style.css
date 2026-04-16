@@ -3776,3 +3776,490 @@ input:focus, textarea:focus, select:focus {
   border-bottom-color: rgba(0,201,200,.22);
   pointer-events: none;
 }
+
+/* ════════════════════════════════════════════════════════════════
+   ✦  InfoGenie — Bold Redesign 3.0
+   New typography, vivid hero, compact nav, premium cards
+   ════════════════════════════════════════════════════════════════ */
+
+/* ─── Typography overhaul ─── */
+body {
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif !important;
+  background: #F2F5FA !important;
+}
+
+.hero-title,
+.view-title,
+.section-title,
+.kpi-value,
+.stat-num,
+.price-amount,
+.loading-brand,
+.roi-title,
+.chart-box-header h3,
+.dtc-header h3,
+.module-card h3,
+.price-name,
+h1, h2, h3 {
+  font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif !important;
+}
+
+/* ─── Navbar 3.0 — compact, scrollable, modern ─── */
+.navbar {
+  height: 56px !important;
+  background: rgba(5, 12, 28, 0.98) !important;
+  border-bottom: 1px solid rgba(0,201,200,.15) !important;
+}
+
+.navbar::after {
+  background: linear-gradient(90deg, transparent 0%, rgba(0,201,200,.6) 25%, rgba(0,229,255,.9) 50%, rgba(0,201,200,.6) 75%, transparent 100%) !important;
+  height: 1.5px !important;
+}
+
+.nav-inner {
+  height: 56px !important;
+  gap: 16px !important;
+  max-width: 1440px !important;
+  padding: 0 20px !important;
+}
+
+.logo-text {
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 1.15rem !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.04em !important;
+}
+
+.nav-links {
+  overflow-x: auto !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+  flex-shrink: 1 !important;
+  flex-wrap: nowrap !important;
+}
+.nav-links::-webkit-scrollbar { display: none !important; }
+
+.nav-link {
+  font-size: 0.68rem !important;
+  font-weight: 600 !important;
+  padding: 4px 8px !important;
+  border-radius: 6px !important;
+  flex-shrink: 0 !important;
+  letter-spacing: 0.01em !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+
+.nav-link.active {
+  background: rgba(0,201,200,.15) !important;
+  color: #00D8D7 !important;
+}
+
+.nav-plan-badge {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 0.65rem !important;
+  padding: 3px 10px !important;
+  background: linear-gradient(135deg, rgba(0,201,200,.25), rgba(0,102,255,.2)) !important;
+  border: 1px solid rgba(0,201,200,.4) !important;
+  color: #00D8D7 !important;
+}
+
+.btn-nav-analyse {
+  font-size: 0.72rem !important;
+  padding: 6px 14px !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+
+/* ─── Hero 3.0 — vivid, dramatic, fresh ─── */
+.hero {
+  background: #060C1A !important;
+  min-height: 100vh !important;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 20%, rgba(0,180,220,.18) 0%, transparent 65%),
+    radial-gradient(ellipse 40% 50% at 20% 80%, rgba(0,102,255,.14) 0%, transparent 60%),
+    radial-gradient(ellipse 30% 40% at 80% 70%, rgba(120,50,255,.1) 0%, transparent 55%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.hero-bg, .orb { z-index: 0; }
+
+.orb-1 {
+  width: 900px !important;
+  height: 900px !important;
+  background: radial-gradient(circle, rgba(0,210,210,0.55) 0%, rgba(0,100,200,.2) 40%, transparent 70%) !important;
+  top: -350px !important;
+  left: -250px !important;
+  opacity: 0.22 !important;
+}
+
+.orb-2 {
+  width: 700px !important;
+  height: 700px !important;
+  background: radial-gradient(circle, rgba(80,0,255,0.4) 0%, rgba(0,60,200,.25) 40%, transparent 70%) !important;
+  bottom: -200px !important;
+  right: -150px !important;
+  opacity: 0.2 !important;
+}
+
+.orb-3 {
+  width: 600px !important;
+  height: 600px !important;
+  background: radial-gradient(circle, rgba(0,220,210,.5) 0%, rgba(0,150,255,.2) 50%, transparent 70%) !important;
+  opacity: 0.15 !important;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2 !important;
+  max-width: 860px !important;
+  padding: 70px 24px 60px !important;
+}
+
+.hero-badge {
+  background: rgba(0,216,215,.08) !important;
+  border: 1px solid rgba(0,216,215,.35) !important;
+  color: #5EECEC !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  padding: 7px 20px !important;
+  letter-spacing: 0.1em !important;
+  border-radius: 100px !important;
+  text-transform: uppercase !important;
+  box-shadow: 0 0 30px rgba(0,216,215,.1), 0 0 0 1px rgba(0,216,215,.08) inset !important;
+  margin-bottom: 32px !important;
+}
+
+.badge-dot {
+  width: 5px !important;
+  height: 5px !important;
+  background: #00D8D7 !important;
+  box-shadow: 0 0 0 3px rgba(0,216,215,.25) !important;
+}
+
+.hero-title {
+  font-size: clamp(2.25rem, 4.5vw, 3.5rem) !important;
+  font-weight: 800 !important;
+  color: #FFFFFF !important;
+  line-height: 1.1 !important;
+  letter-spacing: -0.04em !important;
+  margin-bottom: 18px !important;
+  text-shadow: none !important;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #00E5FF 0%, #00C9C8 40%, #4D9FFF 80%, #a78bfa 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  filter: drop-shadow(0 0 30px rgba(0,229,255,.35)) !important;
+}
+
+.hero-subtitle {
+  font-size: 1.05rem !important;
+  color: rgba(200,215,240,.6) !important;
+  line-height: 1.75 !important;
+  margin-bottom: 44px !important;
+  font-weight: 400 !important;
+  max-width: 600px !important;
+}
+
+/* ─── URL Card 3.0 — premium search card ─── */
+.url-card {
+  background: rgba(255,255,255,.04) !important;
+  border: 1px solid rgba(255,255,255,.1) !important;
+  border-radius: 18px !important;
+  padding: 24px 28px !important;
+  backdrop-filter: blur(40px) saturate(180%) !important;
+  max-width: 820px !important;
+  margin-bottom: 40px !important;
+  box-shadow:
+    0 0 0 1px rgba(0,216,215,.12),
+    0 2px 4px rgba(0,0,0,.3),
+    0 20px 60px rgba(0,0,0,.4),
+    0 1px 0 rgba(255,255,255,.06) inset !important;
+  position: relative !important;
+}
+
+.url-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 19px;
+  background: linear-gradient(135deg, rgba(0,216,215,.25) 0%, rgba(0,100,255,.1) 50%, rgba(120,60,255,.15) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.url-card > * { position: relative; z-index: 1; }
+
+.url-card-header {
+  color: rgba(255,255,255,.55) !important;
+  font-size: 0.8rem !important;
+  margin-bottom: 16px !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+
+.url-field-wrap {
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid rgba(255,255,255,.1) !important;
+  border-radius: 10px !important;
+}
+
+.url-field-wrap:focus-within {
+  border-color: rgba(0,216,215,.5) !important;
+  background: rgba(0,216,215,.04) !important;
+  box-shadow: 0 0 0 3px rgba(0,216,215,.08) !important;
+}
+
+.url-field {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 0.9375rem !important;
+}
+
+.country-select {
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid rgba(255,255,255,.1) !important;
+  border-radius: 10px !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+
+.btn-analyse {
+  background: linear-gradient(135deg, #00D8D7 0%, #0070FF 100%) !important;
+  border-radius: 10px !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 0.9rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.01em !important;
+  box-shadow: 0 4px 24px rgba(0,200,200,.35), 0 1px 0 rgba(255,255,255,.2) inset !important;
+}
+
+.btn-analyse:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 36px rgba(0,200,200,.5) !important;
+}
+
+.industry-field {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+
+.example-chip {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 0.76rem !important;
+  background: rgba(255,255,255,.05) !important;
+  border: 1px solid rgba(255,255,255,.1) !important;
+}
+
+/* ─── Hero stats 3.0 ─── */
+.hero-stats {
+  background: rgba(255,255,255,.04) !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+  border-radius: 14px !important;
+  padding: 16px 24px !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+.stat-num {
+  font-size: 1.875rem !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  letter-spacing: -0.05em !important;
+}
+
+.stat-lbl {
+  font-size: 0.72rem !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.02em !important;
+}
+
+/* ─── Dashboard body 3.0 ─── */
+body.dashboard-active,
+.view:not(#view-home).active {
+  background: #F1F5FB !important;
+}
+
+/* ─── View Header 3.0 ─── */
+.view-header {
+  background: linear-gradient(135deg, #050D1C 0%, #091628 50%, #0B1E35 100%) !important;
+  border-bottom: 1px solid rgba(0,216,215,.12) !important;
+}
+
+.view-title {
+  font-size: 1.625rem !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.04em !important;
+  color: #FFFFFF !important;
+}
+
+.view-sub {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  color: rgba(180,200,230,.45) !important;
+}
+
+.breadcrumb {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 0.65rem !important;
+  letter-spacing: 0.12em !important;
+}
+
+/* ─── KPI cards 3.0 ─── */
+.kpi-card {
+  background: #FFFFFF !important;
+  border-radius: 14px !important;
+  border: 1px solid #E8EEF8 !important;
+  box-shadow: 0 1px 3px rgba(10,20,50,.06), 0 6px 20px rgba(10,20,50,.06) !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+
+.kpi-value {
+  font-size: 1.8rem !important;
+  letter-spacing: -0.04em !important;
+  color: #0A1628 !important;
+}
+
+.kpi-label {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 0.68rem !important;
+  letter-spacing: 0.09em !important;
+}
+
+.kpi-icon {
+  background: linear-gradient(135deg, #F0F9FF, #EDF4FF) !important;
+  border-radius: 11px !important;
+}
+
+/* ─── Chart boxes 3.0 ─── */
+.chart-box {
+  background: #FFFFFF !important;
+  border: 1px solid #E8EEF8 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 1px 3px rgba(10,20,50,.05), 0 6px 20px rgba(10,20,50,.05) !important;
+}
+
+/* ─── Data table 3.0 ─── */
+.data-table-card {
+  background: #FFFFFF !important;
+  border: 1px solid #E8EEF8 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 1px 3px rgba(10,20,50,.05), 0 6px 20px rgba(10,20,50,.05) !important;
+}
+
+.dtc-header { background: #FAFCFF !important; border-bottom: 1px solid #EDF2FA !important; }
+.ig-table th { background: #F6FAFF !important; color: #7A92B4 !important; }
+.ig-table tr:hover td { background: #F6FAFF !important; }
+
+/* ─── Module cards 3.0 ─── */
+.module-card {
+  background: #FFFFFF !important;
+  border: 1px solid #E8EEF8 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 1px 3px rgba(10,20,50,.06), 0 6px 20px rgba(10,20,50,.06) !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+
+.module-card h3 {
+  font-size: 1rem !important;
+  letter-spacing: -0.03em !important;
+  color: #0A1628 !important;
+}
+
+.module-card p {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  color: #607090 !important;
+}
+
+.mc-icon {
+  background: linear-gradient(135deg, #F0F9FF, #EDF4FF) !important;
+  border-radius: 12px !important;
+}
+
+/* ─── Primary/secondary buttons 3.0 ─── */
+.btn-primary {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.01em !important;
+  border-radius: 9px !important;
+}
+
+.btn-secondary {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+
+/* ─── Pricing cards 3.0 ─── */
+.price-card {
+  background: #FFFFFF !important;
+  border: 1px solid #E8EEF8 !important;
+  border-radius: 18px !important;
+  box-shadow: 0 1px 3px rgba(10,20,50,.06), 0 8px 28px rgba(10,20,50,.06) !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+
+.price-popular {
+  border-color: rgba(0,200,200,.4) !important;
+  box-shadow: 0 0 0 2px rgba(0,200,200,.15), 0 8px 36px rgba(0,200,200,.1) !important;
+}
+
+/* ─── Loading overlay 3.0 ─── */
+.loading-card {
+  background: linear-gradient(160deg, #080f22, #0a1628) !important;
+  border: 1px solid rgba(0,216,215,.15) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 40px 120px rgba(0,0,0,.7) !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+
+.loading-brand {
+  font-family: 'Space Grotesk', sans-serif !important;
+  letter-spacing: -0.04em !important;
+}
+
+/* ─── Sections (landing page) ─── */
+.modules-section {
+  background: #F1F5FB !important;
+}
+
+.section-title {
+  letter-spacing: -0.04em !important;
+  color: #0A1628 !important;
+}
+
+.section-sub {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  color: #5A7090 !important;
+}
+
+/* ─── ROI Banner 3.0 ─── */
+.roi-banner {
+  background: linear-gradient(135deg, #060E20 0%, #0B1A30 60%, #0D2040 100%) !important;
+  border: 1px solid rgba(0,216,215,.2) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 4px 30px rgba(0,0,0,.25) !important;
+}
+
+/* ─── Toast / notification refinement ─── */
+.toast, .notification {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  border-radius: 12px !important;
+}
+
+/* ─── General text refinement ─── */
+p, span, label, td, li {
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar-thumb {
+  background: rgba(0,200,200,.3) !important;
+  border-radius: 6px !important;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(0,200,200,.55) !important; }
