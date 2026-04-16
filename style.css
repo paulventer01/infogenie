@@ -174,7 +174,7 @@ body {
 .btn-nav-analyse:hover { background: linear-gradient(135deg, var(--cyan), var(--teal)); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,201,200,.45); }
 
 /* ===== VIEWS ===== */
-.view { display: none; padding-top: 92px; }
+.view { display: none; padding-top: 96px; }
 .view.active { display: block; }
 
 /* ===== HERO ===== */
@@ -3839,7 +3839,7 @@ h1, h2, h3 {
   justify-content: space-between !important;
   width: 100% !important;
   padding: 9px 20px !important;
-  height: 48px !important;
+  height: 52px !important;
   box-sizing: border-box !important;
   border-bottom: 1px solid rgba(255,255,255,.05) !important;
 }
@@ -3962,7 +3962,7 @@ h1, h2, h3 {
 
 .logo-text {
   font-family: 'Space Grotesk', sans-serif !important;
-  font-size: 1.12rem !important;
+  font-size: 1.32rem !important;
   font-weight: 800 !important;
   letter-spacing: -0.04em !important;
 }
@@ -4405,8 +4405,9 @@ p, span, label, td, li {
 .nav-groups {
   display: flex !important;
   align-items: stretch !important;
+  justify-content: space-evenly !important;
   gap: 0 !important;
-  padding: 0 16px !important;
+  padding: 0 !important;
   height: 42px !important;
   background: rgba(6,14,28,.97) !important;
   border-bottom: 1px solid rgba(0,201,200,.12) !important;
@@ -4857,7 +4858,7 @@ p, span, label, td, li {
 /* Fix: home view background matches hero so no gap shows */
 #view-home {
   background: #060C1A !important;
-  padding-top: 92px !important;
+  padding-top: 96px !important;
 }
 #view-home .hero {
   min-height: calc(100vh - 92px) !important;
@@ -4866,3 +4867,14 @@ p, span, label, td, li {
   padding-top: 60px !important;
   padding-bottom: 60px !important;
 }
+
+/* Even spacing: each group occupies exactly 1/4 of the bar */
+.nav-group-wrap {
+  flex: 1 !important;
+  justify-content: center !important;
+}
+.nav-group-btn {
+  width: 100% !important;
+  justify-content: center !important;
+}
+.ngb-sep { flex: 0 0 1px !important; }
