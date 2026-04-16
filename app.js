@@ -8483,10 +8483,11 @@ async function openFullAttackPlanModal(idx) {
       </div>
       <!-- Scrollable body -->
       <div id="attackPlanBody" style="flex:1;overflow-y:auto;padding:24px;display:flex;align-items:center;justify-content:center;min-height:260px">
-        <div style="text-align:center;max-width:340px">
+        <div style="text-align:center;max-width:360px">
           <div style="width:48px;height:48px;border:3px solid rgba(0,201,200,.2);border-top-color:#00C9C8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 18px"></div>
-          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:700;color:white;margin-bottom:12px" id="apLoadTitle">Launching dual-AI engines…</div>
-          <div style="display:flex;flex-direction:column;gap:7px;text-align:left">
+          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:700;color:white;margin-bottom:4px" id="apLoadTitle">Launching dual-AI engines…</div>
+          <div style="font-size:0.74rem;color:rgba(0,201,200,.7);margin-bottom:14px" id="apElapsed">0s elapsed</div>
+          <div style="display:flex;flex-direction:column;gap:8px;text-align:left">
             <div id="apStep1" style="display:flex;align-items:center;gap:9px;font-size:0.76rem;color:rgba(255,255,255,.5)">
               <span id="apS1icon" style="font-size:0.9rem">⏳</span>
               <span>GPT-4o analysing <strong style="color:#60A5FA">${cName}</strong> strategy</span>
@@ -8499,6 +8500,10 @@ async function openFullAttackPlanModal(idx) {
               <span id="apS3icon" style="font-size:0.9rem">⏳</span>
               <span>Merging best insights, deduplicating</span>
             </div>
+            <div id="apStep4" style="display:flex;align-items:center;gap:9px;font-size:0.76rem;color:rgba(255,255,255,.5)">
+              <span id="apS4icon" style="font-size:0.9rem">⏳</span>
+              <span>Rendering your battle plan</span>
+            </div>
           </div>
         </div>
       </div>
@@ -8507,19 +8512,26 @@ async function openFullAttackPlanModal(idx) {
   // Capture body reference immediately after setting innerHTML
   const planBody = document.getElementById('attackPlanBody');
 
-  // Animate the loading steps to show progress
+  // Live elapsed timer
+  const _apStart = Date.now();
+  const _apTimer = setInterval(() => {
+    const el = document.getElementById('apElapsed');
+    if (el) el.textContent = Math.round((Date.now() - _apStart) / 1000) + 's elapsed';
+  }, 1000);
+
+  // Steps 1-3: animated indicators of in-flight AI work
   const markStep = (id, iconId, done) => {
     const el = document.getElementById(id), ic = document.getElementById(iconId);
     if (el) el.style.color = done ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.5)';
     if (ic) ic.textContent = done ? '✅' : '⏳';
   };
-  setTimeout(() => markStep('apStep1','apS1icon',true), 800);
-  setTimeout(() => markStep('apStep2','apS2icon',true), 2500);
+  setTimeout(() => markStep('apStep1','apS1icon',true), 1800);
   setTimeout(() => {
-    markStep('apStep3','apS3icon',true);
+    markStep('apStep2','apS2icon',true);
     const t = document.getElementById('apLoadTitle');
-    if (t) t.textContent = 'Almost done…';
-  }, 5000);
+    if (t) t.textContent = 'AI models working in parallel…';
+  }, 4000);
+  setTimeout(() => markStep('apStep3','apS3icon',true), 7000);
 
   // Read and clear prefill globals set by openAttackModal
   const prefillKeywords = window._apPrefillKeywords || [];
@@ -8550,8 +8562,17 @@ async function openFullAttackPlanModal(idx) {
     const data = await resp.json();
     const plan = data.plan;
     if (!plan) throw new Error(data.error || 'No plan returned from AI');
+    // API returned — stop timer, mark steps 3+4 done, then render
+    clearInterval(_apTimer);
+    markStep('apStep3','apS3icon',true);
+    markStep('apStep4','apS4icon',true);
+    const tDone = document.getElementById('apLoadTitle');
+    if (tDone) tDone.textContent = 'Rendering your plan…';
+    // Small yield so the browser can paint the ✅ before rendering
+    await new Promise(r => setTimeout(r, 60));
     renderAttackPlan(plan, cName, myDomain, planBody, data.sources || ['GPT-4o']);
   } catch(err) {
+    clearInterval(_apTimer);
     if (planBody) planBody.innerHTML = `
       <div style="text-align:center;padding:40px 24px">
         <div style="font-size:2rem;margin-bottom:12px">⚠️</div>
