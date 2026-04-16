@@ -1418,13 +1418,32 @@ function buildCreativeModal(camp, idx) {
           industry: indName, domain
         })
       });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
       if (data.headlines) {
         applyAICreative(data);
         igTrack('AI Creative Generated', { campaignName: name, platform, industry: indName, source: data.source || 'gpt4' });
+      } else {
+        // API returned but no headlines — clear spinners and fall back gracefully
+        ['cs-ad-loading','cs-ig-loading','cs-tt-loading','cs-yt-loading','cs-li-loading'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.style.display = 'none';
+        });
+        const badge = document.getElementById('cs-ai-badge');
+        if (badge) { badge.innerHTML = '⚠️ Using template copy'; badge.style.color = '#F59E0B'; }
       }
     } catch(e) {
       console.warn('Auto-generate failed:', e.message);
+      const adLoad = document.getElementById('cs-ad-loading');
+      if (adLoad) adLoad.style.display = 'none';
+      const igLoad = document.getElementById('cs-ig-loading');
+      if (igLoad) igLoad.style.display = 'none';
+      const ttLoad = document.getElementById('cs-tt-loading');
+      if (ttLoad) ttLoad.style.display = 'none';
+      const ytLoad = document.getElementById('cs-yt-loading');
+      if (ytLoad) ytLoad.style.display = 'none';
+      const liLoad = document.getElementById('cs-li-loading');
+      if (liLoad) liLoad.style.display = 'none';
       const badge = document.getElementById('cs-ai-badge');
       if (badge) { badge.innerHTML = '⚠️ Using template copy'; badge.style.color = '#F59E0B'; }
     }
