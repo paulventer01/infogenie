@@ -4409,20 +4409,15 @@ p, span, label, td, li {
   gap: 0 !important;
   padding: 0 !important;
   height: 42px !important;
-  background: rgba(6,14,28,.97) !important;
-  border-bottom: 1px solid rgba(0,201,200,.12) !important;
+  background: transparent !important;
+  border-bottom: none !important;
   width: 100% !important;
   box-sizing: border-box !important;
 }
 
-/* ── Separator between groups ── */
+/* ── Separator between groups — hidden for frameless look ── */
 .ngb-sep {
-  align-self: center !important;
-  width: 1px !important;
-  height: 16px !important;
-  background: rgba(255,255,255,.1) !important;
-  flex-shrink: 0 !important;
-  margin: 0 2px !important;
+  display: none !important;
 }
 
 /* ── Group wrapper ── */
