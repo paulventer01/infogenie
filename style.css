@@ -4209,6 +4209,26 @@ body.dashboard-active,
   box-shadow: 0 0 0 2px rgba(0,200,200,.15), 0 8px 36px rgba(0,200,200,.1) !important;
 }
 
+/* Enterprise card: dark themed — restore visibility */
+.price-enterprise {
+  background: #0A1628 !important;
+  border-color: rgba(0,201,200,.25) !important;
+  color: white !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2), 0 8px 32px rgba(0,201,200,.1) !important;
+}
+.price-enterprise .price-name { color: var(--teal) !important; }
+.price-enterprise .price-amount { color: #FFFFFF !important; }
+.price-enterprise .price-amount span { color: rgba(255,255,255,.5) !important; }
+.price-enterprise .price-desc { color: rgba(255,255,255,.55) !important; }
+.price-enterprise .price-features li { color: rgba(255,255,255,.85) !important; }
+.price-enterprise .pf-check { color: var(--teal) !important; }
+.price-enterprise .btn-price {
+  background: linear-gradient(135deg, var(--teal), var(--blue)) !important;
+  color: white !important;
+  border-color: transparent !important;
+}
+.price-enterprise .btn-price:hover { opacity: 0.9 !important; }
+
 /* ─── Loading overlay 3.0 ─── */
 .loading-card {
   background: linear-gradient(160deg, #080f22, #0a1628) !important;
