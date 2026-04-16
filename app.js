@@ -3013,7 +3013,7 @@ function buildCompCard(c, cardIdx = 0) {
             <span class="roi-opp-text" title="Projected revenue improvement if you implement InfoGenie's recommendations for this competitor.">${c.estimatedROI}</span>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button class="btn-view-plan" onclick="openCompPlan('${c.name.replace(/'/g,'').replace(/"/g,'').replace(/\\/g,'')}')}" title="Open the detailed strategy plan for outperforming ${c.name}.">View Plan →</button>
+            <button class="btn-view-plan" onclick="openCompPlan('${c.name.replace(/'/g,'').replace(/"/g,'').replace(/\\/g,'')}')" title="Open the detailed strategy plan for outperforming ${c.name}.">View Plan →</button>
             <button onclick="window._bpIdx=${cardIdx};navigateTo('battleplan')" title="Open the Battle Plan page — a full AI-generated 8-week action plan to capture market share from ${c.name}." style="padding:7px 14px;background:linear-gradient(135deg,#0A1628,#0D2A5E);border:1px solid rgba(0,201,200,.4);border-radius:8px;font-size:0.75rem;font-weight:700;color:#00C9C8;cursor:pointer;white-space:nowrap">⚔️ Battle Plan</button>
           </div>
         </div>
