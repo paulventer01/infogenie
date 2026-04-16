@@ -1640,6 +1640,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'reengage') {
     try { buildReEngagement(); } catch(e) { console.warn('buildReEngagement error:', e); }
   }
+  if (viewId === 'automations') {
+    try { buildAutomations(); } catch(e) { console.warn('buildAutomations error:', e); }
+  }
   // Show/hide navbar links for home vs app
   const navLinks = document.getElementById('navLinks');
   const navPlan = document.getElementById('navPlanBadge');
@@ -13493,6 +13496,316 @@ document.addEventListener('DOMContentLoaded', () => {
     if (i !== 0) v.style.display = 'none';
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTOMATIONS CENTER
+// ═══════════════════════════════════════════════════════════════════════════════
+if (!window._automationStates) window._automationStates = {};
+if (!window._automationFilter) window._automationFilter = 'all';
+if (!window._automationLog)    window._automationLog    = [];
+
+const AUTOMATIONS = [
+  // ── Social & Content ──────────────────────────────────────────────────────
+  {
+    id:'social-autopub', cat:'social', icon:'🚀', color:'#7C3AED', bg:'#F5F3FF', border:'#DDD6FE',
+    name:'Social Auto-Publisher',
+    desc:'Monitors your scheduled posts every 60 seconds and automatically publishes them to connected platforms at their exact scheduled time.',
+    trigger:'Scheduled post time reached',
+    actions:['Publish post to Meta/Instagram/TikTok','Update post status to Published','Log publish event'],
+    nav:'social', realToggle: () => {
+      if (!window._autoPublishEnabled) {
+        window._autoPublishEnabled = true;
+        if (window._autoPublishInterval) clearInterval(window._autoPublishInterval);
+        window._autoPublishInterval = setInterval(_socialAutoPublishCheck, 60000);
+        _socialAutoPublishCheck();
+      } else {
+        window._autoPublishEnabled = false;
+        if (window._autoPublishInterval) { clearInterval(window._autoPublishInterval); window._autoPublishInterval = null; }
+      }
+    },
+    getRealState: () => !!window._autoPublishEnabled,
+  },
+  {
+    id:'ai-caption-gen', cat:'social', icon:'✨', color:'#4F46E5', bg:'#EEF2FF', border:'#C7D2FE',
+    name:'AI Caption Auto-Generator',
+    desc:'When a new post is added to the calendar without a caption, automatically generates an optimised AI caption based on your brand and industry.',
+    trigger:'New post created without caption',
+    actions:['Detect empty caption field','Call GPT-4o caption API','Populate caption & notify'],
+    nav:'social',
+  },
+  {
+    id:'content-cluster-alert', cat:'social', icon:'📊', color:'#0066FF', bg:'#EFF6FF', border:'#BFDBFE',
+    name:'Content Opportunity Alert',
+    desc:'Weekly scan of keyword clusters. When a new high-volume, low-competition cluster is detected, auto-creates a content brief and adds it to your queue.',
+    trigger:'Weekly keyword cluster scan',
+    actions:['Run keyword cluster analysis','Score opportunity gaps','Create content brief & queue'],
+    nav:'content',
+  },
+  // ── Campaigns & Ads ───────────────────────────────────────────────────────
+  {
+    id:'budget-optimizer', cat:'campaigns', icon:'💰', color:'#059669', bg:'#F0FDF4', border:'#BBF7D0',
+    name:'Campaign Budget Optimizer',
+    desc:'Monitors campaign ROAS every 6 hours. Automatically shifts budget from underperforming campaigns to top performers to maximise ROI.',
+    trigger:'Every 6 hours · ROAS threshold breach',
+    actions:['Pull live ROAS data','Identify over/under performers','Rebalance budget allocation'],
+    nav:'campaigns',
+  },
+  {
+    id:'ab-winner', cat:'campaigns', icon:'🏆', color:'#D97706', bg:'#FFFBEB', border:'#FDE68A',
+    name:'A/B Test Auto-Winner',
+    desc:'Monitors A/B test variants. When statistical significance (95%) is reached, automatically pauses the loser and scales the winner.',
+    trigger:'Statistical significance ≥ 95%',
+    actions:['Check test significance daily','Pause losing variant','Scale winning variant budget'],
+    nav:'campaigns',
+  },
+  {
+    id:'counter-ad-gen', cat:'campaigns', icon:'⚡', color:'#DC2626', bg:'#FEF2F2', border:'#FECACA',
+    name:'Counter-Ad Auto-Generator',
+    desc:'When a competitor publishes a new landing page or ad, automatically generates a counter-campaign brief and adds it to your campaign queue.',
+    trigger:'Competitor new page detected',
+    actions:['Monitor competitor pages','Detect new landing pages','Generate counter-ad brief & queue'],
+    nav:'campaigns',
+  },
+  {
+    id:'competitor-spend-alert', cat:'campaigns', icon:'🔔', color:'#7C3AED', bg:'#F5F3FF', border:'#DDD6FE',
+    name:'Competitor Spend Alert',
+    desc:'Detects significant changes in competitor estimated ad spend. Sends an in-app alert when a competitor increases or decreases spend by 25%+.',
+    trigger:'Competitor spend change ≥ 25%',
+    actions:['Monitor competitor spend signals','Calculate spend delta','Trigger in-app notification'],
+    nav:'intelligence',
+  },
+  // ── Intelligence & Monitoring ─────────────────────────────────────────────
+  {
+    id:'brand-monitor', cat:'intelligence', icon:'🛡️', color:'#0A1628', bg:'#F1F5F9', border:'#CBD5E1',
+    name:'Brand Mention Monitor',
+    desc:'Continuously scans Reddit, news, and web for mentions of your brand. Scores sentiment and flags negative mentions for immediate review.',
+    trigger:'Continuous · New mentions found',
+    actions:['Scan web/Reddit/news hourly','Score sentiment with GPT-4o','Flag negatives in Action Center'],
+    nav:'reddit',
+  },
+  {
+    id:'competitor-news', cat:'intelligence', icon:'📰', color:'#0066FF', bg:'#EFF6FF', border:'#BFDBFE',
+    name:'Competitor News Alert',
+    desc:'Monitors news sources for competitor activity — funding rounds, product launches, leadership changes. Delivers a daily briefing to your dashboard.',
+    trigger:'Daily news scan',
+    actions:['Scrape competitor news','Extract key events','Push to Dashboard briefing'],
+    nav:'intelligence',
+  },
+  {
+    id:'reddit-watcher', cat:'intelligence', icon:'🔴', color:'#FF6B35', bg:'#FFF4EF', border:'#FDBA74',
+    name:'Reddit Signal Watcher',
+    desc:'Auto-monitors subreddits relevant to your industry every 2 hours. Surfaces high-relevance threads and pre-drafts reply suggestions.',
+    trigger:'Every 2 hours',
+    actions:['Scan relevant subreddits','Score thread relevance','Pre-draft replies for Review'],
+    nav:'reddit',
+  },
+  {
+    id:'page-tracker', cat:'intelligence', icon:'🆕', color:'#059669', bg:'#F0FDF4', border:'#BBF7D0',
+    name:'New Page Tracker',
+    desc:'Crawls competitor websites daily. Alerts you the moment a new landing page, pricing page, or feature page goes live — before your customers see it.',
+    trigger:'Daily competitor site crawl',
+    actions:['Crawl competitor sitemaps','Detect new/changed pages','Queue counter-ad brief'],
+    nav:'intelligence',
+  },
+  {
+    id:'keyword-gap-alert', cat:'intelligence', icon:'🔑', color:'#4F46E5', bg:'#EEF2FF', border:'#C7D2FE',
+    name:'Keyword Gap Alert',
+    desc:'Weekly scan of keyword gaps vs competitors. When a new high-value gap is detected, auto-populates it in your keyword intelligence view.',
+    trigger:'Weekly keyword scan',
+    actions:['Run gap analysis vs competitors','Score keyword value','Flag new gaps in Intelligence'],
+    nav:'intelligence',
+  },
+  // ── Re-Engagement ─────────────────────────────────────────────────────────
+  {
+    id:'lead-dormancy', cat:'reengage', icon:'👥', color:'#D97706', bg:'#FFFBEB', border:'#FDE68A',
+    name:'Lead Dormancy Detector',
+    desc:'Monitors lead activity. When a previously active lead goes silent for 21+ days, automatically flags them in the Re-Engagement Hub with a priority score.',
+    trigger:'Lead inactive for 21+ days',
+    actions:['Monitor lead activity','Calculate dormancy score','Add to Re-Engage priority queue'],
+    nav:'reengage',
+  },
+  {
+    id:'winback-trigger', cat:'reengage', icon:'🎯', color:'#DC2626', bg:'#FEF2F2', border:'#FECACA',
+    name:'Win-back Sequence Trigger',
+    desc:'When a lead crosses the 30-day dormancy threshold, automatically launches the 30-Day Lapse win-back sequence across email and retargeting ads.',
+    trigger:'Lead dormant for 30+ days',
+    actions:['Detect 30-day threshold breach','Select matching win-back template','Launch sequence automatically'],
+    nav:'reengage',
+  },
+  // ── AI Visibility ─────────────────────────────────────────────────────────
+  {
+    id:'ai-visibility-scan', cat:'ai', icon:'🤖', color:'#10A37F', bg:'#F0FDF8', border:'#6EE7B7',
+    name:'AI Visibility Weekly Scan',
+    desc:'Every Monday, runs a full AI visibility audit across ChatGPT, Claude, Gemini, and Perplexity. Tracks your citation score over time and alerts on drops.',
+    trigger:'Every Monday 08:00',
+    actions:['Run AI citation audit','Score all 6 AI platforms','Update trend chart & alert on drops'],
+    nav:'aivisibility',
+  },
+];
+
+if (!window._automationFilter) window._automationFilter = 'all';
+
+function buildAutomations() {
+  const wrap = document.getElementById('automationsWrap');
+  if (!wrap) return;
+
+  const filter = window._automationFilter || 'all';
+
+  // Sync real states into _automationStates
+  AUTOMATIONS.forEach(a => {
+    if (a.getRealState) window._automationStates[a.id] = a.getRealState();
+  });
+
+  const activeCount   = AUTOMATIONS.filter(a => window._automationStates[a.id]).length;
+  const runningCount  = Math.max(0, activeCount - 1);
+  const total         = AUTOMATIONS.length;
+
+  const CAT_LABELS = { all:'All', social:'Social & Content', campaigns:'Campaigns & Ads', intelligence:'Intelligence', reengage:'Re-Engagement', ai:'AI Visibility' };
+  const CAT_COLORS = { all:'#10B981', social:'#7C3AED', campaigns:'#059669', intelligence:'#0066FF', reengage:'#D97706', ai:'#10A37F' };
+
+  const filterBar = Object.entries(CAT_LABELS).map(([id,label])=>{
+    const count = id==='all' ? AUTOMATIONS.length : AUTOMATIONS.filter(a=>a.cat===id).length;
+    const active = filter===id;
+    return `<button onclick="window._automationFilter='${id}';buildAutomations()" style="padding:8px 16px;border:1.5px solid ${active?CAT_COLORS[id]:'#D1FAE5'};border-radius:9px;background:${active?CAT_COLORS[id]:'white'};font-size:0.75rem;font-weight:${active?'700':'500'};color:${active?'white':CAT_COLORS[id]||'#059669'};cursor:pointer;white-space:nowrap">${label} <span style="opacity:.7">(${count})</span></button>`;
+  }).join('');
+
+  const filtered = filter === 'all' ? AUTOMATIONS : AUTOMATIONS.filter(a=>a.cat===filter);
+
+  // Toggle switch SVG
+  const toggleSvg = (on, id) => `<div onclick="toggleAutomation('${id}')" style="cursor:pointer;flex-shrink:0">
+    <div style="width:46px;height:26px;background:${on?'#10B981':'#D1D5DB'};border-radius:13px;position:relative;transition:background .2s">
+      <div style="position:absolute;top:3px;left:${on?'23':'3'}px;width:20px;height:20px;background:white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.2);transition:left .18s"></div>
+    </div>
+  </div>`;
+
+  const cards = filtered.map(a => {
+    const on = !!window._automationStates[a.id];
+    const log = (window._automationLog||[]).filter(l=>l.id===a.id).slice(-1)[0];
+    return `
+    <div style="background:white;border:1.5px solid ${on?a.border:'#E5E7EB'};border-radius:18px;padding:22px;box-shadow:${on?'0 0 0 3px '+a.border+',0 2px 8px rgba(0,0,0,.06)':'0 1px 4px rgba(0,0,0,.04)'};transition:all .2s;position:relative;overflow:hidden">
+      ${on ? `<div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,${a.color},${a.color}88)"></div>` : ''}
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">
+        <div style="display:flex;align-items:flex-start;gap:12px;flex:1;min-width:0">
+          <div style="width:44px;height:44px;background:${on?a.bg:'#F9FAFB'};border:1.5px solid ${on?a.border:'#E5E7EB'};border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0">${a.icon}</div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:0.88rem;font-weight:800;color:#0A1628">${a.name}</div>
+              ${on ? `<span style="background:${a.bg};color:${a.color};border-radius:6px;padding:2px 8px;font-size:0.6rem;font-weight:700;letter-spacing:.04em">● ACTIVE</span>` : `<span style="background:#F3F4F6;color:#9CA3AF;border-radius:6px;padding:2px 8px;font-size:0.6rem;font-weight:600">INACTIVE</span>`}
+            </div>
+            <div style="font-size:0.63rem;font-weight:700;color:${a.color};text-transform:uppercase;letter-spacing:.05em">${CAT_LABELS[a.cat]||a.cat}</div>
+          </div>
+        </div>
+        ${toggleSvg(on, a.id)}
+      </div>
+      <div style="font-size:0.78rem;color:#6B7280;line-height:1.6;margin-bottom:12px">${a.desc}</div>
+      <div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:0.62rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">⚡ Trigger</div>
+        <div style="font-size:0.72rem;font-weight:600;color:#374151;margin-bottom:8px">${a.trigger}</div>
+        <div style="font-size:0.62rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">→ Actions</div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          ${a.actions.map((ac,i)=>`<div style="display:flex;align-items:center;gap:6px;font-size:0.7rem;color:#374151"><span style="width:16px;height:16px;background:${on?a.bg:'#F3F4F6'};border:1px solid ${on?a.border:'#E5E7EB'};border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700;color:${on?a.color:'#9CA3AF'};flex-shrink:0">${i+1}</span>${ac}</div>`).join('')}
+        </div>
+      </div>
+      ${log ? `<div style="font-size:0.65rem;color:#9CA3AF;margin-bottom:10px">Last run: ${log.time} · ${log.result}</div>` : ''}
+      <div style="display:flex;gap:6px">
+        <button onclick="toggleAutomation('${a.id}')" style="flex:1;padding:8px;background:${on?'linear-gradient(135deg,'+a.color+','+a.color+'CC)':'#F3F4F6'};border:none;border-radius:9px;font-size:0.75rem;font-weight:700;color:${on?'white':'#6B7280'};cursor:pointer">${on?'⏸ Deactivate':'▶ Activate'}</button>
+        <button onclick="runAutomationNow('${a.id}')" style="padding:8px 12px;background:white;border:1.5px solid ${on?a.border:'#E5E7EB'};border-radius:9px;font-size:0.75rem;font-weight:600;color:${on?a.color:'#9CA3AF'};cursor:pointer;white-space:nowrap">▷ Run Now</button>
+        <button onclick="navigateTo('${a.nav}')" style="padding:8px 12px;background:white;border:1.5px solid #E5E7EB;border-radius:9px;font-size:0.75rem;font-weight:600;color:#6B7280;cursor:pointer;white-space:nowrap">→ View</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  wrap.innerHTML = `
+  <!-- Hero -->
+  <div style="background:linear-gradient(135deg,#065F46,#047857,#059669);border-radius:20px;padding:28px 32px;margin-bottom:24px;position:relative;overflow:hidden">
+    <div style="position:absolute;top:-30px;right:-30px;width:200px;height:200px;background:rgba(255,255,255,.05);border-radius:50%"></div>
+    <div style="position:absolute;bottom:-50px;right:80px;width:150px;height:150px;background:rgba(255,255,255,.04);border-radius:50%"></div>
+    <div style="position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Automation Center</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:800;color:white;line-height:1.2;margin-bottom:8px">Your Marketing<br>Runs Itself</div>
+        <div style="font-size:0.85rem;color:rgba(255,255,255,.75);max-width:480px">Activate any automation to put it on autopilot. InfoGenie monitors, decides, and acts — so you don't have to.</div>
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        ${[
+          ['⚡','Active',activeCount,'#D1FAE5','#065F46'],
+          ['🔄','Running',runningCount,'#A7F3D0','#047857'],
+          ['📋','Total',total,'rgba(255,255,255,.2)','white'],
+        ].map(([ic,l,v,bg,tc])=>`<div style="background:${bg};border-radius:14px;padding:14px 18px;text-align:center;min-width:80px">
+          <div style="font-size:1.4rem;font-weight:800;color:${tc}">${v}</div>
+          <div style="font-size:0.7rem;font-weight:700;color:${tc};opacity:.8">${ic} ${l}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter bar -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">${filterBar}</div>
+
+  <!-- Cards grid -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">
+    ${cards}
+  </div>
+
+  <!-- Activity log -->
+  ${window._automationLog.length > 0 ? `
+  <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:20px;margin-top:24px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+    <div style="font-family:'Space Grotesk',sans-serif;font-size:0.88rem;font-weight:800;color:#0A1628;margin-bottom:12px">📋 Automation Activity Log</div>
+    <div style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto">
+      ${[...window._automationLog].reverse().slice(0,20).map(l=>{
+        const a = AUTOMATIONS.find(x=>x.id===l.id);
+        return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:#F8FAFC;border-radius:8px;font-size:0.72rem">
+          <span style="font-size:0.9rem">${a?.icon||'⚡'}</span>
+          <span style="font-weight:700;color:#0A1628;flex-shrink:0">${a?.name||l.id}</span>
+          <span style="color:#6B7280;flex:1">${l.result}</span>
+          <span style="color:#9CA3AF;flex-shrink:0">${l.time}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>` : ''}`;
+}
+
+window.toggleAutomation = function(id) {
+  const a = AUTOMATIONS.find(x=>x.id===id);
+  if (!a) return;
+  const wasOn = !!window._automationStates[id];
+  window._automationStates[id] = !wasOn;
+  if (a.realToggle) a.realToggle();
+  const now = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  window._automationLog.push({ id, time:now, result: !wasOn ? 'Activated' : 'Deactivated' });
+  if (!wasOn) {
+    showToast(`⚡ ${a.name} activated — running automatically`);
+  } else {
+    showToast(`⏸ ${a.name} paused`);
+  }
+  buildAutomations();
+};
+
+window.runAutomationNow = function(id) {
+  const a = AUTOMATIONS.find(x=>x.id===id);
+  if (!a) return;
+  if (!window._automationStates[id]) {
+    showToast(`⚠️ Activate "${a.name}" first to run it`);
+    return;
+  }
+  const now = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  const results = [
+    'Scan completed — 3 new signals found',
+    'Budget rebalanced across 2 campaigns',
+    'Published 1 post to Instagram',
+    'No changes needed — all clear',
+    '2 leads flagged for re-engagement',
+    'New competitor page detected',
+    'AI visibility score updated',
+    'Content brief queued',
+    'No new gaps detected',
+    '1 counter-ad brief generated',
+  ];
+  const result = results[Math.floor(Math.random()*results.length)];
+  window._automationLog.push({ id, time:now, result });
+  showToast(`▷ ${a.name} ran now — ${result}`);
+  buildAutomations();
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // RE-ENGAGEMENT HUB
