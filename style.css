@@ -4396,3 +4396,128 @@ p, span, label, td, li {
   border-radius: 6px !important;
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(0,200,200,.55) !important; }
+
+/* ══════════════════════════════════════════════
+   DROPDOWN NAV — 4 group buttons with fly-out
+   ══════════════════════════════════════════════ */
+
+/* Second row container */
+.nav-groups {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0 !important;
+  padding: 0 20px !important;
+  height: 38px !important;
+  background: rgba(0,0,0,.18) !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Vertical separator between groups */
+.ngb-sep {
+  display: inline-block !important;
+  width: 1px !important;
+  height: 18px !important;
+  background: rgba(255,255,255,.1) !important;
+  flex-shrink: 0 !important;
+  margin: 0 4px !important;
+}
+
+/* Each group: relative so dropdown can position against it */
+.nav-group-wrap {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* The visible group button */
+.nav-group-btn {
+  display: flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  background: none !important;
+  border: none !important;
+  cursor: pointer !important;
+  padding: 5px 13px !important;
+  border-radius: 7px !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  color: rgba(255,255,255,.65) !important;
+  letter-spacing: .04em !important;
+  text-transform: uppercase !important;
+  transition: color .15s, background .15s !important;
+  white-space: nowrap !important;
+}
+.nav-group-btn:hover,
+.nav-group-wrap:hover .nav-group-btn {
+  color: white !important;
+  background: rgba(255,255,255,.07) !important;
+}
+.nav-group-btn .ngb-chevron {
+  transition: transform .2s !important;
+  opacity: .6 !important;
+}
+.nav-group-wrap:hover .nav-group-btn .ngb-chevron {
+  transform: rotate(180deg) !important;
+  opacity: 1 !important;
+}
+
+/* Active group — one of its children is the current view */
+.nav-group-wrap.group-active .nav-group-btn {
+  color: #00D8D7 !important;
+  background: rgba(0,201,200,.14) !important;
+}
+.nav-group-wrap.group-active .nav-group-btn .ngb-chevron {
+  opacity: 1 !important;
+}
+
+/* Dropdown panel */
+.nav-dropdown {
+  position: absolute !important;
+  top: calc(100% + 4px) !important;
+  left: 0 !important;
+  min-width: 200px !important;
+  background: #0D1B2E !important;
+  border: 1px solid rgba(0,201,200,.2) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.04) !important;
+  padding: 6px !important;
+  z-index: 2000 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateY(-6px) !important;
+  transition: opacity .18s, transform .18s !important;
+}
+.nav-group-wrap:hover .nav-dropdown,
+.nav-group-wrap:focus-within .nav-dropdown {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: translateY(0) !important;
+}
+
+/* Dropdown items */
+.nav-dropdown .nav-link {
+  display: flex !important;
+  align-items: center !important;
+  gap: 9px !important;
+  padding: 8px 12px !important;
+  border-radius: 8px !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 0.8rem !important;
+  font-weight: 500 !important;
+  color: rgba(255,255,255,.7) !important;
+  text-decoration: none !important;
+  transition: color .12s, background .12s !important;
+  white-space: nowrap !important;
+  letter-spacing: 0 !important;
+}
+.nav-dropdown .nav-link:hover {
+  color: white !important;
+  background: rgba(255,255,255,.07) !important;
+}
+.nav-dropdown .nav-link.active {
+  color: #00E5FF !important;
+  background: rgba(0,201,200,.14) !important;
+  font-weight: 700 !important;
+}

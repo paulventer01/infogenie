@@ -43,47 +43,73 @@
         <button class="btn-nav-analyse" id="navAnalyseBtn">+ Analyse</button>
       </div>
     </div>
-    <!-- Row 2: all nav links — grouped by workflow stage -->
-    <div class="nav-scroll-wrap" id="navScrollWrap">
-    <div class="nav-links" id="navLinks">
+    <!-- Row 2: 4 group dropdown buttons -->
+    <div class="nav-groups" id="navGroups">
 
-      <!-- ── ANALYSE: understand the market ── -->
-      <span class="nav-group-label">Analyse</span>
-      <a href="#" class="nav-link" data-view="dashboard">Dashboard</a>
-      <a href="#" class="nav-link" data-view="competitors">Competitors</a>
-      <a href="#" class="nav-link nav-link-intel" data-view="intelligence">Intelligence</a>
-      <a href="#" class="nav-link" data-view="reddit" style="color:#FF6B35">🔴 Reddit</a>
-      <a href="#" class="nav-link" data-view="battleplan">⚔️ Battle Plan</a>
+      <!-- ANALYSE -->
+      <div class="nav-group-wrap" data-group="analyse">
+        <button class="nav-group-btn" type="button">
+          <span class="ngb-label">Analyse</span>
+          <svg class="ngb-chevron" width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="nav-dropdown">
+          <a href="#" class="nav-link" data-view="dashboard">📊 Dashboard</a>
+          <a href="#" class="nav-link" data-view="competitors">🏆 Competitors</a>
+          <a href="#" class="nav-link nav-link-intel" data-view="intelligence">⚡ Intelligence</a>
+          <a href="#" class="nav-link" data-view="reddit">🔴 Reddit</a>
+          <a href="#" class="nav-link" data-view="battleplan">⚔️ Battle Plan</a>
+        </div>
+      </div>
 
-      <span class="nav-sep"></span>
+      <span class="ngb-sep"></span>
 
-      <!-- ── CREATE: build ads & content ── -->
-      <span class="nav-group-label">Create</span>
-      <a href="#" class="nav-link" data-view="creative">AI Creative</a>
-      <a href="#" class="nav-link" data-view="campaigns">Campaigns</a>
-      <a href="#" class="nav-link" data-view="content">Content AI</a>
-      <a href="#" class="nav-link" data-view="social">Social</a>
+      <!-- CREATE -->
+      <div class="nav-group-wrap" data-group="create">
+        <button class="nav-group-btn" type="button">
+          <span class="ngb-label">Create</span>
+          <svg class="ngb-chevron" width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="nav-dropdown">
+          <a href="#" class="nav-link" data-view="creative">🎨 AI Creative</a>
+          <a href="#" class="nav-link" data-view="campaigns">🚀 Campaigns</a>
+          <a href="#" class="nav-link" data-view="content">🧠 Content AI</a>
+          <a href="#" class="nav-link" data-view="social">📅 Social</a>
+        </div>
+      </div>
 
-      <span class="nav-sep"></span>
+      <span class="ngb-sep"></span>
 
-      <!-- ── REACH: distribute to audiences ── -->
-      <span class="nav-group-label">Reach</span>
-      <a href="#" class="nav-link" data-view="audience">Audience</a>
-      <a href="#" class="nav-link" data-view="advertise">Advertise</a>
-      <a href="#" class="nav-link" data-view="aivisibility">AI Visibility</a>
+      <!-- REACH -->
+      <div class="nav-group-wrap" data-group="reach">
+        <button class="nav-group-btn" type="button">
+          <span class="ngb-label">Reach</span>
+          <svg class="ngb-chevron" width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="nav-dropdown">
+          <a href="#" class="nav-link" data-view="audience">🎯 Audience</a>
+          <a href="#" class="nav-link" data-view="advertise">📡 Advertise</a>
+          <a href="#" class="nav-link" data-view="aivisibility">🤖 AI Visibility</a>
+        </div>
+      </div>
 
-      <span class="nav-sep"></span>
+      <span class="ngb-sep"></span>
 
-      <!-- ── GROW: track, re-engage & scale ── -->
-      <span class="nav-group-label">Grow</span>
-      <a href="#" class="nav-link" data-view="results">Results</a>
-      <a href="#" class="nav-link" data-view="reengage" style="color:#F59E0B">🔁 Re-Engage</a>
-      <a href="#" class="nav-link" data-view="automations" style="color:#10B981">⚡ Auto</a>
-      <a href="#" class="nav-link" data-view="agency" style="color:#818CF8">🏢 Agency</a>
-      <a href="#" class="nav-link" data-view="settings">Settings</a>
+      <!-- GROW -->
+      <div class="nav-group-wrap" data-group="grow">
+        <button class="nav-group-btn" type="button">
+          <span class="ngb-label">Grow</span>
+          <svg class="ngb-chevron" width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="nav-dropdown">
+          <a href="#" class="nav-link" data-view="results">📈 Results</a>
+          <a href="#" class="nav-link" data-view="reengage">🔁 Re-Engage</a>
+          <a href="#" class="nav-link" data-view="automations">⚡ Automations</a>
+          <a href="#" class="nav-link" data-view="agency">🏢 Agency</a>
+          <a href="#" class="nav-link" data-view="settings">⚙️ Settings</a>
+        </div>
+      </div>
 
-    </div>
-    </div><!-- /nav-scroll-wrap -->
+    </div><!-- /nav-groups -->
   </div>
 </nav>
 
