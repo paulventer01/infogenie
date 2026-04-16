@@ -388,16 +388,22 @@ function buildLaunchModal(camp, idx) {
       </div>
       <div style="font-size:0.8rem;color:rgba(255,255,255,.6);margin-bottom:16px">${name} · ${platform}</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-        ${[
-          ['Proj. ROAS', projROAS+'×','#00E5FF','Projected Return on Ad Spend — estimated revenue earned per $1 of budget, based on your industry benchmarks and campaign settings.'],
-          ['Est. Conversions',projConv,'#10B981','Estimated number of completed goals (purchases, sign-ups, calls) this campaign is projected to generate each month.'],
-          ['Est. Revenue',projRev,'#F59E0B','Estimated monthly revenue attributable to this campaign, calculated from projected ROAS × monthly budget.'],
-          ['Daily Budget','$'+dailyBudg+'/day','white','Maximum amount spent per day. InfoGenie divides your monthly budget by 30 to set this cap automatically.']
-        ].map(([k,v,c,tip])=>`
-          <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="${tip}">
-            <div style="font-size:1.1rem;font-weight:800;color:${c}">${v}</div>
-            <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">${k}</div>
-          </div>`).join('')}
+        <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="Projected Return on Ad Spend — estimated revenue earned per $1 of budget, based on your industry benchmarks and campaign settings.">
+          <div id="lm-roas-val" style="font-size:1.1rem;font-weight:800;color:#00E5FF">${projROAS}×</div>
+          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Proj. ROAS</div>
+        </div>
+        <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="Estimated number of completed goals (purchases, sign-ups, calls) this campaign is projected to generate each month.">
+          <div id="lm-conv-val" style="font-size:1.1rem;font-weight:800;color:#10B981">${projConv}</div>
+          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Est. Conversions</div>
+        </div>
+        <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="Estimated monthly revenue attributable to this campaign, calculated from projected ROAS × monthly budget.">
+          <div id="lm-rev-val" style="font-size:1.1rem;font-weight:800;color:#F59E0B">${projRev}</div>
+          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Est. Revenue</div>
+        </div>
+        <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="Maximum amount spent per day. InfoGenie divides your monthly budget by 30 to set this cap automatically.">
+          <div id="lm-daily-val" style="font-size:1.1rem;font-weight:800;color:white">$${dailyBudg}/day</div>
+          <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">Daily Budget</div>
+        </div>
       </div>
     </div>
 
@@ -419,7 +425,7 @@ function buildLaunchModal(camp, idx) {
           </div>
           <div>
             <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Monthly Budget ($)</label>
-            <input id="lm-budget" type="number" value="${budgetNum}" min="500" step="100" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#0066FF'" onblur="this.style.borderColor='#E2E8F0'">
+            <input id="lm-budget" type="number" value="${budgetNum}" min="100" step="100" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif" oninput="lmUpdateMetrics()" onfocus="this.style.borderColor='#0066FF'" onblur="this.style.borderColor='#E2E8F0'">
           </div>
           <div>
             <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Start Date</label>
@@ -538,6 +544,24 @@ function buildLaunchModal(camp, idx) {
       </div>
     </div>
   `;
+
+  // Live-recalc KPI tiles when budget input changes
+  window.lmUpdateMetrics = function() {
+    const bEl = document.getElementById('lm-budget');
+    if (!bEl) return;
+    const nb = Math.max(100, parseInt(bEl.value) || 100);
+    const roasBase = analysisData && analysisData.websiteKPIs && analysisData.websiteKPIs.roas
+      ? parseFloat(analysisData.websiteKPIs.roas) : 2.8;
+    const newROAS   = (roasBase * 1.25).toFixed(1);
+    const newConv   = Math.round(nb / 35);
+    const newRev    = '$' + (nb * parseFloat(newROAS)).toLocaleString(undefined, {maximumFractionDigits:0});
+    const newDaily  = Math.round(nb / 30);
+    const el = id => document.getElementById(id);
+    if (el('lm-roas-val'))  el('lm-roas-val').textContent  = newROAS + '×';
+    if (el('lm-conv-val'))  el('lm-conv-val').textContent  = newConv;
+    if (el('lm-rev-val'))   el('lm-rev-val').textContent   = newRev;
+    if (el('lm-daily-val')) el('lm-daily-val').textContent = '$' + newDaily + '/day';
+  };
 
   // Wire cancel button
   document.getElementById('lm-cancel-btn').addEventListener('click', () => {
