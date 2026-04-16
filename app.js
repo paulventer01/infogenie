@@ -11392,7 +11392,7 @@ function openThreatModal(idx) {
       </div>
       <div style="display:flex; gap:10px">
         <button class="btn-primary" style="flex:1; font-size:0.8rem; padding:10px" onclick="closeThreatModal(); navigateTo('competitors')">View Full Analysis →</button>
-        <button class="btn-secondary" style="flex:1; font-size:0.8rem; padding:10px" onclick="closeThreatModal(); navigateTo('campaigns')">Launch Counter-Ad ⚡</button>
+        <button style="flex:1; font-size:0.8rem; padding:10px; background:linear-gradient(135deg,#00C9C8,#0066FF); color:#fff; border:none; border-radius:8px; font-weight:700; cursor:pointer; font-family:'Plus Jakarta Sans',sans-serif; transition:opacity .15s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'" onclick="closeThreatModal(); navigateTo('campaigns')">⚡ Launch Counter-Ad</button>
       </div>
     </div>
   `;
