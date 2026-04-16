@@ -2688,6 +2688,9 @@ function buildCompMonitor(comps) {
     });
   }).flat();
 
+  // Store rows in a global lookup so onclick just passes a clean index (avoids string escaping issues)
+  window._pageTrackerRows = pageRows;
+
   wrap.innerHTML = `
     <!-- BLOG MONITOR SECTION -->
     <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
@@ -2775,7 +2778,7 @@ function buildCompMonitor(comps) {
             </tr>
           </thead>
           <tbody>
-            ${pageRows.map(row => `
+            ${pageRows.map((row, ri) => `
               <tr style="border-bottom:1px solid #F3F4F6;transition:background .12s" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='white'">
                 <td style="padding:10px 12px">
                   <div style="font-weight:700;color:#0A1628">${row.comp.name}</div>
@@ -2790,7 +2793,7 @@ function buildCompMonitor(comps) {
                   <span style="background:${row.sigBg};color:${row.sigColor};border-radius:6px;padding:2px 9px;font-size:0.64rem;font-weight:800">${row.significance}</span>
                 </td>
                 <td style="text-align:center;padding:10px 12px">
-                  <button onclick="generatePageResponse('${row.comp.name}','${row.pt.type}','${row.slug}')" style="padding:4px 12px;background:linear-gradient(135deg,#7C3AED,#0066FF);border:none;border-radius:7px;font-size:0.68rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">⚔️ Counter Ad →</button>
+                  <button onclick="pageTrackerCounterAd(${ri})" style="padding:4px 12px;background:linear-gradient(135deg,#7C3AED,#0066FF);border:none;border-radius:7px;font-size:0.68rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">⚔️ Counter Ad →</button>
                 </td>
               </tr>`).join('')}
           </tbody>
@@ -2844,6 +2847,14 @@ Format as a clean, actionable report with clear sections per competitor. Use bol
     if (btn) { btn.disabled = false; btn.textContent = '🤖 Run Blog Intelligence'; }
   }
 }
+
+// Index-based wrapper — avoids string-escaping issues in onclick attributes
+window.pageTrackerCounterAd = function(idx) {
+  const rows = window._pageTrackerRows;
+  if (!rows || !rows[idx]) { showToast('⚠️ Row data not found — please re-run your analysis'); return; }
+  const row = rows[idx];
+  generatePageResponse(row.comp.name, row.pt.type, row.slug);
+};
 
 async function generatePageResponse(compName, pageType, slug) {
   const domain   = analysisData ? analysisData.url : 'your site';
