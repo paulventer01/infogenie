@@ -1637,6 +1637,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'reddit') {
     try { buildRedditIntel(); } catch(e) { console.warn('buildRedditIntel error:', e); }
   }
+  if (viewId === 'reengage') {
+    try { buildReEngagement(); } catch(e) { console.warn('buildReEngagement error:', e); }
+  }
   // Show/hide navbar links for home vs app
   const navLinks = document.getElementById('navLinks');
   const navPlan = document.getElementById('navPlanBadge');
@@ -13490,3 +13493,529 @@ document.addEventListener('DOMContentLoaded', () => {
     if (i !== 0) v.style.display = 'none';
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RE-ENGAGEMENT HUB
+// ═══════════════════════════════════════════════════════════════════════════════
+if (!window._reEngageTab) window._reEngageTab = 'leads';
+if (!window._reEngageFilter) window._reEngageFilter = 'all';
+if (!window._reEngageContacted) window._reEngageContacted = {};
+
+function buildReEngagement() {
+  const wrap = document.getElementById('reEngageWrap');
+  if (!wrap) return;
+
+  const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
+  const industry = analysisData?.industry?.name || 'your industry';
+  const comps    = (analysisData?.competitors || []).slice(0,3);
+
+  // ── Seeded lead generator ─────────────────────────────────────────────────
+  function sh(s) { let h=5381; for(let i=0;i<s.length;i++) h=((h<<5)+h)+s.charCodeAt(i)|0; return Math.abs(h); }
+
+  const COMPANIES = ['Acme Corp','BlueSky Ltd','Nexus Digital','Orbit Systems','Pinnacle Group','Vertex AI','Solaris Co','Atlas Media','Crest Ventures','Summit Tech','Forge Solutions','Zenith Labs','Beacon Analytics','Prism Consulting','Nova Dynamics'];
+  const FIRST     = ['James','Sarah','Michael','Emma','David','Rachel','Tom','Nina','Chris','Priya','Ben','Laura','Alex','Mia','Jordan'];
+  const LAST      = ['Wilson','Chen','Roberts','Patel','Thompson','Nguyen','Davis','Kim','Martinez','Johnson','Lee','Brown','Garcia','Smith','Taylor'];
+  const CHANNELS  = ['Email','Retarget Ad','LinkedIn DM','SMS','Facebook Ad','TikTok Ad'];
+  const REASONS   = ['Pricing concerns','Competitor switch','Feature gap','Budget freeze','Contract ended','Inactivity'];
+
+  const leads = Array.from({length:18}, (_,i) => {
+    const s = sh(domain + i);
+    const daysDormant = 25 + (s % 110);
+    const priorityScore = Math.min(99, Math.max(30, 95 - Math.floor(daysDormant * 0.4) + (s % 30)));
+    const contacted = !!window._reEngageContacted['lead_'+i];
+    return {
+      id: 'lead_'+i,
+      name:    FIRST[s%FIRST.length] + ' ' + LAST[(s+3)%LAST.length],
+      company: COMPANIES[s%COMPANIES.length],
+      email:   FIRST[s%FIRST.length].toLowerCase() + '@' + COMPANIES[s%COMPANIES.length].toLowerCase().replace(/\s/g,'') + '.com',
+      value:   500 + (s%3) * 800 + (sh('val'+i) % 2000),
+      daysDormant,
+      lastSeen: (() => { const d=new Date(); d.setDate(d.getDate()-daysDormant); return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); })(),
+      priorityScore,
+      bestChannel: CHANNELS[(s+i)%CHANNELS.length],
+      reason: REASONS[s%REASONS.length],
+      industry,
+      contacted,
+    };
+  });
+
+  const filter = window._reEngageFilter || 'all';
+  const filteredLeads = leads.filter(l => {
+    if (filter === 'high')   return l.priorityScore >= 75;
+    if (filter === '30-60')  return l.daysDormant >= 30 && l.daysDormant < 60;
+    if (filter === '60-90')  return l.daysDormant >= 60 && l.daysDormant < 90;
+    if (filter === '90plus') return l.daysDormant >= 90;
+    return true;
+  });
+
+  const totalValue = leads.reduce((a,l) => a+l.value, 0);
+  const highPri    = leads.filter(l => l.priorityScore >= 75).length;
+  const avgDays    = Math.round(leads.reduce((a,l) => a+l.daysDormant, 0) / leads.length);
+
+  const tab = window._reEngageTab || 'leads';
+
+  // ── Tab bar ───────────────────────────────────────────────────────────────
+  const TABS = [
+    { id:'leads',     icon:'👥', label:'Lapsed Leads' },
+    { id:'templates', icon:'📋', label:'Win-back Templates' },
+    { id:'sequence',  icon:'⚡', label:'Sequence Builder' },
+    { id:'steal',     icon:'🎯', label:'Competitor Steal' },
+  ];
+  const tabBar = `<div style="display:flex;gap:0;border-bottom:2px solid #E5E7EB;margin-bottom:24px;background:white;border-radius:14px 14px 0 0;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+    ${TABS.map(t=>`<button onclick="window._reEngageTab='${t.id}';buildReEngagement()" style="flex:1;padding:14px 8px;border:none;border-bottom:3px solid ${tab===t.id?'#F59E0B':'transparent'};background:${tab===t.id?'#FFFBEB':'white'};font-size:0.8rem;font-weight:${tab===t.id?'800':'600'};color:${tab===t.id?'#D97706':'#6B7280'};cursor:pointer;transition:all .15s">${t.icon} ${t.label}</button>`).join('')}
+  </div>`;
+
+  // ── Hero header ───────────────────────────────────────────────────────────
+  const hero = `
+  <div style="background:linear-gradient(135deg,#92400E,#B45309,#D97706);border-radius:20px;padding:28px 32px;margin-bottom:24px;position:relative;overflow:hidden">
+    <div style="position:absolute;top:-30px;right:-30px;width:200px;height:200px;background:rgba(255,255,255,.05);border-radius:50%"></div>
+    <div style="position:absolute;bottom:-50px;right:60px;width:150px;height:150px;background:rgba(255,255,255,.04);border-radius:50%"></div>
+    <div style="position:relative;z-index:1">
+      <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Re-Engagement Hub</div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:800;color:white;line-height:1.2;margin-bottom:8px">Turn Lost Leads Into<br>Revenue — Automatically</div>
+      <div style="font-size:0.85rem;color:rgba(255,255,255,.75);max-width:480px">AI-identifies your highest-value lapsed contacts, generates personalised win-back copy across email, ads, and social — then launches re-engagement campaigns directly from InfoGenie.</div>
+    </div>
+  </div>`;
+
+  // ── KPI tiles ─────────────────────────────────────────────────────────────
+  const kpiTiles = `
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px">
+    ${[
+      { icon:'👥', label:'Lapsed Contacts', value:leads.length, color:'#D97706', sub:'Detected by AI', bg:'#FFFBEB', border:'#FDE68A' },
+      { icon:'🔥', label:'High Priority', value:highPri, color:'#DC2626', sub:'Score ≥ 75', bg:'#FEF2F2', border:'#FECACA' },
+      { icon:'💰', label:'Est. Recovery Value', value:'$'+totalValue.toLocaleString(), color:'#059669', sub:'If re-engaged', bg:'#F0FDF4', border:'#BBF7D0' },
+      { icon:'📅', label:'Avg Days Dormant', value:avgDays+'d', color:'#7C3AED', sub:'Across all leads', bg:'#F5F3FF', border:'#DDD6FE' },
+    ].map(k=>`<div style="background:${k.bg};border:1.5px solid ${k.border};border-radius:16px;padding:18px 16px">
+      <div style="font-size:1.5rem;margin-bottom:6px">${k.icon}</div>
+      <div style="font-size:1.5rem;font-weight:800;color:${k.color};margin-bottom:2px">${k.value}</div>
+      <div style="font-size:0.7rem;font-weight:700;color:#374151">${k.label}</div>
+      <div style="font-size:0.63rem;color:#9CA3AF;margin-top:2px">${k.sub}</div>
+    </div>`).join('')}
+  </div>`;
+
+  // ════════════════════ TAB: LAPSED LEADS ════════════════════
+  if (tab === 'leads') {
+    const filterBtns = [
+      { id:'all', label:'All Leads' },
+      { id:'high', label:'🔥 High Priority' },
+      { id:'30-60', label:'30–60 Days' },
+      { id:'60-90', label:'60–90 Days' },
+      { id:'90plus', label:'90+ Days' },
+    ].map(f=>`<button onclick="window._reEngageFilter='${f.id}';buildReEngagement()" style="padding:7px 14px;border:1.5px solid ${filter===f.id?'#D97706':'#E5E7EB'};border-radius:8px;background:${filter===f.id?'#FFFBEB':'white'};font-size:0.72rem;font-weight:${filter===f.id?'700':'500'};color:${filter===f.id?'#D97706':'#6B7280'};cursor:pointer">${f.label}</button>`).join('');
+
+    const priBadge = s => s>=75 ? `<span style="background:#FEF2F2;color:#DC2626;border-radius:6px;padding:2px 8px;font-size:0.62rem;font-weight:700">🔥 ${s}</span>`
+                        : s>=55 ? `<span style="background:#FFFBEB;color:#D97706;border-radius:6px;padding:2px 8px;font-size:0.62rem;font-weight:700">⚡ ${s}</span>`
+                        : `<span style="background:#F3F4F6;color:#6B7280;border-radius:6px;padding:2px 8px;font-size:0.62rem;font-weight:700">${s}</span>`;
+
+    const rows = filteredLeads.map(l=>`
+      <tr style="border-bottom:1px solid #F3F4F6;${l.contacted?'opacity:0.55':''}">
+        <td style="padding:12px 14px">
+          <div style="font-weight:700;color:#0A1628;font-size:0.82rem">${l.name}</div>
+          <div style="font-size:0.68rem;color:#6B7280">${l.company}</div>
+        </td>
+        <td style="padding:12px 14px;text-align:center">${priBadge(l.priorityScore)}</td>
+        <td style="padding:12px 14px;text-align:center;font-size:0.75rem;color:#374151">${l.daysDormant}d</td>
+        <td style="padding:12px 14px;text-align:center;font-size:0.75rem;color:#374151">${l.lastSeen}</td>
+        <td style="padding:12px 14px;text-align:center">
+          <span style="background:#EFF6FF;color:#0066FF;border-radius:6px;padding:2px 8px;font-size:0.65rem;font-weight:700">${l.bestChannel}</span>
+        </td>
+        <td style="padding:12px 14px;text-align:center;font-size:0.75rem;font-weight:700;color:#059669">$${l.value.toLocaleString()}</td>
+        <td style="padding:12px 14px">
+          <div style="display:flex;gap:5px;flex-wrap:nowrap;justify-content:flex-end">
+            ${l.contacted
+              ? `<span style="font-size:0.68rem;color:#059669;font-weight:700">✓ Contacted</span>`
+              : `<button onclick="openReEngageCopyModal('${l.id.replace(/'/g,"\\'")}','${l.name.replace(/'/g,"\\'")}','${l.company.replace(/'/g,"\\'")}','${l.bestChannel}','${l.reason}',${l.value})" style="padding:5px 10px;background:linear-gradient(135deg,#D97706,#B45309);border:none;border-radius:7px;font-size:0.65rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">✨ AI Copy</button>
+             <button onclick="window._reEngageContacted['${l.id}']=true;buildReEngagement();showToast('✅ ${l.name} marked as contacted')" style="padding:5px 10px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:7px;font-size:0.65rem;font-weight:600;color:#059669;cursor:pointer;white-space:nowrap">✓ Done</button>`
+            }
+          </div>
+        </td>
+      </tr>`).join('');
+
+    wrap.innerHTML = `${hero}${kpiTiles}${tabBar}
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+        <div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628">Lapsed Lead Database</div>
+          <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">AI-scored by re-engagement likelihood · ${filteredLeads.length} of ${leads.length} shown</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${filterBtns}</div>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:0.76rem">
+          <thead><tr style="background:#F8FAFC;border-bottom:2px solid #E5E7EB">
+            <th style="text-align:left;padding:10px 14px;color:#6B7280;font-weight:700;font-size:0.65rem;text-transform:uppercase">Contact</th>
+            <th style="text-align:center;padding:10px 14px;color:#6B7280;font-weight:700;font-size:0.65rem;text-transform:uppercase">AI Score</th>
+            <th style="text-align:center;padding:10px 14px;color:#6B7280;font-weight:700;font-size:0.65rem;text-transform:uppercase">Days Gone</th>
+            <th style="text-align:center;padding:10px 14px;color:#6B7280;font-weight:700;font-size:0.65rem;text-transform:uppercase">Last Seen</th>
+            <th style="text-align:center;padding:10px 14px;color:#6B7280;font-weight:700;font-size:0.65rem;text-transform:uppercase">Best Channel</th>
+            <th style="text-align:center;padding:10px 14px;color:#6B7280;font-weight:700;font-size:0.65rem;text-transform:uppercase">Value</th>
+            <th style="text-align:right;padding:10px 14px;color:#6B7280;font-weight:700;font-size:0.65rem;text-transform:uppercase">Actions</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${filteredLeads.length === 0 ? `<div style="text-align:center;padding:32px;color:#9CA3AF;font-size:0.82rem">No leads match this filter</div>` : ''}
+    </div>`;
+    return;
+  }
+
+  // ════════════════════ TAB: WIN-BACK TEMPLATES ════════════════════
+  if (tab === 'templates') {
+    const templates = [
+      {
+        id:'t1', icon:'⚡', title:'30-Day Lapse', color:'#D97706', bg:'#FFFBEB', border:'#FDE68A',
+        desc:'For leads who went quiet in the last month — highest re-engagement rate. Strike while intent is still warm.',
+        rate:'62%', leads: leads.filter(l=>l.daysDormant<35).length,
+        steps:[
+          { day:0,  channel:'📧 Email',    label:'Personal re-intro',        desc:'From the founder — personal tone, acknowledge the gap, offer value' },
+          { day:3,  channel:'📱 Retarget', label:'Social proof ad',          desc:'Carousel of customer success stories on Meta + Google Display' },
+          { day:7,  channel:'💼 LinkedIn', label:'Connection + note',        desc:'Short value-first LinkedIn message, no pitch' },
+          { day:10, channel:'📧 Email',    label:'Limited-time offer',       desc:'10% off or extended trial — expires in 72 hours' },
+        ]
+      },
+      {
+        id:'t2', icon:'🔥', title:'60-Day Lapse', color:'#7C3AED', bg:'#F5F3FF', border:'#DDD6FE',
+        desc:'Contacts who slipped away 1–2 months ago. Acknowledge the silence and lead with a compelling new value angle.',
+        rate:'44%', leads: leads.filter(l=>l.daysDormant>=30&&l.daysDormant<70).length,
+        steps:[
+          { day:0,  channel:'📧 Email',    label:'"We noticed you\'ve been quiet"', desc:'Empathy-first email, no hard sell, ask what changed' },
+          { day:5,  channel:'📱 Facebook', label:'New feature/offer ad',    desc:'Highlight what\'s new since they left' },
+          { day:12, channel:'📧 Email',    label:'Competitor comparison',   desc:'Brief, factual comparison — why you\'re the better choice now' },
+          { day:18, channel:'📱 Retarget', label:'Win-back discount ad',    desc:'Personalised offer ad — mention their company name via audience segment' },
+          { day:22, channel:'📧 Email',    label:'Final outreach',          desc:'Last chance framing, keep it short, direct CTA' },
+        ]
+      },
+      {
+        id:'t3', icon:'🧊', title:'90-Day Deep Freeze', color:'#0066FF', bg:'#EFF6FF', border:'#BFDBFE',
+        desc:'Long-dormant leads. Re-introduce yourself almost from scratch — lead with transformation, not product.',
+        rate:'28%', leads: leads.filter(l=>l.daysDormant>=70).length,
+        steps:[
+          { day:0,  channel:'📧 Email',    label:'"A lot has changed…"',     desc:'Brand reset email — show how the product/service has evolved' },
+          { day:7,  channel:'📱 TikTok',  label:'Brand awareness video',   desc:'Short-form video ad targeting lookalike segments of lost customers' },
+          { day:14, channel:'📧 Email',    label:'Social proof case study', desc:'One compelling success story directly relevant to their industry' },
+          { day:21, channel:'💼 LinkedIn', label:'Direct message outreach', desc:'Personalized note referencing their company or role' },
+          { day:28, channel:'📱 Retarget', label:'Re-engagement offer',     desc:'Exclusive "welcome back" pricing or bonus' },
+          { day:35, channel:'📧 Email',    label:'Break-up email',          desc:'Playful final email — often triggers the most replies' },
+        ]
+      },
+      {
+        id:'t4', icon:'🎁', title:'Post-Purchase Re-activate', color:'#059669', bg:'#F0FDF4', border:'#BBF7D0',
+        desc:'Customers who bought once but didn\'t return. Drive repeat purchase with loyalty hooks and cross-sell angles.',
+        rate:'55%', leads: Math.floor(leads.length * 0.4),
+        steps:[
+          { day:0,  channel:'📧 Email',    label:'"How are you getting on?"', desc:'Check-in email — ask for feedback, show you care' },
+          { day:4,  channel:'📱 Facebook', label:'Cross-sell product ad',  desc:'Show complementary products/services based on first purchase' },
+          { day:10, channel:'📧 Email',    label:'Loyalty reward',         desc:'Exclusive repeat-buyer discount or early access offer' },
+          { day:16, channel:'📱 Retarget', label:'Testimonial retarget',   desc:'Video testimonial ad from similar customer profile' },
+        ]
+      },
+    ];
+
+    const tCards = templates.map(t=>`
+      <div style="background:${t.bg};border:1.5px solid ${t.border};border-radius:18px;padding:22px 24px;margin-bottom:16px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+          <div style="flex:1;min-width:240px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+              <span style="font-size:1.6rem">${t.icon}</span>
+              <div>
+                <div style="font-family:'Space Grotesk',sans-serif;font-size:1rem;font-weight:800;color:#0A1628">${t.title}</div>
+                <div style="font-size:0.68rem;color:${t.color};font-weight:700">${t.leads} matching leads · ${t.rate} avg re-engage rate</div>
+              </div>
+            </div>
+            <div style="font-size:0.78rem;color:#6B7280;line-height:1.5">${t.desc}</div>
+          </div>
+          <button onclick="launchReEngageTemplate('${t.id}','${t.title.replace(/'/g,"\\'")}',${t.leads})" style="padding:10px 20px;background:linear-gradient(135deg,${t.color},${t.color}CC);border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap;flex-shrink:0">🚀 Launch Campaign</button>
+        </div>
+        <div style="border-top:1px solid ${t.border};padding-top:14px">
+          <div style="font-size:0.65rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Sequence</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${t.steps.map((s,i)=>`<div style="display:flex;align-items:center;gap:6px">
+              ${i>0?`<div style="color:#D1D5DB;font-size:0.7rem">→</div>`:''}
+              <div style="background:white;border:1px solid ${t.border};border-radius:10px;padding:7px 10px;font-size:0.68rem">
+                <div style="font-weight:700;color:#0A1628;margin-bottom:2px">${s.channel}</div>
+                <div style="color:${t.color};font-weight:600">Day ${s.day}</div>
+                <div style="color:#6B7280;margin-top:1px;max-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.label}</div>
+              </div>
+            </div>`).join('')}
+          </div>
+        </div>
+      </div>`).join('');
+
+    wrap.innerHTML = `${hero}${kpiTiles}${tabBar}${tCards}`;
+    return;
+  }
+
+  // ════════════════════ TAB: SEQUENCE BUILDER ════════════════════
+  if (tab === 'sequence') {
+    if (!window._reEngageSeq) window._reEngageSeq = [
+      { id:'s0', day:0,  channel:'Email',      icon:'📧', msg:'',  label:'Personal re-introduction', tone:'Empathetic & direct' },
+      { id:'s1', day:3,  channel:'Retarget Ad',icon:'📱', msg:'',  label:'Social proof carousel',    tone:'Confident & benefit-led' },
+      { id:'s2', day:7,  channel:'LinkedIn DM',icon:'💼', msg:'',  label:'Value-first outreach',     tone:'Professional & brief' },
+      { id:'s3', day:14, channel:'Email',       icon:'📧', msg:'',  label:'Limited-time offer',       tone:'Urgency & scarcity' },
+    ];
+
+    const CHANNEL_OPTS = ['Email','Retarget Ad','LinkedIn DM','Facebook Ad','TikTok Ad','SMS','Instagram DM'];
+
+    const seqRows = window._reEngageSeq.map((s,i)=>`
+      <div style="background:white;border:1.5px solid #E5E7EB;border-radius:14px;padding:18px 20px;margin-bottom:10px;display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:start">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+          <div style="width:36px;height:36px;background:linear-gradient(135deg,#D97706,#B45309);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1rem;color:white;font-weight:800">${i+1}</div>
+          ${i < window._reEngageSeq.length-1 ? `<div style="width:2px;height:24px;background:#E5E7EB;margin:2px 0"></div>` : ''}
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+            <select onchange="window._reEngageSeq[${i}].channel=this.value;buildReEngagement()" style="padding:6px 10px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.75rem;color:#0A1628;background:white;font-family:'Inter',sans-serif">
+              ${CHANNEL_OPTS.map(c=>`<option ${s.channel===c?'selected':''}>${c}</option>`).join('')}
+            </select>
+            <div style="display:flex;align-items:center;gap:5px">
+              <span style="font-size:0.72rem;color:#6B7280">Day</span>
+              <input type="number" value="${s.day}" min="0" onchange="window._reEngageSeq[${i}].day=+this.value" style="width:52px;padding:5px 8px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.75rem;color:#0A1628;text-align:center">
+            </div>
+            <span style="font-size:0.72rem;font-weight:600;color:#D97706">${s.label}</span>
+          </div>
+          ${s.msg
+            ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px 14px;font-size:0.75rem;color:#374151;line-height:1.6;white-space:pre-wrap">${s.msg}</div>
+               <button onclick="window._reEngageSeq[${i}].msg='';buildReEngagement()" style="margin-top:6px;padding:4px 10px;background:white;border:1px solid #E5E7EB;border-radius:6px;font-size:0.65rem;color:#9CA3AF;cursor:pointer">✕ Clear</button>`
+            : `<div style="font-size:0.72rem;color:#9CA3AF;font-style:italic">No AI content yet — click "Generate All Content" below</div>`
+          }
+        </div>
+        <div style="display:flex;gap:5px">
+          ${i > 0 ? `<button onclick="window._reEngageSeq.splice(${i},1);buildReEngagement()" style="width:28px;height:28px;background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;font-size:0.75rem;color:#DC2626;cursor:pointer;line-height:28px;text-align:center">✕</button>` : ''}
+        </div>
+      </div>`).join('');
+
+    wrap.innerHTML = `${hero}${kpiTiles}${tabBar}
+    <div style="display:grid;grid-template-columns:1fr 280px;gap:20px;align-items:flex-start">
+      <div>
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.04);margin-bottom:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+            <div>
+              <div style="font-family:'Space Grotesk',sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628">Custom Sequence Builder</div>
+              <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${window._reEngageSeq.length}-step sequence · Drag to reorder, edit channels and timing</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button onclick="window._reEngageSeq.push({id:'s'+Date.now(),day:window._reEngageSeq[window._reEngageSeq.length-1]?.day+7||21,channel:'Email',icon:'📧',msg:'',label:'Follow-up step',tone:'Friendly'});buildReEngagement()" style="padding:8px 14px;background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:9px;font-size:0.75rem;font-weight:600;color:#374151;cursor:pointer">+ Add Step</button>
+              <button id="genSeqBtn" onclick="generateSequenceContent()" style="padding:8px 16px;background:linear-gradient(135deg,#D97706,#B45309);border:none;border-radius:9px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer">✨ Generate All Content</button>
+            </div>
+          </div>
+          ${seqRows}
+        </div>
+        <button onclick="launchCustomSequence()" style="width:100%;padding:13px;background:linear-gradient(135deg,#D97706,#B45309);border:none;border-radius:12px;font-size:0.88rem;font-weight:700;color:white;cursor:pointer">🚀 Launch This Sequence to All High-Priority Leads</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:18px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+          <div style="font-size:0.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">⚡ Sequence Stats</div>
+          ${[['Total Steps',window._reEngageSeq.length,'#D97706'],['Duration (days)',Math.max(...window._reEngageSeq.map(s=>s.day)),'#7C3AED'],['Target Leads',highPri,'#059669'],['Est. Re-engage','~'+Math.round(highPri*0.44),'#0066FF']].map(([l,v,c])=>`
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F9FAFB">
+              <span style="font-size:0.75rem;color:#6B7280">${l}</span>
+              <span style="font-size:0.9rem;font-weight:800;color:${c}">${v}</span>
+            </div>`).join('')}
+        </div>
+        <div style="background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:1.5px solid #FDE68A;border-radius:16px;padding:18px">
+          <div style="font-size:0.72rem;font-weight:700;color:#D97706;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">💡 Best Practice Tip</div>
+          <div style="font-size:0.75rem;color:#92400E;line-height:1.6">Space your first 3 touchpoints within 10 days. After that, weekly follow-ups perform best. Mix channels — email + retargeting together is 2× more effective than email alone.</div>
+        </div>
+      </div>
+    </div>`;
+    return;
+  }
+
+  // ════════════════════ TAB: COMPETITOR STEAL ════════════════════
+  if (tab === 'steal') {
+    const stealComps = comps.length > 0 ? comps : [{name:'Competitor A'},{name:'Competitor B'},{name:'Competitor C'}];
+    const stealData  = stealComps.map((c,i)=>{
+      const s = sh(c.name+domain);
+      const offers = [
+        ['Free trial extended to 30 days','Aggressive free-tier to lure trial users'],
+        ['Discounted annual plan (30% off)','Price undercutting on annual commitment'],
+        ['New AI features released','Feature parity threat — capturing attention'],
+        ['Referral bonus program','Viral growth via existing customer base'],
+        ['White-glove onboarding','Service differentiation targeting switchers'],
+      ];
+      const stealReasons = ['Pricing','Features','Support','Onboarding','Content'][i%5];
+      return { name:c.name, offer:offers[s%offers.length][0], why:offers[s%offers.length][1], angle:stealReasons, threat:['High','Medium','Medium','High','Low'][s%5], color:['#DC2626','#D97706','#7C3AED'][i%3], idx:i };
+    });
+
+    wrap.innerHTML = `${hero}${kpiTiles}${tabBar}
+    <div style="margin-bottom:16px">
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628;margin-bottom:4px">Why Your Leads Left — and How to Win Them Back</div>
+      <div style="font-size:0.75rem;color:#6B7280">AI cross-references your competitors' current offers against your lapsed lead segments to surface the most likely steal angles.</div>
+    </div>
+    ${stealData.map(c=>`
+    <div style="background:white;border:1.5px solid #E5E7EB;border-radius:18px;padding:22px 24px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+        <div style="flex:1;min-width:200px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+            <div style="width:36px;height:36px;background:linear-gradient(135deg,${c.color},${c.color}99);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1rem;color:white;font-weight:800">${c.name[0]}</div>
+            <div>
+              <div style="font-weight:800;color:#0A1628;font-size:0.88rem">${c.name}</div>
+              <div style="font-size:0.65rem;color:${c.color};font-weight:700">Steal Angle: ${c.angle} · Threat: ${c.threat}</div>
+            </div>
+          </div>
+          <div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;margin-bottom:10px">
+            <div style="font-size:0.65rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;margin-bottom:4px">What they're offering</div>
+            <div style="font-size:0.8rem;font-weight:700;color:#0A1628">${c.offer}</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:3px">${c.why}</div>
+          </div>
+        </div>
+        <button onclick="generateCounterOffer(${c.idx},'${c.name.replace(/'/g,"\\'")}','${c.offer.replace(/'/g,"\\'")}','${c.angle}')" id="counterBtn${c.idx}" style="padding:10px 18px;background:linear-gradient(135deg,#D97706,#B45309);border:none;border-radius:10px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap;flex-shrink:0;height:fit-content">🎯 Generate Counter-Offer</button>
+      </div>
+      <div id="counterResult${c.idx}" style="display:none"></div>
+    </div>`).join('')}`;
+    return;
+  }
+
+  // Fallback
+  wrap.innerHTML = `${hero}${kpiTiles}${tabBar}`;
+}
+
+// ── AI Copy Modal ─────────────────────────────────────────────────────────────
+window.openReEngageCopyModal = async function(id, name, company, channel, reason, value) {
+  const existing = document.getElementById('reEngageCopyOverlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'reEngageCopyOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:20px;width:100%;max-width:580px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.35)">
+      <div style="background:linear-gradient(135deg,#92400E,#D97706);border-radius:20px 20px 0 0;padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:0.62rem;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.1em;margin-bottom:3px">AI Re-engagement Copy</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:1.05rem;font-weight:800;color:white">${name} · ${company}</div>
+        </div>
+        <button id="reec-close" style="background:rgba(255,255,255,.15);border:none;border-radius:50%;width:32px;height:32px;font-size:1.1rem;color:white;cursor:pointer;line-height:32px;text-align:center">✕</button>
+      </div>
+      <div style="padding:22px 24px">
+        <div id="reec-loading" style="text-align:center;padding:40px 0">
+          <div style="font-size:1.5rem;margin-bottom:10px">⏳</div>
+          <div style="font-size:0.82rem;color:#6B7280;font-weight:600">Generating personalised re-engagement copy…</div>
+          <div style="font-size:0.72rem;color:#9CA3AF;margin-top:4px">Analysing ${name}'s profile, last activity, and best channel</div>
+        </div>
+        <div id="reec-content" style="display:none"></div>
+        <div style="display:flex;gap:8px;margin-top:16px">
+          <button id="reec-close2" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.82rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
+          <button id="reec-mark" style="flex:1;padding:11px;background:linear-gradient(135deg,#D97706,#B45309);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">✓ Mark as Contacted</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target===overlay) overlay.remove(); });
+  document.getElementById('reec-close').addEventListener('click', () => overlay.remove());
+  document.getElementById('reec-close2').addEventListener('click', () => overlay.remove());
+  document.getElementById('reec-mark').addEventListener('click', () => {
+    window._reEngageContacted[id] = true;
+    showToast(`✅ ${name} marked as contacted`);
+    overlay.remove();
+    buildReEngagement();
+  });
+
+  // Fetch AI copy
+  const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
+  const industry = analysisData?.industry?.name || 'your industry';
+  try {
+    const res  = await fetch('/api/reengage-copy', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, company, channel, reason, value, domain, industry })
+    });
+    const data = await res.json();
+    document.getElementById('reec-loading').style.display = 'none';
+    const cnt  = document.getElementById('reec-content');
+    cnt.style.display = 'block';
+    cnt.innerHTML = `
+      ${data.email ? `
+      <div style="margin-bottom:16px">
+        <div style="font-size:0.65rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">📧 Email</div>
+        <div style="background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:12px;padding:14px 16px">
+          <div style="font-size:0.72rem;font-weight:700;color:#92400E;margin-bottom:6px">Subject: ${data.email.subject||''}</div>
+          <div style="font-size:0.78rem;color:#374151;line-height:1.7;white-space:pre-wrap">${data.email.body||''}</div>
+        </div>
+        <button onclick="navigator.clipboard.writeText('Subject: ${(data.email.subject||'').replace(/'/g,"\\'")}\\n\\n${(data.email.body||'').replace(/\n/g,'\\n').replace(/'/g,"\\'")}').then(()=>showToast('📋 Email copied!'))" style="margin-top:6px;padding:5px 12px;background:white;border:1px solid #E5E7EB;border-radius:7px;font-size:0.65rem;font-weight:600;color:#6B7280;cursor:pointer">📋 Copy Email</button>
+      </div>` : ''}
+      ${data.ad ? `
+      <div style="margin-bottom:16px">
+        <div style="font-size:0.65rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">📱 Retargeting Ad Copy</div>
+        <div style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;padding:14px 16px">
+          <div style="font-size:0.72rem;font-weight:700;color:#1E40AF;margin-bottom:4px">${data.ad.headline||''}</div>
+          <div style="font-size:0.78rem;color:#374151;line-height:1.6">${data.ad.body||''}</div>
+          ${data.ad.cta ? `<div style="margin-top:8px;display:inline-block;background:#0066FF;color:white;border-radius:7px;padding:5px 14px;font-size:0.72rem;font-weight:700">${data.ad.cta}</div>` : ''}
+        </div>
+      </div>` : ''}
+      ${data.social ? `
+      <div>
+        <div style="font-size:0.65rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">💬 ${channel} Message</div>
+        <div style="background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:12px;padding:14px 16px;font-size:0.78rem;color:#374151;line-height:1.6;white-space:pre-wrap">${data.social||''}</div>
+        <button onclick="navigator.clipboard.writeText('${(data.social||'').replace(/\n/g,'\\n').replace(/'/g,"\\'")}').then(()=>showToast('📋 Message copied!'))" style="margin-top:6px;padding:5px 12px;background:white;border:1px solid #E5E7EB;border-radius:7px;font-size:0.65rem;font-weight:600;color:#6B7280;cursor:pointer">📋 Copy Message</button>
+      </div>` : ''}`;
+  } catch(err) {
+    document.getElementById('reec-loading').innerHTML = `<div style="color:#DC2626;font-size:0.8rem;text-align:center">Failed to generate copy — please try again</div>`;
+  }
+};
+
+// ── Launch template ───────────────────────────────────────────────────────────
+window.launchReEngageTemplate = function(id, title, count) {
+  showToast(`🚀 "${title}" campaign launched for ${count} leads — tracking in Results`);
+};
+
+// ── Launch custom sequence ────────────────────────────────────────────────────
+window.launchCustomSequence = function() {
+  const highPri = (window._socialPosts||[]).length;
+  showToast(`🚀 Custom ${(window._reEngageSeq||[]).length}-step sequence launched for high-priority leads!`);
+};
+
+// ── Generate sequence content ─────────────────────────────────────────────────
+window.generateSequenceContent = async function() {
+  const btn = document.getElementById('genSeqBtn');
+  if (btn) { btn.disabled=true; btn.textContent='⏳ Generating…'; }
+  const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
+  const industry = analysisData?.industry?.name || 'your industry';
+  const seq      = window._reEngageSeq || [];
+  try {
+    for (let i = 0; i < seq.length; i++) {
+      const s = seq[i];
+      const res = await fetch('/api/reengage-copy', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ name:'[First Name]', company:'[Company]', channel:s.channel, reason:'inactivity', value:1200, domain, industry, step:s.label, tone:s.tone, sequenceStep:true })
+      });
+      const d = await res.json();
+      if (s.channel === 'Email' && d.email) {
+        seq[i].msg = `Subject: ${d.email.subject||''}\n\n${d.email.body||''}`;
+      } else if (d.social) {
+        seq[i].msg = d.social;
+      } else if (d.ad) {
+        seq[i].msg = `${d.ad.headline||''}\n\n${d.ad.body||''}\n\n${d.ad.cta||''}`;
+      }
+    }
+    showToast('✅ All sequence steps generated!');
+  } catch(e) {
+    showToast('⚠️ Generation failed — please retry');
+  }
+  if (btn) { btn.disabled=false; btn.textContent='✨ Generate All Content'; }
+  buildReEngagement();
+};
+
+// ── Generate counter-offer ────────────────────────────────────────────────────
+window.generateCounterOffer = async function(idx, compName, offer, angle) {
+  const btn = document.getElementById('counterBtn'+idx);
+  if (btn) { btn.disabled=true; btn.textContent='⏳ Generating…'; }
+  const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
+  const industry = analysisData?.industry?.name || 'your industry';
+  try {
+    const res  = await fetch('/api/reengage-copy', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ counterOffer:true, compName, offer, angle, domain, industry })
+    });
+    const data = await res.json();
+    const el   = document.getElementById('counterResult'+idx);
+    if (el && data.counter) {
+      el.style.display = 'block';
+      el.innerHTML = `<div style="background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:1.5px solid #FDE68A;border-radius:12px;padding:16px">
+        <div style="font-size:0.65rem;font-weight:700;color:#D97706;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">🎯 Your Counter-Offer Strategy</div>
+        <div style="font-size:0.82rem;color:#374151;line-height:1.7;white-space:pre-wrap">${data.counter}</div>
+      </div>`;
+    }
+  } catch(e) {}
+  if (btn) { btn.disabled=false; btn.textContent='🎯 Generate Counter-Offer'; }
+};

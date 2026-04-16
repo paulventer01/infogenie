@@ -1708,6 +1708,74 @@ app.post('/api/ai-social-caption', async (req, res) => {
   }
 });
 
+// ── POST /api/reengage-copy ──────────────────────────────────────────────────
+app.post('/api/reengage-copy', async (req, res) => {
+  try {
+    const { name='[First Name]', company='[Company]', channel='Email', reason='inactivity', value=1000,
+            domain='yourdomain.com', industry='your industry', step='', tone='', sequenceStep=false,
+            counterOffer=false, compName='', offer='', angle='' } = req.body;
+
+    if (counterOffer) {
+      const prompt = `You are a senior marketing strategist for ${domain} in the ${industry} space.
+Competitor "${compName}" is currently offering: "${offer}" (steal angle: ${angle}).
+Write a 3-paragraph counter-offer strategy for ${domain} to win back leads that switched to ${compName}.
+Be specific, direct, and tactical. Include:
+1. How ${domain} should position itself against this specific offer
+2. A concrete win-back offer or value prop to counter "${offer}"
+3. The exact messaging angle for re-engagement outreach
+
+Keep it under 200 words. Return only the strategy text, no headings.`;
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o', max_tokens: 350,
+        messages: [
+          { role: 'system', content: 'You are a strategic marketing consultant specialising in competitive re-engagement. Be specific and actionable.' },
+          { role: 'user', content: prompt }
+        ]
+      });
+      return res.json({ counter: completion.choices[0]?.message?.content?.trim() || '' });
+    }
+
+    const context = sequenceStep
+      ? `This is step "${step}" in a re-engagement sequence. Tone: ${tone}.`
+      : `This lead has been dormant for some time. Reason they may have left: ${reason}. Their estimated value: $${value}.`;
+
+    const prompt = `You are a world-class re-engagement copywriter for ${domain} (${industry} industry).
+Contact: ${name} at ${company}.
+${context}
+Primary outreach channel: ${channel}.
+
+Generate re-engagement copy in JSON format:
+{
+  "email": { "subject": "...", "body": "..." },
+  "ad": { "headline": "...", "body": "...", "cta": "..." },
+  "social": "..."
+}
+
+Rules:
+- email.body: 3–4 short paragraphs, personal, empathetic, clear value, soft CTA. Max 180 words.
+- ad: headline max 8 words, body max 2 sentences, strong CTA button text.
+- social: LinkedIn/social DM, max 80 words, value-first, no hard sell.
+- Use ${name}'s name. Reference ${domain} naturally. Never mention competitor names.
+- Tone: warm, human, professional. ${tone ? 'Requested tone: '+tone+'.' : ''}
+Return valid JSON only.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o', max_tokens: 700,
+      messages: [
+        { role: 'system', content: 'You are an expert re-engagement copywriter. Return valid JSON only, no markdown code fences.' },
+        { role: 'user', content: prompt }
+      ]
+    });
+
+    let raw = completion.choices[0]?.message?.content?.trim() || '{}';
+    raw = raw.replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/```$/,'').trim();
+    const parsed = JSON.parse(raw);
+    res.json(parsed);
+  } catch(err) {
+    res.status(500).json({ error: err.message, email: { subject: 'We miss you', body: 'Hi there,\n\nWe noticed you\'ve been away for a while and wanted to reach out personally.\n\nA lot has changed since you last visited — and we\'d love to show you what\'s new.\n\nWould you be open to a quick 10-minute call this week?\n\nBest,\nThe Team' }, ad: { headline: 'We\'d love to have you back', body: 'See what\'s new — you\'re just one click away.', cta: 'Come Back Now' }, social: 'Hi [Name], hope things are going well at [Company]! I\'d love to reconnect and share what\'s new with us. Worth a quick chat?' });
+  }
+});
+
 // ── POST /api/ai-attack-plan ─────────────────────────────────────────────────
 app.post('/api/ai-attack-plan', async (req, res) => {
   try {

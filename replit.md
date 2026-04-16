@@ -1,7 +1,7 @@
 # InfoGenie — AI Autonomous Marketing Intelligence Platform
 
 ## Overview
-InfoGenie is a comprehensive AI-powered marketing intelligence and campaign automation platform built as a static single-page application. It enables businesses to analyse competitor marketing strategies, generate high-performing ad campaigns, and autonomously optimise results.
+InfoGenie is a comprehensive AI-powered marketing intelligence and campaign automation platform built as a static single-page application. It enables businesses to analyse competitor marketing strategies, generate high-performing ad campaigns, autonomously optimise results, and re-engage lapsed leads and customers.
 
 ## Architecture
 - **Type**: Node.js/Express backend + Static SPA frontend
