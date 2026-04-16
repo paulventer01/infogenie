@@ -4125,7 +4125,7 @@ window.openBuildContentModal = function(topic, intent) {
         <div style="font-size:0.7rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Content Type</div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px" id="bcTypeGrid">
           ${types.map(t=>`
-            <button onclick="window._bcType='${t.id}';document.querySelectorAll('.bcTypeBtn').forEach(b=>b.style.background='rgba(255,255,255,.05)');this.style.background='rgba(0,201,200,.15)';this.style.borderColor='#00C9C8'"
+            <button onclick="window._bcType='${t.id}';document.querySelectorAll('.bcTypeBtn').forEach(b=>{b.style.background='rgba(255,255,255,.05)';b.style.borderColor='rgba(255,255,255,.1)'});this.style.background='rgba(0,201,200,.15)';this.style.borderColor='#00C9C8';if(window._bcContent){runBuildContent('${topic.replace(/'/g,"\\'").replace(/"/g,'\\"')}','${intent.replace(/'/g,"\\'").replace(/"/g,'\\"')}')}"
               class="bcTypeBtn" style="padding:10px 8px;background:${t.id==='article'?'rgba(0,201,200,.15)':'rgba(255,255,255,.05)'};border:1.5px solid ${t.id==='article'?'#00C9C8':'rgba(255,255,255,.1)'};border-radius:10px;color:white;font-size:0.7rem;font-weight:700;cursor:pointer;text-align:center;transition:all .15s">
               <div style="font-size:1rem;margin-bottom:3px">${t.label.split(' ')[0]}</div>
               <div>${t.label.split(' ').slice(1).join(' ')}</div>
@@ -4170,15 +4170,21 @@ window.runBuildContent = async function(topic, intent) {
   if (copyBtn) copyBtn.style.display = 'none';
   if (dlBtn)   dlBtn.style.display = 'none';
 
+  // Render spinner ONCE — never overwrite output.innerHTML in the tick
+  output.innerHTML = `<div style="text-align:center;padding:40px 16px">
+    <div style="width:44px;height:44px;border:3px solid rgba(0,201,200,.2);border-top-color:#00C9C8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px"></div>
+    <div style="font-size:0.85rem;font-weight:700;color:white;margin-bottom:5px">Building your content… <span id="bcSecSpan" style="color:#00C9C8">0s</span></div>
+    <div style="font-size:0.72rem;color:rgba(255,255,255,.35)">GPT-4o writing the article · Claude Sonnet adding expert insights</div>
+  </div>`;
+
+  // Tick: only update the seconds span, never touch output.innerHTML again
+  if (window._bcTick) clearInterval(window._bcTick);
   let sec = 0;
-  const tick = setInterval(() => {
+  window._bcTick = setInterval(() => {
     sec++;
     if (status) status.textContent = `GPT-4o + Claude Sonnet generating… ${sec}s`;
-    output.innerHTML = `<div style="text-align:center;padding:40px 16px">
-      <div style="width:44px;height:44px;border:3px solid rgba(0,201,200,.2);border-top-color:#00C9C8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px"></div>
-      <div style="font-size:0.85rem;font-weight:700;color:white;margin-bottom:5px">Building your content… <span style="color:#00C9C8">${sec}s</span></div>
-      <div style="font-size:0.72rem;color:rgba(255,255,255,.35)">GPT-4o writing the article · Claude Sonnet adding expert insights</div>
-    </div>`;
+    const s = document.getElementById('bcSecSpan');
+    if (s) s.textContent = sec + 's';
   }, 1000);
 
   try {
@@ -4187,7 +4193,7 @@ window.runBuildContent = async function(topic, intent) {
       body: JSON.stringify({ topic, intent, domain, industry, contentType })
     });
     const data = await resp.json();
-    clearInterval(tick);
+    clearInterval(window._bcTick); window._bcTick = null;
     if (genBtn) { genBtn.disabled = false; genBtn.textContent = '🔄 Regenerate'; }
 
     if (!data.article) throw new Error(data.error || 'No content returned');
@@ -4244,7 +4250,7 @@ window.runBuildContent = async function(topic, intent) {
     if (dlBtn)   dlBtn.style.display = 'inline-flex';
 
   } catch(err) {
-    clearInterval(tick);
+    clearInterval(window._bcTick); window._bcTick = null;
     if (genBtn) { genBtn.disabled = false; genBtn.textContent = '🔄 Try Again'; }
     output.innerHTML = `<div style="text-align:center;padding:32px;color:#EF4444;font-size:0.82rem">⚠️ ${err.message}</div>`;
     if (status) status.textContent = 'Generation failed';
@@ -4253,8 +4259,24 @@ window.runBuildContent = async function(topic, intent) {
 
 window.bcCopy = function() {
   if (!window._bcContent) return;
-  navigator.clipboard.writeText(window._bcContent).then(() => showToast('📋 Content copied to clipboard!'));
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(window._bcContent)
+      .then(() => showToast('📋 Content copied to clipboard!'))
+      .catch(() => _bcCopyFallback());
+  } else {
+    _bcCopyFallback();
+  }
 };
+function _bcCopyFallback() {
+  const ta = document.createElement('textarea');
+  ta.value = window._bcContent || '';
+  ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); showToast('📋 Content copied to clipboard!'); }
+  catch(e) { showToast('⚠️ Copy not supported here — use Download instead'); }
+  document.body.removeChild(ta);
+}
 
 window.bcDownload = function(topic) {
   if (!window._bcContent) return;
