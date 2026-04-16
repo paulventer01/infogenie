@@ -9376,6 +9376,7 @@ function buildBattlePlan() {
     <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-bottom:1px solid rgba(255,255,255,.08);padding:22px 28px">
       <div style="max-width:1200px;margin:0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
         <div>
+          <div style="font-size:0.6rem;font-weight:800;color:rgba(0,201,200,.55);letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px">Analyse › Battle Plan</div>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
             <span style="font-size:1.4rem">⚔️</span>
             <h1 style="font-family:'Sora',sans-serif;font-size:1.35rem;font-weight:900;color:white;margin:0">Battle Plan</h1>
@@ -13567,6 +13568,7 @@ function buildAgency() {
     <div style="position:absolute;bottom:-60px;right:100px;width:160px;height:160px;background:rgba(255,255,255,.04);border-radius:50%"></div>
     <div style="position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
       <div>
+        <div style="font-size:0.6rem;font-weight:800;color:rgba(255,255,255,.45);letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Grow › Agency</div>
         <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Agency Hub · ${brand.name}</div>
         <div style="font-family:'Space Grotesk',sans-serif;font-size:1.65rem;font-weight:800;color:white;line-height:1.2;margin-bottom:8px">Manage Every Client.<br>Deliver Branded Results.</div>
         <div style="font-size:0.84rem;color:rgba(255,255,255,.7);max-width:460px">Run InfoGenie for multiple clients from one dashboard. Generate white-label reports, schedule automatic sends, and switch context in one click.</div>
@@ -14216,6 +14218,7 @@ function buildAutomations() {
     <div style="position:absolute;bottom:-50px;right:80px;width:150px;height:150px;background:rgba(255,255,255,.04);border-radius:50%"></div>
     <div style="position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
       <div>
+        <div style="font-size:0.6rem;font-weight:800;color:rgba(255,255,255,.5);letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Grow › Automations</div>
         <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Automation Center</div>
         <div style="font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:800;color:white;line-height:1.2;margin-bottom:8px">Your Marketing<br>Runs Itself</div>
         <div style="font-size:0.85rem;color:rgba(255,255,255,.75);max-width:480px">Activate any automation to put it on autopilot. InfoGenie monitors, decides, and acts — so you don't have to.</div>
@@ -14378,6 +14381,7 @@ function buildReEngagement() {
     <div style="position:absolute;top:-30px;right:-30px;width:200px;height:200px;background:rgba(255,255,255,.05);border-radius:50%"></div>
     <div style="position:absolute;bottom:-50px;right:60px;width:150px;height:150px;background:rgba(255,255,255,.04);border-radius:50%"></div>
     <div style="position:relative;z-index:1">
+      <div style="font-size:0.6rem;font-weight:800;color:rgba(255,255,255,.55);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">Grow › Re-Engage</div>
       <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Re-Engagement Hub</div>
       <div style="font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:800;color:white;line-height:1.2;margin-bottom:8px">Turn Lost Leads Into<br>Revenue — Automatically</div>
       <div style="font-size:0.85rem;color:rgba(255,255,255,.75);max-width:480px">AI-identifies your highest-value lapsed contacts, generates personalised win-back copy across email, ads, and social — then launches re-engagement campaigns directly from InfoGenie.</div>

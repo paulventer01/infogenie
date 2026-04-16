@@ -43,32 +43,44 @@
         <button class="btn-nav-analyse" id="navAnalyseBtn">+ Analyse</button>
       </div>
     </div>
-    <!-- Row 2: all nav links -->
+    <!-- Row 2: all nav links — grouped by workflow stage -->
     <div class="nav-links" id="navLinks">
-      <!-- Core -->
+
+      <!-- ── ANALYSE: understand the market ── -->
+      <span class="nav-group-label">Analyse</span>
       <a href="#" class="nav-link" data-view="dashboard">Dashboard</a>
       <a href="#" class="nav-link" data-view="competitors">Competitors</a>
-      <a href="#" class="nav-link" data-view="campaigns">Campaigns</a>
-      <a href="#" class="nav-link" data-view="audience">Audience</a>
-      <a href="#" class="nav-link" data-view="creative">AI Creative</a>
-      <span class="nav-sep"></span>
-      <!-- Intelligence -->
       <a href="#" class="nav-link nav-link-intel" data-view="intelligence">Intelligence</a>
+      <a href="#" class="nav-link" data-view="reddit" style="color:#FF6B35">🔴 Reddit</a>
+      <a href="#" class="nav-link" data-view="battleplan">⚔️ Battle Plan</a>
+
+      <span class="nav-sep"></span>
+
+      <!-- ── CREATE: build ads & content ── -->
+      <span class="nav-group-label">Create</span>
+      <a href="#" class="nav-link" data-view="creative">AI Creative</a>
+      <a href="#" class="nav-link" data-view="campaigns">Campaigns</a>
+      <a href="#" class="nav-link" data-view="content">Content AI</a>
+      <a href="#" class="nav-link" data-view="social">Social</a>
+
+      <span class="nav-sep"></span>
+
+      <!-- ── REACH: distribute to audiences ── -->
+      <span class="nav-group-label">Reach</span>
+      <a href="#" class="nav-link" data-view="audience">Audience</a>
       <a href="#" class="nav-link" data-view="advertise">Advertise</a>
       <a href="#" class="nav-link" data-view="aivisibility">AI Visibility</a>
-      <a href="#" class="nav-link" data-view="reddit" style="color:#FF6B35">🔴 Reddit</a>
+
       <span class="nav-sep"></span>
-      <!-- Content & Social -->
-      <a href="#" class="nav-link" data-view="social">Social</a>
-      <a href="#" class="nav-link" data-view="content">Content AI</a>
+
+      <!-- ── GROW: track, re-engage & scale ── -->
+      <span class="nav-group-label">Grow</span>
       <a href="#" class="nav-link" data-view="results">Results</a>
-      <span class="nav-sep"></span>
-      <!-- Advanced -->
-      <a href="#" class="nav-link" data-view="battleplan" style="color:#00C9C8">⚔️ Battle Plan</a>
       <a href="#" class="nav-link" data-view="reengage" style="color:#F59E0B">🔁 Re-Engage</a>
       <a href="#" class="nav-link" data-view="automations" style="color:#10B981">⚡ Auto</a>
       <a href="#" class="nav-link" data-view="agency" style="color:#818CF8">🏢 Agency</a>
       <a href="#" class="nav-link" data-view="settings">Settings</a>
+
     </div>
   </div>
 </nav>
@@ -315,7 +327,7 @@
     <div class="container">
       <div class="vh-inner">
         <div>
-          <div class="breadcrumb">Dashboard</div>
+          <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Dashboard</div>
           <h2 class="view-title" id="dashTitle">Intelligence Report</h2>
           <p class="view-sub" id="dashSub">Full competitor analysis and AI recommendations</p>
         </div>
@@ -382,7 +394,7 @@
     <div class="container">
       <div class="vh-inner">
         <div>
-          <div class="breadcrumb">Competitors</div>
+          <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Competitors</div>
           <h2 class="view-title">Competitor Intelligence Engine</h2>
           <p class="view-sub">Deep analysis of campaigns, audiences, and performance metrics for each competitor</p>
         </div>
@@ -404,7 +416,7 @@
     <div class="container">
       <div class="vh-inner">
         <div>
-          <div class="breadcrumb">Campaign Analysis</div>
+          <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Campaigns</div>
           <h2 class="view-title">Campaign Intelligence & Recommendations</h2>
           <p class="view-sub">AI-generated campaign improvements based on real competitor data</p>
         </div>
@@ -423,7 +435,7 @@
     <div class="container">
       <div class="vh-inner">
         <div>
-          <div class="breadcrumb">Audience</div>
+          <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Audience</div>
           <h2 class="view-title">Audience Intelligence</h2>
           <p class="view-sub">Identify and automatically target the highest-converting audience segments</p>
         </div>
@@ -442,7 +454,7 @@
     <div class="container">
       <div class="vh-inner">
         <div>
-          <div class="breadcrumb">AI Creative</div>
+          <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> AI Creative</div>
           <h2 class="view-title">AI Creative Generation Engine</h2>
           <p class="view-sub">Ad copy, headlines, and campaign briefs generated from real competitor intelligence</p>
         </div>
@@ -461,7 +473,7 @@
     <div class="container">
       <div class="vh-inner">
         <div>
-          <div class="breadcrumb">Intelligence Hub</div>
+          <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Intelligence Hub</div>
           <h2 class="view-title">⚡ Competitive Intelligence Engine</h2>
           <p class="view-sub">Exclusive InfoGenie capabilities — real-time signals, predictive moves, keyword gaps, and your 90-day category domination roadmap</p>
         </div>
@@ -507,7 +519,7 @@
     <div class="container">
       <div class="vh-inner">
         <div>
-          <div class="breadcrumb">InfoGenie Results</div>
+          <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> Results</div>
           <h2 class="view-title">Campaign Results & Action History</h2>
           <p class="view-sub">Live tracking of InfoGenie's actions, launched campaigns, and performance improvements</p>
         </div>
@@ -526,7 +538,7 @@
     <div class="container">
       <div class="vh-inner">
         <div>
-          <div class="breadcrumb" style="color:#00C9C8">Advertise</div>
+          <div class="breadcrumb" style="color:#00C9C8"><span class="bc-group" style="color:rgba(0,229,255,.7)">Reach</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Advertise</div>
           <h2 class="view-title">Multi-Channel Advertising Hub</h2>
           <p class="view-sub">Lead-generation ads across 20+ channels — connected accounts, 3-step campaign creation, and AI-powered optimisation</p>
         </div>
@@ -545,7 +557,7 @@
     <div class="container">
       <div class="vh-inner">
         <div>
-          <div class="breadcrumb" style="color:#FFD4C2">Reddit Intelligence</div>
+          <div class="breadcrumb" style="color:#FFD4C2"><span class="bc-group" style="color:rgba(255,180,150,.8)">Analyse</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Reddit</div>
           <h2 class="view-title">Reddit &amp; Community Intelligence</h2>
           <p class="view-sub">Monitor brand &amp; competitor mentions, surface SERP threads, score engagement opportunities, and deploy AI replies in your brand voice</p>
         </div>
@@ -564,7 +576,7 @@
     <div class="container">
       <div class="vh-inner">
         <div>
-          <div class="breadcrumb" style="color:#C4B5FD">Social</div>
+          <div class="breadcrumb" style="color:#C4B5FD"><span class="bc-group" style="color:rgba(196,181,253,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Social</div>
           <h2 class="view-title">Social Content Generator, Calendar & Scheduling</h2>
           <p class="view-sub">Create, schedule, and publish AI-generated content across all social platforms from one place</p>
         </div>
@@ -583,7 +595,7 @@
     <div class="container">
       <div class="vh-inner">
         <div>
-          <div class="breadcrumb" style="color:#6EE7B7">Content AI</div>
+          <div class="breadcrumb" style="color:#6EE7B7"><span class="bc-group" style="color:rgba(110,231,183,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Content AI</div>
           <h2 class="view-title">Content Intelligence & AI Visibility</h2>
           <p class="view-sub">Spot traffic drops, keyword shifts & LLM citation gaps — build topical clusters and content plans that dominate AI search results</p>
         </div>
@@ -602,7 +614,7 @@
     <div class="container">
       <div class="vh-inner">
         <div>
-          <div class="breadcrumb" style="color:#A5B4FC">AI Visibility</div>
+          <div class="breadcrumb" style="color:#A5B4FC"><span class="bc-group" style="color:rgba(165,180,252,.8)">Reach</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> AI Visibility</div>
           <h2 class="view-title">AI Visibility Intelligence</h2>
           <p class="view-sub">Built to make your content visible, trustworthy, and indexable by AI engines — track citations across ChatGPT, Claude, Gemini & every major LLM, and get GPT-4 recommendations to dominate AI search</p>
         </div>
@@ -621,7 +633,7 @@
     <div class="container">
       <div class="vh-inner">
         <div>
-          <div class="breadcrumb">Settings</div>
+          <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> Settings</div>
           <h2 class="view-title">Integrations & Settings</h2>
           <p class="view-sub">Connect APIs, AI models, and tools to power InfoGenie's full intelligence engine</p>
         </div>
