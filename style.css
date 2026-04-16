@@ -4449,10 +4449,15 @@ p, span, label, td, li {
   position: relative !important;
 }
 .nav-group-btn .ngb-icon {
-  font-size: 0.88rem !important;
-  line-height: 1 !important;
-  opacity: .75 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 14px !important;
+  height: 14px !important;
+  flex-shrink: 0 !important;
+  opacity: .65 !important;
   transition: opacity .15s !important;
+  color: currentColor !important;
 }
 .nav-group-btn .ngb-label {
   font-size: 0.8rem !important;
