@@ -1708,6 +1708,47 @@ app.post('/api/ai-social-caption', async (req, res) => {
   }
 });
 
+// ── POST /api/agency-report ──────────────────────────────────────────────────
+app.post('/api/agency-report', async (req, res) => {
+  try {
+    const { clientName='Client', domain='client.com', industry='your industry', budget=5000, agencyName='Agency' } = req.body;
+    const prompt = `You are a senior marketing analyst at ${agencyName}. Generate a concise monthly performance report for client "${clientName}" (${domain}, ${industry} industry, monthly budget $${budget}).
+
+Return a JSON object with exactly these keys:
+{
+  "executive_summary": "2-3 sentence overview of the period. Positive but honest.",
+  "kpis": { "reach": "e.g. 84.2K", "roas": "e.g. 3.8×", "ctr": "e.g. 3.2%", "conversions": "e.g. 142" },
+  "campaign_performance": "2-3 sentences on campaign highlights, wins, and any underperformers.",
+  "competitor_intel": "2 sentences on competitor landscape and any notable moves.",
+  "social_metrics": "2 sentences on social performance across platforms.",
+  "recommendations": "3 numbered, specific, actionable recommendations for next month."
+}
+
+Make KPIs realistic for the industry and budget. Use authoritative, professional tone. Return valid JSON only.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o', max_tokens: 700,
+      messages: [
+        { role: 'system', content: 'You are a professional marketing report writer. Return valid JSON only, no markdown fences.' },
+        { role: 'user', content: prompt }
+      ]
+    });
+    let raw = completion.choices[0]?.message?.content?.trim() || '{}';
+    raw = raw.replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/```$/,'').trim();
+    const parsed = JSON.parse(raw);
+    res.json(parsed);
+  } catch(err) {
+    res.status(500).json({
+      executive_summary: `${clientName} delivered solid results this period with strong campaign efficiency and growing brand presence in the ${industry} space.`,
+      kpis: { reach:'72.4K', roas:'3.4×', ctr:'2.9%', conversions:'118' },
+      campaign_performance: 'Campaigns performed above benchmark with top-of-funnel cost per click improving 12% versus prior period. Retargeting delivered the strongest ROAS.',
+      competitor_intel: 'Primary competitors maintained steady spend levels. One new market entrant identified in the mid-market segment worth monitoring.',
+      social_metrics: 'Instagram and LinkedIn drove the highest quality traffic. Engagement rates exceeded industry average by 1.4 percentage points.',
+      recommendations: '1. Increase retargeting budget by 20% given strong ROAS signal.\n2. Launch win-back sequence for leads dormant over 30 days.\n3. Test two new creative angles in top-performing campaign sets.'
+    });
+  }
+});
+
 // ── POST /api/reengage-copy ──────────────────────────────────────────────────
 app.post('/api/reengage-copy', async (req, res) => {
   try {

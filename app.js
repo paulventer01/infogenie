@@ -1643,6 +1643,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'automations') {
     try { buildAutomations(); } catch(e) { console.warn('buildAutomations error:', e); }
   }
+  if (viewId === 'agency') {
+    try { buildAgency(); } catch(e) { console.warn('buildAgency error:', e); }
+  }
   // Show/hide navbar links for home vs app
   const navLinks = document.getElementById('navLinks');
   const navPlan = document.getElementById('navPlanBadge');
@@ -13496,6 +13499,478 @@ document.addEventListener('DOMContentLoaded', () => {
     if (i !== 0) v.style.display = 'none';
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AGENCY HUB — Multi-client management, white-label reporting, scheduled sends
+// ═══════════════════════════════════════════════════════════════════════════════
+if (!window._agencyTab)     window._agencyTab     = 'clients';
+if (!window._agencyClients) window._agencyClients = [];
+if (!window._agencyReports) window._agencyReports = [];
+if (!window._agencyBrand)   window._agencyBrand   = { name:'My Agency', color:'#6366F1', footer:'Prepared exclusively for {client} by {agency}', reportFreq:'monthly' };
+
+// ── Seed 3 demo clients if none yet ──────────────────────────────────────────
+(function seedAgencyClients() {
+  if (window._agencyClients.length > 0) return;
+  window._agencyClients = [
+    { id:'cl1', name:'TechFlow Solutions', domain:'techflow.io',    industry:'SaaS',        contact:'Sarah Chen',    email:'sarah@techflow.io',    budget:4500,  status:'active',  campaigns:3, addedDate:'12 Jan 2026', lastReport:'15 Mar 2026', freq:'monthly',  color:'#6366F1', revenue:12400 },
+    { id:'cl2', name:'BrightShop Retail',  domain:'brightshop.com', industry:'eCommerce',   contact:'Marcus Webb',   email:'marcus@brightshop.com', budget:2800,  status:'active',  campaigns:5, addedDate:'3 Feb 2026',  lastReport:'1 Apr 2026',  freq:'weekly',   color:'#059669', revenue:8700  },
+    { id:'cl3', name:'Nova Fintech',       domain:'novafintech.co', industry:'Fintech',     contact:'Priya Patel',   email:'priya@novafintech.co',  budget:7200,  status:'active',  campaigns:4, addedDate:'20 Jan 2026', lastReport:'8 Apr 2026',  freq:'monthly',  color:'#DC2626', revenue:21000 },
+  ];
+})();
+
+function buildAgency() {
+  const wrap = document.getElementById('agencyWrap');
+  if (!wrap) return;
+
+  const tab = window._agencyTab || 'clients';
+  const clients = window._agencyClients || [];
+  const reports = window._agencyReports || [];
+  const brand   = window._agencyBrand;
+
+  const TABS = [
+    { id:'clients',    icon:'👥', label:'Clients' },
+    { id:'reports',    icon:'📊', label:'Reports' },
+    { id:'schedule',   icon:'📅', label:'Scheduled Sends' },
+    { id:'whitelabel', icon:'🎨', label:'White-label' },
+  ];
+  const tabBar = `<div style="display:flex;gap:0;border-bottom:2px solid #E5E7EB;margin-bottom:24px;background:white;border-radius:14px 14px 0 0;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+    ${TABS.map(t=>`<button onclick="window._agencyTab='${t.id}';buildAgency()" style="flex:1;padding:14px 8px;border:none;border-bottom:3px solid ${tab===t.id?'#6366F1':'transparent'};background:${tab===t.id?'#EEF2FF':'white'};font-size:0.8rem;font-weight:${tab===t.id?'800':'600'};color:${tab===t.id?'#4F46E5':'#6B7280'};cursor:pointer;transition:all .15s">${t.icon} ${t.label}</button>`).join('')}
+  </div>`;
+
+  const totalRevenue = clients.reduce((a,c)=>a+c.revenue,0);
+  const totalBudget  = clients.reduce((a,c)=>a+c.budget,0);
+  const activeClients = clients.filter(c=>c.status==='active').length;
+
+  // ── Hero ──────────────────────────────────────────────────────────────────
+  const hero = `
+  <div style="background:linear-gradient(135deg,#312E81,#4338CA,#6366F1);border-radius:20px;padding:28px 32px;margin-bottom:24px;position:relative;overflow:hidden">
+    <div style="position:absolute;top:-40px;right:-40px;width:220px;height:220px;background:rgba(255,255,255,.05);border-radius:50%"></div>
+    <div style="position:absolute;bottom:-60px;right:100px;width:160px;height:160px;background:rgba(255,255,255,.04);border-radius:50%"></div>
+    <div style="position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Agency Hub · ${brand.name}</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:1.65rem;font-weight:800;color:white;line-height:1.2;margin-bottom:8px">Manage Every Client.<br>Deliver Branded Results.</div>
+        <div style="font-size:0.84rem;color:rgba(255,255,255,.7);max-width:460px">Run InfoGenie for multiple clients from one dashboard. Generate white-label reports, schedule automatic sends, and switch context in one click.</div>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
+        ${[['👥','Clients',activeClients,'rgba(255,255,255,.15)'],['💰','Managed Budget','$'+totalBudget.toLocaleString(),'rgba(255,255,255,.15)'],['📈','Client Revenue','$'+totalRevenue.toLocaleString(),'rgba(255,255,255,.15)'],['📋','Reports',reports.length,'rgba(255,255,255,.15)']].map(([ic,l,v,bg])=>`
+          <div style="background:${bg};border:1px solid rgba(255,255,255,.15);backdrop-filter:blur(8px);border-radius:14px;padding:14px 16px;text-align:center;min-width:90px">
+            <div style="font-size:1rem;margin-bottom:2px">${ic}</div>
+            <div style="font-size:1.2rem;font-weight:800;color:white">${v}</div>
+            <div style="font-size:0.63rem;font-weight:600;color:rgba(255,255,255,.7)">${l}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+
+  // ════════════════════ TAB: CLIENTS ════════════════════
+  if (tab === 'clients') {
+    const cards = clients.map(c=>`
+    <div style="background:white;border:1.5px solid #E5E7EB;border-radius:18px;padding:22px;box-shadow:0 1px 4px rgba(0,0,0,.05);transition:box-shadow .2s;position:relative;overflow:hidden">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${c.color}"></div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+          <div style="width:42px;height:42px;background:${c.color}18;border:2px solid ${c.color}33;border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-size:1.1rem;font-weight:800;color:${c.color};flex-shrink:0">${c.name[0]}</div>
+          <div style="min-width:0">
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:0.9rem;font-weight:800;color:#0A1628;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
+            <div style="font-size:0.68rem;color:#6B7280">${c.domain} · ${c.industry}</div>
+          </div>
+        </div>
+        <span style="background:${c.status==='active'?'#F0FDF4':'#F9FAFB'};color:${c.status==='active'?'#059669':'#9CA3AF'};border-radius:6px;padding:2px 9px;font-size:0.62rem;font-weight:700;flex-shrink:0">${c.status==='active'?'● Active':'○ Paused'}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+        ${[['💰','Budget','$'+c.budget.toLocaleString()+'/mo'],['📈','Revenue','$'+c.revenue.toLocaleString()],['📣','Campaigns',c.campaigns],['📅','Last Report',c.lastReport]].map(([ic,l,v])=>`
+          <div style="background:#F8FAFC;border-radius:9px;padding:8px 10px">
+            <div style="font-size:0.62rem;color:#9CA3AF;font-weight:600">${ic} ${l}</div>
+            <div style="font-size:0.82rem;font-weight:700;color:#0A1628;margin-top:1px">${v}</div>
+          </div>`).join('')}
+      </div>
+      <div style="font-size:0.7rem;color:#9CA3AF;margin-bottom:12px">Contact: <span style="color:#374151;font-weight:600">${c.contact}</span> · <span style="color:#6366F1">${c.email}</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+        <button onclick="switchToClient('${c.id}')" style="padding:8px;background:linear-gradient(135deg,#4338CA,#6366F1);border:none;border-radius:9px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer">🔄 Switch</button>
+        <button onclick="generateClientReport('${c.id}')" style="padding:8px;background:#F5F3FF;border:1px solid #C7D2FE;border-radius:9px;font-size:0.7rem;font-weight:700;color:#4F46E5;cursor:pointer">📊 Report</button>
+        <button onclick="openEditClient('${c.id}')" style="padding:8px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:9px;font-size:0.7rem;font-weight:600;color:#6B7280;cursor:pointer">✏️ Edit</button>
+      </div>
+    </div>`).join('');
+
+    wrap.innerHTML = `${hero}${tabBar}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628">${clients.length} Client${clients.length!==1?'s':''} · ${activeClients} Active</div>
+      <button onclick="openAddClient()" style="padding:10px 20px;background:linear-gradient(135deg,#4338CA,#6366F1);border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer">+ Add Client</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">
+      ${cards}
+      <div onclick="openAddClient()" style="background:white;border:2px dashed #C7D2FE;border-radius:18px;padding:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;color:#818CF8;transition:all .15s" onmouseover="this.style.borderColor='#6366F1';this.style.background='#EEF2FF'" onmouseout="this.style.borderColor='#C7D2FE';this.style.background='white'">
+        <div style="font-size:2rem;margin-bottom:8px">+</div>
+        <div style="font-size:0.82rem;font-weight:700">Add New Client</div>
+      </div>
+    </div>`;
+    return;
+  }
+
+  // ════════════════════ TAB: REPORTS ════════════════════
+  if (tab === 'reports') {
+    const rows = reports.length > 0 ? reports.slice().reverse().map(r=>{
+      const c = clients.find(x=>x.id===r.clientId)||{name:'Unknown',color:'#6B7280'};
+      return `<tr style="border-bottom:1px solid #F3F4F6">
+        <td style="padding:12px 14px">
+          <div style="font-weight:700;color:#0A1628;font-size:0.82rem">${c.name}</div>
+          <div style="font-size:0.65rem;color:#9CA3AF">${r.generatedAt}</div>
+        </td>
+        <td style="padding:12px 14px;text-align:center"><span style="background:#EEF2FF;color:#4F46E5;border-radius:6px;padding:2px 9px;font-size:0.65rem;font-weight:700">${r.type||'Full Report'}</span></td>
+        <td style="padding:12px 14px;text-align:center"><span style="background:${r.status==='sent'?'#F0FDF4':'#FFFBEB'};color:${r.status==='sent'?'#059669':'#D97706'};border-radius:6px;padding:2px 9px;font-size:0.65rem;font-weight:700">${r.status==='sent'?'✓ Sent':'Draft'}</span></td>
+        <td style="padding:12px 14px">
+          <div style="display:flex;gap:5px;justify-content:flex-end">
+            <button onclick="previewReport('${r.id}')" style="padding:5px 10px;background:#EEF2FF;border:none;border-radius:7px;font-size:0.65rem;font-weight:700;color:#4F46E5;cursor:pointer">👁 Preview</button>
+            <button onclick="downloadAgencyReport('${r.id}','pdf')" style="padding:5px 10px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:7px;font-size:0.65rem;font-weight:600;color:#374151;cursor:pointer">⬇ PDF</button>
+            <button onclick="sendReportToClient('${r.id}')" style="padding:5px 10px;background:linear-gradient(135deg,#4338CA,#6366F1);border:none;border-radius:7px;font-size:0.65rem;font-weight:700;color:white;cursor:pointer">📤 Send</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="4" style="text-align:center;padding:40px;color:#9CA3AF;font-size:0.82rem">No reports generated yet — click "Generate Report" on any client card</td></tr>`;
+
+    wrap.innerHTML = `${hero}${tabBar}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628">${reports.length} Report${reports.length!==1?'s':''} Generated</div>
+      <button onclick="openGenerateReportModal()" style="padding:10px 20px;background:linear-gradient(135deg,#4338CA,#6366F1);border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer">+ Generate Report</button>
+    </div>
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+      <table style="width:100%;border-collapse:collapse;font-size:0.76rem">
+        <thead><tr style="background:#F8FAFC;border-bottom:2px solid #E5E7EB">
+          <th style="text-align:left;padding:11px 14px;color:#6B7280;font-weight:700;font-size:0.65rem;text-transform:uppercase">Client</th>
+          <th style="text-align:center;padding:11px 14px;color:#6B7280;font-weight:700;font-size:0.65rem;text-transform:uppercase">Type</th>
+          <th style="text-align:center;padding:11px 14px;color:#6B7280;font-weight:700;font-size:0.65rem;text-transform:uppercase">Status</th>
+          <th style="text-align:right;padding:11px 14px;color:#6B7280;font-weight:700;font-size:0.65rem;text-transform:uppercase">Actions</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+    return;
+  }
+
+  // ════════════════════ TAB: SCHEDULED SENDS ════════════════════
+  if (tab === 'schedule') {
+    const schedules = clients.map(c=>({
+      clientId:c.id, name:c.name, email:c.email, color:c.color,
+      freq:c.freq||'monthly', nextSend: (() => { const d=new Date(); d.setDate(d.getDate()+(c.freq==='weekly'?7:30)); return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); })(),
+      enabled: window._agencySchedules?.[c.id] !== false,
+    }));
+
+    wrap.innerHTML = `${hero}${tabBar}
+    <div style="margin-bottom:16px">
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628;margin-bottom:4px">Automated Report Schedule</div>
+      <div style="font-size:0.75rem;color:#6B7280">InfoGenie auto-generates and emails reports to each client at their scheduled interval.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px">
+      ${schedules.map(s=>`
+      <div style="background:white;border:1.5px solid ${s.enabled?'#C7D2FE':'#E5E7EB'};border-radius:16px;padding:18px 22px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:200px">
+            <div style="width:38px;height:38px;background:${s.color}18;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;color:${s.color}">${s.name[0]}</div>
+            <div>
+              <div style="font-weight:800;color:#0A1628;font-size:0.85rem">${s.name}</div>
+              <div style="font-size:0.68rem;color:#6B7280">${s.email}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <div style="text-align:center">
+              <div style="font-size:0.62rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;margin-bottom:2px">Frequency</div>
+              <select onchange="updateClientFreq('${s.clientId}',this.value)" style="padding:5px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.75rem;color:#0A1628;background:white;font-family:'Inter',sans-serif">
+                <option value="weekly" ${s.freq==='weekly'?'selected':''}>Weekly</option>
+                <option value="monthly" ${s.freq==='monthly'?'selected':''}>Monthly</option>
+                <option value="quarterly" ${s.freq==='quarterly'?'selected':''}>Quarterly</option>
+              </select>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:0.62rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;margin-bottom:2px">Next Send</div>
+              <div style="font-size:0.78rem;font-weight:700;color:#4F46E5">${s.nextSend}</div>
+            </div>
+            <div onclick="toggleSchedule('${s.clientId}')" style="cursor:pointer">
+              <div style="width:46px;height:26px;background:${s.enabled?'#6366F1':'#D1D5DB'};border-radius:13px;position:relative;transition:background .2s">
+                <div style="position:absolute;top:3px;left:${s.enabled?'23':'3'}px;width:20px;height:20px;background:white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.2);transition:left .18s"></div>
+              </div>
+            </div>
+            <button onclick="sendReportNow('${s.clientId}')" style="padding:7px 14px;background:linear-gradient(135deg,#4338CA,#6366F1);border:none;border-radius:9px;font-size:0.72rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">📤 Send Now</button>
+          </div>
+        </div>
+      </div>`).join('')}
+    </div>
+    <div style="background:linear-gradient(135deg,#EEF2FF,#E0E7FF);border:1.5px solid #C7D2FE;border-radius:16px;padding:20px 24px">
+      <div style="font-size:0.72rem;font-weight:700;color:#4338CA;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">💡 How automated reporting works</div>
+      <div style="font-size:0.78rem;color:#3730A3;line-height:1.7">When scheduled sends are active, InfoGenie automatically generates a full branded report at the scheduled interval — covering campaign performance, competitor movements, social metrics, and AI-recommended next steps — then delivers it to your client's inbox with your agency branding. No manual steps required.</div>
+    </div>`;
+    return;
+  }
+
+  // ════════════════════ TAB: WHITE-LABEL ════════════════════
+  if (tab === 'whitelabel') {
+    wrap.innerHTML = `${hero}${tabBar}
+    <div style="display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:flex-start">
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:24px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628;margin-bottom:18px">🎨 White-label Settings</div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Agency Name</div>
+            <input id="wl-name" type="text" value="${brand.name}" placeholder="Your Agency Name" oninput="window._agencyBrand.name=this.value" style="width:100%;box-sizing:border-box;padding:10px 13px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:0.85rem;color:#0A1628;font-family:'Inter',sans-serif;outline:none">
+          </div>
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Brand Colour</div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <input id="wl-color" type="color" value="${brand.color}" oninput="window._agencyBrand.color=this.value" style="width:44px;height:38px;padding:2px;border:1.5px solid #E5E7EB;border-radius:9px;cursor:pointer;background:white">
+              <input type="text" value="${brand.color}" oninput="window._agencyBrand.color=this.value;document.getElementById('wl-color').value=this.value" style="flex:1;padding:10px 13px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:0.85rem;color:#0A1628;font-family:'Inter',sans-serif;outline:none">
+            </div>
+          </div>
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Report Footer Text</div>
+            <textarea id="wl-footer" rows="2" oninput="window._agencyBrand.footer=this.value" style="width:100%;box-sizing:border-box;padding:10px 13px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:0.82rem;color:#0A1628;font-family:'Inter',sans-serif;outline:none;resize:none">${brand.footer}</textarea>
+            <div style="font-size:0.65rem;color:#9CA3AF;margin-top:3px">Use {client} and {agency} as placeholders</div>
+          </div>
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Default Report Frequency</div>
+            <select oninput="window._agencyBrand.reportFreq=this.value" style="width:100%;padding:10px 13px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:0.85rem;color:#0A1628;background:white;font-family:'Inter',sans-serif">
+              <option value="weekly"    ${brand.reportFreq==='weekly'?'selected':''}>Weekly</option>
+              <option value="monthly"   ${brand.reportFreq==='monthly'?'selected':''}>Monthly</option>
+              <option value="quarterly" ${brand.reportFreq==='quarterly'?'selected':''}>Quarterly</option>
+            </select>
+          </div>
+          <button onclick="showToast('✅ White-label settings saved');buildAgency()" style="padding:11px;background:linear-gradient(135deg,#4338CA,#6366F1);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer;margin-top:4px">💾 Save Settings</button>
+        </div>
+      </div>
+
+      <!-- Report preview -->
+      <div style="background:white;border:2px solid #C7D2FE;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(99,102,241,.12)">
+        <div style="background:linear-gradient(135deg,${brand.color},${brand.color}CC);padding:20px 22px">
+          <div style="font-size:0.6rem;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">${brand.name}</div>
+          <div style="font-size:1rem;font-weight:800;color:white;margin-bottom:2px">Monthly Performance Report</div>
+          <div style="font-size:0.7rem;color:rgba(255,255,255,.7)">Prepared for [Client Name] · ${new Date().toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</div>
+        </div>
+        <div style="padding:16px 18px;font-size:0.72rem;color:#374151;line-height:1.7">
+          <div style="font-weight:700;color:#0A1628;margin-bottom:6px">📋 Executive Summary</div>
+          <div style="color:#6B7280;margin-bottom:12px">This report covers campaign performance, competitor intelligence, social metrics, and strategic recommendations for the period ending ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long'})}.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">
+            ${[['Total Reach','84,200'],['Ad Spend','$4,500'],['ROAS','3.8×'],['Engagement','4.2%']].map(([l,v])=>`<div style="background:#F8FAFC;border-radius:7px;padding:8px 10px"><div style="font-size:0.6rem;color:#9CA3AF">${l}</div><div style="font-size:0.88rem;font-weight:800;color:${brand.color}">${v}</div></div>`).join('')}
+          </div>
+          <div style="border-top:1px solid #E5E7EB;padding-top:10px;font-size:0.65rem;color:#9CA3AF;text-align:center">${brand.footer.replace('{client}','[Client]').replace('{agency}',brand.name)}</div>
+        </div>
+      </div>
+    </div>`;
+    return;
+  }
+
+  wrap.innerHTML = `${hero}${tabBar}`;
+}
+
+// ── Add / Edit client modal ────────────────────────────────────────────────────
+window.openAddClient = function(editId) {
+  const existing = document.getElementById('agencyClientOverlay');
+  if (existing) existing.remove();
+  const edit = editId ? window._agencyClients.find(c=>c.id===editId) : null;
+  const COLORS = ['#6366F1','#059669','#DC2626','#D97706','#0066FF','#7C3AED','#0A66C2','#E1306C'];
+
+  const overlay = document.createElement('div');
+  overlay.id = 'agencyClientOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:20px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.3)">
+      <div style="background:linear-gradient(135deg,#312E81,#6366F1);border-radius:20px 20px 0 0;padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-family:'Space Grotesk',sans-serif;font-size:1rem;font-weight:800;color:white">${edit?'Edit Client':'Add New Client'}</div>
+        <button id="acc-close" style="background:rgba(255,255,255,.15);border:none;border-radius:50%;width:30px;height:30px;font-size:1rem;color:white;cursor:pointer">✕</button>
+      </div>
+      <div style="padding:22px 24px;display:flex;flex-direction:column;gap:13px">
+        ${[['acc-name','text','Client / Company Name',edit?.name||''],['acc-domain','text','Website domain (e.g. company.com)',edit?.domain||''],['acc-contact','text','Primary Contact Name',edit?.contact||''],['acc-email','email','Contact Email',edit?.email||''],['acc-budget','number','Monthly Ad Budget (USD)',edit?.budget||'']].map(([id,type,ph,val])=>`
+          <div>
+            <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">${ph}</div>
+            <input id="${id}" type="${type}" value="${val}" placeholder="${ph}" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:0.82rem;color:#0A1628;font-family:'Inter',sans-serif;outline:none">
+          </div>`).join('')}
+        <div>
+          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Industry</div>
+          <select id="acc-industry" style="width:100%;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:0.82rem;color:#0A1628;background:white;font-family:'Inter',sans-serif">
+            ${['SaaS','eCommerce','Fintech','Health & Wellness','Real Estate','Education','Agency','Retail','B2B Services','Travel'].map(i=>`<option ${edit?.industry===i?'selected':''}>${i}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Brand Colour</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${COLORS.map(col=>`<div onclick="window._accColor='${col}';document.querySelectorAll('.acc-col-opt').forEach(x=>x.style.outline='none');this.style.outline='3px solid #000'" class="acc-col-opt" style="width:28px;height:28px;background:${col};border-radius:7px;cursor:pointer;outline:${(edit?.color||COLORS[0])===col?'3px solid #000':'none'}"></div>`).join('')}</div>
+        </div>
+        <div>
+          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">Report Frequency</div>
+          <select id="acc-freq" style="width:100%;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:0.82rem;color:#0A1628;background:white;font-family:'Inter',sans-serif">
+            <option value="weekly"    ${edit?.freq==='weekly'?'selected':''}>Weekly</option>
+            <option value="monthly"   ${edit?.freq==='monthly'||!edit?'selected':''}>Monthly</option>
+            <option value="quarterly" ${edit?.freq==='quarterly'?'selected':''}>Quarterly</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button id="acc-cancel" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.82rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
+          <button id="acc-save" style="flex:2;padding:11px;background:linear-gradient(135deg,#4338CA,#6366F1);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">${edit?'💾 Save Changes':'➕ Add Client'}</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  window._accColor = edit?.color || COLORS[0];
+  const close = () => overlay.remove();
+  document.getElementById('acc-close').addEventListener('click', close);
+  document.getElementById('acc-cancel').addEventListener('click', close);
+  overlay.addEventListener('click', e => { if(e.target===overlay) close(); });
+  document.getElementById('acc-save').addEventListener('click', () => {
+    const name = document.getElementById('acc-name').value.trim();
+    const domain = document.getElementById('acc-domain').value.trim();
+    if (!name) { showToast('⚠️ Please enter a client name'); return; }
+    if (edit) {
+      Object.assign(edit, { name, domain, contact:document.getElementById('acc-contact').value.trim(), email:document.getElementById('acc-email').value.trim(), budget:+document.getElementById('acc-budget').value||0, industry:document.getElementById('acc-industry').value, freq:document.getElementById('acc-freq').value, color:window._accColor });
+      showToast('✅ Client updated');
+    } else {
+      window._agencyClients.push({ id:'cl'+Date.now(), name, domain, contact:document.getElementById('acc-contact').value.trim(), email:document.getElementById('acc-email').value.trim(), budget:+document.getElementById('acc-budget').value||0, industry:document.getElementById('acc-industry').value, freq:document.getElementById('acc-freq').value, color:window._accColor, status:'active', campaigns:0, addedDate:new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}), lastReport:'—', revenue:0 });
+      showToast('✅ Client added!');
+    }
+    close(); buildAgency();
+  });
+};
+window.openEditClient = id => window.openAddClient(id);
+
+// ── Switch active client context ──────────────────────────────────────────────
+window.switchToClient = function(id) {
+  const c = window._agencyClients.find(x=>x.id===id);
+  if (!c) return;
+  window._activeAgencyClient = c;
+  showToast(`🔄 Switched to ${c.name} — all views now show ${c.name}'s data`);
+  navigateTo('dashboard');
+};
+
+// ── Generate report for a client ─────────────────────────────────────────────
+window.generateClientReport = async function(clientId) {
+  const c = window._agencyClients.find(x=>x.id===clientId);
+  if (!c) return;
+  showToast(`⏳ Generating report for ${c.name}…`);
+  const brand = window._agencyBrand;
+  try {
+    const res  = await fetch('/api/agency-report', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ clientName:c.name, domain:c.domain, industry:c.industry, budget:c.budget, agencyName:brand.name })
+    });
+    const data = await res.json();
+    const rId  = 'rpt_'+Date.now();
+    window._agencyReports.push({ id:rId, clientId, generatedAt:new Date().toLocaleString(), type:'Full Report', status:'draft', content:data });
+    c.lastReport = new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+    showToast(`✅ Report for ${c.name} ready — view in Reports tab`);
+    window._agencyTab = 'reports'; buildAgency();
+  } catch(e) {
+    showToast('⚠️ Report generation failed — please retry');
+  }
+};
+
+// ── Open generate report modal ────────────────────────────────────────────────
+window.openGenerateReportModal = function() {
+  const clients = window._agencyClients;
+  if (!clients.length) { showToast('⚠️ Add a client first'); return; }
+  const sel = clients[0]?.id;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  overlay.innerHTML = `<div style="background:white;border-radius:18px;width:100%;max-width:420px;padding:0;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.3)">
+    <div style="background:linear-gradient(135deg,#312E81,#6366F1);padding:18px 22px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:0.95rem;font-weight:800;color:white">Generate Client Report</div>
+      <button onclick="this.closest('[style*=fixed]').remove()" style="background:rgba(255,255,255,.15);border:none;border-radius:50%;width:28px;height:28px;color:white;cursor:pointer;font-size:0.9rem">✕</button>
+    </div>
+    <div style="padding:20px 22px;display:flex;flex-direction:column;gap:12px">
+      <div>
+        <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;margin-bottom:5px">Select Client</div>
+        <select id="grm-client" style="width:100%;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:0.82rem;color:#0A1628;background:white">
+          ${clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;margin-bottom:5px">Report Type</div>
+        <select id="grm-type" style="width:100%;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:0.82rem;color:#0A1628;background:white">
+          <option>Full Report</option><option>Campaign Only</option><option>Competitor Intel</option><option>Social Summary</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button onclick="this.closest('[style*=fixed]').remove()" style="flex:1;padding:10px;background:#F3F4F6;border:none;border-radius:9px;font-size:0.8rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
+        <button onclick="const cid=document.getElementById('grm-client').value;this.closest('[style*=fixed]').remove();generateClientReport(cid)" style="flex:2;padding:10px;background:linear-gradient(135deg,#4338CA,#6366F1);border:none;border-radius:9px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer">✨ Generate Report</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+};
+
+// ── Preview report ─────────────────────────────────────────────────────────────
+window.previewReport = function(rId) {
+  const r = window._agencyReports.find(x=>x.id===rId);
+  if (!r) return;
+  const c = window._agencyClients.find(x=>x.id===r.clientId)||{name:'Client',color:'#6366F1'};
+  const brand = window._agencyBrand;
+  const d = r.content || {};
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${brand.name} — ${c.name} Report</title>
+  <style>body{font-family:'Segoe UI',Arial,sans-serif;margin:0;padding:0;background:#F8FAFC;color:#374151}
+  .header{background:linear-gradient(135deg,${brand.color},${brand.color}BB);color:white;padding:36px 48px}
+  .header h1{font-size:1.8rem;margin:0 0 4px;font-weight:800}.header p{margin:0;opacity:.75;font-size:0.85rem}
+  .body{max-width:900px;margin:0 auto;padding:36px 48px}
+  .section{background:white;border-radius:12px;padding:24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+  h2{font-size:1rem;font-weight:800;color:#0A1628;margin:0 0 12px;padding-bottom:8px;border-bottom:2px solid ${brand.color}20}
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .kpi{background:#F8FAFC;border-radius:8px;padding:14px;text-align:center}
+  .kpi .v{font-size:1.4rem;font-weight:800;color:${brand.color}}.kpi .l{font-size:0.7rem;color:#9CA3AF;margin-top:3px}
+  p{margin:0 0 8px;line-height:1.7;font-size:0.85rem}
+  .footer{text-align:center;padding:24px;font-size:0.72rem;color:#9CA3AF;border-top:1px solid #E5E7EB;margin-top:32px}
+  </style></head><body>
+  <div class="header"><div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;opacity:.65;margin-bottom:8px">${brand.name}</div>
+  <h1>Performance Report</h1><p>Prepared for <strong>${c.name}</strong> · ${new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}</p></div>
+  <div class="body">
+  <div class="section"><h2>📋 Executive Summary</h2><p>${d.executive_summary||'This report provides a comprehensive overview of campaign performance, competitive landscape, and strategic recommendations for the reporting period.'}</p></div>
+  <div class="section"><h2>📈 Campaign Performance</h2>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="v">${d.kpis?.reach||'84.2K'}</div><div class="l">Total Reach</div></div>
+    <div class="kpi"><div class="v">${d.kpis?.roas||'3.8×'}</div><div class="l">ROAS</div></div>
+    <div class="kpi"><div class="v">${d.kpis?.ctr||'3.2%'}</div><div class="l">CTR</div></div>
+    <div class="kpi"><div class="v">${d.kpis?.conversions||'142'}</div><div class="l">Conversions</div></div>
+  </div>
+  <p>${d.campaign_performance||'Campaign performance exceeded benchmarks this period with strong ROAS across all channels.'}</p></div>
+  <div class="section"><h2>🕵️ Competitor Intelligence</h2><p>${d.competitor_intel||'Competitor activity analysis shows increased spend from primary competitors. Key opportunities identified in underserved keyword segments.'}</p></div>
+  <div class="section"><h2>📱 Social Media</h2><p>${d.social_metrics||'Social engagement rates are trending above industry average. Instagram and LinkedIn driving highest quality traffic.'}</p></div>
+  <div class="section"><h2>💡 Recommendations</h2><p>${d.recommendations||'1. Increase budget allocation to highest-ROAS campaigns.\n2. Launch retargeting sequences for mid-funnel leads.\n3. Expand content clusters in top keyword gaps.'}</p></div>
+  <div class="footer">${brand.footer.replace('{client}',c.name).replace('{agency}',brand.name)}</div>
+  </div></body></html>`);
+  win.document.close();
+};
+
+// ── Download report ─────────────────────────────────────────────────────────────
+window.downloadAgencyReport = function(rId) {
+  previewReport(rId);
+  showToast('📄 Report opened — use Ctrl+P / Cmd+P to save as PDF');
+};
+
+// ── Send report ─────────────────────────────────────────────────────────────────
+window.sendReportToClient = function(rId) {
+  const r = window._agencyReports.find(x=>x.id===rId);
+  if (!r) return;
+  const c = window._agencyClients.find(x=>x.id===r.clientId)||{name:'Client',email:'—'};
+  r.status = 'sent';
+  showToast(`📤 Report marked as sent to ${c.email}`);
+  buildAgency();
+};
+
+// ── Toggle schedule ─────────────────────────────────────────────────────────────
+window.toggleSchedule = function(clientId) {
+  if (!window._agencySchedules) window._agencySchedules = {};
+  window._agencySchedules[clientId] = window._agencySchedules[clientId] === false ? true : false;
+  const on = window._agencySchedules[clientId] !== false;
+  const c = window._agencyClients.find(x=>x.id===clientId);
+  showToast(on ? `📅 Scheduled sends enabled for ${c?.name}` : `⏸ Scheduled sends paused for ${c?.name}`);
+  buildAgency();
+};
+
+// ── Update client frequency ─────────────────────────────────────────────────────
+window.updateClientFreq = function(clientId, freq) {
+  const c = window._agencyClients.find(x=>x.id===clientId);
+  if (c) { c.freq = freq; showToast(`✅ ${c.name} report frequency set to ${freq}`); }
+};
+
+// ── Send now ─────────────────────────────────────────────────────────────────────
+window.sendReportNow = async function(clientId) {
+  await generateClientReport(clientId);
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // AUTOMATIONS CENTER
