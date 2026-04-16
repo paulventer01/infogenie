@@ -1954,10 +1954,41 @@ Return ONLY this JSON (no markdown fences, no extra text):
       return result;
     }
 
-    // ── Attempt 1: GPT-4 via Replit AI Integrations ────────────────────────
+    // ── Claude prompt — alternative creative angles ─────────────────────────
+    const claudeCreativePrompt = `You are an elite advertising copywriter. Generate ALTERNATIVE ad creative for this campaign — use a completely DIFFERENT angle from standard approaches.
+
+BRAND: ${domain}
+INDUSTRY: ${industry}
+PLATFORM: ${platform}
+TARGET AUDIENCE: ${persona}
+KEY DIFFERENTIATOR: ${differentiator}
+CTA: ${cta}
+
+RULES:
+- NEVER mention any competitor brand names — use "the alternatives" or "traditional solutions" instead
+- Write in a fresh, unexpected creative voice that GPT-4 wouldn't write
+- Focus on emotional resonance, not just logical benefits
+
+Return ONLY this JSON (no markdown, no explanation):
+{
+  "claude_headlines": [
+    "Alternative headline 1 (MAX 30 chars, emotionally resonant)",
+    "Alternative headline 2 (MAX 30 chars, unexpected angle)",
+    "Alternative headline 3 (MAX 30 chars, value-driven)"
+  ],
+  "claude_descriptions": [
+    "Alternative description 1 (MAX 90 chars, story-led)",
+    "Alternative description 2 (MAX 90 chars, outcome-focused)"
+  ],
+  "claude_angle": "A single punchy competitor attack hook that calls out industry pain WITHOUT naming any brand — different from the GPT-4 version",
+  "claude_instagram": "Alternative Instagram caption opening hook (first 2 sentences only — vivid, scroll-stopping)",
+  "claude_strategy": "1-sentence explanation of why this alternative creative angle is compelling for ${persona}"
+}`;
+
+    // ── Attempt 1: GPT-4 + Claude in parallel ──────────────────────────────
     if (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) {
-      try {
-        const completion = await openai.chat.completions.create({
+      const [gptResult, claudeResult] = await Promise.allSettled([
+        openai.chat.completions.create({
           model: 'gpt-4o',
           messages: [
             { role: 'system', content: systemPrompt },
@@ -1966,14 +1997,45 @@ Return ONLY this JSON (no markdown fences, no extra text):
           temperature: 0.82,
           max_tokens: 1400,
           response_format: { type: 'json_object' }
-        });
-        const text = completion.choices?.[0]?.message?.content || '';
-        const parsed = parseAIResponse(text);
-        if (parsed && Array.isArray(parsed.headlines) && parsed.headlines.length >= 3) {
-          console.log('[ai-creative] GPT-4 success');
-          return res.json({ ...sanitiseAdCopy(parsed), source: 'gpt4' });
+        }),
+        anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 600,
+          messages: [{ role: 'user', content: claudeCreativePrompt }]
+        })
+      ]);
+
+      let parsed = null;
+      if (gptResult.status === 'fulfilled') {
+        const text = gptResult.value.choices?.[0]?.message?.content || '';
+        parsed = parseAIResponse(text);
+      }
+
+      if (parsed && Array.isArray(parsed.headlines) && parsed.headlines.length >= 3) {
+        console.log('[ai-creative] GPT-4 success');
+        const sanitised = sanitiseAdCopy(parsed);
+
+        // Merge Claude's creative additions
+        if (claudeResult.status === 'fulfilled') {
+          try {
+            const claudeRaw = claudeResult.value.content?.[0]?.text || '{}';
+            const claudeData = parseAIResponse(claudeRaw);
+            if (claudeData) {
+              if (Array.isArray(claudeData.claude_headlines)) sanitised.claude_headlines = claudeData.claude_headlines;
+              if (Array.isArray(claudeData.claude_descriptions)) sanitised.claude_descriptions = claudeData.claude_descriptions;
+              if (claudeData.claude_angle) sanitised.claude_angle = claudeData.claude_angle;
+              if (claudeData.claude_instagram) sanitised.claude_instagram = claudeData.claude_instagram;
+              if (claudeData.claude_strategy) sanitised.claude_strategy = claudeData.claude_strategy;
+              console.log('[ai-creative] Claude alternative angles merged');
+            }
+          } catch(e) { console.warn('[ai-creative] Claude merge failed:', e.message); }
         }
-      } catch(e) { console.warn('[ai-creative] GPT-4 failed:', e.message); }
+
+        const hasClaude = !!sanitised.claude_angle;
+        return res.json({ ...sanitised, source: hasClaude ? 'dual_ai' : 'gpt4' });
+      }
+
+      if (gptResult.status === 'rejected') console.warn('[ai-creative] GPT-4 failed:', gptResult.reason?.message);
     }
 
     // ── Attempt 2: RapidAPI ChatGPT fallback ──────────────────────────────

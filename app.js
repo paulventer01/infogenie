@@ -1020,7 +1020,7 @@ function buildCreativeModal(camp, idx) {
           <div style="font-size:0.78rem;color:rgba(255,255,255,.55)">${name} · ${platform} · ${budget}</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-          <span id="cs-ai-badge" style="background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.4);border-radius:6px;padding:4px 10px;font-size:0.68rem;font-weight:700;color:#A5B4FC">${loadingSpin}GPT-4 Writing...</span>
+          <span id="cs-ai-badge" style="background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.4);border-radius:6px;padding:4px 10px;font-size:0.68rem;font-weight:700;color:#A5B4FC">${loadingSpin}GPT-4 + Claude Writing...</span>
           <button id="cs-dl-btn" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 12px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer">⬇ Download</button>
           <button id="cs-launch-btn" style="background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:8px;padding:7px 14px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer">🚀 Launch</button>
         </div>
@@ -1037,7 +1037,7 @@ function buildCreativeModal(camp, idx) {
       <!-- AD COPY TAB -->
       <div class="cs-panel" id="csp-ad">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:0.7rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.06em">🔵 Google / Search Ad — GPT-4 Generated</div>
+          <div id="cs-ad-source-label" style="font-size:0.7rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.06em">🔵 Google / Search Ad — GPT-4 + Claude Generated</div>
           <span id="cs-ad-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}Generating...</span>
         </div>
         ${hSeed.map((h,i)=>`
@@ -1060,9 +1060,24 @@ function buildCreativeModal(camp, idx) {
           <div style="font-size:0.68rem;font-weight:700;color:#C2410C;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">⚡ Competitor Attack Hook — GPT-4</div>
           <div id="cs-competitor-text" style="font-size:0.82rem;color:#7C2D12;font-style:italic;line-height:1.5"></div>
         </div>
+        <div id="cs-claude-angle" style="display:none;background:linear-gradient(135deg,#F0FFF4,#ECFDF5);border:1px solid #86EFAC;border-radius:10px;padding:12px;margin-top:8px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <span style="font-size:0.68rem;font-weight:700;color:#15803D;text-transform:uppercase;letter-spacing:.06em">⚡ Competitor Attack Hook — Claude</span>
+            <span style="font-size:0.6rem;font-weight:700;background:#DCFCE7;color:#166534;border-radius:4px;padding:1px 6px">ALTERNATIVE</span>
+          </div>
+          <div id="cs-claude-angle-text" style="font-size:0.82rem;color:#166534;font-style:italic;line-height:1.5"></div>
+          <div id="cs-claude-strategy" style="font-size:0.72rem;color:#4ADE80;margin-top:6px;padding-top:6px;border-top:1px solid rgba(134,239,172,.4);display:none"></div>
+        </div>
+        <div id="cs-claude-headlines-wrap" style="display:none;margin-top:12px">
+          <div style="font-size:0.68rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+            🟣 Claude Alternative Headlines
+            <span style="font-size:0.6rem;background:#EDE9FE;color:#5B21B6;border-radius:4px;padding:1px 6px">Use These Instead</span>
+          </div>
+          <div id="cs-claude-headlines-list"></div>
+        </div>
         <div style="margin-top:10px;display:flex;gap:8px">
           <button id="cs-copy-ad" style="flex:1;padding:9px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;font-size:0.78rem;font-weight:700;color:#1D4ED8;cursor:pointer">📋 Copy Ad Copy</button>
-          <button id="cs-regen-btn" style="flex:1;padding:9px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">✨ Regenerate</button>
+          <button id="cs-regen-btn" style="flex:1;padding:9px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">✨ Regenerate (GPT-4 + Claude)</button>
         </div>
       </div>
 
@@ -1071,7 +1086,7 @@ function buildCreativeModal(camp, idx) {
         <div style="margin-bottom:12px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
             <div style="font-size:0.7rem;font-weight:700;color:#E1306C;text-transform:uppercase;letter-spacing:.06em">📱 Instagram / Meta Caption</div>
-            <span id="cs-ig-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}GPT-4...</span>
+            <span id="cs-ig-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}GPT-4 + Claude...</span>
           </div>
           <textarea id="cs-instagram" rows="7" style="width:100%;box-sizing:border-box;background:#FFF5F7;border:1px solid #FECDD3;border-radius:8px;padding:10px;font-size:0.8rem;color:#1E293B;font-family:'Inter',sans-serif;resize:vertical;outline:none">✨ GPT-4 is writing your Instagram caption...</textarea>
           <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
@@ -1085,7 +1100,7 @@ function buildCreativeModal(camp, idx) {
         <div style="margin-bottom:12px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
             <div style="font-size:0.7rem;font-weight:700;color:#010101;text-transform:uppercase;letter-spacing:.06em">⬛ TikTok Script — 15 sec</div>
-            <span id="cs-tt-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}GPT-4...</span>
+            <span id="cs-tt-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}GPT-4 + Claude...</span>
           </div>
           <textarea id="cs-tiktok" rows="5" style="width:100%;box-sizing:border-box;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:10px;font-size:0.8rem;color:#1E293B;font-family:'Courier New',monospace;resize:vertical;outline:none">✨ GPT-4 is writing your TikTok script...</textarea>
           <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
@@ -1099,7 +1114,7 @@ function buildCreativeModal(camp, idx) {
         <div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
             <div style="font-size:0.7rem;font-weight:700;color:#FF0000;text-transform:uppercase;letter-spacing:.06em">🎬 YouTube Pre-Roll — 25 sec</div>
-            <span id="cs-yt-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}GPT-4...</span>
+            <span id="cs-yt-loading" style="font-size:0.68rem;color:#6366F1">${loadingSpin}GPT-4 + Claude...</span>
           </div>
           <textarea id="cs-video" rows="6" style="width:100%;box-sizing:border-box;background:#FFF5F5;border:1px solid #FECACA;border-radius:8px;padding:10px;font-size:0.8rem;color:#1E293B;font-family:'Courier New',monospace;resize:vertical;outline:none">✨ GPT-4 is writing your YouTube script...</textarea>
           <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
@@ -1186,9 +1201,10 @@ function buildCreativeModal(camp, idx) {
     </div>
   `;
 
-  // ── Helper: apply GPT-4 response to all panels ────────────────────────────
+  // ── Helper: apply GPT-4 + Claude response to all panels ──────────────────
   function applyAICreative(data) {
-    const src = data.source === 'gpt4' ? 'GPT-4' : data.source === 'rapidapi_gpt' ? 'GPT-4' : 'AI Engine';
+    const isDual = data.source === 'dual_ai';
+    const src = isDual ? 'GPT-4 + Claude' : (data.source === 'gpt4' ? 'GPT-4' : data.source === 'rapidapi_gpt' ? 'GPT-4' : 'AI Engine');
 
     // Ad Copy tab
     if (data.headlines && Array.isArray(data.headlines)) {
@@ -1213,12 +1229,39 @@ function buildCreativeModal(camp, idx) {
     const adLoad = document.getElementById('cs-ad-loading');
     if (adLoad) adLoad.style.display = 'none';
 
-    // Competitor hook
+    // Competitor hook — GPT-4
     if (data.competitor_angle) {
       const box = document.getElementById('cs-competitor-angle');
       const txt = document.getElementById('cs-competitor-text');
       if (box) box.style.display = 'block';
       if (txt) txt.textContent = '"' + data.competitor_angle + '"';
+    }
+
+    // Claude attack hook
+    if (data.claude_angle) {
+      const cBox = document.getElementById('cs-claude-angle');
+      const cTxt = document.getElementById('cs-claude-angle-text');
+      if (cBox) cBox.style.display = 'block';
+      if (cTxt) cTxt.textContent = '"' + data.claude_angle + '"';
+      if (data.claude_strategy) {
+        const cSt = document.getElementById('cs-claude-strategy');
+        if (cSt) { cSt.style.display = 'block'; cSt.textContent = '💡 Claude: ' + data.claude_strategy; }
+      }
+    }
+
+    // Claude alternative headlines
+    if (data.claude_headlines && Array.isArray(data.claude_headlines) && data.claude_headlines.length > 0) {
+      const wrap = document.getElementById('cs-claude-headlines-wrap');
+      const list = document.getElementById('cs-claude-headlines-list');
+      if (wrap) wrap.style.display = 'block';
+      if (list) {
+        list.innerHTML = data.claude_headlines.map((h, i) => `
+          <div style="display:flex;align-items:center;gap:8px;background:#EDE9FE;border-radius:8px;padding:8px 10px;margin-bottom:6px">
+            <span style="font-size:0.7rem;font-weight:700;color:#5B21B6;background:#DDD6FE;border-radius:4px;padding:2px 6px;flex-shrink:0">CH${i+1}</span>
+            <span style="flex:1;font-size:0.82rem;color:#1E1B4B;font-weight:600;font-family:'Inter',sans-serif">${h}</span>
+            <button onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim()).then(()=>window.showToast && showToast('✅ Claude headline copied!'))" style="background:none;border:none;font-size:0.75rem;cursor:pointer;color:#7C3AED;padding:2px 6px" title="Copy this Claude headline">📋</button>
+          </div>`).join('');
+      }
     }
 
     // Social & Video tab
@@ -1271,25 +1314,52 @@ function buildCreativeModal(camp, idx) {
       emailEl.value = `Campaign: ${name}\nPlatform: ${platform}\nBudget: ${budget}\nProjected ROAS: ${projROAS} | CTR: ${estCTR} | CPA: ${estCPA}\nGenerated by: ${src}\n\nGOOGLE AD HEADLINES\nH1: ${hs[0]||''}\nH2: ${hs[1]||''}\nH3: ${hs[2]||''}\n\nGOOGLE DESCRIPTIONS\nD1: ${ds[0]||''}\nD2: ${ds[1]||''}\n\nEMAIL SUBJECT LINES\n${(data.email_subjects||[]).join('\n')}\n\nSTRATEGY\n${data.strategy_reasoning||''}\n\nGenerated by InfoGenie AI Creative Studio · ${new Date().toLocaleDateString()}`;
     }
 
-    // Badge
+    // Badge — green for single AI, teal gradient for dual AI
     const badge = document.getElementById('cs-ai-badge');
     if (badge) {
-      badge.style.background = 'rgba(16,185,129,.15)';
-      badge.style.borderColor = 'rgba(16,185,129,.4)';
-      badge.style.color = '#6EE7B7';
-      badge.innerHTML = '✨ ' + src + ' — Live Creative';
+      if (isDual) {
+        badge.style.background = 'linear-gradient(135deg,rgba(0,201,200,.18),rgba(99,102,241,.18))';
+        badge.style.borderColor = 'rgba(0,201,200,.5)';
+        badge.style.color = '#5EEAD4';
+        badge.innerHTML = '✦ GPT-4 + Claude — Live Creative';
+      } else {
+        badge.style.background = 'rgba(16,185,129,.15)';
+        badge.style.borderColor = 'rgba(16,185,129,.4)';
+        badge.style.color = '#6EE7B7';
+        badge.innerHTML = '✨ ' + src + ' — Live Creative';
+      }
     }
 
-    // Store for download
+    // Update ad source label
+    const srcLabel = document.getElementById('cs-ad-source-label');
+    if (srcLabel) {
+      srcLabel.textContent = isDual
+        ? '🔵 Google / Search Ad — GPT-4 + Claude Generated'
+        : '🔵 Google / Search Ad — ' + src + ' Generated';
+    }
+
+    // Prepend Claude alternative Instagram hook into the caption if available
+    if (isDual && data.claude_instagram) {
+      const igEl2 = document.getElementById('cs-instagram');
+      if (igEl2 && igEl2.value) {
+        igEl2.value = '✦ Claude Alternative Opening:\n' + data.claude_instagram + '\n\n──────────────────\n✦ GPT-4 Caption:\n' + igEl2.value;
+      }
+    }
+
+    // Store for download (includes Claude data)
     window._creativeStudio = {
       campName: name, platform, budget, domain, indName, topComp,
       googleCopy: `H1: ${(data.headlines||[])[0]}\nH2: ${(data.headlines||[])[1]}\nH3: ${(data.headlines||[])[2]}\nD1: ${(data.descriptions||[])[0]}\nD2: ${(data.descriptions||[])[1]}`,
+      claudeHeadlines: data.claude_headlines ? data.claude_headlines.map((h,i) => `CH${i+1}: ${h}`).join('\n') : '',
+      competitorAngle: data.competitor_angle || '',
+      claudeAngle: data.claude_angle || '',
       instagramCopy: data.instagram || '',
       tiktokScript: data.tiktok_script || '',
       videoScript: data.youtube_script || '',
       linkedin: data.linkedin || '',
       emailSubjects: (data.email_subjects||[]).join('\n'),
-      strategy: data.strategy_reasoning || ''
+      strategy: data.strategy_reasoning || '',
+      claudeStrategy: data.claude_strategy || ''
     };
   }
 
@@ -1334,16 +1404,20 @@ function buildCreativeModal(camp, idx) {
   document.getElementById('cs-dl-btn').addEventListener('click', () => {
     const s = window._creativeStudio || {};
     const txt = [
-      'INFOGENIE AI CREATIVE PACK', '─'.repeat(50),
+      'INFOGENIE AI CREATIVE PACK — GPT-4 + CLAUDE', '─'.repeat(50),
       `Campaign: ${s.campName || name} | Platform: ${s.platform || platform}`,
       `Generated: ${new Date().toLocaleString()}`, '',
-      '── GOOGLE ADS ──', s.googleCopy || '', '',
+      '── GOOGLE ADS (GPT-4) ──', s.googleCopy || '', '',
+      ...(s.claudeHeadlines ? ['── CLAUDE ALTERNATIVE HEADLINES ──', s.claudeHeadlines, ''] : []),
+      '── GPT-4 ATTACK HOOK ──', s.competitorAngle ? '"' + s.competitorAngle + '"' : '', '',
+      ...(s.claudeAngle ? ['── CLAUDE ATTACK HOOK ──', '"' + s.claudeAngle + '"', ''] : []),
       '── INSTAGRAM / META ──', s.instagramCopy || '', '',
       '── TIKTOK SCRIPT ──', s.tiktokScript || '', '',
       '── YOUTUBE SCRIPT ──', s.videoScript || '', '',
       '── LINKEDIN ──', s.linkedin || '', '',
       '── EMAIL SUBJECTS ──', s.emailSubjects || '', '',
-      '── GPT-4 STRATEGY ──', s.strategy || ''
+      '── GPT-4 STRATEGY ──', s.strategy || '',
+      ...(s.claudeStrategy ? ['', '── CLAUDE STRATEGY ──', s.claudeStrategy] : [])
     ].join('\n');
     const a = Object.assign(document.createElement('a'), {
       href: URL.createObjectURL(new Blob([txt], {type:'text/plain'})),
