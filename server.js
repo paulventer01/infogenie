@@ -1,11 +1,17 @@
 const express = require('express');
 const path = require('path');
 const https = require('https');
-const OpenAI = require('openai');
+const OpenAI    = require('openai');
+const Anthropic  = require('@anthropic-ai/sdk');
 
+// ── Shared AI clients (used by all routes) ───────────────────────────────────
 const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || 'dummy',
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  apiKey:   process.env.AI_INTEGRATIONS_OPENAI_API_KEY || 'dummy',
+  baseURL:  process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+});
+const anthropic = new Anthropic.default({
+  apiKey:   process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+  baseURL:  process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
 });
 
 const app = express();
@@ -229,7 +235,6 @@ app.post('/api/ai-forecast', async (req, res) => {
   }
 
   try {
-    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o', response_format: { type: 'json_object' }, max_tokens: 1000,
       messages: [
@@ -267,7 +272,6 @@ Return ONLY this JSON with exactly 13 weekly values each:
 app.post('/api/budget-efficiency', async (req, res) => {
   const { industry = 'marketing', competitors = [], monthlyBudget = 5000 } = req.body;
   try {
-    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o', response_format: { type: 'json_object' }, max_tokens: 600,
       messages: [
@@ -1214,8 +1218,6 @@ app.post('/api/reddit-monitor', async (req, res) => {
 
     if (queries.length === 0) return res.json({ posts: [] });
 
-    const { OpenAI } = require('openai');
-    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
 
     // ── Live: Hacker News Algolia (reliably accessible from cloud) ────────────
     const fetchHN = async (query) => {
@@ -1343,8 +1345,6 @@ Each item: { "relevance": 0-100, "sentiment": "positive"|"neutral"|"negative", "
 app.post('/api/reddit-reply', async (req, res) => {
   try {
     const { postTitle = '', postPreview = '', brand = 'our brand', tone = 'Helpful', persona = '', industry = 'marketing' } = req.body;
-    const { OpenAI } = require('openai');
-    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
 
     const prompt = `You are managing Reddit presence for the brand "${brand}" in the "${industry}" industry.
 Tone: ${tone}. Persona: ${persona || 'knowledgeable industry expert who adds genuine value'}.
@@ -1382,8 +1382,6 @@ app.post('/api/reddit-autofill', async (req, res) => {
     const { domain = '' } = req.body;
     if (!domain) return res.json({ keywords: '', competitors: '' });
 
-    const { OpenAI } = require('openai');
-    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
@@ -1421,8 +1419,6 @@ Rules:
 app.post('/api/ai-channel-ad', async (req, res) => {
   try {
     const { platform='Meta', format='Image Ad', goal='Lead Generation', audience='business owners', domain='yourdomain.com', industry='your industry', budget='100' } = req.body;
-    const { OpenAI } = require('openai');
-    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
     const systemPrompt = `You are an expert performance marketing copywriter. Write concise, high-converting ad copy for ${platform} ${format} ads. Never mention competitor brand names. Return JSON only.`;
     const userPrompt = `Write a ${platform} ${format} ad for ${domain} in the ${industry} industry.
 Goal: ${goal}. Target audience: ${audience}. Daily budget: $${budget}.
@@ -1440,10 +1436,6 @@ Headline: 5-10 words. Body: 1-3 sentences. CTA: 3-5 words. Hashtags: 3-5 relevan
 app.post('/api/ai-content-clusters', async (req, res) => {
   try {
     const { seed, domain='yourdomain.com', industry='your industry' } = req.body;
-    const { OpenAI } = require('openai');
-    const Anthropic = require('@anthropic-ai/sdk');
-    const openai    = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
-    const anthropic = new Anthropic.default({ baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY });
 
     const systemPrompt = `You are an expert SEO strategist and content architect specialising in topical authority and LLM visibility. Return JSON only.`;
     const gptPrompt = `Build a comprehensive topical cluster for the seed topic: "${seed}"
@@ -1503,8 +1495,6 @@ Return ONLY raw JSON: {
 app.post('/api/ai-visibility-audit', async (req, res) => {
   try {
     const { domain = 'yourdomain.com', industry = 'your industry' } = req.body;
-    const { OpenAI } = require('openai');
-    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
     const prompt = `You are an AI visibility strategist specialising in LLM optimisation (LLMO) and Generative Engine Optimisation (GEO).
 
 Analyse the brand "${domain}" in the "${industry}" industry and produce a concise AI Visibility Audit report.
@@ -1539,8 +1529,6 @@ Keep the entire response under 350 words. Be specific and actionable.`;
 app.post('/api/ai-brand-monitor', async (req, res) => {
   try {
     const { domain = 'yourdomain.com', industry = 'your industry' } = req.body;
-    const { OpenAI } = require('openai');
-    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
     const prompt = `You are an elite AI brand monitoring expert specialising in LLM Optimisation (LLMO), brand perception analysis and Generative Engine Optimisation (GEO).
 
 Produce a comprehensive Brand Monitor report for the brand "${domain}" in the "${industry}" industry.
@@ -1586,10 +1574,6 @@ Keep the entire response under 420 words. Be specific and actionable.`;
 app.post('/api/ai-build-content', async (req, res) => {
   try {
     const { topic, intent='Informational', domain='yourdomain.com', industry='your industry', contentType='article' } = req.body;
-    const { OpenAI } = require('openai');
-    const Anthropic   = require('@anthropic-ai/sdk');
-    const openai      = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
-    const anthropic   = new Anthropic.default({ baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY });
 
     const typeInstructions = {
       article:    `Write a comprehensive, authoritative blog article. Include: engaging H1 title, intro paragraph (hook + problem + promise), 3-4 main H2 sections each with 2-3 paragraphs, a FAQ section with 4 questions and detailed answers, and a conclusion with a clear CTA mentioning ${domain}.`,
@@ -1658,8 +1642,6 @@ Return ONLY raw JSON: {
 app.post('/api/ai-content-brief', async (req, res) => {
   try {
     const { type = 'what-is', domain = 'yourdomain.com', industry = 'your industry' } = req.body;
-    const { OpenAI } = require('openai');
-    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
     const typeGuides = {
       'what-is':    `a "What Is ${industry}?" definitional page. This page should clearly define the category, how it works, who uses it, and contain FAQ schema. It is the #1 most-cited content type by LLMs.`,
       'comparison': `a "${domain} vs Alternatives" comparison page. Include a side-by-side feature table, honest pros/cons, and a clear verdict section. These are cited in 73% of comparison-intent AI queries.`,
@@ -1714,8 +1696,6 @@ Keep the total response under 500 words. Be specific, not generic.`;
 app.post('/api/ai-social-caption', async (req, res) => {
   try {
     const { prompt, domain = 'your brand', industry = 'your industry', platforms = [] } = req.body;
-    const { OpenAI } = require('openai');
-    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
     const msgs = [
       { role:'system', content:'You are an expert social media copywriter. Write engaging, platform-optimised social media captions that drive engagement. Never mention competitor brand names. Return only the caption text.' },
       { role:'user', content: prompt || `Write an engaging social media caption for ${domain} in the ${industry} industry. Platforms: ${platforms.join(', ')||'Instagram'}. Use relevant emojis, a clear call-to-action, under 200 words.` }
@@ -1732,11 +1712,6 @@ app.post('/api/ai-social-caption', async (req, res) => {
 app.post('/api/ai-attack-plan', async (req, res) => {
   try {
     const { myDomain = 'yourdomain.com', competitor = 'competitor', industry = 'your industry', competitorData = {}, prefillKeywords = [], prefillContext = '' } = req.body;
-    const { OpenAI } = require('openai');
-    const Anthropic = require('@anthropic-ai/sdk');
-
-    const openai = new OpenAI({ baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
-    const anthropic = new Anthropic.default({ baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL, apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY });
 
     const prefillSuffix = (prefillContext ? '\n\nSTRATEGIC CONTEXT — HIGHEST PRIORITY: ' + prefillContext : '') +
       (prefillKeywords.length > 0 ? '\n\nMANDATORY KEYWORDS — MUST appear in keywordTargets as Critical priority: ' + prefillKeywords.join(', ') : '');

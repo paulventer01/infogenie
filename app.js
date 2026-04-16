@@ -1826,7 +1826,7 @@ function buildDashboard() {
       ${trafficBadge}
       <div class="kpi-icon">👥</div>
       <div class="kpi-label">Est. Monthly Traffic</div>
-      <div class="kpi-value">${formatNum(trafficVal)}</div>
+      <div class="kpi-value">${_fmt(trafficVal)}</div>
       <div class="kpi-change kpi-up" style="font-size:.7rem">${trafficSource}</div>
     </div>
     <div class="kpi-card kpi-purple" title="Conversion Rate: % of visitors who take a desired action (sign up, purchase). ${industry.name} market average is 3.1%.">
@@ -10940,11 +10940,6 @@ function saveSettings() {
 
 // ===== HELPERS =====
 function avg(arr) { return +(arr.reduce((a,b) => a+b, 0) / arr.length).toFixed(2); }
-function formatNum(n) {
-  if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
-  if (n >= 1000) return (n/1000).toFixed(0) + 'K';
-  return n;
-}
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 function getCountryLabel(val) {
   const map = { global:'🌍 Global', us:'🇺🇸 US', uk:'🇬🇧 UK', au:'🇦🇺 Australia', ca:'🇨🇦 Canada', de:'🇩🇪 Germany', fr:'🇫🇷 France', sg:'🇸🇬 Singapore', ae:'🇦🇪 UAE', in:'🇮🇳 India', za:'🇿🇦 South Africa', br:'🇧🇷 Brazil', jp:'🇯🇵 Japan', nl:'🇳🇱 Netherlands', se:'🇸🇪 Sweden' };
