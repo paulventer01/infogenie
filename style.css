@@ -174,7 +174,7 @@ body {
 .btn-nav-analyse:hover { background: linear-gradient(135deg, var(--cyan), var(--teal)); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,201,200,.45); }
 
 /* ===== VIEWS ===== */
-.view { display: none; padding-top: 88px; }
+.view { display: none; padding-top: 92px; }
 .view.active { display: block; }
 
 /* ===== HERO ===== */
@@ -4398,126 +4398,206 @@ p, span, label, td, li {
 ::-webkit-scrollbar-thumb:hover { background: rgba(0,200,200,.55) !important; }
 
 /* ══════════════════════════════════════════════
-   DROPDOWN NAV — 4 group buttons with fly-out
+   PREMIUM DROPDOWN NAV v2
    ══════════════════════════════════════════════ */
 
-/* Second row container */
+/* ── Row 2 container ── */
 .nav-groups {
   display: flex !important;
-  align-items: center !important;
+  align-items: stretch !important;
   gap: 0 !important;
-  padding: 0 20px !important;
-  height: 38px !important;
-  background: rgba(0,0,0,.18) !important;
+  padding: 0 16px !important;
+  height: 42px !important;
+  background: rgba(6,14,28,.97) !important;
+  border-bottom: 1px solid rgba(0,201,200,.12) !important;
   width: 100% !important;
   box-sizing: border-box !important;
 }
 
-/* Vertical separator between groups */
+/* ── Separator between groups ── */
 .ngb-sep {
-  display: inline-block !important;
+  align-self: center !important;
   width: 1px !important;
-  height: 18px !important;
+  height: 16px !important;
   background: rgba(255,255,255,.1) !important;
   flex-shrink: 0 !important;
-  margin: 0 4px !important;
+  margin: 0 2px !important;
 }
 
-/* Each group: relative so dropdown can position against it */
+/* ── Group wrapper ── */
 .nav-group-wrap {
   position: relative !important;
   display: flex !important;
-  align-items: center !important;
+  align-items: stretch !important;
 }
 
-/* The visible group button */
+/* ── Group trigger button ── */
 .nav-group-btn {
   display: flex !important;
   align-items: center !important;
-  gap: 5px !important;
-  background: none !important;
+  gap: 7px !important;
+  background: transparent !important;
   border: none !important;
+  border-bottom: 2px solid transparent !important;
   cursor: pointer !important;
-  padding: 5px 13px !important;
-  border-radius: 7px !important;
+  padding: 0 16px !important;
+  height: 100% !important;
   font-family: 'Plus Jakarta Sans', sans-serif !important;
-  font-size: 0.75rem !important;
-  font-weight: 700 !important;
-  color: rgba(255,255,255,.65) !important;
-  letter-spacing: .04em !important;
-  text-transform: uppercase !important;
-  transition: color .15s, background .15s !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  color: rgba(255,255,255,.5) !important;
+  letter-spacing: .02em !important;
+  text-transform: none !important;
+  transition: color .15s ease, border-color .15s ease, background .15s ease !important;
   white-space: nowrap !important;
+  position: relative !important;
 }
-.nav-group-btn:hover,
-.nav-group-wrap:hover .nav-group-btn {
-  color: white !important;
-  background: rgba(255,255,255,.07) !important;
+.nav-group-btn .ngb-icon {
+  font-size: 0.88rem !important;
+  line-height: 1 !important;
+  opacity: .75 !important;
+  transition: opacity .15s !important;
+}
+.nav-group-btn .ngb-label {
+  font-size: 0.8rem !important;
 }
 .nav-group-btn .ngb-chevron {
-  transition: transform .2s !important;
-  opacity: .6 !important;
+  opacity: .35 !important;
+  flex-shrink: 0 !important;
+  transition: transform .22s cubic-bezier(.4,0,.2,1), opacity .15s !important;
 }
+
+/* Hover state */
+.nav-group-wrap:hover .nav-group-btn {
+  color: rgba(255,255,255,.9) !important;
+  background: rgba(255,255,255,.04) !important;
+  border-bottom-color: rgba(0,201,200,.4) !important;
+}
+.nav-group-wrap:hover .nav-group-btn .ngb-icon { opacity: 1 !important; }
 .nav-group-wrap:hover .nav-group-btn .ngb-chevron {
   transform: rotate(180deg) !important;
-  opacity: 1 !important;
+  opacity: .7 !important;
 }
 
-/* Active group — one of its children is the current view */
+/* Active group (child page is current view) */
 .nav-group-wrap.group-active .nav-group-btn {
   color: #00D8D7 !important;
-  background: rgba(0,201,200,.14) !important;
+  border-bottom-color: #00C9C8 !important;
+  background: rgba(0,201,200,.07) !important;
 }
-.nav-group-wrap.group-active .nav-group-btn .ngb-chevron {
-  opacity: 1 !important;
-}
+.nav-group-wrap.group-active .nav-group-btn .ngb-icon { opacity: 1 !important; }
+.nav-group-wrap.group-active .nav-group-btn .ngb-chevron { opacity: .65 !important; }
 
-/* Dropdown panel */
+/* ── Dropdown panel ── */
 .nav-dropdown {
   position: absolute !important;
-  top: calc(100% + 4px) !important;
-  left: 0 !important;
-  min-width: 200px !important;
-  background: #0D1B2E !important;
-  border: 1px solid rgba(0,201,200,.2) !important;
-  border-radius: 12px !important;
-  box-shadow: 0 12px 40px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.04) !important;
-  padding: 6px !important;
+  top: calc(100% + 6px) !important;
+  left: 50% !important;
+  transform: translateX(-50%) translateY(-10px) !important;
+  min-width: 230px !important;
+  background: linear-gradient(160deg, #0F2040 0%, #091627 100%) !important;
+  border: 1px solid rgba(0,201,200,.22) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 24px 64px rgba(0,0,0,.7), 0 4px 16px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.05) !important;
+  padding: 8px !important;
   z-index: 2000 !important;
   opacity: 0 !important;
   pointer-events: none !important;
-  transform: translateY(-6px) !important;
-  transition: opacity .18s, transform .18s !important;
+  transition: opacity .2s cubic-bezier(.16,1,.3,1), transform .2s cubic-bezier(.16,1,.3,1) !important;
 }
+/* Caret arrow pointing up */
+.nav-dropdown::before {
+  content: '' !important;
+  position: absolute !important;
+  top: -5px !important;
+  left: 50% !important;
+  transform: translateX(-50%) rotate(45deg) !important;
+  width: 9px !important;
+  height: 9px !important;
+  background: #0F2040 !important;
+  border-left: 1px solid rgba(0,201,200,.22) !important;
+  border-top: 1px solid rgba(0,201,200,.22) !important;
+}
+/* Right-aligned dropdown (Grow group) */
+.nav-dropdown.nav-dropdown-right {
+  left: auto !important;
+  right: 0 !important;
+  transform: translateX(0) translateY(-10px) !important;
+}
+.nav-dropdown.nav-dropdown-right::before {
+  left: auto !important;
+  right: 24px !important;
+  transform: translateX(0) rotate(45deg) !important;
+}
+
+/* Open state */
 .nav-group-wrap:hover .nav-dropdown,
 .nav-group-wrap:focus-within .nav-dropdown {
   opacity: 1 !important;
   pointer-events: auto !important;
-  transform: translateY(0) !important;
+  transform: translateX(-50%) translateY(0) !important;
+}
+.nav-group-wrap:hover .nav-dropdown.nav-dropdown-right,
+.nav-group-wrap:focus-within .nav-dropdown.nav-dropdown-right {
+  transform: translateX(0) translateY(0) !important;
 }
 
-/* Dropdown items */
+/* ── Dropdown section header ── */
+.nav-drop-header {
+  font-size: 0.6rem !important;
+  font-weight: 800 !important;
+  color: rgba(0,201,200,.55) !important;
+  letter-spacing: .1em !important;
+  text-transform: uppercase !important;
+  padding: 4px 12px 8px !important;
+  border-bottom: 1px solid rgba(255,255,255,.06) !important;
+  margin-bottom: 4px !important;
+}
+
+/* ── Dropdown link items ── */
 .nav-dropdown .nav-link {
   display: flex !important;
   align-items: center !important;
-  gap: 9px !important;
-  padding: 8px 12px !important;
-  border-radius: 8px !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  border-radius: 9px !important;
   font-family: 'Plus Jakarta Sans', sans-serif !important;
-  font-size: 0.8rem !important;
+  font-size: 0.82rem !important;
   font-weight: 500 !important;
-  color: rgba(255,255,255,.7) !important;
+  color: rgba(255,255,255,.62) !important;
   text-decoration: none !important;
   transition: color .12s, background .12s !important;
   white-space: nowrap !important;
   letter-spacing: 0 !important;
+  overflow: hidden !important;
+  border-left: 2.5px solid transparent !important;
+}
+.ndl-icon {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 34px !important;
+  height: 36px !important;
+  font-size: 0.88rem !important;
+  flex-shrink: 0 !important;
+  opacity: .7 !important;
+  transition: opacity .12s !important;
+}
+.ndl-text {
+  flex: 1 !important;
+  padding: 0 12px 0 2px !important;
+  line-height: 36px !important;
 }
 .nav-dropdown .nav-link:hover {
   color: white !important;
-  background: rgba(255,255,255,.07) !important;
+  background: rgba(255,255,255,.06) !important;
+  border-left-color: rgba(0,201,200,.45) !important;
 }
+.nav-dropdown .nav-link:hover .ndl-icon { opacity: 1 !important; }
 .nav-dropdown .nav-link.active {
   color: #00E5FF !important;
-  background: rgba(0,201,200,.14) !important;
+  background: rgba(0,229,255,.09) !important;
+  border-left-color: #00C9C8 !important;
   font-weight: 700 !important;
 }
+.nav-dropdown .nav-link.active .ndl-icon { opacity: 1 !important; }
