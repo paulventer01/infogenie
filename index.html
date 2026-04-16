@@ -131,21 +131,27 @@
       <div class="grid-overlay"></div>
     </div>
     <div class="hero-content">
+
+      <!-- Badge -->
       <div class="hero-badge">
         <span class="badge-dot"></span>
-        AI-Powered Autonomous Marketing Intelligence
+        <span class="badge-text">AI-Powered Autonomous Marketing Intelligence</span>
+        <span class="badge-new">NEW</span>
       </div>
+
+      <!-- Heading -->
       <h1 class="hero-title">
-        Turn Competitor Intelligence<br/>Into <span class="gradient-text">Autonomous Growth</span>
+        Turn Competitor Intel<br/>Into <span class="gradient-text">Autonomous Growth</span>
       </h1>
       <p class="hero-subtitle">
-        Analyse 5+ competitors in your exact industry, generate winning campaigns, and let InfoGenie autonomously optimise your ROI — all from one intelligent platform.
+        Enter your website — InfoGenie maps your industry, finds 5+ real competitors, and generates a full AI battle plan in under 60 seconds.
       </p>
 
+      <!-- Search card -->
       <div class="url-card">
-        <div class="url-card-header">
-          <span class="url-card-icon">🌐</span>
-          <span class="url-card-label">Enter your website — InfoGenie detects your industry and finds real competitors</span>
+        <div class="url-card-label-row">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(0,216,215,.7)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <span>Enter your website to start your competitor analysis</span>
         </div>
         <div class="url-input-row">
           <div class="url-field-wrap">
@@ -170,89 +176,146 @@
             <option value="se">🇸🇪 Sweden</option>
           </select>
           <button class="btn-analyse" id="analyseBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
             <span>Analyse Now</span>
-            <span class="btn-arrow">→</span>
           </button>
         </div>
         <div class="url-industry-row">
-          <span class="industry-row-icon">🏭</span>
-          <input type="text" id="industryInput" class="industry-field" placeholder="Your industry (optional — refines competitor targeting) e.g. SaaS, fintech, e-commerce, real estate, healthcare…" autocomplete="off" />
-          <span class="industry-row-hint" id="industryHint">Leave blank for auto-detection</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(0,216,215,.5)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+          <input type="text" id="industryInput" class="industry-field" placeholder="Industry hint (optional) — e.g. SaaS, fintech, e-commerce, real estate…" autocomplete="off" />
+          <span class="industry-row-hint" id="industryHint">Auto-detected</span>
         </div>
         <div class="url-examples">
           <span class="examples-label">Try:</span>
-          <button class="example-chip" data-url="shopify.com">shopify.com</button>
-          <button class="example-chip" data-url="etoro.com">etoro.com</button>
-          <button class="example-chip" data-url="hubspot.com">hubspot.com</button>
-          <button class="example-chip" data-url="coursera.org">coursera.org</button>
-          <button class="example-chip" data-url="booking.com">booking.com</button>
-          <button class="example-chip" data-url="coinbase.com">coinbase.com</button>
+          <button class="example-chip" data-url="shopify.com">
+            <span class="chip-dot chip-ecom"></span>shopify.com
+          </button>
+          <button class="example-chip" data-url="etoro.com">
+            <span class="chip-dot chip-fin"></span>etoro.com
+          </button>
+          <button class="example-chip" data-url="hubspot.com">
+            <span class="chip-dot chip-saas"></span>hubspot.com
+          </button>
+          <button class="example-chip" data-url="coursera.org">
+            <span class="chip-dot chip-edu"></span>coursera.org
+          </button>
+          <button class="example-chip" data-url="booking.com">
+            <span class="chip-dot chip-travel"></span>booking.com
+          </button>
+          <button class="example-chip" data-url="coinbase.com">
+            <span class="chip-dot chip-crypto"></span>coinbase.com
+          </button>
         </div>
       </div>
 
+      <!-- Platform trust strip -->
+      <div class="platform-strip">
+        <span class="ps-label">Analyses across</span>
+        <div class="ps-platforms">
+          <span class="ps-platform">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#4267B2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+            Meta
+          </span>
+          <span class="ps-dot"></span>
+          <span class="ps-platform">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M21.35 11.1h-9.17v2.73h5.51c-.26 1.33-1.02 2.45-2.17 3.2v2.65h3.5c2.05-1.89 3.24-4.67 3.24-7.97 0-.68-.06-1.08-.08-1.01-.01-.06-.02-.5-.06-.6z" fill="#4285F4"/><path d="M12.18 22c2.76 0 5.08-.91 6.77-2.47l-3.5-2.65c-.97.65-2.2 1.03-3.27 1.03-2.51 0-4.63-1.7-5.39-3.98H3.22v2.74C4.9 20.07 8.3 22 12.18 22z" fill="#34A853"/><path d="M6.79 13.93c-.2-.58-.31-1.2-.31-1.84s.11-1.26.31-1.84V7.51H3.22A9.81 9.81 0 0 0 2 12.09c0 1.59.38 3.09 1.22 4.58l3.57-2.74z" fill="#FBBC05"/><path d="M12.18 4.27c1.41 0 2.67.49 3.66 1.44l2.75-2.75C16.83 1.38 14.65.5 12.18.5 8.3.5 4.9 2.43 3.22 5.5l3.57 2.74c.76-2.28 2.88-3.97 5.39-3.97z" fill="#EA4335"/></svg>
+            Google
+          </span>
+          <span class="ps-dot"></span>
+          <span class="ps-platform">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.84a8.28 8.28 0 0 0 4.84 1.54V6.93a4.85 4.85 0 0 1-1.07-.24z"/></svg>
+            TikTok
+          </span>
+          <span class="ps-dot"></span>
+          <span class="ps-platform">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#0A66C2"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6zM2 9h4v12H2z"/><circle cx="4" cy="4" r="2"/></svg>
+            LinkedIn
+          </span>
+          <span class="ps-dot"></span>
+          <span class="ps-platform">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><circle cx="9" cy="12" r="3"/><path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z" stroke="white" stroke-width="1.5" fill="none"/><path d="M11.5 12h9M3.5 12h2" stroke="white" stroke-width="1.5"/></svg>
+            180+ Countries
+          </span>
+        </div>
+      </div>
+
+      <!-- Stats -->
       <div class="hero-stats">
         <div class="hero-stat">
-          <span class="stat-num">200K+</span>
+          <span class="stat-num">200K<span class="stat-plus">+</span></span>
           <span class="stat-lbl">Ads Analysed</span>
         </div>
         <div class="stat-sep"></div>
         <div class="hero-stat">
-          <span class="stat-num">35%</span>
+          <span class="stat-num">35<span class="stat-plus">%</span></span>
           <span class="stat-lbl">Avg CPA Reduction</span>
         </div>
         <div class="stat-sep"></div>
         <div class="hero-stat">
-          <span class="stat-num">3.2×</span>
+          <span class="stat-num">3.2<span class="stat-plus">×</span></span>
           <span class="stat-lbl">Average ROAS Lift</span>
         </div>
         <div class="stat-sep"></div>
         <div class="hero-stat">
-          <span class="stat-num">180+</span>
-          <span class="stat-lbl">Countries Covered</span>
+          <span class="stat-num">&lt;60<span class="stat-plus">s</span></span>
+          <span class="stat-lbl">Time to Insights</span>
         </div>
       </div>
+
     </div>
   </section>
 
   <section class="modules-section">
     <div class="container">
-      <div class="section-label">FIVE CORE MODULES</div>
+      <div class="section-label">CORE CAPABILITIES</div>
       <h2 class="section-title">One Autonomous Intelligence Engine</h2>
-      <p class="section-sub">InfoGenie is the only platform combining competitor intelligence, ad spy, AI generation, campaign automation, and real-time optimisation in one loop.</p>
+      <p class="section-sub">The only platform combining competitor intelligence, AI creative generation, campaign automation, audience targeting, and real-time optimisation — in one seamless loop.</p>
       <div class="modules-grid">
         <div class="module-card mc-blue">
-          <div class="mc-icon">🔍</div>
+          <div class="mc-icon-wrap mc-icon-blue">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          </div>
           <h3>Competitor Intelligence</h3>
           <p>Crawl websites, scrape ad libraries (Meta, Google, TikTok), analyse SEO, traffic patterns, and conversion funnels from your exact industry.</p>
           <div class="mc-tags"><span>CTR Benchmarks</span><span>Ad Spy</span><span>Traffic Data</span></div>
         </div>
         <div class="module-card mc-teal">
-          <div class="mc-icon">📊</div>
+          <div class="mc-icon-wrap mc-icon-teal">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          </div>
           <h3>Ad Performance Analysis</h3>
           <p>Detect best-performing ads, keywords, ROAS patterns, and creative angles across your industry — updated in near real-time.</p>
           <div class="mc-tags"><span>ROAS Tracking</span><span>Keyword Intel</span><span>Funnel Analysis</span></div>
         </div>
         <div class="module-card mc-purple">
-          <div class="mc-icon">✨</div>
+          <div class="mc-icon-wrap mc-icon-purple">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>
+          </div>
           <h3>AI Creative Generation</h3>
           <p>Generate winning ad copy, headlines, visuals, and landing page structures — benchmarked against real competitor performance data.</p>
           <div class="mc-tags"><span>Ad Copy</span><span>Headlines</span><span>Video Scripts</span></div>
         </div>
         <div class="module-card mc-gold">
-          <div class="mc-icon">🚀</div>
+          <div class="mc-icon-wrap mc-icon-gold">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          </div>
           <h3>Campaign Automation</h3>
           <p>Deploy to Google, Meta & TikTok. A/B test automatically. RL optimisation runs 24/7 without manual intervention.</p>
           <div class="mc-tags"><span>Auto-Launch</span><span>A/B Testing</span><span>RL Optimisation</span></div>
         </div>
         <div class="module-card mc-green">
-          <div class="mc-icon">🎯</div>
+          <div class="mc-icon-wrap mc-icon-green">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+          </div>
           <h3>Audience Intelligence</h3>
           <p>Identify which audience segments competitors are winning with and automatically build improved targeting strategies against them.</p>
           <div class="mc-tags"><span>Lookalike Audiences</span><span>Interest Targeting</span><span>Geo Segmentation</span></div>
         </div>
         <div class="module-card mc-navy">
-          <div class="mc-icon">💬</div>
-          <h3>Conversational AI</h3>
+          <div class="mc-icon-wrap mc-icon-navy">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <h3>AI Strategy Assistant</h3>
           <p>Chat with your campaign data, ask questions, get instant strategy recommendations, and build campaigns through conversation.</p>
           <div class="mc-tags"><span>Chat Interface</span><span>KPI Alerts</span><span>Strategy Builder</span></div>
         </div>

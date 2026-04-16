@@ -4601,3 +4601,268 @@ p, span, label, td, li {
   font-weight: 700 !important;
 }
 .nav-dropdown .nav-link.active .ndl-icon { opacity: 1 !important; }
+
+/* ══════════════════════════════════════════════
+   HOME PAGE v2 — Premium Hero Redesign
+   ══════════════════════════════════════════════ */
+
+/* ── Badge ── */
+.hero-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 7px 16px 7px 12px !important;
+  background: rgba(0,216,215,.07) !important;
+  border: 1px solid rgba(0,216,215,.3) !important;
+  border-radius: 100px !important;
+  font-size: 0.7rem !important;
+  font-weight: 700 !important;
+  color: #7EEEED !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+  margin-bottom: 28px !important;
+  box-shadow: 0 0 40px rgba(0,216,215,.08), inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+.badge-text { letter-spacing: .06em !important; }
+.badge-new {
+  background: linear-gradient(135deg, #00C9C8, #0066FF) !important;
+  color: white !important;
+  font-size: 0.58rem !important;
+  font-weight: 800 !important;
+  padding: 2px 7px !important;
+  border-radius: 100px !important;
+  letter-spacing: .06em !important;
+}
+
+/* ── Hero title ── */
+.hero-title {
+  font-size: clamp(2.4rem, 5vw, 3.8rem) !important;
+  font-weight: 900 !important;
+  line-height: 1.08 !important;
+  letter-spacing: -0.05em !important;
+  margin-bottom: 20px !important;
+  color: #fff !important;
+}
+.gradient-text {
+  background: linear-gradient(125deg, #00E5FF 0%, #00C9C8 35%, #4D9FFF 70%, #a78bfa 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  filter: drop-shadow(0 0 32px rgba(0,229,255,.3)) !important;
+}
+
+/* ── Hero subtitle ── */
+.hero-subtitle {
+  font-size: 1.05rem !important;
+  color: rgba(180,205,235,.6) !important;
+  line-height: 1.7 !important;
+  max-width: 560px !important;
+  margin-bottom: 36px !important;
+  font-weight: 400 !important;
+}
+
+/* ── URL Card label row ── */
+.url-card-label-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  color: rgba(180,210,240,.55) !important;
+  margin-bottom: 14px !important;
+  letter-spacing: .01em !important;
+}
+.url-card-label-row svg { flex-shrink: 0 !important; }
+
+/* ── Analyse button with icon ── */
+.btn-analyse {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 0 22px !important;
+  height: 44px !important;
+  background: linear-gradient(135deg, #00C9C8 0%, #0066FF 100%) !important;
+  border: none !important;
+  border-radius: 10px !important;
+  color: white !important;
+  font-weight: 700 !important;
+  font-size: 0.85rem !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 4px 20px rgba(0,201,200,.35) !important;
+  transition: transform .15s, box-shadow .15s !important;
+  letter-spacing: .01em !important;
+}
+.btn-analyse svg { flex-shrink: 0 !important; }
+.btn-analyse:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 32px rgba(0,201,200,.5) !important;
+}
+
+/* ── Example chips with dots ── */
+.example-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 5px 12px !important;
+  background: rgba(255,255,255,.05) !important;
+  border: 1px solid rgba(255,255,255,.1) !important;
+  border-radius: 100px !important;
+  color: rgba(200,220,245,.65) !important;
+  font-size: 0.73rem !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all .15s !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+.example-chip:hover {
+  background: rgba(0,201,200,.12) !important;
+  border-color: rgba(0,201,200,.4) !important;
+  color: #00D8D7 !important;
+  transform: translateY(-1px) !important;
+}
+.chip-dot {
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  flex-shrink: 0 !important;
+}
+.chip-ecom   { background: #10B981 !important; }
+.chip-fin    { background: #3B82F6 !important; }
+.chip-saas   { background: #8B5CF6 !important; }
+.chip-edu    { background: #F59E0B !important; }
+.chip-travel { background: #EC4899 !important; }
+.chip-crypto { background: #F97316 !important; }
+
+/* ── Platform trust strip ── */
+.platform-strip {
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+  margin-top: 28px !important;
+  margin-bottom: 32px !important;
+  flex-wrap: wrap !important;
+}
+.ps-label {
+  font-size: 0.7rem !important;
+  font-weight: 700 !important;
+  color: rgba(180,200,230,.35) !important;
+  text-transform: uppercase !important;
+  letter-spacing: .08em !important;
+  white-space: nowrap !important;
+}
+.ps-platforms {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  flex-wrap: wrap !important;
+}
+.ps-platform {
+  display: flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  color: rgba(200,215,240,.4) !important;
+  white-space: nowrap !important;
+}
+.ps-dot {
+  width: 3px !important;
+  height: 3px !important;
+  border-radius: 50% !important;
+  background: rgba(255,255,255,.2) !important;
+}
+
+/* ── Stats ── */
+.hero-stats {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0 !important;
+  flex-wrap: wrap !important;
+}
+.hero-stat {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 28px !important;
+  border-right: 1px solid rgba(255,255,255,.08) !important;
+}
+.hero-stat:first-child { padding-left: 0 !important; }
+.hero-stat:last-child  { border-right: none !important; }
+.stat-num {
+  font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 1.65rem !important;
+  font-weight: 800 !important;
+  color: #fff !important;
+  line-height: 1.1 !important;
+  letter-spacing: -0.03em !important;
+}
+.stat-plus {
+  font-size: 1.1rem !important;
+  font-weight: 700 !important;
+  color: #00D8D7 !important;
+  margin-left: 1px !important;
+}
+.stat-lbl {
+  font-size: 0.7rem !important;
+  font-weight: 600 !important;
+  color: rgba(180,205,235,.45) !important;
+  text-transform: uppercase !important;
+  letter-spacing: .06em !important;
+  margin-top: 3px !important;
+}
+
+/* ── Module card icon wraps ── */
+.mc-icon-wrap {
+  width: 48px !important;
+  height: 48px !important;
+  border-radius: 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin-bottom: 16px !important;
+  flex-shrink: 0 !important;
+}
+.mc-icon-blue   { background: rgba(59,130,246,.12) !important; color: #60A5FA !important; }
+.mc-icon-teal   { background: rgba(0,201,200,.12) !important; color: #00D8D7 !important; }
+.mc-icon-purple { background: rgba(139,92,246,.12) !important; color: #A78BFA !important; }
+.mc-icon-gold   { background: rgba(245,158,11,.12) !important; color: #FBBF24 !important; }
+.mc-icon-green  { background: rgba(16,185,129,.12) !important; color: #34D399 !important; }
+.mc-icon-navy   { background: rgba(99,102,241,.12) !important; color: #818CF8 !important; }
+
+/* Module card refinements */
+.module-card {
+  border-radius: 18px !important;
+  padding: 28px !important;
+  border: 1px solid rgba(0,0,0,.06) !important;
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease !important;
+}
+.module-card:hover {
+  transform: translateY(-5px) !important;
+  box-shadow: 0 16px 48px rgba(0,0,0,.1) !important;
+  border-color: rgba(0,201,200,.2) !important;
+}
+.module-card h3 {
+  font-size: 1rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+  margin-bottom: 10px !important;
+}
+.module-card p {
+  font-size: 0.83rem !important;
+  line-height: 1.65 !important;
+  margin-bottom: 18px !important;
+}
+
+/* Fix: home view background matches hero so no gap shows */
+#view-home {
+  background: #060C1A !important;
+  padding-top: 92px !important;
+}
+#view-home .hero {
+  min-height: calc(100vh - 92px) !important;
+}
+.hero-content {
+  padding-top: 60px !important;
+  padding-bottom: 60px !important;
+}
