@@ -388,8 +388,13 @@ function buildLaunchModal(camp, idx) {
       </div>
       <div style="font-size:0.8rem;color:rgba(255,255,255,.6);margin-bottom:16px">${name} · ${platform}</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-        ${[['Proj. ROAS', projROAS+'×','#00E5FF'],['Est. Conversions',projConv,'#10B981'],['Est. Revenue',projRev,'#F59E0B'],['Daily Budget','$'+dailyBudg+'/day','white']].map(([k,v,c])=>`
-          <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center">
+        ${[
+          ['Proj. ROAS', projROAS+'×','#00E5FF','Projected Return on Ad Spend — estimated revenue earned per $1 of budget, based on your industry benchmarks and campaign settings.'],
+          ['Est. Conversions',projConv,'#10B981','Estimated number of completed goals (purchases, sign-ups, calls) this campaign is projected to generate each month.'],
+          ['Est. Revenue',projRev,'#F59E0B','Estimated monthly revenue attributable to this campaign, calculated from projected ROAS × monthly budget.'],
+          ['Daily Budget','$'+dailyBudg+'/day','white','Maximum amount spent per day. InfoGenie divides your monthly budget by 30 to set this cap automatically.']
+        ].map(([k,v,c,tip])=>`
+          <div style="background:rgba(255,255,255,.08);border-radius:8px;padding:10px;text-align:center" title="${tip}">
             <div style="font-size:1.1rem;font-weight:800;color:${c}">${v}</div>
             <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">${k}</div>
           </div>`).join('')}
@@ -509,8 +514,12 @@ function buildLaunchModal(camp, idx) {
       <div>
         <div style="font-size:0.68rem;font-weight:700;color:#D97706;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">💰 Budget Breakdown</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-          ${[['Daily','$'+dailyBudg],['Weekly','$'+weeklyBudg.toLocaleString()],['Monthly','$'+budgetNum.toLocaleString()]].map(([k,v])=>`
-            <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px;text-align:center">
+          ${[
+          ['Daily','$'+dailyBudg,'Daily ad spend cap — the maximum InfoGenie allows the platform to spend in a single day.'],
+          ['Weekly','$'+weeklyBudg.toLocaleString(),'Estimated weekly spend — your monthly budget divided by 4.3 weeks.'],
+          ['Monthly','$'+budgetNum.toLocaleString(),'Total monthly ad budget committed to this campaign across all placements and audiences.']
+        ].map(([k,v,tip])=>`
+            <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:10px;text-align:center" title="${tip}">
               <div style="font-size:0.9rem;font-weight:800;color:#D97706">${v}</div>
               <div style="font-size:0.7rem;color:#6B7280;margin-top:2px">${k} Spend</div>
             </div>`).join('')}
@@ -797,16 +806,20 @@ function buildLaunchModal(camp, idx) {
           // ── Lookalike / audience setup ─────────────────────────────────────
           } else if (low.includes('lookalike') || low.includes('audience') || low.includes('segment')) {
             actionBtn = `<button onclick="
-                document.getElementById('launchModal').classList.add('hidden');
-                document.getElementById('launchModal').removeAttribute('style');
+                var _m=document.getElementById('campLaunchRichModal');
+                if(_m){_m.classList.add('hidden');_m.style.display='none';}
+                var _m2=document.getElementById('launchModal');
+                if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}
                 navigateTo('audience');
               " style="flex-shrink:0;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#0066FF;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;cursor:pointer;white-space:nowrap">→ Open Audience</button>`;
 
           // ── Conversion tracking / attribution ──────────────────────────────
           } else if (low.includes('tracking') || low.includes('attribution') || low.includes('conversion') || low.includes('revenue')) {
             actionBtn = `<button onclick="
-                document.getElementById('launchModal').classList.add('hidden');
-                document.getElementById('launchModal').removeAttribute('style');
+                var _m=document.getElementById('campLaunchRichModal');
+                if(_m){_m.classList.add('hidden');_m.style.display='none';}
+                var _m2=document.getElementById('launchModal');
+                if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}
                 navigateTo('results');
               " style="flex-shrink:0;padding:3px 10px;font-size:0.71rem;font-weight:700;color:#059669;background:#D1FAE5;border:1px solid #6EE7B7;border-radius:6px;cursor:pointer;white-space:nowrap">→ View Results</button>`;
 
@@ -838,8 +851,10 @@ function buildLaunchModal(camp, idx) {
           // ── A/B testing ────────────────────────────────────────────────────
           } else if (low.includes('a/b') || low.includes('ab test') || low.includes('split test') || low.includes('variant')) {
             actionBtn = `<button onclick="
-                document.getElementById('launchModal').classList.add('hidden');
-                document.getElementById('launchModal').removeAttribute('style');
+                var _m=document.getElementById('campLaunchRichModal');
+                if(_m){_m.classList.add('hidden');_m.style.display='none';}
+                var _m2=document.getElementById('launchModal');
+                if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}
                 navigateTo('campaigns');
                 setTimeout(()=>{
                   const abBtn=document.getElementById('abTestBtn');
@@ -860,7 +875,7 @@ function buildLaunchModal(camp, idx) {
                   this.closest('.cl-item').querySelector('.cl-check').textContent='☑';
                   this.closest('.cl-item').style.background='#D1FAE5';}
                 " style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#1D4ED8;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;cursor:pointer">💾 Save Keywords</button>
-                <button onclick="document.getElementById('launchModal').classList.add('hidden');document.getElementById('launchModal').removeAttribute('style');navigateTo('competitors');"
+                <button onclick="var _m=document.getElementById('campLaunchRichModal');if(_m){_m.classList.add('hidden');_m.style.display='none';}var _m2=document.getElementById('launchModal');if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}navigateTo('competitors');"
                   style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#6B7280;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer">→ Keyword Gap Analysis</button>
               </div>
             </div>`;
@@ -879,7 +894,7 @@ function buildLaunchModal(camp, idx) {
                   this.closest('.cl-item').querySelector('.cl-check').textContent='☑';
                   this.closest('.cl-item').style.background='#D1FAE5';}
                 " style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#7C3AED;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:6px;cursor:pointer">💾 Save Copy</button>
-                <button onclick="document.getElementById('launchModal').classList.add('hidden');document.getElementById('launchModal').removeAttribute('style');navigateTo('creative');"
+                <button onclick="var _m=document.getElementById('campLaunchRichModal');if(_m){_m.classList.add('hidden');_m.style.display='none';}var _m2=document.getElementById('launchModal');if(_m2){_m2.classList.add('hidden');_m2.style.display='none';}navigateTo('creative');"
                   style="padding:3px 10px;font-size:0.71rem;font-weight:700;color:#6B7280;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer">→ AI Creative Studio</button>
               </div>
             </div>`;
@@ -3483,12 +3498,12 @@ function buildAdvertise() {
   const statBar = `
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
       ${[
-        ['Connected Channels', connCount, '#10B981','📡'],
-        ['Active Campaigns', (window._launchedCampaigns||[]).length, '#0066FF','🚀'],
-        ['Channels Available', ADV_PLATFORMS.length, '#7C3AED','🌐'],
-        ['AI Optimisation', '94%', '#F59E0B','⚡'],
-      ].map(([l,v,c,ic])=>`
-        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
+        ['Connected Channels', connCount, '#10B981','📡','Ad platforms you have authorised InfoGenie to push campaigns to. Connect more channels to expand your reach.'],
+        ['Active Campaigns', (window._launchedCampaigns||[]).length, '#0066FF','🚀','Number of campaigns you have launched from InfoGenie that are currently running or tracked.'],
+        ['Channels Available', ADV_PLATFORMS.length, '#7C3AED','🌐','Total ad platforms supported by InfoGenie — connect any to start pushing campaigns with one click.'],
+        ['AI Optimisation', '94%', '#F59E0B','⚡','InfoGenie\'s AI engine efficiency score — bids, budgets, and targeting are continuously adjusted to maximise ROAS.'],
+      ].map(([l,v,c,ic,tip])=>`
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.05)" title="${tip}">
           <div style="font-size:1.8rem;margin-bottom:4px">${ic}</div>
           <div style="font-size:1.5rem;font-weight:800;color:${c}">${v}</div>
           <div style="font-size:0.68rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em">${l}</div>
@@ -3526,10 +3541,10 @@ function buildAdvertise() {
                 <div style="font-size:0.72rem;color:#6B7280">${c.platform} · ${c.budgetStr}/mo · Started ${c.startDate||'—'}</div>
               </div>
               <div style="display:flex;align-items:center;gap:12px">
-                <div style="text-align:center"><div style="font-size:1rem;font-weight:800;color:#10B981">${c.metrics?.roas||'—'}×</div><div style="font-size:0.62rem;color:#6B7280">ROAS</div></div>
-                <div style="text-align:center"><div style="font-size:1rem;font-weight:800;color:#0066FF">${c.metrics?.ctr||'—'}</div><div style="font-size:0.62rem;color:#6B7280">CTR</div></div>
-                <span style="background:#10B98122;color:#059669;font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:8px;text-transform:uppercase">${c.status||'active'}</span>
-                <button onclick="showToast('⚙️ Optimising — adjusting bids and targeting')" style="padding:5px 12px;background:#0A1628;border:none;border-radius:7px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer">⚡ Optimise</button>
+                <div style="text-align:center" title="Return on Ad Spend — revenue generated per $1 spent on this campaign. Higher is better."><div style="font-size:1rem;font-weight:800;color:#10B981">${c.metrics?.roas||'—'}×</div><div style="font-size:0.62rem;color:#6B7280">ROAS</div></div>
+                <div style="text-align:center" title="Click-Through Rate — percentage of people who saw your ad and clicked it. Industry average is 2–5%."><div style="font-size:1rem;font-weight:800;color:#0066FF">${c.metrics?.ctr||'—'}</div><div style="font-size:0.62rem;color:#6B7280">CTR</div></div>
+                <span style="background:#10B98122;color:#059669;font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:8px;text-transform:uppercase" title="Current campaign status — Active means ads are running and spending budget.">${c.status||'active'}</span>
+                <button onclick="showToast('⚙️ Optimising — adjusting bids and targeting')" title="Trigger InfoGenie AI to re-optimise bids, budgets, and targeting for this campaign right now." style="padding:5px 12px;background:#0A1628;border:none;border-radius:7px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer">⚡ Optimise</button>
               </div>
             </div>`).join('')}
         </div>
@@ -4306,12 +4321,12 @@ function buildSocialCalendar() {
   const statBarS = `
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
       ${[
-        ['Scheduled', allPosts.filter(p=>p.status==='scheduled').length, '#0066FF','📅'],
-        ['Published',  allPosts.filter(p=>p.status==='published').length, '#10B981','✅'],
-        ['Drafts',     allPosts.filter(p=>p.status==='draft').length, '#F59E0B','✏️'],
-        ['This Month', allPosts.filter(p=>{ const d=new Date(p.scheduledDate); return d.getFullYear()===year&&d.getMonth()===month; }).length, '#7C3AED','📊'],
-      ].map(([l,v,c,ic])=>`
-        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        ['Scheduled', allPosts.filter(p=>p.status==='scheduled').length, '#0066FF','📅','Posts queued and ready to publish — click any day on the calendar to see what\'s planned.'],
+        ['Published',  allPosts.filter(p=>p.status==='published').length, '#10B981','✅','Posts that have already gone live across your connected social channels.'],
+        ['Drafts',     allPosts.filter(p=>p.status==='draft').length, '#F59E0B','✏️','Posts saved as drafts — not yet scheduled or published.'],
+        ['This Month', allPosts.filter(p=>{ const d=new Date(p.scheduledDate); return d.getFullYear()===year&&d.getMonth()===month; }).length, '#7C3AED','📊','Total posts (any status) scheduled or published in the currently viewed calendar month.'],
+      ].map(([l,v,c,ic,tip])=>`
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.04)" title="${tip}">
           <div style="font-size:1.6rem;margin-bottom:4px">${ic}</div>
           <div style="font-size:1.5rem;font-weight:800;color:${c}">${v}</div>
           <div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em">${l}</div>
@@ -4558,12 +4573,12 @@ function buildAiVisibility() {
   wrap.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px">
       ${[
-        ['AI Visibility Score', avgScore + '/100',        sc(avgScore),                                              '🧠'],
-        ['Brand Citation Rate', citRate + '%',            citRate>=60?'#10B981':citRate>=35?'#F59E0B':'#DC2626',    '📢'],
-        ['LLM Platforms',       platforms.length + ' tracked', '#6366F1',                                           '🔭'],
-        ['AI Referral Traffic', aiTraffic.toLocaleString() + ' visits/mo', '#0066FF',                              '📊'],
-      ].map(([l,v,c,ic]) => `
-        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        ['AI Visibility Score', avgScore + '/100',        sc(avgScore),                                              '🧠', 'Composite score (0–100) measuring how prominently your brand appears across all tracked AI assistants. 70+ = strong, 50–70 = moderate, below 50 = needs work.'],
+        ['Brand Citation Rate', citRate + '%',            citRate>=60?'#10B981':citRate>=35?'#F59E0B':'#DC2626',    '📢', 'Percentage of AI queries in your industry where at least one LLM platform cites or mentions your brand.'],
+        ['LLM Platforms',       platforms.length + ' tracked', '#6366F1',                                           '🔭', 'Number of AI platforms InfoGenie is actively monitoring for brand mention frequency and citation quality.'],
+        ['AI Referral Traffic', aiTraffic.toLocaleString() + ' visits/mo', '#0066FF',                              '📊', 'Estimated monthly visitors arriving from AI assistants (ChatGPT, Gemini, Perplexity, etc.) who were referred to your site after seeing your brand cited.'],
+      ].map(([l,v,c,ic,tip]) => `
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.04)" title="${tip}">
           <div style="font-size:1.8rem;margin-bottom:4px">${ic}</div>
           <div style="font-size:1.2rem;font-weight:800;color:${c};margin-bottom:2px">${v}</div>
           <div style="font-size:0.68rem;color:#6B7280;font-weight:600">${l}</div>
@@ -4584,7 +4599,7 @@ function buildAiVisibility() {
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
         ${platforms.map(p => `
-          <div style="border:1.5px solid #E5E7EB;border-radius:13px;padding:15px;background:${p.bg}">
+          <div style="border:1.5px solid #E5E7EB;border-radius:13px;padding:15px;background:${p.bg}" title="${p.name} AI Visibility — your brand scores ${p.score}/100 on this platform. ${p.prompt}.">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
               <div style="display:flex;align-items:center;gap:8px">
                 <div style="font-size:1.3rem">${p.icon}</div>
@@ -4597,14 +4612,14 @@ function buildAiVisibility() {
             </div>
             <div style="margin-bottom:8px">
               <div style="display:flex;justify-content:space-between;font-size:0.66rem;color:#6B7280;margin-bottom:3px">
-                <span>Visibility</span><span style="font-weight:700;color:${sc(p.score)}">${p.score}%</span>
+                <span title="How visible your brand is in this AI platform — 70+ is strong, below 50 needs attention.">Visibility</span><span style="font-weight:700;color:${sc(p.score)}">${p.score}%</span>
               </div>
               <div style="background:#E5E7EB;border-radius:4px;height:5px">
                 <div style="width:${p.score}%;background:${p.color};height:5px;border-radius:4px"></div>
               </div>
             </div>
             <div style="font-size:0.68rem;color:#4B5563;margin-bottom:8px;font-style:italic">"${p.prompt}"</div>
-            <div style="background:white;border-radius:8px;padding:7px 9px;font-size:0.66rem;color:#374151;border:1px solid ${p.color}33">💡 ${p.tip}</div>
+            <div style="background:white;border-radius:8px;padding:7px 9px;font-size:0.66rem;color:#374151;border:1px solid ${p.color}33" title="Action recommended to improve your visibility score on ${p.name}.">💡 ${p.tip}</div>
           </div>`).join('')}
       </div>
     </div>
@@ -4624,12 +4639,12 @@ function buildAiVisibility() {
       <!-- 4 KPIs -->
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px">
         ${[
-          { label:'Brand Health Score',     value:brandScore+'/100',          color:brandScore>=70?'#10B981':brandScore>=50?'#F59E0B':'#DC2626', icon:'💚', sub:'Overall AI brand strength' },
-          { label:'AI Positive Sentiment',  value:sentimentPos+'%',           color:'#10B981', icon:'😊', sub:sentimentNeg+'% neg · '+sentimentNeu+'% neutral' },
-          { label:'Share of Voice (AI)',     value:sovPct+'%',                 color:'#6366F1', icon:'📢', sub:'Of AI queries mentioning category' },
-          { label:'Monthly Brand Mentions',  value:brandMentions,             color:'#0066FF', icon:'🔊', sub:'Est. across all LLM platforms' },
+          { label:'Brand Health Score',     value:brandScore+'/100',          color:brandScore>=70?'#10B981':brandScore>=50?'#F59E0B':'#DC2626', icon:'💚', sub:'Overall AI brand strength', tip:'Composite score combining AI mention frequency, sentiment, citation quality, and share of voice across all LLM platforms. 70+ is healthy.' },
+          { label:'AI Positive Sentiment',  value:sentimentPos+'%',           color:'#10B981', icon:'😊', sub:sentimentNeg+'% neg · '+sentimentNeu+'% neutral', tip:'Percentage of AI-generated mentions about your brand that carry positive sentiment. Negative mentions may need content or PR intervention.' },
+          { label:'Share of Voice (AI)',     value:sovPct+'%',                 color:'#6366F1', icon:'📢', sub:'Of AI queries mentioning category', tip:'Your brand\'s slice of all AI responses that mention any brand in your category. Higher SOV means AI recommends you more often than competitors.' },
+          { label:'Monthly Brand Mentions',  value:brandMentions,             color:'#0066FF', icon:'🔊', sub:'Est. across all LLM platforms', tip:'Estimated number of times your brand is mentioned or cited across all tracked AI platforms in a typical month.' },
         ].map(k => `
-        <div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:12px;padding:14px;text-align:center">
+        <div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:12px;padding:14px;text-align:center" title="${k.tip}">
           <div style="font-size:1.5rem;margin-bottom:3px">${k.icon}</div>
           <div style="font-family:'Sora',sans-serif;font-size:1.15rem;font-weight:800;color:${k.color};margin-bottom:2px">${k.value}</div>
           <div style="font-size:0.62rem;font-weight:700;color:#374151;margin-bottom:2px">${k.label}</div>
@@ -5619,25 +5634,26 @@ function buildRedditIntel() {
       <div style="font-family:'Sora',sans-serif;font-size:0.85rem;font-weight:800;color:white;margin-bottom:14px">⚙️ Monitor Settings</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px">
         <div>
-          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">Your Brand / Domain</label>
+          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px" title="Your brand name or domain — InfoGenie searches for mentions of this across Reddit and Hacker News discussions.">Your Brand / Domain</label>
           <input id="rdt-brand" value="${brand}" placeholder="yourbrand.com"
             onblur="autoFillRedditFields(this.value)"
             onkeydown="if(event.key==='Enter'){this.blur()}"
+            title="Enter your domain (e.g. acme.com) or brand name — used to find brand mentions, competitor comparisons, and sentiment discussions."
             style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
         </div>
         <div>
-          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">
+          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px" title="Keywords InfoGenie will search for across Reddit threads and AI-synthesised community signals.">
             Keywords to Monitor
             <span id="rdt-kw-loader" style="display:none;margin-left:6px;font-size:0.6rem;color:#00C9C8;font-weight:600">✦ auto-filling…</span>
           </label>
-          <input id="rdt-keywords" value="${kwList}" placeholder="e.g. email marketing, CRM, automation" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
+          <input id="rdt-keywords" value="${kwList}" placeholder="e.g. email marketing, CRM, automation" title="Comma-separated list of keywords to scan for — InfoGenie will surface threads where these terms appear in discussions." style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
         </div>
         <div>
-          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px">
+          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px" title="Competitor brands to watch — InfoGenie will flag any threads comparing your brand against these names.">
             Competitors to Watch
             <span id="rdt-comp-loader" style="display:none;margin-left:6px;font-size:0.6rem;color:#FF6B35;font-weight:600">✦ auto-filling…</span>
           </label>
-          <input id="rdt-competitors" value="${competitors}" placeholder="e.g. HubSpot, Mailchimp" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
+          <input id="rdt-competitors" value="${competitors}" placeholder="e.g. HubSpot, Mailchimp" title="Comma-separated list of competitor brand names — InfoGenie alerts you when they appear in monitored discussions." style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
         </div>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
@@ -5646,7 +5662,7 @@ function buildRedditIntel() {
           <span style="color:#A78BFA;font-weight:700">🤖 AI Signal</span> GPT-4o community intelligence based on real Reddit patterns &nbsp;·&nbsp;
           AI scores each thread for relevance, sentiment &amp; urgency
         </div>
-        <button onclick="scanRedditMonitor()" style="padding:10px 22px;background:linear-gradient(135deg,#FF4500,#FF6B35);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">🔍 Scan Now</button>
+        <button onclick="scanRedditMonitor()" title="Trigger a live scan — InfoGenie fetches real Hacker News threads and generates AI-synthesised Reddit intelligence based on your brand, keywords, and competitors." style="padding:10px 22px;background:linear-gradient(135deg,#FF4500,#FF6B35);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">🔍 Scan Now</button>
       </div>
     </div>
 
@@ -5655,11 +5671,14 @@ function buildRedditIntel() {
 
     <!-- Tab Bar -->
     <div style="display:flex;gap:4px;margin-bottom:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:5px">
-      ${['monitor','trending','serp','reply'].map((t, i) => {
-        const icons = ['📡','🔥','🔍','✍️'];
-        const labels = ['Monitor','Trending','SERP Signals','Reply Studio'];
+      ${[
+        ['monitor','📡','Monitor','Watch brand mentions, competitor threads, and keyword discussions in real time.'],
+        ['trending','🔥','Trending','See the top upvote-gaining threads in your industry sorted by velocity — find viral opportunities early.'],
+        ['serp','🔍','SERP Signals','Identify Reddit posts ranking on Google page 1 for your keywords — prime engagement targets.'],
+        ['reply','✍️','Reply Studio','AI-drafted replies to relevant threads — engage authentically without sounding promotional.'],
+      ].map(([t, ic, label, tip], i) => {
         const active = t === 'monitor';
-        return `<button id="rdttb-${t}" onclick="switchRedditTab('${t}')" style="flex:1;padding:9px 12px;border-radius:9px;border:none;font-size:0.77rem;font-weight:700;cursor:pointer;transition:all .15s;background:${active?'rgba(255,100,0,.25)':'rgba(255,255,255,.05)'};color:${active?'#FF6B35':'rgba(255,255,255,.6)'}">${icons[i]} ${labels[i]}</button>`;
+        return `<button id="rdttb-${t}" onclick="switchRedditTab('${t}')" title="${tip}" style="flex:1;padding:9px 12px;border-radius:9px;border:none;font-size:0.77rem;font-weight:700;cursor:pointer;transition:all .15s;background:${active?'rgba(255,100,0,.25)':'rgba(255,255,255,.05)'};color:${active?'#FF6B35':'rgba(255,255,255,.6)'}">${ic} ${label}</button>`;
       }).join('')}
     </div>
 
@@ -6051,22 +6070,22 @@ function buildAudience() {
             <div class="aud-card-name">${seg.label}</div>
             <div class="aud-card-size">Est. ${size} reachable users</div>
           </div>
-          <div class="aud-score-badge">${score}/100</div>
+          <div class="aud-score-badge" title="InfoGenie Audience Score — combines competitor overlap, engagement rate, and estimated reachability. 80+ is excellent.">${score}/100</div>
         </div>
         <div class="aud-metrics">
-          <div class="aud-metric-item">
+          <div class="aud-metric-item" title="Average Click-Through Rate — the percentage of this audience segment who click ads when shown to them. Industry average is 2–5%.">
             <div class="aud-metric-val">${ctr}%</div>
             <div class="aud-metric-lbl">Avg CTR</div>
           </div>
-          <div class="aud-metric-item">
+          <div class="aud-metric-item" title="Average Cost Per Acquisition — estimated spend required to convert one person from this audience into a customer.">
             <div class="aud-metric-val">$${cpa}</div>
             <div class="aud-metric-lbl">Avg CPA</div>
           </div>
-          <div class="aud-metric-item">
+          <div class="aud-metric-item" title="Number of your tracked competitors actively targeting this same audience segment.">
             <div class="aud-metric-val">${seg.count} competitors</div>
             <div class="aud-metric-lbl">Competing here</div>
           </div>
-          <div class="aud-metric-item">
+          <div class="aud-metric-item" title="Estimated engagement rate for this audience — how actively they interact with ads and content in your category.">
             <div class="aud-metric-val">${seg.avgPct}%</div>
             <div class="aud-metric-lbl">Engagement Rate</div>
           </div>
@@ -6077,7 +6096,7 @@ function buildAudience() {
             ${insights.map(ins => `<li><span>•</span><span>${ins}</span></li>`).join('')}
           </ul>
         </div>
-        <button class="aud-target-btn" onclick="targetAudience('${seg.label}')">🎯 Auto-Target This Audience</button>
+        <button class="aud-target-btn" onclick="targetAudience('${seg.label}')" title="Auto-configure targeting parameters for this audience across all connected ad channels — InfoGenie sets bids, demographics, and interests automatically.">🎯 Auto-Target This Audience</button>
       </div>
     `;
   }).join('');
@@ -8978,13 +8997,13 @@ function buildSettings() {
   wrap.innerHTML = `
     <div class="settings-page">
       <div class="integ-summary-bar">
-        <div class="isb-item"><span class="isb-count" id="connectedCount">0</span> integrations connected</div>
+        <div class="isb-item" title="Total number of third-party services you have connected to InfoGenie. Each connection unlocks live data, AI features, or direct campaign deployment."><span class="isb-count" id="connectedCount">0</span> integrations connected</div>
         <div class="isb-divider"></div>
-        <div class="isb-item" id="apiHealthDisplay">
+        <div class="isb-item" id="apiHealthDisplay" title="Live status of all connected API credentials — green means all connections are healthy and responsive.">
           <span style="color:var(--green); font-size:1rem;">●</span>&nbsp;Checking API connections…
         </div>
         <div class="isb-divider"></div>
-        <div class="isb-item">
+        <div class="isb-item" title="Recommended minimum setup — connecting one ad platform lets InfoGenie push campaigns live; connecting an AI model enables Creative Studio and AI brief generation.">
           <span style="color:var(--gold);">⚡</span>&nbsp;Tip: Connect at least <strong>one Ad Platform</strong> + <strong>one AI Model</strong> to enable full autonomous operation
         </div>
         <div class="isb-cta" style="display:flex;gap:10px;align-items:center;">
@@ -9005,12 +9024,12 @@ function buildSettings() {
         <div class="settings-form">
           <div class="sf-row">
             <div class="sf-group">
-              <label>Business Name</label>
-              <input type="text" class="sf-input" placeholder="Your Company Name" id="sfBizName" />
+              <label title="Your company or brand name — used to personalise AI-generated content, briefs, and reports throughout InfoGenie.">Business Name</label>
+              <input type="text" class="sf-input" placeholder="Your Company Name" id="sfBizName" title="Enter your brand name as it should appear in campaign briefs, AI creative, and exported reports." />
             </div>
             <div class="sf-group">
-              <label>Default Target Region</label>
-              <select class="sf-select" id="sfRegion">
+              <label title="Your primary advertising market — InfoGenie uses this to filter keyword data, benchmark costs, and recommend localised audiences.">Default Target Region</label>
+              <select class="sf-select" id="sfRegion" title="Sets the default geography for all new campaign projections, CPC benchmarks, and audience sizing estimates.">
                 <option value="global">🌍 Global</option>
                 <option value="us">🇺🇸 United States</option>
                 <option value="uk">🇬🇧 United Kingdom</option>
@@ -9026,12 +9045,12 @@ function buildSettings() {
           </div>
           <div class="sf-row">
             <div class="sf-group">
-              <label>Monthly Ad Budget (USD)</label>
-              <input type="number" class="sf-input" placeholder="e.g. 5000" id="sfBudget" />
+              <label title="Your total monthly advertising budget across all channels — used to generate ROAS projections, daily spend caps, and budget allocation recommendations.">Monthly Ad Budget (USD)</label>
+              <input type="number" class="sf-input" placeholder="e.g. 5000" id="sfBudget" title="InfoGenie uses this figure to calculate per-campaign budget splits, project expected revenue, and flag overspend risks." />
             </div>
             <div class="sf-group">
-              <label>Subscription Plan</label>
-              <select class="sf-select" id="sfPlan">
+              <label title="Your InfoGenie subscription tier — determines the number of competitors tracked, AI calls per month, and available integrations.">Subscription Plan</label>
+              <select class="sf-select" id="sfPlan" title="Upgrade your plan to unlock higher API limits, more competitor slots, and dedicated support.">
                 <option>Professional — $399/mo</option>
                 <option>Starter — $99/mo</option>
                 <option>Agency — $999/mo</option>
@@ -9041,8 +9060,8 @@ function buildSettings() {
           </div>
           <div class="sf-row">
             <div class="sf-group">
-              <label>Primary AI Model</label>
-              <select class="sf-select">
+              <label title="The AI model powering InfoGenie's creative generation, brief writing, and analysis. GPT-4o is recommended for best performance.">Primary AI Model</label>
+              <select class="sf-select" title="Switch between GPT-4o, Claude, Gemini, or Mistral — each model has different strengths for creative versus analytical tasks.">
                 <option>OpenAI GPT-4o (Recommended)</option>
                 <option>Anthropic Claude 3.5 Sonnet</option>
                 <option>Google Gemini Pro</option>
@@ -9050,11 +9069,11 @@ function buildSettings() {
               </select>
             </div>
             <div class="sf-group">
-              <label>Report Delivery Email</label>
-              <input type="email" class="sf-input" placeholder="you@company.com" />
+              <label title="Weekly or monthly intelligence reports will be sent to this email address.">Report Delivery Email</label>
+              <input type="email" class="sf-input" placeholder="you@company.com" title="Receive scheduled competitor intelligence digests, campaign performance summaries, and keyword shift alerts at this address." />
             </div>
           </div>
-          <button class="sf-save" onclick="saveSettings()">Save Account Settings</button>
+          <button class="sf-save" onclick="saveSettings()" title="Save all account settings — changes apply immediately to all future AI generations, projections, and campaign briefs.">Save Account Settings</button>
         </div>
         <div class="toggle-row">
           <div class="toggle-info">
