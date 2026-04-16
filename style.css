@@ -3394,3 +3394,35 @@ body {
 }
 .btn-qcc-discard:hover { background: #FEF2F2; color: #991B1B; border-color: #FECACA; }
 .btn-qcc-discard:disabled { opacity: .5; cursor: default; background: white; color: var(--gray-500); }
+
+/* ── InfoGenie Global Tooltip ─────────────────────────────────────────────── */
+#igTip {
+  position: fixed;
+  z-index: 999999;
+  background: linear-gradient(135deg, #0D1F3C, #0F2A4A);
+  color: rgba(255,255,255,.93);
+  font-size: 0.72rem;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  line-height: 1.5;
+  padding: 8px 12px;
+  border-radius: 8px;
+  max-width: 270px;
+  pointer-events: none;
+  box-shadow: 0 6px 24px rgba(0,0,0,.45), 0 1px 0 rgba(0,201,200,.25) inset;
+  border: 1px solid rgba(0,201,200,.22);
+  letter-spacing: 0;
+  word-break: normal;
+  white-space: normal;
+  transition: opacity .12s;
+}
+#igTip[hidden] { display: none !important; }
+#igTip::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 14px;
+  border: 5px solid transparent;
+  border-bottom-color: rgba(0,201,200,.22);
+  pointer-events: none;
+}

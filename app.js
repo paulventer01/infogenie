@@ -65,6 +65,95 @@ window._launchedCampaigns = [];
 window._abTests = [];
 window._infoGenieActions = [];
 
+// ===== GLOBAL STYLED TOOLTIP MANAGER =========================================
+// Intercepts every element with a [title] attribute (added statically or
+// dynamically) and replaces the browser's plain OS tooltip with InfoGenie's
+// branded dark tooltip card (#igTip). A MutationObserver keeps it in sync with
+// dynamically rendered page content.
+(function _igTooltipManager() {
+  let _tipEl, _active;
+
+  function _init() {
+    _tipEl = document.getElementById('igTip');
+    if (!_tipEl) return;
+
+    // Convert an element's title → data-ig-tip (removes native browser tooltip)
+    function _upgrade(el) {
+      if (el.hasAttribute('title') && !el.hasAttribute('data-ig-tip')) {
+        el.setAttribute('data-ig-tip', el.getAttribute('title'));
+        el.removeAttribute('title');
+      }
+    }
+
+    function _upgradeAll(root) {
+      (root.querySelectorAll ? root.querySelectorAll('[title]') : []).forEach(_upgrade);
+      if (root.hasAttribute && root.hasAttribute('title')) _upgrade(root);
+    }
+
+    // Upgrade everything already in the DOM
+    _upgradeAll(document);
+
+    // Watch for anything added later (dynamic page renders)
+    new MutationObserver(muts => {
+      muts.forEach(m => {
+        m.addedNodes.forEach(n => {
+          if (n.nodeType === 1) _upgradeAll(n);
+        });
+        // Also catch attribute changes on existing nodes
+        if (m.type === 'attributes' && m.attributeName === 'title') _upgrade(m.target);
+      });
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['title'] });
+
+    // Position helper — keeps tip on screen
+    function _pos(cx, cy) {
+      const W = window.innerWidth, H = window.innerHeight;
+      const tw = _tipEl.offsetWidth, th = _tipEl.offsetHeight;
+      const ox = 14, oy = 14;
+      let x = cx + ox, y = cy + oy;
+      if (x + tw + 6 > W) x = cx - tw - ox;
+      if (y + th + 6 > H) y = cy - th - oy;
+      _tipEl.style.left = Math.max(6, x) + 'px';
+      _tipEl.style.top  = Math.max(6, y) + 'px';
+    }
+
+    document.addEventListener('mouseover', e => {
+      const el = e.target.closest('[data-ig-tip]');
+      if (!el) { _hideTip(); return; }
+      if (el === _active) return;
+      _active = el;
+      _tipEl.textContent = el.getAttribute('data-ig-tip');
+      _tipEl.removeAttribute('hidden');
+      _pos(e.clientX, e.clientY);
+    }, true);
+
+    document.addEventListener('mousemove', e => {
+      if (_active) _pos(e.clientX, e.clientY);
+    }, true);
+
+    document.addEventListener('mouseout', e => {
+      if (!_active) return;
+      const rel = e.relatedTarget;
+      if (!rel || !rel.closest || !rel.closest('[data-ig-tip]')) _hideTip();
+    }, true);
+
+    document.addEventListener('click', _hideTip, true);
+    document.addEventListener('keydown', _hideTip, true);
+  }
+
+  function _hideTip() {
+    if (_tipEl) _tipEl.setAttribute('hidden', '');
+    _active = null;
+  }
+
+  // Run after DOM is parsed
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _init);
+  } else {
+    _init();
+  }
+})();
+// =============================================================================
+
 // ===== PRIMARY CAMPAIGN BUTTON HANDLERS — called directly via onclick in buildCampaigns() =====
 window._igLaunch = function(idx) {
   try {
@@ -2710,11 +2799,11 @@ function buildCompCard(c, cardIdx = 0) {
     <div class="campaign-item">
       <div class="ci-name">${camp.name}</div>
       <div class="ci-metrics">
-        <span class="ci-metric">Channel: <strong>${camp.channel}</strong></span>
-        <span class="ci-metric">CTR: <strong>${camp.ctr}</strong></span>
-        <span class="ci-metric">ROAS: <strong>${camp.roas}×</strong></span>
-        <span class="ci-metric">Budget: <strong>${camp.budget}</strong></span>
-        <span class="ci-metric">Status: <strong style="color:${camp.status==='Active'?'#10B981':camp.status==='Paused'?'#F59E0B':'#94A3B8'}">${camp.status}</strong></span>
+        <span class="ci-metric" title="Marketing channel this campaign runs on — where their budget is being spent.">Channel: <strong>${camp.channel}</strong></span>
+        <span class="ci-metric" title="Click-Through Rate for this specific campaign — % of ad impressions that result in a click.">CTR: <strong>${camp.ctr}</strong></span>
+        <span class="ci-metric" title="Return on Ad Spend — estimated revenue earned per $1 spent on this campaign.">ROAS: <strong>${camp.roas}×</strong></span>
+        <span class="ci-metric" title="Estimated monthly ad budget allocated to this campaign.">Budget: <strong>${camp.budget}</strong></span>
+        <span class="ci-metric" title="${camp.status === 'Active' ? 'This campaign is currently live and spending budget.' : camp.status === 'Paused' ? 'Campaign is temporarily paused — may reactivate soon.' : 'Campaign has ended or been discontinued.'}">Status: <strong style="color:${camp.status==='Active'?'#10B981':camp.status==='Paused'?'#F59E0B':'#94A3B8'}">${camp.status}</strong></span>
       </div>
     </div>
   `).join('');
@@ -2757,18 +2846,18 @@ function buildCompCard(c, cardIdx = 0) {
           </div>
         </div>
         <div class="comp-card-kpis">
-          <div class="ckpi"><div class="ckpi-val">${c.ctr}</div><div class="ckpi-lbl">Avg CTR</div></div>
-          <div class="ckpi"><div class="ckpi-val">${c.roas}×</div><div class="ckpi-lbl">ROAS</div></div>
-          <div class="ckpi">
+          <div class="ckpi" title="Click-Through Rate: the % of people who clicked this competitor's ads after seeing them. Higher = more compelling creative."><div class="ckpi-val">${c.ctr}</div><div class="ckpi-lbl">Avg CTR</div></div>
+          <div class="ckpi" title="Return on Ad Spend: estimated revenue generated per $1 spent on ads. 3× means $3 back for every $1 invested."><div class="ckpi-val">${c.roas}×</div><div class="ckpi-lbl">ROAS</div></div>
+          <div class="ckpi" title="${c._realTraffic ? 'Live organic traffic from DataForSEO — real visits measured this month.' : 'Estimated monthly organic + paid visits. AI-benchmarked from industry data.'}">
             <div class="ckpi-val" style="${c._realTraffic ? 'color:#00C9C8' : ''}">${c._realTraffic || c.traffic}</div>
             <div class="ckpi-lbl">${c._realTraffic ? '📡 Live Traffic' : 'Mo. Traffic'}</div>
           </div>
-          <div class="ckpi">
+          <div class="ckpi" title="${c._realKeywords ? 'Total ranking organic keywords from DataForSEO — pages actively appearing in Google search results.' : 'Estimated monthly advertising budget across all paid channels.'}">
             ${c._realKeywords
               ? `<div class="ckpi-val" style="color:#10B981">${c._realKeywords}</div><div class="ckpi-lbl">📡 Organic Kwds</div>`
               : `<div class="ckpi-val">${c.adSpend}</div><div class="ckpi-lbl">Ad Spend</div>`}
           </div>
-          <div class="ckpi"><span class="threat-badge threat-${c.threatLevel}">${cap(c.threatLevel)}</span></div>
+          <div class="ckpi" title="AI threat assessment: how directly this competitor challenges your market position. Click for a detailed breakdown."><span class="threat-badge threat-${c.threatLevel}">${cap(c.threatLevel)}</span></div>
         </div>
         ${c._dataSource ? `<div style="background:linear-gradient(135deg,#0A2818,#0D3320);border-radius:8px;padding:6px 12px;margin-top:8px;display:flex;align-items:center;gap:8px;font-size:0.72rem;color:#10B981;font-weight:600"><span>📡</span><span>Real data from DataForSEO · Organic traffic: ${c._realTraffic} · Ranking keywords: ${c._realKeywords}</span></div>` : ''}
       </div>
@@ -2807,12 +2896,12 @@ function buildCompCard(c, cardIdx = 0) {
 
         <div class="roi-opportunity-banner" style="margin-top:14px">
           <div class="roi-opp-left">
-            <span class="roi-opp-label">InfoGenie ROI Opportunity:</span>
-            <span class="roi-opp-text">${c.estimatedROI}</span>
+            <span class="roi-opp-label" title="AI-estimated revenue uplift achievable by targeting this competitor's gaps and weaknesses.">InfoGenie ROI Opportunity:</span>
+            <span class="roi-opp-text" title="Projected revenue improvement if you implement InfoGenie's recommendations for this competitor.">${c.estimatedROI}</span>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button class="btn-view-plan" onclick="openCompPlan('${c.name.replace(/'/g,'').replace(/"/g,'').replace(/\\/g,'')}')">View Plan →</button>
-            <button onclick="window._bpIdx=${cardIdx};navigateTo('battleplan')" style="padding:7px 14px;background:linear-gradient(135deg,#0A1628,#0D2A5E);border:1px solid rgba(0,201,200,.4);border-radius:8px;font-size:0.75rem;font-weight:700;color:#00C9C8;cursor:pointer;white-space:nowrap">⚔️ Battle Plan</button>
+            <button class="btn-view-plan" onclick="openCompPlan('${c.name.replace(/'/g,'').replace(/"/g,'').replace(/\\/g,'')}')}" title="Open the detailed strategy plan for outperforming ${c.name}.">View Plan →</button>
+            <button onclick="window._bpIdx=${cardIdx};navigateTo('battleplan')" title="Open the Battle Plan page — a full AI-generated 8-week action plan to capture market share from ${c.name}." style="padding:7px 14px;background:linear-gradient(135deg,#0A1628,#0D2A5E);border:1px solid rgba(0,201,200,.4);border-radius:8px;font-size:0.75rem;font-weight:700;color:#00C9C8;cursor:pointer;white-space:nowrap">⚔️ Battle Plan</button>
           </div>
         </div>
       </div>
@@ -2849,14 +2938,14 @@ function buildCampaigns() {
       <div class="camp-card-body">${camp.description}</div>
       <div class="camp-card-tags">${camp.tags.map(t => `<span class="camp-tag">${t}</span>`).join('')}</div>
       <div class="camp-metrics-row">
-        <div><div class="cm-val">${camp.estCTR}</div><div class="cm-lbl">Est. CTR</div></div>
-        <div><div class="cm-val">${camp.estROAS}×</div><div class="cm-lbl">Est. ROAS</div></div>
-        <div><div class="cm-val">${camp.estCPA}</div><div class="cm-lbl">Est. CPA</div></div>
-        <div><div class="cm-val">${camp.budget}</div><div class="cm-lbl">Min. Budget</div></div>
+        <div title="Estimated Click-Through Rate — % of people who see this ad and click it. AI-projected based on industry averages."><div class="cm-val">${camp.estCTR}</div><div class="cm-lbl">Est. CTR</div></div>
+        <div title="Estimated Return on Ad Spend — projected revenue earned per $1 spent. Higher is better."><div class="cm-val">${camp.estROAS}×</div><div class="cm-lbl">Est. ROAS</div></div>
+        <div title="Estimated Cost Per Acquisition — average spend to win one new customer with this campaign."><div class="cm-val">${camp.estCPA}</div><div class="cm-lbl">Est. CPA</div></div>
+        <div title="Minimum monthly budget recommended for this campaign to be effective and achieve the projected ROAS."><div class="cm-val">${camp.budget}</div><div class="cm-lbl">Min. Budget</div></div>
       </div>
       <div class="camp-card-actions">
-        <button class="btn-camp-launch" onclick="window._igLaunch(${idx})">🚀 Launch this Campaign</button>
-        <button class="btn-camp-preview" onclick="window._igCreative(${idx})">🎨 Creative Studio</button>
+        <button class="btn-camp-launch" onclick="window._igLaunch(${idx})" title="Deploy this campaign — sets up targeting, budget and creative, then queues it for review before spending begins.">🚀 Launch this Campaign</button>
+        <button class="btn-camp-preview" onclick="window._igCreative(${idx})" title="Open GPT-4o Creative Studio to generate and refine ad copy, headlines and visuals for this campaign.">🎨 Creative Studio</button>
       </div>
     </div>
   `).join('');
@@ -5103,14 +5192,14 @@ function buildResults() {
     <!-- SUMMARY STATS -->
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:28px;padding-top:24px">
       ${[
-        ['🚀 Campaigns Launched', camps.length, '#00C9C8'],
-        ['💰 Total Budget/mo', camps.length > 0 ? '$'+totalBudget.toLocaleString() : '—', '#0066FF'],
-        ['📈 Avg. ROAS', avgROAS ? avgROAS+'×' : '—', '#10B981'],
-        ['🎯 Total Conversions', totalConv > 0 ? totalConv.toLocaleString() : '—', '#F59E0B'],
-        ['👁 Impressions', totalImpressions > 0 ? (totalImpressions/1000).toFixed(0)+'K' : '—', '#7C3AED'],
-        ['⚡ AI Actions', allActions.length, '#00E5FF']
-      ].map(([label, val, color]) => `
-        <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.06)">
+        ['🚀 Campaigns Launched', camps.length, '#00C9C8', 'Total number of campaigns you have deployed through InfoGenie across all ad platforms.'],
+        ['💰 Total Budget/mo', camps.length > 0 ? '$'+totalBudget.toLocaleString() : '—', '#0066FF', 'Combined monthly advertising budget across all active campaigns. This is what you are committing to spend each month.'],
+        ['📈 Avg. ROAS', avgROAS ? avgROAS+'×' : '—', '#10B981', 'Average Return on Ad Spend across all campaigns — the blended revenue earned per $1 of total ad budget.'],
+        ['🎯 Total Conversions', totalConv > 0 ? totalConv.toLocaleString() : '—', '#F59E0B', 'Total completed goals (sign-ups, purchases, calls) driven by all InfoGenie campaigns combined.'],
+        ['👁 Impressions', totalImpressions > 0 ? (totalImpressions/1000).toFixed(0)+'K' : '—', '#7C3AED', 'Total number of times your ads have been shown across all platforms and campaigns.'],
+        ['⚡ AI Actions', allActions.length, '#00E5FF', 'Total automated and AI-assisted actions InfoGenie has taken: analyses run, campaigns built, audiences detected, and optimisations applied.']
+      ].map(([label, val, color, tip]) => `
+        <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.06)" title="${tip}">
           <div style="font-size:1.4rem;font-weight:800;color:${color};font-family:'Sora',sans-serif">${val}</div>
           <div style="font-size:0.75rem;color:#6B7280;margin-top:4px;font-weight:500">${label}</div>
         </div>`).join('')}
@@ -5138,15 +5227,15 @@ function buildResults() {
           const cpc2   = totalBudget > 0 && calls > 0 ? '$'+(totalBudget/calls).toFixed(2) : '—';
           const convRate = total > 0 && totalConv > 0 ? ((totalConv/total)*100).toFixed(1)+'%' : '—';
           return [
-            ['💬 Messages',      msgs,       '#0066FF'],
-            ['📞 Calls',         calls,      '#10B981'],
-            ['🧲 Total Leads',   total,      '#7C3AED'],
-            ['💰 Cost-per-Lead', cpl,        '#F59E0B'],
-            ['💬 Cost/Message',  cpm,        '#0066FF'],
-            ['📞 Cost/Call',     cpc2,       '#10B981'],
-            ['📈 Lead→Conv Rate',convRate,   '#00C9C8'],
-          ].map(([label,val,color])=>`
-            <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:14px;text-align:center">
+            ['💬 Messages',      msgs,       '#0066FF', 'Total message enquiries received — WhatsApp, email, contact forms or DMs logged here.'],
+            ['📞 Calls',         calls,      '#10B981', 'Total inbound phone calls received from prospects. Log all calls to accurately calculate your cost-per-call.'],
+            ['🧲 Total Leads',   total,      '#7C3AED', 'Combined total of all inbound leads: messages + calls. This is your overall lead volume.'],
+            ['💰 Cost-per-Lead', cpl,        '#F59E0B', 'Total monthly ad budget divided by total leads. The lower this number, the more efficient your ad spend.'],
+            ['💬 Cost/Message',  cpm,        '#0066FF', 'Monthly budget divided by total messages received — cost to generate one message enquiry.'],
+            ['📞 Cost/Call',     cpc2,       '#10B981', 'Monthly budget divided by total calls received — cost to generate one inbound phone call.'],
+            ['📈 Lead→Conv Rate',convRate,   '#00C9C8', 'Percentage of leads that converted into paying customers. Higher is better — target 15–30% for most industries.'],
+          ].map(([label,val,color,tip])=>`
+            <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:14px;text-align:center" title="${tip}">
               <div style="font-size:1.3rem;font-weight:800;color:${color};font-family:'Sora',sans-serif">${val}</div>
               <div style="font-size:0.65rem;color:#6B7280;margin-top:3px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">${label}</div>
             </div>`).join('');
@@ -7679,8 +7768,8 @@ function buildIntelligence() {
       <div class="pred-body">
         <div class="pred-top">
           <span class="pred-comp">${p.comp}</span>
-          <span class="pred-timeframe">⏱ ${p.timeframe}</span>
-          <div class="pred-confidence">
+          <span class="pred-timeframe" title="Estimated time window before this competitor event occurs — act now to pre-empt their move.">⏱ ${p.timeframe}</span>
+          <div class="pred-confidence" title="AI confidence score — how certain the model is this event will occur based on observed patterns. 80%+ = high conviction.">
             <div class="pred-conf-bar">
               <div class="pred-conf-track"><div class="pred-conf-fill" style="width:${p.confidence}%"></div></div>
               <span style="font-size:.75rem;color:var(--teal);font-weight:800">${p.confidence}%</span>
@@ -7691,7 +7780,7 @@ function buildIntelligence() {
         <div class="pred-action">
           <span class="pred-action-label">💡 Recommended Action</span>
           <span class="pred-action-text">${p.action}</span>
-          <button class="pred-launch-btn" onclick="showToast('🚀 Pre-emptive campaign queued: ${p.action.replace(/'/g,'')}')">Launch Now</button>
+          <button class="pred-launch-btn" onclick="showToast('🚀 Pre-emptive campaign queued: ${p.action.replace(/'/g,'')}')}" title="Queue this counter-campaign now so you are ready before the competitor makes their move.">Launch Now</button>
         </div>
       </div>
     </div>
@@ -7718,12 +7807,12 @@ function buildIntelligence() {
     <div class="winloss-card">
       <div class="wl-top">
         <span class="wl-comp">${w.comp}</span>
-        <span class="wl-channel">${w.channel}</span>
-        <span class="wl-loss-rate">Lost ${w.lossRate} of deals</span>
+        <span class="wl-channel" title="The marketing or sales channel where this competitor's message is dominating and costing you deals.">${w.channel}</span>
+        <span class="wl-loss-rate" title="Estimated share of competitive deals lost to ${w.comp} on this channel. Use the counter-message below to reduce this rate.">Lost ${w.lossRate} of deals</span>
       </div>
       <div class="wl-message">${w.message}</div>
-      <div class="wl-weakness">💡 <strong>Exploitable Weakness:</strong> ${w.weakness}</div>
-      <button class="btn-wl-counter" onclick="openWLCounterModal('${id}')">Counter This Message</button>
+      <div class="wl-weakness" title="The specific gap or weakness in this competitor's positioning that you can exploit to win customers back.">💡 <strong>Exploitable Weakness:</strong> ${w.weakness}</div>
+      <button class="btn-wl-counter" onclick="openWLCounterModal('${id}')" title="Generate an AI counter-message specifically designed to neutralise this competitor's winning argument.">Counter This Message</button>
     </div>
   `;
   }).join('');
@@ -7744,19 +7833,19 @@ function buildIntelligence() {
 
     <!-- Top KPI row -->
     <div class="intel-score-section">
-      <div class="cat-dom-card">
+      <div class="cat-dom-card" title="Your overall market presence score vs. competitors — based on traffic share, ad visibility, keyword coverage and audience reach. Target: 55+ for competitive positioning.">
         <div class="cat-dom-label">Category Domination Score</div>
         <div class="cat-dom-score">${intel.categoryScore}<span style="font-size:1.2rem;opacity:.5">/100</span></div>
         <div class="cat-dom-track"><div class="cat-dom-fill" style="width:${intel.categoryScore}%"></div></div>
         <div class="cat-dom-sub">You are in the bottom quartile — 90-day roadmap below will target 55+</div>
       </div>
-      <div class="intel-kpi-card">
+      <div class="intel-kpi-card" title="Keywords that competitors rank for and actively bid on, but you are missing. Each gap is a direct opportunity to capture traffic and revenue.">
         <div class="ikc-icon">🔑</div>
         <div class="ikc-val">${intel.keywordGaps.length}</div>
         <div class="ikc-label">Keyword Gap Opportunities</div>
         <div class="ikc-urgency medium">Combined vol: ${intel.keywordGaps.reduce((a,k)=>a+parseInt(k.volume.replace(/,/g,'')),0).toLocaleString()}/mo</div>
       </div>
-      <div class="intel-kpi-card">
+      <div class="intel-kpi-card" title="Competitor vulnerabilities detected RIGHT NOW — reduced spend, paused campaigns, or weak creative. These windows close fast; act within 72 hours for maximum impact.">
         <div class="ikc-icon">⚡</div>
         <div class="ikc-val">${openWindows}</div>
         <div class="ikc-label">Attack Windows Open Right Now</div>
@@ -8299,14 +8388,14 @@ function buildBattlePlan() {
           </div>
         </div>
         <div style="flex:1;display:flex;gap:24px;flex-wrap:wrap">
-          <div style="text-align:center"><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${traffic}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Traffic/mo</div></div>
-          <div style="text-align:center"><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.ctr||'—'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">CTR</div></div>
-          <div style="text-align:center"><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.roas||'—'}×</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">ROAS</div></div>
-          <div style="text-align:center"><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.adSpend||'—'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Ad Spend</div></div>
-          <div style="text-align:center"><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.topChannel||'Google'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Top Channel</div></div>
-          <div style="text-align:center"><div style="font-size:0.92rem;font-weight:800;color:${threat==='high'?'#EF4444':threat==='medium'?'#F59E0B':'#10B981'}">${threat.toUpperCase()}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Threat</div></div>
+          <div style="text-align:center" title="Estimated total monthly website visits for ${c.name} — organic + paid combined."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${traffic}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Traffic/mo</div></div>
+          <div style="text-align:center" title="Click-Through Rate: % of ad impressions that result in a click. This competitor's average across all campaigns."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.ctr||'—'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">CTR</div></div>
+          <div style="text-align:center" title="Return on Ad Spend — estimated revenue earned per $1 spent on ads by this competitor."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.roas||'—'}×</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">ROAS</div></div>
+          <div style="text-align:center" title="Estimated monthly advertising budget across Google, Meta, TikTok and other paid channels."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.adSpend||'—'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Ad Spend</div></div>
+          <div style="text-align:center" title="The marketing channel where this competitor is investing the most budget and generating the best results."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.topChannel||'Google'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Top Channel</div></div>
+          <div style="text-align:center" title="AI threat assessment — how directly this competitor threatens your market position. High = immediate action required."><div style="font-size:0.92rem;font-weight:800;color:${threat==='high'?'#EF4444':threat==='medium'?'#F59E0B':'#10B981'}">${threat.toUpperCase()}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Threat</div></div>
         </div>
-        <div style="text-align:right;flex-shrink:0">
+        <div style="text-align:right;flex-shrink:0" title="AI-calculated opportunity score — how much market share you can realistically capture from this competitor. Higher = more opportunity.">
           <div style="font-size:0.67rem;color:rgba(255,255,255,.4);margin-bottom:2px;text-transform:uppercase;letter-spacing:.05em">Opportunity Score</div>
           <div style="font-size:2rem;font-weight:900;font-family:'Sora',sans-serif;color:${oppScore>=70?'#10B981':oppScore>=50?'#F59E0B':'#60A5FA'};line-height:1">${oppScore}</div>
           <div style="font-size:0.62rem;color:rgba(255,255,255,.3)">out of 100</div>
