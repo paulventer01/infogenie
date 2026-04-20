@@ -470,36 +470,26 @@ function buildLaunchModal(camp, idx) {
         </div>
       </div>
 
-      <!-- PLATFORM STRATEGY -->
-      <div>
-        <div style="font-size:0.68rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">${pm.icon} ${platform} Strategy</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          ${[['Bid Strategy',pm.bid],['Target Audience',pm.aud],['Primary KPI',pm.kpi],['Creative Format',pm.creative]].map(([k,v])=>`
-            <div style="background:#F9FAFB;border-radius:8px;padding:10px 12px">
-              <div style="font-size:0.68rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em">${k}</div>
-              <div style="font-size:0.8rem;color:#0A1628;font-weight:600;margin-top:3px">${v}</div>
-            </div>`).join('')}
+      <!-- AD COPY — campaign wording shown immediately after overview -->
+      <div style="background:#FAFFF7;border:1.5px solid #BBF7D0;border-radius:14px;padding:16px 20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:0.65rem;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.08em">✍️ Ad Copy — This Wording Will Run On Your Campaign</div>
+          <span id="lm-hl-loading" style="font-size:0.65rem;color:#6366F1;display:flex;align-items:center;gap:4px">${spin}GPT-4 Writing...</span>
         </div>
-      </div>
-
-      <!-- AI HEADLINES — seed shown instantly, replaced by GPT-4 -->
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:0.68rem;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.08em">🤖 GPT-4 Headlines (click to edit)</div>
-          <span id="lm-hl-loading" style="font-size:0.65rem;color:#6366F1">${spin}Writing...</span>
-        </div>
-        <div id="lm-headlines-wrap" style="display:flex;flex-direction:column;gap:6px">
+        <div style="font-size:0.7rem;font-weight:600;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Headlines <span style="font-weight:400;color:#9CA3AF">(click any to edit)</span></div>
+        <div id="lm-headlines-wrap" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
           ${seedHeadlines.map((h,i)=>`
-            <div style="display:flex;align-items:center;gap:8px;background:#F0FDF4;border-radius:8px;padding:8px 10px">
-              <span style="font-size:0.7rem;font-weight:700;color:#059669;background:#DCFCE7;border-radius:4px;padding:2px 6px;flex-shrink:0">H${i+1}</span>
-              <input class="lm-headline" value="${h.replace(/"/g,'&quot;')}" style="flex:1;border:none;background:transparent;font-size:0.82rem;color:#0A1628;font-weight:600;outline:none;font-family:'Inter',sans-serif">
+            <div style="display:flex;align-items:center;gap:8px;background:white;border:1px solid #D1FAE5;border-radius:8px;padding:9px 12px">
+              <span style="font-size:0.7rem;font-weight:800;color:#059669;background:#D1FAE5;border-radius:4px;padding:2px 7px;flex-shrink:0">H${i+1}</span>
+              <input class="lm-headline" value="${h.replace(/"/g,'&quot;')}" style="flex:1;border:none;background:transparent;font-size:0.85rem;color:#0A1628;font-weight:700;outline:none;font-family:'Inter',sans-serif" placeholder="Headline ${i+1}...">
             </div>`).join('')}
         </div>
-        <div id="lm-descs-wrap" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        <div style="font-size:0.7rem;font-weight:600;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Descriptions</div>
+        <div id="lm-descs-wrap" style="display:flex;flex-direction:column;gap:6px">
           ${seedDescs.map((d,i)=>`
-            <div style="display:flex;align-items:center;gap:8px;background:#F0F9FF;border-radius:8px;padding:8px 10px">
-              <span style="font-size:0.7rem;font-weight:700;color:#0369A1;background:#E0F2FE;border-radius:4px;padding:2px 6px;flex-shrink:0">D${i+1}</span>
-              <input class="lm-desc" value="${d.replace(/"/g,'&quot;')}" style="flex:1;border:none;background:transparent;font-size:0.8rem;color:#374151;outline:none;font-family:'Inter',sans-serif">
+            <div style="display:flex;align-items:flex-start;gap:8px;background:white;border:1px solid #BAE6FD;border-radius:8px;padding:9px 12px">
+              <span style="font-size:0.7rem;font-weight:800;color:#0369A1;background:#E0F2FE;border-radius:4px;padding:2px 7px;flex-shrink:0;margin-top:1px">D${i+1}</span>
+              <textarea class="lm-desc" rows="2" style="flex:1;border:none;background:transparent;font-size:0.8rem;color:#374151;outline:none;font-family:'Inter',sans-serif;resize:none;line-height:1.5">${d.replace(/</g,'&lt;')}</textarea>
             </div>`).join('')}
         </div>
       </div>
