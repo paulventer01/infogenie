@@ -14914,6 +14914,13 @@ window.generateCounterOffer = async function(idx, compName, offer, angle) {
       el.innerHTML = `<div style="background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:1.5px solid #FDE68A;border-radius:12px;padding:16px">
         <div style="font-size:0.65rem;font-weight:700;color:#D97706;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">🎯 Your Counter-Offer Strategy</div>
         <div style="font-size:0.82rem;color:#374151;line-height:1.7;white-space:pre-wrap">${data.counter}</div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #FDE68A;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div style="font-size:0.75rem;color:#92400E;font-weight:600">Ready to put this messaging live?</div>
+          <button onclick="window._igLaunch(0)" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,#D97706,#B45309);border:none;border-radius:9px;padding:9px 20px;font-size:0.78rem;font-weight:800;color:white;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 3px 12px rgba(180,83,9,.35);transition:all .2s" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 5px 18px rgba(180,83,9,.45)'" onmouseout="this.style.transform='';this.style.boxShadow='0 3px 12px rgba(180,83,9,.35)'">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            🚀 Launch Now
+          </button>
+        </div>
       </div>`;
     }
   } catch(e) {}
