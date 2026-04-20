@@ -2543,33 +2543,82 @@ app.get('/api/serp', async (req, res) => {
   // Candidate endpoints in priority order — try each until one succeeds
   const candidates = [
     // 1. google-search3 (apigeek)
-    { host: 'google-search3.p.rapidapi.com', path: `/api/v1/search/q=${encodeURIComponent(q)}&num=${num}&hl=${hl}&gl=${gl}&safe=off` },
+    { host: 'google-search3.p.rapidapi.com',          path: `/api/v1/search/q=${encodeURIComponent(q)}&num=${num}&hl=${hl}&gl=${gl}&safe=off` },
     // 2. real-time-web-search
-    { host: 'real-time-web-search.p.rapidapi.com', path: `/search?q=${encodeURIComponent(q)}&limit=${num}` },
+    { host: 'real-time-web-search.p.rapidapi.com',    path: `/search?q=${encodeURIComponent(q)}&limit=${num}` },
     // 3. google-search74
-    { host: 'google-search74.p.rapidapi.com', path: `/search?query=${encodeURIComponent(q)}&limit=${num}&related_keywords=true` },
+    { host: 'google-search74.p.rapidapi.com',         path: `/search?query=${encodeURIComponent(q)}&limit=${num}&related_keywords=true` },
     // 4. googlesearch-api
-    { host: 'googlesearch-api.p.rapidapi.com', path: `/search?q=${encodeURIComponent(q)}&num=${num}&gl=${gl}&hl=${hl}` },
+    { host: 'googlesearch-api.p.rapidapi.com',        path: `/search?q=${encodeURIComponent(q)}&num=${num}&gl=${gl}&hl=${hl}` },
+    // 5. google72
+    { host: 'google72.p.rapidapi.com',                path: `/search?q=${encodeURIComponent(q)}&num=${num}&gl=${gl}&hl=${hl}` },
+    // 6. google-web-search1
+    { host: 'google-web-search1.p.rapidapi.com',      path: `/search?query=${encodeURIComponent(q)}&limit=${num}` },
+    // 7. web-search13
+    { host: 'web-search13.p.rapidapi.com',            path: `/search?q=${encodeURIComponent(q)}&limit=${num}` },
+    // 8. contextualwebsearch
+    { host: 'contextualwebsearch.p.rapidapi.com',     path: `/api/Search?q=${encodeURIComponent(q)}&count=${num}&safeSearch=Off&textFormat=Raw` },
+    // 9. bing-web-search1
+    { host: 'bing-web-search1.p.rapidapi.com',        path: `/search?q=${encodeURIComponent(q)}&count=${num}&mkt=${hl}-${gl.toUpperCase()}` },
+    // 10. google-search-master
+    { host: 'google-search-master.p.rapidapi.com',    path: `/search?q=${encodeURIComponent(q)}&num=${num}` },
+    // 11. web-search21
+    { host: 'web-search21.p.rapidapi.com',            path: `/search?query=${encodeURIComponent(q)}&limit=${num}` },
+    // 12. all-search-api
+    { host: 'all-search-api.p.rapidapi.com',          path: `/search?q=${encodeURIComponent(q)}&eng=google&limit=${num}&gl=${gl}&hl=${hl}` },
   ];
 
-  let lastErr = 'No working Google Search endpoint found for this API key';
+  let lastErr = 'No subscribed Google Search endpoint found';
   for (const { host, path } of candidates) {
     try {
       const { status, data } = await rapidFetch(host, path);
-      if (status === 200 && !data.error && !data.message?.includes('subscri')) {
+      const notSubscribed = data.message?.toLowerCase().includes('subscri') || data.error?.toLowerCase().includes('subscri') || data.message?.toLowerCase().includes('not found for api');
+      if (status === 200 && !data.error && !notSubscribed) {
         const { organic, relatedSearches } = normalise(data, host);
         if (organic.length > 0) {
-          console.log(`[SERP] success via ${host}`);
-          return res.json({ query: q, total: data.totalResults || null, organic, news: [], ads: [], relatedSearches, knowledgeGraph: null });
+          console.log(`[SERP] ✓ success via ${host}`);
+          return res.json({ query: q, total: data.totalResults || null, organic, news: [], ads: [], relatedSearches, knowledgeGraph: null, source: host });
         }
       }
-      if (data.message) lastErr = `${host}: ${data.message}`;
-      else if (data.error)   lastErr = `${host}: ${data.error}`;
-    } catch (e) { lastErr = e.message; }
+      const errMsg = data.message || data.error || `HTTP ${status}`;
+      console.log(`[SERP] ${host}: ${errMsg}`);
+      if (notSubscribed) lastErr = `Not subscribed to ${host}`;
+      else lastErr = `${host}: ${errMsg}`;
+    } catch (e) { lastErr = e.message; console.log(`[SERP] ${e.message}`); }
   }
 
-  console.error('[SERP] all endpoints failed:', lastErr);
-  res.status(503).json({ error: lastErr });
+  // ── AI Fallback: generate intelligence-grade search results via OpenAI ────────
+  console.log('[SERP] All RapidAPI endpoints failed — using AI fallback');
+  try {
+    const aiRes = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'user',
+        content: `You are a search intelligence engine. Generate ${num} realistic search results for the query: "${q}".
+Return ONLY valid JSON with this structure (no markdown, no explanation):
+{"organic":[{"position":1,"title":"...","url":"https://example.com/page","domain":"example.com","snippet":"..."}],"relatedSearches":["term1","term2","term3"]}
+Make results realistic, authoritative (well-known domains), and directly relevant to the query. Include a mix of brand sites, industry publications, and review/comparison sites.`
+      }],
+      max_tokens: 1200,
+      temperature: 0.3
+    });
+    const raw = (aiRes.choices?.[0]?.message?.content || '').trim().replace(/^```json|^```|```$/gm, '').trim();
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed.organic) && parsed.organic.length > 0) {
+      // Ensure favicons are added
+      parsed.organic = parsed.organic.map((r, i) => ({
+        ...r, position: i + 1,
+        favicon: r.domain ? `https://www.google.com/s2/favicons?sz=32&domain=${r.domain}` : ''
+      }));
+      console.log('[SERP] ✓ AI fallback success');
+      return res.json({ query: q, organic: parsed.organic, relatedSearches: parsed.relatedSearches || [], news: [], ads: [], knowledgeGraph: null, source: 'ai-fallback', aiGenerated: true });
+    }
+  } catch(aiErr) {
+    console.error('[SERP] AI fallback failed:', aiErr.message);
+  }
+
+  console.error('[SERP] All fallbacks exhausted:', lastErr);
+  res.status(503).json({ error: lastErr, hint: 'Subscribe to a Google Search API on RapidAPI (rapidapi.com/search) or check your GOOGLE_SEARCH_API_KEY' });
 });
 
 // ── GET /api/status ───────────────────────────────────────────────────────────

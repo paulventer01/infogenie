@@ -116,6 +116,7 @@
           <a href="#" class="nav-link" data-view="automations"><span class="ndl-icon">⚡</span><span class="ndl-text">Automations</span></a>
           <a href="#" class="nav-link" data-view="agency"><span class="ndl-icon">🏢</span><span class="ndl-text">Agency & Reports</span></a>
           <a href="#" class="nav-link" data-view="csuite"><span class="ndl-icon">👔</span><span class="ndl-text">C-Suite Reports</span></a>
+          <a href="#" class="nav-link" data-view="action-center"><span class="ndl-icon">🎯</span><span class="ndl-text">Action Center</span></a>
           <a href="#" class="nav-link" data-view="settings"><span class="ndl-icon">⚙️</span><span class="ndl-text">Settings</span></a>
         </div>
       </div>
@@ -1081,6 +1082,25 @@
     </div>
   </div>
   <div class="container" id="csuiteWrap" style="padding-top:28px;padding-bottom:60px"></div>
+</div>
+
+<!-- ACTION CENTER VIEW -->
+<div class="view hidden" id="view-action-center">
+  <div class="view-header" style="background:linear-gradient(135deg,#0A1628 0%,#001830 100%);border-bottom:1px solid rgba(0,229,255,.2)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> Action Center</div>
+          <h2 class="view-title">Action Center</h2>
+          <p class="view-sub">Live status, upcoming launches, risks and opportunities — your full marketing command view</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-secondary" onclick="initActionCenter()">🔄 Refresh</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="actionCenterWrap" style="padding-top:28px;padding-bottom:60px"></div>
 </div>
 
 <!-- TOAST -->
