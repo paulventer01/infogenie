@@ -2485,75 +2485,73 @@ Return ONLY this exact JSON structure:
   }
 });
 
-// ── GET /api/serp — Google Search via ValueSERP ───────────────────────────────
+// ── GET /api/serp — Google Search via RapidAPI (Google Search API) ────────────
 app.get('/api/serp', async (req, res) => {
   const { q, location = 'United States', gl = 'us', hl = 'en', num = 10, type = 'search' } = req.query;
   if (!q) return res.status(400).json({ error: 'Missing query param q' });
 
-  const apiKey = process.env.SERP_API_KEY;
-  if (!apiKey) return res.status(503).json({ error: 'SERP_API_KEY not configured' });
+  const rapidKey = process.env.GOOGLE_SEARCH_API_KEY || process.env.RAPIDAPI_KEY;
+  if (!rapidKey) return res.status(503).json({ error: 'Google Search API key not configured' });
 
   try {
-    const params = new URLSearchParams({ api_key: apiKey, q, location, gl, hl, num: String(num) });
-    if (type === 'news') params.set('tbm', 'nws');
-
-    const url = `https://api.valueserp.com/search?${params.toString()}`;
+    // Use RapidAPI "Google Search" host (real-time-web-search)
+    const host = 'google-search74.p.rapidapi.com';
+    const path = `/search?query=${encodeURIComponent(q)}&limit=${num}&related_keywords=true`;
 
     const data = await new Promise((resolve, reject) => {
-      https.get(url, (resp) => {
+      const options = {
+        hostname: host,
+        path,
+        method:  'GET',
+        headers: {
+          'x-rapidapi-key':  rapidKey,
+          'x-rapidapi-host': host
+        }
+      };
+      const req2 = https.request(options, resp => {
         let body = '';
         resp.on('data', chunk => body += chunk);
         resp.on('end', () => {
           try { resolve(JSON.parse(body)); }
-          catch(e) { reject(new Error('Invalid JSON from ValueSERP')); }
+          catch(e) { reject(new Error('Invalid JSON from Google Search API')); }
         });
-      }).on('error', reject);
+      });
+      req2.on('error', reject);
+      req2.end();
     });
 
-    if (data.request_info && !data.request_info.success) {
-      return res.status(400).json({ error: data.request_info.message || 'SERP API error' });
+    if (data.error || data.message) {
+      return res.status(400).json({ error: data.error || data.message });
     }
 
-    // Normalize response
-    const organic = (data.organic_results || []).map(r => ({
-      position: r.position,
-      title: r.title,
-      url: r.link,
-      domain: r.domain,
-      snippet: r.snippet,
-      date: r.date || null,
-      favicon: `https://www.google.com/s2/favicons?sz=32&domain=${r.domain}`
-    }));
+    // Normalise — this API returns { results: [{title,url,description}] }
+    const results = data.results || data.data || data.organic_results || [];
+    const organic = results.map((r, i) => {
+      const domain = (() => { try { return new URL(r.url || r.link || '').hostname.replace('www.',''); } catch { return ''; } })();
+      return {
+        position: i + 1,
+        title:    r.title || '',
+        url:      r.url   || r.link || '',
+        domain,
+        snippet:  r.description || r.snippet || '',
+        date:     r.date || null,
+        favicon:  domain ? `https://www.google.com/s2/favicons?sz=32&domain=${domain}` : ''
+      };
+    });
 
-    const news = (data.news_results || []).map(r => ({
-      position: r.position,
-      title: r.title,
-      url: r.link,
-      domain: r.source,
-      snippet: r.snippet,
-      date: r.date || null,
-      favicon: `https://www.google.com/s2/favicons?sz=32&domain=${r.source}`
-    }));
-
-    const ads = (data.ads || []).map(r => ({
-      position: r.position,
-      title: r.title,
-      url: r.link,
-      domain: r.domain,
-      snippet: r.description || ''
-    }));
-
-    const relatedSearches = (data.related_searches || []).map(r => r.query);
+    const relatedSearches = (data.related_keywords || data.related_searches || []).map(r =>
+      typeof r === 'string' ? r : (r.query || r.keyword || '')
+    ).filter(Boolean);
 
     res.json({
       query: q,
       location,
-      total: data.search_information?.total_results || null,
+      total: data.totalResults || null,
       organic,
-      news,
-      ads,
+      news: [],
+      ads: [],
       relatedSearches,
-      knowledgeGraph: data.knowledge_graph || null
+      knowledgeGraph: null
     });
   } catch (err) {
     console.error('SERP error:', err.message);

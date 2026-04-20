@@ -6530,9 +6530,10 @@ function buildRedditIntel() {
             <div style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Generated Reply</div>
             <div id="rpl-reply-text" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:14px;font-size:0.8rem;color:rgba(255,255,255,.85);line-height:1.55;margin-bottom:8px;white-space:pre-wrap"></div>
             <div id="rpl-tone-note" style="font-size:0.68rem;color:rgba(255,100,0,.7);font-style:italic;margin-bottom:10px"></div>
-            <div style="display:flex;gap:8px">
-              <button onclick="navigator.clipboard.writeText(document.getElementById('rpl-reply-text').textContent).then(()=>showToast('✅ Reply copied!'))" style="flex:1;padding:9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">📋 Copy Reply</button>
-              <button onclick="generateRedditReply()" style="padding:9px 16px;background:rgba(255,100,0,.2);border:1px solid rgba(255,100,0,.3);border-radius:8px;font-size:0.76rem;font-weight:700;color:#FF6B35;cursor:pointer">↺ Regenerate</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button onclick="navigator.clipboard.writeText(document.getElementById('rpl-reply-text').textContent).then(()=>showToast('✅ Reply copied!'))" style="flex:1;min-width:100px;padding:9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">📋 Copy Reply</button>
+              <button onclick="postReplyToReddit()" style="flex:1;min-width:120px;padding:9px;background:linear-gradient(135deg,#FF4500,#FF6B35);border:none;border-radius:8px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">🚀 Post Now</button>
+              <button onclick="generateRedditReply()" style="padding:9px 14px;background:rgba(255,100,0,.2);border:1px solid rgba(255,100,0,.3);border-radius:8px;font-size:0.76rem;font-weight:700;color:#FF6B35;cursor:pointer">↺ Regenerate</button>
             </div>
           </div>
           <div id="rpl-loading" style="display:none;text-align:center;padding:20px">
@@ -15470,4 +15471,79 @@ function rcApply() {
   });
   document.getElementById('resultsCustPanel')?.remove();
   showToast('✅ View updated');
+}
+
+/* ══════════════════════════════════════════════
+   REDDIT — POST NOW
+   ══════════════════════════════════════════════ */
+
+async function postReplyToReddit() {
+  const replyText = document.getElementById('rpl-reply-text')?.textContent?.trim();
+  if (!replyText) { showToast('⚠ Generate a reply first'); return; }
+
+  // Build a Reddit intent URL:
+  // If a thread is selected, link to that thread; otherwise open reddit.com/submit
+  const post = window._redditSelPost;
+  const manualTitle = document.getElementById('rpl-manual-title')?.value?.trim();
+
+  let redditUrl;
+  if (post && post.permalink) {
+    // Deep-link to the specific thread so user can paste the reply
+    redditUrl = `https://www.reddit.com${post.permalink}`;
+  } else if (post && post.url) {
+    redditUrl = post.url;
+  } else {
+    // Fallback: open reddit.com/submit with pre-filled text
+    const sub = document.getElementById('rdt-keywords')?.value?.trim()
+      ? 'AskMarketing'
+      : 'marketing';
+    redditUrl = `https://www.reddit.com/r/${sub}/submit?selftext=true&title=${encodeURIComponent(manualTitle || 'Brand reply')}&text=${encodeURIComponent(replyText)}`;
+  }
+
+  // Copy reply to clipboard first so user can paste immediately
+  try {
+    await navigator.clipboard.writeText(replyText);
+  } catch {}
+
+  // Show instructional modal
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9000;display:flex;align-items:center;justify-content:center;padding:24px';
+  modal.innerHTML = `
+    <div style="background:#0D1F3C;border:1px solid rgba(255,100,0,.3);border-radius:18px;padding:28px 30px;max-width:460px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,.6)">
+      <div style="font-size:1.6rem;margin-bottom:10px">🚀</div>
+      <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:6px">Post to Reddit</div>
+      <div style="font-size:0.8rem;color:rgba(255,255,255,.55);margin-bottom:18px;line-height:1.5">
+        Your reply has been <strong style="color:#10B981">copied to clipboard</strong>.<br>
+        Click <strong style="color:#FF6B35">Open Reddit Thread</strong> — then paste and submit your reply.
+      </div>
+
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:0.78rem;color:rgba(255,255,255,.75);line-height:1.5;max-height:120px;overflow-y:auto;white-space:pre-wrap">${replyText}</div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <a href="${redditUrl}" target="_blank" rel="noopener" style="flex:1;min-width:140px;padding:11px;background:linear-gradient(135deg,#FF4500,#FF6B35);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;text-align:center;text-decoration:none;display:block">
+          🔗 Open Reddit Thread
+        </a>
+        <button onclick="navigator.clipboard.writeText(${JSON.stringify(replyText)}).then(()=>showToast('✅ Copied again!'))" style="padding:11px 18px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">
+          📋 Copy Again
+        </button>
+        <button onclick="this.closest('[style*=fixed]').remove()" style="padding:11px 18px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;font-size:0.82rem;font-weight:600;color:rgba(255,255,255,.5);cursor:pointer">
+          Close
+        </button>
+      </div>
+
+      <div style="margin-top:14px;font-size:0.68rem;color:rgba(255,255,255,.25);line-height:1.4">
+        ℹ️ Direct posting via the Reddit API requires OAuth app credentials. This workflow opens the thread and pastes your copy — no login required.
+      </div>
+    </div>`;
+
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+
+  showToast('✅ Reply copied — open Reddit to paste!');
+
+  // Track action
+  igTrack('Reddit Post Now Clicked', {
+    hasThread: !!(post?.permalink),
+    replyLength: replyText.length
+  });
 }
