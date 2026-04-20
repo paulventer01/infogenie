@@ -431,6 +431,10 @@ function buildLaunchModal(camp, idx) {
             <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Start Date</label>
             <input id="lm-date" type="date" value="${new Date().toISOString().split('T')[0]}" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#0066FF'" onblur="this.style.borderColor='#E2E8F0'">
           </div>
+          <div>
+            <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">End Date</label>
+            <input id="lm-enddate" type="date" value="${new Date(Date.now()+30*24*60*60*1000).toISOString().split('T')[0]}" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#EF4444'" onblur="this.style.borderColor='#E2E8F0'">
+          </div>
         </div>
         <div style="margin-top:10px">
           <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Target Audience / Notes</label>
@@ -580,6 +584,7 @@ function buildLaunchModal(camp, idx) {
     const finalBudgetNum = parseInt(document.getElementById('lm-budget').value) || budgetNum;
     const finalBudget    = '$' + finalBudgetNum.toLocaleString();
     const finalDate      = document.getElementById('lm-date').value || new Date().toISOString().split('T')[0];
+    const finalEndDate   = document.getElementById('lm-enddate').value || new Date(Date.now()+30*24*60*60*1000).toISOString().split('T')[0];
     const finalAudience  = (document.getElementById('lm-audience').value || 'Auto-targeted by InfoGenie AI').trim();
 
     // Capture Creative Studio content at launch time
@@ -601,7 +606,7 @@ function buildLaunchModal(camp, idx) {
     // Save to internal results tracker IMMEDIATELY (before API call)
     const launchRecord = {
       id: 'camp_' + Date.now(), name: finalName, platform: finalPlatform,
-      budget: finalBudgetNum, budgetStr: finalBudget, startDate: finalDate, audience: finalAudience,
+      budget: finalBudgetNum, budgetStr: finalBudget, startDate: finalDate, endDate: finalEndDate, audience: finalAudience,
       launchedAt: new Date().toLocaleString(), status: 'active', daysRunning: 0,
       creatives: launchCreatives,
       metrics: {
@@ -648,7 +653,8 @@ function buildLaunchModal(camp, idx) {
         <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:12px 16px;margin-bottom:18px;font-size:0.8rem;color:#374151;line-height:1.8;text-align:left">
           <strong>Est. ROAS:</strong> ${launchRecord.metrics.roas}× &nbsp;·&nbsp;
           <strong>Est. CTR:</strong> ${launchRecord.metrics.ctr} &nbsp;·&nbsp;
-          <strong>Start:</strong> ${finalDate}
+          <strong>Start:</strong> ${finalDate} &nbsp;·&nbsp;
+          <strong>End:</strong> ${finalEndDate}
         </div>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
           <button id="lm-close-success" style="padding:10px 20px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
@@ -663,7 +669,7 @@ function buildLaunchModal(camp, idx) {
 
     // ── Call real ad platform API in the background ───────────────────────────
     if (isPlatformConnected) {
-      const apiBody = JSON.stringify({ campaignName: finalName, budget: finalBudgetNum, startDate: finalDate });
+      const apiBody = JSON.stringify({ campaignName: finalName, budget: finalBudgetNum, startDate: finalDate, endDate: finalEndDate });
       const apiUrl  = platformKey.includes('google') ? '/api/launch/google-ads'
                     : (platformKey.includes('meta') || platformKey.includes('facebook')) ? '/api/launch/meta'
                     : '/api/launch/tiktok';
@@ -3663,6 +3669,7 @@ function buildCampaigns() {
                   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:0.8rem;color:#374151">
                     <div><span style="color:#9CA3AF;font-size:0.7rem">Budget</span><br><strong>${c.budgetStr||'—'}/mo</strong></div>
                     <div><span style="color:#9CA3AF;font-size:0.7rem">Start Date</span><br><strong>${c.startDate||'—'}</strong></div>
+                    <div><span style="color:#9CA3AF;font-size:0.7rem">End Date</span><br><strong>${c.endDate||'—'}</strong></div>
                     <div><span style="color:#9CA3AF;font-size:0.7rem">Audience</span><br><strong>${(c.audience||'Auto-targeted').substring(0,60)}</strong></div>
                     <div><span style="color:#9CA3AF;font-size:0.7rem">Campaign ID</span><br><strong style="font-family:monospace;font-size:0.7rem">${c._platformCampaignId||c.id||'—'}</strong></div>
                   </div>
@@ -3890,7 +3897,7 @@ function buildAdvertise() {
             <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
               <div>
                 <div style="font-size:0.85rem;font-weight:700;color:#0A1628">${c.name}</div>
-                <div style="font-size:0.72rem;color:#6B7280">${c.platform} · ${c.budgetStr}/mo · Started ${c.startDate||'—'}</div>
+                <div style="font-size:0.72rem;color:#6B7280">${c.platform} · ${c.budgetStr}/mo · ${c.startDate||'—'}${c.endDate?' → '+c.endDate:''}</div>
               </div>
               <div style="display:flex;align-items:center;gap:12px">
                 <div style="text-align:center" title="Return on Ad Spend — revenue generated per $1 spent on this campaign. Higher is better."><div style="font-size:1rem;font-weight:800;color:#10B981">${c.metrics?.roas||'—'}×</div><div style="font-size:0.62rem;color:#6B7280">ROAS</div></div>
@@ -12505,6 +12512,14 @@ function openCampLaunchRich(name, platform, budget, idx) {
             <label class="clb-label">Creative Format</label>
             <input id="clb-creative" class="clb-field" value="${pd.creative.replace(/"/g,'&quot;')}">
           </div>
+          <div>
+            <label class="clb-label">Start Date</label>
+            <input id="clb-startdate" type="date" class="clb-field" value="${new Date().toISOString().split('T')[0]}">
+          </div>
+          <div>
+            <label class="clb-label">End Date</label>
+            <input id="clb-enddate" type="date" class="clb-field" value="${new Date(Date.now()+30*24*60*60*1000).toISOString().split('T')[0]}">
+          </div>
         </div>
       </div>
 
@@ -12630,7 +12645,8 @@ function confirmCampLaunch(name, platform, budget) {
     name, platform,
     budget: budgetNum,
     budgetStr: '$' + budgetNum.toLocaleString(),
-    startDate: new Date().toISOString().split('T')[0],
+    startDate: document.getElementById('clb-startdate')?.value || new Date().toISOString().split('T')[0],
+    endDate:   document.getElementById('clb-enddate')?.value   || new Date(Date.now()+30*24*60*60*1000).toISOString().split('T')[0],
     audience: 'AI-optimised targeting',
     launchedAt, status: 'active', daysRunning: 0,
     metrics: {
