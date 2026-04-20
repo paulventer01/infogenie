@@ -2404,6 +2404,82 @@ Return ONLY this exact JSON structure:
   }
 });
 
+// ── GET /api/serp — Google Search via ValueSERP ───────────────────────────────
+app.get('/api/serp', async (req, res) => {
+  const { q, location = 'United States', gl = 'us', hl = 'en', num = 10, type = 'search' } = req.query;
+  if (!q) return res.status(400).json({ error: 'Missing query param q' });
+
+  const apiKey = process.env.SERP_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'SERP_API_KEY not configured' });
+
+  try {
+    const params = new URLSearchParams({ api_key: apiKey, q, location, gl, hl, num: String(num) });
+    if (type === 'news') params.set('tbm', 'nws');
+
+    const url = `https://api.valueserp.com/search?${params.toString()}`;
+
+    const data = await new Promise((resolve, reject) => {
+      https.get(url, (resp) => {
+        let body = '';
+        resp.on('data', chunk => body += chunk);
+        resp.on('end', () => {
+          try { resolve(JSON.parse(body)); }
+          catch(e) { reject(new Error('Invalid JSON from ValueSERP')); }
+        });
+      }).on('error', reject);
+    });
+
+    if (data.request_info && !data.request_info.success) {
+      return res.status(400).json({ error: data.request_info.message || 'SERP API error' });
+    }
+
+    // Normalize response
+    const organic = (data.organic_results || []).map(r => ({
+      position: r.position,
+      title: r.title,
+      url: r.link,
+      domain: r.domain,
+      snippet: r.snippet,
+      date: r.date || null,
+      favicon: `https://www.google.com/s2/favicons?sz=32&domain=${r.domain}`
+    }));
+
+    const news = (data.news_results || []).map(r => ({
+      position: r.position,
+      title: r.title,
+      url: r.link,
+      domain: r.source,
+      snippet: r.snippet,
+      date: r.date || null,
+      favicon: `https://www.google.com/s2/favicons?sz=32&domain=${r.source}`
+    }));
+
+    const ads = (data.ads || []).map(r => ({
+      position: r.position,
+      title: r.title,
+      url: r.link,
+      domain: r.domain,
+      snippet: r.description || ''
+    }));
+
+    const relatedSearches = (data.related_searches || []).map(r => r.query);
+
+    res.json({
+      query: q,
+      location,
+      total: data.search_information?.total_results || null,
+      organic,
+      news,
+      ads,
+      relatedSearches,
+      knowledgeGraph: data.knowledge_graph || null
+    });
+  } catch (err) {
+    console.error('SERP error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── GET /api/status ───────────────────────────────────────────────────────────
 
 app.get('/api/status', (req, res) => {

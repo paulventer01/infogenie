@@ -1662,6 +1662,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'reddit') {
     try { buildRedditIntel(); } catch(e) { console.warn('buildRedditIntel error:', e); }
   }
+  if (viewId === 'serp') {
+    try { initSerpView(); } catch(e) { console.warn('initSerpView error:', e); }
+  }
   if (viewId === 'reengage') {
     try { buildReEngagement(); } catch(e) { console.warn('buildReEngagement error:', e); }
   }
@@ -14830,3 +14833,129 @@ window.generateCounterOffer = async function(idx, compName, offer, angle) {
   } catch(e) {}
   if (btn) { btn.disabled=false; btn.textContent='🎯 Generate Counter-Offer'; }
 };
+
+/* ══════════════════════════════════════════════
+   GOOGLE SERP INTELLIGENCE
+   ══════════════════════════════════════════════ */
+
+// Populate quick-search chips when the SERP view opens
+function initSerpView() {
+  const chips = document.getElementById('serpQuickChips');
+  if (!chips || chips.dataset.built) return;
+  chips.dataset.built = '1';
+
+  const defaults = analysisData && analysisData.competitors && analysisData.competitors.length
+    ? analysisData.competitors.slice(0, 4).map(c => c.name)
+    : ['best fintech app', 'online banking UK', 'crypto exchange', 'investment app'];
+
+  defaults.forEach(q => {
+    const c = document.createElement('button');
+    c.className = 'serp-chip';
+    c.textContent = q;
+    c.onclick = () => {
+      document.getElementById('serpQueryInput').value = q;
+      runSerpSearch();
+    };
+    chips.appendChild(c);
+  });
+
+  // Enter key triggers search
+  document.getElementById('serpQueryInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') runSerpSearch();
+  });
+}
+
+async function runSerpSearch() {
+  const q        = (document.getElementById('serpQueryInput').value || '').trim();
+  const location = document.getElementById('serpLocationSelect').value;
+  const type     = document.getElementById('serpTypeSelect').value;
+  const wrap     = document.getElementById('serpResultsWrap');
+  if (!q || !wrap) return;
+
+  wrap.innerHTML = `<div class="serp-loading"><div class="serp-spinner"></div>Searching Google…</div>`;
+
+  try {
+    const params = new URLSearchParams({ q, location, type, num: 10 });
+    const res    = await fetch('/api/serp?' + params.toString());
+    const data   = await res.json();
+
+    if (!res.ok) {
+      wrap.innerHTML = `<div class="serp-empty-state"><p style="color:rgba(255,100,100,.7)">⚠ ${data.error || 'Search failed'}</p></div>`;
+      return;
+    }
+
+    renderSerpResults(data);
+  } catch (err) {
+    wrap.innerHTML = `<div class="serp-empty-state"><p style="color:rgba(255,100,100,.7)">⚠ ${err.message}</p></div>`;
+  }
+}
+
+function renderSerpResults(data) {
+  const wrap = document.getElementById('serpResultsWrap');
+
+  // Related searches as clickable chips
+  const relatedHtml = (data.relatedSearches || []).length
+    ? `<div class="serp-sidebar-panel">
+        <div class="serp-sidebar-title">Related Searches</div>
+        <div>${data.relatedSearches.map(r =>
+          `<button class="serp-related-chip" onclick="document.getElementById('serpQueryInput').value='${r.replace(/'/g,"\\'")}';runSerpSearch()">${r}</button>`
+        ).join('')}</div>
+      </div>`
+    : '';
+
+  // Knowledge graph panel
+  const kgHtml = data.knowledgeGraph
+    ? `<div class="serp-sidebar-panel">
+        <div class="serp-sidebar-title">Knowledge Panel</div>
+        ${data.knowledgeGraph.title ? `<div class="serp-kg-name">${data.knowledgeGraph.title}</div>` : ''}
+        ${data.knowledgeGraph.type  ? `<div class="serp-kg-type">${data.knowledgeGraph.type}</div>` : ''}
+        ${data.knowledgeGraph.description ? `<div class="serp-kg-desc">${data.knowledgeGraph.description}</div>` : ''}
+      </div>`
+    : '';
+
+  // Ads in sidebar
+  const adsHtml = data.ads && data.ads.length
+    ? `<div class="serp-sidebar-panel">
+        <div class="serp-sidebar-title">Paid Ads (${data.ads.length})</div>
+        <div class="serp-ads-list">${data.ads.map(ad => `
+          <div>
+            <div class="serp-ads-item-domain">${ad.domain || ''}</div>
+            <a href="${ad.url}" target="_blank" rel="noopener" class="serp-ads-item-title">${ad.title}</a>
+            <div class="serp-ads-item-snippet">${ad.snippet}</div>
+          </div>`).join('<hr style="border:none;border-top:1px solid rgba(255,255,255,.06);margin:8px 0">')}</div>
+      </div>`
+    : '';
+
+  // Organic results
+  const resultsKey = data.news && data.news.length ? 'news' : 'organic';
+  const results    = data[resultsKey] || [];
+  const resultCardsHtml = results.length
+    ? results.map(r => `
+        <div class="serp-result-card">
+          <div class="serp-result-top">
+            <img class="serp-favicon" src="${r.favicon}" alt="" onerror="this.style.display='none'">
+            <span class="serp-position">#${r.position}</span>
+            <span class="serp-domain">${r.domain || ''}</span>
+            ${r.date ? `<span class="serp-date">${r.date}</span>` : ''}
+          </div>
+          <a href="${r.url}" target="_blank" rel="noopener" class="serp-result-title">${r.title}</a>
+          <div class="serp-result-snippet">${r.snippet || ''}</div>
+        </div>`).join('')
+    : `<div class="serp-empty-state"><p>No results found</p></div>`;
+
+  const metaHtml = `<div class="serp-meta-bar">
+    <div class="serp-meta-query">Results for <strong>"${data.query}"</strong> — ${data.location}</div>
+    ${data.total ? `<div class="serp-meta-total">~${Number(data.total).toLocaleString()} results</div>` : ''}
+  </div>`;
+
+  const sidebar = [kgHtml, adsHtml, relatedHtml].filter(Boolean).join('');
+
+  if (sidebar) {
+    wrap.innerHTML = `${metaHtml}<div class="serp-results-grid">
+      <div>${resultCardsHtml}</div>
+      <div class="serp-sidebar">${sidebar}</div>
+    </div>`;
+  } else {
+    wrap.innerHTML = `${metaHtml}${resultCardsHtml}`;
+  }
+}

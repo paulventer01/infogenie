@@ -60,6 +60,7 @@
           <a href="#" class="nav-link nav-link-intel" data-view="intelligence"><span class="ndl-icon">⚡</span><span class="ndl-text">Intelligence</span></a>
           <a href="#" class="nav-link" data-view="reddit"><span class="ndl-icon">🔴</span><span class="ndl-text">Reddit</span></a>
           <a href="#" class="nav-link" data-view="battleplan"><span class="ndl-icon">⚔️</span><span class="ndl-text">Battle Plan</span></a>
+          <a href="#" class="nav-link" data-view="serp"><span class="ndl-icon">🔎</span><span class="ndl-text">Google Search</span></a>
         </div>
       </div>
 
@@ -584,6 +585,63 @@
     </div>
   </div>
   <div class="container" id="intelligenceWrap"></div>
+</div>
+
+<!-- GOOGLE SERP VIEW -->
+<div class="view hidden" id="view-serp">
+  <div class="view-header">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb"><span class="bc-group">Analyse</span> <span class="bc-sep">›</span> Google Search</div>
+          <h2 class="view-title">Google Search Intelligence</h2>
+          <p class="view-sub">Live Google SERP results — track rankings, ads, and competitor visibility in real time</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" style="padding-top:28px;padding-bottom:56px">
+
+    <!-- Search bar -->
+    <div class="serp-search-bar">
+      <div class="serp-search-input-wrap">
+        <svg class="serp-search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input id="serpQueryInput" class="serp-search-input" type="text" placeholder="Search Google — e.g. best fintech app UK, revolut vs monzo…" />
+      </div>
+      <select id="serpLocationSelect" class="serp-location-select">
+        <option value="United States">🇺🇸 United States</option>
+        <option value="United Kingdom" selected>🇬🇧 United Kingdom</option>
+        <option value="Australia">🇦🇺 Australia</option>
+        <option value="Canada">🇨🇦 Canada</option>
+        <option value="Germany">🇩🇪 Germany</option>
+        <option value="France">🇫🇷 France</option>
+        <option value="India">🇮🇳 India</option>
+        <option value="Singapore">🇸🇬 Singapore</option>
+      </select>
+      <select id="serpTypeSelect" class="serp-type-select">
+        <option value="search">Organic</option>
+        <option value="news">News</option>
+      </select>
+      <button class="serp-search-btn" onclick="runSerpSearch()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="5.8" cy="5.8" r="4.3" stroke="white" stroke-width="1.5"/><path d="M9.2 9.2L13 13" stroke="white" stroke-width="1.6" stroke-linecap="round"/></svg>
+        Search
+      </button>
+    </div>
+
+    <!-- Quick searches -->
+    <div class="serp-quick-chips" id="serpQuickChips">
+      <span class="serp-chip-label">Quick:</span>
+    </div>
+
+    <!-- Results area -->
+    <div id="serpResultsWrap">
+      <div class="serp-empty-state">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="21" cy="21" r="14" stroke="rgba(0,201,200,.3)" stroke-width="2.5"/><path d="M30 30L42 42" stroke="rgba(0,201,200,.3)" stroke-width="3" stroke-linecap="round"/><path d="M15 21h12M21 15v12" stroke="rgba(0,201,200,.25)" stroke-width="2" stroke-linecap="round"/></svg>
+        <p>Enter a search query above to fetch live Google results</p>
+      </div>
+    </div>
+
+  </div>
 </div>
 
 <!-- COMPETITOR PLAN VIEW -->
