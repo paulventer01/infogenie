@@ -5648,3 +5648,35 @@ p, span, label, td, li {
   align-items: center;
 }
 .mc-chip-remove:hover { color: #EF4444; }
+
+.mc-panel-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.mc-panel-label { flex: 1; }
+
+.mc-add-competitor-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0,102,255,.18);
+  border: 1px solid rgba(0,102,255,.35);
+  border-radius: 7px;
+  padding: 5px 12px;
+  font-size: 0.71rem;
+  font-weight: 700;
+  color: #93C5FD;
+  cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.mc-add-competitor-btn:hover {
+  background: rgba(0,102,255,.28);
+  border-color: rgba(0,102,255,.5);
+  color: white;
+}

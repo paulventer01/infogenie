@@ -205,12 +205,15 @@
         <!-- Expandable manual competitors panel -->
         <div class="mc-panel hidden" id="mcPanel">
           <div class="mc-panel-inner">
-            <div class="mc-panel-label">Enter competitor URLs — we'll analyse their ad strategy, ROAS and targeting gaps</div>
+            <div class="mc-panel-label-row">
+              <span class="mc-panel-label">Enter competitor URLs — we'll analyse their ad strategy, ROAS and targeting gaps</span>
+              <button class="mc-add-competitor-btn" onclick="document.getElementById('mcInput').focus()">+ Add Competitor</button>
+            </div>
             <div class="mc-input-row">
               <span class="mc-prefix">https://</span>
               <input type="text" id="mcInput" class="mc-input" placeholder="competitor.com" autocomplete="off"
                 onkeydown="if(event.key==='Enter'){addManualCompetitor();}" />
-              <button class="mc-add-btn" onclick="addManualCompetitor()">Add</button>
+              <button class="mc-add-btn" onclick="addManualCompetitor()">Add Competitor</button>
             </div>
             <div id="mcChips" class="mc-chips"></div>
           </div>
