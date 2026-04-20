@@ -409,6 +409,34 @@ function buildLaunchModal(camp, idx) {
 
     <div style="padding:22px 28px;display:flex;flex-direction:column;gap:16px;max-height:68vh;overflow-y:auto">
 
+      <!-- CAMPAIGN WORDING / OVERVIEW -->
+      <div style="background:linear-gradient(135deg,#F0F9FF,#EEF2FF);border:1.5px solid #BAE6FD;border-radius:14px;padding:16px 20px">
+        <div style="font-size:0.65rem;font-weight:700;color:#0369A1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">📋 Campaign Overview</div>
+        <div style="font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px;line-height:1.35">${name}</div>
+        <div style="font-size:0.82rem;color:#374151;line-height:1.6;margin-bottom:10px">${camp.description || 'An AI-optimised campaign targeting high-intent audiences on ' + platform + ' based on competitor gap analysis.'}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+          ${(camp.tags || [platform, 'AI Optimised', 'High Intent']).map(tag => `<span style="background:white;border:1px solid #BAE6FD;border-radius:20px;padding:3px 10px;font-size:0.7rem;font-weight:600;color:#0369A1">${tag}</span>`).join('')}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="background:white;border-radius:8px;padding:9px 12px;border:1px solid #E0F2FE">
+            <div style="font-size:0.63rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">🎯 Objective</div>
+            <div style="font-size:0.78rem;font-weight:700;color:#0A1628">${camp.objective || (camp.tags && camp.tags[0]) || 'Drive Conversions'}</div>
+          </div>
+          <div style="background:white;border-radius:8px;padding:9px 12px;border:1px solid #E0F2FE">
+            <div style="font-size:0.63rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">📢 Platform</div>
+            <div style="font-size:0.78rem;font-weight:700;color:#0A1628">${pm.icon} ${platform}</div>
+          </div>
+          <div style="background:white;border-radius:8px;padding:9px 12px;border:1px solid #E0F2FE">
+            <div style="font-size:0.63rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">💰 Est. CTR</div>
+            <div style="font-size:0.78rem;font-weight:700;color:#059669">${camp.estCTR || '4.2%'}</div>
+          </div>
+          <div style="background:white;border-radius:8px;padding:9px 12px;border:1px solid #E0F2FE">
+            <div style="font-size:0.63rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">📊 Est. CPA</div>
+            <div style="font-size:0.78rem;font-weight:700;color:#7C3AED">${camp.estCPA || '$38'}</div>
+          </div>
+        </div>
+      </div>
+
       <!-- EDITABLE CAMPAIGN SETTINGS -->
       <div>
         <div style="font-size:0.68rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">⚙️ Campaign Parameters — Edit Before Launch</div>
