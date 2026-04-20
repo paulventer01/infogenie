@@ -5480,3 +5480,171 @@ p, span, label, td, li {
 .cs-period-sel { display:flex; gap:6px; }
 .cs-period-btn { padding:4px 12px; border-radius:6px; border:1px solid #E2E8F0; font-size:0.72rem; font-weight:600; color:#6B7280; background:white; cursor:pointer; transition:all .15s; }
 .cs-period-btn.active { background:#0A1628; color:white; border-color:#0A1628; }
+
+/* ══════════════════════════════════════════════
+   MANUAL COMPETITOR ENTRY + LAUNCH NOW
+   ══════════════════════════════════════════════ */
+.mc-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.mc-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(0,201,200,.08);
+  border: 1px solid rgba(0,201,200,.2);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #00C9C8;
+  cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: all .15s;
+}
+.mc-toggle-btn:hover {
+  background: rgba(0,201,200,.14);
+  border-color: rgba(0,201,200,.35);
+}
+.mc-toggle-btn.active {
+  background: rgba(0,201,200,.18);
+  border-color: rgba(0,201,200,.4);
+}
+
+.mc-count {
+  background: #00C9C8;
+  color: #0A1628;
+  font-size: 0.65rem;
+  font-weight: 800;
+  border-radius: 99px;
+  padding: 1px 6px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.btn-launch-now {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(135deg, #0066FF, #0052CC);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: white;
+  cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: all .15s;
+  box-shadow: 0 2px 10px rgba(0,102,255,.3);
+}
+.btn-launch-now:hover {
+  background: linear-gradient(135deg, #0052CC, #003D99);
+  box-shadow: 0 4px 16px rgba(0,102,255,.4);
+  transform: translateY(-1px);
+}
+
+.mc-panel {
+  margin-top: 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(0,201,200,.18);
+  overflow: hidden;
+  animation: mcSlideIn .2s ease;
+}
+@keyframes mcSlideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.mc-panel-inner { padding: 14px 16px; }
+.mc-panel-label {
+  font-size: 0.72rem;
+  color: rgba(255,255,255,.5);
+  margin-bottom: 10px;
+}
+
+.mc-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.mc-prefix {
+  padding: 0 10px;
+  font-size: 0.75rem;
+  color: rgba(255,255,255,.35);
+  border-right: 1px solid rgba(255,255,255,.1);
+  white-space: nowrap;
+  line-height: 36px;
+}
+.mc-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 9px 12px;
+  font-size: 0.82rem;
+  color: white;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.mc-input::placeholder { color: rgba(255,255,255,.3); }
+
+.mc-add-btn {
+  background: #00C9C8;
+  border: none;
+  color: #0A1628;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0 16px;
+  cursor: pointer;
+  height: 100%;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: background .15s;
+  white-space: nowrap;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+.mc-add-btn:hover { background: #00E5FF; }
+
+.mc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.mc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0,102,255,.18);
+  border: 1px solid rgba(0,102,255,.35);
+  border-radius: 99px;
+  padding: 4px 10px 4px 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #93C5FD;
+}
+.mc-chip-remove {
+  background: none;
+  border: none;
+  color: rgba(147,197,253,.6);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+.mc-chip-remove:hover { color: #EF4444; }

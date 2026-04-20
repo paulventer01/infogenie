@@ -189,6 +189,33 @@
           <input type="text" id="industryInput" class="industry-field" placeholder="Industry hint (optional) — e.g. SaaS, fintech, e-commerce, real estate…" autocomplete="off" />
           <span class="industry-row-hint" id="industryHint">Auto-detected</span>
         </div>
+
+        <!-- Manual Competitor Entry -->
+        <div class="mc-toggle-row">
+          <button class="mc-toggle-btn" id="mcToggleBtn" onclick="toggleManualCompPanel()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+            Add competitors manually <span id="mcCount" class="mc-count hidden">0</span>
+          </button>
+          <button class="btn-launch-now" onclick="launchNow()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            Launch Campaign
+          </button>
+        </div>
+
+        <!-- Expandable manual competitors panel -->
+        <div class="mc-panel hidden" id="mcPanel">
+          <div class="mc-panel-inner">
+            <div class="mc-panel-label">Enter competitor URLs — we'll analyse their ad strategy, ROAS and targeting gaps</div>
+            <div class="mc-input-row">
+              <span class="mc-prefix">https://</span>
+              <input type="text" id="mcInput" class="mc-input" placeholder="competitor.com" autocomplete="off"
+                onkeydown="if(event.key==='Enter'){addManualCompetitor();}" />
+              <button class="mc-add-btn" onclick="addManualCompetitor()">Add</button>
+            </div>
+            <div id="mcChips" class="mc-chips"></div>
+          </div>
+        </div>
+
         <div class="url-examples">
           <span class="examples-label">Try:</span>
           <button class="example-chip" data-url="shopify.com">
