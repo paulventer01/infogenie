@@ -3489,8 +3489,16 @@ function buildCampaigns() {
   wrap.innerHTML = `
     ${queuedSection}
     <div class="camp-hero">
-      <div class="camp-hero-title">AI-Powered Campaign Strategy for ${url}</div>
-      <div class="camp-hero-sub">Based on analysis of ${competitors.length} competitors in ${industry.name}. Recommendations ranked by projected ROI impact.</div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:6px">
+        <div style="flex:1;min-width:0">
+          <div class="camp-hero-title">AI-Powered Campaign Strategy for ${url}</div>
+          <div class="camp-hero-sub">Based on analysis of ${competitors.length} competitors in ${industry.name}. Recommendations ranked by projected ROI impact.</div>
+        </div>
+        <button onclick="window._igLaunch(0)" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;padding:11px 22px;font-size:0.82rem;font-weight:800;color:white;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;box-shadow:0 4px 16px rgba(0,102,255,.35);transition:all .2s;flex-shrink:0" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 22px rgba(0,102,255,.45)'" onmouseout="this.style.transform='';this.style.boxShadow='0 4px 16px rgba(0,102,255,.35)'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          🚀 Launch Campaign
+        </button>
+      </div>
       <div class="camp-kpis">
         <div><div class="camp-kpi-val" style="color:var(--teal)">${projROAS}×</div><div class="camp-kpi-lbl">Projected ROAS</div></div>
         <div><div class="camp-kpi-val" style="color:#10B981">-35%</div><div class="camp-kpi-lbl">CPA Reduction</div></div>
