@@ -1671,6 +1671,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'serp') {
     try { initSerpView(); } catch(e) { console.warn('initSerpView error:', e); }
   }
+  if (viewId === 'brand-assets') {
+    try { initBrandAssets(); } catch(e) { console.warn('initBrandAssets error:', e); }
+  }
   if (viewId === 'reengage') {
     try { buildReEngagement(); } catch(e) { console.warn('buildReEngagement error:', e); }
   }
@@ -14974,4 +14977,171 @@ function renderSerpResults(data) {
   } else {
     wrap.innerHTML = `${metaHtml}${resultCardsHtml}`;
   }
+}
+
+/* ══════════════════════════════════════════════
+   BRAND ASSETS LIBRARY
+   ══════════════════════════════════════════════ */
+
+window._brandAssets   = [];
+window._baActiveTag   = 'all';
+
+// Called when view becomes active
+function initBrandAssets() {
+  baLoadAssets();
+  baSetupDragDrop();
+}
+
+// Drag & drop wiring
+function baSetupDragDrop() {
+  const dz = document.getElementById('baDropzone');
+  if (!dz || dz.dataset.wired) return;
+  dz.dataset.wired = '1';
+  dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('drag-over');
+    baHandleFiles(e.dataTransfer.files);
+  });
+}
+
+// Load assets from server
+async function baLoadAssets() {
+  try {
+    const res  = await fetch('/api/creatives/list');
+    const data = await res.json();
+    window._brandAssets = data.assets || [];
+  } catch { window._brandAssets = []; }
+  baRender();
+}
+
+// Filter by tag
+function baFilterTag(btn, tag) {
+  document.querySelectorAll('.ba-tag').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  window._baActiveTag = tag;
+  baRender();
+}
+
+// Render the grid
+function baRender() {
+  const grid   = document.getElementById('baGrid');
+  const stats  = document.getElementById('baStats');
+  if (!grid) return;
+
+  const q      = (document.getElementById('baSearchInput')?.value || '').toLowerCase();
+  const tag    = window._baActiveTag || 'all';
+  const assets = window._brandAssets.filter(a => {
+    const matchTag  = tag === 'all' || (a.tag || 'General') === tag;
+    const matchQ    = !q || a.name.toLowerCase().includes(q) || (a.tag||'').toLowerCase().includes(q);
+    return matchTag && matchQ;
+  });
+
+  if (stats) {
+    stats.innerHTML = `<span><strong>${window._brandAssets.length}</strong> total assets</span>
+      <span><strong>${assets.length}</strong> shown</span>
+      <span><strong>${window._brandAssets.filter(a=>a.type==='image').length}</strong> images</span>
+      <span><strong>${window._brandAssets.filter(a=>a.type==='video').length}</strong> videos</span>`;
+  }
+
+  if (!assets.length) {
+    grid.innerHTML = `<div class="ba-empty">
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect x="6" y="10" width="36" height="28" rx="4" stroke="rgba(0,201,200,.3)" stroke-width="2.5"/><path d="M6 32l12-10 8 6 6-5 10 7" stroke="rgba(0,201,200,.25)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <p>${window._brandAssets.length ? 'No assets match your filter' : 'No brand assets yet — upload your first creative above'}</p>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = assets.map(a => {
+    const sizeStr = a.size > 1048576 ? (a.size/1048576).toFixed(1)+' MB' : Math.round(a.size/1024)+' KB';
+    const thumb   = a.type === 'image'    ? `<img class="ba-card-thumb" src="${a.url}" alt="${a.name}" loading="lazy">`
+                  : a.type === 'video'    ? `<div class="ba-card-thumb-icon">🎬</div>`
+                  : a.type === 'document' ? `<div class="ba-card-thumb-icon">📄</div>`
+                  :                         `<div class="ba-card-thumb-icon">🖼️</div>`;
+    return `<div class="ba-card" id="ba-card-${a.id}">
+      ${thumb}
+      <div class="ba-card-body">
+        <div class="ba-card-name" title="${a.name}">${a.name}</div>
+        <div class="ba-card-meta">
+          <span>${sizeStr}</span>
+          <span class="ba-card-tag">${a.tag||'General'}</span>
+        </div>
+      </div>
+      <div class="ba-card-actions">
+        <button class="ba-card-btn ba-card-btn-view" onclick="baPreview('${a.id}')">Preview</button>
+        <button class="ba-card-btn ba-card-btn-del" onclick="baDelete('${a.id}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Upload files
+async function baHandleFiles(files) {
+  if (!files || !files.length) return;
+  const tag   = document.getElementById('ba-upload-tag')?.value || 'General';
+  const form  = new FormData();
+  Array.from(files).forEach(f => form.append('files', f));
+  form.append('tag', tag);
+
+  const progWrap = document.getElementById('baUploadProgress');
+  const progBar  = document.getElementById('baProgressBar');
+  const progLbl  = document.getElementById('baProgressLabel');
+  if (progWrap) { progWrap.style.display = 'block'; progBar.style.width = '10%'; progLbl.textContent = `Uploading ${files.length} file(s)…`; }
+
+  try {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/creatives/upload');
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable && progBar) progBar.style.width = Math.round(e.loaded/e.total*90) + '%';
+    };
+    const result = await new Promise((resolve, reject) => {
+      xhr.onload = () => resolve(JSON.parse(xhr.responseText));
+      xhr.onerror = reject;
+      xhr.send(form);
+    });
+    if (progBar) progBar.style.width = '100%';
+    if (progLbl) progLbl.textContent = `✅ ${result.files?.length || 0} file(s) uploaded`;
+    setTimeout(() => { if (progWrap) progWrap.style.display = 'none'; }, 1800);
+    await baLoadAssets();
+    showToast(`✅ ${result.files?.length || 0} brand asset(s) uploaded`);
+  } catch (err) {
+    if (progLbl) progLbl.textContent = `⚠ Upload failed: ${err.message}`;
+    setTimeout(() => { if (progWrap) progWrap.style.display = 'none'; }, 3000);
+  }
+
+  // Reset file input so same file can be re-uploaded
+  const inp = document.getElementById('ba-file-input');
+  if (inp) inp.value = '';
+}
+
+// Preview lightbox
+function baPreview(id) {
+  const asset = window._brandAssets.find(a => a.id === id);
+  if (!asset) return;
+  if (asset.type === 'video') { window.open(asset.url, '_blank'); return; }
+  if (asset.type === 'document') { window.open(asset.url, '_blank'); return; }
+  const lb = document.createElement('div');
+  lb.className = 'ba-lightbox';
+  lb.innerHTML = `<div class="ba-lightbox-inner">
+    <img class="ba-lightbox-img" src="${asset.url}" alt="${asset.name}">
+    <button class="ba-lightbox-close" onclick="this.closest('.ba-lightbox').remove()">✕</button>
+  </div>`;
+  lb.onclick = e => { if (e.target === lb) lb.remove(); };
+  document.body.appendChild(lb);
+}
+
+// Delete
+async function baDelete(id) {
+  const asset = window._brandAssets.find(a => a.id === id);
+  if (!asset) return;
+  if (!confirm(`Delete "${asset.name}"? This cannot be undone.`)) return;
+  try {
+    await fetch('/api/creatives/' + encodeURIComponent(id), { method: 'DELETE' });
+    window._brandAssets = window._brandAssets.filter(a => a.id !== id);
+    const card = document.getElementById('ba-card-' + id);
+    if (card) card.remove();
+    baRender();
+    showToast('Asset deleted');
+  } catch { showToast('Delete failed'); }
 }

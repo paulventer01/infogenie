@@ -19,9 +19,12 @@ InfoGenie is a comprehensive AI-powered marketing intelligence and campaign auto
 ├── index.html          # Main SPA with all view templates
 ├── style.css           # Complete styling (Deep Navy + Teal + Cyan brand)
 ├── data.js             # Industry intelligence database + competitor data (7 industries, 11 competitor pool per industry)
-├── app.js              # Main application controller (~5100 lines)
-├── server.js           # Express backend (DataForSEO integration, dual-port)
-└── package.json        # Node.js dependencies
+├── app.js              # Main application controller (~5600 lines)
+├── server.js           # Express backend (DataForSEO integration, dual-port, file upload)
+├── package.json        # Node.js dependencies
+└── uploads/
+    ├── creatives/      # Brand asset files (images, videos, PDFs, SVGs)
+    └── creatives_meta.json  # Asset metadata (JSON array, auto-managed)
 ```
 
 ## Key Globals (app.js)

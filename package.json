@@ -11,6 +11,7 @@
     "@anthropic-ai/sdk": "^0.89.0",
     "drizzle-zod": "^0.8.3",
     "express": "^4.22.1",
+    "multer": "^2.1.1",
     "openai": "^6.34.0",
     "p-limit": "^7.3.0",
     "p-retry": "^7.1.1",
