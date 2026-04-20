@@ -2485,78 +2485,91 @@ Return ONLY this exact JSON structure:
   }
 });
 
-// ── GET /api/serp — Google Search via RapidAPI (Google Search API) ────────────
+// ── GET /api/serp — Google Search via RapidAPI (multi-endpoint fallback) ──────
 app.get('/api/serp', async (req, res) => {
-  const { q, location = 'United States', gl = 'us', hl = 'en', num = 10, type = 'search' } = req.query;
+  const { q, gl = 'us', hl = 'en', num = 10, type = 'search' } = req.query;
   if (!q) return res.status(400).json({ error: 'Missing query param q' });
 
   const rapidKey = process.env.GOOGLE_SEARCH_API_KEY || process.env.RAPIDAPI_KEY;
   if (!rapidKey) return res.status(503).json({ error: 'Google Search API key not configured' });
 
-  try {
-    // Use RapidAPI "Google Search" host (real-time-web-search)
-    const host = 'google-search74.p.rapidapi.com';
-    const path = `/search?query=${encodeURIComponent(q)}&limit=${num}&related_keywords=true`;
-
-    const data = await new Promise((resolve, reject) => {
-      const options = {
-        hostname: host,
-        path,
-        method:  'GET',
-        headers: {
-          'x-rapidapi-key':  rapidKey,
-          'x-rapidapi-host': host
-        }
-      };
-      const req2 = https.request(options, resp => {
+  // Helper: make one HTTPS request and parse JSON
+  function rapidFetch(hostname, path) {
+    return new Promise((resolve, reject) => {
+      const options = { hostname, path, method: 'GET',
+        headers: { 'x-rapidapi-key': rapidKey, 'x-rapidapi-host': hostname, 'Accept': 'application/json' } };
+      const r = https.request(options, resp => {
         let body = '';
-        resp.on('data', chunk => body += chunk);
-        resp.on('end', () => {
-          try { resolve(JSON.parse(body)); }
-          catch(e) { reject(new Error('Invalid JSON from Google Search API')); }
-        });
+        resp.on('data', c => body += c);
+        resp.on('end', () => { try { resolve({ status: resp.statusCode, data: JSON.parse(body) }); } catch { reject(new Error('Bad JSON')); } });
       });
-      req2.on('error', reject);
-      req2.end();
+      r.on('error', reject);
+      r.end();
     });
+  }
 
-    if (data.error || data.message) {
-      return res.status(400).json({ error: data.error || data.message });
-    }
+  // Normalise results from any of the four schemas various APIs return
+  function normalise(data, host) {
+    let results = [];
+    // Schema A: { results:[{title,url,description}] }  (google-search74, real-time-web-search)
+    if (Array.isArray(data.results)) results = data.results;
+    // Schema B: { data:[{title,url,snippet}] }
+    else if (Array.isArray(data.data)) results = data.data;
+    // Schema C: { organic_results:[...] } (googlesearch-api)
+    else if (Array.isArray(data.organic_results)) results = data.organic_results;
+    // Schema D: { items:[...] } (google-search3)
+    else if (Array.isArray(data.items)) results = data.items;
 
-    // Normalise — this API returns { results: [{title,url,description}] }
-    const results = data.results || data.data || data.organic_results || [];
-    const organic = results.map((r, i) => {
-      const domain = (() => { try { return new URL(r.url || r.link || '').hostname.replace('www.',''); } catch { return ''; } })();
+    const organic = results.slice(0, Number(num)).map((r, i) => {
+      const rawUrl = r.url || r.link || r.href || '';
+      const domain = (() => { try { return new URL(rawUrl).hostname.replace(/^www\./,''); } catch { return ''; } })();
       return {
         position: i + 1,
         title:    r.title || '',
-        url:      r.url   || r.link || '',
+        url:      rawUrl,
         domain,
-        snippet:  r.description || r.snippet || '',
-        date:     r.date || null,
+        snippet:  r.description || r.snippet || r.body || '',
+        date:     r.date || r.published || null,
         favicon:  domain ? `https://www.google.com/s2/favicons?sz=32&domain=${domain}` : ''
       };
     });
 
-    const relatedSearches = (data.related_keywords || data.related_searches || []).map(r =>
-      typeof r === 'string' ? r : (r.query || r.keyword || '')
-    ).filter(Boolean);
+    const related = (data.related_keywords || data.related_searches || data.suggestions || [])
+      .map(r => typeof r === 'string' ? r : (r.query || r.keyword || r.text || '')).filter(Boolean);
 
-    res.json({
-      query: q,
-      location,
-      total: data.totalResults || null,
-      organic,
-      news: [],
-      ads: [],
-      relatedSearches,
-      knowledgeGraph: null
-    });
-  } catch (err) {
-    console.error('SERP error:', err.message);
-    res.status(500).json({ error: err.message });
+    return { organic, relatedSearches: related };
   }
+
+  // Candidate endpoints in priority order — try each until one succeeds
+  const candidates = [
+    // 1. google-search3 (apigeek)
+    { host: 'google-search3.p.rapidapi.com', path: `/api/v1/search/q=${encodeURIComponent(q)}&num=${num}&hl=${hl}&gl=${gl}&safe=off` },
+    // 2. real-time-web-search
+    { host: 'real-time-web-search.p.rapidapi.com', path: `/search?q=${encodeURIComponent(q)}&limit=${num}` },
+    // 3. google-search74
+    { host: 'google-search74.p.rapidapi.com', path: `/search?query=${encodeURIComponent(q)}&limit=${num}&related_keywords=true` },
+    // 4. googlesearch-api
+    { host: 'googlesearch-api.p.rapidapi.com', path: `/search?q=${encodeURIComponent(q)}&num=${num}&gl=${gl}&hl=${hl}` },
+  ];
+
+  let lastErr = 'No working Google Search endpoint found for this API key';
+  for (const { host, path } of candidates) {
+    try {
+      const { status, data } = await rapidFetch(host, path);
+      if (status === 200 && !data.error && !data.message?.includes('subscri')) {
+        const { organic, relatedSearches } = normalise(data, host);
+        if (organic.length > 0) {
+          console.log(`[SERP] success via ${host}`);
+          return res.json({ query: q, total: data.totalResults || null, organic, news: [], ads: [], relatedSearches, knowledgeGraph: null });
+        }
+      }
+      if (data.message) lastErr = `${host}: ${data.message}`;
+      else if (data.error)   lastErr = `${host}: ${data.error}`;
+    } catch (e) { lastErr = e.message; }
+  }
+
+  console.error('[SERP] all endpoints failed:', lastErr);
+  res.status(503).json({ error: lastErr });
 });
 
 // ── GET /api/status ───────────────────────────────────────────────────────────

@@ -115,6 +115,7 @@
           <a href="#" class="nav-link" data-view="reengage"><span class="ndl-icon">🔁</span><span class="ndl-text">Re-Engage</span></a>
           <a href="#" class="nav-link" data-view="automations"><span class="ndl-icon">⚡</span><span class="ndl-text">Automations</span></a>
           <a href="#" class="nav-link" data-view="agency"><span class="ndl-icon">🏢</span><span class="ndl-text">Agency & Reports</span></a>
+          <a href="#" class="nav-link" data-view="csuite"><span class="ndl-icon">👔</span><span class="ndl-text">C-Suite Reports</span></a>
           <a href="#" class="nav-link" data-view="settings"><span class="ndl-icon">⚙️</span><span class="ndl-text">Settings</span></a>
         </div>
       </div>
@@ -1055,6 +1056,31 @@
     <div id="baGrid" class="ba-grid"></div>
 
   </div>
+</div>
+
+<!-- C-SUITE EXECUTIVE REPORTS VIEW -->
+<div class="view hidden" id="view-csuite">
+  <div class="view-header" style="background:linear-gradient(135deg,#0A1628 0%,#1a1040 100%);border-bottom:1px solid rgba(124,58,237,.25)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> C-Suite Reports</div>
+          <h2 class="view-title">C-Suite Executive Intelligence</h2>
+          <p class="view-sub">Board-ready dashboards for CEO, CMO, CFO and COO — one click to PDF</p>
+        </div>
+        <div class="vh-actions" style="gap:10px">
+          <div class="cs-role-tabs" id="csRoleTabs">
+            <button class="cs-role-btn active" data-role="ceo" onclick="csSetRole(this,'ceo')">CEO</button>
+            <button class="cs-role-btn" data-role="cmo" onclick="csSetRole(this,'cmo')">CMO</button>
+            <button class="cs-role-btn" data-role="cfo" onclick="csSetRole(this,'cfo')">CFO</button>
+            <button class="cs-role-btn" data-role="coo" onclick="csSetRole(this,'coo')">COO</button>
+          </div>
+          <button class="btn-primary" onclick="csSuitePDF()">📄 Export PDF</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="csuiteWrap" style="padding-top:28px;padding-bottom:60px"></div>
 </div>
 
 <!-- TOAST -->
