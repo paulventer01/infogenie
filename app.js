@@ -17358,7 +17358,7 @@ function showAutoSeoCalendar() {
           '<div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800">📅 Content Publishing Calendar</div>' +
           '<div style="font-size:0.75rem;opacity:.8;margin-top:2px">Articles scheduled from ' + _fmtDate(sch.startDate) + ' to ' + _fmtDate(sch.endDate) + '</div>' +
         '</div>' +
-        '<button onclick="document.getElementById('autoseo-cal-modal').remove()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;color:white;font-size:1rem;width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700">✕</button>' +
+        '<button onclick="document.getElementById(&apos;autoseo-cal-modal&apos;).remove()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;color:white;font-size:1rem;width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700">✕</button>' +
       '</div>' +
       '<div style="padding:24px">' + legend + calendarHtml + '</div>' +
     '</div>';
