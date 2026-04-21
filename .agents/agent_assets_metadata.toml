@@ -12,3 +12,9 @@ id = "cV4y0z-pEjKFlrPOaoa_t"
 uri = "file://infogenie-full-code.txt"
 type = "text"
 title = "InfoGenie — Complete Source Code"
+
+[[outputs]]
+id = "a-_GbL4JZJr5FpdP9hiK0"
+uri = "file://infogenie-backup.zip"
+type = "unspecified"
+title = "InfoGenie – Complete Backup (.zip)"
