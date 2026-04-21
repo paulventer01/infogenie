@@ -17264,6 +17264,68 @@ function launchNow() {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // AUTOSEO Calendar Modal ─────────────────────────────────────────────────────
+// ── Calendar Edit / Delete helpers ──────────────────────────────────────────
+function calEditArticle(idx) {
+  const art = window._autoSeoArticles && window._autoSeoArticles[idx];
+  if (!art) return;
+  const sch = window._autoSeoSchedule || {};
+  const currentDate = art.customDate || _artDate(idx, sch);
+  const safeTitle = (art.title || '').replace(/"/g, '&quot;');
+
+  const popup = document.createElement('div');
+  popup.id = 'cal-edit-popup';
+  popup.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:20px';
+  popup.innerHTML =
+    '<div style="background:white;border-radius:16px;padding:26px;width:100%;max-width:460px;box-shadow:0 20px 60px rgba(0,0,0,.3)">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">' +
+        '<div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#111827">✏️ Edit Article #' + (idx+1) + '</div>' +
+        '<button onclick="document.getElementById(&apos;cal-edit-popup&apos;).remove()" style="background:#F3F4F6;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:0.9rem;color:#6B7280">✕</button>' +
+      '</div>' +
+      '<label style="font-size:0.75rem;font-weight:600;color:#374151;display:block;margin-bottom:14px">Article Title' +
+        '<input id="cal-edit-title" value="' + safeTitle + '" style="display:block;width:100%;margin-top:5px;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.85rem;outline:none;box-sizing:border-box;color:#111827" placeholder="Article title">' +
+      '</label>' +
+      '<label style="font-size:0.75rem;font-weight:600;color:#374151;display:block;margin-bottom:20px">Scheduled Date' +
+        '<input type="date" id="cal-edit-date" value="' + currentDate + '" style="display:block;width:100%;margin-top:5px;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.85rem;outline:none;box-sizing:border-box;color:#111827">' +
+      '</label>' +
+      '<div style="display:flex;gap:10px">' +
+        '<button onclick="calSaveEdit(' + idx + ')" style="flex:1;padding:10px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:9px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">💾 Save Changes</button>' +
+        '<button onclick="calDeleteArticle(' + idx + ')" style="padding:10px 14px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:9px;font-size:0.82rem;font-weight:700;color:#DC2626;cursor:pointer">🗑️ Delete</button>' +
+        '<button onclick="document.getElementById(&apos;cal-edit-popup&apos;).remove()" style="padding:10px 14px;background:#F3F4F6;border:none;border-radius:9px;font-size:0.82rem;font-weight:700;color:#6B7280;cursor:pointer">Cancel</button>' +
+      '</div>' +
+    '</div>';
+
+  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+  document.body.appendChild(popup);
+}
+
+function calSaveEdit(idx) {
+  const art = window._autoSeoArticles && window._autoSeoArticles[idx];
+  if (!art) return;
+  const newTitle = (document.getElementById('cal-edit-title') || {}).value || '';
+  const newDate  = (document.getElementById('cal-edit-date')  || {}).value || '';
+  if (newTitle.trim()) art.title = newTitle.trim();
+  if (newDate)         art.customDate = newDate;
+  const ep = document.getElementById('cal-edit-popup');
+  if (ep) ep.remove();
+  const cm = document.getElementById('autoseo-cal-modal');
+  if (cm) cm.remove();
+  showAutoSeoCalendar();
+  buildAutoSEO();
+  showToast('✅ Article #' + (idx+1) + ' updated');
+}
+
+function calDeleteArticle(idx) {
+  if (!confirm('Delete article #' + (idx+1) + '? This cannot be undone.')) return;
+  const ep = document.getElementById('cal-edit-popup');
+  if (ep) ep.remove();
+  if (window._autoSeoArticles) window._autoSeoArticles.splice(idx, 1);
+  const cm = document.getElementById('autoseo-cal-modal');
+  if (cm) cm.remove();
+  if (window._autoSeoArticles && window._autoSeoArticles.length) showAutoSeoCalendar();
+  buildAutoSEO();
+  showToast('🗑️ Article deleted from calendar');
+}
+
 function showAutoSeoCalendar() {
   const articles = window._autoSeoArticles || [];
   const sch = window._autoSeoSchedule || {};
@@ -17327,8 +17389,10 @@ function showAutoSeoCalendar() {
               (isToday ? '<span style="background:#1D4ED8;color:white;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:0.68rem">' + day + '</span>' : day) +
             '</div>' +
             arts.map(a =>
-              '<div style="font-size:0.6rem;font-weight:600;padding:2px 5px;border-radius:4px;background:' + statusBg(a.status) + ';color:' + statusColor(a.status) + ';margin-bottom:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;line-height:1.3" title="' + (a.title||'').replace(/"/g,"'") + '" onclick="previewGeneratedArticle(' + a.idx + ')">' +
-                '#' + (a.idx+1) + ' ' + (a.title||'').substring(0,28) +
+              '<div style="border-radius:4px;background:' + statusBg(a.status) + ';color:' + statusColor(a.status) + ';margin-bottom:2px;line-height:1.3;display:flex;align-items:center;gap:1px;overflow:hidden">' +
+                '<span onclick="previewGeneratedArticle(' + a.idx + ')" style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;font-size:0.6rem;font-weight:600;padding:2px 4px" title="' + (a.title||'').replace(/"/g,"'") + '">#' + (a.idx+1) + ' ' + (a.title||'').substring(0,22) + '</span>' +
+                '<button onclick="calEditArticle(' + a.idx + ')" style="flex-shrink:0;border:none;background:rgba(0,0,0,.06);cursor:pointer;padding:1px 3px;font-size:0.6rem;line-height:1.4;border-radius:3px;color:inherit" title="Edit">✏️</button>' +
+                '<button onclick="calDeleteArticle(' + a.idx + ')" style="flex-shrink:0;border:none;background:rgba(239,68,68,.1);cursor:pointer;padding:1px 3px;font-size:0.6rem;line-height:1.4;border-radius:3px;color:#DC2626" title="Delete">🗑</button>' +
               '</div>'
             ).join('') +
           '</td>';
@@ -17540,6 +17604,9 @@ function _artInterval(sch) {
 
 // Compute the scheduled publish date for article index i
 function _artDate(i, sch) {
+  // Respect per-article custom date override
+  const arts = window._autoSeoArticles;
+  if (arts && arts[i] && arts[i].customDate) return arts[i].customDate;
   const s        = new Date(sch.startDate || new Date());
   const interval = _artInterval(sch);
   const d        = new Date(s.getTime() + i * interval * 24*60*60*1000);
