@@ -18922,8 +18922,8 @@ function buildMasterCalendar() {
    ============================================================ */
 (function dockMagnify(){
   const SELECTORS = '.nav-group-btn, .nav-link, .stab, .tab-btn, .pf-btn, .atp-pill, .sub-tab, .subtab, .creative-tab, .cs-tab, .ich-tab, .kpi-tab, .cal-tab, .module-tab, .dropdown-link';
-  const MAX_SCALE = 1.18;
-  const RANGE     = 130;
+  const MAX_SCALE = 1.10;
+  const RANGE     = 110;
 
   const ease = t => 0.5 - 0.5 * Math.cos(Math.PI * t);
 
