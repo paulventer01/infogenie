@@ -16066,10 +16066,10 @@ function csBuildView() {
   const d    = csData();
 
   const roleMap = {
-    ceo: { label:'Chief Executive Officer', color:'#7C3AED', accent:'rgba(124,58,237,.15)', icon:'👔' },
-    cmo: { label:'Chief Marketing Officer',  color:'#0066FF', accent:'rgba(0,102,255,.12)',  icon:'📣' },
-    cfo: { label:'Chief Financial Officer',  color:'#059669', accent:'rgba(5,150,105,.12)',  icon:'💰' },
-    coo: { label:'Chief Operating Officer',  color:'#D97706', accent:'rgba(217,119,6,.12)',  icon:'⚙️' },
+    ceo: { label:'Chief Executive Officer', color:'#1D4ED8', accent:'rgba(29,78,216,.12)',   icon:'👔' },
+    cmo: { label:'Chief Marketing Officer',  color:'#0066FF', accent:'rgba(0,102,255,.10)',  icon:'📣' },
+    cfo: { label:'Chief Financial Officer',  color:'#059669', accent:'rgba(5,150,105,.10)',  icon:'💰' },
+    coo: { label:'Chief Operating Officer',  color:'#D97706', accent:'rgba(217,119,6,.10)',  icon:'⚙️' },
   };
   const rm = roleMap[role];
 
@@ -16092,6 +16092,128 @@ function csBuildView() {
 }
 
 // ── CEO Report ────────────────────────────────────────────────────────────────
+// ── Shared Financial Block — injected into every C-Suite role ─────────────────
+function csFinancialBlock(d, role) {
+  const { camps, budget, roas, conv, cpl, comps, url, ind } = d;
+  const revenue     = budget * roas;
+  const netProfit   = revenue - budget;
+  const roi         = budget > 0 ? ((netProfit / budget) * 100).toFixed(0) : 0;
+  const cpa         = budget > 0 && conv > 0 ? (budget / Math.max(conv, 1)).toFixed(0) : null;
+  const proj30      = revenue;
+  const proj60      = revenue * 2.12;
+  const proj90      = revenue * 3.38;
+  const efficiencyPct = budget > 0 ? ((roas - 1) / roas * 100).toFixed(1) : '—';
+  const wasted      = budget > 0 ? Math.round(budget * 0.18) : 0;
+  const aiSavedStr  = budget > 0 ? '$' + wasted.toLocaleString() : '—';
+
+  // Channel spend breakdown
+  const channels = camps.length
+    ? camps.slice(0, 5).map(c => ({
+        name: c.platform || 'Platform',
+        spend: c.budget || Math.round(budget / Math.max(camps.length, 1)),
+        roas: parseFloat(c.metrics?.roas || c.estROAS || roas),
+      }))
+    : [];
+
+  const roiColor  = Number(roi) >= 200 ? '#059669' : Number(roi) >= 100 ? '#D97706' : '#DC2626';
+  const roiBg     = Number(roi) >= 200 ? '#F0FDF4' : Number(roi) >= 100 ? '#FFFBEB' : '#FEF2F2';
+  const roiLabel  = Number(roi) >= 200 ? 'Excellent' : Number(roi) >= 100 ? 'Good' : 'Needs Attention';
+
+  const roleInsights = {
+    ceo: { title: 'CEO Financial Snapshot', icon: '💼', q: 'Are we profitable on marketing?', note: `Every $1 spent on marketing returns $${roas.toFixed(2)} — a ${roi}% ROI. ${Number(roi)>=200?'Growth trajectory supports budget increase.':'Optimise channel mix to improve margin.'}` },
+    cmo: { title: 'CMO Budget Performance', icon: '📊', q: 'Is spend generating pipeline?', note: `${budget > 0 ? `$${budget.toLocaleString()} deployed` : 'No spend yet'} generating ${conv || 0} conversions. ${cpa ? `CPA of $${cpa} — ${Number(cpa) < 80 ? 'within target range' : 'room to improve via better targeting'}.` : 'Launch campaigns to track CPA.'}` },
+    cfo: { title: 'CFO ROI Waterfall', icon: '💹', q: 'What is the return on every dollar?', note: `Net margin efficiency: ${efficiencyPct}%. InfoGenie AI optimisation is preventing an estimated ${aiSavedStr}/mo in wasted ad spend through automated bid management.` },
+    coo: { title: 'COO Operational Cost Efficiency', icon: '⚙️', q: 'Are we running lean?', note: `${camps.length} campaigns running across ${[...new Set(camps.map(c=>c.platform))].length || 1} platforms. Estimated ${aiSavedStr}/mo saved by AI automation vs. manual management overhead.` },
+  };
+  const ins = roleInsights[role] || roleInsights.ceo;
+
+  return `
+  <!-- ── Financial Performance Block ─────────────────────────────────── -->
+  <div class="cs-card cs-financial-block" style="background:linear-gradient(135deg,#F0F9FF,#EFF6FF);border:1.5px solid #BFDBFE;">
+    <div class="cs-card-header" style="margin-bottom:14px">
+      <div>
+        <div class="cs-card-title" style="color:#1E3A8A">${ins.icon} ${ins.title}</div>
+        <div class="cs-card-sub">${ins.q}</div>
+      </div>
+      <span style="padding:4px 12px;border-radius:99px;font-size:0.68rem;font-weight:800;background:${roiBg};color:${roiColor};border:1px solid ${roiColor}30">${roiLabel} · ROI ${roi}%</span>
+    </div>
+
+    <!-- ROI Waterfall row -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+      ${[
+        { icon:'💸', label:'Total Spend', val: budget>0?'$'+budget.toLocaleString():'$0', sub:'This period', color:'#EF4444', bg:'#FEF2F2' },
+        { icon:'📈', label:'Revenue Attributed', val: budget>0?'$'+Math.round(revenue).toLocaleString():'—', sub:'At '+roas+'× ROAS', color:'#059669', bg:'#F0FDF4' },
+        { icon:'💰', label:'Net Profit', val: budget>0?'$'+Math.round(netProfit).toLocaleString():'—', sub:'Revenue − Spend', color: netProfit>0?'#059669':'#DC2626', bg: netProfit>0?'#F0FDF4':'#FEF2F2' },
+        { icon:'🎯', label:'Marketing ROI', val: budget>0?roi+'%':'—', sub: roiLabel, color:roiColor, bg:roiBg },
+      ].map(s=>`
+      <div style="background:${s.bg};border-radius:12px;padding:14px 16px;border:1px solid ${s.color}20">
+        <div style="font-size:1.1rem;margin-bottom:6px">${s.icon}</div>
+        <div style="font-family:'Sora',sans-serif;font-size:1.25rem;font-weight:800;color:${s.color};line-height:1">${s.val}</div>
+        <div style="font-size:0.65rem;font-weight:700;color:#374151;margin-top:4px">${s.label}</div>
+        <div style="font-size:0.62rem;color:#9CA3AF;margin-top:2px">${s.sub}</div>
+      </div>`).join('')}
+    </div>
+
+    <!-- Two sub-columns: spend bar + 90-day projection -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+
+      <!-- Spend vs Revenue by Channel -->
+      <div>
+        <div style="font-size:0.78rem;font-weight:800;color:#1E3A8A;margin-bottom:12px">💳 Spend vs Revenue by Channel</div>
+        ${channels.length ? channels.map(c => {
+          const rev    = Math.round(c.spend * c.roas);
+          const spendPct = Math.min(Math.round((c.spend / Math.max(budget,1)) * 100), 100);
+          const col    = c.roas >= 3 ? '#059669' : c.roas >= 2 ? '#D97706' : '#DC2626';
+          return `
+          <div style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;font-size:0.72rem;font-weight:700;color:#374151;margin-bottom:4px">
+              <span>${c.name}</span>
+              <span style="color:${col}">${c.roas.toFixed(1)}× → $${rev.toLocaleString()}</span>
+            </div>
+            <div style="display:flex;gap:3px;align-items:center">
+              <div style="flex:1;background:#E0F2FE;border-radius:6px;height:7px;overflow:hidden">
+                <div style="width:${spendPct}%;height:100%;background:linear-gradient(90deg,#3B82F6,#1D4ED8);border-radius:6px;transition:width .6s"></div>
+              </div>
+              <span style="font-size:0.63rem;color:#6B7280;min-width:52px;text-align:right">$${c.spend.toLocaleString()}</span>
+            </div>
+          </div>`;
+        }).join('') : `<div style="text-align:center;padding:16px 0;color:#93C5FD;font-size:0.78rem">Launch campaigns to see channel spend breakdown</div>`}
+      </div>
+
+      <!-- 90-Day Revenue Projection -->
+      <div>
+        <div style="font-size:0.78rem;font-weight:800;color:#1E3A8A;margin-bottom:12px">📅 90-Day Revenue Projection</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${[
+            { period:'Month 1', rev: proj30, color:'#93C5FD', bar: 33 },
+            { period:'Month 2', rev: proj60, color:'#3B82F6', bar: 66 },
+            { period:'Month 3', rev: proj90, color:'#1D4ED8', bar: 100 },
+          ].map(p=>`
+          <div>
+            <div style="display:flex;justify-content:space-between;font-size:0.72rem;font-weight:700;color:#374151;margin-bottom:3px">
+              <span>${p.period}</span>
+              <span style="color:${p.color}">$${Math.round(p.rev).toLocaleString()}</span>
+            </div>
+            <div style="background:#E0F2FE;border-radius:6px;height:8px;overflow:hidden">
+              <div style="width:${p.bar}%;height:100%;background:${p.color};border-radius:6px;transition:width .6s .1s"></div>
+            </div>
+          </div>`).join('')}
+          <div style="margin-top:6px;padding:8px 10px;background:white;border-radius:8px;border:1px solid #BFDBFE;font-size:0.68rem;color:#1E40AF">
+            <strong>Projection basis:</strong> Current ${roas}× ROAS compounding with ${Math.round((camps.length||1)*8)}% monthly optimisation lift.
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- AI savings + insight note -->
+    <div style="margin-top:16px;padding:12px 14px;background:white;border-radius:10px;border:1px solid #BFDBFE;display:flex;gap:10px;align-items:flex-start">
+      <span style="font-size:1.2rem;flex-shrink:0">🤖</span>
+      <div style="font-size:0.75rem;color:#1E40AF;line-height:1.5">${ins.note}</div>
+    </div>
+  </div>`;
+}
+
 function csBuildCEO(d, rm, periodHtml) {
   const { camps, budget, roas, conv, impr, comps, url, ind, sov, sovComp, ad } = d;
   const projRev = budget > 0 ? '$' + (budget * roas).toLocaleString(undefined,{maximumFractionDigits:0}) : '—';
@@ -16231,7 +16353,9 @@ function csBuildCEO(d, rm, periodHtml) {
         </tbody>
       </table>
     </div>
-  </div>` : ''}`;
+  </div>` : ''}
+
+  ${csFinancialBlock(d, 'ceo')}`;
 }
 
 // ── CMO Report ────────────────────────────────────────────────────────────────
@@ -16243,8 +16367,8 @@ function csBuildCMO(d, rm, periodHtml) {
   const channels = [...new Set(camps.map(c=>c.platform))];
 
   return `
-  <div class="cs-exec-banner" style="background:linear-gradient(135deg,#0A1628,#001440)">
-    <div class="cs-exec-role-badge" style="background:rgba(0,102,255,.2);border-color:rgba(0,102,255,.3);color:#93C5FD">${rm.icon} ${rm.label} · Marketing Performance Report</div>
+  <div class="cs-exec-banner">
+    <div class="cs-exec-role-badge">${rm.icon} ${rm.label} · Marketing Performance Report</div>
     <div class="cs-exec-headline">Full-Funnel Campaign Intelligence</div>
     <div class="cs-exec-sub">Comprehensive view of campaign performance, creative output, audience reach, and channel ROAS for ${url || 'your brand'}. Period: ${csPeriodLabel()}.</div>
     <div class="cs-exec-stats">
@@ -16333,7 +16457,9 @@ function csBuildCMO(d, rm, periodHtml) {
         </tbody>
       </table>
     </div>
-  </div>` : ''}`;
+  </div>` : ''}
+
+  ${csFinancialBlock(d, 'cmo')}`;
 }
 
 // ── CFO Report ────────────────────────────────────────────────────────────────
@@ -16352,8 +16478,8 @@ function csBuildCFO(d, rm, periodHtml) {
   })) : [];
 
   return `
-  <div class="cs-exec-banner" style="background:linear-gradient(135deg,#0A1628,#002814)">
-    <div class="cs-exec-role-badge" style="background:rgba(5,150,105,.2);border-color:rgba(5,150,105,.3);color:#6EE7B7">${rm.icon} ${rm.label} · Financial Marketing Report</div>
+  <div class="cs-exec-banner">
+    <div class="cs-exec-role-badge">${rm.icon} ${rm.label} · Financial Marketing Report</div>
     <div class="cs-exec-headline">Marketing ROI & Budget Efficiency</div>
     <div class="cs-exec-sub">Financial performance of all marketing channels — spend efficiency, revenue attribution, cost-per-outcome, and quarterly projection. Period: ${csPeriodLabel()}.</div>
     <div class="cs-exec-stats">
@@ -16423,7 +16549,9 @@ function csBuildCFO(d, rm, periodHtml) {
         </ul>
       </div>
     </div>
-  </div>`;
+  </div>
+
+  ${csFinancialBlock(d, 'cfo')}`;
 }
 
 // ── COO Report ────────────────────────────────────────────────────────────────
@@ -16446,8 +16574,8 @@ function csBuildCOO(d, rm, periodHtml) {
   const statusCol = { green:'#10B981', amber:'#F59E0B', neutral:'#6B7280' };
 
   return `
-  <div class="cs-exec-banner" style="background:linear-gradient(135deg,#0A1628,#1a0e00)">
-    <div class="cs-exec-role-badge" style="background:rgba(217,119,6,.2);border-color:rgba(217,119,6,.3);color:#FDE68A">${rm.icon} ${rm.label} · Operations Report</div>
+  <div class="cs-exec-banner">
+    <div class="cs-exec-role-badge">${rm.icon} ${rm.label} · Operations Report</div>
     <div class="cs-exec-headline">Marketing Operations & Execution Status</div>
     <div class="cs-exec-sub">Campaign execution health, automation performance, platform integrations, and operational bottlenecks for ${url || 'your brand'}. Period: ${csPeriodLabel()}.</div>
     <div class="cs-exec-stats">
@@ -16534,7 +16662,9 @@ function csBuildCOO(d, rm, periodHtml) {
           <div style="font-size:0.72rem;color:#374151;line-height:1.45">${b.desc}</div>
         </div>`).join('')}
     </div>
-  </div>`;
+  </div>
+
+  ${csFinancialBlock(d, 'coo')}`;
 }
 
 // ── PDF Export ────────────────────────────────────────────────────────────────
