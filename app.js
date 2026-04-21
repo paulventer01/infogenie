@@ -575,6 +575,7 @@ function buildLaunchModal(camp, idx) {
   const projRev    = '$' + (budgetNum * parseFloat(projROAS)).toLocaleString(undefined, {maximumFractionDigits:0});
 
   const platformMeta = {
+    'All Platforms':   { icon:'⊕', bid:'InfoGenie AI Auto-Bid (per channel)', aud:'Best-fit audience per platform',          kpi:'Blended ROAS across all channels', creative:'Auto-adapted format per platform' },
     'Google Ads':      { icon:'🔵', bid:'Target ROAS (tROAS)',         aud:'High-intent keyword searchers',            kpi:'Conversions & ROAS',         creative:'Responsive Search Ads + Performance Max' },
     'Google Search':   { icon:'🔵', bid:'Maximise Conversions',        aud:'Search intent + competitor keywords',       kpi:'CTR & Conversion Rate',      creative:'3 headlines + 2 descriptions' },
     'Meta Ads':        { icon:'🔷', bid:'Cost Per Result',             aud:'Lookalike + interest targeting',            kpi:'ROAS & Reach',               creative:'Carousel + Story + Feed video' },
@@ -670,7 +671,8 @@ function buildLaunchModal(camp, idx) {
           <div>
             <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Platform</label>
             <select id="lm-platform" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#0066FF'" onblur="this.style.borderColor='#E2E8F0'">
-              ${['Google Ads','Meta Ads','TikTok Ads','YouTube','LinkedIn Ads','Display Network','AI Optimised'].map(p=>`<option${p===platform?' selected':''}>${p}</option>`).join('')}
+              <option value="All Platforms"${platform==='All Platforms'||!platform?' selected':''}>⊕ All Platforms (Select All)</option>
+              ${['Google Ads','Meta Ads','TikTok Ads','YouTube','LinkedIn Ads','Display Network','AI Optimised'].map(p=>`<option value="${p}"${p===platform?' selected':''}>${p}</option>`).join('')}
             </select>
           </div>
           <div>
@@ -2759,7 +2761,10 @@ function buildDashboard() {
     body: JSON.stringify({ domain: url, industry: industry.name, competitors: compNames, currentROAS: yourROAS, monthlyBudget: campaignBudget, trafficMo: trafficVal })
   }).then(r => r.json()).then(data => {
     const fsEl = document.getElementById('forecastStatus');
-    if (fsEl) fsEl.textContent = `Confidence: ${data.confidenceLevel || 'Medium'} · $${Math.round((data.totalProjectedRevenue||0)/1000)}K projected over 90 days`;
+    const projArr = data.projectedRevenue || [];
+    const projTotal = projArr.reduce((s, v) => s + (v || 0), 0);
+    const projTotalK = Math.round(projTotal / 1000);
+    if (fsEl) fsEl.textContent = `Confidence: ${data.confidenceLevel || 'Medium'} · $${projTotalK}K projected over 90 days`;
     if (forecastChartInstance) forecastChartInstance.destroy();
     const fCtx = document.getElementById('forecastChart');
     const labels = data.weeks || data.months || ['Wk 1','Wk 2','Wk 3','Wk 4','Wk 5','Wk 6','Wk 7','Wk 8','Wk 9','Wk 10','Wk 11','Wk 12','Wk 13'];
