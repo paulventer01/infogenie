@@ -6727,3 +6727,29 @@ h3:hover {
   border: 1px solid rgba(10,22,40,.15) !important;
   color: #0A1628 !important;
 }
+
+/* ── Reddit Intelligence sub-tabs — light mode visibility ── */
+[data-theme="light"] [id^="rdttb-"] {
+  background: rgba(10,22,40,.04) !important;
+  color: #4A5670 !important;
+}
+[data-theme="light"] [id^="rdttb-"][style*="rgba(255,100,0,.25)"],
+[data-theme="light"] [id^="rdttb-"]:hover {
+  background: rgba(255,100,0,.18) !important;
+  color: #E55A1C !important;
+}
+/* Active state — JS sets the inline bg colour, so target the FF6B35 colour pattern */
+[data-theme="light"] [id^="rdttb-"][style*="#FF6B35"] {
+  background: rgba(255,100,0,.18) !important;
+  color: #C2410C !important;
+}
+/* Reddit panel shell + tab bar wrapper — repaint for light mode */
+[data-theme="light"] [id^="rdtpanel-"] {
+  color: #2A3654;
+}
+[data-theme="light"] [id^="rdtpanel-"] [style*="rgba(255,255,255,.3)"],
+[data-theme="light"] [id^="rdtpanel-"] [style*="rgba(255,255,255,.5)"],
+[data-theme="light"] [id^="rdtpanel-"] [style*="rgba(255,255,255,.6)"],
+[data-theme="light"] [id^="rdtpanel-"] [style*="rgba(255,255,255,.65)"] {
+  color: #4A5670 !important;
+}
