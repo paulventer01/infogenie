@@ -6228,3 +6228,185 @@ h3:hover {
 [data-theme="light"] .lstep-text strong { color: #0A1628 !important; }
 [data-theme="light"] .lstep-text small  { color: #94A3B8 !important; }
 [data-theme="light"] .integ-doc-tagline { color: #64748B !important; }
+
+/* ============================================================
+   LIGHT MODE — comprehensive class-based dark-bg overrides
+   These flip every hardcoded dark navy class background to a
+   light surface when [data-theme="light"] is active.
+   ============================================================ */
+
+/* Body & .view containers — the big culprits */
+[data-theme="light"] body,
+[data-theme="light"] body.dashboard-active,
+[data-theme="light"] .view,
+[data-theme="light"] .view.active,
+[data-theme="light"] .view:not(#view-home).active {
+  background: #EFF3F9 !important;
+  color: #0A1628;
+}
+
+/* Hero / docs / integration headers */
+[data-theme="light"] .docs-header,
+[data-theme="light"] .integ-doc-hero,
+[data-theme="light"] .cat-dom-card,
+[data-theme="light"] .intel-header {
+  background: linear-gradient(135deg, #FFFFFF 0%, #E8EDF8 100%) !important;
+  color: #0A1628 !important;
+}
+[data-theme="light"] .docs-header *,
+[data-theme="light"] .integ-doc-hero *,
+[data-theme="light"] .cat-dom-card *,
+[data-theme="light"] .intel-header *,
+[data-theme="light"] .intel-header .view-title {
+  color: #0A1628 !important;
+}
+[data-theme="light"] .intel-header .view-sub,
+[data-theme="light"] .docs-header p,
+[data-theme="light"] .integ-doc-hero p,
+[data-theme="light"] .integ-doc-tagline {
+  color: #475569 !important;
+}
+
+/* Code blocks — keep them dark for contrast (terminal aesthetic) */
+[data-theme="light"] .docs-code-block { background: #1E293B !important; color: #F8FAFC !important; }
+[data-theme="light"] .docs-code-bar   { background: #334155 !important; color: #F8FAFC !important; }
+
+/* Edge fade gradients used on horizontal scrollers — fade to LIGHT in light mode */
+[data-theme="light"] [style*="linear-gradient(to right, transparent, #0A1628)"],
+[data-theme="light"] .scroll-fade-right {
+  background: linear-gradient(to right, transparent, #EFF3F9) !important;
+}
+[data-theme="light"] [style*="linear-gradient(to left, transparent, #0A1628)"],
+[data-theme="light"] .scroll-fade-left {
+  background: linear-gradient(to left, transparent, #EFF3F9) !important;
+}
+
+/* CSS rules with !important hardcoded to dark — override */
+[data-theme="light"] .price-enterprise {
+  background: #FFFFFF !important;
+  color: #0A1628 !important;
+  border: 1px solid #E2E8F0 !important;
+}
+[data-theme="light"] .price-enterprise * { color: inherit !important; }
+[data-theme="light"] .price-enterprise .price-amount,
+[data-theme="light"] .price-enterprise .price-feature { color: #0A1628 !important; }
+
+/* C-Suite executive banner & period buttons */
+[data-theme="light"] .cs-exec-banner {
+  background: linear-gradient(135deg,#FFFFFF,#F1ECFE) !important;
+  color: #0A1628 !important;
+  border: 1px solid rgba(124,58,237,.2) !important;
+}
+[data-theme="light"] .cs-exec-banner * { color: inherit !important; }
+[data-theme="light"] .cs-period-btn.active {
+  background: #0A1628 !important;
+  color: #FFFFFF !important;
+}
+
+/* Tooltip — keep it dark, it's an overlay */
+[data-theme="light"] #igTip {
+  background: linear-gradient(135deg, #1E293B, #0F172A) !important;
+  color: #F8FAFC !important;
+}
+
+/* Generic: ANY descendant whose inline style sets a deep navy background */
+[data-theme="light"] [style*="background:#0A1628"],
+[data-theme="light"] [style*="background: #0A1628"],
+[data-theme="light"] [style*="background:#0F1E35"],
+[data-theme="light"] [style*="background: #0F1E35"],
+[data-theme="light"] [style*="background:#0E1F3B"],
+[data-theme="light"] [style*="background: #0E1F3B"],
+[data-theme="light"] [style*="background:#0F172A"],
+[data-theme="light"] [style*="background: #0F172A"],
+[data-theme="light"] [style*="background:#142545"],
+[data-theme="light"] [style*="background: #142545"],
+[data-theme="light"] [style*="background:#0B1222"],
+[data-theme="light"] [style*="background: #0B1222"] {
+  background: #FFFFFF !important;
+  color: #0A1628 !important;
+  border-color: rgba(0,0,0,.08) !important;
+}
+
+/* Generic: ANY descendant whose inline style sets a navy gradient */
+[data-theme="light"] [style*="linear-gradient(135deg,#0A1628"],
+[data-theme="light"] [style*="linear-gradient(135deg, #0A1628"],
+[data-theme="light"] [style*="linear-gradient(135deg,#0F1E35"],
+[data-theme="light"] [style*="linear-gradient(135deg, #0F1E35"],
+[data-theme="light"] [style*="linear-gradient(135deg,#080E1C"],
+[data-theme="light"] [style*="linear-gradient(135deg, #080E1C"] {
+  background: linear-gradient(135deg,#FFFFFF,#F1F5FB) !important;
+  color: #0A1628 !important;
+  border-color: rgba(0,0,0,.08) !important;
+}
+
+/* When the parent panel flips to light, force its white-text descendants dark */
+[data-theme="light"] [style*="background:#0A1628"] *:not(.atag):not(.badge):not(button):not(a),
+[data-theme="light"] [style*="background: #0A1628"] *:not(.atag):not(.badge):not(button):not(a),
+[data-theme="light"] [style*="background:#0F1E35"] *:not(.atag):not(.badge):not(button):not(a),
+[data-theme="light"] [style*="linear-gradient(135deg,#0A1628"] *:not(.atag):not(.badge):not(button):not(a),
+[data-theme="light"] [style*="linear-gradient(135deg, #0A1628"] *:not(.atag):not(.badge):not(button):not(a) {
+  color: inherit !important;
+}
+
+/* Specifically target inline color:white inside flipped panels */
+[data-theme="light"] [style*="background:#0A1628"] [style*="color:white"],
+[data-theme="light"] [style*="background: #0A1628"] [style*="color:white"],
+[data-theme="light"] [style*="background:#0F1E35"] [style*="color:white"],
+[data-theme="light"] [style*="linear-gradient(135deg,#0A1628"] [style*="color:white"],
+[data-theme="light"] [style*="linear-gradient(135deg, #0A1628"] [style*="color:white"],
+[data-theme="light"] [style*="background:#0A1628"] [style*="color:#fff"],
+[data-theme="light"] [style*="background:#0A1628"] [style*="color: #fff"],
+[data-theme="light"] [style*="background:#0A1628"] [style*="color:#FFF"] {
+  color: #0A1628 !important;
+}
+[data-theme="light"] [style*="background:#0A1628"] [style*="color:rgba(255,255,255"],
+[data-theme="light"] [style*="background:#0F1E35"] [style*="color:rgba(255,255,255"],
+[data-theme="light"] [style*="linear-gradient(135deg,#0A1628"] [style*="color:rgba(255,255,255"],
+[data-theme="light"] [style*="linear-gradient(135deg, #0A1628"] [style*="color:rgba(255,255,255"] {
+  color: #64748B !important;
+}
+
+/* Modals and overlays that use solid white text on dark inline bg */
+[data-theme="light"] .modal,
+[data-theme="light"] .modal-backdrop > div:first-child,
+[data-theme="light"] .lm-modal {
+  background: #FFFFFF !important;
+  color: #0A1628 !important;
+}
+[data-theme="light"] .modal *,
+[data-theme="light"] .lm-modal *:not(.badge):not(.atag):not(button) {
+  color: #0A1628;
+}
+
+/* Reusable card/panel classes that may not have been caught */
+[data-theme="light"] .module-card,
+[data-theme="light"] .data-table-card,
+[data-theme="light"] .chart-box,
+[data-theme="light"] .kpi-card,
+[data-theme="light"] .roi-card {
+  background: #FFFFFF !important;
+  color: #0A1628 !important;
+  border: 1px solid #E2E8F0 !important;
+}
+[data-theme="light"] .module-card *,
+[data-theme="light"] .data-table-card *:not(.atag):not(.badge):not(button):not(.tag),
+[data-theme="light"] .chart-box *:not(.atag):not(.badge):not(button):not(.chart-tag),
+[data-theme="light"] .kpi-card *:not(.atag):not(.badge):not(button):not(.kpi-up):not(.kpi-down),
+[data-theme="light"] .roi-card *:not(.atag):not(.badge):not(button) {
+  color: inherit;
+}
+
+/* Navbar dropdowns (often inline-styled dark) */
+[data-theme="light"] .nav-dropdown,
+[data-theme="light"] .dropdown-menu,
+[data-theme="light"] .nav-mega {
+  background: #FFFFFF !important;
+  color: #0A1628 !important;
+  border: 1px solid #E2E8F0 !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,.08) !important;
+}
+[data-theme="light"] .nav-dropdown *,
+[data-theme="light"] .dropdown-menu *,
+[data-theme="light"] .nav-mega *:not(button):not(.badge) {
+  color: #0A1628 !important;
+}
