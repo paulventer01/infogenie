@@ -4541,6 +4541,7 @@ function buildContent() {
     { id:'clusters', label:'🧩 Topical Clusters' },
     { id:'gaps',     label:'🔍 Content Gaps' },
     { id:'audit',    label:'🛠️ Page Audit' },
+    { id:'funnel',   label:'🎯 Funnel Planner' },
   ];
 
   const tabBar = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:24px">
@@ -4752,7 +4753,52 @@ function buildContent() {
       </div>`;
   })();
 
-  const tabContent = { overview: overviewHtml, clusters: clustersHtml, gaps: gapsHtml, audit: auditHtml };
+  // ── FUNNEL PLANNER ────────────────────────────────────────────────────────
+  const funnelHtml = (() => {
+    const _fc = {}; FUNNEL_STAGES.forEach(s=>{_fc[s.id]=0;}); (window._socialPosts||[]).forEach(p=>{if(p.funnelStage&&_fc[p.funnelStage]!=null)_fc[p.funnelStage]++;});
+    const FORMAT_EXAMPLES = {
+      awareness:  [['Story-driven Reel','Hook with a relatable pain point in the first 2s, educate with one tip, end with a soft CTA'],['Micro-education post','Teach one high-value concept fast — carousel or short Reel'],['Trend adaptation','Take a trending format and add your unique niche perspective']],
+      interest:   [['Framework carousel','Visual step-by-step blueprint people will save & share'],['Before / After post','Show the problem vs the shift — use real data or client results'],['Expert tutorial','Position yourself as the authority — "What most people get wrong about X"']],
+      nurture:    [['Process story','Share behind-the-scenes of how you deliver results'],['Belief-breaker story','Myth-busting content that shifts audience perception'],['Interactive story','Poll, quiz, or question box — builds micro-commitment']],
+      conversion: [['Personalised DM follow-up','Use a story or post to prompt followers to DM you a keyword, then deliver value + offer'],['Testimonial / Win post','Screenshot or video of a real result — builds social proof'],['Limited-spots offer','Urgency with a specific number — not fake scarcity, real capacity']],
+      advocacy:   [['Client feature post','Celebrate a client win publicly — they share it too'],['UGC reshare','Repost customer content — lowers your effort, boosts trust'],['Referral challenge','Private challenge or bonus for clients who bring a friend']],
+    };
+    const stagePanels = FUNNEL_STAGES.map(s => {
+      const examples = FORMAT_EXAMPLES[s.id] || [];
+      return `
+      <div style="background:white;border:1.5px solid ${s.color}33;border-radius:18px;padding:22px 24px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+        <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:14px;flex-wrap:wrap">
+          <div style="width:46px;height:46px;background:${s.bg};border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0">${s.icon}</div>
+          <div style="flex:1;min-width:180px">
+            <div style="font-family:Sora,sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628">${s.label} Stage</div>
+            <div style="font-size:0.72rem;color:${s.color};font-weight:700;margin-top:2px">Best format: ${s.fmt}</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:4px;line-height:1.5">${s.tip}</div>
+          </div>
+          <span style="font-size:0.65rem;font-weight:700;padding:3px 10px;background:${s.bg};color:${s.color};border-radius:7px;white-space:nowrap;height:fit-content">${_fc[s.id]||0} posts tagged</span>
+        </div>
+        <div style="border-top:1px solid #F3F4F6;padding-top:12px">
+          <div style="font-size:0.65rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Content Ideas</div>
+          ${examples.map(([title,desc])=>`
+          <div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #F9FAFB">
+            <div style="width:6px;height:6px;background:${s.color};border-radius:50%;margin-top:6px;flex-shrink:0"></div>
+            <div>
+              <div style="font-size:0.78rem;font-weight:700;color:#111827">${title}</div>
+              <div style="font-size:0.68rem;color:#6B7280;margin-top:1px;line-height:1.45">${desc}</div>
+            </div>
+            <button data-stage="${s.id}" data-title="${title.replace(/"/g,'&quot;')}" onclick="window._socialTab='calendar';window._prefillFunnelStage=this.dataset.stage;navigateTo('social');showToast('✅ Opening Social Calendar — create a ${s.fmt} for ${s.label} stage!')" style="margin-left:auto;flex-shrink:0;padding:5px 12px;background:${s.bg};border:1px solid ${s.color}44;border-radius:8px;font-size:0.65rem;font-weight:700;color:${s.color};cursor:pointer;white-space:nowrap">+ Create Post</button>
+          </div>`).join('')}
+        </div>
+      </div>`;
+    }).join('');
+    return `
+    <div style="background:linear-gradient(135deg,#064E3B,#065F46);border-radius:20px;padding:24px 28px;margin-bottom:24px">
+      <div style="font-family:Sora,sans-serif;font-size:1.15rem;font-weight:800;color:white;margin-bottom:4px">🎯 Viral Content Funnel Planner</div>
+      <div style="font-size:0.78rem;color:rgba(255,255,255,.7)">5-stage Instagram growth framework — map every post to a stage and build a funnel that converts strangers into brand evangelists</div>
+    </div>
+    ${stagePanels}`;
+  })();
+
+  const tabContent = { overview: overviewHtml, clusters: clustersHtml, gaps: gapsHtml, audit: auditHtml, funnel: funnelHtml };
 
   wrap.innerHTML = `
     <div style="padding:28px 0">
@@ -5025,6 +5071,15 @@ const SOCIAL_PLATFORMS = [
 
 if (!window._socialTab) window._socialTab = 'calendar';
 
+// ── Viral Content Funnel stages ───────────────────────────────────────────────
+const FUNNEL_STAGES = [
+  { id:'awareness',  label:'Awareness',  icon:'🌱', color:'#10B981', bg:'#ECFDF5', fmt:'Reels',     tip:'Story-driven reels, micro-education, trending angles — stop the scroll.' },
+  { id:'interest',   label:'Interest',   icon:'💡', color:'#3B82F6', bg:'#EFF6FF', fmt:'Carousels', tip:'Frameworks, before-after, step-by-step tutorials — convert attention to curiosity.' },
+  { id:'nurture',    label:'Nurture',    icon:'❤️', color:'#EC4899', bg:'#FDF2F8', fmt:'Stories',   tip:'Process sharing, myth-breaking, polls, soft CTAs — build belief & trust.' },
+  { id:'conversion', label:'Conversion', icon:'💰', color:'#F59E0B', bg:'#FFFBEB', fmt:'DMs',       tip:'Personalised DMs, testimonials, limited-spot urgency — turn trust into sales.' },
+  { id:'advocacy',   label:'Advocacy',   icon:'🌟', color:'#7C3AED', bg:'#F5F3FF', fmt:'Community', tip:'Client wins, UGC, referrals, private challenges — turn buyers into brand evangelists.' },
+];
+
 function buildSocialCalendar() {
   const wrap = document.getElementById('socialWrap');
   if (!wrap) return;
@@ -5091,8 +5146,9 @@ function buildSocialCalendar() {
             <span style="font-size:0.65rem;color:#9CA3AF">${p.scheduledDate} ${p.scheduledTime}</span>
           </div>
           <div style="font-size:0.8rem;color:#374151;line-height:1.4;margin-bottom:6px">${p.caption.substring(0,100)}${p.caption.length>100?'…':''}</div>
-          <div style="display:flex;gap:6px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
             <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${p.status==='scheduled'?'#EFF6FF':p.status==='published'?'#F0FDF4':'#F9FAFB'};color:${p.status==='scheduled'?'#0066FF':p.status==='published'?'#059669':'#6B7280'};text-transform:uppercase">${p.status||'scheduled'}</span>
+            ${p.funnelStage ? (()=>{ const fs=FUNNEL_STAGES.find(s=>s.id===p.funnelStage); return fs?`<span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${fs.bg};color:${fs.color}">${fs.icon} ${fs.label}</span>`:''; })() : ''}
             <button onclick="window._socialPosts=window._socialPosts.filter(x=>x.id!=='${p.id}');buildSocialCalendar()" style="font-size:0.62rem;color:#DC2626;background:white;border:1px solid #FCA5A5;border-radius:5px;padding:2px 7px;cursor:pointer">Remove</button>
           </div>
         </div>`;
@@ -5115,10 +5171,49 @@ function buildSocialCalendar() {
         </div>`).join('')}
     </div>`;
 
+  // ── Funnel Balance panel ──────────────────────────────────────────────────
+  const funnelCounts = {};
+  FUNNEL_STAGES.forEach(s => { funnelCounts[s.id] = 0; });
+  let taggedTotal = 0;
+  (window._socialPosts||[]).forEach(p => { if (p.funnelStage && funnelCounts[p.funnelStage] !== undefined) { funnelCounts[p.funnelStage]++; taggedTotal++; } });
+  const totalPosts = (window._socialPosts||[]).length;
+  const weakStages = FUNNEL_STAGES.filter(s => funnelCounts[s.id] === 0);
+  const maxCount = Math.max(...Object.values(funnelCounts), 1);
+  const funnelBars = FUNNEL_STAGES.map(s => {
+    const cnt = funnelCounts[s.id];
+    const pct = taggedTotal > 0 ? Math.round((cnt/taggedTotal)*100) : 0;
+    const barW = taggedTotal > 0 ? Math.round((cnt/maxCount)*100) : 0;
+    return `<div style="margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+        <span style="font-size:0.72rem;font-weight:700;color:${s.color}">${s.icon} ${s.label}</span>
+        <span style="font-size:0.68rem;color:#6B7280;font-weight:600">${cnt} post${cnt!==1?'s':''} · ${pct}%</span>
+      </div>
+      <div style="background:#F3F4F6;border-radius:6px;height:8px;overflow:hidden">
+        <div style="height:100%;width:${barW}%;background:${s.color};border-radius:6px;transition:width .4s ease"></div>
+      </div>
+    </div>`;
+  }).join('');
+  const funnelRec = weakStages.length > 0
+    ? `<div style="margin-top:12px;padding:10px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;font-size:0.72rem;color:#92400E;line-height:1.5"><strong>⚠️ Gaps detected:</strong> ${weakStages.map(s=>`${s.icon} ${s.label} (${s.fmt})`).join(', ')} — add content here to move leads through your funnel.</div>`
+    : (taggedTotal > 0 ? `<div style="margin-top:12px;padding:10px 12px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;font-size:0.72rem;color:#065F46">✅ <strong>Balanced funnel!</strong> Content is spread across all 5 stages — great coverage.</div>` : '');
+  const funnelBalanceHtml = `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:20px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:0.9rem;font-weight:800;color:#0A1628">🎯 Funnel Content Balance</div>
+          <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${taggedTotal} of ${totalPosts} posts tagged · Tag posts when creating to track funnel coverage</div>
+        </div>
+        <div style="font-size:1.8rem;font-weight:800;color:${weakStages.length>0?'#F59E0B':'#10B981'}">${weakStages.length===0&&taggedTotal>0?'✅':weakStages.length+'⚠️'}</div>
+      </div>
+      ${funnelBars}
+      ${funnelRec}
+    </div>`;
+
   wrap.innerHTML = `
     <div style="padding:28px 0">
       ${tabBar}
       ${statBarS}
+      ${funnelBalanceHtml}
       <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:flex-start">
         <!-- Calendar -->
         <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:22px;box-shadow:0 1px 6px rgba(0,0,0,0.05)">
@@ -5213,6 +5308,14 @@ window.openCreatePost = function(preDate) {
             <option value="draft">Save as Draft</option>
           </select>
         </div>
+        <div>
+          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">🎯 Funnel Stage <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#9CA3AF">(optional)</span></div>
+          <select id="cp-funnel-stage" style="width:100%;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif">
+            <option value="">— Choose funnel stage —</option>
+            ${FUNNEL_STAGES.map(s=>`<option value="${s.id}">${s.icon} ${s.label} — ${s.fmt}</option>`).join('')}
+          </select>
+          <div id="cp-funnel-tip" style="margin-top:5px;font-size:0.68rem;color:#6B7280;line-height:1.4;display:none"></div>
+        </div>
         <div style="display:flex;gap:10px;margin-top:4px">
           <button id="cp-cancel" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
           <button id="cp-save" style="flex:2;padding:11px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">📅 Schedule Post</button>
@@ -5228,6 +5331,13 @@ window.openCreatePost = function(preDate) {
   document.getElementById('cp-file').addEventListener('change', function() {
     const f = this.files[0];
     document.getElementById('cp-filename').textContent = f ? f.name : 'No file selected';
+  });
+
+  document.getElementById('cp-funnel-stage').addEventListener('change', function() {
+    const tip = document.getElementById('cp-funnel-tip');
+    const stage = FUNNEL_STAGES.find(s => s.id === this.value);
+    if (stage && tip) { tip.textContent = '💡 ' + stage.tip; tip.style.display = 'block'; }
+    else if (tip) { tip.style.display = 'none'; }
   });
 
   document.getElementById('cp-ai-gen').addEventListener('click', async () => {
@@ -5252,18 +5362,19 @@ window.openCreatePost = function(preDate) {
   });
 
   document.getElementById('cp-save').addEventListener('click', () => {
-    const caption = document.getElementById('cp-caption').value.trim();
-    const date    = document.getElementById('cp-date').value;
-    const time    = document.getElementById('cp-time').value;
-    const status  = document.getElementById('cp-status').value;
-    const file    = document.getElementById('cp-file').files[0];
+    const caption     = document.getElementById('cp-caption').value.trim();
+    const date        = document.getElementById('cp-date').value;
+    const time        = document.getElementById('cp-time').value;
+    const status      = document.getElementById('cp-status').value;
+    const file        = document.getElementById('cp-file').files[0];
+    const funnelStage = document.getElementById('cp-funnel-stage').value;
     const selPlats = SOCIAL_PLATFORMS.filter((_,i)=>document.getElementById('cp-plat-'+i)?.checked);
     if (!caption) { showToast('⚠️ Please write or generate a caption first'); return; }
     if (!date)    { showToast('⚠️ Please set a schedule date'); return; }
     if (selPlats.length === 0) { showToast('⚠️ Select at least one platform'); return; }
     if (!window._socialPosts) window._socialPosts = [];
     selPlats.forEach(p => {
-      window._socialPosts.push({ id:'post_'+Date.now()+'_'+p.name, platform:p.name, caption, scheduledDate:date, scheduledTime:time||'09:00', status, fileName: file?.name||null, createdAt: new Date().toLocaleString() });
+      window._socialPosts.push({ id:'post_'+Date.now()+'_'+p.name, platform:p.name, caption, scheduledDate:date, scheduledTime:time||'09:00', status, funnelStage: funnelStage||null, fileName: file?.name||null, createdAt: new Date().toLocaleString() });
     });
     overlay.remove();
     buildSocialCalendar();
@@ -5864,6 +5975,32 @@ function buildAiVisibility() {
       </div>
 
     </div>
+
+    <!-- ── ADVOCACY SIGNALS ────────────────────────────────────────────────── -->
+    ${(() => {
+      const advPosts = (window._socialPosts||[]).filter(p=>p.funnelStage==='advocacy');
+      const ugcCount = advPosts.filter(p=>p.caption&&p.caption.toLowerCase().includes('client')||p.caption&&p.caption.toLowerCase().includes('testimonial')).length;
+      const totalAdv = advPosts.length;
+      const signals = [
+        { icon:'🌟', label:'Advocacy Posts Scheduled', value:totalAdv, color:'#7C3AED', tip:'Posts tagged as Advocacy stage in your Social Calendar' },
+        { icon:'💬', label:'Client Feature / UGC', value:ugcCount, color:'#10B981', tip:'Advocacy posts mentioning clients or testimonials' },
+        { icon:'📢', label:'Social Shares (Est)', value:Math.max(0,totalAdv*3), color:'#3B82F6', tip:'Estimated organic shares from advocacy content' },
+        { icon:'🔗', label:'Referral Potential', value: totalAdv > 0 ? 'Active':'Inactive', color: totalAdv>0?'#059669':'#9CA3AF', tip:'Whether advocacy content is active in your funnel' },
+      ];
+      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:20px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628">🌟 Advocacy Stage Signals</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">UGC, referrals, and client content tracked from your Social Calendar</div>
+          </div>
+          <button onclick="window._socialTab='calendar';navigateTo('social');showToast('Create Advocacy posts to build this score!')" style="padding:7px 14px;background:#F5F3FF;border:1px solid #C4B5FD;border-radius:9px;font-size:0.7rem;font-weight:700;color:#7C3AED;cursor:pointer">+ Add Advocacy Content</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+          ${signals.map(s=>`<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:14px;text-align:center" title="${s.tip}"><div style="font-size:1.4rem;margin-bottom:4px">${s.icon}</div><div style="font-size:1.3rem;font-weight:800;color:${s.color};margin-bottom:2px">${s.value}</div><div style="font-size:0.62rem;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:.04em">${s.label}</div></div>`).join('')}
+        </div>
+        ${totalAdv===0?`<div style="margin-top:12px;padding:10px 14px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:9px;font-size:0.72rem;color:#92400E">💡 No advocacy posts tagged yet. Go to Social Calendar → Create Post and tag posts as 🌟 Advocacy to track client wins, UGC, and referrals here.</div>`:''}
+      </div>`;
+    })()}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
       <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
@@ -7038,7 +7175,33 @@ function buildKPITracker() {
       </div>
     </div>` : '';
 
-  wrap.innerHTML = summaryHTML + filterBar + `
+  // ── Funnel Health Score ──────────────────────────────────────────────────
+  const _fhCounts = {}; FUNNEL_STAGES.forEach(s=>{_fhCounts[s.id]=0;});
+  (window._socialPosts||[]).forEach(p=>{if(p.funnelStage&&_fhCounts[p.funnelStage]!=null)_fhCounts[p.funnelStage]++;});
+  const _fhTagged = Object.values(_fhCounts).reduce((a,b)=>a+b,0);
+  const _fhCovered = FUNNEL_STAGES.filter(s=>_fhCounts[s.id]>0).length;
+  const _fhScore = Math.round((_fhCovered/FUNNEL_STAGES.length)*100);
+  const _fhGaps = FUNNEL_STAGES.filter(s=>_fhCounts[s.id]===0);
+  const _fhColor = _fhScore>=80?'#10B981':_fhScore>=60?'#F59E0B':'#EF4444';
+  const funnelHealthHTML = `
+    <div style="background:white;border:1.5px solid ${_fhColor}44;border-radius:18px;padding:20px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="width:72px;height:72px;border-radius:50%;background:conic-gradient(${_fhColor} ${_fhScore*3.6}deg,#F3F4F6 0deg);display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative">
+          <div style="width:52px;height:52px;background:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:800;color:${_fhColor}">${_fhScore}%</div>
+        </div>
+        <div style="flex:1;min-width:180px">
+          <div style="font-family:Sora,sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628">🎯 Funnel Content Health Score</div>
+          <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${_fhCovered} of 5 funnel stages covered · ${_fhTagged} posts tagged</div>
+          ${_fhGaps.length>0?`<div style="margin-top:6px;font-size:0.7rem;color:#92400E;background:#FFFBEB;border-radius:7px;padding:4px 10px;display:inline-block">⚠️ Missing: ${_fhGaps.map(s=>s.icon+' '+s.label).join(', ')}</div>`:`<div style="margin-top:6px;font-size:0.7rem;color:#065F46;background:#F0FDF4;border-radius:7px;padding:4px 10px;display:inline-block">✅ Full funnel coverage — all 5 stages active</div>`}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${FUNNEL_STAGES.map(s=>`<div style="text-align:center;padding:8px 12px;background:${_fhCounts[s.id]>0?s.bg:'#F3F4F6'};border-radius:10px;min-width:60px"><div style="font-size:1rem">${s.icon}</div><div style="font-size:0.72rem;font-weight:700;color:${_fhCounts[s.id]>0?s.color:'#9CA3AF'}">${_fhCounts[s.id]}</div><div style="font-size:0.6rem;color:#9CA3AF">${s.label}</div></div>`).join('')}
+        </div>
+        <button onclick="window._contentTab='funnel';navigateTo('content')" style="padding:9px 16px;background:linear-gradient(135deg,#065F46,#059669);border:none;border-radius:10px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">📝 Plan Content →</button>
+      </div>
+    </div>`;
+
+  wrap.innerHTML = funnelHealthHTML + summaryHTML + filterBar + `
     <div id="kpiCardsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px">${kpiCards}</div>
   ` + campTableHTML + aiSummaryHTML;
 
@@ -15083,6 +15246,7 @@ function buildReEngagement() {
     { id:'templates', icon:'📋', label:'Win-back Templates' },
     { id:'sequence',  icon:'⚡', label:'Sequence Builder' },
     { id:'steal',     icon:'🎯', label:'Competitor Steal' },
+    { id:'dm',        icon:'💬', label:'DM Sequences' },
   ];
   const tabBar = `<div style="display:flex;gap:0;border-bottom:2px solid #E5E7EB;margin-bottom:24px;background:white;border-radius:14px 14px 0 0;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.04)">
     ${TABS.map(t=>`<button onclick="window._reEngageTab='${t.id}';buildReEngagement()" style="flex:1;padding:14px 8px;border:none;border-bottom:3px solid ${tab===t.id?'#F59E0B':'transparent'};background:${tab===t.id?'#FFFBEB':'white'};font-size:0.8rem;font-weight:${tab===t.id?'800':'600'};color:${tab===t.id?'#D97706':'#6B7280'};cursor:pointer;transition:all .15s">${t.icon} ${t.label}</button>`).join('')}
@@ -15385,6 +15549,83 @@ function buildReEngagement() {
         <button onclick="generateCounterOffer(${c.idx},'${c.name.replace(/'/g,"\\'")}','${c.offer.replace(/'/g,"\\'")}','${c.angle}')" id="counterBtn${c.idx}" style="padding:10px 18px;background:linear-gradient(135deg,#D97706,#B45309);border:none;border-radius:10px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap;flex-shrink:0;height:fit-content">🎯 Generate Counter-Offer</button>
       </div>
       <div id="counterResult${c.idx}" style="display:none"></div>
+    </div>`).join('')}`;
+    return;
+  }
+
+  // ── DM SEQUENCES TAB ─────────────────────────────────────────────────────
+  if (tab === 'dm') {
+    const DM_SEQS = [
+      {
+        id:'warm', icon:'🔥', label:'Warm Lead DM', stage:'Conversion', color:'#F59E0B', bg:'#FFFBEB',
+        intro:'Use after someone watches your Reel, replies to a Story, or engages 3+ times. Your goal: start a real conversation, not pitch.',
+        steps:[
+          { day:0, msg:'Hey [Name]! Noticed you\'ve been checking out our content — are you currently working on [problem area]? Happy to share what\'s been working for others in your space.' },
+          { day:2, msg:'Quick follow-up — did you get a chance to look at what I sent? I\'ve got a specific idea that might help [Name] with [their goal]. No strings attached.' },
+          { day:5, msg:'Last one I promise 😄 — I put together a quick resource on [topic] that\'s been getting great results. Want me to drop it over? Takes 2 mins to read.' },
+        ]
+      },
+      {
+        id:'testimonial', icon:'⭐', label:'Testimonial Request DM', stage:'Advocacy', color:'#7C3AED', bg:'#F5F3FF',
+        intro:'Send to customers ~30 days after purchase or after they\'ve had a win. Makes it personal and easy for them to say yes.',
+        steps:[
+          { day:0, msg:'Hey [Name]! So glad to see how [specific result] has been going for you. I\'d love to share your story — would you be open to a quick 2–3 sentence quote I could use? Totally your words, I\'ll just format it.' },
+          { day:3, msg:'No pressure at all — even a single line like "I went from X to Y" would be amazing. Lots of people in similar situations look for this kind of proof before jumping in.' },
+        ]
+      },
+      {
+        id:'referral', icon:'🌟', label:'Referral Ask DM', stage:'Advocacy', color:'#10B981', bg:'#ECFDF5',
+        intro:'Send to your happiest clients. Keep it light and make it feel exclusive — like you\'re inviting them into a private circle.',
+        steps:[
+          { day:0, msg:'Hey [Name]! Quick question — do you know anyone else dealing with [problem] that I could help? I\'m taking on [X] new clients this month and I\'d love for them to be in your network. You\'d both get [specific benefit].' },
+          { day:4, msg:'Totally understand if no one comes to mind! If you do think of someone later, just send them my way. In the meantime, here\'s [valuable resource] — thought of you when I saw it.' },
+        ]
+      },
+      {
+        id:'postpurchase', icon:'💎', label:'Post-Purchase DM', stage:'Nurture', color:'#3B82F6', bg:'#EFF6FF',
+        intro:'Send within 24 hours of purchase. The goal is to make them feel like they made the right decision and start building loyalty.',
+        steps:[
+          { day:0, msg:'Hey [Name]! So excited to have you on board 🙌 I wanted to personally check in — is there anything you need from me to get started? I\'m here.' },
+          { day:3, msg:'Quick check-in — how\'s everything going so far? Any early wins or questions? Don\'t hesitate to DM me directly — I reply to everyone.' },
+          { day:7, msg:'One week in! I\'d love to know how [specific thing] is going. A lot of people see [common early win] around this point. Anything we can do to accelerate that for you?' },
+        ]
+      },
+      {
+        id:'reactivation', icon:'🔄', label:'Reactivation DM', stage:'Conversion', color:'#EC4899', bg:'#FDF2F8',
+        intro:'For followers who haven\'t engaged in 60+ days. Aim to re-spark curiosity with something new or a genuine check-in — no pitch.',
+        steps:[
+          { day:0, msg:'Hey [Name], it\'s been a while! We\'ve been working on something new around [relevant topic] and it reminded me of a conversation we had. Are you still working on [challenge]?' },
+          { day:3, msg:'Thought you might find this useful — [specific tip or insight relevant to their situation]. No need to reply, just wanted to drop some value your way.' },
+          { day:7, msg:'Last one from me for now! We\'re opening up [offer/spots] for people who\'ve been following for a while. If timing is ever right, I\'d love to work together. Here\'s the link: [link]' },
+        ]
+      },
+    ];
+    wrap.innerHTML = `${hero}${kpiTiles}${tabBar}
+    <div style="margin-bottom:20px">
+      <div style="font-family:Space Grotesk,sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628;margin-bottom:4px">💬 DM Conversion Sequences</div>
+      <div style="font-size:0.75rem;color:#6B7280">Ready-to-use DM templates mapped to funnel stages. Copy, personalise the [brackets], and start conversations that convert.</div>
+    </div>
+    ${DM_SEQS.map(seq=>`
+    <div style="background:white;border:1.5px solid ${seq.color}33;border-radius:18px;padding:22px 24px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+        <div style="width:40px;height:40px;background:${seq.bg};border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0">${seq.icon}</div>
+        <div style="flex:1;min-width:150px">
+          <div style="font-weight:800;color:#0A1628;font-size:0.88rem">${seq.label}</div>
+          <div style="font-size:0.65rem;font-weight:700;color:${seq.color};margin-top:1px">Funnel: ${seq.stage} Stage</div>
+        </div>
+        <button onclick="navigator.clipboard?.writeText(document.getElementById('dmseq-${seq.id}').innerText).then(()=>showToast('✅ DM sequence copied!'))" style="padding:7px 14px;background:${seq.bg};border:1px solid ${seq.color}55;border-radius:9px;font-size:0.7rem;font-weight:700;color:${seq.color};cursor:pointer">📋 Copy All</button>
+      </div>
+      <div style="font-size:0.72rem;color:#6B7280;margin-bottom:12px;padding:10px 12px;background:#F9FAFB;border-radius:9px;line-height:1.5">${seq.intro}</div>
+      <div id="dmseq-${seq.id}">
+        ${seq.steps.map((step,i)=>`
+        <div style="margin-bottom:10px">
+          <div style="font-size:0.62rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;margin-bottom:4px">Message ${i+1}${i===0?' (Day 0 — Send immediately)':' (Day '+step.day+')'}</div>
+          <div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:12px 14px;font-size:0.78rem;color:#374151;line-height:1.55;position:relative">
+            ${step.msg}
+            <button onclick="navigator.clipboard?.writeText(this.closest('div[style*=background]').innerText.trim()).then(()=>showToast('✅ Message copied!'))" style="position:absolute;top:8px;right:8px;background:white;border:1px solid #E5E7EB;border-radius:6px;padding:3px 8px;font-size:0.6rem;color:#6B7280;cursor:pointer">Copy</button>
+          </div>
+        </div>`).join('')}
+      </div>
     </div>`).join('')}`;
     return;
   }
