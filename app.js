@@ -1945,47 +1945,6 @@ function navigateTo(viewId, updateActive = true) {
   window.scrollTo(0, 0);
   // Inject "What's Next?" guide banner after each view renders
   setTimeout(() => _injectNextStep(viewId), 120);
-  // Patch inline tab buttons to pill shape
-  setTimeout(() => _patchPillTabs(viewId), 80);
-}
-
-// ── Pill Tab Patcher ─────────────────────────────────────────────────────────
-// After any view renders, find all inline-tab buttons and give them pill shapes
-function _patchPillTabs(viewId) {
-  if (!viewId || viewId === 'home') return;
-  const view = document.getElementById('view-' + viewId);
-  if (!view) return;
-  // Find all tab-bar button groups: rows of buttons that share onclick tab logic
-  const allBtns = view.querySelectorAll('button');
-  allBtns.forEach(btn => {
-    const st = btn.style;
-    // Identify as tab button: has explicit border-radius that is NOT a pill
-    const hasTabMarker = btn.getAttribute('onclick') && (
-      btn.getAttribute('onclick').includes('Tab=') ||
-      btn.getAttribute('onclick').includes('_tab=') ||
-      btn.getAttribute('onclick').includes('Tab =')
-    );
-    if (hasTabMarker) {
-      // Make it a pill
-      btn.style.borderRadius = '50px';
-      btn.style.transition = btn.style.transition || 'all .2s cubic-bezier(.22,.68,0,1.2)';
-      btn.style.fontWeight = '700';
-      // Add hover effect via mouseenter/mouseleave if not already patched
-      if (!btn.dataset.igPatched) {
-        btn.dataset.igPatched = '1';
-        btn.addEventListener('mouseenter', function() {
-          if (!this.style.background.includes('0066FF') && !this.style.background.includes('065F46') && !this.style.background.includes('7C3AED')) {
-            this.style.transform = 'translateY(-1px)';
-            this.style.boxShadow = '0 4px 12px rgba(0,102,255,.15)';
-          }
-        });
-        btn.addEventListener('mouseleave', function() {
-          this.style.transform = '';
-          this.style.boxShadow = this.dataset.origShadow || '';
-        });
-      }
-    }
-  });
 }
 
 // ── Next-Step Guide Banners ────────────────────────────────────────────────────
@@ -9661,7 +9620,7 @@ function buildBattlePlan() {
     const t = comp.threatLevel || 'medium';
     const dotColor = t === 'high' ? '#EF4444' : t === 'medium' ? '#F59E0B' : '#10B981';
     const active = i === idx;
-    return `<button onclick="switchBattlePlanComp(${i})" style="display:flex;align-items:center;gap:8px;padding:10px 18px;border:none;border-bottom:3px solid ${active?'#1D4ED8':'transparent'};background:${active?'#EFF6FF':'transparent'};cursor:pointer;color:${active?'#1D4ED8':'#6B7280'};font-size:0.8rem;font-weight:${active?700:500};white-space:nowrap;font-family:'Inter',sans-serif;transition:all .15s">
+    return `<button onclick="switchBattlePlanComp(${i})" style="display:flex;align-items:center;gap:8px;padding:10px 18px;border:none;border-bottom:3px solid ${active?'#00C9C8':'transparent'};background:${active?'rgba(0,201,200,.08)':'transparent'};cursor:pointer;color:${active?'#00C9C8':'rgba(255,255,255,.5)'};font-size:0.8rem;font-weight:${active?700:500};white-space:nowrap;font-family:'Inter',sans-serif;transition:all .15s">
       <span style="width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#0066FF,#00C9C8);display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:white">${(comp.logo||comp.name[0]).toString()[0]}</span>
       ${comp.name}
       <span style="width:7px;height:7px;border-radius:50%;background:${dotColor}"></span>
@@ -9670,10 +9629,10 @@ function buildBattlePlan() {
 
   // ── Section builder helper ──────────────────────────────────────────────────
   function section(icon, title, sub, items) {
-    return `<div style="background:white;border:1.5px solid #DBEAFE;border-radius:16px;padding:20px;box-shadow:0 2px 10px rgba(29,78,216,.06)">
+    return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:20px">
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px">
         <span style="font-size:1.2rem;line-height:1">${icon}</span>
-        <div><div style="font-family:'Sora',sans-serif;font-size:0.9rem;font-weight:800;color:#1E3A8A">${title}</div><div style="font-size:0.7rem;color:#6B7280;margin-top:2px">${sub}</div></div>
+        <div><div style="font-family:'Sora',sans-serif;font-size:0.9rem;font-weight:800;color:white">${title}</div><div style="font-size:0.7rem;color:rgba(255,255,255,.4);margin-top:2px">${sub}</div></div>
       </div>
       ${items}
     </div>`;
@@ -9756,7 +9715,7 @@ function buildBattlePlan() {
       a.label,
       `${audGaps[i%audGaps.length].replace('competitor', c.name)}. Best capture channel: <strong>${aCh}</strong>.`,
       primaryBtn('🎯 Target This Audience', `bpTA(${idx},${i})`) +
-      ghostBtn('📋 Launch Brief →', `bpTA(${idx},${i})`)
+      ghostBtn('👥 Audience Deep-Dive', `navigateTo('audience')`)
     );
   }).join('');
 
@@ -9772,9 +9731,9 @@ function buildBattlePlan() {
 
   // ── 6. Quick Wins ───────────────────────────────────────────────────────────
   const qwItems = [
-    { t: c.estimatedROI || `+25% CTR improvement via tighter audience segmentation`, fn: `bpQW(${idx},0)`, btnLabel: '🚀 Launch Brief →' },
-    { t: `Capture ${c.name}'s branded search traffic with non-branded alternatives at lower CPC`, fn: `bpGA(${idx},0)`, btnLabel: '🚀 Launch Brief →' },
-    { t: `Expand to channels where ${c.name} has minimal presence for uncontested reach`, fn: `bpTA(${idx},0)`, btnLabel: '🚀 Launch Brief →' },
+    { t: c.estimatedROI || `+25% CTR improvement via tighter audience segmentation`, fn: `bpQW(${idx},0)`, btnLabel: '⚡ Execute' },
+    { t: `Capture ${c.name}'s branded search traffic with non-branded alternatives at lower CPC`, fn: `navigateTo('intelligence')`, btnLabel: '🔑 View Keywords' },
+    { t: `Expand to channels where ${c.name} has minimal presence for uncontested reach`, fn: `navigateTo('social')`, btnLabel: '📣 Plan Social' },
   ];
   const qwCards = qwItems.map(w => card('#00C9C8','background:#ECFEFF;color:#0E7490','QUICK WIN',
     w.t.length > 80 ? w.t.slice(0,80)+'…' : w.t,
@@ -9784,17 +9743,17 @@ function buildBattlePlan() {
 
   // ── Priority summary banner ─────────────────────────────────────────────────
   const topRows = (c.suggestions||[]).slice(0,3).map((s,i) => `
-    <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #FEE2E2">
-      <span style="font-size:0.62rem;font-weight:800;padding:2px 8px;border-radius:5px;flex-shrink:0;background:${i===0?'#FEE2E2':'#F3F4F6'};color:${i===0?'#EF4444':'#374151'}">#${i+1}</span>
-      <div style="font-size:0.8rem;color:#374151;line-height:1.45">${s}</div>
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)">
+      <span style="font-size:0.62rem;font-weight:800;padding:2px 8px;border-radius:5px;flex-shrink:0;background:${i===0?'#FEE2E2':'rgba(255,255,255,.1)'};color:${i===0?'#EF4444':'rgba(255,255,255,.6)'}">#${i+1}</span>
+      <div style="font-size:0.8rem;color:rgba(255,255,255,.8);line-height:1.45">${s}</div>
     </div>`).join('');
 
   // ── Final render ────────────────────────────────────────────────────────────
   wrap.innerHTML = `
-  <div style="background:#F4F6FB;min-height:100vh;padding-bottom:40px">
+  <div style="background:#0A1628;min-height:100vh;padding-bottom:40px">
 
     <!-- Page Header -->
-    <div style="background:linear-gradient(135deg,#1D4ED8,#1E40AF);border-bottom:1px solid rgba(255,255,255,.12);padding:22px 28px">
+    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-bottom:1px solid rgba(255,255,255,.08);padding:22px 28px">
       <div style="max-width:1200px;margin:0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
         <div>
           <div style="font-size:0.6rem;font-weight:800;color:rgba(0,201,200,.55);letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px">Analyse › Battle Plan</div>
@@ -9813,32 +9772,32 @@ function buildBattlePlan() {
     </div>
 
     <!-- Competitor Tabs -->
-    <div style="background:white;border-bottom:1.5px solid #DBEAFE;overflow-x:auto">
+    <div style="background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.07);overflow-x:auto">
       <div style="display:flex;padding:0 20px;max-width:1200px;margin:0 auto">${tabs}</div>
     </div>
 
     <!-- Selected Competitor Summary -->
-    <div style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border-bottom:1.5px solid #BFDBFE;padding:14px 28px">
+    <div style="background:rgba(0,201,200,.06);border-bottom:1px solid rgba(0,201,200,.12);padding:14px 28px">
       <div style="max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#1D4ED8,#2563EB);display:flex;align-items:center;justify-content:center;font-weight:900;color:white;font-size:0.9rem">${(c.logo||c.name[0]).toString()[0]}</div>
+          <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#0066FF,#00C9C8);display:flex;align-items:center;justify-content:center;font-weight:900;color:white;font-size:0.9rem">${(c.logo||c.name[0]).toString()[0]}</div>
           <div>
-            <div style="font-weight:800;color:#1E3A8A;font-size:0.95rem">${c.name}</div>
-            <div style="font-size:0.68rem;color:#6B7280">${c.url||''}</div>
+            <div style="font-weight:800;color:white;font-size:0.95rem">${c.name}</div>
+            <div style="font-size:0.68rem;color:rgba(255,255,255,.4)">${c.url||''}</div>
           </div>
         </div>
         <div style="flex:1;display:flex;gap:24px;flex-wrap:wrap">
-          <div style="text-align:center" title="Estimated total monthly website visits for ${c.name} — organic + paid combined."><div style="font-size:0.92rem;font-weight:800;color:#1D4ED8">${traffic}</div><div style="font-size:0.62rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Traffic/mo</div></div>
-          <div style="text-align:center" title="Click-Through Rate: % of ad impressions that result in a click. This competitor's average across all campaigns."><div style="font-size:0.92rem;font-weight:800;color:#1D4ED8">${c.ctr||'—'}</div><div style="font-size:0.62rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">CTR</div></div>
-          <div style="text-align:center" title="Return on Ad Spend — estimated revenue earned per $1 spent on ads by this competitor."><div style="font-size:0.92rem;font-weight:800;color:#1D4ED8">${c.roas||'—'}×</div><div style="font-size:0.62rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">ROAS</div></div>
-          <div style="text-align:center" title="Estimated monthly advertising budget across Google, Meta, TikTok and other paid channels."><div style="font-size:0.92rem;font-weight:800;color:#1D4ED8">${c.adSpend||'—'}</div><div style="font-size:0.62rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Ad Spend</div></div>
-          <div style="text-align:center" title="The marketing channel where this competitor is investing the most budget and generating the best results."><div style="font-size:0.92rem;font-weight:800;color:#1D4ED8">${c.topChannel||'Google'}</div><div style="font-size:0.62rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Top Channel</div></div>
+          <div style="text-align:center" title="Estimated total monthly website visits for ${c.name} — organic + paid combined."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${traffic}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Traffic/mo</div></div>
+          <div style="text-align:center" title="Click-Through Rate: % of ad impressions that result in a click. This competitor's average across all campaigns."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.ctr||'—'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">CTR</div></div>
+          <div style="text-align:center" title="Return on Ad Spend — estimated revenue earned per $1 spent on ads by this competitor."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.roas||'—'}×</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">ROAS</div></div>
+          <div style="text-align:center" title="Estimated monthly advertising budget across Google, Meta, TikTok and other paid channels."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.adSpend||'—'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Ad Spend</div></div>
+          <div style="text-align:center" title="The marketing channel where this competitor is investing the most budget and generating the best results."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.topChannel||'Google'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Top Channel</div></div>
           <div style="text-align:center" title="AI threat assessment — how directly this competitor threatens your market position. High = immediate action required."><div style="font-size:0.92rem;font-weight:800;color:${threat==='high'?'#EF4444':threat==='medium'?'#F59E0B':'#10B981'}">${threat.toUpperCase()}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Threat</div></div>
         </div>
         <div style="text-align:right;flex-shrink:0" title="AI-calculated opportunity score — how much market share you can realistically capture from this competitor. Higher = more opportunity.">
-          <div style="font-size:0.67rem;color:#6B7280;margin-bottom:2px;text-transform:uppercase;letter-spacing:.05em">Opportunity Score</div>
-          <div style="font-size:2rem;font-weight:900;font-family:'Sora',sans-serif;color:${oppScore>=70?'#059669':oppScore>=50?'#D97706':'#1D4ED8'};line-height:1">${oppScore}</div>
-          <div style="font-size:0.62rem;color:#9CA3AF">out of 100</div>
+          <div style="font-size:0.67rem;color:rgba(255,255,255,.4);margin-bottom:2px;text-transform:uppercase;letter-spacing:.05em">Opportunity Score</div>
+          <div style="font-size:2rem;font-weight:900;font-family:'Sora',sans-serif;color:${oppScore>=70?'#10B981':oppScore>=50?'#F59E0B':'#60A5FA'};line-height:1">${oppScore}</div>
+          <div style="font-size:0.62rem;color:rgba(255,255,255,.3)">out of 100</div>
         </div>
       </div>
     </div>
@@ -9847,9 +9806,9 @@ function buildBattlePlan() {
     <div style="max-width:1200px;margin:0 auto;padding:24px 28px">
 
       <!-- Priority Summary Banner -->
-      <div style="background:linear-gradient(135deg,#FEF2F2,#FFF7ED);border:1.5px solid #FCA5A5;border-radius:14px;padding:16px 20px;margin-bottom:24px">
-        <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:800;color:#991B1B;margin-bottom:10px">🎯 Top Priority Actions vs ${c.name}</div>
-        ${topRows || '<div style="color:#9CA3AF;font-size:0.82rem">Run analysis for full recommendations</div>'}
+      <div style="background:linear-gradient(135deg,rgba(239,68,68,.1),rgba(220,38,38,.04));border:1px solid rgba(239,68,68,.18);border-radius:14px;padding:16px 20px;margin-bottom:24px">
+        <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:800;color:white;margin-bottom:10px">🎯 Top Priority Actions vs ${c.name}</div>
+        ${topRows || '<div style="color:rgba(255,255,255,.4);font-size:0.82rem">Run analysis for full recommendations</div>'}
       </div>
 
       <!-- 2-Column Action Grid -->
@@ -9865,24 +9824,23 @@ function buildBattlePlan() {
       </div>
 
       <!-- Bottom CTA -->
-      <div style="margin-top:24px;background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border:1.5px solid #BFDBFE;border-radius:14px;padding:20px 24px">
+      <div style="margin-top:24px;background:linear-gradient(135deg,rgba(0,201,200,.1),rgba(0,102,255,.06));border:1px solid rgba(0,201,200,.2);border-radius:14px;padding:20px 24px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px">
           <div>
-            <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#1E3A8A;margin-bottom:4px">🚀 Launch Full Attack Plan</div>
-            <div style="font-size:0.8rem;color:#4B5563">GPT-4 generates a complete 8-week strategy — keywords, channels, content, budget &amp; weekly milestones</div>
+            <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:white;margin-bottom:4px">🚀 Launch Full Attack Plan</div>
+            <div style="font-size:0.8rem;color:rgba(255,255,255,.55)">GPT-4 generates a complete 8-week strategy — keywords, channels, content, budget &amp; weekly milestones</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px">
-            <label style="font-size:0.68rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.07em">Select Competitor</label>
-            <select id="attackPlanCompSelect" style="padding:10px 14px;background:white;border:1.5px solid #BFDBFE;border-radius:9px;font-size:0.82rem;font-weight:600;color:#1E3A8A;cursor:pointer;width:100%;appearance:auto">
-              ${(analysisData?.competitors||[]).map((cc,i)=>`<option value="${i}" ${i===idx?'selected':''}>${cc.name||'Competitor '+(i+1)}</option>`).join('')}
+            <label style="font-size:0.68rem;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.07em">Select Competitor</label>
+            <select id="attackPlanCompSelect" style="padding:10px 14px;background:#1A2E4A;border:1px solid rgba(0,201,200,.3);border-radius:9px;font-size:0.82rem;font-weight:600;color:white;cursor:pointer;width:100%;appearance:auto">
+              ${(analysisData?.competitors||[]).map((cc,i)=>`<option value="${i}" ${i===idx?'selected':''} style="background:#1A2E4A;color:white">${cc.name||'Competitor '+(i+1)}</option>`).join('')}
             </select>
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding-top:18px">
-            <button onclick="openFullAttackPlanModal(parseInt(document.getElementById('attackPlanCompSelect').value||'${idx}'))" style="padding:11px 24px;background:linear-gradient(135deg,#1D4ED8,#2563EB);border:none;border-radius:10px;font-size:0.84rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap;box-shadow:0 4px 16px rgba(29,78,216,.3)">🚀 Generate Attack Plan</button>
-            <button onclick="openCampLaunchRich('Campaign vs ${c.name.replace(/'/g,'')}','${c.topChannel||'Google Ads'}','$2,000/mo',${idx})" style="padding:11px 24px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.84rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap;box-shadow:0 4px 14px rgba(0,102,255,.3)">🚀 Confirm &amp; Launch Campaign</button>
-            <button onclick="navigateTo('intelligence')" style="padding:11px 20px;background:white;border:1.5px solid #DBEAFE;border-radius:10px;font-size:0.82rem;font-weight:600;color:#1D4ED8;cursor:pointer;white-space:nowrap">📊 Deep Intelligence</button>
+            <button onclick="openFullAttackPlanModal(parseInt(document.getElementById('attackPlanCompSelect').value||'${idx}'))" style="padding:11px 24px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:0.84rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap;box-shadow:0 4px 16px rgba(0,102,255,.4)">🚀 Generate Attack Plan</button>
+            <button onclick="navigateTo('intelligence')" style="padding:11px 20px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:10px;font-size:0.82rem;font-weight:600;color:white;cursor:pointer;white-space:nowrap">📊 Deep Intelligence</button>
           </div>
         </div>
       </div>
@@ -9913,20 +9871,27 @@ function bpGA(compIdx, kwIdx) {
   openCampLaunchRich(kw + ' Campaign', 'Google Ads', '$1,200/mo', compIdx);
 }
 
-// bpBC — Open Campaign Launch Brief for content-led keyword campaign
+// bpBC — Build Content (keyword card)
 function bpBC(compIdx, kwIdx) {
   const d = _bpGet(compIdx); if (!d) { showToast('⚠️ Run analysis first'); return; }
-  const kw = d.keywords[kwIdx] || d.name + ' keywords';
-  openCampLaunchRich('Content Campaign: ' + kw.slice(0,40), 'Google Ads', '$1,200/mo', compIdx);
+  const kw = d.keywords[kwIdx] || '';
+  window._clusterSeedPrefill = kw;
+  navigateTo('content');
 }
 
-// bpCS — Open Campaign Launch Brief for creative-led campaign
+// bpCS — Open Creative Studio (creative card)
 function bpCS(compIdx, itemIdx) {
   const d = _bpGet(compIdx); if (!d) { showToast('⚠️ Run analysis first'); return; }
-  const name = d.adCopy && d.adCopy[itemIdx]
-    ? 'Creative Counter: ' + (d.adCopy[itemIdx].headline || d.name).slice(0,40)
-    : 'Creative Campaign vs ' + d.name;
-  openCampLaunchRich(name, d.channel || 'Meta Ads', '$1,500/mo', compIdx);
+  let headline = 'Counter Creative vs ' + d.name;
+  let body = 'Beat ' + d.name + ' with superior creative.';
+  if (d.adCopy && d.adCopy[itemIdx]) {
+    headline = d.adCopy[itemIdx].headline || headline;
+    body = d.adCopy[itemIdx].body || body;
+  } else if (d.suggestions[itemIdx]) {
+    headline = 'Beat ' + d.name + ': ' + d.suggestions[itemIdx].slice(0,40);
+    body = 'Outperform ' + d.name + ' by addressing: ' + d.suggestions[itemIdx].slice(0,80);
+  }
+  openAdInCreativeStudio(headline, body, d.channel);
 }
 
 // bpTA — Target This Audience (audience card)
@@ -16065,10 +16030,10 @@ function csBuildView() {
   const d    = csData();
 
   const roleMap = {
-    ceo: { label:'Chief Executive Officer', color:'#1D4ED8', accent:'rgba(29,78,216,.12)',   icon:'👔' },
-    cmo: { label:'Chief Marketing Officer',  color:'#0066FF', accent:'rgba(0,102,255,.10)',  icon:'📣' },
-    cfo: { label:'Chief Financial Officer',  color:'#059669', accent:'rgba(5,150,105,.10)',  icon:'💰' },
-    coo: { label:'Chief Operating Officer',  color:'#D97706', accent:'rgba(217,119,6,.10)',  icon:'⚙️' },
+    ceo: { label:'Chief Executive Officer', color:'#7C3AED', accent:'rgba(124,58,237,.15)', icon:'👔' },
+    cmo: { label:'Chief Marketing Officer',  color:'#0066FF', accent:'rgba(0,102,255,.12)',  icon:'📣' },
+    cfo: { label:'Chief Financial Officer',  color:'#059669', accent:'rgba(5,150,105,.12)',  icon:'💰' },
+    coo: { label:'Chief Operating Officer',  color:'#D97706', accent:'rgba(217,119,6,.12)',  icon:'⚙️' },
   };
   const rm = roleMap[role];
 
@@ -16091,128 +16056,6 @@ function csBuildView() {
 }
 
 // ── CEO Report ────────────────────────────────────────────────────────────────
-// ── Shared Financial Block — injected into every C-Suite role ─────────────────
-function csFinancialBlock(d, role) {
-  const { camps, budget, roas, conv, cpl, comps, url, ind } = d;
-  const revenue     = budget * roas;
-  const netProfit   = revenue - budget;
-  const roi         = budget > 0 ? ((netProfit / budget) * 100).toFixed(0) : 0;
-  const cpa         = budget > 0 && conv > 0 ? (budget / Math.max(conv, 1)).toFixed(0) : null;
-  const proj30      = revenue;
-  const proj60      = revenue * 2.12;
-  const proj90      = revenue * 3.38;
-  const efficiencyPct = budget > 0 ? ((roas - 1) / roas * 100).toFixed(1) : '—';
-  const wasted      = budget > 0 ? Math.round(budget * 0.18) : 0;
-  const aiSavedStr  = budget > 0 ? '$' + wasted.toLocaleString() : '—';
-
-  // Channel spend breakdown
-  const channels = camps.length
-    ? camps.slice(0, 5).map(c => ({
-        name: c.platform || 'Platform',
-        spend: c.budget || Math.round(budget / Math.max(camps.length, 1)),
-        roas: parseFloat(c.metrics?.roas || c.estROAS || roas),
-      }))
-    : [];
-
-  const roiColor  = Number(roi) >= 200 ? '#059669' : Number(roi) >= 100 ? '#D97706' : '#DC2626';
-  const roiBg     = Number(roi) >= 200 ? '#F0FDF4' : Number(roi) >= 100 ? '#FFFBEB' : '#FEF2F2';
-  const roiLabel  = Number(roi) >= 200 ? 'Excellent' : Number(roi) >= 100 ? 'Good' : 'Needs Attention';
-
-  const roleInsights = {
-    ceo: { title: 'CEO Financial Snapshot', icon: '💼', q: 'Are we profitable on marketing?', note: `Every $1 spent on marketing returns $${roas.toFixed(2)} — a ${roi}% ROI. ${Number(roi)>=200?'Growth trajectory supports budget increase.':'Optimise channel mix to improve margin.'}` },
-    cmo: { title: 'CMO Budget Performance', icon: '📊', q: 'Is spend generating pipeline?', note: `${budget > 0 ? `$${budget.toLocaleString()} deployed` : 'No spend yet'} generating ${conv || 0} conversions. ${cpa ? `CPA of $${cpa} — ${Number(cpa) < 80 ? 'within target range' : 'room to improve via better targeting'}.` : 'Launch campaigns to track CPA.'}` },
-    cfo: { title: 'CFO ROI Waterfall', icon: '💹', q: 'What is the return on every dollar?', note: `Net margin efficiency: ${efficiencyPct}%. InfoGenie AI optimisation is preventing an estimated ${aiSavedStr}/mo in wasted ad spend through automated bid management.` },
-    coo: { title: 'COO Operational Cost Efficiency', icon: '⚙️', q: 'Are we running lean?', note: `${camps.length} campaigns running across ${[...new Set(camps.map(c=>c.platform))].length || 1} platforms. Estimated ${aiSavedStr}/mo saved by AI automation vs. manual management overhead.` },
-  };
-  const ins = roleInsights[role] || roleInsights.ceo;
-
-  return `
-  <!-- ── Financial Performance Block ─────────────────────────────────── -->
-  <div class="cs-card cs-financial-block" style="background:linear-gradient(135deg,#F0F9FF,#EFF6FF);border:1.5px solid #BFDBFE;">
-    <div class="cs-card-header" style="margin-bottom:14px">
-      <div>
-        <div class="cs-card-title" style="color:#1E3A8A">${ins.icon} ${ins.title}</div>
-        <div class="cs-card-sub">${ins.q}</div>
-      </div>
-      <span style="padding:4px 12px;border-radius:99px;font-size:0.68rem;font-weight:800;background:${roiBg};color:${roiColor};border:1px solid ${roiColor}30">${roiLabel} · ROI ${roi}%</span>
-    </div>
-
-    <!-- ROI Waterfall row -->
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
-      ${[
-        { icon:'💸', label:'Total Spend', val: budget>0?'$'+budget.toLocaleString():'$0', sub:'This period', color:'#EF4444', bg:'#FEF2F2' },
-        { icon:'📈', label:'Revenue Attributed', val: budget>0?'$'+Math.round(revenue).toLocaleString():'—', sub:'At '+roas+'× ROAS', color:'#059669', bg:'#F0FDF4' },
-        { icon:'💰', label:'Net Profit', val: budget>0?'$'+Math.round(netProfit).toLocaleString():'—', sub:'Revenue − Spend', color: netProfit>0?'#059669':'#DC2626', bg: netProfit>0?'#F0FDF4':'#FEF2F2' },
-        { icon:'🎯', label:'Marketing ROI', val: budget>0?roi+'%':'—', sub: roiLabel, color:roiColor, bg:roiBg },
-      ].map(s=>`
-      <div style="background:${s.bg};border-radius:12px;padding:14px 16px;border:1px solid ${s.color}20">
-        <div style="font-size:1.1rem;margin-bottom:6px">${s.icon}</div>
-        <div style="font-family:'Sora',sans-serif;font-size:1.25rem;font-weight:800;color:${s.color};line-height:1">${s.val}</div>
-        <div style="font-size:0.65rem;font-weight:700;color:#374151;margin-top:4px">${s.label}</div>
-        <div style="font-size:0.62rem;color:#9CA3AF;margin-top:2px">${s.sub}</div>
-      </div>`).join('')}
-    </div>
-
-    <!-- Two sub-columns: spend bar + 90-day projection -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
-
-      <!-- Spend vs Revenue by Channel -->
-      <div>
-        <div style="font-size:0.78rem;font-weight:800;color:#1E3A8A;margin-bottom:12px">💳 Spend vs Revenue by Channel</div>
-        ${channels.length ? channels.map(c => {
-          const rev    = Math.round(c.spend * c.roas);
-          const spendPct = Math.min(Math.round((c.spend / Math.max(budget,1)) * 100), 100);
-          const col    = c.roas >= 3 ? '#059669' : c.roas >= 2 ? '#D97706' : '#DC2626';
-          return `
-          <div style="margin-bottom:12px">
-            <div style="display:flex;justify-content:space-between;font-size:0.72rem;font-weight:700;color:#374151;margin-bottom:4px">
-              <span>${c.name}</span>
-              <span style="color:${col}">${c.roas.toFixed(1)}× → $${rev.toLocaleString()}</span>
-            </div>
-            <div style="display:flex;gap:3px;align-items:center">
-              <div style="flex:1;background:#E0F2FE;border-radius:6px;height:7px;overflow:hidden">
-                <div style="width:${spendPct}%;height:100%;background:linear-gradient(90deg,#3B82F6,#1D4ED8);border-radius:6px;transition:width .6s"></div>
-              </div>
-              <span style="font-size:0.63rem;color:#6B7280;min-width:52px;text-align:right">$${c.spend.toLocaleString()}</span>
-            </div>
-          </div>`;
-        }).join('') : `<div style="text-align:center;padding:16px 0;color:#93C5FD;font-size:0.78rem">Launch campaigns to see channel spend breakdown</div>`}
-      </div>
-
-      <!-- 90-Day Revenue Projection -->
-      <div>
-        <div style="font-size:0.78rem;font-weight:800;color:#1E3A8A;margin-bottom:12px">📅 90-Day Revenue Projection</div>
-        <div style="display:flex;flex-direction:column;gap:10px">
-          ${[
-            { period:'Month 1', rev: proj30, color:'#93C5FD', bar: 33 },
-            { period:'Month 2', rev: proj60, color:'#3B82F6', bar: 66 },
-            { period:'Month 3', rev: proj90, color:'#1D4ED8', bar: 100 },
-          ].map(p=>`
-          <div>
-            <div style="display:flex;justify-content:space-between;font-size:0.72rem;font-weight:700;color:#374151;margin-bottom:3px">
-              <span>${p.period}</span>
-              <span style="color:${p.color}">$${Math.round(p.rev).toLocaleString()}</span>
-            </div>
-            <div style="background:#E0F2FE;border-radius:6px;height:8px;overflow:hidden">
-              <div style="width:${p.bar}%;height:100%;background:${p.color};border-radius:6px;transition:width .6s .1s"></div>
-            </div>
-          </div>`).join('')}
-          <div style="margin-top:6px;padding:8px 10px;background:white;border-radius:8px;border:1px solid #BFDBFE;font-size:0.68rem;color:#1E40AF">
-            <strong>Projection basis:</strong> Current ${roas}× ROAS compounding with ${Math.round((camps.length||1)*8)}% monthly optimisation lift.
-          </div>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- AI savings + insight note -->
-    <div style="margin-top:16px;padding:12px 14px;background:white;border-radius:10px;border:1px solid #BFDBFE;display:flex;gap:10px;align-items:flex-start">
-      <span style="font-size:1.2rem;flex-shrink:0">🤖</span>
-      <div style="font-size:0.75rem;color:#1E40AF;line-height:1.5">${ins.note}</div>
-    </div>
-  </div>`;
-}
-
 function csBuildCEO(d, rm, periodHtml) {
   const { camps, budget, roas, conv, impr, comps, url, ind, sov, sovComp, ad } = d;
   const projRev = budget > 0 ? '$' + (budget * roas).toLocaleString(undefined,{maximumFractionDigits:0}) : '—';
@@ -16352,9 +16195,7 @@ function csBuildCEO(d, rm, periodHtml) {
         </tbody>
       </table>
     </div>
-  </div>` : ''}
-
-  ${csFinancialBlock(d, 'ceo')}`;
+  </div>` : ''}`;
 }
 
 // ── CMO Report ────────────────────────────────────────────────────────────────
@@ -16366,8 +16207,8 @@ function csBuildCMO(d, rm, periodHtml) {
   const channels = [...new Set(camps.map(c=>c.platform))];
 
   return `
-  <div class="cs-exec-banner">
-    <div class="cs-exec-role-badge">${rm.icon} ${rm.label} · Marketing Performance Report</div>
+  <div class="cs-exec-banner" style="background:linear-gradient(135deg,#0A1628,#001440)">
+    <div class="cs-exec-role-badge" style="background:rgba(0,102,255,.2);border-color:rgba(0,102,255,.3);color:#93C5FD">${rm.icon} ${rm.label} · Marketing Performance Report</div>
     <div class="cs-exec-headline">Full-Funnel Campaign Intelligence</div>
     <div class="cs-exec-sub">Comprehensive view of campaign performance, creative output, audience reach, and channel ROAS for ${url || 'your brand'}. Period: ${csPeriodLabel()}.</div>
     <div class="cs-exec-stats">
@@ -16456,9 +16297,7 @@ function csBuildCMO(d, rm, periodHtml) {
         </tbody>
       </table>
     </div>
-  </div>` : ''}
-
-  ${csFinancialBlock(d, 'cmo')}`;
+  </div>` : ''}`;
 }
 
 // ── CFO Report ────────────────────────────────────────────────────────────────
@@ -16477,8 +16316,8 @@ function csBuildCFO(d, rm, periodHtml) {
   })) : [];
 
   return `
-  <div class="cs-exec-banner">
-    <div class="cs-exec-role-badge">${rm.icon} ${rm.label} · Financial Marketing Report</div>
+  <div class="cs-exec-banner" style="background:linear-gradient(135deg,#0A1628,#002814)">
+    <div class="cs-exec-role-badge" style="background:rgba(5,150,105,.2);border-color:rgba(5,150,105,.3);color:#6EE7B7">${rm.icon} ${rm.label} · Financial Marketing Report</div>
     <div class="cs-exec-headline">Marketing ROI & Budget Efficiency</div>
     <div class="cs-exec-sub">Financial performance of all marketing channels — spend efficiency, revenue attribution, cost-per-outcome, and quarterly projection. Period: ${csPeriodLabel()}.</div>
     <div class="cs-exec-stats">
@@ -16548,9 +16387,7 @@ function csBuildCFO(d, rm, periodHtml) {
         </ul>
       </div>
     </div>
-  </div>
-
-  ${csFinancialBlock(d, 'cfo')}`;
+  </div>`;
 }
 
 // ── COO Report ────────────────────────────────────────────────────────────────
@@ -16573,8 +16410,8 @@ function csBuildCOO(d, rm, periodHtml) {
   const statusCol = { green:'#10B981', amber:'#F59E0B', neutral:'#6B7280' };
 
   return `
-  <div class="cs-exec-banner">
-    <div class="cs-exec-role-badge">${rm.icon} ${rm.label} · Operations Report</div>
+  <div class="cs-exec-banner" style="background:linear-gradient(135deg,#0A1628,#1a0e00)">
+    <div class="cs-exec-role-badge" style="background:rgba(217,119,6,.2);border-color:rgba(217,119,6,.3);color:#FDE68A">${rm.icon} ${rm.label} · Operations Report</div>
     <div class="cs-exec-headline">Marketing Operations & Execution Status</div>
     <div class="cs-exec-sub">Campaign execution health, automation performance, platform integrations, and operational bottlenecks for ${url || 'your brand'}. Period: ${csPeriodLabel()}.</div>
     <div class="cs-exec-stats">
@@ -16661,9 +16498,7 @@ function csBuildCOO(d, rm, periodHtml) {
           <div style="font-size:0.72rem;color:#374151;line-height:1.45">${b.desc}</div>
         </div>`).join('')}
     </div>
-  </div>
-
-  ${csFinancialBlock(d, 'coo')}`;
+  </div>`;
 }
 
 // ── PDF Export ────────────────────────────────────────────────────────────────

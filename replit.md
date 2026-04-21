@@ -7,7 +7,6 @@ InfoGenie is a comprehensive AI-powered marketing intelligence and campaign auto
 - **Type**: Node.js/Express backend + Static SPA frontend
 - **Server**: `server.js` listens on port 5000 (preview) AND port 80 (external)
 - **Frontend**: Pure HTML5 + CSS3 + Vanilla JavaScript
-- **Theme**: Global light theme — `--ig-bg:#F4F6FB`, all view headers and hero use `linear-gradient(135deg,#1D4ED8,#1E40AF,#1E3A8A)`, body/views are light blue-white (#F4F6FB)
 - **Charts**: Chart.js v4.4.0 (CDN)
 - **Fonts**: Google Fonts — Inter + Sora (CDN)
 - **Backend API**: DataForSEO + OpenAI GPT-4o + Anthropic Claude (both via Replit AI Integrations) + RapidAPI social intelligence
