@@ -575,15 +575,15 @@ function buildLaunchModal(camp, idx) {
   const projRev    = '$' + (budgetNum * parseFloat(projROAS)).toLocaleString(undefined, {maximumFractionDigits:0});
 
   const platformMeta = {
-    'All Platforms':   { icon:'⊕', bid:'InfoGenie AI Auto-Bid (per channel)', aud:'Best-fit audience per platform',          kpi:'Blended ROAS across all channels', creative:'Auto-adapted format per platform' },
-    'Google Ads':      { icon:'🔵', bid:'Target ROAS (tROAS)',         aud:'High-intent keyword searchers',            kpi:'Conversions & ROAS',         creative:'Responsive Search Ads + Performance Max' },
-    'Google Search':   { icon:'🔵', bid:'Maximise Conversions',        aud:'Search intent + competitor keywords',       kpi:'CTR & Conversion Rate',      creative:'3 headlines + 2 descriptions' },
-    'Meta Ads':        { icon:'🔷', bid:'Cost Per Result',             aud:'Lookalike + interest targeting',            kpi:'ROAS & Reach',               creative:'Carousel + Story + Feed video' },
-    'TikTok Ads':      { icon:'⬛', bid:'Lowest Cost',                 aud:'In-app behaviour + hashtag interest',       kpi:'CPV & Engagement Rate',      creative:'UGC-style 15-sec vertical video' },
-    'YouTube':         { icon:'🔴', bid:'Target CPA',                  aud:'In-market + custom intent audiences',       kpi:'View-through conversions',   creative:'15-sec unskippable + 30-sec skippable' },
-    'AI Optimised':    { icon:'🤖', bid:'InfoGenie RL Engine (auto)',   aud:'Dynamic cross-platform targeting',          kpi:'Blended ROAS',               creative:'Auto-generated, refreshed every 72h' },
-    'LinkedIn Ads':    { icon:'🔷', bid:'Maximum Delivery',            aud:'Job title + industry + seniority',          kpi:'MQL Rate & Pipeline Value',  creative:'Sponsored Content + InMail' },
-    'Display Network': { icon:'🟡', bid:'Target CPA',                  aud:'Intent-based display audiences',            kpi:'Brand lift & CPA',           creative:'Responsive display + HTML5 banners' }
+    'All Platforms':   { icon:'⊕', ctr:'2.8%', cpa:'$38', bid:'InfoGenie AI Auto-Bid (per channel)', aud:'Best-fit audience per platform',          kpi:'Blended ROAS across all channels', creative:'Auto-adapted format per platform' },
+    'Google Ads':      { icon:'🔵', ctr:'4.8%', cpa:'$38', bid:'Target ROAS (tROAS)',         aud:'High-intent keyword searchers',            kpi:'Conversions & ROAS',         creative:'Responsive Search Ads + Performance Max' },
+    'Google Search':   { icon:'🔵', ctr:'5.5%', cpa:'$35', bid:'Maximise Conversions',        aud:'Search intent + competitor keywords',       kpi:'CTR & Conversion Rate',      creative:'3 headlines + 2 descriptions' },
+    'Meta Ads':        { icon:'🔷', ctr:'2.1%', cpa:'$28', bid:'Cost Per Result',             aud:'Lookalike + interest targeting',            kpi:'ROAS & Reach',               creative:'Carousel + Story + Feed video' },
+    'TikTok Ads':      { icon:'⬛', ctr:'1.8%', cpa:'$22', bid:'Lowest Cost',                 aud:'In-app behaviour + hashtag interest',       kpi:'CPV & Engagement Rate',      creative:'UGC-style 15-sec vertical video' },
+    'YouTube':         { icon:'🔴', ctr:'0.6%', cpa:'$52', bid:'Target CPA',                  aud:'In-market + custom intent audiences',       kpi:'View-through conversions',   creative:'15-sec unskippable + 30-sec skippable' },
+    'AI Optimised':    { icon:'🤖', ctr:'3.9%', cpa:'$32', bid:'InfoGenie RL Engine (auto)',   aud:'Dynamic cross-platform targeting',          kpi:'Blended ROAS',               creative:'Auto-generated, refreshed every 72h' },
+    'LinkedIn Ads':    { icon:'🔷', ctr:'0.8%', cpa:'$85', bid:'Maximum Delivery',            aud:'Job title + industry + seniority',          kpi:'MQL Rate & Pipeline Value',  creative:'Sponsored Content + InMail' },
+    'Display Network': { icon:'🟡', ctr:'0.35%',cpa:'$58', bid:'Target CPA',                  aud:'Intent-based display audiences',            kpi:'Brand lift & CPA',           creative:'Responsive display + HTML5 banners' }
   };
   const pm = platformMeta[platform] || platformMeta['Google Ads'];
 
@@ -647,15 +647,15 @@ function buildLaunchModal(camp, idx) {
           </div>
           <div style="background:white;border-radius:8px;padding:9px 12px;border:1px solid #E0F2FE">
             <div style="font-size:0.63rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">📢 Platform</div>
-            <div style="font-size:0.78rem;font-weight:700;color:#0A1628">${pm.icon} ${platform}</div>
+            <div id="lm-ov-platform" style="font-size:0.78rem;font-weight:700;color:#0A1628">${pm.icon} ${platform}</div>
           </div>
           <div style="background:white;border-radius:8px;padding:9px 12px;border:1px solid #E0F2FE">
             <div style="font-size:0.63rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">💰 Est. CTR</div>
-            <div style="font-size:0.78rem;font-weight:700;color:#059669">${camp.estCTR || '4.2%'}</div>
+            <div id="lm-ov-ctr" style="font-size:0.78rem;font-weight:700;color:#059669">${camp.estCTR || pm.ctr || '4.2%'}</div>
           </div>
           <div style="background:white;border-radius:8px;padding:9px 12px;border:1px solid #E0F2FE">
             <div style="font-size:0.63rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">📊 Est. CPA</div>
-            <div style="font-size:0.78rem;font-weight:700;color:#7C3AED">${camp.estCPA || '$38'}</div>
+            <div id="lm-ov-cpa" style="font-size:0.78rem;font-weight:700;color:#7C3AED">${camp.estCPA || pm.cpa || '$38'}</div>
           </div>
         </div>
       </div>
@@ -670,7 +670,7 @@ function buildLaunchModal(camp, idx) {
           </div>
           <div>
             <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Platform</label>
-            <select id="lm-platform" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#0066FF'" onblur="this.style.borderColor='#E2E8F0'">
+            <select id="lm-platform" onchange="lmSwitchPlatform(this.value)" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#0066FF'" onblur="this.style.borderColor='#E2E8F0'">
               <option value="All Platforms"${platform==='All Platforms'||!platform?' selected':''}>⊕ All Platforms (Select All)</option>
               ${['Google Ads','Meta Ads','TikTok Ads','YouTube','LinkedIn Ads','Display Network','AI Optimised'].map(p=>`<option value="${p}"${p===platform?' selected':''}>${p}</option>`).join('')}
             </select>
@@ -720,8 +720,8 @@ function buildLaunchModal(camp, idx) {
 
       <!-- PLATFORM STRATEGY -->
       <div>
-        <div style="font-size:0.68rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">${pm.icon} ${platform} Strategy</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div id="lm-strat-title" style="font-size:0.68rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">${pm.icon} ${platform} Strategy</div>
+        <div id="lm-strat-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           ${[['Bid Strategy',pm.bid],['Target Audience',pm.aud],['Primary KPI',pm.kpi],['Creative Format',pm.creative]].map(([k,v])=>`
             <div style="background:#F9FAFB;border-radius:8px;padding:10px 12px">
               <div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em">${k}</div>
@@ -808,6 +808,23 @@ function buildLaunchModal(camp, idx) {
     if (el('lm-conv-val'))  el('lm-conv-val').textContent  = newConv;
     if (el('lm-rev-val'))   el('lm-rev-val').textContent   = newRev;
     if (el('lm-daily-val')) el('lm-daily-val').textContent = '$' + newDaily + '/day';
+  };
+
+  window.lmSwitchPlatform = function(sel) {
+    const meta = platformMeta[sel] || platformMeta['Google Ads'];
+    const el = id => document.getElementById(id);
+    if (el('lm-ov-platform')) el('lm-ov-platform').textContent = meta.icon + ' ' + sel;
+    if (el('lm-ov-ctr'))      el('lm-ov-ctr').textContent      = meta.ctr;
+    if (el('lm-ov-cpa'))      el('lm-ov-cpa').textContent      = meta.cpa;
+    if (el('lm-strat-title')) el('lm-strat-title').textContent = meta.icon + ' ' + sel + ' Strategy';
+    if (el('lm-strat-grid'))  el('lm-strat-grid').innerHTML    = [
+      ['Bid Strategy', meta.bid], ['Target Audience', meta.aud],
+      ['Primary KPI',  meta.kpi], ['Creative Format',  meta.creative]
+    ].map(([k,v]) => `
+      <div style="background:#F9FAFB;border-radius:8px;padding:10px 12px">
+        <div style="font-size:0.65rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em">${k}</div>
+        <div style="font-size:0.78rem;color:#0A1628;font-weight:600;margin-top:3px">${v}</div>
+      </div>`).join('');
   };
 
   // Wire cancel button
