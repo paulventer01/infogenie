@@ -17263,6 +17263,110 @@ function launchNow() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// AUTOSEO Calendar Modal ─────────────────────────────────────────────────────
+function showAutoSeoCalendar() {
+  const articles = window._autoSeoArticles || [];
+  const sch = window._autoSeoSchedule || {};
+  if (!articles.length) { showToast('Generate article topics first'); return; }
+
+  // Build date → articles map
+  const dateMap = {};
+  articles.forEach((a, i) => {
+    const d = _artDate(i, sch);
+    if (!dateMap[d]) dateMap[d] = [];
+    dateMap[d].push({ ...a, idx: i });
+  });
+
+  // Determine months to show
+  const start = new Date((sch.startDate || new Date().toISOString().split('T')[0]) + 'T00:00:00');
+  const end   = new Date((sch.endDate   || new Date(Date.now()+30*864e5).toISOString().split('T')[0]) + 'T00:00:00');
+
+  // Collect all unique months between start and end
+  const months = [];
+  let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+  const lastMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+  while (cur <= lastMonth) {
+    months.push(new Date(cur));
+    cur.setMonth(cur.getMonth() + 1);
+  }
+
+  const statusColor = s => s === 'published' ? '#059669' : s === 'generated' ? '#1D4ED8' : '#6B7280';
+  const statusBg    = s => s === 'published' ? '#DCFCE7' : s === 'generated' ? '#DBEAFE' : '#F3F4F6';
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  const calendarHtml = months.map(monthStart => {
+    const yr  = monthStart.getFullYear();
+    const mo  = monthStart.getMonth();
+    const monthName = monthStart.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+    const firstDay = monthStart.getDay(); // 0=Sun
+    const daysInMonth = new Date(yr, mo+1, 0).getDate();
+
+    // Build cells array: empty + day cells
+    const cells = [];
+    for (let p = 0; p < firstDay; p++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    // Pad to complete last row
+    while (cells.length % 7 !== 0) cells.push(null);
+
+    const rows = [];
+    for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i+7));
+
+    return '<div style="margin-bottom:32px">' +
+      '<div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#111827;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #E5E7EB">' + monthName + '</div>' +
+      '<table style="width:100%;border-collapse:collapse;table-layout:fixed">' +
+      '<thead><tr>' + dayNames.map(d => '<th style="text-align:center;font-size:0.65rem;font-weight:700;color:#9CA3AF;padding:4px 2px;text-transform:uppercase">' + d + '</th>').join('') + '</tr></thead>' +
+      '<tbody>' + rows.map(row =>
+        '<tr>' + row.map(day => {
+          if (!day) return '<td style="padding:4px 3px;vertical-align:top;height:80px"></td>';
+          const isoDate = yr + '-' + String(mo+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+          const arts    = dateMap[isoDate] || [];
+          const isToday = isoDate === new Date().toISOString().split('T')[0];
+          const inRange = isoDate >= (sch.startDate||'') && isoDate <= (sch.endDate||'9999');
+          return '<td style="padding:4px 3px;vertical-align:top;height:80px;border:1px solid #F3F4F6;border-radius:6px;background:' + (isToday?'#EFF6FF':inRange&&arts.length?'#FAFAFA':'white') + '">' +
+            '<div style="font-size:0.72rem;font-weight:' + (isToday?'800':'600') + ';color:' + (isToday?'#1D4ED8':'#374151') + ';margin-bottom:3px;text-align:right;padding-right:3px">' +
+              (isToday ? '<span style="background:#1D4ED8;color:white;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:0.68rem">' + day + '</span>' : day) +
+            '</div>' +
+            arts.map(a =>
+              '<div style="font-size:0.6rem;font-weight:600;padding:2px 5px;border-radius:4px;background:' + statusBg(a.status) + ';color:' + statusColor(a.status) + ';margin-bottom:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;line-height:1.3" title="' + (a.title||'').replace(/"/g,"'") + '" onclick="previewGeneratedArticle(' + a.idx + ')">' +
+                '#' + (a.idx+1) + ' ' + (a.title||'').substring(0,28) +
+              '</div>'
+            ).join('') +
+          '</td>';
+        }).join('') + '</tr>'
+      ).join('') +
+      '</tbody></table></div>';
+  }).join('');
+
+  // Legend
+  const legend = '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;padding:12px 16px;background:#F9FAFB;border-radius:10px;align-items:center">' +
+    '<span style="font-size:0.72rem;font-weight:700;color:#374151">Legend:</span>' +
+    '<span style="font-size:0.7rem;padding:2px 8px;background:#DBEAFE;color:#1D4ED8;border-radius:4px;font-weight:600">✓ Written</span>' +
+    '<span style="font-size:0.7rem;padding:2px 8px;background:#DCFCE7;color:#059669;border-radius:4px;font-weight:600">✓ Published</span>' +
+    '<span style="font-size:0.7rem;padding:2px 8px;background:#F3F4F6;color:#6B7280;border-radius:4px;font-weight:600">Pending</span>' +
+    '<span style="font-size:0.7rem;padding:2px 8px;background:#EFF6FF;color:#1D4ED8;border-radius:4px;font-weight:600">🔵 Today</span>' +
+    '<span style="margin-left:auto;font-size:0.7rem;color:#9CA3AF">' + articles.length + ' articles · ' + Object.keys(dateMap).length + ' scheduled dates</span>' +
+  '</div>';
+
+  // Modal
+  const modal = document.createElement('div');
+  modal.id = 'autoseo-cal-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow-y:auto';
+  modal.innerHTML =
+    '<div style="background:white;border-radius:18px;width:100%;max-width:960px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.25);margin:auto">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;background:linear-gradient(135deg,#4C1D95,#5B21B6);color:white">' +
+        '<div>' +
+          '<div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800">📅 Content Publishing Calendar</div>' +
+          '<div style="font-size:0.75rem;opacity:.8;margin-top:2px">Articles scheduled from ' + _fmtDate(sch.startDate) + ' to ' + _fmtDate(sch.endDate) + '</div>' +
+        '</div>' +
+        '<button onclick="document.getElementById('autoseo-cal-modal').remove()" style="background:rgba(255,255,255,.15);border:none;border-radius:8px;color:white;font-size:1rem;width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700">✕</button>' +
+      '</div>' +
+      '<div style="padding:24px">' + legend + calendarHtml + '</div>' +
+    '</div>';
+
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
 // AUTOSEO PRO ─ buildAutoSEO()
 // ═══════════════════════════════════════════════════════════════════════════════
 window._autoSeoTab = 'calendar';
@@ -17406,7 +17510,8 @@ function renderAutoSeoCalendar(domain, industry, comps, sch) {
           style="display:block;margin-top:3px;padding:6px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.78rem;outline:none;background:white">
       </label>
     </div>
-    ${articles ? `<span style="font-size:0.72rem;color:#6B7280;margin-left:4px">Articles auto-spread across date range · 1 article every ${_artInterval(sch)} day(s)</span>` : ''}
+    ${articles ? `<span style="font-size:0.72rem;color:#6B7280;margin-left:4px">Articles auto-spread across date range · 1 article every ${_artInterval(sch)} day(s)</span>
+      <button onclick="showAutoSeoCalendar()" style="margin-left:10px;padding:5px 12px;background:linear-gradient(135deg,#6D28D9,#5B21B6);border:none;border-radius:8px;font-size:0.72rem;font-weight:700;color:white;cursor:pointer;display:inline-flex;align-items:center;gap:5px;vertical-align:middle">📅 Calendar View</button>` : ''}
   </div>
   <div id="calendar-content" style="padding:20px 24px">
     ${articles ? renderArticleGrid(articles, wpOk, sch) : renderCalendarEmpty(sch.count)}
