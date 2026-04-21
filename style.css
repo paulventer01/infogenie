@@ -6766,3 +6766,15 @@ h3:hover {
 [data-theme="light"] [id^="rdtpanel-"] [style*="rgba(255,255,255,.65)"] {
   color: #4A5670 !important;
 }
+
+/* ── AutoSEO Pro — light mode visibility ── */
+[data-theme="light"] #autoseo-connect-wp-btn {
+  background: linear-gradient(135deg,#0066FF,#2563EB) !important;
+  border: none !important;
+  color: #FFFFFF !important;
+}
+[data-theme="light"] #autoseo-wp-status {
+  background: rgba(0,102,255,.12) !important;
+  border-color: rgba(0,102,255,.35) !important;
+  color: #1D4ED8 !important;
+}
