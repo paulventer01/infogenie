@@ -6647,7 +6647,9 @@ h3:hover {
 [data-theme="light"] .ba-grid * {
   /* Fallback: ensure no pure-white text remains */
 }
-[data-theme="light"] .ba-stats { color: #4A5670; }
+[data-theme="light"] .ba-stats { color: #4A5670 !important; }
+[data-theme="light"] .ba-stats strong { color: #0A1628 !important; }
+[data-theme="light"] .ba-stats span { color: #4A5670 !important; }
 
 /* ── Home view — kill !important dark bg in light mode ── */
 [data-theme="light"] #view-home {
