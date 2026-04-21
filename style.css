@@ -6021,6 +6021,7 @@ h1, h2, h3,
 /* ── Tabs / sub-tabs / nav-links — dock magnification ──
    Quick follow during mousemove (0.12s linear),
    then spring-back on mouseleave (handled via .dock-releasing class) */
+.nav-group-btn,
 .nav-link,
 .stab,
 .tab-btn,
@@ -6047,6 +6048,7 @@ h1, h2, h3,
 }
 
 /* On release: spring back with overshoot */
+.dock-releasing .nav-group-btn,
 .dock-releasing .nav-link,
 .dock-releasing .stab,
 .dock-releasing .tab-btn,

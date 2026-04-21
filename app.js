@@ -18921,15 +18921,15 @@ function buildMasterCalendar() {
    driven by horizontal cursor distance, with spring release.
    ============================================================ */
 (function dockMagnify(){
-  const SELECTORS = '.nav-link, .stab, .tab-btn, .pf-btn, .atp-pill, .sub-tab, .subtab, .creative-tab, .cs-tab, .ich-tab, .kpi-tab, .cal-tab, .module-tab, .dropdown-link';
-  const MAX_SCALE = 1.45;
-  const RANGE     = 160;
+  const SELECTORS = '.nav-group-btn, .nav-link, .stab, .tab-btn, .pf-btn, .atp-pill, .sub-tab, .subtab, .creative-tab, .cs-tab, .ich-tab, .kpi-tab, .cal-tab, .module-tab, .dropdown-link';
+  const MAX_SCALE = 1.18;
+  const RANGE     = 130;
 
   const ease = t => 0.5 - 0.5 * Math.cos(Math.PI * t);
 
-  function attach(container){
+  function attach(container, customItems){
     if (container._dockBound) return;
-    const items = Array.from(container.querySelectorAll(SELECTORS))
+    const items = customItems || Array.from(container.querySelectorAll(SELECTORS))
       .filter(el => el.parentElement === container);
     if (items.length < 2) return;
     container._dockBound = true;
@@ -18969,7 +18969,16 @@ function buildMasterCalendar() {
       const siblings = Array.from(p.children).filter(c => c.matches && c.matches(SELECTORS));
       if (siblings.length >= 2) parents.add(p);
     });
-    parents.forEach(attach);
+    parents.forEach(p => attach(p));
+
+    // Special case: top-nav main tabs (.nav-group-btn) live each in their own
+    // .nav-group-wrap, so they aren't direct siblings. Find their common
+    // ancestor and treat the buttons as a single dock row.
+    const groupBtns = Array.from(document.querySelectorAll('.nav-group-btn'));
+    if (groupBtns.length >= 2) {
+      const wrap = groupBtns[0].closest('.nav-groups, nav, header, .topbar') || groupBtns[0].parentElement?.parentElement;
+      if (wrap) attach(wrap, groupBtns);
+    }
   }
 
   if (document.readyState === 'loading') {
