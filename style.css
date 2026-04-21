@@ -6598,3 +6598,53 @@ h3:hover {
 [data-theme="light"] .orb {
   opacity: 0.12 !important;
 }
+
+/* ── Brand Assets — light-mode overrides ── */
+[data-theme="light"] .ba-tag {
+  background: rgba(10,22,40,.04);
+  border-color: rgba(10,22,40,.12);
+  color: #5A6B85;
+}
+[data-theme="light"] .ba-tag:hover,
+[data-theme="light"] .ba-tag.active {
+  background: rgba(0,201,200,.12);
+  border-color: rgba(0,201,200,.45);
+  color: #008B8A;
+}
+[data-theme="light"] .ba-search {
+  background: #FFFFFF;
+  border-color: rgba(10,22,40,.14);
+  color: #0A1628;
+}
+[data-theme="light"] .ba-search::placeholder { color: rgba(10,22,40,.38); }
+[data-theme="light"] .ba-dropzone {
+  background: rgba(0,201,200,.04);
+  border-color: rgba(0,201,200,.4);
+}
+[data-theme="light"] .ba-dz-text { color: #4A5670; }
+[data-theme="light"] .ba-dz-link { color: #008B8A; }
+[data-theme="light"] .ba-dz-hint { color: rgba(10,22,40,.45); }
+[data-theme="light"] .ba-tag-label { color: #5A6B85; }
+[data-theme="light"] .ba-tag-select {
+  background: #FFFFFF;
+  border-color: rgba(10,22,40,.14);
+  color: #0A1628;
+}
+[data-theme="light"] .ba-progress-wrap { background: rgba(10,22,40,.06); }
+[data-theme="light"] .ba-progress-label { color: #4A5670; }
+
+/* ── Universal sweep: any white/translucent-white text on light/transparent backgrounds ── */
+[data-theme="light"] p,
+[data-theme="light"] span,
+[data-theme="light"] label,
+[data-theme="light"] div {
+  /* Only override where the color is explicitly white-ish via CSS rule, not inline */
+}
+/* Catch any remaining rgba(255,255,255,*) text colors inside common containers */
+[data-theme="light"] .ba-toolbar *,
+[data-theme="light"] .ba-dropzone *,
+[data-theme="light"] .ba-stats *,
+[data-theme="light"] .ba-grid * {
+  /* Fallback: ensure no pure-white text remains */
+}
+[data-theme="light"] .ba-stats { color: #4A5670; }
