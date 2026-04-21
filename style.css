@@ -4203,8 +4203,8 @@ body.dashboard-active,
 
 /* ─── View Header 3.0 ─── */
 .view-header {
-  background: linear-gradient(135deg, #050D1C 0%, #091628 50%, #0B1E35 100%) !important;
-  border-bottom: 1px solid rgba(0,216,215,.12) !important;
+  background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 60%, #1E3A8A 100%) !important;
+  border-bottom: none !important;
 }
 
 .view-title {
@@ -4216,7 +4216,7 @@ body.dashboard-active,
 
 .view-sub {
   font-family: 'Plus Jakarta Sans', sans-serif !important;
-  color: rgba(180,200,230,.45) !important;
+  color: rgba(255,255,255,.75) !important;
 }
 
 .breadcrumb {
@@ -6139,4 +6139,57 @@ body  { background: #F4F6FB !important; }
 }
 #fullAttackPlanModal .modal-header-dark {
   background: linear-gradient(135deg,#1D4ED8,#1E40AF) !important;
+}
+
+/* ══════════════════════════════════════════════
+   WHITESPACE FIX — Pull view-header up flush with nav
+   ══════════════════════════════════════════════ */
+
+/* Make .view itself have no background gap — just clear space for nav */
+.view > .view-header:first-child,
+.view > .view-header.intel-header:first-child {
+  margin-top: -96px !important;
+  padding-top: calc(96px + 32px) !important;
+}
+
+/* intel-header in the home view (resultsWrap) is a direct div child, not .view child */
+.intel-header {
+  margin-top: -96px !important;
+  padding-top: calc(96px + 28px) !important;
+}
+
+/* ══════════════════════════════════════════════
+   CAMPAIGN CARDS — compact layout so buttons stay visible
+   ══════════════════════════════════════════════ */
+
+/* Remove overflow:hidden so bottom shadow/content never clips */
+.camp-card {
+  overflow: visible !important;
+  padding: 16px !important;
+}
+
+/* Clamp description to 3 lines so card height stays manageable */
+.camp-card-body {
+  display: -webkit-box !important;
+  -webkit-line-clamp: 3 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+  margin-bottom: 10px !important;
+}
+
+/* Tighten metrics row */
+.camp-metrics-row {
+  padding-top: 10px !important;
+  margin-top: 2px !important;
+}
+
+/* Tighten actions row */
+.camp-card-actions {
+  margin-top: 10px !important;
+  padding-top: 10px !important;
+}
+
+/* Smaller grid gap */
+.camp-grid {
+  gap: 12px !important;
 }
