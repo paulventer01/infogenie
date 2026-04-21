@@ -16827,15 +16827,26 @@ window._autoSeoBacklinks = null;  // backlink opps
 window._autoSeoGenLoading = false;
 window._autoSeoSchedule = { frequency: 'monthly', count: 30, tone: 'professional', wordCount: 1200 };
 
+// Helper — returns best available domain/industry without requiring a full analysis
+function _autoSeoContext() {
+  if (analysisData) return { domain: analysisData.domain, industry: analysisData.industry || 'General', comps: (analysisData.competitors||[]).map(c=>c.name||c.domain||'').filter(Boolean) };
+  const stored = window._autoSeoDomain || '';
+  const inp = document.getElementById('websiteInput')?.value?.trim().replace(/https?:\/\//,'').replace(/www\./,'').replace(/\//,'') || '';
+  const domain = stored || inp || '';
+  return { domain, industry: window._autoSeoIndustry || 'General', comps: [] };
+}
+
 function buildAutoSEO() {
   const wrap = document.getElementById('autoseoWrap');
   if (!wrap) return;
+  const ctx = _autoSeoContext();
   const d = analysisData;
-  const domain    = d ? d.domain : 'yourdomain.com';
-  const industry  = d ? (d.industry || 'General') : 'General';
+  const domain    = ctx.domain || 'yourdomain.com';
+  const industry  = ctx.industry;
   const tab       = window._autoSeoTab || 'calendar';
-  const comps     = d ? (d.competitors||[]).map(c=>c.name||c.domain||'').filter(Boolean) : [];
+  const comps     = ctx.comps;
   const sch       = window._autoSeoSchedule;
+  const needsSetup = !analysisData && !window._autoSeoDomain;
 
   // ── WordPress connection badge ──
   const wpConnected = !!(window._wpCreds && window._wpCreds.siteUrl && window._wpCreds.appPassword);
@@ -16852,6 +16863,20 @@ function buildAutoSEO() {
   ];
 
   wrap.innerHTML = `
+${needsSetup ? `
+<!-- Domain setup banner -->
+<div style="background:linear-gradient(135deg,#EFF6FF,#F5F3FF);border:1.5px solid #C7D2FE;border-radius:14px;padding:18px 22px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+  <div style="font-size:1.6rem">🌐</div>
+  <div style="flex:1;min-width:200px">
+    <div style="font-size:0.88rem;font-weight:800;color:#3730A3;margin-bottom:2px">Enter your website to get started</div>
+    <div style="font-size:0.75rem;color:#6B7280">AutoSEO Pro works best after running a full analysis, but you can start here with just your domain.</div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap">
+    <input id="autoseo-domain-inp" placeholder="yourdomain.com" value="${domain !== 'yourdomain.com' ? domain : ''}" style="padding:9px 14px;border:1.5px solid #C7D2FE;border-radius:9px;font-size:0.82rem;width:200px;outline:none;background:white" onkeydown="if(event.key==='Enter')saveAutoSeoDomain()">
+    <input id="autoseo-industry-inp" placeholder="Industry (e.g. Fintech)" value="${window._autoSeoIndustry||''}" style="padding:9px 14px;border:1.5px solid #C7D2FE;border-radius:9px;font-size:0.82rem;width:160px;outline:none;background:white" onkeydown="if(event.key==='Enter')saveAutoSeoDomain()">
+    <button onclick="saveAutoSeoDomain()" style="padding:9px 18px;background:linear-gradient(135deg,#4F46E5,#6D28D9);border:none;border-radius:9px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer">Set Domain →</button>
+  </div>
+</div>` : ''}
 <!-- Stats row -->
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px">
   ${[
@@ -17136,20 +17161,35 @@ function renderAutoSeoSettings(sch) {
 }
 
 // ─── Action Functions ─────────────────────────────────────────────────────────
+function saveAutoSeoDomain() {
+  const domInp = document.getElementById('autoseo-domain-inp');
+  const indInp = document.getElementById('autoseo-industry-inp');
+  const dom = domInp?.value?.trim().replace(/https?:\/\//,'').replace(/www\./,'').replace(/\//,'') || '';
+  if (!dom) { showToast('⚠️ Please enter your domain'); domInp?.focus(); return; }
+  window._autoSeoDomain   = dom;
+  window._autoSeoIndustry = indInp?.value?.trim() || 'General';
+  showToast(`✅ Domain set to ${dom}`);
+  buildAutoSEO();
+}
+
 async function generateArticleTopics() {
-  if (!analysisData) { showToast('⚠️ Run an analysis first'); return; }
+  const ctx = _autoSeoContext();
+  if (!ctx.domain) {
+    showToast('⚠️ Enter your domain in the field above first');
+    document.getElementById('autoseo-domain-inp')?.focus();
+    return;
+  }
   const btn = document.getElementById('gen-topics-btn');
   const icon = document.getElementById('gen-topics-icon');
   const lbl  = document.getElementById('gen-topics-label');
   if (btn) { btn.disabled = true; if(icon) icon.textContent = '⏳'; if(lbl) lbl.textContent = 'Generating…'; }
-  const sch  = window._autoSeoSchedule;
-  const d    = analysisData;
-  const comps = (d.competitors||[]).map(c=>c.name||c.domain||'').filter(Boolean);
+  const sch   = window._autoSeoSchedule;
+  const comps = ctx.comps;
   try {
     const resp = await fetch('/api/generate-article-topics', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain: d.domain, industry: d.industry||'General', competitors: comps, count: sch.count, tone: sch.tone })
+      body: JSON.stringify({ domain: ctx.domain, industry: ctx.industry, competitors: comps, count: sch.count, tone: sch.tone })
     });
     const data = await resp.json();
     if (data.topics && data.topics.length) {
@@ -17252,16 +17292,16 @@ function previewGeneratedArticle(idx) {
 }
 
 async function loadBacklinkOpps() {
+  const ctx = _autoSeoContext();
+  if (!ctx.domain) { showToast('⚠️ Enter your domain in the field above first'); document.getElementById('autoseo-domain-inp')?.focus(); return; }
   const btn = document.getElementById('bl-opps-btn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Analysing…'; }
-  const d = analysisData || {};
-  const comps = (d.competitors||[]).map(c=>c.name||c.domain||'').filter(Boolean);
-  const kws   = (window._autoSeoKeywords||[]).slice(0,5).map(k=>k.keyword);
+  const kws = (window._autoSeoKeywords||[]).slice(0,5).map(k=>k.keyword);
   try {
     const resp = await fetch('/api/backlink-opportunities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain: d.domain||'yourdomain.com', industry: d.industry||'General', competitors: comps, keywords: kws })
+      body: JSON.stringify({ domain: ctx.domain, industry: ctx.industry, competitors: ctx.comps, keywords: kws })
     });
     const data = await resp.json();
     window._autoSeoBacklinks = data.opportunities || [];
@@ -17274,16 +17314,16 @@ async function loadBacklinkOpps() {
 }
 
 async function loadKeywordResearch() {
+  const ctx = _autoSeoContext();
+  if (!ctx.domain) { showToast('⚠️ Enter your domain in the field above first'); document.getElementById('autoseo-domain-inp')?.focus(); return; }
   const btn = document.getElementById('kw-btn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Researching…'; }
-  const d    = analysisData || {};
   const seed = document.getElementById('kw-seed')?.value?.trim() || '';
-  const comps = (d.competitors||[]).map(c=>c.name||c.domain||'').filter(Boolean);
   try {
     const resp = await fetch('/api/keyword-research', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain: d.domain||'yourdomain.com', industry: d.industry||'General', seedKeyword: seed, competitors: comps })
+      body: JSON.stringify({ domain: ctx.domain, industry: ctx.industry, seedKeyword: seed, competitors: ctx.comps })
     });
     const data = await resp.json();
     window._autoSeoKeywords = data.keywords || [];
