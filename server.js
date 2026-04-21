@@ -2796,6 +2796,71 @@ ${loaded.map((f,i) => `
   res.send(html);
 });
 
+// ── Generate Landing Page ─────────────────────────────────────────────────────
+app.post('/api/landing-page', async (req, res) => {
+  try {
+    const {
+      campName = 'Campaign', platform = 'Google Ads', description = '',
+      tags = [], domain = 'yourdomain.com', industry = 'your industry',
+      headlines = [], descriptions = [], budget = '$2,000/mo',
+      compName = '', brandColor = '#0066FF'
+    } = req.body;
+
+    const h1 = headlines[0] || campName;
+    const h2 = headlines[1] || `The smarter choice in ${industry}`;
+    const h3 = headlines[2] || 'Start for free — results in 7 days';
+    const d1 = descriptions[0] || description || `Outperform ${compName || 'competitors'} and win more customers.`;
+    const d2 = descriptions[1] || `Join thousands of ${industry} businesses growing with smarter campaigns.`;
+    const tagList = tags.slice(0, 5).join(', ') || industry;
+
+    const prompt = `You are an expert conversion-rate-optimised landing page developer.
+Generate a complete, self-contained HTML landing page for a ${platform} campaign.
+
+Campaign: ${campName}
+Domain: ${domain}
+Industry: ${industry}
+Headline 1: ${h1}
+Headline 2: ${h2}
+Headline 3: ${h3}
+Description 1: ${d1}
+Description 2: ${d2}
+Key themes: ${tagList}
+Budget: ${budget}
+${compName ? `Competitor being targeted: ${compName}` : ''}
+
+Requirements:
+- Complete single-file HTML with embedded CSS and JS
+- Modern, professional design with color scheme based on ${brandColor}
+- Hero section with the H1, H2 headlines and a strong CTA button
+- Benefits section (3 cards) derived from the campaign themes
+- Social proof / trust section with 2–3 testimonial-style quotes
+- Simple lead capture form (name, email, CTA button)
+- Footer with domain name
+- Mobile responsive
+- Fast-loading (no external dependencies except Google Fonts)
+- Include conversion tracking placeholder comments
+- The page should feel premium and directly speak to the campaign messaging
+
+Return ONLY the complete HTML — no markdown, no explanation, just the raw HTML starting with <!DOCTYPE html>.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4000,
+      temperature: 0.7
+    });
+
+    let html = completion.choices[0]?.message?.content || '';
+    // Strip any accidental markdown fences
+    html = html.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+
+    res.json({ html, campName, domain });
+  } catch (err) {
+    console.error('Landing page generation error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Catch-all → SPA ──────────────────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));

@@ -219,6 +219,118 @@ window._igCreative = function(idx) {
   }
 };
 
+// ===== LANDING PAGE GENERATOR =====
+window._currentLandingPageHTML = null;
+window._currentLandingPageCamp = null;
+
+window._igLandingPage = function(idx) {
+  if ((!window._lastCampRecs || !window._lastCampRecs[idx]) && window.analysisData) {
+    try { buildCampaigns(); } catch(e) {}
+  }
+  const camp = window._lastCampRecs && window._lastCampRecs[idx];
+  if (!camp) { showToast('⚠️ Run an analysis first'); navigateTo('home'); return; }
+  generateLandingPageForCamp(camp);
+};
+
+window._igLandingPageFromModal = function() {
+  const camp = window._currentModalCamp;
+  if (!camp) { showToast('⚠️ No campaign data — open a campaign card first'); return; }
+  // Pull any edited headlines/descriptions from the modal inputs
+  const hlInputs  = [...document.querySelectorAll('.lm-headline')].map(i => i.value).filter(Boolean);
+  const dInputs   = [...document.querySelectorAll('.lm-desc')].map(i => i.value).filter(Boolean);
+  const campCopy  = Object.assign({}, camp,
+    hlInputs.length  ? { _modalHeadlines: hlInputs }  : {},
+    dInputs.length   ? { _modalDescs: dInputs }       : {}
+  );
+  generateLandingPageForCamp(campCopy);
+};
+
+function generateLandingPageForCamp(camp) {
+  const modal = document.getElementById('landingPageModal');
+  if (!modal) return;
+
+  // Show modal in loading state
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  document.getElementById('lp-loading').style.display  = 'flex';
+  document.getElementById('lp-preview-frame').style.display = 'none';
+  document.getElementById('lp-error').style.display    = 'none';
+  document.getElementById('lp-download-btn').style.display = 'none';
+  document.getElementById('lp-copy-btn').style.display     = 'none';
+  document.getElementById('lp-subtitle').textContent = 'GPT-4o — generating your campaign landing page…';
+  window._currentLandingPageHTML = null;
+  window._currentLandingPageCamp = camp;
+
+  const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
+  const industry = analysisData?.industry?.name || 'your industry';
+  const compName = analysisData?.competitors?.[0]?.name || '';
+  const headlines   = camp._modalHeadlines || (camp.adCopy?.map(a=>a.headline).filter(Boolean)) || [];
+  const descriptions = camp._modalDescs   || (camp.adCopy?.map(a=>a.body).filter(Boolean))      || [];
+
+  fetch('/api/landing-page', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      campName:     camp.name,
+      platform:     camp.platform,
+      description:  camp.description,
+      tags:         camp.tags || [],
+      domain, industry, compName,
+      headlines, descriptions,
+      budget:       camp.budget || '$2,000/mo',
+      brandColor:   '#0066FF'
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.html) throw new Error(data.error || 'No HTML returned');
+    window._currentLandingPageHTML = data.html;
+
+    const frame = document.getElementById('lp-preview-frame');
+    frame.srcdoc = data.html;
+    document.getElementById('lp-loading').style.display  = 'none';
+    frame.style.display = 'block';
+    document.getElementById('lp-download-btn').style.display = 'inline-flex';
+    document.getElementById('lp-copy-btn').style.display     = 'inline-flex';
+    document.getElementById('lp-subtitle').textContent = `Landing page for "${camp.name}" — ready to use`;
+  })
+  .catch(err => {
+    document.getElementById('lp-loading').style.display  = 'none';
+    const errEl = document.getElementById('lp-error');
+    errEl.style.display = 'flex';
+    document.getElementById('lp-error-msg').textContent = err.message;
+  });
+}
+
+window.closeLandingPageModal = function() {
+  const modal = document.getElementById('landingPageModal');
+  if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
+  const frame = document.getElementById('lp-preview-frame');
+  if (frame) { frame.srcdoc = ''; frame.style.display = 'none'; }
+};
+
+window.downloadLandingPage = function() {
+  if (!window._currentLandingPageHTML) return;
+  const camp = window._currentLandingPageCamp;
+  const fname = (camp?.name || 'landing-page').replace(/[^a-z0-9]+/gi,'-').toLowerCase() + '.html';
+  const blob = new Blob([window._currentLandingPageHTML], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = fname;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('✅ Landing page downloaded as ' + fname);
+};
+
+window.copyLandingPageHTML = function() {
+  if (!window._currentLandingPageHTML) return;
+  navigator.clipboard.writeText(window._currentLandingPageHTML).then(() => {
+    const btn = document.getElementById('lp-copy-btn');
+    if (btn) { const old = btn.textContent; btn.textContent = '✅ Copied!'; setTimeout(() => btn.textContent = old, 2000); }
+    showToast('✅ HTML copied to clipboard');
+  }).catch(() => showToast('⚠️ Clipboard access denied'));
+};
+
 // ===== LEGACY CAMPAIGN CARD BUTTON HANDLERS =====
 window.launchCamp = function(btn) {
   try {
@@ -328,6 +440,7 @@ window.launchABTest = function() {
 };
 
 function buildLaunchModal(camp, idx) {
+  window._currentModalCamp = camp; // stored so "Generate Landing Page" can use it
   // Bulletproof modal show
   const modal = document.getElementById('campLaunchRichModal');
   const inner = document.getElementById('campLaunchRichModalInner');
@@ -560,9 +673,10 @@ function buildLaunchModal(camp, idx) {
         <div id="lm-checklist" style="display:flex;flex-direction:column;gap:6px"></div>
       </div>
 
-      <div style="display:flex;gap:10px;padding-top:4px">
-        <button id="lm-cancel-btn" style="flex:1;padding:12px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
-        <button id="lm-confirm-btn" style="flex:2;padding:12px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer">🚀 Confirm &amp; Launch Campaign</button>
+      <div style="display:flex;gap:10px;padding-top:4px;flex-wrap:wrap">
+        <button id="lm-cancel-btn" style="flex:1;min-width:100px;padding:12px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
+        <button id="lm-lp-btn" onclick="window._igLandingPageFromModal()" style="flex:1;min-width:140px;padding:12px;background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:10px;font-size:0.82rem;font-weight:700;color:#0066FF;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">🌐 Generate Landing Page</button>
+        <button id="lm-confirm-btn" style="flex:2;min-width:180px;padding:12px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.875rem;font-weight:700;color:white;cursor:pointer">🚀 Confirm &amp; Launch Campaign</button>
       </div>
     </div>
   `;
@@ -3417,6 +3531,7 @@ function buildCampaigns() {
       <div class="camp-card-actions">
         <button class="btn-camp-launch" onclick="window._igLaunch(${idx})" title="Deploy this campaign — sets up targeting, budget and creative, then queues it for review before spending begins.">🚀 Launch this Campaign</button>
         <button class="btn-camp-preview" onclick="window._igCreative(${idx})" title="Open GPT-4o Creative Studio to generate and refine ad copy, headlines and visuals for this campaign.">🎨 Creative Studio</button>
+        <button class="btn-camp-preview" onclick="window._igLandingPage(${idx})" title="Generate a complete AI conversion-optimised landing page for this campaign using GPT-4o." style="background:#EFF6FF;color:#0066FF;border-color:#BFDBFE">🌐 Landing Page</button>
       </div>
     </div>
   `).join('');

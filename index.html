@@ -1139,6 +1139,49 @@
 <!-- GLOBAL STYLED TOOLTIP -->
 <div id="igTip" role="tooltip" aria-hidden="true"></div>
 
+<!-- ══ LANDING PAGE GENERATOR MODAL ══════════════════════════════════════════ -->
+<div id="landingPageModal" class="hidden" style="position:fixed;inset:0;z-index:10999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.72);backdrop-filter:blur(5px);padding:16px">
+  <div style="background:white;border-radius:20px;width:100%;max-width:960px;height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.4)">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <div style="font-size:1rem;font-weight:800;color:white;font-family:'Sora',sans-serif;margin-bottom:2px">🌐 AI Landing Page Generator</div>
+        <div id="lp-subtitle" style="font-size:0.75rem;color:rgba(255,255,255,.55)">GPT-4o — generating your campaign landing page…</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button id="lp-download-btn" onclick="downloadLandingPage()" style="display:none;padding:8px 16px;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.4);border-radius:8px;font-size:0.75rem;font-weight:700;color:#6EE7B7;cursor:pointer">⬇ Download HTML</button>
+        <button id="lp-copy-btn" onclick="copyLandingPageHTML()" style="display:none;padding:8px 16px;background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.4);border-radius:8px;font-size:0.75rem;font-weight:700;color:#A5B4FC;cursor:pointer">📋 Copy HTML</button>
+        <button onclick="closeLandingPageModal()" style="width:32px;height:32px;background:rgba(255,255,255,.1);border:none;border-radius:8px;font-size:1.1rem;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
+      </div>
+    </div>
+    <!-- Loading state -->
+    <div id="lp-loading" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#F8FAFC">
+      <div style="width:48px;height:48px;border:4px solid #E2E8F0;border-top-color:#0066FF;border-radius:50%;animation:spin .8s linear infinite"></div>
+      <div style="font-size:0.9rem;font-weight:700;color:#0A1628">GPT-4o is building your landing page…</div>
+      <div style="font-size:0.78rem;color:#6B7280;max-width:340px;text-align:center">Creating a conversion-optimised page with your campaign headlines, benefits, social proof and lead capture form.</div>
+      <div id="lp-progress-dots" style="display:flex;gap:6px;margin-top:4px">
+        <div style="width:8px;height:8px;background:#0066FF;border-radius:50%;animation:lpDot 1.2s .0s infinite ease-in-out both"></div>
+        <div style="width:8px;height:8px;background:#0066FF;border-radius:50%;animation:lpDot 1.2s .2s infinite ease-in-out both"></div>
+        <div style="width:8px;height:8px;background:#0066FF;border-radius:50%;animation:lpDot 1.2s .4s infinite ease-in-out both"></div>
+      </div>
+    </div>
+    <!-- Preview iframe -->
+    <iframe id="lp-preview-frame" style="display:none;flex:1;border:none;background:white" sandbox="allow-same-origin allow-scripts"></iframe>
+    <!-- Error state -->
+    <div id="lp-error" style="display:none;flex:1;align-items:center;justify-content:center;text-align:center;padding:40px;background:#FFF">
+      <div>
+        <div style="font-size:2rem;margin-bottom:12px">⚠️</div>
+        <div style="font-weight:700;color:#0A1628;margin-bottom:8px">Couldn't generate the landing page</div>
+        <div id="lp-error-msg" style="font-size:0.82rem;color:#6B7280;margin-bottom:20px"></div>
+        <button onclick="closeLandingPageModal()" style="padding:10px 24px;background:#0066FF;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+@keyframes lpDot { 0%,80%,100%{transform:scale(0.5);opacity:.4} 40%{transform:scale(1);opacity:1} }
+</style>
+
 <script src="data.js"></script>
 <script src="app.js"></script>
 </body>
