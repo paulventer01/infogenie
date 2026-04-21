@@ -18915,3 +18915,72 @@ function buildMasterCalendar() {
       '<div style="display:flex;flex-direction:column;gap:8px">' + upcomingHtml + '</div>' +
     '</div>';
 }
+
+/* ============================================================
+   macOS-DOCK MAGNIFICATION  — fisheye scale on neighbouring items
+   driven by horizontal cursor distance, with spring release.
+   ============================================================ */
+(function dockMagnify(){
+  const SELECTORS = '.nav-link, .stab, .tab-btn, .pf-btn, .atp-pill, .sub-tab, .subtab, .creative-tab, .cs-tab, .ich-tab, .kpi-tab, .cal-tab, .module-tab, .dropdown-link';
+  const MAX_SCALE = 1.45;
+  const RANGE     = 160;
+
+  const ease = t => 0.5 - 0.5 * Math.cos(Math.PI * t);
+
+  function attach(container){
+    if (container._dockBound) return;
+    const items = Array.from(container.querySelectorAll(SELECTORS))
+      .filter(el => el.parentElement === container);
+    if (items.length < 2) return;
+    container._dockBound = true;
+
+    const r1 = items[0].getBoundingClientRect();
+    const r2 = items[1].getBoundingClientRect();
+    const isVertical = Math.abs(r2.top - r1.top) > Math.abs(r2.left - r1.left);
+
+    container.addEventListener('mousemove', e => {
+      items.forEach(item => {
+        const r = item.getBoundingClientRect();
+        const c = isVertical ? r.top + r.height/2 : r.left + r.width/2;
+        const p = isVertical ? e.clientY : e.clientX;
+        const t = Math.max(0, 1 - Math.abs(p - c) / RANGE);
+        const s = 1 + (MAX_SCALE - 1) * ease(t);
+        item.style.transform = `scale(${s})`;
+        item.style.zIndex    = s > 1.05 ? '5' : '';
+      });
+    });
+
+    container.addEventListener('mouseenter', () => {
+      container.classList.remove('dock-releasing');
+    });
+
+    container.addEventListener('mouseleave', () => {
+      container.classList.add('dock-releasing');
+      items.forEach(item => { item.style.transform = ''; item.style.zIndex = ''; });
+      setTimeout(() => container.classList.remove('dock-releasing'), 600);
+    });
+  }
+
+  function scan(){
+    const parents = new Set();
+    document.querySelectorAll(SELECTORS).forEach(el => {
+      const p = el.parentElement;
+      if (!p) return;
+      const siblings = Array.from(p.children).filter(c => c.matches && c.matches(SELECTORS));
+      if (siblings.length >= 2) parents.add(p);
+    });
+    parents.forEach(attach);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', scan);
+  } else {
+    scan();
+  }
+  // Re-scan as views render dynamically (debounced)
+  let _t = null;
+  new MutationObserver(() => {
+    if (_t) return;
+    _t = setTimeout(() => { _t = null; scan(); }, 150);
+  }).observe(document.body, { childList: true, subtree: true });
+})();

@@ -6018,7 +6018,9 @@ h1, h2, h3,
   will-change: transform;
 }
 
-/* ── Tabs / sub-tabs / nav-links — same spring magnification ── */
+/* ── Tabs / sub-tabs / nav-links — dock magnification ──
+   Quick follow during mousemove (0.12s linear),
+   then spring-back on mouseleave (handled via .dock-releasing class) */
 .nav-link,
 .stab,
 .tab-btn,
@@ -6036,45 +6038,36 @@ h1, h2, h3,
 .dropdown-link {
   transform-origin: center center;
   transition:
-    transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+    transform 0.12s linear,
     color      0.2s ease,
     background 0.2s ease,
     box-shadow 0.25s ease,
-    text-shadow 0.2s ease !important;
+    text-shadow 0.2s ease;
   will-change: transform;
 }
 
-.nav-link:hover,
-.dropdown-link:hover {
-  transform: scale(1.08);
-  text-shadow: 0 2px 10px rgba(0,201,200,.35);
-  z-index: 2;
-}
-
-.stab:hover,
-.tab-btn:hover,
-.pf-btn:hover,
-.atp-pill:hover,
-.sub-tab:hover,
-.subtab:hover,
-.creative-tab:hover,
-.cs-tab:hover,
-.ich-tab:hover,
-.kpi-tab:hover,
-.cal-tab:hover,
-.module-tab:hover,
-.tab:hover {
-  transform: scale(1.1);
-  box-shadow: 0 4px 14px rgba(0,201,200,.25), 0 2px 6px rgba(0,102,255,.15);
-  z-index: 2;
-}
-
-/* Active tabs lift slightly less so they don't overlap their neighbours */
-.nav-link.active:hover,
-.stab.active:hover,
-.tab-btn.active:hover,
-.pf-btn.active:hover {
-  transform: scale(1.05);
+/* On release: spring back with overshoot */
+.dock-releasing .nav-link,
+.dock-releasing .stab,
+.dock-releasing .tab-btn,
+.dock-releasing .pf-btn,
+.dock-releasing .atp-pill,
+.dock-releasing .sub-tab,
+.dock-releasing .subtab,
+.dock-releasing .creative-tab,
+.dock-releasing .cs-tab,
+.dock-releasing .ich-tab,
+.dock-releasing .kpi-tab,
+.dock-releasing .cal-tab,
+.dock-releasing .module-tab,
+.dock-releasing .tab,
+.dock-releasing .dropdown-link {
+  transition:
+    transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1),
+    color      0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.25s ease,
+    text-shadow 0.2s ease;
 }
 
 /* Light mode: warmer glow */
