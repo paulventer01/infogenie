@@ -5686,3 +5686,185 @@ p, span, label, td, li {
   border-color: rgba(0,102,255,.5);
   color: white;
 }
+
+/* ============================================================
+   THEME TOGGLE BUTTON
+   ============================================================ */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background .2s, border-color .2s, transform .15s;
+  flex-shrink: 0;
+}
+.theme-toggle:hover {
+  background: rgba(0,201,200,.15);
+  border-color: rgba(0,201,200,.4);
+  transform: scale(1.08);
+}
+.theme-toggle .theme-icon-light { display: none; }
+.theme-toggle .theme-icon-dark  { display: inline; }
+
+/* ============================================================
+   LIGHT MODE — [data-theme="light"] on <html>
+   Transitions for all themed properties
+   ============================================================ */
+
+[data-theme="light"] .theme-toggle .theme-icon-dark  { display: none; }
+[data-theme="light"] .theme-toggle .theme-icon-light { display: inline; }
+
+[data-theme="light"] .theme-toggle {
+  background: rgba(0,0,0,.06);
+  border-color: rgba(0,0,0,.12);
+}
+[data-theme="light"] .theme-toggle:hover {
+  background: rgba(0,102,255,.1);
+  border-color: rgba(0,102,255,.35);
+}
+
+/* Body + page background */
+[data-theme="light"] body {
+  background: #EFF3F9;
+  color: #0A1628;
+}
+
+/* Navbar */
+[data-theme="light"] .navbar {
+  background: rgba(255,255,255,.98) !important;
+  border-bottom: 1px solid #E2E8F0 !important;
+  box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.06) !important;
+}
+[data-theme="light"] .navbar::after {
+  background: linear-gradient(90deg, transparent 0%, rgba(0,102,255,.25) 30%, rgba(0,201,200,.4) 50%, rgba(0,102,255,.25) 70%, transparent 100%) !important;
+}
+[data-theme="light"] .nav-top-row {
+  border-bottom: 1px solid #E8EDF4 !important;
+}
+[data-theme="light"] .nav-group-btn {
+  color: #334155 !important;
+}
+[data-theme="light"] .nav-group-btn:hover,
+[data-theme="light"] .nav-group-btn.active {
+  background: rgba(0,102,255,.07) !important;
+  color: #0066FF !important;
+}
+[data-theme="light"] .ngb-label { color: #334155 !important; }
+[data-theme="light"] .ngb-chevron { color: #94A3B8 !important; }
+[data-theme="light"] .ngb-icon  { color: #64748B !important; }
+[data-theme="light"] .nav-dropdown {
+  background: white !important;
+  border: 1px solid #E2E8F0 !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,.12) !important;
+}
+[data-theme="light"] .nav-drop-header { color: #94A3B8 !important; }
+[data-theme="light"] .nav-link { color: #374151 !important; }
+[data-theme="light"] .nav-link:hover { background: #F1F5F9 !important; color: #0066FF !important; }
+[data-theme="light"] .nav-plan-badge {
+  background: linear-gradient(135deg, #0066FF, #00C9C8) !important;
+  color: white !important;
+}
+
+/* Nav scroll fade — match new bg */
+[data-theme="light"] .nav-scroll-wrap::after {
+  background: linear-gradient(to right, transparent, #EFF3F9) !important;
+}
+[data-theme="light"] .nav-scroll-wrap::before {
+  background: linear-gradient(to left, transparent, #EFF3F9) !important;
+}
+[data-theme="light"] .nav-groups {
+  background: rgba(255,255,255,.98) !important;
+}
+[data-theme="light"] .nav-scroll {
+  background: transparent !important;
+}
+[data-theme="light"] .nav-group-sep { background: #E2E8F0 !important; }
+
+/* Hero section */
+[data-theme="light"] .hero {
+  background: linear-gradient(135deg, #EFF3F9 0%, #E8F0FE 40%, #EDF9F9 100%) !important;
+}
+[data-theme="light"] .hero .orb-1 { opacity: 0.12 !important; }
+[data-theme="light"] .hero .orb-2 { opacity: 0.12 !important; }
+[data-theme="light"] .hero .orb-3 { opacity: 0.08 !important; }
+[data-theme="light"] .grid-overlay {
+  background-image:
+    linear-gradient(rgba(0,0,0,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,.03) 1px, transparent 1px) !important;
+}
+[data-theme="light"] .hero-badge {
+  background: rgba(0,102,255,.07) !important;
+  border-color: rgba(0,102,255,.2) !important;
+  color: #0055CC !important;
+}
+[data-theme="light"] .hero-title { color: #0A1628 !important; }
+[data-theme="light"] .hero-subtitle { color: #475569 !important; }
+[data-theme="light"] .hero-stat { border-color: rgba(0,0,0,.1) !important; }
+[data-theme="light"] .hero-stat-num { color: #0A1628 !important; }
+[data-theme="light"] .hero-stat-label { color: #64748B !important; }
+
+/* View headers (section banners) */
+[data-theme="light"] .view-header {
+  background: linear-gradient(135deg, #E8EDF5 0%, #EEF3FB 60%, #EDF9F9 100%) !important;
+  border-bottom: 1px solid #D1D9E6 !important;
+}
+[data-theme="light"] .view-header::before {
+  background: radial-gradient(circle, rgba(0,102,255,.06), transparent 70%) !important;
+}
+[data-theme="light"] .view-header::after {
+  background: linear-gradient(90deg, transparent, rgba(0,102,255,.2) 40%, rgba(0,201,200,.3) 50%, rgba(0,102,255,.2) 60%, transparent) !important;
+}
+[data-theme="light"] .view-title { color: #0A1628 !important; }
+[data-theme="light"] .view-sub   { color: #64748B !important; }
+[data-theme="light"] .breadcrumb { color: #0066FF !important; }
+[data-theme="light"] .atag {
+  background: rgba(0,0,0,.05) !important;
+  border-color: rgba(0,0,0,.1) !important;
+  color: #374151 !important;
+}
+
+/* URL input bar on homepage */
+[data-theme="light"] .url-box {
+  background: white !important;
+  border-color: #D1D9E6 !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,.08) !important;
+}
+[data-theme="light"] .url-input { color: #0A1628 !important; background: transparent !important; }
+[data-theme="light"] .url-input::placeholder { color: #94A3B8 !important; }
+[data-theme="light"] .url-scheme { color: #94A3B8 !important; background: transparent !important; border-color: #E2E8F0 !important; }
+[data-theme="light"] .hint-box {
+  background: rgba(0,0,0,.03) !important;
+  border-top-color: #E2E8F0 !important;
+}
+
+/* General card surfaces (light panels already look great — just ensure bg is right) */
+[data-theme="light"] .comp-card,
+[data-theme="light"] .camp-card,
+[data-theme="light"] .creative-card {
+  background: white !important;
+  border-color: #E2E8F0 !important;
+}
+
+/* btn-nav-analyse stays bright */
+[data-theme="light"] .btn-nav-analyse {
+  background: linear-gradient(135deg,#0066FF,#00C9C8) !important;
+  color: white !important;
+}
+
+/* Smooth transition on all key elements */
+body,
+.navbar,
+.hero,
+.view-header,
+.url-box,
+.comp-card,
+.camp-card,
+.creative-card {
+  transition: background .35s ease, color .25s ease, border-color .25s ease, box-shadow .25s ease;
+}
