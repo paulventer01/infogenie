@@ -6584,3 +6584,17 @@ h3:hover {
 [data-theme="light"] .insight-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]) {
   color: inherit;
 }
+
+/* ── Hero — light-mode override (kill dark background bar on home page) ── */
+[data-theme="light"] .hero {
+  background: linear-gradient(180deg, #FFFFFF 0%, #F0F4F8 60%, #E8EDF8 100%) !important;
+}
+[data-theme="light"] .hero::before {
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 20%, rgba(0,201,200,.10) 0%, transparent 65%),
+    radial-gradient(ellipse 40% 50% at 20% 80%, rgba(0,102,255,.08) 0%, transparent 60%),
+    radial-gradient(ellipse 30% 40% at 80% 70%, rgba(124,58,237,.06) 0%, transparent 55%) !important;
+}
+[data-theme="light"] .orb {
+  opacity: 0.12 !important;
+}
