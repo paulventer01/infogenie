@@ -2096,16 +2096,20 @@ async function runAnalysis(url, country, industryOverride) {
     }
   }).catch(() => {});
 
-  // Build all views
-  buildDashboard();
-  buildCompetitors();
-  buildCampaigns();
-  buildAudience();
-  buildCreative();
-  buildIntelligence();
+  // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
+  navigateTo('dashboard');
+  showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
+
+  // Build all views — each wrapped so one failure never blocks the rest
+  try { buildDashboard();    } catch(e) { console.warn('buildDashboard error:', e); }
+  try { buildCompetitors();  } catch(e) { console.warn('buildCompetitors error:', e); }
+  try { buildCampaigns();    } catch(e) { console.warn('buildCampaigns error:', e); }
+  try { buildAudience();     } catch(e) { console.warn('buildAudience error:', e); }
+  try { buildCreative();     } catch(e) { console.warn('buildCreative error:', e); }
+  try { buildIntelligence(); } catch(e) { console.warn('buildIntelligence error:', e); }
   window._bpIdx = 0;
-  try { buildBattlePlan(); } catch(e) { console.warn('buildBattlePlan error:', e); }
-  
+  try { buildBattlePlan();   } catch(e) { console.warn('buildBattlePlan error:', e); }
+
   // Log analysis actions to results tracker
   if (!window._infoGenieActions) window._infoGenieActions = [];
   const now = new Date();
@@ -2115,10 +2119,6 @@ async function runAnalysis(url, country, industryOverride) {
     { time: now.toLocaleTimeString(), date: now.toLocaleDateString(), action: `Generated AI campaign recommendations for ${cleanUrl}`, type: 'campaigns', impact: `${(window._lastCampRecs || []).length} campaigns ranked by projected ROI` },
     { time: now.toLocaleTimeString(), date: now.toLocaleDateString(), action: `Analysed ${cleanUrl} — industry: ${industry.name}`, type: 'analysis', impact: `${selectedComps.length} competitors identified` }
   );
-
-  // Navigate first so a settings error never blocks the dashboard
-  navigateTo('dashboard');
-  showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
   
   // Build settings after navigation (non-critical)
   try { buildSettings(); } catch(e) { console.warn('Settings build error:', e); }
