@@ -2832,10 +2832,11 @@ Requirements:
 - Complete single-file HTML with embedded CSS and JS
 - Modern, professional design with color scheme based on ${brandColor}
 - Hero section with the H1, H2 headlines and a strong CTA button
+- CRITICAL: Every CTA button and link must use href="https://${domain}" — NEVER use href="#" or href="javascript:void(0)"
 - Benefits section (3 cards) derived from the campaign themes
 - Social proof / trust section with 2–3 testimonial-style quotes
-- Simple lead capture form (name, email, CTA button)
-- Footer with domain name
+- Simple lead capture form (name, email, CTA button that links to https://${domain})
+- Footer with domain name linked to https://${domain}
 - Mobile responsive
 - Fast-loading (no external dependencies except Google Fonts)
 - Include conversion tracking placeholder comments
@@ -2853,6 +2854,15 @@ Return ONLY the complete HTML — no markdown, no explanation, just the raw HTML
     let html = completion.choices[0]?.message?.content || '';
     // Strip any accidental markdown fences
     html = html.replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+
+    // Post-process: replace all placeholder hrefs with the real domain URL
+    const domainUrl = domain.startsWith('http') ? domain : `https://${domain}`;
+    html = html.replace(/href=["']#["']/g, `href="${domainUrl}" target="_blank" rel="noopener"`);
+    html = html.replace(/href=["']javascript:void\(0\)["']/g, `href="${domainUrl}" target="_blank" rel="noopener"`);
+    html = html.replace(/href=["']javascript:;["']/g, `href="${domainUrl}" target="_blank" rel="noopener"`);
+    // Replace form action="#" or action="" with domain URL
+    html = html.replace(/action=["']#["']/g, `action="${domainUrl}"`);
+    html = html.replace(/action=["']["']/g, `action="${domainUrl}"`);
 
     res.json({ html, campName, domain });
   } catch (err) {
