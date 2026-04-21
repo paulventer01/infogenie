@@ -6648,3 +6648,28 @@ h3:hover {
   /* Fallback: ensure no pure-white text remains */
 }
 [data-theme="light"] .ba-stats { color: #4A5670; }
+
+/* ── Home view — kill !important dark bg in light mode ── */
+[data-theme="light"] #view-home {
+  background: linear-gradient(180deg, #FFFFFF 0%, #F0F4F8 100%) !important;
+}
+
+/* ── Platform trust strip — light mode visibility ── */
+[data-theme="light"] .ps-label {
+  color: #4A5670 !important;
+}
+[data-theme="light"] .ps-platform {
+  color: #2A3654 !important;
+}
+[data-theme="light"] .ps-dot {
+  background: rgba(10,22,40,.25) !important;
+}
+/* SVG icons that were filled white need a dark fill in light mode */
+[data-theme="light"] .ps-platform svg[fill="white"] path,
+[data-theme="light"] .ps-platform svg[fill="white"] circle {
+  fill: #1A2845 !important;
+}
+[data-theme="light"] .ps-platform svg[fill="white"] path[stroke="white"],
+[data-theme="light"] .ps-platform svg path[stroke="white"] {
+  stroke: #1A2845 !important;
+}
