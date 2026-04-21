@@ -6673,3 +6673,23 @@ h3:hover {
 [data-theme="light"] .ps-platform svg path[stroke="white"] {
   stroke: #1A2845 !important;
 }
+
+/* ── Enterprise pricing card — light mode: features list visibility (was white-on-white) ── */
+[data-theme="light"] .price-enterprise .price-features li {
+  color: #2A3654 !important;
+}
+[data-theme="light"] .price-enterprise .price-amount {
+  color: #0A1628 !important;
+}
+[data-theme="light"] .price-enterprise .price-amount span {
+  color: rgba(10,22,40,.55) !important;
+}
+[data-theme="light"] .price-enterprise .price-desc {
+  color: #5A6B85 !important;
+}
+[data-theme="light"] .price-enterprise .price-name {
+  color: #008B8A !important;
+}
+[data-theme="light"] .price-enterprise .pf-check {
+  color: #00C9C8 !important;
+}
