@@ -16825,7 +16825,9 @@ window._autoSeoArticles = null;   // generated article topics
 window._autoSeoKeywords = null;   // researched keywords
 window._autoSeoBacklinks = null;  // backlink opps
 window._autoSeoGenLoading = false;
-window._autoSeoSchedule = { frequency: 'monthly', count: 30, tone: 'professional', wordCount: 1200 };
+const _today = new Date().toISOString().split('T')[0];
+const _nextMonth = new Date(Date.now()+30*24*60*60*1000).toISOString().split('T')[0];
+window._autoSeoSchedule = { frequency: 'monthly', count: 30, tone: 'professional', wordCount: 1200, startDate: _today, endDate: _nextMonth };
 
 // Helper — returns best available domain/industry without requiring a full analysis
 function _autoSeoContext() {
@@ -16933,15 +16935,32 @@ function renderAutoSeoCalendar(domain, industry, comps, sch) {
       <div style="font-size:1rem;font-weight:800;color:#111827">📅 Monthly Content Calendar</div>
       <div style="font-size:0.75rem;color:#6B7280;margin-top:2px">${sch.count} SEO-optimised articles for <strong>${domain}</strong> in the <strong>${industry}</strong> niche</div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center">
-      ${articles ? `<button onclick="publishAllToWordPress()" ${!wpOk?'disabled title="Connect WordPress first"':''} style="padding:9px 16px;background:${wpOk?'linear-gradient(135deg,#2563EB,#1D4ED8)':'#E5E7EB'};border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:${wpOk?'white':'#9CA3AF'};cursor:${wpOk?'pointer':'not-allowed'}">🟦 Publish All to WP</button>` : ''}
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      ${articles ? `<button onclick="addAllGeneratedToSocialCalendar()" style="padding:9px 14px;background:linear-gradient(135deg,#7C3AED,#5B21B6);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">📲 Add All to Social</button>` : ''}
+      ${articles ? `<button onclick="publishAllToWordPress()" ${!wpOk?'disabled title="Connect WordPress first"':''} style="padding:9px 14px;background:${wpOk?'linear-gradient(135deg,#2563EB,#1D4ED8)':'#E5E7EB'};border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:${wpOk?'white':'#9CA3AF'};cursor:${wpOk?'pointer':'not-allowed'}">🟦 Publish All to WP</button>` : ''}
       <button onclick="generateArticleTopics()" id="gen-topics-btn" style="padding:9px 18px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer;display:flex;align-items:center;gap:6px">
         <span id="gen-topics-icon">✨</span> <span id="gen-topics-label">${articles ? 'Regenerate Topics' : 'Generate ' + sch.count + ' Article Topics'}</span>
       </button>
     </div>
   </div>
+  <!-- Date Range Row -->
+  <div style="padding:14px 24px;background:#F9FAFB;border-bottom:1.5px solid #F3F4F6;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <span style="font-size:0.75rem;font-weight:700;color:#374151;white-space:nowrap">📆 Publishing Schedule:</span>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <label style="font-size:0.72rem;font-weight:600;color:#6B7280">Start Date
+        <input type="date" id="seo-start-date" value="${sch.startDate}" onchange="window._autoSeoSchedule.startDate=this.value;buildAutoSEO()"
+          style="display:block;margin-top:3px;padding:6px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.78rem;outline:none;background:white">
+      </label>
+      <span style="font-size:0.9rem;color:#9CA3AF;margin-top:16px">→</span>
+      <label style="font-size:0.72rem;font-weight:600;color:#6B7280">End Date
+        <input type="date" id="seo-end-date" value="${sch.endDate}" onchange="window._autoSeoSchedule.endDate=this.value;buildAutoSEO()"
+          style="display:block;margin-top:3px;padding:6px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.78rem;outline:none;background:white">
+      </label>
+    </div>
+    ${articles ? `<span style="font-size:0.72rem;color:#6B7280;margin-left:4px">Articles auto-spread across date range · 1 article every ${_artInterval(sch)} day(s)</span>` : ''}
+  </div>
   <div id="calendar-content" style="padding:20px 24px">
-    ${articles ? renderArticleGrid(articles, wpOk) : renderCalendarEmpty(sch.count)}
+    ${articles ? renderArticleGrid(articles, wpOk, sch) : renderCalendarEmpty(sch.count)}
   </div>
 </div>`;
 }
@@ -16956,30 +16975,74 @@ function renderCalendarEmpty(count) {
 </div>`;
 }
 
-function renderArticleGrid(articles, wpOk) {
+// Compute how many days apart articles should be published
+function _artInterval(sch) {
+  const s = new Date(sch.startDate || new Date());
+  const e = new Date(sch.endDate   || new Date(Date.now()+30*24*60*60*1000));
+  const totalDays = Math.max(1, Math.round((e - s) / (1000*60*60*24)));
+  const count = window._autoSeoArticles?.length || sch.count || 30;
+  return Math.max(1, Math.round(totalDays / count));
+}
+
+// Compute the scheduled publish date for article index i
+function _artDate(i, sch) {
+  const s        = new Date(sch.startDate || new Date());
+  const interval = _artInterval(sch);
+  const d        = new Date(s.getTime() + i * interval * 24*60*60*1000);
+  return d.toISOString().split('T')[0];
+}
+
+function _fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+}
+
+function renderArticleGrid(articles, wpOk, sch) {
+  sch = sch || window._autoSeoSchedule;
   const weeks = [[], [], [], []];
   articles.forEach((a, i) => weeks[Math.floor(i / Math.ceil(articles.length / 4))].push({ ...a, idx: i }));
+
+  // Compute week date labels
+  const weekStarts = [0,1,2,3].map(wi => {
+    const firstInWeek = wi * Math.ceil(articles.length / 4);
+    return _artDate(firstInWeek, sch);
+  });
+  const weekEnds = [0,1,2,3].map(wi => {
+    const lastInWeek = Math.min(articles.length - 1, (wi + 1) * Math.ceil(articles.length / 4) - 1);
+    return _artDate(lastInWeek, sch);
+  });
+
   return weeks.filter(w => w.length).map((week, wi) => `
 <div style="margin-bottom:20px">
-  <div style="font-size:0.72rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Week ${wi + 1}</div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <span style="font-size:0.72rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">Week ${wi + 1}</span>
+    <span style="font-size:0.68rem;color:#9CA3AF;font-weight:600">${_fmtDate(weekStarts[wi])} — ${_fmtDate(weekEnds[wi])}</span>
+  </div>
   <div style="display:grid;gap:10px">
-    ${week.map(a => `
-    <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1.5px solid #E5E7EB;border-radius:12px;background:#FAFAFA;hover:background:#F3F4F6">
+    ${week.map(a => {
+      const pubDate = _artDate(a.idx, sch);
+      const alreadyInSocial = (window._socialPosts||[]).some(p => p.sourceArticleIdx === a.idx);
+      return `
+    <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1.5px solid #E5E7EB;border-radius:12px;background:#FAFAFA">
       <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:${a.status === 'published' ? '#059669' : a.status === 'generated' ? '#0066FF' : '#E5E7EB'};display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:${a.status === 'published' || a.status === 'generated' ? 'white' : '#6B7280'}">${a.idx + 1}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:0.85rem;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.title}</div>
-        <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+        <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap;align-items:center">
           <span style="font-size:0.66rem;padding:2px 7px;background:#EFF6FF;border-radius:4px;color:#1D4ED8;font-weight:600">${a.keyword}</span>
           <span style="font-size:0.66rem;padding:2px 7px;background:#F5F3FF;border-radius:4px;color:#6D28D9;font-weight:600">${a.intent || 'Informational'}</span>
-          <span style="font-size:0.66rem;padding:2px 7px;background:${a.status === 'published' ? '#DCFCE7' : a.status === 'generated' ? '#DBEAFE' : '#F3F4F6'};border-radius:4px;color:${a.status === 'published' ? '#059669' : a.status === 'generated' ? '#1D4ED8' : '#6B7280'};font-weight:700">${a.status === 'published' ? '✓ Published' : a.status === 'generated' ? '✓ Generated' : 'Pending'}</span>
+          <span style="font-size:0.66rem;padding:2px 7px;background:${a.status === 'published' ? '#DCFCE7' : a.status === 'generated' ? '#DBEAFE' : '#F3F4F6'};border-radius:4px;color:${a.status === 'published' ? '#059669' : a.status === 'generated' ? '#1D4ED8' : '#6B7280'};font-weight:700">${a.status === 'published' ? '✓ Published' : a.status === 'generated' ? '✓ Written' : 'Pending'}</span>
+          <span style="font-size:0.66rem;padding:2px 7px;background:#FFF7ED;border-radius:4px;color:#C2410C;font-weight:600">📅 ${_fmtDate(pubDate)}</span>
         </div>
       </div>
-      <div style="display:flex;gap:6px;flex-shrink:0">
+      <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
         ${a.status !== 'generated' && a.status !== 'published' ? `<button onclick="generateSingleArticle(${a.idx})" style="padding:5px 10px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:7px;font-size:0.67rem;font-weight:700;color:white;cursor:pointer">✍️ Write</button>` : ''}
-        ${a.status === 'generated' && wpOk ? `<button onclick="publishSingleArticle(${a.idx})" style="padding:5px 10px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:7px;font-size:0.67rem;font-weight:700;color:white;cursor:pointer">🟦 Publish</button>` : ''}
         ${a.generatedHtml ? `<button onclick="previewGeneratedArticle(${a.idx})" style="padding:5px 10px;background:white;border:1px solid #E5E7EB;border-radius:7px;font-size:0.67rem;font-weight:700;color:#374151;cursor:pointer">👁 Preview</button>` : ''}
+        ${a.generatedHtml ? `<button onclick="addArticleToSocialCalendar(${a.idx})" style="padding:5px 10px;background:${alreadyInSocial?'#F0FDF4':'linear-gradient(135deg,#7C3AED,#5B21B6)'};border:${alreadyInSocial?'1px solid #BBF7D0':'none'};border-radius:7px;font-size:0.67rem;font-weight:700;color:${alreadyInSocial?'#059669':'white'};cursor:pointer">${alreadyInSocial?'✓ In Social':'📲 Social'}</button>` : ''}
+        ${a.status === 'generated' && wpOk ? `<button onclick="publishSingleArticle(${a.idx})" style="padding:5px 10px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:7px;font-size:0.67rem;font-weight:700;color:white;cursor:pointer">🟦 Publish</button>` : ''}
       </div>
-    </div>`).join('')}
+    </div>`;
+    }).join('')}
   </div>
 </div>`).join('');
 }
@@ -17387,6 +17450,63 @@ Best regards,
 [Your Name]
 ${ctx.domain||'yourdomain.com'}`;
   navigator.clipboard.writeText(email).then(()=>showToast('📧 Outreach email copied to clipboard!'));
+}
+
+function addArticleToSocialCalendar(idx) {
+  const art = window._autoSeoArticles && window._autoSeoArticles[idx];
+  if (!art) return;
+  const sch     = window._autoSeoSchedule;
+  const pubDate = _artDate(idx, sch);
+  const ctx     = _autoSeoContext();
+  const domain  = ctx.domain || 'yourdomain.com';
+
+  // Build social caption from the article title/keyword
+  const caption = `📝 New Article: "${art.title}"\n\n` +
+    `Looking to learn more about ${art.keyword}? We've just published a comprehensive guide covering everything you need to know.\n\n` +
+    `👉 Read it now at ${domain}\n\n` +
+    `#${(art.keyword||'').replace(/\s+/g,'')} #${ctx.industry.replace(/\s+/g,'')} #SEO #ContentMarketing`;
+
+  if (!window._socialPosts) window._socialPosts = [];
+
+  // Add one post per main platform
+  const platforms = ['Blog / LinkedIn', 'Instagram', 'Twitter / X'];
+  let added = 0;
+  platforms.forEach(platform => {
+    // Avoid duplicate: same article + platform
+    const exists = window._socialPosts.some(p => p.sourceArticleIdx === idx && p.platform === platform);
+    if (!exists) {
+      window._socialPosts.push({
+        id: 'art_' + idx + '_' + platform.replace(/\W+/g,'') + '_' + Date.now(),
+        platform,
+        caption,
+        scheduledDate: pubDate,
+        scheduledTime: '09:00',
+        status: 'scheduled',
+        sourceArticleIdx: idx,
+        sourceArticleTitle: art.title,
+        fileName: null,
+        createdAt: new Date().toLocaleString()
+      });
+      added++;
+    }
+  });
+
+  if (added > 0) {
+    showToast(`📲 Added "${art.title.substring(0,35)}…" to Social Calendar on ${_fmtDate(pubDate)}`);
+    buildAutoSEO();
+  } else {
+    showToast('ℹ️ This article is already in the Social Calendar');
+  }
+}
+
+function addAllGeneratedToSocialCalendar() {
+  const arts = (window._autoSeoArticles||[]).filter(a => a.generatedHtml);
+  if (!arts.length) { showToast('⚠️ Write at least one article first — then add to Social Calendar'); return; }
+  arts.forEach(a => {
+    const idx = window._autoSeoArticles.indexOf(a);
+    addArticleToSocialCalendar(idx);
+  });
+  showToast(`📲 ${arts.length} articles added to Social Calendar!`);
 }
 
 function saveAutoSeoSettings() {
