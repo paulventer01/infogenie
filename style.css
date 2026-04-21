@@ -4198,13 +4198,19 @@ h1, h2, h3 {
 /* ─── Dashboard body 3.0 ─── */
 body.dashboard-active,
 .view:not(#view-home).active {
-  background: #F1F5FB !important;
+  background: #0A1628 !important;
 }
 
 /* ─── View Header 3.0 ─── */
 .view-header {
   background: linear-gradient(135deg, #050D1C 0%, #091628 50%, #0B1E35 100%) !important;
   border-bottom: 1px solid rgba(0,216,215,.12) !important;
+  margin-top: -96px !important;
+  padding-top: calc(96px + 30px) !important;
+}
+.intel-header {
+  margin-top: -96px !important;
+  padding-top: calc(96px + 28px) !important;
 }
 
 .view-title {
