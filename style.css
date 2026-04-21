@@ -6086,10 +6086,14 @@ h1, h2, h3,
 
 /* Elements that are naturally inline or have known fixed context — scale to text width */
 .hero-title,
-.hero-subtitle,
+.hero-subtitle {
+  display: inline-block;
+  width: fit-content;
+  max-width: 100%;
+}
 .view-title,
 .view-sub {
-  display: inline-block;
+  display: block;
   width: fit-content;
   max-width: 100%;
 }
