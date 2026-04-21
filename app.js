@@ -604,7 +604,7 @@ function buildLaunchModal(camp, idx) {
 
   inner.innerHTML = `
     <style>@keyframes spin{to{transform:rotate(360deg)}} @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}</style>
-    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:24px 28px;border-radius:20px 20px 0 0">
+    <div style="background:var(--ig-grad);padding:24px 28px;border-radius:20px 20px 0 0">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <div style="font-size:1rem;font-weight:800;font-family:Sora,sans-serif;color:white">🚀 Campaign Launch Brief</div>
         <span id="lm-ai-badge" style="background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.4);border-radius:6px;padding:3px 10px;font-size:0.68rem;font-weight:700;color:#A5B4FC">${spin}GPT-4 Building Brief...</span>
@@ -918,7 +918,7 @@ function buildLaunchModal(camp, idx) {
         </div>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
           <button id="lm-close-success" style="padding:10px 20px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
-          <button id="lm-view-campaign" style="padding:10px 20px;background:#0A1628;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">👁 View Campaign</button>
+          <button id="lm-view-campaign" style="padding:10px 20px;background:var(--ig-panel);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">👁 View Campaign</button>
           <button id="lm-view-results" style="padding:10px 20px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">📊 View Results →</button>
         </div>
       </div>`;
@@ -1318,7 +1318,7 @@ function buildCreativeModal(camp, idx) {
 
   inner.innerHTML = `
     <style>@keyframes spin{to{transform:rotate(360deg)}} @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}</style>
-    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:22px 26px 0;border-radius:20px 20px 0 0">
+    <div style="background:var(--ig-grad);padding:22px 26px 0;border-radius:20px 20px 0 0">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
         <div>
           <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:4px">🎨 AI Creative Studio</div>
@@ -2006,7 +2006,7 @@ function _injectNextStep(viewId) {
   banner.style.cssText = 'margin:0;padding:18px 0 32px;background:transparent';
   banner.innerHTML = `
     <div style="max-width:1140px;margin:0 auto;padding:0 24px">
-      <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:16px;border:1px solid rgba(0,229,255,.15);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div style="background:var(--ig-grad);border-radius:16px;border:1px solid rgba(0,229,255,.15);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div style="display:flex;align-items:center;gap:12px">
           <span style="font-size:1.4rem">${step.icon}</span>
           <div>
@@ -3022,7 +3022,7 @@ function renderCompetitorCards(comps) {
   }).join('');
 
   const realCompsPanel = `
-    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:14px;padding:18px 20px;margin-bottom:18px;border:1px solid rgba(0,201,200,.2)">
+    <div style="background:var(--ig-grad);border-radius:14px;padding:18px 20px;margin-bottom:18px;border:1px solid rgba(0,201,200,.2)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
         <span style="font-family:Sora,sans-serif;font-size:0.875rem;font-weight:800;color:white">📡 Live Competitor Intelligence</span>
         ${liveCount > 0
@@ -3480,11 +3480,11 @@ function openBLDetail(type, idx) {
 
   const modal = document.createElement('div');
   modal.id = 'blDetailModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.78);backdrop-filter:blur(5px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.style.cssText = 'position:fixed;inset:0;background:var(--ig-rgba70);backdrop-filter:blur(5px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   modal.onclick = e => { if (e.target === modal) closeBLDetail(); };
   modal.innerHTML = `
     <div style="background:white;border-radius:18px;width:100%;max-width:700px;max-height:82vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 28px 90px rgba(0,0,0,.4)">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid #E5E7EB;background:linear-gradient(135deg,#0A1628,#0D2A5E);flex-shrink:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid #E5E7EB;background:var(--ig-grad);flex-shrink:0">
         <div>
           <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white">${title}</div>
           <div style="font-size:0.72rem;color:rgba(255,255,255,.5);margin-top:3px">${isEstimate?'Estimated data based on traffic signals':'Live data · DataForSEO'}</div>
@@ -3694,7 +3694,7 @@ function buildCompCard(c, cardIdx = 0) {
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <button class="btn-view-plan" onclick="openCompPlan('${c.name.replace(/'/g,'').replace(/"/g,'').replace(/\\/g,'')}')" title="Open the detailed strategy plan for outperforming ${c.name}.">View Plan →</button>
-            <button onclick="window._bpIdx=${cardIdx};navigateTo('battleplan')" title="Open the Battle Plan page — a full AI-generated 8-week action plan to capture market share from ${c.name}." style="padding:7px 14px;background:linear-gradient(135deg,#0A1628,#0D2A5E);border:1px solid rgba(0,201,200,.4);border-radius:8px;font-size:0.75rem;font-weight:700;color:#00C9C8;cursor:pointer;white-space:nowrap">⚔️ Battle Plan</button>
+            <button onclick="window._bpIdx=${cardIdx};navigateTo('battleplan')" title="Open the Battle Plan page — a full AI-generated 8-week action plan to capture market share from ${c.name}." style="padding:7px 14px;background:var(--ig-grad);border:1px solid rgba(0,201,200,.4);border-radius:8px;font-size:0.75rem;font-weight:700;color:#00C9C8;cursor:pointer;white-space:nowrap">⚔️ Battle Plan</button>
           </div>
         </div>
       </div>
@@ -4008,7 +4008,7 @@ function buildCampaigns() {
             const hasFiles  = cr.igFile || cr.ttFile || cr.ytFile;
             return `<div id="lc-card-${ci}" style="background:#FAFAFA;border:1px solid #E5E7EB;border-radius:14px;overflow:hidden">
               <!-- Card Header -->
-              <div style="background:linear-gradient(135deg,#0A1628,#0D2140);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+              <div style="background:var(--ig-grad2);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
                 <div>
                   <div style="font-size:0.65rem;font-weight:700;color:#00C9C8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">${platIcon} ${c.platform||'Campaign'}</div>
                   <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white">${c.name||'Campaign'}</div>
@@ -4285,7 +4285,7 @@ function buildAdvertise() {
                 <div style="text-align:center" title="Return on Ad Spend — revenue generated per $1 spent on this campaign. Higher is better."><div style="font-size:1rem;font-weight:800;color:#10B981">${c.metrics?.roas||'—'}×</div><div style="font-size:0.62rem;color:#6B7280">ROAS</div></div>
                 <div style="text-align:center" title="Click-Through Rate — percentage of people who saw your ad and clicked it. Industry average is 2–5%."><div style="font-size:1rem;font-weight:800;color:#0066FF">${c.metrics?.ctr||'—'}</div><div style="font-size:0.62rem;color:#6B7280">CTR</div></div>
                 <span style="background:#10B98122;color:#059669;font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:8px;text-transform:uppercase" title="Current campaign status — Active means ads are running and spending budget.">${c.status||'active'}</span>
-                <button onclick="showToast('⚙️ Optimising — adjusting bids and targeting')" title="Trigger InfoGenie AI to re-optimise bids, budgets, and targeting for this campaign right now." style="padding:5px 12px;background:#0A1628;border:none;border-radius:7px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer">⚡ Optimise</button>
+                <button onclick="showToast('⚙️ Optimising — adjusting bids and targeting')" title="Trigger InfoGenie AI to re-optimise bids, budgets, and targeting for this campaign right now." style="padding:5px 12px;background:var(--ig-panel);border:none;border-radius:7px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer">⚡ Optimise</button>
               </div>
             </div>`).join('')}
         </div>
@@ -4304,7 +4304,7 @@ window.openChannelCampaign = function(platName, platIcon, platColor, platBg) {
   document.getElementById('ch-camp-overlay')?.remove();
   const ov = document.createElement('div');
   ov.id = 'ch-camp-overlay';
-  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.style.cssText = 'position:fixed;inset:0;background:var(--ig-rgba70);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
 
   function stepDot(n) {
     const active = n === currentStep;
@@ -4865,7 +4865,7 @@ window.openBuildContentModal = function(topic, intent) {
     modal.id = 'bcModal';
     document.body.appendChild(modal);
   }
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.82);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.style.cssText = 'position:fixed;inset:0;background:var(--ig-rgba70);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
   const types = [
     { id:'article',    label:'📄 Blog Article',       desc:'Full authoritative article with FAQ' },
     { id:'howto',      label:'🛠️ How-To Guide',        desc:'Step-by-step practical guide' },
@@ -4873,7 +4873,7 @@ window.openBuildContentModal = function(topic, intent) {
     { id:'landing',    label:'🚀 Landing Page',        desc:'High-converting page copy' },
   ];
   modal.innerHTML = `
-    <div style="background:#0A1628;border:1px solid rgba(255,255,255,.1);border-radius:20px;width:100%;max-width:720px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.6)">
+    <div style="background:var(--ig-panel);border:1px solid rgba(255,255,255,.1);border-radius:20px;width:100%;max-width:720px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.6)">
       <!-- Header -->
       <div style="padding:20px 24px 16px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-shrink:0">
         <div>
@@ -5259,7 +5259,7 @@ window.openCreatePost = function(preDate) {
   document.getElementById('cp-overlay')?.remove();
   const overlay = document.createElement('div');
   overlay.id = 'cp-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--ig-rgba65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
 
   const platOpts = SOCIAL_PLATFORMS.map((p,i)=>`<label style="display:flex;align-items:center;gap:6px;background:${p.bg};border:1.5px solid transparent;border-radius:8px;padding:7px 11px;cursor:pointer;font-size:0.75rem;font-weight:600;color:${p.color};user-select:none" id="cp-plabel-${i}" onclick="document.getElementById('cp-plabel-${i}').style.borderColor=document.getElementById('cp-plabel-${i}').style.borderColor===''||document.getElementById('cp-plabel-${i}').style.borderColor==='transparent'?'${p.color}':'transparent'"><input type="checkbox" id="cp-plat-${i}" style="accent-color:${p.color};width:13px;height:13px"> ${p.icon} ${p.name}</label>`).join('');
 
@@ -6732,7 +6732,7 @@ function buildResults() {
                   <td>${cpa}</td>
                   <td><span style="background:${statusColor[stat]||'#10B981'};color:white;font-size:0.65rem;font-weight:700;padding:3px 8px;border-radius:10px;text-transform:uppercase">${stat}</span></td>
                   <td style="font-size:0.75rem;color:#6B7280">${c.launchedAt || '—'}</td>
-                  <td><button onclick="openViewCampaignModal(window._launchedCampaigns[${ci}])" style="padding:5px 12px;background:#0A1628;border:none;border-radius:7px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">👁 View</button></td>
+                  <td><button onclick="openViewCampaignModal(window._launchedCampaigns[${ci}])" style="padding:5px 12px;background:var(--ig-panel);border:none;border-radius:7px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">👁 View</button></td>
                 </tr>`;
               } catch(e) { return ''; }
             }).join('')}
@@ -7009,7 +7009,7 @@ function buildKPITracker() {
 
   // ── Summary banner ───────────────────────────────────────────────────────
   const summaryHTML = `
-    <div style="background:linear-gradient(135deg,#0A1628,#0D2140);border-radius:16px;padding:22px 28px;margin-bottom:24px;border:1px solid rgba(0,201,200,.15)">
+    <div style="background:var(--ig-grad2);border-radius:16px;padding:22px 28px;margin-bottom:24px;border:1px solid rgba(0,201,200,.15)">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
           <div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:white;margin-bottom:4px">
@@ -7241,7 +7241,7 @@ function buildRedditIntel() {
 
   wrap.innerHTML = `
     <!-- Config Panel -->
-    <div style="background:#0F1E35;border:1px solid rgba(255,100,0,.25);border-radius:16px;padding:20px 24px;margin-bottom:20px">
+    <div style="background:var(--ig-panel2);border:1px solid rgba(255,100,0,.25);border-radius:16px;padding:20px 24px;margin-bottom:20px">
       <div style="font-family:Sora,sans-serif;font-size:0.85rem;font-weight:800;color:white;margin-bottom:14px">⚙️ Monitor Settings</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px">
         <div>
@@ -7278,7 +7278,7 @@ function buildRedditIntel() {
     </div>
 
     <!-- Dark shell wrapping tabs + content -->
-    <div style="background:#0F1E35;border:1px solid rgba(255,100,0,.15);border-radius:16px;padding:16px 20px">
+    <div style="background:var(--ig-panel2);border:1px solid rgba(255,100,0,.15);border-radius:16px;padding:16px 20px">
 
     <!-- Tab Bar -->
     <div style="display:flex;gap:4px;margin-bottom:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:5px">
@@ -7333,7 +7333,7 @@ function buildRedditIntel() {
     <div id="rdtpanel-reply" style="display:none">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <!-- Left: Persona Settings -->
-        <div style="background:#0F1E35;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px">
+        <div style="background:var(--ig-panel2);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px">
           <div style="font-family:Sora,sans-serif;font-size:0.84rem;font-weight:800;color:white;margin-bottom:14px">🎭 Brand Persona</div>
           <div style="display:flex;flex-direction:column;gap:12px">
             <div>
@@ -7358,7 +7358,7 @@ function buildRedditIntel() {
         </div>
 
         <!-- Right: Reply Generator -->
-        <div style="background:#0F1E35;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px">
+        <div style="background:var(--ig-panel2);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px">
           <div style="font-family:Sora,sans-serif;font-size:0.84rem;font-weight:800;color:white;margin-bottom:14px">✍️ Reply Generator</div>
           <div id="rpl-thread-display" style="background:rgba(255,100,0,.07);border:1px solid rgba(255,100,0,.2);border-radius:10px;padding:12px 14px;margin-bottom:12px;min-height:60px">
             <div id="rpl-thread-title" style="font-size:0.8rem;font-weight:600;color:rgba(255,255,255,.7);margin-bottom:4px">${window._redditSelPost ? window._redditSelPost.title : 'Select a thread from Monitor tab or paste a title below'}</div>
@@ -7457,7 +7457,7 @@ function _rdtCard(p, i) {
     : `<span style="background:rgba(124,58,237,.12);color:#A78BFA;border:1px solid rgba(124,58,237,.25);padding:2px 7px;border-radius:5px;font-size:0.6rem;font-weight:700" title="AI-synthesised community intelligence based on real Reddit patterns">🤖 AI Signal</span>`;
 
   return `
-    <div style="background:#0F1E35;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px 18px;transition:border-color .2s" onmouseover="this.style.borderColor='rgba(255,100,0,.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,.08)'">
+    <div style="background:var(--ig-panel2);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px 18px;transition:border-color .2s" onmouseover="this.style.borderColor='rgba(255,100,0,.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,.08)'">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px">
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
@@ -10237,10 +10237,10 @@ function buildBattlePlan() {
 
   // ── Final render ────────────────────────────────────────────────────────────
   wrap.innerHTML = `
-  <div style="background:#0A1628;min-height:100vh;padding-bottom:40px">
+  <div style="background:var(--ig-page);min-height:100vh;padding-bottom:40px">
 
     <!-- Page Header -->
-    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-bottom:1px solid rgba(255,255,255,.08);padding:22px 28px">
+    <div style="background:var(--ig-grad);border-bottom:1px solid rgba(255,255,255,.08);padding:22px 28px">
       <div style="max-width:1200px;margin:0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
         <div>
           <div style="font-size:0.6rem;font-weight:800;color:rgba(0,201,200,.55);letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px">Analyse › Battle Plan</div>
@@ -10432,15 +10432,15 @@ async function openFullAttackPlanModal(idx) {
     modal.id = 'fullAttackPlanModal';
     document.body.appendChild(modal);
   }
-  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(10,22,40,.93);display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--ig-rgba70);display:flex;align-items:center;justify-content:center;padding:16px';
 
   const tabBtn = (id, icon, label) =>
     `<button id="aptb-${id}" onclick="_apSwitchTab('${id}')" style="padding:7px 14px;border-radius:8px;border:1px solid transparent;font-size:0.74rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s;color:rgba(255,255,255,.5);background:transparent">${icon} ${label}</button>`;
 
   modal.innerHTML = `
-    <div style="background:#0F1E35;border:1px solid rgba(0,201,200,.22);border-radius:18px;width:100%;max-width:860px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
+    <div style="background:var(--ig-panel2);border:1px solid rgba(0,201,200,.22);border-radius:18px;width:100%;max-width:860px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
       <!-- Header -->
-      <div style="background:linear-gradient(135deg,#0A1628,#0F2240);padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div style="background:var(--ig-grad);padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
         <div>
           <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white">⚔️ Full Attack Plan — vs ${cName}</div>
           <div style="font-size:0.74rem;color:rgba(255,255,255,.4);margin-top:2px">GPT-4 generating your complete 8-week strategy…</div>
@@ -10595,7 +10595,7 @@ function renderAttackPlan(plan, cName, myDomain, planBody, sources) {
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;align-items:center;flex-shrink:0">
           <div style="width:64px;height:64px;border-radius:50%;background:conic-gradient(${scoreColor} ${plan.opportunityScore||0}%,rgba(255,255,255,.08) 0);display:flex;align-items:center;justify-content:center">
-            <div style="width:50px;height:50px;background:#0F1E35;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column">
+            <div style="width:50px;height:50px;background:var(--ig-panel2);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-direction:column">
               <div style="font-size:0.95rem;font-weight:800;color:${scoreColor}">${plan.opportunityScore||0}</div>
               <div style="font-size:0.46rem;color:rgba(255,255,255,.35);font-weight:600">/100</div>
             </div>
@@ -11666,7 +11666,7 @@ function openDifferentiatorModal(compName) {
   ];
 
   inner.innerHTML = `
-    <div class="diff-modal-header" style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:28px 32px;border-radius:20px 20px 0 0">
+    <div class="diff-modal-header" style="background:var(--ig-grad);padding:28px 32px;border-radius:20px 20px 0 0">
       <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
         <div style="width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:1.5rem">${comp.logo}</div>
         <div>
@@ -11940,7 +11940,7 @@ function buildPlanView(compName) {
 
     <!-- METRICS SUMMARY BAR -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
-      <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:14px;padding:18px 16px;text-align:center">
+      <div style="background:var(--ig-grad);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#00E5FF">${myROAS}×</div>
         <div style="font-size:0.7rem;color:rgba(255,255,255,.6);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Your ROAS Now</div>
       </div>
@@ -13211,7 +13211,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div style="font-size:0.7rem; color:#6B7280; margin-top:2px">Status</div>
           </div>
         </div>
-        <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E); border-radius:12px; padding:14px 16px; margin-bottom:20px; text-align:left">
+        <div style="background:var(--ig-grad); border-radius:12px; padding:14px 16px; margin-bottom:20px; text-align:left">
           <div style="font-size:0.7rem; font-weight:700; color:rgba(0,201,200,.8); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px">InfoGenie AI Engine is now:</div>
           <div style="font-size:0.8125rem; color:rgba(255,255,255,.8); display:flex; flex-direction:column; gap:4px">
             <span>✓ Generating AI ad copy every 72 hours</span>
@@ -13305,7 +13305,7 @@ function openCampLaunchRich(name, platform, budget, idx) {
       .clb-edit-pill { display:inline-block;font-size:0.58rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle;letter-spacing:.04em; }
     </style>
 
-    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:22px 28px;border-radius:20px 20px 0 0">
+    <div style="background:var(--ig-grad);padding:22px 28px;border-radius:20px 20px 0 0">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
         <div>
           <div style="font-family:'Space Grotesk','Sora',sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:2px">🚀 Campaign Launch Brief</div>
@@ -13705,7 +13705,7 @@ Generated by InfoGenie · ${new Date().toLocaleDateString()}
   // ── RENDER ────────────────────────────────────────────────────────────────
   inner.innerHTML = `
     <!-- HEADER -->
-    <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:22px 26px 0;border-radius:20px 20px 0 0">
+    <div style="background:var(--ig-grad);padding:22px 26px 0;border-radius:20px 20px 0 0">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
         <div>
           <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:4px">🎨 Creative Studio</div>
@@ -13742,7 +13742,7 @@ Generated by InfoGenie · ${new Date().toLocaleDateString()}
           </div>`)}
 
         ${_csFmt('🟡 Display Banner — 728×90', displayCopy, `
-          <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:8px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+          <div style="background:var(--ig-grad);border-radius:8px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px">
             <div>
               <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:white;margin-bottom:3px">Beat the Competition — Starting Today</div>
               <div style="font-size:0.7rem;color:rgba(255,255,255,.65)">${domain} · AI-Powered ${indName}</div>
@@ -14015,7 +14015,7 @@ function _csDownload(format) {
   <title>InfoGenie Creative Pack — ${s.campName}</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 40px; color: #0A1628; background: white; }
-    .header { background: linear-gradient(135deg, #0A1628, #0D2A5E); color: white; padding: 24px 28px; border-radius: 12px; margin-bottom: 28px; }
+    .header { background:var(--ig-grad); color: white; padding: 24px 28px; border-radius: 12px; margin-bottom: 28px; }
     .header h1 { margin: 0 0 6px; font-size: 18pt; }
     .header p  { margin: 0; font-size: 10pt; opacity: 0.7; }
     .badge { display: inline-block; background: #00C9C8; color: white; font-size: 8pt; font-weight: bold; padding: 3px 10px; border-radius: 20px; margin-left: 8px; vertical-align: middle; }
@@ -14666,7 +14666,7 @@ window.openAddClient = function(editId) {
 
   const overlay = document.createElement('div');
   overlay.id = 'agencyClientOverlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--ig-rgba65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
   overlay.innerHTML = `
     <div style="background:white;border-radius:20px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.3)">
       <div style="background:linear-gradient(135deg,#312E81,#6366F1);border-radius:20px 20px 0 0;padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
@@ -14762,7 +14762,7 @@ window.openGenerateReportModal = function() {
   if (!clients.length) { showToast('⚠️ Add a client first'); return; }
   const sel = clients[0]?.id;
   const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--ig-rgba65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
   overlay.innerHTML = `<div style="background:white;border-radius:18px;width:100%;max-width:420px;padding:0;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.3)">
     <div style="background:linear-gradient(135deg,#312E81,#6366F1);padding:18px 22px;display:flex;align-items:center;justify-content:space-between">
       <div style="font-family:'Space Grotesk',sans-serif;font-size:0.95rem;font-weight:800;color:white">Generate Client Report</div>
@@ -15641,7 +15641,7 @@ window.openReEngageCopyModal = async function(id, name, company, channel, reason
 
   const overlay = document.createElement('div');
   overlay.id = 'reEngageCopyOverlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--ig-rgba70);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
 
   overlay.innerHTML = `
     <div style="background:white;border-radius:20px;width:100%;max-width:580px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.35)">
@@ -16374,7 +16374,7 @@ function buildCompetitorROASBreakdown() {
   }).join('');
 
   return `
-  <div style="background:linear-gradient(135deg,#0A1628,#0D2140);border-radius:18px;padding:22px 24px;margin-bottom:24px;border:1px solid rgba(239,68,68,.2)">
+  <div style="background:var(--ig-grad2);border-radius:18px;padding:22px 24px;margin-bottom:24px;border:1px solid rgba(239,68,68,.2)">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">
       <div>
         <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white">📉 Competitor ROAS Intelligence — Why They're Underperforming</div>
@@ -16645,7 +16645,7 @@ function csROIPanel(d) {
     return '$' + n.toLocaleString();
   }
 
-  return '<div style="background:linear-gradient(135deg,#0A1628,#0D2140);border:1px solid rgba(0,201,200,.18);border-radius:16px;padding:22px 28px;margin-bottom:22px">' +
+  return '<div style="background:var(--ig-grad2);border:1px solid rgba(0,201,200,.18);border-radius:16px;padding:22px 28px;margin-bottom:22px">' +
     '<div style="font-size:0.65rem;font-weight:700;color:rgba(0,201,200,.8);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">💼 Investment Performance Overview' + badge + '</div>' +
     (noData ? '<div style="font-size:0.72rem;color:rgba(255,255,255,.35);margin-bottom:12px">No campaigns launched yet — showing estimated benchmarks for a $5K/mo budget</div>' : '') +
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:14px">' +
@@ -16839,7 +16839,7 @@ function csBuildCMO(d, rm, periodHtml) {
   const channels = [...new Set(camps.map(c=>c.platform))];
 
   return `
-  <div class="cs-exec-banner" style="background:linear-gradient(135deg,#0A1628,#001440)">
+  <div class="cs-exec-banner" style="background:var(--ig-grad)">
     <div class="cs-exec-role-badge" style="background:rgba(0,102,255,.2);border-color:rgba(0,102,255,.3);color:#93C5FD">${rm.icon} ${rm.label} · Marketing Performance Report</div>
     <div class="cs-exec-headline">Full-Funnel Campaign Intelligence</div>
     <div class="cs-exec-sub">Comprehensive view of campaign performance, creative output, audience reach, and channel ROAS for ${url || 'your brand'}. Period: ${csPeriodLabel()}.</div>
@@ -16948,7 +16948,7 @@ function csBuildCFO(d, rm, periodHtml) {
   })) : [];
 
   return `
-  <div class="cs-exec-banner" style="background:linear-gradient(135deg,#0A1628,#002814)">
+  <div class="cs-exec-banner" style="background:var(--ig-grad)">
     <div class="cs-exec-role-badge" style="background:rgba(5,150,105,.2);border-color:rgba(5,150,105,.3);color:#6EE7B7">${rm.icon} ${rm.label} · Financial Marketing Report</div>
     <div class="cs-exec-headline">Marketing ROI & Budget Efficiency</div>
     <div class="cs-exec-sub">Financial performance of all marketing channels — spend efficiency, revenue attribution, cost-per-outcome, and quarterly projection. Period: ${csPeriodLabel()}.</div>
@@ -17042,7 +17042,7 @@ function csBuildCOO(d, rm, periodHtml) {
   const statusCol = { green:'#10B981', amber:'#F59E0B', neutral:'#6B7280' };
 
   return `
-  <div class="cs-exec-banner" style="background:linear-gradient(135deg,#0A1628,#1a0e00)">
+  <div class="cs-exec-banner" style="background:var(--ig-grad)">
     <div class="cs-exec-role-badge" style="background:rgba(217,119,6,.2);border-color:rgba(217,119,6,.3);color:#FDE68A">${rm.icon} ${rm.label} · Operations Report</div>
     <div class="cs-exec-headline">Marketing Operations & Execution Status</div>
     <div class="cs-exec-sub">Campaign execution health, automation performance, platform integrations, and operational bottlenecks for ${url || 'your brand'}. Period: ${csPeriodLabel()}.</div>
@@ -17149,7 +17149,7 @@ h1{font-size:1.5rem;color:#7C3AED;margin-bottom:4px}
 .logo-icon{width:32px;height:32px;background:linear-gradient(135deg,#00C9C8,#0066FF);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:900;font-size:0.9rem}
 .logo-text{font-size:1.2rem;font-weight:900;color:#0066FF}
 /* Inline all computed styles from the report */
-.cs-exec-banner{background:#0A1628;border-radius:12px;padding:20px 24px;margin-bottom:20px;color:white}
+.cs-exec-banner{background:var(--ig-panel);border-radius:12px;padding:20px 24px;margin-bottom:20px;color:var(--ig-text)}
 .cs-exec-headline{font-size:1.2rem;font-weight:800;color:white;margin-bottom:4px}
 .cs-exec-sub{font-size:0.75rem;color:rgba(255,255,255,.5)}
 .cs-exec-stats{display:flex;gap:16px;margin-top:14px;flex-wrap:wrap}
@@ -17383,7 +17383,7 @@ function acBuild() {
 
   return `
   <!-- Summary Banner -->
-  <div style="background:linear-gradient(135deg,#0A1628,#001840);border-radius:18px;padding:22px 28px;margin-bottom:28px;border:1px solid rgba(0,229,255,.2)">
+  <div style="background:var(--ig-grad);border-radius:18px;padding:22px 28px;margin-bottom:28px;border:1px solid rgba(0,229,255,.2)">
     <div style="font-size:0.68rem;font-weight:700;color:#00C9C8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">🎯 Command Overview — ${ts}</div>
     <div style="font-family:Sora,sans-serif;font-size:1.35rem;font-weight:800;color:white;margin-bottom:4px">
       ${liveCount} item${liveCount!==1?'s':''} live · ${critCount} critical risk${critCount!==1?'s':''} · ${oppCount} opportunit${oppCount===1?'y':'ies'} ready
@@ -18580,7 +18580,7 @@ function renderAutoSeoTraffic(domain, industry) {
 <div style="display:flex;flex-direction:column;gap:18px">
 
   <!-- Header card -->
-  <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:16px;padding:22px 26px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+  <div style="background:var(--ig-grad);border-radius:16px;padding:22px 26px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
     <div>
       <div style="font-size:1.05rem;font-weight:800;color:white;margin-bottom:4px">📈 90-Day Traffic Intelligence</div>
       <div style="font-size:0.78rem;color:#93C5FD">AI-powered organic growth projections for <strong>${domain}</strong></div>
