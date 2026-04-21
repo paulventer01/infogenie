@@ -17418,7 +17418,11 @@ function renderArticleGrid(articles, wpOk, sch) {
         </div>
       </div>
       <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
-        ${a.status !== 'generated' && a.status !== 'published' ? `<button onclick="generateSingleArticle(${a.idx})" style="padding:5px 10px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:7px;font-size:0.67rem;font-weight:700;color:white;cursor:pointer">✍️ Write</button>` : ''}
+        ${a.status === 'generating'
+  ? `<button disabled id="write-btn-${a.idx}" style="padding:5px 10px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:7px;font-size:0.67rem;font-weight:700;color:white;cursor:not-allowed;display:inline-flex;align-items:center;gap:5px;opacity:.9"><span style="width:11px;height:11px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .7s linear infinite;display:inline-block;flex-shrink:0"></span>Writing…</button>`
+  : a.status !== 'generated' && a.status !== 'published'
+  ? `<button onclick="generateSingleArticle(${a.idx})" style="padding:5px 10px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:7px;font-size:0.67rem;font-weight:700;color:white;cursor:pointer">✍️ Write</button>`
+  : ''}
         ${a.generatedHtml ? `<button onclick="previewGeneratedArticle(${a.idx})" style="padding:5px 10px;background:white;border:1px solid #E5E7EB;border-radius:7px;font-size:0.67rem;font-weight:700;color:#374151;cursor:pointer">👁 Preview</button>` : ''}
         ${a.generatedHtml ? `<button onclick="addArticleToSocialCalendar(${a.idx})" style="padding:5px 10px;background:${alreadyInSocial?'#F0FDF4':'linear-gradient(135deg,#7C3AED,#5B21B6)'};border:${alreadyInSocial?'1px solid #BBF7D0':'none'};border-radius:7px;font-size:0.67rem;font-weight:700;color:${alreadyInSocial?'#059669':'white'};cursor:pointer">${alreadyInSocial?'✓ In Social':'📲 Social'}</button>` : ''}
         ${a.status === 'generated' && wpOk ? `<button onclick="publishSingleArticle(${a.idx})" style="padding:5px 10px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:7px;font-size:0.67rem;font-weight:700;color:white;cursor:pointer">🟦 Publish</button>` : ''}
