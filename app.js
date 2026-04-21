@@ -16868,8 +16868,10 @@ function buildAutoSEO() {
 
   const tabs = [
     { id: 'calendar',  label: '📅 Content Calendar' },
-    { id: 'backlinks', label: '🔗 Backlink Opportunities' },
+    { id: 'backlinks', label: '🔗 Backlink Targets' },
+    { id: 'outreach',  label: '📬 Outreach Sequencer' },
     { id: 'keywords',  label: '🔍 Keyword Research' },
+    { id: 'traffic',   label: '📈 Traffic Intel' },
     { id: 'settings',  label: '⚙️ Automation Settings' },
   ];
 
@@ -16918,7 +16920,9 @@ ${needsSetup ? `
 function renderAutoSeoTab(tab, domain, industry, comps, sch) {
   if (tab === 'calendar')  return renderAutoSeoCalendar(domain, industry, comps, sch);
   if (tab === 'backlinks') return renderAutoSeoBacklinks(domain, industry, comps);
+  if (tab === 'outreach')  return renderAutoSeoOutreach(domain, industry);
   if (tab === 'keywords')  return renderAutoSeoKeywords(domain, industry, comps);
+  if (tab === 'traffic')   return renderAutoSeoTraffic(domain, industry);
   if (tab === 'settings')  return renderAutoSeoSettings(sch);
   return '';
 }
@@ -17512,4 +17516,332 @@ function addAllGeneratedToSocialCalendar() {
 function saveAutoSeoSettings() {
   showToast('✅ AutoSEO settings saved!');
   buildAutoSEO();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTOSEO: OUTREACH SEQUENCER + TRAFFIC INTEL
+// ═══════════════════════════════════════════════════════════════════════════════
+window._autoSeoOutreach = {};   // keyed by backlink index: { emails, status, senderName }
+window._autoSeoTraffic  = null; // traffic projection data
+
+// ─── TAB 3: Outreach Sequencer ────────────────────────────────────────────────
+function renderAutoSeoOutreach(domain, industry) {
+  const opps = window._autoSeoBacklinks;
+  const orMap = window._autoSeoOutreach || {};
+
+  if (!opps || !opps.length) {
+    return `
+<div style="background:white;border-radius:16px;border:1.5px solid #E5E7EB;padding:40px;text-align:center">
+  <div style="font-size:3rem;margin-bottom:14px">📬</div>
+  <div style="font-size:1.05rem;font-weight:800;color:#111827;margin-bottom:8px">No Backlink Targets Yet</div>
+  <div style="font-size:0.82rem;color:#6B7280;max-width:380px;margin:0 auto 20px">Find backlink targets first — then the Outreach Sequencer will auto-generate personalised 3-email sequences for each one.</div>
+  <button onclick="window._autoSeoTab='backlinks';buildAutoSEO()" style="padding:11px 24px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">🔍 Find Backlink Targets First</button>
+</div>`;
+  }
+
+  const statuses = { 'not_started':'Not Started', 'email1_sent':'Email 1 Sent', 'followup_sent':'Follow-up Sent', 'final_sent':'Final Sent', 'responded':'Responded ✉️', 'secured':'🔗 Link Secured' };
+  const statusColors = { not_started:'#6B7280', email1_sent:'#0066FF', followup_sent:'#7C3AED', final_sent:'#D97706', responded:'#059669', secured:'#059669' };
+  const statusBg     = { not_started:'#F3F4F6', email1_sent:'#EFF6FF', followup_sent:'#F5F3FF', final_sent:'#FFFBEB', responded:'#DCFCE7', secured:'#F0FDF4' };
+
+  const secured = Object.values(orMap).filter(o => o.status === 'secured').length;
+  const active  = Object.values(orMap).filter(o => o.status !== 'not_started' && o.status !== 'secured').length;
+  const total   = opps.length;
+
+  return `
+<div style="background:white;border-radius:16px;border:1.5px solid #E5E7EB;overflow:hidden">
+  <div style="padding:20px 24px;border-bottom:1.5px solid #F3F4F6;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div>
+      <div style="font-size:1rem;font-weight:800;color:#111827">📬 Backlink Outreach Sequencer</div>
+      <div style="font-size:0.75rem;color:#6B7280;margin-top:2px">AI-written 3-email sequences — copy, send, track, get links</div>
+    </div>
+    <div style="display:flex;gap:12px">
+      <div style="text-align:center;padding:8px 16px;background:#F0FDF4;border-radius:10px">
+        <div style="font-size:1.1rem;font-weight:800;color:#059669">${secured}</div>
+        <div style="font-size:0.65rem;color:#6B7280;font-weight:600">Links Secured</div>
+      </div>
+      <div style="text-align:center;padding:8px 16px;background:#EFF6FF;border-radius:10px">
+        <div style="font-size:1.1rem;font-weight:800;color:#0066FF">${active}</div>
+        <div style="font-size:0.65rem;color:#6B7280;font-weight:600">Active Outreach</div>
+      </div>
+      <div style="text-align:center;padding:8px 16px;background:#F3F4F6;border-radius:10px">
+        <div style="font-size:1.1rem;font-weight:800;color:#374151">${total}</div>
+        <div style="font-size:0.65rem;color:#6B7280;font-weight:600">Total Targets</div>
+      </div>
+    </div>
+  </div>
+  <!-- Sender name field -->
+  <div style="padding:12px 24px;background:#F9FAFB;border-bottom:1px solid #F3F4F6;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span style="font-size:0.75rem;font-weight:700;color:#374151">Sender Name:</span>
+    <input id="outreach-sender" placeholder="e.g. Sarah from ${domain}" value="${window._autoSeoSenderName||''}" style="padding:7px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.8rem;width:220px;outline:none;background:white" onchange="window._autoSeoSenderName=this.value">
+    <span style="font-size:0.72rem;color:#9CA3AF">Used in personalised email signatures</span>
+  </div>
+  <div style="padding:20px 24px;display:flex;flex-direction:column;gap:14px">
+    ${opps.map((opp, i) => {
+      const or = orMap[i] || { status: 'not_started', emails: null };
+      const statusKey = or.status || 'not_started';
+      return `
+    <div style="border:1.5px solid ${statusKey === 'secured' ? '#BBF7D0' : '#E5E7EB'};border-radius:14px;overflow:hidden;background:${statusKey === 'secured' ? '#F0FDF4' : 'white'}">
+      <div style="padding:14px 18px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="toggleOutreachRow(${i})">
+        <div style="flex-shrink:0;width:36px;height:36px;border-radius:9px;background:#F3F4F6;display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:800;color:#374151">DR<br>${opp.dr}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.88rem;font-weight:800;color:#111827">${opp.site}</div>
+          <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${opp.type} · ${opp.url}</div>
+        </div>
+        <span style="padding:4px 10px;border-radius:6px;font-size:0.68rem;font-weight:700;background:${statusBg[statusKey]};color:${statusColors[statusKey]}">${statuses[statusKey]}</span>
+        <select onchange="setOutreachStatus(${i},this.value);event.stopPropagation()" style="padding:5px 8px;border:1px solid #E5E7EB;border-radius:7px;font-size:0.68rem;background:white;cursor:pointer">
+          ${Object.entries(statuses).map(([k,v])=>`<option value="${k}" ${statusKey===k?'selected':''}>${v}</option>`).join('')}
+        </select>
+        ${!or.emails ? `<button onclick="generateOutreachSequence(${i});event.stopPropagation()" id="gen-seq-${i}" style="padding:6px 14px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:8px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">✍️ Generate Sequence</button>` : `<button onclick="toggleOutreachRow(${i})" style="padding:6px 14px;background:white;border:1px solid #E5E7EB;border-radius:8px;font-size:0.7rem;font-weight:700;color:#374151;cursor:pointer">View Emails ▾</button>`}
+      </div>
+      ${or.emails ? `
+      <div id="outreach-emails-${i}" style="display:none;border-top:1px solid #F3F4F6;padding:16px 18px;background:#F9FAFB">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          ${or.emails.map((e,ei)=>`
+          <div style="background:white;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div>
+                <span style="font-size:0.7rem;font-weight:800;color:#0066FF;background:#EFF6FF;padding:2px 8px;border-radius:4px">${ei===0?'Email 1 — Day 0':ei===1?'Email 2 — Day 5 Follow-up':'Email 3 — Day 10 Final'}</span>
+                <span style="font-size:0.75rem;font-weight:700;color:#111827;margin-left:8px">${e.subject}</span>
+              </div>
+              <button onclick="copyOutreachEmailText('${i}_${ei}')" style="padding:4px 10px;background:white;border:1px solid #E5E7EB;border-radius:7px;font-size:0.67rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy</button>
+            </div>
+            <div id="email-body-${i}_${ei}" style="font-size:0.78rem;color:#374151;line-height:1.6;white-space:pre-wrap;background:#F9FAFB;padding:10px 12px;border-radius:8px">${e.body}</div>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+    </div>`;
+    }).join('')}
+  </div>
+</div>`;
+}
+
+function toggleOutreachRow(i) {
+  const el = document.getElementById('outreach-emails-' + i);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function setOutreachStatus(i, status) {
+  if (!window._autoSeoOutreach) window._autoSeoOutreach = {};
+  if (!window._autoSeoOutreach[i]) window._autoSeoOutreach[i] = { status: 'not_started', emails: null };
+  window._autoSeoOutreach[i].status = status;
+  if (status === 'secured') showToast('🎉 Link secured! Great work — this will boost your domain authority.');
+  buildAutoSEO();
+}
+
+function copyOutreachEmailText(key) {
+  const el = document.getElementById('email-body-' + key);
+  if (!el) return;
+  const parts = key.split('_');
+  const i = parts[0], ei = parts[1];
+  const or = window._autoSeoOutreach && window._autoSeoOutreach[i];
+  if (!or || !or.emails || !or.emails[ei]) return;
+  const subj = or.emails[ei].subject;
+  const body = or.emails[ei].body;
+  navigator.clipboard.writeText(`Subject: ${subj}\n\n${body}`).then(() => showToast('📋 Email copied to clipboard!'));
+}
+
+async function generateOutreachSequence(idx) {
+  const opps = window._autoSeoBacklinks;
+  if (!opps || !opps[idx]) return;
+  const btn = document.getElementById('gen-seq-' + idx);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Writing…'; }
+  const opp  = opps[idx];
+  const ctx  = _autoSeoContext();
+  const sender = window._autoSeoSenderName || document.getElementById('outreach-sender')?.value || 'The Team';
+  try {
+    const resp = await fetch('/api/generate-outreach-sequence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ site: opp.site, url: opp.url, type: opp.type, angle: opp.angle, domain: ctx.domain, industry: ctx.industry, senderName: sender })
+    });
+    const data = await resp.json();
+    if (!window._autoSeoOutreach) window._autoSeoOutreach = {};
+    if (!window._autoSeoOutreach[idx]) window._autoSeoOutreach[idx] = { status: 'not_started' };
+    window._autoSeoOutreach[idx].emails = data.emails || [];
+    showToast(`✅ 3-email sequence written for ${opp.site}!`);
+  } catch(e) { showToast('❌ ' + e.message); }
+  buildAutoSEO();
+  // Auto-open the emails panel
+  setTimeout(() => { const el = document.getElementById('outreach-emails-' + idx); if (el) el.style.display = 'block'; }, 100);
+}
+
+// ─── TAB 5: Traffic Intel ─────────────────────────────────────────────────────
+function renderAutoSeoTraffic(domain, industry) {
+  const td = window._autoSeoTraffic;
+  const articlesCount = (window._autoSeoArticles || []).length;
+  const backlinksCount = Object.values(window._autoSeoOutreach || {}).filter(o => o.status === 'secured').length;
+
+  return `
+<div style="display:flex;flex-direction:column;gap:18px">
+
+  <!-- Header card -->
+  <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:16px;padding:22px 26px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+    <div>
+      <div style="font-size:1.05rem;font-weight:800;color:white;margin-bottom:4px">📈 90-Day Traffic Intelligence</div>
+      <div style="font-size:0.78rem;color:#93C5FD">AI-powered organic growth projections for <strong>${domain}</strong></div>
+    </div>
+    <button onclick="loadTrafficProjection()" id="traffic-gen-btn" style="padding:10px 22px;background:linear-gradient(135deg,#00E5FF,#0066FF);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">${td ? '🔄 Refresh Projection' : '📈 Generate Projection'}</button>
+  </div>
+
+  ${!td ? `
+  <!-- Empty state -->
+  <div style="background:white;border-radius:16px;border:1.5px solid #E5E7EB;padding:50px;text-align:center">
+    <div style="font-size:3.5rem;margin-bottom:14px">📊</div>
+    <div style="font-size:1.05rem;font-weight:800;color:#111827;margin-bottom:8px">Your Traffic Growth Forecast</div>
+    <div style="font-size:0.82rem;color:#6B7280;max-width:440px;margin:0 auto 10px">Based on your content calendar (${articlesCount} articles) and backlinks (${backlinksCount} secured), InfoGenie projects your organic traffic growth over the next 90 days.</div>
+    <div style="font-size:0.78rem;color:#9CA3AF;margin-bottom:24px">More articles written + more links secured = higher projections</div>
+    <button onclick="loadTrafficProjection()" style="padding:12px 28px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:10px;font-size:0.88rem;font-weight:700;color:white;cursor:pointer">📈 Generate My Traffic Forecast</button>
+  </div>` : renderTrafficDashboard(td, domain, articlesCount, backlinksCount)}
+
+  <!-- Google Search Console connection -->
+  <div style="background:white;border-radius:16px;border:1.5px solid #E5E7EB;padding:20px 24px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div style="width:36px;height:36px;border-radius:9px;background:#FEF2F2;display:flex;align-items:center;justify-content:center;font-size:1.2rem">🔍</div>
+      <div>
+        <div style="font-size:0.9rem;font-weight:800;color:#111827">Connect Google Search Console</div>
+        <div style="font-size:0.72rem;color:#6B7280">Import real impressions, clicks & keyword rankings for live data</div>
+      </div>
+      <span style="margin-left:auto;padding:4px 10px;background:#FEF3C7;border-radius:6px;font-size:0.67rem;font-weight:700;color:#D97706">Coming Soon</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+      ${[
+        { icon:'📊', t:'Real Impressions', d:'Live data from Google instead of projections' },
+        { icon:'🎯', t:'Actual Rankings', d:'See exactly where you rank for each keyword' },
+        { icon:'📈', t:'Click-Through Rate', d:'Track how many searchers actually visit your site' },
+      ].map(f=>`
+      <div style="padding:12px;background:#F9FAFB;border-radius:10px;border:1px solid #E5E7EB">
+        <div style="font-size:1.2rem;margin-bottom:6px">${f.icon}</div>
+        <div style="font-size:0.78rem;font-weight:700;color:#111827;margin-bottom:3px">${f.t}</div>
+        <div style="font-size:0.68rem;color:#6B7280">${f.d}</div>
+      </div>`).join('')}
+    </div>
+  </div>
+
+</div>`;
+}
+
+function renderTrafficDashboard(td, domain, articlesCount, backlinksCount) {
+  const fmt = n => n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n||0);
+  const pct = td.growth_pct_90d || 0;
+  const months = td.monthly_breakdown || [];
+  const maxTraffic = Math.max(...months.map(m => m.total_traffic || 0), td.projected_monthly_90d || 1);
+
+  // Bar chart data
+  const bars = [
+    { label: 'Baseline',  val: td.baseline_monthly || 0,       color: '#E5E7EB' },
+    { label: 'Month 1',   val: td.projected_monthly_30d || 0,  color: '#93C5FD' },
+    { label: 'Month 2',   val: td.projected_monthly_60d || 0,  color: '#3B82F6' },
+    { label: 'Month 3',   val: td.projected_monthly_90d || 0,  color: '#0066FF' },
+  ];
+  const maxVal = Math.max(...bars.map(b=>b.val), 1);
+
+  return `
+  <!-- KPI row -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+    ${[
+      { icon:'👥', label:'Baseline Traffic', val: fmt(td.baseline_monthly), sub:'/month', color:'#374151', bg:'#F3F4F6' },
+      { icon:'📈', label:'Projected (90d)', val: fmt(td.projected_monthly_90d), sub:'/month', color:'#0066FF', bg:'#EFF6FF' },
+      { icon:'🚀', label:'Growth Forecast', val: '+'+pct+'%', sub:'in 90 days', color:'#059669', bg:'#F0FDF4' },
+      { icon:'🔗', label:'DA Improvement', val: '+'+(td.da_improvement||'3-5'), sub:'points est.', color:'#7C3AED', bg:'#F5F3FF' },
+    ].map(s=>`
+    <div style="background:white;border-radius:14px;border:1.5px solid #E5E7EB;padding:16px 18px;display:flex;align-items:center;gap:12px">
+      <div style="width:40px;height:40px;border-radius:10px;background:${s.bg};display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0">${s.icon}</div>
+      <div>
+        <div style="font-size:1.15rem;font-weight:800;color:${s.color}">${s.val}<span style="font-size:0.65rem;font-weight:600;color:#9CA3AF;margin-left:3px">${s.sub}</span></div>
+        <div style="font-size:0.7rem;color:#6B7280;font-weight:600">${s.label}</div>
+      </div>
+    </div>`).join('')}
+  </div>
+
+  <!-- Traffic projection chart -->
+  <div style="background:white;border-radius:16px;border:1.5px solid #E5E7EB;padding:22px 24px">
+    <div style="font-size:0.9rem;font-weight:800;color:#111827;margin-bottom:18px">📊 90-Day Organic Traffic Projection</div>
+    <div style="display:flex;align-items:flex-end;gap:16px;height:160px;padding:0 10px">
+      ${bars.map(b=>{
+        const h = Math.round((b.val / maxVal) * 140);
+        return `
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">
+          <div style="font-size:0.72rem;font-weight:700;color:#374151">${fmt(b.val)}</div>
+          <div style="width:100%;height:${h}px;background:${b.color};border-radius:8px 8px 0 0;transition:height .3s;min-height:4px"></div>
+          <div style="font-size:0.67rem;color:#6B7280;font-weight:600;text-align:center">${b.label}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="margin-top:16px;padding:12px 14px;background:#F0FDF4;border-radius:10px;border:1px solid #BBF7D0;font-size:0.75rem;color:#065F46">
+      <strong>🤖 AI Insight:</strong> Based on ${articlesCount} articles planned and ${backlinksCount} backlinks secured. ${td.top_opportunities?.[0]||'Focus on publishing consistently to compound your SEO gains.'}
+    </div>
+  </div>
+
+  <!-- Two columns: keyword rankings + opportunities -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+
+    <!-- Keyword rankings -->
+    <div style="background:white;border-radius:14px;border:1.5px solid #E5E7EB;padding:18px 20px">
+      <div style="font-size:0.88rem;font-weight:800;color:#111827;margin-bottom:14px">🎯 Keyword Ranking Forecast</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${(td.keyword_rankings||[]).map(k=>{
+          const imp = (k.current_position||50) - (k.projected_position_90d||30);
+          return `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#F9FAFB;border-radius:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.78rem;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${k.keyword}</div>
+            <div style="font-size:0.65rem;color:#9CA3AF">${(k.monthly_volume||0).toLocaleString()} searches/mo</div>
+          </div>
+          <div style="text-align:center;min-width:36px">
+            <div style="font-size:0.7rem;color:#9CA3AF">Now</div>
+            <div style="font-size:0.82rem;font-weight:800;color:#374151">#${k.current_position||'50+'}</div>
+          </div>
+          <div style="font-size:0.9rem;color:#9CA3AF">→</div>
+          <div style="text-align:center;min-width:36px">
+            <div style="font-size:0.7rem;color:#9CA3AF">90d</div>
+            <div style="font-size:0.82rem;font-weight:800;color:#059669">#${k.projected_position_90d||'20'}</div>
+          </div>
+          ${imp>0?`<span style="font-size:0.65rem;font-weight:700;color:#059669;background:#DCFCE7;padding:2px 6px;border-radius:4px">+${imp}</span>`:''}
+        </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- Opportunities -->
+    <div style="background:white;border-radius:14px;border:1.5px solid #E5E7EB;padding:18px 20px">
+      <div style="font-size:0.88rem;font-weight:800;color:#111827;margin-bottom:14px">💡 Top Growth Opportunities</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${(td.top_opportunities||[]).map((opp,i)=>`
+        <div style="display:flex;gap:10px;padding:10px 12px;background:#F9FAFB;border-radius:10px;border-left:3px solid ${['#0066FF','#7C3AED','#059669'][i]}">
+          <span style="font-size:1rem;flex-shrink:0">${['🚀','🔗','📝'][i]}</span>
+          <div style="font-size:0.78rem;color:#374151;line-height:1.5">${opp}</div>
+        </div>`).join('')}
+      </div>
+      <div style="margin-top:14px;padding:12px;background:#FFF7ED;border-radius:10px;border:1px solid #FED7AA">
+        <div style="font-size:0.72rem;font-weight:700;color:#92400E;margin-bottom:4px">📅 Recommended Action Plan</div>
+        <div style="font-size:0.7rem;color:#B45309;line-height:1.5">
+          Week 1–2: Publish first 8 articles from your calendar<br>
+          Week 2–4: Send outreach sequences to top 3 backlink targets<br>
+          Month 2: Add generated articles to Social Calendar<br>
+          Month 3: Review rankings, refresh top-performing content
+        </div>
+      </div>
+    </div>
+
+  </div>`;
+}
+
+async function loadTrafficProjection() {
+  const btn = document.getElementById('traffic-gen-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analysing…'; }
+  const ctx = _autoSeoContext();
+  const kws = window._autoSeoKeywords || [];
+  const articlesCount = (window._autoSeoArticles||[]).length;
+  const backlinksCount = Object.values(window._autoSeoOutreach||{}).filter(o=>o.status==='secured').length;
+  try {
+    const resp = await fetch('/api/traffic-projection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: ctx.domain, industry: ctx.industry, articlesPublished: articlesCount, backlinksSecured: backlinksCount, keywords: kws })
+    });
+    const data = await resp.json();
+    window._autoSeoTraffic = data;
+    showToast('📈 Traffic projection generated!');
+  } catch(e) { showToast('❌ ' + e.message); }
+  finally { buildAutoSEO(); }
 }

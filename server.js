@@ -3105,6 +3105,85 @@ const startMsg = () => {
   console.log(`DataForSEO: ${process.env.DATAFORSEO_LOGIN ? 'CONFIGURED ✓' : 'NOT CONFIGURED — add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD secrets'}`);
 };
 
+// ── Outreach Sequence Generator ───────────────────────────────────────────────
+app.post('/api/generate-outreach-sequence', async (req, res) => {
+  try {
+    const { site, url, type, angle, domain, industry, senderName = 'The Team' } = req.body;
+    const prompt = `You are an expert link-building outreach specialist. Write a 3-email outreach sequence for acquiring a backlink.
+
+Target site: ${site} (${url})
+Link type: ${type}
+Outreach angle: ${angle}
+Our domain: ${domain}
+Our industry: ${industry}
+Sender name: ${senderName}
+
+Write 3 emails:
+1. Initial outreach (friendly, specific, value-first, under 150 words)
+2. Follow-up after 5 days (reference first email, add new value, under 100 words)
+3. Final follow-up after 10 days (last try, make it easy to say yes, under 80 words)
+
+For each email provide:
+- subject: email subject line
+- body: email body (plain text, no HTML)
+- delay_days: when to send (0, 5, 10)
+
+Return a JSON object with an "emails" array of 3 objects with fields: subject, body, delay_days.
+Return ONLY valid JSON.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 1400,
+      temperature: 0.6,
+      response_format: { type: 'json_object' }
+    });
+    const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    res.json({ emails: parsed.emails || [] });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Traffic Projection ─────────────────────────────────────────────────────────
+app.post('/api/traffic-projection', async (req, res) => {
+  try {
+    const { domain, industry, articlesPublished = 0, backlinksSecured = 0, keywords = [] } = req.body;
+    const topKws = keywords.slice(0, 5).map(k => k.keyword || k).join(', ') || industry;
+    const prompt = `You are an SEO traffic analyst. Generate a realistic 90-day organic traffic projection for ${domain} in the ${industry} industry.
+
+Context:
+- Articles published/planned: ${articlesPublished}
+- Backlinks secured/in progress: ${backlinksSecured}
+- Target keywords: ${topKws}
+
+Provide:
+1. baseline_monthly: estimated current monthly organic visits (realistic for the domain stage)
+2. projected_monthly_30d: projected at 30 days
+3. projected_monthly_60d: projected at 60 days  
+4. projected_monthly_90d: projected at 90 days
+5. growth_pct_90d: total % growth over 90 days
+6. keyword_rankings: array of 5 objects each with { keyword, current_position, projected_position_90d, monthly_volume }
+7. top_opportunities: array of 3 strings describing the biggest traffic opportunities
+8. da_improvement: estimated domain authority improvement (number, e.g. +4)
+9. monthly_breakdown: array of 3 objects each with { month, articles_impact_pct, backlinks_impact_pct, total_traffic }
+
+Return a JSON object. Return ONLY valid JSON.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 1200,
+      temperature: 0.4,
+      response_format: { type: 'json_object' }
+    });
+    const data = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    res.json(data);
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Port 5000 — Replit preview pane (webview)
 app.listen(5000, '0.0.0.0', () => {
   console.log('InfoGenie listening on port 5000 (preview pane)');
