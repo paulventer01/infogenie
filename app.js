@@ -6098,7 +6098,7 @@ function buildAiVisibility() {
     </div>
 
     <!-- ── ACTION CENTER ──────────────────────────────────────────────── -->
-    <div style="background:linear-gradient(135deg,#1E1B4B 0%,#312E81 55%,#4338CA 100%);border-radius:20px;padding:28px 30px;margin-top:4px;position:relative;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#F5F3FF 0%,#EDE9FE 55%,#DDD6FE 100%);border-radius:20px;padding:28px 30px;margin-top:4px;position:relative;overflow:hidden;border:1px solid rgba(99,102,241,.18)">
       <div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;background:rgba(255,255,255,0.04);border-radius:50%"></div>
       <div style="position:absolute;bottom:-30px;left:40%;width:120px;height:120px;background:rgba(255,255,255,0.03);border-radius:50%"></div>
       <div style="position:relative">
