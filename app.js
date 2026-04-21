@@ -1943,6 +1943,47 @@ function navigateTo(viewId, updateActive = true) {
   window.scrollTo(0, 0);
   // Inject "What's Next?" guide banner after each view renders
   setTimeout(() => _injectNextStep(viewId), 120);
+  // Patch inline tab buttons to pill shape
+  setTimeout(() => _patchPillTabs(viewId), 80);
+}
+
+// ── Pill Tab Patcher ─────────────────────────────────────────────────────────
+// After any view renders, find all inline-tab buttons and give them pill shapes
+function _patchPillTabs(viewId) {
+  if (!viewId || viewId === 'home') return;
+  const view = document.getElementById('view-' + viewId);
+  if (!view) return;
+  // Find all tab-bar button groups: rows of buttons that share onclick tab logic
+  const allBtns = view.querySelectorAll('button');
+  allBtns.forEach(btn => {
+    const st = btn.style;
+    // Identify as tab button: has explicit border-radius that is NOT a pill
+    const hasTabMarker = btn.getAttribute('onclick') && (
+      btn.getAttribute('onclick').includes('Tab=') ||
+      btn.getAttribute('onclick').includes('_tab=') ||
+      btn.getAttribute('onclick').includes('Tab =')
+    );
+    if (hasTabMarker) {
+      // Make it a pill
+      btn.style.borderRadius = '50px';
+      btn.style.transition = btn.style.transition || 'all .2s cubic-bezier(.22,.68,0,1.2)';
+      btn.style.fontWeight = '700';
+      // Add hover effect via mouseenter/mouseleave if not already patched
+      if (!btn.dataset.igPatched) {
+        btn.dataset.igPatched = '1';
+        btn.addEventListener('mouseenter', function() {
+          if (!this.style.background.includes('0066FF') && !this.style.background.includes('065F46') && !this.style.background.includes('7C3AED')) {
+            this.style.transform = 'translateY(-1px)';
+            this.style.boxShadow = '0 4px 12px rgba(0,102,255,.15)';
+          }
+        });
+        btn.addEventListener('mouseleave', function() {
+          this.style.transform = '';
+          this.style.boxShadow = this.dataset.origShadow || '';
+        });
+      }
+    }
+  });
 }
 
 // ── Next-Step Guide Banners ────────────────────────────────────────────────────
