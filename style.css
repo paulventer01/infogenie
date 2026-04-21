@@ -6467,3 +6467,116 @@ h3:hover {
   color: #94A3B8 !important;
   opacity: 1;
 }
+
+/* ── SERP results — light mode text ── */
+[data-theme="light"] .serp-meta-query { color: #475569 !important; }
+[data-theme="light"] .serp-meta-query strong { color: #0A1628 !important; }
+[data-theme="light"] .serp-meta-total { color: #94A3B8 !important; }
+[data-theme="light"] .serp-result-card {
+  background: #FFFFFF !important;
+  border: 1px solid #E2E8F0 !important;
+}
+[data-theme="light"] .serp-result-card:hover {
+  border-color: rgba(0,168,167,.4) !important;
+  background: #F8FAFC !important;
+}
+[data-theme="light"] .serp-result-snippet { color: #475569 !important; }
+[data-theme="light"] .serp-result-title { color: #0066FF !important; }
+[data-theme="light"] .serp-result-title:hover { color: #00A8A7 !important; }
+
+/* ============================================================
+   LIGHT MODE — UNIVERSAL TEXT VISIBILITY SWEEP
+   Catches all inline white/rgba-white text on elements that
+   don't have their own coloured background (i.e. text elements,
+   not buttons or badges). They inherit page bg → became invisible.
+   ============================================================ */
+
+/* Flip inline color:white on TEXT elements (no own bg, no gradient) */
+[data-theme="light"] [style*="color:white"]:not([style*="background:#"]):not([style*="background:linear-gradient"]):not([style*="background:rgba"]):not([style*="background:var(--ig-grad"]):not(button):not(.btn):not(.badge):not(.atag):not(.tag):not(.kpi-up):not(.kpi-down) {
+  color: #0A1628 !important;
+}
+[data-theme="light"] [style*="color: white"]:not([style*="background:#"]):not([style*="background:linear-gradient"]):not([style*="background:rgba"]):not([style*="background:var(--ig-grad"]):not(button):not(.btn):not(.badge):not(.atag):not(.tag) {
+  color: #0A1628 !important;
+}
+
+/* Flip rgba(255,255,255,.x) muted text → muted dark grey */
+[data-theme="light"] [style*="color:rgba(255,255,255"]:not([style*="background:#"]):not([style*="background:linear-gradient"]):not([style*="background:rgba(0"]):not([style*="background:var(--ig-grad"]):not(button):not(.btn):not(.badge):not(.atag):not(.tag) {
+  color: #475569 !important;
+}
+[data-theme="light"] [style*="color: rgba(255,255,255"]:not([style*="background:#"]):not([style*="background:linear-gradient"]):not([style*="background:rgba(0"]):not([style*="background:var(--ig-grad"]):not(button):not(.btn):not(.badge):not(.atag):not(.tag) {
+  color: #475569 !important;
+}
+
+/* Flip color:#fff variants */
+[data-theme="light"] [style*="color:#fff"]:not([style*="background:#"]):not([style*="background:linear-gradient"]):not([style*="background:rgba"]):not(button):not(.btn):not(.badge):not(.atag):not(.tag),
+[data-theme="light"] [style*="color: #fff"]:not([style*="background:#"]):not([style*="background:linear-gradient"]):not([style*="background:rgba"]):not(button):not(.btn):not(.badge):not(.atag):not(.tag),
+[data-theme="light"] [style*="color:#FFF"]:not([style*="background:#"]):not([style*="background:linear-gradient"]):not([style*="background:rgba"]):not(button):not(.btn):not(.badge):not(.atag):not(.tag) {
+  color: #0A1628 !important;
+}
+
+/* CLASS-BASED white text — sweep common patterns */
+[data-theme="light"] .serp-meta-query,
+[data-theme="light"] .serp-result-snippet,
+[data-theme="light"] .ich-sub,
+[data-theme="light"] .ich-title,
+[data-theme="light"] .cs-title,
+[data-theme="light"] .cs-sub,
+[data-theme="light"] .kpi-title,
+[data-theme="light"] .kpi-sub,
+[data-theme="light"] .cal-title,
+[data-theme="light"] .cal-sub,
+[data-theme="light"] .battle-title,
+[data-theme="light"] .battle-sub,
+[data-theme="light"] .reddit-title,
+[data-theme="light"] .reddit-sub,
+[data-theme="light"] .creative-title,
+[data-theme="light"] .creative-sub,
+[data-theme="light"] .module-title,
+[data-theme="light"] .module-sub,
+[data-theme="light"] .panel-title,
+[data-theme="light"] .panel-sub,
+[data-theme="light"] .section-title,
+[data-theme="light"] .section-sub {
+  color: #0A1628 !important;
+}
+
+/* Sub-titles / muted subtext */
+[data-theme="light"] .ich-sub,
+[data-theme="light"] .cs-sub,
+[data-theme="light"] .kpi-sub,
+[data-theme="light"] .cal-sub,
+[data-theme="light"] .battle-sub,
+[data-theme="light"] .reddit-sub,
+[data-theme="light"] .creative-sub,
+[data-theme="light"] .module-sub,
+[data-theme="light"] .panel-sub,
+[data-theme="light"] .section-sub {
+  color: #64748B !important;
+}
+
+/* Common card/panel classes that may have hardcoded white text inside */
+[data-theme="light"] .ich-card,
+[data-theme="light"] .cs-card,
+[data-theme="light"] .kpi-card,
+[data-theme="light"] .cal-card,
+[data-theme="light"] .battle-card,
+[data-theme="light"] .reddit-card,
+[data-theme="light"] .creative-card,
+[data-theme="light"] .module-card,
+[data-theme="light"] .stat-card,
+[data-theme="light"] .info-card,
+[data-theme="light"] .insight-card {
+  color: #0A1628;
+}
+[data-theme="light"] .ich-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
+[data-theme="light"] .cs-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
+[data-theme="light"] .kpi-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
+[data-theme="light"] .cal-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
+[data-theme="light"] .battle-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
+[data-theme="light"] .reddit-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
+[data-theme="light"] .creative-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
+[data-theme="light"] .stat-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
+[data-theme="light"] .info-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
+[data-theme="light"] .insight-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]) {
+  color: inherit;
+}
