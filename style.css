@@ -5868,3 +5868,99 @@ body,
 .creative-card {
   transition: background .35s ease, color .25s ease, border-color .25s ease, box-shadow .25s ease;
 }
+
+/* ============================================================
+   LIGHT MODE — TEXT LEGIBILITY FIXES
+   All white / semi-white text that sits on a now-light bg
+   ============================================================ */
+
+/* ── Navbar logo ── */
+[data-theme="light"] .logo-text { color: #0A1628 !important; }
+
+/* ── Hero: main text ── */
+[data-theme="light"] .hero-title  { color: #0A1628 !important; text-shadow: none !important; }
+[data-theme="light"] .hero-subtitle { color: #475569 !important; }
+
+/* ── Hero: URL card full restyle ── */
+[data-theme="light"] .url-card {
+  background: white !important;
+  border-color: rgba(0,0,0,.09) !important;
+  box-shadow: 0 4px 32px rgba(0,0,0,.1) !important;
+}
+[data-theme="light"] .url-card-header { color: #64748B !important; }
+[data-theme="light"] .url-field-wrap {
+  background: #F8FAFC !important;
+  border-color: #D1D9E6 !important;
+}
+[data-theme="light"] .url-field-wrap:focus-within {
+  border-color: rgba(0,102,255,.45) !important;
+  background: rgba(0,102,255,.03) !important;
+}
+[data-theme="light"] .url-prefix {
+  color: #94A3B8 !important;
+  border-right-color: #E2E8F0 !important;
+}
+[data-theme="light"] .url-field { color: #0A1628 !important; }
+[data-theme="light"] .url-field::placeholder { color: #CBD5E1 !important; }
+[data-theme="light"] .country-select {
+  background: #F8FAFC !important;
+  border-color: #D1D9E6 !important;
+  color: #374151 !important;
+}
+[data-theme="light"] .url-industry-row {
+  background: rgba(0,0,0,.03) !important;
+  border-color: rgba(0,0,0,.08) !important;
+}
+[data-theme="light"] .industry-field { color: #0A1628 !important; }
+[data-theme="light"] .industry-field::placeholder { color: #CBD5E1 !important; }
+[data-theme="light"] .industry-row-hint { color: var(--teal-dark) !important; }
+[data-theme="light"] .examples-label { color: #94A3B8 !important; }
+[data-theme="light"] .example-chip {
+  background: #F1F5F9 !important;
+  border-color: #D1D9E6 !important;
+  color: #374151 !important;
+}
+[data-theme="light"] .example-chip:hover {
+  background: #E2E8F0 !important;
+  border-color: #94A3B8 !important;
+  color: #0A1628 !important;
+}
+
+/* ── Hero stats bar ── */
+[data-theme="light"] .stat-lbl { color: #64748B !important; }
+[data-theme="light"] .stat-sep  { background: rgba(0,0,0,.1) !important; }
+
+/* ── View-header: all white text → dark ── */
+[data-theme="light"] .view-title,
+[data-theme="light"] .intel-header .view-title { color: #0A1628 !important; }
+[data-theme="light"] .view-sub,
+[data-theme="light"] .intel-header .view-sub   { color: #64748B !important; }
+[data-theme="light"] .vh-actions .atag,
+[data-theme="light"] .atag { color: #374151 !important; background: rgba(0,0,0,.05) !important; border-color: rgba(0,0,0,.1) !important; }
+
+/* ── Nav links in scrollable row ── */
+[data-theme="light"] .nav-scroll .nav-link,
+[data-theme="light"] .nav-link { color: #374151 !important; }
+[data-theme="light"] .nav-link.active,
+[data-theme="light"] .nav-link:hover  { color: #0066FF !important; }
+[data-theme="light"] .nav-link-intel  { color: #7C3AED !important; }
+
+/* ── Section tabs (stab) inactive ── */
+[data-theme="light"] .stab { color: #64748B !important; background: #F1F5F9 !important; border-color: #E2E8F0 !important; }
+[data-theme="light"] .stab:hover { background: #E2E8F0 !important; color: #0A1628 !important; }
+
+/* ── Platform filter pills ── */
+[data-theme="light"] .pf-btn { color: #374151 !important; border-color: #D1D9E6 !important; background: white !important; }
+[data-theme="light"] .pf-btn:hover { border-color: var(--teal) !important; color: var(--teal-dark) !important; }
+
+/* ── Analysis tag labels in view-header ── */
+[data-theme="light"] .breadcrumb { color: #0066FF !important; opacity: 1 !important; }
+
+/* ── Generic white-text headings that appear outside dark containers ── */
+[data-theme="light"] .view-header h1,
+[data-theme="light"] .view-header h2,
+[data-theme="light"] .view-header h3,
+[data-theme="light"] .view-header p,
+[data-theme="light"] .view-header span:not(.badge):not(.atag):not(.breadcrumb) {
+  color: inherit !important;
+}
