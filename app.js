@@ -1955,6 +1955,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'autoseo') {
     try { buildAutoSEO(); } catch(e) { console.warn('buildAutoSEO error:', e); }
   }
+  if (viewId === 'master-calendar') {
+    try { buildMasterCalendar(); } catch(e) { console.warn('buildMasterCalendar error:', e); }
+  }
   // Show/hide navbar for home vs app
   const navGroups = document.getElementById('navGroups');
   const navPlan   = document.getElementById('navPlanBadge');
@@ -17264,6 +17267,34 @@ function launchNow() {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // AUTOSEO Calendar Modal ─────────────────────────────────────────────────────
+// ── Publish Now from Calendar ─────────────────────────────────────────────
+function publishNowFromCal(idx) {
+  const art = window._autoSeoArticles && window._autoSeoArticles[idx];
+  if (!art) return;
+  const ep = document.getElementById('cal-edit-popup');
+  if (ep) ep.remove();
+  const wpOk = !!(window._wpCreds && window._wpCreds.siteUrl && window._wpCreds.appPassword);
+  if (wpOk && art.generatedHtml) {
+    publishSingleArticle(idx).then(() => {
+      const cm = document.getElementById('autoseo-cal-modal');
+      if (cm) cm.remove();
+      showAutoSeoCalendar();
+    }).catch(() => {});
+  } else {
+    // Mark as published manually (no WP or not yet written)
+    art.status = art.generatedHtml ? 'published' : art.status;
+    if (!art.generatedHtml) {
+      showToast('⚠️ Write the article first before publishing');
+      return;
+    }
+    const cm = document.getElementById('autoseo-cal-modal');
+    if (cm) cm.remove();
+    showAutoSeoCalendar();
+    buildAutoSEO();
+    showToast('✅ Article #' + (idx+1) + ' marked as published');
+  }
+}
+
 // ── Calendar Edit / Delete helpers ──────────────────────────────────────────
 function calEditArticle(idx) {
   const art = window._autoSeoArticles && window._autoSeoArticles[idx];
@@ -17288,7 +17319,8 @@ function calEditArticle(idx) {
         '<input type="date" id="cal-edit-date" value="' + currentDate + '" style="display:block;width:100%;margin-top:5px;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.85rem;outline:none;box-sizing:border-box;color:#111827">' +
       '</label>' +
       '<div style="display:flex;gap:10px">' +
-        '<button onclick="calSaveEdit(' + idx + ')" style="flex:1;padding:10px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:9px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">💾 Save Changes</button>' +
+        '<button onclick="calSaveEdit(' + idx + ')" style="flex:1;padding:10px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:9px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">💾 Save</button>' +
+        '<button onclick="publishNowFromCal(' + idx + ')" style="padding:10px 14px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:9px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">🚀 Publish Now</button>' +
         '<button onclick="calDeleteArticle(' + idx + ')" style="padding:10px 14px;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:9px;font-size:0.82rem;font-weight:700;color:#DC2626;cursor:pointer">🗑️ Delete</button>' +
         '<button onclick="document.getElementById(&apos;cal-edit-popup&apos;).remove()" style="padding:10px 14px;background:#F3F4F6;border:none;border-radius:9px;font-size:0.82rem;font-weight:700;color:#6B7280;cursor:pointer">Cancel</button>' +
       '</div>' +
@@ -17393,6 +17425,7 @@ function showAutoSeoCalendar() {
                 '<span onclick="previewGeneratedArticle(' + a.idx + ')" style="flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;font-size:0.6rem;font-weight:600;padding:2px 4px" title="' + (a.title||'').replace(/"/g,"'") + '">#' + (a.idx+1) + ' ' + (a.title||'').substring(0,22) + '</span>' +
                 '<button onclick="calEditArticle(' + a.idx + ')" style="flex-shrink:0;border:none;background:rgba(0,0,0,.06);cursor:pointer;padding:1px 3px;font-size:0.6rem;line-height:1.4;border-radius:3px;color:inherit" title="Edit">✏️</button>' +
                 '<button onclick="calDeleteArticle(' + a.idx + ')" style="flex-shrink:0;border:none;background:rgba(239,68,68,.1);cursor:pointer;padding:1px 3px;font-size:0.6rem;line-height:1.4;border-radius:3px;color:#DC2626" title="Delete">🗑</button>' +
+                '<button onclick="publishNowFromCal(' + a.idx + ')" style="flex-shrink:0;border:none;background:rgba(5,150,105,.12);cursor:pointer;padding:1px 3px;font-size:0.6rem;line-height:1.4;border-radius:3px;color:#059669" title="Publish Now">🚀</button>' +
               '</div>'
             ).join('') +
           '</td>';
@@ -18465,4 +18498,163 @@ async function loadTrafficProjection() {
     showToast('📈 Traffic projection generated!');
   } catch(e) { showToast('❌ ' + e.message); }
   finally { buildAutoSEO(); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MASTER CALENDAR — unified view of all content, campaigns & social
+// ══════════════════════════════════════════════════════════════════════════
+window._mcFilter  = 'all';
+window._mcViewMonth = null;
+window._mcViewYear  = null;
+
+function buildMasterCalendar() {
+  const wrap = document.getElementById('masterCalWrap');
+  if (!wrap) return;
+
+  const today = new Date();
+  if (window._mcViewMonth === null) window._mcViewMonth = today.getMonth();
+  if (window._mcViewYear  === null) window._mcViewYear  = today.getFullYear();
+
+  const sch = window._autoSeoSchedule || {};
+  const todayIso = today.toISOString().split('T')[0];
+
+  // ── Collect all events ──────────────────────────────────────────────────
+  const events = [];
+
+  (window._autoSeoArticles || []).forEach((a, i) => {
+    const d = _artDate(i, sch);
+    const isPast = d < todayIso;
+    const risk = isPast && a.status !== 'published' && a.status !== 'generated';
+    events.push({ date: d, type: 'article', idx: i, title: a.title || 'Article #'+(i+1),
+      status: a.status || 'pending', risk, color: a.status==='published'?'#059669':a.status==='generated'?'#1D4ED8':'#6B7280',
+      bg: a.status==='published'?'#DCFCE7':a.status==='generated'?'#DBEAFE':'#F3F4F6',
+      label: a.status==='published'?'Published':a.status==='generated'?'Written':'Pending' });
+  });
+
+  (window._launchedCampaigns || []).forEach((c, i) => {
+    const raw = c.launchedAt || '';
+    let d = todayIso;
+    try { const dt = new Date(raw); if (!isNaN(dt)) d = dt.toISOString().split('T')[0]; } catch(e) {}
+    const roas = parseFloat(c.metrics && c.metrics.roas) || 0;
+    const risk = roas > 0 && roas < 2;
+    const isLive = c.status === 'active';
+    events.push({ date: d, type: 'campaign', idx: i, title: (c.name||'Campaign') + ' · ' + (c.platform||''),
+      status: isLive ? 'live' : 'ended', risk, color: risk?'#D97706':isLive?'#7C3AED':'#6B7280',
+      bg: risk?'#FEF3C7':isLive?'#F5F3FF':'#F3F4F6',
+      label: risk?'⚠️ At Risk':isLive?'🔵 Live':'Ended', budget: c.budget, roas: c.metrics && c.metrics.roas });
+  });
+
+  (window._socialPosts || []).forEach(p => {
+    const d = p.scheduledDate || todayIso;
+    const isPast = d < todayIso;
+    events.push({ date: d, type: 'social', id: p.id, title: (p.caption||'Social post').substring(0,45),
+      status: p.status || (isPast ? 'published' : 'scheduled'), risk: false,
+      color: isPast ? '#059669' : '#9333EA', bg: isPast ? '#DCFCE7' : '#F5F3FF',
+      label: isPast ? 'Published' : '📅 Scheduled', platform: p.platform });
+  });
+
+  // ── Summary stats ───────────────────────────────────────────────────────
+  const inNext7  = events.filter(e => e.date > todayIso && e.date <= new Date(Date.now()+7*864e5).toISOString().split('T')[0]);
+  const liveNow  = events.filter(e => e.status === 'live' || (e.date === todayIso && e.type !== 'article'));
+  const atRisk   = events.filter(e => e.risk);
+  const done     = events.filter(e => e.status === 'published' || e.status === 'ended');
+
+  const typeLabels = { all:'All Events', article:'📝 Articles', campaign:'🚀 Campaigns', social:'📱 Social' };
+  const filterHtml = Object.entries(typeLabels).map(([k,v]) =>
+    '<button data-mcf="' + k + '" onclick="window._mcFilter=this.dataset.mcf;buildMasterCalendar()" style="padding:7px 14px;border:none;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer;background:' + (window._mcFilter===k?'#0066FF':'#F3F4F6') + ';color:' + (window._mcFilter===k?'white':'#374151') + '">' + v + '</button>'
+  ).join('');
+
+  // ── Build filtered dateMap ──────────────────────────────────────────────
+  const filtered = window._mcFilter === 'all' ? events : events.filter(e => e.type === window._mcFilter);
+  const dateMap = {};
+  filtered.forEach(e => { if (!dateMap[e.date]) dateMap[e.date] = []; dateMap[e.date].push(e); });
+
+  // ── Calendar grid ───────────────────────────────────────────────────────
+  const yr = window._mcViewYear, mo = window._mcViewMonth;
+  const monthName = new Date(yr, mo, 1).toLocaleDateString('en-US', { month:'long', year:'numeric' });
+  const firstDay = new Date(yr, mo, 1).getDay();
+  const daysInMonth = new Date(yr, mo+1, 0).getDate();
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  const cells = [];
+  for (let p = 0; p < firstDay; p++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const rows = [];
+  for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i+7));
+
+  const calGrid =
+    '<table style="width:100%;border-collapse:separate;border-spacing:3px;table-layout:fixed">' +
+    '<thead><tr>' + dayNames.map(d =>
+      '<th style="text-align:center;font-size:0.65rem;font-weight:700;color:#9CA3AF;padding:5px 2px;text-transform:uppercase">' + d + '</th>'
+    ).join('') + '</tr></thead>' +
+    '<tbody>' + rows.map(row =>
+      '<tr>' + row.map(day => {
+        if (!day) return '<td style="padding:4px;height:90px;background:#FAFAFA;border-radius:6px;opacity:.3"></td>';
+        const iso = yr + '-' + String(mo+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+        const dayEvents = dateMap[iso] || [];
+        const isToday = iso === todayIso;
+        const hasRisk = dayEvents.some(e => e.risk);
+        const cellBg = isToday ? '#EFF6FF' : hasRisk ? '#FFFBEB' : dayEvents.length ? '#F9FAFB' : 'white';
+        return '<td style="padding:5px;vertical-align:top;height:90px;background:' + cellBg + ';border:1.5px solid ' + (isToday?'#3B82F6':hasRisk?'#FCD34D':'#F3F4F6') + ';border-radius:8px">' +
+          '<div style="font-size:0.72rem;font-weight:' + (isToday?'800':'600') + ';color:' + (isToday?'#1D4ED8':'#374151') + ';text-align:right;margin-bottom:3px">' +
+            (isToday ? '<span style="background:#1D4ED8;color:white;border-radius:50%;width:19px;height:19px;display:inline-flex;align-items:center;justify-content:center;font-size:0.67rem">' + day + '</span>' : day) +
+          '</div>' +
+          dayEvents.slice(0,4).map(e =>
+            '<div title="' + e.title.replace(/"/g,"'") + '" style="font-size:0.58rem;font-weight:600;padding:1px 5px;border-radius:3px;background:' + e.bg + ';color:' + e.color + ';margin-bottom:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:default">' +
+              (e.type==='article'?'📝':e.type==='campaign'?'🚀':'📱') + ' ' + e.title.substring(0,20) +
+            '</div>'
+          ).join('') +
+          (dayEvents.length > 4 ? '<div style="font-size:0.58rem;color:#9CA3AF;padding:1px 4px">+' + (dayEvents.length-4) + ' more</div>' : '') +
+        '</td>';
+      }).join('') + '</tr>'
+    ).join('') + '</tbody></table>';
+
+  // ── Upcoming events list ────────────────────────────────────────────────
+  const upcoming = filtered.filter(e => e.date >= todayIso).sort((a,b) => a.date.localeCompare(b.date)).slice(0,12);
+  const upcomingHtml = upcoming.length ? upcoming.map(e =>
+    '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid #F3F4F6;border-radius:10px;background:' + (e.risk?'#FFFBEB':'white') + '">' +
+      '<div style="flex-shrink:0;text-align:center;min-width:40px;background:#F9FAFB;border-radius:8px;padding:4px 6px">' +
+        '<div style="font-size:0.62rem;font-weight:700;color:#6B7280;text-transform:uppercase">' + new Date(e.date+'T00:00:00').toLocaleDateString('en-US',{month:'short'}) + '</div>' +
+        '<div style="font-size:1.1rem;font-weight:800;color:#111827;line-height:1">' + parseInt(e.date.split('-')[2]) + '</div>' +
+      '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:0.82rem;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (e.type==='article'?'📝':e.type==='campaign'?'🚀':'📱') + ' ' + e.title + '</div>' +
+        '<div style="font-size:0.68rem;color:#6B7280;margin-top:2px">' + (e.type==='article'?'📝 Article':e.type==='campaign'?'🚀 Campaign':'📱 Social') + ' · ' + e.label + (e.budget?(' · $'+e.budget.toLocaleString()+' budget'):'') + '</div>' +
+      '</div>' +
+      '<span style="font-size:0.68rem;font-weight:700;padding:3px 9px;border-radius:6px;background:' + e.bg + ';color:' + e.color + ';white-space:nowrap">' + e.label + '</span>' +
+    '</div>'
+  ).join('') : '<div style="text-align:center;padding:30px;color:#9CA3AF;font-size:0.82rem">No upcoming events — launch campaigns or generate article topics to populate the calendar.</div>';
+
+  wrap.innerHTML =
+    // Summary cards
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:24px">' +
+      [['🗓️','Going Live (7d)', inNext7.length,'#0066FF','#EFF6FF'],
+       ['🟢','Live Now',       liveNow.length,'#059669','#DCFCE7'],
+       ['⚠️','At Risk',        atRisk.length, '#D97706','#FEF3C7'],
+       ['✅','Completed',      done.length,   '#6B7280','#F3F4F6']].map(([ic,lb,val,col,bg]) =>
+        '<div style="background:' + bg + ';border:1.5px solid ' + col + '30;border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:10px">' +
+          '<span style="font-size:1.3rem">' + ic + '</span>' +
+          '<div><div style="font-family:Sora,sans-serif;font-size:1.4rem;font-weight:800;color:' + col + ';line-height:1">' + val + '</div><div style="font-size:0.7rem;font-weight:600;color:' + col + '90;margin-top:2px">' + lb + '</div></div>' +
+        '</div>'
+      ).join('') +
+    '</div>' +
+    // Filter tabs
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">' + filterHtml +
+      '<div style="margin-left:auto;display:flex;align-items:center;gap:8px">' +
+        '<button onclick="if(window._mcViewMonth===0){window._mcViewMonth=11;window._mcViewYear--;}else{window._mcViewMonth--;}buildMasterCalendar()" style="width:32px;height:32px;background:#F3F4F6;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">‹</button>' +
+        '<span style="font-size:0.88rem;font-weight:700;color:#111827;white-space:nowrap">' + monthName + '</span>' +
+        '<button onclick="if(window._mcViewMonth===11){window._mcViewMonth=0;window._mcViewYear++;}else{window._mcViewMonth++;}buildMasterCalendar()" style="width:32px;height:32px;background:#F3F4F6;border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">›</button>' +
+      '</div>' +
+    '</div>' +
+    // Calendar grid
+    '<div style="background:white;border-radius:14px;padding:16px;margin-bottom:24px;box-shadow:0 1px 6px rgba(0,0,0,.05)">' +
+      calGrid +
+    '</div>' +
+    // Upcoming list
+    '<div style="background:white;border-radius:14px;padding:20px;box-shadow:0 1px 6px rgba(0,0,0,.05)">' +
+      '<div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:#111827;margin-bottom:14px">📋 Upcoming Events</div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px">' + upcomingHtml + '</div>' +
+    '</div>';
 }
