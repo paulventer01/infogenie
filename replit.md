@@ -41,7 +41,7 @@ The navbar (two-row layout) organises all 17 sections into four logical groups w
 - **ANALYSE**: Dashboard · Competitors · Intelligence · 🔴 Reddit · ⚔️ Battle Plan
 - **CREATE**: AI Creative · Campaigns · Content AI · Social
 - **REACH**: Audience · Advertise · AI Visibility
-- **GROW**: Results · 🔁 Re-Engage · ⚡ Auto · 🏢 Agency · Settings
+- **GROW**: Results · 🔁 Re-Engage · ⚡ Auto · 🏢 Agency · 👔 C-Suite · 🎯 Action Center · 🚀 AutoSEO Pro · Settings
 
 Each section's view header breadcrumb also shows the group label (e.g. "Analyse › Competitors", "Create › Campaigns") for consistent orientation throughout.
 

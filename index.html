@@ -117,6 +117,7 @@
           <a href="#" class="nav-link" data-view="agency"><span class="ndl-icon">🏢</span><span class="ndl-text">Agency & Reports</span></a>
           <a href="#" class="nav-link" data-view="csuite"><span class="ndl-icon">👔</span><span class="ndl-text">C-Suite Reports</span></a>
           <a href="#" class="nav-link" data-view="action-center"><span class="ndl-icon">🎯</span><span class="ndl-text">Action Center</span></a>
+          <a href="#" class="nav-link" data-view="autoseo"><span class="ndl-icon">🚀</span><span class="ndl-text">AutoSEO Pro</span></a>
           <a href="#" class="nav-link" data-view="settings"><span class="ndl-icon">⚙️</span><span class="ndl-text">Settings</span></a>
         </div>
       </div>
@@ -1112,6 +1113,28 @@
     </div>
   </div>
   <div class="container" id="csuiteWrap" style="padding-top:28px;padding-bottom:60px"></div>
+</div>
+
+<!-- AUTOSEO PRO VIEW -->
+<div class="view hidden" id="view-autoseo">
+  <div class="view-header" style="background:linear-gradient(135deg,#0A1628 0%,#0D2A5E 100%);border-bottom:1px solid rgba(0,229,255,.2)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> AutoSEO Pro</div>
+          <h2 class="view-title">🚀 AutoSEO Pro</h2>
+          <p class="view-sub">AI-powered SEO on autopilot — articles, backlinks, keyword research &amp; WordPress publishing</p>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <div id="autoseo-wp-status" style="display:none;padding:6px 12px;background:rgba(0,102,255,.15);border:1px solid rgba(0,102,255,.35);border-radius:8px;font-size:0.72rem;font-weight:700;color:#93C5FD;cursor:pointer" onclick="openWpCredentialsModal()">🟦 WordPress Connected</div>
+          <button onclick="openWpCredentialsModal()" id="autoseo-connect-wp-btn" style="padding:9px 18px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🟦 Connect WordPress</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" style="padding-top:24px">
+    <div id="autoseoWrap"></div>
+  </div>
 </div>
 
 <!-- ACTION CENTER VIEW -->

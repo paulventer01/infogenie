@@ -2861,6 +2861,151 @@ Return ONLY the complete HTML — no markdown, no explanation, just the raw HTML
   }
 });
 
+// ── AutoSEO: Generate SEO Article ────────────────────────────────────────────
+app.post('/api/generate-seo-article', async (req, res) => {
+  try {
+    const { title, keyword, domain, industry, competitors = [], wordCount = 1200, tone = 'professional' } = req.body;
+    const compNames = competitors.slice(0, 3).join(', ') || 'leading competitors';
+    const prompt = `You are an expert SEO content writer. Write a ${wordCount}-word, ${tone} SEO-optimized article.
+
+Title: ${title}
+Primary keyword: ${keyword}
+Domain/Brand: ${domain}
+Industry: ${industry}
+Competitor context: ${compNames}
+
+Requirements:
+- Open with a compelling hook paragraph
+- Use the primary keyword naturally 4-6 times
+- Include 4-6 H2 subheadings with related long-tail keywords
+- Include a FAQ section at the end with 3 questions
+- End with a strong CTA directing readers to ${domain}
+- Write in a ${tone}, authoritative tone that builds E-E-A-T signals
+- Include 2-3 internal link placeholder comments like <!-- INTERNAL LINK: [topic] -->
+- Total length: approximately ${wordCount} words
+- Format as clean HTML (h1, h2, p, ul, li, strong — no CSS, no full page wrapper)
+
+Return ONLY the article HTML content, no markdown, no explanation.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 3000,
+      temperature: 0.6
+    });
+    let content = completion.choices[0]?.message?.content || '';
+    content = content.replace(/^```html\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/i,'').trim();
+    const wordCountActual = content.replace(/<[^>]+>/g,'').trim().split(/\s+/).length;
+    res.json({ content, title, keyword, wordCount: wordCountActual });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── AutoSEO: Generate Article Topics ─────────────────────────────────────────
+app.post('/api/generate-article-topics', async (req, res) => {
+  try {
+    const { domain, industry, competitors = [], count = 30, tone = 'professional' } = req.body;
+    const prompt = `You are an expert SEO content strategist. Generate ${count} SEO-optimised article topics for ${domain} in the ${industry} industry.
+Competitor context: ${competitors.slice(0,4).join(', ') || 'N/A'}
+
+For each topic provide:
+- title: compelling, keyword-rich article title
+- keyword: primary target keyword (2-5 words)
+- intent: Informational / Commercial / Transactional
+- estimated_volume: monthly search volume estimate (number)
+- difficulty: ranking difficulty 1-100
+
+Mix of: beginner how-to guides, advanced deep-dives, comparison articles, listicles, and case studies.
+Cover the full buyer journey from awareness to decision.
+
+Return a JSON object with a "topics" array of ${count} objects. Return ONLY valid JSON.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4000,
+      temperature: 0.6,
+      response_format: { type: 'json_object' }
+    });
+    const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    const topics = parsed.topics || [];
+    res.json({ topics });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── AutoSEO: Backlink Opportunities ──────────────────────────────────────────
+app.post('/api/backlink-opportunities', async (req, res) => {
+  try {
+    const { domain, industry, competitors = [], keywords = [] } = req.body;
+    const prompt = `You are an SEO link-building strategist. Generate 8 high-authority backlink opportunities for ${domain} in the ${industry} industry.
+
+Competitors for context: ${competitors.slice(0,4).join(', ') || 'N/A'}
+Target keywords: ${keywords.slice(0,5).join(', ') || industry}
+
+For each opportunity provide:
+1. Site name and URL (real, high-DR authority site relevant to the industry)
+2. Domain Rating estimate (50-90)
+3. Link type (Guest Post / Resource Page / Broken Link / HARO / Directory / Podcast)
+4. Outreach angle (1 sentence pitch)
+5. Difficulty: Easy / Medium / Hard
+
+Return a JSON array of 8 objects with fields: site, url, dr, type, angle, difficulty.
+Return ONLY valid JSON, no markdown.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 1200,
+      temperature: 0.5,
+      response_format: { type: 'json_object' }
+    });
+    let raw = completion.choices[0]?.message?.content || '{}';
+    const parsed = JSON.parse(raw);
+    const opportunities = parsed.opportunities || parsed.backlinks || parsed.sites || Object.values(parsed)[0] || [];
+    res.json({ opportunities });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── AutoSEO: Keyword Research ─────────────────────────────────────────────────
+app.post('/api/keyword-research', async (req, res) => {
+  try {
+    const { domain, industry, seedKeyword = '', competitors = [] } = req.body;
+    const prompt = `You are an SEO keyword research specialist. Generate 15 high-value, low-competition keyword opportunities for ${domain} in the ${industry} industry.
+${seedKeyword ? `Seed keyword: ${seedKeyword}` : ''}
+Competitor context: ${competitors.slice(0,3).join(', ') || 'N/A'}
+
+For each keyword provide:
+1. keyword (the exact search term)
+2. monthly_volume (estimated monthly searches, number)
+3. difficulty (1-100, lower = easier to rank)
+4. cpc (estimated cost per click in USD)
+5. intent: Informational / Commercial / Transactional / Navigational
+6. opportunity_score (1-10)
+7. content_angle (brief content idea, 1 sentence)
+
+Mix of: long-tail (3-5 words, difficulty < 30), medium (difficulty 30-60), and 2-3 competitor gap keywords.
+Return a JSON object with a "keywords" array. Return ONLY valid JSON.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 1500,
+      temperature: 0.4,
+      response_format: { type: 'json_object' }
+    });
+    const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    const keywords = parsed.keywords || [];
+    res.json({ keywords });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── WordPress Detection ───────────────────────────────────────────────────────
 app.post('/api/detect-wordpress', async (req, res) => {
   const { url } = req.body || {};

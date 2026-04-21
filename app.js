@@ -1930,6 +1930,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'agency') {
     try { buildAgency(); } catch(e) { console.warn('buildAgency error:', e); }
   }
+  if (viewId === 'autoseo') {
+    try { buildAutoSEO(); } catch(e) { console.warn('buildAutoSEO error:', e); }
+  }
   // Show/hide navbar for home vs app
   const navGroups = document.getElementById('navGroups');
   const navPlan   = document.getElementById('navPlanBadge');
@@ -16812,4 +16815,533 @@ function launchNow() {
       document.getElementById('websiteInput')?.focus();
     }
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTOSEO PRO ─ buildAutoSEO()
+// ═══════════════════════════════════════════════════════════════════════════════
+window._autoSeoTab = 'calendar';
+window._autoSeoArticles = null;   // generated article topics
+window._autoSeoKeywords = null;   // researched keywords
+window._autoSeoBacklinks = null;  // backlink opps
+window._autoSeoGenLoading = false;
+window._autoSeoSchedule = { frequency: 'monthly', count: 30, tone: 'professional', wordCount: 1200 };
+
+function buildAutoSEO() {
+  const wrap = document.getElementById('autoseoWrap');
+  if (!wrap) return;
+  const d = analysisData;
+  const domain    = d ? d.domain : 'yourdomain.com';
+  const industry  = d ? (d.industry || 'General') : 'General';
+  const tab       = window._autoSeoTab || 'calendar';
+  const comps     = d ? (d.competitors||[]).map(c=>c.name||c.domain||'').filter(Boolean) : [];
+  const sch       = window._autoSeoSchedule;
+
+  // ── WordPress connection badge ──
+  const wpConnected = !!(window._wpCreds && window._wpCreds.siteUrl && window._wpCreds.appPassword);
+  const wpBadge = document.getElementById('autoseo-wp-status');
+  const wpBtn   = document.getElementById('autoseo-connect-wp-btn');
+  if (wpBadge) wpBadge.style.display = wpConnected ? 'flex' : 'none';
+  if (wpBtn)   wpBtn.style.display   = wpConnected ? 'none' : 'flex';
+
+  const tabs = [
+    { id: 'calendar',  label: '📅 Content Calendar' },
+    { id: 'backlinks', label: '🔗 Backlink Opportunities' },
+    { id: 'keywords',  label: '🔍 Keyword Research' },
+    { id: 'settings',  label: '⚙️ Automation Settings' },
+  ];
+
+  wrap.innerHTML = `
+<!-- Stats row -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px">
+  ${[
+    { icon:'📄', label:'Articles / Month', val: sch.count, color:'#059669', bg:'#F0FDF4' },
+    { icon:'🔗', label:'Backlinks Tracked', val: window._autoSeoBacklinks ? window._autoSeoBacklinks.length : '—', color:'#0066FF', bg:'#EFF6FF' },
+    { icon:'🔍', label:'Keywords Found', val: window._autoSeoKeywords ? window._autoSeoKeywords.length : '—', color:'#7C3AED', bg:'#F5F3FF' },
+    { icon:'🟦', label:'WordPress', val: wpConnected ? 'Connected' : 'Not Connected', color: wpConnected ? '#059669':'#DC2626', bg: wpConnected ? '#F0FDF4':'#FFF1F2' },
+  ].map(s=>`
+    <div style="background:white;border-radius:14px;border:1.5px solid #E5E7EB;padding:16px 20px;display:flex;align-items:center;gap:14px">
+      <div style="width:42px;height:42px;border-radius:10px;background:${s.bg};display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0">${s.icon}</div>
+      <div>
+        <div style="font-size:1.1rem;font-weight:800;color:${s.color}">${s.val}</div>
+        <div style="font-size:0.72rem;color:#6B7280;font-weight:600">${s.label}</div>
+      </div>
+    </div>`).join('')}
+</div>
+
+<!-- Tabs -->
+<div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+  ${tabs.map(t=>`<button onclick="window._autoSeoTab='${t.id}';buildAutoSEO()" style="padding:9px 18px;border-radius:10px;font-size:0.8rem;font-weight:700;cursor:pointer;border:1.5px solid ${tab===t.id?'#0066FF':'#E5E7EB'};background:${tab===t.id?'#0066FF':'white'};color:${tab===t.id?'white':'#374151'}">${t.label}</button>`).join('')}
+</div>
+
+<!-- Tab Content -->
+<div id="autoseo-tab-body">${renderAutoSeoTab(tab, domain, industry, comps, sch)}</div>
+`;
+}
+
+function renderAutoSeoTab(tab, domain, industry, comps, sch) {
+  if (tab === 'calendar')  return renderAutoSeoCalendar(domain, industry, comps, sch);
+  if (tab === 'backlinks') return renderAutoSeoBacklinks(domain, industry, comps);
+  if (tab === 'keywords')  return renderAutoSeoKeywords(domain, industry, comps);
+  if (tab === 'settings')  return renderAutoSeoSettings(sch);
+  return '';
+}
+
+// ─── TAB 1: Content Calendar ─────────────────────────────────────────────────
+function renderAutoSeoCalendar(domain, industry, comps, sch) {
+  const articles = window._autoSeoArticles;
+  const wpOk     = !!(window._wpCreds && window._wpCreds.siteUrl && window._wpCreds.appPassword);
+
+  return `
+<div style="background:white;border-radius:16px;border:1.5px solid #E5E7EB;overflow:hidden">
+  <div style="padding:20px 24px;border-bottom:1.5px solid #F3F4F6;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-size:1rem;font-weight:800;color:#111827">📅 Monthly Content Calendar</div>
+      <div style="font-size:0.75rem;color:#6B7280;margin-top:2px">${sch.count} SEO-optimised articles for <strong>${domain}</strong> in the <strong>${industry}</strong> niche</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      ${articles ? `<button onclick="publishAllToWordPress()" ${!wpOk?'disabled title="Connect WordPress first"':''} style="padding:9px 16px;background:${wpOk?'linear-gradient(135deg,#2563EB,#1D4ED8)':'#E5E7EB'};border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:${wpOk?'white':'#9CA3AF'};cursor:${wpOk?'pointer':'not-allowed'}">🟦 Publish All to WP</button>` : ''}
+      <button onclick="generateArticleTopics()" id="gen-topics-btn" style="padding:9px 18px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer;display:flex;align-items:center;gap:6px">
+        <span id="gen-topics-icon">✨</span> <span id="gen-topics-label">${articles ? 'Regenerate Topics' : 'Generate ' + sch.count + ' Article Topics'}</span>
+      </button>
+    </div>
+  </div>
+  <div id="calendar-content" style="padding:20px 24px">
+    ${articles ? renderArticleGrid(articles, wpOk) : renderCalendarEmpty(sch.count)}
+  </div>
+</div>`;
+}
+
+function renderCalendarEmpty(count) {
+  return `
+<div style="text-align:center;padding:50px 20px">
+  <div style="font-size:3rem;margin-bottom:12px">📄</div>
+  <div style="font-size:1.1rem;font-weight:700;color:#111827;margin-bottom:8px">Generate Your ${count}-Article Content Plan</div>
+  <div style="font-size:0.82rem;color:#6B7280;max-width:400px;margin:0 auto 24px">InfoGenie will create a complete monthly content calendar with SEO-optimised article topics, target keywords, and publishing schedule tailored to your niche.</div>
+  <button onclick="generateArticleTopics()" style="padding:12px 28px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:10px;font-size:0.88rem;font-weight:700;color:white;cursor:pointer">✨ Generate Article Topics</button>
+</div>`;
+}
+
+function renderArticleGrid(articles, wpOk) {
+  const weeks = [[], [], [], []];
+  articles.forEach((a, i) => weeks[Math.floor(i / Math.ceil(articles.length / 4))].push({ ...a, idx: i }));
+  return weeks.filter(w => w.length).map((week, wi) => `
+<div style="margin-bottom:20px">
+  <div style="font-size:0.72rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Week ${wi + 1}</div>
+  <div style="display:grid;gap:10px">
+    ${week.map(a => `
+    <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1.5px solid #E5E7EB;border-radius:12px;background:#FAFAFA;hover:background:#F3F4F6">
+      <div style="flex-shrink:0;width:28px;height:28px;border-radius:50%;background:${a.status === 'published' ? '#059669' : a.status === 'generated' ? '#0066FF' : '#E5E7EB'};display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:${a.status === 'published' || a.status === 'generated' ? 'white' : '#6B7280'}">${a.idx + 1}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:0.85rem;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.title}</div>
+        <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+          <span style="font-size:0.66rem;padding:2px 7px;background:#EFF6FF;border-radius:4px;color:#1D4ED8;font-weight:600">${a.keyword}</span>
+          <span style="font-size:0.66rem;padding:2px 7px;background:#F5F3FF;border-radius:4px;color:#6D28D9;font-weight:600">${a.intent || 'Informational'}</span>
+          <span style="font-size:0.66rem;padding:2px 7px;background:${a.status === 'published' ? '#DCFCE7' : a.status === 'generated' ? '#DBEAFE' : '#F3F4F6'};border-radius:4px;color:${a.status === 'published' ? '#059669' : a.status === 'generated' ? '#1D4ED8' : '#6B7280'};font-weight:700">${a.status === 'published' ? '✓ Published' : a.status === 'generated' ? '✓ Generated' : 'Pending'}</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        ${a.status !== 'generated' && a.status !== 'published' ? `<button onclick="generateSingleArticle(${a.idx})" style="padding:5px 10px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:7px;font-size:0.67rem;font-weight:700;color:white;cursor:pointer">✍️ Write</button>` : ''}
+        ${a.status === 'generated' && wpOk ? `<button onclick="publishSingleArticle(${a.idx})" style="padding:5px 10px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:7px;font-size:0.67rem;font-weight:700;color:white;cursor:pointer">🟦 Publish</button>` : ''}
+        ${a.generatedHtml ? `<button onclick="previewGeneratedArticle(${a.idx})" style="padding:5px 10px;background:white;border:1px solid #E5E7EB;border-radius:7px;font-size:0.67rem;font-weight:700;color:#374151;cursor:pointer">👁 Preview</button>` : ''}
+      </div>
+    </div>`).join('')}
+  </div>
+</div>`).join('');
+}
+
+// ─── TAB 2: Backlink Opportunities ───────────────────────────────────────────
+function renderAutoSeoBacklinks(domain, industry, comps) {
+  const opps = window._autoSeoBacklinks;
+  return `
+<div style="background:white;border-radius:16px;border:1.5px solid #E5E7EB;overflow:hidden">
+  <div style="padding:20px 24px;border-bottom:1.5px solid #F3F4F6;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-size:1rem;font-weight:800;color:#111827">🔗 High-Authority Backlink Opportunities</div>
+      <div style="font-size:0.75rem;color:#6B7280;margin-top:2px">AI-identified link prospects tailored to <strong>${domain}</strong></div>
+    </div>
+    <button onclick="loadBacklinkOpps()" id="bl-opps-btn" style="padding:9px 18px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🔍 ${opps ? 'Refresh Opportunities' : 'Find Backlink Targets'}</button>
+  </div>
+  <div id="bl-opps-content" style="padding:20px 24px">
+    ${opps ? renderBacklinkTable(opps) : `
+<div style="text-align:center;padding:50px 20px">
+  <div style="font-size:3rem;margin-bottom:12px">🔗</div>
+  <div style="font-size:1.1rem;font-weight:700;color:#111827;margin-bottom:8px">Discover 5+ High-Authority Backlink Targets</div>
+  <div style="font-size:0.82rem;color:#6B7280;max-width:420px;margin:0 auto 24px">Our AI analyses your niche and competitors to surface the best link-building opportunities — guest posts, resource pages, HARO, directories and more.</div>
+  <button onclick="loadBacklinkOpps()" style="padding:12px 28px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:10px;font-size:0.88rem;font-weight:700;color:white;cursor:pointer">🔍 Find Backlink Targets</button>
+</div>`}
+  </div>
+</div>`;
+}
+
+function renderBacklinkTable(opps) {
+  const diffColor = { Easy: '#059669', Medium: '#D97706', Hard: '#DC2626' };
+  const diffBg    = { Easy: '#F0FDF4', Medium: '#FFFBEB', Hard: '#FFF1F2' };
+  const typeColor = '#0066FF';
+  return `
+<div style="overflow-x:auto">
+<table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+  <thead>
+    <tr style="background:#F9FAFB">
+      ${['Site','DR','Type','Outreach Angle','Difficulty','Action'].map(h=>`<th style="padding:10px 14px;text-align:left;font-size:0.7rem;font-weight:700;color:#6B7280;text-transform:uppercase;border-bottom:1.5px solid #E5E7EB">${h}</th>`).join('')}
+    </tr>
+  </thead>
+  <tbody>
+    ${opps.map((o, i) => `
+    <tr style="border-bottom:1px solid #F3F4F6;${i % 2 === 0 ? '' : 'background:#FAFAFA'}">
+      <td style="padding:12px 14px;font-weight:700;color:#111827">${o.site}<br><a href="${o.url}" target="_blank" style="font-size:0.65rem;color:#0066FF;font-weight:500;text-decoration:none">${o.url}</a></td>
+      <td style="padding:12px 14px;text-align:center"><span style="font-weight:800;color:#0066FF">${o.dr}</span></td>
+      <td style="padding:12px 14px"><span style="padding:3px 8px;background:#EFF6FF;border-radius:5px;font-size:0.66rem;font-weight:700;color:${typeColor}">${o.type}</span></td>
+      <td style="padding:12px 14px;color:#374151;max-width:260px">${o.angle}</td>
+      <td style="padding:12px 14px;text-align:center"><span style="padding:3px 9px;border-radius:5px;font-size:0.66rem;font-weight:700;background:${diffBg[o.difficulty]||'#F3F4F6'};color:${diffColor[o.difficulty]||'#374151'}">${o.difficulty}</span></td>
+      <td style="padding:12px 14px">
+        <button onclick="copyOutreachEmail(${i})" title="Copy outreach email template" style="padding:5px 10px;background:white;border:1px solid #E5E7EB;border-radius:7px;font-size:0.67rem;font-weight:700;color:#374151;cursor:pointer">📧 Copy Pitch</button>
+      </td>
+    </tr>`).join('')}
+  </tbody>
+</table>
+</div>
+<div style="margin-top:16px;padding:14px 16px;background:#F0FDF4;border-radius:10px;border:1px solid #BBF7D0;display:flex;align-items:center;gap:10px">
+  <span style="font-size:1.2rem">💡</span>
+  <div style="font-size:0.75rem;color:#065F46;font-weight:600">Pro Tip: Start with <strong>Easy</strong> targets — even 3-4 quality links from DR 60+ sites can lift your domain authority significantly within 90 days.</div>
+</div>`;
+}
+
+// ─── TAB 3: Keyword Research ──────────────────────────────────────────────────
+function renderAutoSeoKeywords(domain, industry, comps) {
+  const kws = window._autoSeoKeywords;
+  return `
+<div style="background:white;border-radius:16px;border:1.5px solid #E5E7EB;overflow:hidden">
+  <div style="padding:20px 24px;border-bottom:1.5px solid #F3F4F6;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-size:1rem;font-weight:800;color:#111827">🔍 Advanced Keyword Research</div>
+      <div style="font-size:0.75rem;color:#6B7280;margin-top:2px">High-value, low-competition opportunities for <strong>${domain}</strong></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="kw-seed" placeholder="Seed keyword (optional)" style="padding:8px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.78rem;width:180px;outline:none">
+      <button onclick="loadKeywordResearch()" id="kw-btn" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#5B21B6);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🔍 ${kws ? 'Refresh' : 'Research Keywords'}</button>
+    </div>
+  </div>
+  <div id="kw-content" style="padding:20px 24px">
+    ${kws ? renderKeywordTable(kws) : `
+<div style="text-align:center;padding:50px 20px">
+  <div style="font-size:3rem;margin-bottom:12px">🔍</div>
+  <div style="font-size:1.1rem;font-weight:700;color:#111827;margin-bottom:8px">Uncover Winning Keywords</div>
+  <div style="font-size:0.82rem;color:#6B7280;max-width:420px;margin:0 auto 24px">AI-powered research surfaces high-volume, low-difficulty keywords your competitors haven't fully captured — perfect for quick wins.</div>
+  <button onclick="loadKeywordResearch()" style="padding:12px 28px;background:linear-gradient(135deg,#7C3AED,#5B21B6);border:none;border-radius:10px;font-size:0.88rem;font-weight:700;color:white;cursor:pointer">🔍 Start Keyword Research</button>
+</div>`}
+  </div>
+</div>`;
+}
+
+function renderKeywordTable(kws) {
+  const intentColor = { Informational:'#0066FF', Commercial:'#7C3AED', Transactional:'#059669', Navigational:'#D97706' };
+  const intentBg    = { Informational:'#EFF6FF', Commercial:'#F5F3FF', Transactional:'#F0FDF4', Navigational:'#FFFBEB' };
+  const sorted = [...kws].sort((a, b) => b.opportunity_score - a.opportunity_score);
+  return `
+<div style="overflow-x:auto">
+<table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+  <thead>
+    <tr style="background:#F9FAFB">
+      ${['Keyword','Monthly Volume','Difficulty','CPC','Intent','Opp. Score','Content Angle'].map(h=>`<th style="padding:10px 12px;text-align:left;font-size:0.68rem;font-weight:700;color:#6B7280;text-transform:uppercase;border-bottom:1.5px solid #E5E7EB">${h}</th>`).join('')}
+    </tr>
+  </thead>
+  <tbody>
+    ${sorted.map((k, i) => {
+      const diffColor = k.difficulty < 30 ? '#059669' : k.difficulty < 60 ? '#D97706' : '#DC2626';
+      const oppColor  = k.opportunity_score >= 8 ? '#059669' : k.opportunity_score >= 5 ? '#D97706' : '#6B7280';
+      return `
+    <tr style="border-bottom:1px solid #F3F4F6;${i % 2 === 0 ? '' : 'background:#FAFAFA'}">
+      <td style="padding:11px 12px;font-weight:700;color:#111827">${k.keyword}</td>
+      <td style="padding:11px 12px;text-align:center;font-weight:700;color:#0066FF">${(k.monthly_volume||0).toLocaleString()}</td>
+      <td style="padding:11px 12px;text-align:center"><span style="font-weight:800;color:${diffColor}">${k.difficulty}</span></td>
+      <td style="padding:11px 12px;text-align:center;color:#374151">$${parseFloat(k.cpc||0).toFixed(2)}</td>
+      <td style="padding:11px 12px"><span style="padding:3px 8px;border-radius:5px;font-size:0.65rem;font-weight:700;background:${intentBg[k.intent]||'#F3F4F6'};color:${intentColor[k.intent]||'#374151'}">${k.intent||'—'}</span></td>
+      <td style="padding:11px 12px;text-align:center"><span style="font-weight:800;color:${oppColor}">${k.opportunity_score}/10</span></td>
+      <td style="padding:11px 12px;color:#374151;max-width:200px;font-size:0.72rem">${k.content_angle||'—'}</td>
+    </tr>`;
+    }).join('')}
+  </tbody>
+</table>
+</div>
+<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+  <button onclick="addKeywordsToCalendar()" style="padding:8px 16px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:8px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer">📅 Add Top Keywords to Calendar</button>
+  <button onclick="copyKeywordsCSV()" style="padding:8px 16px;background:white;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.75rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy as CSV</button>
+</div>`;
+}
+
+// ─── TAB 4: Automation Settings ───────────────────────────────────────────────
+function renderAutoSeoSettings(sch) {
+  const wpOk = !!(window._wpCreds && window._wpCreds.siteUrl && window._wpCreds.appPassword);
+  return `
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+  <!-- Publishing Schedule -->
+  <div style="background:white;border-radius:16px;border:1.5px solid #E5E7EB;padding:22px 24px">
+    <div style="font-size:0.95rem;font-weight:800;color:#111827;margin-bottom:16px">⚡ Publishing Schedule</div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <label style="font-size:0.78rem;font-weight:700;color:#374151">Articles per month
+        <input id="seo-count" type="number" min="1" max="60" value="${sch.count}" oninput="window._autoSeoSchedule.count=+this.value" style="margin-top:5px;display:block;width:100%;padding:8px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.82rem;outline:none">
+      </label>
+      <label style="font-size:0.78rem;font-weight:700;color:#374151">Target word count
+        <select id="seo-wc" onchange="window._autoSeoSchedule.wordCount=+this.value" style="margin-top:5px;display:block;width:100%;padding:8px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.82rem;outline:none;background:white">
+          ${[800,1000,1200,1500,2000,2500].map(w=>`<option value="${w}" ${sch.wordCount==w?'selected':''}>${w.toLocaleString()} words</option>`).join('')}
+        </select>
+      </label>
+      <label style="font-size:0.78rem;font-weight:700;color:#374151">Content tone
+        <select id="seo-tone" onchange="window._autoSeoSchedule.tone=this.value" style="margin-top:5px;display:block;width:100%;padding:8px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.82rem;outline:none;background:white">
+          ${['professional','conversational','authoritative','friendly','educational'].map(t=>`<option value="${t}" ${sch.tone==t?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}
+        </select>
+      </label>
+      <button onclick="saveAutoSeoSettings()" style="padding:10px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer;margin-top:4px">💾 Save Settings</button>
+    </div>
+  </div>
+
+  <!-- WordPress Connection -->
+  <div style="background:white;border-radius:16px;border:1.5px solid #E5E7EB;padding:22px 24px">
+    <div style="font-size:0.95rem;font-weight:800;color:#111827;margin-bottom:6px">🟦 WordPress Auto-Publishing</div>
+    <div style="font-size:0.75rem;color:#6B7280;margin-bottom:16px">Articles are published as drafts — you approve &amp; go live from WP Admin</div>
+    ${wpOk ? `
+    <div style="padding:14px;background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:10px;margin-bottom:14px">
+      <div style="font-size:0.78rem;font-weight:700;color:#065F46;margin-bottom:4px">✅ WordPress Connected</div>
+      <div style="font-size:0.72rem;color:#059669">${window._wpCreds.siteUrl}</div>
+    </div>
+    <button onclick="openWpCredentialsModal()" style="width:100%;padding:10px;background:white;border:1.5px solid #E5E7EB;border-radius:10px;font-size:0.8rem;font-weight:700;color:#374151;cursor:pointer">🔄 Update Credentials</button>` : `
+    <div style="padding:14px;background:#FFF7ED;border:1.5px solid #FED7AA;border-radius:10px;margin-bottom:14px">
+      <div style="font-size:0.78rem;font-weight:700;color:#92400E;margin-bottom:4px">⚠️ WordPress Not Connected</div>
+      <div style="font-size:0.72rem;color:#B45309">Connect your WordPress site to enable auto-publishing</div>
+    </div>
+    <button onclick="openWpCredentialsModal()" style="width:100%;padding:10px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer">🟦 Connect WordPress</button>`}
+  </div>
+
+  <!-- 24/7 Automation Status -->
+  <div style="background:white;border-radius:16px;border:1.5px solid #E5E7EB;padding:22px 24px;grid-column:span 2">
+    <div style="font-size:0.95rem;font-weight:800;color:#111827;margin-bottom:16px">🤖 AutoSEO Automation Status</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+      ${[
+        { icon:'📄', title:'Content Generation', desc:'AI writes articles based on your calendar topics & keywords', status:'Ready', ok:true },
+        { icon:'🔍', title:'Keyword Monitoring', desc:'Tracks ranking changes and surfaces new opportunities weekly', status:'Active', ok:true },
+        { icon:'🟦', title:'WordPress Publishing', desc:'Publishes generated drafts automatically on schedule', status: wpOk ? 'Connected' : 'Setup Required', ok: wpOk },
+      ].map(f=>`
+      <div style="padding:16px;border:1.5px solid ${f.ok?'#BBF7D0':'#FED7AA'};border-radius:12px;background:${f.ok?'#F0FDF4':'#FFFBEB'}">
+        <div style="font-size:1.5rem;margin-bottom:8px">${f.icon}</div>
+        <div style="font-size:0.82rem;font-weight:800;color:#111827;margin-bottom:4px">${f.title}</div>
+        <div style="font-size:0.72rem;color:#6B7280;margin-bottom:10px">${f.desc}</div>
+        <span style="padding:3px 9px;border-radius:5px;font-size:0.65rem;font-weight:700;background:${f.ok?'#DCFCE7':'#FEF3C7'};color:${f.ok?'#059669':'#D97706'}">${f.status}</span>
+      </div>`).join('')}
+    </div>
+  </div>
+
+</div>`;
+}
+
+// ─── Action Functions ─────────────────────────────────────────────────────────
+async function generateArticleTopics() {
+  if (!analysisData) { showToast('⚠️ Run an analysis first'); return; }
+  const btn = document.getElementById('gen-topics-btn');
+  const icon = document.getElementById('gen-topics-icon');
+  const lbl  = document.getElementById('gen-topics-label');
+  if (btn) { btn.disabled = true; if(icon) icon.textContent = '⏳'; if(lbl) lbl.textContent = 'Generating…'; }
+  const sch  = window._autoSeoSchedule;
+  const d    = analysisData;
+  const comps = (d.competitors||[]).map(c=>c.name||c.domain||'').filter(Boolean);
+  try {
+    const resp = await fetch('/api/generate-article-topics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: d.domain, industry: d.industry||'General', competitors: comps, count: sch.count, tone: sch.tone })
+    });
+    const data = await resp.json();
+    if (data.topics && data.topics.length) {
+      window._autoSeoArticles = data.topics.map(t => ({ ...t, status: 'pending', generatedHtml: null }));
+      showToast(`✅ ${data.topics.length} article topics generated!`);
+    } else { showToast('⚠️ Could not generate topics — try again'); }
+  } catch(e) { showToast('❌ Error: ' + e.message); }
+  finally {
+    if (btn) { btn.disabled = false; if(icon) icon.textContent = '✨'; if(lbl) lbl.textContent = 'Regenerate Topics'; }
+    buildAutoSEO();
+  }
+}
+
+async function generateSingleArticle(idx) {
+  if (!window._autoSeoArticles || !window._autoSeoArticles[idx]) return;
+  const art = window._autoSeoArticles[idx];
+  const d   = analysisData || {};
+  const comps = (d.competitors||[]).map(c=>c.name||c.domain||'').filter(Boolean);
+  art.status = 'generating';
+  buildAutoSEO();
+  try {
+    const resp = await fetch('/api/generate-seo-article', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: art.title, keyword: art.keyword, domain: d.domain||'yourdomain.com',
+        industry: d.industry||'General', competitors: comps,
+        wordCount: window._autoSeoSchedule.wordCount, tone: window._autoSeoSchedule.tone
+      })
+    });
+    const data = await resp.json();
+    if (data.content) {
+      art.generatedHtml = data.content;
+      art.status = 'generated';
+      art.wordCount = data.wordCount;
+      showToast(`✅ Article written: "${art.title.substring(0,40)}…"`);
+    } else { art.status = 'pending'; showToast('⚠️ Could not write article'); }
+  } catch(e) { art.status = 'pending'; showToast('❌ Error: ' + e.message); }
+  buildAutoSEO();
+}
+
+async function publishSingleArticle(idx) {
+  if (!window._autoSeoArticles || !window._autoSeoArticles[idx]) return;
+  const art = window._autoSeoArticles[idx];
+  if (!art.generatedHtml) { showToast('⚠️ Generate the article first'); return; }
+  const creds = window._wpCreds;
+  if (!creds || !creds.siteUrl || !creds.appPassword) { showToast('⚠️ Connect WordPress first'); openWpCredentialsModal(); return; }
+  art.status = 'publishing';
+  buildAutoSEO();
+  try {
+    const resp = await fetch('/api/publish-to-wordpress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ siteUrl: creds.siteUrl, username: creds.username, appPassword: creds.appPassword, title: art.title, content: art.generatedHtml })
+    });
+    const data = await resp.json();
+    if (data.url) {
+      art.status = 'published';
+      art.wpUrl  = data.url;
+      showToast('🟦 Published to WordPress as draft!');
+    } else { art.status = 'generated'; showToast('⚠️ Publish failed: ' + (data.error||'Unknown error')); }
+  } catch(e) { art.status = 'generated'; showToast('❌ ' + e.message); }
+  buildAutoSEO();
+}
+
+async function publishAllToWordPress() {
+  const arts = (window._autoSeoArticles||[]).filter(a => a.status === 'generated');
+  if (!arts.length) { showToast('⚠️ No generated articles to publish'); return; }
+  showToast(`🚀 Publishing ${arts.length} articles…`);
+  for (const a of arts) {
+    const idx = window._autoSeoArticles.indexOf(a);
+    await publishSingleArticle(idx);
+    await new Promise(r => setTimeout(r, 600));
+  }
+  showToast('✅ All articles published to WordPress!');
+}
+
+function previewGeneratedArticle(idx) {
+  const art = window._autoSeoArticles && window._autoSeoArticles[idx];
+  if (!art || !art.generatedHtml) return;
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+<div style="background:white;border-radius:16px;width:820px;max-width:100%;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
+  <div style="padding:16px 20px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between">
+    <div>
+      <div style="font-size:0.95rem;font-weight:800;color:#111827">${art.title}</div>
+      <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">~${art.wordCount||1200} words · Keyword: <strong>${art.keyword}</strong></div>
+    </div>
+    <button onclick="this.closest('[style*=fixed]').remove()" style="padding:6px 12px;background:#F3F4F6;border:none;border-radius:8px;cursor:pointer;font-size:0.8rem;font-weight:700">✕ Close</button>
+  </div>
+  <div style="flex:1;overflow-y:auto;padding:24px 30px;font-size:0.88rem;line-height:1.7;color:#374151">${art.generatedHtml}</div>
+  <div style="padding:14px 20px;border-top:1px solid #E5E7EB;display:flex;gap:10px;justify-content:flex-end">
+    <button onclick="navigator.clipboard.writeText(document.querySelector('#art-preview-body').innerHTML);showToast('📋 Copied!')" style="padding:8px 16px;background:white;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer">📋 Copy HTML</button>
+    ${!!(window._wpCreds&&window._wpCreds.siteUrl) ? `<button onclick="this.closest('[style*=fixed]').remove();publishSingleArticle(${idx})" style="padding:8px 16px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🟦 Publish to WP</button>` : ''}
+  </div>
+</div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function loadBacklinkOpps() {
+  const btn = document.getElementById('bl-opps-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analysing…'; }
+  const d = analysisData || {};
+  const comps = (d.competitors||[]).map(c=>c.name||c.domain||'').filter(Boolean);
+  const kws   = (window._autoSeoKeywords||[]).slice(0,5).map(k=>k.keyword);
+  try {
+    const resp = await fetch('/api/backlink-opportunities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: d.domain||'yourdomain.com', industry: d.industry||'General', competitors: comps, keywords: kws })
+    });
+    const data = await resp.json();
+    window._autoSeoBacklinks = data.opportunities || [];
+    showToast(`✅ Found ${window._autoSeoBacklinks.length} backlink opportunities!`);
+  } catch(e) { showToast('❌ ' + e.message); }
+  finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Refresh Opportunities'; }
+    buildAutoSEO();
+  }
+}
+
+async function loadKeywordResearch() {
+  const btn = document.getElementById('kw-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Researching…'; }
+  const d    = analysisData || {};
+  const seed = document.getElementById('kw-seed')?.value?.trim() || '';
+  const comps = (d.competitors||[]).map(c=>c.name||c.domain||'').filter(Boolean);
+  try {
+    const resp = await fetch('/api/keyword-research', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: d.domain||'yourdomain.com', industry: d.industry||'General', seedKeyword: seed, competitors: comps })
+    });
+    const data = await resp.json();
+    window._autoSeoKeywords = data.keywords || [];
+    showToast(`✅ Found ${window._autoSeoKeywords.length} keyword opportunities!`);
+  } catch(e) { showToast('❌ ' + e.message); }
+  finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Refresh'; }
+    buildAutoSEO();
+  }
+}
+
+function addKeywordsToCalendar() {
+  const kws = window._autoSeoKeywords;
+  if (!kws || !kws.length) { showToast('⚠️ No keywords to add'); return; }
+  const top5 = [...kws].sort((a,b)=>b.opportunity_score-a.opportunity_score).slice(0,5);
+  if (!window._autoSeoArticles) window._autoSeoArticles = [];
+  top5.forEach(k => {
+    if (!window._autoSeoArticles.find(a=>a.keyword===k.keyword)) {
+      window._autoSeoArticles.push({ title: k.content_angle || `Complete Guide to ${k.keyword}`, keyword: k.keyword, intent: k.intent, status: 'pending', generatedHtml: null });
+    }
+  });
+  window._autoSeoTab = 'calendar';
+  buildAutoSEO();
+  showToast(`📅 Added ${top5.length} keywords to your content calendar!`);
+}
+
+function copyKeywordsCSV() {
+  const kws = window._autoSeoKeywords;
+  if (!kws || !kws.length) { showToast('⚠️ No keywords to copy'); return; }
+  const csv = ['Keyword,Volume,Difficulty,CPC,Intent,Score,Content Angle',
+    ...kws.map(k=>`"${k.keyword}",${k.monthly_volume||0},${k.difficulty||0},$${k.cpc||0},"${k.intent||''}",${k.opportunity_score||0},"${k.content_angle||''}"`)
+  ].join('\n');
+  navigator.clipboard.writeText(csv).then(()=>showToast('📋 Keywords copied as CSV!'));
+}
+
+function copyOutreachEmail(idx) {
+  const opp = window._autoSeoBacklinks && window._autoSeoBacklinks[idx];
+  if (!opp) return;
+  const d = analysisData || {};
+  const email = `Subject: Guest Post Opportunity — ${d.domain||'Our Site'}
+
+Hi ${opp.site} Team,
+
+I came across your site and noticed you cover topics relevant to ${d.industry||'our industry'}.
+
+${opp.angle}
+
+I'd love to contribute a high-quality, original article to your publication. In return, a contextual backlink to ${d.domain||'our site'} would be greatly appreciated.
+
+Would you be open to a quick chat or can I send over some topic ideas?
+
+Best regards,
+[Your Name]
+${d.domain||'yourdomain.com'}`;
+  navigator.clipboard.writeText(email).then(()=>showToast('📧 Outreach email copied to clipboard!'));
+}
+
+function saveAutoSeoSettings() {
+  showToast('✅ AutoSEO settings saved!');
+  buildAutoSEO();
 }
