@@ -113,6 +113,7 @@
           <a href="#" class="nav-link" data-view="autoseo"><span class="ndl-icon">🚀</span><span class="ndl-text">AutoSEO Pro</span></a>
           <a href="#" class="nav-link" data-view="aivisibility"><span class="ndl-icon">🤖</span><span class="ndl-text">AI Visibility</span></a>
           <a href="#" class="nav-link" data-view="action-center"><span class="ndl-icon">🎯</span><span class="ndl-text">Action Center</span></a>
+          <a href="#" class="nav-link" data-view="kpi-tracker"><span class="ndl-icon">🎯</span><span class="ndl-text">KPI Tracker</span></a>
           <a href="#" class="nav-link" data-view="results"><span class="ndl-icon">📊</span><span class="ndl-text">Results</span></a>
           <a href="#" class="nav-link" data-view="reengage"><span class="ndl-icon">🔁</span><span class="ndl-text">Re-Engage</span></a>
           <a href="#" class="nav-link" data-view="automations"><span class="ndl-icon">⚡</span><span class="ndl-text">Automations</span></a>
@@ -1239,6 +1240,25 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- KPI TRACKER VIEW -->
+<div class="view hidden" id="view-kpi-tracker">
+  <div class="view-header intel-header">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> KPI Tracker</div>
+          <h2 class="view-title">KPI Performance Tracker</h2>
+          <p class="view-sub">Live status of every marketing KPI — achieved, at risk, and gap analysis with AI explanations</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-secondary" onclick="buildKPITracker()">↻ Refresh</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="kpiTrackerWrap" style="padding-top:28px;padding-bottom:60px"></div>
 </div>
 
 <script src="data.js"></script>

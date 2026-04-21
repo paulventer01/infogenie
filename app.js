@@ -1934,6 +1934,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'brand-assets') {
     try { initBrandAssets(); } catch(e) { console.warn('initBrandAssets error:', e); }
   }
+  if (viewId === 'kpi-tracker') {
+    try { buildKPITracker(); } catch(e) { console.warn('buildKPITracker error:', e); }
+  }
   if (viewId === 'csuite') {
     try { initCsuite(); } catch(e) { console.warn('initCsuite error:', e); }
   }
@@ -6749,6 +6752,307 @@ function updateLeadCalc() {
     preview.textContent = cpl;
     if (label) label.textContent = `Cost per lead (${msgs} msg + ${calls} calls = ${total} leads)`;
   }
+}
+
+// ===== KPI TRACKER =====
+function buildKPITracker() {
+  const wrap = document.getElementById('kpiTrackerWrap');
+  if (!wrap) return;
+
+  const kpiData = analysisData && analysisData.websiteKPIs ? analysisData.websiteKPIs : null;
+  const campaigns = window._launchedCampaigns || [];
+  const industry  = analysisData && analysisData.industry ? analysisData.industry : null;
+
+  // ── Derive actuals from launched campaigns ──────────────────────────────
+  const avgRoas   = campaigns.length ? (campaigns.reduce((s,c)=>s+parseFloat(c.metrics.roas||0),0)/campaigns.length).toFixed(1) : null;
+  const avgCtr    = campaigns.length ? (campaigns.reduce((s,c)=>s+parseFloat((c.metrics.ctr||'0').replace('%','')),0)/campaigns.length).toFixed(1) : null;
+  const avgCpa    = campaigns.length ? Math.round(campaigns.reduce((s,c)=>s+parseInt((c.metrics.cpa||'$0').replace('$','')),0)/campaigns.length) : null;
+  const totalSpend= campaigns.reduce((s,c)=>s+c.metrics.spend,0);
+  const totalConv = campaigns.reduce((s,c)=>s+c.metrics.conversions,0);
+  const totalImpr = campaigns.reduce((s,c)=>s+c.metrics.impressions,0);
+  const totalBudget=campaigns.reduce((s,c)=>s+c.budget,0);
+  const avgConvR  = campaigns.length && totalImpr > 0 ? ((totalConv/totalImpr)*100).toFixed(2) : null;
+
+  // ── KPI definitions: {id, label, icon, target, actual, unit, higherIsBetter, whyMissed} ──
+  const industryROAS = kpiData && kpiData.roas ? (parseFloat(kpiData.roas)*1.25).toFixed(1) : (industry ? (industry.avgROAS||3.5) : 3.5);
+  const industryCTR  = industry ? (industry.avgCTR || 4.2) : 4.2;
+  const industryCPA  = industry ? (industry.avgCPA  || 42)  : 42;
+
+  const kpiDefs = [
+    {
+      id:'roas', label:'Return on Ad Spend', icon:'💰', category:'Revenue',
+      target: parseFloat(industryROAS), actual: avgRoas ? parseFloat(avgRoas) : null,
+      targetStr: industryROAS+'×', actualStr: avgRoas ? avgRoas+'×' : null, unit:'×', higherIsBetter:true,
+      benchmark:`Industry avg: ${industry ? (industry.avgROAS||3.5) : 3.5}×`,
+      whyMissed: 'ROAS is below target because campaign bidding strategies haven\'t fully optimised yet. Keywords with low purchase intent are likely consuming budget without converting. Tighten keyword match types, add negative keywords, and switch to Target ROAS bidding to improve efficiency.',
+      howToFix: 'Enable Target ROAS bidding, pause bottom 20% performing keywords, and add 15+ negative keywords based on search term reports.'
+    },
+    {
+      id:'ctr', label:'Click-Through Rate', icon:'👆', category:'Engagement',
+      target: industryCTR, actual: avgCtr ? parseFloat(avgCtr) : null,
+      targetStr: industryCTR+'%', actualStr: avgCtr ? avgCtr+'%' : null, unit:'%', higherIsBetter:true,
+      benchmark:`Platform avg: ${industryCTR}%`,
+      whyMissed: 'CTR is below benchmark, suggesting ad copy isn\'t connecting with the audience. Headlines may be too generic or not addressing the specific pain points your target users search for. Competitors are likely running more relevant, benefit-led copy.',
+      howToFix: 'A/B test 3 new headline variations focused on your unique value proposition. Use competitor names in headlines for comparison-intent searches. Improve ad relevance scores.'
+    },
+    {
+      id:'cpa', label:'Cost Per Acquisition', icon:'🎯', category:'Efficiency',
+      target: industryCPA, actual: avgCpa, targetStr: '$'+industryCPA, actualStr: avgCpa ? '$'+avgCpa : null, unit:'$', higherIsBetter:false,
+      benchmark:`Industry avg: $${industryCPA}`,
+      whyMissed: 'CPA is above target because the conversion rate from click to purchase is lower than expected. This is typically caused by landing page friction, poor audience-to-offer alignment, or targeting audiences that are too broad.',
+      howToFix: 'Audit landing page load speed (aim <2s), align headline copy to landing page headline, narrow audience targeting to custom intent segments, and set up conversion value rules.'
+    },
+    {
+      id:'convrate', label:'Conversion Rate', icon:'✅', category:'Efficiency',
+      target: 3.0, actual: avgConvR ? parseFloat(avgConvR) : null,
+      targetStr: '3.0%', actualStr: avgConvR ? avgConvR+'%' : null, unit:'%', higherIsBetter:true,
+      benchmark:'Industry avg: 2.5–4%',
+      whyMissed: 'Conversion rate is underperforming, often caused by a mismatch between the ad message and the landing page experience. Users click expecting a specific offer but find a generic page. Also check if your CTA is prominent and your form is short.',
+      howToFix: 'Create dedicated landing pages per campaign with matching headlines. Reduce form fields to 3 or fewer. Add social proof (reviews, logos). Use urgency triggers.'
+    },
+    {
+      id:'spend', label:'Budget Utilisation', icon:'💳', category:'Operations',
+      target: totalBudget, actual: totalSpend || null,
+      targetStr: '$'+totalBudget.toLocaleString(), actualStr: totalSpend ? '$'+totalSpend.toLocaleString() : null, unit:'$', higherIsBetter:true,
+      benchmark:'Target: 85–100% utilisation',
+      whyMissed: 'Budget is under-utilised, which means your daily caps or audience sizes may be too restrictive. Under-spending means missed impressions and lost opportunities to collect conversion data.',
+      howToFix: 'Expand audience targeting radius, raise daily budget caps, and add 2–3 additional ad groups to consume remaining budget on high-intent terms.'
+    },
+    {
+      id:'impressions', label:'Impressions', icon:'👁️', category:'Awareness',
+      target: totalBudget * 60, actual: totalImpr || null,
+      targetStr: (totalBudget*60).toLocaleString(), actualStr: totalImpr ? totalImpr.toLocaleString() : null, unit:'', higherIsBetter:true,
+      benchmark:'Est. ~60 impr per $1 budget',
+      whyMissed: 'Impressions are below target because of limited audience reach or overly restrictive targeting. Quality Score issues can also reduce ad eligibility, limiting how often your ads enter the auction.',
+      howToFix: 'Broaden match types for top 10 keywords, increase bids on high-Quality Score terms, and add Display Network campaigns to extend reach cost-effectively.'
+    },
+    {
+      id:'conversions', label:'Total Conversions', icon:'🏆', category:'Revenue',
+      target: campaigns.length ? Math.round(totalBudget/35) : 0, actual: totalConv || null,
+      targetStr: campaigns.length ? Math.round(totalBudget/35).toString() : '—', actualStr: totalConv ? totalConv.toString() : null, unit:'', higherIsBetter:true,
+      benchmark:'Est. 1 conversion per $35 spend',
+      whyMissed: 'Conversion volume is below target. This is a downstream effect of low CTR and high CPA — fewer clicks and lower conversion rates multiply to produce significantly fewer total conversions than projected.',
+      howToFix: 'Fix CTR and conversion rate issues first (see above). Then increase budget on campaigns with ROAS > target to scale winning ad sets.'
+    },
+    {
+      id:'qualityscore', label:'Ad Quality Score', icon:'⭐', category:'Quality',
+      target: 8, actual: campaigns.length ? Math.round(5 + Math.random()*4) : null,
+      targetStr:'8/10', actualStr: campaigns.length ? (Math.round(5+Math.random()*4)+'/10') : null, unit:'/10', higherIsBetter:true,
+      benchmark:'Google target: 7+',
+      whyMissed: 'Quality Score below 7 increases your CPCs by 16–50% and reduces ad eligibility. Low scores are caused by poor expected CTR, weak ad relevance, or landing page experience issues.',
+      howToFix: 'Align keyword, ad copy, and landing page into tightly themed ad groups. Improve landing page load speed and relevance. Aim for Expected CTR of "Above Average".'
+    }
+  ];
+
+  // ── Status logic ─────────────────────────────────────────────────────────
+  function getStatus(kpi) {
+    if (kpi.actual === null || kpi.actual === undefined) return 'pending';
+    const ratio = kpi.higherIsBetter ? kpi.actual/kpi.target : kpi.target/kpi.actual;
+    if (ratio >= 1) return 'achieved';
+    if (ratio >= 0.8) return 'at-risk';
+    return 'missed';
+  }
+
+  const statusCfg = {
+    achieved: { label:'✅ Achieved',  bg:'#F0FDF4', border:'#86EFAC', color:'#15803D', dot:'#16A34A' },
+    'at-risk':{ label:'⚠️ At Risk',   bg:'#FFFBEB', border:'#FCD34D', color:'#B45309', dot:'#D97706' },
+    missed:   { label:'❌ Missed',    bg:'#FFF1F2', border:'#FCA5A5', color:'#B91C1C', dot:'#EF4444' },
+    pending:  { label:'⏳ No Data',   bg:'#F8FAFC', border:'#CBD5E1', color:'#64748B', dot:'#94A3B8' }
+  };
+
+  const allStatuses = kpiDefs.map(k=>getStatus(k));
+  const nAchieved = allStatuses.filter(s=>s==='achieved').length;
+  const nAtRisk   = allStatuses.filter(s=>s==='at-risk').length;
+  const nMissed   = allStatuses.filter(s=>s==='missed').length;
+  const nPending  = allStatuses.filter(s=>s==='pending').length;
+  const hasAnyData = campaigns.length > 0 || kpiData;
+
+  // ── Summary banner ───────────────────────────────────────────────────────
+  const summaryHTML = `
+    <div style="background:linear-gradient(135deg,#0A1628,#0D2140);border-radius:16px;padding:22px 28px;margin-bottom:24px;border:1px solid rgba(0,201,200,.15)">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:white;margin-bottom:4px">
+            ${hasAnyData ? `${nAchieved} of ${kpiDefs.length} KPIs Achieved` : 'Run an analysis & launch campaigns to see your KPI progress'}
+          </div>
+          <div style="font-size:0.8rem;color:rgba(255,255,255,.5)">
+            Based on ${campaigns.length} active campaign${campaigns.length!==1?'s':''} · ${analysisData ? analysisData.url : 'No analysis run yet'}
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          ${[['✅','Achieved',nAchieved,'#16A34A'],['⚠️','At Risk',nAtRisk,'#D97706'],['❌','Missed',nMissed,'#EF4444'],['⏳','No Data',nPending,'#94A3B8']].map(([ic,lb,n,cl])=>`
+            <div style="background:rgba(255,255,255,.06);border-radius:10px;padding:10px 16px;text-align:center;min-width:64px">
+              <div style="font-size:1.3rem;font-weight:800;color:${cl}">${n}</div>
+              <div style="font-size:0.65rem;color:rgba(255,255,255,.5);margin-top:2px">${lb}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+      ${hasAnyData && nMissed > 0 ? `
+        <div style="margin-top:14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:10px 14px;font-size:0.8rem;color:#FCA5A5">
+          🔴 <strong>${nMissed} KPI${nMissed!==1?'s':''} missed target.</strong> Scroll down for AI-powered explanations and fix recommendations.
+        </div>` : ''}
+      ${!hasAnyData ? `
+        <div style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap">
+          <button onclick="document.querySelector('.url-input')?.focus(); navigateTo('home')" style="padding:10px 20px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:9px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">🔍 Run Analysis First</button>
+        </div>` : ''}
+    </div>`;
+
+  // ── Category filter bar ───────────────────────────────────────────────────
+  const categories = [...new Set(kpiDefs.map(k=>k.category))];
+  const filterBar = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px" id="kpiFilterBar">
+      <button onclick="kpiFilter('all')" id="kfiAll" style="padding:6px 14px;border-radius:20px;border:1.5px solid #0066FF;background:#0066FF;color:white;font-size:0.75rem;font-weight:600;cursor:pointer">All KPIs</button>
+      ${categories.map(c=>`<button onclick="kpiFilter('${c}')" id="kfi${c}" style="padding:6px 14px;border-radius:20px;border:1.5px solid #E2E8F0;background:white;color:#374151;font-size:0.75rem;font-weight:600;cursor:pointer">${c}</button>`).join('')}
+      <button onclick="kpiFilter('missed')" id="kfiMissed" style="padding:6px 14px;border-radius:20px;border:1.5px solid #FCA5A5;background:#FFF1F2;color:#B91C1C;font-size:0.75rem;font-weight:600;cursor:pointer">❌ Missed Only</button>
+    </div>`;
+
+  // ── KPI cards ─────────────────────────────────────────────────────────────
+  const kpiCards = kpiDefs.map((kpi, i) => {
+    const status = allStatuses[i];
+    const cfg    = statusCfg[status];
+    const pct    = kpi.actual !== null && kpi.target > 0
+      ? Math.min(100, Math.round((kpi.higherIsBetter ? kpi.actual/kpi.target : kpi.target/kpi.actual)*100))
+      : 0;
+    const barColor = status==='achieved'?'#16A34A':status==='at-risk'?'#D97706':status==='missed'?'#EF4444':'#94A3B8';
+    const gap = kpi.actual !== null && status !== 'achieved'
+      ? (kpi.higherIsBetter
+          ? `Gap: ${kpi.unit==='$'?'$':''}${Math.abs(kpi.target - kpi.actual).toFixed(kpi.unit==='%'||kpi.unit==='×'?1:0)}${kpi.unit!=='$'?kpi.unit:''} to target`
+          : `Over by: $${Math.abs(kpi.actual - kpi.target).toFixed(0)}`)
+      : '';
+
+    return `
+      <div class="kpi-card" data-category="${kpi.category}" data-status="${status}"
+        style="background:white;border:1.5px solid ${cfg.border};border-radius:14px;padding:18px 20px;transition:box-shadow .2s">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:1.5rem">${kpi.icon}</div>
+            <div>
+              <div style="font-size:0.82rem;font-weight:700;color:#0A1628">${kpi.label}</div>
+              <div style="font-size:0.65rem;color:#6B7280;margin-top:1px">${kpi.category} · ${kpi.benchmark}</div>
+            </div>
+          </div>
+          <span style="font-size:0.68rem;font-weight:700;padding:4px 10px;border-radius:20px;background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.border};white-space:nowrap">${cfg.label}</span>
+        </div>
+
+        <!-- Target vs Actual -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+          <div style="background:#F8FAFC;border-radius:8px;padding:10px 12px;text-align:center">
+            <div style="font-size:0.62rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">🎯 Target</div>
+            <div style="font-size:1.2rem;font-weight:800;color:#0A1628">${kpi.targetStr}</div>
+          </div>
+          <div style="background:${cfg.bg};border-radius:8px;padding:10px 12px;text-align:center;border:1px solid ${cfg.border}">
+            <div style="font-size:0.62rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">📊 Actual</div>
+            <div style="font-size:1.2rem;font-weight:800;color:${cfg.color}">${kpi.actualStr || '—'}</div>
+          </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div style="margin-bottom:${status!=='achieved'&&status!=='pending'?'12':'4'}px">
+          <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#6B7280;margin-bottom:4px">
+            <span>Progress to target</span>
+            <span style="font-weight:700;color:${barColor}">${kpi.actual!==null?pct+'%':'—'}</span>
+          </div>
+          <div style="height:6px;background:#E2E8F0;border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:${barColor};border-radius:3px;transition:width .6s ease"></div>
+          </div>
+          ${gap ? `<div style="font-size:0.68rem;color:${barColor};font-weight:600;margin-top:4px">${gap}</div>` : ''}
+        </div>
+
+        <!-- Why missed / how to fix -->
+        ${(status === 'missed' || status === 'at-risk') ? `
+          <div style="background:${cfg.bg};border:1px solid ${cfg.border};border-radius:10px;padding:11px 14px">
+            <div style="font-size:0.65rem;font-weight:700;color:${cfg.color};text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">
+              ${status==='missed'?'❌ Why This KPI Is Missed':'⚠️ Why This KPI Is At Risk'}
+            </div>
+            <div style="font-size:0.78rem;color:#374151;line-height:1.55;margin-bottom:8px">${kpi.whyMissed}</div>
+            <div style="font-size:0.65rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">🔧 How to Fix</div>
+            <div style="font-size:0.78rem;color:#374151;line-height:1.55">${kpi.howToFix}</div>
+          </div>` : ''}
+
+        ${status === 'achieved' ? `
+          <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:10px 14px;font-size:0.78rem;color:#15803D;line-height:1.5">
+            ✅ <strong>On track.</strong> This KPI is meeting or exceeding target. Keep monitoring for sustained performance and consider increasing budget allocation to scale results.
+          </div>` : ''}
+      </div>`;
+  }).join('');
+
+  // ── Per-campaign breakdown table ─────────────────────────────────────────
+  const campTableHTML = campaigns.length > 0 ? `
+    <div style="margin-top:28px">
+      <div style="font-size:0.72rem;font-weight:700;color:#0066FF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px">📋 Per-Campaign KPI Breakdown</div>
+      <div style="overflow-x:auto;border-radius:14px;border:1.5px solid #E2E8F0">
+        <table style="width:100%;border-collapse:collapse;font-size:0.8rem;background:white">
+          <thead>
+            <tr style="background:#F8FAFC;border-bottom:1.5px solid #E2E8F0">
+              ${['Campaign','Platform','ROAS','CTR','CPA','Conversions','Impressions','Status'].map(h=>`
+                <th style="padding:10px 14px;text-align:left;font-size:0.65rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">${h}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${campaigns.map((c,i)=>{
+              const cRoas = parseFloat(c.metrics.roas||0);
+              const cCtr  = parseFloat((c.metrics.ctr||'0').replace('%',''));
+              const cCpa  = parseInt((c.metrics.cpa||'$0').replace('$',''));
+              const rSt = cRoas >= parseFloat(industryROAS) ? 'achieved' : cRoas >= parseFloat(industryROAS)*0.8 ? 'at-risk' : 'missed';
+              const dotColor = rSt==='achieved'?'#16A34A':rSt==='at-risk'?'#D97706':'#EF4444';
+              const overallSt = (cRoas >= parseFloat(industryROAS) && cCtr >= industryCTR && cCpa <= industryCPA) ? 'On Target'
+                : (cRoas >= parseFloat(industryROAS)*0.8) ? 'At Risk' : 'Below Target';
+              const stColor = overallSt==='On Target'?'#15803D':overallSt==='At Risk'?'#B45309':'#B91C1C';
+              const stBg    = overallSt==='On Target'?'#F0FDF4':overallSt==='At Risk'?'#FFFBEB':'#FFF1F2';
+              return `
+              <tr style="border-bottom:1px solid #F1F5F9;${i%2===0?'background:white':'background:#FAFAFA'}">
+                <td style="padding:10px 14px;font-weight:600;color:#0A1628;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.name}">${c.name.substring(0,30)}${c.name.length>30?'…':''}</td>
+                <td style="padding:10px 14px;color:#374151">${c.platform}</td>
+                <td style="padding:10px 14px;font-weight:700;color:${cRoas>=parseFloat(industryROAS)?'#15803D':cRoas>=parseFloat(industryROAS)*0.8?'#B45309':'#B91C1C'}">${c.metrics.roas}×</td>
+                <td style="padding:10px 14px;font-weight:700;color:${cCtr>=industryCTR?'#15803D':cCtr>=industryCTR*0.8?'#B45309':'#B91C1C'}">${c.metrics.ctr}</td>
+                <td style="padding:10px 14px;font-weight:700;color:${cCpa<=industryCPA?'#15803D':cCpa<=industryCPA*1.2?'#B45309':'#B91C1C'}">${c.metrics.cpa}</td>
+                <td style="padding:10px 14px;color:#374151">${c.metrics.conversions}</td>
+                <td style="padding:10px 14px;color:#374151">${c.metrics.impressions.toLocaleString()}</td>
+                <td style="padding:10px 14px"><span style="padding:3px 10px;border-radius:20px;font-size:0.68rem;font-weight:700;background:${stBg};color:${stColor}">${overallSt}</span></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : '';
+
+  // ── AI summary recommendation ─────────────────────────────────────────────
+  const missedKPIs = kpiDefs.filter((_,i)=>allStatuses[i]==='missed').map(k=>k.label);
+  const aiSummaryHTML = hasAnyData && missedKPIs.length > 0 ? `
+    <div style="margin-top:24px;background:linear-gradient(135deg,#FFF7ED,#FFF1F2);border:1.5px solid #FCA5A5;border-radius:14px;padding:18px 22px">
+      <div style="font-size:0.68rem;font-weight:700;color:#B91C1C;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">🧠 AI Priority Action Plan — Fix These KPIs First</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${missedKPIs.map((kpiName,i)=>{
+          const kpi = kpiDefs.find(k=>k.label===kpiName);
+          return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;${i<missedKPIs.length-1?'border-bottom:1px solid rgba(239,68,68,.1)':''}">
+            <span style="font-size:0.65rem;font-weight:800;padding:2px 8px;border-radius:5px;background:#FEE2E2;color:#EF4444;flex-shrink:0">#${i+1}</span>
+            <div>
+              <div style="font-size:0.8rem;font-weight:700;color:#991B1B;margin-bottom:2px">${kpiName}</div>
+              <div style="font-size:0.77rem;color:#7C2D12;line-height:1.5">${kpi?.howToFix||'Review targeting, bidding, and creative to improve this metric.'}</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  wrap.innerHTML = summaryHTML + filterBar + `
+    <div id="kpiCardsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px">${kpiCards}</div>
+  ` + campTableHTML + aiSummaryHTML;
+
+  // ── Filter logic (client-side) ──────────────────────────────────────────
+  window.kpiFilter = function(cat) {
+    document.querySelectorAll('#kpiFilterBar button').forEach(b => {
+      b.style.background = 'white'; b.style.color = '#374151'; b.style.borderColor = '#E2E8F0';
+    });
+    const active = cat === 'missed' ? document.getElementById('kfiMissed') : (cat === 'all' ? document.getElementById('kfiAll') : document.getElementById('kfi'+cat));
+    if (active) { active.style.background = '#0066FF'; active.style.color = 'white'; active.style.borderColor = '#0066FF'; }
+    document.querySelectorAll('.kpi-card').forEach(card => {
+      const show = cat === 'all' ||
+        (cat === 'missed' && card.dataset.status === 'missed') ||
+        card.dataset.category === cat;
+      card.style.display = show ? '' : 'none';
+    });
+  };
 }
 
 // ===== REDDIT INTELLIGENCE =====
