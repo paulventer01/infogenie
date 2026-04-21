@@ -2562,8 +2562,14 @@ function buildDashboard() {
   function parseAdSpend(s) {
     if (typeof s === 'number') return s;
     const str = String(s || '').replace(/[$,\s]/g, '');
-    const n = parseFloat(str) * (String(s).toUpperCase().includes('K') ? 1000 : 1);
-    return isNaN(n) ? 5000 : n;
+    const num = parseFloat(str);
+    if (isNaN(num)) return 5000;
+    const upper = String(s).toUpperCase();
+    let mult = 1;
+    if (upper.includes('B')) mult = 1_000_000_000;
+    else if (upper.includes('M')) mult = 1_000_000;
+    else if (upper.includes('K')) mult = 1_000;
+    return num * mult;
   }
 
   // Build SOV from competitor traffic
