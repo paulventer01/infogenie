@@ -37,13 +37,21 @@ InfoGenie is a comprehensive AI-powered marketing intelligence and campaign auto
 - **Battle Plan timer**: `_apSecs` counter ticks every 1s; `apElapsed` is an inline `<span style="color:#00E5FF">` inside `apLoadTitle`; any innerHTML update to the title must re-embed the span or use `apElapsed` ID for the querySelector (consistent with Reddit scanner style)
 
 ## Navigation Structure (4-Stage Workflow)
-The navbar (two-row layout) organises all 17 sections into four logical groups with visible category labels:
-- **ANALYSE**: Dashboard · Competitors · Intelligence · 🔴 Reddit · ⚔️ Battle Plan
-- **CREATE**: AI Creative · Campaigns · Content AI · Social
-- **REACH**: Audience · Advertise · AI Visibility
-- **GROW**: Results · 🔁 Re-Engage · ⚡ Auto · 🏢 Agency · 👔 C-Suite · 🎯 Action Center · 🚀 AutoSEO Pro · Settings
+The navbar (two-row layout) organises all 20 sections into four logical groups with visible category labels.
+Each group flows in a deliberate order — use the "Next Step" banners at the bottom of each view to follow the guided path.
 
+- **ANALYSE** *(Understand the market)*: Dashboard → Competitors → Intelligence Hub → Battle Plan → Reddit Intel → Google Search
+- **CREATE** *(Build ads & content)*: Brand Assets → AI Creative → Campaigns → Content AI → Social Calendar
+- **REACH** *(Distribute to audiences)*: Audience → Advertise Hub
+- **GROW** *(Track, scale & manage)*: AutoSEO Pro → AI Visibility → Action Center → Results → Re-Engage → Automations → Agency & Reports → C-Suite Reports → Settings
+
+**Logical end-to-end flow:**
+Analyse competitors → Create Battle Plan → Build Content & Campaigns → Target Audience → Deploy Ads → Track Results → Re-Engage → Automate → Report
+
+**"What's Next?" banners** appear at the bottom of every view, guiding users to the next logical step with one click.
 Each section's view header breadcrumb also shows the group label (e.g. "Analyse › Competitors", "Create › Campaigns") for consistent orientation throughout.
+
+**Note — AI Visibility is in Grow (not Reach):** AI Visibility covers LLM citation tracking (ChatGPT/Claude/Gemini mentions). It is an organic growth channel, logically grouped with AutoSEO Pro.
 
 ## Features
 1. **Website URL Input** — Enter any website, detect industry automatically; optional industry text field below URL row refines competitor targeting — `#industryInput` passes typed text to `detectIndustryFromText()` in data.js, which overrides URL auto-detection; hint label updates to confirm detected industry

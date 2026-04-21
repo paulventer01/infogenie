@@ -1941,6 +1941,58 @@ function navigateTo(viewId, updateActive = true) {
   if (navPlan)   navPlan.style.display   = viewId === 'home' ? 'none'  : 'block';
   if (navBtn)    navBtn.style.display    = viewId === 'home' ? 'none'  : 'block';
   window.scrollTo(0, 0);
+  // Inject "What's Next?" guide banner after each view renders
+  setTimeout(() => _injectNextStep(viewId), 120);
+}
+
+// ── Next-Step Guide Banners ────────────────────────────────────────────────────
+const _nextStepMap = {
+  dashboard:    { icon:'🚀', label:'Ready to act on this intel?', btnLabel:'Build Campaigns →', view:'campaigns',   hint:'Turn competitor insights into live ad campaigns' },
+  competitors:  { icon:'⚔️', label:'Know your rivals — now beat them.',  btnLabel:'Create Battle Plan →', view:'battleplan',  hint:'8-week strategy to capture market share' },
+  battleplan:   { icon:'🧠', label:'Have your strategy — now create the content.', btnLabel:'Open Content AI →', view:'content', hint:'Build topical clusters & content gaps' },
+  content:      { icon:'📅', label:'Content strategy ready — time to schedule it.', btnLabel:'Open Social Calendar →', view:'social', hint:'Schedule posts across all platforms' },
+  social:       { icon:'🚀', label:'Posts scheduled — now build your ad campaigns.', btnLabel:'Go to Campaigns →', view:'campaigns', hint:'Launch paid ads alongside your organic content' },
+  campaigns:    { icon:'🎯', label:'Campaigns built — now target the right audience.',btnLabel:'Audience Intelligence →', view:'audience', hint:'Find and segment your highest-converting audiences' },
+  audience:     { icon:'📣', label:'Audiences defined — now launch your ads.',       btnLabel:'Advertise Hub →', view:'advertise', hint:'Deploy across 20+ channels in minutes' },
+  advertise:    { icon:'📊', label:'Ads live — track your results.',                  btnLabel:'View Results →', view:'results',   hint:'Monitor performance and optimise ROAS' },
+  results:      { icon:'🔁', label:'See who dropped off? Win them back.',             btnLabel:'Re-Engage Hub →', view:'reengage',  hint:'AI-powered win-back sequences for lost customers' },
+  reengage:     { icon:'⚡', label:'Put your growth on autopilot.',                   btnLabel:'Automations →', view:'automations', hint:'Triggered campaigns, alert rules and scheduled reports' },
+  intelligence: { icon:'⚔️', label:'Competitive gaps identified — build your plan.', btnLabel:'Battle Plan →', view:'battleplan', hint:'Turn keyword & ad gaps into a 8-week action plan' },
+  reddit:       { icon:'📣', label:'Market insights gathered — now reach them.',      btnLabel:'Advertise Hub →', view:'advertise', hint:'Run ads targeting the communities you just researched' },
+  serp:         { icon:'🚀', label:'Keyword rankings clear — grow your organic SEO.', btnLabel:'AutoSEO Pro →', view:'autoseo',    hint:'Content calendar, backlinks & traffic projections' },
+  autoseo:      { icon:'🤖', label:'SEO engine running — boost your AI presence.',   btnLabel:'AI Visibility →', view:'aivisibility', hint:'Get cited by ChatGPT, Claude & Gemini' },
+  aivisibility: { icon:'⚡', label:'AI visibility tracked — now automate everything.', btnLabel:'Automations →', view:'automations', hint:'Scheduled reports, alert triggers, auto-optimise' },
+  'action-center':{ icon:'🚀', label:'Actions prioritised — deploy them.',            btnLabel:'Campaigns →', view:'campaigns', hint:'Launch campaigns around your top action items' },
+  agency:       { icon:'👔', label:'Agency reports ready — share executive dashboards.', btnLabel:'C-Suite Reports →', view:'csuite', hint:'CEO, CMO, CFO & COO one-click PDF dashboards' },
+};
+
+function _injectNextStep(viewId) {
+  if (viewId === 'home' || viewId === 'settings') return;
+  const step = _nextStepMap[viewId];
+  if (!step) return;
+  // Find the main content container of the current view
+  const view = document.getElementById('view-' + viewId);
+  if (!view) return;
+  // Remove any existing banner
+  const old = view.querySelector('.ig-next-step-banner');
+  if (old) old.remove();
+  const banner = document.createElement('div');
+  banner.className = 'ig-next-step-banner';
+  banner.style.cssText = 'margin:0;padding:18px 0 32px;background:transparent';
+  banner.innerHTML = `
+    <div style="max-width:1140px;margin:0 auto;padding:0 24px">
+      <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:16px;border:1px solid rgba(0,229,255,.15);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-size:1.4rem">${step.icon}</span>
+          <div>
+            <div style="font-size:0.85rem;font-weight:700;color:white">${step.label}</div>
+            <div style="font-size:0.72rem;color:#93C5FD;margin-top:2px">${step.hint}</div>
+          </div>
+        </div>
+        <button onclick="navigateTo('${step.view}')" style="padding:10px 22px;background:linear-gradient(135deg,#00E5FF,#0066FF);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">${step.btnLabel}</button>
+      </div>
+    </div>`;
+  view.appendChild(banner);
 }
 
 // ===== ANALYSIS FLOW =====
