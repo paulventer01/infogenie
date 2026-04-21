@@ -292,6 +292,9 @@ function generateLandingPageForCamp(camp) {
     frame.style.display = 'block';
     document.getElementById('lp-download-btn').style.display = 'inline-flex';
     document.getElementById('lp-copy-btn').style.display     = 'inline-flex';
+    // Show WordPress publish button if WP was detected
+    const wpBtn = document.getElementById('lp-wp-btn');
+    if (wpBtn) wpBtn.style.display = analysisData?.isWordPress || window._wpCreds ? 'inline-flex' : 'none';
     document.getElementById('lp-subtitle').textContent = `Landing page for "${camp.name}" — ready to use`;
   })
   .catch(err => {
@@ -329,6 +332,112 @@ window.copyLandingPageHTML = function() {
     if (btn) { const old = btn.textContent; btn.textContent = '✅ Copied!'; setTimeout(() => btn.textContent = old, 2000); }
     showToast('✅ HTML copied to clipboard');
   }).catch(() => showToast('⚠️ Clipboard access denied'));
+};
+
+// ── WordPress Badge ────────────────────────────────────────────────────────────
+function showWordPressBadge(wp) {
+  // Inject a persistent WP badge into the dashboard if it exists
+  const existing = document.getElementById('wp-detected-badge');
+  if (existing) return;
+
+  const badge = document.createElement('div');
+  badge.id = 'wp-detected-badge';
+  badge.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:8000;background:white;border:2px solid #0066FF;border-radius:12px;padding:10px 14px;box-shadow:0 4px 20px rgba(0,0,0,.15);display:flex;align-items:center;gap:10px;max-width:280px;cursor:pointer;animation:fadeIn .4s ease';
+  badge.title = 'Click to set up WordPress publishing for landing pages';
+  badge.onclick = () => openWpCredentialsModal();
+  badge.innerHTML = `
+    <div style="width:32px;height:32px;background:#0066FF;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zM3.5 12c0-1.232.256-2.405.711-3.468L7.93 19.01A8.512 8.512 0 013.5 12zm8.5 8.5a8.504 8.504 0 01-2.41-.347l2.56-7.433 2.623 7.186a.892.892 0 00.07.133A8.507 8.507 0 0112 20.5zm1.172-11.5l2.5 7.269 1.413-4.71c.271-.81.412-1.594.412-2.308 0-.895-.322-1.512-.598-2-.375-.651-.727-1.197-.727-1.835 0-.72.549-1.39 1.319-1.39l.1.01A8.502 8.502 0 0120.5 12a8.47 8.47 0 01-1.367 4.653l-1.745-5.808L13.172 9zm-1.37-1.002c-.33-.017-.625-.051-.625-.051-.3-.036-.265-.476.035-.458 0 0 .898.07 1.43.07.503 0 1.279-.07 1.279-.07.3-.017.336.44.035.458 0 0-.26.034-.55.051l-1.604 4.776-1-.001z"/></svg>
+    </div>
+    <div>
+      <div style="font-size:0.78rem;font-weight:800;color:#0A1628">WordPress Detected</div>
+      <div style="font-size:0.68rem;color:#6B7280;margin-top:1px">${wp.wpVersion ? 'v' + wp.wpVersion + ' · ' : ''}Click to connect &amp; publish pages</div>
+    </div>
+    <button onclick="event.stopPropagation();document.getElementById('wp-detected-badge').remove()" style="margin-left:auto;background:none;border:none;color:#9CA3AF;cursor:pointer;font-size:1rem;padding:0 0 0 4px">✕</button>
+  `;
+  document.body.appendChild(badge);
+  setTimeout(() => { if (badge.parentNode) badge.remove(); }, 15000);
+}
+
+// ── WordPress Credentials Modal ────────────────────────────────────────────────
+window.openWpCredentialsModal = function(afterSave) {
+  window._wpAfterSave = afterSave || null;
+  const modal = document.getElementById('wpCredentialsModal');
+  if (!modal) return;
+  // Pre-fill stored creds
+  if (window._wpCreds) {
+    const su = document.getElementById('wp-site-url');
+    const un = document.getElementById('wp-username');
+    const ap = document.getElementById('wp-app-password');
+    if (su) su.value = window._wpCreds.siteUrl || '';
+    if (un) un.value = window._wpCreds.username || '';
+    if (ap) ap.value = window._wpCreds.appPassword || '';
+  }
+  // Pre-fill with detected URL
+  const su = document.getElementById('wp-site-url');
+  if (su && !su.value && analysisData?.isWordPress && analysisData?.wpData?.siteUrl) {
+    su.value = analysisData.wpData.siteUrl;
+  }
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+};
+
+window.closeWpCredentialsModal = function() {
+  const modal = document.getElementById('wpCredentialsModal');
+  if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
+};
+
+window.saveWpCredentials = function() {
+  const siteUrl     = (document.getElementById('wp-site-url')?.value || '').trim();
+  const username    = (document.getElementById('wp-username')?.value || '').trim();
+  const appPassword = (document.getElementById('wp-app-password')?.value || '').trim();
+  if (!siteUrl || !username || !appPassword) {
+    showToast('⚠️ Please fill in all three fields');
+    return;
+  }
+  window._wpCreds = { siteUrl, username, appPassword };
+  closeWpCredentialsModal();
+  showToast('🟦 WordPress credentials saved — you can now publish landing pages');
+  if (window._wpAfterSave) { window._wpAfterSave(); window._wpAfterSave = null; }
+};
+
+window.publishToWordPress = function() {
+  if (!window._currentLandingPageHTML) { showToast('⚠️ Generate a landing page first'); return; }
+  if (!window._wpCreds) {
+    openWpCredentialsModal(() => publishToWordPress());
+    return;
+  }
+  const btn = document.getElementById('lp-wp-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .7s linear infinite"></span> Publishing…'; }
+
+  const camp = window._currentLandingPageCamp;
+  fetch('/api/publish-to-wordpress', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      siteUrl:     window._wpCreds.siteUrl,
+      username:    window._wpCreds.username,
+      appPassword: window._wpCreds.appPassword,
+      title:       camp?.name || 'Campaign Landing Page',
+      content:     window._currentLandingPageHTML,
+      status:      'draft'
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      const lpSubtitle = document.getElementById('lp-subtitle');
+      if (lpSubtitle) lpSubtitle.innerHTML = `✅ Published to WordPress as draft — <a href="${data.editUrl}" target="_blank" style="color:#A5B4FC">Edit in WP Admin ↗</a>`;
+      if (btn) { btn.disabled = false; btn.innerHTML = '✅ Published to WordPress'; btn.style.background = 'rgba(16,185,129,.2)'; btn.style.borderColor = 'rgba(16,185,129,.5)'; btn.style.color = '#6EE7B7'; }
+      showToast('🟦 Page saved as draft in WordPress — review and publish from your WP admin');
+    } else {
+      throw new Error(data.error || 'Publish failed');
+    }
+  })
+  .catch(err => {
+    if (btn) { btn.disabled = false; btn.innerHTML = '🟦 Publish to WordPress'; }
+    showToast('⚠️ WordPress publish failed: ' + err.message);
+  });
 };
 
 // ===== LEGACY CAMPAIGN CARD BUTTON HANDLERS =====
@@ -1970,6 +2079,22 @@ async function runAnalysis(url, country, industryOverride) {
   // Store analysis data
   analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps };
   igTrack('Analysis Completed', { domain: cleanUrl, industry: industry.name, competitorCount: selectedComps.length, country });
+
+  // ── WordPress Detection (non-blocking, runs in background) ──────────────────
+  analysisData.isWordPress = false;
+  analysisData.wpData = null;
+  fetch('/api/detect-wordpress', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: cleanUrl })
+  }).then(r => r.json()).then(wp => {
+    if (wp.isWordPress) {
+      analysisData.isWordPress = true;
+      analysisData.wpData = wp;
+      showWordPressBadge(wp);
+      showToast('🟦 WordPress detected — landing pages can be published directly to your site');
+    }
+  }).catch(() => {});
 
   // Build all views
   buildDashboard();

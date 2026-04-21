@@ -2861,6 +2861,86 @@ Return ONLY the complete HTML — no markdown, no explanation, just the raw HTML
   }
 });
 
+// ── WordPress Detection ───────────────────────────────────────────────────────
+app.post('/api/detect-wordpress', async (req, res) => {
+  const { url } = req.body || {};
+  if (!url) return res.json({ isWordPress: false });
+  try {
+    const base = url.startsWith('http') ? url.replace(/\/$/, '') : 'https://' + url.replace(/\/$/, '');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    let isWordPress = false;
+    let wpVersion = null;
+    let signals = [];
+
+    // Check 1: WP REST API endpoint
+    try {
+      const apiRes = await fetch(`${base}/wp-json/wp/v2/`, { signal: controller.signal, headers: { 'User-Agent': 'InfoGenie/1.0' } });
+      if (apiRes.ok) { isWordPress = true; signals.push('WP REST API active'); }
+    } catch(e) {}
+
+    // Check 2: HTML source for wp-content / wp-includes
+    if (!isWordPress) {
+      try {
+        const htmlRes = await fetch(base, { signal: controller.signal, headers: { 'User-Agent': 'InfoGenie/1.0' } });
+        const text = await htmlRes.text();
+        if (/wp-content|wp-includes|wordpress/i.test(text)) {
+          isWordPress = true; signals.push('WP assets in HTML');
+          const vMatch = text.match(/wordpress[^"']*ver(?:sion)?[=:]['"]\s*([\d.]+)/i) ||
+                         text.match(/WordPress\s+([\d.]+)/i);
+          if (vMatch) wpVersion = vMatch[1];
+        }
+      } catch(e) {}
+    }
+
+    // Check 3: /wp-login.php
+    if (!isWordPress) {
+      try {
+        const loginRes = await fetch(`${base}/wp-login.php`, { method:'HEAD', signal: controller.signal });
+        if (loginRes.status < 404) { isWordPress = true; signals.push('wp-login.php found'); }
+      } catch(e) {}
+    }
+
+    clearTimeout(timer);
+    res.json({ isWordPress, wpVersion, signals, siteUrl: base });
+  } catch (err) {
+    res.json({ isWordPress: false, error: err.message });
+  }
+});
+
+// ── Publish to WordPress ──────────────────────────────────────────────────────
+app.post('/api/publish-to-wordpress', async (req, res) => {
+  const { siteUrl, username, appPassword, title, content, status = 'draft' } = req.body || {};
+  if (!siteUrl || !username || !appPassword || !content) {
+    return res.status(400).json({ error: 'siteUrl, username, appPassword and content are required' });
+  }
+  try {
+    const base = siteUrl.startsWith('http') ? siteUrl.replace(/\/$/, '') : 'https://' + siteUrl.replace(/\/$/, '');
+    const creds = Buffer.from(`${username}:${appPassword}`).toString('base64');
+    const body  = {
+      title:   title || 'Campaign Landing Page',
+      content: content,
+      status:  status,
+      comment_status: 'closed'
+    };
+    const wpRes = await fetch(`${base}/wp-json/wp/v2/pages`, {
+      method:  'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Basic ${creds}`
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await wpRes.json();
+    if (!wpRes.ok) {
+      return res.status(400).json({ error: data.message || 'WordPress API error', code: data.code });
+    }
+    res.json({ success: true, pageId: data.id, pageUrl: data.link, editUrl: `${base}/wp-admin/post.php?post=${data.id}&action=edit`, status: data.status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Catch-all → SPA ──────────────────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
