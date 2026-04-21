@@ -17589,7 +17589,7 @@ function renderAutoSeoCalendar(domain, industry, comps, sch) {
       ${articles ? `<button onclick="addAllGeneratedToSocialCalendar()" style="padding:9px 14px;background:linear-gradient(135deg,#7C3AED,#5B21B6);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">📲 Add All to Social</button>` : ''}
       ${articles ? `<button onclick="publishAllToWordPress()" ${!wpOk?'disabled title="Connect WordPress first"':''} style="padding:9px 14px;background:${wpOk?'linear-gradient(135deg,#2563EB,#1D4ED8)':'#E5E7EB'};border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:${wpOk?'white':'#9CA3AF'};cursor:${wpOk?'pointer':'not-allowed'}">🟦 Publish All to WP</button>` : ''}
       <button onclick="generateArticleTopics()" id="gen-topics-btn" style="padding:9px 18px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer;display:flex;align-items:center;gap:6px">
-        <span id="gen-topics-icon">✨</span> <span id="gen-topics-label">${articles ? 'Regenerate Topics' : 'Generate ' + sch.count + ' Article Topics'}</span>
+        <span id="gen-topics-icon">✨</span> <span id="gen-topics-label">${articles ? 'Regenerate Topics' : 'Generate ' + sch.count + ' Article Topics'}</span><span id="gen-topics-timer" style="font-size:0.7rem;font-weight:600;opacity:0.85;display:none;margin-left:2px;background:rgba(0,0,0,0.2);padding:1px 6px;border-radius:5px">0s</span>
       </button>
     </div>
   </div>
@@ -17912,7 +17912,15 @@ async function generateArticleTopics() {
   const btn = document.getElementById('gen-topics-btn');
   const icon = document.getElementById('gen-topics-icon');
   const lbl  = document.getElementById('gen-topics-label');
+  const timer = document.getElementById('gen-topics-timer');
   if (btn) { btn.disabled = true; if(icon) icon.textContent = '⏳'; if(lbl) lbl.textContent = 'Generating…'; }
+  if (timer) { timer.style.display = 'inline-block'; timer.textContent = '0s'; }
+  const genStart = Date.now();
+  const genInterval = setInterval(() => {
+    const secs = Math.floor((Date.now() - genStart) / 1000);
+    const display = secs < 60 ? secs + 's' : Math.floor(secs/60) + 'm ' + (secs%60) + 's';
+    if (timer) timer.textContent = display;
+  }, 1000);
   const sch   = window._autoSeoSchedule;
   const comps = ctx.comps;
   try {
@@ -17924,10 +17932,12 @@ async function generateArticleTopics() {
     const data = await resp.json();
     if (data.topics && data.topics.length) {
       window._autoSeoArticles = data.topics.map(t => ({ ...t, status: 'pending', generatedHtml: null }));
-      showToast(`✅ ${data.topics.length} article topics generated!`);
+      showToast(`✅ ${data.topics.length} article topics generated in ${Math.floor((Date.now()-genStart)/1000)}s!`);
     } else { showToast('⚠️ Could not generate topics — try again'); }
   } catch(e) { showToast('❌ Error: ' + e.message); }
   finally {
+    clearInterval(genInterval);
+    if (timer) { timer.style.display = 'none'; }
     if (btn) { btn.disabled = false; if(icon) icon.textContent = '✨'; if(lbl) lbl.textContent = 'Regenerate Topics'; }
     buildAutoSEO();
   }
