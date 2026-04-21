@@ -606,7 +606,7 @@ function buildLaunchModal(camp, idx) {
     <style>@keyframes spin{to{transform:rotate(360deg)}} @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}</style>
     <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:24px 28px;border-radius:20px 20px 0 0">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <div style="font-size:1rem;font-weight:800;font-family:'Sora',sans-serif;color:white">🚀 Campaign Launch Brief</div>
+        <div style="font-size:1rem;font-weight:800;font-family:Sora,sans-serif;color:white">🚀 Campaign Launch Brief</div>
         <span id="lm-ai-badge" style="background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.4);border-radius:6px;padding:3px 10px;font-size:0.68rem;font-weight:700;color:#A5B4FC">${spin}GPT-4 Building Brief...</span>
       </div>
       <div style="font-size:0.8rem;color:rgba(255,255,255,.6);margin-bottom:16px">${name} · ${platform}</div>
@@ -902,7 +902,7 @@ function buildLaunchModal(camp, idx) {
     inner2.innerHTML = `
       <div style="padding:36px 32px;text-align:center">
         <div style="font-size:3rem;margin-bottom:12px">🎉</div>
-        <div style="font-family:'Sora',sans-serif;font-size:1.2rem;font-weight:800;color:#0A1628;margin-bottom:6px">Campaign Launched!</div>
+        <div style="font-family:Sora,sans-serif;font-size:1.2rem;font-weight:800;color:#0A1628;margin-bottom:6px">Campaign Launched!</div>
         <div style="font-size:0.82rem;color:#6B7280;margin-bottom:18px">"${finalName}" · ${finalPlatform} · ${finalBudget}/mo</div>
         <div id="${apiStatusId}" style="margin-bottom:16px">
           ${isPlatformConnected
@@ -1321,7 +1321,7 @@ function buildCreativeModal(camp, idx) {
     <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:22px 26px 0;border-radius:20px 20px 0 0">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:4px">🎨 AI Creative Studio</div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:4px">🎨 AI Creative Studio</div>
           <div style="font-size:0.78rem;color:rgba(255,255,255,.55)">${name} · ${platform} · ${budget}</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
@@ -3021,7 +3021,7 @@ function renderCompetitorCards(comps) {
   const realCompsPanel = `
     <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:14px;padding:18px 20px;margin-bottom:18px;border:1px solid rgba(0,201,200,.2)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-        <span style="font-family:'Sora',sans-serif;font-size:0.875rem;font-weight:800;color:white">📡 Live Competitor Intelligence</span>
+        <span style="font-family:Sora,sans-serif;font-size:0.875rem;font-weight:800;color:white">📡 Live Competitor Intelligence</span>
         ${liveCount > 0
           ? `<span style="background:linear-gradient(135deg,#00C9C8,#0066FF);border-radius:20px;padding:3px 10px;font-size:0.68rem;font-weight:700;color:white">${liveCount} LIVE · DataForSEO</span>`
           : `<span style="background:rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:0.68rem;font-weight:600;color:rgba(255,255,255,.6)">AI BENCHMARKS</span>`}
@@ -3430,13 +3430,13 @@ function openBLDetail(type, idx) {
     </div>
     <div style="display:flex;gap:16px;margin-bottom:22px;flex-wrap:wrap">
       <div style="flex:1;min-width:140px;background:#D1FAE5;border:2px solid #6EE7B7;border-radius:14px;padding:20px;text-align:center">
-        <div style="font-size:2.4rem;font-weight:900;color:#065F46;font-family:'Sora',sans-serif">${dfPct}%</div>
+        <div style="font-size:2.4rem;font-weight:900;color:#065F46;font-family:Sora,sans-serif">${dfPct}%</div>
         <div style="font-size:0.9rem;font-weight:700;color:#059669;margin-top:6px">DoFollow</div>
         <div style="font-size:0.8rem;color:#065F46;margin-top:4px">${fmt(dfCount)} links</div>
         <div style="font-size:0.7rem;color:#6B7280;margin-top:8px">Pass link equity</div>
       </div>
       <div style="flex:1;min-width:140px;background:#FEE2E2;border:2px solid #FCA5A5;border-radius:14px;padding:20px;text-align:center">
-        <div style="font-size:2.4rem;font-weight:900;color:#991B1B;font-family:'Sora',sans-serif">${nfPct}%</div>
+        <div style="font-size:2.4rem;font-weight:900;color:#991B1B;font-family:Sora,sans-serif">${nfPct}%</div>
         <div style="font-size:0.9rem;font-weight:700;color:#DC2626;margin-top:6px">NoFollow</div>
         <div style="font-size:0.8rem;color:#991B1B;margin-top:4px">${fmt(nfCount)} links</div>
         <div style="font-size:0.7rem;color:#6B7280;margin-top:8px">No equity passed</div>
@@ -3461,7 +3461,7 @@ function openBLDetail(type, idx) {
     const industryAvg = Math.min(100, dr + Math.round(5 + rng()*12));
     const benchmarks = [{label:'This Competitor',val:dr},{label:'Industry Top-10 Avg',val:industryAvg},{label:'Your Ideal Target',val:75}];
     content = `<div style="text-align:center;padding:22px 0 20px">
-      <div style="font-size:4.5rem;font-weight:900;color:${tier.color};font-family:'Sora',sans-serif;line-height:1">${dr}</div>
+      <div style="font-size:4.5rem;font-weight:900;color:${tier.color};font-family:Sora,sans-serif;line-height:1">${dr}</div>
       <span style="background:${tier.bg};color:${tier.color};padding:5px 16px;border-radius:20px;font-weight:700;font-size:0.85rem;margin-top:10px;display:inline-block">${tier.label} Authority</span>
     </div>
     <div style="background:#F8FAFF;border:1px solid #E0E7FF;border-radius:12px;padding:14px;margin-bottom:20px">
@@ -3483,7 +3483,7 @@ function openBLDetail(type, idx) {
     <div style="background:white;border-radius:18px;width:100%;max-width:700px;max-height:82vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 28px 90px rgba(0,0,0,.4)">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid #E5E7EB;background:linear-gradient(135deg,#0A1628,#0D2A5E);flex-shrink:0">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white">${title}</div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white">${title}</div>
           <div style="font-size:0.72rem;color:rgba(255,255,255,.5);margin-top:3px">${isEstimate?'Estimated data based on traffic signals':'Live data · DataForSEO'}</div>
         </div>
         <button onclick="closeBLDetail()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:8px;width:34px;height:34px;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;color:white">✕</button>
@@ -3706,7 +3706,7 @@ function buildCampaigns() {
     wrap.innerHTML = `
       <div style="text-align:center; padding:60px 24px">
         <div style="font-size:3rem; margin-bottom:16px">🎯</div>
-        <h3 style="font-family:'Sora',sans-serif; font-size:1.25rem; font-weight:800; color:#0A1628; margin-bottom:8px">Run an Analysis to See Campaign Recommendations</h3>
+        <h3 style="font-family:Sora,sans-serif; font-size:1.25rem; font-weight:800; color:#0A1628; margin-bottom:8px">Run an Analysis to See Campaign Recommendations</h3>
         <p style="color:#6B7280; font-size:0.9rem; margin-bottom:24px; max-width:420px; margin-left:auto; margin-right:auto">Enter your website URL on the home page and click Analyse Now — InfoGenie will generate AI-powered campaign strategies based on your specific competitors.</p>
         <button class="btn-primary" onclick="navigateTo('home')" style="margin:0 auto">← Run Analysis</button>
       </div>`;
@@ -4008,7 +4008,7 @@ function buildCampaigns() {
               <div style="background:linear-gradient(135deg,#0A1628,#0D2140);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
                 <div>
                   <div style="font-size:0.65rem;font-weight:700;color:#00C9C8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">${platIcon} ${c.platform||'Campaign'}</div>
-                  <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white">${c.name||'Campaign'}</div>
+                  <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white">${c.name||'Campaign'}</div>
                   <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
                     <span style="background:${statColor[stat]||'#10B981'};color:white;font-size:0.6rem;font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase">${stat}</span>
                     <span style="font-size:0.72rem;color:#94A3B8">Launched ${c.launchedAt||'—'}</span>
@@ -4255,7 +4255,7 @@ function buildAdvertise() {
       <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:24px;margin-bottom:28px;box-shadow:0 1px 6px rgba(0,0,0,0.05)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
           <div>
-            <h3 style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin:0 0 4px">📡 Connected Accounts — Click to Launch Per-Channel Campaign</h3>
+            <h3 style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin:0 0 4px">📡 Connected Accounts — Click to Launch Per-Channel Campaign</h3>
             <div style="font-size:0.78rem;color:#6B7280">${connCount} of ${ADV_PLATFORMS.length} channels connected · Each channel has its own 3-step lead-gen flow</div>
           </div>
           <button onclick="Object.keys(window._advertiseConnections).forEach(k=>window._advertiseConnections[k]=true);_saveAdvConn();buildAdvertise()" style="padding:8px 18px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚡ Connect All</button>
@@ -4268,7 +4268,7 @@ function buildAdvertise() {
       ${(window._launchedCampaigns||[]).length > 0 ? `
       <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:24px;box-shadow:0 1px 6px rgba(0,0,0,0.05)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-          <h3 style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin:0">🗂️ Live Campaign Optimisation Folders</h3>
+          <h3 style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin:0">🗂️ Live Campaign Optimisation Folders</h3>
           <button onclick="showToast('🤖 AI optimisation running — bids, audiences, and budgets being adjusted')" style="padding:7px 16px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;font-size:0.75rem;font-weight:700;color:#059669;cursor:pointer">🤖 AI Optimisation Active</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
@@ -4379,7 +4379,7 @@ window.openChannelCampaign = function(platName, platIcon, platColor, platBg) {
             <div style="font-size:2.2rem">${platIcon}</div>
             <div>
               <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:.08em">3-Step Lead Gen</div>
-              <div style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:white">${platName} Campaign</div>
+              <div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:white">${platName} Campaign</div>
             </div>
           </div>
           <button id="ch-close" style="background:rgba(255,255,255,0.2);border:none;border-radius:50%;width:32px;height:32px;font-size:1.1rem;color:white;cursor:pointer">✕</button>
@@ -4391,7 +4391,7 @@ window.openChannelCampaign = function(platName, platIcon, platColor, platBg) {
         <!-- Step content -->
         <div style="padding:20px 24px">
           <div style="font-size:0.7rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Step ${currentStep} of 3</div>
-          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:14px">${stepLabels[currentStep-1]}</div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:14px">${stepLabels[currentStep-1]}</div>
           ${stepContent}
         </div>
         <!-- Nav buttons -->
@@ -4583,7 +4583,7 @@ function buildContent() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
         <!-- Keyword Shifts -->
         <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:14px">📉 Keyword Shift Monitor</div>
+          <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:14px">📉 Keyword Shift Monitor</div>
           <div style="font-size:0.75rem;color:#6B7280;margin-bottom:12px">Trending shifts in your industry — act before traffic drops.</div>
           <div style="display:flex;flex-direction:column;gap:8px">
             ${kShifts.map(k=>`
@@ -4596,7 +4596,7 @@ function buildContent() {
         </div>
         <!-- LLM Citation Gaps -->
         <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:6px">🤖 AI Visibility Gaps</div>
+          <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:6px">🤖 AI Visibility Gaps</div>
           <div style="font-size:0.75rem;color:#6B7280;margin-bottom:12px">Topics where ChatGPT, Gemini & Perplexity are NOT citing your site — fix these to capture LLM traffic.</div>
           <div style="display:flex;flex-direction:column;gap:7px">
             ${llmGaps.map(g=>`
@@ -4622,7 +4622,7 @@ function buildContent() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
           <div>
             <div style="font-size:0.65rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px">Topical Cluster</div>
-            <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628">${cl.pillar}</div>
+            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">${cl.pillar}</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             ${cl._dualAI ? `<span title="Synthesised from GPT-4o + Claude Sonnet" style="font-size:0.6rem;font-weight:700;padding:3px 9px;border-radius:6px;background:linear-gradient(135deg,#EFF6FF,#F3E8FF);color:#6D28D9;border:1px solid #C4B5FD">✨ GPT-4o + Claude</span>` : ''}
@@ -4650,7 +4650,7 @@ function buildContent() {
 
     return `
       <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-        <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px">🧩 AI Topical Cluster Builder</div>
+        <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px">🧩 AI Topical Cluster Builder</div>
         <div style="font-size:0.78rem;color:#6B7280;margin-bottom:14px">Enter a seed topic — InfoGenie AI will generate a full topical cluster with subtopics, question prompts, and LLM optimisation tips.</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <input id="cluster-seed" placeholder="e.g. email marketing automation, AI SEO tools, SaaS pricing strategies…" value="${prefill}" style="flex:1;min-width:200px;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
@@ -4679,7 +4679,7 @@ function buildContent() {
     return `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🔍 Content Gap Analysis</div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🔍 Content Gap Analysis</div>
           <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">Pages your competitors rank for and AI engines cite — but you're missing or underperforming on</div>
         </div>
         <button onclick="window._contentTab='clusters';buildContent()" style="padding:9px 18px;background:linear-gradient(135deg,#065F46,#059669);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🧩 Generate Clusters for All Gaps</button>
@@ -4719,7 +4719,7 @@ function buildContent() {
     return `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🛠️ Page Crawlability & Content Audit</div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🛠️ Page Crawlability & Content Audit</div>
           <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">Outdated content and crawlability issues hurting your rankings and LLM visibility</div>
         </div>
         <button onclick="showToast('🤖 AI crawl audit started — this may take 30–60 seconds in production')" style="padding:9px 18px;background:linear-gradient(135deg,#065F46,#059669);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚡ Run Full Audit</button>
@@ -4829,7 +4829,7 @@ window.openBuildContentModal = function(topic, intent) {
       <div style="padding:20px 24px 16px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-shrink:0">
         <div>
           <div style="font-size:0.6rem;font-weight:700;color:#00C9C8;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">AI Content Builder · GPT-4o + Claude Sonnet</div>
-          <div style="font-family:'Sora',sans-serif;font-size:1.05rem;font-weight:800;color:white;line-height:1.3">${topic}</div>
+          <div style="font-family:Sora,sans-serif;font-size:1.05rem;font-weight:800;color:white;line-height:1.3">${topic}</div>
           <div style="font-size:0.72rem;color:rgba(255,255,255,.4);margin-top:3px">Intent: ${intent}</div>
         </div>
         <button onclick="document.getElementById('bcModal').style.display='none'" style="background:rgba(255,255,255,.06);border:none;border-radius:8px;color:rgba(255,255,255,.5);font-size:1.1rem;width:32px;height:32px;cursor:pointer;flex-shrink:0">✕</button>
@@ -5121,7 +5121,7 @@ function buildSocialCalendar() {
         <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:22px;box-shadow:0 1px 6px rgba(0,0,0,0.05)">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
             <button onclick="if(window._socialViewMonth===0){window._socialViewMonth=11;window._socialViewYear--;}else{window._socialViewMonth--;}buildSocialCalendar()" style="width:34px;height:34px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:50%;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center">‹</button>
-            <div style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628">${mName} ${year}</div>
+            <div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628">${mName} ${year}</div>
             <button onclick="if(window._socialViewMonth===11){window._socialViewMonth=0;window._socialViewYear++;}else{window._socialViewMonth++;}buildSocialCalendar()" style="width:34px;height:34px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:50%;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center">›</button>
           </div>
           <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:6px">
@@ -5170,7 +5170,7 @@ window.openCreatePost = function(preDate) {
       <div style="background:linear-gradient(135deg,#7C3AED,#4F46E5);border-radius:18px 18px 0 0;padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
         <div>
           <div style="font-size:0.65rem;font-weight:700;color:#C4B5FD;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">New Post</div>
-          <div style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:white">Create & Schedule Post</div>
+          <div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:white">Create & Schedule Post</div>
         </div>
         <button id="cp-close" style="background:rgba(255,255,255,0.15);border:none;border-radius:50%;width:32px;height:32px;font-size:1.1rem;color:white;cursor:pointer;line-height:32px;text-align:center">✕</button>
       </div>
@@ -5722,7 +5722,7 @@ function buildAiVisibility() {
     <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🔭 LLM Platform Monitor</div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🔭 LLM Platform Monitor</div>
           <div style="font-size:0.75rem;color:#6B7280;margin-top:2px">Real-time brand visibility across every major AI platform</div>
         </div>
         <div style="display:flex;gap:8px;font-size:0.7rem">
@@ -5764,7 +5764,7 @@ function buildAiVisibility() {
       <!-- Header -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:3px">📡 Brand Monitor — <span style="color:#0066FF">${domain}</span></div>
+          <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:3px">📡 Brand Monitor — <span style="color:#0066FF">${domain}</span></div>
           <div style="font-size:0.73rem;color:#6B7280">How AI engines perceive, cite and mention your brand across all major LLM platforms</div>
         </div>
         <button id="brandMonBtn" onclick="generateBrandMonitor('${domain}','${industry}')" style="padding:9px 20px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 12px rgba(0,102,255,0.25)">🔍 Run Brand Monitor</button>
@@ -5780,7 +5780,7 @@ function buildAiVisibility() {
         ].map(k => `
         <div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:12px;padding:14px;text-align:center" title="${k.tip}">
           <div style="font-size:1.5rem;margin-bottom:3px">${k.icon}</div>
-          <div style="font-family:'Sora',sans-serif;font-size:1.15rem;font-weight:800;color:${k.color};margin-bottom:2px">${k.value}</div>
+          <div style="font-family:Sora,sans-serif;font-size:1.15rem;font-weight:800;color:${k.color};margin-bottom:2px">${k.value}</div>
           <div style="font-size:0.62rem;font-weight:700;color:#374151;margin-bottom:2px">${k.label}</div>
           <div style="font-size:0.58rem;color:#9CA3AF">${k.sub}</div>
         </div>`).join('')}
@@ -5864,7 +5864,7 @@ function buildAiVisibility() {
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
       <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-        <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:4px">🎯 Prompt Intelligence</div>
+        <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:4px">🎯 Prompt Intelligence</div>
         <div style="font-size:0.72rem;color:#6B7280;margin-bottom:14px">Queries where users ask about your brand or category</div>
         <table style="width:100%;border-collapse:collapse">
           <thead>
@@ -5891,7 +5891,7 @@ function buildAiVisibility() {
       </div>
 
       <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-        <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:4px">🕳️ Citation Gap Finder</div>
+        <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:4px">🕳️ Citation Gap Finder</div>
         <div style="font-size:0.72rem;color:#6B7280;margin-bottom:14px">Topics AI should cite you for — but currently doesn't</div>
         <div style="display:flex;flex-direction:column;gap:9px">
           ${gaps.map(g => `
@@ -5914,7 +5914,7 @@ function buildAiVisibility() {
     <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628">✨ GPT-4 AI Visibility Audit</div>
+          <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628">✨ GPT-4 AI Visibility Audit</div>
           <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">Personalised analysis & action plan to dominate AI search</div>
         </div>
         ${window._aiVisibilityAudit ? `<button onclick="window._aiVisibilityAudit=null;buildAiVisibility()" style="padding:7px 15px;background:#F3F4F6;border:none;border-radius:8px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">↺ Re-run</button>` : ''}
@@ -5924,7 +5924,7 @@ function buildAiVisibility() {
     </div>
 
     <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-      <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:16px">🚀 Quick Win Recommendations</div>
+      <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:16px">🚀 Quick Win Recommendations</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         ${[
           { icon:'📝', title:'Publish LLM-Ready Content',       desc:'Write "what is X" and "how does X work" pages with FAQ schema. LLMs love authoritative definitional content.',             effort:'Low',    impact:'Very High', tag:'Content' },
@@ -5961,7 +5961,7 @@ function buildAiVisibility() {
           <div style="display:flex;align-items:center;gap:12px">
             <div style="background:rgba(255,255,255,0.12);padding:10px;border-radius:12px;font-size:1.3rem;line-height:1">⚡</div>
             <div>
-              <div style="font-family:'Sora',sans-serif;font-size:1.15rem;font-weight:800;color:white;margin-bottom:2px">Action Center</div>
+              <div style="font-family:Sora,sans-serif;font-size:1.15rem;font-weight:800;color:white;margin-bottom:2px">Action Center</div>
               <div style="font-size:0.75rem;color:rgba(255,255,255,0.55)">Create &amp; Optimize Content That AI Picks</div>
             </div>
           </div>
@@ -6000,7 +6000,7 @@ function buildAiVisibility() {
                 <div style="font-size:0.63rem;color:rgba(255,255,255,0.45);margin-top:2px">Experience · Expertise · Authority · Trust</div>
               </div>
               <div style="text-align:center">
-                <div id="eeaTScore" style="font-family:'Sora',sans-serif;font-size:1.4rem;font-weight:800;color:#A5B4FC">0%</div>
+                <div id="eeaTScore" style="font-family:Sora,sans-serif;font-size:1.4rem;font-weight:800;color:#A5B4FC">0%</div>
                 <div style="font-size:0.58rem;color:rgba(255,255,255,0.4)">score</div>
               </div>
             </div>
@@ -6106,7 +6106,7 @@ async function openAiContentBrief(type, domain, industry) {
   inner.innerHTML = `
     <div style="padding:28px 30px">
       <div style="font-size:0.68rem;font-weight:700;color:#6366F1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Action Center · Content Brief</div>
-      <div style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin-bottom:4px">${label}</div>
+      <div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:#0A1628;margin-bottom:4px">${label}</div>
       <div style="font-size:0.78rem;color:#6B7280;margin-bottom:20px">GPT-4 is writing your AI-optimised content brief for <strong>${domain}</strong> in <strong>${industry}</strong>…</div>
       <div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:32px;background:#F8FAFC;border-radius:12px;color:#6366F1;font-weight:600;font-size:0.82rem">
         <span style="animation:spin 1s linear infinite;display:inline-block">⏳</span> Generating brief with GPT-4…
@@ -6128,7 +6128,7 @@ async function openAiContentBrief(type, domain, industry) {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
           <div>
             <div style="font-size:0.68rem;font-weight:700;color:#6366F1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Content Brief · GPT-4 Generated</div>
-            <div style="font-family:'Sora',sans-serif;font-size:1.05rem;font-weight:800;color:#0A1628">${label}</div>
+            <div style="font-family:Sora,sans-serif;font-size:1.05rem;font-weight:800;color:#0A1628">${label}</div>
           </div>
           <button onclick="navigator.clipboard?.writeText(document.getElementById('briefText').innerText).then(()=>showToast('✅ Brief copied!'))" style="padding:7px 14px;background:#EEF2FF;border:none;border-radius:8px;font-size:0.72rem;font-weight:700;color:#4F46E5;cursor:pointer">📋 Copy Brief</button>
         </div>
@@ -6142,7 +6142,7 @@ async function openAiContentBrief(type, domain, industry) {
     const brief = generateFallbackBrief(type, domain, industry);
     inner.innerHTML = `
       <div style="padding:26px 30px;max-height:85vh;overflow-y:auto">
-        <div style="font-family:'Sora',sans-serif;font-size:1.05rem;font-weight:800;color:#0A1628;margin-bottom:16px">${label} — Content Brief</div>
+        <div style="font-family:Sora,sans-serif;font-size:1.05rem;font-weight:800;color:#0A1628;margin-bottom:16px">${label} — Content Brief</div>
         <div id="briefText" style="font-size:0.82rem;color:#1A2F4A;line-height:1.78;white-space:pre-wrap;background:#F8FAFC;border-radius:12px;padding:20px 22px;border:1px solid #E5E7EB">${brief}</div>
         <button onclick="closeContentBriefModal()" style="width:100%;margin-top:16px;padding:10px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.8rem;font-weight:600;color:#374151;cursor:pointer">Close</button>
       </div>`;
@@ -6357,7 +6357,7 @@ function buildResults() {
     wrap.innerHTML = `
       <div style="text-align:center;padding:60px 24px">
         <div style="font-size:3rem;margin-bottom:16px">📊</div>
-        <h3 style="font-family:'Sora',sans-serif;font-size:1.25rem;font-weight:800;color:#0A1628;margin-bottom:8px">No Results Yet</h3>
+        <h3 style="font-family:Sora,sans-serif;font-size:1.25rem;font-weight:800;color:#0A1628;margin-bottom:8px">No Results Yet</h3>
         <p style="color:#6B7280;font-size:0.9rem;margin-bottom:24px;max-width:420px;margin-left:auto;margin-right:auto">Run an analysis and launch campaigns to see InfoGenie's results and action history here.</p>
         <button class="btn-primary" onclick="navigateTo('home')" style="margin:0 auto">← Run Analysis</button>
       </div>`;
@@ -6417,7 +6417,7 @@ function buildResults() {
         ['⚡ AI Actions', allActions.length, '#00E5FF', 'Total automated and AI-assisted actions InfoGenie has taken: analyses run, campaigns built, audiences detected, and optimisations applied.']
       ].map(([label, val, color, tip]) => `
         <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.06)" title="${tip}">
-          <div style="font-size:1.4rem;font-weight:800;color:${color};font-family:'Sora',sans-serif">${val}</div>
+          <div style="font-size:1.4rem;font-weight:800;color:${color};font-family:Sora,sans-serif">${val}</div>
           <div style="font-size:0.75rem;color:#6B7280;margin-top:4px;font-weight:500">${label}</div>
         </div>`).join('')}
     </div>
@@ -6426,7 +6426,7 @@ function buildResults() {
     <div data-results-section="leads" style="display:${rShow('leads')?'block':'none'};background:white;border:1px solid #E2E8F0;border-radius:18px;padding:22px 24px;margin-bottom:28px;box-shadow:0 1px 6px rgba(0,0,0,.06)">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:18px">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📋 Lead Reporting Dashboard</div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📋 Lead Reporting Dashboard</div>
           <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">Log your messages, calls and InfoGenie calculates your cost-per-lead automatically</div>
         </div>
         <button onclick="saveLeadData()" style="padding:9px 20px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">💾 Save Lead Data</button>
@@ -6453,7 +6453,7 @@ function buildResults() {
             ['📈 Lead→Conv Rate',convRate,   '#00C9C8', 'Percentage of leads that converted into paying customers. Higher is better — target 15–30% for most industries.'],
           ].map(([label,val,color,tip])=>`
             <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:14px;text-align:center" title="${tip}">
-              <div style="font-size:1.3rem;font-weight:800;color:${color};font-family:'Sora',sans-serif">${val}</div>
+              <div style="font-size:1.3rem;font-weight:800;color:${color};font-family:Sora,sans-serif">${val}</div>
               <div style="font-size:0.65rem;color:#6B7280;margin-top:3px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">${label}</div>
             </div>`).join('');
         })()}
@@ -6484,7 +6484,7 @@ function buildResults() {
         </div>
         <div style="display:flex;flex-direction:column;justify-content:center;gap:6px">
           <div style="font-size:0.72rem;font-weight:700;color:#374151;margin-bottom:2px">⚡ Live CPL Preview</div>
-          <div id="cplLivePreview" style="font-size:1.6rem;font-weight:800;color:#0066FF;font-family:'Sora',sans-serif">
+          <div id="cplLivePreview" style="font-size:1.6rem;font-weight:800;color:#0066FF;font-family:Sora,sans-serif">
             ${(()=>{const ld=window._leadData||{};const t=(ld.messages||0)+(ld.calls||0);const b=ld.budget||totalBudget;return t>0&&b>0?'$'+(b/t).toFixed(2):'—';})()}
           </div>
           <div id="cplLiveLabel" style="font-size:0.68rem;color:#6B7280">Cost per lead (messages + calls)</div>
@@ -6872,7 +6872,7 @@ function buildKPITracker() {
     <div style="background:linear-gradient(135deg,#0A1628,#0D2140);border-radius:16px;padding:22px 28px;margin-bottom:24px;border:1px solid rgba(0,201,200,.15)">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:white;margin-bottom:4px">
+          <div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:white;margin-bottom:4px">
             ${hasAnyData ? `${nAchieved} of ${kpiDefs.length} KPIs Achieved` : 'Run an analysis & launch campaigns to see your KPI progress'}
           </div>
           <div style="font-size:0.8rem;color:rgba(255,255,255,.5)">
@@ -7076,7 +7076,7 @@ function buildRedditIntel() {
   wrap.innerHTML = `
     <!-- Config Panel -->
     <div style="background:#0F1E35;border:1px solid rgba(255,100,0,.25);border-radius:16px;padding:20px 24px;margin-bottom:20px">
-      <div style="font-family:'Sora',sans-serif;font-size:0.85rem;font-weight:800;color:white;margin-bottom:14px">⚙️ Monitor Settings</div>
+      <div style="font-family:Sora,sans-serif;font-size:0.85rem;font-weight:800;color:white;margin-bottom:14px">⚙️ Monitor Settings</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px">
         <div>
           <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px" title="Your brand name or domain — InfoGenie searches for mentions of this across Reddit and Hacker News discussions.">Your Brand / Domain</label>
@@ -7132,7 +7132,7 @@ function buildRedditIntel() {
       <div id="rdt-feed" style="display:flex;flex-direction:column;gap:12px">
         <div style="text-align:center;padding:48px 24px;color:rgba(255,255,255,.3)">
           <div style="font-size:2.5rem;margin-bottom:10px">🔴</div>
-          <div style="font-family:'Sora',sans-serif;font-size:0.9rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:6px">Ready to scan</div>
+          <div style="font-family:Sora,sans-serif;font-size:0.9rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:6px">Ready to scan</div>
           <div style="font-size:0.78rem">Click <strong style="color:#FF6B35">Scan Now</strong> to find brand mentions, competitor threads &amp; rising discussions</div>
         </div>
       </div>
@@ -7168,7 +7168,7 @@ function buildRedditIntel() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <!-- Left: Persona Settings -->
         <div style="background:#0F1E35;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px">
-          <div style="font-family:'Sora',sans-serif;font-size:0.84rem;font-weight:800;color:white;margin-bottom:14px">🎭 Brand Persona</div>
+          <div style="font-family:Sora,sans-serif;font-size:0.84rem;font-weight:800;color:white;margin-bottom:14px">🎭 Brand Persona</div>
           <div style="display:flex;flex-direction:column;gap:12px">
             <div>
               <label style="font-size:0.63rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Brand Name</label>
@@ -7193,7 +7193,7 @@ function buildRedditIntel() {
 
         <!-- Right: Reply Generator -->
         <div style="background:#0F1E35;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px">
-          <div style="font-family:'Sora',sans-serif;font-size:0.84rem;font-weight:800;color:white;margin-bottom:14px">✍️ Reply Generator</div>
+          <div style="font-family:Sora,sans-serif;font-size:0.84rem;font-weight:800;color:white;margin-bottom:14px">✍️ Reply Generator</div>
           <div id="rpl-thread-display" style="background:rgba(255,100,0,.07);border:1px solid rgba(255,100,0,.2);border-radius:10px;padding:12px 14px;margin-bottom:12px;min-height:60px">
             <div id="rpl-thread-title" style="font-size:0.8rem;font-weight:600;color:rgba(255,255,255,.7);margin-bottom:4px">${window._redditSelPost ? window._redditSelPost.title : 'Select a thread from Monitor tab or paste a title below'}</div>
             <div id="rpl-thread-sub" style="font-size:0.68rem;color:#FF6B35">${window._redditSelPost ? window._redditSelPost.subreddit : ''}</div>
@@ -7299,7 +7299,7 @@ function _rdtCard(p, i) {
             ${srcBadge}${velBadge}${serpBadge}
             <span style="font-size:0.62rem;color:rgba(255,255,255,.3)">${p.ageHours < 24 ? p.ageHours + 'h ago' : Math.round(p.ageHours/24) + 'd ago'}</span>
           </div>
-          <a href="${p.url}" target="_blank" style="font-family:'Sora',sans-serif;font-size:0.85rem;font-weight:700;color:white;text-decoration:none;line-height:1.35;display:block" onmouseover="this.style.color='#FF6B35'" onmouseout="this.style.color='white'">${p.title}</a>
+          <a href="${p.url}" target="_blank" style="font-family:Sora,sans-serif;font-size:0.85rem;font-weight:700;color:white;text-decoration:none;line-height:1.35;display:block" onmouseover="this.style.color='#FF6B35'" onmouseout="this.style.color='white'">${p.title}</a>
         </div>
         <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0">
           <div style="font-size:0.95rem;font-weight:800;color:${relColor}">${p.relevance || 0}</div>
@@ -7350,7 +7350,7 @@ async function scanRedditMonitor() {
 
   const loaderHtml = (sec) => `<div style="text-align:center;padding:40px 24px">
     <div style="width:40px;height:40px;border:3px solid rgba(255,100,0,.2);border-top-color:#FF4500;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px"></div>
-    <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:700;color:white;margin-bottom:5px">Scanning community intelligence… <span id="rdt-timer" style="color:#FF4500">${sec}s</span></div>
+    <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:700;color:white;margin-bottom:5px">Scanning community intelligence… <span id="rdt-timer" style="color:#FF4500">${sec}s</span></div>
     <div style="font-size:0.75rem;color:rgba(255,255,255,.35);margin-bottom:8px">Fetching live HN data · GPT-4o generating Reddit signals</div>
     <div style="font-size:0.7rem;color:rgba(255,180,0,.5)">⏱ This usually takes 10–20 seconds</div>
   </div>`;
@@ -9906,7 +9906,7 @@ function buildBattlePlan() {
     wrap.innerHTML = `
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;text-align:center;gap:20px;padding:40px">
         <div style="font-size:3.5rem">⚔️</div>
-        <div style="font-family:'Sora',sans-serif;font-size:1.5rem;font-weight:900;color:white">No Analysis Yet</div>
+        <div style="font-family:Sora,sans-serif;font-size:1.5rem;font-weight:900;color:white">No Analysis Yet</div>
         <div style="color:rgba(255,255,255,.5);max-width:420px;font-size:0.9rem;line-height:1.6">Run a competitor analysis first to generate your personalised Battle Plan — with actions you can take directly from this page.</div>
         <button onclick="navigateTo('home')" style="padding:13px 30px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:12px;color:white;font-weight:700;font-size:0.9rem;cursor:pointer">Run Analysis →</button>
       </div>`;
@@ -9953,7 +9953,7 @@ function buildBattlePlan() {
     return `<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:20px">
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px">
         <span style="font-size:1.2rem;line-height:1">${icon}</span>
-        <div><div style="font-family:'Sora',sans-serif;font-size:0.9rem;font-weight:800;color:white">${title}</div><div style="font-size:0.7rem;color:rgba(255,255,255,.4);margin-top:2px">${sub}</div></div>
+        <div><div style="font-family:Sora,sans-serif;font-size:0.9rem;font-weight:800;color:white">${title}</div><div style="font-size:0.7rem;color:rgba(255,255,255,.4);margin-top:2px">${sub}</div></div>
       </div>
       ${items}
     </div>`;
@@ -10080,7 +10080,7 @@ function buildBattlePlan() {
           <div style="font-size:0.6rem;font-weight:800;color:rgba(0,201,200,.55);letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px">Analyse › Battle Plan</div>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
             <span style="font-size:1.4rem">⚔️</span>
-            <h1 style="font-family:'Sora',sans-serif;font-size:1.35rem;font-weight:900;color:white;margin:0">Battle Plan</h1>
+            <h1 style="font-family:Sora,sans-serif;font-size:1.35rem;font-weight:900;color:white;margin:0">Battle Plan</h1>
             <span style="background:linear-gradient(135deg,#00C9C8,#0066FF);padding:3px 12px;border-radius:20px;font-size:0.67rem;font-weight:700;color:white">AI-GENERATED</span>
           </div>
           <div style="color:rgba(255,255,255,.45);font-size:0.8rem">${domain} · ${industry} · ${comps.length} competitors · Click any action card to execute directly</div>
@@ -10117,7 +10117,7 @@ function buildBattlePlan() {
         </div>
         <div style="text-align:right;flex-shrink:0" title="AI-calculated opportunity score — how much market share you can realistically capture from this competitor. Higher = more opportunity.">
           <div style="font-size:0.67rem;color:rgba(255,255,255,.4);margin-bottom:2px;text-transform:uppercase;letter-spacing:.05em">Opportunity Score</div>
-          <div style="font-size:2rem;font-weight:900;font-family:'Sora',sans-serif;color:${oppScore>=70?'#10B981':oppScore>=50?'#F59E0B':'#60A5FA'};line-height:1">${oppScore}</div>
+          <div style="font-size:2rem;font-weight:900;font-family:Sora,sans-serif;color:${oppScore>=70?'#10B981':oppScore>=50?'#F59E0B':'#60A5FA'};line-height:1">${oppScore}</div>
           <div style="font-size:0.62rem;color:rgba(255,255,255,.3)">out of 100</div>
         </div>
       </div>
@@ -10128,7 +10128,7 @@ function buildBattlePlan() {
 
       <!-- Priority Summary Banner -->
       <div style="background:linear-gradient(135deg,rgba(239,68,68,.1),rgba(220,38,38,.04));border:1px solid rgba(239,68,68,.18);border-radius:14px;padding:16px 20px;margin-bottom:24px">
-        <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:800;color:white;margin-bottom:10px">🎯 Top Priority Actions vs ${c.name}</div>
+        <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:white;margin-bottom:10px">🎯 Top Priority Actions vs ${c.name}</div>
         ${topRows || '<div style="color:rgba(255,255,255,.4);font-size:0.82rem">Run analysis for full recommendations</div>'}
       </div>
 
@@ -10148,7 +10148,7 @@ function buildBattlePlan() {
       <div style="margin-top:24px;background:linear-gradient(135deg,rgba(0,201,200,.1),rgba(0,102,255,.06));border:1px solid rgba(0,201,200,.2);border-radius:14px;padding:20px 24px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px">
           <div>
-            <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:white;margin-bottom:4px">🚀 Launch Full Attack Plan</div>
+            <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:white;margin-bottom:4px">🚀 Launch Full Attack Plan</div>
             <div style="font-size:0.8rem;color:rgba(255,255,255,.55)">GPT-4 generates a complete 8-week strategy — keywords, channels, content, budget &amp; weekly milestones</div>
           </div>
         </div>
@@ -10276,7 +10276,7 @@ async function openFullAttackPlanModal(idx) {
       <!-- Header -->
       <div style="background:linear-gradient(135deg,#0A1628,#0F2240);padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white">⚔️ Full Attack Plan — vs ${cName}</div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white">⚔️ Full Attack Plan — vs ${cName}</div>
           <div style="font-size:0.74rem;color:rgba(255,255,255,.4);margin-top:2px">GPT-4 generating your complete 8-week strategy…</div>
         </div>
         <button onclick="_apCloseModal()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:7px 14px;color:white;font-size:0.78rem;cursor:pointer;flex-shrink:0">✕ Close</button>
@@ -10294,7 +10294,7 @@ async function openFullAttackPlanModal(idx) {
       <div id="attackPlanBody" style="flex:1;overflow-y:auto;padding:24px;display:flex;align-items:center;justify-content:center;min-height:260px">
         <div style="text-align:center;max-width:400px">
           <div style="width:48px;height:48px;border:3px solid rgba(0,201,200,.2);border-top-color:#00C9C8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 18px"></div>
-          <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:700;color:white;margin-bottom:6px" id="apLoadTitle">Generating battle plan… <span id="apElapsed" style="color:#00E5FF;font-weight:800">0s</span></div>
+          <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:700;color:white;margin-bottom:6px" id="apLoadTitle">Generating battle plan… <span id="apElapsed" style="color:#00E5FF;font-weight:800">0s</span></div>
           <div style="font-size:0.76rem;color:rgba(255,255,255,.38);margin-bottom:7px">GPT-4o + Claude dual AI · synthesising your 8-week strategy</div>
           <div style="font-size:0.7rem;color:rgba(255,180,0,.55);margin-bottom:18px">⏱ This usually takes 20–45 seconds</div>
           <div style="display:flex;flex-direction:column;gap:10px;text-align:left">
@@ -10387,7 +10387,7 @@ async function openFullAttackPlanModal(idx) {
     if (planBody) planBody.innerHTML = `
       <div style="text-align:center;padding:40px 24px">
         <div style="font-size:2rem;margin-bottom:12px">⚠️</div>
-        <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:700;color:white;margin-bottom:8px">Plan generation failed</div>
+        <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:700;color:white;margin-bottom:8px">Plan generation failed</div>
         <div style="font-size:0.82rem;color:rgba(255,255,255,.45);margin-bottom:20px">${err.message}</div>
         <button onclick="openFullAttackPlanModal(${idx})" style="padding:10px 22px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:9px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">↺ Retry</button>
       </div>`;
@@ -10410,7 +10410,7 @@ function renderAttackPlan(plan, cName, myDomain, planBody, sources) {
   const scoreColor   = plan.opportunityScore >= 75 ? '#10B981' : plan.opportunityScore >= 50 ? '#F59E0B' : '#EF4444';
   const priorityColor = p => p === 'Critical' ? '#EF4444' : p === 'High' ? '#F59E0B' : '#10B981';
   const impactColor   = p => p === 'High' ? '#10B981' : p === 'Medium' ? '#F59E0B' : '#6B7280';
-  const sec = label => `<div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:800;color:white;margin-bottom:12px">${label}</div>`;
+  const sec = label => `<div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:white;margin-bottom:12px">${label}</div>`;
   const actionBar = `
     <div style="display:flex;gap:10px;flex-wrap:wrap;padding-top:14px;margin-top:14px;border-top:1px solid rgba(255,255,255,.07)">
       <button onclick="window._apExportPlan()" style="padding:9px 18px;background:linear-gradient(135deg,#059669,#10B981);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⬇️ Export Plan</button>
@@ -10465,7 +10465,7 @@ function renderAttackPlan(plan, cName, myDomain, planBody, sources) {
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
               <div style="width:26px;height:26px;background:linear-gradient(135deg,#0066FF,#00C9C8);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:0.68rem;font-weight:800;color:white;flex-shrink:0">${i+1}</div>
               <div>
-                <div style="font-family:'Sora',sans-serif;font-size:0.8rem;font-weight:800;color:white">${w.week}</div>
+                <div style="font-family:Sora,sans-serif;font-size:0.8rem;font-weight:800;color:white">${w.week}</div>
                 <div style="font-size:0.7rem;color:#00C9C8;font-weight:600">${w.focus}</div>
               </div>
             </div>
@@ -10507,7 +10507,7 @@ function renderAttackPlan(plan, cName, myDomain, planBody, sources) {
           return `
             <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px 16px">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                <div style="font-family:'Sora',sans-serif;font-size:0.82rem;font-weight:800;color:white">${ch.channel}</div>
+                <div style="font-family:Sora,sans-serif;font-size:0.82rem;font-weight:800;color:white">${ch.channel}</div>
                 <div style="display:flex;align-items:center;gap:10px">
                   <div style="font-size:0.8rem;font-weight:800;color:#00E5FF">${pct}%</div>
                   <div style="font-size:0.72rem;font-weight:600;color:#10B981">${ch.expectedROAS} ROAS</div>
@@ -11504,7 +11504,7 @@ function openDifferentiatorModal(compName) {
       <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
         <div style="width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:1.5rem">${comp.logo}</div>
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:1.1rem;font-weight:800;color:white">ROAS Domination Plan vs. ${comp.name}</div>
+          <div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:white">ROAS Domination Plan vs. ${comp.name}</div>
           <div style="font-size:0.8rem;color:rgba(255,255,255,.6);margin-top:2px">${comp.url} · ${indName} · ${analysisData.country || 'UK'}</div>
         </div>
       </div>
@@ -11972,7 +11972,7 @@ function openAttackModal(action, competitor, type) {
   document.getElementById('attackModalInner').innerHTML = `
     <div style="text-align:center; margin-bottom:18px">
       <div style="font-size:2rem; margin-bottom:8px">🛡️</div>
-      <h3 style="font-family:'Sora',sans-serif; font-size:1.1rem; font-weight:800; color:#0A1628; margin-bottom:4px">Counter-Strategy Plan</h3>
+      <h3 style="font-family:Sora,sans-serif; font-size:1.1rem; font-weight:800; color:#0A1628; margin-bottom:4px">Counter-Strategy Plan</h3>
       <p style="color:#6B7280; font-size:0.8rem; max-width:360px; margin:0 auto">${competitor ? `Targeting <strong>${competitor}</strong> · ` : ''}InfoGenie AI has prepared a 3-step execution plan</p>
     </div>
     <div class="attack-steps">
@@ -12003,7 +12003,7 @@ function activateAttackPlan(btn, action) {
     btn.closest('.attack-modal-footer').innerHTML = `
       <div style="text-align:center; padding:12px 0">
         <div style="font-size:1.75rem; margin-bottom:8px">✅</div>
-        <div style="font-family:'Sora',sans-serif; font-weight:800; color:#0A1628; margin-bottom:4px">Strategy Activated!</div>
+        <div style="font-family:Sora,sans-serif; font-weight:800; color:#0A1628; margin-bottom:4px">Strategy Activated!</div>
         <div style="color:#6B7280; font-size:0.8rem; margin-bottom:14px">Your attack plan is live. Check the Campaign Intelligence view for progress.</div>
         <button class="btn-primary" onclick="closeAttackModal(); navigateTo('campaigns')">View Campaign Intelligence</button>
       </div>`;
@@ -12073,7 +12073,7 @@ function openThreatModal(idx) {
         <span style="font-size:1.5rem">${cfg.icon}</span>
         <div style="flex:1">
           <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.09em; color:${cfg.color}; text-transform:uppercase; margin-bottom:2px">${cfg.label}</div>
-          <div style="font-family:'Sora',sans-serif; font-size:1.2rem; font-weight:800; color:#0A1628">${c.name}</div>
+          <div style="font-family:Sora,sans-serif; font-size:1.2rem; font-weight:800; color:#0A1628">${c.name}</div>
         </div>
         <div style="font-size:1.6rem">${c.logo}</div>
       </div>
@@ -12136,7 +12136,7 @@ function openWLCounterModal(wlId) {
   document.getElementById('attackModalInner').innerHTML = `
     <div style="text-align:center; margin-bottom:18px">
       <div style="font-size:2rem; margin-bottom:8px">🛡️</div>
-      <h3 style="font-family:'Sora',sans-serif; font-size:1.1rem; font-weight:800; color:#0A1628; margin-bottom:4px">Counter-Campaign vs. ${w.comp}</h3>
+      <h3 style="font-family:Sora,sans-serif; font-size:1.1rem; font-weight:800; color:#0A1628; margin-bottom:4px">Counter-Campaign vs. ${w.comp}</h3>
       <p style="color:#6B7280; font-size:0.8rem; max-width:360px; margin:0 auto">InfoGenie has built a 3-step counter-strategy targeting <strong>${w.comp}'s</strong> exploitable weakness</p>
     </div>
     <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:14px 16px; margin-bottom:16px; font-size:0.8125rem; color:#166534;">
@@ -13029,7 +13029,7 @@ document.addEventListener('DOMContentLoaded', () => {
     box.innerHTML = `
       <div style="text-align:center; padding: 8px 0">
         <div style="font-size:3rem; margin-bottom:16px">🎉</div>
-        <h3 style="font-family:'Sora',sans-serif; font-size:1.25rem; font-weight:800; color:#0A1628; margin-bottom:8px">Campaign Launched!</h3>
+        <h3 style="font-family:Sora,sans-serif; font-size:1.25rem; font-weight:800; color:#0A1628; margin-bottom:8px">Campaign Launched!</h3>
         <p style="color:#6B7280; font-size:0.875rem; margin-bottom:20px; line-height:1.6">"${campName}" is now live and being optimised by InfoGenie's AI engine in real-time.</p>
         <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:20px; text-align:center">
           <div style="background:#F0FDF4; border-radius:10px; padding:12px">
@@ -13365,7 +13365,7 @@ function confirmCampLaunch(name, platform, budget) {
   inner.innerHTML = `
     <div style="padding:48px 32px;text-align:center">
       <div style="font-size:3rem;margin-bottom:16px">🎉</div>
-      <div style="font-family:'Sora',sans-serif;font-size:1.2rem;font-weight:800;color:#0A1628;margin-bottom:8px">Campaign Launched!</div>
+      <div style="font-family:Sora,sans-serif;font-size:1.2rem;font-weight:800;color:#0A1628;margin-bottom:8px">Campaign Launched!</div>
       <div style="font-size:0.875rem;color:#6B7280;margin-bottom:8px;line-height:1.6;max-width:380px;margin-left:auto;margin-right:auto">"${name}" is now live on ${platform}. InfoGenie's AI engine is monitoring performance and will optimise bids every 6 hours.</div>
       <div style="display:inline-flex;gap:24px;background:#F0FDF4;border-radius:12px;padding:16px 24px;margin-bottom:24px">
         <div><div style="font-size:1.1rem;font-weight:800;color:#059669">${roas}×</div><div style="font-size:0.7rem;color:#6B7280">Est. ROAS</div></div>
@@ -13542,7 +13542,7 @@ Generated by InfoGenie · ${new Date().toLocaleDateString()}
     <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);padding:22px 26px 0;border-radius:20px 20px 0 0">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
         <div>
-          <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:4px">🎨 Creative Studio</div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:4px">🎨 Creative Studio</div>
           <div style="font-size:0.78rem;color:rgba(255,255,255,.55)">${campName} · ${platform} · ${budget}</div>
         </div>
         <div style="display:flex;gap:8px">
@@ -13578,7 +13578,7 @@ Generated by InfoGenie · ${new Date().toLocaleDateString()}
         ${_csFmt('🟡 Display Banner — 728×90', displayCopy, `
           <div style="background:linear-gradient(135deg,#0A1628,#0D2A5E);border-radius:8px;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px">
             <div>
-              <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:800;color:white;margin-bottom:3px">Beat the Competition — Starting Today</div>
+              <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:white;margin-bottom:3px">Beat the Competition — Starting Today</div>
               <div style="font-size:0.7rem;color:rgba(255,255,255,.65)">${domain} · AI-Powered ${indName}</div>
             </div>
             <button style="background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:8px;padding:8px 16px;font-size:0.78rem;font-weight:700;color:white;white-space:nowrap">Start Free →</button>
@@ -13587,7 +13587,7 @@ Generated by InfoGenie · ${new Date().toLocaleDateString()}
         ${_csFmt('📱 Instagram Story/Feed Caption', instagramCopy, `
           <div style="background:linear-gradient(160deg,#667eea,#764ba2);border-radius:8px;padding:22px 16px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px">
             <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.08em">Sponsored</div>
-            <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:white;line-height:1.3">Join 10,000+ Businesses<br>Seeing ${projROAS} ROAS</div>
+            <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:white;line-height:1.3">Join 10,000+ Businesses<br>Seeing ${projROAS} ROAS</div>
             <div style="font-size:0.72rem;color:rgba(255,255,255,.8)">${domain}</div>
             <div style="background:white;color:#764ba2;border-radius:20px;padding:6px 18px;font-size:0.78rem;font-weight:700">Swipe Up to Learn More ↑</div>
           </div>`)}
@@ -16097,7 +16097,7 @@ function buildCompetitorROASBreakdown() {
           </div>
         </div>
         <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:1.4rem;font-weight:800;color:${sevColor};font-family:'Sora',sans-serif">${roasEst}×</div>
+          <div style="font-size:1.4rem;font-weight:800;color:${sevColor};font-family:Sora,sans-serif">${roasEst}×</div>
           <div style="font-size:0.62rem;font-weight:700;color:${sevColor};text-transform:uppercase;letter-spacing:.06em">${sevLabel} ROAS</div>
         </div>
       </div>
@@ -16133,7 +16133,7 @@ function buildCompetitorROASBreakdown() {
   <div style="background:linear-gradient(135deg,#0A1628,#0D2140);border-radius:18px;padding:22px 24px;margin-bottom:24px;border:1px solid rgba(239,68,68,.2)">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px">
       <div>
-        <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white">📉 Competitor ROAS Intelligence — Why They're Underperforming</div>
+        <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white">📉 Competitor ROAS Intelligence — Why They're Underperforming</div>
         <div style="font-size:0.78rem;color:rgba(255,255,255,.5);margin-top:3px">
           Clear breakdown of each competitor's ROAS failures and the exact gaps you can exploit
         </div>
@@ -16183,7 +16183,7 @@ function toggleResultsCustomisePanel() {
 
   panel.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:800;color:white">⚙ Customise View</div>
+      <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:white">⚙ Customise View</div>
       <button onclick="document.getElementById('resultsCustPanel').remove()" style="background:none;border:none;color:rgba(255,255,255,.5);font-size:1rem;cursor:pointer;line-height:1">✕</button>
     </div>
     <div style="font-size:0.72rem;color:rgba(255,255,255,.4);margin-bottom:12px">Toggle sections on/off</div>
@@ -16261,7 +16261,7 @@ async function postReplyToReddit() {
   modal.innerHTML = `
     <div style="background:#0D1F3C;border:1px solid rgba(255,100,0,.3);border-radius:18px;padding:28px 30px;max-width:460px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,.6)">
       <div style="font-size:1.6rem;margin-bottom:10px">🚀</div>
-      <div style="font-family:'Sora',sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:6px">Post to Reddit</div>
+      <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:6px">Post to Reddit</div>
       <div style="font-size:0.8rem;color:rgba(255,255,255,.55);margin-bottom:18px;line-height:1.5">
         Your reply has been <strong style="color:#10B981">copied to clipboard</strong>.<br>
         Click <strong style="color:#FF6B35">Open Reddit Thread</strong> — then paste and submit your reply.
@@ -16373,8 +16373,75 @@ function csBuildView() {
     case 'coo': content = csBuildCOO(d, rm, periodHtml); break;
   }
 
-  wrap.innerHTML = content;
+  wrap.innerHTML = csROIPanel(d) + content;
 }
+
+
+// ── ROI Summary Panel (shared across all C-Suite roles) ───────────────────────
+function csROIPanel(d) {
+  const { camps, budget, roas, ad } = d;
+  const noData = !camps.length && budget === 0;
+
+  const estSpend  = noData ? 5000 : null;
+  const estRoas   = noData ? (parseFloat(ad && ad.websiteKPIs && ad.websiteKPIs.roas) || roas || 2.2) : null;
+
+  const totalSpend    = noData ? estSpend : (camps.reduce((s,c) => s + (c.metrics && c.metrics.spend ? c.metrics.spend : Math.round(c.budget * 0.25)), 0) || budget);
+  const effectiveRoas = noData ? estRoas : roas;
+  const totalRev      = Math.round(totalSpend * effectiveRoas);
+  const projRevMonth  = noData ? Math.round(estSpend * estRoas) : Math.round(budget * roas);
+  const profit        = totalRev - totalSpend;
+  const roi           = totalSpend > 0 ? Math.round((profit / totalSpend) * 100) : 0;
+  const roiColor      = roi >= 100 ? '#059669' : roi >= 0 ? '#D97706' : '#EF4444';
+  const roiIcon       = roi >= 100 ? '📈' : roi >= 0 ? '⚠️' : '📉';
+  const badge         = noData ? '<span style="font-size:0.6rem;background:#FEF9C3;color:#92400E;border-radius:4px;padding:1px 6px;font-weight:700;vertical-align:middle;margin-left:6px">ESTIMATED</span>' : '';
+
+  function fmt(n) {
+    if (n >= 1000000) return '$' + (n/1000000).toFixed(1) + 'M';
+    if (n >= 1000)    return '$' + Math.round(n/1000) + 'K';
+    return '$' + n.toLocaleString();
+  }
+
+  return '<div style="background:linear-gradient(135deg,#0A1628,#0D2140);border:1px solid rgba(0,201,200,.18);border-radius:16px;padding:22px 28px;margin-bottom:22px">' +
+    '<div style="font-size:0.65rem;font-weight:700;color:rgba(0,201,200,.8);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">💼 Investment Performance Overview' + badge + '</div>' +
+    (noData ? '<div style="font-size:0.72rem;color:rgba(255,255,255,.35);margin-bottom:12px">No campaigns launched yet — showing estimated benchmarks for a $5K/mo budget</div>' : '') +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:14px">' +
+
+    '<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:12px;padding:14px 16px">' +
+      '<div style="font-size:0.62rem;font-weight:600;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">💸 Total Ad Spend</div>' +
+      '<div style="font-family:Sora,sans-serif;font-size:1.5rem;font-weight:800;color:#F87171;line-height:1">' + fmt(totalSpend) + '</div>' +
+      '<div style="font-size:0.68rem;color:rgba(255,255,255,.35);margin-top:5px">' + fmt(budget || totalSpend) + '/mo budget · ' + camps.length + ' campaign' + (camps.length!==1?'s':'') + '</div>' +
+    '</div>' +
+
+    '<div style="background:rgba(5,150,105,.08);border:1px solid rgba(5,150,105,.2);border-radius:12px;padding:14px 16px">' +
+      '<div style="font-size:0.62rem;font-weight:600;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">💰 Revenue Generated</div>' +
+      '<div style="font-family:Sora,sans-serif;font-size:1.5rem;font-weight:800;color:#34D399;line-height:1">' + fmt(totalRev) + '</div>' +
+      '<div style="font-size:0.68rem;color:rgba(255,255,255,.35);margin-top:5px">' + fmt(projRevMonth) + '/mo projected · ' + effectiveRoas + '× ROAS</div>' +
+    '</div>' +
+
+    '<div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:12px;padding:14px 16px">' +
+      '<div style="font-size:0.62rem;font-weight:600;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">📊 Net Profit</div>' +
+      '<div style="font-family:Sora,sans-serif;font-size:1.5rem;font-weight:800;color:' + (profit>=0?'#818CF8':'#F87171') + ';line-height:1">' + (profit>=0?'+':'-') + fmt(Math.abs(profit)) + '</div>' +
+      '<div style="font-size:0.68rem;color:rgba(255,255,255,.35);margin-top:5px">Revenue minus total spend</div>' +
+    '</div>' +
+
+    '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden">' +
+      '<div style="font-size:0.62rem;font-weight:600;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">' + roiIcon + ' Return on Investment</div>' +
+      '<div style="font-family:Sora,sans-serif;font-size:1.5rem;font-weight:800;color:' + roiColor + ';line-height:1">' + (roi>=0?'+':'') + roi + '%</div>' +
+      '<div style="font-size:0.68rem;color:rgba(255,255,255,.35);margin-top:5px">' + (roi>=100?'Exceeding target — scale spend':roi>=0?'Positive ROI — optimise to improve':'Below break-even — review targeting') + '</div>' +
+      '<div style="position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(255,255,255,.06)">' +
+        '<div style="height:100%;width:' + Math.min(100,Math.abs(roi)) + '%;background:' + roiColor + ';transition:width .6s ease"></div>' +
+      '</div>' +
+    '</div>' +
+
+    '</div>' +
+    '<div style="margin-top:14px;padding:10px 14px;background:rgba(255,255,255,.03);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<span style="font-size:0.72rem;color:rgba(255,255,255,.35)">ROI formula:</span>' +
+      '<span style="font-size:0.75rem;color:rgba(255,255,255,.5);font-style:italic">(Revenue − Spend) ÷ Spend × 100</span>' +
+      '<span style="margin-left:auto;font-size:0.75rem;font-weight:700;color:' + roiColor + '">' + fmt(Math.abs(profit)) + ' ' + (profit>=0?'returned above':'in deficit against') + ' ' + fmt(totalSpend) + ' invested</span>' +
+    '</div>' +
+  '</div>';
+}
+
 
 // ── CEO Report ────────────────────────────────────────────────────────────────
 function csBuildCEO(d, rm, periodHtml) {
@@ -16420,7 +16487,7 @@ function csBuildCEO(d, rm, periodHtml) {
 
   <!-- Period + Alerts row -->
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
-    <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:800;color:#0A1628">CEO Dashboard <span style="font-size:0.72rem;font-weight:400;color:#6B7280">· Generated ${new Date().toLocaleDateString()}</span></div>
+    <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:#0A1628">CEO Dashboard <span style="font-size:0.72rem;font-weight:400;color:#6B7280">· Generated ${new Date().toLocaleDateString()}</span></div>
     ${periodHtml}
   </div>
 
@@ -16541,7 +16608,7 @@ function csBuildCMO(d, rm, periodHtml) {
   </div>
 
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
-    <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:800;color:#0A1628">CMO Dashboard <span style="font-size:0.72rem;font-weight:400;color:#6B7280">· ${new Date().toLocaleDateString()}</span></div>
+    <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:#0A1628">CMO Dashboard <span style="font-size:0.72rem;font-weight:400;color:#6B7280">· ${new Date().toLocaleDateString()}</span></div>
     ${periodHtml}
   </div>
 
@@ -16649,7 +16716,7 @@ function csBuildCFO(d, rm, periodHtml) {
   </div>
 
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
-    <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:800;color:#0A1628">CFO Dashboard <span style="font-size:0.72rem;font-weight:400;color:#6B7280">· ${new Date().toLocaleDateString()}</span></div>
+    <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:#0A1628">CFO Dashboard <span style="font-size:0.72rem;font-weight:400;color:#6B7280">· ${new Date().toLocaleDateString()}</span></div>
     ${periodHtml}
   </div>
 
@@ -16743,7 +16810,7 @@ function csBuildCOO(d, rm, periodHtml) {
   </div>
 
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
-    <div style="font-family:'Sora',sans-serif;font-size:0.88rem;font-weight:800;color:#0A1628">COO Dashboard <span style="font-size:0.72rem;font-weight:400;color:#6B7280">· ${new Date().toLocaleDateString()}</span></div>
+    <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:#0A1628">COO Dashboard <span style="font-size:0.72rem;font-weight:400;color:#6B7280">· ${new Date().toLocaleDateString()}</span></div>
     ${periodHtml}
   </div>
 
@@ -16999,7 +17066,7 @@ function acBuild() {
   const acCard = (title, sub, items, renderFn) => `
     <div style="background:white;border:1px solid #E2E8F0;border-radius:18px;padding:22px 24px;margin-bottom:22px;box-shadow:0 1px 6px rgba(0,0,0,.05)">
       <div style="margin-bottom:18px">
-        <div style="font-family:'Sora',sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628">${title}</div>
+        <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628">${title}</div>
         <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${sub}</div>
       </div>
       ${items.length ? items.map(renderFn).join('') : '<div style="text-align:center;padding:28px;color:#9CA3AF;font-size:0.82rem">No items yet</div>'}
@@ -17074,7 +17141,7 @@ function acBuild() {
   <!-- Summary Banner -->
   <div style="background:linear-gradient(135deg,#0A1628,#001840);border-radius:18px;padding:22px 28px;margin-bottom:28px;border:1px solid rgba(0,229,255,.2)">
     <div style="font-size:0.68rem;font-weight:700;color:#00C9C8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">🎯 Command Overview — ${ts}</div>
-    <div style="font-family:'Sora',sans-serif;font-size:1.35rem;font-weight:800;color:white;margin-bottom:4px">
+    <div style="font-family:Sora,sans-serif;font-size:1.35rem;font-weight:800;color:white;margin-bottom:4px">
       ${liveCount} item${liveCount!==1?'s':''} live · ${critCount} critical risk${critCount!==1?'s':''} · ${oppCount} opportunit${oppCount===1?'y':'ies'} ready
     </div>
     <div style="font-size:0.8rem;color:rgba(255,255,255,.5);margin-bottom:18px">${indLabel} · InfoGenie AI monitoring ${comps.length} competitor${comps.length!==1?'s':''} · ${camps.length} campaign${camps.length!==1?'s':''} active</div>
@@ -17086,7 +17153,7 @@ function acBuild() {
         ['💡 Opportunities', opps.length, '#7C3AED'],
       ].map(([l,v,c]) => `
         <div style="text-align:center">
-          <div style="font-family:'Sora',sans-serif;font-size:1.6rem;font-weight:800;color:${c}">${v}</div>
+          <div style="font-family:Sora,sans-serif;font-size:1.6rem;font-weight:800;color:${c}">${v}</div>
           <div style="font-size:0.65rem;color:rgba(255,255,255,.45);margin-top:3px;text-transform:uppercase;letter-spacing:.05em">${l}</div>
         </div>`).join('<div style="width:1px;background:rgba(255,255,255,.1)"></div>')}
     </div>
