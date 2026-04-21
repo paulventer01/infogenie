@@ -16829,9 +16829,18 @@ window._autoSeoSchedule = { frequency: 'monthly', count: 30, tone: 'professional
 
 // Helper — returns best available domain/industry without requiring a full analysis
 function _autoSeoContext() {
-  if (analysisData) return { domain: analysisData.domain, industry: analysisData.industry || 'General', comps: (analysisData.competitors||[]).map(c=>c.name||c.domain||'').filter(Boolean) };
+  if (analysisData) {
+    const domain   = analysisData.url || analysisData.domain || '';
+    const industry = (analysisData.industry && typeof analysisData.industry === 'object')
+                       ? (analysisData.industry.name || 'General')
+                       : (analysisData.industry || 'General');
+    const comps = (analysisData.competitors||[]).map(c=>c.name||c.domain||c.url||'').filter(Boolean);
+    return { domain, industry, comps };
+  }
+  // Fall back to stored domain, then to whatever is in the home-page URL field
   const stored = window._autoSeoDomain || '';
-  const inp = document.getElementById('websiteInput')?.value?.trim().replace(/https?:\/\//,'').replace(/www\./,'').replace(/\//,'') || '';
+  const inp = (document.getElementById('websiteInput')?.value || '')
+    .trim().replace(/https?:\/\//,'').replace(/www\./,'').replace(/\/.*$/,'');
   const domain = stored || inp || '';
   return { domain, industry: window._autoSeoIndustry || 'General', comps: [] };
 }
@@ -17206,8 +17215,7 @@ async function generateArticleTopics() {
 async function generateSingleArticle(idx) {
   if (!window._autoSeoArticles || !window._autoSeoArticles[idx]) return;
   const art = window._autoSeoArticles[idx];
-  const d   = analysisData || {};
-  const comps = (d.competitors||[]).map(c=>c.name||c.domain||'').filter(Boolean);
+  const ctx = _autoSeoContext();
   art.status = 'generating';
   buildAutoSEO();
   try {
@@ -17215,8 +17223,8 @@ async function generateSingleArticle(idx) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        title: art.title, keyword: art.keyword, domain: d.domain||'yourdomain.com',
-        industry: d.industry||'General', competitors: comps,
+        title: art.title, keyword: art.keyword, domain: ctx.domain||'yourdomain.com',
+        industry: ctx.industry, competitors: ctx.comps,
         wordCount: window._autoSeoSchedule.wordCount, tone: window._autoSeoSchedule.tone
       })
     });
@@ -17362,22 +17370,22 @@ function copyKeywordsCSV() {
 function copyOutreachEmail(idx) {
   const opp = window._autoSeoBacklinks && window._autoSeoBacklinks[idx];
   if (!opp) return;
-  const d = analysisData || {};
-  const email = `Subject: Guest Post Opportunity — ${d.domain||'Our Site'}
+  const ctx = _autoSeoContext();
+  const email = `Subject: Guest Post Opportunity — ${ctx.domain||'Our Site'}
 
 Hi ${opp.site} Team,
 
-I came across your site and noticed you cover topics relevant to ${d.industry||'our industry'}.
+I came across your site and noticed you cover topics relevant to ${ctx.industry||'our industry'}.
 
 ${opp.angle}
 
-I'd love to contribute a high-quality, original article to your publication. In return, a contextual backlink to ${d.domain||'our site'} would be greatly appreciated.
+I'd love to contribute a high-quality, original article to your publication. In return, a contextual backlink to ${ctx.domain||'our site'} would be greatly appreciated.
 
 Would you be open to a quick chat or can I send over some topic ideas?
 
 Best regards,
 [Your Name]
-${d.domain||'yourdomain.com'}`;
+${ctx.domain||'yourdomain.com'}`;
   navigator.clipboard.writeText(email).then(()=>showToast('📧 Outreach email copied to clipboard!'));
 }
 
