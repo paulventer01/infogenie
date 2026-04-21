@@ -6695,3 +6695,31 @@ h3:hover {
 [data-theme="light"] .price-enterprise .pf-check {
   color: #00C9C8 !important;
 }
+
+/* ── Launch Full Attack Plan CTA — light mode visibility ── */
+[data-theme="light"] #attackPlanCompSelect {
+  background: #FFFFFF !important;
+  color: #0A1628 !important;
+  border: 1px solid rgba(0,201,200,.4) !important;
+}
+[data-theme="light"] #attackPlanCompSelect option {
+  background: #FFFFFF !important;
+  color: #0A1628 !important;
+}
+/* Title + description + "SELECT COMPETITOR" label inside the bottom CTA banner */
+[data-theme="light"] [style*="rgba(0,201,200,.1),rgba(0,102,255,.06)"] > div > div > div:first-child,
+[data-theme="light"] [style*="rgba(0,201,200,.1),rgba(0,102,255,.06)"] [style*="font-weight:800"][style*="color:white"] {
+  color: #0A1628 !important;
+}
+[data-theme="light"] [style*="rgba(0,201,200,.1),rgba(0,102,255,.06)"] [style*="rgba(255,255,255,.55)"] {
+  color: #4A5670 !important;
+}
+[data-theme="light"] [style*="rgba(0,201,200,.1),rgba(0,102,255,.06)"] label {
+  color: #5A6B85 !important;
+}
+/* Secondary "Deep Intelligence" button on light bg */
+[data-theme="light"] [style*="rgba(0,201,200,.1),rgba(0,102,255,.06)"] button[style*="rgba(255,255,255,.08)"] {
+  background: #FFFFFF !important;
+  border: 1px solid rgba(10,22,40,.15) !important;
+  color: #0A1628 !important;
+}
