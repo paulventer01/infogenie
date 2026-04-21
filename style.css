@@ -6778,3 +6778,27 @@ h3:hover {
   border-color: rgba(0,102,255,.35) !important;
   color: #1D4ED8 !important;
 }
+
+/* ── AI Visibility Action Center — improve contrast of dim text ── */
+/* Action Center sits on a dark purple gradient. The inline rgba(255,255,255,.55-.65) 
+   is too dim. Brighten descendants of the action-center container. */
+[style*="#1E1B4B 0%,#312E81"] [style*="rgba(255,255,255,0.55)"],
+[style*="#1E1B4B 0%,#312E81"] [style*="rgba(255,255,255,0.6)"],
+[style*="#1E1B4B 0%,#312E81"] [style*="rgba(255,255,255,0.65)"] {
+  color: rgba(255,255,255,0.92) !important;
+}
+/* "Key Elements" section background — soften so checklist items stand out */
+[style*="#1E1B4B 0%,#312E81"] [style*="rgba(0,0,0,0.2)"] {
+  background: rgba(0,0,0,0.32) !important;
+}
+/* Card descriptions inside Action Center */
+[style*="#1E1B4B 0%,#312E81"] p,
+[style*="#1E1B4B 0%,#312E81"] [style*="line-height:1.55"],
+[style*="#1E1B4B 0%,#312E81"] [style*="line-height:1.65"] {
+  color: rgba(255,255,255,0.88) !important;
+}
+/* Cite badges (e.g., "4× more cited by LLMs") — increase contrast */
+[style*="#1E1B4B 0%,#312E81"] [style*="rgba(99,102,241,0.35)"] {
+  background: rgba(165,180,252,0.28) !important;
+  color: #FFFFFF !important;
+}
