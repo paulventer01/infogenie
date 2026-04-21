@@ -6412,3 +6412,58 @@ h3:hover {
 [data-theme="light"] .nav-mega *:not(button):not(.badge) {
   color: #0A1628 !important;
 }
+
+/* ── SERP search bar — light mode ── */
+[data-theme="light"] .serp-search-bar {
+  background: #FFFFFF !important;
+  border: 1px solid #CBD5E1 !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,.04);
+}
+[data-theme="light"] .serp-search-input {
+  color: #0A1628 !important;
+}
+[data-theme="light"] .serp-search-input::placeholder {
+  color: #94A3B8 !important;
+}
+[data-theme="light"] .serp-search-icon {
+  color: #00A8A7 !important;
+}
+[data-theme="light"] .serp-location-select,
+[data-theme="light"] .serp-type-select {
+  background: #F8FAFC !important;
+  border: 1px solid #CBD5E1 !important;
+  color: #0A1628 !important;
+}
+[data-theme="light"] .serp-location-select option,
+[data-theme="light"] .serp-type-select option {
+  background: #FFFFFF;
+  color: #0A1628;
+}
+[data-theme="light"] .serp-chip-label { color: #64748B !important; }
+[data-theme="light"] .serp-chip {
+  background: rgba(0,168,167,.08) !important;
+  border: 1px solid rgba(0,168,167,.3) !important;
+  color: #00A8A7 !important;
+}
+[data-theme="light"] .serp-related-chip {
+  background: #F1F5F9 !important;
+  color: #0A1628 !important;
+  border: 1px solid #CBD5E1 !important;
+}
+
+/* ── Generic input/select/textarea fix in light mode ── */
+[data-theme="light"] input[type="text"],
+[data-theme="light"] input[type="search"],
+[data-theme="light"] input[type="email"],
+[data-theme="light"] input[type="url"],
+[data-theme="light"] input[type="number"],
+[data-theme="light"] input[type="password"],
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+  color: #0A1628;
+}
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+  color: #94A3B8 !important;
+  opacity: 1;
+}
