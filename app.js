@@ -16519,8 +16519,8 @@ function buildCompetitorROASBreakdown() {
         <div style="font-size:0.62rem;color:rgba(255,255,255,.5);margin-top:1px">Top 10% ${indLabel}</div>
       </div>
     </div>
-    <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15);border-radius:10px;padding:10px 14px;margin-bottom:18px;font-size:0.78rem;color:rgba(255,200,200,.8);line-height:1.5">
-      <strong style="color:#FCA5A5">Why are competitors underperforming vs. the ${indLabel} ROAS benchmark (${bench.avg}×)?</strong> The analysis below identifies structural, creative, and targeting failures specific to this industry. Industry average ROAS: <strong style="color:#00E5FF">${bench.avg}×</strong>. Top performers: <strong style="color:#10B981">${bench.top}×</strong>. These are real exploitable gaps — each one represents budget you can capture from their wasted spend.
+    <div class="ig-roas-callout" style="background:rgba(239,68,68,.14) !important;border:1px solid rgba(239,68,68,.35) !important;border-radius:10px;padding:12px 16px;margin-bottom:18px;font-size:0.8rem;color:#FECACA !important;line-height:1.55">
+      <strong style="color:#FCA5A5 !important">Why are competitors underperforming vs. the ${indLabel} ROAS benchmark (${bench.avg}×)?</strong> <span style="color:#FECACA !important">The analysis below identifies structural, creative, and targeting failures specific to this industry. Industry average ROAS:</span> <strong style="color:#67E8F9 !important">${bench.avg}×</strong><span style="color:#FECACA !important">. Top performers:</span> <strong style="color:#6EE7B7 !important">${bench.top}×</strong><span style="color:#FECACA !important">. These are real exploitable gaps — each one represents budget you can capture from their wasted spend.</span>
     </div>
     <div style="color:#0A1628">${rows}</div>
   </div>`;

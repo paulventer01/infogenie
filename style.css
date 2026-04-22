@@ -6892,3 +6892,23 @@ h3:hover {
   background: #F1F5F9 !important;
   border-color: #94A3B8 !important;
 }
+
+/* Competitor ROAS Intelligence callout — readable in light mode */
+[data-theme="light"] .ig-roas-callout {
+  background: #FEF2F2 !important;
+  border: 1px solid #FCA5A5 !important;
+  color: #7F1D1D !important;
+}
+[data-theme="light"] .ig-roas-callout strong { color: #991B1B !important; }
+[data-theme="light"] .ig-roas-callout span { color: #7F1D1D !important; }
+[data-theme="light"] .ig-roas-callout strong[style*="67E8F9"] { color: #0E7490 !important; }
+[data-theme="light"] .ig-roas-callout strong[style*="6EE7B7"] { color: #047857 !important; }
+
+/* Customise Results Panel — keep white text on dark navy bg in light mode */
+[data-theme="light"] #resultsCustPanel,
+[data-theme="light"] #resultsCustPanel * {
+  color: #FFFFFF !important;
+}
+[data-theme="light"] #resultsCustPanel button[onclick*="remove"] {
+  color: rgba(255,255,255,0.6) !important;
+}
