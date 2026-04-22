@@ -15265,11 +15265,11 @@ function buildReEngagement() {
     <div style="position:absolute;top:-30px;right:-30px;width:220px;height:220px;background:radial-gradient(circle,rgba(251,146,60,0.35),transparent 70%);border-radius:50%"></div>
     <div style="position:absolute;bottom:-60px;right:80px;width:180px;height:180px;background:radial-gradient(circle,rgba(245,158,11,0.22),transparent 70%);border-radius:50%"></div>
     <div style="position:absolute;top:20px;left:-40px;width:140px;height:140px;background:radial-gradient(circle,rgba(217,119,6,0.18),transparent 70%);border-radius:50%"></div>
-    <div style="position:relative;z-index:1">
-      <div style="font-size:0.6rem;font-weight:800;color:#FDBA74;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px">Grow › Re-Engage</div>
-      <div style="font-size:0.65rem;font-weight:700;color:#FED7AA;text-transform:uppercase;letter-spacing:.14em;margin-bottom:6px">Re-Engagement Hub</div>
-      <div style="font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:800;color:#FFFFFF;line-height:1.2;margin-bottom:8px;text-shadow:0 1px 2px rgba(0,0,0,0.25)">Turn Lost Leads Into<br>Revenue — Automatically</div>
-      <div style="font-size:0.85rem;color:rgba(255,255,255,0.92);max-width:480px;line-height:1.55">AI-identifies your highest-value lapsed contacts, generates personalised win-back copy across email, ads, and social — then launches re-engagement campaigns directly from InfoGenie.</div>
+    <div style="position:relative;z-index:1" class="ig-reengage-hero-content">
+      <div class="ig-reh-eyebrow" style="font-size:0.6rem;font-weight:800;color:#FDBA74;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px">Grow › Re-Engage</div>
+      <div class="ig-reh-tag" style="font-size:0.65rem;font-weight:700;color:#FED7AA;text-transform:uppercase;letter-spacing:.14em;margin-bottom:6px">Re-Engagement Hub</div>
+      <div class="ig-reh-title" style="font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:800;color:#FFFFFF;line-height:1.2;margin-bottom:8px;text-shadow:0 1px 2px rgba(0,0,0,0.25)">Turn Lost Leads Into<br>Revenue — Automatically</div>
+      <div class="ig-reh-desc" style="font-size:0.85rem;color:rgba(255,255,255,0.92);max-width:480px;line-height:1.55">AI-identifies your highest-value lapsed contacts, generates personalised win-back copy across email, ads, and social — then launches re-engagement campaigns directly from InfoGenie.</div>
     </div>
   </div>`;
 

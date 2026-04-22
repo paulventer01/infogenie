@@ -6870,13 +6870,11 @@ h3:hover {
 }
 
 /* ── Re-Engagement Hub hero — guaranteed contrast on slate gradient ── */
-.ig-reengage-hero,
-.ig-reengage-hero * {
-  color: inherit;
-}
-.ig-reengage-hero > div > div:nth-child(1) { color: #FDBA74 !important; }
-.ig-reengage-hero > div > div:nth-child(2) { color: #FED7AA !important; }
-.ig-reengage-hero > div > div:nth-child(3) { color: #FFFFFF !important; }
-.ig-reengage-hero > div > div:nth-child(4) { color: rgba(255,255,255,0.92) !important; }
-[data-theme="light"] .ig-reengage-hero > div > div:nth-child(3) { color: #FFFFFF !important; }
-[data-theme="light"] .ig-reengage-hero > div > div:nth-child(4) { color: rgba(255,255,255,0.92) !important; }
+.ig-reengage-hero .ig-reh-eyebrow,
+[data-theme="light"] .ig-reengage-hero .ig-reh-eyebrow { color: #FDBA74 !important; }
+.ig-reengage-hero .ig-reh-tag,
+[data-theme="light"] .ig-reengage-hero .ig-reh-tag     { color: #FED7AA !important; }
+.ig-reengage-hero .ig-reh-title,
+[data-theme="light"] .ig-reengage-hero .ig-reh-title   { color: #FFFFFF !important; text-shadow: 0 1px 2px rgba(0,0,0,0.35) !important; }
+.ig-reengage-hero .ig-reh-desc,
+[data-theme="light"] .ig-reengage-hero .ig-reh-desc    { color: rgba(255,255,255,0.92) !important; }
