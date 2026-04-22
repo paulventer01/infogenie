@@ -2022,23 +2022,37 @@ function _injectNextStep(viewId) {
 
 // ===== ANALYSIS FLOW =====
 async function runAnalysis(url, country, industryOverride) {
-  if (!url || url.trim().length < 3) {
-    showToast('⚠️ Please enter a valid website URL to analyse');
+  const hasUrl       = !!(url && url.trim().length >= 3);
+  const hasIndustry  = !!(industryOverride && industryOverride.trim().length >= 2);
+
+  // Sector-only mode: allow analysis with NO website URL when an industry is given.
+  // We synthesise a placeholder domain so all downstream code (which expects a URL)
+  // keeps working — but the UI clearly labels the report as a sector overview.
+  let sectorOnly = false;
+  if (!hasUrl && !hasIndustry) {
+    showToast('⚠️ Enter a website URL OR pick an industry to analyse');
     return;
   }
-  
-  const cleanUrl = url.replace(/https?:\/\//,'').replace(/www\./,'').trim();
+  if (!hasUrl && hasIndustry) {
+    sectorOnly = true;
+  }
 
-  // Resolve industry: manual override → auto-detect from URL
+  // Resolve industry FIRST (so we can build a synthetic domain if needed)
   let industryKey = null;
   let industrySource = 'auto-detected';
-  if (industryOverride && industryOverride.trim()) {
+  if (hasIndustry) {
     const overrideKey = detectIndustryFromText(industryOverride.trim());
     if (overrideKey) {
       industryKey = overrideKey;
       industrySource = 'user-specified';
     }
   }
+
+  // Build cleanUrl: use real input if given, else synthesise from industry key
+  const cleanUrl = hasUrl
+    ? url.replace(/https?:\/\//,'').replace(/www\./,'').trim()
+    : `${(industryKey || 'sector')}-overview.industry`;
+
   if (!industryKey) {
     industryKey = detectIndustry(cleanUrl);
   }
@@ -2046,8 +2060,8 @@ async function runAnalysis(url, country, industryOverride) {
   // ── Kick off live AI-powered industry + competitor detection (non-blocking) ─
   // Scrapes the website and uses GPT-4o to identify the precise sub-niche and
   // suggest 6-10 real direct competitors. Awaited later before building views.
-  const smartDetectPromise = (industrySource === 'user-specified')
-    ? Promise.resolve(null) // user override wins, skip
+  const smartDetectPromise = (industrySource === 'user-specified' || sectorOnly)
+    ? Promise.resolve(null) // user override / sector-only mode → skip live scrape
     : fetch('/api/smart-detect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2208,7 +2222,7 @@ async function runAnalysis(url, country, industryOverride) {
   creativeRound = 0;
 
   // Store analysis data
-  analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps };
+  analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps, sectorOnly };
   try { localStorage.setItem('ig-last-analysed-url', cleanUrl); } catch(e){}
   igTrack('Analysis Completed', { domain: cleanUrl, industry: industry.name, competitorCount: selectedComps.length, country });
 
@@ -2561,9 +2575,14 @@ function openCompetitorAnalysis(c) {
 function buildDashboard() {
   const { url, country, industry, websiteKPIs, competitors } = analysisData;
   
-  // Title
-  document.getElementById('dashTitle').textContent = `Intelligence Report: ${url}`;
-  document.getElementById('dashSub').textContent = `${industry.name} · ${competitors.length} competitors analysed · AI recommendations generated`;
+  // Title — adapt for sector-only mode (no real website was analysed)
+  if (analysisData.sectorOnly) {
+    document.getElementById('dashTitle').textContent = `Sector Overview: ${industry.name}`;
+    document.getElementById('dashSub').textContent = `Industry-wide intelligence · ${competitors.length} top competitors mapped · No website yet — add one anytime to personalise this report`;
+  } else {
+    document.getElementById('dashTitle').textContent = `Intelligence Report: ${url}`;
+    document.getElementById('dashSub').textContent = `${industry.name} · ${competitors.length} competitors analysed · AI recommendations generated`;
+  }
   
   // Analysis tags
   const tagsEl = document.getElementById('analysisTags');
