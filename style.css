@@ -1198,17 +1198,18 @@ body {
 
 /* ===== CAMPAIGN VIEW ===== */
 .camp-hero {
-  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-3) 100%);
-  border: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(135deg, #0066FF 0%, #00C9C8 100%);
+  border: 1px solid rgba(255,255,255,.18);
   border-radius: var(--radius-lg);
   padding: 32px;
   margin-bottom: 24px;
+  box-shadow: 0 8px 28px rgba(0,102,255,.18);
 }
-.camp-hero-title { font-family: 'Sora', sans-serif; font-size: 1.25rem; font-weight: 700; color: white; margin-bottom: 8px; }
-.camp-hero-sub { color: rgba(255,255,255,.55); font-size: 0.875rem; margin-bottom: 24px; }
+.camp-hero-title { font-family: 'Sora', sans-serif; font-size: 1.25rem; font-weight: 700; color: #FFFFFF; margin-bottom: 8px; }
+.camp-hero-sub { color: rgba(255,255,255,.92); font-size: 0.875rem; margin-bottom: 24px; }
 .camp-kpis { display: flex; gap: 28px; flex-wrap: wrap; }
-.camp-kpi-val { font-family: 'Sora', sans-serif; font-size: 1.5rem; font-weight: 800; color: white; }
-.camp-kpi-lbl { font-size: 0.75rem; color: rgba(255,255,255,.45); font-weight: 500; }
+.camp-kpi-val { font-family: 'Sora', sans-serif; font-size: 1.5rem; font-weight: 800; color: #FFFFFF; }
+.camp-kpi-lbl { font-size: 0.75rem; color: rgba(255,255,255,.85); font-weight: 600; }
 .camp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px; }
 .camp-card {
   background: white;
@@ -6238,10 +6239,10 @@ h3:hover {
 }
 
 /* Additional white-text CSS classes that appear on now-light backgrounds */
-[data-theme="light"] .camp-hero-title { color: #0A1628 !important; }
-[data-theme="light"] .camp-hero-sub   { color: #64748B !important; }
-[data-theme="light"] .camp-kpi-val    { color: #0A1628 !important; }
-[data-theme="light"] .camp-kpi-lbl    { color: #64748B !important; }
+[data-theme="light"] .camp-hero-title { color: #FFFFFF !important; }
+[data-theme="light"] .camp-hero-sub   { color: rgba(255,255,255,.92) !important; }
+[data-theme="light"] .camp-kpi-val    { color: #FFFFFF !important; }
+[data-theme="light"] .camp-kpi-lbl    { color: rgba(255,255,255,.85) !important; }
 [data-theme="light"] .roi-title       { color: #0A1628 !important; }
 [data-theme="light"] .roi-sub         { color: #64748B !important; }
 [data-theme="light"] .roi-metric-lbl  { color: #94A3B8 !important; }
