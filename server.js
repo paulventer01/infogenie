@@ -3218,6 +3218,146 @@ app.listen(5000, '0.0.0.0', () => {
   startMsg();
 });
 
+// ── POST /api/smart-detect ────────────────────────────────────────────────────
+// Scrapes the user's website and uses AI to detect industry + real competitors.
+app.post('/api/smart-detect', async (req, res) => {
+  try {
+    const { url } = req.body || {};
+    if (!url || typeof url !== 'string' || url.trim().length < 3) {
+      return res.status(400).json({ error: 'Valid url required' });
+    }
+    const cleanInput = url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].trim().toLowerCase();
+    const fetchUrl = 'https://' + cleanInput;
+
+    // ── 1) Fetch website HTML (with timeout + user-agent) ────────────────────
+    let html = '';
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch(fetchUrl, {
+        signal: ctrl.signal,
+        redirect: 'follow',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; InfoGenieBot/1.0; +https://infogenie.ai/bot)',
+          'Accept': 'text/html,application/xhtml+xml',
+        },
+      });
+      clearTimeout(t);
+      if (r.ok) html = (await r.text()).slice(0, 80000);
+    } catch (fe) {
+      console.warn('smart-detect fetch failed:', fe.message);
+    }
+
+    // ── 2) Extract signals from HTML ─────────────────────────────────────────
+    const pick = (re) => { const m = html.match(re); return m ? m[1].trim() : ''; };
+    const title       = pick(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const metaDesc    = pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
+    const ogTitle     = pick(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
+    const ogDesc      = pick(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i);
+    const ogSiteName  = pick(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i);
+    const keywords    = pick(/<meta[^>]+name=["']keywords["'][^>]+content=["']([^"']+)["']/i);
+    const h1s = (html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/gi) || [])
+      .slice(0, 3).map(s => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const h2s = (html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/gi) || [])
+      .slice(0, 6).map(s => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const bodyText = html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim().slice(0, 2500);
+
+    const signals = {
+      domain: cleanInput,
+      title, metaDesc, ogTitle, ogDesc, ogSiteName, keywords,
+      h1: h1s, h2: h2s,
+      sample: bodyText,
+    };
+
+    // ── 3) Ask OpenAI to classify + suggest real competitors ─────────────────
+    const allowedKeys = ['ecommerce','fintech','saas','crypto','travel','education','marketing'];
+    const prompt = `You are a market-research analyst. Below is metadata scraped from a real website. Identify exactly what the business does, then return JSON.
+
+DOMAIN: ${cleanInput}
+TITLE: ${title || '(none)'}
+META DESCRIPTION: ${metaDesc || '(none)'}
+OG TITLE: ${ogTitle || '(none)'}
+OG DESCRIPTION: ${ogDesc || '(none)'}
+OG SITE NAME: ${ogSiteName || '(none)'}
+KEYWORDS META: ${keywords || '(none)'}
+H1 HEADINGS: ${h1s.join(' | ') || '(none)'}
+H2 HEADINGS: ${h2s.join(' | ') || '(none)'}
+BODY EXCERPT: ${bodyText || '(could not fetch)'}
+
+TASK — return ONLY valid JSON, no markdown, no commentary:
+{
+  "industryName": "<specific human-readable industry/sub-niche, e.g. 'Online CFD Trading Broker' or 'Pet Insurance' or 'B2B SaaS — Project Management'>",
+  "industryKey": "<one of: ${allowedKeys.join(', ')} — pick the closest fit>",
+  "businessSummary": "<one sentence describing what this company actually does>",
+  "subNiche": "<2-4 word sub-niche, e.g. 'CFD trading platform'>",
+  "country": "<inferred primary market country code if obvious, else null>",
+  "competitors": [
+    { "name": "<real company name>", "url": "<real domain like example.com>", "why": "<1 sentence why they directly compete>" }
+  ]
+}
+
+CRITICAL RULES for "competitors":
+- List 6-10 REAL, well-known direct competitors operating in the SAME exact sub-niche (not just same broad industry).
+- Use real, currently-operating company domains. No invented names.
+- Do NOT include the analysed domain itself.
+- Prioritise competitors active in the same geographic market when possible.
+- If the site looks like a CFD/forex broker, list other CFD/forex brokers (eToro, IG, Plus500, XM, CMC Markets, AvaTrade, Pepperstone, OANDA, Saxo, FXCM, etc.) — NOT generic fintechs.
+- If it's a pet insurance site, list pet insurance brands. Apply the same specificity to every niche.`;
+
+    let aiResult = null;
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'You are a precise market-research analyst. Output strict JSON only — no markdown fences, no prose. Always identify the specific sub-niche, not just the broad industry.' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 1200,
+        response_format: { type: 'json_object' },
+      });
+      const raw = completion.choices?.[0]?.message?.content || '{}';
+      aiResult = JSON.parse(raw);
+    } catch (aiErr) {
+      console.error('smart-detect OpenAI error:', aiErr.message);
+      return res.status(502).json({ error: 'AI detection failed', detail: aiErr.message, signals });
+    }
+
+    // ── 4) Sanitise + return ─────────────────────────────────────────────────
+    const safeKey = allowedKeys.includes(aiResult.industryKey) ? aiResult.industryKey : 'marketing';
+    const competitors = Array.isArray(aiResult.competitors) ? aiResult.competitors
+      .filter(c => c && c.name && c.url)
+      .map(c => ({
+        name: String(c.name).trim().slice(0, 60),
+        url:  String(c.url).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].trim().toLowerCase(),
+        why:  String(c.why || '').trim().slice(0, 200),
+      }))
+      .filter(c => c.url && c.url !== cleanInput)
+      .slice(0, 10) : [];
+
+    res.json({
+      ok: true,
+      domain: cleanInput,
+      industryName: String(aiResult.industryName || '').trim().slice(0, 80) || 'Unknown industry',
+      industryKey: safeKey,
+      businessSummary: String(aiResult.businessSummary || '').trim().slice(0, 280),
+      subNiche: String(aiResult.subNiche || '').trim().slice(0, 60),
+      country: aiResult.country || null,
+      competitors,
+      signals: { title, metaDesc, ogSiteName },
+      htmlFetched: html.length > 0,
+    });
+  } catch (err) {
+    console.error('/api/smart-detect error:', err);
+    res.status(500).json({ error: err.message || 'Internal error' });
+  }
+});
+
 // Port 80 — external URL (*.spock.replit.dev / new tab)
 app.listen(80, '0.0.0.0', () => {
   console.log('InfoGenie listening on port 80 (external URL)');
