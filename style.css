@@ -7158,3 +7158,12 @@ h3:hover {
 [data-theme="dark"] .counter-banner-plays-h { color: #FB923C; }
 [data-theme="dark"] .counter-banner-plays li { color: #E2E8F0; }
 [data-theme="dark"] .counter-banner-clear { background: rgba(15,23,42,.6); border-color: #7C2D12; color: #FED7AA; }
+
+/* ── Competitor modal scrape timer ────────────────────────────────────────── */
+.cm-timer { display: inline-block; margin-left: 8px; padding: 3px 9px; border-radius: 999px; background: rgba(0,102,255,.1); color: #0066FF; font-weight: 700; font-size: .78rem; font-variant-numeric: tabular-nums; min-width: 50px; text-align: center; transition: all .25s; }
+.cm-timer-warn { background: rgba(245,158,11,.15); color: #B45309; }
+.cm-timer-slow { background: rgba(239,68,68,.15); color: #B91C1C; animation: cm-timer-pulse 1.4s infinite; }
+@keyframes cm-timer-pulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.06) } }
+[data-theme="dark"] .cm-timer { background: rgba(96,165,250,.18); color: #93C5FD; }
+[data-theme="dark"] .cm-timer-warn { background: rgba(245,158,11,.22); color: #FCD34D; }
+[data-theme="dark"] .cm-timer-slow { background: rgba(239,68,68,.25); color: #FCA5A5; }

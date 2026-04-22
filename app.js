@@ -2171,6 +2171,33 @@ async function runAnalysis(url, country, industryOverride) {
           topChannel: topCh,
           topChannels: [topCh],
           threatLevel: threats[idx % threats.length],
+          // Synthesize campaign rows so the "Competitor Campaign Breakdown" table renders
+          campaigns: (() => {
+            const camp1Names = ['Brand Search Domination', 'Lookalike Audience Push', 'Retargeting Wave', 'Awareness Reels Burst'];
+            const camp2Names = ['Comparison Landing Funnel', 'Free Trial Lead Gen', 'Top-Funnel Display', 'High-Intent Keyword Steal'];
+            const ch1 = topCh;
+            const ch2 = channels.filter(x => x !== topCh)[Math.floor(Math.random() * 3)];
+            const ctr1 = (Math.random() * 2 + 2.2).toFixed(1) + '%';
+            const ctr2 = (Math.random() * 2 + 1.8).toFixed(1) + '%';
+            const r1 = parseFloat((Math.random() * 1.5 + 2.0).toFixed(1));
+            const r2 = parseFloat((Math.random() * 1.5 + 1.6).toFixed(1));
+            const b1 = `$${(Math.floor(Math.random() * 80 + 40))}K/mo`;
+            const b2 = `$${(Math.floor(Math.random() * 50 + 20))}K/mo`;
+            return [
+              { name: camp1Names[idx % camp1Names.length], channel: ch1, ctr: ctr1, roas: r1, budget: b1 },
+              { name: camp2Names[idx % camp2Names.length], channel: ch2, ctr: ctr2, roas: r2, budget: b2 },
+            ];
+          })(),
+          // Audience splits for the audience overlap panel
+          audiences: [
+            { label: 'Active Traders 25-44', pct: Math.floor(Math.random()*20+35) },
+            { label: 'High Net Worth 45-64', pct: Math.floor(Math.random()*15+20) },
+            { label: 'Crypto-curious 18-34', pct: Math.floor(Math.random()*15+15) },
+          ],
+          // Sample ad copy so the "InfoGenie Improved Ads" section has material
+          adCopy: [
+            { headline: `Trade smarter than ${c.name}`, body: `See why thousands switched from ${c.name} to a faster, lower-fee platform.` },
+          ],
           suggestions: [
             `Outflank ${c.name} on long-tail variations of their core keywords — they over-index on brand terms`,
             `${c.name} relies heavily on ${['paid search','display','social'][Math.floor(Math.random()*3)]} — flip them with the opposite mix`,
@@ -2516,7 +2543,7 @@ function openCompetitorAnalysis(c) {
             </div>
             <a class="comp-modal-url" href="${safeUrl}" target="_blank" rel="noopener">${url || 'no domain'} ↗</a>
             ${c.why ? `<div class="comp-modal-why">${c.why}</div>` : ''}
-            <div class="cm-loading" id="cmLoading"><span class="cm-spin"></span> Scraping ${url || c.name} & generating targeted intel with GPT-4o…</div>
+            <div class="cm-loading" id="cmLoading"><span class="cm-spin"></span> Scraping ${url || c.name} & generating targeted intel with GPT-4o… <span class="cm-timer" id="cmTimer">0.0s</span></div>
           </div>
         </div>
 
@@ -2623,6 +2650,18 @@ function openCompetitorAnalysis(c) {
     if (typeof navigateTo === 'function') navigateTo('campaigns');
   });
 
+  // ── Live elapsed-time timer in the loading line ──────────────────────────
+  const _cmStart = Date.now();
+  const _cmTimerEl = root.querySelector('#cmTimer');
+  const _cmTimerInt = setInterval(() => {
+    if (!_cmTimerEl || !document.body.contains(_cmTimerEl)) return clearInterval(_cmTimerInt);
+    const s = (Date.now() - _cmStart) / 1000;
+    _cmTimerEl.textContent = s.toFixed(1) + 's';
+    if (s > 8)  _cmTimerEl.classList.add('cm-timer-warn');
+    if (s > 15) _cmTimerEl.classList.add('cm-timer-slow');
+  }, 100);
+  const _stopTimer = () => clearInterval(_cmTimerInt);
+
   // ── Fire the deep-analysis API call ───────────────────────────────────────
   const fillList = (id, items, ordered=false) => {
     const el = root.querySelector('#' + id);
@@ -2644,6 +2683,7 @@ function openCompetitorAnalysis(c) {
   .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
   .then(data => {
     aiData = data;
+    _stopTimer();
     root.querySelector('#cmLoading').style.display = 'none';
 
     // Positioning headline
@@ -2687,6 +2727,7 @@ function openCompetitorAnalysis(c) {
   })
   .catch(err => {
     console.warn('comp-deep failed:', err);
+    _stopTimer();
     root.querySelector('#cmLoading').innerHTML = `⚠️ Targeted analysis failed: ${err.message}. Showing generic intel.`;
     // Fall back to a minimal generic set so the modal isn't empty
     fillList('cmStrengths',  [`Strong brand presence in ${industryName}`,'Polished landing page','Aggressive top-funnel bidding']);
