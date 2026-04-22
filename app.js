@@ -15661,10 +15661,19 @@ window.openReEngageCopyModal = async function(id, name, company, channel, reason
       </div>
       <div style="padding:22px 24px">
         <div id="reec-loading" style="text-align:center;padding:40px 0">
-          <div style="font-size:1.5rem;margin-bottom:10px">⏳</div>
+          <div style="font-size:1.5rem;margin-bottom:10px;animation:reecSpin 1.4s linear infinite;display:inline-block">⏳</div>
           <div style="font-size:0.82rem;color:#6B7280;font-weight:600">Generating personalised re-engagement copy…</div>
           <div style="font-size:0.72rem;color:#9CA3AF;margin-top:4px">Analysing ${name}'s profile, last activity, and best channel</div>
+          <div style="margin-top:14px;display:inline-flex;align-items:center;gap:8px;background:#FFF7ED;border:1.5px solid #FED7AA;border-radius:999px;padding:6px 14px">
+            <div style="width:6px;height:6px;border-radius:50%;background:#D97706;animation:reecPulse 1s ease-in-out infinite"></div>
+            <span style="font-size:0.7rem;font-weight:700;color:#92400E;letter-spacing:.04em">InfoGenie working</span>
+            <span style="font-size:0.72rem;font-weight:800;color:#B45309;font-variant-numeric:tabular-nums" id="reec-timer">0.0s</span>
+          </div>
         </div>
+        <style>
+          @keyframes reecSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          @keyframes reecPulse { 0%,100% { opacity:.4; transform:scale(.85); } 50% { opacity:1; transform:scale(1.15); } }
+        </style>
         <div id="reec-content" style="display:none"></div>
         <div style="display:flex;gap:8px;margin-top:16px">
           <button id="reec-close2" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.82rem;font-weight:600;color:#6B7280;cursor:pointer">Close</button>
@@ -15684,6 +15693,15 @@ window.openReEngageCopyModal = async function(id, name, company, channel, reason
     buildReEngagement();
   });
 
+  // Start working-timer
+  const reecStart = performance.now();
+  const reecTimerEl = document.getElementById('reec-timer');
+  const reecTimerInt = setInterval(() => {
+    if (!reecTimerEl || !document.body.contains(reecTimerEl)) { clearInterval(reecTimerInt); return; }
+    const sec = (performance.now() - reecStart) / 1000;
+    reecTimerEl.textContent = sec.toFixed(1) + 's';
+  }, 100);
+
   // Fetch AI copy
   const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
   const industry = analysisData?.industry?.name || 'your industry';
@@ -15693,6 +15711,7 @@ window.openReEngageCopyModal = async function(id, name, company, channel, reason
       body: JSON.stringify({ name, company, channel, reason, value, domain, industry })
     });
     const data = await res.json();
+    clearInterval(reecTimerInt);
     document.getElementById('reec-loading').style.display = 'none';
     const cnt  = document.getElementById('reec-content');
     cnt.style.display = 'block';
@@ -15722,6 +15741,7 @@ window.openReEngageCopyModal = async function(id, name, company, channel, reason
         <button onclick="navigator.clipboard.writeText('${(data.social||'').replace(/\n/g,'\\n').replace(/'/g,"\\'")}').then(()=>showToast('📋 Message copied!'))" style="margin-top:6px;padding:5px 12px;background:white;border:1px solid #E5E7EB;border-radius:7px;font-size:0.65rem;font-weight:600;color:#6B7280;cursor:pointer">📋 Copy Message</button>
       </div>` : ''}`;
   } catch(err) {
+    clearInterval(reecTimerInt);
     document.getElementById('reec-loading').innerHTML = `<div style="color:#DC2626;font-size:0.8rem;text-align:center">Failed to generate copy — please try again</div>`;
   }
 };
