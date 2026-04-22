@@ -2461,47 +2461,24 @@ function _fmt(n) {
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ===== COMPETITOR ANALYSIS MODAL =====
-// Opens a rich modal with full intel for one competitor — triggered from
-// clicking a competitor name chip on the dashboard.
+// Opens a rich modal with TARGETED, AI-generated intel for one competitor.
+// Calls /api/competitor-deep-analysis which scrapes the competitor's homepage
+// and uses GPT-4o to produce specific, actionable counter-plays.
 function openCompetitorAnalysis(c) {
   if (!c) return;
   igTrack('Competitor Analysis Opened', { competitor: c.name, aiDetected: !!c.aiDetected });
 
-  // Remove any prior modal
   document.getElementById('compAnalysisModal')?.remove();
 
   const url = c.url || c.domain || '';
   const safeUrl = url ? `https://${url.replace(/^https?:\/\//,'')}` : '#';
-  const ind = (analysisData && analysisData.industry && analysisData.industry.name) || 'your industry';
   const channels = c.topChannels && c.topChannels.length ? c.topChannels : (c.topChannel ? [c.topChannel] : ['Google Search']);
+  const yourDomain = (analysisData?.url || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0];
+  const industryName = analysisData?.industry?.name || 'your industry';
+  const country = analysisData?.country || 'global';
 
-  // Derived/AI-style intel — built deterministically so it feels stable on re-open
-  const seed = (c.name || 'x').split('').reduce((a,b) => a + b.charCodeAt(0), 0);
-  const rng = (i) => { const x = Math.sin(seed + i) * 10000; return x - Math.floor(x); };
-  const pick = (arr, i) => arr[Math.floor(rng(i) * arr.length)];
-
-  const audience = [
-    pick(['25–34','30–44','35–54','22–35'], 1) + ' year-olds',
-    pick(['urban','suburban','metro','professional'], 2) + ' households',
-    pick(['high-income','middle-income','aspirational','value-driven'], 3) + ' buyers',
-  ];
-  const strengths = [
-    `Strong brand recognition in ${ind}`,
-    `${pick(['Aggressive','Consistent','Premium','Cost-leader'], 4)} bidding on top-of-funnel keywords`,
-    `Polished landing page experience (Quality Score est. ${(7 + rng(5)*2).toFixed(1)}/10)`,
-  ];
-  const weaknesses = [
-    `Thin presence on long-tail variations of their core terms`,
-    `${pick(['Mobile','Tablet','Desktop'], 6)} experience underperforms — bounce rate est. ${(45 + rng(7)*20).toFixed(0)}%`,
-    `Minimal retargeting / RLSA layering detected`,
-    `Low investment in ${pick(['TikTok','Reddit','LinkedIn','YouTube Shorts'], 8)} where intent is rising`,
-  ];
-  const opportunities = c.suggestions && c.suggestions.length ? c.suggestions : [
-    `Launch a comparison campaign: "${c.name} vs You" — capture their branded search intent at low CPC`,
-    `Outbid them on long-tail variants of "${(c.name||'competitor').split(' ')[0].toLowerCase()}" keywords (avg CPC ~$${(0.4 + rng(9)*1.6).toFixed(2)})`,
-    `Use ${pick(['video testimonials','UGC creatives','founder-led ads','social proof carousels'], 10)} on Meta — they over-rely on static imagery`,
-  ];
-
+  // Initial skeleton — the AI sections show a loading state until /api responds.
+  const skeletonList = (n=4) => Array(n).fill(0).map(()=>'<li class="cm-skel-li"><span class="cm-skel-bar"></span></li>').join('');
   const html = `
     <div class="comp-modal-backdrop" id="compAnalysisModal">
       <div class="comp-modal">
@@ -2512,36 +2489,60 @@ function openCompetitorAnalysis(c) {
             <div class="comp-modal-title">
               ${c.name}
               ${c.aiDetected ? '<span class="cchip-ai" style="margin-left:8px">AI-detected</span>' : ''}
+              <span class="cm-vs">vs <strong>${yourDomain || 'your sector'}</strong></span>
             </div>
             <a class="comp-modal-url" href="${safeUrl}" target="_blank" rel="noopener">${url || 'no domain'} ↗</a>
             ${c.why ? `<div class="comp-modal-why">${c.why}</div>` : ''}
+            <div class="cm-loading" id="cmLoading"><span class="cm-spin"></span> Scraping ${url || c.name} & generating targeted intel with GPT-4o…</div>
           </div>
         </div>
 
+        <div class="cm-positioning" id="cmPositioning" style="display:none"></div>
+
         <div class="comp-modal-stats">
-          <div class="cms"><div class="cms-l">ROAS</div><div class="cms-v">${(c.roas||0).toFixed ? c.roas.toFixed(1) : c.roas}×</div></div>
+          <div class="cms"><div class="cms-l">ROAS</div><div class="cms-v">${(typeof c.roas==='number') ? c.roas.toFixed(1) : (c.roas||'—')}×</div></div>
           <div class="cms"><div class="cms-l">CTR</div><div class="cms-v">${c.ctr || '—'}</div></div>
           <div class="cms"><div class="cms-l">Est. Traffic</div><div class="cms-v">${c.traffic || '—'}</div></div>
           <div class="cms"><div class="cms-l">Ad Spend</div><div class="cms-v">${c.adSpend || '—'}</div></div>
           <div class="cms"><div class="cms-l">Top Channel</div><div class="cms-v">${channels[0]}</div></div>
+          <div class="cms" id="cmThreatCell"><div class="cms-l">Threat</div><div class="cms-v" id="cmThreatVal">…</div></div>
+        </div>
+
+        <div class="cm-meta-row" id="cmMetaRow" style="display:none">
+          <div><span class="cm-meta-l">Primary offer</span><span class="cm-meta-v" id="cmOffer">—</span></div>
+          <div><span class="cm-meta-l">Pricing</span><span class="cm-meta-v" id="cmPricing">—</span></div>
+          <div><span class="cm-meta-l">Target customer</span><span class="cm-meta-v" id="cmICP">—</span></div>
+          <div><span class="cm-meta-l">CTA strategy</span><span class="cm-meta-v" id="cmCTAS">—</span></div>
         </div>
 
         <div class="comp-modal-grid">
           <div class="cmsec cmsec-good">
-            <div class="cmsec-h">💪 Strengths</div>
-            <ul>${strengths.map(s => `<li>${s}</li>`).join('')}</ul>
+            <div class="cmsec-h">💪 Strengths <span class="cm-badge-targeted">targeted</span></div>
+            <ul id="cmStrengths">${skeletonList(4)}</ul>
           </div>
           <div class="cmsec cmsec-bad">
-            <div class="cmsec-h">⚠️ Weaknesses</div>
-            <ul>${weaknesses.map(s => `<li>${s}</li>`).join('')}</ul>
+            <div class="cmsec-h">⚠️ Weaknesses <span class="cm-badge-targeted">targeted</span></div>
+            <ul id="cmWeaknesses">${skeletonList(4)}</ul>
           </div>
           <div class="cmsec cmsec-aud">
-            <div class="cmsec-h">🎯 Likely Audience</div>
-            <ul>${audience.map(s => `<li>${s}</li>`).join('')}</ul>
+            <div class="cmsec-h">🔑 Their value props</div>
+            <ul id="cmValueProps">${skeletonList(4)}</ul>
           </div>
           <div class="cmsec cmsec-opp">
-            <div class="cmsec-h">🚀 How to Beat Them</div>
-            <ul>${opportunities.map(s => `<li>${s}</li>`).join('')}</ul>
+            <div class="cmsec-h">🎯 Keyword angles to outrank them</div>
+            <ul id="cmKeywords">${skeletonList(4)}</ul>
+          </div>
+          <div class="cmsec cmsec-channels">
+            <div class="cmsec-h">📡 Ad-channel gaps</div>
+            <ul id="cmChannelGaps">${skeletonList(3)}</ul>
+          </div>
+          <div class="cmsec cmsec-hooks">
+            <div class="cmsec-h">✍️ Counter-headlines</div>
+            <ul id="cmHooks">${skeletonList(3)}</ul>
+          </div>
+          <div class="cmsec cmsec-counter" style="grid-column:1/-1">
+            <div class="cmsec-h">🚀 How to beat ${c.name} this week</div>
+            <ol id="cmPlays">${skeletonList(5)}</ol>
           </div>
         </div>
 
@@ -2559,15 +2560,107 @@ function openCompetitorAnalysis(c) {
   root.addEventListener('click', e => { if (e.target === root) close(); });
   document.addEventListener('keydown', function esc(ev) { if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', esc); } });
 
+  // Holder for copy-to-clipboard
+  let aiData = null;
+
   root.querySelector('#cmaCopy').addEventListener('click', () => {
-    const text = `${c.name} (${url})\nROAS ${c.roas}× · CTR ${c.ctr} · Traffic ${c.traffic} · Spend ${c.adSpend}\n\nStrengths:\n- ${strengths.join('\n- ')}\n\nWeaknesses:\n- ${weaknesses.join('\n- ')}\n\nHow to beat them:\n- ${opportunities.join('\n- ')}`;
-    navigator.clipboard?.writeText(text);
-    showToast('📋 Intel copied to clipboard');
+    const lines = [
+      `${c.name} (${url}) — analysis vs ${yourDomain || 'sector'}`,
+      `Industry: ${industryName} · ROAS ${c.roas}× · CTR ${c.ctr} · Traffic ${c.traffic} · Spend ${c.adSpend}`,
+    ];
+    if (aiData) {
+      lines.push('', `POSITIONING: ${aiData.positioning || ''}`, `THREAT: ${aiData.threatLevel || ''} — ${aiData.threatRationale || ''}`);
+      lines.push('', 'STRENGTHS:', ...(aiData.strengths||[]).map(s=>'- '+s));
+      lines.push('', 'WEAKNESSES:', ...(aiData.weaknesses||[]).map(s=>'- '+s));
+      lines.push('', 'COUNTER-PLAYS THIS WEEK:', ...(aiData.counterPlays||[]).map((s,i)=>`${i+1}. ${s}`));
+      lines.push('', 'HEADLINE IDEAS:', ...(aiData.messagingHooks||[]).map(s=>'- '+s));
+    }
+    navigator.clipboard?.writeText(lines.join('\n'));
+    showToast('📋 Targeted intel copied to clipboard');
   });
   root.querySelector('#cmaCampaign').addEventListener('click', () => {
     close();
     showToast(`⚡ Building counter-campaign vs ${c.name}…`);
     if (typeof navigateTo === 'function') navigateTo('campaigns');
+  });
+
+  // ── Fire the deep-analysis API call ───────────────────────────────────────
+  const fillList = (id, items, ordered=false) => {
+    const el = root.querySelector('#' + id);
+    if (!el || !items || !items.length) return;
+    el.innerHTML = items.map(it => `<li>${String(it).replace(/</g,'&lt;')}</li>`).join('');
+  };
+
+  fetch('/api/competitor-deep-analysis', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      competitorName: c.name,
+      competitorUrl:  url,
+      yourDomain,
+      industryName,
+      country,
+    }),
+  })
+  .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+  .then(data => {
+    aiData = data;
+    root.querySelector('#cmLoading').style.display = 'none';
+
+    // Positioning headline
+    if (data.positioning) {
+      const p = root.querySelector('#cmPositioning');
+      p.innerHTML = `<span class="cm-pos-l">📍 Positioning:</span> ${data.positioning}`;
+      p.style.display = 'block';
+    }
+
+    // Threat pill
+    const threatVal = root.querySelector('#cmThreatVal');
+    if (threatVal && data.threatLevel) {
+      const lvl = String(data.threatLevel).toLowerCase();
+      threatVal.innerHTML = `<span class="cm-threat cm-threat-${lvl}" title="${(data.threatRationale||'').replace(/"/g,'&quot;')}">${data.threatLevel.toUpperCase()}</span>`;
+    }
+
+    // Meta row
+    const metaRow = root.querySelector('#cmMetaRow');
+    if (data.primaryOffer || data.pricingSignal || data.targetCustomer || data.ctaStrategy) {
+      root.querySelector('#cmOffer').textContent   = data.primaryOffer    || '—';
+      root.querySelector('#cmPricing').textContent = data.pricingSignal   || '—';
+      root.querySelector('#cmICP').textContent     = data.targetCustomer  || '—';
+      root.querySelector('#cmCTAS').textContent    = data.ctaStrategy     || '—';
+      metaRow.style.display = 'grid';
+    }
+
+    fillList('cmStrengths',   data.strengths);
+    fillList('cmWeaknesses',  data.weaknesses);
+    fillList('cmValueProps',  data.valueProps);
+    fillList('cmKeywords',    data.keywordAngles);
+    fillList('cmChannelGaps', data.adChannelGaps);
+    fillList('cmHooks',       data.messagingHooks);
+    fillList('cmPlays',       data.counterPlays);
+
+    if (!data.htmlFetched) {
+      const note = document.createElement('div');
+      note.className = 'cm-note';
+      note.innerHTML = `⚠️ Couldn't reach ${url} directly — analysis is based on AI knowledge of ${c.name} only. Try the public site to confirm details.`;
+      root.querySelector('.comp-modal').insertBefore(note, root.querySelector('.comp-modal-actions'));
+    }
+  })
+  .catch(err => {
+    console.warn('comp-deep failed:', err);
+    root.querySelector('#cmLoading').innerHTML = `⚠️ Targeted analysis failed: ${err.message}. Showing generic intel.`;
+    // Fall back to a minimal generic set so the modal isn't empty
+    fillList('cmStrengths',  [`Strong brand presence in ${industryName}`,'Polished landing page','Aggressive top-funnel bidding']);
+    fillList('cmWeaknesses', ['Thin long-tail SEO coverage','Over-reliance on branded search','Minimal retargeting layering']);
+    fillList('cmValueProps', ['(Could not scrape competitor homepage)']);
+    fillList('cmKeywords',   [`"${c.name} alternative"`, `"${c.name} vs ${yourDomain||'you'}"`, `"best ${industryName.toLowerCase()} 2026"`]);
+    fillList('cmChannelGaps',['TikTok creator-led ads','Reddit niche subs','YouTube Shorts pre-roll']);
+    fillList('cmHooks',      [`"Tired of ${c.name}? Here's a better way."`,`"What ${c.name} won't tell you about ${industryName.toLowerCase()}"`]);
+    fillList('cmPlays', c.suggestions || [
+      `Run a "${c.name} vs You" comparison page targeting their branded queries`,
+      `Bid on "${c.name} alternative" and "${c.name} review" — low-CPC high-intent`,
+      `Launch UGC creative on Meta — they over-rely on static imagery`,
+    ]);
   });
 }
 

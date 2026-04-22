@@ -3358,6 +3358,122 @@ CRITICAL RULES for "competitors":
   }
 });
 
+// ── POST /api/competitor-deep-analysis ────────────────────────────────────────
+// Scrapes ONE specific competitor's homepage and uses GPT-4o to produce a
+// targeted, side-by-side analysis vs the user's own site + industry context.
+app.post('/api/competitor-deep-analysis', async (req, res) => {
+  try {
+    const { competitorName, competitorUrl, yourDomain, industryName, country } = req.body || {};
+    if (!competitorUrl) return res.status(400).json({ error: 'competitorUrl required' });
+
+    const cleanComp = String(competitorUrl).replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase();
+    const cleanYou  = String(yourDomain || '').replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase();
+
+    // Scrape competitor homepage
+    let html = '';
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch('https://' + cleanComp, {
+        signal: ctrl.signal, redirect: 'follow',
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; InfoGenieBot/1.0)', 'Accept': 'text/html' },
+      });
+      clearTimeout(t);
+      if (r.ok) html = (await r.text()).slice(0, 70000);
+    } catch (fe) { console.warn('comp-deep fetch failed:', fe.message); }
+
+    const pick = (re) => { const m = html.match(re); return m ? m[1].trim() : ''; };
+    const title    = pick(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const metaDesc = pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
+    const ogDesc   = pick(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i);
+    const h1s = (html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/gi)||[]).slice(0,3).map(s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim()).filter(Boolean);
+    const h2s = (html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/gi)||[]).slice(0,8).map(s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim()).filter(Boolean);
+    const ctas = (html.match(/<(?:a|button)[^>]*>([\s\S]*?)<\/(?:a|button)>/gi)||[])
+      .map(s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim())
+      .filter(s => s && s.length > 2 && s.length < 40 && /sign\s?up|start|try|get|buy|book|free|trial|join|register|download|demo|quote/i.test(s))
+      .slice(0, 8);
+    const body = html.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0, 2200);
+
+    const prompt = `You are a senior competitive-intelligence analyst. A marketing operator wants TARGETED intel on ONE competitor so they can outflank them.
+
+THE OPERATOR'S SITE: ${cleanYou || '(not specified — sector overview mode)'}
+INDUSTRY: ${industryName || 'unknown'}
+TARGET MARKET: ${country || 'global'}
+
+THE COMPETITOR YOU MUST ANALYSE: ${competitorName} (${cleanComp})
+
+SCRAPED FROM THEIR HOMEPAGE:
+- TITLE: ${title || '(none)'}
+- META DESCRIPTION: ${metaDesc || ogDesc || '(none)'}
+- H1: ${h1s.join(' | ') || '(none)'}
+- H2: ${h2s.join(' | ') || '(none)'}
+- CTAs DETECTED: ${ctas.join(', ') || '(none)'}
+- BODY EXCERPT: ${body || '(could not fetch — use what you know about this company)'}
+
+Return ONLY strict JSON, no markdown:
+{
+  "positioning": "<one sentence — exactly how this competitor positions themselves in 2026, based on the scraped copy>",
+  "primaryOffer": "<their main product/offer/hook in plain language>",
+  "valueProps": ["<3-5 specific value props they lead with — quote/paraphrase from the scrape, do NOT invent>"],
+  "ctaStrategy": "<one sentence on what action they push visitors toward and how aggressive their funnel is>",
+  "pricingSignal": "<freemium / paid trial / quote-based / hidden / transparent — and any price points visible>",
+  "targetCustomer": "<one sentence describing their actual ICP, inferred from the copy>",
+  "strengths": [
+    "<4 SPECIFIC strengths grounded in the scraped evidence — reference real wording where possible. Avoid generic 'strong brand'>"
+  ],
+  "weaknesses": [
+    "<4 SPECIFIC weaknesses or gaps — be concrete, e.g. 'No mention of mobile app despite competitors leading with it', 'Pricing is hidden which loses self-serve buyers'>"
+  ],
+  "keywordAngles": [
+    "<4 keyword/SEO angles where ${cleanYou || 'a challenger'} can outrank them — be specific to ${industryName || 'this niche'}>"
+  ],
+  "adChannelGaps": [
+    "<3 ad channels where this competitor under-invests — give a concrete play for each>"
+  ],
+  "counterPlays": [
+    "<5 concrete, executable plays the operator can run THIS WEEK to take share from ${competitorName}. Each should be 1-2 sentences, mention a real channel, and include a measurable angle (CPC range, headline, audience, etc.). Reference ${competitorName} by name in at least 3 plays.>"
+  ],
+  "messagingHooks": [
+    "<3 ad headline ideas the operator can run that directly counter ${competitorName}'s positioning. Wrap each in quotes.>"
+  ],
+  "threatLevel": "<low | medium | high | critical>",
+  "threatRationale": "<one sentence explaining the threat rating>"
+}
+
+CRITICAL: Be SPECIFIC. Quote real words from the scrape. Name ${competitorName} explicitly in plays. Do NOT output generic SaaS advice.`;
+
+    let aiResult = null;
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'You are a precise competitive-intelligence analyst. Output strict JSON. Always be specific to the named competitor and the operator\'s industry — never generic.' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 1800,
+        response_format: { type: 'json_object' },
+      });
+      aiResult = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+    } catch (aiErr) {
+      console.error('comp-deep OpenAI error:', aiErr.message);
+      return res.status(502).json({ error: 'AI analysis failed', detail: aiErr.message });
+    }
+
+    res.json({
+      ok: true,
+      competitor: { name: competitorName, url: cleanComp },
+      yourDomain: cleanYou,
+      industryName,
+      htmlFetched: html.length > 0,
+      ...aiResult,
+    });
+  } catch (err) {
+    console.error('/api/competitor-deep-analysis error:', err);
+    res.status(500).json({ error: err.message || 'Internal error' });
+  }
+});
+
 // Port 80 — external URL (*.spock.replit.dev / new tab)
 app.listen(80, '0.0.0.0', () => {
   console.log('InfoGenie listening on port 80 (external URL)');
