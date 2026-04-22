@@ -2602,6 +2602,22 @@ function openCompetitorAnalysis(c) {
     showToast('📋 Targeted intel copied to clipboard');
   });
   root.querySelector('#cmaCampaign').addEventListener('click', () => {
+    // Snapshot the target competitor + AI intel so the campaigns view can render a contextual banner
+    window._counterTarget = {
+      name: c.name,
+      url: url,
+      logo: (c.name||'?').split(/\s+/).slice(0,2).map(s=>s.charAt(0).toUpperCase()).join(''),
+      roas: c.roas, ctr: c.ctr, traffic: c.traffic, adSpend: c.adSpend,
+      topChannel: (c.topChannels && c.topChannels[0]) || c.topChannel || 'Multi-channel',
+      threatLevel: aiData?.threatLevel || c.threatLevel || 'medium',
+      positioning: aiData?.positioning || c.why || '',
+      counterPlays: aiData?.counterPlays || [],
+      messagingHooks: aiData?.messagingHooks || [],
+      weaknesses: aiData?.weaknesses || [],
+      adChannelGaps: aiData?.adChannelGaps || [],
+      keywordAngles: aiData?.keywordAngles || [],
+      at: Date.now(),
+    };
     close();
     showToast(`⚡ Building counter-campaign vs ${c.name}…`);
     if (typeof navigateTo === 'function') navigateTo('campaigns');
@@ -4196,13 +4212,56 @@ function buildCampaigns() {
     </div>
   ` : '';
 
+  // ── Counter-campaign target banner (set when user clicks "Launch counter-campaign" in competitor modal) ──
+  const _ct = window._counterTarget;
+  const _ctFresh = _ct && (Date.now() - (_ct.at || 0) < 30 * 60 * 1000); // valid for 30 min
+  const counterBanner = _ctFresh ? `
+    <div class="counter-banner" id="counterTargetBanner">
+      <div class="counter-banner-strip">
+        <span class="counter-banner-pulse"></span>
+        <span class="counter-banner-eyebrow">⚔️ COUNTER-CAMPAIGN TARGET</span>
+        <span class="counter-banner-threat counter-banner-threat-${(_ct.threatLevel||'medium').toLowerCase()}">${(_ct.threatLevel||'medium').toUpperCase()} THREAT</span>
+      </div>
+      <div class="counter-banner-main">
+        <div class="counter-banner-avatar">${_ct.logo}</div>
+        <div class="counter-banner-body">
+          <div class="counter-banner-title">You are launching a campaign <em>against</em> <strong>${_ct.name}</strong> <span class="counter-banner-url">(${_ct.url || 'unknown domain'})</span></div>
+          ${_ct.positioning ? `<div class="counter-banner-pos">📍 Their positioning: <em>${_ct.positioning}</em></div>` : ''}
+          <div class="counter-banner-stats">
+            <span title="Their estimated Return on Ad Spend">ROAS <strong>${_ct.roas || '—'}×</strong></span>
+            <span title="Their estimated Click-Through Rate">CTR <strong>${_ct.ctr || '—'}</strong></span>
+            <span title="Their estimated monthly traffic">Traffic <strong>${_ct.traffic || '—'}</strong></span>
+            <span title="Their estimated monthly ad spend">Spend <strong>${_ct.adSpend || '—'}</strong></span>
+            <span title="Their dominant channel — the one we will hit hardest">Top channel <strong>${_ct.topChannel}</strong></span>
+          </div>
+        </div>
+        <button class="counter-banner-clear" onclick="window._counterTarget=null;document.getElementById('counterTargetBanner')?.remove()" title="Clear target — return to general campaign mode">✕ Clear target</button>
+      </div>
+      ${_ct.counterPlays && _ct.counterPlays.length ? `
+        <div class="counter-banner-plays">
+          <div class="counter-banner-plays-h">🎯 AI counter-plays loaded into the campaigns below — they target ${_ct.name}'s specific weaknesses:</div>
+          <ul>${_ct.counterPlays.slice(0,3).map(p=>`<li>${String(p).replace(/</g,'&lt;')}</li>`).join('')}</ul>
+        </div>
+      ` : ''}
+    </div>
+  ` : '';
+
+  // Adjust hero copy when a target is set
+  const heroTitle = _ctFresh
+    ? `Counter-Campaign Strategy: ${url} <span style="opacity:.7;font-weight:600">vs</span> ${_ct.name}`
+    : `AI-Powered Campaign Strategy for ${url}`;
+  const heroSub = _ctFresh
+    ? `Targeted plays designed to take share from <strong>${_ct.name}</strong> — leveraging their weaknesses in ${industry.name}.`
+    : `Based on analysis of ${competitors.length} competitors in ${industry.name}. Recommendations ranked by projected ROI impact.`;
+
   wrap.innerHTML = `
     ${queuedSection}
+    ${counterBanner}
     <div class="camp-hero">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:6px">
         <div style="flex:1;min-width:0">
-          <div class="camp-hero-title">AI-Powered Campaign Strategy for ${url}</div>
-          <div class="camp-hero-sub">Based on analysis of ${competitors.length} competitors in ${industry.name}. Recommendations ranked by projected ROI impact.</div>
+          <div class="camp-hero-title">${heroTitle}</div>
+          <div class="camp-hero-sub">${heroSub}</div>
         </div>
         <button onclick="window._igLaunch(0)" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;padding:11px 22px;font-size:0.82rem;font-weight:800;color:white;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;box-shadow:0 4px 16px rgba(0,102,255,.35);transition:all .2s;flex-shrink:0" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 22px rgba(0,102,255,.45)'" onmouseout="this.style.transform='';this.style.boxShadow='0 4px 16px rgba(0,102,255,.35)'">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>

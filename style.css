@@ -7118,3 +7118,43 @@ h3:hover {
 .comp-modal-actions .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(255,122,26,.45); }
 [data-theme="dark"] .comp-modal-actions .btn-secondary { background: #1E293B !important; color: #F8FAFC !important; border-color: #334155 !important; }
 [data-theme="dark"] .comp-modal-actions .btn-secondary:hover { background: #334155 !important; }
+
+/* ── Counter-Campaign Target Banner ────────────────────────────────────── */
+.counter-banner { background: linear-gradient(135deg, #FFF1E6, #FFE4D1); border: 2px solid #FF7A1A; border-radius: 16px; padding: 18px 22px; margin: 0 0 18px 0; box-shadow: 0 6px 20px rgba(255,122,26,.18); position: relative; overflow: hidden; }
+.counter-banner::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #FF7A1A, #EF4444, #FF7A1A); }
+.counter-banner-strip { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.counter-banner-pulse { width: 10px; height: 10px; border-radius: 50%; background: #EF4444; box-shadow: 0 0 0 0 rgba(239,68,68,.7); animation: counter-pulse 1.6s infinite; }
+@keyframes counter-pulse { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,.7) } 70% { box-shadow: 0 0 0 14px rgba(239,68,68,0) } 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0) } }
+.counter-banner-eyebrow { font-size: .7rem; font-weight: 800; letter-spacing: .12em; color: #C2410C; }
+.counter-banner-threat { font-size: .65rem; font-weight: 800; letter-spacing: .08em; padding: 3px 9px; border-radius: 999px; color: #fff; }
+.counter-banner-threat-low { background: #10B981; }
+.counter-banner-threat-medium { background: #F59E0B; }
+.counter-banner-threat-high { background: #EF4444; }
+.counter-banner-threat-critical { background: #7F1D1D; }
+.counter-banner-main { display: flex; align-items: flex-start; gap: 14px; }
+.counter-banner-avatar { width: 52px; height: 52px; border-radius: 12px; background: linear-gradient(135deg, #FF7A1A, #EF4444); color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; box-shadow: 0 4px 12px rgba(239,68,68,.35); }
+.counter-banner-body { flex: 1; min-width: 0; }
+.counter-banner-title { font-size: 1.05rem; color: #0F172A; line-height: 1.4; margin-bottom: 6px; }
+.counter-banner-title strong { color: #C2410C; font-weight: 800; }
+.counter-banner-url { color: #64748B; font-size: .85rem; font-weight: 500; }
+.counter-banner-pos { font-size: .85rem; color: #475569; margin: 6px 0 8px 0; line-height: 1.45; }
+.counter-banner-stats { display: flex; flex-wrap: wrap; gap: 14px; font-size: .8rem; color: #64748B; margin-top: 6px; }
+.counter-banner-stats strong { color: #0F172A; font-weight: 700; margin-left: 4px; }
+.counter-banner-clear { background: rgba(255,255,255,.7); border: 1px solid #FED7AA; color: #9A3412; padding: 6px 12px; border-radius: 8px; font-size: .75rem; font-weight: 700; cursor: pointer; flex-shrink: 0; transition: all .15s; align-self: flex-start; }
+.counter-banner-clear:hover { background: #FFFFFF; border-color: #FB923C; }
+.counter-banner-plays { margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(194,65,12,.3); }
+.counter-banner-plays-h { font-size: .82rem; font-weight: 700; color: #9A3412; margin-bottom: 6px; }
+.counter-banner-plays ul { margin: 0; padding-left: 22px; }
+.counter-banner-plays li { font-size: .82rem; color: #1F2937; line-height: 1.5; margin-bottom: 4px; }
+
+/* Dark mode */
+[data-theme="dark"] .counter-banner { background: linear-gradient(135deg, rgba(124,45,18,.35), rgba(127,29,29,.4)); border-color: #FB923C; }
+[data-theme="dark"] .counter-banner-title { color: #F8FAFC; }
+[data-theme="dark"] .counter-banner-title strong { color: #FB923C; }
+[data-theme="dark"] .counter-banner-url { color: #94A3B8; }
+[data-theme="dark"] .counter-banner-pos { color: #CBD5E1; }
+[data-theme="dark"] .counter-banner-stats { color: #94A3B8; }
+[data-theme="dark"] .counter-banner-stats strong { color: #F1F5F9; }
+[data-theme="dark"] .counter-banner-plays-h { color: #FB923C; }
+[data-theme="dark"] .counter-banner-plays li { color: #E2E8F0; }
+[data-theme="dark"] .counter-banner-clear { background: rgba(15,23,42,.6); border-color: #7C2D12; color: #FED7AA; }
