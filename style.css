@@ -6062,6 +6062,43 @@ body,
   box-shadow: 0 1px 3px rgba(15,30,61,.10) !important;
 }
 
+/* ── BLANKET HERO TEXT RULE — every text node inside any hero is light ──
+   Catches inline-styled divs/spans/labels/small that any sub-page may add. */
+.view-header,
+.view-header *:not(.atag):not(.badge):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]),
+.intel-header,
+.intel-header *:not(.atag):not(.badge):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]),
+.comp-hero,
+.comp-hero *:not(.atag):not(.badge):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]),
+[data-bp-hero],
+[data-bp-hero] *:not(.atag):not(.badge):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]) {
+  color: #FFFFFF !important;
+}
+/* Lighter shade for secondary/sub-text inside hero */
+.view-header p,
+.view-header .subtitle,
+.view-header .view-sub,
+.view-header small,
+.intel-header p,
+.intel-header .ih-sub,
+.intel-header small,
+.comp-hero p,
+.comp-hero small,
+[data-bp-hero] p,
+[data-bp-hero] small {
+  color: #E0E7FF !important;
+  opacity: .95 !important;
+}
+/* Breadcrumb stays a soft blue */
+.view-header .breadcrumb,
+.view-header .breadcrumb *,
+.intel-header .breadcrumb,
+.intel-header .breadcrumb *,
+.comp-hero .breadcrumb,
+.comp-hero .breadcrumb * {
+  color: #BFDBFE !important;
+}
+
 /* ── Generic white-text headings that appear outside dark containers ── */
 [data-theme="light"] .view-header h1,
 [data-theme="light"] .view-header h2,
