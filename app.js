@@ -15266,10 +15266,10 @@ function buildReEngagement() {
     <div style="position:absolute;bottom:-60px;right:80px;width:180px;height:180px;background:radial-gradient(circle,rgba(245,158,11,0.22),transparent 70%);border-radius:50%"></div>
     <div style="position:absolute;top:20px;left:-40px;width:140px;height:140px;background:radial-gradient(circle,rgba(217,119,6,0.18),transparent 70%);border-radius:50%"></div>
     <div style="position:relative;z-index:1" class="ig-reengage-hero-content">
-      <div class="ig-reh-eyebrow" style="font-size:0.6rem;font-weight:800;color:#FDBA74;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px">Grow › Re-Engage</div>
-      <div class="ig-reh-tag" style="font-size:0.65rem;font-weight:700;color:#FED7AA;text-transform:uppercase;letter-spacing:.14em;margin-bottom:6px">Re-Engagement Hub</div>
-      <div class="ig-reh-title" style="font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:800;color:#FFFFFF;line-height:1.2;margin-bottom:8px;text-shadow:0 1px 2px rgba(0,0,0,0.25)">Turn Lost Leads Into<br>Revenue — Automatically</div>
-      <div class="ig-reh-desc" style="font-size:0.85rem;color:rgba(255,255,255,0.92);max-width:480px;line-height:1.55">AI-identifies your highest-value lapsed contacts, generates personalised win-back copy across email, ads, and social — then launches re-engagement campaigns directly from InfoGenie.</div>
+      <div class="ig-reh-eyebrow" style="font-size:0.6rem;font-weight:800;color:#FDBA74 !important;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px">Grow › Re-Engage</div>
+      <div class="ig-reh-tag" style="font-size:0.65rem;font-weight:700;color:#FED7AA !important;text-transform:uppercase;letter-spacing:.14em;margin-bottom:6px">Re-Engagement Hub</div>
+      <div class="ig-reh-title" style="font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:800;color:#FFFFFF !important;line-height:1.2;margin-bottom:8px;text-shadow:0 1px 2px rgba(0,0,0,0.35)">Turn Lost Leads Into<br>Revenue — Automatically</div>
+      <div class="ig-reh-desc" style="font-size:0.85rem;color:rgba(255,255,255,0.92) !important;max-width:480px;line-height:1.55">AI-identifies your highest-value lapsed contacts, generates personalised win-back copy across email, ads, and social — then launches re-engagement campaigns directly from InfoGenie.</div>
     </div>
   </div>`;
 
@@ -15736,7 +15736,8 @@ window.openReEngageCopyModal = async function(id, name, company, channel, reason
         <div style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;padding:14px 16px">
           <div style="font-size:0.72rem;font-weight:700;color:#1E40AF;margin-bottom:4px">${data.ad.headline||''}</div>
           <div style="font-size:0.78rem;color:#374151;line-height:1.6">${data.ad.body||''}</div>
-          ${data.ad.cta ? `<div style="margin-top:8px;display:inline-block;background:#0066FF;color:white;border-radius:7px;padding:5px 14px;font-size:0.72rem;font-weight:700">${data.ad.cta}</div>` : ''}
+          ${data.ad.cta ? `<button onclick="window.fireReEngageAd('${id}','${(name||'').replace(/'/g,"\\'")}','${(company||'').replace(/'/g,"\\'")}')" style="margin-top:10px;display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#0066FF,#0052CC);color:white;border:none;border-radius:8px;padding:8px 16px;font-size:0.74rem;font-weight:800;cursor:pointer;box-shadow:0 3px 10px rgba(0,102,255,0.35);transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 5px 14px rgba(0,102,255,0.45)'" onmouseout="this.style.transform='';this.style.boxShadow='0 3px 10px rgba(0,102,255,0.35)'">${data.ad.cta} →</button>
+          <button onclick="navigator.clipboard.writeText('${(data.ad.headline||'').replace(/'/g,"\\'")}\\n\\n${(data.ad.body||'').replace(/'/g,"\\'")}\\n\\nCTA: ${(data.ad.cta||'').replace(/'/g,"\\'")}').then(()=>showToast('📋 Ad copy copied!'))" style="margin-top:10px;margin-left:6px;padding:8px 14px;background:white;border:1px solid #BFDBFE;border-radius:8px;font-size:0.7rem;font-weight:700;color:#1E40AF;cursor:pointer">📋 Copy Ad</button>
         </div>
       </div>` : ''}
       ${data.social ? `
@@ -15749,6 +15750,16 @@ window.openReEngageCopyModal = async function(id, name, company, channel, reason
     clearInterval(reecTimerInt);
     document.getElementById('reec-loading').innerHTML = `<div style="color:#DC2626;font-size:0.8rem;text-align:center">Failed to generate copy — please try again</div>`;
   }
+};
+
+// ── Fire single retargeting ad to lead from modal ────────────────────────────
+window.fireReEngageAd = function(id, name, company) {
+  window._reEngageContacted = window._reEngageContacted || {};
+  window._reEngageContacted[id] = true;
+  showToast(`🚀 Retargeting ad launched to ${name} at ${company} — tracking in Results`);
+  const overlay = document.getElementById('reEngageCopyOverlay');
+  if (overlay) overlay.remove();
+  if (typeof buildReEngagement === 'function') buildReEngagement();
 };
 
 // ── Launch template ───────────────────────────────────────────────────────────
