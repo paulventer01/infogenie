@@ -5467,14 +5467,15 @@ p, span, label, td, li {
 /* ══════════════════════════════════════════════
    C-SUITE EXECUTIVE REPORTS
    ══════════════════════════════════════════════ */
-.cs-role-tabs { display:flex; gap:4px; background:rgba(255,255,255,.06); border-radius:10px; padding:3px; }
+.cs-role-tabs { display:flex; gap:4px; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.25); border-radius:10px; padding:3px; }
 .cs-role-btn {
-  padding:6px 16px; border-radius:8px; border:none; font-size:0.75rem; font-weight:700;
-  cursor:pointer; color:rgba(255,255,255,.5); background:transparent;
+  padding:6px 16px; border-radius:8px; border:none; font-size:0.75rem; font-weight:800;
+  cursor:pointer; color:#FFFFFF; background:transparent;
   font-family:'Plus Jakarta Sans',sans-serif; transition:all .15s;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.25);
 }
-.cs-role-btn.active { background:linear-gradient(135deg,#7C3AED,#4F46E5); color:white; box-shadow:0 2px 8px rgba(124,58,237,.35); }
-.cs-role-btn:hover:not(.active) { color:rgba(255,255,255,.8); }
+.cs-role-btn.active { background:linear-gradient(135deg,#7C3AED,#4F46E5); color:#FFFFFF; box-shadow:0 2px 8px rgba(124,58,237,.45); text-shadow:none; }
+.cs-role-btn:hover:not(.active) { color:#FFFFFF; background:rgba(255,255,255,.12); }
 
 /* Executive scorecard grid */
 .cs-kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:14px; margin-bottom:28px; }

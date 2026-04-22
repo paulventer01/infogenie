@@ -10872,20 +10872,21 @@ function buildBattlePlan() {
   <div style="background:var(--ig-page);min-height:100vh;padding-bottom:40px">
 
     <!-- Page Header -->
-    <div style="background:var(--ig-grad);border-bottom:1px solid rgba(255,255,255,.08);padding:22px 28px">
-      <div style="max-width:1200px;margin:0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+    <div data-bp-hero style="background:linear-gradient(110deg,#2563EB 0%,#3B82F6 45%,#38BDF8 80%,#67E8F9 100%);border-radius:18px;margin:18px 24px 6px;padding:22px 28px;box-shadow:0 8px 28px rgba(37,99,235,.18);position:relative;overflow:hidden">
+      <div style="position:absolute;top:-60px;right:-40px;width:260px;height:260px;background:radial-gradient(circle,rgba(255,255,255,.18),transparent 70%);border-radius:50%;pointer-events:none"></div>
+      <div style="max-width:1200px;margin:0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;position:relative;z-index:1">
         <div>
-          <div style="font-size:0.6rem;font-weight:800;color:rgba(0,201,200,.55);letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px">Analyse › Battle Plan</div>
+          <div style="font-size:0.62rem;font-weight:800;color:#BFDBFE;letter-spacing:.12em;text-transform:uppercase;margin-bottom:5px">Analyse › Battle Plan</div>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
             <span style="font-size:1.4rem">⚔️</span>
-            <h1 style="font-family:Sora,sans-serif;font-size:1.35rem;font-weight:900;color:white;margin:0">Battle Plan</h1>
-            <span style="background:linear-gradient(135deg,#00C9C8,#0066FF);padding:3px 12px;border-radius:20px;font-size:0.67rem;font-weight:700;color:white">AI-GENERATED</span>
+            <h1 style="font-family:Sora,sans-serif;font-size:1.4rem;font-weight:900;color:#FFFFFF;margin:0;text-shadow:0 1px 2px rgba(0,0,0,.25)">Battle Plan</h1>
+            <span style="background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.3);padding:3px 12px;border-radius:20px;font-size:0.67rem;font-weight:800;color:#FFFFFF">AI-GENERATED</span>
           </div>
-          <div style="color:rgba(255,255,255,.45);font-size:0.8rem">${domain} · ${industry} · ${comps.length} competitors · Click any action card to execute directly</div>
+          <div style="color:#FFFFFF;opacity:.92;font-size:0.85rem;font-weight:500;text-shadow:0 1px 2px rgba(0,0,0,.18)">${domain} · ${industry} · ${comps.length} competitors · Click any action card to execute directly</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button onclick="bpLC(${idx},0)" style="padding:10px 20px;background:linear-gradient(135deg,#EF4444,#DC2626);border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer">⚡ Execute Top Priority</button>
-          <button onclick="navigateTo('campaigns')" style="padding:10px 20px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:10px;font-size:0.8rem;font-weight:600;color:white;cursor:pointer">📋 All Campaigns</button>
+          <button onclick="bpLC(${idx},0)" style="padding:10px 20px;background:linear-gradient(135deg,#EF4444,#DC2626);border:none;border-radius:10px;font-size:0.8rem;font-weight:800;color:white;cursor:pointer;box-shadow:0 4px 12px rgba(239,68,68,.35)">⚡ Execute Top Priority</button>
+          <button onclick="navigateTo('campaigns')" style="padding:10px 20px;background:rgba(255,255,255,.95);border:1px solid rgba(255,255,255,.5);border-radius:10px;font-size:0.8rem;font-weight:800;color:#1E3A8A;cursor:pointer">📋 All Campaigns</button>
         </div>
       </div>
     </div>
@@ -19685,5 +19686,33 @@ function buildMasterCalendar() {
   new MutationObserver(() => {
     if (_t) return;
     _t = setTimeout(() => { _t = null; scan(); }, 150);
+  }).observe(document.body, { childList: true, subtree: true });
+})();
+
+// ── Strip inline gradient overrides on hero headers + apply unified blue card ─
+(function unifyHeroHeaders(){
+  const BLUE = 'linear-gradient(110deg,#2563EB 0%,#3B82F6 45%,#38BDF8 80%,#67E8F9 100%)';
+  function strip(el){
+    if (!el) return;
+    if (el.style.background) el.style.background = '';
+    if (el.style.backgroundImage) el.style.backgroundImage = '';
+    if (el.style.borderBottom) el.style.borderBottom = '';
+  }
+  function sweep(){
+    document.querySelectorAll('.view-header, .intel-header').forEach(strip);
+    // Battle Plan custom header swap
+    const bpHero = document.querySelector('#battlePlanWrap [data-bp-hero]');
+    if (bpHero) {
+      bpHero.style.background = BLUE;
+      bpHero.style.borderBottom = 'none';
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', sweep);
+  } else { sweep(); }
+  let _t = null;
+  new MutationObserver(() => {
+    if (_t) return;
+    _t = setTimeout(() => { _t = null; sweep(); }, 80);
   }).observe(document.body, { childList: true, subtree: true });
 })();
