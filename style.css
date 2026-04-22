@@ -7228,6 +7228,10 @@ h3:hover {
 .intel-header .bc-group { color: #0F4C4A !important; opacity: .8; }
 .intel-header .bc-sep   { color: #0F4C4A !important; opacity: .55; }
 
+/* ── Dropdown options: always white bg + dark text so they're visible ── */
+select option { background: #FFFFFF !important; color: #0F4C4A !important; }
+[data-theme="dark"] select option { background: #0F1E3D !important; color: #E2E8F0 !important; }
+
 /* ── Unified hero size: every page hero card has the same dimensions ── */
 .view-header,
 .intel-header,

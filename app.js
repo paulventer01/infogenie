@@ -3445,37 +3445,42 @@ function renderCompetitorCards(comps) {
   // traffic where available, clearly labelled as AI-estimated where not
   const compTiles = comps.slice(0, 6).map(c => {
     const hasLive = !!c._realTraffic;
+    const tileBg = hasLive
+      ? 'linear-gradient(135deg,#A7F3D0 0%,#6EE7B7 100%)'
+      : 'linear-gradient(135deg,#A5F3FC 0%,#67E8F9 100%)';
+    const tagBg = hasLive ? '#065F46' : '#0E7490';
+    const tagText = '#FFFFFF';
     return `
-      <div style="background:${hasLive ? 'rgba(16,185,129,.08)' : 'rgba(255,255,255,.04)'};border:1px solid ${hasLive ? 'rgba(16,185,129,.3)' : 'rgba(255,255,255,.1)'};border-radius:10px;padding:12px;text-align:center">
-        <div style="font-size:0.68rem;font-weight:700;color:${hasLive ? '#10B981' : 'rgba(255,255,255,.4)'};text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${hasLive ? '📡 Live' : '📊 Benchmark'}</div>
-        <div style="font-size:0.78rem;font-weight:700;color:white;margin-bottom:2px">${c.name}</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.4);margin-bottom:6px">${c.url}</div>
-        <div style="font-size:0.72rem;color:${hasLive ? '#10B981' : 'rgba(255,255,255,.5)'};">${hasLive ? c._realTraffic + ' traffic/mo' : c.traffic + ' traffic'}</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.4);">${hasLive ? c._realKeywords + ' keywords' : c.ctr + ' CTR · ' + c.roas + '× ROAS'}</div>
+      <div style="background:${tileBg};border:1px solid rgba(15,76,74,.18);border-radius:12px;padding:14px 12px;text-align:center;box-shadow:0 2px 8px rgba(15,76,74,.10)">
+        <div style="display:inline-block;background:${tagBg};color:${tagText};font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:2px 8px;border-radius:10px;margin-bottom:8px">${hasLive ? '📡 Live' : '📊 Benchmark'}</div>
+        <div style="font-size:0.85rem;font-weight:800;color:#0A2F2D;margin-bottom:2px">${c.name}</div>
+        <div style="font-size:0.7rem;color:#134E4A;opacity:.8;margin-bottom:6px">${c.url}</div>
+        <div style="font-size:0.74rem;color:#0A2F2D;font-weight:700">${hasLive ? c._realTraffic + ' traffic/mo' : c.traffic + ' traffic'}</div>
+        <div style="font-size:0.7rem;color:#134E4A;opacity:.85">${hasLive ? c._realKeywords + ' keywords' : c.ctr + ' CTR · ' + c.roas + '× ROAS'}</div>
       </div>`;
   }).join('');
 
   const realCompsPanel = `
-    <div style="background:var(--ig-grad);border-radius:14px;padding:18px 20px;margin-bottom:18px;border:1px solid rgba(0,201,200,.2)">
+    <div style="background:linear-gradient(135deg,#ECFEFF 0%,#F0FDFA 100%);border-radius:14px;padding:18px 20px;margin-bottom:18px;border:1px solid rgba(15,76,74,.14);box-shadow:0 4px 14px rgba(15,76,74,.08)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-        <span style="font-family:Sora,sans-serif;font-size:0.875rem;font-weight:800;color:white">📡 Live Competitor Intelligence</span>
+        <span style="font-family:Sora,sans-serif;font-size:0.875rem;font-weight:800;color:#0A2F2D">📡 Live Competitor Intelligence</span>
         ${liveCount > 0
-          ? `<span style="background:linear-gradient(135deg,#00C9C8,#0066FF);border-radius:20px;padding:3px 10px;font-size:0.68rem;font-weight:700;color:white">${liveCount} LIVE · DataForSEO</span>`
-          : `<span style="background:rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:0.68rem;font-weight:600;color:rgba(255,255,255,.6)">AI BENCHMARKS</span>`}
-        <span style="font-size:0.72rem;color:rgba(255,255,255,.4);margin-left:auto">Same competitors used across all views · Updated ${new Date().toLocaleTimeString()}</span>
+          ? `<span style="background:linear-gradient(135deg,#10B981,#0E7490);border-radius:20px;padding:3px 10px;font-size:0.68rem;font-weight:800;color:white">${liveCount} LIVE · DataForSEO</span>`
+          : `<span style="background:#FFFFFF;border:1px solid rgba(15,76,74,.18);border-radius:20px;padding:3px 10px;font-size:0.68rem;font-weight:800;color:#0F4C4A">AI BENCHMARKS</span>`}
+        <span style="font-size:0.72rem;color:#0F4C4A;opacity:.7;margin-left:auto">Same competitors used across all views · Updated ${new Date().toLocaleTimeString()}</span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
         ${yourReal ? `
-          <div style="background:rgba(0,201,200,.1);border:1px solid rgba(0,201,200,.4);border-radius:10px;padding:12px;text-align:center">
-            <div style="font-size:0.68rem;font-weight:700;color:#00C9C8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🏠 Your Domain</div>
-            <div style="font-size:0.78rem;font-weight:700;color:white;margin-bottom:2px">${yourReal.domain}</div>
-            <div style="font-size:0.72rem;color:#00C9C8">${_fmt(yourReal.organicTraffic)} traffic/mo</div>
-            <div style="font-size:0.7rem;color:rgba(255,255,255,.5)">${_fmt(yourReal.organicKeywords)} keywords</div>
+          <div style="background:linear-gradient(135deg,#5EEAD4 0%,#2DD4BF 100%);border:1px solid rgba(15,76,74,.25);border-radius:12px;padding:14px 12px;text-align:center;box-shadow:0 2px 8px rgba(15,76,74,.12)">
+            <div style="display:inline-block;background:#0F4C4A;color:#FFFFFF;font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:2px 8px;border-radius:10px;margin-bottom:8px">🏠 Your Domain</div>
+            <div style="font-size:0.85rem;font-weight:800;color:#0A2F2D;margin-bottom:2px">${yourReal.domain}</div>
+            <div style="font-size:0.74rem;color:#0A2F2D;font-weight:700">${_fmt(yourReal.organicTraffic)} traffic/mo</div>
+            <div style="font-size:0.7rem;color:#134E4A;opacity:.85">${_fmt(yourReal.organicKeywords)} keywords</div>
           </div>
         ` : ''}
         ${compTiles}
       </div>
-      <div style="margin-top:10px;font-size:0.7rem;color:rgba(255,255,255,.3)">
+      <div style="margin-top:10px;font-size:0.7rem;color:#0F4C4A;opacity:.75">
         📊 These are the same competitors benchmarked in your Dashboard, Campaigns, and Audience views.
         ${liveCount > 0 ? `${liveCount} have live traffic data from DataForSEO —` : 'Traffic data is DataForSEO where available,'} campaign metrics (CTR, ROAS) are AI-estimated industry benchmarks.
       </div>
