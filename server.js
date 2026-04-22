@@ -3358,6 +3358,93 @@ CRITICAL RULES for "competitors":
   }
 });
 
+// ── POST /api/sector-competitors ──────────────────────────────────────────────
+// Given a free-form industry/sub-niche string (e.g. "Online CFD broker",
+// "Pet insurance", "Vegan meal delivery"), returns 6-10 REAL, currently-operating
+// direct competitors in that exact niche, optionally biased to a country market.
+// Used when the user analyses by sector alone OR when they type an industry to
+// refine the URL-based detection.
+app.post('/api/sector-competitors', async (req, res) => {
+  try {
+    const { industry, country, urlHint } = req.body || {};
+    if (!industry || typeof industry !== 'string' || industry.trim().length < 2) {
+      return res.status(400).json({ error: 'industry string required' });
+    }
+    const industryClean = industry.trim().slice(0, 120);
+    const countryClean  = (country && typeof country === 'string') ? country.trim().slice(0, 40) : '';
+    const urlClean      = urlHint ? String(urlHint).replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase() : '';
+
+    const prompt = `You are a senior market-research analyst with deep knowledge of every B2B and B2C sub-vertical. The user wants to analyse competitors in the following niche.
+
+INDUSTRY / SUB-NICHE: "${industryClean}"
+TARGET MARKET: ${countryClean || '(global / not specified)'}
+${urlClean ? `USER'S OWN DOMAIN (exclude from results): ${urlClean}` : ''}
+
+TASK — return ONLY valid JSON, no markdown, no commentary:
+{
+  "industryName": "<canonical, specific industry label, e.g. 'Online CFD & Forex Trading Brokers' or 'Direct-to-Consumer Pet Insurance'>",
+  "subNiche": "<2-5 word sub-niche label>",
+  "competitors": [
+    { "name": "<real, currently-operating company>", "url": "<their primary domain, e.g. example.com>", "why": "<one sentence: why they directly compete in this exact niche>", "marketShare": "<rough qualitative descriptor: 'market leader' / 'top-5' / 'challenger' / 'niche player'>" }
+  ]
+}
+
+CRITICAL RULES:
+- Return EXACTLY 8 competitors (or as close as possible — never fewer than 6).
+- Every competitor MUST operate in the SAME exact sub-niche as the input — not just the same broad industry. If the input is "online CFD broker", do NOT list generic fintechs or stock-trading apps; list real CFD brokers (eToro, IG, Plus500, XM, CMC Markets, AvaTrade, Pepperstone, OANDA, Saxo, FXCM, FxPro, ThinkMarkets, etc.).
+- Use real, currently-operating, well-known company domains. No invented names. No defunct businesses.
+- Prioritise competitors that are active and visible in the target market (${countryClean || 'global'}). Mix in 1-2 global leaders for benchmark context if the niche is mostly local.
+- Domains must be the company's actual primary domain (e.g. "etoro.com", not "etoro.com/uk" or "etoro").
+- Do NOT include the user's own domain (${urlClean || 'n/a'}) in the results.
+- Order results by market relevance (most relevant first).
+- Be very specific — for "vegan meal delivery", list other vegan-only meal delivery brands; for "B2B SaaS project management", list Asana/Monday/ClickUp/Wrike/etc.; for "pet insurance", list Trupanion/Lemonade Pet/Healthy Paws/Embrace/etc.`;
+
+    let aiResult = null;
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'You are a precise market-research analyst with encyclopedic knowledge of real-world companies in every sub-niche. Output strict JSON only — no markdown, no prose. Always pick competitors operating in the user\'s exact sub-niche, never just the broad industry.' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.15,
+        max_tokens: 1400,
+        response_format: { type: 'json_object' },
+      });
+      const raw = completion.choices?.[0]?.message?.content || '{}';
+      aiResult = JSON.parse(raw);
+    } catch (aiErr) {
+      console.error('sector-competitors OpenAI error:', aiErr.message);
+      return res.status(502).json({ error: 'AI lookup failed', detail: aiErr.message });
+    }
+
+    const competitors = Array.isArray(aiResult.competitors) ? aiResult.competitors
+      .filter(c => c && c.name && c.url)
+      .map(c => ({
+        name: String(c.name).trim().slice(0, 60),
+        url:  String(c.url).replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].trim().toLowerCase(),
+        why:  String(c.why || '').trim().slice(0, 200),
+        marketShare: String(c.marketShare || '').trim().slice(0, 30),
+      }))
+      .filter(c => c.url && c.url !== urlClean)
+      // de-duplicate by domain
+      .filter((c, i, arr) => arr.findIndex(x => x.url === c.url) === i)
+      .slice(0, 10) : [];
+
+    res.json({
+      ok: true,
+      industryName: String(aiResult.industryName || industryClean).trim().slice(0, 80),
+      subNiche: String(aiResult.subNiche || '').trim().slice(0, 60),
+      country: countryClean || null,
+      competitors,
+      count: competitors.length,
+    });
+  } catch (err) {
+    console.error('/api/sector-competitors error:', err);
+    res.status(500).json({ error: err.message || 'Internal error' });
+  }
+});
+
 // ── POST /api/competitor-deep-analysis ────────────────────────────────────────
 // Scrapes ONE specific competitor's homepage and uses GPT-4o to produce a
 // targeted, side-by-side analysis vs the user's own site + industry context.

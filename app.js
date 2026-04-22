@@ -2068,6 +2068,21 @@ async function runAnalysis(url, country, industryOverride) {
         body: JSON.stringify({ url: cleanUrl })
       }).then(r => r.ok ? r.json() : null).catch(err => { console.warn('smart-detect failed:', err); return null; });
 
+  // ── If user typed an industry (sector-only OR refining a URL), call the
+  //    AI sector-competitors endpoint to get REAL same-niche competitors.
+  //    This solves the "search by industry returns wrong companies" problem.
+  const sectorPromise = hasIndustry
+    ? fetch('/api/sector-competitors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          industry: industryOverride.trim(),
+          country: country || '',
+          urlHint: hasUrl ? cleanUrl : ''
+        })
+      }).then(r => r.ok ? r.json() : null).catch(err => { console.warn('sector-competitors failed:', err); return null; })
+    : Promise.resolve(null);
+
   const industry = INDUSTRY_DB[industryKey];
   const websiteKPIs = generateWebsiteKPIs(cleanUrl, industryKey);
   igTrack('Analysis Started', { domain: cleanUrl, country, industry: industry.name, industrySource });
@@ -2143,7 +2158,27 @@ async function runAnalysis(url, country, industryOverride) {
   // ── Await live AI smart-detection result (already running in background) ───
   // If it returned real competitors + a sharper industry name, override the DB.
   let aiDetected = null;
+  let sectorDetected = null;
   try { aiDetected = await smartDetectPromise; } catch(e) { aiDetected = null; }
+  try { sectorDetected = await sectorPromise; } catch(e) { sectorDetected = null; }
+
+  // ── Sector AI result takes PRIORITY when the user typed an industry —
+  //    it returns real same-niche competitors regardless of URL detection.
+  if (sectorDetected && sectorDetected.ok && Array.isArray(sectorDetected.competitors) && sectorDetected.competitors.length >= 3) {
+    // Reshape to look like the smart-detect payload so the existing handler picks it up.
+    aiDetected = {
+      ok: true,
+      industryName: sectorDetected.industryName || industryOverride.trim(),
+      businessSummary: '',
+      competitors: sectorDetected.competitors,
+      _source: 'sector',
+    };
+    if (hintEl) {
+      hintEl.textContent = `✓ AI-matched ${sectorDetected.competitors.length} ${sectorDetected.industryName || 'industry'} competitors`;
+      hintEl.style.color = '#00C9C8';
+    }
+  }
+
   let displayIndustryName = industry.name;
   let aiCompetitorPool = null;
   if (aiDetected && aiDetected.ok) {
