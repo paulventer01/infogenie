@@ -2158,6 +2158,7 @@ async function runAnalysis(url, country, industryOverride) {
 
   // Store analysis data
   analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps };
+  try { localStorage.setItem('ig-last-analysed-url', cleanUrl); } catch(e){}
   igTrack('Analysis Completed', { domain: cleanUrl, industry: industry.name, competitorCount: selectedComps.length, country });
 
   // ── WordPress Detection (non-blocking, runs in background) ──────────────────
@@ -15702,13 +15703,17 @@ window.openReEngageCopyModal = async function(id, name, company, channel, reason
     reecTimerEl.textContent = sec.toFixed(1) + 's';
   }, 100);
 
-  // Fetch AI copy
-  const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
-  const industry = analysisData?.industry?.name || 'your industry';
+  // Fetch AI copy — resolve sender domain/brand from analysis (with persisted fallback)
+  let resolvedUrl = analysisData?.url;
+  if (!resolvedUrl) { try { resolvedUrl = localStorage.getItem('ig-last-analysed-url') || ''; } catch(e){ resolvedUrl = ''; } }
+  const domain    = (resolvedUrl || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0] || 'yourdomain.com';
+  const brandSlug = domain.split('.')[0] || 'our';
+  const brandName = brandSlug.charAt(0).toUpperCase() + brandSlug.slice(1);
+  const industry  = analysisData?.industry?.name || 'your industry';
   try {
     const res  = await fetch('/api/reengage-copy', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ name, company, channel, reason, value, domain, industry })
+      body: JSON.stringify({ name, company, channel, reason, value, domain, brandName, industry })
     });
     const data = await res.json();
     clearInterval(reecTimerInt);
@@ -15761,15 +15766,19 @@ window.launchCustomSequence = function() {
 window.generateSequenceContent = async function() {
   const btn = document.getElementById('genSeqBtn');
   if (btn) { btn.disabled=true; btn.textContent='⏳ Generating…'; }
-  const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
-  const industry = analysisData?.industry?.name || 'your industry';
+  let resolvedUrl = analysisData?.url;
+  if (!resolvedUrl) { try { resolvedUrl = localStorage.getItem('ig-last-analysed-url') || ''; } catch(e){ resolvedUrl = ''; } }
+  const domain    = (resolvedUrl || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0] || 'yourdomain.com';
+  const brandSlug = domain.split('.')[0] || 'our';
+  const brandName = brandSlug.charAt(0).toUpperCase() + brandSlug.slice(1);
+  const industry  = analysisData?.industry?.name || 'your industry';
   const seq      = window._reEngageSeq || [];
   try {
     for (let i = 0; i < seq.length; i++) {
       const s = seq[i];
       const res = await fetch('/api/reengage-copy', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ name:'[First Name]', company:'[Company]', channel:s.channel, reason:'inactivity', value:1200, domain, industry, step:s.label, tone:s.tone, sequenceStep:true })
+        body: JSON.stringify({ name:'[First Name]', company:'[Company]', channel:s.channel, reason:'inactivity', value:1200, domain, brandName, industry, step:s.label, tone:s.tone, sequenceStep:true })
       });
       const d = await res.json();
       if (s.channel === 'Email' && d.email) {

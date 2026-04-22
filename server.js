@@ -1834,7 +1834,7 @@ Make KPIs realistic for the industry and budget. Use authoritative, professional
 app.post('/api/reengage-copy', async (req, res) => {
   try {
     const { name='[First Name]', company='[Company]', channel='Email', reason='inactivity', value=1000,
-            domain='yourdomain.com', industry='your industry', step='', tone='', sequenceStep=false,
+            domain='yourdomain.com', brandName='', industry='your industry', step='', tone='', sequenceStep=false,
             counterOffer=false, compName='', offer='', angle='' } = req.body;
 
     if (counterOffer) {
@@ -1861,12 +1861,23 @@ Keep it under 200 words. Return only the strategy text, no headings.`;
       ? `This is step "${step}" in a re-engagement sequence. Tone: ${tone}.`
       : `This lead has been dormant for some time. Reason they may have left: ${reason}. Their estimated value: $${value}.`;
 
-    const senderBrand = (domain || '').replace(/^www\./i,'').split('.')[0] || 'our team';
-    const senderBrandTitle = senderBrand.charAt(0).toUpperCase() + senderBrand.slice(1);
+    const cleanDomain = (domain || '').replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0];
+    const isPlaceholderDomain = !cleanDomain || /^yourdomain\.com$/i.test(cleanDomain);
+    const senderBrandTitle = brandName && brandName.trim()
+      ? brandName.trim()
+      : (isPlaceholderDomain
+          ? 'Our Team'
+          : (cleanDomain.split('.')[0].charAt(0).toUpperCase() + cleanDomain.split('.')[0].slice(1)));
+    const senderDomainDisplay = isPlaceholderDomain ? '' : cleanDomain;
+    const signatureLine = senderDomainDisplay
+      ? `${senderBrandTitle} (${senderDomainDisplay})`
+      : senderBrandTitle;
 
-    const prompt = `You are a world-class re-engagement copywriter writing ON BEHALF OF ${domain} (a ${industry} company).
+    const senderRefDomain = senderDomainDisplay || senderBrandTitle;
 
-SENDER (the company writing this outreach): ${senderBrandTitle} (${domain}) — a ${industry} brand.
+    const prompt = `You are a world-class re-engagement copywriter writing ON BEHALF OF ${senderBrandTitle}${senderDomainDisplay ? ' ('+senderDomainDisplay+')' : ''} — a ${industry} brand.
+
+SENDER (the company writing this outreach): ${senderBrandTitle}${senderDomainDisplay ? ' — '+senderDomainDisplay : ''}.
 RECIPIENT (the lapsed lead being contacted): ${name} at ${company}.
 ${context}
 Primary outreach channel: ${channel}.
@@ -1878,15 +1889,16 @@ Generate re-engagement copy in JSON format:
   "social": "..."
 }
 
-CRITICAL Rules:
-- The message is FROM ${senderBrandTitle} (${domain}) TO ${name} at ${company}. Never reverse this.
+CRITICAL Rules — DO NOT VIOLATE:
+- The message is FROM ${senderBrandTitle}${senderDomainDisplay ? ' ('+senderDomainDisplay+')' : ''} TO ${name} at ${company}. Never reverse this.
 - Address ${name} by first name. Refer to "you" / "your team at ${company}" when speaking to the recipient.
-- Sign off as the ${senderBrandTitle} team / ${domain}. NEVER sign as ${name} or ${company} — they are the recipient, not the sender.
-- The signature block must say something like "Warm regards,\\nThe ${senderBrandTitle} Team" or "[Your Name]\\n${senderBrandTitle} (${domain})". Do NOT put ${name} or ${company} in the signature.
-- email.body: 3–4 short paragraphs, personal, empathetic, clear value, soft CTA. Max 180 words.
+- Sign off as the ${senderBrandTitle} team. NEVER sign the email as ${name} or ${company} — they are the recipient, not the sender.
+- The signature block MUST be exactly two lines: "Warm regards," on one line, then "The ${senderBrandTitle} Team" on the next line. Do NOT add any other lines after the signature. Do NOT put ${name} or ${company} anywhere in the signature.
+- Reference the sender brand "${senderBrandTitle}"${senderDomainDisplay ? ' (or the website '+senderDomainDisplay+')' : ''} naturally in the body — never use placeholders like "Yourdomain", "yourdomain.com", "[Company]", or generic stand-ins.
+- email.body: 3–4 short paragraphs, personal, empathetic, clear value, soft CTA. Max 180 words. End with the exact two-line signature above.
 - ad: headline max 8 words, body max 2 sentences, strong CTA button text.
-- social: LinkedIn/social DM sent BY someone at ${senderBrandTitle} TO ${name}. Max 80 words. Value-first, no hard sell.
-- Reference ${domain} / ${senderBrandTitle} as the sender naturally. Never mention competitor names.
+- social: LinkedIn/social DM sent BY someone at ${senderBrandTitle} TO ${name}. Max 80 words. Value-first, no hard sell. Sign with "— The ${senderBrandTitle} Team" at the end.
+- Never mention competitor names.
 - Tone: warm, human, professional. ${tone ? 'Requested tone: '+tone+'.' : ''}
 Return valid JSON only.`;
 
