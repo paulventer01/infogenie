@@ -15656,7 +15656,7 @@ window.openReEngageCopyModal = async function(id, name, company, channel, reason
       <div style="background:linear-gradient(135deg,#92400E,#D97706);border-radius:20px 20px 0 0;padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
         <div>
           <div style="font-size:0.62rem;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.1em;margin-bottom:3px">AI Re-engagement Copy</div>
-          <div style="font-family:'Space Grotesk',sans-serif;font-size:1.05rem;font-weight:800;color:white">${name} · ${company}</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:1.05rem;font-weight:800;color:white">${name}</div>
         </div>
         <button id="reec-close" style="background:rgba(255,255,255,.15);border:none;border-radius:50%;width:32px;height:32px;font-size:1.1rem;color:white;cursor:pointer;line-height:32px;text-align:center">✕</button>
       </div>
