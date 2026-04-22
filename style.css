@@ -6851,3 +6851,20 @@ h3:hover {
 [style*="#F5F3FF 0%,#EDE9FE"] [style*="rgba(255,255,255,0.03)"] {
   background: rgba(99,102,241,0.06) !important;
 }
+
+/* ── Re-Engagement Hub hero banner — keep white text on amber bg in light mode ── */
+[style*="#92400E,#B45309,#D97706"],
+[style*="#92400E,#B45309,#D97706"] * {
+  color: #FFFFFF !important;
+}
+[style*="#92400E,#B45309,#D97706"] [style*="rgba(255,255,255,.55)"],
+[style*="#92400E,#B45309,#D97706"] [style*="rgba(255,255,255,.6)"] {
+  color: rgba(255,255,255,.85) !important;
+}
+[style*="#92400E,#B45309,#D97706"] [style*="rgba(255,255,255,.75)"] {
+  color: rgba(255,255,255,.95) !important;
+}
+/* Deepen the gradient slightly so white text has stronger contrast */
+[data-theme="light"] [style*="#92400E,#B45309,#D97706"] {
+  background: linear-gradient(135deg,#7C2D12,#9A3412,#C2410C) !important;
+}
