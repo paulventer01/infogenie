@@ -2153,24 +2153,32 @@ async function runAnalysis(url, country, industryOverride) {
     }
     if (Array.isArray(aiDetected.competitors) && aiDetected.competitors.length >= 3) {
       // Convert AI competitors into the same shape the rest of the UI expects.
-      aiCompetitorPool = aiDetected.competitors.map(c => ({
-        name: c.name,
-        domain: c.url,
-        url: c.url,
-        why: c.why,
-        roas: parseFloat((Math.random() * 2 + 1.5).toFixed(1)),
-        ctr:  (Math.random() * 2 + 2).toFixed(1) + '%',
-        traffic: Math.floor(Math.random() * 900000 + 50000).toLocaleString(),
-        adSpend: `$${(Math.floor(Math.random() * 900 + 100))}K/mo`,
-        topChannel: ['Google Search','Meta Ads','TikTok','LinkedIn'][Math.floor(Math.random()*4)],
-        topChannels: [['Google Search','Meta Ads','TikTok','LinkedIn'][Math.floor(Math.random()*4)]],
-        suggestions: [
-          `Outflank ${c.name} on long-tail variations of their core keywords — they over-index on brand terms`,
-          `${c.name} relies heavily on ${['paid search','display','social'][Math.floor(Math.random()*3)]} — flip them with the opposite mix`,
-          `Use comparison content (${c.name} vs You) to capture their branded search intent`,
-        ],
-        aiDetected: true,
-      }));
+      aiCompetitorPool = aiDetected.competitors.map((c, idx) => {
+        const channels = ['Google Search','Meta Ads','TikTok','LinkedIn'];
+        const threats = ['critical','high','medium'];
+        const topCh = channels[Math.floor(Math.random()*channels.length)];
+        const initials = (c.name || '?').split(/\s+/).slice(0,2).map(s=>s.charAt(0).toUpperCase()).join('');
+        return {
+          name: c.name,
+          domain: c.url,
+          url: c.url,
+          why: c.why,
+          logo: initials || '?',
+          roas: parseFloat((Math.random() * 2 + 1.5).toFixed(1)),
+          ctr:  (Math.random() * 2 + 2).toFixed(1) + '%',
+          traffic: Math.floor(Math.random() * 900000 + 50000).toLocaleString(),
+          adSpend: `$${(Math.floor(Math.random() * 900 + 100))}K/mo`,
+          topChannel: topCh,
+          topChannels: [topCh],
+          threatLevel: threats[idx % threats.length],
+          suggestions: [
+            `Outflank ${c.name} on long-tail variations of their core keywords — they over-index on brand terms`,
+            `${c.name} relies heavily on ${['paid search','display','social'][Math.floor(Math.random()*3)]} — flip them with the opposite mix`,
+            `Use comparison content (${c.name} vs You) to capture their branded search intent`,
+          ],
+          aiDetected: true,
+        };
+      });
       industry.competitors = aiCompetitorPool;
       try { localStorage.setItem('ig-ai-detected', JSON.stringify({ industryName: aiDetected.industryName, businessSummary: aiDetected.businessSummary, competitors: aiDetected.competitors, at: Date.now() })); } catch(e){}
     }
@@ -2879,22 +2887,28 @@ function buildDashboard() {
   // Summary table
   window._threatCompetitors = competitors;
   const tbody = document.getElementById('compSummaryBody');
-  tbody.innerHTML = competitors.map((c, i) => `
-    <tr>
-      <td>
-        <div class="comp-name-cell">
-          <div class="comp-favicon">${c.logo}</div>
-          ${c.name}
-        </div>
-      </td>
-      <td>${c.traffic}</td>
-      <td><strong>${c.ctr}</strong></td>
-      <td><strong>${c.roas}×</strong></td>
-      <td>${c.adSpend}</td>
-      <td>${c.topChannel}</td>
-      <td><span class="threat-badge threat-${c.threatLevel} threat-badge-clickable" onclick="openThreatModal(${i})" title="Click for threat details">${cap(c.threatLevel)} Threat ↗</span></td>
-    </tr>
-  `).join('');
+  const safeCap = s => { const x = String(s || 'medium'); return x.charAt(0).toUpperCase() + x.slice(1); };
+  tbody.innerHTML = competitors.map((c, i) => {
+    const lvl = (c.threatLevel || 'medium').toLowerCase();
+    const initials = c.logo || (c.name || '?').split(/\s+/).slice(0,2).map(s=>s.charAt(0).toUpperCase()).join('');
+    const channel = c.topChannel || (c.topChannels && c.topChannels[0]) || 'Google Search';
+    return `
+      <tr>
+        <td>
+          <div class="comp-name-cell">
+            <div class="comp-favicon">${initials}</div>
+            ${c.name || c.domain || '—'}
+          </div>
+        </td>
+        <td>${c.traffic ?? '—'}</td>
+        <td><strong>${c.ctr ?? '—'}</strong></td>
+        <td><strong>${c.roas ?? '—'}×</strong></td>
+        <td>${c.adSpend ?? '—'}</td>
+        <td>${channel}</td>
+        <td><span class="threat-badge threat-${lvl} threat-badge-clickable" onclick="openThreatModal(${i})" title="Click for threat details">${safeCap(lvl)} Threat ↗</span></td>
+      </tr>
+    `;
+  }).join('');
 
   // ── Live Data Panels ──────────────────────────────────────────────────────
   const liveWrap = document.getElementById('dashLivePanels');
