@@ -3377,6 +3377,14 @@ function buildCompetitors() {
   const sel = document.getElementById('compFilterSel');
   sel.innerHTML = '<option value="all">All Competitors</option>' +
     competitors.map(c => `<option value="${c.url}">${c.name}</option>`).join('');
+
+  // Populate green hero stat tiles
+  const liveCount = competitors.filter(c => c._dataSource === 'DataForSEO' || c._realTraffic).length;
+  const aiCount   = competitors.filter(c => c.aiDetected).length;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('compHeroTotal', competitors.length);
+  set('compHeroLive',  liveCount);
+  set('compHeroAi',    aiCount);
   
   renderCompetitorCards(competitors);
   
