@@ -2733,20 +2733,27 @@ function buildDashboard() {
 
   const aiBadge = `<span style="font-size:.65rem;background:#F1F5F9;color:#94A3B8;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px" title="AI-estimated figure based on industry benchmarks and competitor analysis. Not pulled from a live ad account.">AI EST.</span>`;
 
-  // ── Whose-data-is-this footer line for every KPI tile ─────────────────────
-  // Makes it visually obvious whether a number is YOUR site, the COMPETITOR
-  // average, the BROADER industry benchmark, or a LIVE third-party feed.
+  // ── Whose-data-is-this indicators for every KPI tile ──────────────────────
+  // Two layers so it's UNMISSABLE:
+  // 1) Bold coloured RIBBON at the top of the tile (large, always visible)
+  // 2) Small footer line at the bottom with full details
   const yourDomain = (url || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0];
   const compNamesShort = competitors.slice(0, 3).map(c => c.name).join(', ') + (competitors.length > 3 ? ` +${competitors.length - 3}` : '');
-  const srcYou        = `<div class="kpi-source kpi-source-you"   title="This figure represents your own website: ${yourDomain}">📍 Your site · <strong>${yourDomain}</strong></div>`;
-  const srcComp       = `<div class="kpi-source kpi-source-comp"  title="Average across the ${competitors.length} competitors: ${compNamesShort}">⚔️ Avg of ${competitors.length} competitors · <strong>${compNamesShort}</strong></div>`;
-  const srcIndustry   = `<div class="kpi-source kpi-source-ind"   title="Broad industry benchmark for ${industry.name} — not your data, not a specific competitor.">🏷️ Industry benchmark · <strong>${industry.name}</strong></div>`;
-  const srcLive       = `<div class="kpi-source kpi-source-live"  title="Live measurement from DataForSEO for your domain ${yourDomain}.">📡 DataForSEO live · <strong>${yourDomain}</strong></div>`;
-  const srcAiScore    = `<div class="kpi-source kpi-source-ai"    title="Composite score calculated for your site (${yourDomain}) using your KPIs vs the ${competitors.length} tracked competitors.">🤖 AI score for <strong>${yourDomain}</strong> vs ${competitors.length} rivals</div>`;
+
+  const ribbonYou    = `<div class="kpi-ribbon kpi-ribbon-you"  title="This number is your site's data: ${yourDomain}">📍 YOUR SITE</div>`;
+  const ribbonInd    = `<div class="kpi-ribbon kpi-ribbon-ind"  title="Broad industry benchmark for ${industry.name} — not your data">🏷️ INDUSTRY BENCHMARK</div>`;
+  const ribbonLive   = `<div class="kpi-ribbon kpi-ribbon-live" title="Live data pulled from DataForSEO for ${yourDomain}">📡 LIVE — YOUR SITE</div>`;
+  const ribbonAi     = `<div class="kpi-ribbon kpi-ribbon-ai"   title="AI composite score for ${yourDomain} vs the ${competitors.length} tracked competitors">🤖 YOUR SITE vs RIVALS</div>`;
+
+  const srcYou      = `<div class="kpi-source kpi-source-you"  title="This figure represents your own website: ${yourDomain}">📍 Your site · <strong>${yourDomain}</strong></div>`;
+  const srcIndustry = `<div class="kpi-source kpi-source-ind"  title="Broad industry benchmark for ${industry.name} — not your data, not a specific competitor.">🏷️ Industry benchmark · <strong>${industry.name}</strong></div>`;
+  const srcLive     = `<div class="kpi-source kpi-source-live" title="Live measurement from DataForSEO for your domain ${yourDomain}.">📡 DataForSEO live · <strong>${yourDomain}</strong></div>`;
+  const srcAiScore  = `<div class="kpi-source kpi-source-ai"   title="Composite score calculated for your site (${yourDomain}) using your KPIs vs the ${competitors.length} tracked competitors.">🤖 AI score for <strong>${yourDomain}</strong> vs ${competitors.length} rivals</div>`;
 
   const kpiGrid = document.getElementById('kpiGrid');
   kpiGrid.innerHTML = `
     <div class="kpi-card kpi-blue" title="Click-Through Rate: the % of people who click your ad after seeing it. Industry avg for ${industry.name} competitors is ${avgCTR.toFixed(2)}%.">
+      ${ribbonYou}
       ${aiBadge}
       <div class="kpi-icon">📊</div>
       <div class="kpi-label">Your CTR Benchmark</div>
@@ -2757,6 +2764,7 @@ function buildDashboard() {
       ${srcYou}
     </div>
     <div class="kpi-card kpi-teal" title="Return on Ad Spend: revenue earned per £/$1 spent on ads. Your competitors average ${avgROAS.toFixed(1)}× ROAS.">
+      ${ribbonYou}
       ${aiBadge}
       <div class="kpi-icon">🎯</div>
       <div class="kpi-label">Your ROAS Benchmark</div>
@@ -2767,6 +2775,7 @@ function buildDashboard() {
       ${srcYou}
     </div>
     <div class="kpi-card kpi-green" title="Cost Per Acquisition: estimated ad spend to win one new customer in your industry.">
+      ${ribbonInd}
       ${aiBadge}
       <div class="kpi-icon">💰</div>
       <div class="kpi-label">CPA Benchmark</div>
@@ -2775,6 +2784,7 @@ function buildDashboard() {
       ${srcIndustry}
     </div>
     <div class="kpi-card kpi-gold" title="Estimated organic visits per month${realTraffic ? ' — sourced from DataForSEO live data' : ' — AI-estimated industry benchmark for your domain'}.">
+      ${realTraffic ? ribbonLive : ribbonYou}
       ${trafficBadge}
       <div class="kpi-icon">👥</div>
       <div class="kpi-label">Est. Monthly Traffic</div>
@@ -2783,6 +2793,7 @@ function buildDashboard() {
       ${realTraffic ? srcLive : srcYou}
     </div>
     <div class="kpi-card kpi-purple" title="Conversion Rate: % of visitors who take a desired action (sign up, purchase). ${industry.name} market average is 3.1%.">
+      ${ribbonYou}
       ${aiBadge}
       <div class="kpi-icon">📈</div>
       <div class="kpi-label">Your Conv. Rate</div>
@@ -2793,6 +2804,7 @@ function buildDashboard() {
       ${srcYou}
     </div>
     <div class="kpi-card kpi-blue" title="AI-calculated score combining your CTR, ROAS and conversion benchmarks vs. competitor averages. Higher = more growth opportunity.">
+      ${ribbonAi}
       <span style="font-size:.65rem;background:#0066FF20;color:#0066FF;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px" title="Composite score calculated by AI — combines CTR efficiency, ROAS performance and conversion rate benchmarks from all your tracked competitors.">AI SCORE</span>
       <div class="kpi-icon">🚀</div>
       <div class="kpi-label">AI Opportunity Score</div>

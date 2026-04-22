@@ -7097,3 +7097,14 @@ h3:hover {
 [data-theme="dark"] .cmsec-counter ol { color: #F1F5F9; }
 [data-theme="dark"] .cm-skel-bar { background: linear-gradient(90deg, #1E293B 0%, #334155 50%, #1E293B 100%); }
 [data-theme="dark"] .cm-note { background: rgba(245,158,11,.15); color: #FCD34D; border-left-color: #F59E0B; }
+
+/* ── KPI tile "whose data" RIBBONS — bold, unmissable ───────────────────── */
+.kpi-card { position: relative; }
+.kpi-ribbon { position: absolute; top: 0; left: 0; right: 0; padding: 6px 12px; font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #FFFFFF; border-radius: 14px 14px 0 0; text-align: center; line-height: 1.2; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+.kpi-ribbon-you  { background: linear-gradient(135deg, #0066FF, #2563EB); }
+.kpi-ribbon-ind  { background: linear-gradient(135deg, #8B5CF6, #7C3AED); }
+.kpi-ribbon-live { background: linear-gradient(135deg, #10B981, #059669); animation: kpi-ribbon-pulse 2s ease-in-out infinite; }
+.kpi-ribbon-ai   { background: linear-gradient(135deg, #06B6D4, #0891B2); }
+@keyframes kpi-ribbon-pulse { 0%,100% { box-shadow: 0 2px 6px rgba(16,185,129,.3) } 50% { box-shadow: 0 2px 14px rgba(16,185,129,.7) } }
+/* Add top padding to tiles so the ribbon doesn't overlap the badge/icon */
+.kpi-card { padding-top: 38px !important; }
