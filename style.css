@@ -6868,3 +6868,15 @@ h3:hover {
 [data-theme="light"] [style*="#92400E,#B45309,#D97706"] {
   background: linear-gradient(135deg,#7C2D12,#9A3412,#C2410C) !important;
 }
+
+/* ── Re-Engagement Hub hero — guaranteed contrast on slate gradient ── */
+.ig-reengage-hero,
+.ig-reengage-hero * {
+  color: inherit;
+}
+.ig-reengage-hero > div > div:nth-child(1) { color: #FDBA74 !important; }
+.ig-reengage-hero > div > div:nth-child(2) { color: #FED7AA !important; }
+.ig-reengage-hero > div > div:nth-child(3) { color: #FFFFFF !important; }
+.ig-reengage-hero > div > div:nth-child(4) { color: rgba(255,255,255,0.92) !important; }
+[data-theme="light"] .ig-reengage-hero > div > div:nth-child(3) { color: #FFFFFF !important; }
+[data-theme="light"] .ig-reengage-hero > div > div:nth-child(4) { color: rgba(255,255,255,0.92) !important; }
