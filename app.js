@@ -15100,11 +15100,11 @@ function buildAutomations() {
     <div style="position:absolute;top:-30px;right:-30px;width:200px;height:200px;background:rgba(255,255,255,.05);border-radius:50%"></div>
     <div style="position:absolute;bottom:-50px;right:80px;width:150px;height:150px;background:rgba(255,255,255,.04);border-radius:50%"></div>
     <div style="position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
-      <div>
-        <div style="font-size:0.6rem;font-weight:800;color:rgba(255,255,255,.5);letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Grow › Automations</div>
-        <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Automation Center</div>
-        <div style="font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:800;color:white;line-height:1.2;margin-bottom:8px">Your Marketing<br>Runs Itself</div>
-        <div style="font-size:0.85rem;color:rgba(255,255,255,.75);max-width:480px">Activate any automation to put it on autopilot. InfoGenie monitors, decides, and acts — so you don't have to.</div>
+      <div class="ig-auto-hero-content">
+        <div class="ig-auto-eyebrow" style="font-size:0.6rem;font-weight:800;color:#A7F3D0 !important;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Grow › Automations</div>
+        <div class="ig-auto-tag" style="font-size:0.65rem;font-weight:700;color:#BBF7D0 !important;text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Automation Center</div>
+        <div class="ig-auto-title" style="font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:800;color:#FFFFFF !important;line-height:1.2;margin-bottom:8px;text-shadow:0 1px 2px rgba(0,0,0,0.25)">Your Marketing<br>Runs Itself</div>
+        <div class="ig-auto-desc" style="font-size:0.85rem;color:rgba(255,255,255,0.95) !important;max-width:480px;line-height:1.55">Activate any automation to put it on autopilot. InfoGenie monitors, decides, and acts — so you don't have to.</div>
       </div>
       <div style="display:flex;gap:14px;flex-wrap:wrap">
         ${[
