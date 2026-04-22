@@ -6893,16 +6893,35 @@ h3:hover {
   border-color: #94A3B8 !important;
 }
 
-/* Competitor ROAS Intelligence callout — readable in light mode */
+/* Competitor ROAS Intelligence callout — DARK mode (default) */
+.ig-roas-callout {
+  background: rgba(239,68,68,.12);
+  border: 1px solid rgba(239,68,68,.30);
+  color: #FECACA;
+}
+.ig-roas-callout span    { color: #FECACA; }
+.ig-roas-callout .ig-roas-q   { color: #FCA5A5; }
+.ig-roas-callout .ig-roas-avg { color: #67E8F9; }
+.ig-roas-callout .ig-roas-top { color: #6EE7B7; }
+
+/* Competitor ROAS Intelligence callout — LIGHT mode */
 [data-theme="light"] .ig-roas-callout {
   background: #FEF2F2 !important;
   border: 1px solid #FCA5A5 !important;
   color: #7F1D1D !important;
 }
-[data-theme="light"] .ig-roas-callout strong { color: #991B1B !important; }
-[data-theme="light"] .ig-roas-callout span { color: #7F1D1D !important; }
-[data-theme="light"] .ig-roas-callout strong[style*="67E8F9"] { color: #0E7490 !important; }
-[data-theme="light"] .ig-roas-callout strong[style*="6EE7B7"] { color: #047857 !important; }
+[data-theme="light"] .ig-roas-callout span         { color: #7F1D1D !important; }
+[data-theme="light"] .ig-roas-callout .ig-roas-q   { color: #991B1B !important; }
+[data-theme="light"] .ig-roas-callout .ig-roas-avg { color: #0E7490 !important; }
+[data-theme="light"] .ig-roas-callout .ig-roas-top { color: #047857 !important; }
+
+/* Master Calendar — tighten top spacing */
+#view-master-calendar .intel-header {
+  padding: calc(96px + 14px) 28px 22px !important;
+}
+#view-master-calendar .intel-header .breadcrumb { margin-bottom: 6px; }
+#view-master-calendar .intel-header .ih-title { margin: 0 0 4px; }
+#view-master-calendar .intel-header .ih-sub   { margin: 0; }
 
 /* Customise Results Panel — keep white text on dark navy bg in light mode */
 [data-theme="light"] #resultsCustPanel,
