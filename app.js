@@ -15784,7 +15784,7 @@ window.openReEngageCopyModal = async function(id, name, company, channel, reason
 window.fireReEngageAd = function(id, name, company) {
   window._reEngageContacted = window._reEngageContacted || {};
   window._reEngageContacted[id] = true;
-  showToast(`🚀 Retargeting ad launched to ${name} at ${company} — tracking in Results`);
+  showToast(`🚀 Retargeting ad launched to ${name} — tracking in Results`);
   const overlay = document.getElementById('reEngageCopyOverlay');
   if (overlay) overlay.remove();
   if (typeof buildReEngagement === 'function') buildReEngagement();
