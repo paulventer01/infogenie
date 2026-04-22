@@ -3229,54 +3229,85 @@ app.post('/api/smart-detect', async (req, res) => {
     const cleanInput = url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].trim().toLowerCase();
     const fetchUrl = 'https://' + cleanInput;
 
-    // ── 1) Fetch website HTML (with timeout + user-agent) ────────────────────
-    let html = '';
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 8000);
-      const r = await fetch(fetchUrl, {
-        signal: ctrl.signal,
-        redirect: 'follow',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; InfoGenieBot/1.0; +https://infogenie.ai/bot)',
-          'Accept': 'text/html,application/xhtml+xml',
-        },
-      });
-      clearTimeout(t);
-      if (r.ok) html = (await r.text()).slice(0, 80000);
-    } catch (fe) {
-      console.warn('smart-detect fetch failed:', fe.message);
-    }
+    // ── 1) Deep-scrape: homepage + likely "about/products/services" pages ────
+    const fetchPage = async (u, ms = 7000) => {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), ms);
+        const r = await fetch(u, {
+          signal: ctrl.signal,
+          redirect: 'follow',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; InfoGenieBot/1.0; +https://infogenie.ai/bot)',
+            'Accept': 'text/html,application/xhtml+xml',
+          },
+        });
+        clearTimeout(t);
+        if (!r.ok) return '';
+        return (await r.text()).slice(0, 120000);
+      } catch (e) { return ''; }
+    };
 
-    // ── 2) Extract signals from HTML ─────────────────────────────────────────
-    const pick = (re) => { const m = html.match(re); return m ? m[1].trim() : ''; };
+    const html = await fetchPage(fetchUrl, 8000);
+    const subPaths = ['/about', '/about-us', '/products', '/services', '/solutions', '/what-we-do', '/company'];
+    const subHtmls = await Promise.all(subPaths.map(p => fetchPage(fetchUrl + p, 5000)));
+    const allHtml = [html, ...subHtmls].join('\n');
+
+    // ── 2) Extract signals from combined HTML ────────────────────────────────
+    const pick = (re, src = html) => { const m = src.match(re); return m ? m[1].trim() : ''; };
     const title       = pick(/<title[^>]*>([\s\S]*?)<\/title>/i);
     const metaDesc    = pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
     const ogTitle     = pick(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
     const ogDesc      = pick(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i);
     const ogSiteName  = pick(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i);
     const keywords    = pick(/<meta[^>]+name=["']keywords["'][^>]+content=["']([^"']+)["']/i);
-    const h1s = (html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/gi) || [])
-      .slice(0, 3).map(s => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
-    const h2s = (html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/gi) || [])
+    const h1s = (allHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/gi) || [])
       .slice(0, 6).map(s => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
-    const bodyText = html
+    const h2s = (allHtml.match(/<h2[^>]*>([\s\S]*?)<\/h2>/gi) || [])
+      .slice(0, 12).map(s => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const bodyText = allHtml
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
       .replace(/<style[\s\S]*?<\/style>/gi, ' ')
       .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
       .replace(/\s+/g, ' ')
-      .trim().slice(0, 2500);
+      .trim().slice(0, 6000);
+
+    // ── 2b) Real organic competitors via DataForSEO (keyword-overlap based) ──
+    let dfsCompetitors = [];
+    if (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD) {
+      try {
+        const compRaw = await callDataForSEO(
+          '/v3/dataforseo_labs/google/competitors_domain/live',
+          [{ target: cleanInput, language_name: 'English', limit: 15 }],
+          12000
+        );
+        if (compRaw.status_code === 20000) {
+          const items = compRaw.tasks?.[0]?.result?.[0]?.items || [];
+          const SKIP = ['google.com','youtube.com','facebook.com','wikipedia.org','twitter.com','x.com','instagram.com','linkedin.com','reddit.com','amazon.com','pinterest.com','tiktok.com','quora.com','medium.com','forbes.com','bloomberg.com'];
+          dfsCompetitors = items
+            .map(i => i.domain)
+            .filter(d => d && !SKIP.some(s => d.includes(s)) && d.replace(/^www\./,'') !== cleanInput)
+            .slice(0, 15);
+          console.log(`[smart-detect] DataForSEO real competitors for ${cleanInput}:`, dfsCompetitors);
+        }
+      } catch (e) { console.warn('[smart-detect] DataForSEO competitors_domain failed:', e.message); }
+    }
 
     const signals = {
       domain: cleanInput,
       title, metaDesc, ogTitle, ogDesc, ogSiteName, keywords,
       h1: h1s, h2: h2s,
       sample: bodyText,
+      dfsCompetitors,
     };
 
     // ── 3) Ask OpenAI to classify + suggest real competitors ─────────────────
     const allowedKeys = ['ecommerce','fintech','saas','crypto','travel','education','marketing'];
-    const prompt = `You are a market-research analyst. Below is metadata scraped from a real website. Identify exactly what the business does, then return JSON.
+    const dfsList = dfsCompetitors.length
+      ? `\nREAL ORGANIC COMPETITORS (from live SERP keyword-overlap data — these domains rank for the SAME search terms as the target, so they are highly likely true competitors):\n${dfsCompetitors.map((d,i)=>`${i+1}. ${d}`).join('\n')}\n`
+      : '';
+    const prompt = `You are a senior market-research analyst. Below is rich metadata scraped from a real website (homepage + about/products/services pages combined), plus a list of real domains that compete on the same search keywords. Identify exactly what the business does and return the most accurate competitor list possible.
 
 DOMAIN: ${cleanInput}
 TITLE: ${title || '(none)'}
@@ -3287,8 +3318,9 @@ OG SITE NAME: ${ogSiteName || '(none)'}
 KEYWORDS META: ${keywords || '(none)'}
 H1 HEADINGS: ${h1s.join(' | ') || '(none)'}
 H2 HEADINGS: ${h2s.join(' | ') || '(none)'}
-BODY EXCERPT: ${bodyText || '(could not fetch)'}
-
+BODY EXCERPT (combined from homepage + about/products/services pages):
+${bodyText || '(could not fetch)'}
+${dfsList}
 TASK — return ONLY valid JSON, no markdown, no commentary:
 {
   "industryName": "<specific human-readable industry/sub-niche, e.g. 'Online CFD Trading Broker' or 'Pet Insurance' or 'B2B SaaS — Project Management'>",
@@ -3302,12 +3334,16 @@ TASK — return ONLY valid JSON, no markdown, no commentary:
 }
 
 CRITICAL RULES for "competitors":
-- List 6-10 REAL, well-known direct competitors operating in the SAME exact sub-niche (not just same broad industry).
-- Use real, currently-operating company domains. No invented names.
-- Do NOT include the analysed domain itself.
+- Return EXACTLY 8 competitors (never fewer than 6).
+- Every competitor MUST operate in the SAME exact sub-niche as the analysed business — not just the same broad industry.
+- STRONGLY PREFER domains from the "REAL ORGANIC COMPETITORS" list above when they genuinely match the sub-niche — they are verified to compete on the same search terms. Filter out any from that list that are clearly different niches (news sites, marketplaces, generic aggregators, parent-company portals, irrelevant verticals).
+- You may add 1-3 well-known direct competitors not in that list if they are obvious sub-niche leaders the SERP data missed.
+- Use real, currently-operating company domains (the company's primary domain only, no paths or subdomains). No invented names. No defunct businesses.
+- Do NOT include the analysed domain (${cleanInput}) itself.
 - Prioritise competitors active in the same geographic market when possible.
-- If the site looks like a CFD/forex broker, list other CFD/forex brokers (eToro, IG, Plus500, XM, CMC Markets, AvaTrade, Pepperstone, OANDA, Saxo, FXCM, etc.) — NOT generic fintechs.
-- If it's a pet insurance site, list pet insurance brands. Apply the same specificity to every niche.`;
+- If the site looks like a CFD/forex broker, list other CFD/forex brokers (eToro, IG, Plus500, XM, CMC Markets, AvaTrade, Pepperstone, OANDA, Saxo, FXCM, FxPro, ThinkMarkets, etc.) — NOT generic fintechs or stock-trading apps.
+- If it's a pet insurance site, list pet insurance brands. Apply the same sub-niche specificity to every industry.
+- Order results by market relevance / overlap (most direct competitor first).`;
 
     let aiResult = null;
     try {
@@ -3374,11 +3410,54 @@ app.post('/api/sector-competitors', async (req, res) => {
     const countryClean  = (country && typeof country === 'string') ? country.trim().slice(0, 40) : '';
     const urlClean      = urlHint ? String(urlHint).replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase() : '';
 
+    // ── Pull real SERP results for the niche via DataForSEO so the AI can
+    //    rank actual ranking domains rather than relying purely on memory.
+    let serpDomains = [];
+    if (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD) {
+      try {
+        const queries = [
+          `best ${industryClean} companies`,
+          `top ${industryClean} brands`,
+          `${industryClean} alternatives`,
+        ];
+        const SKIP = ['google.com','youtube.com','facebook.com','wikipedia.org','twitter.com','x.com','instagram.com','linkedin.com','reddit.com','amazon.com','pinterest.com','tiktok.com','quora.com','medium.com','forbes.com','bloomberg.com','techcrunch.com','g2.com','capterra.com','trustpilot.com','yelp.com'];
+        const tasks = queries.map(q => {
+          const t = { keyword: q, language_name: 'English', depth: 20 };
+          if (countryClean) t.location_name = countryClean;
+          return t;
+        });
+        const serpRaw = await callDataForSEO('/v3/serp/google/organic/live/advanced', tasks, 14000);
+        if (serpRaw.status_code === 20000) {
+          const counts = {};
+          (serpRaw.tasks || []).forEach(task => {
+            const items = task?.result?.[0]?.items || [];
+            items.forEach(it => {
+              if (it.type !== 'organic' || !it.domain) return;
+              const d = it.domain.replace(/^www\./, '').toLowerCase();
+              if (SKIP.some(s => d.includes(s))) return;
+              if (urlClean && d === urlClean) return;
+              counts[d] = (counts[d] || 0) + 1;
+            });
+          });
+          serpDomains = Object.entries(counts)
+            .sort((a,b) => b[1] - a[1])
+            .slice(0, 20)
+            .map(([d]) => d);
+          console.log(`[sector-competitors] SERP candidate domains for "${industryClean}":`, serpDomains);
+        }
+      } catch (e) { console.warn('[sector-competitors] SERP lookup failed:', e.message); }
+    }
+
+    const serpList = serpDomains.length
+      ? `\nLIVE SERP RANKING DOMAINS (these domains currently rank in Google for "best ${industryClean} companies", "top ${industryClean} brands", and "${industryClean} alternatives" — they are real candidate competitors):\n${serpDomains.map((d,i)=>`${i+1}. ${d}`).join('\n')}\n`
+      : '';
+
     const prompt = `You are a senior market-research analyst with deep knowledge of every B2B and B2C sub-vertical. The user wants to analyse competitors in the following niche.
 
 INDUSTRY / SUB-NICHE: "${industryClean}"
 TARGET MARKET: ${countryClean || '(global / not specified)'}
 ${urlClean ? `USER'S OWN DOMAIN (exclude from results): ${urlClean}` : ''}
+${serpList}
 
 TASK — return ONLY valid JSON, no markdown, no commentary:
 {
@@ -3391,6 +3470,8 @@ TASK — return ONLY valid JSON, no markdown, no commentary:
 
 CRITICAL RULES:
 - Return EXACTLY 8 competitors (or as close as possible — never fewer than 6).
+- STRONGLY PREFER domains from the "LIVE SERP RANKING DOMAINS" list above when they genuinely match the sub-niche — they are verified to currently rank for this niche on Google. Filter out any from that list that are clearly different niches (review sites, news, marketplaces, parent-company portals, irrelevant verticals).
+- You may add 1-3 well-known direct competitors not in that list if they are obvious sub-niche leaders the SERP missed.
 - Every competitor MUST operate in the SAME exact sub-niche as the input — not just the same broad industry. If the input is "online CFD broker", do NOT list generic fintechs or stock-trading apps; list real CFD brokers (eToro, IG, Plus500, XM, CMC Markets, AvaTrade, Pepperstone, OANDA, Saxo, FXCM, FxPro, ThinkMarkets, etc.).
 - Use real, currently-operating, well-known company domains. No invented names. No defunct businesses.
 - Prioritise competitors that are active and visible in the target market (${countryClean || 'global'}). Mix in 1-2 global leaders for benchmark context if the niche is mostly local.
