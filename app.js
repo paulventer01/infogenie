@@ -4300,8 +4300,57 @@ function buildAdvertise() {
     </div>`;
 
   const nb = document.getElementById('advertiseNewCampBtn');
-  if (nb) nb.onclick = () => { if (Object.values(conn).some(Boolean)) { const p = ADV_PLATFORMS.find(x=>conn[x.name]); if(p) openChannelCampaign(p.name, p.icon, p.color, p.bg); } else showToast('Connect at least one channel first'); };
+  if (nb) nb.onclick = () => openNewCampaignPicker();
 }
+
+window.openNewCampaignPicker = function() {
+  const conn = window._advertiseConnections || {};
+  const connected = ADV_PLATFORMS.filter(p => conn[p.name]);
+  document.getElementById('new-camp-picker-overlay')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'new-camp-picker-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.78);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+
+  const cardsHtml = connected.length ? connected.map(p => `
+    <button data-plat="${p.name}" class="ncp-pick" style="background:${p.bg};border:1.5px solid ${p.color}55;border-radius:14px;padding:16px 12px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;transition:all .15s;text-align:center" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 22px rgba(0,0,0,0.12)';this.style.borderColor='${p.color}'" onmouseout="this.style.transform='';this.style.boxShadow='';this.style.borderColor='${p.color}55'">
+      <div style="font-size:1.8rem;line-height:1">${p.icon}</div>
+      <div style="font-size:0.74rem;font-weight:800;color:#0A1628;line-height:1.25">${p.name}</div>
+      <div style="font-size:0.6rem;font-weight:700;color:${p.color};text-transform:uppercase;letter-spacing:.05em">● Connected</div>
+    </button>
+  `).join('') : `
+    <div style="grid-column:1/-1;text-align:center;padding:40px 20px;background:#FEF3C7;border:1.5px dashed #F59E0B;border-radius:14px">
+      <div style="font-size:2.2rem;margin-bottom:8px">🔌</div>
+      <div style="font-size:0.95rem;font-weight:800;color:#92400E;margin-bottom:4px">No channels connected yet</div>
+      <div style="font-size:0.78rem;color:#78350F">Connect at least one ad channel below to launch a campaign.</div>
+    </div>`;
+
+  ov.innerHTML = `
+    <div style="background:#FFFFFF;border-radius:18px;width:100%;max-width:720px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.35)">
+      <div style="padding:22px 26px 16px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:0.66rem;font-weight:800;color:#0066FF;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">New Campaign</div>
+          <div style="font-family:'Space Grotesk',Sora,sans-serif;font-size:1.25rem;font-weight:800;color:#0A1628">Choose a channel to launch on</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:4px">${connected.length} connected channel${connected.length!==1?'s':''} ready · 3-step lead-gen flow</div>
+        </div>
+        <button onclick="document.getElementById('new-camp-picker-overlay').remove()" style="background:#F3F4F6;border:none;width:34px;height:34px;border-radius:10px;font-size:1.1rem;cursor:pointer;color:#6B7280;font-weight:700">✕</button>
+      </div>
+      <div style="padding:22px 26px 28px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px">
+          ${cardsHtml}
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  ov.querySelectorAll('.ncp-pick').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.plat;
+      const p = ADV_PLATFORMS.find(x => x.name === name);
+      ov.remove();
+      if (p) window.openChannelCampaign(p.name, p.icon, p.color, p.bg);
+    });
+  });
+};
 
 // ── Per-channel 3-step lead-gen modal ────────────────────────────────────────
 window.openChannelCampaign = function(platName, platIcon, platColor, platBg) {
