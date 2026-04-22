@@ -739,7 +739,7 @@ body {
 
 /* ===== VIEW HEADER (unified light-blue card hero) ===== */
 .view-header {
-  background: linear-gradient(110deg, #3B82F6 0%, #60A5FA 50%, #7DD3FC 100%) !important;
+  background: linear-gradient(110deg, #5EEAD4 0%, #99F6E4 50%, #CCFBF1 100%) !important;
   padding: 26px 30px 24px !important;
   border-bottom: none !important;
   position: relative;
@@ -2665,7 +2665,7 @@ body {
 }
 
 /* Intel header */
-.intel-header { background: linear-gradient(110deg, #3B82F6 0%, #60A5FA 50%, #7DD3FC 100%) !important; }
+.intel-header { background: linear-gradient(110deg, #5EEAD4 0%, #99F6E4 50%, #CCFBF1 100%) !important; }
 .intel-header .view-title { color: #FFFFFF !important; text-shadow: 0 1px 2px rgba(15,30,61,.25); }
 .intel-header .view-sub { color: #FFFFFF !important; opacity: .95; text-shadow: 0 1px 2px rgba(15,30,61,.18); }
 .intel-header .breadcrumb { color: #DBEAFE !important; opacity: 1; }
@@ -4260,7 +4260,7 @@ body.dashboard-active,
 
 /* ─── View Header 3.0 (unified light-blue card hero) ─── */
 .view-header {
-  background: linear-gradient(110deg, #3B82F6 0%, #60A5FA 50%, #7DD3FC 100%) !important;
+  background: linear-gradient(110deg, #5EEAD4 0%, #99F6E4 50%, #CCFBF1 100%) !important;
   border-bottom: none !important;
   margin: 18px 24px 6px !important;
   padding: 26px 30px 24px !important;
@@ -6016,8 +6016,44 @@ body,
 [data-theme="light"] .pf-btn:hover { border-color: var(--teal) !important; color: var(--teal-dark) !important; }
 
 /* ── Analysis tag labels in view-header ── */
-[data-theme="light"] .breadcrumb { color: #DBEAFE !important; opacity: 1 !important; }
-[data-theme="light"] .intel-header .breadcrumb { color: #DBEAFE !important; opacity: 1; }
+[data-theme="light"] .breadcrumb { color: #0F4C4A !important; opacity: .85 !important; }
+[data-theme="light"] .intel-header .breadcrumb { color: #0F4C4A !important; opacity: .85; }
+.view-header .breadcrumb,
+.intel-header .breadcrumb { color: #0F4C4A !important; opacity: .85 !important; }
+.view-header .breadcrumb .bc-group,
+.intel-header .breadcrumb .bc-group { color: #0F4C4A !important; opacity: .8 !important; }
+.view-header .breadcrumb .bc-sep,
+.intel-header .breadcrumb .bc-sep { color: #0F4C4A !important; opacity: .55 !important; }
+
+/* Hero text on light-teal gradient — dark navy/teal for legibility */
+.view-header h1,
+.view-header .view-title,
+.view-header h2,
+.view-header h3,
+.intel-header h1,
+.intel-header .ih-title {
+  color: #0A2F2D !important;
+  text-shadow: none !important;
+}
+.view-header p,
+.view-header .view-sub,
+.view-header .subtitle,
+.intel-header p,
+.intel-header .ih-sub {
+  color: #134E4A !important;
+  opacity: .92 !important;
+  text-shadow: none !important;
+}
+/* Pills / atags on hero — white card with dark teal text */
+.view-header .atag,
+.view-header .badge,
+.intel-header .atag,
+.intel-header .badge {
+  background: #FFFFFF !important;
+  color: #0F4C4A !important;
+  border: 1px solid rgba(15,76,74,.18) !important;
+  box-shadow: 0 1px 3px rgba(15,76,74,.08) !important;
+}
 
 /* ── Generic white-text headings that appear outside dark containers ── */
 [data-theme="light"] .view-header h1,
@@ -7186,11 +7222,11 @@ h3:hover {
 [data-theme="dark"] .cm-timer-warn { background: rgba(245,158,11,.22); color: #FCD34D; }
 [data-theme="dark"] .cm-timer-slow { background: rgba(239,68,68,.25); color: #FCA5A5; }
 
-/* Master Calendar / Intel headers — white text on medium-blue hero */
-.intel-header .ih-title { color: #FFFFFF !important; text-shadow: 0 1px 2px rgba(15,30,61,.25); }
-.intel-header .ih-sub   { color: #FFFFFF !important; opacity: .95; text-shadow: 0 1px 2px rgba(15,30,61,.18); }
-.intel-header .bc-group { color: #DBEAFE !important; opacity: 1; }
-.intel-header .bc-sep   { color: #FFFFFF !important; opacity: .7; }
+/* Master Calendar / Intel headers — dark text on light teal hero */
+.intel-header .ih-title { color: #0A2F2D !important; text-shadow: none !important; }
+.intel-header .ih-sub   { color: #134E4A !important; opacity: .92; text-shadow: none !important; }
+.intel-header .bc-group { color: #0F4C4A !important; opacity: .8; }
+.intel-header .bc-sep   { color: #0F4C4A !important; opacity: .55; }
 
 /* ── Unified hero size: every page hero card has the same dimensions ── */
 .view-header,
