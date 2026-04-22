@@ -737,29 +737,33 @@ body {
 .loading-pct { color: var(--teal); font-size: 0.8125rem; font-weight: 700; min-width: 36px; }
 .loading-status-text { color: rgba(255,255,255,.4); font-size: 0.8125rem; }
 
-/* ===== VIEW HEADER ===== */
+/* ===== VIEW HEADER (unified light-blue card hero) ===== */
 .view-header {
-  background: linear-gradient(135deg, #1E40AF 0%, #2563EB 55%, #3B82F6 100%) !important;
-  padding: 30px 0 28px;
+  background: linear-gradient(110deg, #2563EB 0%, #3B82F6 45%, #38BDF8 80%, #67E8F9 100%) !important;
+  padding: 26px 30px 24px !important;
   border-bottom: none !important;
   position: relative;
   overflow: hidden;
+  border-radius: 18px !important;
+  margin: 18px 24px 6px !important;
+  box-shadow: 0 8px 28px rgba(37,99,235,.18), 0 2px 6px rgba(15,23,42,.06);
 }
+.view-header > .container { padding: 0 !important; max-width: none !important; }
 .view-header::before {
   content: '';
   position: absolute;
-  top: -60px; right: -60px;
-  width: 280px; height: 280px;
-  background: radial-gradient(circle, rgba(255,255,255,.10), transparent 70%);
+  top: -80px; right: -40px;
+  width: 320px; height: 320px;
+  background: radial-gradient(circle, rgba(255,255,255,.18), transparent 70%);
   border-radius: 50%;
   pointer-events: none;
 }
 .view-header::after {
   content: '';
   position: absolute;
-  bottom: -80px; right: 140px;
-  width: 200px; height: 200px;
-  background: radial-gradient(circle, rgba(255,255,255,.08), transparent 70%);
+  bottom: -90px; right: 180px;
+  width: 240px; height: 240px;
+  background: radial-gradient(circle, rgba(255,255,255,.12), transparent 70%);
   border-radius: 50%;
   pointer-events: none;
 }
@@ -2660,7 +2664,7 @@ body {
 }
 
 /* Intel header */
-.intel-header { background: linear-gradient(135deg, #1E40AF 0%, #2563EB 55%, #3B82F6 100%) !important; }
+.intel-header { background: linear-gradient(110deg, #2563EB 0%, #3B82F6 45%, #38BDF8 80%, #67E8F9 100%) !important; }
 .intel-header .view-title { color: #FFFFFF !important; text-shadow: 0 1px 2px rgba(0,0,0,0.25); }
 .intel-header .view-sub { color: #FFFFFF !important; opacity: .92; }
 .intel-header .breadcrumb { color: #BFDBFE !important; }
@@ -4253,16 +4257,18 @@ body.dashboard-active,
   background: #0A1628 !important;
 }
 
-/* ─── View Header 3.0 (unified blue hero) ─── */
+/* ─── View Header 3.0 (unified light-blue card hero) ─── */
 .view-header {
-  background: linear-gradient(135deg, #1E40AF 0%, #2563EB 55%, #3B82F6 100%) !important;
+  background: linear-gradient(110deg, #2563EB 0%, #3B82F6 45%, #38BDF8 80%, #67E8F9 100%) !important;
   border-bottom: none !important;
-  margin-top: -96px !important;
-  padding-top: calc(96px + 30px) !important;
+  margin: 18px 24px 6px !important;
+  padding: 26px 30px 24px !important;
+  border-radius: 18px !important;
 }
 .intel-header {
-  margin-top: -96px !important;
-  padding-top: calc(96px + 28px) !important;
+  margin: 18px 24px 6px !important;
+  padding: 26px 30px 24px !important;
+  border-radius: 18px !important;
 }
 
 .view-title {
