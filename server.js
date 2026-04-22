@@ -1861,8 +1861,13 @@ Keep it under 200 words. Return only the strategy text, no headings.`;
       ? `This is step "${step}" in a re-engagement sequence. Tone: ${tone}.`
       : `This lead has been dormant for some time. Reason they may have left: ${reason}. Their estimated value: $${value}.`;
 
-    const prompt = `You are a world-class re-engagement copywriter for ${domain} (${industry} industry).
-Contact: ${name} at ${company}.
+    const senderBrand = (domain || '').replace(/^www\./i,'').split('.')[0] || 'our team';
+    const senderBrandTitle = senderBrand.charAt(0).toUpperCase() + senderBrand.slice(1);
+
+    const prompt = `You are a world-class re-engagement copywriter writing ON BEHALF OF ${domain} (a ${industry} company).
+
+SENDER (the company writing this outreach): ${senderBrandTitle} (${domain}) — a ${industry} brand.
+RECIPIENT (the lapsed lead being contacted): ${name} at ${company}.
 ${context}
 Primary outreach channel: ${channel}.
 
@@ -1873,11 +1878,15 @@ Generate re-engagement copy in JSON format:
   "social": "..."
 }
 
-Rules:
+CRITICAL Rules:
+- The message is FROM ${senderBrandTitle} (${domain}) TO ${name} at ${company}. Never reverse this.
+- Address ${name} by first name. Refer to "you" / "your team at ${company}" when speaking to the recipient.
+- Sign off as the ${senderBrandTitle} team / ${domain}. NEVER sign as ${name} or ${company} — they are the recipient, not the sender.
+- The signature block must say something like "Warm regards,\\nThe ${senderBrandTitle} Team" or "[Your Name]\\n${senderBrandTitle} (${domain})". Do NOT put ${name} or ${company} in the signature.
 - email.body: 3–4 short paragraphs, personal, empathetic, clear value, soft CTA. Max 180 words.
 - ad: headline max 8 words, body max 2 sentences, strong CTA button text.
-- social: LinkedIn/social DM, max 80 words, value-first, no hard sell.
-- Use ${name}'s name. Reference ${domain} naturally. Never mention competitor names.
+- social: LinkedIn/social DM sent BY someone at ${senderBrandTitle} TO ${name}. Max 80 words. Value-first, no hard sell.
+- Reference ${domain} / ${senderBrandTitle} as the sender naturally. Never mention competitor names.
 - Tone: warm, human, professional. ${tone ? 'Requested tone: '+tone+'.' : ''}
 Return valid JSON only.`;
 
