@@ -15736,8 +15736,7 @@ window.openReEngageCopyModal = async function(id, name, company, channel, reason
         <div style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;padding:14px 16px">
           <div style="font-size:0.72rem;font-weight:700;color:#1E40AF;margin-bottom:4px">${data.ad.headline||''}</div>
           <div style="font-size:0.78rem;color:#374151;line-height:1.6">${data.ad.body||''}</div>
-          ${data.ad.cta ? `<button onclick="window.fireReEngageAd('${id}','${(name||'').replace(/'/g,"\\'")}','${(company||'').replace(/'/g,"\\'")}')" style="margin-top:10px;display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#0066FF,#0052CC);color:white;border:none;border-radius:8px;padding:8px 16px;font-size:0.74rem;font-weight:800;cursor:pointer;box-shadow:0 3px 10px rgba(0,102,255,0.35);transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 5px 14px rgba(0,102,255,0.45)'" onmouseout="this.style.transform='';this.style.boxShadow='0 3px 10px rgba(0,102,255,0.35)'">${data.ad.cta} →</button>
-          <button onclick="navigator.clipboard.writeText('${(data.ad.headline||'').replace(/'/g,"\\'")}\\n\\n${(data.ad.body||'').replace(/'/g,"\\'")}\\n\\nCTA: ${(data.ad.cta||'').replace(/'/g,"\\'")}').then(()=>showToast('📋 Ad copy copied!'))" style="margin-top:10px;margin-left:6px;padding:8px 14px;background:white;border:1px solid #BFDBFE;border-radius:8px;font-size:0.7rem;font-weight:700;color:#1E40AF;cursor:pointer">📋 Copy Ad</button>
+          <div data-ad-cta="${(data.ad.cta||'').replace(/"/g,'&quot;')}" data-ad-id="${id}" data-ad-name="${(name||'').replace(/"/g,'&quot;')}" data-ad-company="${(company||'').replace(/"/g,'&quot;')}" data-ad-headline="${(data.ad.headline||'').replace(/"/g,'&quot;')}" data-ad-body="${(data.ad.body||'').replace(/"/g,'&quot;')}" id="reec-ad-actions" style="margin-top:10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"></div>
         </div>
       </div>` : ''}
       ${data.social ? `
@@ -15746,6 +15745,35 @@ window.openReEngageCopyModal = async function(id, name, company, channel, reason
         <div style="background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:12px;padding:14px 16px;font-size:0.78rem;color:#374151;line-height:1.6;white-space:pre-wrap">${data.social||''}</div>
         <button onclick="navigator.clipboard.writeText('${(data.social||'').replace(/\n/g,'\\n').replace(/'/g,"\\'")}').then(()=>showToast('📋 Message copied!'))" style="margin-top:6px;padding:5px 12px;background:white;border:1px solid #E5E7EB;border-radius:7px;font-size:0.65rem;font-weight:600;color:#6B7280;cursor:pointer">📋 Copy Message</button>
       </div>` : ''}`;
+
+    // Inject ad action buttons via DOM (avoids template-literal escaping issues)
+    const adActions = document.getElementById('reec-ad-actions');
+    if (adActions && data.ad) {
+      const adId       = adActions.dataset.adId       || '';
+      const adName     = adActions.dataset.adName     || '';
+      const adCompany  = adActions.dataset.adCompany  || '';
+      const adCta      = adActions.dataset.adCta      || 'Re-Engage Now';
+      const adHeadline = adActions.dataset.adHeadline || '';
+      const adBody     = adActions.dataset.adBody     || '';
+
+      const fireBtn = document.createElement('button');
+      fireBtn.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#0066FF,#0052CC);color:white;border:none;border-radius:8px;padding:8px 16px;font-size:0.74rem;font-weight:800;cursor:pointer;box-shadow:0 3px 10px rgba(0,102,255,0.35);transition:transform .15s,box-shadow .15s';
+      fireBtn.textContent = adCta + ' →';
+      fireBtn.onmouseover = () => { fireBtn.style.transform='translateY(-1px)'; fireBtn.style.boxShadow='0 5px 14px rgba(0,102,255,0.45)'; };
+      fireBtn.onmouseout  = () => { fireBtn.style.transform=''; fireBtn.style.boxShadow='0 3px 10px rgba(0,102,255,0.35)'; };
+      fireBtn.onclick     = () => window.fireReEngageAd(adId, adName, adCompany);
+
+      const copyBtn = document.createElement('button');
+      copyBtn.style.cssText = 'padding:8px 14px;background:white;border:1px solid #BFDBFE;border-radius:8px;font-size:0.7rem;font-weight:700;color:#1E40AF;cursor:pointer';
+      copyBtn.textContent = '📋 Copy Ad';
+      copyBtn.onclick = () => {
+        const text = adHeadline + '\n\n' + adBody + '\n\nCTA: ' + adCta;
+        navigator.clipboard.writeText(text).then(() => showToast('📋 Ad copy copied!'));
+      };
+
+      adActions.appendChild(fireBtn);
+      adActions.appendChild(copyBtn);
+    }
   } catch(err) {
     clearInterval(reecTimerInt);
     document.getElementById('reec-loading').innerHTML = `<div style="color:#DC2626;font-size:0.8rem;text-align:center">Failed to generate copy — please try again</div>`;
