@@ -10877,17 +10877,17 @@ function buildBattlePlan() {
   <div style="background:var(--ig-page);min-height:100vh;padding-bottom:40px">
 
     <!-- Page Header -->
-    <div data-bp-hero style="background:linear-gradient(110deg,#A5F3FC 0%,#CFFAFE 50%,#ECFEFF 100%);border-radius:18px;margin:18px 24px 6px;padding:22px 28px;box-shadow:0 8px 28px rgba(37,99,235,.18);position:relative;overflow:hidden;min-height:130px;display:flex;align-items:center">
+    <div data-bp-hero style="background:linear-gradient(110deg,#1E40AF 0%,#2563EB 50%,#3B82F6 100%);border-radius:18px;margin:18px 24px 6px;padding:22px 28px;box-shadow:0 8px 28px rgba(37,99,235,.18);position:relative;overflow:hidden;min-height:130px;display:flex;align-items:center">
       <div style="position:absolute;top:-60px;right:-40px;width:260px;height:260px;background:radial-gradient(circle,rgba(255,255,255,.25),transparent 70%);border-radius:50%;pointer-events:none"></div>
       <div style="width:100%;max-width:1200px;margin:0 auto;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;position:relative;z-index:1">
         <div>
-          <div style="font-size:0.62rem;font-weight:800;color:#0F4C4A;opacity:.8;letter-spacing:.12em;text-transform:uppercase;margin-bottom:5px">Analyse › Battle Plan</div>
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
+          <div style="font-size:0.65rem;font-weight:800;color:#BFDBFE;opacity:.9;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px">Analyse › Battle Plan</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
             <span style="font-size:1.4rem">⚔️</span>
-            <h1 style="font-family:Sora,sans-serif;font-size:1.4rem;font-weight:900;color:#0A2F2D;margin:0">Battle Plan</h1>
-            <span style="background:#FFFFFF;border:1px solid rgba(15,76,74,.18);padding:3px 12px;border-radius:20px;font-size:0.67rem;font-weight:800;color:#0F4C4A;box-shadow:0 1px 3px rgba(15,76,74,.08)">AI-GENERATED</span>
+            <h1 style="font-family:Sora,sans-serif;font-size:1.5rem;font-weight:900;color:#FFFFFF;margin:0;text-shadow:0 1px 2px rgba(15,30,61,.20)">Battle Plan</h1>
+            <span style="background:#FFFFFF;border:1px solid rgba(255,255,255,.6);padding:3px 12px;border-radius:20px;font-size:0.67rem;font-weight:800;color:#1E3A8A;box-shadow:0 1px 3px rgba(15,30,61,.10)">AI-GENERATED</span>
           </div>
-          <div style="color:#134E4A;opacity:.92;font-size:0.85rem;font-weight:500">${domain} · ${industry} · ${comps.length} competitors · Click any action card to execute directly</div>
+          <div style="color:#E0E7FF;opacity:.95;font-size:0.88rem;font-weight:500;text-shadow:0 1px 2px rgba(15,30,61,.18)">${domain} · ${industry} · ${comps.length} competitors · Click any action card to execute directly</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button onclick="bpLC(${idx},0)" style="padding:10px 20px;background:linear-gradient(135deg,#EF4444,#DC2626);border:none;border-radius:10px;font-size:0.8rem;font-weight:800;color:white;cursor:pointer;box-shadow:0 4px 12px rgba(239,68,68,.35)">⚡ Execute Top Priority</button>
@@ -19696,7 +19696,7 @@ function buildMasterCalendar() {
 
 // ── Strip inline gradient overrides on hero headers + apply unified blue card ─
 (function unifyHeroHeaders(){
-  const BLUE = 'linear-gradient(110deg,#A5F3FC 0%,#CFFAFE 50%,#ECFEFF 100%)';
+  const BLUE = 'linear-gradient(110deg,#1E40AF 0%,#2563EB 50%,#3B82F6 100%)';
   function strip(el){
     if (!el) return;
     if (el.style.background) el.style.background = '';
