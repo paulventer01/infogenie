@@ -14605,11 +14605,11 @@ function buildAgency() {
     <div style="position:absolute;top:-40px;right:-40px;width:220px;height:220px;background:rgba(255,255,255,.05);border-radius:50%"></div>
     <div style="position:absolute;bottom:-60px;right:100px;width:160px;height:160px;background:rgba(255,255,255,.04);border-radius:50%"></div>
     <div style="position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
-      <div>
-        <div style="font-size:0.6rem;font-weight:800;color:rgba(255,255,255,.45);letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Grow › Agency</div>
-        <div style="font-size:0.65rem;font-weight:700;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Agency Hub · ${brand.name}</div>
-        <div style="font-family:'Space Grotesk',sans-serif;font-size:1.65rem;font-weight:800;color:white;line-height:1.2;margin-bottom:8px">Manage Every Client.<br>Deliver Branded Results.</div>
-        <div style="font-size:0.84rem;color:rgba(255,255,255,.7);max-width:460px">Run InfoGenie for multiple clients from one dashboard. Generate white-label reports, schedule automatic sends, and switch context in one click.</div>
+      <div class="ig-agency-hero-content">
+        <div class="ig-agency-eyebrow" style="font-size:0.6rem;font-weight:800;color:#C7D2FE !important;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Grow › Agency</div>
+        <div class="ig-agency-tag" style="font-size:0.65rem;font-weight:700;color:#DDD6FE !important;text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Agency Hub · ${brand.name}</div>
+        <div class="ig-agency-title" style="font-family:'Space Grotesk',sans-serif;font-size:1.65rem;font-weight:800;color:#FFFFFF !important;line-height:1.2;margin-bottom:8px;text-shadow:0 1px 2px rgba(0,0,0,0.3)">Manage Every Client.<br>Deliver Branded Results.</div>
+        <div class="ig-agency-desc" style="font-size:0.84rem;color:rgba(255,255,255,0.92) !important;max-width:460px;line-height:1.55">Run InfoGenie for multiple clients from one dashboard. Generate white-label reports, schedule automatic sends, and switch context in one click.</div>
       </div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
         ${[['👥','Clients',activeClients,'rgba(255,255,255,.15)'],['💰','Managed Budget','$'+totalBudget.toLocaleString(),'rgba(255,255,255,.15)'],['📈','Client Revenue','$'+totalRevenue.toLocaleString(),'rgba(255,255,255,.15)'],['📋','Reports',reports.length,'rgba(255,255,255,.15)']].map(([ic,l,v,bg])=>`

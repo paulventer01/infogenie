@@ -6960,3 +6960,10 @@ h3:hover {
 [data-theme="light"] #automationsWrap { background: #F8FAFC !important; }
 [data-theme="light"] #reEngageWrap    { background: #F8FAFC !important; }
 [data-theme="light"] #agencyWrap      { background: #F8FAFC !important; }
+
+/* Agency Hub stat badges — keep numbers/labels white in light mode */
+[data-theme="light"] #agencyWrap > div:first-child > div > div > div[style*="border:1px solid rgba(255,255,255,.15)"] > div { color: #FFFFFF !important; }
+
+/* Ensure agency wrapper stays light-purple in dark mode (don't go black) */
+#agencyWrap { background: #F5F3FF !important; }
+[data-theme="dark"] #agencyWrap { background: #1A1530 !important; }
