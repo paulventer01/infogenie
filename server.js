@@ -1875,31 +1875,38 @@ Keep it under 200 words. Return only the strategy text, no headings.`;
 
     const senderRefDomain = senderDomainDisplay || senderBrandTitle;
 
-    const prompt = `You are a world-class re-engagement copywriter writing ON BEHALF OF ${senderBrandTitle}${senderDomainDisplay ? ' ('+senderDomainDisplay+')' : ''} — a ${industry} brand.
+    const prompt = `You are a world-class WIN-BACK copywriter writing ON BEHALF OF ${senderBrandTitle}${senderDomainDisplay ? ' ('+senderDomainDisplay+')' : ''} — a ${industry} brand. Your job is to write outreach that brings a lapsed customer back to ${senderBrandTitle}.
 
 SENDER (the company writing this outreach): ${senderBrandTitle}${senderDomainDisplay ? ' — '+senderDomainDisplay : ''}.
-RECIPIENT (the lapsed lead being contacted): ${name} at ${company}.
+RECIPIENT (the lapsed customer being won back): ${name} (first name only — do NOT use their company name anywhere).
 ${context}
 Primary outreach channel: ${channel}.
 
-Generate re-engagement copy in JSON format:
+Generate win-back re-engagement copy in JSON format:
 {
   "email": { "subject": "...", "body": "..." },
   "ad": { "headline": "...", "body": "...", "cta": "..." },
   "social": "..."
 }
 
+WIN-BACK STRATEGY — every piece of copy MUST:
+1. Acknowledge they've been away (briefly, without guilt-tripping).
+2. Give a SPECIFIC reason to come back NOW — pick ONE of: a new feature/product launch since they left, a measurable improvement (faster, cheaper, better results), a tailored offer (free strategy call, exclusive discount, priority access, free upgrade), or fresh ${industry}-specific insight that benefits them.
+3. Make the value about THEM ("you", "your goals", "your results") — not about ${senderBrandTitle}.
+4. End with ONE clear soft CTA (book a call, reply to this email, claim the offer, see what's new) — never a hard sell.
+
 CRITICAL Rules — DO NOT VIOLATE:
-- The message is FROM ${senderBrandTitle}${senderDomainDisplay ? ' ('+senderDomainDisplay+')' : ''} TO ${name} at ${company}. Never reverse this.
-- Address ${name} by first name. Refer to "you" / "your team at ${company}" when speaking to the recipient.
-- Sign off as the ${senderBrandTitle} team. NEVER sign the email as ${name} or ${company} — they are the recipient, not the sender.
-- The signature block MUST be exactly two lines: "Warm regards," on one line, then "The ${senderBrandTitle} Team" on the next line. Do NOT add any other lines after the signature. Do NOT put ${name} or ${company} anywhere in the signature.
-- Reference the sender brand "${senderBrandTitle}"${senderDomainDisplay ? ' (or the website '+senderDomainDisplay+')' : ''} naturally in the body — never use placeholders like "Yourdomain", "yourdomain.com", "[Company]", or generic stand-ins.
-- email.body: 3–4 short paragraphs, personal, empathetic, clear value, soft CTA. Max 180 words. End with the exact two-line signature above.
-- ad: headline max 8 words, body max 2 sentences, strong CTA button text.
-- social: LinkedIn/social DM sent BY someone at ${senderBrandTitle} TO ${name}. Max 80 words. Value-first, no hard sell. Sign with "— The ${senderBrandTitle} Team" at the end.
+- The message is FROM ${senderBrandTitle}${senderDomainDisplay ? ' ('+senderDomainDisplay+')' : ''} TO ${name}. Never reverse this.
+- Address ${name} by first name only. Use "you" / "your" when speaking to them.
+- DO NOT mention "${company}" anywhere in the email body, subject, ad, or social message. The recipient's company name is OFF-LIMITS — never write it, never reference "your team at ${company}", never include it in any form.
+- Sign off as the ${senderBrandTitle} team. NEVER sign the email as ${name} or as ${company}.
+- The email signature MUST be exactly two lines: "Warm regards," then "The ${senderBrandTitle} Team". No extra lines, no titles, no contact details after.
+- Reference the sender brand "${senderBrandTitle}"${senderDomainDisplay ? ' (or the website '+senderDomainDisplay+')' : ''} naturally in the body — never use placeholders like "Yourdomain", "yourdomain.com", "[Company]", "[Brand]", or generic stand-ins.
+- email.body: 3–4 short paragraphs, warm, specific, empathetic. Max 180 words. End with the exact two-line signature above.
+- ad: headline max 8 words (focus on the win-back hook), body max 2 sentences (the specific reason to return), CTA button text 2-4 words.
+- social: LinkedIn/social DM sent BY someone at ${senderBrandTitle} TO ${name}. Max 80 words. Lead with value or a specific update — no hard sell. Sign with "— The ${senderBrandTitle} Team" at the end.
 - Never mention competitor names.
-- Tone: warm, human, professional. ${tone ? 'Requested tone: '+tone+'.' : ''}
+- Tone: warm, human, confident, professional — like a friend reaching out, not a marketer pitching. ${tone ? 'Requested tone: '+tone+'.' : ''}
 Return valid JSON only.`;
 
     const completion = await openai.chat.completions.create({
