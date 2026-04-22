@@ -2162,13 +2162,35 @@ async function runAnalysis(url, country, industryOverride) {
   try { aiDetected = await smartDetectPromise; } catch(e) { aiDetected = null; }
   try { sectorDetected = await sectorPromise; } catch(e) { sectorDetected = null; }
 
-  // ── Sector AI result takes PRIORITY when the user typed an industry —
-  //    it returns real same-niche competitors regardless of URL detection.
+  // ── If URL was given but user didn't type an industry, take the sub-niche
+  //    that smart-detect inferred from the website and use it to fetch a
+  //    canonical, real-world same-niche competitor list. This cures the
+  //    "wrong industry / wrong competitors" issue when only a URL is entered.
+  if (!sectorDetected && hasUrl && !hasIndustry && aiDetected && aiDetected.ok) {
+    const inferredNiche = aiDetected.subNiche || aiDetected.industryName;
+    if (inferredNiche) {
+      try {
+        const r = await fetch('/api/sector-competitors', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            industry: inferredNiche,
+            country: country || aiDetected.country || '',
+            urlHint: cleanUrl,
+          }),
+        });
+        if (r.ok) sectorDetected = await r.json();
+      } catch (e) { console.warn('post-detect sector-competitors failed:', e); }
+    }
+  }
+
+  // ── Sector AI result takes PRIORITY when available — it returns real
+  //    same-niche competitors with much better coverage than the static DB.
   if (sectorDetected && sectorDetected.ok && Array.isArray(sectorDetected.competitors) && sectorDetected.competitors.length >= 3) {
     // Reshape to look like the smart-detect payload so the existing handler picks it up.
     aiDetected = {
       ok: true,
-      industryName: sectorDetected.industryName || industryOverride.trim(),
+      industryName: sectorDetected.industryName || (industryOverride && industryOverride.trim()) || (aiDetected && aiDetected.industryName) || 'Detected industry',
       businessSummary: '',
       competitors: sectorDetected.competitors,
       _source: 'sector',
