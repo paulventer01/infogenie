@@ -4311,45 +4311,151 @@ window.openNewCampaignPicker = function() {
   ov.id = 'new-camp-picker-overlay';
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.78);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
 
-  const cardsHtml = connected.length ? connected.map(p => `
-    <button data-plat="${p.name}" class="ncp-pick" style="background:${p.bg};border:1.5px solid ${p.color}55;border-radius:14px;padding:16px 12px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;transition:all .15s;text-align:center" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 22px rgba(0,0,0,0.12)';this.style.borderColor='${p.color}'" onmouseout="this.style.transform='';this.style.boxShadow='';this.style.borderColor='${p.color}55'">
-      <div style="font-size:1.8rem;line-height:1">${p.icon}</div>
-      <div style="font-size:0.74rem;font-weight:800;color:#0A1628;line-height:1.25">${p.name}</div>
-      <div style="font-size:0.6rem;font-weight:700;color:${p.color};text-transform:uppercase;letter-spacing:.05em">● Connected</div>
-    </button>
-  `).join('') : `
+  const googleNames = ['Google Search','Google Pmax','Google Display','Google Calls','YouTube'];
+  const metaNames   = ['Meta','Instagram','Messenger & WhatsApp','Meta Calls','Catalog Ads','Meta Boost'];
+
+  const cardsHtml = connected.length ? connected.map((p, i) => {
+    const isGoogle = googleNames.includes(p.name);
+    const subLabel = isGoogle ? 'Google Ads' : (metaNames.includes(p.name) ? 'Meta Ads' : 'Connected');
+    const subColor = isGoogle ? '#4285F4' : (metaNames.includes(p.name) ? '#1877F2' : p.color);
+    return `
+    <label data-plat="${p.name}" data-idx="${i}" class="ncp-card" style="background:${p.bg};border:1.5px solid ${p.color}55;border-radius:14px;padding:14px 10px 12px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;transition:all .15s;text-align:center;position:relative;user-select:none">
+      <input type="checkbox" class="ncp-cb" data-plat-name="${p.name}" style="position:absolute;top:8px;left:8px;width:16px;height:16px;cursor:pointer;accent-color:${p.color}">
+      <div style="font-size:1.7rem;line-height:1;margin-top:4px">${p.icon}</div>
+      <div style="font-size:0.72rem;font-weight:800;color:#0A1628;line-height:1.2">${p.name}</div>
+      <div style="font-size:0.55rem;font-weight:700;color:${subColor};text-transform:uppercase;letter-spacing:.04em">${subLabel}</div>
+    </label>`;
+  }).join('') : `
     <div style="grid-column:1/-1;text-align:center;padding:40px 20px;background:#FEF3C7;border:1.5px dashed #F59E0B;border-radius:14px">
       <div style="font-size:2.2rem;margin-bottom:8px">🔌</div>
       <div style="font-size:0.95rem;font-weight:800;color:#92400E;margin-bottom:4px">No channels connected yet</div>
       <div style="font-size:0.78rem;color:#78350F">Connect at least one ad channel below to launch a campaign.</div>
     </div>`;
 
+  const presetBtns = [1,2,3,5,10].filter(n => n <= connected.length).map(n =>
+    `<button data-pick="${n}" class="ncp-preset" style="padding:6px 12px;background:#EEF2FF;border:1.5px solid #C7D2FE;border-radius:8px;font-size:0.72rem;font-weight:700;color:#3730A3;cursor:pointer">First ${n}</button>`
+  ).join('');
+
+  const googleConnectedCount = connected.filter(p => googleNames.includes(p.name)).length;
+  const metaConnectedCount   = connected.filter(p => metaNames.includes(p.name)).length;
+
   ov.innerHTML = `
-    <div style="background:#FFFFFF;border-radius:18px;width:100%;max-width:720px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,0.35)">
-      <div style="padding:22px 26px 16px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between">
+    <div style="background:#FFFFFF;border-radius:18px;width:100%;max-width:780px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,0.35)">
+      <div style="padding:22px 26px 16px;border-bottom:1px solid #E5E7EB;display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
         <div>
           <div style="font-size:0.66rem;font-weight:800;color:#0066FF;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">New Campaign</div>
-          <div style="font-family:'Space Grotesk',Sora,sans-serif;font-size:1.25rem;font-weight:800;color:#0A1628">Choose a channel to launch on</div>
-          <div style="font-size:0.78rem;color:#6B7280;margin-top:4px">${connected.length} connected channel${connected.length!==1?'s':''} ready · 3-step lead-gen flow</div>
+          <div style="font-family:'Space Grotesk',Sora,sans-serif;font-size:1.25rem;font-weight:800;color:#0A1628">Choose channel(s) to launch on</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:4px">${connected.length} connected channel${connected.length!==1?'s':''} · pick one or many · 3-step flow each</div>
         </div>
-        <button onclick="document.getElementById('new-camp-picker-overlay').remove()" style="background:#F3F4F6;border:none;width:34px;height:34px;border-radius:10px;font-size:1.1rem;cursor:pointer;color:#6B7280;font-weight:700">✕</button>
+        <button onclick="document.getElementById('new-camp-picker-overlay').remove()" style="background:#F3F4F6;border:none;width:34px;height:34px;border-radius:10px;font-size:1.1rem;cursor:pointer;color:#6B7280;font-weight:700;flex-shrink:0">✕</button>
       </div>
-      <div style="padding:22px 26px 28px">
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px">
+
+      ${connected.length ? `
+      <div style="padding:14px 26px;border-bottom:1px solid #F1F5F9;background:#F8FAFC;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <span style="font-size:0.7rem;font-weight:700;color:#475569;margin-right:4px">Quick pick:</span>
+        ${presetBtns}
+        ${googleConnectedCount ? `<button data-pick-group="google" class="ncp-preset" style="padding:6px 12px;background:#DBEAFE;border:1.5px solid #93C5FD;border-radius:8px;font-size:0.72rem;font-weight:700;color:#1E40AF;cursor:pointer">🔍 Google Ads (All ${googleConnectedCount})</button>` : ''}
+        ${metaConnectedCount ? `<button data-pick-group="meta" class="ncp-preset" style="padding:6px 12px;background:#E0E7FF;border:1.5px solid #A5B4FC;border-radius:8px;font-size:0.72rem;font-weight:700;color:#3730A3;cursor:pointer">📘 Meta (All ${metaConnectedCount})</button>` : ''}
+        <button data-pick="all" class="ncp-preset" style="padding:6px 12px;background:#10B981;border:1.5px solid #059669;border-radius:8px;font-size:0.72rem;font-weight:800;color:#FFFFFF;cursor:pointer">✓ Select All (${connected.length})</button>
+        <button data-pick="none" class="ncp-preset" style="padding:6px 12px;background:#FFFFFF;border:1.5px solid #CBD5E1;border-radius:8px;font-size:0.72rem;font-weight:700;color:#475569;cursor:pointer">Clear</button>
+      </div>` : ''}
+
+      <div style="padding:18px 26px 22px;overflow-y:auto;flex:1">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:10px">
           ${cardsHtml}
         </div>
       </div>
+
+      ${connected.length ? `
+      <div style="padding:14px 26px 18px;border-top:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#FAFBFC">
+        <div id="ncp-count" style="font-size:0.82rem;font-weight:700;color:#475569">0 channels selected</div>
+        <button id="ncp-launch" disabled style="padding:10px 22px;background:#CBD5E1;border:none;border-radius:10px;font-size:0.85rem;font-weight:800;color:#FFFFFF;cursor:not-allowed;transition:all .15s">🚀 Launch Campaign</button>
+      </div>` : ''}
     </div>`;
+
   document.body.appendChild(ov);
   ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
-  ov.querySelectorAll('.ncp-pick').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const name = btn.dataset.plat;
-      const p = ADV_PLATFORMS.find(x => x.name === name);
-      ov.remove();
-      if (p) window.openChannelCampaign(p.name, p.icon, p.color, p.bg);
+
+  function getChecked() {
+    return Array.from(ov.querySelectorAll('.ncp-cb:checked')).map(c => c.dataset.platName);
+  }
+  function syncCard(cb) {
+    const card = cb.closest('.ncp-card');
+    if (!card) return;
+    if (cb.checked) {
+      card.style.boxShadow = '0 0 0 2px #10B981, 0 6px 18px rgba(16,185,129,0.25)';
+      card.style.transform = 'translateY(-2px)';
+    } else {
+      card.style.boxShadow = '';
+      card.style.transform = '';
+    }
+  }
+  function updateCount() {
+    const sel = getChecked();
+    const countEl = ov.querySelector('#ncp-count');
+    const btn = ov.querySelector('#ncp-launch');
+    if (countEl) countEl.textContent = `${sel.length} channel${sel.length!==1?'s':''} selected`;
+    if (btn) {
+      if (sel.length > 0) {
+        btn.disabled = false;
+        btn.style.cssText = 'padding:10px 22px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:0.85rem;font-weight:800;color:#FFFFFF;cursor:pointer;transition:all .15s;box-shadow:0 4px 14px rgba(0,102,255,0.3)';
+        btn.textContent = sel.length === 1 ? `🚀 Launch Campaign` : `🚀 Launch ${sel.length} Campaigns`;
+      } else {
+        btn.disabled = true;
+        btn.style.cssText = 'padding:10px 22px;background:#CBD5E1;border:none;border-radius:10px;font-size:0.85rem;font-weight:800;color:#FFFFFF;cursor:not-allowed';
+        btn.textContent = '🚀 Launch Campaign';
+      }
+    }
+  }
+
+  ov.querySelectorAll('.ncp-cb').forEach(cb => {
+    cb.addEventListener('change', () => { syncCard(cb); updateCount(); });
+  });
+  ov.querySelectorAll('.ncp-card').forEach(card => {
+    card.addEventListener('click', e => {
+      if (e.target.tagName === 'INPUT') return;
+      const cb = card.querySelector('.ncp-cb');
+      if (cb) { cb.checked = !cb.checked; syncCard(cb); updateCount(); }
     });
   });
+
+  ov.querySelectorAll('.ncp-preset').forEach(b => {
+    b.addEventListener('click', () => {
+      const pick = b.dataset.pick;
+      const grp = b.dataset.pickGroup;
+      const cbs = Array.from(ov.querySelectorAll('.ncp-cb'));
+      cbs.forEach(c => { c.checked = false; });
+      if (pick === 'all') cbs.forEach(c => c.checked = true);
+      else if (pick === 'none') {/* already cleared */}
+      else if (grp === 'google') cbs.forEach(c => { if (googleNames.includes(c.dataset.platName)) c.checked = true; });
+      else if (grp === 'meta')   cbs.forEach(c => { if (metaNames.includes(c.dataset.platName)) c.checked = true; });
+      else if (pick) {
+        const n = parseInt(pick, 10);
+        cbs.slice(0, n).forEach(c => c.checked = true);
+      }
+      cbs.forEach(syncCard);
+      updateCount();
+    });
+  });
+
+  const launchBtn = ov.querySelector('#ncp-launch');
+  if (launchBtn) {
+    launchBtn.addEventListener('click', () => {
+      const names = getChecked();
+      if (!names.length) return;
+      ov.remove();
+      const platforms = names.map(n => ADV_PLATFORMS.find(p => p.name === n)).filter(Boolean);
+      if (platforms.length === 1) {
+        const p = platforms[0];
+        window.openChannelCampaign(p.name, p.icon, p.color, p.bg);
+      } else {
+        window._campaignQueue = platforms.slice(1);
+        showToast(`🚀 Launching ${platforms.length} campaigns — starting with ${platforms[0].name}`);
+        const p = platforms[0];
+        window.openChannelCampaign(p.name, p.icon, p.color, p.bg);
+      }
+    });
+  }
 };
 
 // ── Per-channel 3-step lead-gen modal ────────────────────────────────────────
