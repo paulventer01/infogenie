@@ -6931,3 +6931,32 @@ h3:hover {
 [data-theme="light"] #resultsCustPanel button[onclick*="remove"] {
   color: rgba(255,255,255,0.6) !important;
 }
+
+/* ── Universal page hero banner — flush to top nav ────────────────────────── */
+/* JS-rendered hero pages: pull wrapper up so the hero banner sits flush */
+#automationsWrap,
+#reEngageWrap,
+#battlePlanWrap,
+#agencyWrap,
+#actionCenterWrap {
+  padding-top: 0 !important;
+}
+#automationsWrap > *:first-child,
+#reEngageWrap > *:first-child,
+#battlePlanWrap > *:first-child,
+#agencyWrap > *:first-child {
+  margin-top: 0 !important;
+}
+
+/* Add a tiny breathing space below the top nav (16px) for visual rhythm */
+#automationsWrap,
+#reEngageWrap,
+#battlePlanWrap,
+#agencyWrap {
+  padding-top: 16px !important;
+}
+
+/* Light-mode wrapper backgrounds — match page bg, no harsh tint */
+[data-theme="light"] #automationsWrap { background: #F8FAFC !important; }
+[data-theme="light"] #reEngageWrap    { background: #F8FAFC !important; }
+[data-theme="light"] #agencyWrap      { background: #F8FAFC !important; }
