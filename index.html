@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20260422k" />
+  <link rel="stylesheet" href="style.css?v=20260422l" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
   <!-- PostHog SDK stub — init called from app.js after config fetch -->
@@ -536,33 +536,33 @@
 <div class="view hidden" id="view-competitors">
   <div class="container" style="padding-top:24px">
     <!-- Light blue hero -->
-    <div class="comp-hero" style="background:linear-gradient(110deg,#2563EB 0%,#3B82F6 45%,#38BDF8 80%,#67E8F9 100%);border-radius:18px;padding:26px 30px;margin-bottom:20px;position:relative;overflow:hidden;box-shadow:0 8px 28px rgba(37,99,235,.18)">
+    <div class="comp-hero" style="background:linear-gradient(110deg,#60A5FA 0%,#7DD3FC 45%,#A5F3FC 80%,#CFFAFE 100%);border-radius:18px;padding:26px 30px;margin-bottom:20px;position:relative;overflow:hidden;box-shadow:0 8px 28px rgba(37,99,235,.18)">
       <div style="position:absolute;top:-30px;right:-30px;width:200px;height:200px;background:rgba(255,255,255,.07);border-radius:50%"></div>
-      <div style="position:absolute;bottom:-50px;right:80px;width:150px;height:150px;background:rgba(255,255,255,.05);border-radius:50%"></div>
+      <div style="position:absolute;bottom:-50px;right:80px;width:150px;height:150px;background:rgba(255,255,255,.20);border-radius:50%"></div>
       <div style="position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
         <div style="flex:1;min-width:280px">
-          <div style="font-size:0.6rem;font-weight:800;color:#BFDBFE !important;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Analyse › Competitors</div>
-          <div style="font-size:0.65rem;font-weight:700;color:#DBEAFE !important;text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Intelligence Engine</div>
-          <div style="font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:800;color:#FFFFFF !important;line-height:1.2;margin-bottom:8px;text-shadow:0 1px 2px rgba(0,0,0,0.3)">Competitor<br>Intelligence Engine</div>
-          <div style="font-size:0.92rem;color:#FFFFFF !important;max-width:520px;line-height:1.55;font-weight:500;text-shadow:0 1px 2px rgba(0,0,0,0.2)">Deep analysis of campaigns, audiences, and performance metrics for every tracked rival — refreshed in real time with DataForSEO + GPT-4o.</div>
+          <div style="font-size:0.6rem;font-weight:800;color:#1E3A8A !important;opacity:.85;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px">Analyse › Competitors</div>
+          <div style="font-size:0.65rem;font-weight:700;color:#1E40AF !important;opacity:.9;text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">Intelligence Engine</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:800;color:#0F1E3D !important;line-height:1.2;margin-bottom:8px">Competitor<br>Intelligence Engine</div>
+          <div style="font-size:0.92rem;color:#1E3A5F !important;max-width:520px;line-height:1.55;font-weight:500">Deep analysis of campaigns, audiences, and performance metrics for every tracked rival — refreshed in real time with DataForSEO + GPT-4o.</div>
         </div>
         <div style="display:flex;gap:14px;flex-wrap:wrap" id="compHeroStats">
-          <div style="background:#DBEAFE;border-radius:14px;padding:14px 18px;text-align:center;min-width:90px">
+          <div style="background:#FFFFFF;border:1px solid rgba(30,58,138,.12);border-radius:14px;padding:14px 18px;text-align:center;min-width:90px;box-shadow:0 2px 6px rgba(0,0,0,.04)">
             <div id="compHeroTotal" style="font-size:1.4rem;font-weight:800;color:#1E3A8A">0</div>
             <div style="font-size:0.7rem;font-weight:700;color:#1E3A8A;opacity:.85">🎯 Tracked</div>
           </div>
-          <div style="background:#BFDBFE;border-radius:14px;padding:14px 18px;text-align:center;min-width:90px">
+          <div style="background:#FFFFFF;border:1px solid rgba(30,58,138,.12);border-radius:14px;padding:14px 18px;text-align:center;min-width:90px;box-shadow:0 2px 6px rgba(0,0,0,.04)">
             <div id="compHeroLive" style="font-size:1.4rem;font-weight:800;color:#1E40AF">0</div>
             <div style="font-size:0.7rem;font-weight:700;color:#1E40AF;opacity:.85">📡 Live</div>
           </div>
-          <div style="background:rgba(255,255,255,.22);border-radius:14px;padding:14px 18px;text-align:center;min-width:90px">
-            <div id="compHeroAi" style="font-size:1.4rem;font-weight:800;color:#FFFFFF !important">0</div>
-            <div style="font-size:0.7rem;font-weight:700;color:#FFFFFF !important;opacity:.95">🤖 AI-detected</div>
+          <div style="background:#FFFFFF;border:1px solid rgba(30,58,138,.12);border-radius:14px;padding:14px 18px;text-align:center;min-width:90px;box-shadow:0 2px 6px rgba(0,0,0,.04)">
+            <div id="compHeroAi" style="font-size:1.4rem;font-weight:800;color:#0F1E3D !important">0</div>
+            <div style="font-size:0.7rem;font-weight:700;color:#1E3A5F !important;opacity:.9">🤖 AI-detected</div>
           </div>
         </div>
       </div>
       <div style="position:relative;z-index:1;margin-top:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <label style="font-size:0.72rem;font-weight:800;color:#FFFFFF !important;text-transform:uppercase;letter-spacing:.08em">Filter:</label>
+        <label style="font-size:0.72rem;font-weight:800;color:#1E3A5F !important;text-transform:uppercase;letter-spacing:.08em">Filter:</label>
         <select class="filter-sel comp-hero-sel" id="compFilterSel" style="background:rgba(255,255,255,.97);color:#1E3A8A;border:none;border-radius:10px;padding:8px 14px;font-weight:700;font-size:0.82rem;cursor:pointer;min-width:200px">
           <option value="all">All Competitors</option>
         </select>
@@ -1272,7 +1272,7 @@
 
 <!-- KPI TRACKER VIEW -->
 <div class="view hidden" id="view-master-calendar">
-  <div class="intel-header" style="background:linear-gradient(110deg,#2563EB 0%,#3B82F6 45%,#38BDF8 80%,#67E8F9 100%)">
+  <div class="intel-header" style="background:linear-gradient(110deg,#60A5FA 0%,#7DD3FC 45%,#A5F3FC 80%,#CFFAFE 100%)">
     <div class="breadcrumb" style="color:#A5B4FC"><span class="bc-group" style="color:rgba(165,180,252,.8)">Grow</span> <span class="bc-sep">›</span> Master Calendar</div>
     <h1 class="ih-title">🗓️ Master Calendar</h1>
     <p class="ih-sub">Unified view of all articles, campaigns &amp; social posts — dates, status &amp; risk at a glance</p>
@@ -1299,7 +1299,7 @@
 </div>
 
 <script src="data.js"></script>
-<script src="app.js?v=20260422k"></script>
+<script src="app.js?v=20260422l"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');
