@@ -739,7 +739,7 @@ body {
 
 /* ===== VIEW HEADER (unified light-blue card hero) ===== */
 .view-header {
-  background: linear-gradient(110deg, #5EEAD4 0%, #99F6E4 50%, #CCFBF1 100%) !important;
+  background: linear-gradient(110deg, #A5F3FC 0%, #CFFAFE 50%, #ECFEFF 100%) !important;
   padding: 26px 30px 24px !important;
   border-bottom: none !important;
   position: relative;
@@ -2665,7 +2665,7 @@ body {
 }
 
 /* Intel header */
-.intel-header { background: linear-gradient(110deg, #5EEAD4 0%, #99F6E4 50%, #CCFBF1 100%) !important; }
+.intel-header { background: linear-gradient(110deg, #A5F3FC 0%, #CFFAFE 50%, #ECFEFF 100%) !important; }
 .intel-header .view-title { color: #FFFFFF !important; text-shadow: 0 1px 2px rgba(15,30,61,.25); }
 .intel-header .view-sub { color: #FFFFFF !important; opacity: .95; text-shadow: 0 1px 2px rgba(15,30,61,.18); }
 .intel-header .breadcrumb { color: #DBEAFE !important; opacity: 1; }
@@ -4260,7 +4260,7 @@ body.dashboard-active,
 
 /* ─── View Header 3.0 (unified light-blue card hero) ─── */
 .view-header {
-  background: linear-gradient(110deg, #5EEAD4 0%, #99F6E4 50%, #CCFBF1 100%) !important;
+  background: linear-gradient(110deg, #A5F3FC 0%, #CFFAFE 50%, #ECFEFF 100%) !important;
   border-bottom: none !important;
   margin: 18px 24px 6px !important;
   padding: 26px 30px 24px !important;
