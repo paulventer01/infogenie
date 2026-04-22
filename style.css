@@ -6065,15 +6065,21 @@ body,
 /* ── BLANKET HERO TEXT RULE — every text node inside any hero is light ──
    Catches inline-styled divs/spans/labels/small that any sub-page may add. */
 .view-header,
-.view-header *:not(.atag):not(.badge):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]),
+.view-header *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *),
 .intel-header,
-.intel-header *:not(.atag):not(.badge):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]),
+.intel-header *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *),
 .comp-hero,
-.comp-hero *:not(.atag):not(.badge):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]),
+.comp-hero *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *),
 [data-bp-hero],
-[data-bp-hero] *:not(.atag):not(.badge):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]) {
+[data-bp-hero] *:not(.atag):not(.badge):not(.hero-pill):not(button):not(.btn):not(input):not(select):not(option):not(.btn-primary):not(.btn-secondary):not([class*="pill"]):not([class*="chip"]):not([id*="compHero"]):not(.hero-pill *):not(button *) {
   color: #FFFFFF !important;
 }
+/* Force the AI-GENERATED hero pill (and similar white pills inside heroes)
+   to keep their dark navy text — defeats the blanket rule above. */
+.view-header .hero-pill,
+.intel-header .hero-pill,
+.comp-hero .hero-pill,
+[data-bp-hero] .hero-pill { color: #1E3A8A !important; }
 /* Lighter shade for secondary/sub-text inside hero */
 .view-header p,
 .view-header .subtitle,

@@ -10885,7 +10885,7 @@ function buildBattlePlan() {
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
             <span style="font-size:1.4rem">⚔️</span>
             <h1 style="font-family:Sora,sans-serif;font-size:1.5rem;font-weight:900;color:#FFFFFF;margin:0;text-shadow:0 1px 2px rgba(15,30,61,.20)">Battle Plan</h1>
-            <span style="background:#FFFFFF;border:1px solid rgba(255,255,255,.6);padding:3px 12px;border-radius:20px;font-size:0.67rem;font-weight:800;color:#1E3A8A;box-shadow:0 1px 3px rgba(15,30,61,.10)">AI-GENERATED</span>
+            <span class="hero-pill" style="background:#FFFFFF;border:1px solid rgba(255,255,255,.6);padding:3px 12px;border-radius:20px;font-size:0.67rem;font-weight:800;color:#1E3A8A !important;box-shadow:0 1px 3px rgba(15,30,61,.10)">AI-GENERATED</span>
           </div>
           <div style="color:#E0E7FF;opacity:.95;font-size:0.88rem;font-weight:500;text-shadow:0 1px 2px rgba(15,30,61,.18)">${domain} · ${industry} · ${comps.length} competitors · Click any action card to execute directly</div>
         </div>
