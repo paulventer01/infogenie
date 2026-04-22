@@ -2375,29 +2375,40 @@ async function enrichKPIsWithLiveData(domain, industryKey, country) {
     const cards = kpiGrid.querySelectorAll('.kpi-card');
     // Cards order: CTR (0), ROAS (1), CPA (2), Traffic (3 — already live), Conv.Rate (4), Score (5)
 
+    // Shared ribbon helpers — keep parity with the initial buildDashboard render
+    const _domain = (analysisData?.url || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0];
+    const ribbonLive = `<div class="kpi-ribbon kpi-ribbon-live" title="Live data from DataForSEO for ${_domain}">📡 LIVE — YOUR SITE</div>`;
+    const ribbonInd  = `<div class="kpi-ribbon kpi-ribbon-ind"  title="Broad industry benchmark — not your data">🏷️ INDUSTRY BENCHMARK</div>`;
+    const srcLive    = `<div class="kpi-source kpi-source-live" title="Live measurement from DataForSEO for your domain ${_domain}.">📡 DataForSEO live · <strong>${_domain}</strong></div>`;
+    const srcIndLine = `<div class="kpi-source kpi-source-ind"  title="Broad industry benchmark for ${industry?.name || 'your industry'} — not your data, not a specific competitor.">🏷️ Industry benchmark · <strong>${industry?.name || 'your industry'}</strong></div>`;
+
     // CTR card
     if (cards[0] && d.ctr !== null) {
       const ctr = parseFloat(d.ctr);
-      const ctrChange = ctr >= avgCTR ? `▲ ${(ctr - avgCTR).toFixed(2)}% above ${industry?.name || 'industry'} avg` : `▼ ${(avgCTR - ctr).toFixed(2)}% below ${industry?.name || 'industry'} avg`;
+      const ctrChange = ctr >= avgCTR ? `▲ ${(ctr - avgCTR).toFixed(2)}% above competitor avg (${avgCTR.toFixed(2)}%)` : `▼ ${(avgCTR - ctr).toFixed(2)}% below competitor avg (${avgCTR.toFixed(2)}%)`;
       cards[0].innerHTML = `
+        ${ribbonLive}
         ${liveBadge(src)}
         <div class="kpi-icon">📊</div>
-        <div class="kpi-label">Avg CTR Benchmark</div>
+        <div class="kpi-label">Your CTR Benchmark</div>
         <div class="kpi-value">${ctr}%</div>
         <div class="kpi-change ${ctr >= avgCTR ? 'kpi-up' : 'kpi-down'}">${ctrChange}</div>
+        ${srcLive}
       `;
     }
 
     // ROAS card
     if (cards[1] && d.roas !== null) {
       const roas = parseFloat(d.roas);
-      const roasChange = roas >= avgROAS ? `▲ ${(roas - avgROAS).toFixed(1)}× above ${industry?.name || 'industry'} avg` : `▼ ${(avgROAS - roas).toFixed(1)}× below ${industry?.name || 'industry'} avg`;
+      const roasChange = roas >= avgROAS ? `▲ ${(roas - avgROAS).toFixed(1)}× above competitor avg (${avgROAS.toFixed(1)}×)` : `▼ ${(avgROAS - roas).toFixed(1)}× below competitor avg (${avgROAS.toFixed(1)}×)`;
       cards[1].innerHTML = `
+        ${ribbonLive}
         ${liveBadge(src)}
         <div class="kpi-icon">🎯</div>
-        <div class="kpi-label">ROAS Benchmark</div>
+        <div class="kpi-label">Your ROAS Benchmark</div>
         <div class="kpi-value">${roas}×</div>
         <div class="kpi-change ${roas >= avgROAS ? 'kpi-up' : 'kpi-down'}">${roasChange}</div>
+        ${srcLive}
       `;
     }
 
@@ -2406,11 +2417,13 @@ async function enrichKPIsWithLiveData(domain, industryKey, country) {
       const cpa = parseFloat(d.cpa);
       const cpaReduction = (cpa * 0.35).toFixed(0);
       cards[2].innerHTML = `
+        ${ribbonInd}
         ${liveBadge(src)}
         <div class="kpi-icon">💰</div>
         <div class="kpi-label">CPA Benchmark</div>
         <div class="kpi-value">$${cpa}</div>
         <div class="kpi-change kpi-up">▼ $${cpaReduction} saving possible with AI optimisation</div>
+        ${srcIndLine}
       `;
     }
 
@@ -2418,11 +2431,13 @@ async function enrichKPIsWithLiveData(domain, industryKey, country) {
     if (cards[4] && d.convRate !== null) {
       const cr = parseFloat(d.convRate);
       cards[4].innerHTML = `
+        ${ribbonLive}
         ${liveBadge(src)}
         <div class="kpi-icon">📈</div>
-        <div class="kpi-label">Conv. Rate Benchmark</div>
+        <div class="kpi-label">Your Conv. Rate</div>
         <div class="kpi-value">${cr}%</div>
         <div class="kpi-change ${cr >= 3 ? 'kpi-up' : 'kpi-down'}">${industry?.name || 'Industry'} avg: ${(industryConvRates[industryKey] || 3).toFixed(1)}%</div>
+        ${srcLive}
       `;
     }
 
