@@ -10840,10 +10840,11 @@ function buildIntelligence() {
   `).join('');
 
   // ── Win/Loss cards — store data for modal lookup ──
-  window._wlData = window._wlData || {};
+  window._wlData = {};
   const wlCards = displayWinLoss.map((w, idx) => {
     const id = `wl_${idx}`;
     window._wlData[id] = w;
+    const enc = s => encodeURIComponent(String(s == null ? '' : s));
     return `
     <div class="winloss-card">
       <div class="wl-top">
@@ -10853,7 +10854,14 @@ function buildIntelligence() {
       </div>
       <div class="wl-message">${w.message}</div>
       <div class="wl-weakness" title="The specific gap or weakness in this competitor's positioning that you can exploit to win customers back.">💡 <strong>Exploitable Weakness:</strong> ${w.weakness}</div>
-      <button class="btn-wl-counter" onclick="openWLCounterModal('${id}')" title="Generate an AI counter-message specifically designed to neutralise this competitor's winning argument.">Counter This Message</button>
+      <button class="btn-wl-counter" type="button"
+        data-wl-id="${id}"
+        data-wl-comp="${enc(w.comp)}"
+        data-wl-channel="${enc(w.channel)}"
+        data-wl-loss="${enc(w.lossRate)}"
+        data-wl-message="${enc(w.message)}"
+        data-wl-weakness="${enc(w.weakness)}"
+        title="Generate an AI counter-message specifically designed to neutralise this competitor's winning argument.">Counter This Message</button>
     </div>
   `;
   }).join('');
@@ -21142,17 +21150,37 @@ try { window.queueCounterCampaign = queueCounterCampaign; } catch(e) {}
 try { window.closeAttackModal = closeAttackModal; } catch(e) {}
 try { window.openAttackModal = openAttackModal; } catch(e) {}
 
-// Document-level delegated fallback for the Counter This Message button
+// Document-level delegated handler for the Counter This Message button.
+// Pulls data straight from data-* attributes so the modal works even if the
+// in-memory _wlData lookup fails (e.g. cached page, re-render race).
 document.addEventListener('click', function(ev) {
   const btn = ev.target.closest && ev.target.closest('.btn-wl-counter');
   if (!btn) return;
-  // Extract id from inline onclick attribute
-  const m = (btn.getAttribute('onclick') || '').match(/openWLCounterModal\('([^']+)'\)/);
-  if (m && typeof window.openWLCounterModal === 'function') {
-    ev.preventDefault();
-    try { window.openWLCounterModal(m[1]); } catch(err) {
-      console.error('Counter modal failed:', err);
-      if (typeof showToast === 'function') showToast('⚠️ Counter modal error: ' + err.message);
+  ev.preventDefault();
+  const dec = s => { try { return decodeURIComponent(s || ''); } catch(_) { return s || ''; } };
+  const id = btn.getAttribute('data-wl-id') || '';
+  let w = (window._wlData || {})[id];
+  if (!w) {
+    w = {
+      comp:     dec(btn.getAttribute('data-wl-comp')),
+      channel:  dec(btn.getAttribute('data-wl-channel')),
+      lossRate: dec(btn.getAttribute('data-wl-loss')),
+      message:  dec(btn.getAttribute('data-wl-message')),
+      weakness: dec(btn.getAttribute('data-wl-weakness'))
+    };
+    window._wlData = window._wlData || {};
+    window._wlData[id || ('wl_' + Date.now())] = w;
+  }
+  if (!w.comp) {
+    if (typeof showToast === 'function') showToast('⚠️ Counter data missing — please re-run analysis');
+    return;
+  }
+  try {
+    if (typeof window.openWLCounterModal === 'function') {
+      window.openWLCounterModal(id);
     }
+  } catch(err) {
+    console.error('Counter modal failed:', err);
+    if (typeof showToast === 'function') showToast('⚠️ Counter modal error: ' + err.message);
   }
 }, true);
