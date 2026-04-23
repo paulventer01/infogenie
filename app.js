@@ -17327,7 +17327,15 @@ async function runSerpSearch() {
   wrap.innerHTML = `<div class="serp-loading"><div class="serp-spinner"></div>Searching Google…</div>`;
 
   try {
-    const params = new URLSearchParams({ q, location, type, num: 10 });
+    const glMap = {
+      'Global': '', 'United States': 'us', 'United Kingdom': 'uk',
+      'Australia': 'au', 'Canada': 'ca', 'Germany': 'de', 'France': 'fr',
+      'India': 'in', 'Singapore': 'sg'
+    };
+    const gl = glMap[location] !== undefined ? glMap[location] : 'us';
+    const params = new URLSearchParams({ q, type, num: 10 });
+    if (gl) params.set('gl', gl);
+    if (location) params.set('location', location);
     const res    = await fetch('/api/serp?' + params.toString());
     const data   = await res.json();
 
