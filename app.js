@@ -11962,7 +11962,7 @@ async function openFullAttackPlanModal(idx) {
   // Steps 1-3: animated indicators of in-flight AI work
   const markStep = (id, iconId, done) => {
     const el = document.getElementById(id), ic = document.getElementById(iconId);
-    if (el) el.style.color = done ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.5)';
+    if (el) el.style.color = done ? '#059669' : '#334155';
     if (ic) ic.textContent = done ? '✅' : '⏳';
   };
   setTimeout(() => markStep('apStep1','apS1icon',true), 1800);
