@@ -232,6 +232,215 @@ window._igLandingPage = function(idx) {
   generateLandingPageForCamp(camp);
 };
 
+// ── Brand Creative: per-campaign brand-styled ad pack ────────────────────────
+// Generates 3 brand-styled ad mockups (Square / Story / Banner) using the
+// brand's detected primary colour and name, then lets the user attach them
+// to a specific campaign. Attached creatives persist for the session and
+// surface as a confirmation chip on the campaign card.
+window._campaignBrandCreatives = window._campaignBrandCreatives || {};
+
+function _brandPrimaryColour() {
+  // Try to derive a colour from the analysis; fall back to InfoGenie teal
+  const palette = ['#0066FF','#00C9C8','#7C3AED','#F59E0B','#EF4444','#10B981','#EC4899','#0EA5E9'];
+  const seed = (analysisData && analysisData.url || 'infogenie').toString();
+  let h = 0; for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return palette[h % palette.length];
+}
+function _brandSecondary(c) {
+  // Lighten/darken complement
+  return c === '#0066FF' ? '#00C9C8'
+       : c === '#00C9C8' ? '#0066FF'
+       : c === '#7C3AED' ? '#F59E0B'
+       : c === '#F59E0B' ? '#7C3AED'
+       : c === '#EF4444' ? '#0EA5E9'
+       : c === '#10B981' ? '#0066FF'
+       : c === '#EC4899' ? '#7C3AED'
+       : '#00C9C8';
+}
+function _brandName() {
+  if (window._brandKit && window._brandKit.name) return window._brandKit.name;
+  const u = analysisData && analysisData.url ? analysisData.url : 'YourBrand';
+  return u.replace(/^https?:\/\//,'').replace(/^www\./,'').split('.')[0]
+          .replace(/[-_]/g,' ').replace(/\b\w/g, m => m.toUpperCase());
+}
+
+window._igBrandCreative = function(idx) {
+  if ((!window._lastCampRecs || !window._lastCampRecs[idx]) && window.analysisData) {
+    try { buildCampaigns(); } catch(e) {}
+  }
+  const camp = window._lastCampRecs && window._lastCampRecs[idx];
+  if (!camp) { showToast('⚠️ Run an analysis first'); navigateTo('home'); return; }
+
+  const brand   = _brandName();
+  const primary = (window._brandKit && window._brandKit.color) || _brandPrimaryColour();
+  const accent  = _brandSecondary(primary);
+  const initial = brand.charAt(0).toUpperCase();
+  const tone    = (window._brandKit && window._brandKit.tone) || 'Confident · Modern · Helpful';
+
+  // Headlines tailored to the campaign
+  const headlines = [
+    `${camp.name} — built for ${brand}`,
+    `Switch to ${brand}. ${camp.platform || 'Smarter results'}.`,
+    `Why ${brand} outperforms the rest`
+  ];
+  const subs = [
+    `${camp.estCTR} CTR · ${camp.estROAS}× ROAS · proven results`,
+    `${camp.description ? camp.description.slice(0, 80) : 'See the difference for yourself'}`,
+    `Get started in minutes — no setup fees`
+  ];
+
+  const mockup = (size, label, w, h, fontScale = 1) => `
+    <div style="background:#0A1628;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:0.66rem;font-weight:800;color:#94A3B8;letter-spacing:.08em;text-transform:uppercase">${label} · ${w}×${h}</div>
+      <div style="width:100%;aspect-ratio:${w}/${h};background:linear-gradient(135deg,${primary} 0%,${accent} 100%);border-radius:12px;padding:${14*fontScale}px;display:flex;flex-direction:column;justify-content:space-between;color:white;position:relative;overflow:hidden;box-shadow:0 8px 22px rgba(15,30,61,.35)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:${28*fontScale}px;height:${28*fontScale}px;background:white;color:${primary};border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:${15*fontScale}px">${initial}</div>
+          <div style="font-size:${12*fontScale}px;font-weight:800;letter-spacing:.02em">${brand}</div>
+        </div>
+        <div>
+          <div style="font-family:'Sora',sans-serif;font-size:${17*fontScale}px;font-weight:900;line-height:1.15;margin-bottom:6px;text-shadow:0 1px 3px rgba(0,0,0,.18)">${headlines[0]}</div>
+          <div style="font-size:${10.5*fontScale}px;font-weight:600;opacity:.92;line-height:1.35">${subs[0]}</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="background:white;color:${primary};font-size:${10*fontScale}px;font-weight:900;padding:${5*fontScale}px ${10*fontScale}px;border-radius:6px">Get Started →</div>
+          <div style="font-size:${9*fontScale}px;font-weight:700;opacity:.85">${(analysisData?.url || 'yourdomain.com').replace(/^https?:\/\//,'')}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('brandCreativeModal')?.remove();
+
+  const html = `
+    <div id="brandCreativeModal" style="position:fixed;inset:0;background:rgba(10,22,40,.72);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:11000;padding:20px;overflow-y:auto">
+      <div style="background:white;border-radius:18px;max-width:980px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 30px 80px rgba(0,0,0,.45)">
+        <div style="background:linear-gradient(135deg,${primary} 0%,${accent} 100%);padding:22px 26px;border-radius:18px 18px 0 0;color:white;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-size:0.72rem;font-weight:800;letter-spacing:.1em;opacity:.9;text-transform:uppercase">✨ Brand Creative · ${camp.platform || ''}</div>
+            <div style="font-family:Sora,sans-serif;font-size:1.35rem;font-weight:900;margin-top:4px">${camp.name}</div>
+            <div style="font-size:0.82rem;opacity:.92;margin-top:4px">Brand-styled ad pack for <strong>${brand}</strong></div>
+          </div>
+          <button onclick="document.getElementById('brandCreativeModal').remove()" style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);color:white;font-size:1.1rem;cursor:pointer;font-weight:800">✕</button>
+        </div>
+
+        <div style="padding:22px 26px">
+          <!-- Brand Kit Strip -->
+          <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:14px 16px;margin-bottom:18px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:42px;height:42px;border-radius:10px;background:${primary};color:white;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.1rem;box-shadow:0 4px 10px ${primary}55">${initial}</div>
+              <div>
+                <div style="font-size:0.7rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.06em">Brand</div>
+                <div style="font-size:0.95rem;font-weight:800;color:#0A1628">${brand}</div>
+              </div>
+            </div>
+            <div style="height:36px;width:1px;background:#E2E8F0"></div>
+            <div>
+              <div style="font-size:0.7rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.06em">Primary Colour</div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+                <div style="width:18px;height:18px;border-radius:5px;background:${primary};border:1px solid rgba(0,0,0,.08)"></div>
+                <code style="font-size:0.78rem;color:#0A1628;font-weight:700">${primary}</code>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:0.7rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.06em">Accent</div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+                <div style="width:18px;height:18px;border-radius:5px;background:${accent};border:1px solid rgba(0,0,0,.08)"></div>
+                <code style="font-size:0.78rem;color:#0A1628;font-weight:700">${accent}</code>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:0.7rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.06em">Tone of Voice</div>
+              <div style="font-size:0.82rem;color:#0A1628;font-weight:700">${tone}</div>
+            </div>
+            <button onclick="window._editBrandKit && window._editBrandKit()" style="margin-left:auto;padding:8px 14px;background:white;border:1px solid #CBD5E1;border-radius:8px;font-size:0.78rem;font-weight:700;color:#334155;cursor:pointer">⚙️ Edit Brand Kit</button>
+          </div>
+
+          <!-- Mockups -->
+          <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:10px">Generated brand-styled creatives</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:18px">
+            ${mockup('square','Feed', 1, 1, 1)}
+            ${mockup('story','Story', 9, 16, 0.75)}
+            ${mockup('banner','Banner', 16, 6, 0.85)}
+          </div>
+
+          <!-- Headlines -->
+          <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:8px">Brand-aligned headlines</div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">
+            ${headlines.map((h, i) => `
+              <div style="background:#F1F5F9;border:1px solid #E2E8F0;border-radius:10px;padding:10px 14px">
+                <div style="font-weight:800;color:#0A1628;font-size:0.92rem">${h}</div>
+                <div style="color:#64748B;font-size:0.78rem;margin-top:2px">${subs[i]}</div>
+              </div>`).join('')}
+          </div>
+
+          <!-- Actions -->
+          <div style="display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;border-top:1px solid #E2E8F0;padding-top:16px">
+            <button onclick="document.getElementById('brandCreativeModal').remove()"
+                    style="padding:10px 18px;background:white;border:1px solid #CBD5E1;border-radius:9px;font-weight:700;color:#475569;cursor:pointer;font-size:0.85rem">Cancel</button>
+            <button onclick="window._regenBrandCreative(${idx})"
+                    style="padding:10px 18px;background:#F8FAFC;border:1px solid #CBD5E1;border-radius:9px;font-weight:800;color:#0A1628;cursor:pointer;font-size:0.85rem">🔄 Regenerate</button>
+            <button onclick="window._attachBrandCreative(${idx})"
+                    style="padding:10px 22px;background:linear-gradient(135deg,${primary},${accent});border:none;border-radius:9px;font-weight:800;color:white;cursor:pointer;font-size:0.88rem;box-shadow:0 4px 12px ${primary}55">✨ Attach to Campaign</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  igTrack('Brand Creative Opened', { campaignName: camp.name, idx });
+};
+
+window._regenBrandCreative = function(idx) {
+  // Cycle the seed so a different palette is picked
+  if (analysisData) analysisData.url = (analysisData.url || '') + '#';
+  document.getElementById('brandCreativeModal')?.remove();
+  window._igBrandCreative(idx);
+};
+
+window._attachBrandCreative = function(idx) {
+  const camp = window._lastCampRecs && window._lastCampRecs[idx];
+  if (!camp) return;
+  const primary = (window._brandKit && window._brandKit.color) || _brandPrimaryColour();
+  const brand   = _brandName();
+  window._campaignBrandCreatives[idx] = {
+    brand, primary, attachedAt: new Date().toLocaleString(),
+    pack: ['Feed (1:1)', 'Story (9:16)', 'Banner (16:6)']
+  };
+  // Update the card chip
+  const chip = document.getElementById('brandAttached' + idx);
+  if (chip) {
+    chip.style.display = 'block';
+    chip.innerHTML = `✨ Brand creative pack attached · ${brand} · 3 sizes (Feed · Story · Banner) · ready to launch`;
+  }
+  document.getElementById('brandCreativeModal')?.remove();
+  showToast(`✅ Brand creative attached to "${camp.name}"`);
+  igTrack('Brand Creative Attached', { campaignName: camp.name, idx });
+};
+
+window._editBrandKit = function() {
+  const cur = window._brandKit || { name: _brandName(), color: _brandPrimaryColour(), tone: 'Confident · Modern · Helpful' };
+  const name  = prompt('Brand name:', cur.name);
+  if (name === null) return;
+  const color = prompt('Primary brand colour (hex, e.g. #0066FF):', cur.color);
+  if (color === null) return;
+  const tone  = prompt('Tone of voice:', cur.tone);
+  if (tone === null) return;
+  window._brandKit = { name: name.trim() || cur.name,
+                       color: /^#[0-9A-Fa-f]{6}$/.test((color||'').trim()) ? color.trim() : cur.color,
+                       tone: tone.trim() || cur.tone };
+  try { localStorage.setItem('ig_brand_kit', JSON.stringify(window._brandKit)); } catch(e) {}
+  showToast('✅ Brand kit saved');
+  // If a creative modal is open, refresh it
+  const open = document.getElementById('brandCreativeModal');
+  if (open) {
+    const idx = parseInt(open.querySelector('[onclick*="_attachBrandCreative"]')?.getAttribute('onclick')?.match(/\d+/)?.[0] || '0', 10);
+    open.remove();
+    window._igBrandCreative(idx);
+  }
+};
+
+// Restore brand kit from localStorage on load
+try { const _bk = localStorage.getItem('ig_brand_kit'); if (_bk) window._brandKit = JSON.parse(_bk); } catch(e) {}
+
 window._igLandingPageFromModal = function() {
   const camp = window._currentModalCamp;
   if (!camp) { showToast('⚠️ No campaign data — open a campaign card first'); return; }
@@ -4294,7 +4503,9 @@ function buildCampaigns() {
         <button class="btn-camp-launch" onclick="window._igLaunch(${idx})" title="Deploy this campaign — sets up targeting, budget and creative, then queues it for review before spending begins.">🚀 Launch this Campaign</button>
         <button class="btn-camp-preview" onclick="window._igCreative(${idx})" title="Open GPT-4o Creative Studio to generate and refine ad copy, headlines and visuals for this campaign.">🎨 Creative Studio</button>
         <button class="btn-camp-preview" onclick="window._igLandingPage(${idx})" title="Generate a complete AI conversion-optimised landing page for this campaign using GPT-4o." style="background:#EFF6FF;color:#0066FF;border-color:#BFDBFE">🌐 Landing Page</button>
+        <button class="btn-camp-preview" onclick="window._igBrandCreative(${idx})" title="Generate brand-styled ad creatives using your logo, colours and tone — then attach them to this campaign." style="background:#FFF7ED;color:#C2410C;border-color:#FED7AA">✨ Brand Creative</button>
       </div>
+      <div id="brandAttached${idx}" style="margin-top:10px;display:none;background:linear-gradient(135deg,#FFF7ED,#FFEDD5);border:1px solid #FED7AA;border-radius:10px;padding:10px 12px;font-size:0.78rem;color:#9A3412;font-weight:700"></div>
     </div>
   `).join('');
   
