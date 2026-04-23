@@ -6352,8 +6352,10 @@ h3:hover {
 [data-theme="light"] .ich-sub         { color: #64748B !important; }
 [data-theme="light"] .loading-brand   { color: #0A1628 !important; }
 [data-theme="light"] .loading-title   { color: #64748B !important; }
-[data-theme="light"] .lstep-text strong { color: #0A1628 !important; }
-[data-theme="light"] .lstep-text small  { color: #94A3B8 !important; }
+[data-theme="light"] .lstep-text strong { color: #FFFFFF !important; }
+[data-theme="light"] .lstep-text small  { color: rgba(255,255,255,.6) !important; }
+[data-theme="light"] .loading-brand     { color: #FFFFFF !important; }
+[data-theme="light"] .loading-title     { color: rgba(255,255,255,.75) !important; }
 [data-theme="light"] .integ-doc-tagline { color: #64748B !important; }
 
 /* ============================================================
