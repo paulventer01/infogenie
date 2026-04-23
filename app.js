@@ -10866,7 +10866,21 @@ function buildIntelligence() {
   _updateLiveDataBadges();
 }
 
-function exportIntelligenceReport() {
+// Lazy-load jsPDF from CDN (cached after first call)
+function _loadJsPDF() {
+  if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+  if (window._jsPDFPromise) return window._jsPDFPromise;
+  window._jsPDFPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload = () => resolve(window.jspdf.jsPDF);
+    s.onerror = () => reject(new Error('Failed to load jsPDF'));
+    document.head.appendChild(s);
+  });
+  return window._jsPDFPromise;
+}
+
+async function exportIntelligenceReport() {
   const industryKey = analysisData ? analysisData.industryKey : 'marketing';
   const intel = INTELLIGENCE_DB[industryKey] || INTELLIGENCE_DB['marketing'];
   const domain = analysisData ? analysisData.url : 'demo.com';
@@ -10874,6 +10888,227 @@ function exportIntelligenceReport() {
   const date = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
   const realComps = analysisData ? analysisData.competitors : [];
 
+  let JsPDF;
+  try {
+    showToast('📄 Generating PDF report…');
+    JsPDF = await _loadJsPDF();
+  } catch (e) {
+    console.error('PDF lib load failed:', e);
+    showToast('⚠️ Could not load PDF library — check your connection');
+    return;
+  }
+
+  const doc = new JsPDF({ unit: 'pt', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const marginX = 48;
+  const contentW = pageW - marginX * 2;
+  let y = 0;
+
+  // Brand colors
+  const COL = {
+    brand:   [0, 102, 255],
+    brandDk: [10, 22, 40],
+    teal:    [0, 201, 200],
+    text:    [17, 24, 39],
+    sub:     [107, 114, 128],
+    line:    [229, 231, 235],
+    accent:  [16, 185, 129]
+  };
+
+  const setFill = c => doc.setFillColor(c[0], c[1], c[2]);
+  const setText = c => doc.setTextColor(c[0], c[1], c[2]);
+  const setDraw = c => doc.setDrawColor(c[0], c[1], c[2]);
+
+  function ensureSpace(needed) {
+    if (y + needed > pageH - 60) {
+      addFooter();
+      doc.addPage();
+      y = 60;
+      addRunningHeader();
+    }
+  }
+
+  function addRunningHeader() {
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); setText(COL.sub);
+    doc.text('InfoGenie · Competitive Intelligence Report', marginX, 36);
+    setText(COL.text);
+    setDraw(COL.line); doc.setLineWidth(0.5);
+    doc.line(marginX, 44, pageW - marginX, 44);
+  }
+
+  function addFooter() {
+    const pn = doc.internal.getNumberOfPages();
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); setText(COL.sub);
+    doc.text(`Generated ${date} · infogenie.io`, marginX, pageH - 28);
+    doc.text(`Page ${pn}`, pageW - marginX, pageH - 28, { align: 'right' });
+    setText(COL.text);
+  }
+
+  function sectionTitle(num, title) {
+    ensureSpace(40);
+    setFill(COL.brand); doc.rect(marginX, y, 24, 24, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); setText([255,255,255]);
+    doc.text(String(num), marginX + 12, y + 16, { align: 'center' });
+    setText(COL.brandDk); doc.setFontSize(14);
+    doc.text(title, marginX + 34, y + 17);
+    y += 36;
+    setDraw(COL.line); doc.setLineWidth(0.5);
+    doc.line(marginX, y, pageW - marginX, y);
+    y += 14;
+  }
+
+  function bodyText(txt, opts={}) {
+    const { size=10, bold=false, color=COL.text, indent=0, gap=4 } = opts;
+    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    doc.setFontSize(size); setText(color);
+    const lines = doc.splitTextToSize(txt, contentW - indent);
+    lines.forEach(line => {
+      ensureSpace(size + 2);
+      doc.text(line, marginX + indent, y);
+      y += size + 2;
+    });
+    y += gap;
+  }
+
+  function bulletItem(label, valueLines) {
+    ensureSpace(28);
+    setFill(COL.teal); doc.circle(marginX + 4, y - 3, 2.2, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(10.5); setText(COL.brandDk);
+    const labelLines = doc.splitTextToSize(label, contentW - 14);
+    labelLines.forEach(l => { ensureSpace(14); doc.text(l, marginX + 14, y); y += 13; });
+    doc.setFont('helvetica','normal'); doc.setFontSize(9.5); setText(COL.text);
+    (Array.isArray(valueLines) ? valueLines : [valueLines]).forEach(v => {
+      const ls = doc.splitTextToSize(v, contentW - 14);
+      ls.forEach(l => { ensureSpace(12); doc.text(l, marginX + 14, y); y += 12; });
+    });
+    y += 6;
+  }
+
+  // ── COVER PAGE ──────────────────────────────────────────────────────────────
+  setFill(COL.brandDk); doc.rect(0, 0, pageW, 240, 'F');
+  setFill(COL.teal); doc.rect(0, 240, pageW, 6, 'F');
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); setText(COL.teal);
+  doc.text('INFOGENIE · INTELLIGENCE HUB', marginX, 70);
+  doc.setFontSize(28); setText([255,255,255]);
+  doc.text('Competitive Intelligence', marginX, 108);
+  doc.text('Report', marginX, 142);
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(11); setText([200,210,230]);
+  doc.text(`Domain   ${domain}`, marginX, 178);
+  doc.text(`Industry  ${industry}`, marginX, 196);
+  doc.text(`Generated ${date}`, marginX, 214);
+
+  // Score badge
+  setFill([255,255,255]); doc.roundedRect(pageW - marginX - 130, 90, 130, 110, 8, 8, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); setText(COL.sub);
+  doc.text('CATEGORY DOMINATION', pageW - marginX - 65, 110, { align: 'center' });
+  setText(COL.brand); doc.setFontSize(36);
+  doc.text(`${intel.categoryScore}`, pageW - marginX - 65, 152, { align: 'center' });
+  doc.setFontSize(11); setText(COL.sub);
+  doc.text('/ 100', pageW - marginX - 65, 172, { align: 'center' });
+  doc.setFontSize(8);
+  doc.text('SCORE', pageW - marginX - 65, 188, { align: 'center' });
+
+  y = 290;
+  doc.setFont('helvetica','bold'); doc.setFontSize(13); setText(COL.brandDk);
+  doc.text('Executive Summary', marginX, y); y += 18;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); setText(COL.text);
+  const summary = `This report consolidates real-time competitive signals, share-of-voice analysis, predicted competitor moves, and a 90-day domination roadmap for ${domain} operating in ${industry}. Data is sourced from DataForSEO live APIs combined with InfoGenie's AI analytics engine. Use it to prioritise keyword bets, defensive plays and counter-campaigns over the next quarter.`;
+  doc.splitTextToSize(summary, contentW).forEach(l => { doc.text(l, marginX, y); y += 14; });
+
+  y += 14;
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); setText(COL.brandDk);
+  doc.text('Tracked Competitors', marginX, y); y += 16;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); setText(COL.text);
+  if (realComps.length) {
+    realComps.slice(0, 8).forEach(c => {
+      ensureSpace(14);
+      doc.text(`• ${c.name || c.url}${c.url ? '  (' + c.url + ')' : ''}`, marginX, y);
+      y += 14;
+    });
+  } else {
+    bodyText('Run an analysis to populate live competitors.', { color: COL.sub });
+  }
+
+  // New page for sections
+  addFooter();
+  doc.addPage();
+  y = 60;
+  addRunningHeader();
+
+  // ── SECTION 1: KEYWORD GAPS ─────────────────────────────────────────────────
+  sectionTitle(1, 'Keyword Gap Opportunities');
+  intel.keywordGaps.forEach((k, i) => {
+    bulletItem(`${i+1}. ${k.keyword}`, [
+      `Volume: ${k.volume}/mo   ·   Top Competitor: ${k.topComp}   ·   Their CTR: ${k.compCtr}`,
+      `Your Rank: ${k.yourRank}   ·   Difficulty: ${k.difficulty}   ·   Gap Score: ${k.score}/100   ·   CPC: ${k.cpc}`
+    ]);
+  });
+
+  // ── SECTION 2: SHARE OF VOICE ───────────────────────────────────────────────
+  sectionTitle(2, 'Share of Voice');
+  intel.shareOfVoice.forEach(s => {
+    ensureSpace(22);
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); setText(COL.brandDk);
+    doc.text(s.name, marginX, y);
+    doc.setFont('helvetica','normal'); setText(COL.text);
+    doc.text(`${s.share}%${s.trend ? '  ' + s.trend : ''}`, pageW - marginX, y, { align: 'right' });
+    // Bar
+    const barY = y + 4;
+    const barW = contentW;
+    const fillW = (s.share / 100) * barW;
+    setFill(COL.line); doc.rect(marginX, barY, barW, 6, 'F');
+    setFill(COL.brand); doc.rect(marginX, barY, fillW, 6, 'F');
+    y += 22;
+  });
+
+  // ── SECTION 3: SIGNALS ──────────────────────────────────────────────────────
+  sectionTitle(3, 'Competitor Signals Detected');
+  const sigTypes = ['Dark Period Detected','New Campaign Launched','Budget Surge','Price Change'];
+  const sigSrc = realComps.length > 0 ? realComps.slice(0, 4) : intel.signals;
+  sigSrc.forEach((c, i) => {
+    const name = c.name || c.comp || 'Competitor';
+    bulletItem(`[${sigTypes[i % 4]}] ${name}`,
+      'Recommended Action: attack vacated keywords and target price-dissatisfied customers');
+  });
+
+  // ── SECTION 4: PREDICTIONS ──────────────────────────────────────────────────
+  sectionTitle(4, 'AI Predictive Intelligence');
+  intel.predictions.forEach((p, i) => {
+    bulletItem(`${i+1}. ${p.comp} — ${p.timeframe} warning  (Confidence ${p.confidence}%)`, [
+      String(p.prediction || '').slice(0, 320),
+      `Recommended: ${p.action}`
+    ]);
+  });
+
+  // ── SECTION 5: ROADMAP ──────────────────────────────────────────────────────
+  sectionTitle(5, '90-Day Domination Roadmap');
+  intel.roadmap.forEach(r => {
+    bulletItem(`[${String(r.week).toUpperCase()}]  ${r.title}`, String(r.desc || '').slice(0, 320));
+  });
+
+  // ── SECTION 6: WIN/LOSS ─────────────────────────────────────────────────────
+  sectionTitle(6, 'Win / Loss Intelligence');
+  intel.winLoss.forEach(w => {
+    bulletItem(`${w.comp}  ·  ${w.channel}`, [
+      `Winning Message: ${w.message}`,
+      `Loss Rate: ${w.lossRate} of deals`,
+      `Exploitable Weakness: ${w.weakness}`
+    ]);
+  });
+
+  addFooter();
+
+  const safeDomain = String(domain).replace(/[^a-z0-9]/gi, '_');
+  const fname = `InfoGenie_Intelligence_Report_${safeDomain}_${new Date().toISOString().slice(0,10)}.pdf`;
+  doc.save(fname);
+  showToast('📥 PDF report downloaded successfully');
+  igTrack('Report Exported', { format: 'pdf', domain, industry });
+  return; // Skip legacy text body below
+
+  // Legacy text fallback (unreachable, kept for safety)
   const lines = [
     '================================================================',
     '  INFOGENIE — COMPETITIVE INTELLIGENCE REPORT',
