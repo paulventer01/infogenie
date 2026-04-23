@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20260424d" />
+  <link rel="stylesheet" href="style.css?v=20260424e" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
   <!-- PostHog SDK stub — init called from app.js after config fetch -->
@@ -172,8 +172,31 @@
         Turn Competitor Intel<br/>Into <span class="gradient-text">Autonomous Growth</span>
       </h1>
       <p class="hero-subtitle">
-        Enter your website <em style="font-style:normal;opacity:.75">— or just pick an industry —</em> and InfoGenie maps the market, finds 5+ real competitors, and generates a full AI battle plan in under 60 seconds.
+        Enter your website <em style="font-style:normal;opacity:.75">— or just pick an industry —</em> and InfoGenie maps the market, finds 5+ real competitors, and generates a full AI battle plan in under <span id="heroCountdown" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#0066FF,#00D8D7);color:#FFFFFF;padding:3px 12px;border-radius:999px;font-weight:800;font-size:0.95em;letter-spacing:.02em;box-shadow:0 4px 14px rgba(0,102,255,.28);font-variant-numeric:tabular-nums" title="Live target — average analysis time"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#FFFFFF;box-shadow:0 0 0 0 rgba(255,255,255,.8);animation:heroPulse 1.2s infinite ease-out"></span><span id="heroCountdownNum">60</span> seconds</span>.
       </p>
+      <style>@keyframes heroPulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.85)}70%{box-shadow:0 0 0 8px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}</style>
+      <script>
+        (function(){
+          const el = document.getElementById('heroCountdownNum');
+          if (!el) return;
+          let n = 60;
+          setInterval(() => {
+            // If an analysis is running, show live elapsed seconds counting UP from 0; otherwise loop 60→1
+            if (window._analysisStartedAt) {
+              const elapsed = Math.floor((Date.now() - window._analysisStartedAt) / 1000);
+              el.textContent = elapsed;
+              el.parentElement.lastChild.textContent = elapsed === 1 ? ' second' : ' seconds';
+            } else if (window._lastRunDuration) {
+              el.textContent = window._lastRunDuration.toFixed(1);
+              el.parentElement.lastChild.textContent = ' sec last run';
+            } else {
+              n = n <= 1 ? 60 : n - 1;
+              el.textContent = n;
+              el.parentElement.lastChild.textContent = ' seconds';
+            }
+          }, 1000);
+        })();
+      </script>
 
       <!-- Search card -->
       <div class="url-card">
@@ -1360,7 +1383,7 @@
 </div>
 
 <script src="data.js"></script>
-<script src="app.js?v=20260424d"></script>
+<script src="app.js?v=20260424e"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');

@@ -2317,6 +2317,7 @@ async function runAnalysis(url, country, industryOverride) {
   // ── Live elapsed-time ticker (resets each run) ───────────────────────────
   const _runStart = performance.now();
   window._lastRunStart = _runStart;
+  window._analysisStartedAt = Date.now();
   const _elapsedEl = document.getElementById('loadingElapsedTime');
   if (window._elapsedTimer) clearInterval(window._elapsedTimer);
   if (_elapsedEl) _elapsedEl.textContent = '0.0s';
@@ -2393,7 +2394,8 @@ async function runAnalysis(url, country, industryOverride) {
   if (window._elapsedTimer) { clearInterval(window._elapsedTimer); window._elapsedTimer = null; }
   const _runSec = ((performance.now() - _runStart) / 1000).toFixed(1);
   if (_elapsedEl) _elapsedEl.textContent = _runSec + 's';
-  window._lastRunDuration = _runSec;
+  window._lastRunDuration = parseFloat(_runSec);
+  window._analysisStartedAt = null;
   statusText.textContent = `✅ Intelligence report ready in ${_runSec}s!`;
   await wait(450);
   overlay.style.display = 'none';
