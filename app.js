@@ -7123,8 +7123,14 @@ window.generateAiVisibilityAudit = async function() {
   if (window._aiVisRunning) return;
   window._aiVisRunning = true;
   const statusEl = document.getElementById('aivis-audit-status');
-  // Start timer on EVERY "Run AI Audit" button on the page (main + 5 empty-state cards).
-  const stopTimer = window.startButtonTimer('button[onclick*="generateAiVisibilityAudit"]', 'Running AI Audit');
+  // Start timer on EVERY "Run AI Audit" button on the page — the master button
+  // PLUS every per-card runSingleAiVis(...) button, since the full audit is
+  // populating all of those cards in parallel.
+  const allAuditBtns = [
+    ...document.querySelectorAll('button[onclick*="generateAiVisibilityAudit"]'),
+    ...document.querySelectorAll('button[onclick*="runSingleAiVis"]'),
+  ];
+  const stopTimer = window.startButtonTimer(allAuditBtns, 'Running AI Audit');
   if (statusEl) statusEl.style.display = 'block';
 
   const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
