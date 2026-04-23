@@ -20475,7 +20475,14 @@ window.runSingleTech = async function(kind) {
 };
 
 window.runTechSuiteAll = async function() {
-  await Promise.all([runSingleTech('health'), runSingleTech('crawl'), runSingleTech('index')]);
+  const stopTimer = window.startButtonTimer
+    ? window.startButtonTimer('button[onclick*="runTechSuiteAll"]', 'Running all audits')
+    : (() => {});
+  try {
+    await Promise.all([runSingleTech('health'), runSingleTech('crawl'), runSingleTech('index')]);
+  } finally {
+    stopTimer();
+  }
 };
 
 window.buildTechnicalSuite = buildTechnicalSuite;
