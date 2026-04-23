@@ -3550,22 +3550,28 @@ function renderCompetitorCards(comps) {
   const yourReal   = analysisData._yourRealData;
   const liveCount  = comps.filter(c => c._dataSource === 'DataForSEO').length;
 
-  // Build the benchmark competitor tiles — same list used across dashboard, using real DataForSEO
-  // traffic where available, clearly labelled as AI-estimated where not
-  const compTiles = comps.slice(0, 6).map(c => {
-    const hasLive = !!c._realTraffic;
+  // Expose for the click handlers on benchmark tiles
+  window._liveBenchmarkComps = comps;
+
+  // Build the benchmark competitor tiles — clickable, opens full analysis modal
+  const compTiles = comps.slice(0, 6).map((c, idx) => {
+    const hasLive = !!c._realTraffic || c.realData;
     const tileBg = hasLive
       ? 'linear-gradient(135deg,#A7F3D0 0%,#6EE7B7 100%)'
       : 'linear-gradient(135deg,#A5F3FC 0%,#67E8F9 100%)';
     const tagBg = hasLive ? '#065F46' : '#0E7490';
-    const tagText = '#FFFFFF';
     return `
-      <div style="background:${tileBg};border:1px solid rgba(15,76,74,.18);border-radius:12px;padding:14px 12px;text-align:center;box-shadow:0 2px 8px rgba(15,76,74,.10)">
-        <div style="display:inline-block;background:${tagBg};color:${tagText};font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:2px 8px;border-radius:10px;margin-bottom:8px">${hasLive ? '📡 Live' : '📊 Benchmark'}</div>
+      <div onclick="openCompetitorAnalysis(window._liveBenchmarkComps[${idx}])"
+           onmouseenter="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 22px rgba(15,76,74,.22)'"
+           onmouseleave="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(15,76,74,.10)'"
+           title="Click to see full analysis for ${c.name}"
+           style="background:${tileBg};border:1px solid rgba(15,76,74,.18);border-radius:12px;padding:14px 12px;text-align:center;box-shadow:0 2px 8px rgba(15,76,74,.10);cursor:pointer;transition:transform .18s ease, box-shadow .18s ease;position:relative">
+        <div style="display:inline-block;background:${tagBg};color:#FFFFFF;font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:2px 8px;border-radius:10px;margin-bottom:8px">${hasLive ? '📡 Live' : '📊 Benchmark'}</div>
         <div style="font-size:0.85rem;font-weight:800;color:#0A2F2D;margin-bottom:2px">${c.name}</div>
-        <div style="font-size:0.7rem;color:#134E4A;opacity:.8;margin-bottom:6px">${c.url}</div>
-        <div style="font-size:0.74rem;color:#0A2F2D;font-weight:700">${hasLive ? c._realTraffic + ' traffic/mo' : c.traffic + ' traffic'}</div>
-        <div style="font-size:0.7rem;color:#134E4A;opacity:.85">${hasLive ? c._realKeywords + ' keywords' : c.ctr + ' CTR · ' + c.roas + '× ROAS'}</div>
+        <div style="font-size:0.7rem;color:#134E4A;opacity:.85;margin-bottom:6px">${c.url}</div>
+        <div style="font-size:0.74rem;color:#0A2F2D;font-weight:700">${hasLive && c._realTraffic ? c._realTraffic + ' traffic/mo' : (c.traffic || '—') + ' traffic'}</div>
+        <div style="font-size:0.7rem;color:#134E4A;opacity:.9">${(c.ctr || '—')} CTR · ${(c.roas || '—')}× ROAS</div>
+        <div style="margin-top:8px;font-size:0.62rem;font-weight:800;color:#065F46;letter-spacing:.06em;text-transform:uppercase;opacity:.85">Click for full analysis →</div>
       </div>`;
   }).join('');
 
