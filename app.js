@@ -6725,7 +6725,7 @@ function buildAiVisibility() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Prompt Coverage Matrix</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to fire 8 industry prompts × every connected model and see real per-cell citation results.</div>
           </div>
-          <button onclick="generateAiVisibilityAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('coverage')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
         </div>`;
       }
       const overallPct = Math.round((cov.overallCoverage || 0) * 100);
@@ -6841,7 +6841,7 @@ function buildAiVisibility() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Answer Accuracy Check</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to scrape your live site, ask each model to describe your brand, and grade every claim for factual accuracy against your real content.</div>
           </div>
-          <button onclick="generateAiVisibilityAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('accuracy')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
         </div>`;
       }
       const ovColor = acc.overallAccuracy >= 75 ? '#10B981' : acc.overallAccuracy >= 50 ? '#F59E0B' : '#DC2626';
@@ -6884,7 +6884,7 @@ function buildAiVisibility() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Competitive Citation Intelligence</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">${cc?.note || 'Run the AI Audit to fire industry prompts across every model for you AND your competitors and see who wins each query.'}</div>
           </div>
-          <button onclick="generateAiVisibilityAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('competitors')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
         </div>`;
       }
       const sortedSov = Object.entries(cc.shareOfVoicePct || {}).sort((a,b)=>b[1]-a[1]);
@@ -6926,7 +6926,7 @@ function buildAiVisibility() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Entity Identification & Mapping</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to see how each model maps your brand as a knowledge-graph entity — category, attributes, relationships, positioning.</div>
           </div>
-          <button onclick="generateAiVisibilityAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('entity')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
         </div>`;
       }
       const c = en.consolidated;
@@ -6975,7 +6975,7 @@ function buildAiVisibility() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Sentiment & Context Analysis</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to grade how every model talks about your brand — sentiment, positives, negatives, and narrative gaps.</div>
           </div>
-          <button onclick="generateAiVisibilityAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('sentiment')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
         </div>`;
       }
       const total = (s.distribution.positive||0)+(s.distribution.neutral||0)+(s.distribution.negative||0)+(s.distribution.mixed||0) || 1;
@@ -7015,7 +7015,7 @@ function buildAiVisibility() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Google AI Overview Tracking</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to detect Google AI Overview presence, citations, and your organic position across 5 industry queries.</div>
           </div>
-          <button onclick="generateAiVisibilityAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('sge')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
         </div>`;
       }
       if (g.configured === false) {
@@ -7063,7 +7063,7 @@ function buildAiVisibility() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Citation-to-Traffic Attribution</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to connect AI citations to real traffic via Amplitude.</div>
           </div>
-          <button onclick="generateAiVisibilityAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('attribution')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
         </div>`;
       }
       if (!at.connected) {
@@ -7452,6 +7452,46 @@ window.startButtonTimer = function(target, label) {
       b.innerHTML = restoreLabel != null ? restoreLabel : (originals[i] != null ? originals[i] : b.innerHTML);
     });
   };
+};
+
+// Runs ONE AI Visibility analysis in isolation (e.g. only Google AI Overview)
+// so users don't have to wait for all 9 endpoints when they click a single card.
+window.runSingleAiVis = async function(kind) {
+  const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
+  const industry = analysisData?.industry?.name || 'digital marketing';
+  const competitorList = (analysisData?.competitors || []).map(c => c.url || c.domain || c.name).filter(Boolean);
+  const map = {
+    coverage:    { url:'/api/ai-visibility-coverage',    body:{domain,industry}, store:'_aiVisCoverage',    label:'Prompt Coverage' },
+    accuracy:    { url:'/api/ai-visibility-accuracy',    body:{domain,industry}, store:'_aiVisAccuracy',    label:'Answer Accuracy' },
+    competitors: { url:'/api/ai-visibility-competitors', body:{domain,industry,competitors:competitorList}, store:'_aiVisCompetitors', label:'Competitive Citation' },
+    entity:      { url:'/api/ai-visibility-entity',      body:{domain,industry}, store:'_aiVisEntity',      label:'Entity Mapping' },
+    sentiment:   { url:'/api/ai-visibility-sentiment',   body:{domain,industry}, store:'_aiVisSentiment',   label:'Sentiment' },
+    sge:         { url:'/api/ai-visibility-sge',         body:{domain,industry}, store:'_aiVisSGE',         label:'Google AI Overview' },
+    attribution: { url:'/api/ai-visibility-attribution', body:{domain},          store:'_aiVisAttribution', label:'AI Attribution' },
+  };
+  const m = map[kind]; if (!m) return;
+  const sel = `button[onclick*="runSingleAiVis('${kind}')"]`;
+  const stopTimer = window.startButtonTimer ? window.startButtonTimer(sel, `Running ${m.label}`) : (() => {});
+  try {
+    const r = await fetch(m.url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(m.body) });
+    const d = await r.json();
+    if (d && d.ok) {
+      window[m.store] = d;
+      // Coverage runs also produce a new trend snapshot — refresh it.
+      if (kind === 'coverage') {
+        try { const t = await fetch(`/api/ai-visibility-trend?domain=${encodeURIComponent(domain)}`).then(x=>x.json()); if (t && t.ok) window._aiVisTrend = t; } catch(_) {}
+      }
+      buildAiVisibility();
+      setTimeout(() => document.getElementById('aivis-results-anchor')?.scrollIntoView({ behavior:'smooth', block:'start' }), 80);
+      showToast(`✅ ${m.label} ready`);
+    } else {
+      showToast(`⚠️ ${m.label} failed${d?.error?': '+d.error:''}`);
+    }
+  } catch(e) {
+    showToast(`❌ ${m.label}: ${e.message}`);
+  } finally {
+    stopTimer('✨ Run AI Audit');
+  }
 };
 
 window.generateAiVisibilityAudit = async function() {
