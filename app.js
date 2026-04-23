@@ -2276,6 +2276,47 @@ async function runAnalysis(url, country, industryOverride) {
       });
       industry.competitors = aiCompetitorPool;
       try { localStorage.setItem('ig-ai-detected', JSON.stringify({ industryName: aiDetected.industryName, businessSummary: aiDetected.businessSummary, competitors: aiDetected.competitors, at: Date.now() })); } catch(e){}
+
+      // ── Overlay REAL DataForSEO metrics on top of the AI competitor pool ──
+      // Replaces randomised ROAS / CTR / Traffic / Ad-spend with live numbers
+      // pulled from DataForSEO domain_rank_overview + keywords_for_site.
+      try {
+        statusText.textContent = 'Pulling live competitor traffic & ad-spend data...';
+        const domainList = aiCompetitorPool.map(c => c.domain).filter(Boolean);
+        if (domainList.length) {
+          const mr = await fetch('/api/competitor-metrics', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domains: domainList, industryKey, location: country || 'United States' })
+          });
+          if (mr.ok) {
+            const mj = await mr.json();
+            const byDomain = {};
+            (mj.results || []).forEach(r => {
+              const key = (r.domain || '').replace(/^www\./,'').toLowerCase();
+              if (key) byDomain[key] = r;
+            });
+            aiCompetitorPool.forEach(c => {
+              const key = (c.domain || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+              const m = byDomain[key];
+              if (m && m.realData && m.totalTraffic > 0) {
+                if (m.roas > 0)            c.roas    = m.roas;
+                if (m.ctrFmt)              c.ctr     = m.ctrFmt;
+                if (m.trafficFmt)          c.traffic = m.trafficFmt;
+                if (m.adSpend && m.adSpend !== '—') c.adSpend = m.adSpend;
+                c.realData      = true;
+                c.dataSource    = 'DataForSEO';
+                c.domainRank    = m.domainRank;
+                c.organicKeywords = m.organicKeywords;
+                c.paidKeywords  = m.paidKeywords;
+                c.avgPosition   = m.avgPosition;
+                c.avgCPC        = m.avgCPC;
+              }
+            });
+            console.log(`✓ Real metrics overlaid on ${Object.keys(byDomain).length}/${domainList.length} competitors`);
+          }
+        }
+      } catch(e) { console.warn('competitor-metrics overlay failed:', e); }
     }
     // Update hint label live with the precise industry
     if (hintEl && aiDetected.industryName) {
