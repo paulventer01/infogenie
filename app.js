@@ -2313,6 +2313,18 @@ async function runAnalysis(url, country, industryOverride) {
   const overlay = document.getElementById('loadingOverlay');
   overlay.classList.remove('hidden');
   overlay.style.display = 'flex';
+
+  // ── Live elapsed-time ticker (resets each run) ───────────────────────────
+  const _runStart = performance.now();
+  window._lastRunStart = _runStart;
+  const _elapsedEl = document.getElementById('loadingElapsedTime');
+  if (window._elapsedTimer) clearInterval(window._elapsedTimer);
+  if (_elapsedEl) _elapsedEl.textContent = '0.0s';
+  window._elapsedTimer = setInterval(() => {
+    if (!_elapsedEl) return;
+    const sec = (performance.now() - _runStart) / 1000;
+    _elapsedEl.textContent = sec.toFixed(1) + 's';
+  }, 100);
   
   // Animate loading steps
   const detectionLabel = industrySource === 'user-specified'
@@ -2377,10 +2389,16 @@ async function runAnalysis(url, country, industryOverride) {
 
   bar.style.width = '100%';
   pct.textContent = '100%';
-  statusText.textContent = '✅ Intelligence report ready!';
-  await wait(250);
+  // Stop the elapsed-time ticker and show the final duration
+  if (window._elapsedTimer) { clearInterval(window._elapsedTimer); window._elapsedTimer = null; }
+  const _runSec = ((performance.now() - _runStart) / 1000).toFixed(1);
+  if (_elapsedEl) _elapsedEl.textContent = _runSec + 's';
+  window._lastRunDuration = _runSec;
+  statusText.textContent = `✅ Intelligence report ready in ${_runSec}s!`;
+  await wait(450);
   overlay.style.display = 'none';
   overlay.classList.add('hidden');
+  showToast(`✅ Dashboard ready in ${_runSec}s`);
 
   // ── If URL was given but user didn't type an industry, take the sub-niche
   //    that smart-detect inferred from the website and use it to fetch a
@@ -11099,11 +11117,14 @@ window.openExclusiveModal = function () {
   const modal = document.getElementById('exclusiveModal');
   if (!modal) { console.warn('exclusiveModal not found'); return; }
   modal.classList.remove('hidden');
-  modal.style.display = 'flex';
-  modal.style.zIndex = '10000';
-  modal.style.position = 'fixed';
-  modal.style.inset = '0';
+  modal.style.cssText = 'display:flex !important;position:fixed;inset:0;z-index:10000;align-items:center;justify-content:center;background:rgba(10,22,40,.65);backdrop-filter:blur(6px);padding:20px';
 };
+// Delegated safety-net: any click on an InfoGenie Exclusive badge always opens the modal,
+// even if inline onclick handlers fail to bind (e.g. due to script-load ordering).
+document.addEventListener('click', function(ev) {
+  const t = ev.target.closest && ev.target.closest('.intel-exclusive-badge');
+  if (t) { ev.preventDefault(); ev.stopPropagation(); window.openExclusiveModal(); }
+}, true);
 window.closeExclusiveModal = function () {
   const modal = document.getElementById('exclusiveModal');
   if (!modal) return;

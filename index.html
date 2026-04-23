@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20260423w" />
+  <link rel="stylesheet" href="style.css?v=20260423x" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
   <!-- PostHog SDK stub — init called from app.js after config fetch -->
@@ -475,8 +475,13 @@
       <span class="loading-pct" id="loadingPct">0%</span>
     </div>
     <div class="loading-status-text" id="loadingStatusText">Initialising InfoGenie AI Engine...</div>
+    <div id="loadingElapsed" style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:0.78rem;color:#6B7280;font-weight:600">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#00C9C8;box-shadow:0 0 0 0 rgba(0,201,200,.7);animation:pulseDot 1.4s ease-out infinite"></span>
+      Elapsed: <span id="loadingElapsedTime" style="font-variant-numeric:tabular-nums;color:#0A1628;font-weight:800">0.0s</span>
+    </div>
   </div>
 </div>
+<style>@keyframes pulseDot{0%{box-shadow:0 0 0 0 rgba(0,201,200,.7)}70%{box-shadow:0 0 0 10px rgba(0,201,200,0)}100%{box-shadow:0 0 0 0 rgba(0,201,200,0)}}</style>
 
 <!-- DASHBOARD VIEW -->
 <div class="view hidden" id="view-dashboard">
@@ -1353,7 +1358,7 @@
 </div>
 
 <script src="data.js"></script>
-<script src="app.js?v=20260423w"></script>
+<script src="app.js?v=20260423x"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');
