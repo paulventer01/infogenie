@@ -10759,7 +10759,13 @@ function buildIntelligence() {
   `).join('');
 
   // ── Prediction cards ──
-  const predCards = displayPredictions.map(p => `
+  window._predLaunch = window._predLaunch || function(i){
+    const p = (window._displayPredictions||[])[i];
+    if (!p) { showToast('🚀 Pre-emptive campaign queued'); return; }
+    showToast(`🚀 Pre-emptive campaign queued vs ${p.comp}: ${p.action}`);
+  };
+  window._displayPredictions = displayPredictions;
+  const predCards = displayPredictions.map((p, i) => `
     <div class="prediction-card">
       <div class="pred-logo">${p.logo}</div>
       <div class="pred-body">
@@ -10777,7 +10783,7 @@ function buildIntelligence() {
         <div class="pred-action">
           <span class="pred-action-label">💡 Recommended Action</span>
           <span class="pred-action-text">${p.action}</span>
-          <button class="pred-launch-btn" onclick="showToast('🚀 Pre-emptive campaign queued: ${p.action.replace(/'/g,'')}')}" title="Queue this counter-campaign now so you are ready before the competitor makes their move.">Launch Now</button>
+          <button class="pred-launch-btn" onclick="window._predLaunch(${i})" title="Queue this counter-campaign now so you are ready before the competitor makes their move.">Launch Now</button>
         </div>
       </div>
     </div>
