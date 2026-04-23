@@ -14698,13 +14698,13 @@ function openCampLaunchRich(name, platform, budget, idx) {
       .clb-edit-pill { display:inline-block;font-size:0.58rem;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle;letter-spacing:.04em; }
     </style>
 
-    <div style="background:var(--ig-grad);padding:22px 28px;border-radius:20px 20px 0 0">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
-        <div>
+    <div style="background:var(--ig-grad);padding:22px 28px 22px 28px;border-radius:20px 20px 0 0;padding-right:64px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:18px">
+        <div style="min-width:0;flex:1">
           <div style="font-family:'Space Grotesk','Sora',sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:2px">🚀 Campaign Launch Brief</div>
-          <div style="font-size:0.8rem;color:rgba(255,255,255,.55)">${name} · ${platform}</div>
+          <div style="font-size:0.8rem;color:rgba(255,255,255,.55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name} · ${platform}</div>
         </div>
-        <div>
+        <div style="flex-shrink:0">
           <div style="font-size:0.62rem;color:rgba(255,255,255,.4);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;text-align:right">Monthly Budget</div>
           <div style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-radius:9px;padding:5px 10px">
             <span style="color:rgba(255,255,255,.5);font-size:0.9rem;font-weight:600">$</span>
