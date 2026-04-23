@@ -11923,23 +11923,23 @@ async function openFullAttackPlanModal(idx) {
       <div id="attackPlanBody" style="flex:1;overflow-y:auto;padding:24px;display:flex;align-items:center;justify-content:center;min-height:260px">
         <div style="text-align:center;max-width:400px">
           <div style="width:48px;height:48px;border:3px solid rgba(0,201,200,.2);border-top-color:#00C9C8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 18px"></div>
-          <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:700;color:white;margin-bottom:6px" id="apLoadTitle">Generating battle plan… <span id="apElapsed" style="color:#00E5FF;font-weight:800">0s</span></div>
-          <div style="font-size:0.76rem;color:rgba(255,255,255,.38);margin-bottom:7px">GPT-4o + Claude dual AI · synthesising your 8-week strategy</div>
-          <div style="font-size:0.7rem;color:rgba(255,180,0,.55);margin-bottom:18px">⏱ This usually takes 20–45 seconds</div>
+          <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:700;color:#0A1628;margin-bottom:6px" id="apLoadTitle">Generating battle plan… <span id="apElapsed" style="color:#0066FF;font-weight:800">0s</span></div>
+          <div style="font-size:0.76rem;color:#475569;margin-bottom:7px">GPT-4o + Claude dual AI · synthesising your 8-week strategy</div>
+          <div style="font-size:0.7rem;color:#B45309;margin-bottom:18px;font-weight:600">⏱ This usually takes 20–45 seconds</div>
           <div style="display:flex;flex-direction:column;gap:10px;text-align:left">
-            <div id="apStep1" style="display:flex;align-items:center;gap:9px;font-size:0.76rem;color:rgba(255,255,255,.5)">
+            <div id="apStep1" style="display:flex;align-items:center;gap:9px;font-size:0.78rem;color:#334155;font-weight:500">
               <span id="apS1icon" style="font-size:0.9rem">⏳</span>
-              <span>GPT-4o analysing <strong style="color:#60A5FA">${cName}</strong> strategy</span>
+              <span>GPT-4o analysing <strong style="color:#0066FF">${cName}</strong> strategy</span>
             </div>
-            <div id="apStep2" style="display:flex;align-items:center;gap:9px;font-size:0.76rem;color:rgba(255,255,255,.5)">
+            <div id="apStep2" style="display:flex;align-items:center;gap:9px;font-size:0.78rem;color:#334155;font-weight:500">
               <span id="apS2icon" style="font-size:0.9rem">⏳</span>
               <span>Claude finding non-obvious attack angles</span>
             </div>
-            <div id="apStep3" style="display:flex;align-items:center;gap:9px;font-size:0.76rem;color:rgba(255,255,255,.5)">
+            <div id="apStep3" style="display:flex;align-items:center;gap:9px;font-size:0.78rem;color:#334155;font-weight:500">
               <span id="apS3icon" style="font-size:0.9rem">⏳</span>
               <span>Merging best insights, deduplicating</span>
             </div>
-            <div id="apStep4" style="display:flex;align-items:center;gap:9px;font-size:0.76rem;color:rgba(255,255,255,.5)">
+            <div id="apStep4" style="display:flex;align-items:center;gap:9px;font-size:0.78rem;color:#334155;font-weight:500">
               <span id="apS4icon" style="font-size:0.9rem">⏳</span>
               <span>Rendering your battle plan</span>
             </div>
