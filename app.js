@@ -21091,3 +21091,24 @@ window.runTechSuiteAll = async function() {
 };
 
 window.buildTechnicalSuite = buildTechnicalSuite;
+
+// ── Safety-net: ensure inline onclick handlers can find these globals ──
+try { window.openWLCounterModal = openWLCounterModal; } catch(e) {}
+try { window.queueCounterCampaign = queueCounterCampaign; } catch(e) {}
+try { window.closeAttackModal = closeAttackModal; } catch(e) {}
+try { window.openAttackModal = openAttackModal; } catch(e) {}
+
+// Document-level delegated fallback for the Counter This Message button
+document.addEventListener('click', function(ev) {
+  const btn = ev.target.closest && ev.target.closest('.btn-wl-counter');
+  if (!btn) return;
+  // Extract id from inline onclick attribute
+  const m = (btn.getAttribute('onclick') || '').match(/openWLCounterModal\('([^']+)'\)/);
+  if (m && typeof window.openWLCounterModal === 'function') {
+    ev.preventDefault();
+    try { window.openWLCounterModal(m[1]); } catch(err) {
+      console.error('Counter modal failed:', err);
+      if (typeof showToast === 'function') showToast('⚠️ Counter modal error: ' + err.message);
+    }
+  }
+}, true);
