@@ -1528,15 +1528,16 @@ function buildCreativeModal(camp, idx) {
   inner.innerHTML = `
     <style>@keyframes spin{to{transform:rotate(360deg)}} @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}</style>
     <div style="background:var(--ig-grad);padding:22px 26px 0;border-radius:20px 20px 0 0">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
-        <div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:14px;padding-right:44px">
+        <div style="min-width:0;flex:1">
           <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:white;margin-bottom:4px">🎨 AI Creative Studio</div>
-          <div style="font-size:0.78rem;color:rgba(255,255,255,.55)">${name} · ${platform} · ${budget}</div>
+          <div style="font-size:0.78rem;color:rgba(255,255,255,.55);margin-bottom:6px">${name} · ${platform} · ${budget}</div>
+          <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.38);border-radius:999px;padding:3px 10px;font-size:0.7rem;font-weight:700;color:#FCA5A5"><span style="font-size:0.78rem">⚔️</span> Targeting: ${(window._counterTarget && window._counterTarget.name) ? window._counterTarget.name : (allComps.length > 1 ? allComps.slice(0,3).join(' · ') + (allComps.length>3?' +'+(allComps.length-3):'') : topComp)}</div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span id="cs-ai-badge" style="background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.4);border-radius:6px;padding:4px 10px;font-size:0.68rem;font-weight:700;color:#A5B4FC">${loadingSpin}GPT-4 + Claude Writing...</span>
-          <button id="cs-dl-btn" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 12px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer">⬇ Download</button>
-          <button id="cs-launch-btn" style="background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:8px;padding:7px 14px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer">🚀 Launch</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:60%">
+          <span id="cs-ai-badge" style="background:rgba(99,102,241,.2);border:1px solid rgba(99,102,241,.4);border-radius:6px;padding:4px 10px;font-size:0.68rem;font-weight:700;color:#A5B4FC;white-space:nowrap">${loadingSpin}GPT-4 + Claude Writing...</span>
+          <button id="cs-dl-btn" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:7px 12px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">⬇ Download</button>
+          <button id="cs-launch-btn" style="background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:8px;padding:7px 14px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">🚀 Launch</button>
         </div>
       </div>
       <div style="display:flex;border-bottom:1px solid rgba(255,255,255,.12)">
