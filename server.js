@@ -1702,6 +1702,286 @@ app.post('/api/ai-visibility-multi', async (req, res) => {
   }
 });
 
+// ── POST /api/ai-visibility-coverage ──────────────────────────────────────────
+// PROMPT COVERAGE — fires every prompt in the user's industry across every
+// connected AI model in parallel and reports a real coverage matrix:
+// for each (prompt × model) cell: cited yes/no, snippet, error.
+// Returns:
+//   { matrix: [{ promptId, prompt, results: [{ modelKey, modelName, cited, snippet }] }],
+//     coverageByModel:   { chatgpt: 0.62, claude: 0.5, ... },
+//     coverageByPrompt:  { 'brand-discovery': 1.0, ... },
+//     overallCoverage:   0.55 }
+app.post('/api/ai-visibility-coverage', async (req, res) => {
+  try {
+    const { domain = 'yourdomain.com', industry = 'your industry', prompts: clientPrompts } = req.body || {};
+    const cleanDomain = String(domain).replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase();
+    const brandStem = cleanDomain.split('.')[0];
+    const indWord = String(industry).split(' ')[0];
+
+    // Default 8-prompt coverage set if the client didn't pass its own.
+    const defaultPrompts = [
+      { id:'brand-discovery', cat:'Brand Discovery', q:`What are the best ${industry} companies in 2025?` },
+      { id:'comparison',      cat:'Comparison',      q:`${cleanDomain} vs its top alternatives — pros and cons?` },
+      { id:'how-to',          cat:'How-To',          q:`How do I get started with ${indWord.toLowerCase()}?` },
+      { id:'reviews',         cat:'Reviews',         q:`Is ${cleanDomain} worth it? What do users say about it?` },
+      { id:'pricing',         cat:'Pricing',         q:`How much does ${cleanDomain} cost — pricing tiers and value?` },
+      { id:'features',        cat:'Features',        q:`What does ${cleanDomain} actually do and what features does it offer?` },
+      { id:'use-cases',       cat:'Use Cases',       q:`Real-world ${indWord.toLowerCase()} use cases and customer examples` },
+      { id:'alternatives',    cat:'Alternatives',    q:`Top alternatives to ${cleanDomain} for ${industry}` },
+    ];
+    const prompts = (Array.isArray(clientPrompts) && clientPrompts.length) ? clientPrompts.slice(0, 12) : defaultPrompts;
+
+    const detectMention = (text) => {
+      if (!text) return false;
+      const t = String(text).toLowerCase();
+      return t.includes(cleanDomain) || (brandStem.length >= 4 && t.includes(brandStem));
+    };
+
+    // Probes for each connected model. Returns a function (q) => Promise<{cited, snippet, error?}>.
+    const probes = {};
+    probes.chatgpt = async (q) => {
+      const c = await openai.chat.completions.create({ model:'gpt-4o', max_tokens:160, messages:[{ role:'user', content:q }] });
+      const t = c.choices?.[0]?.message?.content?.trim() || '';
+      return { cited: detectMention(t), snippet: t.slice(0,260) };
+    };
+    probes.claude = async (q) => {
+      const c = await anthropic.messages.create({ model:'claude-sonnet-4-6', max_tokens:200, messages:[{ role:'user', content:q }] });
+      const t = c.content?.[0]?.text?.trim() || '';
+      return { cited: detectMention(t), snippet: t.slice(0,260) };
+    };
+    if (process.env.GEMINI_API_KEY) {
+      probes.gemini = async (q) => {
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ contents:[{ parts:[{ text:q }] }] }) });
+        const d = await r.json();
+        const t = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return { cited: detectMention(t), snippet: t.slice(0,260) };
+      };
+    }
+    if (process.env.PERPLEXITY_API_KEY) {
+      probes.perplexity = async (q) => {
+        const r = await fetch('https://api.perplexity.ai/chat/completions',
+          { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.PERPLEXITY_API_KEY}`}, body: JSON.stringify({ model:'sonar', messages:[{ role:'user', content:q }] }) });
+        const d = await r.json();
+        const t = d?.choices?.[0]?.message?.content || '';
+        return { cited: detectMention(t), snippet: t.slice(0,260) };
+      };
+    }
+    if (process.env.DEEPSEEK_API_KEY) {
+      probes.deepseek = async (q) => {
+        const r = await fetch('https://api.deepseek.com/chat/completions',
+          { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.DEEPSEEK_API_KEY}`}, body: JSON.stringify({ model:'deepseek-chat', messages:[{ role:'user', content:q }] }) });
+        const d = await r.json();
+        const t = d?.choices?.[0]?.message?.content || '';
+        return { cited: detectMention(t), snippet: t.slice(0,260) };
+      };
+    }
+
+    const modelMeta = {
+      chatgpt:   { name:'ChatGPT' },
+      claude:    { name:'Claude' },
+      gemini:    { name:'Gemini' },
+      perplexity:{ name:'Perplexity' },
+      deepseek:  { name:'DeepSeek' },
+    };
+    const modelKeys = Object.keys(probes);
+
+    // Run prompts × models fully in parallel.
+    const cellPromises = [];
+    prompts.forEach((p, i) => modelKeys.forEach(mk => {
+      cellPromises.push(
+        probes[mk](p.q)
+          .then(r => ({ promptIdx:i, modelKey:mk, ...r }))
+          .catch(e => ({ promptIdx:i, modelKey:mk, cited:false, snippet:'', error:e.message }))
+      );
+    }));
+    const cells = await Promise.all(cellPromises);
+
+    // Reshape into matrix.
+    const matrix = prompts.map((p, i) => ({
+      promptId: p.id || ('p'+i),
+      cat: p.cat,
+      prompt: p.q,
+      results: modelKeys.map(mk => {
+        const c = cells.find(x => x.promptIdx === i && x.modelKey === mk) || { cited:false, snippet:'', error:'no cell' };
+        return { modelKey: mk, modelName: modelMeta[mk]?.name || mk, cited: !!c.cited, snippet: c.snippet || '', error: c.error };
+      }),
+    }));
+
+    // Aggregations.
+    const coverageByModel = {};
+    modelKeys.forEach(mk => {
+      const total = matrix.length;
+      const hits = matrix.filter(row => row.results.find(r => r.modelKey === mk)?.cited).length;
+      coverageByModel[mk] = total ? +(hits / total).toFixed(3) : 0;
+    });
+    const coverageByPrompt = {};
+    matrix.forEach(row => {
+      const total = row.results.length;
+      const hits = row.results.filter(r => r.cited).length;
+      coverageByPrompt[row.promptId] = total ? +(hits / total).toFixed(3) : 0;
+    });
+    const overallCells = matrix.length * modelKeys.length;
+    const overallHits = cells.filter(c => c.cited).length;
+    const overallCoverage = overallCells ? +(overallHits / overallCells).toFixed(3) : 0;
+
+    res.json({ ok:true, domain:cleanDomain, industry, modelKeys, matrix, coverageByModel, coverageByPrompt, overallCoverage,
+      summary: { promptsRun: matrix.length, modelsRun: modelKeys.length, totalCells: overallCells, totalCitations: overallHits } });
+  } catch (err) {
+    console.error('/api/ai-visibility-coverage error:', err);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
+// ── POST /api/ai-visibility-accuracy ──────────────────────────────────────────
+// ANSWER ACCURACY — scrapes the user's homepage + about/products/services pages
+// to build a "source of truth" snapshot, then asks each connected model the
+// same brand-fact question and uses GPT-4o to judge each answer for accuracy
+// against that source. Returns per-model accuracy score, hallucinations, and
+// confirmed facts.
+app.post('/api/ai-visibility-accuracy', async (req, res) => {
+  try {
+    const { domain = 'yourdomain.com', industry = 'your industry' } = req.body || {};
+    const cleanDomain = String(domain).replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase();
+    const brandStem = cleanDomain.split('.')[0];
+
+    // 1) Build source-of-truth from the live website.
+    const fetchPage = async (u, ms=6000) => {
+      try {
+        const ctrl = new AbortController(); const t = setTimeout(()=>ctrl.abort(), ms);
+        const r = await fetch(u, { signal:ctrl.signal, redirect:'follow', headers:{ 'User-Agent':'Mozilla/5.0 (compatible; InfoGenieBot/1.0)' } });
+        clearTimeout(t); if (!r.ok) return ''; return (await r.text()).slice(0,120000);
+      } catch(e){ return ''; }
+    };
+    const base = 'https://' + cleanDomain;
+    const [home, about, prod, services, pricing] = await Promise.all([
+      fetchPage(base, 8000),
+      fetchPage(base + '/about', 5000),
+      fetchPage(base + '/products', 5000),
+      fetchPage(base + '/services', 5000),
+      fetchPage(base + '/pricing', 5000),
+    ]);
+    const allHtml = [home, about, prod, services, pricing].join('\n');
+    const sourceText = allHtml
+      .replace(/<script[\s\S]*?<\/script>/gi,' ')
+      .replace(/<style[\s\S]*?<\/style>/gi,' ')
+      .replace(/<[^>]+>/g,' ')
+      .replace(/&nbsp;/g,' ')
+      .replace(/\s+/g,' ').trim().slice(0, 8000);
+
+    // 2) Ask each connected model the same brand-fact question.
+    const factQ = `Describe ${brandStem} (${cleanDomain}) for someone unfamiliar with the brand. Cover: what it does, main products or services, target customer, pricing if known, country/HQ if known, and any key differentiators. Be specific. ~120-180 words.`;
+
+    const probes = {};
+    probes.chatgpt = async () => {
+      const c = await openai.chat.completions.create({ model:'gpt-4o', max_tokens:380, messages:[{ role:'user', content:factQ }] });
+      return c.choices?.[0]?.message?.content?.trim() || '';
+    };
+    probes.claude = async () => {
+      const c = await anthropic.messages.create({ model:'claude-sonnet-4-6', max_tokens:450, messages:[{ role:'user', content:factQ }] });
+      return c.content?.[0]?.text?.trim() || '';
+    };
+    if (process.env.GEMINI_API_KEY) probes.gemini = async () => {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ contents:[{ parts:[{ text:factQ }] }] }) });
+      const d = await r.json(); return d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    };
+    if (process.env.PERPLEXITY_API_KEY) probes.perplexity = async () => {
+      const r = await fetch('https://api.perplexity.ai/chat/completions', { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.PERPLEXITY_API_KEY}`}, body: JSON.stringify({ model:'sonar', messages:[{ role:'user', content:factQ }] }) });
+      const d = await r.json(); return d?.choices?.[0]?.message?.content || '';
+    };
+    if (process.env.DEEPSEEK_API_KEY) probes.deepseek = async () => {
+      const r = await fetch('https://api.deepseek.com/chat/completions', { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.DEEPSEEK_API_KEY}`}, body: JSON.stringify({ model:'deepseek-chat', messages:[{ role:'user', content:factQ }] }) });
+      const d = await r.json(); return d?.choices?.[0]?.message?.content || '';
+    };
+
+    const modelMeta = { chatgpt:'ChatGPT', claude:'Claude', gemini:'Gemini', perplexity:'Perplexity', deepseek:'DeepSeek' };
+    const modelKeys = Object.keys(probes);
+
+    const answers = await Promise.all(modelKeys.map(mk =>
+      probes[mk]().then(text => ({ modelKey:mk, name:modelMeta[mk], text, error:null }))
+                  .catch(e => ({ modelKey:mk, name:modelMeta[mk], text:'', error:e.message }))
+    ));
+
+    // 3) For each answer, use GPT-4o to grade accuracy vs the source.
+    const grades = await Promise.all(answers.map(async ans => {
+      if (!ans.text) {
+        return { ...ans, accuracy:0, confirmedFacts:[], hallucinations:[], unverifiable:[], summary:'No answer received from model' };
+      }
+      try {
+        const gradePrompt = `You are a fact-checker. Below is the AUTHORITATIVE SOURCE TEXT scraped from the company's own website, and an AI MODEL'S DESCRIPTION of the company. Grade the description for factual accuracy against the source.
+
+AUTHORITATIVE SOURCE (from ${cleanDomain} homepage + about/products/services/pricing):
+"""
+${sourceText || '(could not scrape — treat any specific claim as unverifiable)'}
+"""
+
+MODEL: ${ans.name}
+MODEL'S DESCRIPTION:
+"""
+${ans.text}
+"""
+
+Return ONLY JSON in this exact shape:
+{
+  "accuracy": <integer 0-100, where 100 = every specific claim matches the source>,
+  "confirmedFacts":   [ "<short factual claim from the model that IS supported by the source>", ... up to 5 ],
+  "hallucinations":   [ "<short factual claim the model made that CONTRADICTS the source or is clearly invented>", ... up to 5 ],
+  "unverifiable":     [ "<claim that's plausible but the source doesn't confirm it either way>", ... up to 3 ],
+  "summary": "<one-sentence verdict on this model's accuracy about the brand>"
+}
+
+Rules:
+- Only count specific claims (products, prices, locations, headcount, founding year, named features, named customers, country). Ignore generic adjectives.
+- A claim is a "hallucination" only if the source clearly says otherwise OR the claim is suspiciously specific with no source support.
+- "Unverifiable" = plausible but unconfirmed (don't penalise heavily).
+- If the source text is empty, return accuracy ~50 and put almost everything in unverifiable.`;
+
+        const g = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          max_tokens: 600,
+          temperature: 0.1,
+          response_format: { type:'json_object' },
+          messages: [
+            { role:'system', content:'You are a strict fact-checker. Output ONLY valid JSON.' },
+            { role:'user', content: gradePrompt },
+          ],
+        });
+        const raw = g.choices?.[0]?.message?.content || '{}';
+        const parsed = JSON.parse(raw);
+        return {
+          ...ans,
+          accuracy: Math.max(0, Math.min(100, parseInt(parsed.accuracy, 10) || 0)),
+          confirmedFacts:  Array.isArray(parsed.confirmedFacts)  ? parsed.confirmedFacts.slice(0,5)  : [],
+          hallucinations:  Array.isArray(parsed.hallucinations)  ? parsed.hallucinations.slice(0,5)  : [],
+          unverifiable:    Array.isArray(parsed.unverifiable)    ? parsed.unverifiable.slice(0,3)    : [],
+          summary: String(parsed.summary || '').trim().slice(0, 240),
+        };
+      } catch (e) {
+        return { ...ans, accuracy:0, confirmedFacts:[], hallucinations:[], unverifiable:[], summary:'Grading failed: ' + e.message };
+      }
+    }));
+
+    const overallAccuracy = grades.length
+      ? Math.round(grades.reduce((s,g) => s + (g.accuracy || 0), 0) / grades.length)
+      : 0;
+    const totalHallucinations = grades.reduce((s,g) => s + (g.hallucinations?.length || 0), 0);
+
+    res.json({
+      ok: true,
+      domain: cleanDomain,
+      sourceLength: sourceText.length,
+      sourceFetched: sourceText.length > 200,
+      models: grades,
+      overallAccuracy,
+      totalHallucinations,
+      summary: { modelsGraded: grades.length, sourceChars: sourceText.length },
+    });
+  } catch (err) {
+    console.error('/api/ai-visibility-accuracy error:', err);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
 // ── POST /api/ai-visibility-audit ─────────────────────────────────────────────
 app.post('/api/ai-visibility-audit', async (req, res) => {
   try {

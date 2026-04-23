@@ -6714,6 +6714,107 @@ function buildAiVisibility() {
       </div>`;
     })()}
 
+    ${(() => {
+      // ── PROMPT COVERAGE MATRIX (real data from /api/ai-visibility-coverage) ─
+      const cov = window._aiVisCoverage;
+      if (!cov || !cov.matrix?.length) {
+        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:22px;text-align:center;margin-bottom:20px">
+          <div style="font-size:1.6rem;margin-bottom:6px">📡</div>
+          <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Prompt Coverage Matrix</div>
+          <div style="font-size:0.72rem;color:#64748B;margin-top:4px">Run the AI Audit above to fire 8 industry prompts × every connected model and see real per-cell citation results.</div>
+        </div>`;
+      }
+      const overallPct = Math.round((cov.overallCoverage || 0) * 100);
+      const modelKeys = cov.modelKeys || [];
+      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📡 Prompt Coverage Matrix</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">Real cell-by-cell citation across ${cov.summary.promptsRun} prompts × ${cov.summary.modelsRun} models — ${cov.summary.totalCitations}/${cov.summary.totalCells} cells cited</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:1.4rem;font-weight:800;color:${overallPct>=60?'#10B981':overallPct>=30?'#F59E0B':'#DC2626'}">${overallPct}%</div>
+            <div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Overall coverage</div>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:separate;border-spacing:0;font-size:0.72rem">
+            <thead>
+              <tr>
+                <th style="padding:8px 10px;text-align:left;background:#F9FAFB;font-size:0.62rem;font-weight:700;color:#6B7280;text-transform:uppercase">Prompt</th>
+                ${modelKeys.map(k => `<th style="padding:8px 8px;text-align:center;background:#F9FAFB;font-size:0.62rem;font-weight:700;color:#6B7280;text-transform:uppercase">${k}</th>`).join('')}
+                <th style="padding:8px 8px;text-align:center;background:#F9FAFB;font-size:0.62rem;font-weight:700;color:#6B7280;text-transform:uppercase">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${cov.matrix.map(row => {
+                const hits = row.results.filter(r => r.cited).length;
+                const pct = Math.round(hits / row.results.length * 100);
+                return `<tr style="border-top:1px solid #F3F4F6">
+                  <td style="padding:9px 10px;border-top:1px solid #F3F4F6">
+                    <div style="font-weight:700;color:#0A1628">${row.cat || ''}</div>
+                    <div style="font-size:0.64rem;color:#9CA3AF;font-style:italic;max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${row.prompt.replace(/"/g,'&quot;')}">"${row.prompt}"</div>
+                  </td>
+                  ${row.results.map(r => `<td style="padding:9px 6px;text-align:center;border-top:1px solid #F3F4F6" title="${r.modelName}: ${(r.snippet || r.error || '').replace(/"/g,'&quot;').slice(0,200)}">
+                    ${r.error ? `<span style="color:#9CA3AF;font-size:0.85rem" title="${r.error}">—</span>` : (r.cited ? `<span style="display:inline-block;width:18px;height:18px;background:#DCFCE7;color:#15803D;border-radius:50%;line-height:18px;font-weight:800">✓</span>` : `<span style="display:inline-block;width:18px;height:18px;background:#FEE2E2;color:#DC2626;border-radius:50%;line-height:18px;font-weight:800">×</span>`)}
+                  </td>`).join('')}
+                  <td style="padding:9px 8px;text-align:center;border-top:1px solid #F3F4F6;font-weight:800;color:${pct>=60?'#10B981':pct>=30?'#F59E0B':'#DC2626'}">${pct}%</td>
+                </tr>`;
+              }).join('')}
+              <tr style="background:#FAFBFD">
+                <td style="padding:9px 10px;font-weight:800;color:#0A1628;font-size:0.72rem">Coverage by model</td>
+                ${modelKeys.map(k => {
+                  const p = Math.round((cov.coverageByModel[k] || 0) * 100);
+                  return `<td style="padding:9px 6px;text-align:center;font-weight:800;color:${p>=60?'#10B981':p>=30?'#F59E0B':'#DC2626'}">${p}%</td>`;
+                }).join('')}
+                <td style="padding:9px 8px;text-align:center;font-weight:800;color:${overallPct>=60?'#10B981':overallPct>=30?'#F59E0B':'#DC2626'}">${overallPct}%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    })()}
+
+    ${(() => {
+      // ── ANSWER ACCURACY (real data from /api/ai-visibility-accuracy) ────────
+      const acc = window._aiVisAccuracy;
+      if (!acc || !acc.models?.length) {
+        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:22px;text-align:center;margin-bottom:20px">
+          <div style="font-size:1.6rem;margin-bottom:6px">🎯</div>
+          <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Answer Accuracy Check</div>
+          <div style="font-size:0.72rem;color:#64748B;margin-top:4px">Run the AI Audit to scrape your live site, ask each model to describe your brand, and grade every claim for factual accuracy against your real content.</div>
+        </div>`;
+      }
+      const ovColor = acc.overallAccuracy >= 75 ? '#10B981' : acc.overallAccuracy >= 50 ? '#F59E0B' : '#DC2626';
+      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🎯 Answer Accuracy Check</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${acc.sourceFetched ? `Graded against ${acc.sourceLength.toLocaleString()} chars scraped from your live site` : '⚠️ Could not scrape source site — accuracy is estimated only'} · ${acc.totalHallucinations} hallucination${acc.totalHallucinations===1?'':'s'} detected across ${acc.models.length} models</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:1.4rem;font-weight:800;color:${ovColor}">${acc.overallAccuracy}%</div>
+            <div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Overall accuracy</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
+          ${acc.models.map(m => {
+            const c = m.accuracy >= 75 ? '#10B981' : m.accuracy >= 50 ? '#F59E0B' : '#DC2626';
+            return `<div style="border:1.5px solid #E5E7EB;border-radius:12px;padding:14px;background:#FAFBFD">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <div style="font-weight:800;color:#0A1628;font-size:0.86rem">${m.name}</div>
+                <div style="font-weight:800;color:${c};font-size:1rem">${m.accuracy}%</div>
+              </div>
+              <div style="font-size:0.7rem;color:#475569;line-height:1.5;margin-bottom:10px">${m.summary || (m.error ? '⚠️ ' + m.error : '')}</div>
+              ${m.confirmedFacts?.length ? `<div style="margin-bottom:8px"><div style="font-size:0.6rem;font-weight:800;color:#15803D;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">✓ Confirmed (${m.confirmedFacts.length})</div>${m.confirmedFacts.map(f=>`<div style="font-size:0.66rem;color:#374151;padding:3px 7px;background:#F0FDF4;border-radius:5px;margin-bottom:3px">${f}</div>`).join('')}</div>` : ''}
+              ${m.hallucinations?.length ? `<div style="margin-bottom:8px"><div style="font-size:0.6rem;font-weight:800;color:#DC2626;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">✗ Hallucinations (${m.hallucinations.length})</div>${m.hallucinations.map(f=>`<div style="font-size:0.66rem;color:#374151;padding:3px 7px;background:#FEF2F2;border-radius:5px;margin-bottom:3px">${f}</div>`).join('')}</div>` : ''}
+              ${m.unverifiable?.length ? `<div><div style="font-size:0.6rem;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">? Unverifiable (${m.unverifiable.length})</div>${m.unverifiable.map(f=>`<div style="font-size:0.66rem;color:#374151;padding:3px 7px;background:#FFFBEB;border-radius:5px;margin-bottom:3px">${f}</div>`).join('')}</div>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    })()}
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
       <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
         <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:4px">🎯 Prompt Intelligence</div>
@@ -7059,21 +7160,35 @@ window.generateAiVisibilityAudit = async function() {
   const industry = analysisData?.industry?.name || 'digital marketing';
 
   try {
-    // Run the multi-model live probe + the GPT-4 audit summary in parallel.
-    const [multiRes, auditRes] = await Promise.all([
-      fetch('/api/ai-visibility-multi', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, industry }) }).then(r => r.json()).catch(() => null),
-      fetch('/api/ai-visibility-audit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, industry }) }).then(r => r.json()).catch(() => null),
+    // Run all four endpoints in parallel: live probe, prompt coverage matrix,
+    // answer-accuracy fact check, and the GPT-4 narrative audit summary.
+    const [multiRes, coverageRes, accuracyRes, auditRes] = await Promise.all([
+      fetch('/api/ai-visibility-multi',    { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, industry }) }).then(r => r.json()).catch(() => null),
+      fetch('/api/ai-visibility-coverage', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, industry }) }).then(r => r.json()).catch(() => null),
+      fetch('/api/ai-visibility-accuracy', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, industry }) }).then(r => r.json()).catch(() => null),
+      fetch('/api/ai-visibility-audit',    { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, industry }) }).then(r => r.json()).catch(() => null),
     ]);
     if (multiRes && multiRes.ok) {
       window._aiVisModelsLive = multiRes.live || {};
       window._aiVisModelResults = multiRes.models || [];
       console.log('[AI Visibility] Live model probe:', multiRes.summary, multiRes.models);
     }
+    if (coverageRes && coverageRes.ok) {
+      window._aiVisCoverage = coverageRes;
+      console.log('[AI Visibility] Prompt coverage:', coverageRes.summary, coverageRes.coverageByModel);
+    }
+    if (accuracyRes && accuracyRes.ok) {
+      window._aiVisAccuracy = accuracyRes;
+      console.log('[AI Visibility] Accuracy:', { overall: accuracyRes.overallAccuracy, hallucinations: accuracyRes.totalHallucinations });
+    }
     if (auditRes && auditRes.audit) {
       window._aiVisibilityAudit = auditRes.audit;
       buildAiVisibility();
       const liveCount = multiRes?.summary?.liveCount || 2;
-      showToast(`✅ AI Visibility Audit complete — ${liveCount} live models probed`);
+      const cov = coverageRes?.overallCoverage != null ? Math.round(coverageRes.overallCoverage * 100) : null;
+      const acc = accuracyRes?.overallAccuracy ?? null;
+      const extra = [cov!=null?`coverage ${cov}%`:'', acc!=null?`accuracy ${acc}%`:''].filter(Boolean).join(' · ');
+      showToast(`✅ AI Visibility Audit — ${liveCount} models · ${extra}`);
     } else throw new Error('No audit returned');
   } catch(e) {
     const d = domain, ind = industry, iw = industry.split(' ')[0];
