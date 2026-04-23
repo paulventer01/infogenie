@@ -1925,6 +1925,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'ai-audit-suite') {
     try { buildAiAuditSuite(); } catch(e) { console.warn('buildAiAuditSuite error:', e); }
   }
+  if (viewId === 'technical-suite') {
+    try { buildTechnicalSuite(); } catch(e) { console.warn('buildTechnicalSuite error:', e); }
+  }
   if (viewId === 'battleplan') {
     try { buildBattlePlan(); } catch(e) { console.warn('buildBattlePlan error:', e); }
   }
@@ -20358,3 +20361,121 @@ function buildAiAuditSuite() {
     })()}`;
 }
 window.buildAiAuditSuite = buildAiAuditSuite;
+
+
+// ── TECHNICAL SUITE ─────────────────────────────────────────────────────────
+window._techSiteHealth = window._techSiteHealth || null;
+window._techCrawl      = window._techCrawl      || null;
+window._techIndex      = window._techIndex      || null;
+
+function _techDomain() {
+  const d = (window.analysisData && (window.analysisData.url || window.analysisData.domain)) || '';
+  return String(d).replace(/^https?:\/\//,'').split('/')[0] || '';
+}
+
+function _techSevColor(sev) {
+  return sev === 'high' ? '#DC2626' : sev === 'med' ? '#F59E0B' : sev === 'low' ? '#6366F1' : '#10B981';
+}
+function _techSevBg(sev) {
+  return sev === 'high' ? '#FEE2E2' : sev === 'med' ? '#FEF3C7' : sev === 'low' ? '#EEF2FF' : '#DCFCE7';
+}
+
+function _techPanel(title, subtitle, kind, data) {
+  const empty = !data;
+  const reachable = data && data.reachable !== false;
+  const score = data?.score ?? 0;
+  const scoreColor = score >= 85 ? '#15803D' : score >= 60 ? '#F59E0B' : '#DC2626';
+  return `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">${title}</div>
+          <div style="font-size:0.74rem;color:#64748B;margin-top:2px">${subtitle}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${data ? `<div style="text-align:right">
+            <div style="font-size:1.6rem;font-weight:800;color:${scoreColor};line-height:1">${score}<span style="font-size:0.85rem;color:#94A3B8">/100</span></div>
+            <div style="font-size:0.65rem;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em">${data.passed||0}/${data.total||0} passed</div>
+          </div>` : ''}
+          <button onclick="runSingleTech('${kind}')" style="padding:9px 18px;background:linear-gradient(135deg,#10B981,#047857);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">${data?'↺ Re-run':'▶ Run audit'}</button>
+        </div>
+      </div>
+      ${empty ? `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:12px;padding:20px;text-align:center;font-size:0.8rem;color:#64748B">Click <strong>Run audit</strong> to fetch your live site and grade every signal.</div>` : ''}
+      ${data && !reachable ? `<div style="background:#FEE2E2;border:1px solid #FECACA;border-radius:10px;padding:14px;font-size:0.8rem;color:#991B1B">⚠ Could not reach site: ${data.error||'network error'}</div>` : ''}
+      ${data && reachable ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+          ${(data.checks||[]).map(c => `
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid #E5E7EB;border-radius:9px;background:${c.pass?'#F0FDF4':_techSevBg(c.sev)}">
+              <div style="font-size:0.85rem;flex-shrink:0;color:${c.pass?'#15803D':_techSevColor(c.sev)}">${c.pass?'✓':'✗'}</div>
+              <div style="font-size:0.74rem;color:#1F2937;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.label}</div>
+              ${!c.pass?`<span style="font-size:0.58rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${_techSevColor(c.sev)};color:white;text-transform:uppercase">${c.sev}</span>`:''}
+            </div>`).join('')}
+        </div>
+        ${(data.fixes||[]).length ? `
+          <div style="border-top:1px solid #E5E7EB;padding-top:14px">
+            <div style="font-size:0.78rem;font-weight:700;color:#0A1628;margin-bottom:10px">🔧 Prioritised Fixes (${data.fixes.length})</div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              ${data.fixes.slice(0,8).map(c => `
+                <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:#FAFAFA;border-left:3px solid ${_techSevColor(c.sev)};border-radius:6px">
+                  <span style="font-size:0.6rem;font-weight:700;padding:2px 8px;border-radius:5px;background:${_techSevColor(c.sev)};color:white;text-transform:uppercase;flex-shrink:0;margin-top:1px">${c.sev}</span>
+                  <div style="font-size:0.74rem;color:#1F2937;line-height:1.5"><strong>${c.label}.</strong> ${c.fix}</div>
+                </div>`).join('')}
+            </div>
+          </div>` : `<div style="font-size:0.78rem;color:#15803D;font-weight:600;text-align:center;padding:8px">🎉 All checks passing.</div>`}
+      ` : ''}
+    </div>`;
+}
+
+function buildTechnicalSuite() {
+  const wrap = document.getElementById('techSuiteWrap');
+  if (!wrap) return;
+  const dom = _techDomain();
+  const banner = `
+    <div style="background:linear-gradient(135deg,#ECFDF5,#F0FDF4);border:1.5px solid #A7F3D0;border-radius:14px;padding:16px 20px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
+      <div style="font-size:1.6rem">🛠️</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-family:Sora,sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628">Technical Suite${dom?` — ${dom}`:''}</div>
+        <div style="font-size:0.74rem;color:#475569;margin-top:2px">Each audit fetches your live homepage and grades every signal that affects search engines, AI engines and humans.</div>
+      </div>
+      <button onclick="runTechSuiteAll()" style="padding:10px 20px;background:linear-gradient(135deg,#10B981,#047857);border:none;border-radius:10px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">▶ Run All</button>
+    </div>`;
+  wrap.innerHTML = banner +
+    _techPanel('🩺 Site Health', 'HTTPS, performance, mobile readiness, accessibility & security headers', 'health', window._techSiteHealth) +
+    _techPanel('🤖 Crawlability', 'robots.txt, sitemap, indexability flags, internal links & render-blocking JS', 'crawl', window._techCrawl) +
+    _techPanel('📑 Index Signals', 'Title, meta, headings, schema, Open Graph & overall index readiness', 'index', window._techIndex);
+}
+
+window.runSingleTech = async function(kind) {
+  const dom = _techDomain();
+  if (!dom) { showToast('Run an analysis first to set the target domain.'); return; }
+  const map = {
+    health: { url:'/api/tech-site-health',     store:'_techSiteHealth', label:'Site Health' },
+    crawl:  { url:'/api/tech-crawlability',    store:'_techCrawl',      label:'Crawlability' },
+    index:  { url:'/api/tech-index-signals',   store:'_techIndex',      label:'Index Signals' },
+  };
+  const m = map[kind];
+  if (!m) return;
+  const sel = `button[onclick*="runSingleTech('${kind}')"]`;
+  const stopTimer = window.startButtonTimer ? window.startButtonTimer(sel, `Auditing ${m.label}`) : (() => {});
+  try {
+    const r = await fetch(m.url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain: dom }) });
+    const d = await r.json();
+    if (d && d.ok) {
+      window[m.store] = d;
+      buildTechnicalSuite();
+      showToast(`✅ ${m.label}: ${d.score}/100`);
+    } else {
+      showToast(`⚠️ ${m.label} failed${d?.error?': '+d.error:''}`);
+    }
+  } catch(e) {
+    showToast(`❌ ${m.label}: ${e.message}`);
+  } finally {
+    stopTimer(window[m.store]?'↺ Re-run':'▶ Run audit');
+  }
+};
+
+window.runTechSuiteAll = async function() {
+  await Promise.all([runSingleTech('health'), runSingleTech('crawl'), runSingleTech('index')]);
+};
+
+window.buildTechnicalSuite = buildTechnicalSuite;
