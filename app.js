@@ -2110,11 +2110,11 @@ async function runAnalysis(url, country, industryOverride) {
     ? `Industry set to: ${industry.name} ✓`
     : `Auto-detected industry: ${industry.name}`;
   const steps = [
-    { id: 'lst1', label: detectionLabel, duration: 1200 },
-    { id: 'lst2', label: `Found ${industry.competitors.length} targeted competitors in ${industry.name}`, duration: 1400 },
-    { id: 'lst3', label: 'Analysing campaign performance, CTR, and ROAS...', duration: 1600 },
-    { id: 'lst4', label: 'Generating AI campaign recommendations...', duration: 1400 },
-    { id: 'lst5', label: 'Building full intelligence report...', duration: 1000 }
+    { id: 'lst1', label: detectionLabel, duration: 250 },
+    { id: 'lst2', label: `Found ${industry.competitors.length} targeted competitors in ${industry.name}`, duration: 300 },
+    { id: 'lst3', label: 'Analysing campaign performance, CTR, and ROAS...', duration: 350 },
+    { id: 'lst4', label: 'Generating AI campaign recommendations...', duration: 300 },
+    { id: 'lst5', label: 'Building full intelligence report...', duration: 200 }
   ];
   
   const bar = document.getElementById('loadingBarFill');
@@ -2153,20 +2153,25 @@ async function runAnalysis(url, country, industryOverride) {
     el.querySelector('.lstep-dot').style.background = 'var(--green)';
   }
   
-  bar.style.width = '100%';
-  pct.textContent = '100%';
-  statusText.textContent = '✅ Intelligence report ready!';
-  
-  await wait(600);
-  overlay.style.display = 'none';
-  overlay.classList.add('hidden');
-  
+  bar.style.width = '95%';
+  pct.textContent = '95%';
+  statusText.textContent = 'Fetching live competitor intelligence...';
+
   // ── Await live AI smart-detection result (already running in background) ───
   // If it returned real competitors + a sharper industry name, override the DB.
+  // Keep the loading overlay visible during these network calls so users get
+  // continuous feedback instead of staring at a blank screen.
   let aiDetected = null;
   let sectorDetected = null;
   try { aiDetected = await smartDetectPromise; } catch(e) { aiDetected = null; }
   try { sectorDetected = await sectorPromise; } catch(e) { sectorDetected = null; }
+
+  bar.style.width = '100%';
+  pct.textContent = '100%';
+  statusText.textContent = '✅ Intelligence report ready!';
+  await wait(250);
+  overlay.style.display = 'none';
+  overlay.classList.add('hidden');
 
   // ── If URL was given but user didn't type an industry, take the sub-niche
   //    that smart-detect inferred from the website and use it to fetch a
