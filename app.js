@@ -20369,6 +20369,10 @@ window._techCrawl      = window._techCrawl      || null;
 window._techIndex      = window._techIndex      || null;
 
 function _techDomain() {
+  const inp = document.getElementById('techSuiteDomainInput');
+  const typed = inp && inp.value ? inp.value.trim() : '';
+  if (typed) return typed.replace(/^https?:\/\//,'').split('/')[0];
+  if (window._techDomainOverride) return window._techDomainOverride;
   const d = (window.analysisData && (window.analysisData.url || window.analysisData.domain)) || '';
   return String(d).replace(/^https?:\/\//,'').split('/')[0] || '';
 }
@@ -20431,13 +20435,17 @@ function buildTechnicalSuite() {
   if (!wrap) return;
   const dom = _techDomain();
   const banner = `
-    <div style="background:linear-gradient(135deg,#ECFDF5,#F0FDF4);border:1.5px solid #A7F3D0;border-radius:14px;padding:16px 20px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
-      <div style="font-size:1.6rem">🛠️</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-family:Sora,sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628">Technical Suite${dom?` — ${dom}`:''}</div>
-        <div style="font-size:0.74rem;color:#475569;margin-top:2px">Each audit fetches your live homepage and grades every signal that affects search engines, AI engines and humans.</div>
+    <div style="background:linear-gradient(135deg,#ECFDF5,#F0FDF4);border:1.5px solid #A7F3D0;border-radius:14px;padding:16px 20px;margin-bottom:20px">
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <div style="font-size:1.6rem">🛠️</div>
+        <div style="flex:1;min-width:240px">
+          <div style="font-family:Sora,sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628">Technical Suite</div>
+          <div style="font-size:0.74rem;color:#475569;margin-top:2px">Audit any live website — enter a domain below or use the one from your last analysis.</div>
+        </div>
+        <input id="techSuiteDomainInput" type="text" placeholder="yourdomain.com" value="${dom||''}" onkeydown="if(event.key==='Enter'){event.preventDefault();runTechSuiteAll();}" style="padding:10px 14px;border:1px solid #BBF7D0;border-radius:10px;font-size:0.84rem;font-family:inherit;min-width:240px;background:white;color:#0A1628;outline:none" />
+        <button onclick="runTechSuiteAll()" style="padding:10px 20px;background:linear-gradient(135deg,#10B981,#047857);border:none;border-radius:10px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">▶ Run All</button>
       </div>
-      <button onclick="runTechSuiteAll()" style="padding:10px 20px;background:linear-gradient(135deg,#10B981,#047857);border:none;border-radius:10px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">▶ Run All</button>
+      ${dom ? `<div style="font-size:0.7rem;color:#047857;margin-top:8px;margin-left:34px">Target: <strong>${dom}</strong></div>` : ''}
     </div>`;
   wrap.innerHTML = banner +
     _techPanel('🩺 Site Health', 'HTTPS, performance, mobile readiness, accessibility & security headers', 'health', window._techSiteHealth) +
@@ -20447,7 +20455,13 @@ function buildTechnicalSuite() {
 
 window.runSingleTech = async function(kind) {
   const dom = _techDomain();
-  if (!dom) { showToast('Run an analysis first to set the target domain.'); return; }
+  if (!dom) {
+    showToast('Enter a domain in the box above (e.g. example.com) to run the audit.');
+    const inp = document.getElementById('techSuiteDomainInput');
+    if (inp) { inp.focus(); inp.style.borderColor = '#DC2626'; setTimeout(() => { inp.style.borderColor = '#BBF7D0'; }, 2000); }
+    return;
+  }
+  window._techDomainOverride = dom;
   const map = {
     health: { url:'/api/tech-site-health',     store:'_techSiteHealth', label:'Site Health' },
     crawl:  { url:'/api/tech-crawlability',    store:'_techCrawl',      label:'Crawlability' },
