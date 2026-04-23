@@ -19957,11 +19957,13 @@ function buildAiAuditSuite() {
       <div style="font-size:0.7rem;font-weight:700;color:#15803D;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">✅ Audit Complete — GPT-4 Report</div>
       <div style="font-size:0.83rem;color:#1A2F4A;line-height:1.75;white-space:pre-wrap">${window._aiVisibilityAudit}</div>
     </div>` : `
-    <div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:30px;text-align:center">
-      <div style="font-size:2.2rem;margin-bottom:10px">🤖</div>
-      <div style="font-size:0.92rem;font-weight:700;color:#0A1628;margin-bottom:5px">Run Your AI Visibility Audit</div>
-      <div style="font-size:0.78rem;color:#64748B;margin-bottom:18px;max-width:380px;margin-left:auto;margin-right:auto">GPT-4 analyses your brand's presence across all major LLMs and produces a prioritised action plan</div>
-      <button onclick="generateAiVisibilityAudit()" style="padding:12px 32px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:11px;font-size:0.87rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 14px rgba(99,102,241,0.35)">✨ Run AI Visibility Audit</button>
+    <div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:22px 26px;display:flex;align-items:center;gap:18px">
+      <div style="font-size:2rem;flex-shrink:0">🤖</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:0.92rem;font-weight:700;color:#0A1628;margin-bottom:3px">Run Your AI Visibility Audit</div>
+        <div style="font-size:0.76rem;color:#64748B;line-height:1.5">GPT-4 analyses your brand's presence across all major LLMs and produces a prioritised action plan</div>
+      </div>
+      <button onclick="generateAiVisibilityAudit()" style="padding:11px 26px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 14px rgba(99,102,241,0.35);white-space:nowrap;flex-shrink:0">✨ Run AI Visibility Audit</button>
     </div>`;
   const auditCard = `
     <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
