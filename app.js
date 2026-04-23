@@ -10864,7 +10864,41 @@ function buildIntelligence() {
   }
 
   _updateLiveDataBadges();
+
+  // ── Auto-prefill keyword-gap domain from current analysis & auto-fetch ──
+  // Replaces the illustrative sample rows with REAL DataForSEO keyword data
+  // for the domain the user just analysed — no extra click required.
+  try {
+    const kwInput = document.getElementById('kwgap-domain-input');
+    const ydomain = analysisData && analysisData.url
+      ? String(analysisData.url).replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0]
+      : '';
+    if (kwInput && ydomain && !kwInput.value) kwInput.value = ydomain;
+
+    if (ydomain && !window._kwgapAutoFetched) {
+      window._kwgapAutoFetched = ydomain;
+      // Defer so the table is in the DOM before we replace its rows
+      setTimeout(() => { try { fetchLiveKeywordGap(); } catch(e) { console.warn('auto kwgap fetch:', e); } }, 400);
+    }
+  } catch(e) { console.warn('kwgap auto-prefill:', e); }
 }
+
+// Expose modal openers globally + ensure top-stacking when shown
+window.openExclusiveModal = function () {
+  const modal = document.getElementById('exclusiveModal');
+  if (!modal) { console.warn('exclusiveModal not found'); return; }
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+  modal.style.zIndex = '10000';
+  modal.style.position = 'fixed';
+  modal.style.inset = '0';
+};
+window.closeExclusiveModal = function () {
+  const modal = document.getElementById('exclusiveModal');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  modal.style.display = 'none';
+};
 
 // Lazy-load jsPDF from CDN (cached after first call)
 function _loadJsPDF() {
