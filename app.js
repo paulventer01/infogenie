@@ -4007,7 +4007,20 @@ async function generateBlogMonitor() {
   const reportEl = document.getElementById('blogMonitorReport');
   const textEl   = document.getElementById('blogMonitorText');
   if (reportEl) { reportEl.style.display = 'block'; }
-  if (textEl)   { textEl.innerHTML = spin + 'GPT-4 scanning competitor content strategies...'; }
+
+  // Live elapsed timer so user sees progress (typical run = 15-30s)
+  const t0 = Date.now();
+  const tick = () => {
+    if (!textEl) return;
+    const sec = ((Date.now() - t0) / 1000).toFixed(1);
+    textEl.innerHTML = `${spin}<strong>GPT-4 scanning competitor content strategies…</strong> <span style="color:#7C3AED;font-weight:700;font-variant-numeric:tabular-nums">${sec}s</span> <span style="color:#9CA3AF;font-size:.78rem">(typically completes in 15-30s)</span>`;
+  };
+  tick();
+  const ticker = setInterval(tick, 250);
+
+  // 90s hard timeout so the UI never hangs forever
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), 90000);
 
   try {
     const compsStr = competitorNames.join(', ');
@@ -4029,14 +4042,26 @@ For each competitor, provide:
 
 Format as a clean, actionable report with clear sections per competitor. Use bold headings. Be specific and concise. Under 900 words total.`
         }]
-      })
+      }),
+      signal: ctrl.signal
     });
-    const data = await resp.json();
+    clearInterval(ticker); clearTimeout(timeoutId);
+    const raw = await resp.text();
+    let data; try { data = JSON.parse(raw); } catch(_) {
+      throw new Error(`Server returned non-JSON (HTTP ${resp.status}). The proxy may have timed out — try again.`);
+    }
+    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
     const text = data.choices?.[0]?.message?.content || 'No response from AI.';
-    if (textEl) textEl.textContent = text;
+    const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
+    if (textEl) {
+      textEl.style.whiteSpace = 'pre-wrap';
+      textEl.innerHTML = `<div style="margin-bottom:10px;font-size:.78rem;color:#10B981;font-weight:700">✅ Generated in ${totalSec}s</div>${text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')}`;
+    }
     if (btn) { btn.disabled = false; btn.textContent = '↻ Re-run Intelligence'; }
   } catch (e) {
-    if (textEl) textEl.textContent = 'Failed to fetch blog intelligence. Please try again.';
+    clearInterval(ticker); clearTimeout(timeoutId);
+    const isTimeout = e.name === 'AbortError';
+    if (textEl) textEl.innerHTML = `<div style="color:#DC2626;font-weight:700">${isTimeout ? '⏱️ Scan timed out after 90s.' : '⚠️ ' + e.message}</div><button onclick="generateBlogMonitor()" style="margin-top:10px;padding:7px 16px;background:#7C3AED;color:white;border:none;border-radius:8px;font-weight:700;cursor:pointer">🔄 Try Again</button>`;
     if (btn) { btn.disabled = false; btn.textContent = '🤖 Run Blog Intelligence'; }
   }
 }
