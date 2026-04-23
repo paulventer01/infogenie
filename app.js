@@ -1922,6 +1922,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'aivisibility') {
     try { buildAiVisibility(); } catch(e) { console.warn('buildAiVisibility error:', e); }
   }
+  if (viewId === 'ai-audit-suite') {
+    try { buildAiAuditSuite(); } catch(e) { console.warn('buildAiAuditSuite error:', e); }
+  }
   if (viewId === 'battleplan') {
     try { buildBattlePlan(); } catch(e) { console.warn('buildBattlePlan error:', e); }
   }
@@ -6715,384 +6718,15 @@ function buildAiVisibility() {
       </div>`;
     })()}
 
-    ${(() => {
-      // ── PROMPT COVERAGE MATRIX (real data from /api/ai-visibility-coverage) ─
-      const cov = window._aiVisCoverage;
-      if (!cov || !cov.matrix?.length) {
-        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
-          <div style="font-size:1.6rem;opacity:0.6">📡</div>
-          <div style="flex:1">
-            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Prompt Coverage Matrix</div>
-            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to fire 8 industry prompts × every connected model and see real per-cell citation results.</div>
-          </div>
-          <button onclick="runSingleAiVis('coverage')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
-        </div>`;
-      }
-      const overallPct = Math.round((cov.overallCoverage || 0) * 100);
-      const modelKeys = cov.modelKeys || [];
-      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div>
-            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📡 Prompt Coverage Matrix</div>
-            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">Real cell-by-cell citation across ${cov.summary.promptsRun} prompts × ${cov.summary.modelsRun} models — ${cov.summary.totalCitations}/${cov.summary.totalCells} cells cited</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:1.4rem;font-weight:800;color:${overallPct>=60?'#10B981':overallPct>=30?'#F59E0B':'#DC2626'}">${overallPct}%</div>
-            <div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Overall coverage</div>
-          </div>
-        </div>
-        <div style="overflow-x:auto">
-          <table style="width:100%;border-collapse:separate;border-spacing:0;font-size:0.72rem">
-            <thead>
-              <tr>
-                <th style="padding:8px 10px;text-align:left;background:#F9FAFB;font-size:0.62rem;font-weight:700;color:#6B7280;text-transform:uppercase">Prompt</th>
-                ${modelKeys.map(k => `<th style="padding:8px 8px;text-align:center;background:#F9FAFB;font-size:0.62rem;font-weight:700;color:#6B7280;text-transform:uppercase">${k}</th>`).join('')}
-                <th style="padding:8px 8px;text-align:center;background:#F9FAFB;font-size:0.62rem;font-weight:700;color:#6B7280;text-transform:uppercase">%</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${cov.matrix.map(row => {
-                const hits = row.results.filter(r => r.cited).length;
-                const pct = Math.round(hits / row.results.length * 100);
-                return `<tr style="border-top:1px solid #F3F4F6">
-                  <td style="padding:9px 10px;border-top:1px solid #F3F4F6">
-                    <div style="font-weight:700;color:#0A1628">${row.cat || ''}</div>
-                    <div style="font-size:0.64rem;color:#9CA3AF;font-style:italic;max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${row.prompt.replace(/"/g,'&quot;')}">"${row.prompt}"</div>
-                  </td>
-                  ${row.results.map(r => `<td style="padding:9px 6px;text-align:center;border-top:1px solid #F3F4F6" title="${r.modelName}: ${(r.snippet || r.error || '').replace(/"/g,'&quot;').slice(0,200)}">
-                    ${r.error ? `<span style="color:#9CA3AF;font-size:0.85rem" title="${r.error}">—</span>` : (r.cited ? `<span style="display:inline-block;width:18px;height:18px;background:#DCFCE7;color:#15803D;border-radius:50%;line-height:18px;font-weight:800">✓</span>` : `<span style="display:inline-block;width:18px;height:18px;background:#FEE2E2;color:#DC2626;border-radius:50%;line-height:18px;font-weight:800">×</span>`)}
-                  </td>`).join('')}
-                  <td style="padding:9px 8px;text-align:center;border-top:1px solid #F3F4F6;font-weight:800;color:${pct>=60?'#10B981':pct>=30?'#F59E0B':'#DC2626'}">${pct}%</td>
-                </tr>`;
-              }).join('')}
-              <tr style="background:#FAFBFD">
-                <td style="padding:9px 10px;font-weight:800;color:#0A1628;font-size:0.72rem">Coverage by model</td>
-                ${modelKeys.map(k => {
-                  const p = Math.round((cov.coverageByModel[k] || 0) * 100);
-                  return `<td style="padding:9px 6px;text-align:center;font-weight:800;color:${p>=60?'#10B981':p>=30?'#F59E0B':'#DC2626'}">${p}%</td>`;
-                }).join('')}
-                <td style="padding:9px 8px;text-align:center;font-weight:800;color:${overallPct>=60?'#10B981':overallPct>=30?'#F59E0B':'#DC2626'}">${overallPct}%</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>`;
-    })()}
+    <div style="background:linear-gradient(135deg,#EEF2FF,#F5F3FF);border:1.5px solid #C7D2FE;border-radius:14px;padding:18px 20px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
+      <div style="font-size:1.8rem">🧪</div>
+      <div style="flex:1">
+        <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628">AI Audit Suite</div>
+        <div style="font-size:0.74rem;color:#475569;margin-top:2px">Run the deep-dive audits — Prompt Coverage, Trend Tracking, Answer Accuracy, Competitive Citation, Entity Mapping, Sentiment, Google AI Overview & Attribution — each on its own card.</div>
+      </div>
+      <button onclick="navigateTo('ai-audit-suite')" style="padding:10px 22px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:10px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">Open Audit Suite →</button>
+    </div>
 
-    ${(() => {
-      // ── AI VISIBILITY TREND TRACKING ─────────────────────────────────────────
-      const tr = window._aiVisTrend;
-      if (!tr || !tr.runs || tr.runs < 2) {
-        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
-          <div style="font-size:1.6rem;opacity:0.6">📈</div>
-          <div style="flex:1">
-            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">AI Visibility Trend Tracking</div>
-            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">${tr ? `Run ${tr.runs}/2 captured. Run the AI Audit again tomorrow to start seeing daily citation deltas per model.` : 'Run the AI Audit at least twice to see how your AI citation rate trends over time.'}</div>
-          </div>
-          <button onclick="generateAiVisibilityAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
-        </div>`;
-      }
-      // Sparkline helper.
-      const spark = (pts, w=120, h=28, color='#2563EB') => {
-        if (!pts || pts.length < 2) return '';
-        const vals = pts.map(p => p.value);
-        const min = Math.min(...vals, 0), max = Math.max(...vals, 100);
-        const range = max - min || 1;
-        const stepX = w / (pts.length - 1);
-        const d = pts.map((p,i) => `${i?'L':'M'} ${(i*stepX).toFixed(1)} ${(h - ((p.value - min) / range) * h).toFixed(1)}`).join(' ');
-        return `<svg width="${w}" height="${h}" style="display:block"><path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
-      };
-      const arrow = (n) => n == null ? '<span style="color:#9CA3AF">—</span>' : (n > 0 ? `<span style="color:#10B981;font-weight:800">▲ +${n}</span>` : (n < 0 ? `<span style="color:#DC2626;font-weight:800">▼ ${n}</span>` : `<span style="color:#9CA3AF">±0</span>`));
-      const overall = tr.deltas.overall || {};
-      const modelEntries = Object.entries(tr.deltas).filter(([k]) => k !== 'overall');
-      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div>
-            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📈 AI Visibility Trend Tracking</div>
-            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${tr.runs} historical run${tr.runs===1?'':'s'} for ${tr.domain} — change vs previous audit (run daily for true trend)</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:1.4rem;font-weight:800;color:#0A1628">${overall.current||0}%</div>
-            <div style="font-size:0.7rem;font-weight:700">${arrow(overall.change)}</div>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
-          <div style="border:1.5px solid #2563EB;border-radius:12px;padding:12px;background:#EFF6FF">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="font-size:0.74rem;font-weight:800;color:#1E40AF">Overall Coverage</div><div style="font-size:0.66rem;font-weight:700">${arrow(overall.change)}</div></div>
-            <div style="font-size:1.3rem;font-weight:800;color:#0A1628;margin-bottom:4px">${overall.current||0}%</div>
-            ${spark(tr.series.overall, 200, 32, '#2563EB')}
-          </div>
-          ${modelEntries.map(([mk, d]) => `<div style="border:1.5px solid #E5E7EB;border-radius:12px;padding:12px;background:#FAFBFD">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="font-size:0.74rem;font-weight:800;color:#0A1628">${({chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',perplexity:'Perplexity',deepseek:'DeepSeek'})[mk]||mk}</div><div style="font-size:0.66rem;font-weight:700">${arrow(d.change)}</div></div>
-            <div style="font-size:1.15rem;font-weight:800;color:#0A1628;margin-bottom:4px">${d.current||0}%</div>
-            ${spark(tr.series[mk], 200, 28, d.change>0?'#10B981':d.change<0?'#DC2626':'#94A3B8')}
-          </div>`).join('')}
-        </div>
-      </div>`;
-    })()}
-
-    ${(() => {
-      // ── ANSWER ACCURACY (real data from /api/ai-visibility-accuracy) ────────
-      const acc = window._aiVisAccuracy;
-      if (!acc || !acc.models?.length) {
-        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
-          <div style="font-size:1.6rem;opacity:0.6">🎯</div>
-          <div style="flex:1">
-            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Answer Accuracy Check</div>
-            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to scrape your live site, ask each model to describe your brand, and grade every claim for factual accuracy against your real content.</div>
-          </div>
-          <button onclick="runSingleAiVis('accuracy')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
-        </div>`;
-      }
-      const ovColor = acc.overallAccuracy >= 75 ? '#10B981' : acc.overallAccuracy >= 50 ? '#F59E0B' : '#DC2626';
-      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div>
-            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🎯 Answer Accuracy Check</div>
-            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${acc.sourceFetched ? `Graded against ${acc.sourceLength.toLocaleString()} chars scraped from your live site` : '⚠️ Could not scrape source site — accuracy is estimated only'} · ${acc.totalHallucinations} hallucination${acc.totalHallucinations===1?'':'s'} detected across ${acc.models.length} models</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:1.4rem;font-weight:800;color:${ovColor}">${acc.overallAccuracy}%</div>
-            <div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Overall accuracy</div>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
-          ${acc.models.map(m => {
-            const c = m.accuracy >= 75 ? '#10B981' : m.accuracy >= 50 ? '#F59E0B' : '#DC2626';
-            return `<div style="border:1.5px solid #E5E7EB;border-radius:12px;padding:14px;background:#FAFBFD">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-                <div style="font-weight:800;color:#0A1628;font-size:0.86rem">${m.name}</div>
-                <div style="font-weight:800;color:${c};font-size:1rem">${m.accuracy}%</div>
-              </div>
-              <div style="font-size:0.7rem;color:#475569;line-height:1.5;margin-bottom:10px">${m.summary || (m.error ? '⚠️ ' + m.error : '')}</div>
-              ${m.confirmedFacts?.length ? `<div style="margin-bottom:8px"><div style="font-size:0.6rem;font-weight:800;color:#15803D;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">✓ Confirmed (${m.confirmedFacts.length})</div>${m.confirmedFacts.map(f=>`<div style="font-size:0.66rem;color:#374151;padding:3px 7px;background:#F0FDF4;border-radius:5px;margin-bottom:3px">${f}</div>`).join('')}</div>` : ''}
-              ${m.hallucinations?.length ? `<div style="margin-bottom:8px"><div style="font-size:0.6rem;font-weight:800;color:#DC2626;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">✗ Hallucinations (${m.hallucinations.length})</div>${m.hallucinations.map(f=>`<div style="font-size:0.66rem;color:#374151;padding:3px 7px;background:#FEF2F2;border-radius:5px;margin-bottom:3px">${f}</div>`).join('')}</div>` : ''}
-              ${m.unverifiable?.length ? `<div><div style="font-size:0.6rem;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">? Unverifiable (${m.unverifiable.length})</div>${m.unverifiable.map(f=>`<div style="font-size:0.66rem;color:#374151;padding:3px 7px;background:#FFFBEB;border-radius:5px;margin-bottom:3px">${f}</div>`).join('')}</div>` : ''}
-            </div>`;
-          }).join('')}
-        </div>
-      </div>`;
-    })()}
-
-    ${(() => {
-      // ── COMPETITIVE CITATION INTELLIGENCE ────────────────────────────────────
-      const cc = window._aiVisCompetitors;
-      if (!cc || !cc.matrix?.length) {
-        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
-          <div style="font-size:1.6rem;opacity:0.6">⚔️</div>
-          <div style="flex:1">
-            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Competitive Citation Intelligence</div>
-            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">${cc?.note || 'Run the AI Audit to fire industry prompts across every model for you AND your competitors and see who wins each query.'}</div>
-          </div>
-          <button onclick="runSingleAiVis('competitors')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
-        </div>`;
-      }
-      const sortedSov = Object.entries(cc.shareOfVoicePct || {}).sort((a,b)=>b[1]-a[1]);
-      const maxSov = Math.max(1, ...sortedSov.map(s=>s[1]));
-      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div>
-            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">⚔️ Competitive Citation Intelligence</div>
-            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${cc.summary.promptsRun} prompts × ${cc.summary.modelsRun} models × ${cc.summary.domainsRun} domains · ${cc.summary.rivalAlertCount} rival alert${cc.summary.rivalAlertCount===1?'':'s'}</div>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:18px">
-          <div>
-            <div style="font-size:0.72rem;font-weight:800;color:#0A1628;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Share of AI voice</div>
-            ${sortedSov.map(([d,p]) => `<div style="margin-bottom:8px">
-              <div style="display:flex;justify-content:space-between;font-size:0.72rem;margin-bottom:3px"><span style="font-weight:${d===cc.brand?800:600};color:${d===cc.brand?'#2563EB':'#374151'}">${d===cc.brand?'★ ':''}${d}</span><span style="font-weight:800;color:#0A1628">${p}%</span></div>
-              <div style="height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${(p/maxSov)*100}%;background:${d===cc.brand?'linear-gradient(90deg,#2563EB,#3B82F6)':'#94A3B8'};border-radius:4px"></div></div>
-            </div>`).join('')}
-          </div>
-          <div>
-            <div style="font-size:0.72rem;font-weight:800;color:#0A1628;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Rival alerts <span style="color:#DC2626">(${cc.rivalAlerts?.length || 0})</span></div>
-            ${cc.rivalAlerts?.length ? cc.rivalAlerts.slice(0,5).map(a => `<div style="border-left:3px solid #DC2626;background:#FEF2F2;padding:8px 10px;border-radius:0 8px 8px 0;margin-bottom:8px">
-              <div style="font-size:0.7rem;font-weight:700;color:#0A1628">${a.cat}</div>
-              <div style="font-size:0.66rem;color:#475569;margin:3px 0;font-style:italic">"${a.prompt.slice(0,90)}${a.prompt.length>90?'…':''}"</div>
-              <div style="font-size:0.66rem;color:#DC2626;font-weight:700">Cited: ${a.winners.map(w => `${w.domain} (${w.hits})`).join(', ')}</div>
-            </div>`).join('') : `<div style="font-size:0.72rem;color:#10B981;background:#F0FDF4;padding:10px;border-radius:8px">✓ No prompts where competitors are winning and you aren't cited.</div>`}
-          </div>
-        </div>
-      </div>`;
-    })()}
-
-    ${(() => {
-      // ── ENTITY IDENTIFICATION & MAPPING ──────────────────────────────────────
-      const en = window._aiVisEntity;
-      if (!en || !en.consolidated) {
-        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
-          <div style="font-size:1.6rem;opacity:0.6">🧠</div>
-          <div style="flex:1">
-            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Entity Identification & Mapping</div>
-            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to see how each model maps your brand as a knowledge-graph entity — category, attributes, relationships, positioning.</div>
-          </div>
-          <button onclick="runSingleAiVis('entity')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
-        </div>`;
-      }
-      const c = en.consolidated;
-      const ag = en.agreementScore || 0;
-      const agColor = ag >= 75 ? '#10B981' : ag >= 50 ? '#F59E0B' : '#DC2626';
-      const chip = (txt, bg='#EEF2FF', col='#3730A3') => `<span style="display:inline-block;background:${bg};color:${col};padding:3px 9px;border-radius:99px;font-size:0.66rem;font-weight:700;margin:2px 4px 2px 0">${txt}</span>`;
-      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div>
-            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🧠 Entity Identification & Mapping</div>
-            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">How ${en.summary.modelsValid}/${en.summary.modelsRun} AI models describe ${en.domain} as a knowledge entity · ${en.summary.inconsistencyCount} inconsistencies detected</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:1.4rem;font-weight:800;color:${agColor}">${ag}%</div>
-            <div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Model agreement</div>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:18px">
-          <div style="background:#FAFBFD;border:1px solid #EEF2F7;border-radius:12px;padding:14px">
-            <div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Consolidated entity profile</div>
-            <div style="font-size:0.78rem;color:#0A1628;font-weight:700;margin-bottom:4px">${c.category || '—'}</div>
-            <div style="font-size:0.7rem;color:#475569;margin-bottom:10px;font-style:italic">"${c.positioning || '—'}"</div>
-            ${c.attributes?.length ? `<div style="margin-bottom:8px"><div style="font-size:0.62rem;color:#9CA3AF;text-transform:uppercase;font-weight:700;margin-bottom:4px">Attributes</div>${c.attributes.map(a=>chip(a)).join('')}</div>` : ''}
-            ${c.competitors?.length ? `<div style="margin-bottom:8px"><div style="font-size:0.62rem;color:#9CA3AF;text-transform:uppercase;font-weight:700;margin-bottom:4px">Competitors</div>${c.competitors.map(a=>chip(a,'#FEF3C7','#92400E')).join('')}</div>` : ''}
-            ${c.customers?.length ? `<div style="margin-bottom:8px"><div style="font-size:0.62rem;color:#9CA3AF;text-transform:uppercase;font-weight:700;margin-bottom:4px">Customers</div>${c.customers.map(a=>chip(a,'#DCFCE7','#15803D')).join('')}</div>` : ''}
-            <div style="display:flex;gap:18px;margin-top:8px;font-size:0.7rem;color:#475569"><div><b>Founded:</b> ${c.founded||'—'}</div><div><b>HQ:</b> ${c.headquarters||'—'}</div></div>
-          </div>
-          <div>
-            <div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Inconsistencies (${en.inconsistencies?.length||0})</div>
-            ${en.inconsistencies?.length ? en.inconsistencies.slice(0,6).map(i => `<div style="border-left:3px solid #F59E0B;background:#FFFBEB;padding:8px 10px;border-radius:0 8px 8px 0;margin-bottom:6px">
-              <div style="font-size:0.7rem;font-weight:700;color:#92400E">${i.field || 'mismatch'}</div>
-              <div style="font-size:0.66rem;color:#475569;margin-top:2px">${i.issue || ''}</div>
-            </div>`).join('') : `<div style="font-size:0.72rem;color:#10B981;background:#F0FDF4;padding:10px;border-radius:8px">✓ Models agree on your brand identity.</div>`}
-          </div>
-        </div>
-      </div>`;
-    })()}
-
-    ${(() => {
-      // ── SENTIMENT & CONTEXT ANALYSIS ─────────────────────────────────────────
-      const s = window._aiVisSentiment;
-      if (!s || !s.perModel?.length) {
-        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
-          <div style="font-size:1.6rem;opacity:0.6">💬</div>
-          <div style="flex:1">
-            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Sentiment & Context Analysis</div>
-            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to grade how every model talks about your brand — sentiment, positives, negatives, and narrative gaps.</div>
-          </div>
-          <button onclick="runSingleAiVis('sentiment')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
-        </div>`;
-      }
-      const total = (s.distribution.positive||0)+(s.distribution.neutral||0)+(s.distribution.negative||0)+(s.distribution.mixed||0) || 1;
-      const sCol = s.avgScore > 30 ? '#10B981' : s.avgScore < -10 ? '#DC2626' : '#F59E0B';
-      const sentChip = (st) => ({positive:['#DCFCE7','#15803D','😊'],neutral:['#F1F5F9','#475569','😐'],negative:['#FEE2E2','#DC2626','☹️'],mixed:['#FEF3C7','#92400E','🤔']}[st]||['#F1F5F9','#475569','—']);
-      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div>
-            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">💬 Sentiment & Context Analysis</div>
-            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">Each model's brand description graded for tone · ${s.summary.narrativeGapCount} narrative gap${s.summary.narrativeGapCount===1?'':'s'} flagged</div>
-          </div>
-          <div style="text-align:right"><div style="font-size:1.4rem;font-weight:800;color:${sCol}">${s.avgScore>0?'+':''}${s.avgScore}</div><div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Avg sentiment</div></div>
-        </div>
-        <div style="display:flex;gap:6px;height:10px;border-radius:5px;overflow:hidden;margin-bottom:14px">
-          <div style="flex:${(s.distribution.positive||0)/total};background:#10B981" title="Positive: ${s.distribution.positive||0}"></div>
-          <div style="flex:${(s.distribution.neutral||0)/total};background:#94A3B8" title="Neutral: ${s.distribution.neutral||0}"></div>
-          <div style="flex:${(s.distribution.mixed||0)/total};background:#F59E0B" title="Mixed: ${s.distribution.mixed||0}"></div>
-          <div style="flex:${(s.distribution.negative||0)/total};background:#DC2626" title="Negative: ${s.distribution.negative||0}"></div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">
-          ${s.perModel.map(m => { const [bg,col,emo] = sentChip(m.sentiment); return `<div style="border:1.5px solid #E5E7EB;border-radius:11px;padding:12px;background:#FAFBFD">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-weight:800;color:#0A1628;font-size:0.82rem">${m.modelName}</div><span style="background:${bg};color:${col};padding:3px 10px;border-radius:99px;font-size:0.65rem;font-weight:800">${emo} ${m.sentiment} ${m.score>0?'+':''}${m.score}</span></div>
-            <div style="font-size:0.68rem;color:#475569;line-height:1.45;margin-bottom:6px;max-height:62px;overflow:hidden">${m.text ? m.text.slice(0,200)+(m.text.length>200?'…':'') : (m.error || '—')}</div>
-            ${m.narrativeGap && m.narrativeGap.toLowerCase()!=='none' ? `<div style="font-size:0.64rem;background:#FFFBEB;color:#92400E;padding:5px 8px;border-radius:6px;border:1px solid #FDE68A"><b>⚠ Gap:</b> ${m.narrativeGap}</div>` : ''}
-          </div>`; }).join('')}
-        </div>
-      </div>`;
-    })()}
-
-    ${(() => {
-      // ── REAL GOOGLE AI OVERVIEW / SGE TRACKING ───────────────────────────────
-      const g = window._aiVisSGE;
-      if (!g) {
-        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
-          <div style="font-size:1.6rem;opacity:0.6">🔎</div>
-          <div style="flex:1">
-            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Google AI Overview Tracking</div>
-            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to detect Google AI Overview presence, citations, and your organic position across 5 industry queries.</div>
-          </div>
-          <button onclick="runSingleAiVis('sge')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
-        </div>`;
-      }
-      if (g.configured === false) {
-        return `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:18px;margin-bottom:20px;text-align:center">
-          <div style="font-size:0.85rem;font-weight:700;color:#92400E;margin-bottom:4px">🔎 Google AI Overview Tracking — needs DataForSEO</div>
-          <div style="font-size:0.72rem;color:#92400E">${g.note}</div>
-        </div>`;
-      }
-      const sm = g.summary || {};
-      const presColor = sm.sgePresenceRate >= 60 ? '#10B981' : sm.sgePresenceRate >= 30 ? '#F59E0B' : '#DC2626';
-      const citColor  = sm.sgeCitationRate >= 60 ? '#10B981' : sm.sgeCitationRate >= 30 ? '#F59E0B' : '#DC2626';
-      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div>
-            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🔎 Google AI Overview Tracking</div>
-            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">Live SGE / AI Mode parsing across ${sm.queriesRun||0} industry queries</div>
-          </div>
-          <div style="display:flex;gap:18px;text-align:right">
-            <div><div style="font-size:1.2rem;font-weight:800;color:${presColor}">${sm.sgePresenceRate||0}%</div><div style="font-size:0.6rem;color:#9CA3AF;font-weight:700;text-transform:uppercase">SGE shown</div></div>
-            <div><div style="font-size:1.2rem;font-weight:800;color:${citColor}">${sm.sgeCitationRate||0}%</div><div style="font-size:0.6rem;color:#9CA3AF;font-weight:700;text-transform:uppercase">You cited</div></div>
-          </div>
-        </div>
-        <table style="width:100%;border-collapse:collapse;font-size:0.72rem">
-          <thead><tr style="background:#F9FAFB"><th style="padding:8px 10px;text-align:left;font-size:0.62rem;color:#6B7280;text-transform:uppercase;font-weight:700">Query</th><th style="padding:8px 10px;text-align:center;font-size:0.62rem;color:#6B7280;text-transform:uppercase;font-weight:700">AI Overview</th><th style="padding:8px 10px;text-align:center;font-size:0.62rem;color:#6B7280;text-transform:uppercase;font-weight:700">Cites You</th><th style="padding:8px 10px;text-align:center;font-size:0.62rem;color:#6B7280;text-transform:uppercase;font-weight:700">Sources</th><th style="padding:8px 10px;text-align:center;font-size:0.62rem;color:#6B7280;text-transform:uppercase;font-weight:700">Organic Pos</th></tr></thead>
-          <tbody>
-            ${(g.queries||[]).map(q => `<tr style="border-top:1px solid #F3F4F6">
-              <td style="padding:9px 10px;color:#0A1628;font-weight:600">${q.query}</td>
-              <td style="padding:9px 10px;text-align:center">${q.error?'<span style="color:#9CA3AF">—</span>':(q.aiOverviewPresent?'<span style="color:#10B981;font-weight:800">●</span>':'<span style="color:#CBD5E1">○</span>')}</td>
-              <td style="padding:9px 10px;text-align:center">${q.error?'—':(q.aiOverviewCitesYou?'<span style="background:#DCFCE7;color:#15803D;padding:2px 8px;border-radius:99px;font-weight:800">✓</span>':'<span style="background:#FEE2E2;color:#DC2626;padding:2px 8px;border-radius:99px;font-weight:800">×</span>')}</td>
-              <td style="padding:9px 10px;text-align:center;color:#475569">${q.aiOverviewSourceCount||0}</td>
-              <td style="padding:9px 10px;text-align:center;font-weight:700;color:${q.organicPosition?(q.organicPosition<=3?'#10B981':q.organicPosition<=10?'#F59E0B':'#9CA3AF'):'#9CA3AF'}">${q.organicPosition || '—'}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`;
-    })()}
-
-    ${(() => {
-      // ── CITATION-TO-TRAFFIC ATTRIBUTION ──────────────────────────────────────
-      const at = window._aiVisAttribution;
-      if (!at) {
-        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
-          <div style="font-size:1.6rem;opacity:0.6">📈</div>
-          <div style="flex:1">
-            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Citation-to-Traffic Attribution</div>
-            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to connect AI citations to real traffic via Amplitude.</div>
-          </div>
-          <button onclick="runSingleAiVis('attribution')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
-        </div>`;
-      }
-      if (!at.connected) {
-        return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:4px">📈 Citation-to-Traffic Attribution</div>
-          <div style="font-size:0.72rem;color:#6B7280;margin-bottom:12px">${at.note}</div>
-          <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px;font-size:0.72rem;color:#92400E;margin-bottom:14px"><b>Missing:</b> ${at.missing}. Add it to your environment to start tracking AI referral sessions in real time.</div>
-          <div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Will track these AI sources</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px">
-            ${at.aiSources.map(s => `<span style="display:inline-flex;align-items:center;gap:5px;background:#F1F5F9;color:#475569;padding:5px 11px;border-radius:99px;font-size:0.7rem;font-weight:600"><span style="width:6px;height:6px;background:#CBD5E1;border-radius:50%"></span>${s.label}</span>`).join('')}
-          </div>
-        </div>`;
-      }
-      const totalAi = at.totalAiSessions || 0;
-      const maxAi = Math.max(1, ...at.sessions.map(s=>s.sessions||0));
-      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div>
-            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📈 Citation-to-Traffic Attribution</div>
-            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">Live Amplitude data · last ${at.windowDays} days · ${totalAi.toLocaleString()} AI-referred sessions of ${at.totalSessions.toLocaleString()} total</div>
-          </div>
-          <div style="text-align:right"><div style="font-size:1.4rem;font-weight:800;color:${at.aiShare>=5?'#10B981':at.aiShare>=1?'#F59E0B':'#DC2626'}">${at.aiShare}%</div><div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">AI traffic share</div></div>
-        </div>
-        ${at.sessions.map(s => `<div style="margin-bottom:9px">
-          <div style="display:flex;justify-content:space-between;font-size:0.74rem;margin-bottom:4px"><span style="font-weight:700;color:#0A1628">${s.label}</span><span style="font-weight:800;color:#0A1628">${(s.sessions||0).toLocaleString()}</span></div>
-          <div style="height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${((s.sessions||0)/maxAi)*100}%;background:linear-gradient(90deg,#7C3AED,#4338CA);border-radius:4px"></div></div>
-        </div>`).join('')}
-      </div>`;
-    })()}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
       <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
@@ -20325,3 +19959,389 @@ function buildMasterCalendar() {
     _t = setTimeout(() => { _t = null; sweep(); }, 80);
   }).observe(document.body, { childList: true, subtree: true });
 })();
+
+
+function buildAiAuditSuite() {
+  const wrap = document.getElementById("aiAuditSuiteWrap");
+  if (!wrap) return;
+  wrap.innerHTML = `
+    ${(() => {
+      // ── PROMPT COVERAGE MATRIX (real data from /api/ai-visibility-coverage) ─
+      const cov = window._aiVisCoverage;
+      if (!cov || !cov.matrix?.length) {
+        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
+          <div style="font-size:1.6rem;opacity:0.6">📡</div>
+          <div style="flex:1">
+            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Prompt Coverage Matrix</div>
+            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to fire 8 industry prompts × every connected model and see real per-cell citation results.</div>
+          </div>
+          <button onclick="runSingleAiVis('coverage')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+        </div>`;
+      }
+      const overallPct = Math.round((cov.overallCoverage || 0) * 100);
+      const modelKeys = cov.modelKeys || [];
+      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📡 Prompt Coverage Matrix</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">Real cell-by-cell citation across ${cov.summary.promptsRun} prompts × ${cov.summary.modelsRun} models — ${cov.summary.totalCitations}/${cov.summary.totalCells} cells cited</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:1.4rem;font-weight:800;color:${overallPct>=60?'#10B981':overallPct>=30?'#F59E0B':'#DC2626'}">${overallPct}%</div>
+            <div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Overall coverage</div>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:separate;border-spacing:0;font-size:0.72rem">
+            <thead>
+              <tr>
+                <th style="padding:8px 10px;text-align:left;background:#F9FAFB;font-size:0.62rem;font-weight:700;color:#6B7280;text-transform:uppercase">Prompt</th>
+                ${modelKeys.map(k => `<th style="padding:8px 8px;text-align:center;background:#F9FAFB;font-size:0.62rem;font-weight:700;color:#6B7280;text-transform:uppercase">${k}</th>`).join('')}
+                <th style="padding:8px 8px;text-align:center;background:#F9FAFB;font-size:0.62rem;font-weight:700;color:#6B7280;text-transform:uppercase">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${cov.matrix.map(row => {
+                const hits = row.results.filter(r => r.cited).length;
+                const pct = Math.round(hits / row.results.length * 100);
+                return `<tr style="border-top:1px solid #F3F4F6">
+                  <td style="padding:9px 10px;border-top:1px solid #F3F4F6">
+                    <div style="font-weight:700;color:#0A1628">${row.cat || ''}</div>
+                    <div style="font-size:0.64rem;color:#9CA3AF;font-style:italic;max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${row.prompt.replace(/"/g,'&quot;')}">"${row.prompt}"</div>
+                  </td>
+                  ${row.results.map(r => `<td style="padding:9px 6px;text-align:center;border-top:1px solid #F3F4F6" title="${r.modelName}: ${(r.snippet || r.error || '').replace(/"/g,'&quot;').slice(0,200)}">
+                    ${r.error ? `<span style="color:#9CA3AF;font-size:0.85rem" title="${r.error}">—</span>` : (r.cited ? `<span style="display:inline-block;width:18px;height:18px;background:#DCFCE7;color:#15803D;border-radius:50%;line-height:18px;font-weight:800">✓</span>` : `<span style="display:inline-block;width:18px;height:18px;background:#FEE2E2;color:#DC2626;border-radius:50%;line-height:18px;font-weight:800">×</span>`)}
+                  </td>`).join('')}
+                  <td style="padding:9px 8px;text-align:center;border-top:1px solid #F3F4F6;font-weight:800;color:${pct>=60?'#10B981':pct>=30?'#F59E0B':'#DC2626'}">${pct}%</td>
+                </tr>`;
+              }).join('')}
+              <tr style="background:#FAFBFD">
+                <td style="padding:9px 10px;font-weight:800;color:#0A1628;font-size:0.72rem">Coverage by model</td>
+                ${modelKeys.map(k => {
+                  const p = Math.round((cov.coverageByModel[k] || 0) * 100);
+                  return `<td style="padding:9px 6px;text-align:center;font-weight:800;color:${p>=60?'#10B981':p>=30?'#F59E0B':'#DC2626'}">${p}%</td>`;
+                }).join('')}
+                <td style="padding:9px 8px;text-align:center;font-weight:800;color:${overallPct>=60?'#10B981':overallPct>=30?'#F59E0B':'#DC2626'}">${overallPct}%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    })()}
+
+    ${(() => {
+      // ── AI VISIBILITY TREND TRACKING ─────────────────────────────────────────
+      const tr = window._aiVisTrend;
+      if (!tr || !tr.runs || tr.runs < 2) {
+        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
+          <div style="font-size:1.6rem;opacity:0.6">📈</div>
+          <div style="flex:1">
+            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">AI Visibility Trend Tracking</div>
+            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">${tr ? `Run ${tr.runs}/2 captured. Run the AI Audit again tomorrow to start seeing daily citation deltas per model.` : 'Run the AI Audit at least twice to see how your AI citation rate trends over time.'}</div>
+          </div>
+          <button onclick="generateAiVisibilityAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+        </div>`;
+      }
+      // Sparkline helper.
+      const spark = (pts, w=120, h=28, color='#2563EB') => {
+        if (!pts || pts.length < 2) return '';
+        const vals = pts.map(p => p.value);
+        const min = Math.min(...vals, 0), max = Math.max(...vals, 100);
+        const range = max - min || 1;
+        const stepX = w / (pts.length - 1);
+        const d = pts.map((p,i) => `${i?'L':'M'} ${(i*stepX).toFixed(1)} ${(h - ((p.value - min) / range) * h).toFixed(1)}`).join(' ');
+        return `<svg width="${w}" height="${h}" style="display:block"><path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+      };
+      const arrow = (n) => n == null ? '<span style="color:#9CA3AF">—</span>' : (n > 0 ? `<span style="color:#10B981;font-weight:800">▲ +${n}</span>` : (n < 0 ? `<span style="color:#DC2626;font-weight:800">▼ ${n}</span>` : `<span style="color:#9CA3AF">±0</span>`));
+      const overall = tr.deltas.overall || {};
+      const modelEntries = Object.entries(tr.deltas).filter(([k]) => k !== 'overall');
+      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📈 AI Visibility Trend Tracking</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${tr.runs} historical run${tr.runs===1?'':'s'} for ${tr.domain} — change vs previous audit (run daily for true trend)</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:1.4rem;font-weight:800;color:#0A1628">${overall.current||0}%</div>
+            <div style="font-size:0.7rem;font-weight:700">${arrow(overall.change)}</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+          <div style="border:1.5px solid #2563EB;border-radius:12px;padding:12px;background:#EFF6FF">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="font-size:0.74rem;font-weight:800;color:#1E40AF">Overall Coverage</div><div style="font-size:0.66rem;font-weight:700">${arrow(overall.change)}</div></div>
+            <div style="font-size:1.3rem;font-weight:800;color:#0A1628;margin-bottom:4px">${overall.current||0}%</div>
+            ${spark(tr.series.overall, 200, 32, '#2563EB')}
+          </div>
+          ${modelEntries.map(([mk, d]) => `<div style="border:1.5px solid #E5E7EB;border-radius:12px;padding:12px;background:#FAFBFD">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="font-size:0.74rem;font-weight:800;color:#0A1628">${({chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',perplexity:'Perplexity',deepseek:'DeepSeek'})[mk]||mk}</div><div style="font-size:0.66rem;font-weight:700">${arrow(d.change)}</div></div>
+            <div style="font-size:1.15rem;font-weight:800;color:#0A1628;margin-bottom:4px">${d.current||0}%</div>
+            ${spark(tr.series[mk], 200, 28, d.change>0?'#10B981':d.change<0?'#DC2626':'#94A3B8')}
+          </div>`).join('')}
+        </div>
+      </div>`;
+    })()}
+
+    ${(() => {
+      // ── ANSWER ACCURACY (real data from /api/ai-visibility-accuracy) ────────
+      const acc = window._aiVisAccuracy;
+      if (!acc || !acc.models?.length) {
+        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
+          <div style="font-size:1.6rem;opacity:0.6">🎯</div>
+          <div style="flex:1">
+            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Answer Accuracy Check</div>
+            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to scrape your live site, ask each model to describe your brand, and grade every claim for factual accuracy against your real content.</div>
+          </div>
+          <button onclick="runSingleAiVis('accuracy')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+        </div>`;
+      }
+      const ovColor = acc.overallAccuracy >= 75 ? '#10B981' : acc.overallAccuracy >= 50 ? '#F59E0B' : '#DC2626';
+      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🎯 Answer Accuracy Check</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${acc.sourceFetched ? `Graded against ${acc.sourceLength.toLocaleString()} chars scraped from your live site` : '⚠️ Could not scrape source site — accuracy is estimated only'} · ${acc.totalHallucinations} hallucination${acc.totalHallucinations===1?'':'s'} detected across ${acc.models.length} models</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:1.4rem;font-weight:800;color:${ovColor}">${acc.overallAccuracy}%</div>
+            <div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Overall accuracy</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">
+          ${acc.models.map(m => {
+            const c = m.accuracy >= 75 ? '#10B981' : m.accuracy >= 50 ? '#F59E0B' : '#DC2626';
+            return `<div style="border:1.5px solid #E5E7EB;border-radius:12px;padding:14px;background:#FAFBFD">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <div style="font-weight:800;color:#0A1628;font-size:0.86rem">${m.name}</div>
+                <div style="font-weight:800;color:${c};font-size:1rem">${m.accuracy}%</div>
+              </div>
+              <div style="font-size:0.7rem;color:#475569;line-height:1.5;margin-bottom:10px">${m.summary || (m.error ? '⚠️ ' + m.error : '')}</div>
+              ${m.confirmedFacts?.length ? `<div style="margin-bottom:8px"><div style="font-size:0.6rem;font-weight:800;color:#15803D;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">✓ Confirmed (${m.confirmedFacts.length})</div>${m.confirmedFacts.map(f=>`<div style="font-size:0.66rem;color:#374151;padding:3px 7px;background:#F0FDF4;border-radius:5px;margin-bottom:3px">${f}</div>`).join('')}</div>` : ''}
+              ${m.hallucinations?.length ? `<div style="margin-bottom:8px"><div style="font-size:0.6rem;font-weight:800;color:#DC2626;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">✗ Hallucinations (${m.hallucinations.length})</div>${m.hallucinations.map(f=>`<div style="font-size:0.66rem;color:#374151;padding:3px 7px;background:#FEF2F2;border-radius:5px;margin-bottom:3px">${f}</div>`).join('')}</div>` : ''}
+              ${m.unverifiable?.length ? `<div><div style="font-size:0.6rem;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">? Unverifiable (${m.unverifiable.length})</div>${m.unverifiable.map(f=>`<div style="font-size:0.66rem;color:#374151;padding:3px 7px;background:#FFFBEB;border-radius:5px;margin-bottom:3px">${f}</div>`).join('')}</div>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    })()}
+
+    ${(() => {
+      // ── COMPETITIVE CITATION INTELLIGENCE ────────────────────────────────────
+      const cc = window._aiVisCompetitors;
+      if (!cc || !cc.matrix?.length) {
+        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
+          <div style="font-size:1.6rem;opacity:0.6">⚔️</div>
+          <div style="flex:1">
+            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Competitive Citation Intelligence</div>
+            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">${cc?.note || 'Run the AI Audit to fire industry prompts across every model for you AND your competitors and see who wins each query.'}</div>
+          </div>
+          <button onclick="runSingleAiVis('competitors')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+        </div>`;
+      }
+      const sortedSov = Object.entries(cc.shareOfVoicePct || {}).sort((a,b)=>b[1]-a[1]);
+      const maxSov = Math.max(1, ...sortedSov.map(s=>s[1]));
+      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">⚔️ Competitive Citation Intelligence</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${cc.summary.promptsRun} prompts × ${cc.summary.modelsRun} models × ${cc.summary.domainsRun} domains · ${cc.summary.rivalAlertCount} rival alert${cc.summary.rivalAlertCount===1?'':'s'}</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:18px">
+          <div>
+            <div style="font-size:0.72rem;font-weight:800;color:#0A1628;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Share of AI voice</div>
+            ${sortedSov.map(([d,p]) => `<div style="margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;font-size:0.72rem;margin-bottom:3px"><span style="font-weight:${d===cc.brand?800:600};color:${d===cc.brand?'#2563EB':'#374151'}">${d===cc.brand?'★ ':''}${d}</span><span style="font-weight:800;color:#0A1628">${p}%</span></div>
+              <div style="height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${(p/maxSov)*100}%;background:${d===cc.brand?'linear-gradient(90deg,#2563EB,#3B82F6)':'#94A3B8'};border-radius:4px"></div></div>
+            </div>`).join('')}
+          </div>
+          <div>
+            <div style="font-size:0.72rem;font-weight:800;color:#0A1628;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Rival alerts <span style="color:#DC2626">(${cc.rivalAlerts?.length || 0})</span></div>
+            ${cc.rivalAlerts?.length ? cc.rivalAlerts.slice(0,5).map(a => `<div style="border-left:3px solid #DC2626;background:#FEF2F2;padding:8px 10px;border-radius:0 8px 8px 0;margin-bottom:8px">
+              <div style="font-size:0.7rem;font-weight:700;color:#0A1628">${a.cat}</div>
+              <div style="font-size:0.66rem;color:#475569;margin:3px 0;font-style:italic">"${a.prompt.slice(0,90)}${a.prompt.length>90?'…':''}"</div>
+              <div style="font-size:0.66rem;color:#DC2626;font-weight:700">Cited: ${a.winners.map(w => `${w.domain} (${w.hits})`).join(', ')}</div>
+            </div>`).join('') : `<div style="font-size:0.72rem;color:#10B981;background:#F0FDF4;padding:10px;border-radius:8px">✓ No prompts where competitors are winning and you aren't cited.</div>`}
+          </div>
+        </div>
+      </div>`;
+    })()}
+
+    ${(() => {
+      // ── ENTITY IDENTIFICATION & MAPPING ──────────────────────────────────────
+      const en = window._aiVisEntity;
+      if (!en || !en.consolidated) {
+        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
+          <div style="font-size:1.6rem;opacity:0.6">🧠</div>
+          <div style="flex:1">
+            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Entity Identification & Mapping</div>
+            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to see how each model maps your brand as a knowledge-graph entity — category, attributes, relationships, positioning.</div>
+          </div>
+          <button onclick="runSingleAiVis('entity')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+        </div>`;
+      }
+      const c = en.consolidated;
+      const ag = en.agreementScore || 0;
+      const agColor = ag >= 75 ? '#10B981' : ag >= 50 ? '#F59E0B' : '#DC2626';
+      const chip = (txt, bg='#EEF2FF', col='#3730A3') => `<span style="display:inline-block;background:${bg};color:${col};padding:3px 9px;border-radius:99px;font-size:0.66rem;font-weight:700;margin:2px 4px 2px 0">${txt}</span>`;
+      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🧠 Entity Identification & Mapping</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">How ${en.summary.modelsValid}/${en.summary.modelsRun} AI models describe ${en.domain} as a knowledge entity · ${en.summary.inconsistencyCount} inconsistencies detected</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:1.4rem;font-weight:800;color:${agColor}">${ag}%</div>
+            <div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Model agreement</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:18px">
+          <div style="background:#FAFBFD;border:1px solid #EEF2F7;border-radius:12px;padding:14px">
+            <div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Consolidated entity profile</div>
+            <div style="font-size:0.78rem;color:#0A1628;font-weight:700;margin-bottom:4px">${c.category || '—'}</div>
+            <div style="font-size:0.7rem;color:#475569;margin-bottom:10px;font-style:italic">"${c.positioning || '—'}"</div>
+            ${c.attributes?.length ? `<div style="margin-bottom:8px"><div style="font-size:0.62rem;color:#9CA3AF;text-transform:uppercase;font-weight:700;margin-bottom:4px">Attributes</div>${c.attributes.map(a=>chip(a)).join('')}</div>` : ''}
+            ${c.competitors?.length ? `<div style="margin-bottom:8px"><div style="font-size:0.62rem;color:#9CA3AF;text-transform:uppercase;font-weight:700;margin-bottom:4px">Competitors</div>${c.competitors.map(a=>chip(a,'#FEF3C7','#92400E')).join('')}</div>` : ''}
+            ${c.customers?.length ? `<div style="margin-bottom:8px"><div style="font-size:0.62rem;color:#9CA3AF;text-transform:uppercase;font-weight:700;margin-bottom:4px">Customers</div>${c.customers.map(a=>chip(a,'#DCFCE7','#15803D')).join('')}</div>` : ''}
+            <div style="display:flex;gap:18px;margin-top:8px;font-size:0.7rem;color:#475569"><div><b>Founded:</b> ${c.founded||'—'}</div><div><b>HQ:</b> ${c.headquarters||'—'}</div></div>
+          </div>
+          <div>
+            <div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Inconsistencies (${en.inconsistencies?.length||0})</div>
+            ${en.inconsistencies?.length ? en.inconsistencies.slice(0,6).map(i => `<div style="border-left:3px solid #F59E0B;background:#FFFBEB;padding:8px 10px;border-radius:0 8px 8px 0;margin-bottom:6px">
+              <div style="font-size:0.7rem;font-weight:700;color:#92400E">${i.field || 'mismatch'}</div>
+              <div style="font-size:0.66rem;color:#475569;margin-top:2px">${i.issue || ''}</div>
+            </div>`).join('') : `<div style="font-size:0.72rem;color:#10B981;background:#F0FDF4;padding:10px;border-radius:8px">✓ Models agree on your brand identity.</div>`}
+          </div>
+        </div>
+      </div>`;
+    })()}
+
+    ${(() => {
+      // ── SENTIMENT & CONTEXT ANALYSIS ─────────────────────────────────────────
+      const s = window._aiVisSentiment;
+      if (!s || !s.perModel?.length) {
+        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
+          <div style="font-size:1.6rem;opacity:0.6">💬</div>
+          <div style="flex:1">
+            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Sentiment & Context Analysis</div>
+            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to grade how every model talks about your brand — sentiment, positives, negatives, and narrative gaps.</div>
+          </div>
+          <button onclick="runSingleAiVis('sentiment')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+        </div>`;
+      }
+      const total = (s.distribution.positive||0)+(s.distribution.neutral||0)+(s.distribution.negative||0)+(s.distribution.mixed||0) || 1;
+      const sCol = s.avgScore > 30 ? '#10B981' : s.avgScore < -10 ? '#DC2626' : '#F59E0B';
+      const sentChip = (st) => ({positive:['#DCFCE7','#15803D','😊'],neutral:['#F1F5F9','#475569','😐'],negative:['#FEE2E2','#DC2626','☹️'],mixed:['#FEF3C7','#92400E','🤔']}[st]||['#F1F5F9','#475569','—']);
+      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">💬 Sentiment & Context Analysis</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">Each model's brand description graded for tone · ${s.summary.narrativeGapCount} narrative gap${s.summary.narrativeGapCount===1?'':'s'} flagged</div>
+          </div>
+          <div style="text-align:right"><div style="font-size:1.4rem;font-weight:800;color:${sCol}">${s.avgScore>0?'+':''}${s.avgScore}</div><div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Avg sentiment</div></div>
+        </div>
+        <div style="display:flex;gap:6px;height:10px;border-radius:5px;overflow:hidden;margin-bottom:14px">
+          <div style="flex:${(s.distribution.positive||0)/total};background:#10B981" title="Positive: ${s.distribution.positive||0}"></div>
+          <div style="flex:${(s.distribution.neutral||0)/total};background:#94A3B8" title="Neutral: ${s.distribution.neutral||0}"></div>
+          <div style="flex:${(s.distribution.mixed||0)/total};background:#F59E0B" title="Mixed: ${s.distribution.mixed||0}"></div>
+          <div style="flex:${(s.distribution.negative||0)/total};background:#DC2626" title="Negative: ${s.distribution.negative||0}"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">
+          ${s.perModel.map(m => { const [bg,col,emo] = sentChip(m.sentiment); return `<div style="border:1.5px solid #E5E7EB;border-radius:11px;padding:12px;background:#FAFBFD">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-weight:800;color:#0A1628;font-size:0.82rem">${m.modelName}</div><span style="background:${bg};color:${col};padding:3px 10px;border-radius:99px;font-size:0.65rem;font-weight:800">${emo} ${m.sentiment} ${m.score>0?'+':''}${m.score}</span></div>
+            <div style="font-size:0.68rem;color:#475569;line-height:1.45;margin-bottom:6px;max-height:62px;overflow:hidden">${m.text ? m.text.slice(0,200)+(m.text.length>200?'…':'') : (m.error || '—')}</div>
+            ${m.narrativeGap && m.narrativeGap.toLowerCase()!=='none' ? `<div style="font-size:0.64rem;background:#FFFBEB;color:#92400E;padding:5px 8px;border-radius:6px;border:1px solid #FDE68A"><b>⚠ Gap:</b> ${m.narrativeGap}</div>` : ''}
+          </div>`; }).join('')}
+        </div>
+      </div>`;
+    })()}
+
+    ${(() => {
+      // ── REAL GOOGLE AI OVERVIEW / SGE TRACKING ───────────────────────────────
+      const g = window._aiVisSGE;
+      if (!g) {
+        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
+          <div style="font-size:1.6rem;opacity:0.6">🔎</div>
+          <div style="flex:1">
+            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Google AI Overview Tracking</div>
+            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to detect Google AI Overview presence, citations, and your organic position across 5 industry queries.</div>
+          </div>
+          <button onclick="runSingleAiVis('sge')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+        </div>`;
+      }
+      if (g.configured === false) {
+        return `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:18px;margin-bottom:20px;text-align:center">
+          <div style="font-size:0.85rem;font-weight:700;color:#92400E;margin-bottom:4px">🔎 Google AI Overview Tracking — needs DataForSEO</div>
+          <div style="font-size:0.72rem;color:#92400E">${g.note}</div>
+        </div>`;
+      }
+      const sm = g.summary || {};
+      const presColor = sm.sgePresenceRate >= 60 ? '#10B981' : sm.sgePresenceRate >= 30 ? '#F59E0B' : '#DC2626';
+      const citColor  = sm.sgeCitationRate >= 60 ? '#10B981' : sm.sgeCitationRate >= 30 ? '#F59E0B' : '#DC2626';
+      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🔎 Google AI Overview Tracking</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">Live SGE / AI Mode parsing across ${sm.queriesRun||0} industry queries</div>
+          </div>
+          <div style="display:flex;gap:18px;text-align:right">
+            <div><div style="font-size:1.2rem;font-weight:800;color:${presColor}">${sm.sgePresenceRate||0}%</div><div style="font-size:0.6rem;color:#9CA3AF;font-weight:700;text-transform:uppercase">SGE shown</div></div>
+            <div><div style="font-size:1.2rem;font-weight:800;color:${citColor}">${sm.sgeCitationRate||0}%</div><div style="font-size:0.6rem;color:#9CA3AF;font-weight:700;text-transform:uppercase">You cited</div></div>
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.72rem">
+          <thead><tr style="background:#F9FAFB"><th style="padding:8px 10px;text-align:left;font-size:0.62rem;color:#6B7280;text-transform:uppercase;font-weight:700">Query</th><th style="padding:8px 10px;text-align:center;font-size:0.62rem;color:#6B7280;text-transform:uppercase;font-weight:700">AI Overview</th><th style="padding:8px 10px;text-align:center;font-size:0.62rem;color:#6B7280;text-transform:uppercase;font-weight:700">Cites You</th><th style="padding:8px 10px;text-align:center;font-size:0.62rem;color:#6B7280;text-transform:uppercase;font-weight:700">Sources</th><th style="padding:8px 10px;text-align:center;font-size:0.62rem;color:#6B7280;text-transform:uppercase;font-weight:700">Organic Pos</th></tr></thead>
+          <tbody>
+            ${(g.queries||[]).map(q => `<tr style="border-top:1px solid #F3F4F6">
+              <td style="padding:9px 10px;color:#0A1628;font-weight:600">${q.query}</td>
+              <td style="padding:9px 10px;text-align:center">${q.error?'<span style="color:#9CA3AF">—</span>':(q.aiOverviewPresent?'<span style="color:#10B981;font-weight:800">●</span>':'<span style="color:#CBD5E1">○</span>')}</td>
+              <td style="padding:9px 10px;text-align:center">${q.error?'—':(q.aiOverviewCitesYou?'<span style="background:#DCFCE7;color:#15803D;padding:2px 8px;border-radius:99px;font-weight:800">✓</span>':'<span style="background:#FEE2E2;color:#DC2626;padding:2px 8px;border-radius:99px;font-weight:800">×</span>')}</td>
+              <td style="padding:9px 10px;text-align:center;color:#475569">${q.aiOverviewSourceCount||0}</td>
+              <td style="padding:9px 10px;text-align:center;font-weight:700;color:${q.organicPosition?(q.organicPosition<=3?'#10B981':q.organicPosition<=10?'#F59E0B':'#9CA3AF'):'#9CA3AF'}">${q.organicPosition || '—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    })()}
+
+    ${(() => {
+      // ── CITATION-TO-TRAFFIC ATTRIBUTION ──────────────────────────────────────
+      const at = window._aiVisAttribution;
+      if (!at) {
+        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
+          <div style="font-size:1.6rem;opacity:0.6">📈</div>
+          <div style="flex:1">
+            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Citation-to-Traffic Attribution</div>
+            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to connect AI citations to real traffic via Amplitude.</div>
+          </div>
+          <button onclick="runSingleAiVis('attribution')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+        </div>`;
+      }
+      if (!at.connected) {
+        return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:4px">📈 Citation-to-Traffic Attribution</div>
+          <div style="font-size:0.72rem;color:#6B7280;margin-bottom:12px">${at.note}</div>
+          <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px;font-size:0.72rem;color:#92400E;margin-bottom:14px"><b>Missing:</b> ${at.missing}. Add it to your environment to start tracking AI referral sessions in real time.</div>
+          <div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Will track these AI sources</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${at.aiSources.map(s => `<span style="display:inline-flex;align-items:center;gap:5px;background:#F1F5F9;color:#475569;padding:5px 11px;border-radius:99px;font-size:0.7rem;font-weight:600"><span style="width:6px;height:6px;background:#CBD5E1;border-radius:50%"></span>${s.label}</span>`).join('')}
+          </div>
+        </div>`;
+      }
+      const totalAi = at.totalAiSessions || 0;
+      const maxAi = Math.max(1, ...at.sessions.map(s=>s.sessions||0));
+      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📈 Citation-to-Traffic Attribution</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">Live Amplitude data · last ${at.windowDays} days · ${totalAi.toLocaleString()} AI-referred sessions of ${at.totalSessions.toLocaleString()} total</div>
+          </div>
+          <div style="text-align:right"><div style="font-size:1.4rem;font-weight:800;color:${at.aiShare>=5?'#10B981':at.aiShare>=1?'#F59E0B':'#DC2626'}">${at.aiShare}%</div><div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">AI traffic share</div></div>
+        </div>
+        ${at.sessions.map(s => `<div style="margin-bottom:9px">
+          <div style="display:flex;justify-content:space-between;font-size:0.74rem;margin-bottom:4px"><span style="font-weight:700;color:#0A1628">${s.label}</span><span style="font-weight:800;color:#0A1628">${(s.sessions||0).toLocaleString()}</span></div>
+          <div style="height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${((s.sessions||0)/maxAi)*100}%;background:linear-gradient(90deg,#7C3AED,#4338CA);border-radius:4px"></div></div>
+        </div>`).join('')}
+      </div>`;
+    })()}`;
+}
+window.buildAiAuditSuite = buildAiAuditSuite;
