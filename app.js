@@ -8654,7 +8654,16 @@ async function scanRedditMonitor() {
       body: JSON.stringify({ brand, keywords, competitors, industry }),
       signal: _rdtAbort.signal
     });
-    const data = await resp.json();
+    // Robust JSON parse — proxy may return an HTML error page on timeout / 5xx.
+    const rawText = await resp.text();
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch(parseErr) {
+      const snippet = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g,' ').trim().slice(0, 120);
+      throw new Error(`Server returned HTML (HTTP ${resp.status}). The scan may have timed out at the proxy. ${snippet ? 'Response: "' + snippet + '"' : ''} Try again — the AI scan typically takes 20–40s.`);
+    }
+    if (!resp.ok) throw new Error(data.error || `Scan failed (HTTP ${resp.status})`);
     const posts = data.posts || [];
     window._redditPosts = posts;
 
