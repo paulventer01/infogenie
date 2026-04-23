@@ -6545,7 +6545,7 @@ function buildAiVisibility() {
         </div>`).join('')}
     </div>
 
-    <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+    <div id="aivis-results-anchor" style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04);scroll-margin-top:90px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
         <div>
           <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🔭 LLM Platform Monitor</div>
@@ -7407,6 +7407,7 @@ window.generateAiVisibilityAudit = async function() {
     if (auditRes && auditRes.audit) {
       window._aiVisibilityAudit = auditRes.audit;
       buildAiVisibility();
+      setTimeout(() => document.getElementById('aivis-results-anchor')?.scrollIntoView({ behavior:'smooth', block:'start' }), 80);
       const liveCount = multiRes?.summary?.liveCount || 2;
       const cov = coverageRes?.overallCoverage != null ? Math.round(coverageRes.overallCoverage * 100) : null;
       const acc = accuracyRes?.overallAccuracy ?? null;
@@ -7417,6 +7418,7 @@ window.generateAiVisibilityAudit = async function() {
     const d = domain, ind = industry, iw = industry.split(' ')[0];
     window._aiVisibilityAudit = `AI Visibility Analysis for ${d}\n\n🔴 CRITICAL GAPS (Action Required)\n• Missing definitional pages — LLMs cannot answer "what does ${d} do?" from your current content\n• No FAQ schema markup — adding structured data could increase citation rate by ~40%\n• Low third-party review volume — Trustpilot, G2, Capterra scores heavily weighted by LLMs\n\n🟡 IMPROVEMENT OPPORTUNITIES\n• Create a "${ind} guide" pillar page — this category earns 5× more citations than product pages\n• Add comparison pages ("${d} vs alternatives") — cited in 73% of comparison-intent queries\n• Publish monthly industry data reports — data-rich content earns 3× more LLM citations\n• Build authority backlinks from ${ind} publications and .edu sources\n\n🟢 CURRENT STRENGTHS\n• Domain is indexed by Google AI Overviews — appearing in multiple query clusters\n• Gemini visibility above industry average — maintain with consistent structured data\n\n📋 30-DAY ACTION PLAN\n1. Write "What is ${iw}?" pillar page with FAQ schema (Week 1)\n2. Create 5 competitor comparison pages (Weeks 1–2)\n3. Submit to G2 and Capterra; generate 20+ verified reviews (Weeks 2–3)\n4. Pitch 3 industry publications for guest posts with brand mentions (Weeks 3–4)\n5. Implement HowTo and Organization schema across all key pages (Week 4)`;
     buildAiVisibility();
+    setTimeout(() => document.getElementById('aivis-results-anchor')?.scrollIntoView({ behavior:'smooth', block:'start' }), 80);
     showToast('✅ AI Audit ready!');
   }
   window._aiVisRunning = false;
