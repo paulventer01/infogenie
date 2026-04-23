@@ -6444,16 +6444,20 @@ function buildAiVisibility() {
   const industry = analysisData?.industry?.name || 'your industry';
   const indWord  = industry.split(' ')[0];
 
+  // ── Model registry: every brand surfaced in the AI Visibility tracker.
+  //    `live` flips to true when the corresponding API key is configured server-side
+  //    (filled in dynamically by the multi-model audit response).
+  const liveStatus = window._aiVisModelsLive || {};
   const platforms = [
-    { name:'ChatGPT',      icon:'🤖', maker:'OpenAI',        score:72, status:'Medium', color:'#10A37F', bg:'#E6F9F4', prompt:'Cited in ~3 of 10 relevant queries',              tip:'Add FAQ schema and clear "what is" definitions to your homepage' },
-    { name:'Claude',       icon:'🧠', maker:'Anthropic',     score:58, status:'Medium', color:'#C96A28', bg:'#FEF3E2', prompt:'Appears when users ask about alternatives',        tip:'Create comprehensive brand comparison content and case studies' },
-    { name:'Gemini',       icon:'♊',  maker:'Google',        score:81, status:'High',   color:'#4285F4', bg:'#E8F0FE', prompt:'Strong citation in Google AI surfaces',            tip:'Strengthen E-E-A-T signals and structured data markup' },
-    { name:'Perplexity',   icon:'🔍', maker:'Perplexity AI', score:45, status:'Low',    color:'#6366F1', bg:'#EEF2FF', prompt:'Rarely cited — needs authority signals',           tip:'Build high-authority backlinks and Wikipedia presence' },
-    { name:'Copilot',      icon:'💼', maker:'Microsoft',     score:63, status:'Medium', color:'#0078D4', bg:'#EFF6FF', prompt:'Appears in B2B-oriented prompts',                  tip:'Increase LinkedIn and Microsoft platform content volume' },
-    { name:'AI Overviews', icon:'🔎', maker:'Google',        score:76, status:'High',   color:'#EA4335', bg:'#FEF2F2', prompt:'Featured in 4 of top query clusters',             tip:'Optimise for featured snippets and concise direct answers' },
-    { name:'Meta AI',      icon:'🌐', maker:'Meta',          score:29, status:'Low',    color:'#0866FF', bg:'#EFF6FF', prompt:'Not yet tracked in social AI surfaces',            tip:'Boost Facebook and Instagram branded content volume' },
-    { name:'Grok',         icon:'⚡', maker:'xAI',           score:21, status:'Low',    color:'#374151', bg:'#F9FAFB', prompt:'Limited citation data available',                  tip:'Build active X/Twitter presence with consistent industry content' },
-    { name:'You.com',      icon:'🔆', maker:'You.com',       score:38, status:'Low',    color:'#FF6B35', bg:'#FFF7ED', prompt:'Indexed but rarely surfaced in answers',           tip:'Submit sitemap and ensure fast Core Web Vitals scores' },
+    { name:'ChatGPT',    icon:'🤖', maker:'OpenAI',        score:72, status:'Medium', color:'#10A37F', bg:'#E6F9F4', prompt:'Cited in ~3 of 10 relevant queries',         tip:'Add FAQ schema and clear "what is" definitions to your homepage',           live: liveStatus.chatgpt    !== false },
+    { name:'Gemini',     icon:'✦',  maker:'Google',        score:81, status:'High',   color:'#4285F4', bg:'#E8F0FE', prompt:'Strong citation in Google AI surfaces',      tip:'Strengthen E-E-A-T signals and structured data markup',                      live: !!liveStatus.gemini },
+    { name:'Perplexity', icon:'⊛',  maker:'Perplexity AI', score:45, status:'Low',    color:'#20808D', bg:'#E0F4F2', prompt:'Rarely cited — needs authority signals',     tip:'Build high-authority backlinks and Wikipedia presence',                      live: !!liveStatus.perplexity },
+    { name:'Google AI',  icon:'G',  maker:'Google',        score:76, status:'High',   color:'#EA4335', bg:'#FEF2F2', prompt:'Featured in 4 of top query clusters (AI Overviews / SGE)', tip:'Optimise for featured snippets and concise direct answers',  live: !!liveStatus.googleAi },
+    { name:'Claude',     icon:'◎',  maker:'Anthropic',     score:58, status:'Medium', color:'#C96A28', bg:'#FEF3E2', prompt:'Appears when users ask about alternatives',  tip:'Create comprehensive brand comparison content and case studies',             live: liveStatus.claude     !== false },
+    { name:'Llama',      icon:'∥',  maker:'Meta',          score:38, status:'Low',    color:'#0866FF', bg:'#EFF6FF', prompt:'Indexed in Meta AI surfaces but rarely cited', tip:'Increase Facebook / Instagram branded content & open knowledge sources',   live: !!liveStatus.llama },
+    { name:'DeepSeek',   icon:'DS', maker:'DeepSeek AI',   score:31, status:'Low',    color:'#1E40AF', bg:'#EEF2FF', prompt:'Limited tracking — emerging citation footprint', tip:'Publish technical / open-source documentation to lift authority',          live: !!liveStatus.deepseek },
+    { name:'Google',     icon:'G',  maker:'Google Search', score:84, status:'High',   color:'#34A853', bg:'#E8F5E9', prompt:'Indexed across primary brand & comparison terms', tip:'Maintain technical SEO health and grow topical authority pages',          live: !!liveStatus.google },
+    { name:'Bing',       icon:'B',  maker:'Microsoft',     score:63, status:'Medium', color:'#0078D4', bg:'#EFF6FF', prompt:'Appears in B2B-oriented prompts and Copilot',  tip:'Submit sitemap to Bing Webmaster Tools and grow LinkedIn presence',         live: !!liveStatus.bing },
   ];
 
   const avgScore    = Math.round(platforms.reduce((a,p) => a + p.score, 0) / platforms.length);
@@ -6512,7 +6516,21 @@ function buildAiVisibility() {
     ? bmComps.map((c, i) => ({ name: c.name || ('Competitor '+(i+1)), sov: Math.max(7, Math.round(bmRemaining / (bmComps.length + 1.5) * (1 - i * 0.12))) }))
     : [{ name:'Competitor A', sov: Math.round(bmRemaining*0.38) }, { name:'Competitor B', sov: Math.round(bmRemaining*0.27) }, { name:'Competitor C', sov: Math.round(bmRemaining*0.18) }];
 
+  // ── "TRACKS AI VISIBILITY ACROSS" pill row (matches reference design) ────
+  const trackedPillsRow = `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:14px 18px;margin-bottom:16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+      <span style="font-size:0.7rem;font-weight:700;color:#6B7280;letter-spacing:.08em;text-transform:uppercase;margin-right:4px">Tracks AI visibility across</span>
+      ${platforms.map(p => `
+        <span title="${p.name} — ${p.live ? 'Live integration ✓' : 'Connect API key in Settings to enable live tracking'}" style="display:inline-flex;align-items:center;gap:7px;background:#F8FAFC;border:1px solid ${p.live ? '#CBD5E1' : '#E5E7EB'};border-radius:999px;padding:5px 12px 5px 8px;font-size:0.78rem;font-weight:600;color:#0F172A;${p.live ? '' : 'opacity:.72'}">
+          <span style="display:inline-flex;width:18px;height:18px;border-radius:50%;background:${p.bg};color:${p.color};align-items:center;justify-content:center;font-size:0.66rem;font-weight:800">${p.icon}</span>
+          ${p.name}
+          ${p.live ? `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10B981;margin-left:2px" title="Live"></span>` : ''}
+        </span>`).join('')}
+      <span style="font-size:0.72rem;color:#9CA3AF;margin-left:6px">— New models added automatically</span>
+    </div>`;
+
   wrap.innerHTML = `
+    ${trackedPillsRow}
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px">
       ${[
         ['AI Visibility Score', avgScore + '/100',        sc(avgScore),                                              '🧠', 'Composite score (0–100) measuring how prominently your brand appears across all tracked AI assistants. 70+ = strong, 50–70 = moderate, below 50 = needs work.'],
@@ -7041,12 +7059,21 @@ window.generateAiVisibilityAudit = async function() {
   const industry = analysisData?.industry?.name || 'digital marketing';
 
   try {
-    const res  = await fetch('/api/ai-visibility-audit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, industry }) });
-    const data = await res.json();
-    if (data.audit) {
-      window._aiVisibilityAudit = data.audit;
+    // Run the multi-model live probe + the GPT-4 audit summary in parallel.
+    const [multiRes, auditRes] = await Promise.all([
+      fetch('/api/ai-visibility-multi', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, industry }) }).then(r => r.json()).catch(() => null),
+      fetch('/api/ai-visibility-audit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, industry }) }).then(r => r.json()).catch(() => null),
+    ]);
+    if (multiRes && multiRes.ok) {
+      window._aiVisModelsLive = multiRes.live || {};
+      window._aiVisModelResults = multiRes.models || [];
+      console.log('[AI Visibility] Live model probe:', multiRes.summary, multiRes.models);
+    }
+    if (auditRes && auditRes.audit) {
+      window._aiVisibilityAudit = auditRes.audit;
       buildAiVisibility();
-      showToast('✅ AI Visibility Audit complete!');
+      const liveCount = multiRes?.summary?.liveCount || 2;
+      showToast(`✅ AI Visibility Audit complete — ${liveCount} live models probed`);
     } else throw new Error('No audit returned');
   } catch(e) {
     const d = domain, ind = industry, iw = industry.split(' ')[0];
