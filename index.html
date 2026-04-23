@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20260423e" />
+  <link rel="stylesheet" href="style.css?v=20260423f" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
   <!-- PostHog SDK stub — init called from app.js after config fetch -->
@@ -115,12 +115,24 @@
           <svg class="ngb-chevron" width="9" height="9" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <div class="nav-dropdown nav-dropdown-right">
-          <div class="nav-drop-header">Track, scale &amp; manage</div>
+          <div class="nav-drop-header">Grow your visibility</div>
           <a href="#" class="nav-link" data-view="autoseo"><span class="ndl-icon">🚀</span><span class="ndl-text">AutoSEO Pro</span></a>
           <a href="#" class="nav-link" onclick="event.preventDefault();openWpCredentialsModal()"><span class="ndl-icon">🟦</span><span class="ndl-text">Connect to WordPress</span></a>
           <a href="#" class="nav-link" data-view="aivisibility"><span class="ndl-icon">🤖</span><span class="ndl-text">AI Visibility</span></a>
           <a href="#" class="nav-link" data-view="action-center"><span class="ndl-icon">🎯</span><span class="ndl-text">Action Center</span></a>
-          <a href="#" class="nav-link" data-view="kpi-tracker"><span class="ndl-icon">🎯</span><span class="ndl-text">KPI Tracker</span></a>
+          <a href="#" class="nav-link" data-view="kpi-tracker"><span class="ndl-icon">📈</span><span class="ndl-text">KPI Tracker</span></a>
+        </div>
+      </div>
+
+      <!-- MANAGE -->
+      <div class="nav-group-wrap" data-group="manage">
+        <button class="nav-group-btn" type="button">
+          <span class="ngb-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 1.5l1.6 3.4 3.7.5-2.7 2.6.7 3.7L7 9.9 3.7 11.7l.7-3.7L1.7 5.4l3.7-.5L7 1.5z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/></svg></span>
+          <span class="ngb-label">Manage</span>
+          <svg class="ngb-chevron" width="9" height="9" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="nav-dropdown nav-dropdown-right">
+          <div class="nav-drop-header">Operate, report &amp; scale</div>
           <a href="#" class="nav-link" data-view="master-calendar"><span class="ndl-icon">🗓️</span><span class="ndl-text">Master Calendar</span></a>
           <a href="#" class="nav-link" data-view="results"><span class="ndl-icon">📊</span><span class="ndl-text">Results</span></a>
           <a href="#" class="nav-link" data-view="reengage"><span class="ndl-icon">🔁</span><span class="ndl-text">Re-Engage</span></a>
@@ -1301,7 +1313,7 @@
 </div>
 
 <script src="data.js"></script>
-<script src="app.js?v=20260423e"></script>
+<script src="app.js?v=20260423f"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');
