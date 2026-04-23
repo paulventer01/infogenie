@@ -431,6 +431,23 @@ app.get('/api/integrations/status', (req, res) => {
   res.json({ configured });
 });
 
+// ── POST /api/openai — generic chat-completion proxy for client-side AI calls ─
+app.post('/api/openai', async (req, res) => {
+  try {
+    const { model = 'gpt-4o', messages, max_tokens = 800, temperature = 0.7, response_format } = req.body || {};
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'messages array required' });
+    }
+    const params = { model, messages, max_tokens, temperature };
+    if (response_format) params.response_format = response_format;
+    const completion = await openai.chat.completions.create(params);
+    res.json(completion);
+  } catch (err) {
+    console.error('/api/openai error:', err.message);
+    res.status(500).json({ error: err.message || 'OpenAI request failed' });
+  }
+});
+
 // ── DataForSEO helpers ────────────────────────────────────────────────────────
 
 function getDataForSEOAuth() {
