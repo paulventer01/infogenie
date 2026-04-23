@@ -3752,8 +3752,8 @@ function buildCompetitors() {
   
   // Populate filter select
   const sel = document.getElementById('compFilterSel');
-  sel.innerHTML = '<option value="all">⚲ Filter — All Competitors</option>' +
-    competitors.map(c => `<option value="${c.url}">⚲ Filter — ${c.name}</option>`).join('');
+  sel.innerHTML = '<option value="all">All Competitors</option>' +
+    competitors.map(c => `<option value="${c.url}">${c.name}</option>`).join('');
 
   // Populate green hero stat tiles
   const liveCount = competitors.filter(c => c._dataSource === 'DataForSEO' || c._realTraffic).length;
