@@ -495,18 +495,10 @@ const DIFFICULTY_LABEL = (d) => {
 };
 
 // ── POST /api/keyword-gap ─────────────────────────────────────────────────────
-// Uses: related_keywords → search_volume → bulk_keyword_difficulty
+// REAL keyword gap analysis: pulls keywords each competitor ACTUALLY ranks for
+// (via DataForSEO ranked_keywords), then filters out keywords yourDomain
+// already ranks for. Returns ONLY live data — no industry-generic seed fallback.
 // Body: { yourDomain, industry, competitors?, location?, language?, limit? }
-
-const INDUSTRY_SEED_KEYWORDS = {
-  ecommerce:  ['online shopping','buy online','ecommerce store','shop online','best deals online','free shipping','discount code','product reviews'],
-  fintech:    ['online banking','money transfer','investment app','stock trading','crypto exchange','digital wallet','fintech app','send money'],
-  saas:       ['project management software','crm software','business automation','workflow tool','team collaboration','cloud software','b2b saas','enterprise software'],
-  crypto:     ['buy bitcoin','crypto exchange','best crypto wallet','defi platform','nft marketplace','cryptocurrency trading','blockchain app','web3'],
-  travel:     ['book hotel','cheap flights','vacation rental','travel deals','holiday packages','car hire','travel insurance','best hotels'],
-  education:  ['online courses','learn programming','certification online','e-learning platform','coding bootcamp','study online','free courses','skill development'],
-  marketing:  ['seo tools','keyword research','social media management','email marketing','marketing analytics','ad platform','content marketing','digital marketing']
-};
 
 app.post('/api/keyword-gap', async (req, res) => {
   // Hard 25s timeout — send JSON error before any proxy can send HTML
@@ -519,7 +511,6 @@ app.post('/api/keyword-gap', async (req, res) => {
   try {
     const {
       yourDomain,
-      industry,
       competitors,
       location = 'United States',
       language = 'English',
@@ -527,173 +518,167 @@ app.post('/api/keyword-gap', async (req, res) => {
     } = req.body;
 
     if (!yourDomain) { clearTimeout(safetyTimer); return res.status(400).json({ error: 'yourDomain is required' }); }
-
-    const compDomains = (competitors && competitors.length > 0)
-      ? competitors.slice(0, 5)
-      : (COMPETITOR_DOMAINS[industry] || COMPETITOR_DOMAINS.ecommerce).slice(0, 5);
-
-    const seedKws = INDUSTRY_SEED_KEYWORDS[industry] || INDUSTRY_SEED_KEYWORDS.marketing;
-    const cleanYourDomain = yourDomain.replace(/^www\./, '').toLowerCase();
-
-    // kwSourceMap: keyword → competitor display name (who ranks for it)
-    const kwSourceMap = {};
-
-    // ── Steps 1 + 2 in PARALLEL: related_keywords AND keywords_for_site per competitor ──
-    const relatedTask = { keyword: seedKws[0], language_name: language, limit: 50, include_seed_keyword: true };
-    if (location && location !== 'Global') relatedTask.location_name = location;
-
-    // Fetch keywords for each competitor domain simultaneously
-    const kfsCallsPerComp = compDomains
-      .filter(d => d.replace(/^www\./,'').toLowerCase() !== cleanYourDomain)
-      .slice(0, 3)  // max 3 competitors to stay fast
-      .map(compDomain => {
-        const task = { target: compDomain, language_name: language, limit: 40 };
-        if (location && location !== 'Global') task.location_name = location;
-        return callDataForSEO('/v3/dataforseo_labs/google/keywords_for_site/live', [task], 14000)
-          .then(raw => ({ compDomain, raw }))
-          .catch(e => { console.warn(`keywords_for_site failed for ${compDomain}:`, e.message); return { compDomain, raw: null }; });
-      });
-
-    const [relatedRaw, ...kfsResults] = await Promise.all([
-      callDataForSEO('/v3/dataforseo_labs/google/related_keywords/live', [relatedTask], 14000)
-        .catch(e => { console.warn('related_keywords failed:', e.message); return null; }),
-      ...kfsCallsPerComp
-    ]);
-
-    // ── Collect related/seed keywords (no specific competitor source) ──────────
-    const relatedPool = new Set(seedKws);
-    if (relatedRaw && relatedRaw.status_code === 20000) {
-      for (const task of (relatedRaw.tasks || [])) {
-        const taskResult = (task.result || [])[0] || {};
-        for (const item of (taskResult.items || [])) {
-          if (item.keyword_data && item.keyword_data.keyword) relatedPool.add(item.keyword_data.keyword);
-          if (Array.isArray(item.related_keywords)) {
-            item.related_keywords.forEach(rk => { if (typeof rk === 'string') relatedPool.add(rk); });
-          }
-        }
-      }
-      console.log('related_keywords pool:', relatedPool.size);
+    if (!competitors || !competitors.length) {
+      clearTimeout(safetyTimer);
+      return res.status(400).json({ error: 'No competitors provided — run an analysis first.' });
     }
 
-    // ── Collect per-competitor keywords and record their source ───────────────
-    // These go into compPool — sourced keywords are PRIORITISED over generic seeds
-    const compPool = [];
-    for (const { compDomain, raw } of kfsResults) {
-      if (!raw || raw.status_code !== 20000) continue;
-      const compName    = compDomain.replace(/^www\./, '').split('.')[0];
-      const topCompName = compName.charAt(0).toUpperCase() + compName.slice(1);
-      for (const task of (raw.tasks || [])) {
-        const items = (task.result || [])[0]?.items || [];
-        for (const item of items) {
-          const kw = item.keyword;
-          if (!kw || kw.startsWith('http') || kw.includes('www.') || kw.length > 80) continue;
-          compPool.push(kw);
-          if (!kwSourceMap[kw]) kwSourceMap[kw] = topCompName;
-        }
-      }
-      console.log(`keywords_for_site(${compDomain}): ${compPool.length} sourced keywords`);
-    }
+    const compDomains    = competitors.slice(0, 5);
+    const cleanYourDomain = yourDomain.replace(/^www\./, '').replace(/^https?:\/\//,'').toLowerCase();
+    const cleanComps     = compDomains
+      .map(d => d.replace(/^https?:\/\//,'').replace(/^www\./,'').toLowerCase())
+      .filter(d => d !== cleanYourDomain);
 
-    // Build final list: sourced competitor keywords first, then fill with related/seeds
-    const seen = new Set();
-    const allKws = [];
-    for (const kw of compPool) {
-      if (!seen.has(kw)) { seen.add(kw); allKws.push(kw); }
-      if (allKws.length >= 60) break;
-    }
-    for (const kw of relatedPool) {
-      if (allKws.length >= 60) break;
-      if (!seen.has(kw) && !kw.startsWith('http') && !kw.includes('www.') && kw.length <= 80) {
-        seen.add(kw); allKws.push(kw);
-      }
-    }
-    console.log('Final keyword pool:', allKws.length, '— sources mapped:', Object.keys(kwSourceMap).length,
-      '— sourced in final list:', allKws.filter(k => kwSourceMap[k]).length);
-
-    // ── Steps 3 + 4 in PARALLEL: Search volume AND bulk difficulty ───────────
-    const volumePayload = [{ keywords: allKws, language_name: language }];
-    if (location && location !== 'Global') volumePayload[0].location_name = location;
-
-    const diffPayload = [{ keywords: allKws, language_name: language }];
-    if (location && location !== 'Global') diffPayload[0].location_name = location;
-
-    const [volumeRaw, diffRaw] = await Promise.all([
-      callDataForSEO('/v3/keywords_data/google_ads/search_volume/live', volumePayload).catch(e => { console.warn('search_volume failed:', e.message); return null; }),
-      callDataForSEO('/v3/dataforseo_labs/google/bulk_keyword_difficulty/live', diffPayload).catch(e => { console.warn('bulk_difficulty failed:', e.message); return null; })
-    ]);
-
-    console.log('search_volume status:', volumeRaw && volumeRaw.status_code);
-    const volumeMap = {};
-    if (volumeRaw && volumeRaw.status_code === 20000) {
-      const volTask = volumeRaw.tasks && volumeRaw.tasks[0];
-      for (const item of (volTask && volTask.result || [])) {
-        if (item.keyword) volumeMap[item.keyword] = item;
-      }
-    }
-    console.log('volume entries returned:', Object.keys(volumeMap).length);
-
-    const diffMap = {};
-    if (diffRaw && diffRaw.status_code === 20000) {
-      const diffTask = diffRaw.tasks && diffRaw.tasks[0];
-      for (const item of (diffTask && diffTask.result || [])) {
-        if (item.keyword) diffMap[item.keyword] = item.keyword_difficulty || 0;
-      }
-    }
-
-    // ── Step 5: Build results ─────────────────────────────────────────────────
-    const ctrTable = [0, 28.5, 15.7, 11.0, 8.0, 5.9, 4.4, 3.3, 2.6, 2.2, 1.9];
-    const hasVolumeData = Object.keys(volumeMap).length > 0;
-
-    // Helper: get display name for a competitor domain
     const domainToName = d => {
       const n = d.replace(/^www\./, '').split('.')[0];
       return n.charAt(0).toUpperCase() + n.slice(1);
     };
 
-    const keywords = allKws
-      .map((kw, i) => {
-        const volData = volumeMap[kw];
-        const rawVol  = volData ? (volData.search_volume || 0) : 0;
-        const vol     = hasVolumeData ? rawVol : (500 + Math.abs(kw.split('').reduce((a,c) => a + c.charCodeAt(0), 0)) % 9500);
-        const minVol  = hasVolumeData ? 100 : 0;
-        if (vol < minVol) return null;
+    // ── Step 1: Pull REAL ranked keywords for each competitor + your domain ──
+    // ranked_keywords returns the actual organic keywords a domain ranks for
+    // in Google, with live search volume, CPC, and the competitor's exact rank.
+    const buildRankedTask = (target) => {
+      const t = {
+        target,
+        language_name: language,
+        limit: 200,
+        load_rank_absolute: true,
+        ignore_synonyms: true
+      };
+      if (location && location !== 'Global') t.location_name = location;
+      return t;
+    };
 
-        const cpcRaw = volData && volData.cpc;
-        const cpc    = cpcRaw ? `$${parseFloat(cpcRaw).toFixed(2)}` : '—';
-        const diff   = diffMap[kw] || 0;
+    const rankedCalls = [
+      // Your domain — to find what you ALREADY rank for (so we can subtract it)
+      callDataForSEO('/v3/dataforseo_labs/google/ranked_keywords/live',
+        [buildRankedTask(cleanYourDomain)], 14000)
+        .then(raw => ({ domain: cleanYourDomain, raw, isYou: true }))
+        .catch(e => { console.warn(`ranked_keywords failed for ${cleanYourDomain}:`, e.message); return { domain: cleanYourDomain, raw: null, isYou: true }; }),
+      // Each competitor in parallel
+      ...cleanComps.slice(0, 4).map(compDomain =>
+        callDataForSEO('/v3/dataforseo_labs/google/ranked_keywords/live',
+          [buildRankedTask(compDomain)], 14000)
+          .then(raw => ({ domain: compDomain, raw, isYou: false }))
+          .catch(e => { console.warn(`ranked_keywords failed for ${compDomain}:`, e.message); return { domain: compDomain, raw: null, isYou: false }; })
+      )
+    ];
 
-        // Use real source competitor; fall back to round-robin through the identified competitors only
-        const topComp = kwSourceMap[kw] || domainToName(compDomains[i % compDomains.length]);
-        const compIdx = compDomains.findIndex(d => domainToName(d) === topComp);
-        const simulatedPos = 1 + (Math.abs(kw.length * 3 + Math.max(0, compIdx)) % 6);
-        const compCtr = simulatedPos <= 10 ? ctrTable[simulatedPos].toFixed(1) + '%' : '1.5%';
+    const rankedResults = await Promise.all(rankedCalls);
 
+    // Parse: for each domain, build a map of keyword → { volume, cpc, position }
+    const yourRankings    = {};   // keyword → position (so we can subtract / mark)
+    const compKeywordData = {};   // keyword → { topComp, position, volume, cpc, comps:[{name,pos}] }
+
+    let paymentRequired = false;
+    for (const { domain, raw, isYou } of rankedResults) {
+      if (!raw) { console.warn(`ranked_keywords(${domain}): no response`); continue; }
+      if (raw.status_code !== 20000) { console.warn(`ranked_keywords(${domain}): status_code=${raw.status_code} status_message=${raw.status_message}`); continue; }
+      const task0 = (raw.tasks || [])[0];
+      if (task0 && task0.status_code === 40200) paymentRequired = true;
+      if (task0 && task0.status_code !== 20000) console.warn(`ranked_keywords(${domain}): task status=${task0.status_code} ${task0.status_message}`);
+      const items = (task0?.result || [])[0]?.items || [];
+      const compName = domainToName(domain);
+      for (const it of items) {
+        const kd  = it.keyword_data || {};
+        const kw  = (kd.keyword || '').trim();
+        if (!kw || kw.length > 80 || kw.startsWith('http') || kw.includes('www.')) continue;
+        // Skip brand-name searches (the competitor's own brand)
+        const compRoot = domain.split('.')[0];
+        if (kw.toLowerCase().includes(compRoot.toLowerCase()) && kw.toLowerCase().split(' ').length <= 2) continue;
+
+        const pos = it.ranked_serp_element?.serp_item?.rank_group || it.ranked_serp_element?.serp_item?.rank_absolute || 0;
+        const vol = kd.keyword_info?.search_volume || 0;
+        const cpc = kd.keyword_info?.cpc || 0;
+        const diff= kd.keyword_properties?.keyword_difficulty || 0;
+
+        if (isYou) {
+          yourRankings[kw.toLowerCase()] = pos;
+          continue;
+        }
+        // For competitor keywords: only keep meaningful volume + low position
+        if (vol < 30) continue;
+        if (pos > 20) continue;
+
+        const key = kw.toLowerCase();
+        if (!compKeywordData[key]) {
+          compKeywordData[key] = { keyword: kw, volume: vol, cpc, diff, comps: [] };
+        }
+        compKeywordData[key].comps.push({ name: compName, pos });
+        // Keep best (lowest) position as the "topComp"
+        if (!compKeywordData[key].topComp || pos < compKeywordData[key].topPos) {
+          compKeywordData[key].topComp = compName;
+          compKeywordData[key].topPos  = pos;
+        }
+      }
+      console.log(`ranked_keywords(${domain}): ${items.length} raw keywords parsed`);
+    }
+
+    // ── Step 2: Build the gap list — competitor keywords WHERE you don't rank well ──
+    const ctrTable = [0, 28.5, 15.7, 11.0, 8.0, 5.9, 4.4, 3.3, 2.6, 2.2, 1.9];
+    const allCandidates = Object.values(compKeywordData);
+
+    const gapRows = allCandidates
+      .map(c => {
+        const yourPos = yourRankings[c.keyword.toLowerCase()] || 0;
+        // Gap: you don't rank in top 10
+        if (yourPos > 0 && yourPos <= 10) return null;
+        const compCtr = c.topPos <= 10 ? ctrTable[c.topPos].toFixed(1) + '%' : '< 2.0%';
+        const yourRank = yourPos > 0 ? `#${yourPos}` : 'Not ranking';
+        // Opportunity score: volume × CPC value × inverse-difficulty
         const score = Math.round(
-          (vol / 1000 * 0.4) +
-          ((100 - diff) * 0.4) +
-          (parseFloat(cpcRaw || 0) * 2)
+          Math.log10(c.volume + 1) * 18 +
+          (100 - (c.diff || 50)) * 0.35 +
+          (c.cpc || 0) * 6
         );
-
         return {
-          keyword: kw,
-          volume: vol > 0 ? vol.toLocaleString() : '—',
-          topComp,
+          keyword:        c.keyword,
+          volume:         c.volume.toLocaleString(),
+          volumeRaw:      c.volume,
+          topComp:        c.topComp,
           compCtr,
-          yourRank: 'Not ranking',
-          difficulty: DIFFICULTY_LABEL(diff),
-          difficultyScore: diff,
-          score: Math.min(100, Math.max(1, score)),
-          cpc
+          compPos:        c.topPos,
+          yourRank,
+          difficulty:     DIFFICULTY_LABEL(c.diff || 0),
+          difficultyScore:c.diff || 0,
+          score:          Math.min(100, Math.max(1, score)),
+          cpc:            c.cpc ? `$${parseFloat(c.cpc).toFixed(2)}` : '—',
+          source:         'DataForSEO ranked_keywords'
         };
       })
       .filter(Boolean)
       .sort((a, b) => b.score - a.score)
       .slice(0, parseInt(limit));
 
-    console.log('Keyword gap rows returned:', keywords.length);
+    console.log(`Keyword gap: ${allCandidates.length} candidates → ${gapRows.length} real gaps for ${cleanYourDomain}`);
+
+    if (!gapRows.length) {
+      clearTimeout(safetyTimer);
+      if (!res.headersSent) {
+        return res.status(200).json({
+          keywords: [],
+          domain: yourDomain,
+          competitors: compDomains,
+          paymentRequired,
+          warning: paymentRequired
+            ? `⚠️ DataForSEO account is overdrawn or out of credit (Payment Required). Top up at dataforseo.com/dashboard to enable live keyword data.`
+            : `No live keyword gaps found — competitors (${compDomains.join(', ')}) returned no organic ranking data from DataForSEO for the ${location} market.`,
+          timestamp: new Date().toISOString()
+        });
+      }
+      return;
+    }
+
     clearTimeout(safetyTimer);
     if (!res.headersSent) {
-      res.json({ keywords, domain: yourDomain, competitors: compDomains, timestamp: new Date().toISOString() });
+      res.json({
+        keywords: gapRows,
+        domain: yourDomain,
+        competitors: compDomains,
+        location,
+        source: 'DataForSEO ranked_keywords (live organic SERP data)',
+        timestamp: new Date().toISOString()
+      });
     }
 
   } catch(err) {

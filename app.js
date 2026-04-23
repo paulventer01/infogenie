@@ -15551,9 +15551,28 @@ async function fetchLiveKeywordGap() {
     const keywords = data.keywords || [];
 
     if (keywords.length === 0) {
+      if (data.paymentRequired) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align:left;padding:24px;background:#FEF3C7;border:1px solid #FCD34D">
+          <div style="font-weight:800;color:#92400E;font-size:1rem;margin-bottom:8px">⚠️ DataForSEO Account Out of Credit</div>
+          <div style="color:#78350F;font-size:0.88rem;line-height:1.55">
+            Your DataForSEO account balance is depleted, so live keyword data cannot be fetched. To restore real keyword gap analysis:
+            <ol style="margin:10px 0 0 22px;padding:0">
+              <li>Sign in at <a href="https://app.dataforseo.com/dashboard" target="_blank" style="color:#0066FF;font-weight:700;text-decoration:underline">app.dataforseo.com/dashboard</a></li>
+              <li>Top up your account ($10 minimum is plenty to unblock everything)</li>
+              <li>Click <strong>⚡ Fetch Live Data</strong> again — InfoGenie will pull real keywords for <strong>${domain}</strong> against ${(data.competitors||[]).join(', ')}</li>
+            </ol>
+            <div style="margin-top:10px;font-size:0.78rem;color:#92400E"><strong>Why this matters:</strong> Without DataForSEO credit, InfoGenie cannot show you accurate keyword volumes, CPCs, or competitor rankings — only fake placeholder keywords would be possible, which we refuse to display.</div>
+          </div>
+        </td></tr>`;
+        if (badge) badge.textContent = '⚠️ Top up DataForSEO';
+        if (statusNote) statusNote.innerHTML = `❌ <strong>DataForSEO account out of credit</strong> · top up at <a href="https://app.dataforseo.com/dashboard" target="_blank" style="color:#0066FF;text-decoration:underline">dataforseo.com/dashboard</a> to enable real keyword data`;
+        if (dataSourceLabel) { dataSourceLabel.textContent = `⚠️ DataForSEO Payment Required — no live keyword data available until account is topped up`; dataSourceLabel.style.color = '#EF4444'; }
+        showToast('⚠️ DataForSEO account out of credit — top up to enable live keywords');
+        return;
+      }
       if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:#6B7280">
         No keyword gaps found for <strong>${domain}</strong> vs these competitors.<br>
-        <small>Try a different location or check that your domain has established search presence.</small>
+        <small>${data.warning || 'Try a different location or check that your domain has established search presence.'}</small>
       </td></tr>`;
       if (badge) badge.textContent = '0 Opportunities Found';
       if (statusNote) statusNote.textContent = `✅ Live query complete — no gaps found for ${domain}`;
