@@ -1989,7 +1989,7 @@ const _nextStepMap = {
   reddit:       { icon:'📣', label:'Market insights gathered — now reach them.',      btnLabel:'Advertise Hub →', view:'advertise', hint:'Run ads targeting the communities you just researched' },
   serp:         { icon:'🚀', label:'Keyword rankings clear — grow your organic SEO.', btnLabel:'AutoSEO Pro →', view:'autoseo',    hint:'Content calendar, backlinks & traffic projections' },
   autoseo:      { icon:'🤖', label:'SEO engine running — boost your AI presence.',   btnLabel:'AI Visibility →', view:'aivisibility', hint:'Get cited by ChatGPT, Claude & Gemini' },
-  aivisibility: { icon:'⚡', label:'AI visibility tracked — now automate everything.', btnLabel:'Automations →', view:'automations', hint:'Scheduled reports, alert triggers, auto-optimise' },
+  aivisibility: { icon:'⚡', label:'AI visibility tracked — run the deep audits.', btnLabel:'AI Audit Suite →', view:'ai-audit-suite', hint:'Prompt coverage, accuracy, citations, sentiment & more' },
   'action-center':{ icon:'🚀', label:'Actions prioritised — deploy them.',            btnLabel:'Campaigns →', view:'campaigns', hint:'Launch campaigns around your top action items' },
   agency:       { icon:'👔', label:'Agency reports ready — share executive dashboards.', btnLabel:'C-Suite Reports →', view:'csuite', hint:'CEO, CMO, CFO & COO one-click PDF dashboards' },
 };
