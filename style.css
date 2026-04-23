@@ -6346,9 +6346,10 @@ h3:hover {
 [data-theme="light"] .camp-hero-sub   { color: rgba(255,255,255,.92) !important; }
 [data-theme="light"] .camp-kpi-val    { color: #FFFFFF !important; }
 [data-theme="light"] .camp-kpi-lbl    { color: rgba(255,255,255,.85) !important; }
-[data-theme="light"] .roi-title       { color: #0A1628 !important; }
-[data-theme="light"] .roi-sub         { color: #64748B !important; }
-[data-theme="light"] .roi-metric-lbl  { color: #94A3B8 !important; }
+[data-theme="light"] .roi-title       { color: #FFFFFF !important; }
+[data-theme="light"] .roi-sub         { color: rgba(255,255,255,.65) !important; }
+[data-theme="light"] .roi-metric-lbl  { color: rgba(255,255,255,.7) !important; }
+[data-theme="light"] .roi-label       { color: #00C9C8 !important; }
 [data-theme="light"] .ich-sub         { color: #64748B !important; }
 [data-theme="light"] .loading-brand   { color: #0A1628 !important; }
 [data-theme="light"] .loading-title   { color: #64748B !important; }
