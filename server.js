@@ -627,12 +627,18 @@ app.post('/api/keyword-gap', async (req, res) => {
         const yourRank = yourPos > 0 ? `#${yourPos}` : 'Not ranking';
         // Opportunity score: volume × CPC value × inverse-difficulty
         const compCount = c.comps.length;
-        const score = Math.round(
-          Math.log10(c.volume + 1) * 18 +
-          (100 - (c.diff || 50)) * 0.35 +
-          (c.cpc || 0) * 6 +
-          (compCount - 1) * 14
-        );
+        // Rescale: each input contributes a bounded share so total stays in 0-100
+        //   volume   (log scale, max ~30 at 100k+ vol)
+        //   diff     (max 25 if very low difficulty)
+        //   cpc      (log scale, max ~20 at $50+)
+        //   posBonus (max 15 if competitor #1, scales down)
+        //   multiBonus (max 10 if 4+ competitors all rank for it)
+        const volPart  = Math.min(30, Math.log10(c.volume + 1) * 6);
+        const diffPart = Math.min(25, (100 - (c.diff || 50)) * 0.25);
+        const cpcPart  = Math.min(20, Math.log10((c.cpc || 0) + 1) * 12);
+        const posPart  = Math.max(0, 15 - (c.topPos - 1) * 1.5);
+        const multiPart= Math.min(10, (compCount - 1) * 3.5);
+        const score = Math.round(volPart + diffPart + cpcPart + posPart + multiPart);
         const compsSorted = [...c.comps].sort((a, b) => a.pos - b.pos);
         const compsLabel = compsSorted.map(x => `${x.name} #${x.pos}`).join(', ');
         return {
