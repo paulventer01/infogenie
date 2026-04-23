@@ -1825,6 +1825,9 @@ app.post('/api/ai-visibility-coverage', async (req, res) => {
     const overallHits = cells.filter(c => c.cited).length;
     const overallCoverage = overallCells ? +(overallHits / overallCells).toFixed(3) : 0;
 
+    // Record this run into trend history (best-effort, non-blocking).
+    try { recordAivisRun(cleanDomain, { ts: Date.now(), overallCoverage, coverageByModel, coverageByPrompt, modelKeys, totalCells: overallCells, totalCitations: overallHits }); } catch(_){}
+
     res.json({ ok:true, domain:cleanDomain, industry, modelKeys, matrix, coverageByModel, coverageByPrompt, overallCoverage,
       summary: { promptsRun: matrix.length, modelsRun: modelKeys.length, totalCells: overallCells, totalCitations: overallHits } });
   } catch (err) {
@@ -2350,6 +2353,154 @@ app.post('/api/ai-visibility-attribution', async (req, res) => {
     res.json({ ok:true, connected:true, windowDays:30, sessions, totalAiSessions:totalAi, totalSessions, aiShare });
   } catch (err) {
     console.error('/api/ai-visibility-attribution error:', err);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
+// ── Brand-source-of-truth scraper (shared by accuracy + content fact-check) ──
+async function scrapeBrandSource(cleanDomain) {
+  const fetchPage = async (u, ms=6000) => {
+    try {
+      const ctrl = new AbortController(); const t = setTimeout(()=>ctrl.abort(), ms);
+      const r = await fetch(u, { signal:ctrl.signal, redirect:'follow', headers:{ 'User-Agent':'Mozilla/5.0 (compatible; InfoGenieBot/1.0)' } });
+      clearTimeout(t); if (!r.ok) return ''; return (await r.text()).slice(0,120000);
+    } catch(e){ return ''; }
+  };
+  const base = 'https://' + cleanDomain;
+  const [home, about, prod, services, pricing] = await Promise.all([
+    fetchPage(base, 8000),
+    fetchPage(base + '/about', 5000),
+    fetchPage(base + '/products', 5000),
+    fetchPage(base + '/services', 5000),
+    fetchPage(base + '/pricing', 5000),
+  ]);
+  const sourceText = [home, about, prod, services, pricing].join('\n')
+    .replace(/<script[\s\S]*?<\/script>/gi,' ')
+    .replace(/<style[\s\S]*?<\/style>/gi,' ')
+    .replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/\s+/g,' ').trim().slice(0, 8000);
+  return { sourceText, fetched: !!home };
+}
+
+// ── POST /api/content-fact-check ──────────────────────────────────────────────
+// FACT ALIGNMENT — accepts any AI-generated content + a brand domain, scrapes
+// the brand's live source-of-truth, then GPT-4o grades every factual claim in
+// the content for alignment with the brand site. Returns aligned/contradicting/
+// unverifiable claims and a 0-100 alignment score so users never ship AI
+// hallucinations into production content.
+app.post('/api/content-fact-check', async (req, res) => {
+  try {
+    const { content = '', domain = 'yourdomain.com' } = req.body || {};
+    const cleanDomain = String(domain).replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase();
+    const plainContent = String(content).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0, 8000);
+    if (!plainContent) return res.status(400).json({ ok:false, error:'No content provided' });
+
+    const { sourceText, fetched } = await scrapeBrandSource(cleanDomain);
+    if (!fetched) return res.json({ ok:true, sourceFetched:false, alignmentScore:null, aligned:[], contradicting:[], unverifiable:[],
+      note:`Could not scrape ${cleanDomain} — fact-checking unavailable. Make sure the site is publicly reachable.` });
+
+    const prompt = `You are a strict fact-checker. Below is (1) AI-generated content about brand "${cleanDomain}" and (2) the authoritative source text scraped from ${cleanDomain}'s live website. Extract every factual claim from the content and grade each one against the source.
+
+Return ONLY strict JSON:
+{
+ "alignmentScore": 0-100,
+ "aligned":       [{"claim":"...","evidence":"short quote from source"}],
+ "contradicting": [{"claim":"...","correction":"what the source actually says"}],
+ "unverifiable":  [{"claim":"...","reason":"not mentioned in source"}],
+ "summary":       "one-sentence verdict on whether this content is safe to publish"
+}
+
+CONTENT TO FACT-CHECK:
+"""${plainContent}"""
+
+AUTHORITATIVE SOURCE (${cleanDomain}):
+"""${sourceText}"""`;
+
+    const c = await openai.chat.completions.create({
+      model: 'gpt-4o', max_tokens: 1400,
+      messages: [{ role:'user', content: prompt }],
+      response_format: { type:'json_object' },
+    });
+    const j = JSON.parse(c.choices?.[0]?.message?.content || '{}');
+    res.json({
+      ok: true, sourceFetched: true, sourceLength: sourceText.length,
+      alignmentScore: typeof j.alignmentScore === 'number' ? j.alignmentScore : null,
+      aligned: Array.isArray(j.aligned) ? j.aligned : [],
+      contradicting: Array.isArray(j.contradicting) ? j.contradicting : [],
+      unverifiable: Array.isArray(j.unverifiable) ? j.unverifiable : [],
+      summary: j.summary || '',
+      contentWordCount: plainContent.split(/\s+/).length,
+    });
+  } catch (err) {
+    console.error('/api/content-fact-check error:', err);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
+// ── AI Visibility Trend persistence ──────────────────────────────────────────
+// Stores every coverage-matrix run to data/aivis-history.json (keyed by domain)
+// so users can see citation deltas over time per model and per prompt.
+const AIVIS_DATA_DIR = path.join(__dirname, 'data');
+const AIVIS_HISTORY_FILE = path.join(AIVIS_DATA_DIR, 'aivis-history.json');
+function loadAivisHistory() {
+  try {
+    if (!fs.existsSync(AIVIS_DATA_DIR)) fs.mkdirSync(AIVIS_DATA_DIR, { recursive:true });
+    if (!fs.existsSync(AIVIS_HISTORY_FILE)) return {};
+    return JSON.parse(fs.readFileSync(AIVIS_HISTORY_FILE, 'utf8'));
+  } catch (e) { console.warn('[aivis-history] load error:', e.message); return {}; }
+}
+function saveAivisHistory(h) {
+  try {
+    if (!fs.existsSync(AIVIS_DATA_DIR)) fs.mkdirSync(AIVIS_DATA_DIR, { recursive:true });
+    fs.writeFileSync(AIVIS_HISTORY_FILE, JSON.stringify(h));
+  } catch (e) { console.warn('[aivis-history] save error:', e.message); }
+}
+function recordAivisRun(domain, run) {
+  if (!domain || !run) return;
+  const h = loadAivisHistory();
+  if (!h[domain]) h[domain] = [];
+  h[domain].push(run);
+  // Keep last 60 runs per domain (about 2 months daily).
+  if (h[domain].length > 60) h[domain] = h[domain].slice(-60);
+  saveAivisHistory(h);
+}
+
+// ── GET /api/ai-visibility-trend?domain=X ─────────────────────────────────────
+// TREND TRACKING — returns the historical citation series for a domain so the
+// AI Visibility view can render sparklines + week-over-week deltas per model
+// and per prompt.
+app.get('/api/ai-visibility-trend', (req, res) => {
+  try {
+    const cleanDomain = String(req.query.domain || '').replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase();
+    if (!cleanDomain) return res.json({ ok:true, domain:'', runs:[], series:{}, deltas:{} });
+    const h = loadAivisHistory();
+    const runs = (h[cleanDomain] || []).slice(-30); // last 30 runs
+
+    // Build per-model series.
+    const series = { overall: runs.map(r => ({ ts:r.ts, value: Math.round((r.overallCoverage||0)*100) })) };
+    const allModels = new Set();
+    runs.forEach(r => Object.keys(r.coverageByModel || {}).forEach(k => allModels.add(k)));
+    allModels.forEach(mk => {
+      series[mk] = runs.map(r => ({ ts:r.ts, value: Math.round(((r.coverageByModel||{})[mk]||0)*100) }));
+    });
+
+    // Compute week-over-week deltas.
+    const deltas = {};
+    const last = runs[runs.length - 1];
+    const prev = runs.length >= 2 ? runs[runs.length - 2] : null;
+    if (last) {
+      const lastOverall = Math.round((last.overallCoverage||0)*100);
+      const prevOverall = prev ? Math.round((prev.overallCoverage||0)*100) : null;
+      deltas.overall = { current:lastOverall, previous:prevOverall, change: prevOverall != null ? lastOverall - prevOverall : null };
+      Object.keys(last.coverageByModel || {}).forEach(mk => {
+        const cur = Math.round((last.coverageByModel[mk]||0)*100);
+        const pre = prev?.coverageByModel?.[mk] != null ? Math.round(prev.coverageByModel[mk]*100) : null;
+        deltas[mk] = { current:cur, previous:pre, change: pre != null ? cur - pre : null };
+      });
+    }
+
+    res.json({ ok:true, domain:cleanDomain, runs:runs.length, series, deltas, latestRun: last || null });
+  } catch (err) {
+    console.error('/api/ai-visibility-trend error:', err);
     res.status(500).json({ ok:false, error: err.message });
   }
 });

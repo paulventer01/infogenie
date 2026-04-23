@@ -6778,6 +6778,58 @@ function buildAiVisibility() {
     })()}
 
     ${(() => {
+      // ── AI VISIBILITY TREND TRACKING ─────────────────────────────────────────
+      const tr = window._aiVisTrend;
+      if (!tr || !tr.runs || tr.runs < 2) {
+        return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;margin-bottom:20px;display:flex;gap:14px;align-items:center">
+          <div style="font-size:1.6rem;opacity:0.6">📈</div>
+          <div style="flex:1">
+            <div style="font-size:0.85rem;font-weight:700;color:#0A1628">AI Visibility Trend Tracking</div>
+            <div style="font-size:0.7rem;color:#64748B;margin-top:2px">${tr ? `Run ${tr.runs}/2 captured. Run the AI Audit again tomorrow to start seeing daily citation deltas per model.` : 'Run the AI Audit at least twice to see how your AI citation rate trends over time.'}</div>
+          </div>
+          <button onclick="generateAiVisibilityAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+        </div>`;
+      }
+      // Sparkline helper.
+      const spark = (pts, w=120, h=28, color='#2563EB') => {
+        if (!pts || pts.length < 2) return '';
+        const vals = pts.map(p => p.value);
+        const min = Math.min(...vals, 0), max = Math.max(...vals, 100);
+        const range = max - min || 1;
+        const stepX = w / (pts.length - 1);
+        const d = pts.map((p,i) => `${i?'L':'M'} ${(i*stepX).toFixed(1)} ${(h - ((p.value - min) / range) * h).toFixed(1)}`).join(' ');
+        return `<svg width="${w}" height="${h}" style="display:block"><path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+      };
+      const arrow = (n) => n == null ? '<span style="color:#9CA3AF">—</span>' : (n > 0 ? `<span style="color:#10B981;font-weight:800">▲ +${n}</span>` : (n < 0 ? `<span style="color:#DC2626;font-weight:800">▼ ${n}</span>` : `<span style="color:#9CA3AF">±0</span>`));
+      const overall = tr.deltas.overall || {};
+      const modelEntries = Object.entries(tr.deltas).filter(([k]) => k !== 'overall');
+      return `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📈 AI Visibility Trend Tracking</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${tr.runs} historical run${tr.runs===1?'':'s'} for ${tr.domain} — change vs previous audit (run daily for true trend)</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:1.4rem;font-weight:800;color:#0A1628">${overall.current||0}%</div>
+            <div style="font-size:0.7rem;font-weight:700">${arrow(overall.change)}</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+          <div style="border:1.5px solid #2563EB;border-radius:12px;padding:12px;background:#EFF6FF">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="font-size:0.74rem;font-weight:800;color:#1E40AF">Overall Coverage</div><div style="font-size:0.66rem;font-weight:700">${arrow(overall.change)}</div></div>
+            <div style="font-size:1.3rem;font-weight:800;color:#0A1628;margin-bottom:4px">${overall.current||0}%</div>
+            ${spark(tr.series.overall, 200, 32, '#2563EB')}
+          </div>
+          ${modelEntries.map(([mk, d]) => `<div style="border:1.5px solid #E5E7EB;border-radius:12px;padding:12px;background:#FAFBFD">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="font-size:0.74rem;font-weight:800;color:#0A1628">${({chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',perplexity:'Perplexity',deepseek:'DeepSeek'})[mk]||mk}</div><div style="font-size:0.66rem;font-weight:700">${arrow(d.change)}</div></div>
+            <div style="font-size:1.15rem;font-weight:800;color:#0A1628;margin-bottom:4px">${d.current||0}%</div>
+            ${spark(tr.series[mk], 200, 28, d.change>0?'#10B981':d.change<0?'#DC2626':'#94A3B8')}
+          </div>`).join('')}
+        </div>
+      </div>`;
+    })()}
+
+    ${(() => {
       // ── ANSWER ACCURACY (real data from /api/ai-visibility-accuracy) ────────
       const acc = window._aiVisAccuracy;
       if (!acc || !acc.models?.length) {
@@ -7414,6 +7466,11 @@ window.generateAiVisibilityAudit = async function() {
       fetch('/api/ai-visibility-attribution',  { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain }) }).then(r => r.json()).catch(() => null),
       fetch('/api/ai-visibility-audit',        { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, industry }) }).then(r => r.json()).catch(() => null),
     ]);
+    // Pull trend history (after this run has been recorded server-side).
+    try {
+      const trendRes = await fetch(`/api/ai-visibility-trend?domain=${encodeURIComponent(domain)}`).then(r => r.json());
+      if (trendRes && trendRes.ok) { window._aiVisTrend = trendRes; console.log('[AI Visibility] Trend:', trendRes.runs, 'runs', trendRes.deltas?.overall); }
+    } catch(_) {}
     if (competitorsRes && competitorsRes.ok) { window._aiVisCompetitors = competitorsRes; console.log('[AI Visibility] Competitors:', competitorsRes.summary, competitorsRes.shareOfVoicePct); }
     if (entityRes && entityRes.ok)           { window._aiVisEntity = entityRes; console.log('[AI Visibility] Entity:', entityRes.summary); }
     if (sentimentRes && sentimentRes.ok)     { window._aiVisSentiment = sentimentRes; console.log('[AI Visibility] Sentiment:', sentimentRes.distribution, 'avg', sentimentRes.avgScore); }
@@ -19419,14 +19476,55 @@ function previewGeneratedArticle(idx) {
     </div>
     <button onclick="this.closest('[style*=fixed]').remove()" style="padding:6px 12px;background:#F3F4F6;border:none;border-radius:8px;cursor:pointer;font-size:0.8rem;font-weight:700">✕ Close</button>
   </div>
-  <div style="flex:1;overflow-y:auto;padding:24px 30px;font-size:0.88rem;line-height:1.7;color:#374151">${art.generatedHtml}</div>
-  <div style="padding:14px 20px;border-top:1px solid #E5E7EB;display:flex;gap:10px;justify-content:flex-end">
+  <div id="art-preview-body" style="flex:1;overflow-y:auto;padding:24px 30px;font-size:0.88rem;line-height:1.7;color:#374151">${art.generatedHtml}</div>
+  <div id="art-fact-check-results" style="padding:0 30px"></div>
+  <div style="padding:14px 20px;border-top:1px solid #E5E7EB;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+    <button id="art-fact-check-btn" onclick="runArticleFactCheck(${idx})" style="padding:8px 16px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🔍 Check Facts</button>
     <button onclick="navigator.clipboard.writeText(document.querySelector('#art-preview-body').innerHTML);showToast('📋 Copied!')" style="padding:8px 16px;background:white;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer">📋 Copy HTML</button>
     ${!!(window._wpCreds&&window._wpCreds.siteUrl) ? `<button onclick="this.closest('[style*=fixed]').remove();publishSingleArticle(${idx})" style="padding:8px 16px;background:linear-gradient(135deg,#059669,#047857);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🟦 Publish to WP</button>` : ''}
   </div>
 </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function runArticleFactCheck(idx) {
+  const art = window._autoSeoArticles && window._autoSeoArticles[idx];
+  if (!art || !art.generatedHtml) return;
+  const ctx = _autoSeoContext();
+  const btn = document.getElementById('art-fact-check-btn');
+  const out = document.getElementById('art-fact-check-results');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Scraping & checking…'; }
+  if (out) out.innerHTML = `<div style="padding:14px;background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:10px;font-size:0.78rem;color:#64748B;margin:10px 0">Scraping <strong>${ctx.domain||'your site'}</strong> and grading every factual claim against your live source-of-truth…</div>`;
+  try {
+    const resp = await fetch('/api/content-fact-check', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ content: art.generatedHtml, domain: ctx.domain || 'yourdomain.com' })
+    });
+    const d = await resp.json();
+    if (!d.ok) { if(out) out.innerHTML = `<div style="padding:12px;background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;font-size:0.78rem;color:#991B1B;margin:10px 0">❌ ${d.error||'Fact-check failed'}</div>`; return; }
+    if (!d.sourceFetched) { if(out) out.innerHTML = `<div style="padding:12px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:10px;font-size:0.78rem;color:#92400E;margin:10px 0">⚠️ ${d.note}</div>`; return; }
+    art.factCheck = d;
+    const score = d.alignmentScore || 0;
+    const scoreColor = score >= 80 ? '#10B981' : score >= 60 ? '#F59E0B' : '#DC2626';
+    const verdict = score >= 80 ? '✅ Safe to Publish' : score >= 60 ? '⚠️ Review Recommended' : '🛑 Hold — fix contradictions';
+    const esc = (s) => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const renderList = (arr, color, bg, icon, fields) => arr.length ? `<div style="margin-top:10px"><div style="font-size:0.74rem;font-weight:800;color:${color};margin-bottom:6px">${icon} ${arr.length} ${esc(fields.label)}</div>${arr.slice(0,8).map(x => `<div style="background:${bg};border-left:3px solid ${color};padding:8px 11px;border-radius:6px;margin-bottom:5px;font-size:0.74rem;line-height:1.5"><div style="font-weight:700;color:#0A1628">${esc(x.claim)}</div><div style="color:#475569;margin-top:3px;font-style:italic">${esc(x[fields.detail])}</div></div>`).join('')}</div>` : '';
+    if (out) out.innerHTML = `<div style="background:white;border:2px solid ${scoreColor};border-radius:12px;padding:14px 16px;margin:12px 0">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div><div style="font-size:0.85rem;font-weight:800;color:#0A1628">Fact Alignment Report</div><div style="font-size:0.7rem;color:#6B7280;margin-top:2px">Graded against ${ctx.domain} (${(d.sourceLength/1000).toFixed(1)}k chars scraped)</div></div>
+        <div style="text-align:right"><div style="font-size:1.6rem;font-weight:800;color:${scoreColor}">${score}<span style="font-size:0.8rem">/100</span></div><div style="font-size:0.7rem;font-weight:700;color:${scoreColor}">${verdict}</div></div>
+      </div>
+      ${d.summary ? `<div style="font-size:0.76rem;color:#374151;background:#F8FAFC;padding:8px 11px;border-radius:7px;margin-bottom:6px"><strong>Verdict:</strong> ${esc(d.summary)}</div>` : ''}
+      ${renderList(d.contradicting||[], '#DC2626', '#FEF2F2', '🛑', { label:'Contradicting Claims', detail:'correction' })}
+      ${renderList(d.unverifiable||[],  '#F59E0B', '#FFFBEB', '⚠️', { label:'Unverifiable Claims', detail:'reason' })}
+      ${renderList(d.aligned||[],       '#10B981', '#F0FDF4', '✅', { label:'Aligned Claims', detail:'evidence' })}
+    </div>`;
+  } catch(e) {
+    if (out) out.innerHTML = `<div style="padding:12px;background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;font-size:0.78rem;color:#991B1B;margin:10px 0">❌ ${e.message}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Re-check Facts'; }
+  }
 }
 
 async function loadBacklinkOpps() {
