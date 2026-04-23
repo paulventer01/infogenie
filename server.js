@@ -2032,12 +2032,29 @@ app.post('/api/ai-visibility-competitors', async (req, res) => {
   try {
     const { domain = 'yourdomain.com', industry = 'your industry', competitors = [] } = req.body || {};
     const cleanBrand = String(domain).replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase();
-    const compDomains = (Array.isArray(competitors) ? competitors : [])
-      .map(c => (typeof c === 'string' ? c : (c.domain || c.url || c.name || ''))
-        .replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase())
-      .filter(d => d && d !== cleanBrand && d.includes('.'))
-      .slice(0, 5);
-    const allDomains = [cleanBrand, ...compDomains];
+    // Accept competitor entries as strings, or { domain/url, name, aliases }.
+    // We track the domain (key) AND a list of human-readable aliases per brand
+    // so detection works for short names like "IG" or "XM" that LLMs don't write
+    // as "ig.com" / "xm.com".
+    const aliasesByDomain = {};
+    const compDomains = [];
+    (Array.isArray(competitors) ? competitors : []).forEach(c => {
+      const raw = typeof c === 'string' ? c : (c.domain || c.url || c.name || '');
+      const dom = String(raw).replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase();
+      if (!dom || !dom.includes('.') || dom === cleanBrand) return;
+      if (compDomains.includes(dom)) return;
+      compDomains.push(dom);
+      const stem = dom.split('.')[0];
+      const list = new Set([dom, stem]);
+      if (typeof c === 'object' && c) {
+        if (c.name)    list.add(String(c.name).toLowerCase().trim());
+        if (Array.isArray(c.aliases)) c.aliases.forEach(a => a && list.add(String(a).toLowerCase().trim()));
+      }
+      aliasesByDomain[dom] = Array.from(list).filter(Boolean);
+    });
+    const compDomainsTrim = compDomains.slice(0, 8);
+    const allDomains = [cleanBrand, ...compDomainsTrim];
+    aliasesByDomain[cleanBrand] = aliasesByDomain[cleanBrand] || [cleanBrand, cleanBrand.split('.')[0]];
     if (allDomains.length < 2) return res.json({ ok:true, domains:allDomains, prompts:[], matrix:[], shareOfVoice:{}, note:'No competitor domains supplied.' });
 
     const indWord = String(industry).split(' ')[0];
@@ -2052,11 +2069,19 @@ app.post('/api/ai-visibility-competitors', async (req, res) => {
 
     const probes = buildModelProbes();
     const modelKeys = Object.keys(probes);
+    const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Detect a brand by ANY of its aliases. Short stems (<3 chars) are still
+    // accepted but only inside strict word boundaries to avoid false positives.
     const detect = (text, dom) => {
       if (!text) return false;
       const t = text.toLowerCase();
-      const stem = dom.split('.')[0];
-      return t.includes(dom) || (stem.length >= 4 && new RegExp(`\\b${stem}\\b`).test(t));
+      const aliases = aliasesByDomain[dom] || [dom, dom.split('.')[0]];
+      for (const a of aliases) {
+        if (!a) continue;
+        if (a.includes('.') && t.includes(a)) return true;            // domain literal
+        if (a.length >= 2 && new RegExp(`\\b${escapeRe(a)}\\b`).test(t)) return true;
+      }
+      return false;
     };
 
     const cellPromises = [];
@@ -2095,14 +2120,14 @@ app.post('/api/ai-visibility-competitors', async (req, res) => {
     // "Rivals overtaking you" — prompts where a competitor is cited but you are not.
     const rivalAlerts = matrix.filter(row => {
       const yours = row.citedCount[cleanBrand] || 0;
-      const rivalsHit = compDomains.some(d => (row.citedCount[d] || 0) > yours);
+      const rivalsHit = compDomainsTrim.some(d => (row.citedCount[d] || 0) > yours);
       return yours === 0 && rivalsHit;
     }).map(row => ({
       prompt: row.prompt, cat: row.cat,
       winners: Object.entries(row.citedCount).filter(([d,n]) => n>0 && d!==cleanBrand).map(([d,n]) => ({ domain:d, hits:n })).sort((a,b)=>b.hits-a.hits)
     }));
 
-    res.json({ ok:true, domains:allDomains, brand:cleanBrand, competitors:compDomains, modelKeys, prompts, matrix, shareOfVoice, shareOfVoicePct, rivalAlerts,
+    res.json({ ok:true, domains:allDomains, brand:cleanBrand, competitors:compDomainsTrim, aliasesByDomain, modelKeys, prompts, matrix, shareOfVoice, shareOfVoicePct, rivalAlerts,
       summary:{ promptsRun:prompts.length, modelsRun:modelKeys.length, domainsRun:allDomains.length, rivalAlertCount:rivalAlerts.length } });
   } catch (err) {
     console.error('/api/ai-visibility-competitors error:', err);

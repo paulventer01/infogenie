@@ -7459,7 +7459,7 @@ window.startButtonTimer = function(target, label) {
 window.runSingleAiVis = async function(kind) {
   const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
   const industry = analysisData?.industry?.name || 'digital marketing';
-  const competitorList = (analysisData?.competitors || []).map(c => c.url || c.domain || c.name).filter(Boolean);
+  const competitorList = (analysisData?.competitors || []).map(c => ({ domain: c.url || c.domain || c.name, name: c.name || c.title, aliases: c.aliases || [] })).filter(c => c.domain);
   const map = {
     coverage:    { url:'/api/ai-visibility-coverage',    body:{domain,industry}, store:'_aiVisCoverage',    label:'Prompt Coverage' },
     accuracy:    { url:'/api/ai-visibility-accuracy',    body:{domain,industry}, store:'_aiVisAccuracy',    label:'Answer Accuracy' },
@@ -7508,7 +7508,7 @@ window.generateAiVisibilityAudit = async function() {
   try {
     // Run all four endpoints in parallel: live probe, prompt coverage matrix,
     // answer-accuracy fact check, and the GPT-4 narrative audit summary.
-    const competitorList = (analysisData?.competitors || []).map(c => c.url || c.domain || c.name).filter(Boolean);
+    const competitorList = (analysisData?.competitors || []).map(c => ({ domain: c.url || c.domain || c.name, name: c.name || c.title, aliases: c.aliases || [] })).filter(c => c.domain);
     const [multiRes, coverageRes, accuracyRes, competitorsRes, entityRes, sentimentRes, sgeRes, attributionRes, auditRes] = await Promise.all([
       fetch('/api/ai-visibility-multi',        { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, industry }) }).then(r => r.json()).catch(() => null),
       fetch('/api/ai-visibility-coverage',     { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, industry }) }).then(r => r.json()).catch(() => null),
