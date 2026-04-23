@@ -6777,18 +6777,6 @@ function buildAiVisibility() {
       </div>
     </div>
 
-    <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <div>
-          <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628">✨ GPT-4 AI Visibility Audit</div>
-          <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">Personalised analysis & action plan to dominate AI search</div>
-        </div>
-        ${window._aiVisibilityAudit ? `<button onclick="window._aiVisibilityAudit=null;buildAiVisibility()" style="padding:7px 15px;background:#F3F4F6;border:none;border-radius:8px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">↺ Re-run</button>` : ''}
-      </div>
-      ${auditBlock}
-      <div id="aivis-audit-status" style="display:none;text-align:center;padding:18px;font-size:0.82rem;color:#6366F1;font-weight:600">⏳ GPT-4 is analysing your AI visibility across all platforms…</div>
-    </div>
-
     <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
       <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:16px">🚀 Quick Win Recommendations</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -7115,7 +7103,7 @@ window.runSingleAiVis = async function(kind) {
       if (kind === 'coverage') {
         try { const t = await fetch(`/api/ai-visibility-trend?domain=${encodeURIComponent(domain)}`).then(x=>x.json()); if (t && t.ok) window._aiVisTrend = t; } catch(_) {}
       }
-      buildAiVisibility();
+      buildAiVisibility(); try { buildAiAuditSuite(); } catch(_){ }
       setTimeout(() => document.getElementById('aivis-results-anchor')?.scrollIntoView({ behavior:'smooth', block:'start' }), 80);
       showToast(`✅ ${m.label} ready`);
     } else {
@@ -7179,7 +7167,7 @@ window.generateAiVisibilityAudit = async function() {
     }
     if (auditRes && auditRes.audit) {
       window._aiVisibilityAudit = auditRes.audit;
-      buildAiVisibility();
+      buildAiVisibility(); try { buildAiAuditSuite(); } catch(_){ }
       setTimeout(() => document.getElementById('aivis-results-anchor')?.scrollIntoView({ behavior:'smooth', block:'start' }), 80);
       const liveCount = multiRes?.summary?.liveCount || 2;
       const cov = coverageRes?.overallCoverage != null ? Math.round(coverageRes.overallCoverage * 100) : null;
@@ -7190,7 +7178,7 @@ window.generateAiVisibilityAudit = async function() {
   } catch(e) {
     const d = domain, ind = industry, iw = industry.split(' ')[0];
     window._aiVisibilityAudit = `AI Visibility Analysis for ${d}\n\n🔴 CRITICAL GAPS (Action Required)\n• Missing definitional pages — LLMs cannot answer "what does ${d} do?" from your current content\n• No FAQ schema markup — adding structured data could increase citation rate by ~40%\n• Low third-party review volume — Trustpilot, G2, Capterra scores heavily weighted by LLMs\n\n🟡 IMPROVEMENT OPPORTUNITIES\n• Create a "${ind} guide" pillar page — this category earns 5× more citations than product pages\n• Add comparison pages ("${d} vs alternatives") — cited in 73% of comparison-intent queries\n• Publish monthly industry data reports — data-rich content earns 3× more LLM citations\n• Build authority backlinks from ${ind} publications and .edu sources\n\n🟢 CURRENT STRENGTHS\n• Domain is indexed by Google AI Overviews — appearing in multiple query clusters\n• Gemini visibility above industry average — maintain with consistent structured data\n\n📋 30-DAY ACTION PLAN\n1. Write "What is ${iw}?" pillar page with FAQ schema (Week 1)\n2. Create 5 competitor comparison pages (Weeks 1–2)\n3. Submit to G2 and Capterra; generate 20+ verified reviews (Weeks 2–3)\n4. Pitch 3 industry publications for guest posts with brand mentions (Weeks 3–4)\n5. Implement HowTo and Organization schema across all key pages (Week 4)`;
-    buildAiVisibility();
+    buildAiVisibility(); try { buildAiAuditSuite(); } catch(_){ }
     setTimeout(() => document.getElementById('aivis-results-anchor')?.scrollIntoView({ behavior:'smooth', block:'start' }), 80);
     showToast('✅ AI Audit ready!');
   }
@@ -19964,7 +19952,30 @@ function buildMasterCalendar() {
 function buildAiAuditSuite() {
   const wrap = document.getElementById("aiAuditSuiteWrap");
   if (!wrap) return;
-  wrap.innerHTML = `
+  const auditBlock = window._aiVisibilityAudit ? `
+    <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:14px;padding:22px 26px">
+      <div style="font-size:0.7rem;font-weight:700;color:#15803D;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">✅ Audit Complete — GPT-4 Report</div>
+      <div style="font-size:0.83rem;color:#1A2F4A;line-height:1.75;white-space:pre-wrap">${window._aiVisibilityAudit}</div>
+    </div>` : `
+    <div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:30px;text-align:center">
+      <div style="font-size:2.2rem;margin-bottom:10px">🤖</div>
+      <div style="font-size:0.92rem;font-weight:700;color:#0A1628;margin-bottom:5px">Run Your AI Visibility Audit</div>
+      <div style="font-size:0.78rem;color:#64748B;margin-bottom:18px;max-width:380px;margin-left:auto;margin-right:auto">GPT-4 analyses your brand's presence across all major LLMs and produces a prioritised action plan</div>
+      <button onclick="generateAiVisibilityAudit()" style="padding:12px 32px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:11px;font-size:0.87rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 14px rgba(99,102,241,0.35)">✨ Run AI Visibility Audit</button>
+    </div>`;
+  const auditCard = `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628">✨ GPT-4 AI Visibility Audit</div>
+          <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">Personalised analysis & action plan to dominate AI search</div>
+        </div>
+        ${window._aiVisibilityAudit ? `<button onclick="window._aiVisibilityAudit=null;buildAiAuditSuite()" style="padding:7px 15px;background:#F3F4F6;border:none;border-radius:8px;font-size:0.73rem;font-weight:600;color:#374151;cursor:pointer">↺ Re-run</button>` : ''}
+      </div>
+      ${auditBlock}
+      <div id="aivis-audit-status" style="display:none;text-align:center;padding:18px;font-size:0.82rem;color:#6366F1;font-weight:600">⏳ GPT-4 is analysing your AI visibility across all platforms…</div>
+    </div>`;
+  wrap.innerHTML = auditCard + `
     ${(() => {
       // ── PROMPT COVERAGE MATRIX (real data from /api/ai-visibility-coverage) ─
       const cov = window._aiVisCoverage;
