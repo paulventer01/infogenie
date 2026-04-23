@@ -15581,11 +15581,15 @@ async function fetchLiveKeywordGap() {
     }
 
     // Render live rows
-    const rows = keywords.map(k => `
+    const rows = keywords.map(k => {
+      const compsHtml = k.compsLabel
+        ? k.compsLabel.split(', ').map((p,i) => `<span style="display:inline-block;background:${i===0?'#DBEAFE':'#F1F5F9'};color:${i===0?'#1E40AF':'#475569'};padding:2px 7px;border-radius:6px;font-size:0.72rem;font-weight:700;margin:1px 3px 1px 0">${p}</span>`).join('')
+        : k.topComp;
+      return `
       <tr>
         <td><div class="kwgap-keyword">${k.keyword}</div></td>
         <td>${k.volume}</td>
-        <td>${k.topComp}</td>
+        <td style="max-width:240px;line-height:1.4">${compsHtml}</td>
         <td>${k.compCtr}</td>
         <td>${k.yourRank}</td>
         <td><span class="diff-badge diff-${k.difficulty.toLowerCase()}">${k.difficulty}</span></td>
@@ -15596,7 +15600,8 @@ async function fetchLiveKeywordGap() {
         <td>${k.cpc}</td>
         <td><button class="btn-kwgap-attack" data-kw="${k.keyword.replace(/"/g,'')}" data-comp="${k.topComp.replace(/"/g,'')}" onclick="openAttackModal('${k.keyword.replace(/'/g,'')}','${k.topComp.replace(/'/g,'')}','keyword')">⚡ Attack</button></td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
 
     if (tbody) tbody.innerHTML = rows;
     if (badge) badge.textContent = `${keywords.length} Live Opportunities`;

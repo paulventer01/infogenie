@@ -555,8 +555,8 @@ app.post('/api/keyword-gap', async (req, res) => {
         [buildRankedTask(cleanYourDomain)], 14000)
         .then(raw => ({ domain: cleanYourDomain, raw, isYou: true }))
         .catch(e => { console.warn(`ranked_keywords failed for ${cleanYourDomain}:`, e.message); return { domain: cleanYourDomain, raw: null, isYou: true }; }),
-      // Each competitor in parallel
-      ...cleanComps.slice(0, 4).map(compDomain =>
+      // Each competitor in parallel — all identified competitors (cap 10 for safety)
+      ...cleanComps.slice(0, 10).map(compDomain =>
         callDataForSEO('/v3/dataforseo_labs/google/ranked_keywords/live',
           [buildRankedTask(compDomain)], 14000)
           .then(raw => ({ domain: compDomain, raw, isYou: false }))
@@ -618,7 +618,7 @@ app.post('/api/keyword-gap', async (req, res) => {
     const ctrTable = [0, 28.5, 15.7, 11.0, 8.0, 5.9, 4.4, 3.3, 2.6, 2.2, 1.9];
     const allCandidates = Object.values(compKeywordData);
 
-    const gapRows = allCandidates
+    const allScored = allCandidates
       .map(c => {
         const yourPos = yourRankings[c.keyword.toLowerCase()] || 0;
         // Gap: you don't rank in top 10
@@ -626,16 +626,23 @@ app.post('/api/keyword-gap', async (req, res) => {
         const compCtr = c.topPos <= 10 ? ctrTable[c.topPos].toFixed(1) + '%' : '< 2.0%';
         const yourRank = yourPos > 0 ? `#${yourPos}` : 'Not ranking';
         // Opportunity score: volume × CPC value × inverse-difficulty
+        const compCount = c.comps.length;
         const score = Math.round(
           Math.log10(c.volume + 1) * 18 +
           (100 - (c.diff || 50)) * 0.35 +
-          (c.cpc || 0) * 6
+          (c.cpc || 0) * 6 +
+          (compCount - 1) * 14
         );
+        const compsSorted = [...c.comps].sort((a, b) => a.pos - b.pos);
+        const compsLabel = compsSorted.map(x => `${x.name} #${x.pos}`).join(', ');
         return {
           keyword:        c.keyword,
           volume:         c.volume.toLocaleString(),
           volumeRaw:      c.volume,
           topComp:        c.topComp,
+          comps:          compsSorted,
+          compsLabel,
+          compCount:      compsSorted.length,
           compCtr,
           compPos:        c.topPos,
           yourRank,
@@ -647,8 +654,23 @@ app.post('/api/keyword-gap', async (req, res) => {
         };
       })
       .filter(Boolean)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, parseInt(limit));
+      .sort((a, b) => b.score - a.score);
+
+    // Round-robin across competitors so the final list shows ALL of them, not just the strongest.
+    const targetLimit = parseInt(limit) || 15;
+    const byComp = {};
+    for (const r of allScored) {
+      (byComp[r.topComp] = byComp[r.topComp] || []).push(r);
+    }
+    const compNames = Object.keys(byComp);
+    const gapRows = [];
+    let idx = 0;
+    while (gapRows.length < targetLimit && compNames.some(n => byComp[n].length)) {
+      const name = compNames[idx % compNames.length];
+      if (byComp[name].length) gapRows.push(byComp[name].shift());
+      idx++;
+    }
+    gapRows.sort((a, b) => b.score - a.score);
 
     console.log(`Keyword gap: ${allCandidates.length} candidates → ${gapRows.length} real gaps for ${cleanYourDomain}`);
 
