@@ -6677,12 +6677,13 @@ function buildAiVisibility() {
           </div>
           <div style="font-size:0.82rem;color:#1A2F4A;line-height:1.75;white-space:pre-wrap">${window._brandMonitorReport}</div>
         </div>` : `
-        <div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:12px;padding:20px 24px;display:flex;align-items:center;gap:16px">
+        <div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:12px;padding:20px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
           <div style="font-size:2.2rem;opacity:0.45">📡</div>
-          <div>
+          <div style="flex:1;min-width:240px">
             <div style="font-size:0.83rem;font-weight:700;color:#374151;margin-bottom:3px">GPT-4 Brand Intelligence Report</div>
-            <div style="font-size:0.72rem;color:#6B7280;line-height:1.55">Click <strong>Run Brand Monitor</strong> above to get a GPT-4 analysis of your brand's AI perception, competitor threats, citation gaps, and a 30-day action plan.</div>
+            <div style="font-size:0.72rem;color:#6B7280;line-height:1.55">Get a GPT-4 analysis of your brand's AI perception, competitor threats, citation gaps, and a 30-day action plan.</div>
           </div>
+          <button onclick="generateBrandMonitor('${domain}','${industry}')" style="padding:10px 22px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:0.8rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 12px rgba(0,102,255,0.25)">🔍 Run Brand Monitor</button>
         </div>`}
       </div>
 
@@ -7320,11 +7321,10 @@ function closeContentBriefModal() {
 }
 
 async function generateBrandMonitor(domain, industry) {
-  const btn      = document.getElementById('brandMonBtn');
   const reportEl = document.getElementById('brandMonReport');
-  if (!btn || !reportEl) return;
-  btn.disabled = true;
-  btn.textContent = '⏳ Analysing…';
+  if (!reportEl) return;
+  // Run timer on every Brand Monitor button on the page (header + empty-state card).
+  const stopTimer = window.startButtonTimer('button[onclick*="generateBrandMonitor"], #brandMonBtn', 'Analysing brand');
   reportEl.innerHTML = `
     <div style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:14px;padding:28px;text-align:center">
       <div style="font-size:0.9rem;font-weight:600;color:#1D4ED8;margin-bottom:6px">⏳ GPT-4 is analysing your brand across all LLM platforms…</div>
@@ -7347,8 +7347,7 @@ async function generateBrandMonitor(domain, industry) {
   } catch(e) {
     reportEl.innerHTML = `<div style="background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:12px;padding:18px;font-size:0.8rem;color:#991B1B">⚠️ Unable to generate report. Please try again.</div>`;
   } finally {
-    btn.disabled = false;
-    btn.textContent = '🔍 Run Brand Monitor';
+    stopTimer('🔍 Run Brand Monitor');
   }
 }
 
@@ -7360,12 +7359,41 @@ function generateFallbackBrief(type, domain, industry) {
   return `CONTENT BRIEF: How-To Guide for ${domain}\nTarget URL: /how-to-get-started-with-${domain.split('.')[0]}\nTarget LLMs: ChatGPT, Gemini (task-based queries)\n\nPRIMARY GOAL\nCreate a step-by-step guide that gets cited when users ask LLMs how to accomplish tasks in ${ind}.\n\nTITLE\n"How to Get Started with ${domain}: Step-by-Step Guide (2025)"\n\nCONTENT STRUCTURE\nH1: How to Get Started with ${domain} (Step-by-Step)\n• Intro: what you'll achieve, time required, difficulty level\n\nH2: Before You Begin\n• Prerequisites checklist (3–5 items)\n• What you'll need\n\nH2: Step 1 — [Action]\n• Clear instruction\n• Screenshot or visual recommended\n• Pro tip\n\nH2: Step 2 — [Action] (repeat for 5–7 steps)\n\nH2: Common Mistakes to Avoid\n• 3–4 pitfalls with solutions\n\nH2: Next Steps & Advanced Tips\n• What to do after completing the guide\n• Links to related guides\n\nH2: Frequently Asked Questions\n• "How long does it take to set up ${domain}?"\n• "Do I need technical skills to use ${domain}?"\n• "What if I get stuck?"\n\nSCHEMA MARKUP REQUIRED\n✓ HowTo schema with all steps\n✓ FAQPage schema\n✓ BreadcrumbList schema\n\nE-E-A-T SIGNALS\n• Author bio: specify who wrote this and their expertise\n• Add "Last updated" date\n• Link to official ${domain} documentation`;
 }
 
+// ── Generic running-timer helper for any analysis button ─────────────────────
+// Usage:  const stop = window.startButtonTimer(buttonOrSelector, 'Running');
+//         // ... await work ...
+//         stop('✨ Run AI Audit');   // restores the label
+// Accepts a single element, a NodeList, an array, or a CSS selector. While
+// running, every button shows '⏳ {label}… (Ns)' and is disabled.
+window.startButtonTimer = function(target, label) {
+  let nodes = [];
+  if (typeof target === 'string') nodes = Array.from(document.querySelectorAll(target));
+  else if (target instanceof NodeList || Array.isArray(target)) nodes = Array.from(target);
+  else if (target) nodes = [target];
+  const originals = nodes.map(b => b ? b.innerHTML : null);
+  const start = Date.now();
+  const tick = () => {
+    const sec = Math.floor((Date.now() - start) / 1000);
+    nodes.forEach(b => { if (b) { b.disabled = true; b.innerHTML = `⏳ ${label}… <span style="opacity:.85">(${sec}s)</span>`; } });
+  };
+  tick();
+  const id = setInterval(tick, 1000);
+  return function stop(restoreLabel) {
+    clearInterval(id);
+    nodes.forEach((b, i) => {
+      if (!b) return;
+      b.disabled = false;
+      b.innerHTML = restoreLabel != null ? restoreLabel : (originals[i] != null ? originals[i] : b.innerHTML);
+    });
+  };
+};
+
 window.generateAiVisibilityAudit = async function() {
   if (window._aiVisRunning) return;
   window._aiVisRunning = true;
   const statusEl = document.getElementById('aivis-audit-status');
-  const btn = document.getElementById('aiVisRunAuditBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Running…'; }
+  // Start timer on EVERY "Run AI Audit" button on the page (main + 5 empty-state cards).
+  const stopTimer = window.startButtonTimer('button[onclick*="generateAiVisibilityAudit"]', 'Running AI Audit');
   if (statusEl) statusEl.style.display = 'block';
 
   const domain   = analysisData?.url?.replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
@@ -7422,7 +7450,7 @@ window.generateAiVisibilityAudit = async function() {
     showToast('✅ AI Audit ready!');
   }
   window._aiVisRunning = false;
-  if (btn) { btn.disabled = false; btn.textContent = '✨ Run AI Audit'; }
+  stopTimer('✨ Run AI Audit');
 };
 
 
