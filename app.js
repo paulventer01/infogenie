@@ -4470,10 +4470,37 @@ function buildCompCard(c, cardIdx = 0) {
           </div>
         </div>
 
+        ${(() => {
+          // Compute ROI Opportunity estimate from available signals
+          const t = String(c._realTraffic || c.traffic || '').replace(/[, ]/g,'');
+          let traffic = parseFloat(t) || 50000;
+          if (/B$/i.test(t)) traffic *= 1e9; else if (/M$/i.test(t)) traffic *= 1e6; else if (/K$/i.test(t)) traffic *= 1e3;
+          const roas = parseFloat(c.roas) || 2.5;
+          // Capture a 5-12% slice of competitor's organic traffic over 6-12 months
+          const captureLow  = traffic * 0.05;
+          const captureHigh = traffic * 0.12;
+          // Industry-typical RPV (revenue per visit). Refined by ROAS as proxy for monetisation efficiency.
+          const rpv = Math.max(0.40, Math.min(3.50, 0.60 * roas));
+          const monthlyLow  = captureLow  * rpv;
+          const monthlyHigh = captureHigh * rpv;
+          const annualLow   = monthlyLow  * 12;
+          const annualHigh  = monthlyHigh * 12;
+          const fmt = n => {
+            if (n >= 1e6) return '$' + (n/1e6).toFixed(n>=1e7?0:1) + 'M';
+            if (n >= 1e3) return '$' + Math.round(n/1e3) + 'K';
+            return '$' + Math.round(n);
+          };
+          const roiText = `${fmt(annualLow)}–${fmt(annualHigh)}/yr`;
+          const roiSub  = `≈ ${fmt(monthlyLow)}–${fmt(monthlyHigh)}/mo recoverable revenue`;
+          c.estimatedROI = roiText;
+          c._roiSub = roiSub;
+          return '';
+        })()}
         <div class="roi-opportunity-banner" style="margin-top:14px">
           <div class="roi-opp-left">
             <span class="roi-opp-label" title="AI-estimated revenue uplift achievable by targeting this competitor's gaps and weaknesses.">InfoGenie ROI Opportunity:</span>
-            <span class="roi-opp-text" title="Projected revenue improvement if you implement InfoGenie's recommendations for this competitor.">${c.estimatedROI}</span>
+            <span class="roi-opp-text" title="Projected annual revenue InfoGenie estimates you can recover from ${c.name} by capturing 5–12% of their organic traffic at industry-typical revenue-per-visit (refined by their ROAS).">${c.estimatedROI}</span>
+            <span style="display:block;font-size:0.68rem;color:#6B7280;font-weight:500;margin-top:2px">${c._roiSub}</span>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <button class="btn-view-plan" onclick="openCompPlan('${c.name.replace(/'/g,'').replace(/"/g,'').replace(/\\/g,'')}')" title="Open the detailed strategy plan for outperforming ${c.name}.">View Plan →</button>
