@@ -6721,7 +6721,8 @@ function buildAiVisibility() {
         return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:22px;text-align:center;margin-bottom:20px">
           <div style="font-size:1.6rem;margin-bottom:6px">📡</div>
           <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Prompt Coverage Matrix</div>
-          <div style="font-size:0.72rem;color:#64748B;margin-top:4px">Run the AI Audit above to fire 8 industry prompts × every connected model and see real per-cell citation results.</div>
+          <div style="font-size:0.72rem;color:#64748B;margin-top:4px;margin-bottom:14px">Run the AI Audit to fire 8 industry prompts × every connected model and see real per-cell citation results.</div>
+          <button onclick="generateAiVisibilityAudit()" style="padding:10px 24px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 14px rgba(99,102,241,0.3)">✨ Run AI Audit</button>
         </div>`;
       }
       const overallPct = Math.round((cov.overallCoverage || 0) * 100);
@@ -6782,7 +6783,8 @@ function buildAiVisibility() {
         return `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:22px;text-align:center;margin-bottom:20px">
           <div style="font-size:1.6rem;margin-bottom:6px">🎯</div>
           <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Answer Accuracy Check</div>
-          <div style="font-size:0.72rem;color:#64748B;margin-top:4px">Run the AI Audit to scrape your live site, ask each model to describe your brand, and grade every claim for factual accuracy against your real content.</div>
+          <div style="font-size:0.72rem;color:#64748B;margin-top:4px;margin-bottom:14px">Run the AI Audit to scrape your live site, ask each model to describe your brand, and grade every claim for factual accuracy against your real content.</div>
+          <button onclick="generateAiVisibilityAudit()" style="padding:10px 24px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 14px rgba(99,102,241,0.3)">✨ Run AI Audit</button>
         </div>`;
       }
       const ovColor = acc.overallAccuracy >= 75 ? '#10B981' : acc.overallAccuracy >= 50 ? '#F59E0B' : '#DC2626';
