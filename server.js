@@ -1988,11 +1988,11 @@ Rules:
 // ── Shared probe builder used by competitors / sentiment / entity endpoints ──
 function buildModelProbes() {
   const probes = {};
-  probes.chatgpt = async (q, maxTokens=200) => {
+  probes.chatgpt = async (q, maxTokens=700) => {
     const c = await openai.chat.completions.create({ model:'gpt-4o', max_tokens:maxTokens, messages:[{ role:'user', content:q }] });
     return c.choices?.[0]?.message?.content?.trim() || '';
   };
-  probes.claude = async (q, maxTokens=240) => {
+  probes.claude = async (q, maxTokens=700) => {
     const c = await anthropic.messages.create({ model:'claude-sonnet-4-6', max_tokens:maxTokens, messages:[{ role:'user', content:q }] });
     return c.content?.[0]?.text?.trim() || '';
   };
@@ -2058,13 +2058,23 @@ app.post('/api/ai-visibility-competitors', async (req, res) => {
     if (allDomains.length < 2) return res.json({ ok:true, domains:allDomains, prompts:[], matrix:[], shareOfVoice:{}, note:'No competitor domains supplied.' });
 
     const indWord = String(industry).split(' ')[0];
+    // Build a human-readable brand roster so prompts can FORCE every model to
+    // explicitly evaluate each competitor (otherwise smaller brands like
+    // Plus500 / AvaTrade are routinely truncated out of "top 5" lists).
+    const rosterNames = allDomains.map(d => {
+      const aliases = aliasesByDomain[d] || [];
+      const human = aliases.find(a => !a.includes('.') && a.length > 2) || d.split('.')[0];
+      return human.charAt(0).toUpperCase() + human.slice(1);
+    });
+    const roster = rosterNames.join(', ');
+    const tail = ` Please evaluate EACH of these brands by name and explain why each one is or isn't a leading choice: ${roster}. Mention every brand at least once.`;
     const prompts = [
-      { id:'best',        cat:'Best-of',     q:`What are the best ${industry} companies in 2025?` },
-      { id:'compare',     cat:'Comparison',  q:`Compare the top ${industry} platforms — pros and cons of each.` },
-      { id:'recommend',   cat:'Recommend',   q:`Recommend the right ${industry} solution for a growing business.` },
-      { id:'alternatives',cat:'Alternatives',q:`What are the leading alternatives to ${cleanBrand} for ${industry}?` },
-      { id:'reviews',     cat:'Reviews',     q:`Which ${indWord.toLowerCase()} brands get the best customer reviews?` },
-      { id:'pricing',     cat:'Pricing',     q:`Most cost-effective ${industry} platforms — who offers the best value?` },
+      { id:'best',        cat:'Best-of',     q:`What are the best ${industry} companies in 2025?` + tail },
+      { id:'compare',     cat:'Comparison',  q:`Compare the top ${industry} platforms — pros and cons of each.` + tail },
+      { id:'recommend',   cat:'Recommend',   q:`Recommend the right ${industry} solution for a growing business — reviewing each option.` + tail },
+      { id:'alternatives',cat:'Alternatives',q:`What are the leading alternatives to ${cleanBrand} for ${industry}? Discuss each candidate.` + tail },
+      { id:'reviews',     cat:'Reviews',     q:`Which ${indWord.toLowerCase()} brands get the best customer reviews?` + tail },
+      { id:'pricing',     cat:'Pricing',     q:`Most cost-effective ${industry} platforms — who offers the best value?` + tail },
     ];
 
     const probes = buildModelProbes();
