@@ -1659,6 +1659,118 @@ Rules:
   }
 });
 
+// ── POST /api/icp-draft — Auto-draft Ideal Customer Profile from brand intel ─
+app.post('/api/icp-draft', async (req, res) => {
+  try {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const { domain='yourdomain.com', industry='your industry', country='Global', competitors=[] } = body;
+    // Validate types — return 400 on bad payload, 500 reserved for upstream/runtime faults
+    if (typeof domain !== 'string' || typeof industry !== 'string' || typeof country !== 'string') {
+      return res.status(400).json({ error: 'domain, industry and country must be strings' });
+    }
+    if (!Array.isArray(competitors)) {
+      return res.status(400).json({ error: 'competitors must be an array' });
+    }
+    const compNames = competitors.slice(0, 6).map(c => typeof c === 'string' ? c : (c && typeof c === 'object' ? (c.name || '') : '')).filter(Boolean).join(', ') || 'category competitors';
+    const systemPrompt = `You are a senior B2C/B2B customer-research strategist. Build a tight, opinionated, data-grounded Ideal Customer Profile. Return JSON only — no commentary.`;
+    const userPrompt = `Brand: ${domain}
+Industry: ${industry}
+Geography: ${country}
+Direct competitors: ${compNames}
+
+Build the most likely Ideal Customer Profile (ICP) for this brand. Be specific — no generic personas. Reflect what real people in ${industry} actually look like, what they Google, and what makes them buy or hesitate.
+
+Return JSON exactly in this shape:
+{
+  "ageRange": "e.g. 28–45",
+  "role": "primary role / job title / life stage in 4–8 words",
+  "intent": "stage of intent in 3–5 words (e.g. Actively comparing alternatives)",
+  "painPoints": ["pain 1 in 6–12 words","pain 2 in 6–12 words","pain 3 in 6–12 words"],
+  "desires": ["desire 1 in 6–12 words","desire 2 in 6–12 words","desire 3 in 6–12 words"],
+  "budget": "budget band as a short phrase (e.g. £500–£2,000/mo)"
+}`;
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role:'system', content: systemPrompt }, { role:'user', content: userPrompt }],
+      max_tokens: 600,
+      temperature: 0.6,
+      response_format: { type:'json_object' }
+    });
+    const icp = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    res.json({ icp });
+  } catch (err) {
+    console.error('/api/icp-draft error:', err.message);
+    res.status(500).json({ error: err.message || 'ICP draft failed' });
+  }
+});
+
+// ── POST /api/icp-voc — Voice-of-Customer mining (triggers, objections, drivers)
+app.post('/api/icp-voc', async (req, res) => {
+  try {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const { icp={}, redditPosts=[], competitors=[], industry='your industry', domain='yourdomain.com' } = body;
+    // Validate types — return 400 on bad payload
+    if (icp && typeof icp !== 'object') return res.status(400).json({ error: 'icp must be an object' });
+    if (!Array.isArray(redditPosts)) return res.status(400).json({ error: 'redditPosts must be an array' });
+    if (!Array.isArray(competitors)) return res.status(400).json({ error: 'competitors must be an array' });
+    if (typeof industry !== 'string' || typeof domain !== 'string') {
+      return res.status(400).json({ error: 'industry and domain must be strings' });
+    }
+    const safeIcp = icp || {};
+    // Compact Reddit signal so the prompt stays small
+    const redditSnippet = redditPosts.slice(0, 12).map((p,i) => {
+      const post = (p && typeof p === 'object') ? p : {};
+      return `[${i+1}] r/${String(post.subreddit||'').replace(/^r\//,'')} · ${post.title||''} · score ${post.score||0}/comments ${post.comments||0}/sentiment ${post.sentiment||'neutral'}`;
+    }).join('\n') || '(no live Reddit signal — infer from category)';
+    const compList = competitors.slice(0,6).map(c => typeof c==='string' ? c : (c && typeof c==='object' ? (c.name||'') : '')).filter(Boolean).join(', ') || 'category competitors';
+    const pains   = Array.isArray(safeIcp.painPoints) ? safeIcp.painPoints : [];
+    const desires = Array.isArray(safeIcp.desires)    ? safeIcp.desires    : [];
+    const icpLine = `${safeIcp.ageRange||'?'} ${safeIcp.role||''} · ${safeIcp.intent||''} · pains: ${pains.join(' / ')} · desires: ${desires.join(' / ')} · budget: ${safeIcp.budget||'?'}`;
+
+    const systemPrompt = `You are a voice-of-customer research analyst. You read raw community signal and extract crisp buying psychology. Return JSON only.`;
+    const userPrompt = `Brand: ${domain}
+Industry: ${industry}
+ICP: ${icpLine}
+Competitors: ${compList}
+
+Reddit / community signal (real recent threads):
+${redditSnippet}
+
+From this signal — combined with your knowledge of the ${industry} space — extract the real buying psychology of this ICP.
+
+Return JSON exactly in this shape:
+{
+  "triggers":         [ {"text":"they buy when X happens", "evidence":"1-line evidence from signal or category"} , ... 5 items ],
+  "objections":       [ {"text":"they don't buy because X", "evidence":"1-line evidence from signal or category"} , ... 5 items ],
+  "emotionalDrivers": [ {"text":"they really want to feel X", "evidence":"1-line evidence from signal or category"} , ... 5 items ]
+}
+
+Rules:
+- Each "text" must be a single tight sentence under 14 words.
+- "evidence" must reference real signal patterns or category truths — not generic platitudes.
+- No duplicates across the three lists.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role:'system', content: systemPrompt }, { role:'user', content: userPrompt }],
+      max_tokens: 1200,
+      temperature: 0.5,
+      response_format: { type:'json_object' }
+    });
+    const voc = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    // Defensive normalisation
+    const norm = arr => (Array.isArray(arr) ? arr : []).slice(0,5).map(x => typeof x==='string' ? {text:x, evidence:''} : { text: x.text||'', evidence: x.evidence||'' }).filter(x=>x.text);
+    res.json({
+      triggers:         norm(voc.triggers),
+      objections:       norm(voc.objections),
+      emotionalDrivers: norm(voc.emotionalDrivers || voc.drivers)
+    });
+  } catch (err) {
+    console.error('/api/icp-voc error:', err.message);
+    res.status(500).json({ error: err.message || 'VoC mining failed' });
+  }
+});
+
 // ── POST /api/ai-channel-ad ───────────────────────────────────────────────────
 app.post('/api/ai-channel-ad', async (req, res) => {
   try {

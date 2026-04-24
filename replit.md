@@ -34,13 +34,16 @@ InfoGenie is a comprehensive AI-powered marketing intelligence and campaign auto
 - `window._wlData` — Win/Loss card data map for modal lookup
 - `window._lastCampRecs` — last campaign recommendations for modal access
 - `window._creativeStudio` — Creative Studio state (current campaign's full copy, scripts, email brief — used by _csDownload/_csCopyAll/_csSendEmail)
+- `window._icpProfile` — ICP Studio: { ageRange, role, intent, painPoints[], desires[], budget }
+- `window._icpVoC` — ICP Studio Voice-of-Customer: { triggers[], objections[], emotionalDrivers[] } (each item: { text, evidence })
+- `window._counterTarget` — used by Creative Studio activation flow; ICP Studio writes here with source='icp-studio' to pre-fill next campaign target
 - **Battle Plan timer**: `_apSecs` counter ticks every 1s; `apElapsed` is an inline `<span style="color:#00E5FF">` inside `apLoadTitle`; any innerHTML update to the title must re-embed the span or use `apElapsed` ID for the querySelector (consistent with Reddit scanner style)
 
 ## Navigation Structure (4-Stage Workflow)
 The navbar (two-row layout) organises all 20 sections into four logical groups with visible category labels.
 Each group flows in a deliberate order — use the "Next Step" banners at the bottom of each view to follow the guided path.
 
-- **ANALYSE** *(Understand the market)*: Dashboard → Competitors → Intelligence Hub → Battle Plan → Reddit Intel → Google Search
+- **ANALYSE** *(Understand the market)*: Dashboard → Competitors → Intelligence Hub → Battle Plan → Reddit Intel → ICP Studio → Google Search
 - **CREATE** *(Build ads & content)*: Brand Assets → AI Creative → Campaigns → Content AI → Social Calendar
 - **REACH** *(Distribute to audiences)*: Audience → Advertise Hub
 - **GROW** *(Track, scale & manage)*: AutoSEO Pro → AI Visibility → Action Center → Results → Re-Engage → Automations → Agency & Reports → C-Suite Reports → Settings

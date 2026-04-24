@@ -2177,6 +2177,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'social') {
     try { buildSocialCalendar(); } catch(e) { console.warn('buildSocialCalendar error:', e); }
   }
+  if (viewId === 'icp-studio') {
+    try { buildICPStudio(); } catch(e) { console.warn('buildICPStudio error:', e); }
+  }
   if (viewId === 'content') {
     try { buildContent(); } catch(e) { console.warn('buildContent error:', e); }
   }
@@ -6202,6 +6205,466 @@ const POST_ARCHETYPES = {
     { id:'referral_loop',     icon:'🔁', title:'Referral Loop',             hint:'Invite advocates to bring others in',        starter:'If this helped you, ', prompt:'Write a referral-loop caption for {brand} in {industry} inviting current followers to tag/share with one person who needs it. Natural and warm, never pushy. End with what to do if someone tags them back.' },
   ],
 };
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ 🎯 ICP STUDIO — Ideal Customer Profile + Voice-of-Customer + Activation  ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+if (!window._icpProfile) window._icpProfile = null; // { ageRange, role, intent, painPoints[], desires[], budget }
+if (!window._icpVoC)     window._icpVoC     = null; // { triggers[], objections[], emotionalDrivers[] }
+
+// Local HTML-escape helper used by ICP Studio for any dynamic / AI-supplied string
+function _icpEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function buildICPStudio() {
+  const wrap = document.getElementById('icpStudioWrap');
+  if (!wrap) return;
+
+  const icp = window._icpProfile || {};
+  const voc = window._icpVoC || {};
+  const hasICP = !!(icp.role || icp.ageRange);
+  const hasVoC = !!((voc.triggers && voc.triggers.length) || (voc.objections && voc.objections.length));
+  const redditCount = (window._redditPosts || []).length;
+  const compCount   = (analysisData?.competitors || []).length;
+  const domain   = _icpEsc(analysisData?.url || 'your brand');
+  const industry = _icpEsc(analysisData?.industry?.name || 'your industry');
+
+  // Field rendering helper — all dynamic values escaped via _icpEsc for defense-in-depth
+  const fld = (id, label, value, placeholder, isList=false) => {
+    if (isList) {
+      const items = Array.isArray(value) ? value : [];
+      const rows = [0,1,2].map(i => `<input type="text" id="${id}-${i}" data-icp-list="${id}" value="${_icpEsc(items[i])}" placeholder="${_icpEsc(placeholder)}" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif;margin-bottom:6px">`).join('');
+      return `<div><div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${label}</div>${rows}</div>`;
+    }
+    return `<div>
+      <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${label}</div>
+      <input type="text" id="${id}" value="${_icpEsc(value)}" placeholder="${_icpEsc(placeholder)}" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
+    </div>`;
+  };
+
+  // ── Panel A: ICP Builder ──────────────────────────────────────────────────
+  const builderHtml = `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:22px 26px;margin-bottom:18px;box-shadow:0 1px 6px rgba(0,0,0,.05)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:1.1rem">🧬</span><div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">ICP Builder</div></div>
+          <div style="font-size:0.74rem;color:#6B7280;margin-top:2px">6 fields define who you're really selling to. Edit anything — AI will auto-draft if you leave it blank.</div>
+        </div>
+        <button id="icpDraftBtn2" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#EC4899);border:none;border-radius:10px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">✨ Auto-Draft from Brand Intel</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
+        ${fld('icp-age',    'Age Range',    icp.ageRange, 'e.g. 28–45')}
+        ${fld('icp-role',   'Role / Stage', icp.role,     'e.g. Solo trader / SMB founder')}
+        ${fld('icp-intent', 'Intent Stage', icp.intent,   'e.g. Actively comparing alternatives')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        ${fld('icp-pain',    'Top 3 Pain Points', icp.painPoints, 'Pain point…', true)}
+        ${fld('icp-desire',  'Top 3 Desires',     icp.desires,    'Desire…',     true)}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        ${fld('icp-budget','Budget Band', icp.budget, 'e.g. £500–£2,000/mo')}
+        <div style="display:flex;align-items:flex-end">
+          <button id="icpSaveBtn" style="width:100%;padding:11px;background:#0A1628;border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">💾 Save ICP</button>
+        </div>
+      </div>
+      <div id="icpDraftStatus" style="margin-top:10px;font-size:0.74rem;color:#7C3AED;display:none">⏳ AI is drafting your ICP from ${domain} brand intelligence…</div>
+    </div>`;
+
+  // ── Panel B: Voice-of-Customer Mining ─────────────────────────────────────
+  const vocItem = (item, color, bg) => `
+    <div style="background:${bg};border:1px solid ${color}33;border-radius:10px;padding:10px 12px;margin-bottom:8px">
+      <div style="font-size:0.78rem;font-weight:700;color:${color};line-height:1.35">${_icpEsc(item.text)}</div>
+      ${item.evidence ? `<div style="font-size:0.66rem;color:#6B7280;margin-top:4px;font-style:italic;line-height:1.4">↳ ${_icpEsc(item.evidence)}</div>` : ''}
+    </div>`;
+  const vocCol = (title, icon, color, bg, items, emptyText) => `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:16px 18px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">
+        <span style="font-size:1.1rem">${icon}</span>
+        <div style="font-family:Sora,sans-serif;font-size:0.85rem;font-weight:800;color:${color}">${title}</div>
+      </div>
+      ${items && items.length ? items.map(it => vocItem(it, color, bg)).join('') : `<div style="font-size:0.74rem;color:#9CA3AF;text-align:center;padding:18px 0">${emptyText}</div>`}
+    </div>`;
+
+  const vocHtml = `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:22px 26px;margin-bottom:18px;box-shadow:0 1px 6px rgba(0,0,0,.05)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:1.1rem">🎤</span><div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">Voice-of-Customer Mining</div></div>
+          <div style="font-size:0.74rem;color:#6B7280;margin-top:2px">Pulls from <strong>${redditCount}</strong> Reddit threads · <strong>${compCount}</strong> competitors · brand context — extracts buying psychology.</div>
+        </div>
+        <button id="icpMineBtn" style="padding:9px 18px;background:linear-gradient(135deg,#EC4899,#F59E0B);border:none;border-radius:10px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🔍 Mine My Data</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+        ${vocCol('Top 5 Buying Triggers',    '⚡', '#059669', '#ECFDF5', voc.triggers,         'Click "Mine My Data" — surfaces what makes them buy.')}
+        ${vocCol('Top 5 Objections',         '🛡️', '#DC2626', '#FEF2F2', voc.objections,       'Click "Mine My Data" — surfaces why they hesitate.')}
+        ${vocCol('Top 5 Emotional Drivers',  '❤️', '#7C3AED', '#F5F3FF', voc.emotionalDrivers, 'Click "Mine My Data" — surfaces what they want to feel.')}
+      </div>
+      <div id="icpMineStatus" style="margin-top:12px;font-size:0.74rem;color:#EC4899;display:none">⏳ Mining ${redditCount} Reddit threads + competitor signals with GPT-4o…</div>
+    </div>`;
+
+  // ── Panel C: Activation ───────────────────────────────────────────────────
+  const actDisabled = !hasICP;
+  const actDis2 = !hasVoC || !(voc.objections && voc.objections.length);
+  const actDis3 = !hasVoC || !(voc.triggers && voc.triggers.length);
+  const actBtn = (icon, title, desc, color, bg, id, disabled, disabledReason) => `
+    <button id="${id}" ${disabled?'disabled':''} title="${disabled?disabledReason:''}" style="text-align:left;padding:18px 20px;background:${disabled?'#F9FAFB':'white'};border:1.5px solid ${disabled?'#E5E7EB':color+'55'};border-radius:14px;cursor:${disabled?'not-allowed':'pointer'};opacity:${disabled?'.55':'1'};transition:all .2s;font-family:'Inter',sans-serif;display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:36px;height:36px;background:${bg};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem">${icon}</div>
+        <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:${disabled?'#9CA3AF':'#0A1628'}">${title}</div>
+      </div>
+      <div style="font-size:0.72rem;color:#6B7280;line-height:1.45">${desc}</div>
+      ${disabled ? `<div style="font-size:0.65rem;color:#9CA3AF;font-style:italic;margin-top:2px">${disabledReason}</div>` : `<div style="font-size:0.7rem;color:${color};font-weight:700;margin-top:2px">→ Activate</div>`}
+    </button>`;
+
+  const activationHtml = `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:22px 26px;box-shadow:0 1px 6px rgba(0,0,0,.05)">
+      <div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-size:1.1rem">🚀</span><div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">Activation</div></div>
+        <div style="font-size:0.74rem;color:#6B7280;margin-top:2px">One-click flows that pipe your ICP &amp; VoC into other modules.</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+        ${actBtn('🎨','Use as Creative Studio Target','Pre-fills your next ad with this ICP as the target persona.','#7C3AED','#F5F3FF','icpAct1',actDisabled,'Build &amp; save your ICP first.')}
+        ${actBtn('✊','Counter-Objection Caption Pack','Generates 5 social posts — one per objection — auto-tagged Nurture stage.','#DC2626','#FEF2F2','icpAct2',actDis2,'Mine your VoC first — needs at least 1 objection.')}
+        ${actBtn('📧','Email Sequence for Top Trigger','3-email warm-up that leans into your strongest buying trigger.','#0891B2','#ECFEFF','icpAct3',actDis3,'Mine your VoC first — needs at least 1 trigger.')}
+      </div>
+      <div id="icpActStatus" style="margin-top:12px;font-size:0.76rem;color:#0A1628;display:none"></div>
+    </div>`;
+
+  // ── Top context bar ───────────────────────────────────────────────────────
+  const ctxBar = `
+    <div style="background:linear-gradient(135deg,#F5F3FF,#FDF2F8);border:1px solid #E9D5FF;border-radius:14px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div style="font-size:0.8rem;color:#6B21A8"><strong>Brand:</strong> ${domain} · <strong>Industry:</strong> ${industry} · <strong>Reddit threads available:</strong> ${redditCount} · <strong>Competitors:</strong> ${compCount}</div>
+      <div style="font-size:0.7rem;color:#9333EA">${hasICP?'✅ ICP saved':'⚪ ICP not built yet'} · ${hasVoC?'✅ VoC mined':'⚪ VoC not mined yet'}</div>
+    </div>`;
+
+  wrap.innerHTML = `<div style="padding:8px 0">${ctxBar}${builderHtml}${vocHtml}${activationHtml}</div>`;
+
+  // ── Wire events ───────────────────────────────────────────────────────────
+  const draftBtn1 = document.getElementById('icpDraftBtn');
+  const draftBtn2 = document.getElementById('icpDraftBtn2');
+  [draftBtn1, draftBtn2].forEach(b => { if (b) b.onclick = _icpAutoDraft; });
+  document.getElementById('icpSaveBtn').onclick = _icpSaveForm;
+  document.getElementById('icpMineBtn').onclick = _icpMineVoC;
+  document.getElementById('icpAct1').onclick = _icpActCreativeTarget;
+  document.getElementById('icpAct2').onclick = _icpActObjectionPack;
+  document.getElementById('icpAct3').onclick = _icpActEmailSequence;
+}
+
+function _icpReadForm() {
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  const list = id => [0,1,2].map(i => v(`${id}-${i}`)).filter(Boolean);
+  return {
+    ageRange:   v('icp-age'),
+    role:       v('icp-role'),
+    intent:     v('icp-intent'),
+    painPoints: list('icp-pain'),
+    desires:    list('icp-desire'),
+    budget:     v('icp-budget'),
+  };
+}
+
+function _icpSaveForm() {
+  const icp = _icpReadForm();
+  if (!icp.role && !icp.ageRange && icp.painPoints.length === 0) { showToast('⚠️ Add at least one field before saving'); return; }
+  window._icpProfile = icp;
+  showToast('✅ ICP saved — now mine your VoC or activate it');
+  buildICPStudio();
+}
+
+async function _icpAutoDraft() {
+  const status = document.getElementById('icpDraftStatus');
+  const btn1 = document.getElementById('icpDraftBtn');
+  const btn2 = document.getElementById('icpDraftBtn2');
+  [btn1, btn2].forEach(b => { if (b) { b.disabled = true; b.style.opacity = '.6'; } });
+  if (status) { status.style.display = 'block'; }
+  try {
+    const res = await fetch('/api/icp-draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        domain:      analysisData?.url || 'yourdomain.com',
+        industry:    analysisData?.industry?.name || 'your industry',
+        country:     analysisData?.country || 'Global',
+        competitors: (analysisData?.competitors || []).slice(0, 6),
+      })
+    });
+    const data = await res.json();
+    if (data.icp && (data.icp.role || data.icp.ageRange)) {
+      window._icpProfile = {
+        ageRange:   data.icp.ageRange   || '',
+        role:       data.icp.role       || '',
+        intent:     data.icp.intent     || '',
+        painPoints: Array.isArray(data.icp.painPoints) ? data.icp.painPoints.slice(0,3) : [],
+        desires:    Array.isArray(data.icp.desires)    ? data.icp.desires.slice(0,3)    : [],
+        budget:     data.icp.budget     || '',
+      };
+      showToast('✨ ICP drafted — review & edit, then save');
+      buildICPStudio();
+    } else {
+      throw new Error(data.error || 'Empty draft returned');
+    }
+  } catch (err) {
+    showToast('⚠️ Draft failed: ' + (err.message || 'unknown error'));
+    [btn1, btn2].forEach(b => { if (b) { b.disabled = false; b.style.opacity = '1'; } });
+    if (status) status.style.display = 'none';
+  }
+}
+
+async function _icpMineVoC() {
+  const icp = _icpReadForm();
+  if (!icp.role && !icp.ageRange) { showToast('⚠️ Build & save your ICP first (or auto-draft it)'); return; }
+  // Persist current form state as the working ICP
+  window._icpProfile = icp;
+  const status = document.getElementById('icpMineStatus');
+  const btn = document.getElementById('icpMineBtn');
+  if (btn) { btn.disabled = true; btn.style.opacity = '.6'; btn.textContent = '⏳ Mining…'; }
+  if (status) status.style.display = 'block';
+  try {
+    const res = await fetch('/api/icp-voc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        icp,
+        redditPosts:  (window._redditPosts || []).slice(0, 12),
+        competitors:  (analysisData?.competitors || []).slice(0, 6),
+        industry:     analysisData?.industry?.name || 'your industry',
+        domain:       analysisData?.url || 'yourdomain.com',
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    window._icpVoC = {
+      triggers:         data.triggers || [],
+      objections:       data.objections || [],
+      emotionalDrivers: data.emotionalDrivers || [],
+    };
+    showToast('🎤 Voice-of-Customer mined — activate it on the right →');
+    buildICPStudio();
+  } catch (err) {
+    showToast('⚠️ Mining failed: ' + (err.message || 'unknown error'));
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.textContent = '🔍 Mine My Data'; }
+    if (status) status.style.display = 'none';
+  }
+}
+
+// ── Activation 1: Send ICP to Creative Studio as target ─────────────────────
+function _icpActCreativeTarget() {
+  const icp = window._icpProfile;
+  if (!icp) { showToast('⚠️ Save your ICP first'); return; }
+  // Build a counter-target object Creative Studio will use as persona/audience seed
+  window._counterTarget = {
+    name: `ICP: ${icp.role || 'Ideal Customer'}`,
+    persona: `${icp.ageRange || ''} ${icp.role || ''} (${icp.intent || ''})`.trim(),
+    pains:   icp.painPoints || [],
+    desires: icp.desires    || [],
+    budget:  icp.budget     || '',
+    source:  'icp-studio',
+    expiresAt: Date.now() + 30*60*1000,
+  };
+  showToast('🎯 ICP set as Creative Studio target — opening Campaigns…');
+  setTimeout(() => navigateTo('campaigns'), 600);
+}
+
+// ── Activation 2: Counter-Objection Caption Pack ─────────────────────────────
+async function _icpActObjectionPack() {
+  const icp = window._icpProfile;
+  const voc = window._icpVoC;
+  if (!icp || !voc?.objections?.length) { showToast('⚠️ Need ICP + at least 1 objection'); return; }
+  const status = document.getElementById('icpActStatus');
+  const btn = document.getElementById('icpAct2');
+  if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+  if (status) { status.style.display = 'block'; status.textContent = '⏳ Generating 5 counter-objection captions with GPT-4o…'; }
+
+  const domain   = analysisData?.url || 'your brand';
+  const industry = analysisData?.industry?.name || 'your industry';
+  const objections = voc.objections.slice(0, 5);
+
+  const userPrompt = `Brand: ${domain}
+Industry: ${industry}
+ICP: ${icp.ageRange||''} ${icp.role||''} · ${icp.intent||''}
+Their pains: ${(icp.painPoints||[]).join(' / ')}
+Their desires: ${(icp.desires||[]).join(' / ')}
+
+Write exactly ${objections.length} short social-media post captions — one per objection. Each caption flips that objection into a confident, empathetic answer (objection-handling format). 60-90 words each. Plain text. Add 2-3 relevant emojis. End with a soft CTA.
+
+Objections:
+${objections.map((o,i)=>`${i+1}. ${o.text}`).join('\n')}
+
+Return JSON: { "captions": [ { "objection": "...", "caption": "..." }, ... ] }`;
+
+  try {
+    const res = await fetch('/api/openai', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model:'gpt-4o',
+        messages:[
+          {role:'system', content:'You are a senior social media copywriter who specialises in objection-handling content. Return JSON only.'},
+          {role:'user',   content:userPrompt}
+        ],
+        max_tokens: 1200,
+        response_format:{type:'json_object'}
+      })
+    });
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content || '{}';
+    const parsed = JSON.parse(raw);
+    const captions = (parsed.captions || []).filter(c => c.caption);
+    if (captions.length === 0) throw new Error('No captions returned');
+
+    if (!window._socialPosts) window._socialPosts = [];
+    const today = new Date();
+    captions.forEach((c, i) => {
+      const d = new Date(today); d.setDate(d.getDate() + i + 1);
+      window._socialPosts.push({
+        id: 'post_icp_'+Date.now()+'_'+i,
+        platform: 'Instagram',
+        caption: c.caption,
+        scheduledDate: d.toISOString().split('T')[0],
+        scheduledTime: '09:00',
+        status: 'draft',
+        funnelStage: 'nurture',
+        archetypeId: 'objection_handle',
+        archetypeTitle: 'Objection Handling',
+        sourceObjection: c.objection || objections[i]?.text,
+        sourceModule: 'icp-studio',
+        createdAt: new Date().toLocaleString(),
+      });
+    });
+
+    showToast(`✊ ${captions.length} counter-objection drafts added to Social Calendar (Drafts)`);
+    if (status) { status.innerHTML = `✅ <strong>${captions.length} drafts</strong> added to Social Calendar &nbsp; <a href="#" onclick="navigateTo('social');return false;" style="color:#7C3AED;font-weight:700;text-decoration:underline">Open Calendar →</a>`; }
+  } catch (err) {
+    showToast('⚠️ Generation failed: ' + (err.message || 'unknown'));
+    if (status) status.style.display = 'none';
+  } finally {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  }
+}
+
+// ── Activation 3: Email sequence for top trigger ─────────────────────────────
+async function _icpActEmailSequence() {
+  const icp = window._icpProfile;
+  const voc = window._icpVoC;
+  if (!icp || !voc?.triggers?.length) { showToast('⚠️ Need ICP + at least 1 trigger'); return; }
+  const status = document.getElementById('icpActStatus');
+  const btn = document.getElementById('icpAct3');
+  if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+  if (status) { status.style.display = 'block'; status.textContent = '⏳ Drafting 3-email warm-up sequence with GPT-4o…'; }
+
+  const domain   = analysisData?.url || 'your brand';
+  const industry = analysisData?.industry?.name || 'your industry';
+  const topTrigger = voc.triggers[0];
+
+  const userPrompt = `Brand: ${domain}
+Industry: ${industry}
+ICP: ${icp.ageRange||''} ${icp.role||''} · ${icp.intent||''}
+Top buying trigger: ${topTrigger.text}
+Trigger evidence: ${topTrigger.evidence||''}
+
+Write a 3-email warm-up sequence that leans into this trigger. The reader is the ICP above; this trigger is what makes them buy. Each email should escalate from awareness → consideration → invitation.
+
+Return JSON: {
+  "sequence": [
+    { "subject": "...", "body": "..." },
+    { "subject": "...", "body": "..." },
+    { "subject": "...", "body": "..." }
+  ]
+}
+
+Rules:
+- Subject: under 8 words, curiosity-driven, no clickbait clichés.
+- Body: 110-150 words, plain text, line breaks between paragraphs.
+- Email 1: name the situation that triggers buying, no pitch.
+- Email 2: show how ${domain} solves it (1 specific example).
+- Email 3: clear soft CTA + 1-line PS.`;
+
+  try {
+    const res = await fetch('/api/openai', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model:'gpt-4o',
+        messages:[
+          {role:'system', content:'You are a senior B2C/B2B email copywriter. Return JSON only.'},
+          {role:'user',   content:userPrompt}
+        ],
+        max_tokens: 1400,
+        response_format:{type:'json_object'}
+      })
+    });
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content || '{}';
+    const parsed = JSON.parse(raw);
+    const seq = parsed.sequence || [];
+    if (seq.length === 0) throw new Error('No sequence returned');
+    _icpShowEmailSequenceModal(topTrigger, seq);
+    if (status) status.style.display = 'none';
+  } catch (err) {
+    showToast('⚠️ Generation failed: ' + (err.message || 'unknown'));
+    if (status) status.style.display = 'none';
+  } finally {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  }
+}
+
+function _icpShowEmailSequenceModal(trigger, seq) {
+  document.getElementById('icp-email-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'icp-email-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,30,61,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  const seqHtml = seq.map((e, i) => `
+    <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:12px;padding:16px 18px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:28px;height:28px;background:linear-gradient(135deg,#0891B2,#7C3AED);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.78rem">${i+1}</div>
+          <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:#0A1628">${_icpEsc(e.subject)}</div>
+        </div>
+        <button class="icp-email-copy-btn" data-idx="${i}" style="padding:5px 12px;background:white;border:1px solid #E5E7EB;border-radius:7px;font-size:0.7rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy</button>
+      </div>
+      <div style="font-size:0.8rem;color:#374151;line-height:1.6;white-space:pre-wrap">${_icpEsc(e.body)}</div>
+    </div>`).join('');
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:18px;width:100%;max-width:680px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.3)">
+      <div style="background:linear-gradient(135deg,#0891B2,#7C3AED);border-radius:18px 18px 0 0;padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:0.65rem;font-weight:700;color:#A5F3FC;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">3-Email Warm-Up Sequence</div>
+          <div style="font-family:Sora,sans-serif;font-size:1.05rem;font-weight:800;color:white;line-height:1.3">⚡ Trigger: ${_icpEsc(trigger.text)}</div>
+        </div>
+        <button id="icp-email-close" style="background:rgba(255,255,255,.18);border:none;border-radius:50%;width:32px;height:32px;font-size:1.1rem;color:white;cursor:pointer">✕</button>
+      </div>
+      <div style="padding:20px 22px">
+        ${seqHtml}
+        <div style="display:flex;gap:10px;margin-top:8px">
+          <button id="icp-email-copyall" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy All 3 Emails</button>
+          <button id="icp-email-toreengage" style="flex:1;padding:11px;background:linear-gradient(135deg,#7C3AED,#EC4899);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">→ Open Re-Engage Hub</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('icp-email-close').onclick = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  // Per-email copy buttons (no inline onclick — body content is bound from JS, never injected as HTML)
+  overlay.querySelectorAll('.icp-email-copy-btn').forEach(btn => {
+    btn.onclick = () => {
+      const idx = parseInt(btn.dataset.idx, 10);
+      const item = seq[idx];
+      if (!item) return;
+      navigator.clipboard.writeText(item.body || '');
+      btn.textContent = '✅ Copied';
+    };
+  });
+  document.getElementById('icp-email-copyall').onclick = () => {
+    const text = seq.map((e,i) => `EMAIL ${i+1}\nSubject: ${e.subject || ''}\n\n${e.body || ''}\n\n────────────────\n`).join('\n');
+    navigator.clipboard.writeText(text);
+    document.getElementById('icp-email-copyall').textContent = '✅ All 3 copied';
+  };
+  document.getElementById('icp-email-toreengage').onclick = () => { overlay.remove(); navigateTo('reengage'); };
+}
 
 function buildSocialCalendar() {
   const wrap = document.getElementById('socialWrap');
