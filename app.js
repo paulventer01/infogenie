@@ -9355,10 +9355,23 @@ async function scanRedditMonitor() {
 
     if (posts.length === 0) {
       clearInterval(_rdtTick); clearTimeout(_rdtTimeout);
-      const empty = `<div style="text-align:center;padding:40px 24px;color:rgba(255,255,255,.35)"><div style="font-size:2rem;margin-bottom:10px">🕳️</div><div style="font-size:0.8rem">No threads found. Try broader keywords.</div></div>`;
+      // Use the server's diagnostic message when available so the user sees the real reason.
+      const reason = data.error
+        ? String(data.error)
+        : 'No threads found. Try broader keywords or add more competitors.';
+      const isAiFailure = /AI|gpt|openai|signal generation/i.test(reason);
+      const icon  = isAiFailure ? '⚠️' : '🕳️';
+      const color = isAiFailure ? '#FF8C00' : 'rgba(255,255,255,.55)';
+      const empty = `<div style="text-align:center;padding:40px 24px;color:rgba(255,255,255,.55)">
+        <div style="font-size:2rem;margin-bottom:10px">${icon}</div>
+        <div style="font-size:0.85rem;font-weight:700;color:${color};margin-bottom:8px;max-width:420px;margin-left:auto;margin-right:auto;line-height:1.45">${reason.replace(/[<>]/g,'')}</div>
+        <div style="font-size:0.72rem;color:rgba(255,255,255,.35);margin-bottom:14px">Sources tried: live Hacker News + AI Reddit synthesis</div>
+        <button onclick="scanRedditMonitor()" style="padding:9px 20px;background:#FF4500;color:white;border:none;border-radius:8px;font-size:0.78rem;cursor:pointer;font-weight:700">🔄 Try Again</button>
+      </div>`;
       if (feed)  feed.innerHTML  = empty;
       if (tFeed) tFeed.innerHTML = empty;
       if (sFeed) sFeed.innerHTML = empty;
+      showToast(isAiFailure ? '⚠️ AI signal generation hiccupped — click Try Again' : 'ℹ️ No threads matched — try broader keywords');
       return;
     }
 

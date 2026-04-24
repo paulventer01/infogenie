@@ -1539,7 +1539,7 @@ Each item must have:
 }
 Make titles highly specific and realistic — they should mention real concerns, competitor names, or industry terms. No generic filler.`;
 
-      try {
+      const callAI = async () => {
         const completion = await openai.chat.completions.create({
           model: 'gpt-4o',
           messages: [{ role: 'user', content: prompt }],
@@ -1548,7 +1548,11 @@ Make titles highly specific and realistic — they should mention real concerns,
         });
         const raw = completion.choices[0]?.message?.content || '{}';
         const obj = JSON.parse(raw);
-        const arr = obj.posts || obj.threads || Object.values(obj)[0] || [];
+        let arr = obj.posts || obj.threads || (Array.isArray(obj) ? obj : null);
+        if (!Array.isArray(arr)) {
+          const firstArr = Object.values(obj).find(v => Array.isArray(v));
+          arr = firstArr || [];
+        }
         return arr.map(p => ({
           title:     p.title     || '',
           subreddit: p.subreddit || 'r/investing',
@@ -1564,15 +1568,34 @@ Make titles highly specific and realistic — they should mention real concerns,
           serpLikely: p.serpLikely || false,
           opportunity:p.opportunity|| 'Monitor and engage with this thread.',
           source: 'ai'
-        }));
-      } catch { return []; }
+        })).filter(p => p.title);
+      };
+
+      // 1 retry on transient OpenAI / parse failures.
+      try {
+        const out = await callAI();
+        if (out.length > 0) return { posts: out, error: null };
+        throw new Error('AI returned 0 valid posts');
+      } catch(e1) {
+        console.warn('[reddit-monitor] AI attempt 1 failed:', e1.message);
+        try {
+          const out = await callAI();
+          if (out.length > 0) return { posts: out, error: null };
+          return { posts: [], error: 'AI returned no usable posts after 2 attempts' };
+        } catch(e2) {
+          console.error('[reddit-monitor] AI attempt 2 failed:', e2.message);
+          return { posts: [], error: `AI signal generation failed: ${e2.message}` };
+        }
+      }
     };
 
     // Run HN + AI signals in parallel
-    const [hnPosts, aiPosts] = await Promise.all([
+    const [hnPosts, aiResult] = await Promise.all([
       fetchHN(queries[0]),
       fetchAISignals()
     ]);
+    const aiPosts = aiResult.posts || [];
+    const aiError = aiResult.error || null;
 
     // Score HN posts with GPT-4o
     let scoredHN = hnPosts;
@@ -1599,10 +1622,21 @@ Each item: { "relevance": 0-100, "sentiment": "positive"|"neutral"|"negative", "
     const all = [...scoredHN, ...aiPosts];
     all.sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
 
-    res.json({ posts: all, sources: { hn: scoredHN.length, ai: aiPosts.length } });
+    // If everything came back empty, surface a real error so the client can show it.
+    let topError = null;
+    if (all.length === 0) {
+      if (aiError) topError = aiError;
+      else if (scoredHN.length === 0 && aiPosts.length === 0) topError = 'No live HN matches and AI returned no posts. Try broader keywords or different competitors.';
+    }
+
+    res.json({
+      posts: all,
+      sources: { hn: scoredHN.length, ai: aiPosts.length },
+      error: topError
+    });
   } catch(err) {
     console.error('/api/reddit-monitor error:', err.message);
-    res.json({ posts: [], error: err.message });
+    res.json({ posts: [], error: `Server error: ${err.message}` });
   }
 });
 
