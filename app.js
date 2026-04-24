@@ -14054,9 +14054,9 @@ function buildPlanView(compName) {
 
     <!-- METRICS SUMMARY BAR -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
-      <div style="background:var(--ig-grad);border-radius:14px;padding:18px 16px;text-align:center">
+      <div style="background:linear-gradient(135deg,#062A36,#0A4858);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#00E5FF">${myROAS}×</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.6);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Your ROAS Now</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.7);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Your ROAS Now</div>
       </div>
       <div style="background:linear-gradient(135deg,#1a0a28,#2D1060);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#F59E0B">${compROAS}×</div>
