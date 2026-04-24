@@ -6168,6 +6168,41 @@ const FUNNEL_STAGES = [
   { id:'advocacy',   label:'Advocacy',   icon:'🌟', color:'#7C3AED', bg:'#F5F3FF', fmt:'Community', tip:'Client wins, UGC, referrals, private challenges — turn buyers into brand evangelists.' },
 ];
 
+// ── 2026 Post Archetype Library — 4 proven formats per funnel stage ──────────
+// Source: The 2026 Instagram Content Growth System (cold → buyer journey)
+const POST_ARCHETYPES = {
+  awareness: [
+    { id:'pattern_interrupt', icon:'🪝', title:'Pattern Interrupt Hook',    hint:'POV-style opener that stops the scroll',     starter:'POV: ',           prompt:'Write a pattern-interrupt hook caption for {brand} in {industry} starting with "POV:" — open with an uncomfortable truth or counter-intuitive observation about your audience. Keep it 2-3 short punchy lines ending on a cliffhanger. Add 2-3 relevant emojis. No hashtags except 2 niche ones at the end.' },
+    { id:'contrarian',        icon:'⚡', title:'Contrarian Take',           hint:'Challenge a popular belief in your niche',   starter:'Unpopular opinion: ', prompt:'Write a contrarian-take caption for {brand} in {industry} starting with "Unpopular opinion:" — challenge a widely-accepted belief in the space. Back it up with one strong reason in 3-4 lines. Provocative but not insulting. End with a question to spark replies.' },
+    { id:'micro_story',       icon:'📖', title:'Relatable Micro-Story',     hint:'A short personal moment that resonates',     starter:'',                prompt:'Write a 2-3 sentence relatable micro-story caption for {brand} in {industry} that ends with a vulnerable admission ("I had X but still felt Y"). Raw and honest, not polished. Add one relatable emoji and a soft CTA.' },
+    { id:'niche_callout',     icon:'🎯', title:'Niche Call-Out',            hint:'Speak directly to a specific sub-audience',  starter:'This is for ',    prompt:'Write a niche call-out caption for {brand} in {industry} opening with "This is for [specific sub-audience stuck at a specific stage]" — laser-targeted so they feel seen. 4-5 lines, then a clear next step.' },
+  ],
+  interest: [
+    { id:'if_then',           icon:'🧩', title:'"If you\'re X, do Y" Framework', hint:'Diagnostic prescription matching reader to action', starter:"If you're ", prompt:'Write an "If you\'re X, do Y" framework caption for {brand} in {industry}. Open with a diagnostic statement matching the reader to a specific action ("If you\'re a [role] doing [behaviour], stop and try [action]"). Personalised-prescription tone. 4-6 lines.' },
+    { id:'mistake_based',     icon:'❌', title:'Mistake-Based Content',     hint:'Common error in your space + the fix',       starter:'Why your ',       prompt:'Write a mistake-based caption for {brand} in {industry} naming a common error ("Why your X looks good but doesn\'t Y") and revealing the fix in 3-4 educational lines. End with one actionable takeaway.' },
+    { id:'positioning',       icon:'🎯', title:'Clear Positioning Post',    hint:'One-line statement of who you help & how',   starter:'I help ',         prompt:'Write a clear positioning caption for {brand} in {industry} opening with "I help [audience] [outcome] through [method]". Crisp, no jargon. Then 2-3 lines on what makes the approach different. End with an invitation.' },
+    { id:'proof_story',       icon:'📊', title:'Proof-Led Storytelling',    hint:'Result-driven mini case study',              starter:'How a ',          prompt:'Write a proof-led story caption for {brand} in {industry}: "How a [client type] [achieved specific result] from [single action]". Lead with the outcome, then the mechanism in 2-3 sentences. Specific numbers > vague claims.' },
+  ],
+  nurture: [
+    { id:'bts_thinking',      icon:'🔍', title:'Behind-the-Scenes Thinking', hint:'Reveal your process, not just outputs',     starter:'How I ',          prompt:'Write a behind-the-scenes thinking caption for {brand} in {industry} revealing the process ("How I structure X for Y"). Show the framework in 3-4 numbered or bulleted steps, not just the result.' },
+    { id:'decision_breakdown',icon:'⚖️', title:'Decision Breakdown',        hint:'Walk through a real choice you made',        starter:'Why we ',         prompt:'Write a decision-breakdown caption for {brand} in {industry}: "Why we [removed/added/changed] X" — show the trade-off, what data/observation drove it, and the lesson. 5-6 honest lines.' },
+    { id:'journey_story',     icon:'🛤️', title:'Client Journey Story',      hint:'From → To, with the messy middle',           starter:'From ',           prompt:'Write a client-journey caption for {brand} in {industry}: "From [starting state] → [ending state]". Include the messy middle and one specific turning point. End with the lesson others can apply.' },
+    { id:'real_talk',         icon:'🗣️', title:'Real Talk Content',         hint:'Honest take no one says out loud',           starter:'What no one tells you ', prompt:'Write a real-talk caption for {brand} in {industry} opening "What no one tells you about [topic]". Strip the BS and share the uncomfortable truth in 4-5 lines. End with empathy, not preaching.' },
+  ],
+  conversion: [
+    { id:'situation_cta',     icon:'💬', title:'Situation-Based CTA',       hint:'DM keyword trigger for warm leads',          starter:'DM "',            prompt:'Write a situation-based CTA caption for {brand} in {industry} ending with "DM [KEYWORD] if [specific situation]". Self-qualifying invitation — not a hard sell. 4-5 lines describing who it\'s for, then the trigger.' },
+    { id:'callout_post',      icon:'📣', title:'Call-Out Post',             hint:'Direct address to your ideal buyer',         starter:"If you're tired of ", prompt:'Write a call-out conversion caption for {brand} in {industry} opening "If you\'re tired of [specific pain]" — name the frustration, show you understand, then offer a clear next step. Empathetic conversion tone.' },
+    { id:'micro_offer',       icon:'🎁', title:'Micro-Offer',               hint:'Low-friction entry product or audit',        starter:'Reply "audit" ',  prompt:'Write a micro-offer caption for {brand} in {industry}: a free or low-friction offer ("Reply \'audit\' and I\'ll review your X"). Make the value crystal-clear in one line, then 2 short lines on what they\'ll get. Urgent but not pushy.' },
+    { id:'objection_handle',  icon:'🛡️', title:'Objection Handling',        hint:'Tackle the #1 reason they hesitate',         starter:"You don't need ",  prompt:'Write an objection-handling caption for {brand} in {industry} that flips a common objection ("You don\'t need more X, you need better Y"). Reframe and resolve in 3-4 lines. End with the action that costs them nothing.' },
+  ],
+  advocacy: [
+    { id:'screenshot_proof',  icon:'📸', title:'Screenshot-Based Proof',    hint:'Real testimonial / DM screenshot caption',   starter:'',                prompt:'Write a caption to accompany a screenshot of a client win or DM testimonial for {brand} in {industry}. Frame the screenshot — what was the situation, what changed, what they did next. 4-5 lines of social proof.' },
+    { id:'client_led',        icon:'🎤', title:'Client-Led Content',        hint:'Hand the mic to a client',                   starter:'In their words: ', prompt:'Write a client-led caption for {brand} in {industry} structured as "In their words:" + a quoted client takeaway, then your 1-line response. Authentic and low-ego — let the client be the hero.' },
+    { id:'public_win',        icon:'🏆', title:'Public Win',                hint:'Celebrate a result transparently',           starter:'Sharing this because ', prompt:'Write a public-win caption for {brand} in {industry}: a transparent celebration ("Sharing this because it\'s proof that X works"). Specific numbers, not vague flexes. Credit the client and the system.' },
+    { id:'referral_loop',     icon:'🔁', title:'Referral Loop',             hint:'Invite advocates to bring others in',        starter:'If this helped you, ', prompt:'Write a referral-loop caption for {brand} in {industry} inviting current followers to tag/share with one person who needs it. Natural and warm, never pushy. End with what to do if someone tags them back.' },
+  ],
+};
+
 function buildSocialCalendar() {
   const wrap = document.getElementById('socialWrap');
   if (!wrap) return;
@@ -6237,6 +6272,7 @@ function buildSocialCalendar() {
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${p.status==='scheduled'?'#EFF6FF':p.status==='published'?'#F0FDF4':'#F9FAFB'};color:${p.status==='scheduled'?'#0066FF':p.status==='published'?'#059669':'#6B7280'};text-transform:uppercase">${p.status||'scheduled'}</span>
             ${p.funnelStage ? (()=>{ const fs=FUNNEL_STAGES.find(s=>s.id===p.funnelStage); return fs?`<span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${fs.bg};color:${fs.color}">${fs.icon} ${fs.label}</span>`:''; })() : ''}
+            ${p.archetypeTitle ? `<span title="2026 Post Archetype: ${p.archetypeTitle}" style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:#F5F3FF;color:#7C3AED;border:1px solid #DDD6FE">✨ ${p.archetypeTitle}</span>` : ''}
             <button onclick="window._socialPosts=window._socialPosts.filter(x=>x.id!=='${p.id}');buildSocialCalendar()" style="font-size:0.62rem;color:#DC2626;background:white;border:1px solid #FCA5A5;border-radius:5px;padding:2px 7px;cursor:pointer">Remove</button>
           </div>
         </div>`;
@@ -6404,6 +6440,11 @@ window.openCreatePost = function(preDate) {
           </select>
           <div id="cp-funnel-tip" style="margin-top:5px;font-size:0.68rem;color:#6B7280;line-height:1.4;display:none"></div>
         </div>
+        <div id="cp-archetype-wrap" style="display:none">
+          <div style="font-size:0.7rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px">✨ Pick a Proven Archetype <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#9CA3AF">(2026 formats)</span></div>
+          <div id="cp-archetype-row" style="display:grid;grid-template-columns:1fr 1fr;gap:7px"></div>
+          <div id="cp-archetype-active" style="margin-top:6px;font-size:0.66rem;color:#7C3AED;font-weight:700;display:none"></div>
+        </div>
         <div style="display:flex;gap:10px;margin-top:4px">
           <button id="cp-cancel" style="flex:1;padding:11px;background:#F3F4F6;border:none;border-radius:10px;font-size:0.85rem;font-weight:600;color:#6B7280;cursor:pointer">Cancel</button>
           <button id="cp-save" style="flex:2;padding:11px;background:linear-gradient(135deg,#7C3AED,#4F46E5);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">📅 Schedule Post</button>
@@ -6421,11 +6462,72 @@ window.openCreatePost = function(preDate) {
     document.getElementById('cp-filename').textContent = f ? f.name : 'No file selected';
   });
 
+  // Selected archetype state (per-modal)
+  let _cpSelectedArchetype = null;
+
+  function _cpRenderArchetypes(stageId) {
+    const wrap   = document.getElementById('cp-archetype-wrap');
+    const row    = document.getElementById('cp-archetype-row');
+    const active = document.getElementById('cp-archetype-active');
+    if (!wrap || !row) return;
+    _cpSelectedArchetype = null;
+    if (active) active.style.display = 'none';
+    const list = stageId ? (POST_ARCHETYPES[stageId] || []) : [];
+    if (list.length === 0) { wrap.style.display = 'none'; row.innerHTML = ''; return; }
+    const stage = FUNNEL_STAGES.find(s => s.id === stageId);
+    const stageColor = stage?.color || '#7C3AED';
+    const stageBg    = stage?.bg    || '#F5F3FF';
+    row.innerHTML = list.map(a => `
+      <button type="button" data-arch="${a.id}" class="cp-arch-btn" style="text-align:left;padding:8px 10px;background:white;border:1.5px solid #E5E7EB;border-radius:9px;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+          <span style="font-size:0.95rem">${a.icon}</span>
+          <span style="font-size:0.72rem;font-weight:700;color:#0A1628;line-height:1.2">${a.title}</span>
+        </div>
+        <div style="font-size:0.62rem;color:#6B7280;line-height:1.3">${a.hint}</div>
+      </button>`).join('');
+    wrap.style.display = 'block';
+    row.querySelectorAll('.cp-arch-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        const archId = b.getAttribute('data-arch');
+        const arch = (POST_ARCHETYPES[stageId] || []).find(x => x.id === archId);
+        if (!arch) return;
+        _cpSelectedArchetype = arch;
+        // Highlight selected
+        row.querySelectorAll('.cp-arch-btn').forEach(x => {
+          x.style.background = 'white';
+          x.style.borderColor = '#E5E7EB';
+          x.style.boxShadow = 'none';
+        });
+        b.style.background = stageBg;
+        b.style.borderColor = stageColor;
+        b.style.boxShadow = `0 0 0 3px ${stageColor}22`;
+        // Pre-fill caption starter only if textarea is empty
+        const capEl = document.getElementById('cp-caption');
+        if (capEl && !capEl.value.trim() && arch.starter) capEl.value = arch.starter;
+        if (capEl) capEl.focus();
+        // Update AI button label (strip leading/trailing quotes from titles like "If you're X, do Y" Framework)
+        const aiBtn = document.getElementById('cp-ai-gen');
+        const labelTitle = arch.title.includes('"') ? arch.title.replace(/"/g,'') : arch.title;
+        if (aiBtn) aiBtn.textContent = `✨ Generate “${labelTitle}” with AI`;
+        // Active label
+        if (active) {
+          active.innerHTML = `${arch.icon} <strong>${arch.title}</strong> selected — AI will write in this format`;
+          active.style.color = stageColor;
+          active.style.display = 'block';
+        }
+      });
+    });
+  }
+
   document.getElementById('cp-funnel-stage').addEventListener('change', function() {
     const tip = document.getElementById('cp-funnel-tip');
     const stage = FUNNEL_STAGES.find(s => s.id === this.value);
     if (stage && tip) { tip.textContent = '💡 ' + stage.tip; tip.style.display = 'block'; }
     else if (tip) { tip.style.display = 'none'; }
+    _cpRenderArchetypes(this.value);
+    // Reset AI button label when stage changes
+    const aiBtn = document.getElementById('cp-ai-gen');
+    if (aiBtn) aiBtn.textContent = '✨ Generate Caption with AI';
   });
 
   document.getElementById('cp-ai-gen').addEventListener('click', async () => {
@@ -6433,11 +6535,25 @@ window.openCreatePost = function(preDate) {
     const btn = document.getElementById('cp-ai-gen');
     const capEl = document.getElementById('cp-caption');
     const selectedPlats = SOCIAL_PLATFORMS.filter((_,i)=>document.getElementById('cp-plat-'+i)?.checked).map(p=>p.name);
-    btn.disabled = true; btn.textContent = '⏳ Generating…'; statusEl.style.display = 'block';
+    btn.disabled = true;
+    const origLabel = btn.textContent;
+    btn.textContent = '⏳ Generating…';
+    statusEl.style.display = 'block';
 
     const domain = analysisData?.url || 'your brand';
     const industry = analysisData?.industry?.name || 'your industry';
-    const prompt = `Write an engaging social media post caption for ${domain} in the ${industry} industry. Target platforms: ${selectedPlats.join(', ') || 'Instagram, TikTok'}. Make it compelling, use relevant emojis, include a clear call-to-action, and keep it under 200 words. Return only the caption text, no extra commentary.`;
+    const platLine = `Target platforms: ${selectedPlats.join(', ') || 'Instagram, TikTok'}.`;
+    let prompt;
+    if (_cpSelectedArchetype) {
+      const archPrompt = _cpSelectedArchetype.prompt
+        .replace(/\{brand\}/g, domain)
+        .replace(/\{industry\}/g, industry);
+      prompt = `${archPrompt} ${platLine} Return only the caption text, no extra commentary, no quotation marks around the caption.`;
+      statusEl.textContent = `Generating ${_cpSelectedArchetype.title}…`;
+    } else {
+      prompt = `Write an engaging social media post caption for ${domain} in the ${industry} industry. ${platLine} Make it compelling, use relevant emojis, include a clear call-to-action, and keep it under 200 words. Return only the caption text, no extra commentary.`;
+      statusEl.textContent = 'Generating…';
+    }
 
     try {
       const res = await fetch('/api/ai-social-caption', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prompt, domain, industry, platforms: selectedPlats }) });
@@ -6446,7 +6562,7 @@ window.openCreatePost = function(preDate) {
       else capEl.value = `Unlock the power of ${domain} — the smarter way to grow in ${industry}. Join thousands of businesses already winning with us. Tap the link in bio to get started today! 🚀 #growth #${industry.replace(/\s/g,'')} #results`;
     } catch { capEl.value = `${domain} is changing how ${industry} works. Are you keeping up? Discover what sets us apart — link in bio. 💡 #innovation #${industry.replace(/\s/g,'')} #growth`; }
 
-    btn.disabled = false; btn.textContent = '✨ Generate Caption with AI'; statusEl.style.display = 'none';
+    btn.disabled = false; btn.textContent = origLabel; statusEl.style.display = 'none';
   });
 
   document.getElementById('cp-save').addEventListener('click', () => {
@@ -6456,13 +6572,15 @@ window.openCreatePost = function(preDate) {
     const status      = document.getElementById('cp-status').value;
     const file        = document.getElementById('cp-file').files[0];
     const funnelStage = document.getElementById('cp-funnel-stage').value;
+    const archId      = _cpSelectedArchetype?.id || null;
+    const archTitle   = _cpSelectedArchetype?.title || null;
     const selPlats = SOCIAL_PLATFORMS.filter((_,i)=>document.getElementById('cp-plat-'+i)?.checked);
     if (!caption) { showToast('⚠️ Please write or generate a caption first'); return; }
     if (!date)    { showToast('⚠️ Please set a schedule date'); return; }
     if (selPlats.length === 0) { showToast('⚠️ Select at least one platform'); return; }
     if (!window._socialPosts) window._socialPosts = [];
     selPlats.forEach(p => {
-      window._socialPosts.push({ id:'post_'+Date.now()+'_'+p.name, platform:p.name, caption, scheduledDate:date, scheduledTime:time||'09:00', status, funnelStage: funnelStage||null, fileName: file?.name||null, createdAt: new Date().toLocaleString() });
+      window._socialPosts.push({ id:'post_'+Date.now()+'_'+p.name, platform:p.name, caption, scheduledDate:date, scheduledTime:time||'09:00', status, funnelStage: funnelStage||null, archetypeId: archId, archetypeTitle: archTitle, fileName: file?.name||null, createdAt: new Date().toLocaleString() });
     });
     overlay.remove();
     buildSocialCalendar();
