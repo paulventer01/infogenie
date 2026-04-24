@@ -188,6 +188,35 @@ window._igLaunch = function(idx) {
   }
 };
 
+// Live Intelligence info popover — explains how auto-targeting works
+window._showLiveIntelInfo = function() {
+  const existing = document.getElementById('liveIntelInfoOverlay');
+  if (existing) { existing.remove(); return; }
+  const ov = document.createElement('div');
+  ov.id = 'liveIntelInfoOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(10,22,40,.65);backdrop-filter:blur(4px);padding:20px';
+  ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+  const segCount = (window._lastCampRecs && window.analysisData) ? (analysisData.competitors || []).reduce((n,c)=>n+(c.audiences||[]).length,0) : 0;
+  const compCount = (window.analysisData && analysisData.competitors) ? analysisData.competitors.length : 0;
+  ov.innerHTML = `<div style="background:white;border-radius:16px;max-width:520px;width:100%;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.4);font-family:'Inter',sans-serif">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="display:inline-flex;align-items:center;gap:6px;background:#0369A1;color:white;padding:5px 12px;border-radius:999px;font-size:0.72rem;font-weight:800"><span style="width:7px;height:7px;border-radius:50%;background:#10F981;box-shadow:0 0 8px #10F981;animation:livePulse 1.4s infinite"></span>Live Intelligence</span>
+      </div>
+      <button onclick="document.getElementById('liveIntelInfoOverlay').remove()" style="background:#F3F4F6;border:none;width:30px;height:30px;border-radius:50%;font-size:1rem;cursor:pointer;color:#6B7280">✕</button>
+    </div>
+    <h3 style="font-family:Sora,sans-serif;font-size:1.05rem;font-weight:800;color:#0A1628;margin:0 0 8px 0">How Live Intelligence works</h3>
+    <p style="font-size:0.85rem;color:#475569;line-height:1.55;margin:0 0 16px 0">InfoGenie continuously analyses your <strong>${compCount}</strong> competitors' audience targeting, ad creative, and conversion patterns. It extracts the highest-converting segments and auto-applies them to your campaigns — no manual setup required.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:11px"><div style="font-size:0.65rem;font-weight:700;color:#0369A1;text-transform:uppercase;margin-bottom:3px">Segments tracked</div><div style="font-size:1.2rem;font-weight:800;color:#0A1628">${segCount || '—'}</div></div>
+      <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:11px"><div style="font-size:0.65rem;font-weight:700;color:#059669;text-transform:uppercase;margin-bottom:3px">Refresh interval</div><div style="font-size:1.2rem;font-weight:800;color:#0A1628">6 hours</div></div>
+    </div>
+    <div style="font-size:0.78rem;color:#475569;line-height:1.5"><strong style="color:#0A1628">What's auto-applied:</strong><ul style="margin:6px 0 0 18px;padding:0"><li>Lookalike audiences from competitor's best-converting segments</li><li>Interest & behaviour overlap detected via DataForSEO + Meta APIs</li><li>Bid adjustments by segment based on competitor ROAS data</li><li>Creative variants matched to each segment's pain points</li></ul></div>
+    <button onclick="document.getElementById('liveIntelInfoOverlay').remove()" style="width:100%;margin-top:18px;padding:11px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer">Got it</button>
+  </div>`;
+  document.body.appendChild(ov);
+};
+
 window._igCreative = function(idx) {
   try {
     if ((!window._lastCampRecs || !window._lastCampRecs[idx]) && window.analysisData) {
@@ -4628,7 +4657,8 @@ function buildCampaigns() {
     <div class="data-table-card" style="margin-bottom:24px;background:linear-gradient(135deg,#F0F9FF,#E0F2FE);border:1.5px solid #BAE6FD">
       <div class="dtc-header">
         <h3 style="color:#0369A1">🎯 Auto Target Audience — AI-Detected Segments</h3>
-        <span class="atag" style="background:#0369A1">Live Intelligence</span>
+        <button type="button" onclick="window._showLiveIntelInfo && window._showLiveIntelInfo()" class="atag" style="background:#0369A1;border:none;color:white;cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:4px 10px;font-size:0.7rem;font-weight:700;border-radius:999px" title="Click for details on how Live Intelligence works"><span style="width:6px;height:6px;border-radius:50%;background:#10F981;box-shadow:0 0 6px #10F981;animation:livePulse 1.4s infinite ease-out"></span>Live Intelligence</button>
+        <style>@keyframes livePulse{0%{opacity:1}50%{opacity:.4}100%{opacity:1}}</style>
       </div>
       <p style="font-size:0.8rem;color:#0369A1;margin:0 0 14px 0">InfoGenie has automatically identified these high-value audience segments from competitor analysis. These will be auto-applied to your campaigns.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">

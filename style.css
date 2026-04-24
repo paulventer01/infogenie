@@ -7298,3 +7298,17 @@ select option { background: #FFFFFF !important; color: #0F4C4A !important; }
 }
 .view-header > .container,
 .intel-header > .container { width: 100%; }
+
+/* AI Creative Studio modal — tab buttons stay readable in light mode */
+[data-theme="light"] .cs-tab-btn {
+  color: #1E293B !important;
+  font-weight: 700 !important;
+}
+[data-theme="light"] .cs-tab-btn[style*="color:white"] {
+  color: #0066FF !important;
+  background: rgba(0,102,255,.08) !important;
+}
+[data-theme="light"] .cs-tab-btn:hover {
+  background: rgba(0,102,255,.06) !important;
+  color: #0066FF !important;
+}
