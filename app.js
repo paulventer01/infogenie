@@ -4716,9 +4716,9 @@ function buildCampaigns() {
           <div class="camp-hero-title">${heroTitle}</div>
           <div class="camp-hero-sub">${heroSub}</div>
         </div>
-        <button onclick="window._igLaunch(0)" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;padding:11px 22px;font-size:0.82rem;font-weight:800;color:white;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;box-shadow:0 4px 16px rgba(0,102,255,.35);transition:all .2s;flex-shrink:0" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 22px rgba(0,102,255,.45)'" onmouseout="this.style.transform='';this.style.boxShadow='0 4px 16px rgba(0,102,255,.35)'">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          🚀 Launch Campaign
+        <button type="button" data-ig-launch="0" onclick="event.preventDefault();event.stopPropagation();window._igLaunch && window._igLaunch(0);return false;" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;padding:11px 22px;font-size:0.82rem;font-weight:800;color:white;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;box-shadow:0 4px 16px rgba(0,102,255,.35);transition:all .2s;flex-shrink:0;pointer-events:auto;position:relative;z-index:10" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 22px rgba(0,102,255,.45)'" onmouseout="this.style.transform='';this.style.boxShadow='0 4px 16px rgba(0,102,255,.35)'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <span style="pointer-events:none">🚀 Launch Campaign</span>
         </button>
       </div>
       <div class="camp-kpis">
@@ -14620,6 +14620,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Campaign card buttons now use direct onclick="window._igLaunch(idx)" and window._igCreative(idx)
   // — defined at top of app.js, no delegation needed
+  // SAFETY-NET delegation for hero "Launch Campaign" button — fires even if onclick fails
+  document.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-ig-launch]');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const idx = parseInt(btn.getAttribute('data-ig-launch'), 10) || 0;
+    try {
+      if (typeof window._igLaunch === 'function') window._igLaunch(idx);
+      else showToast('⚠️ Launch handler missing — please refresh');
+    } catch(err) {
+      console.error('Hero launch error:', err);
+      showToast('⚠️ ' + (err.message || 'Could not open Launch modal'));
+    }
+  });
 
   // Docs modal — close on backdrop click
   document.getElementById('docsModal').addEventListener('click', e => {
