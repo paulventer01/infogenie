@@ -1714,6 +1714,142 @@ Rules:
   }
 });
 
+// ── POST /api/intent-map — Classify keywords by search intent + page-fit ────
+app.post('/api/intent-map', async (req, res) => {
+  try {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const { brand='your brand', url='', industry='your industry', keywords=[], competitors=[] } = body;
+
+    if (typeof brand !== 'string' || typeof url !== 'string' || typeof industry !== 'string') {
+      return res.status(400).json({ error: 'brand, url and industry must be strings' });
+    }
+    if (!Array.isArray(keywords) || !Array.isArray(competitors)) {
+      return res.status(400).json({ error: 'keywords and competitors must be arrays' });
+    }
+
+    const cleanKeywords = keywords
+      .map(k => typeof k === 'string' ? k.trim() : '')
+      .filter(Boolean)
+      .slice(0, 40);
+
+    if (cleanKeywords.length === 0) {
+      return res.status(400).json({ error: 'At least one keyword is required' });
+    }
+
+    const compNames = competitors
+      .slice(0, 6)
+      .map(c => typeof c === 'string' ? c : (c && typeof c === 'object' ? (c.name || '') : ''))
+      .filter(Boolean)
+      .join(', ') || 'category competitors';
+
+    const systemPrompt = `You are a senior SEO and search-intent strategist. Classify keywords by user intent with high precision and recommend page types. Return JSON only — no commentary.`;
+
+    const userPrompt = `Brand: ${brand}
+Brand URL: ${url || 'unknown'}
+Industry: ${industry}
+Direct competitors: ${compNames}
+
+Keywords to classify (${cleanKeywords.length}):
+${cleanKeywords.map((k,i) => `${i+1}. ${k}`).join('\n')}
+
+For each keyword, classify the search intent and recommend the right page type. Use these intent classes:
+- "informational" — user wants to learn (blog post, guide, FAQ, how-to)
+- "commercial" — user is comparing options (comparison, review, listicle, category page)
+- "transactional" — user is ready to buy/sign-up (product page, pricing page, signup landing)
+- "navigational" — user is searching for a specific brand or competitor (brand page, comparison vs competitor)
+
+Return JSON exactly in this shape:
+{
+  "keywords": [
+    {
+      "keyword": "exact keyword from list",
+      "intent": "informational|commercial|transactional|navigational",
+      "confidence": 0-100,
+      "recommendedPageType": "Blog Post|How-To Guide|Comparison Page|Review|Category Page|Product Page|Pricing Page|Signup Landing|Brand Page|Competitor Comparison|FAQ",
+      "intentMatchScore": 0-100,
+      "matchReason": "one short sentence on whether ${url || 'the brand site'} likely already serves this intent well",
+      "competitorGap": true or false,
+      "gapReason": "one short sentence: which competitor likely owns this and why ${brand} should target it",
+      "opportunity": "one concrete action sentence — what to publish or build",
+      "estimatedCPC": "low|medium|high",
+      "priority": "must-do|nice-to-have|skip"
+    }
+  ]
+}
+
+Be ruthless and specific. Score intentMatchScore HIGH (80-100) only if the brand's likely current site clearly serves the intent; LOW (0-40) if there's a clear mismatch. Mark competitorGap=true when this is a keyword the brand is likely NOT ranking for but a competitor is. Keep all sentences under 18 words.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      max_tokens: 3500,
+      response_format: { type: 'json_object' }
+    });
+
+    const raw = completion.choices[0]?.message?.content || '{}';
+    let obj;
+    try { obj = JSON.parse(raw); } catch(parseErr) {
+      console.error('/api/intent-map JSON parse failed:', parseErr.message);
+      return res.status(502).json({ error: 'AI returned invalid JSON. Try again.' });
+    }
+
+    let arr = Array.isArray(obj.keywords) ? obj.keywords : (Array.isArray(obj) ? obj : []);
+    if (!Array.isArray(arr)) {
+      const firstArr = Object.values(obj).find(v => Array.isArray(v));
+      arr = firstArr || [];
+    }
+
+    const validIntents = new Set(['informational','commercial','transactional','navigational']);
+    const items = arr
+      .filter(k => k && typeof k === 'object' && k.keyword)
+      .map(k => ({
+        keyword:             String(k.keyword).slice(0, 120),
+        intent:              validIntents.has(k.intent) ? k.intent : 'informational',
+        confidence:          Math.max(0, Math.min(100, parseInt(k.confidence) || 60)),
+        recommendedPageType: String(k.recommendedPageType || 'Blog Post').slice(0, 60),
+        intentMatchScore:    Math.max(0, Math.min(100, parseInt(k.intentMatchScore) || 50)),
+        matchReason:         String(k.matchReason || '').slice(0, 200),
+        competitorGap:       k.competitorGap === true,
+        gapReason:           String(k.gapReason || '').slice(0, 200),
+        opportunity:         String(k.opportunity || 'Create dedicated content for this keyword.').slice(0, 240),
+        estimatedCPC:        ['low','medium','high'].includes(k.estimatedCPC) ? k.estimatedCPC : 'medium',
+        priority:            ['must-do','nice-to-have','skip'].includes(k.priority) ? k.priority : 'nice-to-have'
+      }));
+
+    if (items.length === 0) {
+      return res.status(502).json({ error: 'AI returned no usable keywords. Try again with broader keywords.' });
+    }
+
+    // Build summary buckets
+    const byIntent = { informational:0, commercial:0, transactional:0, navigational:0 };
+    let gaps = 0;
+    let scoreSum = 0;
+    items.forEach(it => {
+      byIntent[it.intent]++;
+      if (it.competitorGap) gaps++;
+      scoreSum += it.intentMatchScore;
+    });
+    const avgScore = Math.round(scoreSum / items.length);
+
+    res.json({
+      keywords: items,
+      summary: {
+        total: items.length,
+        byIntent,
+        gaps,
+        avgIntentMatch: avgScore,
+        mustDoCount: items.filter(i => i.priority === 'must-do').length
+      }
+    });
+  } catch(err) {
+    console.error('/api/intent-map error:', err.message);
+    res.status(500).json({ error: `Intent classification failed: ${err.message}` });
+  }
+});
+
 // ── POST /api/icp-draft — Auto-draft Ideal Customer Profile from brand intel ─
 app.post('/api/icp-draft', async (req, res) => {
   try {

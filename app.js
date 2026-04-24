@@ -2180,6 +2180,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'icp-studio') {
     try { buildICPStudio(); } catch(e) { console.warn('buildICPStudio error:', e); }
   }
+  if (viewId === 'intent-map') {
+    try { buildIntentMap(); } catch(e) { console.warn('buildIntentMap error:', e); }
+  }
   if (viewId === 'content') {
     try { buildContent(); } catch(e) { console.warn('buildContent error:', e); }
   }
@@ -6664,6 +6667,290 @@ function _icpShowEmailSequenceModal(trigger, seq) {
     document.getElementById('icp-email-copyall').textContent = '✅ All 3 copied';
   };
   document.getElementById('icp-email-toreengage').onclick = () => { overlay.remove(); navigateTo('reengage'); };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SEARCH INTENT MAP — classify keywords by intent + page-fit + competitor gap
+// ═══════════════════════════════════════════════════════════════════════════
+window._intentMap = window._intentMap || null; // { keywords: [...], summary: {...} }
+
+function _imEsc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function _imSeedKeywords() {
+  // Pull a sensible default seed from analysisData: competitor topKeywords + brand-anchored navigationals
+  const seeds = new Set();
+  const ad = window.analysisData || {};
+  (ad.competitors || []).forEach(c => {
+    (c.topKeywords || []).slice(0, 3).forEach(k => seeds.add(String(k).toLowerCase()));
+  });
+  // Brand-anchored navigational candidates (use the actual brand/domain)
+  const rawDomain = String(ad.url || '').replace(/^https?:\/\//, '').replace(/\/.*/, '').replace(/^www\./, '');
+  const brandRoot = rawDomain.split('.')[0];
+  if (brandRoot) {
+    seeds.add(`${brandRoot} reviews`);
+    seeds.add(`${brandRoot} login`);
+    seeds.add(`is ${brandRoot} legit`);
+  }
+  // Top competitor brand-vs-brand comparison if both exist
+  const topComp = (ad.competitors || []).map(c => c.name).filter(Boolean)[0];
+  if (brandRoot && topComp) seeds.add(`${brandRoot} vs ${topComp}`);
+  // Industry-anchored commercial seeds as fallback
+  if (ad.industry?.name) {
+    seeds.add(`best ${ad.industry.name} platform`);
+    seeds.add(`how to choose a ${ad.industry.name} provider`);
+  }
+  return Array.from(seeds).slice(0, 12).join(', ');
+}
+
+function buildIntentMap() {
+  const wrap = document.getElementById('intentMapWrap');
+  if (!wrap) return;
+
+  const ad       = window.analysisData || {};
+  const brand    = _imEsc(ad.url || 'your brand');
+  const url      = _imEsc(ad.url || '');
+  const industry = _imEsc(ad.industry?.name || 'your industry');
+  const compsArr = (ad.competitors || []).map(c => c.name).filter(Boolean);
+  const compsCsv = _imEsc(compsArr.join(', '));
+  const seedCsv  = _imEsc(_imSeedKeywords());
+  const map      = window._intentMap;
+
+  wrap.innerHTML = `
+    <!-- CONFIG PANEL -->
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:16px;padding:22px 24px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,.04)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+        <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0066FF,#7C3AED);display:flex;align-items:center;justify-content:center;font-size:1.1rem">⚙️</div>
+        <div>
+          <div style="font-size:0.95rem;font-weight:800;color:#0A1628">Intent Map Settings</div>
+          <div style="font-size:0.75rem;color:#64748B">Keywords are classified by GPT-4o into 4 intent buckets and matched to the right page type.</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div>
+          <label style="font-size:0.7rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block">Your brand / domain</label>
+          <input id="im-brand" type="text" value="${brand}" placeholder="cmtrading.com" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:0.85rem;color:#0A1628;outline:none">
+        </div>
+        <div>
+          <label style="font-size:0.7rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block">Competitors (comma-separated)</label>
+          <input id="im-comps" type="text" value="${compsCsv}" placeholder="OANDA, Plus500, FXCM" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:0.85rem;color:#0A1628;outline:none">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:0.7rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block">Keywords to classify (comma-separated · up to 40)</label>
+        <textarea id="im-keywords" rows="3" placeholder="forex trading, CFD broker reviews, best forex platform, open trading account, Plus500 vs OANDA" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:0.85rem;color:#0A1628;outline:none;font-family:inherit;resize:vertical">${seedCsv}</textarea>
+        <div style="font-size:0.7rem;color:#94A3B8;margin-top:6px">Auto-seeded from your competitor analysis. Edit freely.</div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+        <button onclick="generateIntentMap()" style="padding:10px 22px;background:linear-gradient(135deg,#0066FF,#7C3AED);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">⚡ Generate Intent Map</button>
+      </div>
+    </div>
+
+    <div id="im-results">${map ? _imRender(map) : _imEmptyState()}</div>
+  `;
+
+  // Wire the header button to the same handler
+  const hdrBtn = document.getElementById('intentRunBtn');
+  if (hdrBtn) hdrBtn.onclick = () => generateIntentMap();
+}
+
+function _imEmptyState() {
+  return `
+    <div style="background:white;border:1px dashed #CBD5E1;border-radius:16px;padding:60px 24px;text-align:center">
+      <div style="font-size:3rem;margin-bottom:14px">🧭</div>
+      <div style="font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px">Ready to map your search intent</div>
+      <div style="font-size:0.85rem;color:#64748B;max-width:520px;margin:0 auto;line-height:1.5">Enter your keywords above and click <strong style="color:#0066FF">Generate Intent Map</strong>. GPT-4o will classify each one into Informational, Commercial, Transactional or Navigational, recommend the right page type, and flag gaps your competitors are exploiting.</div>
+    </div>`;
+}
+
+async function generateIntentMap() {
+  const brand    = (document.getElementById('im-brand')?.value || '').trim();
+  const compsCsv = (document.getElementById('im-comps')?.value || '').trim();
+  const kwCsv    = (document.getElementById('im-keywords')?.value || '').trim();
+
+  const keywords    = kwCsv.split(',').map(s => s.trim()).filter(Boolean);
+  const competitors = compsCsv.split(',').map(s => s.trim()).filter(Boolean);
+
+  if (keywords.length === 0) { showToast('⚠️ Enter at least one keyword to classify'); return; }
+  if (keywords.length > 40)  { showToast('ℹ️ Capping at the first 40 keywords'); }
+
+  const ad       = window.analysisData || {};
+  const url      = ad.url || brand;
+  const industry = ad.industry?.name || 'marketing';
+
+  const out = document.getElementById('im-results');
+  if (out) out.innerHTML = `
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:16px;padding:60px 24px;text-align:center">
+      <div style="width:48px;height:48px;border:4px solid rgba(0,102,255,.2);border-top-color:#0066FF;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px"></div>
+      <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:700;color:#0A1628;margin-bottom:6px">Classifying ${keywords.length} keyword${keywords.length===1?'':'s'}…</div>
+      <div style="font-size:0.78rem;color:#64748B;margin-bottom:8px">GPT-4o is mapping intent, page-type fit, and competitor gaps</div>
+      <div style="font-size:0.72rem;color:#94A3B8">⏱ Usually takes 8–18 seconds</div>
+    </div>`;
+
+  try {
+    const resp = await fetch('/api/intent-map', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brand, url, industry, keywords, competitors })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+
+    window._intentMap = data;
+    if (out) out.innerHTML = _imRender(data);
+    showToast(`✅ Mapped ${data.summary.total} keywords · ${data.summary.gaps} competitor gap${data.summary.gaps===1?'':'s'} · ${data.summary.mustDoCount} must-do`);
+  } catch(err) {
+    if (out) out.innerHTML = `
+      <div style="background:white;border:1px solid #FECACA;border-radius:16px;padding:40px 24px;text-align:center">
+        <div style="font-size:2rem;margin-bottom:10px">⚠️</div>
+        <div style="font-size:0.9rem;font-weight:700;color:#DC2626;margin-bottom:8px">Intent mapping failed</div>
+        <div style="font-size:0.8rem;color:#64748B;margin-bottom:14px;max-width:480px;margin-left:auto;margin-right:auto">${_imEsc(err.message)}</div>
+        <button onclick="generateIntentMap()" style="padding:9px 20px;background:#0066FF;color:white;border:none;border-radius:8px;font-size:0.78rem;cursor:pointer;font-weight:700">🔄 Try Again</button>
+      </div>`;
+  }
+}
+
+function _imRender(data) {
+  const { keywords, summary } = data;
+  const buckets = [
+    { key: 'informational', label: 'Informational', icon: '📚', color: '#0066FF', bg: '#EFF6FF', desc: 'User wants to learn' },
+    { key: 'commercial',    label: 'Commercial',    icon: '⚖️', color: '#7C3AED', bg: '#F5F3FF', desc: 'User comparing options' },
+    { key: 'transactional', label: 'Transactional', icon: '💳', color: '#10B981', bg: '#ECFDF5', desc: 'User ready to buy' },
+    { key: 'navigational',  label: 'Navigational',  icon: '🧭', color: '#F59E0B', bg: '#FEF3C7', desc: 'User searching a brand' }
+  ];
+
+  // SUMMARY BAR — 5 tiles
+  const summaryHtml = `
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px">
+      <div style="background:linear-gradient(135deg,#062A36,#0A4858);border-radius:14px;padding:18px 16px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:#00E5FF">${summary.total}</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.7);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Keywords Mapped</div>
+      </div>
+      <div style="background:linear-gradient(135deg,#1a0a28,#2D1060);border-radius:14px;padding:18px 16px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:#A78BFA">${summary.byIntent.commercial + summary.byIntent.transactional}</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.7);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">High-Intent</div>
+      </div>
+      <div style="background:linear-gradient(135deg,#0A2818,#0D5E30);border-radius:14px;padding:18px 16px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:#10B981">${summary.avgIntentMatch}%</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.7);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Avg Page-Fit</div>
+      </div>
+      <div style="background:linear-gradient(135deg,#3a1a0a,#7C2D12);border-radius:14px;padding:18px 16px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:#FB923C">${summary.gaps}</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.7);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Competitor Gaps</div>
+      </div>
+      <div style="background:linear-gradient(135deg,#28080a,#7C0E20);border-radius:14px;padding:18px 16px;text-align:center">
+        <div style="font-size:1.6rem;font-weight:800;color:#F87171">${summary.mustDoCount}</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.7);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Must-Do</div>
+      </div>
+    </div>`;
+
+  // ACTIONS BAR
+  const actionsHtml = `
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div style="font-size:0.82rem;color:#0A1628"><strong>📋 Send must-do keywords to your Battle Plan</strong> — automatically queues high-priority gaps for your 90-day plan.</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="_imExportCsv()" style="padding:8px 16px;background:white;border:1.5px solid #CBD5E1;border-radius:8px;font-size:0.78rem;font-weight:700;color:#475569;cursor:pointer">⬇️ Export CSV</button>
+        <button onclick="_imSendToBattlePlan()" style="padding:8px 16px;background:linear-gradient(135deg,#0066FF,#7C3AED);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚔️ Send to Battle Plan</button>
+      </div>
+    </div>`;
+
+  // 4-COLUMN BUCKETS
+  const colsHtml = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+      ${buckets.map(b => {
+        const items = keywords.filter(k => k.intent === b.key);
+        return `
+          <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;display:flex;flex-direction:column">
+            <div style="background:${b.bg};border-bottom:1px solid ${b.color}33;padding:14px 16px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                <div style="display:flex;align-items:center;gap:8px"><span style="font-size:1.1rem">${b.icon}</span><span style="font-size:0.9rem;font-weight:800;color:${b.color}">${b.label}</span></div>
+                <span style="background:${b.color};color:white;font-size:0.72rem;font-weight:700;padding:3px 9px;border-radius:999px">${items.length}</span>
+              </div>
+              <div style="font-size:0.7rem;color:${b.color}AA;font-weight:600">${b.desc}</div>
+            </div>
+            <div style="padding:12px;display:flex;flex-direction:column;gap:10px;min-height:120px">
+              ${items.length === 0
+                ? `<div style="text-align:center;padding:24px 8px;color:#94A3B8;font-size:0.78rem">No keywords in this bucket</div>`
+                : items.map(k => _imCard(k, b.color)).join('')}
+            </div>
+          </div>`;
+      }).join('')}
+    </div>`;
+
+  return summaryHtml + actionsHtml + colsHtml;
+}
+
+function _imCard(k, accent) {
+  const priorityBadge = {
+    'must-do':       `<span style="background:#FEE2E2;color:#B91C1C;font-size:0.65rem;font-weight:700;padding:2px 7px;border-radius:6px">🔥 MUST-DO</span>`,
+    'nice-to-have':  `<span style="background:#FEF3C7;color:#A16207;font-size:0.65rem;font-weight:700;padding:2px 7px;border-radius:6px">★ NICE-TO-HAVE</span>`,
+    'skip':          `<span style="background:#F1F5F9;color:#64748B;font-size:0.65rem;font-weight:700;padding:2px 7px;border-radius:6px">SKIP</span>`
+  }[k.priority] || '';
+
+  const gapBadge = k.competitorGap
+    ? `<span style="background:#FEE2E2;color:#B91C1C;font-size:0.65rem;font-weight:700;padding:2px 7px;border-radius:6px">⚠️ GAP</span>`
+    : '';
+
+  const cpcColor = { low:'#10B981', medium:'#F59E0B', high:'#EF4444' }[k.estimatedCPC] || '#64748B';
+
+  // Page-fit progress bar
+  const fitColor = k.intentMatchScore >= 70 ? '#10B981' : k.intentMatchScore >= 40 ? '#F59E0B' : '#EF4444';
+
+  return `
+    <div style="border:1px solid #E2E8F0;border-radius:10px;padding:11px 12px;background:#FAFBFC">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">
+        <div style="font-size:0.83rem;font-weight:700;color:#0A1628;line-height:1.3;flex:1">${_imEsc(k.keyword)}</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
+        ${priorityBadge}
+        ${gapBadge}
+        <span style="background:white;border:1px solid #CBD5E1;color:${cpcColor};font-size:0.65rem;font-weight:700;padding:2px 7px;border-radius:6px">${k.estimatedCPC.toUpperCase()} CPC</span>
+      </div>
+      <div style="font-size:0.72rem;color:#475569;margin-bottom:6px"><strong style="color:${accent}">→ ${_imEsc(k.recommendedPageType)}</strong></div>
+      <div style="margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;font-size:0.66rem;color:#64748B;margin-bottom:3px"><span>Intent confidence</span><span style="color:${accent};font-weight:700">${k.confidence}%</span></div>
+        <div style="height:4px;background:#E2E8F0;border-radius:3px;overflow:hidden"><div style="width:${k.confidence}%;height:100%;background:${accent}"></div></div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;font-size:0.66rem;color:#64748B;margin-bottom:3px"><span>Page-fit</span><span style="color:${fitColor};font-weight:700">${k.intentMatchScore}%</span></div>
+        <div style="height:5px;background:#E2E8F0;border-radius:3px;overflow:hidden"><div style="width:${k.intentMatchScore}%;height:100%;background:${fitColor}"></div></div>
+        ${k.matchReason ? `<div style="font-size:0.66rem;color:#64748B;line-height:1.35;margin-top:4px;font-style:italic">${_imEsc(k.matchReason)}</div>` : ''}
+      </div>
+      <div style="font-size:0.72rem;color:#475569;line-height:1.4;border-top:1px solid #F1F5F9;padding-top:7px">💡 ${_imEsc(k.opportunity)}</div>
+      ${k.competitorGap && k.gapReason ? `<div style="font-size:0.7rem;color:#B91C1C;line-height:1.4;margin-top:5px">⚠️ ${_imEsc(k.gapReason)}</div>` : ''}
+    </div>`;
+}
+
+function _imExportCsv() {
+  const map = window._intentMap;
+  if (!map?.keywords?.length) { showToast('⚠️ Generate the intent map first'); return; }
+  const rows = [['Keyword','Intent','Confidence','Recommended Page Type','Page-Fit Score','Page-Fit Reason','Competitor Gap','Gap Reason','Priority','Estimated CPC','Opportunity']];
+  map.keywords.forEach(k => rows.push([
+    k.keyword, k.intent, k.confidence, k.recommendedPageType, k.intentMatchScore,
+    k.matchReason || '', k.competitorGap ? 'YES' : 'no', k.gapReason || '', k.priority, k.estimatedCPC, k.opportunity
+  ]));
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `intent-map-${Date.now()}.csv`;
+  a.click();
+  showToast('✅ CSV downloaded');
+}
+
+function _imSendToBattlePlan() {
+  const map = window._intentMap;
+  if (!map?.keywords?.length) { showToast('⚠️ Generate the intent map first'); return; }
+  const mustDos = map.keywords.filter(k => k.priority === 'must-do');
+  if (mustDos.length === 0) { showToast('ℹ️ No must-do keywords to send'); return; }
+  // Persist for the Battle Plan to consume
+  window._intentMustDos = mustDos;
+  try { localStorage.setItem('infogenie_intent_mustdos', JSON.stringify(mustDos)); } catch {}
+  showToast(`⚔️ Queued ${mustDos.length} must-do keyword${mustDos.length===1?'':'s'} for Battle Plan`);
+  setTimeout(() => navigateTo('battleplan'), 600);
 }
 
 function buildSocialCalendar() {
