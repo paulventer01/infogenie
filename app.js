@@ -446,6 +446,29 @@ window._attachBrandCreative = function(idx) {
 };
 
 window._editBrandKit = function() {
+  // Close any open Brand Creative modal so the user lands cleanly on the asset library
+  const open = document.getElementById('brandCreativeModal');
+  if (open) open.remove();
+  const csModal = document.getElementById('campCreativeModal');
+  if (csModal) { csModal.classList.add('hidden'); csModal.removeAttribute('style'); }
+  // Navigate to Create → Brand Assets
+  try { navigateTo('brand-assets'); } catch(e) { console.error('navigate failed', e); }
+  showToast('🎨 Opening Brand Assets — upload logos, images and videos here');
+  // After view renders, scroll the upload zone into view + flash it so the user notices
+  setTimeout(() => {
+    const uploadZone = document.getElementById('baDropzone') || document.querySelector('#view-brand-assets .ba-dropzone') || document.querySelector('#view-brand-assets');
+    if (uploadZone) {
+      uploadZone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const orig = uploadZone.style.boxShadow || '';
+      uploadZone.style.transition = 'box-shadow .25s ease';
+      uploadZone.style.boxShadow = '0 0 0 4px rgba(0,201,200,.55), 0 8px 32px rgba(0,102,255,.35)';
+      setTimeout(() => { uploadZone.style.boxShadow = orig; }, 2200);
+    }
+  }, 350);
+};
+
+// Lightweight inline editor for brand kit metadata (name / colour / tone) — kept as a separate handler
+window._editBrandKitMeta = function() {
   const cur = window._brandKit || { name: _brandName(), color: _brandPrimaryColour(), tone: 'Confident · Modern · Helpful' };
   const name  = prompt('Brand name:', cur.name);
   if (name === null) return;
@@ -458,7 +481,6 @@ window._editBrandKit = function() {
                        tone: tone.trim() || cur.tone };
   try { localStorage.setItem('ig_brand_kit', JSON.stringify(window._brandKit)); } catch(e) {}
   showToast('✅ Brand kit saved');
-  // If a creative modal is open, refresh it
   const open = document.getElementById('brandCreativeModal');
   if (open) {
     const idx = parseInt(open.querySelector('[onclick*="_attachBrandCreative"]')?.getAttribute('onclick')?.match(/\d+/)?.[0] || '0', 10);
