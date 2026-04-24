@@ -1850,6 +1850,198 @@ Be ruthless and specific. Score intentMatchScore HIGH (80-100) only if the brand
   }
 });
 
+// ── POST /api/keyword-page-map — Map keywords to URLs + detect cannibalisation ─
+app.post('/api/keyword-page-map', async (req, res) => {
+  try {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const { brand='', industry='', pages=[], keywords=[] } = body;
+    if (typeof brand !== 'string' || typeof industry !== 'string') {
+      return res.status(400).json({ error: 'brand and industry must be strings' });
+    }
+    if (!Array.isArray(pages) || !pages.length) {
+      return res.status(400).json({ error: 'pages must be a non-empty array' });
+    }
+    if (!Array.isArray(keywords) || !keywords.length) {
+      return res.status(400).json({ error: 'keywords must be a non-empty array' });
+    }
+    const cleanPages = pages.slice(0, 30).map(p => {
+      if (typeof p === 'string') return { url: p.trim(), title: '', description: '' };
+      if (p && typeof p === 'object') {
+        return {
+          url: String(p.url || '').trim(),
+          title: String(p.title || '').trim().slice(0, 200),
+          description: String(p.description || '').trim().slice(0, 300)
+        };
+      }
+      return null;
+    }).filter(p => p && p.url);
+    if (!cleanPages.length) return res.status(400).json({ error: 'No valid page URLs supplied' });
+
+    const cleanKws = Array.from(new Set(keywords.slice(0, 80).map(k => String(k || '').toLowerCase().trim()).filter(Boolean)));
+    if (!cleanKws.length) return res.status(400).json({ error: 'No valid keywords supplied' });
+
+    const systemPrompt = `You are a senior SEO strategist specialising in keyword–page mapping. For each page, choose ONE primary keyword (the single best target) and 2-5 supporting/semantic keywords from the supplied pool. Return JSON only.`;
+    const userPrompt = `Brand: ${brand || 'unknown'}
+Industry: ${industry || 'unknown'}
+
+PAGES (${cleanPages.length}):
+${cleanPages.map((p,i) => `${i+1}. ${p.url}${p.title ? ' | title: '+p.title : ''}${p.description ? ' | desc: '+p.description : ''}`).join('\n')}
+
+KEYWORD POOL (${cleanKws.length}):
+${cleanKws.join(', ')}
+
+Return a JSON array (one object per page) with this exact shape:
+[
+  {
+    "url": "<page url verbatim>",
+    "primaryKeyword": "<one keyword from the pool that best fits this page>",
+    "primaryConfidence": 0-100,
+    "supportingKeywords": ["kw","kw","kw"],
+    "rationale": "<one short sentence on why this primary fits>",
+    "pageStrengthScore": 0-100,
+    "recommendation": "<one concrete next-step action — e.g. expand H2 sections, add FAQ, target long-tail variant, etc>"
+  }
+]
+Rules:
+- Use ONLY keywords from the pool — never invent.
+- Each supporting keyword must be semantically related to the primary.
+- It is OK if the same primary keyword is chosen for two different pages — we will detect that as cannibalisation downstream.
+- pageStrengthScore reflects how well the existing page (URL/title/desc) already serves the chosen primary.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 3500
+    });
+
+    const raw = completion.choices?.[0]?.message?.content || '';
+    let parsed;
+    try {
+      const jsonMatch = raw.match(/\[[\s\S]*\]/);
+      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+    } catch(parseErr) {
+      console.error('/api/keyword-page-map JSON parse failed:', parseErr.message);
+      return res.status(502).json({ error: 'AI returned invalid JSON — please retry' });
+    }
+    if (!Array.isArray(parsed) || !parsed.length) {
+      return res.status(502).json({ error: 'AI returned no usable page mappings' });
+    }
+
+    const kwSet = new Set(cleanKws);
+    // Normalise + strict pool enforcement (off-pool primaries / supporting keywords are dropped)
+    const aiItems = parsed.map(p => {
+      const primary = String(p.primaryKeyword || '').toLowerCase().trim();
+      // Only accept primary if it's in the supplied pool
+      const validPrimary = kwSet.has(primary) ? primary : '';
+      const rawSupp = Array.isArray(p.supportingKeywords) ? p.supportingKeywords : [];
+      const cleanedSupp = Array.from(new Set(
+        rawSupp.map(k => String(k || '').toLowerCase().trim())
+               .filter(k => k && kwSet.has(k) && k !== validPrimary)
+      ));
+      return {
+        url: String(p.url || '').trim(),
+        primaryKeyword: validPrimary,
+        primaryConfidence: Math.max(0, Math.min(100, Number(p.primaryConfidence) || 0)),
+        supportingKeywords: cleanedSupp.slice(0, 5),
+        rationale: String(p.rationale || '').slice(0, 280),
+        pageStrengthScore: Math.max(0, Math.min(100, Number(p.pageStrengthScore) || 0)),
+        recommendation: String(p.recommendation || '').slice(0, 280)
+      };
+    });
+
+    // Reconcile AI output against input pages — guarantee one mapping per requested URL
+    const aiByUrl = {};
+    aiItems.forEach(it => { if (it.url) aiByUrl[it.url] = it; });
+    const FALLBACK_RATIONALE = 'Auto-fallback assignment — AI did not return a usable in-pool mapping for this page; review manually.';
+    const FALLBACK_RECOMMENDATION = 'Review this page manually and pick a primary keyword that matches its actual content.';
+    const items = cleanPages.map(req => {
+      const fromAi = aiByUrl[req.url];
+      const aiPrimaryValid = !!(fromAi && fromAi.primaryKeyword); // already validated against pool above
+      if (aiPrimaryValid) {
+        return {
+          url: req.url,
+          primaryKeyword: fromAi.primaryKeyword,
+          primaryConfidence: fromAi.primaryConfidence,
+          supportingKeywords: fromAi.supportingKeywords,
+          rationale: fromAi.rationale,
+          pageStrengthScore: fromAi.pageStrengthScore,
+          recommendation: fromAi.recommendation
+        };
+      }
+      // Deterministic fallback (covers BOTH missing-AI-page AND off-pool-primary cases)
+      const fallbackPrimary = cleanKws[0];
+      const fallbackSupp = cleanKws.filter(k => k !== fallbackPrimary).slice(0, 3);
+      return {
+        url: req.url,
+        primaryKeyword: fallbackPrimary,
+        primaryConfidence: 30,
+        supportingKeywords: fallbackSupp,
+        rationale: FALLBACK_RATIONALE,
+        pageStrengthScore: 0,
+        recommendation: FALLBACK_RECOMMENDATION
+      };
+    });
+
+    // Final normalisation pass: enforce pool membership, dedupe, exclude primary, top up to ≥2
+    items.forEach(it => {
+      const seen = new Set();
+      it.supportingKeywords = it.supportingKeywords
+        .filter(k => k && kwSet.has(k) && k !== it.primaryKeyword)
+        .filter(k => { if (seen.has(k)) return false; seen.add(k); return true; })
+        .slice(0, 5);
+      if (it.supportingKeywords.length < 2) {
+        const used = new Set([it.primaryKeyword, ...it.supportingKeywords]);
+        const need = 2 - it.supportingKeywords.length;
+        const topUp = cleanKws.filter(k => !used.has(k)).slice(0, need);
+        it.supportingKeywords = it.supportingKeywords.concat(topUp);
+      }
+    });
+
+    // Cannibalisation detection — any primary keyword used by >1 URL
+    const primaryCount = {};
+    items.forEach(it => { primaryCount[it.primaryKeyword] = (primaryCount[it.primaryKeyword] || 0) + 1; });
+    const cannibalised = items.map(it => ({
+      ...it,
+      cannibalised: primaryCount[it.primaryKeyword] > 1,
+      cannibalisedWith: primaryCount[it.primaryKeyword] > 1
+        ? items.filter(o => o.primaryKeyword === it.primaryKeyword && o.url !== it.url).map(o => o.url)
+        : []
+    }));
+
+    const cannibalGroups = Object.entries(primaryCount)
+      .filter(([_, n]) => n > 1)
+      .map(([kw, n]) => ({
+        keyword: kw,
+        count: n,
+        urls: items.filter(it => it.primaryKeyword === kw).map(it => it.url)
+      }));
+
+    const avgStrength = items.length
+      ? Math.round(items.reduce((s,i) => s + i.pageStrengthScore, 0) / items.length)
+      : 0;
+
+    res.json({
+      pages: cannibalised,
+      summary: {
+        totalPages: cannibalised.length,
+        uniquePrimaries: Object.keys(primaryCount).length,
+        cannibalisedKeywords: cannibalGroups.length,
+        cannibalisedPages: cannibalised.filter(p => p.cannibalised).length,
+        avgPageStrength: avgStrength,
+        totalSupportingKeywords: cannibalised.reduce((s,p) => s + p.supportingKeywords.length, 0)
+      },
+      cannibalGroups
+    });
+  } catch(err) {
+    console.error('/api/keyword-page-map error:', err.message);
+    res.status(500).json({ error: `Keyword-page mapping failed: ${err.message}` });
+  }
+});
+
 // ── POST /api/icp-draft — Auto-draft Ideal Customer Profile from brand intel ─
 app.post('/api/icp-draft', async (req, res) => {
   try {

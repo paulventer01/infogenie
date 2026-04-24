@@ -2183,6 +2183,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'intent-map') {
     try { buildIntentMap(); } catch(e) { console.warn('buildIntentMap error:', e); }
   }
+  if (viewId === 'keyword-map') {
+    try { buildKeywordMap(); } catch(e) { console.warn('buildKeywordMap error:', e); }
+  }
   if (viewId === 'content') {
     try { buildContent(); } catch(e) { console.warn('buildContent error:', e); }
   }
@@ -6950,6 +6953,277 @@ function _imSendToBattlePlan() {
   window._intentMustDos = mustDos;
   try { localStorage.setItem('infogenie_intent_mustdos', JSON.stringify(mustDos)); } catch {}
   showToast(`⚔️ Queued ${mustDos.length} must-do keyword${mustDos.length===1?'':'s'} for Battle Plan`);
+  setTimeout(() => navigateTo('battleplan'), 600);
+}
+
+// ─── KEYWORD–PAGE MAP ────────────────────────────────────────────────
+function _kmEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function _kmSeedPages() {
+  const ad = window.analysisData || {};
+  const root = String(ad.url || '').trim();
+  if (!root) return '';
+  const base = root.replace(/\/$/, '');
+  // Suggest a sensible default set of common page paths the user likely has
+  return [
+    base,
+    `${base}/about`,
+    `${base}/pricing`,
+    `${base}/blog`,
+    `${base}/contact`
+  ].join('\n');
+}
+
+function _kmSeedKeywords() {
+  // Pull from Intent Map first, then competitor topKeywords
+  const seeds = new Set();
+  const im = window._intentMap;
+  if (im?.keywords?.length) {
+    im.keywords.forEach(k => seeds.add(String(k.keyword || '').toLowerCase()));
+  }
+  const ad = window.analysisData || {};
+  (ad.competitors || []).forEach(c => {
+    (c.topKeywords || []).slice(0, 4).forEach(k => seeds.add(String(k).toLowerCase()));
+  });
+  return Array.from(seeds).filter(Boolean).slice(0, 40).join(', ');
+}
+
+function buildKeywordMap() {
+  const wrap = document.getElementById('keywordMapWrap');
+  if (!wrap) return;
+  const ad = window.analysisData || {};
+  const seedPages = _kmSeedPages();
+  const seedKws = _kmSeedKeywords();
+
+  wrap.innerHTML = `
+    <div style="background:white;border-radius:16px;padding:24px;box-shadow:0 2px 10px rgba(0,0,0,.05);margin-bottom:20px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+        <div>
+          <label style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">📄 Pages on your site (one per line)</label>
+          <textarea id="kmPagesInput" rows="7" style="width:100%;padding:10px 12px;border:1.5px solid #CBD5E1;border-radius:10px;font-size:0.82rem;font-family:inherit;resize:vertical">${_kmEsc(seedPages)}</textarea>
+          <div style="font-size:0.68rem;color:#64748B;margin-top:4px">Optional: append <code>| Page Title</code> after the URL for better mapping. Up to 30 pages.</div>
+        </div>
+        <div>
+          <label style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">🔑 Keyword pool (comma-separated)</label>
+          <textarea id="kmKwInput" rows="7" style="width:100%;padding:10px 12px;border:1.5px solid #CBD5E1;border-radius:10px;font-size:0.82rem;font-family:inherit;resize:vertical">${_kmEsc(seedKws)}</textarea>
+          <div style="font-size:0.68rem;color:#64748B;margin-top:4px">Pre-filled from your Intent Map ${window._intentMap ? '✅' : '(empty — run Intent Map first or paste your own)'}. Up to 80 keywords.</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button onclick="generateKeywordMap()" style="background:linear-gradient(135deg,#0EA5E9,#6366F1);color:white;border:none;padding:11px 22px;border-radius:10px;font-weight:700;font-size:0.9rem;cursor:pointer;box-shadow:0 4px 12px rgba(14,165,233,.3)">⚡ Generate Map</button>
+        <button onclick="document.getElementById('kmKwInput').value=_kmSeedKeywords();showToast('🔄 Refreshed keywords from Intent Map')" style="background:white;color:#0EA5E9;border:1.5px solid #0EA5E9;padding:11px 18px;border-radius:10px;font-weight:700;font-size:0.85rem;cursor:pointer">🔄 Pull from Intent Map</button>
+      </div>
+    </div>
+    <div id="kmResult"></div>
+  `;
+  // Wire header button
+  const headerBtn = document.getElementById('kmRunBtn');
+  if (headerBtn) headerBtn.onclick = () => generateKeywordMap();
+
+  // Auto-render previous result if present
+  if (window._keywordMap) _kmRender();
+}
+
+async function generateKeywordMap() {
+  const result = document.getElementById('kmResult');
+  if (!result) return;
+  const pagesRaw = (document.getElementById('kmPagesInput')?.value || '').split('\n').map(l => l.trim()).filter(Boolean);
+  const kwRaw = (document.getElementById('kmKwInput')?.value || '').split(',').map(k => k.trim()).filter(Boolean);
+  if (!pagesRaw.length) { showToast('⚠️ Add at least one page URL'); return; }
+  if (!kwRaw.length) { showToast('⚠️ Add at least one keyword'); return; }
+
+  const pages = pagesRaw.map(line => {
+    const [urlPart, titlePart] = line.split('|').map(s => s.trim());
+    return { url: urlPart, title: titlePart || '' };
+  }).filter(p => p.url);
+
+  result.innerHTML = `
+    <div style="background:white;border-radius:16px;padding:50px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.05)">
+      <div style="display:inline-block;width:46px;height:46px;border:4px solid #E2E8F0;border-top-color:#0EA5E9;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+      <div style="margin-top:18px;font-size:0.95rem;color:#475569;font-weight:600">Mapping ${pages.length} page${pages.length===1?'':'s'} against ${kwRaw.length} keyword${kwRaw.length===1?'':'s'}…</div>
+      <div style="margin-top:6px;font-size:0.78rem;color:#94A3B8">GPT-4o is choosing the best primary keyword for each page and detecting cannibalisation.</div>
+    </div>`;
+
+  const ad = window.analysisData || {};
+  try {
+    const resp = await fetch('/api/keyword-page-map', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        brand: ad.url || '',
+        industry: ad.industry?.name || '',
+        pages,
+        keywords: kwRaw
+      })
+    });
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      result.innerHTML = `
+        <div style="background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:14px;padding:22px;text-align:center">
+          <div style="font-size:1.4rem;margin-bottom:8px">⚠️</div>
+          <div style="font-weight:700;color:#991B1B;margin-bottom:6px">Couldn't generate the map</div>
+          <div style="font-size:0.85rem;color:#7F1D1D;margin-bottom:14px">${_kmEsc(data.error || ('HTTP '+resp.status))}</div>
+          <button onclick="generateKeywordMap()" style="background:#DC2626;color:white;border:none;padding:9px 18px;border-radius:8px;font-weight:700;cursor:pointer">🔄 Try Again</button>
+        </div>`;
+      return;
+    }
+    window._keywordMap = data;
+    _kmRender();
+  } catch(err) {
+    console.error('generateKeywordMap error:', err);
+    result.innerHTML = `
+      <div style="background:#FEF2F2;border:1.5px solid #FCA5A5;border-radius:14px;padding:22px;text-align:center">
+        <div style="font-size:1.4rem;margin-bottom:8px">⚠️</div>
+        <div style="font-weight:700;color:#991B1B;margin-bottom:6px">Network error</div>
+        <div style="font-size:0.85rem;color:#7F1D1D;margin-bottom:14px">${_kmEsc(err.message || 'Unknown error')}</div>
+        <button onclick="generateKeywordMap()" style="background:#DC2626;color:white;border:none;padding:9px 18px;border-radius:8px;font-weight:700;cursor:pointer">🔄 Try Again</button>
+      </div>`;
+  }
+}
+
+function _kmRender() {
+  const result = document.getElementById('kmResult');
+  if (!result) return;
+  const map = window._keywordMap;
+  if (!map?.pages?.length) { result.innerHTML = ''; return; }
+  const s = map.summary || {};
+
+  // Summary tiles (dark gradient — matches Intent Map / ROAS pattern)
+  const tile = (label, value, accent) => `
+    <div style="background:linear-gradient(135deg,#062A36,#0A4858);border-radius:14px;padding:18px;color:white">
+      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.65);font-weight:700;margin-bottom:6px">${_kmEsc(label)}</div>
+      <div style="font-size:1.7rem;font-weight:800;color:${accent}">${_kmEsc(value)}</div>
+    </div>`;
+  const tiles = `
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px">
+      ${tile('Pages mapped', s.totalPages || 0, '#00E5FF')}
+      ${tile('Unique primaries', s.uniquePrimaries || 0, '#34D399')}
+      ${tile('Avg page strength', (s.avgPageStrength || 0) + '%', '#FBBF24')}
+      ${tile('Cannibal. keywords', s.cannibalisedKeywords || 0, s.cannibalisedKeywords > 0 ? '#F87171' : '#94A3B8')}
+      ${tile('Cannibal. pages', s.cannibalisedPages || 0, s.cannibalisedPages > 0 ? '#F87171' : '#94A3B8')}
+    </div>`;
+
+  // Cannibalisation alert section
+  let cannibalAlert = '';
+  if (Array.isArray(map.cannibalGroups) && map.cannibalGroups.length) {
+    cannibalAlert = `
+      <div style="background:linear-gradient(135deg,#FEF2F2,#FFF1F2);border:2px solid #FCA5A5;border-radius:14px;padding:18px;margin-bottom:18px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span style="font-size:1.4rem">⚠️</span>
+          <div style="font-weight:800;color:#991B1B;font-size:1rem">Cannibalisation detected — ${map.cannibalGroups.length} keyword${map.cannibalGroups.length===1?'':'s'} targeted by multiple pages</div>
+        </div>
+        <div style="font-size:0.78rem;color:#7F1D1D;margin-bottom:12px">When two pages chase the same primary keyword, they split authority and Google often ranks the wrong one. Pick a single winner per keyword and re-target the others.</div>
+        ${map.cannibalGroups.map(g => `
+          <div style="background:white;border:1px solid #FECACA;border-radius:10px;padding:12px;margin-bottom:8px">
+            <div style="font-weight:700;color:#0F172A;margin-bottom:6px">"${_kmEsc(g.keyword)}" — ${g.count} pages competing</div>
+            <ul style="margin:0;padding-left:18px;font-size:0.78rem;color:#475569">
+              ${g.urls.map(u => `<li style="margin-bottom:2px"><code style="background:#F1F5F9;padding:1px 5px;border-radius:4px;font-size:0.74rem">${_kmEsc(u)}</code></li>`).join('')}
+            </ul>
+          </div>
+        `).join('')}
+      </div>`;
+  } else {
+    cannibalAlert = `
+      <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:12px;padding:14px;margin-bottom:18px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:1.2rem">✅</span>
+        <div style="font-weight:700;color:#166534;font-size:0.9rem">No cannibalisation — every page targets a unique primary keyword.</div>
+      </div>`;
+  }
+
+  // Page rows
+  const rows = map.pages.map(p => {
+    const strength = p.pageStrengthScore || 0;
+    const sColor = strength >= 75 ? '#10B981' : strength >= 50 ? '#F59E0B' : '#EF4444';
+    const cColor = p.primaryConfidence >= 75 ? '#10B981' : p.primaryConfidence >= 50 ? '#F59E0B' : '#EF4444';
+    const statusBadge = p.cannibalised
+      ? `<span style="background:#FEE2E2;color:#991B1B;font-size:0.65rem;font-weight:800;padding:3px 8px;border-radius:6px">⚠️ CANNIBALISED</span>`
+      : `<span style="background:#DCFCE7;color:#166534;font-size:0.65rem;font-weight:800;padding:3px 8px;border-radius:6px">✅ UNIQUE</span>`;
+    return `
+      <div style="background:white;border-radius:12px;padding:16px;border:1.5px solid ${p.cannibalised?'#FCA5A5':'#E2E8F0'};margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.7rem;color:#64748B;font-weight:600;margin-bottom:3px">URL</div>
+            <code style="font-size:0.78rem;color:#0F172A;font-weight:600;word-break:break-all">${_kmEsc(p.url)}</code>
+          </div>
+          ${statusBadge}
+        </div>
+        <div style="display:grid;grid-template-columns:1.4fr 2fr;gap:14px;margin-bottom:10px">
+          <div>
+            <div style="font-size:0.65rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">🎯 Primary Keyword</div>
+            <div style="font-size:0.95rem;font-weight:800;color:#0EA5E9;margin-bottom:4px">${_kmEsc(p.primaryKeyword)}</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:0.7rem;color:#64748B">
+              <span>Confidence:</span>
+              <strong style="color:${cColor}">${p.primaryConfidence}%</strong>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:0.65rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">🔗 Supporting Keywords (${p.supportingKeywords.length})</div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px">
+              ${p.supportingKeywords.length ? p.supportingKeywords.map(k => `<span style="background:#EFF6FF;color:#1E40AF;font-size:0.7rem;padding:3px 8px;border-radius:6px;font-weight:600">${_kmEsc(k)}</span>`).join('') : '<span style="font-size:0.72rem;color:#94A3B8;font-style:italic">none assigned</span>'}
+            </div>
+          </div>
+        </div>
+        <div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;font-size:0.66rem;color:#64748B;margin-bottom:3px"><span>Page strength for this primary</span><span style="color:${sColor};font-weight:700">${strength}%</span></div>
+          <div style="height:5px;background:#E2E8F0;border-radius:3px;overflow:hidden"><div style="width:${strength}%;height:100%;background:${sColor}"></div></div>
+        </div>
+        ${p.rationale ? `<div style="font-size:0.72rem;color:#475569;line-height:1.4;background:#F8FAFC;padding:8px 10px;border-radius:8px;margin-bottom:6px">💭 <em>${_kmEsc(p.rationale)}</em></div>` : ''}
+        ${p.recommendation ? `<div style="font-size:0.72rem;color:#0F172A;line-height:1.4;background:#FEF3C7;padding:8px 10px;border-radius:8px"><strong>👉 Action:</strong> ${_kmEsc(p.recommendation)}</div>` : ''}
+        ${p.cannibalised && p.cannibalisedWith?.length ? `<div style="font-size:0.7rem;color:#B91C1C;margin-top:6px">⚠️ Also targeted by: ${p.cannibalisedWith.map(u => `<code style="background:#FEE2E2;padding:1px 5px;border-radius:4px;font-size:0.66rem">${_kmEsc(u)}</code>`).join(' ')}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  result.innerHTML = `
+    ${tiles}
+    ${cannibalAlert}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0F172A">Page-by-page assignments</h3>
+      <div style="display:flex;gap:8px">
+        <button onclick="_kmExportCsv()" style="background:white;color:#0EA5E9;border:1.5px solid #0EA5E9;padding:8px 14px;border-radius:8px;font-weight:700;font-size:0.78rem;cursor:pointer">⬇️ Export CSV</button>
+        <button onclick="_kmSendToBattlePlan()" style="background:linear-gradient(135deg,#7C3AED,#EC4899);color:white;border:none;padding:8px 14px;border-radius:8px;font-weight:700;font-size:0.78rem;cursor:pointer">⚔️ Send Cannibal. Fixes to Battle Plan</button>
+      </div>
+    </div>
+    ${rows}
+  `;
+}
+
+function _kmExportCsv() {
+  const map = window._keywordMap;
+  if (!map?.pages?.length) { showToast('⚠️ Generate the map first'); return; }
+  const rows = [['URL','Primary Keyword','Primary Confidence','Supporting Keywords','Page Strength','Status','Cannibalised With','Rationale','Recommendation']];
+  map.pages.forEach(p => rows.push([
+    p.url, p.primaryKeyword, p.primaryConfidence,
+    (p.supportingKeywords || []).join('; '),
+    p.pageStrengthScore,
+    p.cannibalised ? 'CANNIBALISED' : 'UNIQUE',
+    (p.cannibalisedWith || []).join('; '),
+    p.rationale || '', p.recommendation || ''
+  ]));
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'keyword-page-map.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('⬇️ Keyword map exported');
+}
+
+function _kmSendToBattlePlan() {
+  const map = window._keywordMap;
+  if (!map?.cannibalGroups?.length) { showToast('ℹ️ No cannibalisation issues to fix'); return; }
+  const fixes = map.cannibalGroups.map(g => ({
+    keyword: g.keyword,
+    issue: 'cannibalisation',
+    pages: g.urls,
+    action: `Choose ONE winner page for "${g.keyword}" and re-target the other ${g.count - 1} page${g.count - 1 === 1 ? '' : 's'} to a related long-tail variant.`
+  }));
+  window._keywordMapFixes = fixes;
+  try { localStorage.setItem('infogenie_keyword_fixes', JSON.stringify(fixes)); } catch {}
+  showToast(`⚔️ Queued ${fixes.length} cannibalisation fix${fixes.length===1?'':'es'} for Battle Plan`);
   setTimeout(() => navigateTo('battleplan'), 600);
 }
 
