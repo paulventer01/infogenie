@@ -12509,9 +12509,14 @@ function _apSwitchTab(t) {
     const panel = document.getElementById('apt-' + id);
     const btn   = document.getElementById('aptb-' + id);
     if (panel) panel.style.display = id === t ? 'block' : 'none';
-    if (btn)   { btn.style.background = id === t ? 'rgba(0,201,200,.2)' : 'transparent';
-                 btn.style.color      = id === t ? '#00C9C8' : 'rgba(255,255,255,.5)';
-                 btn.style.borderColor= id === t ? 'rgba(0,201,200,.35)' : 'transparent'; }
+    if (btn) {
+      // Use class + clear inline style overrides so theme-aware CSS in style.css owns the look
+      btn.classList.toggle('active', id === t);
+      if (id === t) btn.setAttribute('data-active','true'); else btn.removeAttribute('data-active');
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+    }
   });
 }
 async function openFullAttackPlanModal(idx) {

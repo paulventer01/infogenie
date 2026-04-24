@@ -7312,3 +7312,31 @@ select option { background: #FFFFFF !important; color: #0F4C4A !important; }
   background: rgba(0,102,255,.06) !important;
   color: #0066FF !important;
 }
+
+/* Full Attack Plan modal — tab bar buttons readable in BOTH themes */
+#apTabBar { background: rgba(0,0,0,.05) !important; }
+#apTabBar button {
+  color: #94A3B8 !important;          /* slate-400 — readable on both light & dark */
+  background: transparent !important;
+  border-color: transparent !important;
+}
+#apTabBar button:hover {
+  color: #0F172A !important;
+  background: rgba(0,201,200,.08) !important;
+}
+#apTabBar button.active,
+#apTabBar button[data-active="true"] {
+  color: #0066FF !important;
+  background: rgba(0,102,255,.10) !important;
+  border-color: rgba(0,102,255,.25) !important;
+}
+[data-theme="light"] #apTabBar { background: #F1F5F9 !important; border-bottom: 1px solid #E2E8F0 !important; }
+[data-theme="light"] #apTabBar button { color: #475569 !important; font-weight: 700 !important; }
+[data-theme="light"] #apTabBar button:hover { color: #0066FF !important; background: rgba(0,102,255,.08) !important; }
+/* Active state must come AFTER generic light rule to win source-order tie-break */
+[data-theme="light"] #apTabBar button.active,
+[data-theme="light"] #apTabBar button[data-active="true"] {
+  color: #0066FF !important;
+  background: rgba(0,102,255,.12) !important;
+  border-color: rgba(0,102,255,.30) !important;
+}

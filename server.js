@@ -1241,6 +1241,14 @@ app.post('/api/competitor-news', async (req, res) => {
     const industryQ = encodeURIComponent(INDUSTRY_TOPICS[industry] || INDUSTRY_TOPICS.marketing);
 
     const articles = [];
+    let notSubscribed = false; // detect 403 from RapidAPI ("not subscribed to this API")
+
+    // Detect a "not subscribed" / auth-failure response shape from RapidAPI
+    const looksLikeNotSubscribed = (r) => {
+      if (!r || typeof r !== 'object') return false;
+      const msg = String(r.message || r._raw || '').toLowerCase();
+      return msg.includes('not subscribed') || msg.includes('does not exist') || msg.includes('invalid api key') || msg.includes('exceeded the rate');
+    };
 
     // Fetch industry trend news
     try {
@@ -1249,7 +1257,9 @@ app.post('/api/competitor-news', async (req, res) => {
         `/search?query=${industryQ}&limit=6&country=${country}&lang=en`,
         'GET'
       );
-      if (newsRes.status === 'OK' && Array.isArray(newsRes.data)) {
+      if (looksLikeNotSubscribed(newsRes)) {
+        notSubscribed = true;
+      } else if (newsRes.status === 'OK' && Array.isArray(newsRes.data)) {
         for (const a of newsRes.data.slice(0, 3)) {
           articles.push({
             type: 'trend',
@@ -1265,35 +1275,46 @@ app.post('/api/competitor-news', async (req, res) => {
       }
     } catch(e) { console.warn('news trend fetch failed:', e.message); }
 
-    // Fetch competitor-specific news
-    for (const { name, q } of queries) {
-      try {
-        const newsRes = await callRapidAPI(
-          'real-time-news-data.p.rapidapi.com',
-          `/search?query=${q}&limit=3&country=${country}&lang=en`,
-          'GET'
-        );
-        if (newsRes.status === 'OK' && Array.isArray(newsRes.data)) {
-          const top = newsRes.data[0];
-          if (top) {
-            const title = (top.title || '').toLowerCase();
-            const signalType = title.includes('launch') || title.includes('new') ? 'new_campaign'
-              : title.includes('fund') || title.includes('raise') || title.includes('invest') ? 'budget_surge'
-              : title.includes('price') || title.includes('fee') || title.includes('cost') ? 'price_change'
-              : 'competitor_signal';
-            articles.push({
-              type: 'competitor',
-              competitor: name,
-              title: top.title,
-              snippet: top.snippet || top.description || '',
-              url: top.link || top.url || '#',
-              source: top.source_name || top.publisher || 'News',
-              publishedAt: top.published_datetime_utc || top.date || '',
-              signal: signalType
-            });
+    // Fetch competitor-specific news (skip if we already know we're not subscribed)
+    if (!notSubscribed) {
+      for (const { name, q } of queries) {
+        try {
+          const newsRes = await callRapidAPI(
+            'real-time-news-data.p.rapidapi.com',
+            `/search?query=${q}&limit=3&country=${country}&lang=en`,
+            'GET'
+          );
+          if (looksLikeNotSubscribed(newsRes)) { notSubscribed = true; break; }
+          if (newsRes.status === 'OK' && Array.isArray(newsRes.data)) {
+            const top = newsRes.data[0];
+            if (top) {
+              const title = (top.title || '').toLowerCase();
+              const signalType = title.includes('launch') || title.includes('new') ? 'new_campaign'
+                : title.includes('fund') || title.includes('raise') || title.includes('invest') ? 'budget_surge'
+                : title.includes('price') || title.includes('fee') || title.includes('cost') ? 'price_change'
+                : 'competitor_signal';
+              articles.push({
+                type: 'competitor',
+                competitor: name,
+                title: top.title,
+                snippet: top.snippet || top.description || '',
+                url: top.link || top.url || '#',
+                source: top.source_name || top.publisher || 'News',
+                publishedAt: top.published_datetime_utc || top.date || '',
+                signal: signalType
+              });
+            }
           }
-        }
-      } catch(e) { console.warn(`news fetch failed for ${name}:`, e.message); }
+        } catch(e) { console.warn(`news fetch failed for ${name}:`, e.message); }
+      }
+    }
+
+    if (notSubscribed && articles.length === 0) {
+      return res.json({
+        articles: [],
+        source: 'not_subscribed',
+        message: 'Subscribe to "Real-Time News Data" on RapidAPI (free tier available) to enable live competitor signal feeds.'
+      });
     }
 
     res.json({ articles, source: 'live', timestamp: new Date().toISOString() });
