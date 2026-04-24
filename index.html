@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20260424t" />
+  <link rel="stylesheet" href="style.css?v=20260424u" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
   <!-- PostHog SDK stub — init called from app.js after config fetch -->
@@ -187,8 +187,9 @@
               el.textContent = elapsed;
               el.parentElement.lastChild.textContent = elapsed === 1 ? ' second' : ' seconds';
             } else if (window._lastRunDuration) {
-              el.textContent = window._lastRunDuration.toFixed(1);
-              el.parentElement.lastChild.textContent = ' sec last run';
+              const whole = Math.round(window._lastRunDuration);
+              el.textContent = whole;
+              el.parentElement.lastChild.textContent = whole === 1 ? ' sec last run' : ' sec last run';
             } else {
               n = n <= 1 ? 60 : n - 1;
               el.textContent = n;
@@ -1384,7 +1385,7 @@
 </div>
 
 <script src="data.js"></script>
-<script src="app.js?v=20260424t"></script>
+<script src="app.js?v=20260424u"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');
