@@ -24369,15 +24369,38 @@ function buildImportCampaigns() {
     { key:'meta', name:'Meta Ads', icon:'📘', color:'#1877F2', desc:'Facebook + Instagram' },
     { key:'google', name:'Google Ads', icon:'🔍', color:'#4285F4', desc:'Search, Display, YouTube' },
     { key:'tiktok', name:'TikTok Ads', icon:'🎵', color:'#000000', desc:'TikTok Spark + In-Feed' },
-    { key:'linkedin', name:'LinkedIn Ads', icon:'💼', color:'#0A66C2', desc:'Sponsored Content + InMail' }
+    { key:'linkedin', name:'LinkedIn Ads', icon:'💼', color:'#0A66C2', desc:'Sponsored Content + InMail' },
+    { key:'x', name:'X Ads', icon:'𝕏', color:'#0F172A', desc:'Promoted posts + Takeover' },
+    { key:'snapchat', name:'Snapchat Ads', icon:'👻', color:'#FFFC00', desc:'Snap Ads + AR Lenses' },
+    { key:'pinterest', name:'Pinterest Ads', icon:'📌', color:'#E60023', desc:'Promoted Pins + Idea Ads' },
+    { key:'microsoft', name:'Microsoft Ads', icon:'🪟', color:'#00A4EF', desc:'Bing Search + Audience' }
   ];
+  window._importPlatforms = platforms;
   if (!d) {
     wrap.innerHTML = `
       <div style="background:white;border-radius:12px;padding:24px;border:1px solid #E2E8F0;margin-bottom:14px">
-        <h3 style="margin:0 0 6px;color:#1E293B">Connect a platform to import campaigns</h3>
-        <p style="margin:0 0 16px;color:#64748B;font-size:14px">We'll scan your existing campaigns, audit performance and recommend specific fixes.</p>
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
-          ${platforms.map(p=>`<div style="background:white;border:1px solid #E2E8F0;border-radius:10px;padding:16px;display:flex;gap:14px;align-items:center"><div style="width:48px;height:48px;border-radius:10px;background:${p.color}15;display:flex;align-items:center;justify-content:center;font-size:24px">${p.icon}</div><div style="flex:1"><div style="font-weight:700;color:#1E293B">${p.name}</div><div style="font-size:12px;color:#64748B">${p.desc}</div></div><button onclick="connectImportSource('${p.key}')" style="padding:8px 14px;background:${p.color};color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">Connect</button></div>`).join('')}
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:14px;flex-wrap:wrap">
+          <div>
+            <h3 style="margin:0 0 6px;color:#1E293B">Connect a platform to import campaigns</h3>
+            <p style="margin:0;color:#64748B;font-size:14px">Tick the platforms you use, then click Connect Selected. We'll OAuth into each, audit performance and recommend specific fixes.</p>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button id="importSelectAllBtn" onclick="toggleImportSelectAll()" style="padding:9px 16px;background:linear-gradient(135deg,#0EA5E9,#0066FF);color:white;border:none;border-radius:7px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">☑ Select All</button>
+            <button onclick="connectSelectedImportSources()" style="padding:9px 16px;background:#10B981;color:white;border:none;border-radius:7px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">⚡ Connect Selected</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px" id="importPlatformGrid">
+          ${platforms.map(p=>`
+            <label style="background:white;border:1px solid #E2E8F0;border-radius:10px;padding:14px;display:flex;gap:12px;align-items:center;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='${p.color}';this.style.boxShadow='0 2px 8px ${p.color}25'" onmouseout="this.style.borderColor='#E2E8F0';this.style.boxShadow='none'">
+              <input type="checkbox" class="import-platform-cb" data-key="${p.key}" style="width:18px;height:18px;cursor:pointer;accent-color:${p.color}">
+              <div style="width:44px;height:44px;border-radius:10px;background:${p.color}15;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:${p.color}">${p.icon}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:700;color:#1E293B">${p.name}</div>
+                <div style="font-size:12px;color:#64748B">${p.desc}</div>
+              </div>
+              <button onclick="event.preventDefault();event.stopPropagation();connectImportSource('${p.key}')" title="Connect just this platform" style="padding:7px 12px;background:${p.color};color:${p.key==='snapchat'?'#0F172A':'white'};border:none;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer">Connect</button>
+            </label>
+          `).join('')}
         </div>
         <div style="margin-top:14px;padding:12px;background:#F0F9FF;border-left:3px solid #0EA5E9;border-radius:6px;font-size:12px;color:#0C4A6E"><strong>OR:</strong> <a href="#" onclick="event.preventDefault();connectImportSource('csv')" style="color:#0EA5E9;font-weight:700">upload a CSV</a> exported from any ad platform — we'll parse it automatically.</div>
       </div>`;
@@ -24385,7 +24408,7 @@ function buildImportCampaigns() {
   }
   wrap.innerHTML = `
     <div style="background:white;border-radius:12px;padding:18px;border:1px solid #E2E8F0;margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800;color:#1E293B;font-size:16px">✓ Connected: ${platforms.find(p=>p.key===d.source).name}</div><div style="font-size:12px;color:#64748B">Imported ${d.campaigns.length} campaigns • Last sync: just now</div></div><div style="display:flex;gap:6px"><button onclick="window._importData=null;buildImportCampaigns()" style="padding:7px 14px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">+ Add Source</button><button onclick="connectImportSource('${d.source}')" style="padding:7px 14px;background:#1E293B;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">↻ Re-scan</button></div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><div style="font-weight:800;color:#1E293B;font-size:16px">✓ Connected: ${d.multi ? d.label : ((platforms.find(p=>p.key===d.source)||{name:d.source}).name)}</div><div style="font-size:12px;color:#64748B">Imported ${d.campaigns.length} campaigns${d.multi?` across ${d.sources.map(k=>window._importPlatLabels[k]||k).join(', ')}`:''} • Last sync: just now</div></div><div style="display:flex;gap:6px"><button onclick="window._importData=null;buildImportCampaigns()" style="padding:7px 14px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">+ Add Source</button><button onclick="${d.multi?'rescanImportSources()':`connectImportSource('${d.source}')`}" style="padding:7px 14px;background:#1E293B;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">↻ Re-scan</button></div></div>
     </div>
     <div style="background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden">
       <table style="width:100%;border-collapse:collapse;font-size:13px"><thead style="background:#F8FAFC"><tr><th style="text-align:left;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700;letter-spacing:.05em">CAMPAIGN</th><th style="text-align:right;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700">SPEND</th><th style="text-align:right;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700">ROAS</th><th style="text-align:center;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700">HEALTH</th><th style="text-align:left;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700">RECOMMENDATION</th></tr></thead><tbody>
@@ -24395,26 +24418,75 @@ function buildImportCampaigns() {
     <div style="margin-top:14px;display:flex;gap:8px"><button onclick="showToast('✓ All recommendations queued')" style="padding:9px 18px;background:#10B981;color:white;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer">✓ Apply All Fixes</button><button onclick="showToast('✓ Sync schedule set: hourly')" style="padding:9px 18px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer">⏱ Auto-sync hourly</button></div>`;
 }
 
+window._importPlatLabels = { meta:'Meta', google:'Google', tiktok:'TikTok', linkedin:'LinkedIn', x:'X (Twitter)', snapchat:'Snapchat', pinterest:'Pinterest', microsoft:'Microsoft (Bing)', csv:'CSV Import' };
+
+function _genImportCampaigns(src, count) {
+  const rng = _seedRng(_lsDomain() + src);
+  const sector = _esc(_lsSector());
+  const objs = ['Conversions','Traffic','Lead Gen','Awareness','App Installs','Engagement'];
+  const recs = ['Pause — CPA 3× target','Refresh creative — fatigue 4.8','Scale +30% — top ROAS','Narrow audience — CPM rising','Add lookalike 1% audience','Move to Top Performers folder','Add UTM tracking — missing','Increase budget cap'];
+  const cn = count || (6 + Math.floor(rng()*5));
+  return Array.from({length:cn}).map((_,i)=>{
+    const roas = +(0.8 + rng()*4.2).toFixed(1);
+    const health = roas >= 3 ? Math.floor(78 + rng()*22) : roas >= 2 ? Math.floor(58 + rng()*22) : Math.floor(28 + rng()*32);
+    return { name:`${sector} ${['Acquisition','Retargeting','Lookalike','Brand','Promo','Cold','Warm'][i%7]} #${i+1}`, objective:objs[Math.floor(rng()*objs.length)], platform:window._importPlatLabels[src]||src, spend:Math.floor(280+rng()*4200), roas, health, rec:recs[Math.floor(rng()*recs.length)] };
+  });
+}
+
 window.connectImportSource = function(src) {
   if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
   const stop = window.startButtonTimer ? window.startButtonTimer(`[onclick*="connectImportSource('${src}')"]`, src==='csv' ? 'Parsing CSV' : 'OAuth → scanning campaigns') : (() => {});
   setTimeout(() => {
-    const rng = _seedRng(_lsDomain() + src);
-    const sector = _esc(_lsSector());
-    const objs = ['Conversions','Traffic','Lead Gen','Awareness','App Installs','Engagement'];
-    const recs = ['Pause — CPA 3× target','Refresh creative — fatigue 4.8','Scale +30% — top ROAS','Narrow audience — CPM rising','Add lookalike 1% audience','Move to Top Performers folder','Add UTM tracking — missing','Increase budget cap'];
-    const platLabels = { meta:'Meta', google:'Google', tiktok:'TikTok', linkedin:'LinkedIn', csv:'CSV Import' };
-    const cn = 6 + Math.floor(rng()*5);
-    const campaigns = Array.from({length:cn}).map((_,i)=>{
-      const roas = +(0.8 + rng()*4.2).toFixed(1);
-      const health = roas >= 3 ? Math.floor(78 + rng()*22) : roas >= 2 ? Math.floor(58 + rng()*22) : Math.floor(28 + rng()*32);
-      return { name:`${sector} ${['Acquisition','Retargeting','Lookalike','Brand','Promo','Cold','Warm'][i%7]} #${i+1}`, objective:objs[Math.floor(rng()*objs.length)], platform:platLabels[src], spend:Math.floor(280+rng()*4200), roas, health, rec:recs[Math.floor(rng()*recs.length)] };
-    });
+    const campaigns = _genImportCampaigns(src);
     window._importData = { source:src, campaigns };
     buildImportCampaigns();
-    stop();
-    showToast(`✅ Imported ${cn} campaigns from ${platLabels[src]}`);
+    if (typeof stop === 'function') try { stop(); } catch(e){}
+    showToast(`✅ Imported ${campaigns.length} campaigns from ${window._importPlatLabels[src]||src}`);
   }, 1500);
+};
+
+window.toggleImportSelectAll = function() {
+  const cbs = document.querySelectorAll('.import-platform-cb');
+  if (!cbs.length) return;
+  const allChecked = Array.from(cbs).every(cb => cb.checked);
+  cbs.forEach(cb => { cb.checked = !allChecked; });
+  const btn = document.getElementById('importSelectAllBtn');
+  if (btn) btn.innerHTML = allChecked ? '☑ Select All' : '☐ Deselect All';
+  showToast(allChecked ? '☐ Cleared selection' : `☑ Selected all ${cbs.length} platforms`);
+};
+
+window.rescanImportSources = function() {
+  const d = window._importData;
+  if (!d || !d.sources) return;
+  const keys = d.sources.slice();
+  window._importData = null;
+  buildImportCampaigns();
+  setTimeout(() => {
+    document.querySelectorAll('.import-platform-cb').forEach(cb => {
+      if (keys.indexOf(cb.dataset.key) > -1) cb.checked = true;
+    });
+    connectSelectedImportSources();
+  }, 120);
+};
+
+window.connectSelectedImportSources = function() {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const cbs = document.querySelectorAll('.import-platform-cb:checked');
+  const keys = Array.from(cbs).map(cb => cb.dataset.key);
+  if (!keys.length) { showToast('⚠️ Tick at least one platform — or use Select All'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer('[onclick*="connectSelectedImportSources"]', `OAuth → scanning ${keys.length} platforms`) : (() => {});
+  setTimeout(() => {
+    const allCampaigns = [];
+    keys.forEach(k => {
+      const cs = _genImportCampaigns(k, 4 + Math.floor(Math.random()*4));
+      cs.forEach(c => allCampaigns.push(c));
+    });
+    const label = keys.length === 1 ? (window._importPlatLabels[keys[0]]||keys[0]) : `${keys.length} platforms`;
+    window._importData = { source:keys[0], sources:keys, multi:keys.length>1, label, campaigns:allCampaigns };
+    buildImportCampaigns();
+    if (typeof stop === 'function') try { stop(); } catch(e){}
+    showToast(`✅ Imported ${allCampaigns.length} campaigns from ${label}`);
+  }, 1600);
 };
 
 window.runImportCampaigns = function() {
