@@ -26,55 +26,75 @@ const C = {
   purple:  '#8B5CF6',
 };
 
+// ── Screenshot directory ──────────────────────────────────────────────────
+const SHOT_DIR = path.join(__dirname, '..', 'attached_assets', 'manual_screenshots');
+function shotPath(file) {
+  const full = path.join(SHOT_DIR, file);
+  return fs.existsSync(full) ? full : null;
+}
+
 // ── Feature catalogue ──────────────────────────────────────────────────────
 const SECTIONS = [
+  {
+    nav: 'Getting Started',
+    icon: '🏁',
+    color: C.navy,
+    summary: 'The home screen — where every InfoGenie session begins.',
+    features: [
+      { name: 'Home / Welcome Screen', icon: '🏠', shot: 'home.jpg',
+        what: 'The starting point of the platform. Enter your website (or pick an industry), choose a target country, and trigger the full intelligence run from a single button.',
+        inputs: ['Website URL or industry/sector dropdown', 'Target country', '"Analyse Now" trigger'],
+        outputs: ['Triggers the full analysis pipeline (competitors, KPIs, Battle Plan, audiences)', 'Routes you straight to the Intelligence Report dashboard'],
+        how: 'Open the app — you land here automatically. Type your domain (or pick a sector if you don\'t have one yet), confirm the country, then click "Analyse Now". Within ~60 seconds the rest of the platform is populated with live data.' },
+    ],
+  },
   {
     nav: 'Analyse',
     icon: '🔍',
     color: C.teal,
     summary: 'Understand the market through competitor intelligence and search data.',
     features: [
-      { name: 'Intelligence Report (Dashboard)', icon: '📊',
+      { name: 'Intelligence Report (Dashboard)', icon: '📊', shot: 'dashboard.jpg',
         what: 'High-level overview of the competitive landscape with AI-driven growth recommendations.',
         inputs: ['Website URL or industry/sector', 'Target country'],
         outputs: ['KPI grid (CTR, ROAS, traffic)', 'Side-by-side performance charts', '12-month traffic & spend trends', 'Competitor intelligence summary'],
         how: 'Enter your website or pick an industry on the home screen, choose your target country, and click "Analyse Now". The dashboard populates within 60 seconds.' },
-      { name: 'Competitive Intelligence Engine', icon: '⚔️',
+      { name: 'Competitive Intelligence Engine', icon: '⚔️', shot: 'competitors.jpg',
         what: 'Deep-dive analysis into specific competitors — traffic sources, threat levels, ad creative, and counter-attack plans.',
         inputs: ['Manual competitor URLs (optional)'],
         outputs: ['Competitor cards', 'Threat-level scoring', 'Ad creative insights', '"Attack Plan" per competitor'],
         how: 'Open the Competitors view after running an analysis. Click any competitor card to drill into their channel mix and see the recommended counter-strategy.' },
-      { name: 'Intelligence Hub', icon: '📡',
+      { name: 'Intelligence Hub', icon: '📡', shot: 'intelligence.jpg',
         what: 'Real-time monitoring of competitor signals and predictive market moves.',
         inputs: ['Auto-derived from analysis'],
         outputs: ['Predictive signals', 'Budget-shift alerts', '90-day domination roadmap', 'Exportable report'],
         how: 'Open the Intelligence Hub from the Analyse menu. Use "Counter This Message" on any competitor message to launch a counter-campaign in one click.' },
-      { name: 'Battle Plan', icon: '🛡️',
+      { name: 'Battle Plan', icon: '🛡️', shot: 'battleplan.jpg',
         what: 'Strategic execution roadmap tailored to the identified market gaps.',
         inputs: ['Competitor analysis results'],
         outputs: ['Implementation steps', '90-day strategic priorities', 'Tactical playbook'],
         how: 'Generated automatically after an analysis run. Review priorities top-to-bottom and assign owners.' },
-      { name: 'Reddit & Community Intelligence', icon: '👽',
+      { name: 'Reddit & Community Intelligence', icon: '👽', shot: 'reddit.jpg',
         what: 'Monitors brand and competitor mentions across Reddit to surface sentiment and engagement opportunities.',
         inputs: ['Brand or query string', 'Scan Now trigger'],
         outputs: ['Subreddit mentions with sentiment', 'AI-suggested replies in your brand voice'],
         how: 'In the Reddit Intel view, click "Scan now" and wait ~10 seconds. Use the Reply Studio tab to draft on-brand responses.' },
-      { name: 'ICP Studio', icon: '🎯',
+      { name: 'ICP Studio', icon: '🎯', shot: 'icp-studio.jpg',
         what: 'Builds detailed Ideal Customer Profiles using voice-of-customer signals.',
         inputs: ['Brand intelligence data', 'Optional manual prompts'],
         outputs: ['Persona profiles (demographics, pains, motivations)', 'Tile-level activations: ads, social, email'],
         how: 'Click any ICP tile to activate that channel. Use "Save ICP" to lock in the persona for future runs.' },
-      { name: 'Search Intent Map', icon: '🗺️',
+      { name: 'Search Intent Map', icon: '🗺️', shot: 'intent-map.jpg',
         what: 'Classifies keywords by user intent (Informational, Transactional, Commercial, Navigational).',
         inputs: ['Generate Intent Map trigger'],
         outputs: ['Keyword → intent mapping', 'Landing-page-type recommendations'],
         how: 'Open the Intent Map view and click "Generate". Use the resulting clusters to plan content type per topic.' },
-      { name: 'Keyword–Page Map', icon: '🧭',
+      { name: 'Keyword–Page Map', icon: '🧭', shot: 'keyword-map.jpg',
         what: 'Maps primary and supporting keywords to specific pages to avoid SEO cannibalisation.',
         inputs: ['Generate Map trigger'],
         outputs: ['Visual site architecture', 'Keyword → URL assignments'],
         how: 'Click "Generate Map" to scan your site and assign each keyword cluster to the best-fit page.' },
-      { name: 'Google Search Intelligence', icon: '🔎',
+      { name: 'Google Search Intelligence', icon: '🔎', shot: 'serp.jpg',
         what: 'Live Google SERP tracker for any query, country, and result type.',
         inputs: ['Search query', 'Country', 'Type (Organic / News)'],
         outputs: ['Live ranking positions', 'Competitor ad presence', 'Organic visibility'],
@@ -87,27 +107,27 @@ const SECTIONS = [
     color: C.blue,
     summary: 'Build and manage marketing assets and campaigns.',
     features: [
-      { name: 'Brand Creative Library', icon: '🎨',
+      { name: 'Brand Creative Library', icon: '🎨', shot: 'brand-assets.jpg',
         what: 'Centralised repository for all brand-related files (logos, banners, social, video, PDFs).',
         inputs: ['File uploads up to 50MB (JPG/PNG/GIF/WebP/MP4/MOV/PDF/SVG)', 'Category tags'],
         outputs: ['Searchable asset grid', 'Filter by type'],
         how: 'Drag and drop files into the Brand Assets uploader, then tag by category for fast retrieval.' },
-      { name: 'AI Creative Generation Engine', icon: '🤖',
+      { name: 'AI Creative Generation Engine', icon: '🤖', shot: 'creative.jpg',
         what: 'Generates high-performing ad copy and headlines based on competitor data.',
         inputs: ['Competitor intel', 'Generate More trigger'],
         outputs: ['Ad copy variants', 'Headline options', 'Campaign briefs'],
         how: 'Open AI Creative, select the competitor and channel, and click Generate. Iterate until you hit the angle you want.' },
-      { name: 'Campaign Intelligence', icon: '🚀',
+      { name: 'Campaign Intelligence', icon: '🚀', shot: 'campaigns.jpg',
         what: 'AI-generated campaign improvements and structural recommendations with one-click launch.',
         inputs: ['Launch modal: budget, platform, region'],
         outputs: ['Automated deployment to Google, Meta, TikTok'],
         how: 'Click Launch Campaign on any recommendation to push the campaign live to your connected ad accounts.' },
-      { name: 'Content Intelligence', icon: '📝',
+      { name: 'Content Intelligence', icon: '📝', shot: 'content.jpg',
         what: 'Identifies content gaps and audits existing pages for SEO performance.',
         inputs: ['Analyse Content trigger', 'Page URLs'],
         outputs: ['Topical cluster maps', 'Content-gap reports', 'AI page audits'],
         how: 'Click "Analyse Content" to scan your site. Drill into each gap to see suggested article briefs.' },
-      { name: 'Social Calendar & Generator', icon: '📅',
+      { name: 'Social Calendar & Generator', icon: '📅', shot: 'social.jpg',
         what: 'End-to-end social media management — generate posts, schedule, and visualise.',
         inputs: ['Create Post trigger (text/images)'],
         outputs: ['Visual calendar', 'Scheduled posts across platforms'],
@@ -120,12 +140,12 @@ const SECTIONS = [
     color: C.purple,
     summary: 'Distribute content and ads to target audiences.',
     features: [
-      { name: 'Audience Intelligence', icon: '👥',
+      { name: 'Audience Intelligence', icon: '👥', shot: 'audience.jpg',
         what: 'Identifies and targets high-converting audience segments.',
         inputs: ['Auto-Target trigger'],
         outputs: ['Defined audience segments', 'Targeting parameters for ad platforms'],
         how: 'Click Auto-Target to let InfoGenie build your top 5 segments automatically. Push them straight to Meta, Google, or TikTok.' },
-      { name: 'Multi-Channel Advertising Hub', icon: '📣',
+      { name: 'Multi-Channel Advertising Hub', icon: '📣', shot: 'advertise.jpg',
         what: 'Management interface for lead-generation ads across 20+ channels.',
         inputs: ['New Campaign trigger', 'Platform connections'],
         outputs: ['Integrated campaign management', 'Cross-platform performance tracking'],
@@ -138,27 +158,27 @@ const SECTIONS = [
     color: C.green,
     summary: 'Optimise visibility and measure long-term performance.',
     features: [
-      { name: 'AutoSEO Pro', icon: '⚙️',
+      { name: 'AutoSEO Pro', icon: '⚙️', shot: 'autoseo.jpg',
         what: 'Automated SEO execution — article generation, on-page fixes, and backlink tracking.',
         inputs: ['WordPress credentials (API)', 'Target keywords'],
         outputs: ['Published articles', 'Backlink reports', 'Keyword research'],
         how: 'Connect WordPress in Settings, choose target keywords, and let AutoSEO publish optimised articles on a schedule.' },
-      { name: 'AI Visibility Intelligence', icon: '✨',
+      { name: 'AI Visibility Intelligence', icon: '✨', shot: 'aivisibility.jpg',
         what: 'Tracks how your brand is cited by LLMs (ChatGPT, Claude, Gemini, Perplexity).',
         inputs: ['Run AI Audit trigger'],
         outputs: ['Citation tracking', 'Brand sentiment in AI responses', 'Optimisation recommendations'],
         how: 'Click Run AI Audit. The dashboard shows where you appear (and where you don\'t) in AI answer engines.' },
-      { name: 'AI Audit Suite', icon: '🔬',
+      { name: 'AI Audit Suite', icon: '🔬', shot: 'ai-audit-suite.jpg',
         what: 'Independent deep-dive audits for various AI performance metrics.',
         inputs: ['Audit selection (Prompt Coverage, Entity Mapping, etc.)'],
         outputs: ['Reports on answer accuracy, AI Overviews, citation-to-traffic attribution'],
         how: 'Pick the audit type and click Run. Reports save to the Action Center for follow-up.' },
-      { name: 'Action Center', icon: '🎮',
+      { name: 'Action Center', icon: '🎮', shot: 'action-center.jpg',
         what: 'Marketing-command view showing upcoming launches and system risks.',
         inputs: ['Refresh trigger'],
         outputs: ['Live status feed', 'Upcoming milestones', 'Optimisation opportunities'],
         how: 'Visit daily as your single pane of glass. Click any item to jump to the relevant module.' },
-      { name: 'KPI Tracker', icon: '📐',
+      { name: 'KPI Tracker', icon: '📐', shot: 'kpi-tracker.jpg',
         what: 'Long-term performance tracking against business goals.',
         inputs: ['Data from connected ad/analytics accounts'],
         outputs: ['Growth trend visualisations', 'Goal-completion charts'],
@@ -171,42 +191,42 @@ const SECTIONS = [
     color: C.amber,
     summary: 'Operations, reporting, and platform configuration.',
     features: [
-      { name: 'Master Calendar', icon: '🗓️',
+      { name: 'Master Calendar', icon: '🗓️', shot: 'master-calendar.jpg',
         what: 'Unified view of all scheduled marketing activities — campaigns, content, social.',
         inputs: ['Auto-sync from other modules'],
         outputs: ['Global timeline of marketing operations'],
         how: 'Open Master Calendar to see every scheduled action. Click any item to edit in its source module.' },
-      { name: 'Campaign Results & Action History', icon: '📋',
+      { name: 'Campaign Results & Action History', icon: '📋', shot: 'results.jpg',
         what: 'Live tracking of all platform-initiated actions and their measurable impact.',
         inputs: ['Export PDF trigger'],
         outputs: ['PDF reports', 'Historical action logs', 'Performance lift summaries'],
         how: 'Filter by date range and click Export PDF for a board-ready summary.' },
-      { name: 'Re-Engage', icon: '🔁',
+      { name: 'Re-Engage', icon: '🔁', shot: 'reengage.jpg',
         what: 'Tools for customer retention and win-back campaigns.',
         inputs: ['Customer data segments'],
         outputs: ['Re-engagement campaign automation'],
         how: 'Upload or pull a customer list, choose a segment, and launch a re-engagement sequence.' },
-      { name: 'Automations', icon: '🪄',
+      { name: 'Automations', icon: '🪄', shot: 'automations.jpg',
         what: 'Workflow builder for connecting different parts of the marketing stack.',
         inputs: ['Trigger / Action definitions'],
         outputs: ['Cross-platform automated workflows'],
         how: 'Pick a trigger (e.g. competitor budget surge) and link it to an action (e.g. increase Meta bids).' },
-      { name: 'Agency Hub & Reports', icon: '🏢',
+      { name: 'Agency Hub & Reports', icon: '🏢', shot: 'agency.jpg',
         what: 'Multi-client management and white-label reporting interface.',
         inputs: ['Client account configurations'],
         outputs: ['Branded client reports', 'Multi-tenant dashboard'],
         how: 'Add clients in Settings, then switch context using the client dropdown to manage their campaigns separately.' },
-      { name: 'C-Suite Executive Reports', icon: '💼',
+      { name: 'C-Suite Executive Reports', icon: '💼', shot: 'csuite.jpg',
         what: 'Role-specific board-ready dashboards (CEO, CMO, CFO, COO).',
         inputs: ['Role selection'],
         outputs: ['Executive PDF reports', 'High-level business impact summaries'],
         how: 'Pick the role lens, click Generate, and download the board-ready PDF.' },
-      { name: 'Technical Suite', icon: '🛠️',
+      { name: 'Technical Suite', icon: '🛠️', shot: 'technical-suite.jpg',
         what: 'Technical SEO and site health audits.',
         inputs: ['Run All Audits trigger'],
         outputs: ['Crawlability scores', 'Index-readiness report', 'Technical health grade'],
         how: 'Click Run All Audits to execute the full technical sweep. Each finding includes a fix.' },
-      { name: 'Integrations & Settings', icon: '🔌',
+      { name: 'Integrations & Settings', icon: '🔌', shot: 'settings.jpg',
         what: 'Configuration panel for the entire platform.',
         inputs: ['API keys, AI model selection, account permissions'],
         outputs: ['Connected platform status', 'Global system configuration'],
@@ -294,11 +314,15 @@ function ensureSpace(doc, needed) {
   if (doc.y + needed > limit) doc.addPage();
 }
 
-// Footer + page number on each page
+// Footer + page number on each page.
+// We temporarily zero the page's bottom margin so PDFKit doesn't think the
+// footer text is overflowing and auto-create extra blank pages.
 function addFooters(doc) {
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
+    const origBottom = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
     const y = pageH(doc) - 36;
     doc.save();
     doc.strokeColor(C.gray200).lineWidth(0.5)
@@ -308,11 +332,20 @@ function addFooters(doc) {
     doc.fillColor(C.gray400).text(`Page ${i + 1} of ${range.count}`,
       pageW(doc) - doc.page.margins.right - 100, y + 8, { width: 100, align: 'right' });
     doc.restore();
+    doc.page.margins.bottom = origBottom;
   }
 }
 
 // ── Cover page ─────────────────────────────────────────────────────────────
 function drawCover(doc) {
+  // Zero margins on the cover page so absolute-positioned text near the page
+  // edges doesn't trigger PDFKit's auto-pagination.
+  const orig = { ...doc.page.margins };
+  doc.page.margins.top = 0;
+  doc.page.margins.bottom = 0;
+  doc.page.margins.left = 0;
+  doc.page.margins.right = 0;
+
   const w = pageW(doc), h = pageH(doc);
   // Navy background
   doc.rect(0, 0, w, h).fill(C.navy);
@@ -360,10 +393,16 @@ function drawCover(doc) {
 
   // Footer band
   doc.fillColor(C.teal).font('Helvetica-Bold').fontSize(10)
-    .text('Version 2026.04 · April 2026', 56, h - 80);
+    .text('Version 2026.04 · April 2026', 56, h - 80, { lineBreak: false });
   doc.fillColor('#64748B').font('Helvetica').fontSize(9)
     .text('Read this manual front-to-back, or jump to any module via the table of contents.',
-      56, h - 60, { width: w - 112 });
+      56, h - 60, { width: w - 112, lineBreak: false });
+
+  // Restore original margins for the rest of the document.
+  doc.page.margins.top = orig.top;
+  doc.page.margins.bottom = orig.bottom;
+  doc.page.margins.left = orig.left;
+  doc.page.margins.right = orig.right;
 }
 
 // ── Workflow infographic (Analyse → Create → Reach → Grow → Manage) ────────
@@ -479,79 +518,124 @@ function drawSectionDivider(doc, section) {
   });
 }
 
-// ── Feature card ───────────────────────────────────────────────────────────
+// ── Feature card (one feature per page, screenshot embedded) ────────────────
 function drawFeatureCard(doc, section, feature) {
-  ensureSpace(doc, 260);
+  // Always start each feature on a fresh page so layout is consistent and aligned.
+  doc.addPage();
+
   const x0 = doc.page.margins.left;
-  const y0 = doc.y;
+  const y0 = doc.page.margins.top;
   const w = contentW(doc);
 
-  // Header bar with feature name + section pill
+  // ── 1. Header bar (feature name + section tag) ──────────────────────────
+  const headerH = 40;
   doc.save();
-  doc.roundedRect(x0, y0, w, 36, 8).fill(section.color);
-  doc.fillColor(C.white).font('Helvetica-Bold').fontSize(13)
-    .text(feature.name, x0 + 14, y0 + 11, { width: w - 100 });
-  doc.fillColor(C.white).font('Helvetica').fontSize(9)
-    .text(section.nav.toUpperCase(), x0 + w - 80, y0 + 13, { width: 70, align: 'right' });
+  doc.roundedRect(x0, y0, w, headerH, 8).fill(section.color);
+  doc.fillColor(C.white).font('Helvetica-Bold').fontSize(14)
+    .text(feature.name, x0 + 16, y0 + 13, { width: w - 110, ellipsis: true });
+  // Right-aligned section tag
+  doc.fillColor(C.white).font('Helvetica-Bold').fontSize(9)
+    .text(section.nav.toUpperCase(), x0 + w - 96, y0 + 16, { width: 80, align: 'right', characterSpacing: 1 });
   doc.restore();
 
-  doc.y = y0 + 48;
+  let cursorY = y0 + headerH + 14;
 
-  // What it does
-  h3(doc, 'What it does', section.color);
-  p(doc, feature.what);
-  doc.moveDown(0.3);
+  // ── 2. "What it does" paragraph ─────────────────────────────────────────
+  doc.fillColor(section.color).font('Helvetica-Bold').fontSize(10)
+    .text('WHAT IT DOES', x0, cursorY, { characterSpacing: 1 });
+  cursorY = doc.y + 4;
+  doc.fillColor(C.gray800).font('Helvetica').fontSize(10.5)
+    .text(feature.what, x0, cursorY, { width: w, lineGap: 2 });
+  cursorY = doc.y + 14;
 
-  // Two-column inputs / outputs
-  const colY = doc.y;
-  const colW = (w - 16) / 2;
+  // ── 3. Screenshot embed ─────────────────────────────────────────────────
+  const shot = feature.shot ? shotPath(feature.shot) : null;
+  if (shot) {
+    // Source images are 1440x900 (1.6 aspect). Cap height so we leave room
+    // for the columns + how-to box below.
+    const maxImgH = 270;
+    const maxImgW = w;
+    let imgW = maxImgW;
+    let imgH = imgW / 1.6;
+    if (imgH > maxImgH) {
+      imgH = maxImgH;
+      imgW = imgH * 1.6;
+    }
+    const imgX = x0 + (w - imgW) / 2;
+    // Border + soft shadow
+    doc.save();
+    doc.roundedRect(imgX - 1, cursorY - 1, imgW + 2, imgH + 2, 6)
+      .lineWidth(1).strokeColor(C.gray200).stroke();
+    doc.restore();
+    try {
+      doc.image(shot, imgX, cursorY, { width: imgW, height: imgH });
+    } catch (err) {
+      // Fallback: leave a placeholder rectangle
+      doc.save().rect(imgX, cursorY, imgW, imgH).fill(C.gray100).restore();
+      doc.fillColor(C.gray400).font('Helvetica').fontSize(10)
+        .text('[ screenshot unavailable ]', imgX, cursorY + imgH / 2 - 5, { width: imgW, align: 'center' });
+    }
+    // Caption
+    doc.fillColor(C.gray400).font('Helvetica-Oblique').fontSize(8.5)
+      .text(`Live view: ${feature.name}`, x0, cursorY + imgH + 6, { width: w, align: 'center' });
+    cursorY = cursorY + imgH + 24;
+  }
+
+  // ── 4. Two-column Inputs / Outputs ──────────────────────────────────────
+  const gap = 16;
+  const colW = (w - gap) / 2;
+  const colY = cursorY;
+
+  // Column headers
+  doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(10)
+    .text('INPUTS', x0, colY, { characterSpacing: 1, width: colW });
+  doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(10)
+    .text('OUTPUTS', x0 + colW + gap, colY, { characterSpacing: 1, width: colW });
+
+  const listStartY = colY + 16;
+
   // Left: inputs
-  doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(10).text('Inputs', x0, colY);
-  let lx = x0;
-  let ly = colY + 14;
+  let ly = listStartY;
   feature.inputs.forEach(item => {
-    doc.fillColor(section.color).circle(lx + 3, ly + 4, 1.8).fill();
+    doc.save().fillColor(section.color).circle(x0 + 3, ly + 5, 2).fill().restore();
     doc.fillColor(C.gray800).font('Helvetica').fontSize(9.5)
-      .text(item, lx + 10, ly, { width: colW - 14 });
-    ly = doc.y + 2;
+      .text(item, x0 + 12, ly, { width: colW - 14, lineGap: 1.5 });
+    ly = doc.y + 3;
   });
   const leftBottom = ly;
+
   // Right: outputs
-  doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(10).text('Outputs', x0 + colW + 16, colY);
-  let rx = x0 + colW + 16;
-  let ry = colY + 14;
+  let ry = listStartY;
   feature.outputs.forEach(item => {
-    doc.fillColor(section.color).circle(rx + 3, ry + 4, 1.8).fill();
+    doc.save().fillColor(section.color).circle(x0 + colW + gap + 3, ry + 5, 2).fill().restore();
     doc.fillColor(C.gray800).font('Helvetica').fontSize(9.5)
-      .text(item, rx + 10, ry, { width: colW - 14 });
-    ry = doc.y + 2;
+      .text(item, x0 + colW + gap + 12, ry, { width: colW - 14, lineGap: 1.5 });
+    ry = doc.y + 3;
   });
   const rightBottom = ry;
-  doc.y = Math.max(leftBottom, rightBottom) + 6;
 
-  // How to use box
-  ensureSpace(doc, 70);
-  const howY = doc.y;
-  doc.save().roundedRect(x0, howY, w, 0, 6).fill(C.gray100).restore();
-  // Compute height by drawing text first (we'll re-draw the rect at correct height)
-  doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(10)
-    .text('How to use it', x0 + 12, howY + 10);
-  doc.fillColor(C.gray800).font('Helvetica').fontSize(9.5)
-    .text(feature.how, x0 + 12, howY + 26, { width: w - 24, lineGap: 2 });
-  const howEnd = doc.y + 8;
-  // Re-draw rect background under the text
+  cursorY = Math.max(leftBottom, rightBottom) + 10;
+
+  // ── 5. "How to use it" tinted box ───────────────────────────────────────
+  // Measure first, then draw rect once, then draw text once (no double render).
+  const padX = 14;
+  const padY = 12;
+  const labelH = 14;
+  const howTextW = w - padX * 2;
+  doc.font('Helvetica').fontSize(10);
+  const howTextH = doc.heightOfString(feature.how, { width: howTextW, lineGap: 2 });
+  const howBoxH = padY + labelH + 4 + howTextH + padY;
+
   doc.save();
-  doc.roundedRect(x0, howY, w, howEnd - howY, 6).fillOpacity(0.6).fill(C.gray100);
+  doc.roundedRect(x0, cursorY, w, howBoxH, 8).fill(C.gray100);
+  // Left accent stripe
+  doc.rect(x0, cursorY, 4, howBoxH).fill(section.color);
   doc.restore();
-  // Re-render text on top of background (since fill covered it)
-  doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(10)
-    .text('How to use it', x0 + 12, howY + 10);
-  doc.fillColor(C.gray800).font('Helvetica').fontSize(9.5)
-    .text(feature.how, x0 + 12, howY + 26, { width: w - 24, lineGap: 2 });
-  doc.y = howEnd + 14;
 
-  // Card divider
-  hr(doc);
+  doc.fillColor(section.color).font('Helvetica-Bold').fontSize(10)
+    .text('HOW TO USE IT', x0 + padX, cursorY + padY, { characterSpacing: 1 });
+  doc.fillColor(C.gray800).font('Helvetica').fontSize(10)
+    .text(feature.how, x0 + padX, cursorY + padY + labelH + 4, { width: howTextW, lineGap: 2 });
 }
 
 // ── TOC ────────────────────────────────────────────────────────────────────
@@ -734,8 +818,6 @@ function buildWithFooters(outPath) {
 
   SECTIONS.forEach(section => {
     drawSectionDivider(doc, section);
-    doc.addPage();
-    banner(doc, `${section.nav} — features in detail`, section.color, section.summary);
     section.features.forEach(f => drawFeatureCard(doc, section, f));
   });
 

@@ -110,3 +110,16 @@ Each section's view header breadcrumb also shows the group label (e.g. "Analyse 
 - Pricing: $99/mo (Starter) → $399/mo (Pro) → $999/mo (Agency) → $3K–$10K (Enterprise)
 - Target Market: $600B+ global digital ad spend
 - Revenue Model: SaaS + Usage fees + Ad-spend management fee
+
+## User Manual (Downloadable PDF)
+- Location: `attached_assets/InfoGenie_User_Manual.pdf` (41 pages, ~2.3 MB)
+- Builder: `scripts/build_user_manual.js` (PDFKit, no headless browser)
+- Screenshot capture: `scripts/capture_screenshots.js` (Puppeteer + Chromium 131)
+  - Hardened with per-view try/catch + browser auto-relaunch on disconnect
+  - Run all: `node scripts/capture_screenshots.js`
+  - Run subset: `node scripts/capture_screenshots.js --only=agency,settings`
+- Screenshots stored in `attached_assets/manual_screenshots/<id>.jpg` (1440×900 JPEG)
+- 30 views captured (one per feature). Each PDF feature page embeds its corresponding screenshot.
+- View routing for screenshots: `/view/<id>` (server.js + app.js URL router) with `<base href="/">` in index.html so relative CSS/JS still resolve.
+- Layout per feature page: header bar (section colour) → "What it does" → screenshot with border + caption → 2-column Inputs/Outputs → "How to use it" tinted box. Each feature gets its own page for consistent alignment.
+- To rebuild: capture screenshots first, then `node scripts/build_user_manual.js`. Output overwrites the PDF in place.

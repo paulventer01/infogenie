@@ -22627,3 +22627,83 @@ document.addEventListener('click', function(ev) {
     if (typeof showToast === 'function') showToast('⚠️ Counter modal error: ' + err.message);
   }
 }, true);
+
+// ── Manual screenshot helper: auto-navigates to a view from URL ──
+// Supports three URL forms (in priority order) so it works inside the
+// preview iframe wrapper, which strips query strings:
+//   /view/dashboard
+//   /#view=dashboard
+//   /?view=dashboard
+// Used by build_user_manual.js to capture each module's UI as a screenshot.
+(function() {
+  // Inject screenshot-mode CSS as early as possible so any auto-opened
+  // modals stay invisible no matter what JS later tries to show them.
+  const isScreenshotMode = (window.location.pathname || '').match(/^\/view\//);
+  if (isScreenshotMode) {
+    const css = document.createElement('style');
+    css.textContent = `
+      #landingPageModal, #wpCredentialsModal,
+      .modal-overlay, .modal-backdrop, .wl-modal-overlay,
+      .attack-modal, .upgrade-modal, .toast, .notification-toast,
+      [role="dialog"]:not(.view) {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+      body, html { overflow: auto !important; }
+    `;
+    (document.head || document.documentElement).appendChild(css);
+  }
+  function pickViewId() {
+    try {
+      // 1. Path-based: /view/<id>
+      const m = (window.location.pathname || '').match(/^\/view\/([a-z0-9-]+)\/?$/i);
+      if (m) return m[1];
+      // 2. Hash-based: #view=<id>
+      const h = (window.location.hash || '').replace(/^#/, '');
+      const hp = new URLSearchParams(h);
+      if (hp.get('view')) return hp.get('view');
+      // 3. Query-based: ?view=<id>
+      const qp = new URLSearchParams(window.location.search || '');
+      if (qp.get('view')) return qp.get('view');
+    } catch(_) {}
+    return null;
+  }
+  function dismissOverlays() {
+    try {
+      // Common modal/overlay selectors used across the app.
+      const sel = [
+        '.modal-overlay', '.modal-backdrop', '.wl-modal-overlay',
+        '.modal[style*="display: block"]', '.modal[style*="display:block"]',
+        '[role="dialog"]', '.attack-modal', '.upgrade-modal',
+        '.toast', '.notification-toast'
+      ];
+      sel.forEach(s => {
+        document.querySelectorAll(s).forEach(el => {
+          el.style.display = 'none';
+          el.style.visibility = 'hidden';
+          if (el.parentNode) el.parentNode.removeChild(el);
+        });
+      });
+      // Reset body scroll lock that modals often add
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    } catch(_) {}
+  }
+  function tryRoute() {
+    const v = pickViewId();
+    if (v && typeof navigateTo === 'function') {
+      try { navigateTo(v); } catch(_) {}
+      // Dismiss any modals that opened as a side-effect of navigation
+      setTimeout(dismissOverlays, 300);
+      setTimeout(dismissOverlays, 1000);
+      setTimeout(dismissOverlays, 2000);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => setTimeout(tryRoute, 1200));
+  } else {
+    setTimeout(tryRoute, 1200);
+  }
+})();
