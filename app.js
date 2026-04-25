@@ -12246,6 +12246,7 @@ function buildIntelligence() {
       <div class="wl-message">${w.message}</div>
       <div class="wl-weakness" title="The specific gap or weakness in this competitor's positioning that you can exploit to win customers back.">💡 <strong>Exploitable Weakness:</strong> ${w.weakness}</div>
       <button class="btn-wl-counter" type="button"
+        onclick="try{(window.openWLCounterModal||function(){})('${id}')}catch(e){console.error('counter modal err:',e)}"
         data-wl-id="${id}"
         data-wl-comp="${enc(w.comp)}"
         data-wl-channel="${enc(w.channel)}"
@@ -22572,6 +22573,9 @@ try { window.openAttackModal = openAttackModal; } catch(e) {}
 document.addEventListener('click', function(ev) {
   const btn = ev.target.closest && ev.target.closest('.btn-wl-counter');
   if (!btn) return;
+  // If the button already has an inline onclick handler, let it fire instead
+  // of duplicating the work here. This avoids opening the modal twice.
+  if (btn.hasAttribute('onclick')) return;
   ev.preventDefault();
   const dec = s => { try { return decodeURIComponent(s || ''); } catch(_) { return s || ''; } };
   const id = btn.getAttribute('data-wl-id') || '';

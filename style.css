@@ -7288,6 +7288,21 @@ h3:hover {
 select option { background: #FFFFFF !important; color: #0F4C4A !important; }
 [data-theme="dark"] select option { background: #0F1E3D !important; color: #E2E8F0 !important; }
 
+/* ── Selects with inline dark-navy backgrounds (e.g. Reply Studio's Tone) keep
+      their white text in light mode so the selected option stays readable. ── */
+[data-theme="light"] select[style*="background:#1A2E4A"],
+[data-theme="light"] select[style*="background: #1A2E4A"],
+[data-theme="light"] select[style*="background:#0F1E3D"],
+[data-theme="light"] select[style*="background: #0F1E3D"],
+[data-theme="light"] select[style*="background:#0A1628"],
+[data-theme="light"] select[style*="background: #0A1628"],
+[data-theme="light"] select[style*="background:#0d1f38"],
+[data-theme="light"] select[style*="background: #0d1f38"],
+[data-theme="light"] select[style*="background:#142545"],
+[data-theme="light"] select[style*="background: #142545"] {
+  color: #FFFFFF !important;
+}
+
 /* ── Unified hero size: every page hero card has the same dimensions ── */
 .view-header,
 .intel-header,
