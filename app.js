@@ -6441,11 +6441,15 @@ function _icpSaveForm() {
 }
 
 async function _icpAutoDraft() {
+  if (window._icpAutoDraftInFlight) return;
+  window._icpAutoDraftInFlight = true;
   const status = document.getElementById('icpDraftStatus');
   const btn1 = document.getElementById('icpDraftBtn');
   const btn2 = document.getElementById('icpDraftBtn2');
-  [btn1, btn2].forEach(b => { if (b) { b.disabled = true; b.style.opacity = '.6'; } });
+  [btn1, btn2].forEach(b => { if (b) { b.disabled = true; b.style.opacity = '.6'; b.style.cursor = 'wait'; } });
   if (status) { status.style.display = 'block'; }
+  const ac = new AbortController();
+  const timeoutId = setTimeout(() => ac.abort(), 45000);
   try {
     const res = await fetch('/api/icp-draft', {
       method: 'POST',
@@ -6455,9 +6459,14 @@ async function _icpAutoDraft() {
         industry:    analysisData?.industry?.name || 'your industry',
         country:     analysisData?.country || 'Global',
         competitors: (analysisData?.competitors || []).slice(0, 6),
-      })
+      }),
+      signal: ac.signal
     });
-    const data = await res.json();
+    const rawText = await res.text();
+    let data;
+    try { data = JSON.parse(rawText); }
+    catch { throw new Error(`Server returned non-JSON (HTTP ${res.status})`); }
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     if (data.icp && (data.icp.role || data.icp.ageRange)) {
       window._icpProfile = {
         ageRange:   data.icp.ageRange   || '',
@@ -6473,9 +6482,18 @@ async function _icpAutoDraft() {
       throw new Error(data.error || 'Empty draft returned');
     }
   } catch (err) {
-    showToast('⚠️ Draft failed: ' + (err.message || 'unknown error'));
-    [btn1, btn2].forEach(b => { if (b) { b.disabled = false; b.style.opacity = '1'; } });
+    const msg = err.name === 'AbortError' ? 'AI draft timed out after 45s — try again' : (err.message || 'unknown error');
+    showToast('⚠️ Draft failed: ' + msg);
     if (status) status.style.display = 'none';
+  } finally {
+    clearTimeout(timeoutId);
+    window._icpAutoDraftInFlight = false;
+    // Re-enable any draft buttons currently in the DOM (handles both pre- and post-rerender cases)
+    document.querySelectorAll('#icpDraftBtn, #icpDraftBtn2').forEach(b => {
+      b.disabled = false;
+      b.style.opacity = '1';
+      b.style.cursor = 'pointer';
+    });
   }
 }
 
@@ -17100,7 +17118,12 @@ async function fetchLiveCompetitorNews() {
     const data = await res.json();
 
     if (data.source === 'not_subscribed' || (data.articles && data.articles.length === 0 && data.source !== 'live')) {
-      if (statusNote) statusNote.innerHTML = `⚠️ Subscribe to <a href="https://rapidapi.com/letscrape-6bRBa3QguO5/api/real-time-news-data" target="_blank" style="color:#0066FF;text-decoration:underline">Real-Time News Data</a> on RapidAPI (free tier) then click refresh again.`;
+      if (statusNote) statusNote.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0">
+          <span style="font-size:0.82rem;color:#92400E">⚠️ Live news requires a free RapidAPI subscription.</span>
+          <a href="https://rapidapi.com/letscrape-6bRBa3QguO5/api/real-time-news-data" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:linear-gradient(135deg,#0066FF,#0052CC);color:white;border-radius:8px;font-size:0.78rem;font-weight:700;text-decoration:none;box-shadow:0 2px 6px rgba(0,102,255,.25)">📡 Subscribe to Real-Time News Data <span style="font-size:0.9rem">→</span></a>
+          <span style="font-size:0.72rem;color:#6B7280">Free tier · then click <strong>Refresh Live Signals</strong> again</span>
+        </div>`;
       if (btn) { btn.disabled = false; btn.textContent = '📡 Refresh Live Signals'; }
       return;
     }
