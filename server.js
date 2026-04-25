@@ -1179,8 +1179,16 @@ app.post('/api/sov', async (req, res) => {
 
 // ── RapidAPI helper ───────────────────────────────────────────────────────────
 
+// Normalise a RapidAPI key from env: trim whitespace and strip stray surrounding
+// single/double quotes that can sneak in when the secret is pasted from a UI
+// that auto-quotes the value (a real key only contains alphanumerics so this
+// is safe).
+function getRapidApiKey(envName = 'RAPIDAPI_KEY') {
+  return (process.env[envName] || '').trim().replace(/^['"]+|['"]+$/g, '');
+}
+
 async function callRapidAPI(host, path, method = 'GET', body = null) {
-  const key = process.env.RAPIDAPI_KEY;
+  const key = getRapidApiKey();
   if (!key) throw new Error('RAPIDAPI_KEY not configured');
 
   return new Promise((resolve, reject) => {
@@ -4144,7 +4152,7 @@ app.get('/api/serp', async (req, res) => {
   const { q, gl = 'us', hl = 'en', num = 10, type = 'search' } = req.query;
   if (!q) return res.status(400).json({ error: 'Missing query param q' });
 
-  const rapidKey = process.env.GOOGLE_SEARCH_API_KEY || process.env.RAPIDAPI_KEY;
+  const rapidKey = getRapidApiKey('GOOGLE_SEARCH_API_KEY') || getRapidApiKey('RAPIDAPI_KEY');
   if (!rapidKey) return res.status(503).json({ error: 'Google Search API key not configured' });
 
   // Helper: make one HTTPS request and parse JSON
