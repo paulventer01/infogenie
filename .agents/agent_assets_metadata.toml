@@ -24,3 +24,15 @@ id = "5YSYeWDUbWIWpw1SV3OTg"
 uri = "file://attached_assets/InfoGenie_User_Manual.pdf"
 type = "pdf"
 title = "InfoGenie User Manual (42 pages)"
+
+[[outputs]]
+id = "LZ7zNW_WWm1a8rwjHOOaY"
+uri = "file://attached_assets/InfoGenie_Source_Backup.tar.gz"
+type = "unspecified"
+title = "InfoGenie Complete Backup (85 MB — code + assets + uploads)"
+
+[[outputs]]
+id = "ebU2MDxP4H3_x2StChSD8"
+uri = "file://attached_assets/InfoGenie_Source_Code_Only.tar.gz"
+type = "unspecified"
+title = "InfoGenie Source Code Only (576 KB — code only, no media)"
