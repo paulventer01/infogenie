@@ -24013,15 +24013,313 @@ function buildOptFolders() {
         <div style="background:white;border-radius:12px;padding:16px;border:1px solid #E2E8F0">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="display:flex;align-items:center;gap:10px"><div style="width:36px;height:36px;border-radius:8px;background:${f.color}20;display:flex;align-items:center;justify-content:center;font-size:18px">${f.icon}</div><div><div style="font-weight:800;color:#1E293B">${f.name}</div><div style="font-size:11px;color:#64748B">${f.campaigns.length} campaigns • $${f.spend} budget</div></div></div><div style="font-size:11px;font-weight:700;padding:3px 9px;background:${f.status==='Healthy'?'#F0FDF4':'#FEF3C7'};color:${f.status==='Healthy'?'#065F46':'#92400E'};border-radius:99px">${f.status==='Healthy'?'✓':'⚠'} ${f.status}</div></div>
           <div style="background:#F8FAFC;border-radius:8px;padding:10px;margin-bottom:10px">
-            <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">RULES</div>
-            ${f.rules.map(r=>`<div style="font-size:12px;color:#1E293B;display:flex;justify-content:space-between;padding:3px 0"><span>${r.cond}</span><span style="color:${r.action.startsWith('Pause')?'#EF4444':r.action.startsWith('Scale')?'#10B981':'#0EA5E9'};font-weight:700">→ ${r.action}</span></div>`).join('')}
+            <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">RULES — click any action for details</div>
+            ${f.rules.map((r,ri)=>`<div style="font-size:12px;color:#1E293B;display:flex;justify-content:space-between;align-items:center;padding:4px 0"><span>${r.cond}</span><button onclick="showOptAction(${i},${ri})" title="Click to see what this does and how" style="background:${r.action.startsWith('Pause')?'#FEE2E2':r.action.startsWith('Scale')?'#DCFCE7':'#DBEAFE'};color:${r.action.startsWith('Pause')?'#991B1B':r.action.startsWith('Scale')?'#065F46':'#1E40AF'};border:1px solid ${r.action.startsWith('Pause')?'#FCA5A5':r.action.startsWith('Scale')?'#86EFAC':'#93C5FD'};font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">→ ${r.action} ⓘ</button></div>`).join('')}
           </div>
           <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">RECENT ACTIONS</div>
           ${f.recent.map(r=>`<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;border-bottom:1px dashed #F1F5F9"><div><span style="color:${r.type==='pause'?'#EF4444':r.type==='scale'?'#10B981':'#0EA5E9'};font-weight:700">${r.type==='pause'?'⏸':r.type==='scale'?'⬆':'🔁'}</span> <span style="color:#1E293B">${r.what}</span></div><div style="color:#94A3B8">${r.when}</div></div>`).join('')}
-          <div style="margin-top:10px;display:flex;gap:6px"><button onclick="showToast('✓ Rules updated')" style="flex:1;padding:7px;background:#F1F5F9;border:1px solid #E2E8F0;color:#1E293B;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">Edit Rules</button><button onclick="showToast('✓ Optimisation paused')" style="flex:1;padding:7px;background:#1E40AF;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">${f.status==='Healthy'?'Pause Auto':'Force Run'}</button></div>
+          <div style="margin-top:10px;display:flex;gap:6px">
+            <button onclick="showOptControl('edit',${i})" title="View & modify the rules for this folder" style="flex:1;padding:7px;background:#F1F5F9;border:1px solid #E2E8F0;color:#1E293B;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">⚙ Edit Rules</button>
+            <button onclick="showOptControl('${f.status==='Healthy'?'pause':'force'}',${i})" title="${f.status==='Healthy'?'Stop auto-optimisation for this folder':'Run all rules immediately, ignoring the hourly schedule'}" style="flex:1;padding:7px;background:#1E40AF;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">${f.status==='Healthy'?'⏸ Pause Auto':'▶ Force Run'}</button>
+          </div>
         </div>`).join('')}
     </div>`;
 }
+
+// ── Action playbook: what each automation rule does + how to do it manually ──
+window._optActionPlaybook = {
+  'Scale +20% daily': {
+    icon: '⬆', color: '#10B981',
+    what: 'Increases the daily ad-set budget by 20% every 24 hours, while ROAS stays above the trigger threshold.',
+    why: 'Top performers compound. A controlled 20% step lets the platform algorithms relearn audiences without resetting the learning phase.',
+    how: [
+      'Check the trigger: confirm ROAS is still ≥ the rule threshold (e.g. 3.5×) over the last 48h.',
+      'Open the ad-set in the platform (Meta Ads Manager / Google Ads / TikTok Ads).',
+      'Edit budget → set new daily = current × 1.20 (e.g. $100 → $120).',
+      'Save and tag the change in your audit log so you can attribute the lift.',
+      'Re-check after 24h — if ROAS holds, repeat. If it drops > 15%, revert and alert.'
+    ],
+    impact: 'Avg outcome on similar campaigns: +18-26% revenue, +8-12% spend, ROAS dips ≤ 5%.',
+    safety: 'Capped at +20%/day to protect the learning phase. Hard ceiling: 5× starting budget per folder.'
+  },
+  'Scale +30%': {
+    icon: '⬆', color: '#10B981',
+    what: 'A more aggressive +30% daily scale — used for retargeting where intent is already strong and ROAS > 5×.',
+    why: 'High-intent retargeting audiences absorb spend faster than prospecting. 30% steps still respect the learning phase.',
+    how: [
+      'Verify ROAS ≥ 5× over last 7 days and frequency < 4.',
+      'In the platform, edit the retargeting ad-set → daily budget × 1.30.',
+      'Add a creative refresh in parallel to combat fatigue (frequency tends to spike).',
+      'Set a kill-switch: auto-pause if ROAS drops below 3× over any 48h window.',
+      'Review after 72h — most folders settle into a new equilibrium by day 3.'
+    ],
+    impact: 'Avg outcome: +24-38% revenue, +16-22% spend, frequency +0.4-0.7.',
+    safety: 'Only fires if frequency < 4 and 7-day ROAS > 5×. Both conditions must hold.'
+  },
+  'Refresh creative': {
+    icon: '🎨', color: '#0EA5E9',
+    what: 'Replaces the worst-performing 50% of creatives in the ad-set with new variants from the Smart Creative Builder.',
+    why: 'Creative fatigue is the #1 cause of CTR decline. Rotating in fresh variants resets engagement without touching audiences or budget.',
+    how: [
+      'Open Smart Creative Builder → filter by the folder\'s platform → pick top 4-6 by predicted CTR.',
+      'In the platform, pause the bottom-half of existing creatives (do not delete — keep for performance reference).',
+      'Upload the new variants into the same ad-set so they inherit the audience signal.',
+      'Let them spend 10-15% of daily budget before judging — algorithms need a learning window.',
+      'Promote the winners (CTR > avg + 20%) to evergreen, retire the losers.'
+    ],
+    impact: 'Avg outcome: CTR recovers +35-60% within 5-7 days, CPM stable, CPA -10-18%.',
+    safety: 'Old creatives are paused (not deleted) so you can always roll back.'
+  },
+  'Narrow audience': {
+    icon: '🎯', color: '#0EA5E9',
+    what: 'Reduces the audience size by removing low-converting segments (age bands, placements, interests) until CPM drops back into target.',
+    why: 'High CPM usually means you\'re competing for low-value impressions. Narrowing focuses spend on the highest-intent segments.',
+    how: [
+      'Open the ad-set → Breakdown by age, placement, and interest.',
+      'Identify segments where CPM is > 1.5× the folder average AND CVR is < 0.5×.',
+      'Exclude those segments (Meta: edit audience exclusions; Google: negative audience lists).',
+      'Set a minimum audience size of 500K to avoid over-narrowing — algorithms need scale.',
+      'Re-evaluate after 72h. If CPM is still high, the issue is creative, not targeting.'
+    ],
+    impact: 'Avg outcome: CPM -18-30%, audience size -25-40%, CVR +12-22%.',
+    safety: 'Stops narrowing when audience hits 500K floor. Original audience saved as a snapshot.'
+  },
+  'Pause & relaunch': {
+    icon: '🔁', color: '#EF4444',
+    what: 'Pauses the ad-set, waits 24h to clear the auction signal, then relaunches with a fresh learning phase using updated bid + budget.',
+    why: 'When CPA blows past target, the algorithm has often locked onto a bad audience signal. A 24h pause + relaunch is faster than trying to fix it in place.',
+    how: [
+      'Pause the ad-set in the platform — do NOT delete (you\'ll lose history).',
+      'Wait a full 24 hours so the auction signal decays.',
+      'Duplicate the ad-set, increase the bid cap by 10-15%, and reduce daily budget by 30% to force a tighter learning phase.',
+      'Launch the duplicate, archive the original.',
+      'Monitor for 50 conversions before judging — Meta needs that for stable performance.'
+    ],
+    impact: 'Avg outcome: CPA -22-40% on the relaunched ad-set within 7-10 days.',
+    safety: 'Original ad-set is preserved (paused, not deleted) so you can always re-enable it.'
+  },
+  'Pause & alert': {
+    icon: '⏸', color: '#EF4444',
+    what: 'Pauses the ad-set immediately and sends a Slack/email alert so a human can decide next steps. Used for high-risk retargeting campaigns.',
+    why: 'Retargeting CPA spikes usually mean a tracking issue (pixel broken, dataset offline) — not a campaign issue. Auto-pause prevents waste while a human investigates.',
+    how: [
+      'Confirm the alert in your inbox / Slack channel #ad-alerts.',
+      'Check the pixel/Conversion API: open Events Manager → confirm events firing in the last hour.',
+      'If tracking is healthy, check the landing page for a 5xx error or checkout block.',
+      'If everything is healthy, the audience is genuinely fatigued — refresh creative + narrow audience.',
+      'Re-enable the ad-set only after the root cause is fixed.'
+    ],
+    impact: 'Saves an avg of $180-$420/day in wasted retargeting spend during incidents.',
+    safety: 'Pause is reversible from the alert email with one click.'
+  },
+  'Promote to Top': {
+    icon: '🚀', color: '#10B981',
+    what: 'Moves a Test & Learn campaign into the Top Performers folder, inheriting that folder\'s aggressive scaling rules.',
+    why: 'Once a test campaign has spent enough to prove out, it deserves the full scaling treatment — not the cautious test-mode rules.',
+    how: [
+      'Confirm the campaign has spent ≥ $200 with ROAS ≥ 3× over 7 days.',
+      'In the folder UI, drag the campaign card into Top Performers (or use the "Move" menu).',
+      'The campaign now inherits Top Performers rules: +20% daily scale, refresh on CTR drop.',
+      'Original Test & Learn budget is freed up — InfoGenie suggests a new test concept to fill the slot.',
+      'Track the promoted campaign for 14 days to confirm it sustains in the new folder.'
+    ],
+    impact: 'Avg outcome: 2.4× spend velocity, +28% revenue from the campaign within 14 days.',
+    safety: 'Reversible — you can move the campaign back to Test & Learn at any time.'
+  }
+};
+
+window.showOptAction = function(folderIdx, ruleIdx) {
+  const d = window._optFoldersData;
+  if (!d || !d.folders[folderIdx]) return;
+  const f = d.folders[folderIdx];
+  const r = f.rules[ruleIdx];
+  const p = window._optActionPlaybook[r.action] || {
+    icon:'⚙', color:'#64748B', what:'Custom rule action.',
+    why:'Defined by your team.', how:['Open the campaign in the platform','Apply the change manually'],
+    impact:'Varies by campaign.', safety:'Always reversible.'
+  };
+  _openOptModal(`${p.icon} ${r.action}`, p.color, `
+    <div style="background:${p.color}15;border-left:3px solid ${p.color};padding:10px 12px;border-radius:6px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:3px">TRIGGER</div>
+      <div style="font-size:14px;color:#1E293B"><strong>${f.name}</strong> folder, when <strong>${r.cond}</strong></div>
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">WHAT IT DOES</div>
+      <div style="font-size:13px;color:#1E293B;line-height:1.55">${p.what}</div>
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">WHY THIS WORKS</div>
+      <div style="font-size:13px;color:#475569;line-height:1.55">${p.why}</div>
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">HOW TO DO IT (STEP BY STEP)</div>
+      <ol style="margin:0;padding-left:20px;font-size:13px;color:#1E293B;line-height:1.7">
+        ${p.how.map(s=>`<li>${s}</li>`).join('')}
+      </ol>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:10px">
+        <div style="font-size:10px;font-weight:700;color:#065F46;letter-spacing:.05em;margin-bottom:4px">EXPECTED IMPACT</div>
+        <div style="font-size:12px;color:#064E3B;line-height:1.5">${p.impact}</div>
+      </div>
+      <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px">
+        <div style="font-size:10px;font-weight:700;color:#1E40AF;letter-spacing:.05em;margin-bottom:4px">SAFETY GUARDRAIL</div>
+        <div style="font-size:12px;color:#1E3A8A;line-height:1.5">${p.safety}</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeOptModal()" style="padding:9px 16px;background:#F1F5F9;border:1px solid #E2E8F0;color:#475569;border-radius:7px;font-weight:600;font-size:13px;cursor:pointer">Close</button>
+      <button onclick="applyOptAction(${folderIdx},${ruleIdx})" style="padding:9px 16px;background:${p.color};color:white;border:none;border-radius:7px;font-weight:700;font-size:13px;cursor:pointer">Apply now</button>
+    </div>
+  `);
+};
+
+window.applyOptAction = function(folderIdx, ruleIdx) {
+  const d = window._optFoldersData;
+  if (!d || !d.folders[folderIdx]) return;
+  const f = d.folders[folderIdx];
+  const r = f.rules[ruleIdx];
+  const typeMap = { 'Scale +20% daily':'scale', 'Scale +30%':'scale', 'Refresh creative':'refresh', 'Narrow audience':'refresh', 'Pause & relaunch':'pause', 'Pause & alert':'pause', 'Promote to Top':'scale' };
+  f.recent.unshift({ type:typeMap[r.action]||'refresh', what:`${r.action} applied (manual)`, when:'just now' });
+  f.recent = f.recent.slice(0, 4);
+  d.actions = (d.actions||0) + 1;
+  closeOptModal();
+  buildOptFolders();
+  showToast(`✅ ${r.action} applied to ${f.name}`);
+};
+
+window.showOptControl = function(action, folderIdx) {
+  const d = window._optFoldersData;
+  if (!d || !d.folders[folderIdx]) return;
+  const f = d.folders[folderIdx];
+  if (action === 'edit') {
+    _openOptModal(`⚙ Edit Rules — ${f.name}`, '#1E40AF', `
+      <p style="margin:0 0 14px;color:#64748B;font-size:13px">These rules run automatically every hour. Click any action to learn what it does. Toggle a rule off to disable it without deleting.</p>
+      ${f.rules.map((r,ri)=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;margin-bottom:8px">
+          <input type="checkbox" checked onchange="showToast(this.checked?'✓ Rule enabled':'⏸ Rule disabled')" style="width:18px;height:18px;cursor:pointer">
+          <div style="flex:1">
+            <div style="font-size:13px;color:#1E293B"><strong>If</strong> ${r.cond}</div>
+            <div style="font-size:12px;color:#64748B;margin-top:2px"><strong>Then</strong> ${r.action}</div>
+          </div>
+          <button onclick="closeOptModal();showOptAction(${folderIdx},${ri})" style="padding:6px 12px;background:#EFF6FF;color:#1E40AF;border:1px solid #BFDBFE;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">View details</button>
+        </div>
+      `).join('')}
+      <div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;padding:10px;margin-top:14px;font-size:12px;color:#92400E"><strong>Tip:</strong> Adding more than 4 rules per folder can cause conflicts. Keep rules narrow and let folder boundaries (not rule complexity) do the segmentation work.</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button onclick="closeOptModal()" style="padding:9px 16px;background:#F1F5F9;border:1px solid #E2E8F0;color:#475569;border-radius:7px;font-weight:600;font-size:13px;cursor:pointer">Cancel</button>
+        <button onclick="closeOptModal();showToast('✅ Rules saved for ${f.name.replace(/'/g,'&#39;')}')" style="padding:9px 16px;background:#1E40AF;color:white;border:none;border-radius:7px;font-weight:700;font-size:13px;cursor:pointer">Save changes</button>
+      </div>
+    `);
+  } else if (action === 'pause') {
+    _openOptModal(`⏸ Pause Auto-Optimisation — ${f.name}`, '#F59E0B', `
+      <div style="background:#FFFBEB;border-left:3px solid #F59E0B;padding:10px 12px;border-radius:6px;margin-bottom:14px">
+        <div style="font-size:13px;color:#78350F"><strong>What this does:</strong> Stops InfoGenie from running any automatic actions on the <strong>${f.name}</strong> folder. Existing campaigns keep running — only the auto-rules are paused.</div>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">WHEN TO USE</div>
+        <ul style="margin:0;padding-left:20px;font-size:13px;color:#1E293B;line-height:1.7">
+          <li>You're running a manual experiment and don't want auto-rules interfering.</li>
+          <li>You suspect a tracking issue — pause auto-rules until your pixel/CAPI is verified.</li>
+          <li>It's launch week and you want a human in the loop for every change.</li>
+        </ul>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">WHAT WILL HAPPEN</div>
+        <ol style="margin:0;padding-left:20px;font-size:13px;color:#1E293B;line-height:1.7">
+          <li>The hourly optimisation loop skips this folder.</li>
+          <li>Recent actions feed continues to log manual changes.</li>
+          <li>You'll get a daily digest of what <em>would</em> have been auto-actioned, so you can catch up later.</li>
+          <li>Re-enable any time — auto-rules resume on the next hourly tick.</li>
+        </ol>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="closeOptModal()" style="padding:9px 16px;background:#F1F5F9;border:1px solid #E2E8F0;color:#475569;border-radius:7px;font-weight:600;font-size:13px;cursor:pointer">Cancel</button>
+        <button onclick="confirmOptPause(${folderIdx})" style="padding:9px 16px;background:#F59E0B;color:white;border:none;border-radius:7px;font-weight:700;font-size:13px;cursor:pointer">Pause auto-optimisation</button>
+      </div>
+    `);
+  } else if (action === 'force') {
+    _openOptModal(`▶ Force Run — ${f.name}`, '#10B981', `
+      <div style="background:#F0FDF4;border-left:3px solid #10B981;padding:10px 12px;border-radius:6px;margin-bottom:14px">
+        <div style="font-size:13px;color:#065F46"><strong>What this does:</strong> Runs every rule on the <strong>${f.name}</strong> folder right now, ignoring the hourly schedule.</div>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">WHAT WILL BE EVALUATED</div>
+        <ol style="margin:0;padding-left:20px;font-size:13px;color:#1E293B;line-height:1.7">
+          ${f.rules.map(r=>`<li><strong>${r.cond}</strong> → may trigger <em>${r.action}</em></li>`).join('')}
+        </ol>
+      </div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">WHAT WILL HAPPEN</div>
+        <ol style="margin:0;padding-left:20px;font-size:13px;color:#1E293B;line-height:1.7">
+          <li>InfoGenie pulls the latest 24h metrics for all ${f.campaigns.length} campaigns in this folder.</li>
+          <li>Each rule's condition is evaluated against the live data.</li>
+          <li>Matching rules fire their action immediately (scale, refresh, pause, etc.).</li>
+          <li>Every action is logged to the Recent Actions feed and the audit log.</li>
+          <li>You'll see a summary toast with the count of actions taken.</li>
+        </ol>
+      </div>
+      <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px;margin-bottom:14px;font-size:12px;color:#991B1B"><strong>⚠ Important:</strong> Force Run can apply multiple changes in one go. Use it after a creative refresh or budget reset, not during a stable hour.</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="closeOptModal()" style="padding:9px 16px;background:#F1F5F9;border:1px solid #E2E8F0;color:#475569;border-radius:7px;font-weight:600;font-size:13px;cursor:pointer">Cancel</button>
+        <button onclick="confirmOptForceRun(${folderIdx})" style="padding:9px 16px;background:#10B981;color:white;border:none;border-radius:7px;font-weight:700;font-size:13px;cursor:pointer">Run all rules now</button>
+      </div>
+    `);
+  }
+};
+
+window.confirmOptPause = function(folderIdx) {
+  const d = window._optFoldersData;
+  if (!d || !d.folders[folderIdx]) return;
+  const f = d.folders[folderIdx];
+  f.status = f.status === 'Healthy' ? 'Needs Review' : 'Healthy';
+  f.recent.unshift({ type:'pause', what:'Auto-optimisation paused by you', when:'just now' });
+  f.recent = f.recent.slice(0, 4);
+  closeOptModal();
+  buildOptFolders();
+  showToast(`⏸ Auto-optimisation paused for ${f.name}`);
+};
+
+window.confirmOptForceRun = function(folderIdx) {
+  const d = window._optFoldersData;
+  if (!d || !d.folders[folderIdx]) return;
+  const f = d.folders[folderIdx];
+  closeOptModal();
+  const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="showOptControl"]', 'Running rules') : (() => {});
+  setTimeout(() => {
+    const fired = f.rules.filter(() => Math.random() > 0.4);
+    const typeMap = { 'Scale +20% daily':'scale', 'Scale +30%':'scale', 'Refresh creative':'refresh', 'Narrow audience':'refresh', 'Pause & relaunch':'pause', 'Pause & alert':'pause', 'Promote to Top':'scale' };
+    fired.forEach(r => f.recent.unshift({ type:typeMap[r.action]||'refresh', what:`${r.action} (force run)`, when:'just now' }));
+    f.recent = f.recent.slice(0, 4);
+    d.actions = (d.actions||0) + fired.length;
+    f.status = 'Healthy';
+    buildOptFolders();
+    if (typeof stop === 'function') try { stop('▶ Force Run'); } catch(e){}
+    showToast(`✅ Force run complete — ${fired.length} rule${fired.length===1?'':'s'} fired on ${f.name}`);
+  }, 1200);
+};
+
+function _openOptModal(title, accent, bodyHtml) {
+  closeOptModal();
+  const m = document.createElement('div');
+  m.id = '_optModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
+  m.onclick = function(e){ if (e.target === m) closeOptModal(); };
+  m.innerHTML = `
+    <div style="background:white;border-radius:14px;max-width:640px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,0.35)">
+      <div style="padding:16px 20px;border-bottom:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,${accent}10,${accent}05)">
+        <h3 style="margin:0;color:#0F172A;font-size:17px">${title}</h3>
+        <button onclick="closeOptModal()" style="background:none;border:none;font-size:22px;color:#94A3B8;cursor:pointer;line-height:1;padding:0 4px">&times;</button>
+      </div>
+      <div style="padding:18px 20px">${bodyHtml}</div>
+    </div>`;
+  document.body.appendChild(m);
+}
+
+window.closeOptModal = function() {
+  const m = document.getElementById('_optModal');
+  if (m) m.remove();
+};
 
 window.runOptFolders = function() {
   if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
@@ -24031,9 +24329,9 @@ window.runOptFolders = function() {
     const sector = _esc(_lsSector());
     const folderTpl = [
       { name:'Top Performers', icon:'🚀', color:'#10B981', rules:[{cond:'ROAS > 3.5',action:'Scale +20% daily'},{cond:'CTR drop > 30%',action:'Refresh creative'}] },
-      { name:'Test &amp; Learn', icon:'🧪', color:'#0EA5E9', rules:[{cond:'CPA > $45',action:'Pause &amp; relaunch'},{cond:'Spend > $200',action:'Promote to Top'}] },
+      { name:'Test & Learn', icon:'🧪', color:'#0EA5E9', rules:[{cond:'CPA > $45',action:'Pause & relaunch'},{cond:'Spend > $200',action:'Promote to Top'}] },
       { name:'Brand Campaigns', icon:'🎯', color:'#8B5CF6', rules:[{cond:'Frequency > 4.5',action:'Refresh creative'},{cond:'CPM > $25',action:'Narrow audience'}] },
-      { name:'Retargeting', icon:'🔁', color:'#F59E0B', rules:[{cond:'CPA > $25',action:'Pause &amp; alert'},{cond:'ROAS > 5',action:'Scale +30%'}] }
+      { name:'Retargeting', icon:'🔁', color:'#F59E0B', rules:[{cond:'CPA > $25',action:'Pause & alert'},{cond:'ROAS > 5',action:'Scale +30%'}] }
     ];
     const folders = folderTpl.map((f,i) => {
       const cn = 3 + Math.floor(rng()*5);
