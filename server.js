@@ -36,6 +36,23 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
 
+// ── User Manual PDF (clean URLs) ─────────────────────────────────────────────
+// Serve the manual at friendly paths with proper inline-PDF headers so it
+// opens directly in the browser tab instead of triggering a download dialog
+// or being blocked by the asset-card viewer.
+const MANUAL_PDF = path.join(__dirname, 'attached_assets', 'InfoGenie_User_Manual.pdf');
+function sendManual(res, disposition) {
+  if (!fs.existsSync(MANUAL_PDF)) return res.status(404).send('Manual not found');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `${disposition}; filename="InfoGenie_User_Manual.pdf"`);
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  fs.createReadStream(MANUAL_PDF).pipe(res);
+}
+app.get(['/manual', '/manual.pdf', '/InfoGenie_User_Manual.pdf'],
+  (req, res) => sendManual(res, 'inline'));
+app.get('/manual/download',
+  (req, res) => sendManual(res, 'attachment'));
+
 // ── Brand Creatives upload setup ──────────────────────────────────────────────
 const UPLOADS_DIR = path.join(__dirname, 'uploads', 'creatives');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
