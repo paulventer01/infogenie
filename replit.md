@@ -135,3 +135,31 @@ Each section's view header breadcrumb also shows the group label (e.g. "Analyse 
 - View routing for screenshots: `/view/<id>` (server.js + app.js URL router) with `<base href="/">` in index.html so relative CSS/JS still resolve.
 - Layout per feature page: header bar (section colour) → "What it does" → screenshot with border + caption → 2-column Inputs/Outputs → "How to use it" tinted box. Each feature gets its own page for consistent alignment.
 - To rebuild: capture screenshots first, then `node scripts/build_user_manual.js`. Output overwrites the PDF in place.
+
+## Tier 1 + Tier 2 Plai-Parity Modules (April 2026 build)
+Added 10 new modules in cache buster `v=20260425Q`. All client-side, simulated from analysisData.
+
+### Create dropdown
+- **Landing Page Builder** (`landing-builder` → `buildLandingBuilder`) — 7-section live preview + HTML export
+- **Smart Creative Builder** (`smart-creative` → `buildSmartCreative`) — 50+ ad variants across Meta/Google/TikTok/LinkedIn/X with CSV export
+- **AI UGC Avatars** (`ugc-avatars` → `buildUgcAvatars`) — 6 avatars + AI-written script + mock video preview
+- **AI Voiceovers** (`voiceovers` → `buildVoiceovers`) — 8 voices, 12 languages, mock waveform + MP3/WAV export
+- **Templates Library** (`templates` → `buildTemplates`) — 26 templates filtered by type (ad/lp/email/social)
+
+### Reach dropdown
+- **Optimization Folders** (`opt-folders` → `buildOptFolders`) — 4 auto-optimisation folders with rules + savings tally
+- **Import Existing Campaigns** (`import-campaigns` → `buildImportCampaigns`) — Mock OAuth for Meta/Google/TikTok/LinkedIn + audited table
+- **International Localization** (`localization` → `buildLocalization`) — 40+ languages, 3 presets (top10, EU pack, all), translation table
+
+### Manage dropdown
+- **Workspaces & Team** (`workspaces` → `buildWorkspaces`) — Multi-workspace switcher, team table with roles, audit log
+
+### Inline (Dashboard)
+- **Forecast vs Actual + Savings widget** (`renderForecastSavingsWidget`) — Auto-rendered on dashboard, SVG dual-line chart + savings tally
+
+### Architecture
+- All modules use `_lsAD()`/`_lsDomain()`/`_lsBrand()`/`_lsSector()`/`_lsKeywords()` resilient helpers (closure → window mirror → localStorage fallback).
+- Shared helpers: `_emptyAnalysisCard()` (empty state), `_seedRng(domain)` (deterministic per-domain output), `_esc()` (HTML escape for XSS safety on user-controlled values).
+- All run* triggers gate on `_lsDomain()` and redirect to home when no analysis exists.
+- State persisted on `window._{module}Data` globals so view re-entry shows last-built result.
+- All builders registered in `navigateTo()` dispatcher in app.js (lines ~2249-2278).

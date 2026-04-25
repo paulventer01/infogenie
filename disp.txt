@@ -1,0 +1,61 @@
+  if (viewId === 'cro-lab') {
+    try { buildCroLab(); } catch(e) { console.warn('buildCroLab error:', e); }
+  }
+  if (viewId === 'analytics-hub') {
+    try { buildAnalyticsHub(); } catch(e) { console.warn('buildAnalyticsHub error:', e); }
+  }
+  // ── Tier 1+2 Plai-parity modules ─────────────────────────────────────────
+  if (viewId === 'landing-builder') {
+    try { buildLandingBuilder(); } catch(e) { console.warn('buildLandingBuilder error:', e); }
+  }
+  if (viewId === 'smart-creative') {
+    try { buildSmartCreative(); } catch(e) { console.warn('buildSmartCreative error:', e); }
+  }
+  if (viewId === 'ugc-avatars') {
+    try { buildUgcAvatars(); } catch(e) { console.warn('buildUgcAvatars error:', e); }
+  }
+  if (viewId === 'voiceovers') {
+    try { buildVoiceovers(); } catch(e) { console.warn('buildVoiceovers error:', e); }
+  }
+  if (viewId === 'templates') {
+    try { buildTemplates(); } catch(e) { console.warn('buildTemplates error:', e); }
+  }
+  if (viewId === 'opt-folders') {
+    try { buildOptFolders(); } catch(e) { console.warn('buildOptFolders error:', e); }
+  }
+  if (viewId === 'import-campaigns') {
+    try { buildImportCampaigns(); } catch(e) { console.warn('buildImportCampaigns error:', e); }
+  }
+  if (viewId === 'localization') {
+    try { buildLocalization(); } catch(e) { console.warn('buildLocalization error:', e); }
+  }
+  if (viewId === 'workspaces') {
+    try { buildWorkspaces(); } catch(e) { console.warn('buildWorkspaces error:', e); }
+  }
+  if (viewId === 'dashboard') {
+    setTimeout(() => { try { renderForecastSavingsWidget(); } catch(e) { console.warn('renderForecastSavingsWidget error:', e); } }, 200);
+  }
+  // Show/hide navbar for home vs app
+  const navGroups = document.getElementById('navGroups');
+  const navPlan   = document.getElementById('navPlanBadge');
+  const navBtn    = document.getElementById('navAnalyseBtn');
+  if (navGroups) navGroups.style.display = 'flex';
+  if (navPlan)   navPlan.style.display   = viewId === 'home' ? 'none'  : 'block';
+  if (navBtn)    navBtn.style.display    = viewId === 'home' ? 'none'  : 'block';
+  window.scrollTo(0, 0);
+  // Inject "What's Next?" guide banner after each view renders
+  setTimeout(() => _injectNextStep(viewId), 120);
+}
+
+// ── Next-Step Guide Banners ────────────────────────────────────────────────────
+const _nextStepMap = {
+  dashboard:    { icon:'🚀', label:'Ready to act on this intel?', btnLabel:'Build Campaigns →', view:'campaigns',   hint:'Turn competitor insights into live ad campaigns' },
+  competitors:  { icon:'⚔️', label:'Know your rivals — now beat them.',  btnLabel:'Create Battle Plan →', view:'battleplan',  hint:'8-week strategy to capture market share' },
+  battleplan:   { icon:'🧠', label:'Have your strategy — now create the content.', btnLabel:'Open Content AI →', view:'content', hint:'Build topical clusters & content gaps' },
+  content:      { icon:'📅', label:'Content strategy ready — time to schedule it.', btnLabel:'Open Social Calendar →', view:'social', hint:'Schedule posts across all platforms' },
+  social:       { icon:'🚀', label:'Posts scheduled — now build your ad campaigns.', btnLabel:'Go to Campaigns →', view:'campaigns', hint:'Launch paid ads alongside your organic content' },
+  campaigns:    { icon:'🎯', label:'Campaigns built — now target the right audience.',btnLabel:'Audience Intelligence →', view:'audience', hint:'Find and segment your highest-converting audiences' },
+  audience:     { icon:'📣', label:'Audiences defined — now launch your ads.',       btnLabel:'Advertise Hub →', view:'advertise', hint:'Deploy across 20+ channels in minutes' },
+  advertise:    { icon:'📊', label:'Ads live — track your results.',                  btnLabel:'View Results →', view:'results',   hint:'Monitor performance and optimise ROAS' },
+  results:      { icon:'🔁', label:'See who dropped off? Win them back.',             btnLabel:'Re-Engage Hub →', view:'reengage',  hint:'AI-powered win-back sequences for lost customers' },
+  reengage:     { icon:'⚡', label:'Put your growth on autopilot.',                   btnLabel:'Automations →', view:'automations', hint:'Triggered campaigns, alert rules and scheduled reports' },

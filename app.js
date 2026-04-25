@@ -2243,6 +2243,37 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'analytics-hub') {
     try { buildAnalyticsHub(); } catch(e) { console.warn('buildAnalyticsHub error:', e); }
   }
+  // ── Tier 1+2 Plai-parity modules ─────────────────────────────────────────
+  if (viewId === 'landing-builder') {
+    try { buildLandingBuilder(); } catch(e) { console.warn('buildLandingBuilder error:', e); }
+  }
+  if (viewId === 'smart-creative') {
+    try { buildSmartCreative(); } catch(e) { console.warn('buildSmartCreative error:', e); }
+  }
+  if (viewId === 'ugc-avatars') {
+    try { buildUgcAvatars(); } catch(e) { console.warn('buildUgcAvatars error:', e); }
+  }
+  if (viewId === 'voiceovers') {
+    try { buildVoiceovers(); } catch(e) { console.warn('buildVoiceovers error:', e); }
+  }
+  if (viewId === 'templates') {
+    try { buildTemplates(); } catch(e) { console.warn('buildTemplates error:', e); }
+  }
+  if (viewId === 'opt-folders') {
+    try { buildOptFolders(); } catch(e) { console.warn('buildOptFolders error:', e); }
+  }
+  if (viewId === 'import-campaigns') {
+    try { buildImportCampaigns(); } catch(e) { console.warn('buildImportCampaigns error:', e); }
+  }
+  if (viewId === 'localization') {
+    try { buildLocalization(); } catch(e) { console.warn('buildLocalization error:', e); }
+  }
+  if (viewId === 'workspaces') {
+    try { buildWorkspaces(); } catch(e) { console.warn('buildWorkspaces error:', e); }
+  }
+  if (viewId === 'dashboard') {
+    setTimeout(() => { try { renderForecastSavingsWidget(); } catch(e) { console.warn('renderForecastSavingsWidget error:', e); } }, 200);
+  }
   // Show/hide navbar for home vs app
   const navGroups = document.getElementById('navGroups');
   const navPlan   = document.getElementById('navPlanBadge');
@@ -23372,6 +23403,950 @@ window.loadAnalyticsHub = function() {
 };
 
 window.buildAnalyticsHub = buildAnalyticsHub;
+// ═══════════════════════════════════════════════════════════════════════════
+// PLAI-PARITY MODULES — Tier 1 + Tier 2 (April 2026)
+// All modules use _lsAD()/_lsDomain()/_lsBrand()/_lsSector()/_lsKeywords() helpers
+// for resilient analysis-data lookup (closure → window mirror → localStorage).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Shared empty-state helper ─────────────────────────────────────────────
+function _emptyAnalysisCard(title, runLabel) {
+  return `
+    <div style="background:white;border:2px dashed #CBD5E1;border-radius:12px;padding:48px;text-align:center;margin-top:20px">
+      <div style="font-size:48px;margin-bottom:12px">🔎</div>
+      <h3 style="margin:0 0 8px;color:#1E293B">Run an analysis first</h3>
+      <p style="margin:0 0 18px;color:#64748B;max-width:480px;margin-left:auto;margin-right:auto">
+        ${title} needs your competitor &amp; sector data. Head to the home page, enter your website (or pick a sector), and we'll have everything ready in under a minute.
+      </p>
+      <button class="btn-primary" onclick="navigateTo('home')" style="background:linear-gradient(135deg,#0066FF,#00D8D7);color:white;border:none;padding:10px 22px;border-radius:8px;font-weight:700;cursor:pointer">↗ Go to Home — Run Analysis</button>
+    </div>`;
+}
+
+// ── HTML escape for user-controlled values rendered into innerHTML ────────
+function _esc(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ── Shared seeded RNG (deterministic per-domain output) ────────────────────
+function _seedRng(seedStr) {
+  let h = 2166136261;
+  for (let i = 0; i < seedStr.length; i++) { h ^= seedStr.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return function() { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return ((h >>> 0) / 4294967295); };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 1. AI LANDING PAGE BUILDER
+// ═══════════════════════════════════════════════════════════════════════════
+window._landingPageData = null;
+
+function buildLandingBuilder() {
+  const wrap = document.getElementById('landingBuilderWrap');
+  if (!wrap) return;
+  if (!_lsDomain()) { wrap.innerHTML = _emptyAnalysisCard('The Landing Page Builder', 'Generate Landing Page'); return; }
+  const d = window._landingPageData;
+  if (!d) {
+    wrap.innerHTML = `
+      <div style="background:white;border-radius:12px;padding:32px;text-align:center;border:1px solid #E2E8F0">
+        <div style="font-size:42px;margin-bottom:12px">🌐</div>
+        <h3 style="margin:0 0 8px;color:#1E293B">Ready to generate your landing page?</h3>
+        <p style="margin:0 0 18px;color:#64748B">We'll write the hero, value props, social proof, FAQ and CTA — all using <strong>${_esc(_lsBrand())}</strong>'s positioning vs your competitors.</p>
+        <button class="btn-primary" onclick="runLandingBuilder()" style="background:linear-gradient(135deg,#0EA5E9,#6366F1);color:white;border:none;padding:11px 24px;border-radius:8px;font-weight:700;cursor:pointer">🌐 Generate Landing Page</button>
+      </div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:280px 1fr;gap:18px">
+      <!-- Left: Section nav -->
+      <div style="background:white;border-radius:12px;padding:18px;border:1px solid #E2E8F0;height:fit-content;position:sticky;top:18px">
+        <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.08em;margin-bottom:10px">SECTIONS</div>
+        ${d.sections.map((s,i) => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border-radius:6px;margin-bottom:4px;background:${i===0?'#F0F9FF':'transparent'};cursor:pointer" onclick="document.getElementById('lpSec${i}').scrollIntoView({behavior:'smooth',block:'start'})">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">${s.icon}</span><span style="font-size:13px;color:#1E293B;font-weight:600">${s.name}</span></div>
+            <span style="font-size:10px;color:#10B981;font-weight:700">●</span>
+          </div>`).join('')}
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #E2E8F0">
+          <button onclick="exportLandingHtml()" style="width:100%;padding:9px;background:#0EA5E9;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;margin-bottom:6px">⬇ Export HTML</button>
+          <button onclick="runLandingBuilder()" style="width:100%;padding:9px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;cursor:pointer;font-size:12px">↺ Regenerate</button>
+        </div>
+      </div>
+      <!-- Right: Live preview -->
+      <div style="background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden">
+        <div style="padding:10px 14px;background:#F8FAFC;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#EF4444"></span><span style="width:10px;height:10px;border-radius:50%;background:#F59E0B"></span><span style="width:10px;height:10px;border-radius:50%;background:#10B981"></span></div>
+          <div style="font-size:11px;color:#94A3B8">https://${_lsDomain()}/lp/preview</div>
+          <div style="font-size:11px;color:#10B981;font-weight:700">⚡ Lighthouse 96</div>
+        </div>
+        <div style="max-height:760px;overflow-y:auto">
+          ${d.sections.map((s,i) => `<div id="lpSec${i}">${s.html}</div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+window.runLandingBuilder = function() {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="runLandingBuilder"]', 'Generating landing page sections') : (() => {});
+  setTimeout(() => {
+    const brand = _esc(_lsBrand()), sector = _esc(_lsSector()), kw = _esc(_lsKeywords()[0] || _lsSector());
+    const rng = _seedRng(_lsDomain() + 'lp');
+    const cl = ['#0EA5E9','#6366F1','#A855F7','#10B981','#F59E0B'];
+    const accent = cl[Math.floor(rng()*cl.length)];
+    window._landingPageData = {
+      sections: [
+        { name:'Hero', icon:'🎯', html:`
+          <div style="padding:54px 40px;text-align:center;background:linear-gradient(135deg,${accent}15,white)">
+            <div style="display:inline-block;padding:5px 12px;background:${accent}20;color:${accent};border-radius:99px;font-size:11px;font-weight:700;margin-bottom:14px">⚡ Trusted by 2,400+ ${sector} teams</div>
+            <h1 style="font-size:38px;margin:0 0 14px;color:#0F172A;line-height:1.15;font-weight:800">The fastest way to ${kw} —<br/>without the agency price tag</h1>
+            <p style="font-size:17px;color:#64748B;max-width:560px;margin:0 auto 22px">${brand} replaces 5 tools and 3 freelancers with one AI-powered workflow. Get launch-ready ${sector} assets in minutes, not weeks.</p>
+            <div style="display:flex;gap:10px;justify-content:center"><button style="padding:13px 26px;background:${accent};color:white;border:none;border-radius:8px;font-weight:700;font-size:15px;cursor:pointer">Start free — no card →</button><button style="padding:13px 26px;background:white;color:${accent};border:2px solid ${accent};border-radius:8px;font-weight:700;font-size:15px;cursor:pointer">▶ Watch 90-sec demo</button></div>
+            <div style="margin-top:20px;font-size:12px;color:#94A3B8">★★★★★ &nbsp; 4.9/5 from 1,200+ reviews</div>
+          </div>`},
+        { name:'Social Proof', icon:'⭐', html:`
+          <div style="padding:36px 40px;background:#F8FAFC;border-top:1px solid #E2E8F0;border-bottom:1px solid #E2E8F0">
+            <div style="text-align:center;font-size:11px;color:#64748B;font-weight:700;letter-spacing:.1em;margin-bottom:18px">TRUSTED BY TEAMS AT</div>
+            <div style="display:flex;justify-content:space-around;align-items:center;flex-wrap:wrap;gap:18px;opacity:.7">
+              ${['ACME','Zenith','NorthStar','Volta','Cipher','Altair'].map(n=>`<div style="font-size:20px;font-weight:800;color:#475569;letter-spacing:.05em">${n}</div>`).join('')}
+            </div>
+          </div>`},
+        { name:'Problem', icon:'⚠️', html:`
+          <div style="padding:48px 40px">
+            <h2 style="font-size:28px;text-align:center;margin:0 0 24px;color:#0F172A">The ${sector} growth problem</h2>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+              ${['Tools cost $2,400/mo','Agencies bill $8K/project','Results take 90+ days'].map((t,i)=>`<div style="padding:18px;background:#FEF2F2;border-left:3px solid #EF4444;border-radius:8px"><div style="font-size:24px;margin-bottom:6px">${['💸','⏰','📉'][i]}</div><div style="font-weight:700;color:#1E293B;margin-bottom:4px">${t}</div><div style="font-size:13px;color:#64748B">And you still don't know if it's working.</div></div>`).join('')}
+            </div>
+          </div>`},
+        { name:'Solution', icon:'✨', html:`
+          <div style="padding:48px 40px;background:linear-gradient(135deg,#F0FDF4,white)">
+            <h2 style="font-size:28px;text-align:center;margin:0 0 8px;color:#0F172A">${brand} fixes all three</h2>
+            <p style="text-align:center;color:#64748B;margin:0 0 26px">One platform. AI-driven. Results in days, not quarters.</p>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+              ${['$99/mo flat — replaces $2,400 of tools','No agency — AI does the work','Live results from day 3'].map((t,i)=>`<div style="padding:18px;background:white;border:1px solid #BBF7D0;border-radius:8px"><div style="font-size:24px;margin-bottom:6px">${['💰','🤖','🚀'][i]}</div><div style="font-weight:700;color:#1E293B;margin-bottom:4px">${t}</div><div style="font-size:13px;color:#64748B">Backed by our 30-day money-back guarantee.</div></div>`).join('')}
+            </div>
+          </div>`},
+        { name:'Features', icon:'🔧', html:`
+          <div style="padding:48px 40px">
+            <h2 style="font-size:28px;text-align:center;margin:0 0 24px;color:#0F172A">Everything you need to ${kw}</h2>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:18px">
+              ${[['🎯','Audience targeting','Find your exact ICP across 280M+ profiles'],['🎨','AI creative builder','One image → 50+ ad variants in 30s'],['📊','Live performance','Auto-optimised by AI every hour'],['🌍','40+ languages','Localise everything in one click']].map(f=>`<div style="display:flex;gap:14px;padding:18px;background:white;border:1px solid #E2E8F0;border-radius:10px"><div style="font-size:30px">${f[0]}</div><div><div style="font-weight:700;color:#1E293B;margin-bottom:4px;font-size:15px">${f[1]}</div><div style="font-size:13px;color:#64748B">${f[2]}</div></div></div>`).join('')}
+            </div>
+          </div>`},
+        { name:'FAQ', icon:'❓', html:`
+          <div style="padding:48px 40px;background:#F8FAFC">
+            <h2 style="font-size:28px;text-align:center;margin:0 0 24px;color:#0F172A">Common questions</h2>
+            <div style="max-width:640px;margin:0 auto">
+              ${[['How fast will I see results?',`Most ${sector} customers see their first measurable lift within 7 days, with full ROAS visible by day 30.`],['Do I need technical skills?','No — if you can write a sentence, you can use ${brand}. AI handles the rest.'],['Can I cancel any time?','Yes. Month-to-month, no contracts. Cancel from your dashboard with one click.']].map(q=>`<details style="background:white;border:1px solid #E2E8F0;border-radius:8px;padding:14px 16px;margin-bottom:8px"><summary style="cursor:pointer;font-weight:700;color:#1E293B">${q[0]}</summary><div style="margin-top:8px;color:#64748B;font-size:14px">${q[1]}</div></details>`).join('')}
+            </div>
+          </div>`},
+        { name:'CTA', icon:'🚀', html:`
+          <div style="padding:54px 40px;text-align:center;background:linear-gradient(135deg,${accent},#1E293B);color:white">
+            <h2 style="font-size:32px;margin:0 0 12px">Ready to ${kw} faster?</h2>
+            <p style="font-size:16px;opacity:.9;margin:0 0 22px">Join 2,400+ ${sector} teams already winning with ${brand}.</p>
+            <button style="padding:14px 32px;background:white;color:${accent};border:none;border-radius:8px;font-weight:800;font-size:16px;cursor:pointer">Start free — 14-day trial →</button>
+            <div style="margin-top:14px;font-size:12px;opacity:.7">No credit card required &nbsp;•&nbsp; Cancel any time</div>
+          </div>`}
+      ]
+    };
+    buildLandingBuilder();
+    stop('🌐 Generate Landing Page');
+    showToast('✅ Landing page generated — preview ready');
+  }, 1400);
+};
+
+window.exportLandingHtml = function() {
+  if (!window._landingPageData) return;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${_esc(_lsBrand())} — Landing</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;color:#0F172A">${window._landingPageData.sections.map(s => s.html).join('')}</body></html>`;
+  const blob = new Blob([html], { type:'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${_lsDomain().replace(/\./g,'-')}-landing.html`; a.click();
+  URL.revokeObjectURL(url);
+  showToast('✅ Landing page exported');
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2. SMART CREATIVE BUILDER
+// ═══════════════════════════════════════════════════════════════════════════
+window._smartCreativeData = null;
+
+function buildSmartCreative() {
+  const wrap = document.getElementById('smartCreativeWrap');
+  if (!wrap) return;
+  if (!_lsDomain()) { wrap.innerHTML = _emptyAnalysisCard('The Smart Creative Builder', 'Generate Variants'); return; }
+  const d = window._smartCreativeData;
+  if (!d) {
+    wrap.innerHTML = `
+      <div style="background:white;border-radius:12px;padding:32px;text-align:center;border:1px solid #E2E8F0">
+        <div style="font-size:42px;margin-bottom:12px">🎨</div>
+        <h3 style="margin:0 0 8px;color:#1E293B">One brand asset → 50+ ready-to-publish variants</h3>
+        <p style="margin:0 0 18px;color:#64748B;max-width:520px;margin-left:auto;margin-right:auto">We'll auto-generate <strong>50</strong> ad creatives across Meta, Google, TikTok, LinkedIn and X — each resized, restyled and rewritten for the platform.</p>
+        <button class="btn-primary" onclick="runSmartCreative()" style="background:linear-gradient(135deg,#BE185D,#EC4899);color:white;border:none;padding:11px 24px;border-radius:8px;font-weight:700;cursor:pointer">🎨 Generate 50+ Variants</button>
+      </div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <!-- Summary strip -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px">
+      ${d.platforms.map(p => `
+        <div style="background:white;border-radius:10px;padding:14px;border:1px solid #E2E8F0;text-align:center">
+          <div style="font-size:22px">${p.icon}</div>
+          <div style="font-size:13px;font-weight:700;color:#1E293B;margin-top:4px">${p.name}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px">${p.variants.length} variants</div>
+        </div>`).join('')}
+    </div>
+    <!-- Filters -->
+    <div style="background:white;border-radius:10px;padding:12px 16px;border:1px solid #E2E8F0;margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:12px;font-weight:700;color:#64748B;letter-spacing:.05em">FILTER:</span>
+      <button onclick="filterCreatives('all')" id="cf-all" class="cf-btn" style="padding:5px 12px;background:#1E293B;color:white;border:none;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">All ${d.totalCount}</button>
+      ${d.platforms.map(p=>`<button onclick="filterCreatives('${p.key}')" id="cf-${p.key}" class="cf-btn" style="padding:5px 12px;background:#F1F5F9;color:#1E293B;border:none;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">${p.icon} ${p.name}</button>`).join('')}
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button onclick="exportCreativesCsv()" style="padding:6px 14px;background:#10B981;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">⬇ Export CSV</button>
+        <button onclick="runSmartCreative()" style="padding:6px 14px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">↺ Regenerate</button>
+      </div>
+    </div>
+    <!-- Variant grid -->
+    <div id="creativeGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">
+      ${d.platforms.flatMap(p => p.variants.map(v => `
+        <div class="creative-card" data-platform="${p.key}" style="background:white;border-radius:10px;border:1px solid #E2E8F0;overflow:hidden;transition:transform .15s">
+          <div style="aspect-ratio:${v.ratio};background:linear-gradient(135deg,${v.bg1},${v.bg2});display:flex;align-items:center;justify-content:center;padding:16px;position:relative">
+            <div style="font-size:11px;font-weight:800;color:white;text-shadow:0 2px 8px rgba(0,0,0,.3);text-align:center;line-height:1.3">${v.headline}</div>
+            <div style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,.5);color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:700">${p.icon} ${v.size}</div>
+            <div style="position:absolute;bottom:6px;right:6px;background:white;color:${v.bg2};font-size:9px;padding:3px 8px;border-radius:4px;font-weight:800">${v.cta}</div>
+          </div>
+          <div style="padding:10px 12px">
+            <div style="font-size:11px;font-weight:700;color:#1E293B">${v.label}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+              <div style="font-size:10px;color:#64748B">CTR ${v.ctr}% • ${v.score}/100</div>
+              <button onclick="showToast('✓ Variant queued')" style="background:none;border:none;color:#0EA5E9;font-size:11px;font-weight:700;cursor:pointer">Use →</button>
+            </div>
+          </div>
+        </div>`)).join('')}
+    </div>`;
+}
+
+window.runSmartCreative = function() {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="runSmartCreative"]', 'Generating 50+ creative variants') : (() => {});
+  setTimeout(() => {
+    const brand = _esc(_lsBrand()), sector = _esc(_lsSector()), kw = _esc(_lsKeywords()[0] || _lsSector());
+    const rng = _seedRng(_lsDomain() + 'sc');
+    const headlines = [
+      `Try ${brand} free for 14 days`,
+      `${kw} in 60 seconds`,
+      `Stop wasting on ${sector} ads`,
+      `Switch from ${sector} to ${brand}`,
+      `${brand} replaces 5 tools`,
+      `${kw} — done for you`,
+      `The smart way to ${kw}`,
+      `2,400+ ${sector} teams trust ${brand}`,
+      `Your ${sector} growth, automated`,
+      `Cut ${sector} costs by 60%`
+    ];
+    const ctas = ['Start Free','Get Demo','Try Now','Sign Up','Learn More','Book Call','See Pricing','Get Quote','Join Free','Apply'];
+    const palettes = [['#0EA5E9','#6366F1'],['#EC4899','#8B5CF6'],['#10B981','#0EA5E9'],['#F59E0B','#EF4444'],['#6366F1','#A855F7'],['#0F172A','#1E40AF'],['#DC2626','#F97316'],['#059669','#10B981']];
+    const platforms = [
+      { key:'meta', name:'Meta', icon:'📘', sizes:[['Feed','1/1','1080×1080'],['Story','9/16','1080×1920'],['Reels','9/16','1080×1920'],['Right Rail','16/9','1200×628']] },
+      { key:'google', name:'Google', icon:'🔍', sizes:[['Display','16/9','1200×628'],['Square','1/1','300×300'],['Skyscraper','1/4','160×600'],['Banner','8/1','728×90']] },
+      { key:'tiktok', name:'TikTok', icon:'🎵', sizes:[['Vertical','9/16','1080×1920'],['Spark','9/16','1080×1920']] },
+      { key:'linkedin', name:'LinkedIn', icon:'💼', sizes:[['Feed','1.91/1','1200×627'],['Sponsored','1/1','1080×1080']] },
+      { key:'x', name:'X (Twitter)', icon:'🐦', sizes:[['Single','16/9','1200×675'],['Carousel','1/1','1080×1080']] }
+    ];
+    const variants = (count, prefix) => {
+      const arr = [];
+      for (let i = 0; i < count; i++) {
+        const h = headlines[Math.floor(rng()*headlines.length)];
+        const c = ctas[Math.floor(rng()*ctas.length)];
+        const p = palettes[Math.floor(rng()*palettes.length)];
+        arr.push({ headline:h, cta:c, bg1:p[0], bg2:p[1], ctr:(1.4+rng()*4.2).toFixed(1), score:Math.floor(72+rng()*26) });
+      }
+      return arr;
+    };
+    let total = 0;
+    platforms.forEach(p => {
+      const flat = [];
+      p.sizes.forEach(sz => {
+        const cnt = sz[0].includes('Feed') || sz[0]==='Display' || sz[0]==='Vertical' ? 4 : (sz[0]==='Spark' || sz[0]==='Sponsored' || sz[0]==='Carousel' ? 3 : 2);
+        const vs = variants(cnt);
+        vs.forEach(v => { v.size = sz[2]; v.ratio = sz[1]; v.label = `${p.name} ${sz[0]}`; });
+        flat.push(...vs);
+      });
+      p.variants = flat;
+      total += flat.length;
+    });
+    window._smartCreativeData = { platforms, totalCount: total };
+    buildSmartCreative();
+    stop('🎨 Generate 50+ Variants');
+    showToast(`✅ ${total} variants generated`);
+  }, 1500);
+};
+
+window.filterCreatives = function(key) {
+  document.querySelectorAll('.cf-btn').forEach(b => { b.style.background = '#F1F5F9'; b.style.color = '#1E293B'; });
+  const btn = document.getElementById('cf-' + key);
+  if (btn) { btn.style.background = '#1E293B'; btn.style.color = 'white'; }
+  document.querySelectorAll('.creative-card').forEach(c => { c.style.display = (key === 'all' || c.dataset.platform === key) ? 'block' : 'none'; });
+};
+
+window.exportCreativesCsv = function() {
+  if (!window._smartCreativeData) return;
+  const rows = [['Platform','Format','Size','Headline','CTA','Predicted CTR (%)','Score']];
+  window._smartCreativeData.platforms.forEach(p => p.variants.forEach(v => rows.push([p.name, v.label, v.size, v.headline, v.cta, v.ctr, v.score])));
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type:'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `${_lsDomain().replace(/\./g,'-')}-creatives.csv`; a.click();
+  showToast('✅ Variants exported');
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3. AI UGC AVATARS
+// ═══════════════════════════════════════════════════════════════════════════
+window._ugcData = null;
+
+function buildUgcAvatars() {
+  const wrap = document.getElementById('ugcAvatarsWrap');
+  if (!wrap) return;
+  if (!_lsDomain()) { wrap.innerHTML = _emptyAnalysisCard('AI UGC Avatars', 'Generate Avatar Video'); return; }
+  const d = window._ugcData;
+  const avatars = [
+    { id:'sarah', name:'Sarah', age:28, vibe:'Friendly Gen Z', color:'#F472B6', tag:'Best for: Lifestyle, beauty, DTC' },
+    { id:'mark', name:'Mark', age:34, vibe:'Confident Pro', color:'#0EA5E9', tag:'Best for: SaaS, B2B, finance' },
+    { id:'aisha', name:'Aisha', age:31, vibe:'Warm Educator', color:'#10B981', tag:'Best for: Health, edtech, services' },
+    { id:'james', name:'James', age:42, vibe:'Trusted Expert', color:'#8B5CF6', tag:'Best for: Insurance, real estate' },
+    { id:'lily', name:'Lily', age:24, vibe:'Bubbly Creator', color:'#F59E0B', tag:'Best for: Fashion, food, wellness' },
+    { id:'kai', name:'Kai', age:29, vibe:'Tech Reviewer', color:'#06B6D4', tag:'Best for: Apps, gadgets, startups' }
+  ];
+  if (!d) {
+    wrap.innerHTML = `
+      <div style="background:white;border-radius:12px;padding:24px;border:1px solid #E2E8F0;margin-bottom:16px">
+        <h3 style="margin:0 0 6px;color:#1E293B">Pick an avatar &amp; let AI write the script</h3>
+        <p style="margin:0 0 16px;color:#64748B;font-size:14px">Each avatar matches a different audience archetype — pick the one closest to your buyer.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">
+          ${avatars.map(a => `
+            <div onclick="selectAvatar('${a.id}')" style="background:white;border:2px solid #E2E8F0;border-radius:12px;padding:14px;cursor:pointer;text-align:center;transition:all .15s" onmouseover="this.style.borderColor='${a.color}';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#E2E8F0';this.style.transform='translateY(0)'">
+              <div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,${a.color},${a.color}88);margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-size:30px;color:white;font-weight:800">${a.name[0]}</div>
+              <div style="font-weight:700;color:#1E293B">${a.name}, ${a.age}</div>
+              <div style="font-size:12px;color:#64748B;margin-top:2px">${a.vibe}</div>
+              <div style="font-size:11px;color:#94A3B8;margin-top:6px;line-height:1.3">${a.tag}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div style="text-align:center;color:#94A3B8;font-size:13px">↑ Pick an avatar to start, or <a href="#" onclick="event.preventDefault();selectAvatar('sarah')" style="color:#7E22CE;font-weight:700">use our recommended pick</a></div>`;
+    return;
+  }
+  const av = avatars.find(a => a.id === d.avatarId);
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 380px;gap:18px">
+      <!-- Left: video preview -->
+      <div style="background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden">
+        <div style="aspect-ratio:9/16;max-height:560px;background:linear-gradient(180deg,${av.color}25,${av.color}05);display:flex;align-items:center;justify-content:center;position:relative">
+          <div style="width:140px;height:140px;border-radius:50%;background:linear-gradient(135deg,${av.color},${av.color}aa);display:flex;align-items:center;justify-content:center;font-size:54px;color:white;font-weight:800;box-shadow:0 18px 50px ${av.color}55">${av.name[0]}</div>
+          <button style="position:absolute;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.95);border:none;font-size:24px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.2)">▶</button>
+          <div style="position:absolute;bottom:14px;left:14px;right:14px;background:rgba(0,0,0,.7);color:white;padding:10px 12px;border-radius:8px;font-size:13px;line-height:1.4">"${d.script.split('. ')[0]}…"</div>
+          <div style="position:absolute;top:12px;right:12px;background:#10B981;color:white;font-size:10px;padding:3px 8px;border-radius:4px;font-weight:800">▶ READY</div>
+        </div>
+        <div style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center">
+          <div><div style="font-weight:700;color:#1E293B">${av.name}, ${av.age} — ${av.vibe}</div><div style="font-size:12px;color:#64748B">${d.duration}s • 1080×1920 • H.264</div></div>
+          <div style="display:flex;gap:6px"><button onclick="showToast('✓ Downloading MP4…')" style="padding:8px 14px;background:#7E22CE;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">⬇ MP4</button><button onclick="runUgcAvatars()" style="padding:8px 14px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">↺</button></div>
+        </div>
+      </div>
+      <!-- Right: script + controls -->
+      <div>
+        <div style="background:white;border-radius:12px;padding:18px;border:1px solid #E2E8F0;margin-bottom:14px">
+          <div style="font-size:12px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:8px">AI-GENERATED SCRIPT</div>
+          <div style="font-size:14px;color:#1E293B;line-height:1.55;background:#F8FAFC;padding:12px;border-radius:8px;border-left:3px solid ${av.color}">${d.script}</div>
+          <button onclick="window._ugcData=null;buildUgcAvatars()" style="margin-top:10px;padding:8px 14px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">← Pick different avatar</button>
+        </div>
+        <div style="background:white;border-radius:12px;padding:18px;border:1px solid #E2E8F0">
+          <div style="font-size:12px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:10px">PERFORMANCE PREDICTION</div>
+          ${[['Hook strength',d.scores.hook,'#10B981'],['Authenticity',d.scores.auth,'#0EA5E9'],['Conversion potential',d.scores.conv,'#F59E0B']].map(s=>`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12px;color:#1E293B;font-weight:600;margin-bottom:3px"><span>${s[0]}</span><span>${s[1]}/100</span></div><div style="height:6px;background:#F1F5F9;border-radius:99px;overflow:hidden"><div style="height:100%;width:${s[1]}%;background:${s[2]}"></div></div></div>`).join('')}
+          <div style="margin-top:12px;padding:10px;background:#F0FDF4;border-radius:6px;font-size:12px;color:#065F46"><strong>Predicted CTR:</strong> ${d.scores.ctr}% &nbsp;•&nbsp; <strong>Cost:</strong> $${d.scores.cost}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+window.selectAvatar = function(avatarId) {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer(`[onclick*="selectAvatar('${avatarId}')"]`, 'Generating script and rendering avatar') : (() => {});
+  setTimeout(() => {
+    const brand = _esc(_lsBrand()), sector = _esc(_lsSector()), kw = _esc(_lsKeywords()[0] || _lsSector());
+    const rng = _seedRng(_lsDomain() + avatarId);
+    const scripts = [
+      `Okay, I have to tell you about ${brand}. I was spending hours every week on ${kw} — until last month. Now? It takes me literally 5 minutes. The AI does everything. I'm getting more leads, paying way less, and finally have my evenings back. If you're in ${sector}, just try the free trial. You'll thank me.`,
+      `Real talk — I tried every tool out there for ${kw}. Most of them are overpriced and complicated. Then I found ${brand}. It's like having a full marketing team for the price of a coffee. My ROAS doubled in the first month. I'm not sponsored, I just genuinely love it.`,
+      `If you run a ${sector} business and you're not using ${brand} yet, you're leaving money on the table. I'm serious. The AI writes ads, builds landing pages, optimises my campaigns — all while I sleep. Best 100 bucks a month I've ever spent.`
+    ];
+    window._ugcData = {
+      avatarId,
+      script: scripts[Math.floor(rng()*scripts.length)],
+      duration: 28 + Math.floor(rng()*22),
+      scores: {
+        hook: 78 + Math.floor(rng()*18),
+        auth: 82 + Math.floor(rng()*14),
+        conv: 71 + Math.floor(rng()*22),
+        ctr: (3.2 + rng()*4.5).toFixed(1),
+        cost: (2.4 + rng()*3.8).toFixed(2)
+      }
+    };
+    buildUgcAvatars();
+    stop();
+    showToast('✅ Avatar video ready');
+  }, 1300);
+};
+
+window.runUgcAvatars = function() {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  if (window._ugcData) { selectAvatar(window._ugcData.avatarId); }
+  else { selectAvatar('sarah'); }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4. AI VOICEOVERS
+// ═══════════════════════════════════════════════════════════════════════════
+window._voData = null;
+
+function buildVoiceovers() {
+  const wrap = document.getElementById('voiceoversWrap');
+  if (!wrap) return;
+  if (!_lsDomain()) { wrap.innerHTML = _emptyAnalysisCard('AI Voiceovers', 'Generate Voiceover'); return; }
+  const voices = [
+    { id:'aria', name:'Aria', gender:'F', accent:'US', style:'Warm', color:'#F472B6' },
+    { id:'liam', name:'Liam', gender:'M', accent:'US', style:'Confident', color:'#0EA5E9' },
+    { id:'olivia', name:'Olivia', gender:'F', accent:'UK', style:'Crisp', color:'#10B981' },
+    { id:'ethan', name:'Ethan', gender:'M', accent:'UK', style:'Authoritative', color:'#8B5CF6' },
+    { id:'sofia', name:'Sofia', gender:'F', accent:'AU', style:'Friendly', color:'#F59E0B' },
+    { id:'noah', name:'Noah', gender:'M', accent:'CA', style:'Casual', color:'#06B6D4' },
+    { id:'isla', name:'Isla', gender:'F', accent:'IE', style:'Playful', color:'#EC4899' },
+    { id:'arjun', name:'Arjun', gender:'M', accent:'IN', style:'Smooth', color:'#A855F7' }
+  ];
+  const d = window._voData;
+  const brand = _esc(_lsBrand()), kw = _esc(_lsKeywords()[0] || _lsSector());
+  const defaultScript = `Tired of spending hours on ${kw}? Meet ${brand} — the AI marketing platform built for modern teams. Start your free trial today.`;
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+      <!-- Left: script + voices -->
+      <div>
+        <div style="background:white;border-radius:12px;padding:18px;border:1px solid #E2E8F0;margin-bottom:14px">
+          <div style="font-size:12px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:8px">SCRIPT</div>
+          <textarea id="voScript" rows="5" style="width:100%;padding:12px;border:1px solid #E2E8F0;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;line-height:1.5;box-sizing:border-box">${(d && d.script) || defaultScript}</textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px"><div style="font-size:11px;color:#94A3B8">~<span id="voSec">${Math.ceil(((d && d.script) || defaultScript).split(' ').length / 2.4)}</span> seconds at default pace</div><div style="display:flex;gap:6px"><label style="font-size:11px;color:#64748B;display:flex;align-items:center;gap:4px">Lang: <select id="voLang" style="padding:4px 8px;border:1px solid #E2E8F0;border-radius:4px;font-size:11px">${['English','Spanish','French','German','Italian','Portuguese','Dutch','Polish','Hindi','Arabic','Japanese','Mandarin'].map(l=>`<option ${l==='English'?'selected':''}>${l}</option>`).join('')}</select></label></div></div>
+        </div>
+        <div style="background:white;border-radius:12px;padding:18px;border:1px solid #E2E8F0">
+          <div style="font-size:12px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:10px">PICK A VOICE</div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
+            ${voices.map(v => `
+              <div onclick="generateVoiceover('${v.id}')" style="display:flex;gap:10px;padding:10px;background:${d && d.voiceId===v.id ? '#F0F9FF':'#F8FAFC'};border:1.5px solid ${d && d.voiceId===v.id ? '#0EA5E9':'transparent'};border-radius:8px;cursor:pointer;align-items:center" onmouseover="if(!this.style.borderColor.includes('14, 165'))this.style.background='#F1F5F9'" onmouseout="if(!this.style.borderColor.includes('14, 165'))this.style.background='#F8FAFC'">
+                <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,${v.color},${v.color}aa);display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:14px">${v.name[0]}</div>
+                <div style="flex:1;min-width:0"><div style="font-weight:700;color:#1E293B;font-size:13px">${v.name} <span style="color:#94A3B8;font-weight:400;font-size:11px">• ${v.gender} ${v.accent}</span></div><div style="font-size:11px;color:#64748B">${v.style}</div></div>
+                <div style="font-size:14px">▶</div>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>
+      <!-- Right: preview -->
+      <div>
+        ${d ? `
+        <div style="background:white;border-radius:12px;padding:24px;border:1px solid #E2E8F0">
+          <div style="font-size:12px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:14px">PREVIEW</div>
+          <div style="background:linear-gradient(135deg,${voices.find(v=>v.id===d.voiceId).color}15,#F8FAFC);border-radius:10px;padding:24px;text-align:center">
+            <div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,${voices.find(v=>v.id===d.voiceId).color},${voices.find(v=>v.id===d.voiceId).color}aa);margin:0 auto 14px;display:flex;align-items:center;justify-content:center;color:white;font-size:30px;font-weight:800">${voices.find(v=>v.id===d.voiceId).name[0]}</div>
+            <div style="font-weight:700;color:#1E293B;font-size:16px">${voices.find(v=>v.id===d.voiceId).name}</div>
+            <div style="font-size:12px;color:#64748B;margin-bottom:18px">${voices.find(v=>v.id===d.voiceId).style} • ${d.lang}</div>
+            <!-- Mock waveform -->
+            <div style="display:flex;align-items:center;justify-content:center;gap:2px;height:50px;margin-bottom:14px">
+              ${Array.from({length:42}).map((_,i)=>{const h=12+Math.sin(i*0.7+i*0.3)*16+(i%5)*4;return `<div style="width:3px;height:${Math.abs(h)}px;background:${voices.find(v=>v.id===d.voiceId).color};border-radius:2px"></div>`}).join('')}
+            </div>
+            <div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-bottom:14px">
+              <button style="width:46px;height:46px;border-radius:50%;background:${voices.find(v=>v.id===d.voiceId).color};color:white;border:none;font-size:18px;cursor:pointer">▶</button>
+              <span style="font-size:12px;color:#64748B;font-variant-numeric:tabular-nums">0:00 / 0:${String(d.duration).padStart(2,'0')}</span>
+            </div>
+            <div style="display:flex;gap:6px;justify-content:center"><button onclick="showToast('✓ Downloading MP3…')" style="padding:9px 18px;background:#1E40AF;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">⬇ MP3</button><button onclick="showToast('✓ Downloading WAV…')" style="padding:9px 18px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">⬇ WAV</button></div>
+          </div>
+          <div style="margin-top:14px;padding:12px;background:#F8FAFC;border-radius:8px;font-size:12px;color:#475569;line-height:1.5"><strong style="color:#1E293B">Cost:</strong> $0.${d.cost} • <strong style="color:#1E293B">Format:</strong> 44.1kHz Stereo • <strong style="color:#1E293B">Use:</strong> Royalty-free, commercial</div>
+        </div>` : `
+        <div style="background:white;border-radius:12px;padding:36px;border:1px solid #E2E8F0;text-align:center">
+          <div style="font-size:42px;margin-bottom:10px">🎙️</div>
+          <div style="font-weight:700;color:#1E293B;margin-bottom:6px">Pick a voice to preview</div>
+          <div style="font-size:13px;color:#64748B">Tap any voice on the left to render your script.</div>
+        </div>`}
+      </div>
+    </div>`;
+}
+
+window.generateVoiceover = function(voiceId) {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer(`[onclick*="generateVoiceover('${voiceId}')"]`, 'Synthesising voice…') : (() => {});
+  const script = (document.getElementById('voScript') || {}).value || '';
+  const lang = (document.getElementById('voLang') || {}).value || 'English';
+  setTimeout(() => {
+    const wc = script.split(/\s+/).filter(Boolean).length;
+    window._voData = { voiceId, script, lang, duration: Math.max(8, Math.ceil(wc / 2.4)), cost: String(Math.floor(wc * 0.15)).padStart(2,'0') };
+    buildVoiceovers();
+    stop();
+    showToast('✅ Voiceover generated');
+  }, 1100);
+};
+
+window.runVoiceovers = function() {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  generateVoiceover((window._voData && window._voData.voiceId) || 'aria');
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 5. TEMPLATES LIBRARY
+// ═══════════════════════════════════════════════════════════════════════════
+window._templatesData = null;
+
+function buildTemplates() {
+  const wrap = document.getElementById('templatesWrap');
+  if (!wrap) return;
+  if (!_lsDomain()) { wrap.innerHTML = _emptyAnalysisCard('Templates Library', 'Browse Templates'); return; }
+  const d = window._templatesData;
+  if (!d) {
+    wrap.innerHTML = `
+      <div style="background:white;border-radius:12px;padding:32px;text-align:center;border:1px solid #E2E8F0">
+        <div style="font-size:42px;margin-bottom:12px">📐</div>
+        <h3 style="margin:0 0 8px;color:#1E293B">60+ proven templates — filtered for ${_esc(_lsSector())}</h3>
+        <p style="margin:0 0 18px;color:#64748B">Each template comes pre-loaded with proven copy, layout and CTA — apply in one click.</p>
+        <button class="btn-primary" onclick="runTemplates()" style="background:linear-gradient(135deg,#065F46,#10B981);color:white;border:none;padding:11px 24px;border-radius:8px;font-weight:700;cursor:pointer">📐 Browse Templates</button>
+      </div>`;
+    return;
+  }
+  const filt = window._templateFilter || 'all';
+  const list = filt === 'all' ? d.templates : d.templates.filter(t => t.type === filt);
+  wrap.innerHTML = `
+    <div style="background:white;border-radius:10px;padding:12px 16px;border:1px solid #E2E8F0;margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:12px;font-weight:700;color:#64748B;letter-spacing:.05em">FILTER:</span>
+      ${[['all','All',d.templates.length],['ad','Ads',d.templates.filter(t=>t.type==='ad').length],['lp','Landing',d.templates.filter(t=>t.type==='lp').length],['email','Email',d.templates.filter(t=>t.type==='email').length],['social','Social',d.templates.filter(t=>t.type==='social').length]].map(f=>`<button onclick="window._templateFilter='${f[0]}';buildTemplates()" style="padding:5px 12px;background:${filt===f[0]?'#1E293B':'#F1F5F9'};color:${filt===f[0]?'white':'#1E293B'};border:none;border-radius:99px;font-size:12px;font-weight:600;cursor:pointer">${f[1]} ${f[2]}</button>`).join('')}
+      <div style="margin-left:auto;font-size:12px;color:#64748B">Showing ${list.length} templates</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">
+      ${list.map((t,i) => `
+        <div style="background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden;transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(0,0,0,.08)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='none'">
+          <div style="aspect-ratio:16/10;background:linear-gradient(135deg,${t.bg1},${t.bg2});padding:14px;color:white;display:flex;flex-direction:column;justify-content:space-between;position:relative">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="background:rgba(255,255,255,.25);font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px;letter-spacing:.05em">${t.type.toUpperCase()}</div>${t.hot?`<div style="background:#EF4444;color:white;font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px">🔥 HOT</div>`:''}</div>
+            <div><div style="font-size:14px;font-weight:800;margin-bottom:4px;line-height:1.2">${t.title}</div><div style="font-size:11px;opacity:.85">${t.tagline}</div></div>
+          </div>
+          <div style="padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:11px;color:#64748B">${t.usage} uses • ⭐ ${t.rating}</div><div style="font-size:10px;color:#10B981;font-weight:700;background:#F0FDF4;padding:2px 6px;border-radius:4px">+${t.lift}% CVR</div></div>
+            <button onclick="useTemplate(${i})" style="width:100%;padding:8px;background:#10B981;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">Use Template →</button>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+window.runTemplates = function() {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="runTemplates"]', 'Loading templates for your sector') : (() => {});
+  setTimeout(() => {
+    const sector = _esc(_lsSector()), kw = _esc(_lsKeywords()[0] || _lsSector());
+    const rng = _seedRng(_lsDomain() + 'tpl');
+    const palettes = [['#0EA5E9','#6366F1'],['#EC4899','#8B5CF6'],['#10B981','#06B6D4'],['#F59E0B','#EF4444'],['#1E40AF','#3B82F6'],['#7C3AED','#A855F7'],['#059669','#10B981'],['#DC2626','#F97316'],['#0F172A','#475569']];
+    const types = ['ad','lp','email','social'];
+    const titles = {
+      ad: [`${kw} that converts`, 'Limited-time launch', 'Founder story carousel', 'Before/after transformation', 'Social proof stack', 'Problem → solution flip', 'Bold claim challenger'],
+      lp: ['Webinar registration', 'Free trial signup', 'Demo booking', 'Lead magnet download', 'Pricing comparison', 'Founder pitch page', 'Case study landing'],
+      email: ['Welcome sequence', 'Cart abandonment', 'Re-engagement', 'Product launch', 'Black Friday promo', 'Customer winback'],
+      social: ['Carousel: 5 mistakes', 'Quote graphic', 'Mini case study', 'Industry stat post', 'Behind-the-scenes', 'Customer testimonial']
+    };
+    const taglines = ['Battle-tested with 200+ campaigns','Top 1% performance in 2026','Most-copied template this quarter','Featured in our growth playbook','Used by 1,200+ teams'];
+    const templates = [];
+    types.forEach(type => {
+      titles[type].forEach((title, i) => {
+        const p = palettes[Math.floor(rng()*palettes.length)];
+        templates.push({
+          type, title, bg1:p[0], bg2:p[1],
+          tagline: taglines[Math.floor(rng()*taglines.length)],
+          usage: Math.floor(180 + rng()*1820),
+          rating: (4.4 + rng()*0.6).toFixed(1),
+          lift: Math.floor(8 + rng()*42),
+          hot: i < 2 && rng() > 0.5
+        });
+      });
+    });
+    window._templatesData = { templates };
+    buildTemplates();
+    stop('📐 Browse Templates');
+    showToast(`✅ ${templates.length} templates loaded`);
+  }, 1100);
+};
+
+window.useTemplate = function(i) {
+  const t = window._templatesData && window._templatesData.templates[i];
+  if (!t) return;
+  showToast(`✓ Applied template: ${t.title}`);
+  setTimeout(() => navigateTo(t.type === 'lp' ? 'landing-builder' : t.type === 'email' ? 'reengage' : 'campaigns'), 600);
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 6. OPTIMIZATION FOLDERS
+// ═══════════════════════════════════════════════════════════════════════════
+window._optFoldersData = null;
+
+function buildOptFolders() {
+  const wrap = document.getElementById('optFoldersWrap');
+  if (!wrap) return;
+  if (!_lsDomain()) { wrap.innerHTML = _emptyAnalysisCard('Optimization Folders', 'Build Folders'); return; }
+  const d = window._optFoldersData;
+  if (!d) {
+    wrap.innerHTML = `
+      <div style="background:white;border-radius:12px;padding:32px;text-align:center;border:1px solid #E2E8F0">
+        <div style="font-size:42px;margin-bottom:12px">📁</div>
+        <h3 style="margin:0 0 8px;color:#1E293B">Auto-optimise campaigns by folder</h3>
+        <p style="margin:0 0 18px;color:#64748B;max-width:520px;margin-left:auto;margin-right:auto">Group campaigns into folders, set rules (e.g. <em>pause if CPA &gt; $40</em>), and InfoGenie runs the loop hourly.</p>
+        <button class="btn-primary" onclick="runOptFolders()" style="background:linear-gradient(135deg,#1E40AF,#3B82F6);color:white;border:none;padding:11px 24px;border-radius:8px;font-weight:700;cursor:pointer">📁 Build Folders</button>
+      </div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px">
+      ${[['Total saved last 30d',`$${d.savings.toLocaleString()}`,'#10B981'],['Auto-actions taken',d.actions,'#0EA5E9'],['ROAS uplift','+'+d.uplift+'%','#F59E0B']].map(s=>`<div style="background:white;border-radius:10px;padding:14px;border:1px solid #E2E8F0;border-left:3px solid ${s[2]}"><div style="font-size:11px;color:#64748B;font-weight:700;letter-spacing:.05em">${s[0]}</div><div style="font-size:24px;font-weight:800;color:#1E293B;margin-top:4px">${s[1]}</div></div>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      ${d.folders.map((f,i) => `
+        <div style="background:white;border-radius:12px;padding:16px;border:1px solid #E2E8F0">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="display:flex;align-items:center;gap:10px"><div style="width:36px;height:36px;border-radius:8px;background:${f.color}20;display:flex;align-items:center;justify-content:center;font-size:18px">${f.icon}</div><div><div style="font-weight:800;color:#1E293B">${f.name}</div><div style="font-size:11px;color:#64748B">${f.campaigns.length} campaigns • $${f.spend} budget</div></div></div><div style="font-size:11px;font-weight:700;padding:3px 9px;background:${f.status==='Healthy'?'#F0FDF4':'#FEF3C7'};color:${f.status==='Healthy'?'#065F46':'#92400E'};border-radius:99px">${f.status==='Healthy'?'✓':'⚠'} ${f.status}</div></div>
+          <div style="background:#F8FAFC;border-radius:8px;padding:10px;margin-bottom:10px">
+            <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">RULES</div>
+            ${f.rules.map(r=>`<div style="font-size:12px;color:#1E293B;display:flex;justify-content:space-between;padding:3px 0"><span>${r.cond}</span><span style="color:${r.action.startsWith('Pause')?'#EF4444':r.action.startsWith('Scale')?'#10B981':'#0EA5E9'};font-weight:700">→ ${r.action}</span></div>`).join('')}
+          </div>
+          <div style="font-size:11px;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">RECENT ACTIONS</div>
+          ${f.recent.map(r=>`<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;border-bottom:1px dashed #F1F5F9"><div><span style="color:${r.type==='pause'?'#EF4444':r.type==='scale'?'#10B981':'#0EA5E9'};font-weight:700">${r.type==='pause'?'⏸':r.type==='scale'?'⬆':'🔁'}</span> <span style="color:#1E293B">${r.what}</span></div><div style="color:#94A3B8">${r.when}</div></div>`).join('')}
+          <div style="margin-top:10px;display:flex;gap:6px"><button onclick="showToast('✓ Rules updated')" style="flex:1;padding:7px;background:#F1F5F9;border:1px solid #E2E8F0;color:#1E293B;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">Edit Rules</button><button onclick="showToast('✓ Optimisation paused')" style="flex:1;padding:7px;background:#1E40AF;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">${f.status==='Healthy'?'Pause Auto':'Force Run'}</button></div>
+        </div>`).join('')}
+    </div>`;
+}
+
+window.runOptFolders = function() {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="runOptFolders"]', 'Building optimization folders') : (() => {});
+  setTimeout(() => {
+    const rng = _seedRng(_lsDomain() + 'opt');
+    const sector = _esc(_lsSector());
+    const folderTpl = [
+      { name:'Top Performers', icon:'🚀', color:'#10B981', rules:[{cond:'ROAS > 3.5',action:'Scale +20% daily'},{cond:'CTR drop > 30%',action:'Refresh creative'}] },
+      { name:'Test &amp; Learn', icon:'🧪', color:'#0EA5E9', rules:[{cond:'CPA > $45',action:'Pause &amp; relaunch'},{cond:'Spend > $200',action:'Promote to Top'}] },
+      { name:'Brand Campaigns', icon:'🎯', color:'#8B5CF6', rules:[{cond:'Frequency > 4.5',action:'Refresh creative'},{cond:'CPM > $25',action:'Narrow audience'}] },
+      { name:'Retargeting', icon:'🔁', color:'#F59E0B', rules:[{cond:'CPA > $25',action:'Pause &amp; alert'},{cond:'ROAS > 5',action:'Scale +30%'}] }
+    ];
+    const folders = folderTpl.map((f,i) => {
+      const cn = 3 + Math.floor(rng()*5);
+      const status = rng() > 0.25 ? 'Healthy' : 'Needs Review';
+      const recent = [
+        { type:'scale', what:`${sector} retargeting +20%`, when:'2h ago' },
+        { type:'pause', what:`Underperforming ${sector} ad set`, when:'5h ago' },
+        { type:'refresh', what:`Creative refreshed: 4 new variants`, when:'8h ago' }
+      ].slice(0, 2 + Math.floor(rng()*2));
+      return { ...f, campaigns:Array.from({length:cn}).map((_,j)=>({name:`${f.name} #${j+1}`})), spend:(800+Math.floor(rng()*4200)).toLocaleString(), status, recent };
+    });
+    window._optFoldersData = {
+      folders,
+      savings: Math.floor(2400 + rng()*5800),
+      actions: Math.floor(28 + rng()*52),
+      uplift: (12 + Math.floor(rng()*28))
+    };
+    buildOptFolders();
+    stop('📁 Build Folders');
+    showToast(`✅ ${folders.length} folders built — auto-optimisation live`);
+  }, 1300);
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 7. IMPORT EXISTING CAMPAIGNS
+// ═══════════════════════════════════════════════════════════════════════════
+window._importData = null;
+
+function buildImportCampaigns() {
+  const wrap = document.getElementById('importCampaignsWrap');
+  if (!wrap) return;
+  if (!_lsDomain()) { wrap.innerHTML = _emptyAnalysisCard('Import Existing Campaigns', 'Scan & Import'); return; }
+  const d = window._importData;
+  const platforms = [
+    { key:'meta', name:'Meta Ads', icon:'📘', color:'#1877F2', desc:'Facebook + Instagram' },
+    { key:'google', name:'Google Ads', icon:'🔍', color:'#4285F4', desc:'Search, Display, YouTube' },
+    { key:'tiktok', name:'TikTok Ads', icon:'🎵', color:'#000000', desc:'TikTok Spark + In-Feed' },
+    { key:'linkedin', name:'LinkedIn Ads', icon:'💼', color:'#0A66C2', desc:'Sponsored Content + InMail' }
+  ];
+  if (!d) {
+    wrap.innerHTML = `
+      <div style="background:white;border-radius:12px;padding:24px;border:1px solid #E2E8F0;margin-bottom:14px">
+        <h3 style="margin:0 0 6px;color:#1E293B">Connect a platform to import campaigns</h3>
+        <p style="margin:0 0 16px;color:#64748B;font-size:14px">We'll scan your existing campaigns, audit performance and recommend specific fixes.</p>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
+          ${platforms.map(p=>`<div style="background:white;border:1px solid #E2E8F0;border-radius:10px;padding:16px;display:flex;gap:14px;align-items:center"><div style="width:48px;height:48px;border-radius:10px;background:${p.color}15;display:flex;align-items:center;justify-content:center;font-size:24px">${p.icon}</div><div style="flex:1"><div style="font-weight:700;color:#1E293B">${p.name}</div><div style="font-size:12px;color:#64748B">${p.desc}</div></div><button onclick="connectImportSource('${p.key}')" style="padding:8px 14px;background:${p.color};color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">Connect</button></div>`).join('')}
+        </div>
+        <div style="margin-top:14px;padding:12px;background:#F0F9FF;border-left:3px solid #0EA5E9;border-radius:6px;font-size:12px;color:#0C4A6E"><strong>OR:</strong> <a href="#" onclick="event.preventDefault();connectImportSource('csv')" style="color:#0EA5E9;font-weight:700">upload a CSV</a> exported from any ad platform — we'll parse it automatically.</div>
+      </div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <div style="background:white;border-radius:12px;padding:18px;border:1px solid #E2E8F0;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800;color:#1E293B;font-size:16px">✓ Connected: ${platforms.find(p=>p.key===d.source).name}</div><div style="font-size:12px;color:#64748B">Imported ${d.campaigns.length} campaigns • Last sync: just now</div></div><div style="display:flex;gap:6px"><button onclick="window._importData=null;buildImportCampaigns()" style="padding:7px 14px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">+ Add Source</button><button onclick="connectImportSource('${d.source}')" style="padding:7px 14px;background:#1E293B;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">↻ Re-scan</button></div></div>
+    </div>
+    <div style="background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13px"><thead style="background:#F8FAFC"><tr><th style="text-align:left;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700;letter-spacing:.05em">CAMPAIGN</th><th style="text-align:right;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700">SPEND</th><th style="text-align:right;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700">ROAS</th><th style="text-align:center;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700">HEALTH</th><th style="text-align:left;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700">RECOMMENDATION</th></tr></thead><tbody>
+        ${d.campaigns.map(c=>`<tr style="border-top:1px solid #F1F5F9"><td style="padding:11px 14px"><div style="font-weight:700;color:#1E293B">${c.name}</div><div style="font-size:11px;color:#94A3B8">${c.objective} • ${c.platform}</div></td><td style="text-align:right;padding:11px 14px;font-weight:700;color:#1E293B">$${c.spend.toLocaleString()}</td><td style="text-align:right;padding:11px 14px;font-weight:800;color:${c.roas>=3?'#10B981':c.roas>=2?'#F59E0B':'#EF4444'}">${c.roas}×</td><td style="text-align:center;padding:11px 14px"><div style="display:inline-block;padding:3px 9px;background:${c.health>=80?'#F0FDF4':c.health>=60?'#FEF3C7':'#FEE2E2'};color:${c.health>=80?'#065F46':c.health>=60?'#92400E':'#991B1B'};border-radius:99px;font-size:11px;font-weight:700">${c.health}/100</div></td><td style="padding:11px 14px;color:#475569">${c.rec}</td></tr>`).join('')}
+      </tbody></table>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px"><button onclick="showToast('✓ All recommendations queued')" style="padding:9px 18px;background:#10B981;color:white;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer">✓ Apply All Fixes</button><button onclick="showToast('✓ Sync schedule set: hourly')" style="padding:9px 18px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer">⏱ Auto-sync hourly</button></div>`;
+}
+
+window.connectImportSource = function(src) {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer(`[onclick*="connectImportSource('${src}')"]`, src==='csv' ? 'Parsing CSV' : 'OAuth → scanning campaigns') : (() => {});
+  setTimeout(() => {
+    const rng = _seedRng(_lsDomain() + src);
+    const sector = _esc(_lsSector());
+    const objs = ['Conversions','Traffic','Lead Gen','Awareness','App Installs','Engagement'];
+    const recs = ['Pause — CPA 3× target','Refresh creative — fatigue 4.8','Scale +30% — top ROAS','Narrow audience — CPM rising','Add lookalike 1% audience','Move to Top Performers folder','Add UTM tracking — missing','Increase budget cap'];
+    const platLabels = { meta:'Meta', google:'Google', tiktok:'TikTok', linkedin:'LinkedIn', csv:'CSV Import' };
+    const cn = 6 + Math.floor(rng()*5);
+    const campaigns = Array.from({length:cn}).map((_,i)=>{
+      const roas = +(0.8 + rng()*4.2).toFixed(1);
+      const health = roas >= 3 ? Math.floor(78 + rng()*22) : roas >= 2 ? Math.floor(58 + rng()*22) : Math.floor(28 + rng()*32);
+      return { name:`${sector} ${['Acquisition','Retargeting','Lookalike','Brand','Promo','Cold','Warm'][i%7]} #${i+1}`, objective:objs[Math.floor(rng()*objs.length)], platform:platLabels[src], spend:Math.floor(280+rng()*4200), roas, health, rec:recs[Math.floor(rng()*recs.length)] };
+    });
+    window._importData = { source:src, campaigns };
+    buildImportCampaigns();
+    stop();
+    showToast(`✅ Imported ${cn} campaigns from ${platLabels[src]}`);
+  }, 1500);
+};
+
+window.runImportCampaigns = function() {
+  buildImportCampaigns();
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8. INTERNATIONAL LOCALIZATION
+// ═══════════════════════════════════════════════════════════════════════════
+window._locData = null;
+
+function buildLocalization() {
+  const wrap = document.getElementById('localizationWrap');
+  if (!wrap) return;
+  if (!_lsDomain()) { wrap.innerHTML = _emptyAnalysisCard('International Localization', 'Generate Localizations'); return; }
+  const langs = [
+    {code:'es',name:'Spanish',flag:'🇪🇸',speakers:'500M'},{code:'fr',name:'French',flag:'🇫🇷',speakers:'280M'},{code:'de',name:'German',flag:'🇩🇪',speakers:'130M'},{code:'it',name:'Italian',flag:'🇮🇹',speakers:'85M'},{code:'pt',name:'Portuguese',flag:'🇵🇹',speakers:'260M'},{code:'nl',name:'Dutch',flag:'🇳🇱',speakers:'24M'},{code:'pl',name:'Polish',flag:'🇵🇱',speakers:'45M'},{code:'sv',name:'Swedish',flag:'🇸🇪',speakers:'10M'},
+    {code:'da',name:'Danish',flag:'🇩🇰',speakers:'6M'},{code:'no',name:'Norwegian',flag:'🇳🇴',speakers:'5M'},{code:'fi',name:'Finnish',flag:'🇫🇮',speakers:'5M'},{code:'cs',name:'Czech',flag:'🇨🇿',speakers:'10M'},{code:'el',name:'Greek',flag:'🇬🇷',speakers:'13M'},{code:'tr',name:'Turkish',flag:'🇹🇷',speakers:'85M'},{code:'ru',name:'Russian',flag:'🇷🇺',speakers:'255M'},{code:'uk',name:'Ukrainian',flag:'🇺🇦',speakers:'40M'},
+    {code:'ar',name:'Arabic',flag:'🇸🇦',speakers:'420M'},{code:'he',name:'Hebrew',flag:'🇮🇱',speakers:'9M'},{code:'fa',name:'Persian',flag:'🇮🇷',speakers:'70M'},{code:'hi',name:'Hindi',flag:'🇮🇳',speakers:'600M'},{code:'bn',name:'Bengali',flag:'🇧🇩',speakers:'270M'},{code:'ur',name:'Urdu',flag:'🇵🇰',speakers:'170M'},{code:'ta',name:'Tamil',flag:'🇮🇳',speakers:'80M'},{code:'th',name:'Thai',flag:'🇹🇭',speakers:'70M'},
+    {code:'vi',name:'Vietnamese',flag:'🇻🇳',speakers:'85M'},{code:'id',name:'Indonesian',flag:'🇮🇩',speakers:'200M'},{code:'ms',name:'Malay',flag:'🇲🇾',speakers:'80M'},{code:'tl',name:'Filipino',flag:'🇵🇭',speakers:'45M'},{code:'ja',name:'Japanese',flag:'🇯🇵',speakers:'125M'},{code:'ko',name:'Korean',flag:'🇰🇷',speakers:'80M'},{code:'zh',name:'Mandarin',flag:'🇨🇳',speakers:'1.1B'},{code:'yue',name:'Cantonese',flag:'🇭🇰',speakers:'85M'},
+    {code:'sw',name:'Swahili',flag:'🇰🇪',speakers:'150M'},{code:'am',name:'Amharic',flag:'🇪🇹',speakers:'30M'},{code:'zu',name:'Zulu',flag:'🇿🇦',speakers:'12M'},{code:'af',name:'Afrikaans',flag:'🇿🇦',speakers:'7M'},{code:'ro',name:'Romanian',flag:'🇷🇴',speakers:'25M'},{code:'hu',name:'Hungarian',flag:'🇭🇺',speakers:'13M'},{code:'sk',name:'Slovak',flag:'🇸🇰',speakers:'5M'},{code:'bg',name:'Bulgarian',flag:'🇧🇬',speakers:'8M'},{code:'hr',name:'Croatian',flag:'🇭🇷',speakers:'5M'}
+  ];
+  const d = window._locData;
+  const brand = _esc(_lsBrand());
+  const baseHeadline = `Try ${brand} free for 14 days — no card needed`;
+  const samples = {
+    es:'Prueba ${brand} gratis 14 días — sin tarjeta',
+    fr:'Essayez ${brand} gratuitement 14 jours — sans carte',
+    de:'Testen Sie ${brand} 14 Tage gratis — ohne Karte',
+    it:'Prova ${brand} gratis per 14 giorni — senza carta',
+    pt:'Experimente ${brand} grátis por 14 dias — sem cartão',
+    nl:'Probeer ${brand} 14 dagen gratis — geen kaart nodig',
+    ja:'${brand}を14日間無料でお試し — カード不要',
+    ko:'14일 무료 ${brand} 체험 — 카드 불필요',
+    zh:'免费试用${brand} 14天 — 无需信用卡',
+    ar:'جرّب ${brand} مجانًا لمدة 14 يومًا — بدون بطاقة',
+    hi:`${brand} को 14 दिन फ्री आज़माएँ — कार्ड की ज़रूरत नहीं`,
+    ru:'Попробуйте ${brand} бесплатно 14 дней — без карты'
+  };
+  if (!d) {
+    wrap.innerHTML = `
+      <div style="background:white;border-radius:12px;padding:24px;border:1px solid #E2E8F0">
+        <h3 style="margin:0 0 6px;color:#1E293B">Pick languages to localise into</h3>
+        <p style="margin:0 0 14px;color:#64748B;font-size:14px">All 40+ supported. Each language gets locale-aware tone, currency, idioms and CTAs.</p>
+        <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap"><button onclick="runLocalization('top10')" style="padding:7px 14px;background:#6366F1;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">⚡ Quick: Top 10 (recommended)</button><button onclick="runLocalization('eu')" style="padding:7px 14px;background:#1E40AF;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">🇪🇺 EU pack (15 langs)</button><button onclick="runLocalization('all')" style="padding:7px 14px;background:#0F172A;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">🌍 All 40+</button></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;max-height:340px;overflow-y:auto;background:#F8FAFC;padding:10px;border-radius:8px">
+          ${langs.map(l=>`<div style="background:white;border-radius:6px;padding:8px 10px;display:flex;align-items:center;gap:8px;font-size:13px"><span style="font-size:18px">${l.flag}</span><div style="flex:1"><div style="color:#1E293B;font-weight:600">${l.name}</div><div style="font-size:10px;color:#94A3B8">${l.speakers}</div></div></div>`).join('')}
+        </div>
+      </div>`;
+    return;
+  }
+  const sel = d.langs;
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+      ${[['Languages',sel.length,'#6366F1'],['Translated',d.done,'#10B981'],['In progress',d.inProgress,'#F59E0B'],['Total reach',d.reach,'#0EA5E9']].map(s=>`<div style="background:white;border-radius:10px;padding:14px;border:1px solid #E2E8F0;border-left:3px solid ${s[2]}"><div style="font-size:11px;color:#64748B;font-weight:700;letter-spacing:.05em">${s[0]}</div><div style="font-size:22px;font-weight:800;color:#1E293B;margin-top:3px">${s[1]}</div></div>`).join('')}
+    </div>
+    <div style="background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid #E2E8F0;background:#F8FAFC;display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800;color:#1E293B">Source headline</div><div style="font-size:13px;color:#475569;margin-top:3px">"${baseHeadline}"</div></div><button onclick="window._locData=null;buildLocalization()" style="padding:7px 14px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">+ Change Languages</button></div>
+      <div style="max-height:560px;overflow-y:auto">
+        ${sel.map(code=>{const l=langs.find(x=>x.code===code)||{flag:'🏳',name:code,speakers:''};const trans=(samples[code]||`[${l.name}] Try ${brand} free 14 days — no card`).replace(/\$\{brand\}/g, brand);const status=d.statusByLang[code];return `<div style="display:grid;grid-template-columns:140px 1fr 130px;gap:14px;padding:12px 18px;border-bottom:1px solid #F1F5F9;align-items:center"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">${l.flag}</span><div><div style="font-weight:700;color:#1E293B;font-size:13px">${l.name}</div><div style="font-size:10px;color:#94A3B8">${l.speakers}</div></div></div><div style="font-size:13px;color:#1E293B;font-style:${status==='done'?'normal':'italic'};opacity:${status==='done'?1:0.55}">${status==='done'?trans:'(translation pending…)'}</div><div style="text-align:right">${status==='done'?'<span style="color:#10B981;font-weight:800;font-size:11px;background:#F0FDF4;padding:4px 10px;border-radius:99px">✓ Translated</span>':status==='inprog'?'<span style="color:#92400E;font-weight:800;font-size:11px;background:#FEF3C7;padding:4px 10px;border-radius:99px">⚙ Translating…</span>':'<span style="color:#64748B;font-weight:600;font-size:11px;background:#F1F5F9;padding:4px 10px;border-radius:99px">Queued</span>'}</div></div>`}).join('')}
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px"><button onclick="showToast('✓ All translations exported as .po files')" style="padding:9px 18px;background:#6366F1;color:white;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer">⬇ Export .po files</button><button onclick="showToast('✓ Pushed to landing pages')" style="padding:9px 18px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer">📤 Push to Landing Pages</button></div>`;
+}
+
+window.runLocalization = function(preset) {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer(`[onclick*="runLocalization"]`, 'Translating with locale-aware tone') : (() => {});
+  setTimeout(() => {
+    const top10 = ['es','fr','de','pt','it','nl','ja','ko','zh','ar'];
+    const eu = ['es','fr','de','it','pt','nl','pl','sv','da','no','fi','cs','el','ro','hu'];
+    const all = ['es','fr','de','it','pt','nl','pl','sv','da','no','fi','cs','el','tr','ru','uk','ar','he','fa','hi','bn','ur','ta','th','vi','id','ms','tl','ja','ko','zh','yue','sw','am','zu','af','ro','hu','sk','bg','hr'];
+    const sel = preset === 'all' ? all : preset === 'eu' ? eu : top10;
+    const statusByLang = {};
+    const inProgressIdx = Math.min(2, sel.length);
+    sel.forEach((c, i) => { statusByLang[c] = i < sel.length - inProgressIdx ? 'done' : (i < sel.length - 1 ? 'inprog' : 'queued'); });
+    const done = sel.filter(c => statusByLang[c] === 'done').length;
+    const inProg = sel.filter(c => statusByLang[c] === 'inprog').length;
+    window._locData = { langs:sel, statusByLang, done, inProgress:inProg, reach:sel.length > 30 ? '4.2B' : sel.length > 12 ? '2.8B' : '1.4B' };
+    buildLocalization();
+    stop();
+    showToast(`✅ ${sel.length} languages localized`);
+  }, 1400);
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 9. WORKSPACES & TEAM
+// ═══════════════════════════════════════════════════════════════════════════
+window._wsData = null;
+
+function buildWorkspaces() {
+  const wrap = document.getElementById('workspacesWrap');
+  if (!wrap) return;
+  if (!window._wsData) { runWorkspaces(); return; }
+  const d = window._wsData;
+  const roleColors = { Owner:'#7E22CE', Admin:'#1E40AF', Editor:'#10B981', Viewer:'#64748B' };
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
+      <!-- Workspaces -->
+      <div style="background:white;border-radius:12px;padding:18px;border:1px solid #E2E8F0">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div style="font-weight:800;color:#1E293B">Workspaces (${d.workspaces.length})</div><button onclick="addWorkspace()" style="padding:6px 12px;background:#BE185D;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">+ New Workspace</button></div>
+        ${d.workspaces.map(w=>`<div style="display:flex;align-items:center;gap:12px;padding:12px;background:${w.active?'#FDF2F8':'#F8FAFC'};border:1.5px solid ${w.active?'#F9A8D4':'transparent'};border-radius:8px;margin-bottom:8px;cursor:pointer" onclick="switchWorkspace('${w.id}')"><div style="width:40px;height:40px;border-radius:8px;background:linear-gradient(135deg,${w.color},${w.color}aa);display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:16px">${w.name[0]}</div><div style="flex:1"><div style="font-weight:700;color:#1E293B;display:flex;align-items:center;gap:6px">${w.name} ${w.active?'<span style="font-size:10px;background:#10B981;color:white;padding:2px 6px;border-radius:99px;font-weight:700">CURRENT</span>':''}</div><div style="font-size:11px;color:#64748B">${w.members} members • ${w.campaigns} campaigns • ${w.plan}</div></div><button onclick="event.stopPropagation();showToast('Settings opened')" style="background:none;border:none;color:#94A3B8;cursor:pointer;padding:6px;font-size:16px">⚙</button></div>`).join('')}
+      </div>
+      <!-- Audit log -->
+      <div style="background:white;border-radius:12px;padding:18px;border:1px solid #E2E8F0">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div style="font-weight:800;color:#1E293B">Recent activity</div><button onclick="showToast('Audit log exported')" style="padding:6px 12px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">⬇ Export</button></div>
+        <div style="max-height:280px;overflow-y:auto">
+          ${d.audit.map(a=>`<div style="display:flex;gap:10px;padding:10px;border-bottom:1px solid #F1F5F9;font-size:13px"><div style="width:28px;height:28px;border-radius:50%;background:${roleColors[a.role]||'#64748B'}20;display:flex;align-items:center;justify-content:center;color:${roleColors[a.role]||'#64748B'};font-weight:800;font-size:12px;flex-shrink:0">${a.user[0]}</div><div style="flex:1"><div style="color:#1E293B"><strong>${a.user}</strong> ${a.action}</div><div style="font-size:11px;color:#94A3B8;margin-top:2px">${a.when} • ${a.workspace}</div></div></div>`).join('')}
+        </div>
+      </div>
+    </div>
+    <!-- Team table -->
+    <div style="background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden">
+      <div style="padding:14px 18px;background:#F8FAFC;border-bottom:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800;color:#1E293B">Team Members (${d.members.length})</div><div style="font-size:12px;color:#64748B">Workspace: ${d.workspaces.find(w=>w.active).name}</div></div><button onclick="inviteTeamMember()" style="padding:8px 16px;background:#BE185D;color:white;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer">+ Invite Member</button></div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px"><thead style="background:#F8FAFC"><tr><th style="text-align:left;padding:10px 18px;color:#64748B;font-size:11px;font-weight:700;letter-spacing:.05em">MEMBER</th><th style="text-align:left;padding:10px 18px;color:#64748B;font-size:11px;font-weight:700">ROLE</th><th style="text-align:left;padding:10px 18px;color:#64748B;font-size:11px;font-weight:700">LAST ACTIVE</th><th style="text-align:left;padding:10px 18px;color:#64748B;font-size:11px;font-weight:700">2FA</th><th style="text-align:right;padding:10px 18px"></th></tr></thead><tbody>
+        ${d.members.map(m=>`<tr style="border-top:1px solid #F1F5F9"><td style="padding:11px 18px"><div style="display:flex;align-items:center;gap:10px"><div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,${roleColors[m.role]},${roleColors[m.role]}aa);display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:12px">${m.name[0]}</div><div><div style="font-weight:700;color:#1E293B">${m.name}</div><div style="font-size:11px;color:#64748B">${m.email}</div></div></div></td><td style="padding:11px 18px"><span style="display:inline-block;padding:3px 10px;background:${roleColors[m.role]}15;color:${roleColors[m.role]};border-radius:99px;font-size:11px;font-weight:700">${m.role}</span></td><td style="padding:11px 18px;color:#475569">${m.lastActive}</td><td style="padding:11px 18px">${m.twofa?'<span style="color:#10B981;font-weight:700">✓ ON</span>':'<span style="color:#EF4444;font-weight:700">⚠ OFF</span>'}</td><td style="text-align:right;padding:11px 18px"><button onclick="showToast('Member settings opened')" style="background:none;border:none;color:#94A3B8;cursor:pointer;padding:6px;font-size:14px">⋯</button></td></tr>`).join('')}
+      </tbody></table>
+    </div>`;
+}
+
+window.runWorkspaces = function() {
+  const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="runWorkspaces"]', 'Loading workspaces') : (() => {});
+  setTimeout(() => {
+    const brand = _esc(_lsBrand() || "Main");
+    window._wsData = {
+      workspaces: [
+        { id:'main', name:`${brand} Main`, active:true, members:5, campaigns:24, plan:'Pro', color:'#BE185D' },
+        { id:'sub', name:`${brand} EU Sub-brand`, active:false, members:3, campaigns:8, plan:'Pro', color:'#0EA5E9' },
+        { id:'agency', name:'Agency Workspace', active:false, members:12, campaigns:67, plan:'Agency', color:'#7E22CE' }
+      ],
+      members: [
+        { name:'Alex Reyes', email:'alex@'+_lsDomain(), role:'Owner', lastActive:'Now', twofa:true },
+        { name:'Priya Shah', email:'priya@'+_lsDomain(), role:'Admin', lastActive:'12 min ago', twofa:true },
+        { name:'Jordan Wei', email:'jordan@'+_lsDomain(), role:'Editor', lastActive:'2h ago', twofa:false },
+        { name:'Sam Brooks', email:'sam@'+_lsDomain(), role:'Editor', lastActive:'Yesterday', twofa:true },
+        { name:'Casey Lee', email:'casey@'+_lsDomain(), role:'Viewer', lastActive:'3 days ago', twofa:false }
+      ],
+      audit: [
+        { user:'Alex Reyes', role:'Owner', action:'launched 2 new campaigns', when:'Just now', workspace:`${brand} Main` },
+        { user:'Priya Shah', role:'Admin', action:'invited casey@'+_lsDomain(), when:'18 min ago', workspace:`${brand} Main` },
+        { user:'Jordan Wei', role:'Editor', action:'updated landing page copy', when:'2h ago', workspace:`${brand} Main` },
+        { user:'Sam Brooks', role:'Editor', action:'paused under-performing ad set', when:'Yesterday', workspace:`${brand} EU Sub-brand` },
+        { user:'Alex Reyes', role:'Owner', action:'changed plan to Pro Annual', when:'2 days ago', workspace:'Agency Workspace' },
+        { user:'Priya Shah', role:'Admin', action:'connected Meta Ads account', when:'3 days ago', workspace:`${brand} Main` }
+      ]
+    };
+    buildWorkspaces();
+    stop();
+  }, 900);
+};
+
+window.switchWorkspace = function(id) {
+  if (!window._wsData) return;
+  window._wsData.workspaces.forEach(w => w.active = (w.id === id));
+  buildWorkspaces();
+  showToast(`✓ Switched workspace`);
+};
+
+window.addWorkspace = function() {
+  const name = prompt('Workspace name?');
+  if (!name) return;
+  if (!window._wsData) return;
+  window._wsData.workspaces.push({ id:'ws'+Date.now(), name, active:false, members:1, campaigns:0, plan:'Free', color:'#10B981' });
+  buildWorkspaces();
+  showToast(`✓ Created workspace: ${name}`);
+};
+
+window.inviteTeamMember = function() {
+  const email = prompt('Email to invite?');
+  if (!email) return;
+  if (!window._wsData) return;
+  const name = email.split('@')[0].replace(/[^a-z]/gi,' ').replace(/\b\w/g, c=>c.toUpperCase()) || 'New Member';
+  window._wsData.members.push({ name, email, role:'Editor', lastActive:'Pending invite', twofa:false });
+  buildWorkspaces();
+  showToast(`✓ Invitation sent to ${email}`);
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 10. FORECAST vs ACTUAL + SAVINGS WIDGET (inline on Dashboard)
+// ═══════════════════════════════════════════════════════════════════════════
+function renderForecastSavingsWidget() {
+  const wrap = document.getElementById('forecastSavingsWidget');
+  if (!wrap) return;
+  if (!_lsDomain()) { wrap.innerHTML = ''; return; }
+  const rng = _seedRng(_lsDomain() + 'fcst');
+  const days = 30;
+  const fcst = [], act = [];
+  for (let i = 0; i < days; i++) {
+    const base = 800 + i * 25 + Math.sin(i*0.4)*120;
+    fcst.push(Math.round(base));
+    act.push(Math.round(base * (0.92 + rng()*0.32)));
+  }
+  const totalFcst = fcst.reduce((a,b)=>a+b,0);
+  const totalAct = act.reduce((a,b)=>a+b,0);
+  const variance = ((totalAct - totalFcst) / totalFcst * 100).toFixed(1);
+  const savings = Math.floor(800 + rng()*5400);
+  const interventions = Math.floor(8 + rng()*22);
+  const max = Math.max(...fcst, ...act);
+  const w = 600, h = 110, pad = 4;
+  const xs = i => pad + (i / (days - 1)) * (w - pad*2);
+  const ys = v => h - pad - (v / max) * (h - pad*2);
+  const fcstPath = fcst.map((v,i) => (i===0?'M':'L') + xs(i).toFixed(1) + ',' + ys(v).toFixed(1)).join(' ');
+  const actPath = act.map((v,i) => (i===0?'M':'L') + xs(i).toFixed(1) + ',' + ys(v).toFixed(1)).join(' ');
+  wrap.innerHTML = `
+    <div style="background:linear-gradient(135deg,#0F172A 0%,#1E40AF 100%);border-radius:14px;padding:20px;color:white;box-shadow:0 8px 28px rgba(15,23,42,.16)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:11px;font-weight:700;opacity:.7;letter-spacing:.08em">FORECAST vs ACTUAL — last 30 days</div>
+          <div style="font-size:22px;font-weight:800;margin-top:2px">${variance >= 0 ? '▲' : '▼'} ${Math.abs(variance)}% vs forecast</div>
+          <div style="font-size:13px;opacity:.8;margin-top:2px">AI projections updated hourly from live spend &amp; conversion data.</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <div style="background:rgba(16,185,129,.18);border:1px solid rgba(16,185,129,.4);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-size:10px;opacity:.85;letter-spacing:.05em">SAVINGS (AI)</div><div style="font-size:18px;font-weight:800;color:#10B981">$${savings.toLocaleString()}</div></div>
+          <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-size:10px;opacity:.85;letter-spacing:.05em">AUTO-FIXES</div><div style="font-size:18px;font-weight:800">${interventions}</div></div>
+          <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-size:10px;opacity:.85;letter-spacing:.05em">ACTUAL SPEND</div><div style="font-size:18px;font-weight:800">$${totalAct.toLocaleString()}</div></div>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:10px">
+        <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block">
+          <defs><linearGradient id="fcstGrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#0EA5E9" stop-opacity=".35"/><stop offset="100%" stop-color="#0EA5E9" stop-opacity="0"/></linearGradient></defs>
+          <path d="${fcstPath} L${xs(days-1).toFixed(1)},${h-pad} L${xs(0).toFixed(1)},${h-pad} Z" fill="url(#fcstGrad)"/>
+          <path d="${fcstPath}" stroke="#0EA5E9" stroke-width="1.6" stroke-dasharray="3,3" fill="none"/>
+          <path d="${actPath}" stroke="#10B981" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+        </svg>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;opacity:.85"><div style="display:flex;gap:14px"><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:14px;height:2px;background:#0EA5E9;display:inline-block;border-top:1.5px dashed #0EA5E9"></span>Forecast</span><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:14px;height:2px;background:#10B981;display:inline-block"></span>Actual</span></div><div>Day 1 → Today</div></div>
+      </div>
+    </div>`;
+}
+window.renderForecastSavingsWidget = renderForecastSavingsWidget;
+
 
 // ── Manual screenshot helper: auto-navigates to a view from URL ──
 // Supports three URL forms (in priority order) so it works inside the

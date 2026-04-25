@@ -1,0 +1,30 @@
+  }
+  if (viewId === 'smart-creative') {
+    try { buildSmartCreative(); } catch(e) { console.warn('buildSmartCreative error:', e); }
+  }
+  if (viewId === 'ugc-avatars') {
+    try { buildUgcAvatars(); } catch(e) { console.warn('buildUgcAvatars error:', e); }
+  }
+  if (viewId === 'voiceovers') {
+    try { buildVoiceovers(); } catch(e) { console.warn('buildVoiceovers error:', e); }
+  }
+  if (viewId === 'templates') {
+    try { buildTemplates(); } catch(e) { console.warn('buildTemplates error:', e); }
+  }
+  if (viewId === 'opt-folders') {
+    try { buildOptFolders(); } catch(e) { console.warn('buildOptFolders error:', e); }
+  }
+  if (viewId === 'import-campaigns') {
+    try { buildImportCampaigns(); } catch(e) { console.warn('buildImportCampaigns error:', e); }
+  }
+  if (viewId === 'localization') {
+    try { buildLocalization(); } catch(e) { console.warn('buildLocalization error:', e); }
+  }
+  if (viewId === 'workspaces') {
+    try { buildWorkspaces(); } catch(e) { console.warn('buildWorkspaces error:', e); }
+  }
+  if (viewId === 'dashboard') {
+    setTimeout(() => { try { renderForecastSavingsWidget(); } catch(e) { console.warn('renderForecastSavingsWidget error:', e); } }, 200);
+  }
+  // Show/hide navbar for home vs app
+  const navGroups = document.getElementById('navGroups');

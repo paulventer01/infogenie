@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <base href="/">
-  <link rel="stylesheet" href="/style.css?v=20260425P" />
+  <link rel="stylesheet" href="/style.css?v=20260425Q" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
   <!-- PostHog SDK stub — init called from app.js after config fetch -->
@@ -90,6 +90,11 @@
           <a href="#" class="nav-link" data-view="campaigns"><span class="ndl-icon">🚀</span><span class="ndl-text">Campaigns</span></a>
           <a href="#" class="nav-link" data-view="content"><span class="ndl-icon">🧠</span><span class="ndl-text">Content AI</span></a>
           <a href="#" class="nav-link" data-view="social"><span class="ndl-icon">📅</span><span class="ndl-text">Social Calendar</span></a>
+          <a href="#" class="nav-link" data-view="landing-builder"><span class="ndl-icon">🌐</span><span class="ndl-text">Landing Page Builder</span></a>
+          <a href="#" class="nav-link" data-view="smart-creative"><span class="ndl-icon">🎨</span><span class="ndl-text">Smart Creative Builder</span></a>
+          <a href="#" class="nav-link" data-view="ugc-avatars"><span class="ndl-icon">🧑‍🎤</span><span class="ndl-text">AI UGC Avatars</span></a>
+          <a href="#" class="nav-link" data-view="voiceovers"><span class="ndl-icon">🎙️</span><span class="ndl-text">AI Voiceovers</span></a>
+          <a href="#" class="nav-link" data-view="templates"><span class="ndl-icon">📐</span><span class="ndl-text">Templates Library</span></a>
         </div>
       </div>
 
@@ -106,6 +111,9 @@
           <div class="nav-drop-header">Distribute to audiences</div>
           <a href="#" class="nav-link" data-view="audience"><span class="ndl-icon">🎯</span><span class="ndl-text">Audience</span></a>
           <a href="#" class="nav-link" data-view="advertise"><span class="ndl-icon">📣</span><span class="ndl-text">Advertise Hub</span></a>
+          <a href="#" class="nav-link" data-view="opt-folders"><span class="ndl-icon">📁</span><span class="ndl-text">Optimization Folders</span></a>
+          <a href="#" class="nav-link" data-view="import-campaigns"><span class="ndl-icon">📥</span><span class="ndl-text">Import Campaigns</span></a>
+          <a href="#" class="nav-link" data-view="localization"><span class="ndl-icon">🌍</span><span class="ndl-text">Localization (40+)</span></a>
         </div>
       </div>
 
@@ -148,6 +156,7 @@
           <a href="#" class="nav-link" data-view="agency"><span class="ndl-icon">🏢</span><span class="ndl-text">Agency & Reports</span></a>
           <a href="#" class="nav-link" data-view="csuite"><span class="ndl-icon">👔</span><span class="ndl-text">C-Suite Reports</span></a>
           <a href="#" class="nav-link" data-view="technical-suite"><span class="ndl-icon">🛠️</span><span class="ndl-text">Technical Suite</span></a>
+          <a href="#" class="nav-link" data-view="workspaces"><span class="ndl-icon">👥</span><span class="ndl-text">Workspaces &amp; Team</span></a>
           <a href="#" class="nav-link" data-view="settings"><span class="ndl-icon">⚙️</span><span class="ndl-text">Settings</span></a>
         </div>
       </div>
@@ -535,6 +544,7 @@
     <div id="competitorChips" class="competitor-chips"></div>
     <div class="kpi-grid" id="kpiGrid"></div>
     <div id="kpiDataNotice" style="margin-top:8px;padding:8px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px"></div>
+    <div id="forecastSavingsWidget" style="margin-top:18px"></div>
     <div class="roi-banner" id="roiBanner"></div>
     <div class="two-charts">
       <div class="chart-box">
@@ -1053,6 +1063,181 @@
   <div class="container" id="analyticsHubWrap" style="padding-top:24px;padding-bottom:40px"></div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PLAI-PARITY MODULES — Tier 1 + Tier 2 (April 2026)
+     ═══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- LANDING PAGE BUILDER -->
+<div class="view hidden" id="view-landing-builder">
+  <div class="view-header" style="background:linear-gradient(135deg,#0EA5E9 0%,#6366F1 50%,#A855F7 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#BAE6FD"><span class="bc-group" style="color:rgba(186,230,253,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Landing Page Builder</div>
+          <h2 class="view-title">🌐 AI Landing Page Builder</h2>
+          <p class="view-sub">Generate a conversion-ready landing page from your analysis — hero, social proof, features, FAQ and CTA — preview, edit, then export HTML.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" style="background:white;color:#4338CA" onclick="runLandingBuilder()">🌐 Generate Landing Page</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="landingBuilderWrap" style="padding-top:24px;padding-bottom:40px"></div>
+</div>
+
+<!-- SMART CREATIVE BUILDER -->
+<div class="view hidden" id="view-smart-creative">
+  <div class="view-header" style="background:linear-gradient(135deg,#BE185D 0%,#EC4899 50%,#F472B6 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#FBCFE8"><span class="bc-group" style="color:rgba(251,207,232,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Smart Creative Builder</div>
+          <h2 class="view-title">🎨 Smart Creative Builder</h2>
+          <p class="view-sub">One brand asset → 50+ ad variants. Auto-resized for Meta, Google, TikTok, LinkedIn — with AI-rotated headlines, CTAs and color treatments.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" style="background:white;color:#BE185D" onclick="runSmartCreative()">🎨 Generate 50+ Variants</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="smartCreativeWrap" style="padding-top:24px;padding-bottom:40px"></div>
+</div>
+
+<!-- AI UGC AVATARS -->
+<div class="view hidden" id="view-ugc-avatars">
+  <div class="view-header" style="background:linear-gradient(135deg,#7E22CE 0%,#A855F7 50%,#D946EF 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#E9D5FF"><span class="bc-group" style="color:rgba(233,213,255,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> AI UGC Avatars</div>
+          <h2 class="view-title">🧑‍🎤 AI UGC Avatars</h2>
+          <p class="view-sub">Pick an avatar, write a script (or let AI write it from your analysis), and generate a TikTok / Reels-ready creator video — no filming needed.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" style="background:white;color:#7E22CE" onclick="runUgcAvatars()">🧑‍🎤 Generate Avatar Video</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="ugcAvatarsWrap" style="padding-top:24px;padding-bottom:40px"></div>
+</div>
+
+<!-- AI VOICEOVERS -->
+<div class="view hidden" id="view-voiceovers">
+  <div class="view-header" style="background:linear-gradient(135deg,#0F172A 0%,#1E40AF 50%,#06B6D4 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#BAE6FD"><span class="bc-group" style="color:rgba(186,230,253,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> AI Voiceovers</div>
+          <h2 class="view-title">🎙️ AI Voiceovers</h2>
+          <p class="view-sub">Turn any script into broadcast-quality narration in 8 voices and 12 languages — for video ads, Spotify spots, podcasts and explainers.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" style="background:white;color:#1E40AF" onclick="runVoiceovers()">🎙️ Generate Voiceover</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="voiceoversWrap" style="padding-top:24px;padding-bottom:40px"></div>
+</div>
+
+<!-- TEMPLATES LIBRARY -->
+<div class="view hidden" id="view-templates">
+  <div class="view-header" style="background:linear-gradient(135deg,#065F46 0%,#10B981 50%,#34D399 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#A7F3D0"><span class="bc-group" style="color:rgba(167,243,208,.8)">Create</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Templates Library</div>
+          <h2 class="view-title">📐 Templates Library</h2>
+          <p class="view-sub">Browse 60+ proven ad &amp; landing-page templates — filtered to your sector — and one-click apply them to a new campaign.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" style="background:white;color:#065F46" onclick="runTemplates()">📐 Browse Templates</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="templatesWrap" style="padding-top:24px;padding-bottom:40px"></div>
+</div>
+
+<!-- OPTIMIZATION FOLDERS -->
+<div class="view hidden" id="view-opt-folders">
+  <div class="view-header" style="background:linear-gradient(135deg,#1E40AF 0%,#3B82F6 50%,#06B6D4 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#BFDBFE"><span class="bc-group" style="color:rgba(191,219,254,.8)">Reach</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Optimization Folders</div>
+          <h2 class="view-title">📁 Optimization Folders</h2>
+          <p class="view-sub">Group campaigns into auto-optimising folders — set rules (pause if CPA &gt; X, scale if ROAS &gt; Y) and InfoGenie runs the loop hourly.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" style="background:white;color:#1E40AF" onclick="runOptFolders()">📁 Build Folders</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="optFoldersWrap" style="padding-top:24px;padding-bottom:40px"></div>
+</div>
+
+<!-- IMPORT EXISTING CAMPAIGNS -->
+<div class="view hidden" id="view-import-campaigns">
+  <div class="view-header" style="background:linear-gradient(135deg,#7C2D12 0%,#DC2626 50%,#F97316 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#FED7AA"><span class="bc-group" style="color:rgba(254,215,170,.8)">Reach</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Import Campaigns</div>
+          <h2 class="view-title">📥 Import Existing Campaigns</h2>
+          <p class="view-sub">Already running ads on Meta, Google, TikTok or LinkedIn? Import them in one click — InfoGenie audits performance and recommends fixes.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" style="background:white;color:#B91C1C" onclick="runImportCampaigns()">📥 Scan &amp; Import</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="importCampaignsWrap" style="padding-top:24px;padding-bottom:40px"></div>
+</div>
+
+<!-- INTERNATIONAL LOCALIZATION -->
+<div class="view hidden" id="view-localization">
+  <div class="view-header" style="background:linear-gradient(135deg,#312E81 0%,#6366F1 50%,#22D3EE 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#C7D2FE"><span class="bc-group" style="color:rgba(199,210,254,.8)">Reach</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Localization</div>
+          <h2 class="view-title">🌍 International Localization</h2>
+          <p class="view-sub">Translate your ads, landing pages and posts into 40+ languages — with locale-specific tone, currency, idioms and CTA buttons.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" style="background:white;color:#4338CA" onclick="runLocalization()">🌍 Generate Localizations</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="localizationWrap" style="padding-top:24px;padding-bottom:40px"></div>
+</div>
+
+<!-- WORKSPACES & TEAM -->
+<div class="view hidden" id="view-workspaces">
+  <div class="view-header" style="background:linear-gradient(135deg,#831843 0%,#BE185D 50%,#EC4899 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#FBCFE8"><span class="bc-group" style="color:rgba(251,207,232,.8)">Manage</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Workspaces &amp; Team</div>
+          <h2 class="view-title">👥 Workspaces &amp; Team</h2>
+          <p class="view-sub">Run multiple brands or clients in isolated workspaces — invite team-mates, assign roles (Owner / Editor / Viewer) and audit every action.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" style="background:white;color:#BE185D" onclick="runWorkspaces()">👥 Open Workspace Console</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="workspacesWrap" style="padding-top:24px;padding-bottom:40px"></div>
+</div>
+
 <!-- SETTINGS VIEW -->
 <div class="view hidden" id="view-settings">
   <div class="view-header">
@@ -1504,7 +1689,7 @@
 </div>
 
 <script src="/data.js"></script>
-<script src="/app.js?v=20260425P"></script>
+<script src="/app.js?v=20260425Q"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');

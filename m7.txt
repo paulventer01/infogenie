@@ -1,0 +1,66 @@
+function buildImportCampaigns() {
+  const wrap = document.getElementById('importCampaignsWrap');
+  if (!wrap) return;
+  if (!_lsDomain()) { wrap.innerHTML = _emptyAnalysisCard('Import Existing Campaigns', 'Scan & Import'); return; }
+  const d = window._importData;
+  const platforms = [
+    { key:'meta', name:'Meta Ads', icon:'📘', color:'#1877F2', desc:'Facebook + Instagram' },
+    { key:'google', name:'Google Ads', icon:'🔍', color:'#4285F4', desc:'Search, Display, YouTube' },
+    { key:'tiktok', name:'TikTok Ads', icon:'🎵', color:'#000000', desc:'TikTok Spark + In-Feed' },
+    { key:'linkedin', name:'LinkedIn Ads', icon:'💼', color:'#0A66C2', desc:'Sponsored Content + InMail' }
+  ];
+  if (!d) {
+    wrap.innerHTML = `
+      <div style="background:white;border-radius:12px;padding:24px;border:1px solid #E2E8F0;margin-bottom:14px">
+        <h3 style="margin:0 0 6px;color:#1E293B">Connect a platform to import campaigns</h3>
+        <p style="margin:0 0 16px;color:#64748B;font-size:14px">We'll scan your existing campaigns, audit performance and recommend specific fixes.</p>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
+          ${platforms.map(p=>`<div style="background:white;border:1px solid #E2E8F0;border-radius:10px;padding:16px;display:flex;gap:14px;align-items:center"><div style="width:48px;height:48px;border-radius:10px;background:${p.color}15;display:flex;align-items:center;justify-content:center;font-size:24px">${p.icon}</div><div style="flex:1"><div style="font-weight:700;color:#1E293B">${p.name}</div><div style="font-size:12px;color:#64748B">${p.desc}</div></div><button onclick="connectImportSource('${p.key}')" style="padding:8px 14px;background:${p.color};color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">Connect</button></div>`).join('')}
+        </div>
+        <div style="margin-top:14px;padding:12px;background:#F0F9FF;border-left:3px solid #0EA5E9;border-radius:6px;font-size:12px;color:#0C4A6E"><strong>OR:</strong> <a href="#" onclick="event.preventDefault();connectImportSource('csv')" style="color:#0EA5E9;font-weight:700">upload a CSV</a> exported from any ad platform — we'll parse it automatically.</div>
+      </div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <div style="background:white;border-radius:12px;padding:18px;border:1px solid #E2E8F0;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:800;color:#1E293B;font-size:16px">✓ Connected: ${platforms.find(p=>p.key===d.source).name}</div><div style="font-size:12px;color:#64748B">Imported ${d.campaigns.length} campaigns • Last sync: just now</div></div><div style="display:flex;gap:6px"><button onclick="window._importData=null;buildImportCampaigns()" style="padding:7px 14px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">+ Add Source</button><button onclick="connectImportSource('${d.source}')" style="padding:7px 14px;background:#1E293B;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">↻ Re-scan</button></div></div>
+    </div>
+    <div style="background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13px"><thead style="background:#F8FAFC"><tr><th style="text-align:left;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700;letter-spacing:.05em">CAMPAIGN</th><th style="text-align:right;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700">SPEND</th><th style="text-align:right;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700">ROAS</th><th style="text-align:center;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700">HEALTH</th><th style="text-align:left;padding:10px 14px;color:#64748B;font-size:11px;font-weight:700">RECOMMENDATION</th></tr></thead><tbody>
+        ${d.campaigns.map(c=>`<tr style="border-top:1px solid #F1F5F9"><td style="padding:11px 14px"><div style="font-weight:700;color:#1E293B">${c.name}</div><div style="font-size:11px;color:#94A3B8">${c.objective} • ${c.platform}</div></td><td style="text-align:right;padding:11px 14px;font-weight:700;color:#1E293B">$${c.spend.toLocaleString()}</td><td style="text-align:right;padding:11px 14px;font-weight:800;color:${c.roas>=3?'#10B981':c.roas>=2?'#F59E0B':'#EF4444'}">${c.roas}×</td><td style="text-align:center;padding:11px 14px"><div style="display:inline-block;padding:3px 9px;background:${c.health>=80?'#F0FDF4':c.health>=60?'#FEF3C7':'#FEE2E2'};color:${c.health>=80?'#065F46':c.health>=60?'#92400E':'#991B1B'};border-radius:99px;font-size:11px;font-weight:700">${c.health}/100</div></td><td style="padding:11px 14px;color:#475569">${c.rec}</td></tr>`).join('')}
+      </tbody></table>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px"><button onclick="showToast('✓ All recommendations queued')" style="padding:9px 18px;background:#10B981;color:white;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer">✓ Apply All Fixes</button><button onclick="showToast('✓ Sync schedule set: hourly')" style="padding:9px 18px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:13px;cursor:pointer">⏱ Auto-sync hourly</button></div>`;
+}
+
+window.connectImportSource = function(src) {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer(`[onclick*="connectImportSource('${src}')"]`, src==='csv' ? 'Parsing CSV' : 'OAuth → scanning campaigns') : (() => {});
+  setTimeout(() => {
+    const rng = _seedRng(_lsDomain() + src);
+    const sector = _lsSector();
+    const objs = ['Conversions','Traffic','Lead Gen','Awareness','App Installs','Engagement'];
+    const recs = ['Pause — CPA 3× target','Refresh creative — fatigue 4.8','Scale +30% — top ROAS','Narrow audience — CPM rising','Add lookalike 1% audience','Move to Top Performers folder','Add UTM tracking — missing','Increase budget cap'];
+    const platLabels = { meta:'Meta', google:'Google', tiktok:'TikTok', linkedin:'LinkedIn', csv:'CSV Import' };
+    const cn = 6 + Math.floor(rng()*5);
+    const campaigns = Array.from({length:cn}).map((_,i)=>{
+      const roas = +(0.8 + rng()*4.2).toFixed(1);
+      const health = roas >= 3 ? Math.floor(78 + rng()*22) : roas >= 2 ? Math.floor(58 + rng()*22) : Math.floor(28 + rng()*32);
+      return { name:`${sector} ${['Acquisition','Retargeting','Lookalike','Brand','Promo','Cold','Warm'][i%7]} #${i+1}`, objective:objs[Math.floor(rng()*objs.length)], platform:platLabels[src], spend:Math.floor(280+rng()*4200), roas, health, rec:recs[Math.floor(rng()*recs.length)] };
+    });
+    window._importData = { source:src, campaigns };
+    buildImportCampaigns();
+    stop();
+    showToast(`✅ Imported ${cn} campaigns from ${platLabels[src]}`);
+  }, 1500);
+};
+
+window.runImportCampaigns = function() {
+  buildImportCampaigns();
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8. INTERNATIONAL LOCALIZATION
+// ═══════════════════════════════════════════════════════════════════════════
+window._locData = null;
+
