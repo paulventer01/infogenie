@@ -2666,6 +2666,7 @@ async function runAnalysis(url, country, industryOverride) {
 
   // Store analysis data
   analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps, sectorOnly };
+  window.analysisData = analysisData;  // Mirror to window so external modules (Link Suggester, CRO Lab, Analytics Hub, etc.) can read it
   try { localStorage.setItem('ig-last-analysed-url', cleanUrl); } catch(e){}
   igTrack('Analysis Completed', { domain: cleanUrl, industry: industry.name, competitorCount: selectedComps.length, country });
 
@@ -22649,24 +22650,46 @@ document.addEventListener('click', function(ev) {
 // ════════════════════════════════════════════════════════════════════════════
 window._linkSuggesterData = window._linkSuggesterData || null;
 
+function _lsAD() {
+  // Resilient lookup: prefer the live closure var, fall back to window mirror,
+  // then to a minimal record reconstructed from the last-analysed URL in localStorage.
+  if (typeof analysisData !== 'undefined' && analysisData) return analysisData;
+  if (window.analysisData) return window.analysisData;
+  try {
+    const url = localStorage.getItem('ig-last-analysed-url');
+    if (url) return { url };
+  } catch(e) {}
+  return null;
+}
+
 function _lsDomain() {
-  const d = (window.analysisData && (window.analysisData.url || window.analysisData.domain)) || '';
+  const ad = _lsAD();
+  const d = (ad && (ad.url || ad.domain)) || '';
   return String(d).replace(/^https?:\/\//, '').split('/')[0] || '';
 }
 
 function _lsBrand() {
-  return (window.analysisData && (window.analysisData.brand || window.analysisData.brandName)) || _lsDomain().split('.')[0] || 'your brand';
+  const ad = _lsAD();
+  return (ad && (ad.brand || ad.brandName)) || _lsDomain().split('.')[0] || 'your brand';
 }
 
 function _lsSector() {
-  return (window.analysisData && (window.analysisData.sector || window.analysisData.industry)) || 'your industry';
+  const ad = _lsAD();
+  if (ad) {
+    if (ad.sector) return ad.sector;
+    if (ad.industry && typeof ad.industry === 'string') return ad.industry;
+    if (ad.industry && ad.industry.name) return ad.industry.name;
+  }
+  return 'your industry';
 }
 
 function _lsKeywords() {
-  if (window.analysisData && Array.isArray(window.analysisData.keywords)) return window.analysisData.keywords.slice(0, 12);
-  if (window.analysisData && Array.isArray(window.analysisData.competitors)) {
+  const ad = _lsAD();
+  if (!ad) return [];
+  if (Array.isArray(ad.keywords)) return ad.keywords.slice(0, 12);
+  if (Array.isArray(ad.competitors)) {
     const k = [];
-    window.analysisData.competitors.forEach(c => {
+    ad.competitors.forEach(c => {
       if (c.keywords) k.push(...c.keywords);
       else if (c.topKeyword) k.push(c.topKeyword);
     });
