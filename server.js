@@ -53,6 +53,22 @@ app.get(['/manual', '/manual.pdf', '/InfoGenie_User_Manual.pdf'],
 app.get('/manual/download',
   (req, res) => sendManual(res, 'attachment'));
 
+// ── Source code backup downloads ─────────────────────────────────────────────
+// Stream the backup archives with proper download headers so large files
+// download reliably instead of failing through the inline preview card.
+function sendBackup(res, filename) {
+  const filePath = path.join(__dirname, 'attached_assets', filename);
+  if (!fs.existsSync(filePath)) return res.status(404).send('Backup not found');
+  const stat = fs.statSync(filePath);
+  res.setHeader('Content-Type', 'application/gzip');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Length', stat.size);
+  res.setHeader('Cache-Control', 'no-store');
+  fs.createReadStream(filePath).pipe(res);
+}
+app.get('/backup/full',  (req, res) => sendBackup(res, 'InfoGenie_Source_Backup.tar.gz'));
+app.get('/backup/code',  (req, res) => sendBackup(res, 'InfoGenie_Source_Code_Only.tar.gz'));
+
 // ── Brand Creatives upload setup ──────────────────────────────────────────────
 const UPLOADS_DIR = path.join(__dirname, 'uploads', 'creatives');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
