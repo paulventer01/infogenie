@@ -23139,7 +23139,21 @@ window.buildCroLab = buildCroLab;
 // GSC / GA4 ANALYTICS HUB — connector + top/weak performer dashboard
 // ════════════════════════════════════════════════════════════════════════════
 window._analyticsHubData = window._analyticsHubData || null;
-window._analyticsConnections = window._analyticsConnections || { gsc: false, ga4: false };
+window._analyticsConnections = window._analyticsConnections || { gsc: false, ga4: false, adobe: false, mixpanel: false, amplitude: false, clarity: false, hotjar: false, plausible: false, matomo: false, segment: false, posthog: false, looker: false };
+window._analyticsSources = [
+  { key:'gsc',       name:'Google Search Console', icon:'G',  color:'#4285F4', tag:'CORE',     desc:'Impressions · Clicks · CTR · Avg position', bullets:['Top &amp; weak performing pages','Query-level rank tracking','Hidden-gem keyword opportunities'] },
+  { key:'ga4',       name:'Google Analytics 4',    icon:'📊', color:'#F9AB00', tag:'CORE',     desc:'Sessions · Conversions · Revenue',          bullets:['Revenue per page &amp; landing page ROI','Conversion funnel drop-off','Channel attribution'] },
+  { key:'adobe',     name:'Adobe Analytics',       icon:'🅰', color:'#FA0F00', tag:'OPTIONAL', desc:'Enterprise web &amp; app analytics',         bullets:['Workspace segments &amp; cohorts','Marketing Channel reports','Cross-device journey'] },
+  { key:'mixpanel',  name:'Mixpanel',              icon:'⚡', color:'#7856FF', tag:'OPTIONAL', desc:'Product analytics &amp; funnels',           bullets:['Event-based funnel analysis','User retention cohorts','A/B experiment tracking'] },
+  { key:'amplitude', name:'Amplitude',             icon:'△',  color:'#1E61F0', tag:'OPTIONAL', desc:'Behavioural product analytics',           bullets:['User journey maps','Predictive lifecycle segments','North-star metric tracking'] },
+  { key:'posthog',   name:'PostHog',               icon:'🦔', color:'#F54E00', tag:'OPTIONAL', desc:'Open-source product analytics',           bullets:['Session replay &amp; heatmaps','Feature flag experiments','SQL-style insights'] },
+  { key:'clarity',   name:'Microsoft Clarity',     icon:'🔍', color:'#00A4EF', tag:'OPTIONAL', desc:'Free heatmaps &amp; session replay',         bullets:['Click, scroll &amp; rage maps','Recordings of every session','Dead-click &amp; quick-back signals'] },
+  { key:'hotjar',    name:'Hotjar',                icon:'🔥', color:'#FD3A5C', tag:'OPTIONAL', desc:'Heatmaps · Recordings · Surveys',         bullets:['Visual heat &amp; scroll maps','On-page polls &amp; NPS','Funnel drop-off recordings'] },
+  { key:'plausible', name:'Plausible Analytics',   icon:'📈', color:'#5850EC', tag:'OPTIONAL', desc:'Lightweight, cookie-free analytics',      bullets:['GDPR-compliant pageview tracking','Custom goal events','Outbound link &amp; file downloads'] },
+  { key:'matomo',    name:'Matomo',                icon:'M',  color:'#3450A3', tag:'OPTIONAL', desc:'Self-hosted analytics suite',             bullets:['Full data ownership','Multi-site dashboards','Form &amp; media analytics'] },
+  { key:'segment',   name:'Segment',               icon:'§',  color:'#52BD94', tag:'PIPELINE', desc:'Customer data pipeline',                  bullets:['Forward events to 300+ tools','Identity unification','Real-time profiles'] },
+  { key:'looker',    name:'Looker Studio',         icon:'📑', color:'#4285F4', tag:'OPTIONAL', desc:'Free Google reporting &amp; BI',             bullets:['Blend GSC + GA4 + Ads','Schedule branded PDF reports','Shareable client dashboards'] }
+];
 
 function _ahSeed() {
   const dom = _lsDomain() || 'your-site.com';
@@ -23212,50 +23226,58 @@ function buildAnalyticsHub() {
     return;
   }
 
-  // Step 1: connector cards if not connected
+  // Step 1: connector cards if core (GSC + GA4) not connected
   if (!conn.gsc || !conn.ga4) {
+    const sources = window._analyticsSources;
+    const core = sources.filter(s => s.tag === 'CORE');
+    const extras = sources.filter(s => s.tag !== 'CORE');
+    const tagStyle = (tag) => tag === 'CORE'
+      ? 'background:#0F766E;color:white'
+      : tag === 'PIPELINE' ? 'background:#7C3AED;color:white' : 'background:#E2E8F0;color:#475569';
+    const cardHtml = (s) => {
+      const isConn = !!conn[s.key];
+      const textOnYellow = (s.color === '#F9AB00' || s.color === '#FFFC00');
+      const btnTextCol = textOnYellow ? '#0F172A' : 'white';
+      return `
+        <div style="border:2px solid ${isConn?'#10B981':'#E5E7EB'};border-radius:14px;padding:18px;background:${isConn?'#F0FDF4':'white'};display:flex;flex-direction:column">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0">
+              <div style="width:38px;height:38px;border-radius:9px;background:${s.color};display:flex;align-items:center;justify-content:center;color:${textOnYellow?'#0F172A':'white'};font-weight:800;font-size:1rem;flex-shrink:0">${s.icon}</div>
+              <div style="min-width:0">
+                <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:0.88rem;line-height:1.2">${s.name}</div>
+                <div style="font-size:0.7rem;color:#64748B;margin-top:2px">${s.desc}</div>
+              </div>
+            </div>
+            <span style="${tagStyle(s.tag)};font-size:0.6rem;font-weight:800;letter-spacing:.4px;padding:3px 7px;border-radius:5px;flex-shrink:0">${s.tag}</span>
+          </div>
+          <ul style="margin:0 0 12px 16px;padding:0;font-size:0.72rem;color:#475569;line-height:1.6;flex:1">
+            ${s.bullets.map(b => `<li>${b}</li>`).join('')}
+          </ul>
+          ${isConn
+            ? `<div style="display:flex;align-items:center;justify-content:space-between"><span style="color:#15803D;font-weight:700;font-size:0.78rem">✓ Connected</span><button onclick="disconnectAnalytics('${s.key}')" style="padding:5px 10px;background:white;color:#64748B;border:1px solid #CBD5E1;border-radius:6px;font-size:0.7rem;cursor:pointer">Disconnect</button></div>`
+            : `<button onclick="connectAnalytics('${s.key}')" style="width:100%;padding:9px;background:${s.color};color:${btnTextCol};border:none;border-radius:8px;font-weight:700;font-size:0.76rem;cursor:pointer">🔗 Connect ${s.name.replace('Google ','').replace(' Analytics','').replace('Microsoft ','')}</button>`}
+        </div>`;
+    };
+    const connectedExtras = extras.filter(s => conn[s.key]).length;
     wrap.innerHTML = `
-      <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:28px 30px;margin-bottom:18px">
-        <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:1.15rem;margin-bottom:6px">📡 Connect your data sources</div>
-        <div style="font-size:0.85rem;color:#64748B;margin-bottom:24px">InfoGenie pulls live impressions, clicks, ranks, sessions and revenue from Google Search Console &amp; GA4 to surface your top performers and weak performers automatically.</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div style="border:2px solid ${conn.gsc?'#10B981':'#E5E7EB'};border-radius:14px;padding:22px;background:${conn.gsc?'#F0FDF4':'white'}">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-              <div style="width:42px;height:42px;border-radius:10px;background:#4285F4;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:1.1rem">G</div>
-              <div>
-                <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:0.95rem">Google Search Console</div>
-                <div style="font-size:0.74rem;color:#64748B">Impressions · Clicks · CTR · Avg position</div>
-              </div>
-            </div>
-            <ul style="margin:0 0 14px 18px;padding:0;font-size:0.78rem;color:#475569;line-height:1.7">
-              <li>Top &amp; weak performing pages</li>
-              <li>Query-level rank tracking</li>
-              <li>Hidden-gem keyword opportunities</li>
-            </ul>
-            ${conn.gsc
-              ? `<div style="display:flex;align-items:center;justify-content:space-between"><span style="color:#15803D;font-weight:700;font-size:0.82rem">✓ Connected</span><button onclick="disconnectAnalytics('gsc')" style="padding:6px 12px;background:white;color:#64748B;border:1px solid #CBD5E1;border-radius:7px;font-size:0.72rem;cursor:pointer">Disconnect</button></div>`
-              : `<button onclick="connectAnalytics('gsc')" style="width:100%;padding:11px;background:#4285F4;color:white;border:none;border-radius:9px;font-weight:700;font-size:0.82rem;cursor:pointer">🔗 Connect Search Console</button>`}
-          </div>
-          <div style="border:2px solid ${conn.ga4?'#10B981':'#E5E7EB'};border-radius:14px;padding:22px;background:${conn.ga4?'#F0FDF4':'white'}">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-              <div style="width:42px;height:42px;border-radius:10px;background:#F9AB00;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:1.1rem">📊</div>
-              <div>
-                <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:0.95rem">Google Analytics 4</div>
-                <div style="font-size:0.74rem;color:#64748B">Sessions · Conversions · Revenue</div>
-              </div>
-            </div>
-            <ul style="margin:0 0 14px 18px;padding:0;font-size:0.78rem;color:#475569;line-height:1.7">
-              <li>Revenue per page &amp; landing page ROI</li>
-              <li>Conversion funnel drop-off</li>
-              <li>Channel attribution</li>
-            </ul>
-            ${conn.ga4
-              ? `<div style="display:flex;align-items:center;justify-content:space-between"><span style="color:#15803D;font-weight:700;font-size:0.82rem">✓ Connected</span><button onclick="disconnectAnalytics('ga4')" style="padding:6px 12px;background:white;color:#64748B;border:1px solid #CBD5E1;border-radius:7px;font-size:0.72rem;cursor:pointer">Disconnect</button></div>`
-              : `<button onclick="connectAnalytics('ga4')" style="width:100%;padding:11px;background:#F9AB00;color:white;border:none;border-radius:9px;font-weight:700;font-size:0.82rem;cursor:pointer">🔗 Connect GA4</button>`}
-          </div>
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:24px 26px;margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+          <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:1.15rem">📡 Connect your data sources</div>
+          <button onclick="connectAllAnalytics()" style="padding:8px 14px;background:linear-gradient(135deg,#0EA5E9,#0066FF);color:white;border:none;border-radius:8px;font-weight:700;font-size:0.78rem;cursor:pointer">⚡ Connect Recommended (GSC + GA4)</button>
         </div>
+        <div style="font-size:0.84rem;color:#64748B;margin-bottom:20px">InfoGenie pulls live impressions, clicks, ranks, sessions and revenue. <strong>GSC + GA4</strong> are required to unlock the dashboard — the rest are optional enrichment sources.</div>
+
+        <div style="font-size:0.72rem;font-weight:800;letter-spacing:.6px;color:#0F766E;margin-bottom:10px">★ CORE — REQUIRED</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:22px">${core.map(cardHtml).join('')}</div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:0.72rem;font-weight:800;letter-spacing:.6px;color:#475569">＋ OPTIONAL ENRICHMENT (${connectedExtras}/${extras.length} connected)</div>
+          <div style="font-size:0.7rem;color:#94A3B8">Add any of these for deeper signals</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">${extras.map(cardHtml).join('')}</div>
+
         <div style="margin-top:18px;padding:14px 16px;background:#F1F5F9;border-radius:10px;font-size:0.74rem;color:#475569;line-height:1.6">
-          <strong>🔒 Privacy:</strong> InfoGenie uses read-only OAuth scopes. We never modify your GSC or GA4 settings. You can disconnect at any time.
+          <strong>🔒 Privacy:</strong> InfoGenie uses read-only OAuth scopes. We never modify any of your settings. You can disconnect any source at any time.
         </div>
       </div>`;
     return;
@@ -23275,7 +23297,7 @@ function buildAnalyticsHub() {
   wrap.innerHTML = `
     <div style="background:linear-gradient(135deg,#ECFDF5,#F0FDFA);border:1px solid #A7F3D0;border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between">
       <div style="font-size:0.82rem;color:#065F46"><strong>✓ Connected:</strong> Google Search Console + GA4 · <strong>Property:</strong> ${data.domain} · <strong>Period:</strong> ${data.period}</div>
-      <button onclick="window._analyticsConnections={gsc:false,ga4:false};buildAnalyticsHub()" style="padding:6px 12px;background:white;color:#475569;border:1px solid #CBD5E1;border-radius:7px;font-size:0.72rem;cursor:pointer">⚙ Manage</button>
+      <button onclick="window._analyticsConnections.gsc=false;window._analyticsConnections.ga4=false;window._analyticsHubData=null;buildAnalyticsHub()" style="padding:6px 12px;background:white;color:#475569;border:1px solid #CBD5E1;border-radius:7px;font-size:0.72rem;cursor:pointer">⚙ Manage</button>
     </div>
 
     <!-- KPI strip -->
@@ -23382,9 +23404,24 @@ window.connectAnalytics = function(svc) {
 
 window.disconnectAnalytics = function(svc) {
   window._analyticsConnections[svc] = false;
-  window._analyticsHubData = null;
+  // Only flush dashboard data if a CORE source is removed
+  if (svc === 'gsc' || svc === 'ga4') window._analyticsHubData = null;
   buildAnalyticsHub();
-  showToast(`Disconnected ${svc.toUpperCase()}`);
+  const src = (window._analyticsSources || []).find(s => s.key === svc);
+  showToast(`Disconnected ${src ? src.name : svc.toUpperCase()}`);
+};
+
+window.connectAllAnalytics = function() {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="connectAllAnalytics"]', 'Authorising GSC + GA4 via Google OAuth') : (() => {});
+  setTimeout(() => {
+    window._analyticsConnections.gsc = true;
+    window._analyticsConnections.ga4 = true;
+    window._analyticsHubData = _ahSeed();
+    stop();
+    showToast('✓ Connected GSC + GA4');
+    buildAnalyticsHub();
+  }, 1200);
 };
 
 window.loadAnalyticsHub = function() {
@@ -24672,7 +24709,37 @@ window.connectSelectedImportSources = function() {
 };
 
 window.runImportCampaigns = function() {
+  if (!_lsDomain()) {
+    showToast('⚠️ Run an analysis on the home page first');
+    navigateTo('home');
+    return;
+  }
+  // Already connected — rescan
+  if (window._importData) {
+    if (window._importData.multi) {
+      rescanImportSources();
+    } else {
+      connectImportSource(window._importData.source);
+    }
+    return;
+  }
+  // Not connected yet — render picker, then act on selections (or guide)
   buildImportCampaigns();
+  setTimeout(() => {
+    const checked = document.querySelectorAll('.import-platform-cb:checked');
+    if (checked.length > 0) {
+      connectSelectedImportSources();
+      return;
+    }
+    const grid = document.getElementById('importPlatformGrid');
+    if (grid) {
+      grid.scrollIntoView({ behavior:'smooth', block:'center' });
+      grid.style.transition = 'box-shadow .35s ease';
+      grid.style.boxShadow = '0 0 0 4px rgba(220,38,38,0.45)';
+      setTimeout(() => { grid.style.boxShadow = ''; }, 1800);
+      showToast('👇 Tick the platforms to import, then hit Connect Selected');
+    }
+  }, 60);
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
