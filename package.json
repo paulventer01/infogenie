@@ -15,6 +15,7 @@
     "openai": "^6.34.0",
     "p-limit": "^7.3.0",
     "p-retry": "^7.1.1",
+    "pdfkit": "^0.18.0",
     "zod": "^4.3.6",
     "zod-validation-error": "^5.0.0"
   },
