@@ -12246,7 +12246,7 @@ function buildIntelligence() {
       <div class="wl-message">${w.message}</div>
       <div class="wl-weakness" title="The specific gap or weakness in this competitor's positioning that you can exploit to win customers back.">💡 <strong>Exploitable Weakness:</strong> ${w.weakness}</div>
       <button class="btn-wl-counter" type="button"
-        onclick="try{(window.openWLCounterModal||function(){})('${id}')}catch(e){console.error('counter modal err:',e)}"
+        onclick="window._wlClick&&window._wlClick(this)"
         data-wl-id="${id}"
         data-wl-comp="${enc(w.comp)}"
         data-wl-channel="${enc(w.channel)}"
@@ -15129,9 +15129,18 @@ function closeThreatModal() {
   m.removeAttribute('style');
 }
 
-function openWLCounterModal(wlId) {
-  const w = (window._wlData || {})[wlId];
-  if (!w) { showToast('⚠️ No counter data found — try refreshing the Intelligence Hub'); return; }
+function openWLCounterModal(wlIdOrData) {
+  // Accept either an id (string) that resolves via window._wlData, or a full
+  // data object {comp, channel, lossRate, message, weakness} read directly
+  // from data-* attributes. The latter path is bulletproof because it does
+  // not depend on any in-memory cache surviving re-renders.
+  let w;
+  if (wlIdOrData && typeof wlIdOrData === 'object') {
+    w = wlIdOrData;
+  } else {
+    w = (window._wlData || {})[wlIdOrData];
+  }
+  if (!w || !w.comp) { showToast('⚠️ No counter data found — try refreshing the Intelligence Hub'); return; }
   const modal = document.getElementById('attackModal');
   document.getElementById('attackModalInner').innerHTML = `
     <div style="text-align:center; margin-bottom:18px">
@@ -22567,9 +22576,41 @@ try { window.queueCounterCampaign = queueCounterCampaign; } catch(e) {}
 try { window.closeAttackModal = closeAttackModal; } catch(e) {}
 try { window.openAttackModal = openAttackModal; } catch(e) {}
 
-// Document-level delegated handler for the Counter This Message button.
-// Pulls data straight from data-* attributes so the modal works even if the
-// in-memory _wlData lookup fails (e.g. cached page, re-render race).
+// Self-contained click helper: reads competitor data directly from the button's
+// data-* attributes and renders the modal. Does not depend on any in-memory
+// cache (window._wlData) or template-string interpolation, so it cannot be
+// broken by re-renders, cached HTML, quoting issues, or other edge cases.
+window._wlClick = function(btn) {
+  try {
+    if (!btn || !btn.getAttribute) return;
+    const dec = s => { try { return decodeURIComponent(s || ''); } catch(_) { return s || ''; } };
+    const data = {
+      comp:     dec(btn.getAttribute('data-wl-comp')),
+      channel:  dec(btn.getAttribute('data-wl-channel')),
+      lossRate: dec(btn.getAttribute('data-wl-loss')),
+      message:  dec(btn.getAttribute('data-wl-message')),
+      weakness: dec(btn.getAttribute('data-wl-weakness'))
+    };
+    console.log('[wlClick] Counter This Message clicked:', data.comp);
+    if (!data.comp) {
+      if (typeof showToast === 'function') showToast('⚠️ Counter data missing — please re-run analysis');
+      return;
+    }
+    if (typeof window.openWLCounterModal === 'function') {
+      window.openWLCounterModal(data);
+    } else {
+      console.error('[wlClick] openWLCounterModal not defined on window');
+      if (typeof showToast === 'function') showToast('⚠️ Counter modal not loaded — please refresh the page');
+    }
+  } catch(err) {
+    console.error('[wlClick] failed:', err);
+    if (typeof showToast === 'function') showToast('⚠️ Counter modal error: ' + err.message);
+  }
+};
+
+// Document-level delegated handler as a final safety net for any
+// .btn-wl-counter button that arrives without an inline onclick (e.g. an
+// older cached render). Routes through the same _wlClick helper.
 document.addEventListener('click', function(ev) {
   const btn = ev.target.closest && ev.target.closest('.btn-wl-counter');
   if (!btn) return;
@@ -22577,27 +22618,9 @@ document.addEventListener('click', function(ev) {
   // of duplicating the work here. This avoids opening the modal twice.
   if (btn.hasAttribute('onclick')) return;
   ev.preventDefault();
-  const dec = s => { try { return decodeURIComponent(s || ''); } catch(_) { return s || ''; } };
-  const id = btn.getAttribute('data-wl-id') || '';
-  let w = (window._wlData || {})[id];
-  if (!w) {
-    w = {
-      comp:     dec(btn.getAttribute('data-wl-comp')),
-      channel:  dec(btn.getAttribute('data-wl-channel')),
-      lossRate: dec(btn.getAttribute('data-wl-loss')),
-      message:  dec(btn.getAttribute('data-wl-message')),
-      weakness: dec(btn.getAttribute('data-wl-weakness'))
-    };
-    window._wlData = window._wlData || {};
-    window._wlData[id || ('wl_' + Date.now())] = w;
-  }
-  if (!w.comp) {
-    if (typeof showToast === 'function') showToast('⚠️ Counter data missing — please re-run analysis');
-    return;
-  }
   try {
-    if (typeof window.openWLCounterModal === 'function') {
-      window.openWLCounterModal(id);
+    if (typeof window._wlClick === 'function') {
+      window._wlClick(btn);
     }
   } catch(err) {
     console.error('Counter modal failed:', err);
