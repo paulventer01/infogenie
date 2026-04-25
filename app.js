@@ -9818,7 +9818,8 @@ function buildRedditIntel() {
         <div style="text-align:center;padding:48px 24px;color:rgba(255,255,255,.3)">
           <div style="font-size:2.5rem;margin-bottom:10px">🔴</div>
           <div style="font-family:Sora,sans-serif;font-size:0.9rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:6px">Ready to scan</div>
-          <div style="font-size:0.78rem">Click <strong style="color:#FF6B35">Scan Now</strong> to find brand mentions, competitor threads &amp; rising discussions</div>
+          <div style="font-size:0.78rem;margin-bottom:18px">Find brand mentions, competitor threads &amp; rising discussions</div>
+          <button onclick="scanRedditMonitor()" style="padding:11px 26px;background:linear-gradient(135deg,#FF4500,#FF6B35);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 14px rgba(255,69,0,.35)">🔍 Scan Now</button>
         </div>
       </div>
     </div>
@@ -15134,11 +15135,17 @@ function openWLCounterModal(wlIdOrData) {
   // data object {comp, channel, lossRate, message, weakness} read directly
   // from data-* attributes. The latter path is bulletproof because it does
   // not depend on any in-memory cache surviving re-renders.
-  let w;
+  let w, wlId;
   if (wlIdOrData && typeof wlIdOrData === 'object') {
     w = wlIdOrData;
+    // Materialise a stable id and stash the data so queueCounterCampaign can
+    // look it up later (it reads from window._wlData[wlId]).
+    wlId = 'wl_' + String(w.comp || 'comp').replace(/[^A-Za-z0-9]/g, '') + '_' + Date.now();
+    window._wlData = window._wlData || {};
+    window._wlData[wlId] = w;
   } else {
-    w = (window._wlData || {})[wlIdOrData];
+    wlId = wlIdOrData;
+    w = (window._wlData || {})[wlId];
   }
   if (!w || !w.comp) { showToast('⚠️ No counter data found — try refreshing the Intelligence Hub'); return; }
   const modal = document.getElementById('attackModal');
