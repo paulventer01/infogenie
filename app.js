@@ -23746,7 +23746,7 @@ function buildUgcAvatars() {
       <div style="background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden">
         <div style="aspect-ratio:9/16;max-height:560px;background:linear-gradient(180deg,${av.color}25,${av.color}05);display:flex;align-items:center;justify-content:center;position:relative">
           <div style="width:140px;height:140px;border-radius:50%;background:linear-gradient(135deg,${av.color},${av.color}aa);display:flex;align-items:center;justify-content:center;font-size:54px;color:white;font-weight:800;box-shadow:0 18px 50px ${av.color}55">${av.name[0]}</div>
-          <button style="position:absolute;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.95);border:none;font-size:24px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.2)">▶</button>
+          <button id="ugcPlayBtn" onclick="playUgcScript()" title="Play the AI-generated script aloud" style="position:absolute;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.95);border:none;font-size:24px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.2);transition:transform .15s" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'">▶</button>
           <div style="position:absolute;bottom:14px;left:14px;right:14px;background:rgba(0,0,0,.7);color:white;padding:10px 12px;border-radius:8px;font-size:13px;line-height:1.4">"${d.script.split('. ')[0]}…"</div>
           <div style="position:absolute;top:12px;right:12px;background:#10B981;color:white;font-size:10px;padding:3px 8px;border-radius:4px;font-weight:800">▶ READY</div>
         </div>
@@ -23798,6 +23798,96 @@ window.selectAvatar = function(avatarId) {
     stop();
     showToast('✅ Avatar video ready');
   }, 1300);
+};
+
+// ── Web Speech helpers — read the AI scripts aloud ──────────────────────────
+function _pickSpeechVoice(prefs) {
+  try {
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices || !voices.length) return null;
+    const langPrefix = (prefs.langCode || 'en').toLowerCase();
+    const matchLang = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith(langPrefix));
+    const pool = matchLang.length ? matchLang : voices;
+    if (prefs.gender === 'F') {
+      const f = pool.find(v => /female|samantha|victoria|karen|moira|tessa|serena|aria|olivia|sofia|isla|lily|aisha/i.test(v.name));
+      if (f) return f;
+    } else if (prefs.gender === 'M') {
+      const m = pool.find(v => /male|daniel|alex|fred|tom|aaron|liam|mark|james|ethan|noah|arjun|kai/i.test(v.name));
+      if (m) return m;
+    }
+    return pool[0];
+  } catch(e) { return null; }
+}
+
+function _speak(text, prefs, btnId) {
+  if (!('speechSynthesis' in window)) { showToast('⚠️ Your browser does not support speech playback'); return false; }
+  try { window.speechSynthesis.cancel(); } catch(e){}
+  const u = new SpeechSynthesisUtterance(text);
+  const v = _pickSpeechVoice(prefs || {});
+  if (v) u.voice = v;
+  if (prefs && prefs.langCode) u.lang = v ? v.lang : prefs.langCode;
+  u.rate = (prefs && prefs.rate) || 1;
+  u.pitch = (prefs && prefs.pitch) || 1;
+  const btn = btnId && document.getElementById(btnId);
+  const setIcon = (txt) => { if (btn) btn.innerHTML = txt; };
+  setIcon('⏸');
+  u.onend = () => setIcon('▶');
+  u.onerror = () => setIcon('▶');
+  // make button toggle stop on second click
+  if (btn) btn.onclick = function() {
+    try { window.speechSynthesis.cancel(); } catch(e){}
+    setIcon('▶');
+    setTimeout(() => { btn.onclick = null; rebindPlayHandler(btnId); }, 50);
+  };
+  // ensure voices are loaded (some browsers async-populate)
+  if (!window.speechSynthesis.getVoices().length) {
+    window.speechSynthesis.onvoiceschanged = () => {
+      const vv = _pickSpeechVoice(prefs || {});
+      if (vv) u.voice = vv;
+      window.speechSynthesis.speak(u);
+    };
+  } else {
+    window.speechSynthesis.speak(u);
+  }
+  return true;
+}
+
+function rebindPlayHandler(btnId) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  if (btnId === 'ugcPlayBtn') btn.onclick = window.playUgcScript;
+  if (btnId === 'voPlayBtn') btn.onclick = window.playVoiceoverScript;
+}
+
+window.playUgcScript = function() {
+  const d = window._ugcData;
+  if (!d || !d.script) { showToast('⚠️ Generate an avatar first'); return; }
+  const avatars = { sarah:{gender:'F'}, lily:{gender:'F'}, aisha:{gender:'F'}, mark:{gender:'M'}, james:{gender:'M'}, kai:{gender:'M'} };
+  const pref = avatars[d.avatarId] || { gender:'F' };
+  pref.langCode = 'en';
+  pref.rate = 1.05;
+  if (_speak(d.script, pref, 'ugcPlayBtn')) showToast('▶ Playing AI script…');
+};
+
+window.playVoiceoverScript = function() {
+  const script = (document.getElementById('voScript') || {}).value || (window._voData && window._voData.script);
+  if (!script) { showToast('⚠️ Type or generate a script first'); return; }
+  const voiceMap = {
+    aria:{gender:'F',langCode:'en-US',rate:1,pitch:1.05},
+    liam:{gender:'M',langCode:'en-US',rate:1,pitch:0.95},
+    olivia:{gender:'F',langCode:'en-GB',rate:1.05,pitch:1.05},
+    ethan:{gender:'M',langCode:'en-GB',rate:0.95,pitch:0.9},
+    sofia:{gender:'F',langCode:'en-AU',rate:1,pitch:1},
+    noah:{gender:'M',langCode:'en-CA',rate:1,pitch:1},
+    isla:{gender:'F',langCode:'en-IE',rate:1.1,pitch:1.1},
+    arjun:{gender:'M',langCode:'en-IN',rate:0.95,pitch:1}
+  };
+  const langSel = document.getElementById('voLang');
+  const langTextToCode = { English:'en', Spanish:'es', French:'fr', German:'de', Italian:'it', Portuguese:'pt', Dutch:'nl', Polish:'pl', Hindi:'hi', Arabic:'ar', Japanese:'ja', Mandarin:'zh' };
+  const id = (window._voData && window._voData.voiceId) || 'aria';
+  const pref = Object.assign({}, voiceMap[id] || {});
+  if (langSel && langTextToCode[langSel.value]) pref.langCode = langTextToCode[langSel.value];
+  if (_speak(script, pref, 'voPlayBtn')) showToast(`▶ Playing in ${id}'s voice…`);
 };
 
 window.runUgcAvatars = function() {
@@ -23863,8 +23953,8 @@ function buildVoiceovers() {
               ${Array.from({length:42}).map((_,i)=>{const h=12+Math.sin(i*0.7+i*0.3)*16+(i%5)*4;return `<div style="width:3px;height:${Math.abs(h)}px;background:${voices.find(v=>v.id===d.voiceId).color};border-radius:2px"></div>`}).join('')}
             </div>
             <div style="display:flex;gap:8px;justify-content:center;align-items:center;margin-bottom:14px">
-              <button style="width:46px;height:46px;border-radius:50%;background:${voices.find(v=>v.id===d.voiceId).color};color:white;border:none;font-size:18px;cursor:pointer">▶</button>
-              <span style="font-size:12px;color:#64748B;font-variant-numeric:tabular-nums">0:00 / 0:${String(d.duration).padStart(2,'0')}</span>
+              <button id="voPlayBtn" onclick="playVoiceoverScript()" title="Play the script in this voice" style="width:46px;height:46px;border-radius:50%;background:${voices.find(v=>v.id===d.voiceId).color};color:white;border:none;font-size:18px;cursor:pointer;transition:transform .15s" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">▶</button>
+              <span id="voTime" style="font-size:12px;color:#64748B;font-variant-numeric:tabular-nums">0:00 / 0:${String(d.duration).padStart(2,'0')}</span>
             </div>
             <div style="display:flex;gap:6px;justify-content:center"><button onclick="showToast('✓ Downloading MP3…')" style="padding:9px 18px;background:#1E40AF;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">⬇ MP3</button><button onclick="showToast('✓ Downloading WAV…')" style="padding:9px 18px;background:#F1F5F9;color:#1E293B;border:1px solid #E2E8F0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">⬇ WAV</button></div>
           </div>
@@ -23929,23 +24019,110 @@ function buildTemplates() {
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">
       ${list.map((t,i) => `
         <div style="background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden;transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(0,0,0,.08)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='none'">
-          <div style="aspect-ratio:16/10;background:linear-gradient(135deg,${t.bg1},${t.bg2});padding:14px;color:white;display:flex;flex-direction:column;justify-content:space-between;position:relative">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="background:rgba(255,255,255,.25);font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px;letter-spacing:.05em">${t.type.toUpperCase()}</div>${t.hot?`<div style="background:#EF4444;color:white;font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px">🔥 HOT</div>`:''}</div>
-            <div><div style="font-size:14px;font-weight:800;margin-bottom:4px;line-height:1.2">${t.title}</div><div style="font-size:11px;opacity:.85">${t.tagline}</div></div>
+          <div style="aspect-ratio:16/10;background:linear-gradient(135deg,${t.bg1},${t.bg2});position:relative;overflow:hidden">
+            <img src="${t.img}" alt="${t.title}" loading="lazy" onerror="this.onerror=null;this.src='${t.imgFallback}'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">
+            <div style="position:absolute;inset:0;background:linear-gradient(180deg,${t.bg1}33 0%,${t.bg1}11 35%,rgba(15,23,42,.78) 100%)"></div>
+            <div style="position:absolute;inset:0;padding:14px;color:white;display:flex;flex-direction:column;justify-content:space-between">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="background:rgba(255,255,255,.92);color:#0F172A;font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px;letter-spacing:.05em">${t.type.toUpperCase()}</div>${t.hot?`<div style="background:#EF4444;color:white;font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px">🔥 HOT</div>`:''}</div>
+              <div><div style="font-size:14px;font-weight:800;margin-bottom:4px;line-height:1.25;text-shadow:0 1px 4px rgba(0,0,0,.45)">${t.title}</div><div style="font-size:11px;opacity:.92;text-shadow:0 1px 3px rgba(0,0,0,.45)">${t.tagline}</div></div>
+            </div>
           </div>
           <div style="padding:12px 14px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:11px;color:#64748B">${t.usage} uses • ⭐ ${t.rating}</div><div style="font-size:10px;color:#10B981;font-weight:700;background:#F0FDF4;padding:2px 6px;border-radius:4px">+${t.lift}% CVR</div></div>
+            <div style="font-size:11px;color:#94A3B8;margin-bottom:8px;line-height:1.4">${t.preview}</div>
             <button onclick="useTemplate(${i})" style="width:100%;padding:8px;background:#10B981;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">Use Template →</button>
           </div>
         </div>`).join('')}
     </div>`;
 }
 
+// Curated keyword tags + a hand-picked Unsplash photo ID per template title.
+// loremflickr.com is the primary source (keyword-driven, deterministic via lock seed),
+// images.unsplash.com is the fallback if loremflickr is unavailable.
+window._templateImageMap = {
+  'that converts':       { kw:'sales,growth,success',          uns:'1554224155-6726b3ff858f' },
+  'Limited-time launch': { kw:'rocket,launch,countdown',       uns:'1517976487492-5750f3195933' },
+  'Founder story carousel':{kw:'founder,startup,office',        uns:'1556761175-b413da4baf72' },
+  'Before/after transformation':{kw:'transformation,improvement,fitness', uns:'1571019613454-1cb2f99b2d8b' },
+  'Social proof stack':  { kw:'reviews,stars,testimonial',     uns:'1556761175-4b46a572b786' },
+  'Problem → solution flip':{kw:'puzzle,solution,strategy',     uns:'1518770660439-4636190af475' },
+  'Bold claim challenger':{kw:'megaphone,announcement,bold',    uns:'1567427017947-545c5f8d16ad' },
+  'Webinar registration':{ kw:'webinar,laptop,online-meeting', uns:'1551434678-e076c223a692' },
+  'Free trial signup':   { kw:'signup,form,trial',             uns:'1554224155-6726b3ff858f' },
+  'Demo booking':        { kw:'calendar,meeting,schedule',     uns:'1506784983877-45594efa4cbe' },
+  'Lead magnet download':{ kw:'ebook,download,reading',        uns:'1457369804613-52c61a468e7d' },
+  'Pricing comparison':  { kw:'pricing,money,calculator',      uns:'1554224155-1696413565d3' },
+  'Founder pitch page':  { kw:'pitch,investor,presentation',   uns:'1559136555-9303baea8ebd' },
+  'Case study landing':  { kw:'case-study,document,research',  uns:'1454165804606-c3d57bc86b40' },
+  'Welcome sequence':    { kw:'welcome,handshake,greeting',    uns:'1521791136064-7986c2920216' },
+  'Cart abandonment':    { kw:'shopping-cart,checkout,ecommerce', uns:'1556742044-3c52d6e88c62' },
+  'Re-engagement':       { kw:'email,notification,reconnect',  uns:'1577563908411-5077b6dc7624' },
+  'Product launch':      { kw:'product,box,unboxing',          uns:'1607082348824-0a96f2a4b9da' },
+  'Black Friday promo':  { kw:'sale,discount,shopping',        uns:'1607082349566-187342175e2f' },
+  'Customer winback':    { kw:'customer,loyalty,return',       uns:'1556742111-a301076d9d18' },
+  'Carousel: 5 mistakes':{ kw:'mistake,warning,checklist',     uns:'1503676260728-1c00da094a0b' },
+  'Quote graphic':       { kw:'quote,inspiration,typography',  uns:'1455390582262-044cdead277a' },
+  'Mini case study':     { kw:'chart,results,analytics',       uns:'1551288049-bebda4e38f71' },
+  'Industry stat post':  { kw:'statistics,data,dashboard',     uns:'1551288049-a2ebda35cba0' },
+  'Behind-the-scenes':   { kw:'office,team,workspace',         uns:'1497366754035-f200968a6e72' },
+  'Customer testimonial':{ kw:'testimonial,smile,customer',    uns:'1573497019940-1c28c88b4f3e' }
+};
+
+function _templateImageFor(title, sector, seed) {
+  const map = window._templateImageMap;
+  let entry = null;
+  for (const k in map) {
+    if (title.indexOf(k) > -1) { entry = map[k]; break; }
+  }
+  if (!entry) entry = { kw:'business,marketing,office', uns:'1556761175-5973dc0f32e7' };
+  const sectorTag = (sector || '').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,20) || 'business';
+  const tags = `${entry.kw},${sectorTag}`.replace(/\s+/g,'');
+  return {
+    img: `https://loremflickr.com/520/300/${encodeURIComponent(tags)}?lock=${seed}`,
+    imgFallback: `https://images.unsplash.com/photo-${entry.uns}?w=520&h=300&fit=crop&q=70&auto=format`
+  };
+}
+
+function _templatePreview(title, kw, brand) {
+  const previews = {
+    'that converts': `Hook → 3-bullet value prop → 1 social-proof quote → CTA. Built for ${kw}.`,
+    'Limited-time launch': `Countdown banner + scarcity copy. "Only 48 hours left — claim ${brand} early access."`,
+    'Founder story carousel': `7-slide story arc: origin → problem → insight → build → proof → CTA.`,
+    'Before/after transformation': `Side-by-side photo grid + headline "From X to Y in 30 days."`,
+    'Social proof stack': `Star rating + 3 customer quotes + logo bar. Trust-signal heavy.`,
+    'Problem → solution flip': `Top half names the pain, bottom half flips to ${brand}'s fix.`,
+    'Bold claim challenger': `Single bold statement + supporting stat. Cuts through the feed.`,
+    'Webinar registration': `Headline → 3 takeaways → speaker bio → date/time → form (4 fields).`,
+    'Free trial signup': `Above-the-fold form (email only) + social proof + 3-feature grid.`,
+    'Demo booking': `Calendar embed + value props + "what to expect" timeline.`,
+    'Lead magnet download': `Cover image + 5 chapter bullets + email-only form.`,
+    'Pricing comparison': `3-tier table + feature checklist + FAQ accordion.`,
+    'Founder pitch page': `Founder photo + handwritten signature + story + CTA.`,
+    'Case study landing': `Hero metric → challenge → solution → 3 results → quote → CTA.`,
+    'Welcome sequence': `5-email arc: welcome → benefit → story → proof → upsell.`,
+    'Cart abandonment': `3-email sequence at 1h, 24h, 72h with discount escalation.`,
+    'Re-engagement': `"We miss you" subject + best-of digest + one-click unsubscribe.`,
+    'Product launch': `Tease → reveal → social proof → urgency → recap.`,
+    'Black Friday promo': `Hero countdown + tier-based discount + bundle upsell.`,
+    'Customer winback': `Personalised "since you left" + exclusive comeback offer.`,
+    'Carousel: 5 mistakes': `5-slide list. Each slide: mistake → why it hurts → fix.`,
+    'Quote graphic': `Bold pull-quote on branded gradient. Optimised for square + story.`,
+    'Mini case study': `1-card story: client → metric → 3-line outcome.`,
+    'Industry stat post': `One headline stat + source citation + your hot take.`,
+    'Behind-the-scenes': `Team photo + 3 caption styles for different platforms.`,
+    'Customer testimonial': `Headshot + 1-line quote + name + company + result number.`
+  };
+  for (const k in previews) {
+    if (title.indexOf(k) > -1) return previews[k];
+  }
+  return 'Pre-built layout, copy and CTA — apply in one click.';
+}
+
 window.runTemplates = function() {
   if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
   const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="runTemplates"]', 'Loading templates for your sector') : (() => {});
   setTimeout(() => {
-    const sector = _esc(_lsSector()), kw = _esc(_lsKeywords()[0] || _lsSector());
+    const sector = _esc(_lsSector()), kw = _esc(_lsKeywords()[0] || _lsSector()), brand = _esc(_lsBrand());
     const rng = _seedRng(_lsDomain() + 'tpl');
     const palettes = [['#0EA5E9','#6366F1'],['#EC4899','#8B5CF6'],['#10B981','#06B6D4'],['#F59E0B','#EF4444'],['#1E40AF','#3B82F6'],['#7C3AED','#A855F7'],['#059669','#10B981'],['#DC2626','#F97316'],['#0F172A','#475569']];
     const types = ['ad','lp','email','social'];
@@ -23957,12 +24134,17 @@ window.runTemplates = function() {
     };
     const taglines = ['Battle-tested with 200+ campaigns','Top 1% performance in 2026','Most-copied template this quarter','Featured in our growth playbook','Used by 1,200+ teams'];
     const templates = [];
+    let seedCounter = 0;
     types.forEach(type => {
       titles[type].forEach((title, i) => {
         const p = palettes[Math.floor(rng()*palettes.length)];
+        const imgs = _templateImageFor(title, sector, ++seedCounter * 13 + Math.floor(rng()*1000));
         templates.push({
           type, title, bg1:p[0], bg2:p[1],
           tagline: taglines[Math.floor(rng()*taglines.length)],
+          preview: _templatePreview(title, kw, brand),
+          img: imgs.img,
+          imgFallback: imgs.imgFallback,
           usage: Math.floor(180 + rng()*1820),
           rating: (4.4 + rng()*0.6).toFixed(1),
           lift: Math.floor(8 + rng()*42),
@@ -23972,8 +24154,8 @@ window.runTemplates = function() {
     });
     window._templatesData = { templates };
     buildTemplates();
-    stop('📐 Browse Templates');
-    showToast(`✅ ${templates.length} templates loaded`);
+    if (typeof stop === 'function') try { stop('📐 Browse Templates'); } catch(e){}
+    showToast(`✅ ${templates.length} templates loaded with relevant imagery`);
   }, 1100);
 };
 
