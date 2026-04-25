@@ -6316,15 +6316,23 @@ function buildICPStudio() {
   const actDisabled = !hasICP;
   const actDis2 = !hasVoC || !(voc.objections && voc.objections.length);
   const actDis3 = !hasVoC || !(voc.triggers && voc.triggers.length);
-  const actBtn = (icon, title, desc, color, bg, id, disabled, disabledReason) => `
-    <button id="${id}" ${disabled?'disabled':''} title="${disabled?disabledReason:''}" style="text-align:left;padding:18px 20px;background:${disabled?'#F9FAFB':'white'};border:1.5px solid ${disabled?'#E5E7EB':color+'55'};border-radius:14px;cursor:${disabled?'not-allowed':'pointer'};opacity:${disabled?'.55':'1'};transition:all .2s;font-family:'Inter',sans-serif;display:flex;flex-direction:column;gap:6px">
-      <div style="display:flex;align-items:center;gap:8px">
+  const actBtn = (icon, title, desc, color, bg, id, disabled, disabledReason) => {
+    const baseBorder = disabled ? '#E5E7EB' : color+'55';
+    const hoverHandlers = disabled ? '' : `
+      onmouseenter="this.style.borderColor='${color}';this.style.boxShadow='0 6px 18px ${color}22';this.style.transform='translateY(-2px)';"
+      onmouseleave="this.style.borderColor='${baseBorder}';this.style.boxShadow='none';this.style.transform='none';"
+      onfocus="this.style.borderColor='${color}';this.style.boxShadow='0 0 0 3px ${color}33';"
+      onblur="this.style.borderColor='${baseBorder}';this.style.boxShadow='none';"`;
+    return `
+    <button id="${id}" ${disabled?'disabled':''} title="${disabled?disabledReason:''}" ${hoverHandlers} style="text-align:left;padding:18px 20px;background:${disabled?'#F9FAFB':'white'};border:1.5px solid ${baseBorder};border-radius:14px;cursor:${disabled?'not-allowed':'pointer'};opacity:${disabled?'.55':'1'};transition:border-color .2s,box-shadow .2s,transform .2s;font-family:'Inter',sans-serif;display:flex;flex-direction:column;gap:6px;outline:none;appearance:none;-webkit-tap-highlight-color:transparent;-webkit-appearance:none">
+      <div style="display:flex;align-items:center;gap:8px;pointer-events:none">
         <div style="width:36px;height:36px;background:${bg};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem">${icon}</div>
         <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:${disabled?'#9CA3AF':'#0A1628'}">${title}</div>
       </div>
-      <div style="font-size:0.72rem;color:#6B7280;line-height:1.45">${desc}</div>
-      ${disabled ? `<div style="font-size:0.65rem;color:#9CA3AF;font-style:italic;margin-top:2px">${disabledReason}</div>` : `<div style="font-size:0.7rem;color:${color};font-weight:700;margin-top:2px">→ Activate</div>`}
+      <div style="font-size:0.72rem;color:#6B7280;line-height:1.45;pointer-events:none">${desc}</div>
+      ${disabled ? `<div style="font-size:0.65rem;color:#9CA3AF;font-style:italic;margin-top:2px;pointer-events:none">${disabledReason}</div>` : `<div style="font-size:0.7rem;color:${color};font-weight:700;margin-top:2px;pointer-events:none">→ Activate</div>`}
     </button>`;
+  };
 
   const activationHtml = `
     <div style="background:white;border:1px solid #E5E7EB;border-radius:18px;padding:22px 26px;box-shadow:0 1px 6px rgba(0,0,0,.05)">
