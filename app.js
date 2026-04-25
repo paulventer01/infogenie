@@ -6349,9 +6349,12 @@ function buildICPStudio() {
     </div>`;
 
   // ── Top context bar ───────────────────────────────────────────────────────
+  const redditCell = redditCount > 0
+    ? `<strong>Reddit threads available:</strong> ${redditCount}`
+    : `<strong>Reddit threads available:</strong> 0 <button id="icpScanRedditBtn" style="margin-left:6px;padding:3px 10px;background:#FF4500;color:white;border:none;border-radius:6px;font-size:0.7rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">🔍 Scan now</button>`;
   const ctxBar = `
     <div style="background:linear-gradient(135deg,#F5F3FF,#FDF2F8);border:1px solid #E9D5FF;border-radius:14px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div style="font-size:0.8rem;color:#6B21A8"><strong>Brand:</strong> ${domain} · <strong>Industry:</strong> ${industry} · <strong>Reddit threads available:</strong> ${redditCount} · <strong>Competitors:</strong> ${compCount}</div>
+      <div style="font-size:0.8rem;color:#6B21A8"><strong>Brand:</strong> ${domain} · <strong>Industry:</strong> ${industry} · ${redditCell} · <strong>Competitors:</strong> ${compCount}</div>
       <div style="font-size:0.7rem;color:#9333EA">${hasICP?'✅ ICP saved':'⚪ ICP not built yet'} · ${hasVoC?'✅ VoC mined':'⚪ VoC not mined yet'}</div>
     </div>`;
 
@@ -6366,6 +6369,54 @@ function buildICPStudio() {
   document.getElementById('icpAct1').onclick = _icpActCreativeTarget;
   document.getElementById('icpAct2').onclick = _icpActObjectionPack;
   document.getElementById('icpAct3').onclick = _icpActEmailSequence;
+  const scanBtn = document.getElementById('icpScanRedditBtn');
+  if (scanBtn) scanBtn.onclick = _icpScanRedditFromStudio;
+}
+
+async function _icpScanRedditFromStudio() {
+  if (window._icpRedditScanInFlight) return;
+  const btn = document.getElementById('icpScanRedditBtn');
+  if (btn?.disabled) return;
+  window._icpRedditScanInFlight = true;
+  const brand = (analysisData?.url || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+  const industry = analysisData?.industry?.name || 'marketing';
+  const competitors = (analysisData?.competitors || [])
+    .slice(0, 5)
+    .map(c => (c?.name || c?.domain || '')).filter(Boolean);
+  const keywords = competitors.length ? [] : [industry];
+
+  if (!brand && competitors.length === 0) {
+    window._icpRedditScanInFlight = false;
+    showToast('⚠️ Run a site analysis first');
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Scanning…'; btn.style.opacity = '.7'; btn.style.cursor = 'wait'; }
+  try {
+    const resp = await fetch('/api/reddit-monitor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brand, keywords, competitors, industry })
+    });
+    const rawText = await resp.text();
+    let data;
+    try { data = JSON.parse(rawText); }
+    catch { throw new Error(`Server returned non-JSON (HTTP ${resp.status})`); }
+    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+    const posts = data.posts || [];
+    window._redditPosts = posts;
+    if (posts.length === 0) {
+      showToast('🕳️ No threads found — try the full Reddit Monitor with custom keywords');
+      if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Try again'; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
+      return;
+    }
+    showToast(`✅ Found ${posts.length} Reddit signals — refreshing ICP Studio`);
+    buildICPStudio();
+  } catch (err) {
+    showToast('⚠️ Reddit scan failed: ' + (err.message || err));
+    if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Try again'; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
+  } finally {
+    window._icpRedditScanInFlight = false;
+  }
 }
 
 function _icpReadForm() {
