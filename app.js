@@ -6962,19 +6962,47 @@ function _kmEsc(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-function _kmSeedPages() {
+function _kmNormaliseUrl(u) {
+  if (!u) return '';
+  let s = String(u).trim();
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  return s.replace(/\/$/, '');
+}
+
+function _kmYourSite() {
   const ad = window.analysisData || {};
-  const root = String(ad.url || '').trim();
-  if (!root) return '';
-  const base = root.replace(/\/$/, '');
-  // Suggest a sensible default set of common page paths the user likely has
-  return [
-    base,
-    `${base}/about`,
-    `${base}/pricing`,
-    `${base}/blog`,
-    `${base}/contact`
-  ].join('\n');
+  return _kmNormaliseUrl(ad.url || '');
+}
+
+function _kmSeedPages() {
+  // Default to just the user's homepage; subpaths are opt-in via quick-add chips
+  const base = _kmYourSite();
+  return base ? base : '';
+}
+
+function _kmAddPage(url) {
+  const ta = document.getElementById('kmPagesInput');
+  if (!ta || !url) return;
+  const clean = _kmNormaliseUrl(url);
+  const lines = ta.value.split('\n').map(l => l.trim()).filter(Boolean);
+  // Avoid duplicates (compare on URL part before any | title)
+  const exists = lines.some(l => l.split('|')[0].trim().replace(/\/$/, '') === clean);
+  if (exists) { showToast('ℹ️ Already in the list'); return; }
+  ta.value = lines.concat([clean]).join('\n');
+  showToast('➕ Page added');
+}
+
+function _kmAddCommonPaths() {
+  const base = _kmYourSite();
+  if (!base) { showToast('⚠️ Run a brand analysis first to auto-add pages'); return; }
+  ['/about','/pricing','/blog','/contact','/features'].forEach(p => _kmAddPage(base + p));
+}
+
+function _kmAddCompetitor() {
+  const sel = document.getElementById('kmCompSelect');
+  if (!sel || !sel.value) { showToast('ℹ️ Pick a competitor first'); return; }
+  _kmAddPage(sel.value);
+  sel.value = '';
 }
 
 function _kmSeedKeywords() {
@@ -6995,24 +7023,77 @@ function buildKeywordMap() {
   const wrap = document.getElementById('keywordMapWrap');
   if (!wrap) return;
   const ad = window.analysisData || {};
+  const yourSite = _kmYourSite();
+  const competitors = (ad.competitors || []).filter(c => c && (c.url || c.name));
   const seedPages = _kmSeedPages();
   const seedKws = _kmSeedKeywords();
+  const noAnalysis = !yourSite;
+
+  // Build competitor dropdown options
+  const compOptions = competitors.length
+    ? competitors.map(c => {
+        const url = _kmNormaliseUrl(c.url || '');
+        const label = `${c.name || url}${url ? ' (' + url.replace(/^https?:\/\//,'') + ')' : ''}`;
+        return `<option value="${_kmEsc(url || c.name || '')}">${_kmEsc(label)}</option>`;
+      }).join('')
+    : '<option value="" disabled>No competitors found — run a brand analysis first</option>';
 
   wrap.innerHTML = `
+    ${noAnalysis ? `
+      <div style="background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
+        <span style="font-size:1.3rem">💡</span>
+        <div style="flex:1">
+          <div style="font-weight:700;color:#92400E;font-size:0.88rem;margin-bottom:2px">Run a brand analysis first for the best experience</div>
+          <div style="font-size:0.75rem;color:#78350F">Without it your URL and competitors won't auto-fill — but you can still type a URL manually below.</div>
+        </div>
+      </div>` : ''}
+
     <div style="background:white;border-radius:16px;padding:24px;box-shadow:0 2px 10px rgba(0,0,0,.05);margin-bottom:20px">
+
+      <!-- Your site banner -->
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:linear-gradient(135deg,#EFF6FF,#F0F9FF);border:1.5px solid #BAE6FD;border-radius:12px;margin-bottom:16px">
+        <span style="font-size:1.2rem">🌐</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.66rem;color:#0369A1;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Your site</div>
+          <div style="font-size:0.88rem;font-weight:800;color:#0F172A;word-break:break-all">${yourSite ? _kmEsc(yourSite) : '<em style="color:#94A3B8">Not set — type a URL in the page list below</em>'}</div>
+        </div>
+        ${yourSite ? `<button onclick="_kmAddPage('${_kmEsc(yourSite)}')" style="background:white;color:#0EA5E9;border:1.5px solid #0EA5E9;padding:6px 12px;border-radius:8px;font-size:0.74rem;font-weight:700;cursor:pointer;white-space:nowrap">+ Add homepage</button>` : ''}
+      </div>
+
+      <!-- Quick-add row: competitor dropdown + common paths -->
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:14px;align-items:end">
+        <div>
+          <label style="display:block;font-size:0.72rem;font-weight:700;color:#475569;margin-bottom:5px">⚔️ Add a competitor's site to compare</label>
+          <div style="display:flex;gap:8px">
+            <select id="kmCompSelect" style="flex:1;padding:9px 11px;border:1.5px solid #CBD5E1;border-radius:8px;font-size:0.82rem;background:white;cursor:pointer">
+              <option value="">Choose a competitor…</option>
+              ${compOptions}
+            </select>
+            <button onclick="_kmAddCompetitor()" style="background:#7C3AED;color:white;border:none;padding:9px 16px;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer;white-space:nowrap">➕ Add</button>
+          </div>
+        </div>
+        <div>
+          <label style="display:block;font-size:0.72rem;font-weight:700;color:#475569;margin-bottom:5px">⚡ Quick-add</label>
+          <button onclick="_kmAddCommonPaths()" style="background:white;color:#0EA5E9;border:1.5px solid #0EA5E9;padding:9px 14px;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer;white-space:nowrap" ${yourSite?'':'disabled'}>+ Common pages (about, pricing, blog…)</button>
+        </div>
+      </div>
+
+      <!-- Pages + keyword pool side by side -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
         <div>
-          <label style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">📄 Pages on your site (one per line)</label>
-          <textarea id="kmPagesInput" rows="7" style="width:100%;padding:10px 12px;border:1.5px solid #CBD5E1;border-radius:10px;font-size:0.82rem;font-family:inherit;resize:vertical">${_kmEsc(seedPages)}</textarea>
-          <div style="font-size:0.68rem;color:#64748B;margin-top:4px">Optional: append <code>| Page Title</code> after the URL for better mapping. Up to 30 pages.</div>
+          <label style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">📄 Pages to map (one per line)</label>
+          <textarea id="kmPagesInput" rows="7" style="width:100%;padding:10px 12px;border:1.5px solid #CBD5E1;border-radius:10px;font-size:0.82rem;font-family:inherit;resize:vertical" placeholder="https://yourdomain.com&#10;https://yourdomain.com/pricing">${_kmEsc(seedPages)}</textarea>
+          <div style="font-size:0.68rem;color:#64748B;margin-top:4px">Optional: append <code>| Page Title</code> for better mapping. Up to 30 pages.</div>
         </div>
         <div>
           <label style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">🔑 Keyword pool (comma-separated)</label>
-          <textarea id="kmKwInput" rows="7" style="width:100%;padding:10px 12px;border:1.5px solid #CBD5E1;border-radius:10px;font-size:0.82rem;font-family:inherit;resize:vertical">${_kmEsc(seedKws)}</textarea>
-          <div style="font-size:0.68rem;color:#64748B;margin-top:4px">Pre-filled from your Intent Map ${window._intentMap ? '✅' : '(empty — run Intent Map first or paste your own)'}. Up to 80 keywords.</div>
+          <textarea id="kmKwInput" rows="7" style="width:100%;padding:10px 12px;border:1.5px solid #CBD5E1;border-radius:10px;font-size:0.82rem;font-family:inherit;resize:vertical" placeholder="forex broker, best forex broker, mt4 platform…">${_kmEsc(seedKws)}</textarea>
+          <div style="font-size:0.68rem;color:#64748B;margin-top:4px">Pre-filled from your Intent Map ${window._intentMap ? '✅' : '— run Intent Map first or paste your own'}. Up to 80 keywords.</div>
         </div>
       </div>
-      <div style="display:flex;gap:10px;margin-top:14px">
+
+      <!-- Action row -->
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
         <button onclick="generateKeywordMap()" style="background:linear-gradient(135deg,#0EA5E9,#6366F1);color:white;border:none;padding:11px 22px;border-radius:10px;font-weight:700;font-size:0.9rem;cursor:pointer;box-shadow:0 4px 12px rgba(14,165,233,.3)">⚡ Generate Map</button>
         <button onclick="document.getElementById('kmKwInput').value=_kmSeedKeywords();showToast('🔄 Refreshed keywords from Intent Map')" style="background:white;color:#0EA5E9;border:1.5px solid #0EA5E9;padding:11px 18px;border-radius:10px;font-weight:700;font-size:0.85rem;cursor:pointer">🔄 Pull from Intent Map</button>
       </div>
