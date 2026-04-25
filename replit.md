@@ -38,6 +38,18 @@ InfoGenie is a comprehensive AI-powered marketing intelligence and campaign auto
 - `window._icpVoC` — ICP Studio Voice-of-Customer: { triggers[], objections[], emotionalDrivers[] } (each item: { text, evidence })
 - `window._intentMap` — Search Intent Map: { keywords:[{keyword, intent, confidence, recommendedPageType, intentMatchScore, matchReason, competitorGap, gapReason, opportunity, estimatedCPC, priority}], summary:{total, byIntent, gaps, avgIntentMatch, mustDoCount} }
 - `window._intentMustDos` — must-do keywords sent from Intent Map to Battle Plan (also in localStorage as `infogenie_intent_mustdos`)
+- `window._linkSuggesterData` — Internal Link Suggester state: { domain, brand, pages[], suggestions[{id, sourceUrl, targetUrl, anchorText, priority, equityLift, reason, status}] }
+- `window._croLabData` — CRO Lab state: { trustSignals[], trustScore, friction[], frictionScore, abIdeas[], overall }
+- `window._croAbTests` — Active A/B tests launched from CRO Lab
+- `window._croTab` — CRO Lab active tab ('trust' | 'friction' | 'abtests')
+- `window._analyticsConnections` — { gsc:bool, ga4:bool } — GSC/GA4 Hub connection state
+- `window._analyticsHubData` — GSC/GA4 Hub dashboard data: { domain, pages[], top[], weak[], totals, period }
+
+## New Modules (April 2026 — Grow menu)
+- **Internal Link Suggester** (view-link-suggester) — `buildLinkSuggester()` + `runLinkSuggester()`. Generates source→target page link pairs with anchor text, equity-lift estimates, and CSV export. Apply/Dismiss workflow.
+- **CRO Lab** (view-cro-lab) — `buildCroLab()` + `runCroAudit()`. 3-tab UX: 10-point Trust Signal Audit, 8-point Checkout Friction scorer, 6 pre-built A/B test specs that can be "launched" into an in-memory queue.
+- **GSC / GA4 Analytics Hub** (view-analytics-hub) — `buildAnalyticsHub()` + `connectAnalytics(svc)` + `loadAnalyticsHub()`. Two-stage UX: connector cards (mock OAuth) → KPI strip + Top/Weak performer panels + per-page table. Weak performers route to AutoSEO.
+- All three gate behind a "Run an analysis first" empty state when `window.analysisData` is absent.
 - `window._counterTarget` — used by Creative Studio activation flow; ICP Studio writes here with source='icp-studio' to pre-fill next campaign target
 - **Battle Plan timer**: `_apSecs` counter ticks every 1s; `apElapsed` is an inline `<span style="color:#00E5FF">` inside `apLoadTitle`; any innerHTML update to the title must re-embed the span or use `apElapsed` ID for the querySelector (consistent with Reddit scanner style)
 

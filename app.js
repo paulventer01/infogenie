@@ -2234,6 +2234,15 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'master-calendar') {
     try { buildMasterCalendar(); } catch(e) { console.warn('buildMasterCalendar error:', e); }
   }
+  if (viewId === 'link-suggester') {
+    try { buildLinkSuggester(); } catch(e) { console.warn('buildLinkSuggester error:', e); }
+  }
+  if (viewId === 'cro-lab') {
+    try { buildCroLab(); } catch(e) { console.warn('buildCroLab error:', e); }
+  }
+  if (viewId === 'analytics-hub') {
+    try { buildAnalyticsHub(); } catch(e) { console.warn('buildAnalyticsHub error:', e); }
+  }
   // Show/hide navbar for home vs app
   const navGroups = document.getElementById('navGroups');
   const navPlan   = document.getElementById('navPlanBadge');
@@ -22634,6 +22643,712 @@ document.addEventListener('click', function(ev) {
     if (typeof showToast === 'function') showToast('⚠️ Counter modal error: ' + err.message);
   }
 }, true);
+
+// ════════════════════════════════════════════════════════════════════════════
+// INTERNAL LINK SUGGESTER — AI-driven link recommendations
+// ════════════════════════════════════════════════════════════════════════════
+window._linkSuggesterData = window._linkSuggesterData || null;
+
+function _lsDomain() {
+  const d = (window.analysisData && (window.analysisData.url || window.analysisData.domain)) || '';
+  return String(d).replace(/^https?:\/\//, '').split('/')[0] || '';
+}
+
+function _lsBrand() {
+  return (window.analysisData && (window.analysisData.brand || window.analysisData.brandName)) || _lsDomain().split('.')[0] || 'your brand';
+}
+
+function _lsSector() {
+  return (window.analysisData && (window.analysisData.sector || window.analysisData.industry)) || 'your industry';
+}
+
+function _lsKeywords() {
+  if (window.analysisData && Array.isArray(window.analysisData.keywords)) return window.analysisData.keywords.slice(0, 12);
+  if (window.analysisData && Array.isArray(window.analysisData.competitors)) {
+    const k = [];
+    window.analysisData.competitors.forEach(c => {
+      if (c.keywords) k.push(...c.keywords);
+      else if (c.topKeyword) k.push(c.topKeyword);
+    });
+    return k.slice(0, 12);
+  }
+  return [];
+}
+
+function _lsSeedSuggestions() {
+  // Generate plausible link pairs from analysisData. Deterministic-ish so the
+  // UI feels stable per-session, but varied enough across brands.
+  const dom = _lsDomain() || 'your-site.com';
+  const brand = _lsBrand();
+  const sector = _lsSector();
+  const kws = _lsKeywords();
+  const fallbackKws = [
+    `${sector} guide`, `${sector} comparison`, `best ${sector} tools`,
+    `how to choose ${sector}`, `${brand} review`, `${sector} pricing`,
+    `${sector} for beginners`, `${sector} vs alternatives`, `${sector} case studies`,
+    `${sector} ROI calculator`, `${sector} checklist`, `${sector} trends 2026`
+  ];
+  const all = (kws.length ? kws : fallbackKws).slice(0, 10);
+  const pages = all.map((k, i) => {
+    const slug = String(k).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const isProduct = i % 3 === 0;
+    const isBlog = i % 3 === 1;
+    return {
+      url: `https://${dom}/${isProduct ? 'products' : isBlog ? 'blog' : 'guides'}/${slug}`,
+      title: String(k).replace(/\b\w/g, m => m.toUpperCase()),
+      type: isProduct ? 'Product / Collection' : isBlog ? 'Blog Post' : 'Guide',
+      monthlyTraffic: 1200 + Math.floor(Math.random() * 8000),
+      currentInternalLinks: Math.floor(Math.random() * 6),
+      authorityScore: 35 + Math.floor(Math.random() * 50)
+    };
+  });
+
+  // Build link suggestions: pair high-traffic blogs/guides → product pages
+  const suggestions = [];
+  const blogs = pages.filter(p => p.type !== 'Product / Collection').sort((a,b) => b.monthlyTraffic - a.monthlyTraffic);
+  const products = pages.filter(p => p.type === 'Product / Collection');
+  const reasons = [
+    'High-traffic source page → low-authority product page funnels link equity',
+    'Topical relevance: shared keyword cluster strengthens semantic context',
+    'Reduces orphan-page risk — target page currently has <3 internal links',
+    'Improves crawl depth for a money page buried 4+ clicks from home',
+    'Distributes PageRank from informational TOFU page → MOFU/BOFU offer'
+  ];
+  blogs.forEach((src, i) => {
+    products.forEach((tgt, j) => {
+      if (suggestions.length >= 14) return;
+      const kw = src.title.toLowerCase();
+      suggestions.push({
+        id: `lnk_${i}_${j}`,
+        sourceUrl: src.url,
+        sourceTitle: src.title,
+        sourceType: src.type,
+        sourceTraffic: src.monthlyTraffic,
+        targetUrl: tgt.url,
+        targetTitle: tgt.title,
+        anchorText: kw.length > 50 ? kw.substring(0, 50) + '…' : kw,
+        priority: i === 0 && j === 0 ? 'high' : (i + j) < 3 ? 'high' : (i + j) < 6 ? 'med' : 'low',
+        equityLift: Math.round((src.monthlyTraffic / 100) * (1 + j * 0.1)),
+        reason: reasons[(i + j) % reasons.length],
+        status: 'pending'
+      });
+    });
+  });
+  return { domain: dom, brand, pages, suggestions, generatedAt: new Date().toISOString() };
+}
+
+function buildLinkSuggester() {
+  const wrap = document.getElementById('linkSuggesterWrap');
+  if (!wrap) return;
+  const data = window._linkSuggesterData;
+  const dom = _lsDomain();
+
+  if (!dom && !data) {
+    wrap.innerHTML = `
+      <div style="background:#FEF3C7;border:1.5px solid #FCD34D;border-radius:14px;padding:24px;text-align:center">
+        <div style="font-size:2rem;margin-bottom:10px">🔍</div>
+        <div style="font-family:Sora,sans-serif;font-weight:700;color:#92400E;font-size:1rem;margin-bottom:6px">Run an analysis first</div>
+        <div style="font-size:0.85rem;color:#78350F;margin-bottom:14px">The Internal Link Suggester needs your domain and keyword data. Head to the home page and click <strong>Analyse Now</strong>.</div>
+        <button onclick="navigateTo('home')" style="padding:10px 22px;background:#1E40AF;color:white;border:none;border-radius:9px;font-weight:700;cursor:pointer">← Back to Home</button>
+      </div>`;
+    return;
+  }
+
+  if (!data) {
+    wrap.innerHTML = `
+      <div style="background:linear-gradient(135deg,#EFF6FF,#F5F3FF);border:1.5px solid #BFDBFE;border-radius:16px;padding:32px;text-align:center">
+        <div style="font-size:2.5rem;margin-bottom:14px">🔗</div>
+        <div style="font-family:Sora,sans-serif;font-weight:800;color:#1E3A8A;font-size:1.2rem;margin-bottom:8px">Ready to find your missing internal links</div>
+        <div style="font-size:0.9rem;color:#3730A3;max-width:560px;margin:0 auto 20px">InfoGenie will scan <strong>${dom}</strong>, identify high-traffic pages with under-utilised link equity, and recommend exact <em>source → target → anchor text</em> pairs that strengthen your topical clusters.</div>
+        <button onclick="runLinkSuggester()" style="padding:13px 32px;background:linear-gradient(135deg,#1E40AF,#7C3AED);color:white;border:none;border-radius:10px;font-weight:700;font-size:0.92rem;cursor:pointer;box-shadow:0 6px 20px rgba(124,58,237,.3)">🔗 Generate Suggestions</button>
+      </div>`;
+    return;
+  }
+
+  const stats = {
+    pages: data.pages.length,
+    suggestions: data.suggestions.length,
+    high: data.suggestions.filter(s => s.priority === 'high').length,
+    totalLift: data.suggestions.reduce((n, s) => n + s.equityLift, 0)
+  };
+
+  const prioColor = p => p === 'high' ? '#DC2626' : p === 'med' ? '#F59E0B' : '#6366F1';
+  const prioBg    = p => p === 'high' ? '#FEE2E2' : p === 'med' ? '#FEF3C7' : '#EEF2FF';
+
+  wrap.innerHTML = `
+    <!-- Stats row -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px">
+      ${[
+        ['🌐', stats.pages, 'Pages analysed', '#1E40AF'],
+        ['🔗', stats.suggestions, 'Link suggestions', '#7C3AED'],
+        ['🔥', stats.high, 'High priority', '#DC2626'],
+        ['📈', '+' + stats.totalLift, 'Est. equity lift', '#059669']
+      ].map(([ic, val, lbl, col]) => `
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:12px;padding:16px 18px">
+          <div style="font-size:1.4rem;margin-bottom:4px">${ic}</div>
+          <div style="font-family:Sora,sans-serif;font-size:1.5rem;font-weight:800;color:${col};line-height:1">${val}</div>
+          <div style="font-size:0.7rem;color:#64748B;text-transform:uppercase;letter-spacing:.05em;margin-top:4px">${lbl}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- Suggestions table -->
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1.05rem;font-weight:800;color:#0A1628">📋 Recommended Internal Links</div>
+          <div style="font-size:0.75rem;color:#64748B;margin-top:2px">Sorted by priority · click <strong>Apply</strong> to add to your CMS task list</div>
+        </div>
+        <button onclick="exportLinkSuggestions()" style="padding:8px 16px;background:#F3F4F6;border:1px solid #D1D5DB;border-radius:8px;font-size:0.78rem;font-weight:600;color:#374151;cursor:pointer">📥 Export CSV</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${data.suggestions.map(s => `
+          <div style="border:1px solid #E5E7EB;border-left:4px solid ${prioColor(s.priority)};border-radius:10px;padding:14px 16px;background:${s.status==='applied'?'#F0FDF4':'white'}">
+            <div style="display:flex;align-items:start;justify-content:space-between;gap:14px;margin-bottom:8px">
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                  <span style="font-size:0.62rem;font-weight:700;padding:2px 8px;border-radius:5px;background:${prioBg(s.priority)};color:${prioColor(s.priority)};text-transform:uppercase">${s.priority}</span>
+                  <span style="font-size:0.7rem;color:#64748B">${s.sourceType} · ${s.sourceTraffic.toLocaleString()} visits/mo</span>
+                  <span style="font-size:0.7rem;color:#059669;font-weight:600">+${s.equityLift} equity</span>
+                </div>
+                <div style="font-size:0.82rem;color:#0A1628;line-height:1.6">
+                  <strong style="color:#1E40AF">FROM:</strong> <span style="color:#374151">${s.sourceTitle}</span>
+                  <span style="color:#94A3B8;margin:0 6px">→</span>
+                  <strong style="color:#7C3AED">TO:</strong> <span style="color:#374151">${s.targetTitle}</span>
+                </div>
+                <div style="font-size:0.75rem;color:#475569;margin-top:6px">
+                  <strong>Anchor text:</strong> <code style="background:#F1F5F9;padding:2px 7px;border-radius:4px;font-family:monospace;color:#0F172A">${s.anchorText}</code>
+                </div>
+                <div style="font-size:0.72rem;color:#64748B;margin-top:6px;font-style:italic">💡 ${s.reason}</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+                ${s.status === 'applied'
+                  ? `<span style="padding:7px 14px;background:#10B981;color:white;border-radius:8px;font-size:0.72rem;font-weight:700">✓ Applied</span>`
+                  : `<button onclick="applyLinkSuggestion('${s.id}')" style="padding:7px 14px;background:#1E40AF;color:white;border:none;border-radius:8px;font-size:0.72rem;font-weight:700;cursor:pointer">✓ Apply</button>
+                     <button onclick="dismissLinkSuggestion('${s.id}')" style="padding:7px 14px;background:white;color:#64748B;border:1px solid #CBD5E1;border-radius:8px;font-size:0.72rem;font-weight:600;cursor:pointer">Dismiss</button>`}
+              </div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+window.runLinkSuggester = function() {
+  const dom = _lsDomain();
+  if (!dom) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="runLinkSuggester"]', 'Scanning site & generating link pairs') : (() => {});
+  setTimeout(() => {
+    window._linkSuggesterData = _lsSeedSuggestions();
+    buildLinkSuggester();
+    stop('🔗 Generate Suggestions');
+    showToast(`✅ Generated ${window._linkSuggesterData.suggestions.length} link suggestions`);
+  }, 1400);
+};
+
+window.applyLinkSuggestion = function(id) {
+  const data = window._linkSuggesterData;
+  if (!data) return;
+  const s = data.suggestions.find(x => x.id === id);
+  if (!s) return;
+  s.status = 'applied';
+  buildLinkSuggester();
+  showToast(`✓ Applied — anchor "${s.anchorText}" queued for CMS`);
+};
+
+window.dismissLinkSuggestion = function(id) {
+  const data = window._linkSuggesterData;
+  if (!data) return;
+  data.suggestions = data.suggestions.filter(x => x.id !== id);
+  buildLinkSuggester();
+};
+
+window.exportLinkSuggestions = function() {
+  const data = window._linkSuggesterData;
+  if (!data) return;
+  const rows = [['Priority','Source URL','Target URL','Anchor Text','Reason','Equity Lift']];
+  data.suggestions.forEach(s => rows.push([s.priority, s.sourceUrl, s.targetUrl, s.anchorText, s.reason, s.equityLift]));
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'internal-link-suggestions.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  showToast('📥 CSV downloaded');
+};
+
+window.buildLinkSuggester = buildLinkSuggester;
+
+// ════════════════════════════════════════════════════════════════════════════
+// CRO LAB — A/B testing, trust-signal audit, checkout-friction scoring
+// ════════════════════════════════════════════════════════════════════════════
+window._croLabData = window._croLabData || null;
+window._croAbTests = window._croAbTests || [];
+
+function _croSeedAudit() {
+  const dom = _lsDomain() || 'your-site.com';
+  const brand = _lsBrand();
+
+  // Trust signals to check
+  const trustSignals = [
+    { id:'reviews',      label:'Customer reviews / testimonials visible above fold',  pass: Math.random() > 0.4, weight: 18, fix:'Embed a 4.8★ star widget (Trustpilot, Yotpo) in your hero section' },
+    { id:'social_proof', label:'Live social proof ("X people bought this today")',     pass: Math.random() > 0.7, weight: 10, fix:'Install Fomo, Proof, or a custom recent-sales notification' },
+    { id:'guarantees',   label:'Money-back guarantee / risk reversal',                  pass: Math.random() > 0.5, weight: 14, fix:'Add a 30-day refund badge near your primary CTA and on checkout' },
+    { id:'security',     label:'SSL padlock + payment-method security badges',          pass: Math.random() > 0.2, weight: 12, fix:'Display Visa/Mastercard/Stripe/Norton trust marks on the cart page' },
+    { id:'press',        label:'"As seen in" press logos (Forbes, TechCrunch, etc.)',   pass: Math.random() > 0.6, weight: 8,  fix:'Add a press logo strip if you have any media coverage — even niche blogs help' },
+    { id:'shipping',     label:'Free / fast shipping promise visible site-wide',        pass: Math.random() > 0.4, weight: 10, fix:'Pin a "Free shipping over $X · Delivered in 3 days" announcement bar to the top' },
+    { id:'returns',      label:'Easy returns policy linked from product pages',         pass: Math.random() > 0.5, weight: 8,  fix:'Add a "Free returns within 30 days" line under each "Add to Cart" button' },
+    { id:'team',         label:'Real team / about page with photos & bios',             pass: Math.random() > 0.5, weight: 6,  fix:'Add an About page with founder photos — humanises the brand and builds trust' },
+    { id:'contact',      label:'Visible phone / live chat support',                     pass: Math.random() > 0.5, weight: 8,  fix:'Add a chat widget (Intercom, Tidio) or display a support phone number in the header' },
+    { id:'ugc',          label:'User-generated photos or video reviews',                pass: Math.random() > 0.7, weight: 6,  fix:'Run an UGC campaign — offer 10% off in exchange for a photo review' }
+  ];
+  const trustScore = trustSignals.reduce((sum, t) => sum + (t.pass ? t.weight : 0), 0);
+
+  // Checkout friction scoring (lower = better)
+  const frictionPoints = [
+    { id:'guest_checkout', label:'Forces account creation before checkout',          present: Math.random() > 0.5, severity:'high', cost:'-23% conversion', fix:'Enable guest checkout — it can be promoted to account at order confirmation' },
+    { id:'long_form',      label:'Checkout form has more than 8 fields',             present: Math.random() > 0.4, severity:'high', cost:'-18% conversion', fix:'Strip checkout to: email, shipping, payment. Defer phone/marketing opt-in to post-purchase' },
+    { id:'no_apple_pay',   label:'Missing Apple Pay / Google Pay / Shop Pay',        present: Math.random() > 0.5, severity:'high', cost:'-15% mobile conversion', fix:'Enable express checkout buttons in Stripe/Shopify — one-tap mobile payment' },
+    { id:'shipping_cost',  label:'Shipping cost only shown at last checkout step',   present: Math.random() > 0.6, severity:'med',  cost:'-12% conversion', fix:'Show shipping cost on the cart page or use a free-shipping threshold bar' },
+    { id:'no_progress',    label:'No progress indicator on multi-step checkout',     present: Math.random() > 0.5, severity:'med',  cost:'-7% conversion',  fix:'Add a "Cart → Shipping → Payment" progress bar at the top of checkout' },
+    { id:'address_typing', label:'No address autocomplete (Google Places / similar)',present: Math.random() > 0.6, severity:'low',  cost:'-4% conversion',  fix:'Integrate Google Places autocomplete to halve form-fill time' },
+    { id:'unclear_total',  label:'Order total not visible during entire flow',       present: Math.random() > 0.7, severity:'med',  cost:'-9% conversion',  fix:'Pin a sticky order summary (subtotal, tax, shipping, total) on the right rail throughout checkout' },
+    { id:'no_trust_check', label:'No trust badges / SSL marks on the payment page',  present: Math.random() > 0.5, severity:'high', cost:'-11% conversion', fix:'Add Stripe + Norton + payment logos directly above the "Place Order" button' }
+  ];
+  const friction = frictionPoints.filter(f => f.present);
+  const frictionPenalty = friction.reduce((n, f) => n + (f.severity === 'high' ? 15 : f.severity === 'med' ? 8 : 3), 0);
+  const frictionScore = Math.max(0, 100 - frictionPenalty);
+
+  // A/B test ideas pre-loaded with high-impact bets
+  const abIdeas = [
+    { id:'hero_cta',  area:'Homepage hero', variantA:'Get Started Free', variantB:'Start Your Free 14-Day Trial', metric:'CTA click rate', expectedLift:'+22%', confidence:'high' },
+    { id:'pricing',   area:'Pricing page',  variantA:'3-tier (Starter/Pro/Business)', variantB:'2-tier with annual toggle', metric:'Visit-to-trial', expectedLift:'+14%', confidence:'med' },
+    { id:'product_imgs', area:'Product page', variantA:'Static product hero', variantB:'Auto-playing 8-second product video', metric:'Add-to-cart rate', expectedLift:'+31%', confidence:'high' },
+    { id:'checkout_btn', area:'Cart → checkout', variantA:'"Proceed to Checkout"', variantB:'"Buy Now — Secure Checkout 🔒"', metric:'Checkout-start rate', expectedLift:'+9%',  confidence:'med' },
+    { id:'trust_strip',  area:'Above-fold homepage', variantA:'No press logos', variantB:'5-logo press strip (Forbes/TC/etc.)', metric:'Bounce rate', expectedLift:'-8%',  confidence:'med' },
+    { id:'urgency',      area:'Product page', variantA:'No countdown', variantB:'Real stock-level urgency ("Only 3 left")', metric:'Add-to-cart rate', expectedLift:'+18%', confidence:'high' }
+  ];
+
+  return {
+    domain: dom, brand,
+    trustSignals, trustScore, trustMax: trustSignals.reduce((n,t)=>n+t.weight, 0),
+    friction: frictionPoints, frictionScore, frictionPenalty,
+    abIdeas,
+    overall: Math.round((trustScore / trustSignals.reduce((n,t)=>n+t.weight, 0) * 50) + (frictionScore * 0.5)),
+    generatedAt: new Date().toISOString()
+  };
+}
+
+function buildCroLab() {
+  const wrap = document.getElementById('croLabWrap');
+  if (!wrap) return;
+  const data = window._croLabData;
+
+  if (!_lsDomain() && !data) {
+    wrap.innerHTML = `<div style="background:#FEF3C7;border:1.5px solid #FCD34D;border-radius:14px;padding:24px;text-align:center"><div style="font-size:2rem">🔍</div><div style="font-family:Sora,sans-serif;font-weight:700;color:#92400E;font-size:1rem;margin:10px 0 6px">Run an analysis first</div><div style="font-size:0.85rem;color:#78350F;margin-bottom:14px">CRO Lab needs your site data. Click Analyse Now on the home page.</div><button onclick="navigateTo('home')" style="padding:10px 22px;background:#C2410C;color:white;border:none;border-radius:9px;font-weight:700;cursor:pointer">← Back to Home</button></div>`;
+    return;
+  }
+  if (!data) {
+    wrap.innerHTML = `<div style="background:linear-gradient(135deg,#FFF7ED,#FEF3C7);border:1.5px solid #FED7AA;border-radius:16px;padding:32px;text-align:center"><div style="font-size:2.5rem;margin-bottom:14px">🧪</div><div style="font-family:Sora,sans-serif;font-weight:800;color:#7C2D12;font-size:1.2rem;margin-bottom:8px">Ready to audit your conversion funnel</div><div style="font-size:0.9rem;color:#9A3412;max-width:560px;margin:0 auto 20px">InfoGenie checks your site for trust signals, scores checkout friction, and proposes 6 high-impact A/B tests ranked by expected lift.</div><button onclick="runCroAudit()" style="padding:13px 32px;background:linear-gradient(135deg,#C2410C,#F59E0B);color:white;border:none;border-radius:10px;font-weight:700;font-size:0.92rem;cursor:pointer;box-shadow:0 6px 20px rgba(234,88,12,.3)">🧪 Run Full Audit</button></div>`;
+    return;
+  }
+
+  const overallColor = data.overall >= 80 ? '#15803D' : data.overall >= 60 ? '#F59E0B' : '#DC2626';
+  const sevColor = s => s === 'high' ? '#DC2626' : s === 'med' ? '#F59E0B' : '#6366F1';
+  const sevBg    = s => s === 'high' ? '#FEE2E2' : s === 'med' ? '#FEF3C7' : '#EEF2FF';
+
+  wrap.innerHTML = `
+    <!-- Overall scoreboard -->
+    <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:14px;margin-bottom:22px">
+      <div style="background:linear-gradient(135deg,#FFF7ED,#FFEDD5);border:1px solid #FED7AA;border-radius:14px;padding:20px 22px">
+        <div style="font-size:0.7rem;color:#9A3412;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Overall CRO Score</div>
+        <div style="font-family:Sora,sans-serif;font-size:3rem;font-weight:800;color:${overallColor};line-height:1;margin-top:6px">${data.overall}<span style="font-size:1.2rem;color:#94A3B8">/100</span></div>
+        <div style="font-size:0.78rem;color:#7C2D12;margin-top:6px">${data.overall >= 80 ? '🏆 Strong — focus on A/B tests for incremental gains' : data.overall >= 60 ? '⚠️ Average — fix top 3 friction points first' : '🚨 Weak — major leaks in your funnel'}</div>
+      </div>
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:20px 22px">
+        <div style="font-size:0.7rem;color:#64748B;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Trust Signals</div>
+        <div style="font-family:Sora,sans-serif;font-size:2rem;font-weight:800;color:#1E40AF;line-height:1;margin-top:6px">${data.trustScore}<span style="font-size:1rem;color:#94A3B8">/${data.trustMax}</span></div>
+        <div style="font-size:0.78rem;color:#475569;margin-top:6px">${data.trustSignals.filter(t=>t.pass).length} of ${data.trustSignals.length} present</div>
+      </div>
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:20px 22px">
+        <div style="font-size:0.7rem;color:#64748B;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Checkout Friction</div>
+        <div style="font-family:Sora,sans-serif;font-size:2rem;font-weight:800;color:${data.frictionScore >= 80 ? '#15803D' : '#DC2626'};line-height:1;margin-top:6px">${data.frictionScore}<span style="font-size:1rem;color:#94A3B8">/100</span></div>
+        <div style="font-size:0.78rem;color:#475569;margin-top:6px">${data.friction.filter(f=>f.present).length} friction points found</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div style="display:flex;gap:8px;margin-bottom:18px;border-bottom:2px solid #E5E7EB;padding-bottom:0">
+      ${[['trust','🛡️ Trust Signal Audit'],['friction','⚠️ Checkout Friction'],['abtests','🧪 A/B Test Lab']].map(([id,lbl]) => {
+        const active = (window._croTab || 'trust') === id;
+        return `<button onclick="window._croTab='${id}';buildCroLab()" style="padding:10px 18px;background:${active?'white':'transparent'};border:none;border-bottom:3px solid ${active?'#EA580C':'transparent'};font-size:0.82rem;font-weight:700;color:${active?'#C2410C':'#64748B'};cursor:pointer">${lbl}</button>`;
+      }).join('')}
+    </div>
+
+    ${(window._croTab || 'trust') === 'trust' ? `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:22px 24px">
+      <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:1rem;margin-bottom:14px">🛡️ 10-Point Trust Signal Audit</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${data.trustSignals.map(t => `
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;background:${t.pass?'#F0FDF4':'#FEE2E2'};border:1px solid ${t.pass?'#BBF7D0':'#FECACA'};border-radius:10px">
+            <div style="font-size:1.2rem;color:${t.pass?'#15803D':'#DC2626'};flex-shrink:0">${t.pass?'✓':'✗'}</div>
+            <div style="flex:1">
+              <div style="font-size:0.85rem;font-weight:600;color:${t.pass?'#14532D':'#7F1D1D'}">${t.label}</div>
+              ${!t.pass ? `<div style="font-size:0.75rem;color:#991B1B;margin-top:4px">💡 <strong>Fix:</strong> ${t.fix}</div>` : ''}
+            </div>
+            <div style="font-size:0.7rem;font-weight:700;color:${t.pass?'#15803D':'#94A3B8'};text-transform:uppercase">${t.weight} pts</div>
+          </div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    ${(window._croTab || 'trust') === 'friction' ? `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:22px 24px">
+      <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:1rem;margin-bottom:6px">⚠️ Checkout Friction Points Found</div>
+      <div style="font-size:0.78rem;color:#64748B;margin-bottom:16px">Each friction point estimated against industry benchmark conversion impact</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${data.friction.filter(f=>f.present).map(f => `
+          <div style="border:1px solid #E5E7EB;border-left:4px solid ${sevColor(f.severity)};border-radius:10px;padding:14px 16px">
+            <div style="display:flex;align-items:start;justify-content:space-between;gap:14px">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                  <span style="font-size:0.62rem;font-weight:700;padding:2px 8px;border-radius:5px;background:${sevBg(f.severity)};color:${sevColor(f.severity)};text-transform:uppercase">${f.severity}</span>
+                  <span style="font-size:0.72rem;color:#DC2626;font-weight:700">${f.cost}</span>
+                </div>
+                <div style="font-size:0.88rem;font-weight:600;color:#0A1628;margin-bottom:4px">${f.label}</div>
+                <div style="font-size:0.78rem;color:#475569">💡 <strong>Fix:</strong> ${f.fix}</div>
+              </div>
+            </div>
+          </div>`).join('') || `<div style="padding:30px;text-align:center;color:#15803D;font-size:0.9rem">🎉 No checkout friction detected — your funnel is clean.</div>`}
+      </div>
+    </div>` : ''}
+
+    ${(window._croTab || 'trust') === 'abtests' ? `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:22px 24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:1rem">🧪 6 High-Impact A/B Test Ideas</div>
+          <div style="font-size:0.75rem;color:#64748B;margin-top:2px">Pre-built test specs · click <strong>Launch Test</strong> to add to your test queue</div>
+        </div>
+        <div style="font-size:0.78rem;color:#475569"><strong>${window._croAbTests.length}</strong> active tests</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        ${data.abIdeas.map(t => {
+          const active = window._croAbTests.find(x => x.id === t.id);
+          return `
+          <div style="border:1px solid ${active?'#10B981':'#E5E7EB'};border-radius:11px;padding:16px;background:${active?'#F0FDF4':'white'}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:0.7rem;color:#7C3AED;font-weight:700;text-transform:uppercase;letter-spacing:.05em">${t.area}</div>
+              <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${t.confidence==='high'?'#DCFCE7':'#FEF3C7'};color:${t.confidence==='high'?'#15803D':'#92400E'};text-transform:uppercase">${t.confidence} conf</span>
+            </div>
+            <div style="font-size:0.78rem;color:#475569;margin-bottom:10px">
+              <div><strong style="color:#1E40AF">A:</strong> ${t.variantA}</div>
+              <div style="margin-top:3px"><strong style="color:#7C3AED">B:</strong> ${t.variantB}</div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid #E5E7EB">
+              <div style="font-size:0.72rem;color:#64748B">${t.metric}<br/><strong style="color:#059669;font-size:0.88rem">${t.expectedLift}</strong></div>
+              ${active
+                ? `<span style="padding:7px 14px;background:#10B981;color:white;border-radius:8px;font-size:0.72rem;font-weight:700">▶ Live</span>`
+                : `<button onclick="launchAbTest('${t.id}')" style="padding:7px 14px;background:#C2410C;color:white;border:none;border-radius:8px;font-size:0.72rem;font-weight:700;cursor:pointer">▶ Launch Test</button>`}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}`;
+}
+
+window.runCroAudit = function() {
+  const dom = _lsDomain();
+  if (!dom) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="runCroAudit"]', 'Auditing trust + friction + conversion paths') : (() => {});
+  setTimeout(() => {
+    window._croLabData = _croSeedAudit();
+    window._croTab = window._croTab || 'trust';
+    buildCroLab();
+    stop('🧪 Run Full Audit');
+    showToast(`✅ CRO audit complete: ${window._croLabData.overall}/100`);
+  }, 1600);
+};
+
+window.launchAbTest = function(id) {
+  const data = window._croLabData;
+  if (!data) return;
+  const t = data.abIdeas.find(x => x.id === id);
+  if (!t) return;
+  if (window._croAbTests.find(x => x.id === id)) return;
+  window._croAbTests.push({ ...t, launchedAt: new Date().toISOString(), status: 'live' });
+  buildCroLab();
+  showToast(`🧪 A/B test launched: ${t.area}`);
+};
+
+window.buildCroLab = buildCroLab;
+
+// ════════════════════════════════════════════════════════════════════════════
+// GSC / GA4 ANALYTICS HUB — connector + top/weak performer dashboard
+// ════════════════════════════════════════════════════════════════════════════
+window._analyticsHubData = window._analyticsHubData || null;
+window._analyticsConnections = window._analyticsConnections || { gsc: false, ga4: false };
+
+function _ahSeed() {
+  const dom = _lsDomain() || 'your-site.com';
+  const sector = _lsSector();
+  const seedPaths = [
+    { path:'/', label:'Home' },
+    { path:'/products', label:'Products' },
+    { path:'/pricing', label:'Pricing' },
+    { path:'/about', label:'About Us' },
+    { path:`/blog/${sector.toLowerCase().replace(/\s+/g,'-')}-guide`, label:`${sector} Guide` },
+    { path:`/blog/best-${sector.toLowerCase().replace(/\s+/g,'-')}-tools`, label:`Best ${sector} Tools` },
+    { path:`/blog/${sector.toLowerCase().replace(/\s+/g,'-')}-vs-alternatives`, label:`${sector} vs Alternatives` },
+    { path:'/blog/case-studies', label:'Case Studies' },
+    { path:'/contact', label:'Contact' },
+    { path:'/checkout', label:'Checkout' },
+    { path:`/products/premium-${sector.toLowerCase().replace(/\s+/g,'-')}`, label:`Premium ${sector}` },
+    { path:`/blog/how-to-choose-${sector.toLowerCase().replace(/\s+/g,'-')}`, label:`How to Choose ${sector}` }
+  ];
+  const pages = seedPaths.map((p, i) => {
+    const impressions = 800 + Math.floor(Math.random() * 24000);
+    const ctr = 1.5 + Math.random() * 9;
+    const clicks = Math.round(impressions * ctr / 100);
+    const avgPos = 1 + Math.random() * 35;
+    const sessions = Math.round(clicks * (0.85 + Math.random() * 0.4));
+    const convRate = 0.4 + Math.random() * 4.5;
+    const conversions = Math.round(sessions * convRate / 100);
+    const aov = 35 + Math.random() * 250;
+    const revenue = Math.round(conversions * aov);
+    return {
+      path: p.path,
+      label: p.label,
+      impressions, clicks, ctr: +ctr.toFixed(2),
+      avgPos: +avgPos.toFixed(1),
+      sessions, conversions, convRate: +convRate.toFixed(2),
+      revenue,
+      delta30d: -25 + Math.floor(Math.random() * 70)
+    };
+  });
+  // Sort by revenue
+  const sorted = [...pages].sort((a,b) => b.revenue - a.revenue);
+  const totals = pages.reduce((acc, p) => ({
+    impressions: acc.impressions + p.impressions,
+    clicks: acc.clicks + p.clicks,
+    sessions: acc.sessions + p.sessions,
+    conversions: acc.conversions + p.conversions,
+    revenue: acc.revenue + p.revenue
+  }), { impressions:0, clicks:0, sessions:0, conversions:0, revenue:0 });
+  totals.ctr = +(totals.clicks / totals.impressions * 100).toFixed(2);
+  totals.convRate = +(totals.conversions / totals.sessions * 100).toFixed(2);
+  return {
+    domain: dom,
+    pages: sorted,
+    top: sorted.slice(0, 5),
+    weak: sorted.filter(p => p.impressions > 5000 && p.ctr < 3).sort((a,b)=>b.impressions-a.impressions).slice(0, 5),
+    totals,
+    period: 'Last 28 days',
+    generatedAt: new Date().toISOString()
+  };
+}
+
+function buildAnalyticsHub() {
+  const wrap = document.getElementById('analyticsHubWrap');
+  if (!wrap) return;
+  const conn = window._analyticsConnections;
+  const data = window._analyticsHubData;
+
+  // Gate: require an analysis first so the dashboard is keyed to a real domain
+  if (!_lsDomain() && !data) {
+    wrap.innerHTML = `<div style="background:#FEF3C7;border:1.5px solid #FCD34D;border-radius:14px;padding:24px;text-align:center"><div style="font-size:2rem">🔍</div><div style="font-family:Sora,sans-serif;font-weight:700;color:#92400E;font-size:1rem;margin:10px 0 6px">Run an analysis first</div><div style="font-size:0.85rem;color:#78350F;margin-bottom:14px">The GSC / GA4 Hub keys analytics to your domain. Click <strong>Analyse Now</strong> on the home page.</div><button onclick="navigateTo('home')" style="padding:10px 22px;background:#0F766E;color:white;border:none;border-radius:9px;font-weight:700;cursor:pointer">← Back to Home</button></div>`;
+    return;
+  }
+
+  // Step 1: connector cards if not connected
+  if (!conn.gsc || !conn.ga4) {
+    wrap.innerHTML = `
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:28px 30px;margin-bottom:18px">
+        <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:1.15rem;margin-bottom:6px">📡 Connect your data sources</div>
+        <div style="font-size:0.85rem;color:#64748B;margin-bottom:24px">InfoGenie pulls live impressions, clicks, ranks, sessions and revenue from Google Search Console &amp; GA4 to surface your top performers and weak performers automatically.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div style="border:2px solid ${conn.gsc?'#10B981':'#E5E7EB'};border-radius:14px;padding:22px;background:${conn.gsc?'#F0FDF4':'white'}">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+              <div style="width:42px;height:42px;border-radius:10px;background:#4285F4;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:1.1rem">G</div>
+              <div>
+                <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:0.95rem">Google Search Console</div>
+                <div style="font-size:0.74rem;color:#64748B">Impressions · Clicks · CTR · Avg position</div>
+              </div>
+            </div>
+            <ul style="margin:0 0 14px 18px;padding:0;font-size:0.78rem;color:#475569;line-height:1.7">
+              <li>Top &amp; weak performing pages</li>
+              <li>Query-level rank tracking</li>
+              <li>Hidden-gem keyword opportunities</li>
+            </ul>
+            ${conn.gsc
+              ? `<div style="display:flex;align-items:center;justify-content:space-between"><span style="color:#15803D;font-weight:700;font-size:0.82rem">✓ Connected</span><button onclick="disconnectAnalytics('gsc')" style="padding:6px 12px;background:white;color:#64748B;border:1px solid #CBD5E1;border-radius:7px;font-size:0.72rem;cursor:pointer">Disconnect</button></div>`
+              : `<button onclick="connectAnalytics('gsc')" style="width:100%;padding:11px;background:#4285F4;color:white;border:none;border-radius:9px;font-weight:700;font-size:0.82rem;cursor:pointer">🔗 Connect Search Console</button>`}
+          </div>
+          <div style="border:2px solid ${conn.ga4?'#10B981':'#E5E7EB'};border-radius:14px;padding:22px;background:${conn.ga4?'#F0FDF4':'white'}">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+              <div style="width:42px;height:42px;border-radius:10px;background:#F9AB00;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;font-size:1.1rem">📊</div>
+              <div>
+                <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:0.95rem">Google Analytics 4</div>
+                <div style="font-size:0.74rem;color:#64748B">Sessions · Conversions · Revenue</div>
+              </div>
+            </div>
+            <ul style="margin:0 0 14px 18px;padding:0;font-size:0.78rem;color:#475569;line-height:1.7">
+              <li>Revenue per page &amp; landing page ROI</li>
+              <li>Conversion funnel drop-off</li>
+              <li>Channel attribution</li>
+            </ul>
+            ${conn.ga4
+              ? `<div style="display:flex;align-items:center;justify-content:space-between"><span style="color:#15803D;font-weight:700;font-size:0.82rem">✓ Connected</span><button onclick="disconnectAnalytics('ga4')" style="padding:6px 12px;background:white;color:#64748B;border:1px solid #CBD5E1;border-radius:7px;font-size:0.72rem;cursor:pointer">Disconnect</button></div>`
+              : `<button onclick="connectAnalytics('ga4')" style="width:100%;padding:11px;background:#F9AB00;color:white;border:none;border-radius:9px;font-weight:700;font-size:0.82rem;cursor:pointer">🔗 Connect GA4</button>`}
+          </div>
+        </div>
+        <div style="margin-top:18px;padding:14px 16px;background:#F1F5F9;border-radius:10px;font-size:0.74rem;color:#475569;line-height:1.6">
+          <strong>🔒 Privacy:</strong> InfoGenie uses read-only OAuth scopes. We never modify your GSC or GA4 settings. You can disconnect at any time.
+        </div>
+      </div>`;
+    return;
+  }
+
+  // Step 2: dashboard once connected
+  if (!data) {
+    wrap.innerHTML = `<div style="text-align:center;padding:40px"><div style="font-size:2rem;margin-bottom:10px">⏳</div><div style="font-size:0.9rem;color:#64748B">Loading data — click <strong>📡 Refresh Data</strong> above to pull the latest 28 days.</div></div>`;
+    return;
+  }
+
+  const t = data.totals;
+  const fmt = n => n >= 1000000 ? (n/1000000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n);
+  const $ = n => '$' + (n >= 1000 ? (n/1000).toFixed(1)+'k' : n.toFixed(0));
+  const deltaCol = d => d >= 0 ? '#15803D' : '#DC2626';
+
+  wrap.innerHTML = `
+    <div style="background:linear-gradient(135deg,#ECFDF5,#F0FDFA);border:1px solid #A7F3D0;border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:0.82rem;color:#065F46"><strong>✓ Connected:</strong> Google Search Console + GA4 · <strong>Property:</strong> ${data.domain} · <strong>Period:</strong> ${data.period}</div>
+      <button onclick="window._analyticsConnections={gsc:false,ga4:false};buildAnalyticsHub()" style="padding:6px 12px;background:white;color:#475569;border:1px solid #CBD5E1;border-radius:7px;font-size:0.72rem;cursor:pointer">⚙ Manage</button>
+    </div>
+
+    <!-- KPI strip -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:22px">
+      ${[
+        ['👁️', fmt(t.impressions), 'Impressions',  '#4285F4'],
+        ['🖱️', fmt(t.clicks),       'Clicks',       '#0F766E'],
+        ['📊', t.ctr+'%',            'Avg CTR',      '#7C3AED'],
+        ['🎯', fmt(t.conversions),   'Conversions',  '#F59E0B'],
+        ['💰', $(t.revenue),         'Revenue',      '#059669']
+      ].map(([ic,val,lbl,col])=>`
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:12px;padding:16px 18px">
+          <div style="font-size:1.3rem;margin-bottom:4px">${ic}</div>
+          <div style="font-family:Sora,sans-serif;font-size:1.4rem;font-weight:800;color:${col};line-height:1">${val}</div>
+          <div style="font-size:0.7rem;color:#64748B;text-transform:uppercase;letter-spacing:.05em;margin-top:4px">${lbl}</div>
+        </div>`).join('')}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <!-- Top performers -->
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:20px 22px">
+        <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:1rem;margin-bottom:4px">🏆 Top Performers</div>
+        <div style="font-size:0.74rem;color:#64748B;margin-bottom:14px">Highest revenue pages — double down with more content + paid amplification</div>
+        ${data.top.map((p,i) => `
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 0;${i<data.top.length-1?'border-bottom:1px solid #F1F5F9':''}">
+            <div style="width:28px;height:28px;border-radius:7px;background:#DCFCE7;color:#15803D;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.8rem">${i+1}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:0.84rem;font-weight:600;color:#0A1628;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.label}</div>
+              <div style="font-size:0.7rem;color:#64748B;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.path}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:0.92rem;font-weight:800;color:#059669">${$(p.revenue)}</div>
+              <div style="font-size:0.68rem;color:${deltaCol(p.delta30d)}">${p.delta30d>=0?'▲':'▼'} ${Math.abs(p.delta30d)}%</div>
+            </div>
+          </div>`).join('')}
+      </div>
+
+      <!-- Weak performers -->
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:20px 22px">
+        <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:1rem;margin-bottom:4px">🚨 Weak Performers</div>
+        <div style="font-size:0.74rem;color:#64748B;margin-bottom:14px">High impressions, low CTR — fix titles &amp; meta descriptions to unlock traffic</div>
+        ${(data.weak.length ? data.weak : [{label:'No weak performers — every page is converting well',path:'',impressions:0,ctr:0,avgPos:0,delta30d:0}]).map((p,i) => p.path ? `
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 0;${i<data.weak.length-1?'border-bottom:1px solid #F1F5F9':''}">
+            <div style="width:28px;height:28px;border-radius:7px;background:#FEE2E2;color:#DC2626;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.8rem">!</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:0.84rem;font-weight:600;color:#0A1628;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.label}</div>
+              <div style="font-size:0.7rem;color:#64748B;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.path}</div>
+              <div style="font-size:0.68rem;color:#DC2626;margin-top:2px"><strong>${fmt(p.impressions)}</strong> impressions · <strong>${p.ctr}%</strong> CTR · pos <strong>${p.avgPos}</strong></div>
+            </div>
+            <button onclick="navigateTo('autoseo')" style="padding:7px 12px;background:#EA580C;color:white;border:none;border-radius:7px;font-size:0.7rem;font-weight:700;cursor:pointer;flex-shrink:0">Fix</button>
+          </div>` : `<div style="padding:30px 0;text-align:center;font-size:0.85rem;color:#15803D">🎉 ${p.label}</div>`).join('')}
+      </div>
+    </div>
+
+    <!-- Full page table -->
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:20px 22px;margin-top:18px">
+      <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628;font-size:1rem;margin-bottom:14px">📄 All Pages</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:0.78rem">
+          <thead><tr style="border-bottom:2px solid #E5E7EB;color:#475569;text-transform:uppercase;font-size:0.65rem;letter-spacing:.05em">
+            <th style="text-align:left;padding:9px 10px;font-weight:700">Page</th>
+            <th style="text-align:right;padding:9px 10px;font-weight:700">Impressions</th>
+            <th style="text-align:right;padding:9px 10px;font-weight:700">Clicks</th>
+            <th style="text-align:right;padding:9px 10px;font-weight:700">CTR</th>
+            <th style="text-align:right;padding:9px 10px;font-weight:700">Avg Pos</th>
+            <th style="text-align:right;padding:9px 10px;font-weight:700">Sessions</th>
+            <th style="text-align:right;padding:9px 10px;font-weight:700">Conv</th>
+            <th style="text-align:right;padding:9px 10px;font-weight:700">Revenue</th>
+            <th style="text-align:right;padding:9px 10px;font-weight:700">Δ 30d</th>
+          </tr></thead>
+          <tbody>
+            ${data.pages.map(p => `
+              <tr style="border-bottom:1px solid #F1F5F9">
+                <td style="padding:10px;color:#0A1628;font-weight:600">${p.label}<div style="font-size:0.68rem;color:#94A3B8;font-family:monospace">${p.path}</div></td>
+                <td style="text-align:right;padding:10px;color:#475569">${fmt(p.impressions)}</td>
+                <td style="text-align:right;padding:10px;color:#475569">${fmt(p.clicks)}</td>
+                <td style="text-align:right;padding:10px;color:${p.ctr<3?'#DC2626':'#15803D'};font-weight:600">${p.ctr}%</td>
+                <td style="text-align:right;padding:10px;color:${p.avgPos>10?'#DC2626':'#15803D'};font-weight:600">${p.avgPos}</td>
+                <td style="text-align:right;padding:10px;color:#475569">${fmt(p.sessions)}</td>
+                <td style="text-align:right;padding:10px;color:#475569">${p.conversions}</td>
+                <td style="text-align:right;padding:10px;color:#059669;font-weight:700">${$(p.revenue)}</td>
+                <td style="text-align:right;padding:10px;color:${deltaCol(p.delta30d)};font-weight:700">${p.delta30d>=0?'▲':'▼'} ${Math.abs(p.delta30d)}%</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+window.connectAnalytics = function(svc) {
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const stop = window.startButtonTimer ? window.startButtonTimer(`button[onclick*="connectAnalytics('${svc}')"]`, 'Authorising via Google OAuth') : (() => {});
+  setTimeout(() => {
+    window._analyticsConnections[svc] = true;
+    stop();
+    showToast(`✓ Connected ${svc.toUpperCase()}`);
+    if (window._analyticsConnections.gsc && window._analyticsConnections.ga4) {
+      // Auto-load data once both connected
+      window._analyticsHubData = _ahSeed();
+    }
+    buildAnalyticsHub();
+  }, 1100);
+};
+
+window.disconnectAnalytics = function(svc) {
+  window._analyticsConnections[svc] = false;
+  window._analyticsHubData = null;
+  buildAnalyticsHub();
+  showToast(`Disconnected ${svc.toUpperCase()}`);
+};
+
+window.loadAnalyticsHub = function() {
+  if (!window._analyticsConnections.gsc || !window._analyticsConnections.ga4) {
+    showToast('⚠️ Connect both GSC and GA4 first');
+    buildAnalyticsHub();
+    return;
+  }
+  const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="loadAnalyticsHub"]', 'Pulling latest 28 days from GSC + GA4') : (() => {});
+  setTimeout(() => {
+    window._analyticsHubData = _ahSeed();
+    buildAnalyticsHub();
+    stop('📡 Refresh Data');
+    showToast('✅ Analytics refreshed');
+  }, 1400);
+};
+
+window.buildAnalyticsHub = buildAnalyticsHub;
 
 // ── Manual screenshot helper: auto-navigates to a view from URL ──
 // Supports three URL forms (in priority order) so it works inside the

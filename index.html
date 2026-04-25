@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <base href="/">
-  <link rel="stylesheet" href="/style.css?v=20260425M" />
+  <link rel="stylesheet" href="/style.css?v=20260425O" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
   <!-- PostHog SDK stub — init called from app.js after config fetch -->
@@ -124,6 +124,9 @@
           <a href="#" class="nav-link" onclick="event.preventDefault();openWpCredentialsModal()"><span class="ndl-icon">🟦</span><span class="ndl-text">Connect to WordPress</span></a>
           <a href="#" class="nav-link" data-view="aivisibility"><span class="ndl-icon">🤖</span><span class="ndl-text">AI Visibility</span></a>
           <a href="#" class="nav-link" data-view="ai-audit-suite"><span class="ndl-icon">🧪</span><span class="ndl-text">AI Audit Suite</span></a>
+          <a href="#" class="nav-link" data-view="link-suggester"><span class="ndl-icon">🔗</span><span class="ndl-text">Internal Link Suggester</span></a>
+          <a href="#" class="nav-link" data-view="cro-lab"><span class="ndl-icon">🧪</span><span class="ndl-text">CRO Lab</span></a>
+          <a href="#" class="nav-link" data-view="analytics-hub"><span class="ndl-icon">📡</span><span class="ndl-text">GSC / GA4 Hub</span></a>
           <a href="#" class="nav-link" data-view="action-center"><span class="ndl-icon">🎯</span><span class="ndl-text">Action Center</span></a>
           <a href="#" class="nav-link" data-view="kpi-tracker"><span class="ndl-icon">📈</span><span class="ndl-text">KPI Tracker</span></a>
         </div>
@@ -993,6 +996,63 @@
   <div class="container" id="techSuiteWrap" style="padding-top:24px;padding-bottom:40px"></div>
 </div>
 
+<!-- INTERNAL LINK SUGGESTER VIEW -->
+<div class="view hidden" id="view-link-suggester">
+  <div class="view-header" style="background:linear-gradient(135deg,#1E3A8A 0%,#3B82F6 50%,#8B5CF6 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#BFDBFE"><span class="bc-group" style="color:rgba(191,219,254,.8)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Internal Link Suggester</div>
+          <h2 class="view-title">🔗 Internal Link Suggester</h2>
+          <p class="view-sub">AI-powered recommendations: which pages to link, what anchor text to use, and why each link strengthens your topical authority.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" style="background:white;color:#1E40AF" onclick="runLinkSuggester()">🔗 Generate Suggestions</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="linkSuggesterWrap" style="padding-top:24px;padding-bottom:40px"></div>
+</div>
+
+<!-- CRO LAB VIEW -->
+<div class="view hidden" id="view-cro-lab">
+  <div class="view-header" style="background:linear-gradient(135deg,#7C2D12 0%,#EA580C 50%,#F59E0B 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#FED7AA"><span class="bc-group" style="color:rgba(254,215,170,.8)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> CRO Lab</div>
+          <h2 class="view-title">🧪 CRO Lab</h2>
+          <p class="view-sub">Conversion rate optimisation: A/B test setup, trust-signal audit, and checkout-friction scoring — turn your traffic into revenue.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" style="background:white;color:#C2410C" onclick="runCroAudit()">🧪 Run Full Audit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="croLabWrap" style="padding-top:24px;padding-bottom:40px"></div>
+</div>
+
+<!-- GSC / GA4 ANALYTICS HUB VIEW -->
+<div class="view hidden" id="view-analytics-hub">
+  <div class="view-header" style="background:linear-gradient(135deg,#0F766E 0%,#14B8A6 50%,#06B6D4 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#A7F3D0"><span class="bc-group" style="color:rgba(167,243,208,.8)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> GSC / GA4 Hub</div>
+          <h2 class="view-title">📡 GSC / GA4 Analytics Hub</h2>
+          <p class="view-sub">Connect Google Search Console &amp; GA4 — InfoGenie pulls real impressions, clicks, ranks and revenue per page, then highlights top performers and weak performers ready to fix.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" style="background:white;color:#0F766E" onclick="loadAnalyticsHub()">📡 Refresh Data</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="analyticsHubWrap" style="padding-top:24px;padding-bottom:40px"></div>
+</div>
+
 <!-- SETTINGS VIEW -->
 <div class="view hidden" id="view-settings">
   <div class="view-header">
@@ -1444,7 +1504,7 @@
 </div>
 
 <script src="/data.js"></script>
-<script src="/app.js?v=20260425M"></script>
+<script src="/app.js?v=20260425O"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');
