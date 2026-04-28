@@ -6882,7 +6882,7 @@ function buildIntentMap() {
         <div style="font-size:0.7rem;color:#94A3B8;margin-top:6px">Auto-seeded from your competitor analysis. Edit freely.</div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
-        <button onclick="generateIntentMap()" style="padding:10px 22px;background:linear-gradient(135deg,#0066FF,#7C3AED);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">⚡ Generate Intent Map</button>
+        <button id="im-gen-btn" onclick="generateIntentMap()" style="padding:10px 22px;background:linear-gradient(135deg,#0066FF,#7C3AED);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;min-width:200px;display:inline-flex;align-items:center;justify-content:center;gap:6px"><span id="im-gen-btn-label">⚡ Generate Intent Map</span></button>
       </div>
     </div>
 
@@ -6904,6 +6904,10 @@ function _imEmptyState() {
 }
 
 async function generateIntentMap() {
+  // Defensive busy guard — blocks concurrent calls from ANY entry point
+  // (in-card #im-gen-btn, header #intentRunBtn, programmatic calls, etc.)
+  if (window._imBusy) { showToast('⏳ Already generating — please wait for the current map to finish'); return; }
+
   const brand    = (document.getElementById('im-brand')?.value || '').trim();
   const compsCsv = (document.getElementById('im-comps')?.value || '').trim();
   const kwCsv    = (document.getElementById('im-keywords')?.value || '').trim();
@@ -6913,6 +6917,7 @@ async function generateIntentMap() {
 
   if (keywords.length === 0) { showToast('⚠️ Enter at least one keyword to classify'); return; }
   if (keywords.length > 40)  { showToast('ℹ️ Capping at the first 40 keywords'); }
+  window._imBusy = true;
 
   const ad       = window.analysisData || {};
   const url      = ad.url || brand;
@@ -6922,10 +6927,30 @@ async function generateIntentMap() {
   if (out) out.innerHTML = `
     <div style="background:white;border:1px solid #E2E8F0;border-radius:16px;padding:60px 24px;text-align:center">
       <div style="width:48px;height:48px;border:4px solid rgba(0,102,255,.2);border-top-color:#0066FF;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px"></div>
-      <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:700;color:#0A1628;margin-bottom:6px">Classifying ${keywords.length} keyword${keywords.length===1?'':'s'}…</div>
+      <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:700;color:#0A1628;margin-bottom:6px">Classifying ${keywords.length} keyword${keywords.length===1?'':'s'}… <span id="im-timer" style="color:#0066FF">0s</span></div>
       <div style="font-size:0.78rem;color:#64748B;margin-bottom:8px">GPT-4o is mapping intent, page-type fit, and competitor gaps</div>
       <div style="font-size:0.72rem;color:#94A3B8">⏱ Usually takes 8–18 seconds</div>
     </div>`;
+
+  // Disable button + start live counter (mirrored on button label and inside loader)
+  const btn      = document.getElementById('im-gen-btn');
+  const btnLabel = document.getElementById('im-gen-btn-label');
+  const origText = btnLabel ? btnLabel.textContent : '⚡ Generate Intent Map';
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.75'; btn.style.cursor = 'wait'; }
+  let _imSec = 0;
+  if (btnLabel) btnLabel.textContent = '⏱ 0s · Generating…';
+  const _imTick = setInterval(() => {
+    _imSec++;
+    const tEl = document.getElementById('im-timer');
+    if (tEl) tEl.textContent = _imSec + 's';
+    if (btnLabel) btnLabel.textContent = '⏱ ' + _imSec + 's · Generating…';
+  }, 1000);
+  const _imRestoreBtn = () => {
+    clearInterval(_imTick);
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
+    if (btnLabel) btnLabel.textContent = origText;
+    window._imBusy = false;
+  };
 
   try {
     const resp = await fetch('/api/intent-map', {
@@ -6938,7 +6963,7 @@ async function generateIntentMap() {
 
     window._intentMap = data;
     if (out) out.innerHTML = _imRender(data);
-    showToast(`✅ Mapped ${data.summary.total} keywords · ${data.summary.gaps} competitor gap${data.summary.gaps===1?'':'s'} · ${data.summary.mustDoCount} must-do`);
+    showToast(`✅ Mapped ${data.summary.total} keywords in ${_imSec}s · ${data.summary.gaps} competitor gap${data.summary.gaps===1?'':'s'} · ${data.summary.mustDoCount} must-do`);
   } catch(err) {
     if (out) out.innerHTML = `
       <div style="background:white;border:1px solid #FECACA;border-radius:16px;padding:40px 24px;text-align:center">
@@ -6947,6 +6972,8 @@ async function generateIntentMap() {
         <div style="font-size:0.8rem;color:#64748B;margin-bottom:14px;max-width:480px;margin-left:auto;margin-right:auto">${_imEsc(err.message)}</div>
         <button onclick="generateIntentMap()" style="padding:9px 20px;background:#0066FF;color:white;border:none;border-radius:8px;font-size:0.78rem;cursor:pointer;font-weight:700">🔄 Try Again</button>
       </div>`;
+  } finally {
+    _imRestoreBtn();
   }
 }
 
@@ -7398,7 +7425,7 @@ function _kmRender() {
       <h3 style="margin:0;font-size:1rem;font-weight:800;color:#0F172A">Page-by-page assignments</h3>
       <div style="display:flex;gap:8px">
         <button onclick="_kmExportCsv()" style="background:white;color:#0EA5E9;border:1.5px solid #0EA5E9;padding:8px 14px;border-radius:8px;font-weight:700;font-size:0.78rem;cursor:pointer">⬇️ Export CSV</button>
-        <button onclick="_kmSendToBattlePlan()" style="background:linear-gradient(135deg,#7C3AED,#EC4899);color:white;border:none;padding:8px 14px;border-radius:8px;font-weight:700;font-size:0.78rem;cursor:pointer">⚔️ Send Cannibal. Fixes to Battle Plan</button>
+        <button onclick="_kmSendToBattlePlan()" style="background:linear-gradient(135deg,#7C3AED,#EC4899);color:white;border:none;padding:8px 14px;border-radius:8px;font-weight:700;font-size:0.78rem;cursor:pointer">⚔️ Send Cannibal Fixes to Battle Plan</button>
       </div>
     </div>
     ${rows}
