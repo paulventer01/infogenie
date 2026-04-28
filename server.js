@@ -515,6 +515,63 @@ app.post('/api/competitor-spend', async (req, res) => {
     }
   }));
 
+  // ── AI knowledge-based fallback for any domain DataForSEO returned 0 for ──
+  // DataForSEO's keyword-sample approach genuinely has no data for many real
+  // brands (regional / niche / thin SEO presence). Rather than show a blank
+  // bar, batch-query GPT-4o-mini for monthly ad-spend estimates — the model
+  // has strong knowledge of well-known brands (Plus500, AvaTrade, XM, FxPro,
+  // IG, etc.) from public Similarweb/SemRush/earnings-report data. Single
+  // batched call → ~1-2s extra latency, but every competitor ends up with a
+  // realistic, knowledge-grounded number instead of a missing bar.
+  const zeroDomains = results.filter(r => !r.adSpend || r.adSpend < 100);
+  if (zeroDomains.length > 0 && process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    try {
+      const aiList = zeroDomains.map((r, i) => `${i+1}. ${r.domain}`).join('\n');
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        max_tokens: 600,
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role:'system', content:'You are a senior digital-marketing analyst with deep knowledge of monthly paid-media spend for public brands and digital businesses, drawn from Similarweb, SemRush, company earnings reports, and industry benchmarks. Always return realistic numbers grounded in what you actually know — never fabricate. For obscure brands, return a conservative industry-benchmark estimate.' },
+          { role:'user',   content:
+`Estimate monthly Google + Meta + TikTok + LinkedIn ad-spend (USD) for each of the domains below. Return JSON:
+{"results":[{"domain":"<exact>","adSpend": <integer USD/month>, "confidence":"high|medium|low"}, ...]}
+
+Realistic ranges to anchor against:
+- Mega-brand fintech / forex broker (Plus500, eToro, IG, OANDA): $500K–$5M/mo
+- Mid-tier broker / SaaS (XM, AvaTrade, FxPro, Pepperstone, Exness): $200K–$1.5M/mo
+- Smaller regional broker / niche SaaS: $20K–$200K/mo
+- Tiny / unknown domain: $1K–$20K/mo (low confidence)
+
+Domains:
+${aiList}
+
+Return ONLY the JSON object, no prose.` }
+        ],
+      });
+      const parsed = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+      const byDomain = {};
+      (parsed.results || []).forEach(r => {
+        if (r && r.domain && typeof r.adSpend === 'number' && r.adSpend > 0) {
+          byDomain[r.domain.toLowerCase().trim()] = r;
+        }
+      });
+      results.forEach(r => {
+        if (r.adSpend && r.adSpend >= 100) return;
+        const k = r.domain.toLowerCase().trim();
+        const v = byDomain[k];
+        if (v) {
+          r.adSpend = Math.round(v.adSpend);
+          r.source  = 'AI-estimate-' + (v.confidence || 'low');
+        }
+      });
+    } catch(e) {
+      console.warn('competitor-spend AI fallback failed:', e.message);
+      // Non-fatal — chart's frontend traffic-derived floor is the next safety net
+    }
+  }
+
   // First entry is "you", rest are competitors
   const yourSpend = results[0]?.adSpend || yourBudget;
   const compSpend = results.slice(1);
