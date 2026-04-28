@@ -99,6 +99,7 @@
     document.body.appendChild(wall);
 
     let mode = 'login';
+    let pendingSignup = null;  // { name, email, password } stored while verification code is in-flight
     function setMode(m){
       mode = m;
       wall.querySelectorAll('.igAuthTab').forEach(b => {
@@ -109,7 +110,7 @@
       });
       document.getElementById('igNameRow').style.display = m === 'signup' ? 'block' : 'none';
       document.getElementById('igPassHint').style.display = m === 'signup' ? 'block' : 'none';
-      document.getElementById('igAuthSubmit').textContent = m === 'signup' ? 'Create account →' : 'Log In →';
+      document.getElementById('igAuthSubmit').textContent = m === 'signup' ? 'Send verification code →' : 'Log In →';
       document.getElementById('igPass').setAttribute('autocomplete', m === 'signup' ? 'new-password' : 'current-password');
       document.getElementById('igAuthError').style.display = 'none';
     }
@@ -119,16 +120,116 @@
       const e = document.getElementById('igAuthError');
       e.textContent = msg; e.style.display = 'block';
     }
-    function submit(){
-      const name  = (document.getElementById('igName').value || '').trim();
-      const email = (document.getElementById('igEmail').value || '').trim();
+    function setBusy(b, label){
+      const btn = document.getElementById('igAuthSubmit');
+      btn.disabled = b;
+      btn.style.opacity = b ? '0.65' : '1';
+      btn.style.cursor = b ? 'wait' : 'pointer';
+      if (label) btn.textContent = label;
+    }
+
+    // ── Step 2 UI: show 6-digit code entry screen after a successful send ─────
+    function renderVerifyStep(email){
+      const form = document.getElementById('igAuthForm');
+      const tabs = document.getElementById('igAuthTabs');
+      tabs.style.display = 'none';
+      form.innerHTML = `
+        <div style="text-align:center;margin-bottom:18px">
+          <div style="display:inline-flex;align-items:center;justify-content:center;width:54px;height:54px;background:linear-gradient(135deg,#0066FF22,#00C9C822);border-radius:50%;font-size:1.6rem;margin-bottom:10px">📧</div>
+          <div style="font-size:1.05rem;font-weight:800;color:#111827;margin-bottom:4px">Check your inbox</div>
+          <div style="font-size:.78rem;color:#6B7280;line-height:1.5">We sent a 6-digit code to<br/><strong style="color:#0066FF">${email}</strong></div>
+        </div>
+        <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;margin-bottom:5px;text-align:center">Enter verification code</label>
+        <input id="igCode" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" style="width:100%;padding:14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:1.6rem;font-weight:800;text-align:center;letter-spacing:.5em;font-family:'SF Mono',Menlo,monospace;outline:none;box-sizing:border-box;color:#0066FF" />
+        <div id="igAuthError" style="display:none;background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;padding:9px 12px;border-radius:8px;font-size:.74rem;font-weight:600;margin-top:12px"></div>
+        <button id="igAuthSubmit" type="submit" style="margin-top:14px;width:100%;padding:13px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:.92rem;font-weight:800;color:white;cursor:pointer;box-shadow:0 6px 18px rgba(0,102,255,.32)">Verify & create account →</button>
+        <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;font-size:.72rem">
+          <button id="igBack" type="button" style="background:none;border:none;color:#6B7280;cursor:pointer;padding:4px 6px;font-weight:600">‹ Back</button>
+          <button id="igResend" type="button" style="background:none;border:none;color:#0066FF;cursor:pointer;padding:4px 6px;font-weight:700">Resend code</button>
+        </div>`;
+      const codeInp = document.getElementById('igCode');
+      const submitBtn = document.getElementById('igAuthSubmit');
+      codeInp.focus();
+      codeInp.addEventListener('input', () => { codeInp.value = codeInp.value.replace(/\D/g, '').slice(0, 6); });
+      submitBtn.addEventListener('click', verifyAndCreate);
+      form.addEventListener('submit', e => { e.preventDefault(); verifyAndCreate(); });
+      document.getElementById('igBack').addEventListener('click', () => location.reload());
+      document.getElementById('igResend').addEventListener('click', resendCode);
+    }
+
+    async function resendCode(){
+      const btn = document.getElementById('igResend');
+      if (!btn || !pendingSignup) return;
+      const orig = btn.textContent;
+      btn.disabled = true; btn.style.opacity = '0.55'; btn.textContent = 'Sending…';
+      try {
+        const r = await fetch('/api/auth/send-verification', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ email: pendingSignup.email, name: pendingSignup.name })
+        }).then(r => r.json());
+        if (r.ok) { btn.textContent = '✓ Sent!'; setTimeout(() => { btn.textContent = orig; btn.disabled = false; btn.style.opacity = '1'; }, 2000); }
+        else     { showErr(r.error || 'Could not resend code.'); btn.textContent = orig; btn.disabled = false; btn.style.opacity = '1'; }
+      } catch(e) {
+        showErr('Network error — could not resend.'); btn.textContent = orig; btn.disabled = false; btn.style.opacity = '1';
+      }
+    }
+
+    async function verifyAndCreate(){
+      const code = (document.getElementById('igCode').value || '').trim();
+      if (code.length !== 6) return showErr('Please enter the 6-digit code from your email.');
+      if (!pendingSignup) return showErr('Session expired — please sign up again.');
+      const btn = document.getElementById('igAuthSubmit');
+      btn.disabled = true; btn.style.opacity = '0.65'; btn.textContent = 'Verifying…';
+      try {
+        const r = await fetch('/api/auth/verify-code', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ email: pendingSignup.email, code })
+        }).then(r => r.json());
+        if (!r.ok) {
+          showErr(r.error || 'Code did not verify.');
+          btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Verify & create account →';
+          return;
+        }
+        // ✓ Verified — create the account locally and reload into the app
+        const sr = window._auth.signup({ name: pendingSignup.name, email: pendingSignup.email, password: pendingSignup.password });
+        if (sr.error) { showErr(sr.error); btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Verify & create account →'; return; }
+        btn.textContent = '✓ Account created — loading…';
+        setTimeout(() => location.reload(), 400);
+      } catch(e) {
+        showErr('Network error — please try again.');
+        btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Verify & create account →';
+      }
+    }
+
+    async function submit(){
+      const name  = (document.getElementById('igName') ? document.getElementById('igName').value : '').trim();
+      const email = (document.getElementById('igEmail').value || '').trim().toLowerCase();
       const pass  = document.getElementById('igPass').value || '';
-      const r = mode === 'signup'
-        ? window._auth.signup({ name, email, password: pass })
-        : window._auth.login({ email, password: pass });
-      if (r.error) return showErr(r.error);
-      // Success — reload so the namespaced localStorage takes effect from a clean module-init.
-      location.reload();
+
+      if (mode === 'login') {
+        const r = window._auth.login({ email, password: pass });
+        if (r.error) return showErr(r.error);
+        location.reload();
+        return;
+      }
+      // Signup → run client validation, then send verification code
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showErr('Please enter a valid email address.');
+      if (!pass || pass.length < 4) return showErr('Password must be at least 4 characters.');
+      if (window._auth.getUsers().some(u => u.email === email)) return showErr('An account with this email already exists. Try logging in instead.');
+
+      setBusy(true, 'Sending code…');
+      try {
+        const r = await fetch('/api/auth/send-verification', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ email, name })
+        }).then(r => r.json());
+        if (!r.ok) { setBusy(false, 'Send verification code →'); return showErr(r.error || 'Could not send verification email.'); }
+        pendingSignup = { name, email, password: pass };
+        renderVerifyStep(email);
+      } catch(e) {
+        setBusy(false, 'Send verification code →');
+        showErr('Network error — could not send verification email.');
+      }
     }
     document.getElementById('igAuthSubmit').addEventListener('click', submit);
     document.getElementById('igAuthForm').addEventListener('submit', e => { e.preventDefault(); submit(); });

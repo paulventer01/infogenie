@@ -5015,6 +5015,108 @@ app.post('/api/publish-to-wordpress', async (req, res) => {
   }
 });
 
+// ── Signup email verification (SendGrid) ─────────────────────────────────────
+// In-memory code store: { email -> { code, expires, attempts } }
+const _verifCodes = new Map();
+const _verifRateLimit = new Map();   // email -> last-send-timestamp (anti-spam)
+
+function _genCode() { return String(Math.floor(100000 + Math.random() * 900000)); }
+
+async function _sendViaSendGrid({ to, name, code }) {
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const from   = process.env.SENDGRID_FROM_EMAIL;
+  if (!apiKey || !from) throw new Error('SendGrid not configured (SENDGRID_API_KEY or SENDGRID_FROM_EMAIL missing)');
+  const subject = `Your InfoGenie verification code: ${code}`;
+  const safeName = (name || to.split('@')[0]).replace(/[<>&"]/g, '');
+  const html = `<!doctype html><html><body style="margin:0;background:#F3F4F6;padding:30px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
+    <div style="max-width:480px;margin:0 auto;background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.06)">
+      <div style="background:linear-gradient(135deg,#0066FF,#00C9C8);padding:26px 30px;color:#FFFFFF;text-align:center">
+        <div style="font-size:1.5rem;font-weight:800;letter-spacing:-.02em;margin-bottom:4px">InfoGenie</div>
+        <div style="font-size:.85rem;opacity:.92">AI Marketing Intelligence</div>
+      </div>
+      <div style="padding:30px 32px">
+        <p style="margin:0 0 14px;font-size:1rem;color:#111827">Hi ${safeName},</p>
+        <p style="margin:0 0 22px;font-size:.92rem;color:#374151;line-height:1.55">Welcome aboard! Use the verification code below to finish creating your InfoGenie account.</p>
+        <div style="background:#F0F9FF;border:1.5px dashed #38BDF8;border-radius:12px;padding:22px;text-align:center;margin-bottom:22px">
+          <div style="font-size:.7rem;font-weight:700;color:#0369A1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Verification code</div>
+          <div style="font-family:'SF Mono',Menlo,Consolas,monospace;font-size:2.2rem;font-weight:800;color:#0066FF;letter-spacing:.4em">${code}</div>
+          <div style="font-size:.72rem;color:#6B7280;margin-top:8px">Valid for 10 minutes</div>
+        </div>
+        <p style="margin:0 0 6px;font-size:.78rem;color:#6B7280;line-height:1.55">If you didn't request this, you can safely ignore the email — no account will be created without entering this code.</p>
+      </div>
+      <div style="padding:14px 32px;background:#F9FAFB;border-top:1px solid #F3F4F6;font-size:.7rem;color:#9CA3AF;text-align:center">© InfoGenie · Sent because someone tried to create an account using ${to}</div>
+    </div></body></html>`;
+  const text = `Hi ${safeName},\n\nYour InfoGenie verification code is: ${code}\n\nThis code expires in 10 minutes.\nIf you didn't request this, you can ignore this email — no account will be created.\n\n— InfoGenie`;
+
+  const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      personalizations: [{ to: [{ email: to, name: safeName }] }],
+      from: { email: from, name: 'InfoGenie' },
+      subject,
+      content: [
+        { type: 'text/plain', value: text },
+        { type: 'text/html',  value: html  }
+      ]
+    })
+  });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    throw new Error(`SendGrid ${resp.status}: ${body.slice(0, 240)}`);
+  }
+  return true;
+}
+
+app.post('/api/auth/send-verification', async (req, res) => {
+  try {
+    const { email, name } = req.body || {};
+    const e = (email || '').trim().toLowerCase();
+    if (!e || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+      return res.status(400).json({ ok: false, error: 'Please enter a valid email address.' });
+    }
+    // Anti-spam: at most one send per email every 60 seconds
+    const last = _verifRateLimit.get(e) || 0;
+    const wait = 60_000 - (Date.now() - last);
+    if (wait > 0) return res.status(429).json({ ok: false, error: `Please wait ${Math.ceil(wait/1000)}s before requesting another code.` });
+
+    const code = _genCode();
+    _verifCodes.set(e, { code, expires: Date.now() + 10 * 60_000, attempts: 0 });
+    _verifRateLimit.set(e, Date.now());
+
+    try {
+      await _sendViaSendGrid({ to: e, name: name || '', code });
+      return res.json({ ok: true, sent: true, message: `Verification code sent to ${e}.` });
+    } catch (sgErr) {
+      console.error('[auth/send-verification] SendGrid error:', sgErr.message);
+      // Surface a precise error so the user can fix their SendGrid setup (sender not verified, etc).
+      return res.status(502).json({ ok: false, error: 'Could not send the verification email. ' + (sgErr.message || 'SendGrid request failed.') });
+    }
+  } catch (err) {
+    console.error('[auth/send-verification] error:', err);
+    return res.status(500).json({ ok: false, error: 'Server error sending verification email.' });
+  }
+});
+
+app.post('/api/auth/verify-code', (req, res) => {
+  try {
+    const { email, code } = req.body || {};
+    const e = (email || '').trim().toLowerCase();
+    const c = (code || '').toString().trim();
+    const rec = _verifCodes.get(e);
+    if (!rec)                       return res.status(400).json({ ok: false, error: 'No verification code on file. Click "Resend code".' });
+    if (Date.now() > rec.expires)   { _verifCodes.delete(e); return res.status(400).json({ ok: false, error: 'Code expired — request a new one.' }); }
+    if (rec.attempts >= 5)          { _verifCodes.delete(e); return res.status(429).json({ ok: false, error: 'Too many incorrect attempts — request a new code.' }); }
+    if (c !== rec.code)             { rec.attempts++; return res.status(400).json({ ok: false, error: `Incorrect code (${5 - rec.attempts} attempts left).` }); }
+    _verifCodes.delete(e);
+    _verifRateLimit.delete(e);
+    return res.json({ ok: true, verified: true });
+  } catch (err) {
+    console.error('[auth/verify-code] error:', err);
+    return res.status(500).json({ ok: false, error: 'Server error verifying code.' });
+  }
+});
+
 // ── Catch-all → SPA ──────────────────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
