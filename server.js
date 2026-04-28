@@ -5022,48 +5022,34 @@ const _verifRateLimit = new Map();   // email -> last-send-timestamp (anti-spam)
 
 function _genCode() { return String(Math.floor(100000 + Math.random() * 900000)); }
 
-async function _sendViaSendGrid({ to, name, code }) {
-  const apiKey = process.env.SENDGRID_API_KEY;
-  const from   = process.env.SENDGRID_FROM_EMAIL;
-  if (!apiKey || !from) throw new Error('SendGrid not configured (SENDGRID_API_KEY or SENDGRID_FROM_EMAIL missing)');
+async function _sendVerificationEmail({ to, name, code }) {
+  // Prefer a dedicated email key (so we don't disturb the general RAPIDAPI_KEY
+  // used by other integrations); fall back to the general one if not set.
+  const apiKey = process.env.RAPIDAPI_EMAIL_KEY || process.env.RAPIDAPI_KEY;
+  if (!apiKey) throw new Error('Email provider not configured (RAPIDAPI_EMAIL_KEY or RAPIDAPI_KEY missing)');
+  const safeName = (name || to.split('@')[0]).replace(/[<>&"]/g, '').slice(0, 60);
   const subject = `Your InfoGenie verification code: ${code}`;
-  const safeName = (name || to.split('@')[0]).replace(/[<>&"]/g, '');
-  const html = `<!doctype html><html><body style="margin:0;background:#F3F4F6;padding:30px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
-    <div style="max-width:480px;margin:0 auto;background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.06)">
-      <div style="background:linear-gradient(135deg,#0066FF,#00C9C8);padding:26px 30px;color:#FFFFFF;text-align:center">
-        <div style="font-size:1.5rem;font-weight:800;letter-spacing:-.02em;margin-bottom:4px">InfoGenie</div>
-        <div style="font-size:.85rem;opacity:.92">AI Marketing Intelligence</div>
-      </div>
-      <div style="padding:30px 32px">
-        <p style="margin:0 0 14px;font-size:1rem;color:#111827">Hi ${safeName},</p>
-        <p style="margin:0 0 22px;font-size:.92rem;color:#374151;line-height:1.55">Welcome aboard! Use the verification code below to finish creating your InfoGenie account.</p>
-        <div style="background:#F0F9FF;border:1.5px dashed #38BDF8;border-radius:12px;padding:22px;text-align:center;margin-bottom:22px">
-          <div style="font-size:.7rem;font-weight:700;color:#0369A1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Verification code</div>
-          <div style="font-family:'SF Mono',Menlo,Consolas,monospace;font-size:2.2rem;font-weight:800;color:#0066FF;letter-spacing:.4em">${code}</div>
-          <div style="font-size:.72rem;color:#6B7280;margin-top:8px">Valid for 10 minutes</div>
-        </div>
-        <p style="margin:0 0 6px;font-size:.78rem;color:#6B7280;line-height:1.55">If you didn't request this, you can safely ignore the email — no account will be created without entering this code.</p>
-      </div>
-      <div style="padding:14px 32px;background:#F9FAFB;border-top:1px solid #F3F4F6;font-size:.7rem;color:#9CA3AF;text-align:center">© InfoGenie · Sent because someone tried to create an account using ${to}</div>
-    </div></body></html>`;
-  const text = `Hi ${safeName},\n\nYour InfoGenie verification code is: ${code}\n\nThis code expires in 10 minutes.\nIf you didn't request this, you can ignore this email — no account will be created.\n\n— InfoGenie`;
+  // Plain-text body (this provider's OTP endpoint expects a simple text body).
+  const body = `Hi ${safeName},\n\nYour InfoGenie verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you didn't request this, you can safely ignore this email — no account will be created without entering this code.\n\n— InfoGenie · AI Marketing Intelligence`;
 
-  const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
+  const resp = await fetch('https://send-bulk-emails.p.rapidapi.com/api/send/otp/mail', {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type':   'application/json',
+      'x-rapidapi-host': 'send-bulk-emails.p.rapidapi.com',
+      'x-rapidapi-key':  apiKey
+    },
     body: JSON.stringify({
-      personalizations: [{ to: [{ email: to, name: safeName }] }],
-      from: { email: from, name: 'InfoGenie' },
       subject,
-      content: [
-        { type: 'text/plain', value: text },
-        { type: 'text/html',  value: html  }
-      ]
+      from:          'gateway.smtp587@gmail.com',
+      to,
+      senders_name:  'InfoGenie',
+      body
     })
   });
   if (!resp.ok) {
-    const body = await resp.text().catch(() => '');
-    throw new Error(`SendGrid ${resp.status}: ${body.slice(0, 240)}`);
+    const txt = await resp.text().catch(() => '');
+    throw new Error(`Email provider ${resp.status}: ${txt.slice(0, 240)}`);
   }
   return true;
 }
@@ -5085,12 +5071,11 @@ app.post('/api/auth/send-verification', async (req, res) => {
     _verifRateLimit.set(e, Date.now());
 
     try {
-      await _sendViaSendGrid({ to: e, name: name || '', code });
+      await _sendVerificationEmail({ to: e, name: name || '', code });
       return res.json({ ok: true, sent: true, message: `Verification code sent to ${e}.` });
-    } catch (sgErr) {
-      console.error('[auth/send-verification] SendGrid error:', sgErr.message);
-      // Surface a precise error so the user can fix their SendGrid setup (sender not verified, etc).
-      return res.status(502).json({ ok: false, error: 'Could not send the verification email. ' + (sgErr.message || 'SendGrid request failed.') });
+    } catch (mailErr) {
+      console.error('[auth/send-verification] mail provider error:', mailErr.message);
+      return res.status(502).json({ ok: false, error: 'Could not send the verification email. ' + (mailErr.message || 'Mail provider request failed.') });
     }
   } catch (err) {
     console.error('[auth/send-verification] error:', err);
