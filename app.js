@@ -24536,19 +24536,42 @@ window._templateImageMap = {
   'Customer testimonial':{ kw:'testimonial,smile,customer',    uns:'1573497019940-1c28c88b4f3e' }
 };
 
+// Build an inline SVG data-URI placeholder per template. This replaces the previous
+// loremflickr / random-Unsplash placeholders, which were unrelated to the user's
+// industry and made the gallery look "wrong" for ~3 seconds before the real
+// industry-relevant images arrived from /api/template-images. The SVG below is:
+//   • instant (no network round-trip, no broken images)
+//   • industry-branded (title + sector overlaid)
+//   • visually intentional (gradient + dot pattern, looks like a designed card)
+// Real photo replacement still happens via /api/template-images → DataForSEO.
 function _templateImageFor(title, sector, seed) {
-  const map = window._templateImageMap;
-  let entry = null;
-  for (const k in map) {
-    if (title.indexOf(k) > -1) { entry = map[k]; break; }
-  }
-  if (!entry) entry = { kw:'business,marketing,office', uns:'1556761175-5973dc0f32e7' };
-  const sectorTag = (sector || '').toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,20) || 'business';
-  const tags = `${entry.kw},${sectorTag}`.replace(/\s+/g,'');
-  return {
-    img: `https://loremflickr.com/520/300/${encodeURIComponent(tags)}?lock=${seed}`,
-    imgFallback: `https://images.unsplash.com/photo-${entry.uns}?w=520&h=300&fit=crop&q=70&auto=format`
-  };
+  const titleSafe  = String(title  || 'Template').slice(0,40).replace(/[<>&"']/g,' ');
+  const sectorSafe = String(sector || 'industry').slice(0,28).replace(/[<>&"']/g,' ').toUpperCase();
+  // Deterministic gradient pick so the same template gets the same colour each load
+  const hash = (title + '|' + seed).split('').reduce((a,c)=>((a*31)+c.charCodeAt(0))>>>0, 0);
+  const palette = [
+    ['#1E3A8A','#3B82F6'], ['#7C2D12','#EA580C'], ['#064E3B','#10B981'],
+    ['#581C87','#A855F7'], ['#831843','#EC4899'], ['#0C4A6E','#0EA5E9'],
+    ['#365314','#84CC16'], ['#7F1D1D','#EF4444'], ['#312E81','#6366F1']
+  ];
+  const [c1, c2] = palette[hash % palette.length];
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 300" preserveAspectRatio="xMidYMid slice">` +
+      `<defs>` +
+        `<linearGradient id="tg" x1="0" y1="0" x2="1" y2="1">` +
+          `<stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/>` +
+        `</linearGradient>` +
+        `<pattern id="td" width="22" height="22" patternUnits="userSpaceOnUse">` +
+          `<circle cx="11" cy="11" r="1.4" fill="rgba(255,255,255,0.14)"/>` +
+        `</pattern>` +
+      `</defs>` +
+      `<rect width="520" height="300" fill="url(#tg)"/>` +
+      `<rect width="520" height="300" fill="url(#td)"/>` +
+      `<text x="260" y="138" text-anchor="middle" font-family="Inter,Sora,sans-serif" font-size="22" font-weight="800" fill="rgba(255,255,255,0.96)">${titleSafe}</text>` +
+      `<text x="260" y="172" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" font-weight="700" fill="rgba(255,255,255,0.78)" letter-spacing="2">${sectorSafe}</text>` +
+    `</svg>`;
+  const dataUri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  return { img: dataUri, imgFallback: dataUri };
 }
 
 function _templatePreview(title, kw, brand) {
@@ -24589,75 +24612,115 @@ function _templatePreview(title, kw, brand) {
 window.runTemplates = function() {
   if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
   const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="runTemplates"]', 'Loading templates for your sector') : (() => {});
-  setTimeout(() => {
-    const sector = _esc(_lsSector()), kw = _esc(_lsKeywords()[0] || _lsSector()), brand = _esc(_lsBrand());
-    const rng = _seedRng(_lsDomain() + 'tpl');
-    const palettes = [['#0EA5E9','#6366F1'],['#EC4899','#8B5CF6'],['#10B981','#06B6D4'],['#F59E0B','#EF4444'],['#1E40AF','#3B82F6'],['#7C3AED','#A855F7'],['#059669','#10B981'],['#DC2626','#F97316'],['#0F172A','#475569']];
-    const types = ['ad','lp','email','social'];
-    const titles = {
-      ad: [`${kw} that converts`, 'Limited-time launch', 'Founder story carousel', 'Before/after transformation', 'Social proof stack', 'Problem → solution flip', 'Bold claim challenger'],
-      lp: ['Webinar registration', 'Free trial signup', 'Demo booking', 'Lead magnet download', 'Pricing comparison', 'Founder pitch page', 'Case study landing'],
-      email: ['Welcome sequence', 'Cart abandonment', 'Re-engagement', 'Product launch', 'Black Friday promo', 'Customer winback'],
-      social: ['Carousel: 5 mistakes', 'Quote graphic', 'Mini case study', 'Industry stat post', 'Behind-the-scenes', 'Customer testimonial']
-    };
-    const taglines = ['Battle-tested with 200+ campaigns','Top 1% performance in 2026','Most-copied template this quarter','Featured in our growth playbook','Used by 1,200+ teams'];
-    const templates = [];
-    let seedCounter = 0;
-    types.forEach(type => {
-      titles[type].forEach((title, i) => {
-        const p = palettes[Math.floor(rng()*palettes.length)];
-        const imgs = _templateImageFor(title, sector, ++seedCounter * 13 + Math.floor(rng()*1000));
-        templates.push({
-          type, title, bg1:p[0], bg2:p[1],
-          tagline: taglines[Math.floor(rng()*taglines.length)],
-          preview: _templatePreview(title, kw, brand),
-          img: imgs.img,
-          imgFallback: imgs.imgFallback,
-          usage: Math.floor(180 + rng()*1820),
-          rating: (4.4 + rng()*0.6).toFixed(1),
-          lift: Math.floor(8 + rng()*42),
-          hot: i < 2 && rng() > 0.5
-        });
+
+  // Build template structure SYNCHRONOUSLY so we can fire the industry image
+  // fetch IN PARALLEL with the 1100ms button-loader animation. By the time we
+  // render, the real industry-relevant images are typically already in hand,
+  // so the user never sees off-topic stock photos flash up first.
+  const sector = _esc(_lsSector()), kw = _esc(_lsKeywords()[0] || _lsSector()), brand = _esc(_lsBrand());
+  const rng = _seedRng(_lsDomain() + 'tpl');
+  const palettes = [['#0EA5E9','#6366F1'],['#EC4899','#8B5CF6'],['#10B981','#06B6D4'],['#F59E0B','#EF4444'],['#1E40AF','#3B82F6'],['#7C3AED','#A855F7'],['#059669','#10B981'],['#DC2626','#F97316'],['#0F172A','#475569']];
+  const types = ['ad','lp','email','social'];
+  const titles = {
+    ad: [`${kw} that converts`, 'Limited-time launch', 'Founder story carousel', 'Before/after transformation', 'Social proof stack', 'Problem → solution flip', 'Bold claim challenger'],
+    lp: ['Webinar registration', 'Free trial signup', 'Demo booking', 'Lead magnet download', 'Pricing comparison', 'Founder pitch page', 'Case study landing'],
+    email: ['Welcome sequence', 'Cart abandonment', 'Re-engagement', 'Product launch', 'Black Friday promo', 'Customer winback'],
+    social: ['Carousel: 5 mistakes', 'Quote graphic', 'Mini case study', 'Industry stat post', 'Behind-the-scenes', 'Customer testimonial']
+  };
+  const taglines = ['Battle-tested with 200+ campaigns','Top 1% performance in 2026','Most-copied template this quarter','Featured in our growth playbook','Used by 1,200+ teams'];
+  const templates = [];
+  let seedCounter = 0;
+  types.forEach(type => {
+    titles[type].forEach((title, i) => {
+      const p = palettes[Math.floor(rng()*palettes.length)];
+      const imgs = _templateImageFor(title, sector, ++seedCounter * 13 + Math.floor(rng()*1000));
+      templates.push({
+        type, title, bg1:p[0], bg2:p[1],
+        tagline: taglines[Math.floor(rng()*taglines.length)],
+        preview: _templatePreview(title, kw, brand),
+        img: imgs.img,
+        imgFallback: imgs.imgFallback,
+        usage: Math.floor(180 + rng()*1820),
+        rating: (4.4 + rng()*0.6).toFixed(1),
+        lift: Math.floor(8 + rng()*42),
+        hot: i < 2 && rng() > 0.5
       });
     });
+  });
+
+  // Capture the request fingerprint so a stale response (user re-analysed a
+  // different domain mid-fetch) can't overwrite the new templates.
+  const requestFingerprint = `${_lsDomain()}|${sector}|${kw}`;
+
+  // Kick off industry-image fetch IMMEDIATELY (parallel with the loading delay)
+  const imagesPromise = (async () => {
+    try {
+      const items = templates.map(t => ({ title: t.title, kw }));
+      const resp = await fetch('/api/template-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ industry: sector, sector, brand, items })
+      });
+      const data = await resp.json();
+      return Array.isArray(data.images) ? data.images : null;
+    } catch (e) {
+      console.warn('template-images fetch failed:', e.message);
+      return null;
+    }
+  })();
+
+  setTimeout(async () => {
+    // Wait briefly for industry images to arrive before first render. If they
+    // beat the 1100ms loader (very common with cache hits) we render straight
+    // to the real photos. If not, we cap at +1500ms to avoid making the user
+    // wait too long, then swap in the photos when they arrive.
+    const earlyImages = await Promise.race([
+      imagesPromise,
+      new Promise(r => setTimeout(() => r(null), 1500))
+    ]);
+
+    // Stale-response guard
+    const currentFingerprint = `${_lsDomain()}|${_esc(_lsSector())}|${_esc(_lsKeywords()[0] || _lsSector())}`;
+    if (currentFingerprint !== requestFingerprint) {
+      if (typeof stop === 'function') try { stop('📐 Browse Templates'); } catch(e){}
+      return;
+    }
+
+    if (earlyImages && earlyImages.length) {
+      let n = 0;
+      earlyImages.forEach((url, i) => {
+        if (url && typeof url === 'string' && templates[i]) { templates[i].img = url; n++; }
+      });
+      window._templatesData = { templates };
+      buildTemplates();
+      if (typeof stop === 'function') try { stop('📐 Browse Templates'); } catch(e){}
+      showToast(`✅ ${templates.length} ${sector || 'industry'} templates loaded${n ? ` — ${n} live ${sector||'industry'} visuals` : ''}`);
+      return;
+    }
+
+    // Industry images still loading — render with branded SVG placeholders so the
+    // user sees a polished gallery (never random stock photos), then swap in the
+    // real images as soon as they arrive.
     window._templatesData = { templates };
     buildTemplates();
     if (typeof stop === 'function') try { stop('📐 Browse Templates'); } catch(e){}
     showToast(`✅ ${templates.length} templates loaded — fetching ${sector || 'industry'} imagery…`);
 
-    // ── Fetch real industry-relevant images via backend (Google Images) ─────
-    (async () => {
-      try {
-        const items = templates.map(t => ({ title: t.title, kw: kw }));
-        const resp = await fetch('/api/template-images', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            industry: sector,
-            sector: sector,
-            brand: brand,
-            items
-          })
-        });
-        const data = await resp.json();
-        const imgs = Array.isArray(data.images) ? data.images : [];
-        if (!imgs.length) return;
-        let replaced = 0;
-        templates.forEach((t, i) => {
-          if (imgs[i] && typeof imgs[i] === 'string') {
-            t.img = imgs[i];   // imgFallback stays as the curated Unsplash photo
-            replaced++;
-          }
-        });
-        if (replaced > 0) {
-          buildTemplates();
-          showToast(`🖼️ ${replaced} template visuals refreshed for ${sector || 'your industry'}`);
-        }
-      } catch (e) {
-        console.warn('template-images fetch failed:', e.message);
-        // Silent fallback — existing loremflickr / Unsplash images stay in place
+    try {
+      const lateImages = await imagesPromise;
+      // Stale-response guard for the late path too
+      const f2 = `${_lsDomain()}|${_esc(_lsSector())}|${_esc(_lsKeywords()[0] || _lsSector())}`;
+      if (f2 !== requestFingerprint) return;
+      if (!Array.isArray(lateImages)) return;
+      let replaced = 0;
+      lateImages.forEach((url, i) => {
+        if (url && typeof url === 'string' && templates[i]) { templates[i].img = url; replaced++; }
+      });
+      if (replaced > 0) {
+        buildTemplates();
+        showToast(`🖼️ ${replaced} template visuals refreshed for ${sector || 'your industry'}`);
       }
-    })();
+    } catch(e) { /* silent — placeholders remain */ }
   }, 1100);
 };
 
