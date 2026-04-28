@@ -837,7 +837,16 @@ app.post('/api/competitor-metrics', async (req, res) => {
                           : n >= 1e3 ? '$'+(n/1e3).toFixed(0)+'K/mo'
                           : '$'+n+'/mo';
 
-    const cleanDomain = d => (d||'').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+    // Normalise: strip protocol/www/path AND append `.com` when the user typed
+    // a bare brand name (e.g. "fxpro" → "fxpro.com"). DataForSEO rejects
+    // anything without a TLD with "Invalid Field 'target'".
+    const cleanDomain = d => {
+      let s = (d || '').toString().trim().replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+      if (!s) return '';
+      // Looks like a bare brand (letters/numbers/dashes only, no dot) → append .com
+      if (!s.includes('.') && /^[a-z0-9-]+$/.test(s)) s = s + '.com';
+      return s;
+    };
 
     // Process domains in PARALLEL — DataForSEO bills per-task, not concurrent calls
     const tasks = domains.slice(0, 10).map(async (raw) => {
@@ -945,7 +954,8 @@ app.post('/api/live-kpis', async (req, res) => {
     const { domain, industryKey = 'default', location = 'United States', language = 'English' } = req.body;
     if (!domain) return res.status(400).json({ error: 'domain is required' });
 
-    const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+    let cleanDomain = (domain || '').toString().trim().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].toLowerCase();
+    if (cleanDomain && !cleanDomain.includes('.') && /^[a-z0-9-]+$/.test(cleanDomain)) cleanDomain = cleanDomain + '.com';
 
     // CTR position table (same as keyword gap logic)
     const ctrTable = [0, 28.5, 15.7, 11.0, 8.0, 5.9, 4.4, 3.3, 2.6, 2.2, 1.9];
@@ -5121,14 +5131,22 @@ Return JSON in EXACTLY this shape:
 
 CRITICAL RULES:
 - Use REALISTIC numbers grounded in what you actually know. Never fabricate.
+- The "Currently shown" numbers in the input come from a DataForSEO scrape that **systematically OVER-estimates ad-spend** because it sums potential CPC × CTR across ALL ranking keywords as if the brand paid for every position. For high-SEO domains this is often 10–30× the real ad-budget. So if you see e.g. "adSpend=$60M/mo" for a brand you know spends ~$3M/mo, RETURN THE REALISTIC FIGURE ($3M/mo) and set confidence "medium" or "high" — don't just echo back the inflated number.
+- Traffic numbers from DataForSEO are usually within 2-5× of reality; for very high-traffic brands (>10M/mo) they are reasonable, for smaller brands they may be off. Trust your training-data Similarweb knowledge.
+- Realistic ad-spend ranges to sanity-check against:
+    Mid-cap fintech / broker (Plus500, FXTM, XM, AvaTrade): $0.5M–3M/mo
+    Large-cap fintech (eToro, IG, CMC, Interactive Brokers, Stripe): $1M–8M/mo
+    Mega-cap (PayPal, Coinbase, Robinhood): $5M–25M/mo
+    Mid-market SaaS: $50K–500K/mo
+    Indie / small SaaS: $5K–50K/mo
 - For well-known brands: cite the most reasonable public source you'd expect.
-- For lesser-known/regional brands you don't recognise: return null for the fields you can't reasonably estimate (traffic/adSpend especially) and set confidence to "low". Industry-average ROAS/CTR may still be safely returned.
-- Traffic format: "1.2M" or "350K" or "45K" (no decimals if whole, one decimal if needed).
+- For lesser-known/regional brands you don't recognise: return null for traffic/adSpend and set confidence to "low". Industry-average ROAS/CTR may still be safely returned.
+- Traffic format: "1.2M" or "350K" or "45K".
 - AdSpend format: "$45K/mo" or "$1.2M/mo" or "$8K/mo".
 - ROAS: a single number, typically 1.5–5.0 in most industries.
 - CTR: "2.8%" — typically 1.5%–6% for paid search/social.
-- "high" confidence ONLY if you have specific knowledge of this brand.
-- "medium" if extrapolating from category leaders.
+- "high" confidence ONLY if you have specific knowledge of this brand from your training data (Similarweb data, earnings reports, public filings).
+- "medium" if extrapolating from direct category peers you DO know.
 - "low" for pure industry-benchmark estimates.
 - The output array MUST be in the same order and same names as the input list.`;
 

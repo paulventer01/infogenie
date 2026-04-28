@@ -3012,13 +3012,21 @@ async function runAnalysis(url, country, industryOverride) {
             // Fill in any value that is still null (DataForSEO didn't return it)
             // OR overwrite when the AI is HIGH confidence and we only have a
             // low-confidence DataForSEO derived value.
+            // Merge rules — ad-spend ALWAYS prefers AI at medium+ confidence
+            // because DataForSEO returns paid.etv (sum of keyword×CPC×CTR
+            // across ALL paid-ranking keywords), which over-estimates wildly
+            // for any high-SEO domain (eToro/IG/Plus500 land at $20M-60M/mo
+            // when the real figure is $1M-5M/mo). Traffic is closer to right
+            // so we only overwrite at HIGH confidence.
             const fillIfMissing = (key, val) => {
               if (val === null || val === undefined || val === '' || val === '—') return;
               if (c[key] === null || c[key] === undefined || c[key] === '' || c[key] === '—') {
                 c[key] = val;
-              } else if (conf === 'high' && (c.dataSource !== 'DataForSEO' || key === 'adSpend')) {
-                // For ad-spend especially, GPT's brand knowledge usually beats
-                // DataForSEO's paid.etv approximation on well-known brands.
+                return;
+              }
+              if (key === 'adSpend' && (conf === 'high' || conf === 'medium')) {
+                c[key] = val;
+              } else if (conf === 'high' && c.dataSource !== 'DataForSEO') {
                 c[key] = val;
               }
             };
@@ -16894,7 +16902,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // will paste a recently-typed email address into any text input. URLs never
   // contain '@', so if we detect one, scrub it. Also blank the inputs on first
   // page load to defeat persisted autofill state.
-  ['websiteInput','mcInput'].forEach(id => {
+  // The industry input is also a target for browser email-autofill (Chrome
+  // ignores autocomplete="off" on plain text inputs and stuffs in the user's
+  // email). We scrub all 3 hero inputs the same way.
+  ['websiteInput','mcInput','industryInput'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     const scrub = () => {
@@ -16907,6 +16918,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(scrub, 0);
     setTimeout(scrub, 250);   // catches Chrome's deferred autofill
     setTimeout(scrub, 1000);
+    setTimeout(scrub, 2500);  // catches password-manager late-fills
     el.addEventListener('input', scrub);
     el.addEventListener('change', scrub);
     // On focus, if value still looks like an email, clear it so the user has a clean field
