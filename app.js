@@ -13855,16 +13855,22 @@ function buildIntelligence() {
   // The handler reads data-* attributes directly and calls the local
   // openWLCounterModal reference captured in this closure.
   try {
-    wrap.querySelectorAll('.btn-wl-counter').forEach(b => {
+    const wlButtons = wrap.querySelectorAll('.btn-wl-counter');
+    console.log('[wl-counter] buildIntelligence binding', wlButtons.length, 'Counter This Message button(s)');
+    wlButtons.forEach(b => {
       if (b._wlBound) return;
       b._wlBound = true;
       // Strip inline onclick so the inline path can't double-fire alongside
       // this direct listener. The delegated document handler also skips
       // buttons with `_wlBound === true` (see ~24320).
       try { b.removeAttribute('onclick'); b.onclick = null; } catch(_) {}
+      b.style.pointerEvents = 'auto';
+      b.style.position = 'relative';
+      b.style.zIndex = '5';
       b.addEventListener('click', function(ev) {
         ev.preventDefault();
         ev.stopPropagation();
+        console.log('[wl-counter] click registered on', b.getAttribute('data-wl-comp'));
         try {
           const dec = s => { try { return decodeURIComponent(s || ''); } catch(_) { return s || ''; } };
           const data = {
@@ -13878,12 +13884,19 @@ function buildIntelligence() {
             if (typeof showToast === 'function') showToast('⚠️ Counter data missing — please re-run analysis');
             return;
           }
-          openWLCounterModal(data);
+          if (typeof openWLCounterModal === 'function') {
+            openWLCounterModal(data);
+          } else if (typeof window.openWLCounterModal === 'function') {
+            window.openWLCounterModal(data);
+          } else {
+            console.error('[wl-counter] openWLCounterModal not in scope or on window');
+            if (typeof showToast === 'function') showToast('⚠️ Counter modal not loaded — please refresh the page');
+          }
         } catch(err) {
           console.error('[wl-counter direct] failed:', err);
           if (typeof showToast === 'function') showToast('⚠️ Counter modal error: ' + (err && err.message || err));
         }
-      });
+      }, { capture: true });
     });
   } catch(e) { console.warn('[wl-counter] direct bind skipped:', e); }
 
