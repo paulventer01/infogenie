@@ -19828,13 +19828,18 @@ window.refreshDripStatus = async function() {
         const statusColor = { active:'#059669', paused:'#D97706', completed:'#6B7280', cancelled:'#9CA3AF', unsubscribed:'#DC2626' }[e.status] || '#6B7280';
         const sentN = (e.history || []).filter(h => h.ok).length;
         const failN = (e.history || []).filter(h => !h.ok).length;
+        const bounceN = (e.history || []).filter(h => h.bounced).length;
+        const lastBounce = (e.history || []).slice().reverse().find(h => h.bounced);
         const nextWhen = e.status === 'active' && e.nextSendAt ? new Date(e.nextSendAt).toLocaleString() : '—';
+        const bounceBadge = bounceN
+          ? `<span title="${(lastBounce && lastBounce.bounceReason || 'bounced').replace(/"/g,'&quot;').slice(0,140)}" style="display:inline-block;background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:1px 6px;font-size:.62rem;color:#991B1B;font-weight:700;margin-left:4px">↩ ${bounceN}</span>`
+          : '';
         return `
           <tr>
             <td style="padding:7px 8px;border-bottom:1px solid #F3F4F6;font-size:.74rem;color:#0A1628"><b>${(e.name || e.email.split('@')[0])}</b><br><span style="color:#6B7280;font-size:.7rem">${e.email}</span></td>
             <td style="padding:7px 8px;border-bottom:1px solid #F3F4F6;font-size:.72rem;color:#374151">${e.currentStep+1}/${e.sequence?.length || 0} · ${stepLabel}</td>
             <td style="padding:7px 8px;border-bottom:1px solid #F3F4F6;font-size:.72rem"><span style="color:${statusColor};font-weight:700;text-transform:uppercase;letter-spacing:.04em">${e.status}</span>${e.dryRun?` <span style="color:#9CA3AF;font-size:.65rem">· dry</span>`:''}</td>
-            <td style="padding:7px 8px;border-bottom:1px solid #F3F4F6;font-size:.7rem;color:#6B7280">${sentN}✓${failN?` ${failN}✕`:''}</td>
+            <td style="padding:7px 8px;border-bottom:1px solid #F3F4F6;font-size:.7rem;color:#6B7280">${sentN}✓${failN?` ${failN}✕`:''}${bounceBadge}</td>
             <td style="padding:7px 8px;border-bottom:1px solid #F3F4F6;font-size:.7rem;color:#6B7280">${nextWhen}</td>
             <td style="padding:7px 8px;border-bottom:1px solid #F3F4F6;text-align:right">
               ${e.status === 'active' ? `<button onclick="dripAction('${e.id}','pause')" style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;padding:3px 8px;font-size:.65rem;color:#92400E;cursor:pointer">Pause</button>` : ''}
@@ -19853,7 +19858,7 @@ window.refreshDripStatus = async function() {
           </div>
           <button onclick="refreshDripStatus()" style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:6px 12px;font-size:.72rem;font-weight:600;color:#374151;cursor:pointer">↻ Refresh</button>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px;margin-bottom:14px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px;margin-bottom:10px">
           ${tile('Total',       s.total||0,        '#0A1628')}
           ${tile('Active',      s.active||0,       '#059669')}
           ${tile('Paused',      s.paused||0,       '#D97706')}
@@ -19862,6 +19867,16 @@ window.refreshDripStatus = async function() {
           ${tile('Failed',      s.failedTotal||0,  s.failedTotal?'#DC2626':'#6B7280')}
           ${tile('Unsubbed',    s.unsubscribed||0, '#DC2626')}
         </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin-bottom:14px;padding:10px;background:linear-gradient(135deg,#FEF2F2,#FFF7ED);border:1px solid #FECACA;border-radius:10px">
+          <div style="grid-column:1/-1;font-size:.62rem;font-weight:700;color:#991B1B;text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px">📬 Email Deliverability ${s.emailAttempts ? `· ${s.emailAttempts} live attempt${s.emailAttempts===1?'':'s'}` : '· no live email sends yet'}</div>
+          ${tile('Attempts',  s.emailAttempts||0,                                               '#0A1628')}
+          ${tile('Delivered', s.emailDelivered||0,                                              '#059669')}
+          ${tile('Bounced',   s.emailBounced||0,                                                s.emailBounced?'#DC2626':'#6B7280')}
+          ${tile('Complaint', s.emailComplained||0,                                             s.emailComplained?'#DC2626':'#6B7280')}
+          ${tile('Bounce %',  (s.emailAttempts ? (s.bounceRate||0)+'%'    : '—'),               (s.bounceRate    >= 5 ? '#DC2626' : s.bounceRate    >= 2 ? '#D97706' : '#059669'))}
+          ${tile('Spam %',    (s.emailAttempts ? (s.complaintRate||0)+'%' : '—'),               (s.complaintRate >= 0.5 ? '#DC2626' : s.complaintRate >= 0.1 ? '#D97706' : '#059669'))}
+        </div>
+        ${s.bounceRate >= 5 ? `<div style="background:#FEF2F2;border:1px solid #FECACA;border-left:3px solid #DC2626;border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:.72rem;color:#991B1B">⚠️ <b>Bounce rate is high (${s.bounceRate}%).</b> Industry threshold is 2%; above 5% triggers ESP throttling. Likely cause: invalid recipient addresses or unverified sending domain.</div>` : ''}
         <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:12px;margin-bottom:12px">
           <div style="font-size:.74rem;font-weight:700;color:#374151;margin-bottom:8px">Real contacts (will receive live emails when dry-run is OFF)</div>
           ${contactRows}

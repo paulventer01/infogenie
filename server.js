@@ -78,7 +78,10 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
+// Capture the raw request body alongside the parsed JSON so HMAC-signed
+// webhooks (Resend / Svix) can verify against the exact bytes that were
+// signed by the sender. Body parser still hands the parsed object to routes.
+app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); } }));
 app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
 
 // ── User Manual PDF (clean URLs) ─────────────────────────────────────────────
@@ -5136,8 +5139,25 @@ function _dripLoad() {
   catch(e) { return []; }
 }
 function _dripSave(list) {
-  try { fs.writeFileSync(DRIP_FILE, JSON.stringify(list, null, 2)); }
-  catch(e) { console.error('drip save failed:', e.message); }
+  try {
+    // Atomic write: tmp file + rename so a crash mid-write can't corrupt the
+    // store. Combined with the _dripLock below this is enough single-process
+    // safety for the file-backed model.
+    const tmp = DRIP_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(list, null, 2));
+    fs.renameSync(tmp, DRIP_FILE);
+  } catch(e) { console.error('drip save failed:', e.message); }
+}
+
+// Single-writer mutex around any read-modify-write sequence on the drip
+// store. Prevents the 60s tick, an inbound webhook, and a user enroll from
+// clobbering each other (last-write-wins would otherwise drop bounce/
+// delivered flags). All async; queues callers FIFO.
+let _dripLockTail = Promise.resolve();
+function _dripLock(fn) {
+  const next = _dripLockTail.then(() => fn());
+  _dripLockTail = next.catch(() => {}); // never let one error break the chain
+  return next;
 }
 function _dripLoadUnsubs() {
   try { return new Set(JSON.parse(fs.readFileSync(DRIP_UNSUB_FILE, 'utf8'))); }
@@ -5150,6 +5170,8 @@ function _dripSaveUnsubs(set) {
 
 // Generic Resend email sender — extracted from _sendVerificationEmail so the
 // drip engine can reuse it without coupling to verification-specific HTML.
+// Returns the Resend response (incl. message id) on success; throws on
+// failure with an enriched error that includes a bounce classification.
 async function _sendEmailViaResend({ to, subject, html, text, fromOverride }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error('RESEND_API_KEY missing');
@@ -5161,9 +5183,37 @@ async function _sendEmailViaResend({ to, subject, html, text, fromOverride }) {
   });
   if (!resp.ok) {
     const txt = await resp.text().catch(() => '');
-    throw new Error(`Resend ${resp.status}: ${txt.slice(0, 240)}`);
+    const err = new Error(`Resend ${resp.status}: ${txt.slice(0, 240)}`);
+    err.status = resp.status;
+    err.bodyText = txt;
+    err.failureType = _classifyEmailFailure(resp.status, txt);
+    throw err;
   }
   return resp.json().catch(() => ({}));
+}
+
+// Classify a failed Resend response into bounce-rate buckets so the engine
+// can compute meaningful deliverability metrics.
+//   bounce    — recipient rejected (invalid address, unverified domain, etc.)
+//   complaint — marked as spam by the recipient
+//   rate      — provider rate-limit; not a bounce, will retry naturally
+//   auth      — API key / authentication problem (NOT a bounce — config issue)
+//   config    — sender domain / from-address config error (NOT a bounce)
+//   other     — any other failure (network, generic 4xx without bounce keywords)
+// Important: only return 'bounce' when the body text actually indicates a
+// recipient-side rejection. Generic 400/403/422 with no bounce keywords are
+// classified as 'config' or 'other' so they don't inflate the bounce rate.
+function _classifyEmailFailure(status, bodyText) {
+  const s = String(bodyText || '').toLowerCase();
+  if (status === 429 || /rate.?limit|too many requests/.test(s)) return 'rate';
+  if (status === 401 || /unauthor|invalid.*api.?key|missing.*api.?key/i.test(s)) return 'auth';
+  if (/spam|complain|abuse/.test(s)) return 'complaint';
+  if (/bounce|undeliverable|user unknown|no such user|mailbox.*(?:full|not found|unavailable)|recipient.*(?:rejected|not found)|address.*(?:rejected|not.*exist)|invalid.*recipient/i.test(s)) return 'bounce';
+  // Resend free-tier "you can only send to your own verified address" — this
+  // is a sender-config problem, not a recipient bounce.
+  if (/verified domain|verify your domain|testing emails to your own|only send.*verified/i.test(s)) return 'config';
+  if (status === 422 || status === 400 || status === 403) return 'config';
+  return 'other';
 }
 
 // Wrap a step's plain text content into a branded HTML email body that
@@ -5185,8 +5235,10 @@ function _dripEmailHtml({ subject, body, brand, unsubUrl }) {
 
 // Process every active enrollment whose nextSendAt has come due. Runs in a
 // timer below. Pure function over (enrollments, unsubs, now) → mutates each
-// enrollment's currentStep / nextSendAt / status / history.
-async function _dripTick() {
+// enrollment's currentStep / nextSendAt / status / history. Wrapped in the
+// drip lock so concurrent enrolls / webhook events can't clobber updates.
+function _dripTick() { return _dripLock(_dripTickInner); }
+async function _dripTickInner() {
   let list  = _dripLoad();
   if (!list.length) return;
   const unsubs = _dripLoadUnsubs();
@@ -5223,14 +5275,29 @@ async function _dripTick() {
         const unsubUrl = `${enr.appOrigin || ''}/api/drips/unsubscribe?email=${encodeURIComponent(enr.email)}`;
         const html = _dripEmailHtml({ subject, body: step.msg || '', brand: enr.brand, unsubUrl });
         const text = (step.msg || '') + `\n\n— Unsubscribe: ${unsubUrl}`;
-        await _sendEmailViaResend({ to: enr.email, subject, html, text });
+        const sendRes = await _sendEmailViaResend({ to: enr.email, subject, html, text });
         entry.ok = true;
+        // Resend returns { id: 'xxxx' } on success — keep it so async webhook
+        // events (delivered/bounced/complained) can be matched back here.
+        if (sendRes && sendRes.id) entry.providerId = sendRes.id;
       } else {
         entry.ok = true; entry.note = `${channel} — pending platform integration (recorded only)`;
       }
     } catch (sendErr) {
       entry.ok = false;
       entry.error = String(sendErr.message || sendErr).slice(0, 240);
+      // Tag the failure type so bounce-rate vs complaint-rate stay distinct.
+      entry.failureType = sendErr.failureType || 'other';
+      const reasonText = (sendErr.bodyText || sendErr.message || '').slice(0, 240);
+      if (entry.failureType === 'bounce') {
+        entry.bounced = true;
+        entry.bouncedAt = now;
+        entry.bounceReason = reasonText;
+      } else if (entry.failureType === 'complaint') {
+        entry.complaint = true;
+        entry.complaintAt = now;
+        entry.complaintReason = reasonText;
+      }
     }
     enr.history = enr.history || [];
     enr.history.push(entry);
@@ -5257,7 +5324,7 @@ setTimeout(() => { _dripTick().catch(()=>{}); }, 5_000);
 // ── POST /api/drips/enroll ────────────────────────────────────────────────
 // body: { contacts:[{email, name?}], sequence:[{day, channel, msg, label, subject?}],
 //         brand?, dryRun?:bool, appOrigin? }
-app.post('/api/drips/enroll', (req, res) => {
+app.post('/api/drips/enroll', async (req, res) => {
   try {
     const { contacts, sequence, brand, dryRun, appOrigin } = req.body || {};
     if (!Array.isArray(contacts) || !contacts.length) {
@@ -5267,6 +5334,7 @@ app.post('/api/drips/enroll', (req, res) => {
       return res.status(400).json({ ok: false, error: 'sequence array required' });
     }
     const validEmail = e => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+    const result = await _dripLock(async () => {
     const list = _dripLoad();
     const unsubs = _dripLoadUnsubs();
     const startedAt = Date.now();
@@ -5305,9 +5373,11 @@ app.post('/api/drips/enroll', (req, res) => {
       created.push({ id, email });
     }
     _dripSave(list);
-    // Kick off an immediate tick so day-0 sends fire right away
+    return { created, skipped };
+    });
+    // Kick off an immediate tick so day-0 sends fire right away (after lock release)
     _dripTick().catch(()=>{});
-    res.json({ ok: true, enrolled: created.length, skipped, created });
+    res.json({ ok: true, enrolled: result.created.length, skipped: result.skipped, created: result.created });
   } catch (err) {
     console.error('/api/drips/enroll error:', err);
     res.status(500).json({ ok: false, error: err.message });
@@ -5323,47 +5393,77 @@ app.get('/api/drips', (req, res) => {
 });
 
 // ── GET /api/drips/stats ─ aggregate counters for the live UI panel
+// Includes deliverability metrics: sent, delivered, bounced, complained,
+// bounce rate (%) and complaint rate (%). Only email-channel sends are
+// counted toward deliverability — non-email channels (SMS, ads, etc.) are
+// excluded so the rates reflect actual email performance.
 app.get('/api/drips/stats', (req, res) => {
   const list = _dripLoad();
-  const stats = { total: list.length, active: 0, paused: 0, completed: 0, unsubscribed: 0, sentTotal: 0, failedTotal: 0 };
+  const stats = {
+    total: list.length, active: 0, paused: 0, completed: 0, cancelled: 0, unsubscribed: 0,
+    sentTotal: 0, failedTotal: 0,
+    emailAttempts: 0, emailDelivered: 0, emailBounced: 0, emailComplained: 0,
+    bounceRate: 0, complaintRate: 0,
+  };
   for (const e of list) {
     stats[e.status] = (stats[e.status] || 0) + 1;
     for (const h of (e.history || [])) {
       if (h.ok) stats.sentTotal++; else stats.failedTotal++;
+      // Deliverability is only meaningful for email-channel attempts that
+      // weren't dry-run. Skip everything else.
+      if (!/email/i.test(h.channel || '')) continue;
+      if (h.note && /dry-run/i.test(h.note))    continue;
+      stats.emailAttempts++;
+      if (h.bounced || h.failureType === 'bounce') stats.emailBounced++;
+      else if (h.failureType === 'complaint')      stats.emailComplained++;
+      else if (h.delivered === true)               stats.emailDelivered++;
+      else if (h.ok && !h.bounced)                 stats.emailDelivered++; // optimistic until webhook says otherwise
     }
+  }
+  if (stats.emailAttempts > 0) {
+    stats.bounceRate    = Math.round((stats.emailBounced    / stats.emailAttempts) * 1000) / 10;
+    stats.complaintRate = Math.round((stats.emailComplained / stats.emailAttempts) * 1000) / 10;
   }
   res.json({ ok: true, stats });
 });
 
 // ── POST /api/drips/:id/(pause|resume|cancel)
-app.post('/api/drips/:id/:action', (req, res) => {
+// Validate action FIRST so this dynamic route doesn't shadow sibling static
+// routes like /api/drips/webhook/resend.
+app.post('/api/drips/:id/:action', async (req, res, next) => {
   const { id, action } = req.params;
-  const list = _dripLoad();
-  const enr = list.find(e => e.id === id);
-  if (!enr) return res.status(404).json({ ok: false, error: 'not found' });
-  if (action === 'pause')      enr.status = 'paused';
-  else if (action === 'resume') enr.status = 'active';
-  else if (action === 'cancel') enr.status = 'cancelled';
-  else return res.status(400).json({ ok: false, error: 'invalid action' });
-  _dripSave(list);
-  res.json({ ok: true, enrollment: enr });
+  if (!['pause','resume','cancel'].includes(action)) return next();
+  const result = await _dripLock(async () => {
+    const list = _dripLoad();
+    const enr = list.find(e => e.id === id);
+    if (!enr) return { notFound: true };
+    if (action === 'pause')       enr.status = 'paused';
+    else if (action === 'resume') enr.status = 'active';
+    else if (action === 'cancel') enr.status = 'cancelled';
+    _dripSave(list);
+    return { enr };
+  });
+  if (result.notFound) return res.status(404).json({ ok: false, error: 'not found' });
+  res.json({ ok: true, enrollment: result.enr });
 });
 
 // ── GET /api/drips/unsubscribe?email=... ─ public unsubscribe (no auth)
 // Returns a small HTML page so the link in the email works in any browser.
-app.get('/api/drips/unsubscribe', (req, res) => {
+app.get('/api/drips/unsubscribe', async (req, res) => {
   const email = String(req.query.email || '').trim().toLowerCase();
   if (!email) return res.status(400).send('Missing email parameter');
-  const unsubs = _dripLoadUnsubs();
-  unsubs.add(email);
-  _dripSaveUnsubs(unsubs);
-  // Mark all of this email's active enrollments as unsubscribed
-  const list = _dripLoad();
-  let touched = 0;
-  for (const e of list) {
-    if (e.email === email && e.status === 'active') { e.status = 'unsubscribed'; touched++; }
-  }
-  if (touched) _dripSave(list);
+  const touched = await _dripLock(async () => {
+    const unsubs = _dripLoadUnsubs();
+    unsubs.add(email);
+    _dripSaveUnsubs(unsubs);
+    const list = _dripLoad();
+    let n = 0;
+    for (const e of list) {
+      if (e.email === email && e.status === 'active') { e.status = 'unsubscribed'; n++; }
+    }
+    if (n) _dripSave(list);
+    return n;
+  });
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`<!doctype html><html><head><title>Unsubscribed</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
     <body style="font-family:-apple-system,sans-serif;background:#F3F4F6;margin:0;padding:60px 20px;text-align:center">
@@ -5372,6 +5472,86 @@ app.get('/api/drips/unsubscribe', (req, res) => {
         <h1 style="font-size:1.2rem;color:#0A1628;margin:0 0 10px">You're unsubscribed</h1>
         <p style="color:#6B7280;font-size:.92rem;margin:0">${email} will no longer receive drip-campaign emails from InfoGenie. ${touched} active sequence${touched===1?'':'s'} stopped.</p>
       </div></body></html>`);
+});
+
+// ── POST /api/drips/webhook/resend ──────────────────────────────────────────
+// Receives async deliverability events from Resend. Configure this URL in
+// the Resend dashboard (Webhooks → Add endpoint). Supported event types:
+//   email.delivered  → marks the matching history entry delivered:true
+//   email.bounced    → marks bounced:true (counts toward bounce rate)
+//   email.complained → marks complaint:true (counts toward complaint rate)
+// Matching is by Resend's message id (entry.providerId). If no match, the
+// event is ignored quietly so retries don't pile up.
+//
+// Security: when RESEND_WEBHOOK_SECRET is set we verify the Svix-style
+// signature header (Resend uses Svix under the hood) over the RAW request
+// body. Without verification an attacker who knows a message id could mark
+// real sends as bounced/complained and poison deliverability metrics — so
+// in production this secret MUST be configured.
+const _crypto = require('crypto');
+function _verifyResendWebhook(req) {
+  const secret = process.env.RESEND_WEBHOOK_SECRET;
+  if (!secret) return { ok: false, reason: 'RESEND_WEBHOOK_SECRET not configured' };
+  const id        = req.get('svix-id') || req.get('webhook-id');
+  const timestamp = req.get('svix-timestamp') || req.get('webhook-timestamp');
+  const sigHeader = req.get('svix-signature') || req.get('webhook-signature');
+  if (!id || !timestamp || !sigHeader) return { ok: false, reason: 'missing signature headers' };
+  // Reject events older than 5 minutes (replay protection)
+  const tsNum = parseInt(timestamp, 10);
+  if (!Number.isFinite(tsNum) || Math.abs(Date.now()/1000 - tsNum) > 300) return { ok: false, reason: 'stale timestamp' };
+  const raw = req.rawBody || JSON.stringify(req.body || {});
+  const signedPayload = `${id}.${timestamp}.${raw}`;
+  // Resend secret looks like "whsec_..." — strip prefix, base64-decode
+  const key = secret.startsWith('whsec_') ? Buffer.from(secret.slice(6), 'base64') : Buffer.from(secret);
+  const expected = _crypto.createHmac('sha256', key).update(signedPayload).digest('base64');
+  // Header is space-separated list of "v1,<sig>" pairs — any matching one wins
+  const sigs = sigHeader.split(' ').map(s => s.split(',')[1]).filter(Boolean);
+  const match = sigs.some(s => {
+    try { return _crypto.timingSafeEqual(Buffer.from(s, 'base64'), Buffer.from(expected, 'base64')); }
+    catch { return false; }
+  });
+  return match ? { ok: true } : { ok: false, reason: 'signature mismatch' };
+}
+
+app.post('/api/drips/webhook/resend', async (req, res) => {
+  try {
+    // Only enforce signature verification when a secret is configured.
+    // Returning 401 (vs 200) when the secret is set prevents Resend from
+    // silently treating spoofed events as accepted.
+    if (process.env.RESEND_WEBHOOK_SECRET) {
+      const v = _verifyResendWebhook(req);
+      if (!v.ok) {
+        console.warn('[drip] webhook rejected:', v.reason);
+        return res.status(401).json({ ok: false, error: v.reason });
+      }
+    }
+    const evt = req.body || {};
+    const type = String(evt.type || evt.event || '').toLowerCase();
+    const data = evt.data || evt;
+    const msgId = data.email_id || data.id || data.message_id;
+    if (!msgId) return res.json({ ok: true, ignored: 'no message id' });
+    const matched = await _dripLock(async () => {
+      const list = _dripLoad();
+      let n = 0;
+      for (const enr of list) {
+        for (const h of (enr.history || [])) {
+          if (h.providerId !== msgId) continue;
+          n++;
+          if (type.includes('delivered'))      { h.delivered = true; h.deliveredAt = Date.now(); }
+          else if (type.includes('bounced'))   { h.bounced   = true; h.bouncedAt   = Date.now(); h.failureType = 'bounce';    h.bounceReason = (data.bounce && data.bounce.message) || ''; }
+          else if (type.includes('complain'))  { h.complaint = true; h.complaintAt = Date.now(); h.failureType = 'complaint'; }
+          else if (type.includes('opened'))    { h.opened    = true; h.openedAt    = Date.now(); }
+          else if (type.includes('clicked'))   { h.clicked   = true; h.clickedAt   = Date.now(); }
+        }
+      }
+      if (n) _dripSave(list);
+      return n;
+    });
+    res.json({ ok: true, matched });
+  } catch (err) {
+    console.error('/api/drips/webhook/resend error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // ── POST /api/ai-validate-metrics ────────────────────────────────────────────
