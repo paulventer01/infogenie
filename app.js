@@ -7650,6 +7650,27 @@ function buildKeywordMap() {
 
   // Auto-render previous result if present
   if (window._keywordMap) _kmRender();
+
+  // ── Auto-pull from Intent Map on every view-open ──────────────────────────
+  // If the Intent Map exists and has keywords, refresh the keyword pool so the
+  // user always sees the latest intent data without having to click the button.
+  // Show a subtle confirmation toast (only once per session per intent-map version).
+  try {
+    const im = window._intentMap;
+    const kwInput = document.getElementById('kmKwInput');
+    if (im?.keywords?.length && kwInput) {
+      const fresh = _kmSeedKeywords();
+      if (fresh && fresh !== kwInput.value) {
+        kwInput.value = fresh;
+      }
+      // Toast once per Intent Map "version" (first kw + count) per page session
+      const stamp = `${im.keywords.length}:${(im.keywords[0]?.keyword || '').slice(0,40)}`;
+      if (window._kmAutoToastStamp !== stamp) {
+        window._kmAutoToastStamp = stamp;
+        setTimeout(() => showToast(`🔄 Auto-pulled ${im.keywords.length} keywords from Intent Map`), 250);
+      }
+    }
+  } catch(e) { console.warn('Keyword Map auto-pull skipped:', e); }
 }
 
 async function generateKeywordMap() {
