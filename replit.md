@@ -144,7 +144,7 @@ Added 10 new modules in cache buster `v=20260425Q`. All client-side, simulated f
 - **Smart Creative Builder** (`smart-creative` → `buildSmartCreative`) — 50+ ad variants across Meta/Google/TikTok/LinkedIn/X with CSV export
 - **AI UGC Avatars** (`ugc-avatars` → `buildUgcAvatars`) — 6 avatars + AI-written script + mock video preview
 - **AI Voiceovers** (`voiceovers` → `buildVoiceovers`) — 8 voices, 12 languages, mock waveform + MP3/WAV export
-- **Templates Library** (`templates` → `buildTemplates`) — 26 templates filtered by type (ad/lp/email/social)
+- **Templates Library** (`templates` → `buildTemplates`) — 26 templates filtered by type (ad/lp/email/social). Card visuals are fetched live per industry via `/api/template-images` (DataForSEO Google Images, SerpAPI fallback) with a bounded LRU 7-day cache; curated Unsplash photos act as `<img onerror>` fallbacks.
 
 ### Reach dropdown
 - **Optimization Folders** (`opt-folders` → `buildOptFolders`) — 4 auto-optimisation folders with rules + savings tally

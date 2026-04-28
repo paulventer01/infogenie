@@ -24516,7 +24516,41 @@ window.runTemplates = function() {
     window._templatesData = { templates };
     buildTemplates();
     if (typeof stop === 'function') try { stop('📐 Browse Templates'); } catch(e){}
-    showToast(`✅ ${templates.length} templates loaded with relevant imagery`);
+    showToast(`✅ ${templates.length} templates loaded — fetching ${sector || 'industry'} imagery…`);
+
+    // ── Fetch real industry-relevant images via backend (Google Images) ─────
+    (async () => {
+      try {
+        const items = templates.map(t => ({ title: t.title, kw: kw }));
+        const resp = await fetch('/api/template-images', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            industry: sector,
+            sector: sector,
+            brand: brand,
+            items
+          })
+        });
+        const data = await resp.json();
+        const imgs = Array.isArray(data.images) ? data.images : [];
+        if (!imgs.length) return;
+        let replaced = 0;
+        templates.forEach((t, i) => {
+          if (imgs[i] && typeof imgs[i] === 'string') {
+            t.img = imgs[i];   // imgFallback stays as the curated Unsplash photo
+            replaced++;
+          }
+        });
+        if (replaced > 0) {
+          buildTemplates();
+          showToast(`🖼️ ${replaced} template visuals refreshed for ${sector || 'your industry'}`);
+        }
+      } catch (e) {
+        console.warn('template-images fetch failed:', e.message);
+        // Silent fallback — existing loremflickr / Unsplash images stay in place
+      }
+    })();
   }, 1100);
 };
 

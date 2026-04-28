@@ -1838,6 +1838,147 @@ Examples for an email marketing SaaS: ["email marketing automation", "transactio
   }
 });
 
+// ── POST /api/template-images — Fetch industry-relevant images per template ─
+// Uses SerpAPI Google Images (live web search) with in-memory cache to keep
+// quota usage low. Returns one image URL per requested item, aligned by index.
+// LRU-ish bounded cache (oldest entries evicted when size exceeded).
+// Map preserves insertion order, so deleting + re-setting on hit moves entries to the tail.
+const _templateImageCache = new Map(); // key -> { url, ts }
+const TEMPLATE_IMG_TTL_MS    = 1000 * 60 * 60 * 24 * 7; // 7 days
+const TEMPLATE_IMG_CACHE_MAX = 2000;
+function _cacheGet(key) {
+  const v = _templateImageCache.get(key);
+  if (!v) return null;
+  if ((Date.now() - v.ts) >= TEMPLATE_IMG_TTL_MS) { _templateImageCache.delete(key); return null; }
+  // Refresh recency (move to tail)
+  _templateImageCache.delete(key);
+  _templateImageCache.set(key, v);
+  return v.url;
+}
+function _cacheSet(key, url) {
+  if (_templateImageCache.has(key)) _templateImageCache.delete(key);
+  _templateImageCache.set(key, { url, ts: Date.now() });
+  // Evict oldest until under cap
+  while (_templateImageCache.size > TEMPLATE_IMG_CACHE_MAX) {
+    const oldest = _templateImageCache.keys().next().value;
+    if (oldest === undefined) break;
+    _templateImageCache.delete(oldest);
+  }
+}
+
+function _pickImageFromList(list) {
+  if (!Array.isArray(list)) return null;
+  // Skip svg, data:, tiny gifs; prefer https
+  const ok = (u) => typeof u === 'string' && /^https?:\/\//i.test(u) && !/\.svg($|\?)/i.test(u);
+  for (const item of list) {
+    if (!item) continue;
+    const candidates = [item.original, item.image_url, item.source_url, item.url, item.thumbnail];
+    for (const c of candidates) if (ok(c)) return c;
+  }
+  return null;
+}
+
+async function _imageViaDataForSEO(query) {
+  if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) return null;
+  try {
+    const raw = await callDataForSEO(
+      '/v3/serp/google/images/live/advanced',
+      [{ language_code: 'en', location_code: 2840, keyword: query, depth: 20 }],
+      9000
+    );
+    const items = raw?.tasks?.[0]?.result?.[0]?.items;
+    if (!Array.isArray(items)) return null;
+    // DataForSEO returns mixed SERP elements: carousel (with nested items), images_search,
+    // related_searches, etc. Flatten one level deep so we capture carousel_elements too.
+    const flat = [];
+    for (const it of items) {
+      if (!it) continue;
+      if (Array.isArray(it.items)) {
+        for (const sub of it.items) if (sub) flat.push(sub);
+      } else {
+        flat.push(it);
+      }
+    }
+    return _pickImageFromList(flat.map(it => ({
+      original: it.image_url || it.source_url,
+      image_url: it.image_url,
+      source_url: it.source_url,
+      thumbnail: it.image_url
+    })));
+  } catch (e) {
+    console.warn('dataforseo image lookup failed:', query, '-', e.message);
+    return null;
+  }
+}
+
+async function _imageViaSerpApi(query) {
+  const key = process.env.SERP_API_KEY;
+  if (!key) return null;
+  try {
+    const url = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(query)}&num=10&safe=active&api_key=${key}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (data.error) return null;
+    return _pickImageFromList(data.images_results);
+  } catch (e) {
+    console.warn('serpapi image lookup failed:', query, '-', e.message);
+    return null;
+  }
+}
+
+async function _lookupTemplateImage(query) {
+  const cacheKey = query.toLowerCase().trim();
+  const hit = _cacheGet(cacheKey);
+  if (hit) return hit;
+
+  // Prefer DataForSEO (configured), fall back to SerpAPI if available
+  const url = (await _imageViaDataForSEO(query)) || (await _imageViaSerpApi(query));
+  if (url) _cacheSet(cacheKey, url);
+  return url;
+}
+
+app.post('/api/template-images', async (req, res) => {
+  try {
+    const { industry = '', sector = '', items = [] } = req.body || {};
+    if (!Array.isArray(items) || !items.length) return res.json({ images: [] });
+    const ctx = (industry || sector || 'business').toString().trim();
+
+    // Cap items processed in one request to keep latency + quota in check
+    const work = items.slice(0, 32);
+
+    // Process with limited parallelism (4 at a time)
+    const out = new Array(work.length).fill(null);
+    let cursor = 0;
+    async function worker() {
+      while (cursor < work.length) {
+        const i = cursor++;
+        try {
+          const it = work[i] || {};
+          const title = (it.title || '').toString().slice(0, 80);
+          const kw = (it.kw || '').toString().slice(0, 60);
+          // Build a query that biases toward visual stock-style results in the user's industry
+          const q = `${title} ${ctx} ${kw}`.replace(/[→•\-]+/g, ' ').replace(/\s+/g,' ').trim();
+          out[i] = await _lookupTemplateImage(q);
+        } catch (itemErr) {
+          // One failed lookup must NOT zero out the rest of the batch
+          console.warn('template-image item failed (idx', i + '):', itemErr.message);
+          out[i] = null;
+        }
+      }
+    }
+    await Promise.all([worker(), worker(), worker(), worker()]);
+
+    const sourceLabel = (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD)
+      ? 'dataforseo+serpapi-fallback'
+      : (process.env.SERP_API_KEY ? 'serpapi' : 'unavailable');
+    res.json({ images: out, source: sourceLabel });
+  } catch (err) {
+    console.error('/api/template-images error:', err.message);
+    res.json({ images: [], error: err.message });
+  }
+});
+
 // ── POST /api/intent-map — Classify keywords by search intent + page-fit ────
 app.post('/api/intent-map', async (req, res) => {
   try {
