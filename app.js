@@ -4727,12 +4727,18 @@ function buildCampaigns() {
     .slice(0, 6);
   const audiencePanel = topAudiences.length > 0 ? `
     <div class="data-table-card" style="margin-bottom:24px;background:linear-gradient(135deg,#F0F9FF,#E0F2FE);border:1.5px solid #BAE6FD">
-      <div class="dtc-header">
-        <h3 style="color:#0369A1">🎯 Auto Target Audience — AI-Detected Segments</h3>
-        <button type="button" onclick="window._showLiveIntelInfo && window._showLiveIntelInfo()" class="atag" style="background:#0369A1;border:none;color:white;cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:4px 10px;font-size:0.7rem;font-weight:700;border-radius:999px" title="Click for details on how Live Intelligence works"><span style="width:6px;height:6px;border-radius:50%;background:#10F981;box-shadow:0 0 6px #10F981;animation:livePulse 1.4s infinite ease-out"></span>Live Intelligence</button>
+      <div class="dtc-header" style="gap:12px;flex-wrap:wrap">
+        <h3 style="color:#0369A1;flex:1;min-width:0">🎯 Auto Target Audience — AI-Detected Segments</h3>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button type="button" onclick="window._showLiveIntelInfo && window._showLiveIntelInfo()" class="atag" style="background:#0369A1;border:none;color:white;cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:4px 10px;font-size:0.7rem;font-weight:700;border-radius:999px" title="Click for details on how Live Intelligence works"><span style="width:6px;height:6px;border-radius:50%;background:#10F981;box-shadow:0 0 6px #10F981;animation:livePulse 1.4s infinite ease-out"></span>Live Intelligence</button>
+          <button type="button" data-ig-launch="0" onclick="event.preventDefault();event.stopPropagation();window._igLaunch && window._igLaunch(0);return false;" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;padding:10px 20px;font-size:0.78rem;font-weight:800;color:white;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;box-shadow:0 4px 14px rgba(0,102,255,.32);transition:all .2s;flex-shrink:0;pointer-events:auto;position:relative;z-index:10" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(0,102,255,.42)'" onmouseout="this.style.transform='';this.style.boxShadow='0 4px 14px rgba(0,102,255,.32)'">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            <span style="pointer-events:none">🚀 Launch Campaign</span>
+          </button>
+        </div>
         <style>@keyframes livePulse{0%{opacity:1}50%{opacity:.4}100%{opacity:1}}</style>
       </div>
-      <p style="font-size:0.8rem;color:#0369A1;margin:0 0 14px 0">InfoGenie has automatically identified these high-value audience segments from competitor analysis. These will be auto-applied to your campaigns.</p>
+      <p style="font-size:0.8rem;color:#0369A1;margin:14px 0;padding-left:24px;padding-right:24px">InfoGenie has automatically identified these high-value audience segments from competitor analysis. These will be auto-applied to your campaigns.</p>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
         ${topAudiences.map((a, i) => {
           const colors = ['#0369A1','#059669','#7C3AED','#D97706','#DC2626','#0066FF'];
@@ -4818,10 +4824,6 @@ function buildCampaigns() {
           <div class="camp-hero-title">${heroTitle}</div>
           <div class="camp-hero-sub">${heroSub}</div>
         </div>
-        <button type="button" data-ig-launch="0" onclick="event.preventDefault();event.stopPropagation();window._igLaunch && window._igLaunch(0);return false;" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#00C9C8,#0066FF);border:none;border-radius:10px;padding:11px 22px;font-size:0.82rem;font-weight:800;color:white;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;box-shadow:0 4px 16px rgba(0,102,255,.35);transition:all .2s;flex-shrink:0;pointer-events:auto;position:relative;z-index:10" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 22px rgba(0,102,255,.45)'" onmouseout="this.style.transform='';this.style.boxShadow='0 4px 16px rgba(0,102,255,.35)'">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          <span style="pointer-events:none">🚀 Launch Campaign</span>
-        </button>
       </div>
       <div class="camp-kpis">
         <div><div class="camp-kpi-val" style="color:var(--teal)">${projROAS}×</div><div class="camp-kpi-lbl">Projected ROAS</div></div>
