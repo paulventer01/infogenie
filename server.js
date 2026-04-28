@@ -5023,33 +5023,41 @@ const _verifRateLimit = new Map();   // email -> last-send-timestamp (anti-spam)
 function _genCode() { return String(Math.floor(100000 + Math.random() * 900000)); }
 
 async function _sendVerificationEmail({ to, name, code }) {
-  // Prefer a dedicated email key (so we don't disturb the general RAPIDAPI_KEY
-  // used by other integrations); fall back to the general one if not set.
-  const apiKey = process.env.RAPIDAPI_EMAIL_KEY || process.env.RAPIDAPI_KEY;
-  if (!apiKey) throw new Error('Email provider not configured (RAPIDAPI_EMAIL_KEY or RAPIDAPI_KEY missing)');
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error('Email provider not configured (RESEND_API_KEY missing)');
+  // Default to Resend's free shared sender (works without domain verification).
+  // Override with RESEND_FROM_EMAIL once you've verified your own domain in Resend.
+  const fromAddr = process.env.RESEND_FROM_EMAIL || 'InfoGenie <onboarding@resend.dev>';
   const safeName = (name || to.split('@')[0]).replace(/[<>&"]/g, '').slice(0, 60);
   const subject = `Your InfoGenie verification code: ${code}`;
-  // Plain-text body (this provider's OTP endpoint expects a simple text body).
-  const body = `Hi ${safeName},\n\nYour InfoGenie verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you didn't request this, you can safely ignore this email — no account will be created without entering this code.\n\n— InfoGenie · AI Marketing Intelligence`;
+  const text = `Hi ${safeName},\n\nYour InfoGenie verification code is: ${code}\n\nThis code expires in 10 minutes.\nIf you didn't request this, you can safely ignore this email — no account will be created without entering this code.\n\n— InfoGenie`;
+  const html = `<!doctype html><html><body style="margin:0;background:#F3F4F6;padding:30px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
+    <div style="max-width:480px;margin:0 auto;background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.06)">
+      <div style="background:linear-gradient(135deg,#0066FF,#00C9C8);padding:26px 30px;color:#FFFFFF;text-align:center">
+        <div style="font-size:1.5rem;font-weight:800;letter-spacing:-.02em;margin-bottom:4px">InfoGenie</div>
+        <div style="font-size:.85rem;opacity:.92">AI Marketing Intelligence</div>
+      </div>
+      <div style="padding:30px 32px">
+        <p style="margin:0 0 14px;font-size:1rem;color:#111827">Hi ${safeName},</p>
+        <p style="margin:0 0 22px;font-size:.92rem;color:#374151;line-height:1.55">Welcome aboard! Use the verification code below to finish creating your InfoGenie account.</p>
+        <div style="background:#F0F9FF;border:1.5px dashed #38BDF8;border-radius:12px;padding:22px;text-align:center;margin-bottom:22px">
+          <div style="font-size:.7rem;font-weight:700;color:#0369A1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Verification code</div>
+          <div style="font-family:'SF Mono',Menlo,Consolas,monospace;font-size:2.2rem;font-weight:800;color:#0066FF;letter-spacing:.4em">${code}</div>
+          <div style="font-size:.72rem;color:#6B7280;margin-top:8px">Valid for 10 minutes</div>
+        </div>
+        <p style="margin:0 0 6px;font-size:.78rem;color:#6B7280;line-height:1.55">If you didn't request this, you can safely ignore the email — no account will be created without entering this code.</p>
+      </div>
+      <div style="padding:14px 32px;background:#F9FAFB;border-top:1px solid #F3F4F6;font-size:.7rem;color:#9CA3AF;text-align:center">© InfoGenie · Sent because someone tried to create an account using ${to}</div>
+    </div></body></html>`;
 
-  const resp = await fetch('https://send-bulk-emails.p.rapidapi.com/api/send/otp/mail', {
+  const resp = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: {
-      'Content-Type':   'application/json',
-      'x-rapidapi-host': 'send-bulk-emails.p.rapidapi.com',
-      'x-rapidapi-key':  apiKey
-    },
-    body: JSON.stringify({
-      subject,
-      from:          'gateway.smtp587@gmail.com',
-      to,
-      senders_name:  'InfoGenie',
-      body
-    })
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: fromAddr, to: [to], subject, text, html })
   });
   if (!resp.ok) {
     const txt = await resp.text().catch(() => '');
-    throw new Error(`Email provider ${resp.status}: ${txt.slice(0, 240)}`);
+    throw new Error(`Resend ${resp.status}: ${txt.slice(0, 240)}`);
   }
   return true;
 }
