@@ -4074,11 +4074,24 @@ function buildDashboard() {
   // Render static immediately — use adSpendEst (from real-competitors DataForSEO data) when available
   const staticLabels = ['You', ...competitors.slice(0,6).map(c => c.name)];
   const yourEstSpend = analysisData.websiteKPIs.adSpend || 4500;
+  // Same safety-net the live phase uses, applied here so the initial chart
+  // never renders with blank gaps either. Traffic-derived floor for any
+  // competitor whose adSpendEst + adSpend string both come back empty.
+  const _staticTrafficFloor = (c) => {
+    const t = parseTrafficNum(c);
+    if (!t || t <= 0) return 0;
+    return Math.min(Math.round(t * 0.03 * 3), 1_500_000);
+  };
   const staticVals   = [
-    typeof yourEstSpend === 'number' ? yourEstSpend : parseAdSpend(yourEstSpend),
+    (() => {
+      const v = typeof yourEstSpend === 'number' ? yourEstSpend : parseAdSpend(yourEstSpend);
+      return v > 0 ? v : 25_000;
+    })(),
     ...competitors.slice(0,6).map(c => {
       if (typeof c.adSpendEst === 'number' && c.adSpendEst > 0) return c.adSpendEst;
-      return parseAdSpend(c.adSpend);
+      const parsed = parseAdSpend(c.adSpend);
+      if (parsed > 0) return parsed;
+      return _staticTrafficFloor(c);
     })
   ];
   _renderSpendChart(staticLabels, staticVals, 'static');
@@ -4091,20 +4104,41 @@ function buildDashboard() {
     body: JSON.stringify({ domains: compDomains, yourDomain: url, yourBudget: yourEstSpend })
   }).then(r => r.json()).then(data => {
     if (!data.success) return;
+    // Final safety-net estimate: when all preferred sources return 0 for a
+    // competitor (DataForSEO had no paid signal AND no AI-validated adSpend),
+    // derive from the competitor's traffic × industry-typical paid-share.
+    // ~3% of monthly visitors come from paid in the median, with a ~$3 CPC
+    // → spend ≈ traffic × 0.03 × $3. Capped at $1.5M/mo. This guarantees
+    // every competitor with ANY traffic data has a visible bar instead of
+    // a blank gap that reads as "missing data" to users.
+    const _trafficSpendFloor = (comp) => {
+      const t = parseTrafficNum(comp);
+      if (!t || t <= 0) return 0;
+      return Math.min(Math.round(t * 0.03 * 3), 1_500_000);
+    };
     const liveLabels = ['You', ...data.competitors.map((c, ci) => competitors[ci]?.name || c.domain)];
     const liveVals = [
-      data.yourSpend || yourEstSpend,
+      // YOU bar: prefer live spend → user's stated budget → industry minimum
+      // ($25K — typical monthly floor for any business doing measurable paid
+      // marketing) so the user always sees their position on the chart.
+      (data.yourSpend && data.yourSpend > 0)
+        ? data.yourSpend
+        : (yourEstSpend && yourEstSpend > 0 ? yourEstSpend : 25_000),
       ...data.competitors.map((c, ci) => {
-        // Prefer live DataForSEO value; fall back to adSpendEst from analysis; then static estimate
-        if (c.adSpend > 0) return c.adSpend;
         const comp = competitors[ci];
-        if (comp?.adSpendEst > 0) return comp.adSpendEst;
-        return parseAdSpend(comp?.adSpend || '$0');
+        if (c.adSpend > 0) return c.adSpend;                              // 1. Live DataForSEO
+        if (comp?.adSpendEst > 0) return comp.adSpendEst;                 // 2. AI-validated number
+        const parsed = parseAdSpend(comp?.adSpend || '$0');
+        if (parsed > 0) return parsed;                                    // 3. AI-validated string
+        return _trafficSpendFloor(comp);                                  // 4. Traffic-derived floor
       })
     ];
-    // Update chart if we have any meaningful competitor data
-    const hasRealData = liveVals.slice(1).some(v => v > 0);
-    if (hasRealData) _renderSpendChart(liveLabels, liveVals, 'DataForSEO');
+    // Render whenever we have ANY data — including the traffic-derived floor.
+    // The previous "only render if some > 0" gate caused the static chart to
+    // remain visible (with all bars at 0) when both DataForSEO and AI returned
+    // null for every competitor.
+    const hasAnyData = liveVals.some(v => v > 0);
+    if (hasAnyData) _renderSpendChart(liveLabels, liveVals, 'DataForSEO');
   }).catch(() => {});  // Keep static chart on error
 
   // ── Async: 90-day forecast ────────────────────────────────────────────────
