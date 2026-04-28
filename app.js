@@ -2,6 +2,230 @@
 // InfoGenie — Main Application Controller
 // ============================================================
 
+// ── Account system + per-user localStorage namespacing ────────────────────────
+// Wraps localStorage so every key is automatically scoped to the active user
+// (e.g. `_u:alice@example.com::ig-domain`). System keys (auth state + theme)
+// stay un-prefixed so they are shared. This means ALL existing localStorage
+// usage across the app is automatically per-account with no other code changes.
+(function setupAccounts(){
+  const SYS = ['ig-users','ig-current-user','ig-theme'];
+  const isSys = k => !k || SYS.indexOf(k) !== -1 || /^_u:/.test(k);
+  const orig = {
+    get: localStorage.getItem.bind(localStorage),
+    set: localStorage.setItem.bind(localStorage),
+    rem: localStorage.removeItem.bind(localStorage)
+  };
+  function curUser(){ try { return orig.get('ig-current-user') || ''; } catch(e){ return ''; } }
+  function ns(k){ const u = curUser(); return (!u || isSys(k)) ? k : ('_u:'+u+'::'+k); }
+  // Patch only get/set/remove — leave length/key alone (rarely used).
+  localStorage.getItem    = function(k){ return orig.get(ns(k)); };
+  localStorage.setItem    = function(k,v){ return orig.set(ns(k), v); };
+  localStorage.removeItem = function(k){ return orig.rem(ns(k)); };
+  // Expose helpers on window for the auth wall + nav widgets.
+  window._auth = {
+    getUsers(){ try { return JSON.parse(orig.get('ig-users') || '[]'); } catch(e){ return []; } },
+    saveUsers(u){ orig.set('ig-users', JSON.stringify(u||[])); },
+    current(){ return curUser(); },
+    currentProfile(){ const e = curUser(); return this.getUsers().find(u => u.email === e) || null; },
+    signup({name, email, password}){
+      email = (email||'').trim().toLowerCase();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error:'Please enter a valid email address.' };
+      if (!password || password.length < 4) return { error:'Password must be at least 4 characters.' };
+      const users = this.getUsers();
+      if (users.some(u => u.email === email)) return { error:'An account with this email already exists. Try logging in instead.' };
+      // Light hash (NOT cryptographic — this is client-only state, not real auth)
+      let h = 0; for (let i=0;i<password.length;i++){ h = ((h<<5)-h) + password.charCodeAt(i); h |= 0; }
+      users.push({ name:(name||email.split('@')[0]).trim(), email, pw:h, createdAt: new Date().toISOString() });
+      this.saveUsers(users);
+      orig.set('ig-current-user', email);
+      return { ok:true };
+    },
+    login({email, password}){
+      email = (email||'').trim().toLowerCase();
+      const u = this.getUsers().find(x => x.email === email);
+      if (!u) return { error:'No account found for that email. Sign up first.' };
+      let h = 0; for (let i=0;i<(password||'').length;i++){ h = ((h<<5)-h) + (password||'').charCodeAt(i); h |= 0; }
+      if (h !== u.pw) return { error:'Incorrect password.' };
+      orig.set('ig-current-user', email);
+      return { ok:true };
+    },
+    logout(){ orig.rem('ig-current-user'); location.reload(); }
+  };
+})();
+
+// ── Auth wall — block app until user signs up / logs in ───────────────────────
+(function authWall(){
+  function render(){
+    if (window._auth.current()) return;       // already signed in
+    if (document.getElementById('igAuthWall')) return;
+    const wall = document.createElement('div');
+    wall.id = 'igAuthWall';
+    wall.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(ellipse at top left,#0066FF22,transparent 60%),radial-gradient(ellipse at bottom right,#00C9C822,transparent 60%),#0A1628;backdrop-filter:blur(8px);font-family:Inter,-apple-system,sans-serif';
+    wall.innerHTML = `
+      <div style="width:100%;max-width:440px;background:#FFFFFF;border-radius:20px;box-shadow:0 30px 80px rgba(0,0,0,.4);overflow:hidden">
+        <div style="background:linear-gradient(135deg,#0066FF,#00C9C8);padding:28px 30px 22px;color:white;text-align:center">
+          <div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:8px">
+            <svg width="36" height="36" viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="rgba(255,255,255,.18)"/><path d="M13 20 Q20 10 27 20 Q20 30 13 20Z" fill="white" opacity=".95"/><circle cx="20" cy="20" r="4" fill="white"/></svg>
+            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:1.5rem;font-weight:800;letter-spacing:-.02em">Info<span style="color:#A5F3FC">Genie</span></span>
+          </div>
+          <div style="font-size:.82rem;opacity:.92;font-weight:500">AI Marketing Intelligence — for your team</div>
+        </div>
+        <div style="padding:22px 28px 26px">
+          <div id="igAuthTabs" style="display:flex;gap:6px;background:#F3F4F6;border-radius:10px;padding:4px;margin-bottom:18px">
+            <button data-tab="login"  class="igAuthTab" style="flex:1;padding:9px 0;border:none;border-radius:7px;font-size:.83rem;font-weight:700;cursor:pointer;background:white;color:#0066FF;box-shadow:0 1px 3px rgba(0,0,0,.06)">Log In</button>
+            <button data-tab="signup" class="igAuthTab" style="flex:1;padding:9px 0;border:none;border-radius:7px;font-size:.83rem;font-weight:700;cursor:pointer;background:transparent;color:#6B7280">Create Account</button>
+          </div>
+
+          <form id="igAuthForm" autocomplete="on" onsubmit="return false">
+            <div id="igNameRow" style="display:none;margin-bottom:12px">
+              <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;margin-bottom:5px">Your name</label>
+              <input id="igName" type="text" placeholder="Jane Smith" autocomplete="name" style="width:100%;padding:11px 13px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:.88rem;outline:none;box-sizing:border-box" />
+            </div>
+            <div style="margin-bottom:12px">
+              <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;margin-bottom:5px">Email address</label>
+              <input id="igEmail" type="email" placeholder="you@company.com" autocomplete="email" style="width:100%;padding:11px 13px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:.88rem;outline:none;box-sizing:border-box" />
+            </div>
+            <div style="margin-bottom:14px">
+              <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;margin-bottom:5px">Password</label>
+              <input id="igPass" type="password" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding:11px 13px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:.88rem;outline:none;box-sizing:border-box" />
+              <div id="igPassHint" style="display:none;font-size:.66rem;color:#6B7280;margin-top:4px">Min 4 characters. Stored locally on your browser.</div>
+            </div>
+            <div id="igAuthError" style="display:none;background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;padding:9px 12px;border-radius:8px;font-size:.74rem;font-weight:600;margin-bottom:12px"></div>
+            <button id="igAuthSubmit" type="submit" style="width:100%;padding:13px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:.92rem;font-weight:800;color:white;cursor:pointer;box-shadow:0 6px 18px rgba(0,102,255,.32)">Log In →</button>
+          </form>
+          <div style="margin-top:14px;text-align:center;font-size:.68rem;color:#9CA3AF">By continuing you agree that your settings & campaigns will be saved to this account.</div>
+        </div>
+      </div>`;
+    document.body.appendChild(wall);
+
+    let mode = 'login';
+    function setMode(m){
+      mode = m;
+      wall.querySelectorAll('.igAuthTab').forEach(b => {
+        const on = b.dataset.tab === m;
+        b.style.background = on ? 'white' : 'transparent';
+        b.style.color = on ? '#0066FF' : '#6B7280';
+        b.style.boxShadow = on ? '0 1px 3px rgba(0,0,0,.06)' : 'none';
+      });
+      document.getElementById('igNameRow').style.display = m === 'signup' ? 'block' : 'none';
+      document.getElementById('igPassHint').style.display = m === 'signup' ? 'block' : 'none';
+      document.getElementById('igAuthSubmit').textContent = m === 'signup' ? 'Create account →' : 'Log In →';
+      document.getElementById('igPass').setAttribute('autocomplete', m === 'signup' ? 'new-password' : 'current-password');
+      document.getElementById('igAuthError').style.display = 'none';
+    }
+    wall.querySelectorAll('.igAuthTab').forEach(b => b.addEventListener('click', () => setMode(b.dataset.tab)));
+
+    function showErr(msg){
+      const e = document.getElementById('igAuthError');
+      e.textContent = msg; e.style.display = 'block';
+    }
+    function submit(){
+      const name  = (document.getElementById('igName').value || '').trim();
+      const email = (document.getElementById('igEmail').value || '').trim();
+      const pass  = document.getElementById('igPass').value || '';
+      const r = mode === 'signup'
+        ? window._auth.signup({ name, email, password: pass })
+        : window._auth.login({ email, password: pass });
+      if (r.error) return showErr(r.error);
+      // Success — reload so the namespaced localStorage takes effect from a clean module-init.
+      location.reload();
+    }
+    document.getElementById('igAuthSubmit').addEventListener('click', submit);
+    document.getElementById('igAuthForm').addEventListener('submit', e => { e.preventDefault(); submit(); });
+
+    // Default tab: signup if zero accounts, otherwise login
+    setMode(window._auth.getUsers().length === 0 ? 'signup' : 'login');
+    setTimeout(() => { try { document.getElementById('igEmail').focus(); } catch(e){} }, 100);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render);
+  else render();
+})();
+
+// ── Wire up nav user menu (avatar pill + dropdown + logout) ───────────────────
+(function wireUserMenu(){
+  function init(){
+    if (!window._auth || !window._auth.current()) return;
+    const menu     = document.getElementById('navUserMenu');
+    const btn      = document.getElementById('navUserBtn');
+    const drop     = document.getElementById('navUserDropdown');
+    const avatar   = document.getElementById('navUserAvatar');
+    const nameEl   = document.getElementById('navUserName');
+    const fullEl   = document.getElementById('navUserNameFull');
+    const emailEl  = document.getElementById('navUserEmail');
+    const logout   = document.getElementById('navLogoutBtn');
+    if (!menu || !btn) return;
+    const p = window._auth.currentProfile() || { name:'User', email: window._auth.current() };
+    const initial = (p.name || p.email || 'U').trim().charAt(0).toUpperCase();
+    avatar.textContent = initial;
+    nameEl.textContent = (p.name || p.email.split('@')[0]).slice(0, 18);
+    fullEl.textContent = p.name || '—';
+    emailEl.textContent = p.email;
+    menu.style.display = 'inline-flex';
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      drop.style.display = drop.style.display === 'block' ? 'none' : 'block';
+    });
+    document.addEventListener('click', e => {
+      if (!menu.contains(e.target)) drop.style.display = 'none';
+    });
+    logout.addEventListener('click', () => {
+      if (confirm('Log out? Your settings & campaigns will stay saved to this account and reload when you log back in.')) {
+        try { if (typeof window._persistContent === 'function') window._persistContent(); } catch(e){}
+        window._auth.logout();
+      }
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+
+// ── Persist Social posts / Launched campaigns / Article topics across reloads ─
+// The Master Calendar already aggregates these arrays — without persistence,
+// data created in one session vanishes on refresh and the calendar shows zeros.
+(function setupContentPersistence(){
+  const KEYS = {
+    _socialPosts:       'ig-social-posts',
+    _launchedCampaigns: 'ig-launched-campaigns',
+    _autoSeoArticles:   'ig-autoseo-articles',
+    _autoSeoSchedule:   'ig-autoseo-schedule'
+  };
+  // Restore on first chance (after auth wall is bypassed by an active user).
+  function restore(){
+    if (!window._auth || !window._auth.current()) return;
+    Object.entries(KEYS).forEach(([wkey, lsKey]) => {
+      try {
+        const raw = localStorage.getItem(lsKey);
+        if (raw == null) return;
+        const val = JSON.parse(raw);
+        if (val !== null && val !== undefined) window[wkey] = val;
+      } catch(e) { /* ignore */ }
+    });
+  }
+  // Persist after every assignment by intercepting via a 100ms tick. Lightweight,
+  // avoids monkey-patching every `=` site across 25k LOC.
+  let last = {};
+  function persist(){
+    if (!window._auth || !window._auth.current()) return;
+    Object.entries(KEYS).forEach(([wkey, lsKey]) => {
+      try {
+        const cur = window[wkey];
+        if (cur === undefined) return;
+        const ser = JSON.stringify(cur);
+        if (ser !== last[wkey]) {
+          localStorage.setItem(lsKey, ser);
+          last[wkey] = ser;
+        }
+      } catch(e) { /* ignore */ }
+    });
+  }
+  // Restore as early as possible; persist on a slow loop + on unload.
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', restore);
+  else restore();
+  setInterval(persist, 1500);
+  window.addEventListener('beforeunload', persist);
+  window._persistContent = persist;   // expose for explicit calls (e.g. after Analyse Now)
+})();
+
 // ── Analytics (Amplitude + PostHog) ──────────────────────────────────────────
 window._ampReady = false;
 window._phReady  = false;
@@ -8666,7 +8890,7 @@ function buildAiVisibility() {
           <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.11);border-radius:14px;padding:18px;display:flex;flex-direction:column">
             <div style="font-size:1.5rem;margin-bottom:8px">${c.icon}</div>
             <div style="font-weight:800;font-size:0.83rem;color:white;margin-bottom:5px">${c.title}</div>
-            <div style="display:inline-block;background:rgba(99,102,241,0.35);padding:2px 9px;border-radius:6px;font-size:0.62rem;font-weight:700;color:#C7D2FE;margin-bottom:9px">${c.cite}</div>
+            <div style="align-self:flex-start;background:linear-gradient(135deg,#6366F1,#4338CA);padding:4px 11px;border-radius:7px;font-size:0.62rem;font-weight:800;color:#FFFFFF;margin-bottom:9px;letter-spacing:.03em;box-shadow:0 2px 6px rgba(99,102,241,.35);text-shadow:0 1px 2px rgba(0,0,0,.18)">${c.cite}</div>
             <div style="font-size:0.7rem;color:rgba(255,255,255,0.55);line-height:1.55;margin-bottom:12px;flex:1">${c.desc}</div>
             <div style="background:rgba(0,0,0,0.2);border-radius:9px;padding:10px 12px;margin-bottom:14px">
               <div style="font-size:0.6rem;color:#A5B4FC;font-weight:700;margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em">Key Elements</div>

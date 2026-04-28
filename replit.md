@@ -163,3 +163,13 @@ Added 10 new modules in cache buster `v=20260425Q`. All client-side, simulated f
 - All run* triggers gate on `_lsDomain()` and redirect to home when no analysis exists.
 - State persisted on `window._{module}Data` globals so view re-entry shows last-built result.
 - All builders registered in `navigateTo()` dispatcher in app.js (lines ~2249-2278).
+
+## Account System & Per-User Persistence (added 2026-04-28)
+- **Auth wall** (app.js lines 56-145): Full-screen blocking modal on first visit. Login / Create Account tabs. Defaults to signup if no users exist locally, login otherwise. On success → `location.reload()`.
+- **Per-user localStorage namespace** (app.js lines 9-53): Monkey-patches `localStorage.getItem/setItem/removeItem` to auto-prefix every key as `_u:<email>::<key>` for the active user. System keys (`ig-users`, `ig-current-user`, `ig-theme`) and already-prefixed keys are left alone. Result: ALL existing per-domain state in the app (analyse settings, campaigns, articles, social posts, etc.) is automatically isolated per account with zero changes elsewhere.
+- **window._auth API**: `getUsers()`, `currentProfile()`, `signup({name,email,password})`, `login({email,password})`, `logout()`. Password is a 32-bit non-cryptographic hash — this is CLIENT-SIDE state separation, not real auth. No backend session. For real production auth, swap in Replit Auth or a custom OAuth flow.
+- **Nav user menu** (index.html lines 53-66 + app.js wireUserMenu lines 148-183): Avatar pill with initial + name in nav; click to open dropdown showing email + Logout button. Logout flushes pending persistence then clears `ig-current-user` and reloads → returns to auth wall.
+- **Content persistence** (app.js lines 188-235): The Master Calendar reads `_socialPosts` / `_launchedCampaigns` / `_autoSeoArticles` / `_autoSeoSchedule` — but those were in-memory only, so refreshes wiped them and the calendar showed zeros. Added a 1.5s polling loop that JSON-stringifies each tracked window var and writes only when changed. Restores on DOMContentLoaded BEFORE other init handlers (registered first at top of file) so the module-load resets don't clobber persisted values.
+
+## Cache-buster
+- Bumped to `v=20260428S` (next bump → `T`).
