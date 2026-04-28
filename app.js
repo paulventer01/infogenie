@@ -8728,6 +8728,78 @@ function buildAiVisibility() {
       </div>
     </div>`;
 
+  // ── Citation-to-Traffic Attribution (Amplitude) — render at the bottom of the
+  //    AI Visibility page so users don't have to navigate to the Audit Suite to
+  //    see their AI-referred sessions. Auto-fetches on first visit.
+  (function renderAttribution() {
+    const at = window._aiVisAttribution;
+    const card = document.createElement('div');
+    card.id = 'aivis-attribution-block';
+    card.style.cssText = 'max-width:1200px;margin:24px auto 0;padding:0 20px';
+
+    if (!at) {
+      card.innerHTML = `<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:18px;display:flex;gap:14px;align-items:center">
+        <div style="font-size:1.6rem;opacity:0.6">📈</div>
+        <div style="flex:1">
+          <div style="font-size:0.9rem;font-weight:800;color:#0A1628">📈 Citation-to-Traffic Attribution</div>
+          <div style="font-size:0.75rem;color:#64748B;margin-top:2px">Pulling the last 30 days of Amplitude sessions to map AI citations → real traffic…</div>
+        </div>
+        <div style="font-size:0.7rem;color:#94A3B8">⏳ Loading</div>
+      </div>`;
+    } else if (!at.connected) {
+      card.innerHTML = `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:4px">📈 Citation-to-Traffic Attribution</div>
+        <div style="font-size:0.72rem;color:#6B7280;margin-bottom:12px">${at.note || ''}</div>
+        <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px;font-size:0.72rem;color:#92400E;margin-bottom:14px"><b>Missing:</b> ${at.missing}. Add it to your environment to start tracking AI referral sessions in real time.</div>
+        <div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Will track these AI sources</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${(at.aiSources || []).map(s => `<span style="display:inline-flex;align-items:center;gap:5px;background:#F1F5F9;color:#475569;padding:5px 11px;border-radius:99px;font-size:0.7rem;font-weight:600"><span style="width:6px;height:6px;background:#CBD5E1;border-radius:50%"></span>${s.label}</span>`).join('')}
+        </div>
+      </div>`;
+    } else {
+      const totalAi = at.totalAiSessions || 0;
+      const maxAi = Math.max(1, ...(at.sessions || []).map(s=>s.sessions||0));
+      card.innerHTML = `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:14px;flex-wrap:wrap">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📈 Citation-to-Traffic Attribution <span style="display:inline-flex;align-items:center;gap:4px;background:#DCFCE7;color:#15803D;padding:2px 8px;border-radius:6px;font-size:0.62rem;font-weight:800;margin-left:6px"><span style="width:6px;height:6px;background:#10B981;border-radius:50%"></span>CONNECTED · AMPLITUDE</span></div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:4px">Live Amplitude data · last ${at.windowDays || 30} days · ${totalAi.toLocaleString()} AI-referred sessions of ${(at.totalSessions || 0).toLocaleString()} total</div>
+          </div>
+          <div style="text-align:right"><div style="font-size:1.4rem;font-weight:800;color:${at.aiShare>=5?'#10B981':at.aiShare>=1?'#F59E0B':'#DC2626'}">${at.aiShare}%</div><div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">AI traffic share</div></div>
+        </div>
+        ${(at.sessions || []).map(s => `<div style="margin-bottom:9px">
+          <div style="display:flex;justify-content:space-between;font-size:0.74rem;margin-bottom:4px"><span style="font-weight:700;color:#0A1628">${s.label}</span><span style="font-weight:800;color:#0A1628">${(s.sessions||0).toLocaleString()}</span></div>
+          <div style="height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${((s.sessions||0)/maxAi)*100}%;background:linear-gradient(90deg,#7C3AED,#4338CA);border-radius:4px"></div></div>
+        </div>`).join('')}
+      </div>`;
+    }
+    wrap.appendChild(card);
+
+    // Auto-fetch attribution on first entry so the user sees real data without
+    // having to find the "Run AI Audit" button.
+    if (!at && !window._aivisAttribFetching) {
+      window._aivisAttribFetching = true;
+      // Capture the domain we requested for — if the user navigates / re-analyses
+      // mid-flight, the in-flight response is stale and must be discarded.
+      const requestedDomain = domain;
+      fetch('/api/ai-visibility-attribution', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ domain: requestedDomain })
+      })
+        .then(r => r.json())
+        .then(j => {
+          if (!j || !j.ok) return;
+          // Re-derive the current domain — if it changed, drop this response.
+          const currentDomain = (analysisData?.url || '').replace(/https?:\/\//,'').split('/')[0] || 'yourdomain.com';
+          if (currentDomain !== requestedDomain) return;
+          window._aiVisAttribution = j;
+          buildAiVisibility();
+        })
+        .catch(() => {})
+        .finally(() => { window._aivisAttribFetching = false; });
+    }
+  })();
+
   // Restore E-E-A-T state
   setTimeout(() => { if (typeof updateEeaT === 'function') updateEeaT(); }, 80);
 }
