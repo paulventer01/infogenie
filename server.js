@@ -16,6 +16,51 @@ const anthropic = new Anthropic.default({
   baseURL:  process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
 });
 
+// ── Retry-with-fallback helper for OpenAI chat completions ─────────────────
+// gpt-4o is occasionally returning empty 500s ("500 status code (no body)")
+// from the upstream proxy. Wrapping every call gives us:
+//   1. Two retries on the requested model with short back-off
+//   2. Automatic fallback to gpt-4o-mini (which uses different infra and is
+//      usually available when gpt-4o is degraded)
+// Returns the same shape as openai.chat.completions.create — throws if every
+// attempt fails so callers can branch into deterministic fallbacks.
+async function openaiChatWithRetry(params, opts = {}) {
+  const { fallbackModel = 'gpt-4o-mini', retries = 2 } = opts;
+  const primary = params.model;
+  let primaryErr = null;        // preserve original cause for diagnostics
+  let lastTransient = false;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await openai.chat.completions.create(params);
+    } catch (e) {
+      primaryErr = e;
+      const msg = (e && e.message) || '';
+      const status = (e && (e.status || e.statusCode)) || 0;
+      lastTransient = /500|502|503|504|timeout|ECONN|ETIMEDOUT|fetch failed|no body/i.test(msg)
+        || [500, 502, 503, 504, 408, 429].includes(status);
+      if (!lastTransient) break;       // don't retry 400/401/403/404 etc
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, 350 * (attempt + 1)));
+      }
+    }
+  }
+  // Fallback model attempt — ONLY if last error was transient AND model differs.
+  // Non-transient errors (auth, bad request, etc.) won't be fixed by switching
+  // model and would obscure the real root cause.
+  if (lastTransient && fallbackModel && fallbackModel !== primary) {
+    try {
+      console.warn(`[openai-retry] ${primary} failed (${primaryErr?.message}) — falling back to ${fallbackModel}`);
+      return await openai.chat.completions.create({ ...params, model: fallbackModel });
+    } catch (e) {
+      const merged = new Error(`primary(${primary}): ${primaryErr?.message || primaryErr} | fallback(${fallbackModel}): ${e.message || e}`);
+      merged.primaryError = primaryErr;
+      merged.fallbackError = e;
+      throw merged;
+    }
+  }
+  throw primaryErr || new Error('openai retry failed');
+}
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -5150,17 +5195,17 @@ CRITICAL RULES:
 - "low" for pure industry-benchmark estimates.
 - The output array MUST be in the same order and same names as the input list.`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await openaiChatWithRetry({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.2,
       max_tokens: 2000
-    });
+    }, { fallbackModel: 'gpt-3.5-turbo', retries: 2 });
     const parsed = JSON.parse(completion.choices[0].message.content);
     res.json({ ok: true, results: parsed.results || [], count: (parsed.results || []).length });
   } catch (err) {
-    console.error('/api/ai-validate-metrics error:', err.message);
+    console.error('/api/ai-validate-metrics error (after retry+fallback):', err.message);
     res.status(500).json({ error: err.message, results: [] });
   }
 });
@@ -5628,7 +5673,7 @@ CRITICAL RULES for "competitors":
 
     let aiResult = null;
     try {
-      const completion = await openai.chat.completions.create({
+      const completion = await openaiChatWithRetry({
         model: 'gpt-4o',
         messages: [
           { role: 'system', content: 'You are a precise market-research analyst. Output strict JSON only — no markdown fences, no prose. Always identify the specific sub-niche, not just the broad industry.' },
@@ -5641,7 +5686,29 @@ CRITICAL RULES for "competitors":
       const raw = completion.choices?.[0]?.message?.content || '{}';
       aiResult = JSON.parse(raw);
     } catch (aiErr) {
-      console.error('smart-detect OpenAI error:', aiErr.message);
+      console.error('smart-detect OpenAI error (after retry+fallback):', aiErr.message);
+      // Deterministic fallback: if we have ANY DataForSEO competitor data,
+      // return that with a generic industry label rather than a hard failure.
+      // The client can still proceed with real same-niche domains.
+      if (dfsCompetitors.length >= 3) {
+        return res.json({
+          ok: true,
+          domain: cleanInput,
+          industryName: 'Detected via SERP (AI temporarily unavailable)',
+          industryKey: 'marketing',
+          businessSummary: '',
+          subNiche: '',
+          country: null,
+          competitors: dfsCompetitors.slice(0, 8).map(d => ({
+            name: d.replace(/\.[a-z.]+$/i, '').replace(/^[a-z]/, c=>c.toUpperCase()),
+            url:  d,
+            why:  'Ranks for the same organic keywords as your domain (DataForSEO competitors_domain).',
+          })),
+          signals: { title, metaDesc, ogSiteName },
+          htmlFetched: html.length > 0,
+          _fallback: 'serp-only',
+        });
+      }
       return res.status(502).json({ error: 'AI detection failed', detail: aiErr.message, signals });
     }
 
@@ -5761,9 +5828,26 @@ CRITICAL RULES:
 - Order results by market relevance (most relevant first).
 - Be very specific — for "vegan meal delivery", list other vegan-only meal delivery brands; for "B2B SaaS project management", list Asana/Monday/ClickUp/Wrike/etc.; for "pet insurance", list Trupanion/Lemonade Pet/Healthy Paws/Embrace/etc.`;
 
+    // Deterministic same-niche fallback we'll use if AI fails. Filter the SERP
+    // candidates to drop info/review/aggregator sites and keep only domains
+    // that are most likely to be actual competitors in the niche.
+    // High-confidence info/review/aggregator domain tokens. Kept narrow on
+    // purpose so we don't accidentally exclude a legitimate brand whose name
+    // happens to contain a generic substring (e.g. anything with "finance").
+    const INFO_SITE_PATTERN = /^(investopedia|investing|forexbrokers|stockbrokers|bestbrokers|tradingpedia|brokersview|brokerchooser|brokernotes|comparison|comparis|nerdwallet|wisebread|smallworldfs|metatrader[0-9]?|tradingview|myfxbook|fxstreet|tradingeconomics|babypips|dailyfx|investorjunkie|fool|reuters|cnbc|bloomberg)\.[a-z.]+$/i;
+    const serpCompetitorFallback = serpDomains
+      .filter(d => !INFO_SITE_PATTERN.test(d))
+      .slice(0, 8)
+      .map(d => ({
+        name: d.replace(/\.[a-z.]+$/i, '').replace(/[-_]/g,' ').replace(/^[a-z]/, c=>c.toUpperCase()),
+        url:  d,
+        why:  `Currently ranks in Google for "${industryClean}"-related search terms (live SERP data).`,
+        marketShare: 'top-ranked',
+      }));
+
     let aiResult = null;
     try {
-      const completion = await openai.chat.completions.create({
+      const completion = await openaiChatWithRetry({
         model: 'gpt-4o',
         messages: [
           { role: 'system', content: 'You are a precise market-research analyst with encyclopedic knowledge of real-world companies in every sub-niche. Output strict JSON only — no markdown, no prose. Always pick competitors operating in the user\'s exact sub-niche, never just the broad industry.' },
@@ -5776,7 +5860,19 @@ CRITICAL RULES:
       const raw = completion.choices?.[0]?.message?.content || '{}';
       aiResult = JSON.parse(raw);
     } catch (aiErr) {
-      console.error('sector-competitors OpenAI error:', aiErr.message);
+      console.error('sector-competitors OpenAI error (after retry+fallback):', aiErr.message);
+      // Deterministic SERP-only response — better than failing the whole flow.
+      if (serpCompetitorFallback.length >= 3) {
+        return res.json({
+          ok: true,
+          industryName: industryClean,
+          subNiche: '',
+          country: countryClean || null,
+          competitors: serpCompetitorFallback,
+          count: serpCompetitorFallback.length,
+          _fallback: 'serp-only',
+        });
+      }
       return res.status(502).json({ error: 'AI lookup failed', detail: aiErr.message });
     }
 
