@@ -6743,7 +6743,13 @@ h3:hover {
 [data-theme="light"] .cal-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .battle-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .reddit-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
-[data-theme="light"] .creative-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
+/* Keep dark-navy creative card header readable in light mode */
+[data-theme="light"] .creative-card .creative-card-top { background: linear-gradient(135deg, var(--navy) 0%, var(--navy-3) 100%) !important; }
+[data-theme="light"] .creative-card .creative-headline   { color: #FFFFFF !important; }
+[data-theme="light"] .creative-card .creative-type       { color: var(--teal) !important; }
+[data-theme="light"] .creative-card .creative-ai-badge   { color: var(--teal) !important; background: rgba(0,201,200,.15) !important; border-color: rgba(0,201,200,.3) !important; }
+
+[data-theme="light"] .creative-card *:not(button):not(.btn):not(.badge):not(.atag):not(.creative-card-top):not(.creative-headline):not(.creative-type):not(.creative-ai-badge):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .stat-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .info-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .insight-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]) {

@@ -5795,11 +5795,13 @@ function buildContent() {
     return `
       <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
         <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px">🧩 AI Topical Cluster Builder</div>
-        <div style="font-size:0.78rem;color:#6B7280;margin-bottom:14px">Enter a seed topic — InfoGenie AI will generate a full topical cluster with subtopics, question prompts, and LLM optimisation tips.</div>
+        <div style="font-size:0.78rem;color:#6B7280;margin-bottom:14px">Enter your own seed topic, or click ✨ Suggest Topics for InfoGenie to draft 5 ideas tailored to your brand.</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <input id="cluster-seed" placeholder="e.g. email marketing automation, AI SEO tools, SaaS pricing strategies…" value="${prefill}" style="flex:1;min-width:200px;padding:11px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif">
+          <button id="cluster-suggest-btn" onclick="suggestSeedTopic()" style="padding:11px 16px;background:white;border:1.5px solid #059669;border-radius:10px;font-size:0.82rem;font-weight:700;color:#059669;cursor:pointer;white-space:nowrap">✨ Suggest Topics</button>
           <button id="cluster-gen-btn" onclick="generateCluster()" style="padding:11px 22px;background:linear-gradient(135deg,#065F46,#059669);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">🧩 Build Cluster</button>
         </div>
+        <div id="cluster-seed-suggestions" style="display:none;margin-top:12px;flex-wrap:wrap;gap:7px"></div>
         <div id="cluster-gen-status" style="display:none;margin-top:10px;font-size:0.78rem;color:#059669;font-weight:600">⏳ Building topical cluster with GPT-4o + Claude Sonnet…</div>
       </div>
       <div id="clusters-output">
@@ -5991,6 +5993,62 @@ window.generateCluster = async function() {
     showToast(`✅ Cluster built for "${seed}" (AI offline — using smart template)`);
   }
   if (btn) { btn.disabled = false; btn.textContent = '🧩 Build Cluster'; }
+};
+
+// ── ✨ Suggest Seed Topic — 5 AI-generated cluster pillar ideas ─────────────
+window.suggestSeedTopic = async function() {
+  const btn     = document.getElementById('cluster-suggest-btn');
+  const input   = document.getElementById('cluster-seed');
+  const listEl  = document.getElementById('cluster-seed-suggestions');
+  if (!btn || !input || !listEl) return;
+
+  const ad        = window.analysisData || {};
+  const domain    = (ad.url || '').replace(/https?:\/\//,'').split('/')[0] || '';
+  const industry  = ad.industry?.name || '';
+  const competitorsArr = Array.isArray(ad.competitors)
+    ? ad.competitors.map(c => c?.name || c).filter(Boolean)
+    : [];
+  const competitors = competitorsArr.join(', ');
+
+  if (!domain && !industry) { showToast('⚠️ Run a brand analysis first so I know your space'); return; }
+
+  const renderChips = (topics) => {
+    if (!topics || !topics.length) { listEl.style.display = 'none'; return; }
+    const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    listEl.innerHTML = '<div style="font-size:0.7rem;color:#6B7280;font-weight:700;width:100%;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">💡 Tap a topic to use it (or keep typing your own)</div>'
+      + topics.map(t => {
+        const safe = esc(t);
+        return `<button type="button" data-t="${safe}" onclick="document.getElementById('cluster-seed').value=this.dataset.t;document.getElementById('cluster-seed-suggestions').style.display='none';showToast('✅ Seed topic selected — click 🧩 Build Cluster')" style="padding:7px 13px;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:999px;font-size:0.76rem;font-weight:600;color:#065F46;cursor:pointer;font-family:inherit">${safe}</button>`;
+      }).join('');
+    listEl.style.display = 'flex';
+  };
+
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Drafting…';
+  btn.style.opacity = '0.7';
+
+  try {
+    const resp = await fetch('/api/seed-topic-suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain, industry, competitors })
+    });
+    const data = await resp.json();
+    if (data && Array.isArray(data.topics) && data.topics.length) {
+      renderChips(data.topics);
+      showToast(`✨ ${data.topics.length} seed topic ideas — pick one or type your own`);
+    } else {
+      showToast('⚠️ No topics returned — ' + (data.error || 'try again'));
+    }
+  } catch(err) {
+    console.error('suggestSeedTopic failed:', err);
+    showToast('⚠️ Suggestion failed: ' + (err.message || 'network error'));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+    btn.style.opacity = '1';
+  }
 };
 
 

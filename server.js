@@ -1796,6 +1796,48 @@ Rules:
   }
 });
 
+// ── POST /api/seed-topic-suggest — AI seed topics for the cluster builder ──
+app.post('/api/seed-topic-suggest', async (req, res) => {
+  try {
+    const { domain = '', industry = '', competitors = '' } = req.body || {};
+    if (!domain && !industry) return res.json({ topics: [], error: 'Missing domain/industry' });
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{
+        role: 'user',
+        content: `You are a topical-SEO strategist. Brand: "${domain || '(unspecified)'}". Industry: "${industry || '(unspecified)'}". Competitors: ${competitors || '(none provided)'}.
+
+Suggest 5 strong SEED TOPICS for a topical-cluster page hub. Each seed should:
+- Be a 2-4 word evergreen pillar topic (NOT a long-tail question, NOT a single keyword)
+- Have meaningful search demand in this brand's space
+- Be wide enough to support 6-12 subtopic pages underneath
+- Be defensible against the listed competitors
+
+Return ONLY valid JSON (no markdown):
+{
+  "topics": ["topic 1", "topic 2", "topic 3", "topic 4", "topic 5"]
+}
+
+Examples for an email marketing SaaS: ["email marketing automation", "transactional email deliverability", "newsletter growth strategy", "lifecycle email sequences", "B2B email personalization"]`
+      }],
+      max_tokens: 250,
+      response_format: { type: 'json_object' }
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim() || '{}';
+    let result;
+    try { result = JSON.parse(raw); } catch { result = {}; }
+    const topics = Array.isArray(result.topics)
+      ? result.topics.filter(t => typeof t === 'string' && t.trim()).map(t => t.trim()).slice(0, 5)
+      : [];
+    res.json({ topics });
+  } catch(err) {
+    console.error('/api/seed-topic-suggest error:', err.message);
+    res.json({ topics: [], error: err.message });
+  }
+});
+
 // ── POST /api/intent-map — Classify keywords by search intent + page-fit ────
 app.post('/api/intent-map', async (req, res) => {
   try {
