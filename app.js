@@ -6357,22 +6357,36 @@ function buildICPStudio() {
   const actDisabled = !hasICP;
   const actDis2 = !hasVoC || !(voc.objections && voc.objections.length);
   const actDis3 = !hasVoC || !(voc.triggers && voc.triggers.length);
-  const actBtn = (icon, title, desc, color, bg, id, disabled, disabledReason) => {
+  const actBtn = (icon, title, desc, color, bg, id, disabled, disabledReason, infoTip) => {
     const baseBorder = disabled ? '#E5E7EB' : color+'55';
+    // Build a meaningful native tooltip — never leave it empty (an empty
+    // title="" makes some browsers render a tiny blank black hover box).
+    const tip = disabled
+      ? (disabledReason || '').replace(/&amp;/g, '&').replace(/"/g, '&quot;')
+      : (infoTip || `${title} — ${desc} Click to run this one-click flow.`).replace(/"/g, '&quot;');
     const hoverHandlers = disabled ? '' : `
-      onmouseenter="this.style.borderColor='${color}';this.style.boxShadow='0 6px 18px ${color}22';this.style.transform='translateY(-2px)';"
-      onmouseleave="this.style.borderColor='${baseBorder}';this.style.boxShadow='none';this.style.transform='none';"
-      onfocus="this.style.borderColor='${color}';this.style.boxShadow='0 0 0 3px ${color}33';"
-      onblur="this.style.borderColor='${baseBorder}';this.style.boxShadow='none';"`;
+      onmouseenter="this.style.borderColor='${color}';this.style.boxShadow='0 6px 18px ${color}22';this.style.transform='translateY(-2px)';showTileInfo(this, '${id}-info');"
+      onmouseleave="this.style.borderColor='${baseBorder}';this.style.boxShadow='none';this.style.transform='none';hideTileInfo('${id}-info');"
+      onfocus="this.style.borderColor='${color}';this.style.boxShadow='0 0 0 3px ${color}33';showTileInfo(this, '${id}-info');"
+      onblur="this.style.borderColor='${baseBorder}';this.style.boxShadow='none';hideTileInfo('${id}-info');"`;
+    const infoBubble = !disabled && infoTip ? `
+      <div id="${id}-info" role="tooltip" style="position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%) translateY(4px);min-width:220px;max-width:300px;padding:10px 14px;background:#0A1628;color:white;font-family:'Inter',sans-serif;font-size:0.75rem;line-height:1.5;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:opacity .18s ease, transform .18s ease;z-index:50">
+        <div style="font-weight:700;margin-bottom:4px;color:#${color.replace('#','')};font-family:Sora,sans-serif">${title}</div>
+        <div style="color:#E2E8F0">${infoTip}</div>
+        <div style="position:absolute;top:100%;left:50%;transform:translateX(-50%);width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:7px solid #0A1628"></div>
+      </div>` : '';
     return `
-    <button id="${id}" ${disabled?'disabled':''} title="${disabled?disabledReason:''}" ${hoverHandlers} style="text-align:left;padding:18px 20px;background:${disabled?'#F9FAFB':'white'};border:1.5px solid ${baseBorder};border-radius:14px;cursor:${disabled?'not-allowed':'pointer'};opacity:${disabled?'.55':'1'};transition:border-color .2s,box-shadow .2s,transform .2s;font-family:'Inter',sans-serif;display:flex;flex-direction:column;gap:6px;outline:none;appearance:none;-webkit-tap-highlight-color:transparent;-webkit-appearance:none">
-      <div style="display:flex;align-items:center;gap:8px;pointer-events:none">
-        <div style="width:36px;height:36px;background:${bg};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem">${icon}</div>
-        <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:${disabled?'#9CA3AF':'#0A1628'}">${title}</div>
-      </div>
-      <div style="font-size:0.72rem;color:#6B7280;line-height:1.45;pointer-events:none">${desc}</div>
-      ${disabled ? `<div style="font-size:0.65rem;color:#9CA3AF;font-style:italic;margin-top:2px;pointer-events:none">${disabledReason}</div>` : `<div style="font-size:0.7rem;color:${color};font-weight:700;margin-top:2px;pointer-events:none">→ Activate</div>`}
-    </button>`;
+    <div style="position:relative">
+      ${infoBubble}
+      <button id="${id}" ${disabled?'disabled':''} title="${tip}" ${hoverHandlers} style="text-align:left;padding:18px 20px;background:${disabled?'#F9FAFB':'white'};border:1.5px solid ${baseBorder};border-radius:14px;cursor:${disabled?'not-allowed':'pointer'};opacity:${disabled?'.55':'1'};transition:border-color .2s,box-shadow .2s,transform .2s;font-family:'Inter',sans-serif;display:flex;flex-direction:column;gap:6px;outline:none;appearance:none;-webkit-tap-highlight-color:transparent;-webkit-appearance:none;width:100%">
+        <div style="display:flex;align-items:center;gap:8px;pointer-events:none">
+          <div style="width:36px;height:36px;background:${bg};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem">${icon}</div>
+          <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:${disabled?'#9CA3AF':'#0A1628'}">${title}</div>
+        </div>
+        <div style="font-size:0.72rem;color:#6B7280;line-height:1.45;pointer-events:none">${desc}</div>
+        ${disabled ? `<div style="font-size:0.65rem;color:#9CA3AF;font-style:italic;margin-top:2px;pointer-events:none">${disabledReason}</div>` : `<div style="font-size:0.7rem;color:${color};font-weight:700;margin-top:2px;pointer-events:none">→ Activate</div>`}
+      </button>
+    </div>`;
   };
 
   const activationHtml = `
@@ -6382,9 +6396,9 @@ function buildICPStudio() {
         <div style="font-size:0.74rem;color:#6B7280;margin-top:2px">One-click flows that pipe your ICP &amp; VoC into other modules.</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
-        ${actBtn('🎨','Use as Creative Studio Target','Pre-fills your next ad with this ICP as the target persona.','#7C3AED','#F5F3FF','icpAct1',actDisabled,'Build &amp; save your ICP first.')}
-        ${actBtn('✊','Counter-Objection Caption Pack','Generates 5 social posts — one per objection — auto-tagged Nurture stage.','#DC2626','#FEF2F2','icpAct2',actDis2,'Mine your VoC first — needs at least 1 objection.')}
-        ${actBtn('📧','Email Sequence for Top Trigger','3-email warm-up that leans into your strongest buying trigger.','#0891B2','#ECFEFF','icpAct3',actDis3,'Mine your VoC first — needs at least 1 trigger.')}
+        ${actBtn('🎨','Use as Creative Studio Target','Pre-fills your next ad with this ICP as the target persona.','#7C3AED','#F5F3FF','icpAct1',actDisabled,'Build &amp; save your ICP first.','Loads this ICP — its demographics, jobs-to-be-done and pain points — into the Creative Studio. The next ad you generate will be written to speak directly to this exact persona, no manual targeting required.')}
+        ${actBtn('✊','Counter-Objection Caption Pack','Generates 5 social posts — one per objection — auto-tagged Nurture stage.','#DC2626','#FEF2F2','icpAct2',actDis2,'Mine your VoC first — needs at least 1 objection.','Turns each top objection mined from your Voice-of-Customer data into a short social caption that pre-empts the hesitation. Captions land in your Content Calendar tagged for the Nurture stage so they keep wavering buyers in the funnel.')}
+        ${actBtn('📧','Email Sequence for Top Trigger','3-email warm-up that leans into your strongest buying trigger.','#0891B2','#ECFEFF','icpAct3',actDis3,'Mine your VoC first — needs at least 1 trigger.','Builds a 3-email drip that opens with your strongest VoC buying trigger, then layers proof and a soft CTA. Designed to warm cold list contacts into MQLs over 7 days — drops straight into your email queue.')}
       </div>
       <div id="icpActStatus" style="margin-top:12px;font-size:0.76rem;color:#0A1628;display:none"></div>
     </div>`;
@@ -23458,6 +23472,25 @@ function _emptyAnalysisCard(title, runLabel) {
       <button class="btn-primary" onclick="navigateTo('home')" style="background:linear-gradient(135deg,#0066FF,#00D8D7);color:white;border:none;padding:10px 22px;border-radius:8px;font-weight:700;cursor:pointer">↗ Go to Home — Run Analysis</button>
     </div>`;
 }
+
+// ── Custom info-tooltip bubbles (used by ICP Activation tiles, etc.) ──────
+window.showTileInfo = function(anchor, tipId) {
+  const t = document.getElementById(tipId);
+  if (!t) return;
+  // Suppress the native browser tooltip so the styled bubble shows alone
+  if (anchor && anchor.title) { anchor.dataset._origTitle = anchor.title; anchor.title = ''; }
+  t.style.opacity = '1';
+  t.style.transform = 'translateX(-50%) translateY(0)';
+};
+window.hideTileInfo = function(tipId) {
+  const t = document.getElementById(tipId);
+  if (!t) return;
+  t.style.opacity = '0';
+  t.style.transform = 'translateX(-50%) translateY(4px)';
+  // Restore native title for screen-reader fallback
+  const anchor = t.parentElement && t.parentElement.querySelector('button');
+  if (anchor && anchor.dataset._origTitle != null) { anchor.title = anchor.dataset._origTitle; delete anchor.dataset._origTitle; }
+};
 
 // ── HTML escape for user-controlled values rendered into innerHTML ────────
 function _esc(s) {
