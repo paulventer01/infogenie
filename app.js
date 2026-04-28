@@ -16711,6 +16711,30 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   });
+
+  // ── Anti-autofill safety-net for the URL inputs ──────────────────────────
+  // Some browsers (notably Chrome) ignore autocomplete="off"/"url" hints and
+  // will paste a recently-typed email address into any text input. URLs never
+  // contain '@', so if we detect one, scrub it. Also blank the inputs on first
+  // page load to defeat persisted autofill state.
+  ['websiteInput','mcInput'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const scrub = () => {
+      const v = el.value || '';
+      if (v.includes('@') || /^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(v.trim())) {
+        el.value = '';
+      }
+    };
+    // Blank any pre-filled value on load (defeats autofill that ran before our JS)
+    setTimeout(scrub, 0);
+    setTimeout(scrub, 250);   // catches Chrome's deferred autofill
+    setTimeout(scrub, 1000);
+    el.addEventListener('input', scrub);
+    el.addEventListener('change', scrub);
+    // On focus, if value still looks like an email, clear it so the user has a clean field
+    el.addEventListener('focus', () => { if ((el.value || '').includes('@')) el.value = ''; });
+  });
   
   // Example chips — clear industry input so auto-detect takes over
   document.querySelectorAll('.example-chip').forEach(chip => {

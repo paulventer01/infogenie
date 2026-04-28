@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <base href="/">
-  <link rel="stylesheet" href="/style.css?v=20260428V" />
+  <link rel="stylesheet" href="/style.css?v=20260428W" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
   <!-- PostHog SDK stub — init called from app.js after config fetch -->
@@ -238,7 +238,7 @@
         <div class="url-input-row">
           <div class="url-field-wrap">
             <span class="url-prefix">https://</span>
-            <input type="text" id="websiteInput" class="url-field" placeholder="yourwebsite.com" autocomplete="off" />
+            <input type="url" id="websiteInput" name="site-url" class="url-field" placeholder="yourwebsite.com" autocomplete="url" inputmode="url" data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
           </div>
           <select id="targetCountry" class="country-select">
             <option value="global">🌍 Global</option>
@@ -289,7 +289,7 @@
             </div>
             <div class="mc-input-row">
               <span class="mc-prefix">https://</span>
-              <input type="text" id="mcInput" class="mc-input" placeholder="competitor.com" autocomplete="off"
+              <input type="url" id="mcInput" name="comp-url" class="mc-input" placeholder="competitor.com" autocomplete="url" inputmode="url" data-lpignore="true" data-1p-ignore="true" data-form-type="other"
                 onkeydown="if(event.key==='Enter'){addManualCompetitor();}" />
               <button class="mc-add-btn" onclick="addManualCompetitor()">Add Competitor</button>
             </div>
@@ -1703,7 +1703,7 @@
 </div>
 
 <script src="/data.js"></script>
-<script src="/app.js?v=20260428V"></script>
+<script src="/app.js?v=20260428W"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');
