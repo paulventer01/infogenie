@@ -2517,6 +2517,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'aivisibility') {
     try { buildAiVisibility(); } catch(e) { console.warn('buildAiVisibility error:', e); }
   }
+  if (viewId === 'amplitude-agents') {
+    try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
+  }
   if (viewId === 'ai-audit-suite') {
     try { buildAiAuditSuite(); } catch(e) { console.warn('buildAiAuditSuite error:', e); }
   }
@@ -9372,6 +9375,324 @@ function buildAiVisibility() {
 
   // Restore E-E-A-T state
   setTimeout(() => { if (typeof updateEeaT === 'function') updateEeaT(); }, 80);
+}
+
+// ── AMPLITUDE AI AGENTS ────────────────────────────────────────────────────
+// Three on-demand product-analytics agents, each backed by a real
+// /api/amplitude/* endpoint that hits the Amplitude Dashboard REST API and
+// pipes results through GPT-4o.
+
+const _AMP_AGENTS = [
+  {
+    id: 'dashboard',
+    icon: '📊',
+    iconBg: '#DBEAFE',
+    iconColor: '#1D4ED8',
+    title: 'Dashboard Agent',
+    desc: 'Analyse dashboards to surface trends, identify root causes and generate hypotheses behind important metric changes.',
+    bullets: [
+      'Auto-generate insights from your tracked events',
+      'Deep-dive interesting trends and anomalies',
+      'Schedule proactive and automated monitoring',
+    ],
+    btn: 'Run Dashboard Agent',
+    endpoint: '/api/amplitude/dashboard-agent',
+  },
+  {
+    id: 'replay',
+    icon: '▶️',
+    iconBg: '#E5E7EB',
+    iconColor: '#374151',
+    title: 'Session Replay Agent',
+    desc: 'Specify an event or funnel then analyse large samples of session replays to identify user frictions, drop-offs, and navigational patterns.',
+    bullets: [
+      'Continuously scan and explore new sessions / replays',
+      'Identify exactly where and why users struggle or abandon',
+      'Create playlists that back insight with evidence',
+    ],
+    btn: 'Run Session Replay Agent',
+    endpoint: '/api/amplitude/replay-agent',
+  },
+  {
+    id: 'feedback',
+    icon: '💬',
+    iconBg: '#FCE7F3',
+    iconColor: '#BE185D',
+    title: 'Customer Feedback Agent',
+    desc: 'Automatically surface top customer requests, bugs, complaints, and praises from feedback, surveys, support tickets, and sales calls.',
+    bullets: [
+      'Continuously analyse incoming customer feedback',
+      'Surface top requests, bugs, complaints, and praises',
+      'Generate recommendations on improvements to ship',
+    ],
+    btn: 'Run Customer Feedback Agent',
+    endpoint: '/api/amplitude/feedback-agent',
+  },
+];
+
+function buildAmplitudeAgents() {
+  const grid = document.getElementById('ampAgentsCards');
+  if (!grid) return;
+  grid.innerHTML = _AMP_AGENTS.map(a => `
+    <div class="amp-agent-card" style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:38px;height:38px;border-radius:10px;background:${a.iconBg};display:flex;align-items:center;justify-content:center;font-size:1.15rem;color:${a.iconColor}">${a.icon}</div>
+        <div style="font-size:1.05rem;font-weight:700;color:#0F172A">${a.title}</div>
+      </div>
+      <div style="font-size:0.86rem;color:#475569;line-height:1.5">${a.desc}</div>
+      <div>
+        <div style="font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:8px">This agent will</div>
+        <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px">
+          ${a.bullets.map(b => `<li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;color:#475569;line-height:1.45"><span style="color:#0EA5E9;flex-shrink:0">✓</span><span>${b}</span></li>`).join('')}
+        </ul>
+      </div>
+      <div style="margin-top:auto;padding-top:8px">
+        <button onclick="runAmplitudeAgent('${a.id}')" id="ampAgentBtn-${a.id}" style="width:100%;padding:11px 14px;background:white;border:1px solid #CBD5E1;border-radius:9px;font-size:0.85rem;font-weight:600;color:#0F172A;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='#0EA5E9';this.style.color='#0EA5E9'" onmouseout="this.style.borderColor='#CBD5E1';this.style.color='#0F172A'">${a.btn}</button>
+      </div>
+    </div>
+  `).join('');
+  // Probe connection once so the badge reflects reality
+  _ampProbeConnection();
+}
+
+async function _ampProbeConnection() {
+  const badge = document.getElementById('ampAgentsConnBadge');
+  if (!badge) return;
+  try {
+    // Lightweight GET probe — no GPT call, single Amplitude HEAD-style ping
+    const r = await fetch('/api/amplitude/status');
+    const j = await r.json();
+    const setBadge = (text, bg, border, hint) => {
+      badge.innerHTML = text;
+      badge.style.background = bg;
+      badge.style.borderColor = border;
+      if (hint) { badge.title = hint; badge.style.cursor = 'help'; }
+    };
+    if (j.connected === false) {
+      setBadge('🟡 Amplitude not connected — ' + (j.missing || j.message || 'check secrets'),
+        'rgba(234,179,8,0.18)', 'rgba(234,179,8,0.4)');
+    } else if (j.connected === 'unknown') {
+      setBadge('🔴 Network error reaching Amplitude', 'rgba(239,68,68,0.18)', 'rgba(239,68,68,0.4)', j.error);
+    } else if (j.dashboardApiAccess === false && j.status === 403) {
+      setBadge('🟡 Credentials accepted · Dashboard REST API blocked (403)',
+        'rgba(234,179,8,0.18)', 'rgba(234,179,8,0.4)',
+        'Amplitude returned 403 on the Dashboard API. Requires org-level API Key + Secret (Settings → Projects → Show API Key) on Growth/Enterprise. Project tracking keys cannot read data.');
+    } else if (j.dashboardApiAccess === false) {
+      setBadge('🟡 Amplitude returned ' + (j.status || '?'),
+        'rgba(234,179,8,0.18)', 'rgba(234,179,8,0.4)', j.message);
+    } else {
+      setBadge('🟢 Amplitude Dashboard API connected', 'rgba(34,197,94,0.18)', 'rgba(34,197,94,0.4)');
+    }
+  } catch (e) {
+    badge.innerHTML = '🔴 Connection check failed';
+    badge.style.background = 'rgba(239,68,68,0.18)';
+    badge.style.borderColor = 'rgba(239,68,68,0.4)';
+  }
+}
+
+async function runAmplitudeAgent(agentId) {
+  const agent = _AMP_AGENTS.find(a => a.id === agentId);
+  const btn = document.getElementById('ampAgentBtn-' + agentId);
+  const result = document.getElementById('ampAgentResult');
+  if (!agent || !btn || !result) return;
+  const originalLabel = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Running…'; btn.style.opacity = '.7';
+  result.innerHTML = `<div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:24px;text-align:center;color:#475569">⏳ ${agent.title} is pulling data from Amplitude and asking GPT-4o to analyse it…</div>`;
+  try {
+    const r = await fetch(agent.endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Request failed');
+    if (j.connected === false) {
+      result.innerHTML = _ampNotConnectedHtml(j);
+    } else if (j.planLimited && agentId === 'replay') {
+      result.innerHTML = _ampReplayManualPickerHtml(j);
+    } else if (j.planLimited && j.error) {
+      result.innerHTML = `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:20px"><div style="font-weight:700;color:#92400E;margin-bottom:6px">🔒 Amplitude plan limit reached</div><div style="font-size:0.85rem;color:#78350F;line-height:1.55">${j.message}</div></div>`;
+    } else if (j.error) {
+      result.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:20px;color:#991B1B"><div style="font-weight:700;margin-bottom:6px">⚠️ ${agent.title} could not run</div><div style="font-size:0.85rem">${j.message || j.error}</div></div>`;
+    } else {
+      result.innerHTML = _ampRenderResult(agentId, j);
+    }
+    igTrack('Amplitude Agent Run', { agent: agentId, ok: true });
+  } catch (e) {
+    result.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:20px;color:#991B1B"><div style="font-weight:700;margin-bottom:6px">⚠️ Request failed</div><div style="font-size:0.85rem">${e.message}</div></div>`;
+    igTrack('Amplitude Agent Run', { agent: agentId, ok: false, error: e.message });
+  } finally {
+    btn.disabled = false; btn.textContent = originalLabel; btn.style.opacity = '1';
+    result.scrollIntoView({ behavior:'smooth', block:'start' });
+  }
+}
+
+function _ampReplayManualPickerHtml(j) {
+  return `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:24px">
+      <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:14px;margin-bottom:18px">
+        <div style="font-size:0.9rem;font-weight:700;color:#92400E;margin-bottom:6px">🔒 Auto-discovery unavailable on this Amplitude plan</div>
+        <div style="font-size:0.82rem;color:#78350F;line-height:1.55">${j.message}</div>
+      </div>
+      <div style="font-size:0.92rem;font-weight:700;color:#0F172A;margin-bottom:6px">Specify your funnel manually</div>
+      <div style="font-size:0.82rem;color:#64748B;margin-bottom:12px">Enter 2–6 event names from your Amplitude project, in funnel order, separated by commas.</div>
+      <input id="ampReplayEvents" type="text" placeholder="sign_up, onboarding_complete, first_value, upgrade" style="width:100%;padding:11px 14px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.88rem;font-family:inherit;margin-bottom:12px" />
+      <button onclick="runAmplitudeReplayWithEvents()" style="padding:11px 20px;background:#0EA5E9;color:white;border:none;border-radius:8px;font-size:0.85rem;font-weight:700;cursor:pointer">Build funnel & run agent</button>
+    </div>`;
+}
+
+async function runAmplitudeReplayWithEvents() {
+  const inp = document.getElementById('ampReplayEvents');
+  if (!inp) return;
+  const events = (inp.value || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (events.length < 2) { showToast('⚠️ Enter at least 2 event names'); return; }
+  const result = document.getElementById('ampAgentResult');
+  result.innerHTML = `<div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:24px;text-align:center;color:#475569">⏳ Building funnel from ${events.length} events and analysing with GPT-4o…</div>`;
+  try {
+    const r = await fetch('/api/amplitude/replay-agent', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ events }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Request failed');
+    if (j.error) {
+      result.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:20px;color:#991B1B"><div style="font-weight:700;margin-bottom:6px">⚠️ Could not build funnel</div><div style="font-size:0.85rem">${j.message || j.error}</div></div>`;
+    } else {
+      result.innerHTML = _ampRenderReplay(j);
+    }
+  } catch (e) {
+    result.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:20px;color:#991B1B"><div style="font-weight:700;margin-bottom:6px">⚠️ Request failed</div><div style="font-size:0.85rem">${e.message}</div></div>`;
+  }
+  result.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function _ampNotConnectedHtml(j) {
+  return `
+    <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:22px">
+      <div style="font-size:1rem;font-weight:700;color:#92400E;margin-bottom:8px">🔌 Amplitude not fully connected</div>
+      <div style="font-size:0.88rem;color:#78350F;line-height:1.55;margin-bottom:14px">${j.note || ''}</div>
+      <div style="font-size:0.8rem;color:#78350F"><strong>Missing secret:</strong> <code style="background:#FEF3C7;padding:2px 6px;border-radius:4px">${j.missing || 'unknown'}</code></div>
+      <div style="margin-top:12px;font-size:0.78rem;color:#92400E">Add it in Replit Secrets, then refresh this page.</div>
+    </div>`;
+}
+
+function _ampRenderResult(agentId, j) {
+  if (agentId === 'dashboard') return _ampRenderDashboard(j);
+  if (agentId === 'replay')    return _ampRenderReplay(j);
+  if (agentId === 'feedback')  return _ampRenderFeedback(j);
+  return '<div>Unknown agent</div>';
+}
+
+function _ampShellOpen(title, subtitle) {
+  return `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:18px">
+        <div>
+          <div style="font-size:1.05rem;font-weight:700;color:#0F172A">${title}</div>
+          <div style="font-size:0.82rem;color:#64748B;margin-top:4px">${subtitle}</div>
+        </div>
+        <div style="font-size:0.72rem;color:#94A3B8">Generated ${new Date().toLocaleString()}</div>
+      </div>`;
+}
+function _ampShellClose() { return '</div>'; }
+
+function _ampSummary(text) {
+  return text ? `<div style="background:#F0F9FF;border-left:3px solid #0EA5E9;padding:12px 14px;border-radius:8px;font-size:0.88rem;color:#0C4A6E;line-height:1.55;margin-bottom:18px">${text}</div>` : '';
+}
+
+function _ampRenderDashboard(j) {
+  const t = j.totals || {};
+  const planNote = j.planLimited ? `<div style="background:#FEFCE8;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:0.78rem;color:#92400E">🔒 <strong>Plan-limited mode:</strong> ${j.planNote || 'Falling back to sessions API.'}</div>` : '';
+  const arrow = (n) => n > 0 ? `<span style="color:#16A34A">▲ ${n}%</span>` : n < 0 ? `<span style="color:#DC2626">▼ ${Math.abs(n)}%</span>` : `<span style="color:#64748B">─ 0%</span>`;
+  const events = (j.events || []).map(e => `
+    <tr>
+      <td style="padding:8px 10px;font-size:0.82rem;color:#0F172A;font-weight:600">${e.event}</td>
+      <td style="padding:8px 10px;font-size:0.82rem;color:#475569;text-align:right">${(e.total||0).toLocaleString()}</td>
+      <td style="padding:8px 10px;font-size:0.82rem;color:#475569;text-align:right">${(e.last7||0).toLocaleString()}</td>
+      <td style="padding:8px 10px;font-size:0.82rem;color:#475569;text-align:right">${(e.prev7||0).toLocaleString()}</td>
+      <td style="padding:8px 10px;font-size:0.82rem;text-align:right">${arrow(e.wowPct||0)}</td>
+    </tr>`).join('');
+  const trends = (j.insights?.trends || []).map(t => `
+    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:4px">
+        <div style="font-size:0.84rem;font-weight:700;color:#0F172A">${t.event}</div>
+        <div style="font-size:0.78rem">${arrow(t.wowPct||0)}</div>
+      </div>
+      <div style="font-size:0.8rem;color:#475569;line-height:1.5">${t.note || ''}</div>
+    </div>`).join('') || '<div style="color:#94A3B8;font-size:0.84rem">No notable trends.</div>';
+  const anomalies = (j.insights?.anomalies || []).map(a => {
+    const sev = a.severity === 'high' ? '#DC2626' : a.severity === 'medium' ? '#D97706' : '#0EA5E9';
+    return `
+      <div style="background:white;border-left:3px solid ${sev};border:1px solid #E2E8F0;border-radius:8px;padding:12px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:4px"><div style="font-size:0.84rem;font-weight:700;color:#0F172A">${a.event}</div><div style="font-size:0.7rem;font-weight:700;color:${sev};text-transform:uppercase">${a.severity || 'low'}</div></div>
+        <div style="font-size:0.8rem;color:#475569;line-height:1.5">${a.note || ''}</div>
+      </div>`;
+  }).join('') || '<div style="color:#94A3B8;font-size:0.84rem">No anomalies detected.</div>';
+  const hyp = (j.insights?.hypotheses || []).map(h => `
+    <div style="background:#FEFCE8;border:1px solid #FDE68A;border-radius:8px;padding:12px;margin-bottom:8px">
+      <div style="font-size:0.86rem;font-weight:700;color:#713F12;margin-bottom:4px">💡 ${h.title}</div>
+      <div style="font-size:0.8rem;color:#78350F;line-height:1.5;margin-bottom:6px">${h.reasoning || ''}</div>
+      <div style="font-size:0.78rem;color:#92400E"><strong>Test:</strong> ${h.test || ''}</div>
+    </div>`).join('') || '';
+  return _ampShellOpen('📊 Dashboard Agent — Results', `Top ${t.events || 0} events · last 14 days · last 7d vs prior 7d (${arrow(t.wowPct||0)})`)
+    + planNote
+    + _ampSummary(j.insights?.summary)
+    + `<div style="overflow-x:auto;margin-bottom:22px"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#F8FAFC"><th style="padding:8px 10px;text-align:left;font-size:0.74rem;font-weight:700;color:#475569;text-transform:uppercase">Event</th><th style="padding:8px 10px;text-align:right;font-size:0.74rem;font-weight:700;color:#475569;text-transform:uppercase">Total 14d</th><th style="padding:8px 10px;text-align:right;font-size:0.74rem;font-weight:700;color:#475569;text-transform:uppercase">Last 7d</th><th style="padding:8px 10px;text-align:right;font-size:0.74rem;font-weight:700;color:#475569;text-transform:uppercase">Prev 7d</th><th style="padding:8px 10px;text-align:right;font-size:0.74rem;font-weight:700;color:#475569;text-transform:uppercase">WoW Δ</th></tr></thead><tbody>${events}</tbody></table></div>`
+    + `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px"><div><div style="font-size:0.85rem;font-weight:700;color:#0F172A;margin-bottom:10px">📈 Trends</div>${trends}</div><div><div style="font-size:0.85rem;font-weight:700;color:#0F172A;margin-bottom:10px">⚠️ Anomalies</div>${anomalies}</div></div>`
+    + (hyp ? `<div style="margin-top:22px"><div style="font-size:0.85rem;font-weight:700;color:#0F172A;margin-bottom:10px">💡 Root-Cause Hypotheses</div>${hyp}</div>` : '')
+    + _ampShellClose();
+}
+
+function _ampRenderReplay(j) {
+  // Compare by stable field — `s === j.worst` always fails after JSON.parse
+  const worstIdx = j.worst && typeof j.worst.stepIndex === 'number' ? j.worst.stepIndex : -1;
+  const steps = (j.steps || []).map((s, i) => `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:${s.stepIndex === worstIdx ? '#FEF2F2' : '#F8FAFC'};border:1px solid ${s.stepIndex === worstIdx ? '#FECACA' : '#E2E8F0'};border-radius:8px;margin-bottom:8px">
+      <div style="width:28px;height:28px;border-radius:50%;background:${s.stepIndex === worstIdx ? '#DC2626' : '#0EA5E9'};color:white;display:flex;align-items:center;justify-content:center;font-size:0.78rem;font-weight:700;flex-shrink:0">${i+1}</div>
+      <div style="flex:1"><div style="font-size:0.86rem;font-weight:700;color:#0F172A">${s.event}</div><div style="font-size:0.75rem;color:#64748B">${(s.users||0).toLocaleString()} users</div></div>
+      ${i > 0 ? `<div style="font-size:0.78rem;font-weight:700;color:${s.dropPct >= 30 ? '#DC2626' : s.dropPct >= 10 ? '#D97706' : '#16A34A'}">${s.dropPct}% drop</div>` : ''}
+    </div>`).join('');
+  const hyps = (j.insights?.frictionHypotheses || []).map(h => `
+    <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:12px;margin-bottom:8px">
+      <div style="font-size:0.86rem;font-weight:700;color:#713F12;margin-bottom:4px">💡 ${h.hypothesis}</div>
+      <div style="font-size:0.8rem;color:#78350F;line-height:1.5;margin-bottom:6px">${h.evidence || ''}</div>
+      <div style="font-size:0.78rem;color:#92400E"><strong>Replay query:</strong> <em>${h.replayQuery || ''}</em></div>
+    </div>`).join('') || '';
+  const playlists = (j.insights?.playlistIdeas || []).map(p => `
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:8px;padding:12px;margin-bottom:8px">
+      <div style="font-size:0.86rem;font-weight:700;color:#0F172A;margin-bottom:4px">▶ ${p.name}</div>
+      <div style="font-size:0.78rem;color:#64748B;margin-bottom:6px"><strong>Filter:</strong> ${p.filter || ''}</div>
+      <div style="font-size:0.8rem;color:#475569;line-height:1.5">${p.whyItMatters || ''}</div>
+    </div>`).join('') || '';
+  const worst = j.worst ? `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:14px;margin-bottom:18px"><div style="font-size:0.85rem;font-weight:700;color:#991B1B;margin-bottom:4px">🚨 Biggest drop-off: <code>${j.worst.event}</code> (${j.worst.dropPct}% loss)</div><div style="font-size:0.82rem;color:#7F1D1D">${j.insights?.biggestDropOff?.interpretation || ''}</div></div>` : '';
+  return _ampShellOpen('▶️ Session Replay Agent — Results', `Funnel of ${j.steps?.length || 0} steps · last ${j.windowDays}d · ${j.overallConversion}% end-to-end conversion`)
+    + _ampSummary(j.insights?.summary)
+    + worst
+    + `<div style="margin-bottom:22px"><div style="font-size:0.85rem;font-weight:700;color:#0F172A;margin-bottom:10px">🔻 Funnel</div>${steps}</div>`
+    + (hyps ? `<div style="margin-bottom:22px"><div style="font-size:0.85rem;font-weight:700;color:#0F172A;margin-bottom:10px">💡 Friction Hypotheses</div>${hyps}</div>` : '')
+    + (playlists ? `<div><div style="font-size:0.85rem;font-weight:700;color:#0F172A;margin-bottom:10px">📼 Suggested Replay Playlists</div>${playlists}</div>` : '')
+    + _ampShellClose();
+}
+
+function _ampRenderFeedback(j) {
+  const sevColor = (s) => s === 'high' ? '#DC2626' : s === 'medium' ? '#D97706' : '#0EA5E9';
+  const evRows = (j.matchedEvents || []).map(e => `
+    <tr>
+      <td style="padding:8px 10px;font-size:0.82rem;color:#0F172A;font-weight:600">${e.event}</td>
+      <td style="padding:8px 10px;font-size:0.82rem;color:#475569;text-align:right">${(e.volume30d||0).toLocaleString()}</td>
+    </tr>`).join('');
+  const card = (item, color) => `
+    <div style="background:white;border-left:3px solid ${color};border:1px solid #E2E8F0;border-radius:8px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:4px"><div style="font-size:0.86rem;font-weight:700;color:#0F172A">${item.title}</div>${item.severity ? `<div style="font-size:0.7rem;font-weight:700;color:${sevColor(item.severity)};text-transform:uppercase">${item.severity}</div>` : item.volume ? `<div style="font-size:0.7rem;font-weight:700;color:${sevColor(item.volume)};text-transform:uppercase">${item.volume}</div>` : ''}</div>
+      <div style="font-size:0.8rem;color:#475569;line-height:1.5">${item.rationale || ''}</div>
+    </div>`;
+  const requests = (j.insights?.requests || []).map(r => card(r, '#0EA5E9')).join('') || '<div style="color:#94A3B8;font-size:0.84rem">None.</div>';
+  const bugs = (j.insights?.bugs || []).map(b => card(b, '#DC2626')).join('') || '<div style="color:#94A3B8;font-size:0.84rem">None.</div>';
+  const praises = (j.insights?.praises || []).map(p => card(p, '#16A34A')).join('') || '<div style="color:#94A3B8;font-size:0.84rem">None.</div>';
+  const recs = (j.insights?.recommendations || []).map(r => `
+    <div style="background:#FEFCE8;border:1px solid #FDE68A;border-radius:8px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:4px"><div style="font-size:0.86rem;font-weight:700;color:#713F12">🚀 ${r.title}</div><div style="font-size:0.7rem;color:#92400E">Impact: ${r.impact} · Effort: ${r.effort}</div></div>
+      <div style="font-size:0.8rem;color:#78350F"><strong>Next step:</strong> ${r.next_step || ''}</div>
+    </div>`).join('') || '';
+  return _ampShellOpen('💬 Customer Feedback Agent — Results', `${j.matchedEvents?.length || 0} feedback-shaped events · ${j.totalVolume?.toLocaleString() || 0} total events in last ${j.windowDays}d`)
+    + _ampSummary(j.insights?.summary)
+    + (evRows ? `<div style="overflow-x:auto;margin-bottom:22px"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#F8FAFC"><th style="padding:8px 10px;text-align:left;font-size:0.74rem;font-weight:700;color:#475569;text-transform:uppercase">Matched Event</th><th style="padding:8px 10px;text-align:right;font-size:0.74rem;font-weight:700;color:#475569;text-transform:uppercase">30d Volume</th></tr></thead><tbody>${evRows}</tbody></table></div>` : '')
+    + `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-bottom:22px"><div><div style="font-size:0.85rem;font-weight:700;color:#0F172A;margin-bottom:10px">📥 Top Requests</div>${requests}</div><div><div style="font-size:0.85rem;font-weight:700;color:#0F172A;margin-bottom:10px">🐛 Bugs / Complaints</div>${bugs}</div><div><div style="font-size:0.85rem;font-weight:700;color:#0F172A;margin-bottom:10px">🌟 Praises</div>${praises}</div></div>`
+    + (recs ? `<div><div style="font-size:0.85rem;font-weight:700;color:#0F172A;margin-bottom:10px">🚀 Recommendations</div>${recs}</div>` : '')
+    + _ampShellClose();
 }
 
 // ── Action Center helpers ──────────────────────────────────────────────────
