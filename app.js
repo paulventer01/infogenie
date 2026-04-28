@@ -13846,6 +13846,47 @@ function buildIntelligence() {
     </div>
   `;
 
+  // ── Belt-and-suspenders: directly bind click handlers to every Counter
+  // This Message button immediately after render. This is independent of:
+  //   • the inline onclick attribute (in case the browser strips it)
+  //   • the document-level delegated handler (in case event ordering bites)
+  //   • window._wlClick / window.openWLCounterModal globals (in case a later
+  //     runtime error halts top-level script execution before they're set)
+  // The handler reads data-* attributes directly and calls the local
+  // openWLCounterModal reference captured in this closure.
+  try {
+    wrap.querySelectorAll('.btn-wl-counter').forEach(b => {
+      if (b._wlBound) return;
+      b._wlBound = true;
+      // Strip inline onclick so the inline path can't double-fire alongside
+      // this direct listener. The delegated document handler also skips
+      // buttons with `_wlBound === true` (see ~24320).
+      try { b.removeAttribute('onclick'); b.onclick = null; } catch(_) {}
+      b.addEventListener('click', function(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        try {
+          const dec = s => { try { return decodeURIComponent(s || ''); } catch(_) { return s || ''; } };
+          const data = {
+            comp:     dec(b.getAttribute('data-wl-comp')),
+            channel:  dec(b.getAttribute('data-wl-channel')),
+            lossRate: dec(b.getAttribute('data-wl-loss')),
+            message:  dec(b.getAttribute('data-wl-message')),
+            weakness: dec(b.getAttribute('data-wl-weakness'))
+          };
+          if (!data.comp) {
+            if (typeof showToast === 'function') showToast('⚠️ Counter data missing — please re-run analysis');
+            return;
+          }
+          openWLCounterModal(data);
+        } catch(err) {
+          console.error('[wl-counter direct] failed:', err);
+          if (typeof showToast === 'function') showToast('⚠️ Counter modal error: ' + (err && err.message || err));
+        }
+      });
+    });
+  } catch(e) { console.warn('[wl-counter] direct bind skipped:', e); }
+
   // Build Share of Voice horizontal bar chart
   const sovBarCtx = document.getElementById('sovBarChartIntel');
   if (sovBarCtx) {
@@ -16613,6 +16654,16 @@ function queueCounterCampaign(wlId, btn) {
     showToast('📋 Counter-campaign queued — review it at the top of Campaigns before launching');
   }, 900);
 }
+
+// ── Expose Win/Loss counter helpers on window IMMEDIATELY (early), so even
+// if a later runtime error halts top-level script execution, these are still
+// callable from the inline onclick attribute on the rendered buttons. The
+// safety-net block lower down in this file (~24300) is now redundant for
+// these names but harmless.
+try { window.openWLCounterModal  = openWLCounterModal;  } catch(e) {}
+try { window.queueCounterCampaign = queueCounterCampaign; } catch(e) {}
+try { window.closeAttackModal    = closeAttackModal;    } catch(e) {}
+try { window.openAttackModal     = openAttackModal;     } catch(e) {}
 
 function launchQueuedCampaign(qcId, comp, btn) {
   btn.disabled = true;
@@ -24304,8 +24355,12 @@ document.addEventListener('click', function(ev) {
   if (t && t.nodeType !== 1 && t.parentElement) t = t.parentElement;
   const btn = (t && t.closest) ? t.closest('.btn-wl-counter') : null;
   if (!btn) return;
-  // If the button already has an inline onclick handler, let it fire instead
-  // of duplicating the work here. This avoids opening the modal twice.
+  // Skip if a direct per-button listener has already been bound by
+  // buildIntelligence() (see ~13860) — that path handles the click and
+  // calls preventDefault + stopPropagation on its own.
+  if (btn._wlBound) return;
+  // If the button still carries an inline onclick handler (no direct binding
+  // yet), let that fire instead of duplicating the work here.
   if (btn.hasAttribute('onclick')) return;
   ev.preventDefault();
   try {
