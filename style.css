@@ -6742,7 +6742,9 @@ h3:hover {
 [data-theme="light"] .kpi-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .cal-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
 [data-theme="light"] .battle-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
-[data-theme="light"] .reddit-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]),
+[data-theme="light"] .reddit-card *:not(button):not(.btn):not(.badge):not(.atag):not([style*="background:#"]):not([style*="background:linear-gradient"]) {
+  color: inherit;
+}
 /* Keep dark-navy creative card header readable in light mode */
 [data-theme="light"] .creative-card .creative-card-top { background: linear-gradient(135deg, var(--navy) 0%, var(--navy-3) 100%) !important; }
 [data-theme="light"] .creative-card .creative-headline   { color: #FFFFFF !important; }
@@ -7262,19 +7264,8 @@ h3:hover {
 /* Add top padding to tiles so the ribbon doesn't overlap the badge/icon */
 .kpi-card { padding-top: 38px !important; }
 
-/* ── KPI source-line readability — DARK THEME ONLY ─────────────────────────
-   The KPI cards are forced white in both themes (`.kpi-card { background:#FFFFFF !important }`
-   at line 4297). In dark theme, however, the rules at lines 7198-7204 push
-   `.kpi-source` to slate-300 (#94A3B8) and `.kpi-source strong` to near-white
-   (#F1F5F9), which renders invisible on the white card. Override ONLY in dark
-   theme so light mode stays exactly as it was. */
-[data-theme="dark"] .kpi-card .kpi-source        { color: #475569 !important; }
-[data-theme="dark"] .kpi-card .kpi-source strong { color: #0F172A !important; }
-[data-theme="dark"] .kpi-card .kpi-source-you,    [data-theme="dark"] .kpi-card .kpi-source-you   strong { color: #0066FF !important; }
-[data-theme="dark"] .kpi-card .kpi-source-comp,   [data-theme="dark"] .kpi-card .kpi-source-comp  strong { color: #DC2626 !important; }
-[data-theme="dark"] .kpi-card .kpi-source-ind,    [data-theme="dark"] .kpi-card .kpi-source-ind   strong { color: #7C3AED !important; }
-[data-theme="dark"] .kpi-card .kpi-source-live,   [data-theme="dark"] .kpi-card .kpi-source-live  strong { color: #10B981 !important; }
-[data-theme="dark"] .kpi-card .kpi-source-ai,     [data-theme="dark"] .kpi-card .kpi-source-ai    strong { color: #0891B2 !important; }
+/* (Reverted — root cause was a broken selector group above that was applying a
+   navy gradient background to all .kpi-card children in light mode. Fixed there.) */
 
 /* ── Competitor modal action buttons — guarantee visible text in both themes ── */
 .comp-modal-actions .btn-secondary,
