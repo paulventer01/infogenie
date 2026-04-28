@@ -43,7 +43,7 @@ externalPort = 5000
 
 [agent]
 expertMode = true
-integrations = ["javascript_openai_ai_integrations:2.0.0", "javascript_anthropic_ai_integrations:2.0.0"]
+integrations = ["javascript_openai_ai_integrations:2.0.0", "javascript_anthropic_ai_integrations:2.0.0", "replitmail:1.0.0"]
 
 [objectStorage]
 defaultBucketID = "replit-objstore-678f5e65-6432-4209-a8cb-0432d47880dd"
