@@ -7262,19 +7262,19 @@ h3:hover {
 /* Add top padding to tiles so the ribbon doesn't overlap the badge/icon */
 .kpi-card { padding-top: 38px !important; }
 
-/* ── KPI tile text — guarantee readable in BOTH themes ────────────────────
-   Cards stay white in dark mode (per .kpi-card { background:#FFFFFF !important })
-   but the dark-mode body color was inheriting into label/value/source and rendering
-   as white-on-white. Force explicit dark text colors so the cards remain legible. */
-.kpi-card .kpi-label   { color: #64748B !important; }
-.kpi-card .kpi-value   { color: #0A1628 !important; }
-.kpi-card .kpi-source  { color: #475569 !important; }
-.kpi-card .kpi-source strong { color: #0F172A !important; }
-.kpi-card .kpi-source-you,    .kpi-card .kpi-source-you   strong  { color: #0066FF !important; }
-.kpi-card .kpi-source-comp,   .kpi-card .kpi-source-comp  strong  { color: #DC2626 !important; }
-.kpi-card .kpi-source-ind,    .kpi-card .kpi-source-ind   strong  { color: #7C3AED !important; }
-.kpi-card .kpi-source-live,   .kpi-card .kpi-source-live  strong  { color: #10B981 !important; }
-.kpi-card .kpi-source-ai,     .kpi-card .kpi-source-ai    strong  { color: #0891B2 !important; }
+/* ── KPI source-line readability — DARK THEME ONLY ─────────────────────────
+   The KPI cards are forced white in both themes (`.kpi-card { background:#FFFFFF !important }`
+   at line 4297). In dark theme, however, the rules at lines 7198-7204 push
+   `.kpi-source` to slate-300 (#94A3B8) and `.kpi-source strong` to near-white
+   (#F1F5F9), which renders invisible on the white card. Override ONLY in dark
+   theme so light mode stays exactly as it was. */
+[data-theme="dark"] .kpi-card .kpi-source        { color: #475569 !important; }
+[data-theme="dark"] .kpi-card .kpi-source strong { color: #0F172A !important; }
+[data-theme="dark"] .kpi-card .kpi-source-you,    [data-theme="dark"] .kpi-card .kpi-source-you   strong { color: #0066FF !important; }
+[data-theme="dark"] .kpi-card .kpi-source-comp,   [data-theme="dark"] .kpi-card .kpi-source-comp  strong { color: #DC2626 !important; }
+[data-theme="dark"] .kpi-card .kpi-source-ind,    [data-theme="dark"] .kpi-card .kpi-source-ind   strong { color: #7C3AED !important; }
+[data-theme="dark"] .kpi-card .kpi-source-live,   [data-theme="dark"] .kpi-card .kpi-source-live  strong { color: #10B981 !important; }
+[data-theme="dark"] .kpi-card .kpi-source-ai,     [data-theme="dark"] .kpi-card .kpi-source-ai    strong { color: #0891B2 !important; }
 
 /* ── Competitor modal action buttons — guarantee visible text in both themes ── */
 .comp-modal-actions .btn-secondary,

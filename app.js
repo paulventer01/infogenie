@@ -8759,19 +8759,58 @@ function buildAiVisibility() {
     } else {
       const totalAi = at.totalAiSessions || 0;
       const maxAi = Math.max(1, ...(at.sessions || []).map(s=>s.sessions||0));
-      card.innerHTML = `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+      const totalSess = at.totalSessions || 0;
+      // Three sub-states based on what Amplitude actually returned:
+      //  (1) 0 total sessions → project not instrumented yet — show SDK snippet
+      //  (2) totalSess>0 but 0 AI sessions → instrumented but no AI traffic yet
+      //  (3) AI sessions present → render the live breakdown bars
+      const headerHtml = `
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:14px;flex-wrap:wrap">
           <div>
             <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📈 Citation-to-Traffic Attribution <span style="display:inline-flex;align-items:center;gap:4px;background:#DCFCE7;color:#15803D;padding:2px 8px;border-radius:6px;font-size:0.62rem;font-weight:800;margin-left:6px"><span style="width:6px;height:6px;background:#10B981;border-radius:50%"></span>CONNECTED · AMPLITUDE</span></div>
-            <div style="font-size:0.72rem;color:#6B7280;margin-top:4px">Live Amplitude data · last ${at.windowDays || 30} days · ${totalAi.toLocaleString()} AI-referred sessions of ${(at.totalSessions || 0).toLocaleString()} total</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:4px">Live Amplitude data · last ${at.windowDays || 30} days · ${totalAi.toLocaleString()} AI-referred sessions of ${totalSess.toLocaleString()} total</div>
           </div>
           <div style="text-align:right"><div style="font-size:1.4rem;font-weight:800;color:${at.aiShare>=5?'#10B981':at.aiShare>=1?'#F59E0B':'#DC2626'}">${at.aiShare}%</div><div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">AI traffic share</div></div>
-        </div>
-        ${(at.sessions || []).map(s => `<div style="margin-bottom:9px">
+        </div>`;
+
+      let bodyHtml = '';
+      if (totalSess === 0) {
+        // (1) Project connected but no events tracked yet
+        const snippet = `&lt;script src="https://cdn.amplitude.com/script/&lt;YOUR_API_KEY&gt;.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  window.amplitude.init('&lt;YOUR_API_KEY&gt;', { autocapture: true });
+&lt;/script&gt;`;
+        bodyHtml = `
+          <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:14px 16px;margin-bottom:14px">
+            <div style="font-size:0.82rem;font-weight:800;color:#92400E;margin-bottom:4px">⚠️ Amplitude is connected — but no sessions have been tracked yet.</div>
+            <div style="font-size:0.72rem;color:#78350F;line-height:1.55">Once your site is sending events to Amplitude, every visitor whose <code style="background:rgba(0,0,0,.05);padding:1px 5px;border-radius:4px;font-size:.92em">referring_domain</code> matches an AI source (ChatGPT, Perplexity, Gemini, Claude, Copilot, Google AI Overview) will appear here within minutes — broken down by source with traffic-share %.</div>
+          </div>
+          <div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">📌 1-line install (paste into &lt;head&gt;)</div>
+          <pre style="background:#0F172A;color:#A7F3D0;font-family:'JetBrains Mono',Consolas,monospace;font-size:0.66rem;line-height:1.5;padding:12px 14px;border-radius:8px;overflow-x:auto;margin:0 0 14px;white-space:pre-wrap;word-break:break-all">${snippet}</pre>
+          <div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Will track these AI sources</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${(at.sessions || []).map(s => `<span style="display:inline-flex;align-items:center;gap:5px;background:#F1F5F9;color:#475569;padding:5px 11px;border-radius:99px;font-size:0.7rem;font-weight:600"><span style="width:6px;height:6px;background:#CBD5E1;border-radius:50%"></span>${s.label}</span>`).join('')}
+          </div>`;
+      } else if (totalAi === 0) {
+        // (2) Tracking sessions but no AI referrals yet
+        bodyHtml = `
+          <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:14px 16px;margin-bottom:14px">
+            <div style="font-size:0.82rem;font-weight:800;color:#1E3A8A;margin-bottom:4px">📡 Tracking ${totalSess.toLocaleString()} sessions — no AI referral traffic yet</div>
+            <div style="font-size:0.72rem;color:#1E3A8A;opacity:.8;line-height:1.55">Amplitude is collecting data, but none of your visitors in the last ${at.windowDays || 30} days had an AI source as their <code style="background:rgba(0,0,0,.05);padding:1px 5px;border-radius:4px">referring_domain</code>. As ChatGPT, Perplexity, Gemini, Claude or Copilot start citing your domain, those sessions will appear here automatically — usually within hours of your first AI-cited mention.</div>
+          </div>
+          <div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Watching these AI sources</div>
+          ${(at.sessions || []).map(s => `<div style="margin-bottom:9px">
+            <div style="display:flex;justify-content:space-between;font-size:0.74rem;margin-bottom:4px"><span style="font-weight:700;color:#0A1628">${s.label}</span><span style="font-weight:800;color:#94A3B8">—</span></div>
+            <div style="height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden"></div>
+          </div>`).join('')}`;
+      } else {
+        // (3) Live AI sessions — render the breakdown bars
+        bodyHtml = (at.sessions || []).map(s => `<div style="margin-bottom:9px">
           <div style="display:flex;justify-content:space-between;font-size:0.74rem;margin-bottom:4px"><span style="font-weight:700;color:#0A1628">${s.label}</span><span style="font-weight:800;color:#0A1628">${(s.sessions||0).toLocaleString()}</span></div>
           <div style="height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${((s.sessions||0)/maxAi)*100}%;background:linear-gradient(90deg,#7C3AED,#4338CA);border-radius:4px"></div></div>
-        </div>`).join('')}
-      </div>`;
+        </div>`).join('');
+      }
+      card.innerHTML = `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">${headerHtml}${bodyHtml}</div>`;
     }
     wrap.appendChild(card);
 
