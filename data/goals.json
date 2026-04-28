@@ -5,5 +5,12 @@
     "target": 2,
     "label": "Drip Bounce Rate",
     "createdAt": "2026-04-28T15:52:21.888Z"
+  },
+  {
+    "id": "g_1777394158708_1lvy4k",
+    "metric": "drip.bounceRate",
+    "target": 50,
+    "label": "Drip Bounce Rate",
+    "createdAt": "2026-04-28T16:35:58.708Z"
   }
 ]

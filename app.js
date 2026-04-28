@@ -7767,9 +7767,54 @@ function _kmAddCommonPaths() {
 function _kmAddCompetitor() {
   const sel = document.getElementById('kmCompSelect');
   if (!sel || !sel.value) { showToast('ℹ️ Pick a competitor first'); return; }
+  if (sel.value === '__km_select_all__') {
+    // Batch-add every competitor URL silently, then show one summary toast
+    const ta = document.getElementById('kmPagesInput');
+    if (!ta) return;
+    const urls = Array.from(sel.options)
+      .map(o => o.value)
+      .filter(v => v && v !== '__km_select_all__');
+    if (!urls.length) { showToast('ℹ️ No competitors to add'); return; }
+    const existing = new Set(
+      ta.value.split('\n').map(l => l.split('|')[0].trim().replace(/\/$/,'')).filter(Boolean)
+    );
+    const toAdd = [];
+    urls.forEach(u => {
+      const clean = _kmNormaliseUrl(u);
+      if (!existing.has(clean)) { toAdd.push(clean); existing.add(clean); }
+    });
+    if (toAdd.length) {
+      const lines = ta.value.split('\n').map(l => l.trim()).filter(Boolean);
+      ta.value = lines.concat(toAdd).join('\n');
+    }
+    showToast(toAdd.length ? `✅ Added all ${toAdd.length} competitor${toAdd.length===1?'':'s'}` : 'ℹ️ All competitors already in the list');
+    sel.value = '';
+    return;
+  }
   _kmAddPage(sel.value);
   sel.value = '';
 }
+
+// Refresh keyword pool from Intent Map (used by both the action-row button
+// and the inline refresh icon next to the keyword pool label). Strictly
+// gated on Intent Map availability so the toast copy is always accurate.
+function _kmRefreshKeywordsFromIntent() {
+  const ta = document.getElementById('kmKwInput');
+  if (!ta) return;
+  const im = window._intentMap;
+  if (!im || !Array.isArray(im.keywords) || !im.keywords.length) {
+    showToast('ℹ️ No Intent Map data yet — run Intent Map first to seed keywords');
+    return;
+  }
+  const fresh = _kmSeedKeywords();
+  if (!fresh) {
+    showToast('ℹ️ Intent Map is empty — nothing to refresh');
+    return;
+  }
+  ta.value = fresh;
+  showToast('🔄 Refreshed keywords from Intent Map');
+}
+try { window._kmRefreshKeywordsFromIntent = _kmRefreshKeywordsFromIntent; } catch(e) {}
 
 function _kmSeedKeywords() {
   // Pull from Intent Map first, then competitor topKeywords
@@ -7795,9 +7840,12 @@ function buildKeywordMap() {
   const seedKws = _kmSeedKeywords();
   const noAnalysis = !yourSite;
 
-  // Build competitor dropdown options
+  // Build competitor dropdown options (with "Select All" when ≥2 competitors)
   const compOptions = competitors.length
-    ? competitors.map(c => {
+    ? (competitors.length >= 2
+        ? `<option value="__km_select_all__">⭐ Select all competitors (${competitors.length})</option>`
+        : '') +
+      competitors.map(c => {
         const url = _kmNormaliseUrl(c.url || '');
         const label = `${c.name || url}${url ? ' (' + url.replace(/^https?:\/\//,'') + ')' : ''}`;
         return `<option value="${_kmEsc(url || c.name || '')}">${_kmEsc(label)}</option>`;
@@ -7852,7 +7900,10 @@ function buildKeywordMap() {
           <div style="font-size:0.68rem;color:#64748B;margin-top:4px">Optional: append <code>| Page Title</code> for better mapping. Up to 30 pages.</div>
         </div>
         <div>
-          <label style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">🔑 Keyword pool (comma-separated)</label>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
+            <label style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin:0">🔑 Keyword pool (comma-separated)</label>
+            <button type="button" onclick="_kmRefreshKeywordsFromIntent()" title="Refresh keyword pool from your latest Intent Map data" style="display:inline-flex;align-items:center;gap:5px;background:#F0F9FF;color:#0369A1;border:1px solid #BAE6FD;padding:4px 10px;border-radius:7px;font-size:0.7rem;font-weight:700;cursor:pointer;white-space:nowrap">🔄 Refresh</button>
+          </div>
           <textarea id="kmKwInput" rows="7" style="width:100%;padding:10px 12px;border:1.5px solid #CBD5E1;border-radius:10px;font-size:0.82rem;font-family:inherit;resize:vertical" placeholder="forex broker, best forex broker, mt4 platform…">${_kmEsc(seedKws)}</textarea>
           <div style="font-size:0.68rem;color:#64748B;margin-top:4px">Pre-filled from your Intent Map ${window._intentMap ? '✅' : '— run Intent Map first or paste your own'}. Up to 80 keywords.</div>
         </div>
@@ -7861,7 +7912,7 @@ function buildKeywordMap() {
       <!-- Action row -->
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
         <button onclick="generateKeywordMap()" style="background:linear-gradient(135deg,#0EA5E9,#6366F1);color:white;border:none;padding:11px 22px;border-radius:10px;font-weight:700;font-size:0.9rem;cursor:pointer;box-shadow:0 4px 12px rgba(14,165,233,.3)">⚡ Generate Map</button>
-        <button onclick="document.getElementById('kmKwInput').value=_kmSeedKeywords();showToast('🔄 Refreshed keywords from Intent Map')" style="background:white;color:#0EA5E9;border:1.5px solid #0EA5E9;padding:11px 18px;border-radius:10px;font-weight:700;font-size:0.85rem;cursor:pointer">🔄 Pull from Intent Map</button>
+        <button onclick="_kmRefreshKeywordsFromIntent()" style="background:white;color:#0EA5E9;border:1.5px solid #0EA5E9;padding:11px 18px;border-radius:10px;font-weight:700;font-size:0.85rem;cursor:pointer">🔄 Refresh keywords from Intent Map</button>
       </div>
     </div>
     <div id="kmResult"></div>
@@ -7961,9 +8012,9 @@ function _kmRender() {
 
   // Summary tiles (dark gradient — matches Intent Map / ROAS pattern)
   const tile = (label, value, accent) => `
-    <div style="background:linear-gradient(135deg,#062A36,#0A4858);border-radius:14px;padding:18px;color:white">
-      <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,.65);font-weight:700;margin-bottom:6px">${_kmEsc(label)}</div>
-      <div style="font-size:1.7rem;font-weight:800;color:${accent}">${_kmEsc(value)}</div>
+    <div style="background:linear-gradient(135deg,#062A36,#0A4858);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px;color:#FFFFFF">
+      <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.08em;color:#E2E8F0;font-weight:800;margin-bottom:8px;text-shadow:0 1px 2px rgba(0,0,0,.4)">${_kmEsc(label)}</div>
+      <div style="font-size:1.85rem;font-weight:900;color:${accent};text-shadow:0 1px 2px rgba(0,0,0,.35);line-height:1.1">${_kmEsc(value)}</div>
     </div>`;
   const tiles = `
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px">
