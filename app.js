@@ -12192,6 +12192,22 @@ function buildIntelligence() {
     displayWinLoss = intel.winLoss;
   }
 
+  // ── Snapshot live Hub data for Export Report (so the PDF reflects what the user sees) ──
+  window._lastIntelHub = {
+    industryKey,
+    domain: analysisDomain,
+    industry: (analysisData && analysisData.industry && analysisData.industry.name) || 'Marketing & Analytics',
+    categoryScore: intel.categoryScore,
+    shareOfVoice: displaySov,
+    signals: displaySignals,
+    predictions: displayPredictions,
+    winLoss: displayWinLoss,
+    keywordGaps: intel.keywordGaps,
+    roadmap: intel.roadmap,
+    realComps: realComps || [],
+    capturedAt: Date.now()
+  };
+
   // ── Signal type helpers ──
   function signalLabel(type) {
     if (type === 'dark_period') return '<span class="signal-type-badge sig-dark">📉 Dark Period Detected</span>';
@@ -12649,12 +12665,29 @@ function _loadJsPDF() {
 }
 
 async function exportIntelligenceReport() {
-  const industryKey = analysisData ? analysisData.industryKey : 'marketing';
+  // Prefer the live snapshot captured by buildIntelligence() so the PDF mirrors
+  // exactly what the user sees in the Intelligence Hub. Fall back to seed DB
+  // only if the Hub hasn't been rendered yet.
+  const snap = window._lastIntelHub || null;
+  const industryKey = snap?.industryKey || (analysisData ? analysisData.industryKey : 'marketing');
   const intel = INTELLIGENCE_DB[industryKey] || INTELLIGENCE_DB['marketing'];
-  const domain = analysisData ? analysisData.url : 'demo.com';
-  const industry = analysisData ? analysisData.industry.name : 'Marketing & Analytics';
+  const domain = snap?.domain || (analysisData ? analysisData.url : 'demo.com');
+  const industry = snap?.industry || (analysisData ? analysisData.industry.name : 'Marketing & Analytics');
   const date = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
-  const realComps = analysisData ? analysisData.competitors : [];
+  const realComps = (snap?.realComps && snap.realComps.length) ? snap.realComps : (analysisData ? analysisData.competitors : []);
+
+  // Live data sources — when the Hub snapshot exists we ALWAYS trust it (even if
+  // a section happens to be empty), so the PDF mirrors exactly what the user sees.
+  // Only when the user clicks Export before the Hub has rendered do we fall back
+  // to the static seed DB.
+  const hasSnap        = !!snap;
+  const sovSrc         = hasSnap ? (snap.shareOfVoice || []) : intel.shareOfVoice;
+  const signalsSrc     = hasSnap ? (snap.signals      || []) : intel.signals;
+  const predictionsSrc = hasSnap ? (snap.predictions  || []) : intel.predictions;
+  const winLossSrc     = hasSnap ? (snap.winLoss      || []) : intel.winLoss;
+  const kwGapsSrc      = hasSnap ? (snap.keywordGaps  || []) : intel.keywordGaps;
+  const roadmapSrc     = hasSnap ? (snap.roadmap      || []) : intel.roadmap;
+  const categoryScore  = hasSnap && snap.categoryScore != null ? snap.categoryScore : intel.categoryScore;
 
   let JsPDF;
   try {
@@ -12773,7 +12806,7 @@ async function exportIntelligenceReport() {
   doc.setFont('helvetica','bold'); doc.setFontSize(9); setText(COL.sub);
   doc.text('CATEGORY DOMINATION', pageW - marginX - 65, 110, { align: 'center' });
   setText(COL.brand); doc.setFontSize(36);
-  doc.text(`${intel.categoryScore}`, pageW - marginX - 65, 152, { align: 'center' });
+  doc.text(`${categoryScore}`, pageW - marginX - 65, 152, { align: 'center' });
   doc.setFontSize(11); setText(COL.sub);
   doc.text('/ 100', pageW - marginX - 65, 172, { align: 'center' });
   doc.setFontSize(8);
@@ -12808,7 +12841,7 @@ async function exportIntelligenceReport() {
 
   // ── SECTION 1: KEYWORD GAPS ─────────────────────────────────────────────────
   sectionTitle(1, 'Keyword Gap Opportunities');
-  intel.keywordGaps.forEach((k, i) => {
+  kwGapsSrc.forEach((k, i) => {
     bulletItem(`${i+1}. ${k.keyword}`, [
       `Volume: ${k.volume}/mo   ·   Top Competitor: ${k.topComp}   ·   Their CTR: ${k.compCtr}`,
       `Your Rank: ${k.yourRank}   ·   Difficulty: ${k.difficulty}   ·   Gap Score: ${k.score}/100   ·   CPC: ${k.cpc}`
@@ -12817,49 +12850,66 @@ async function exportIntelligenceReport() {
 
   // ── SECTION 2: SHARE OF VOICE ───────────────────────────────────────────────
   sectionTitle(2, 'Share of Voice');
-  intel.shareOfVoice.forEach(s => {
+  sovSrc.forEach(s => {
     ensureSpace(22);
     doc.setFont('helvetica','bold'); doc.setFontSize(10); setText(COL.brandDk);
-    doc.text(s.name, marginX, y);
+    doc.text(String(s.name || ''), marginX, y);
     doc.setFont('helvetica','normal'); setText(COL.text);
     doc.text(`${s.share}%${s.trend ? '  ' + s.trend : ''}`, pageW - marginX, y, { align: 'right' });
-    // Bar
+    // Bar — colour-matched to the Hub legend when a per-row colour is provided
     const barY = y + 4;
     const barW = contentW;
-    const fillW = (s.share / 100) * barW;
+    const fillW = (Math.max(0, Math.min(100, Number(s.share) || 0)) / 100) * barW;
     setFill(COL.line); doc.rect(marginX, barY, barW, 6, 'F');
-    setFill(COL.brand); doc.rect(marginX, barY, fillW, 6, 'F');
+    if (s.color && /^#?[0-9A-Fa-f]{6}$/.test(String(s.color).replace('#',''))) {
+      const hex = String(s.color).replace('#','');
+      setFill([parseInt(hex.slice(0,2),16), parseInt(hex.slice(2,4),16), parseInt(hex.slice(4,6),16)]);
+    } else {
+      setFill(COL.brand);
+    }
+    doc.rect(marginX, barY, fillW, 6, 'F');
     y += 22;
   });
 
   // ── SECTION 3: SIGNALS ──────────────────────────────────────────────────────
   sectionTitle(3, 'Competitor Signals Detected');
-  const sigTypes = ['Dark Period Detected','New Campaign Launched','Budget Surge','Price Change'];
-  const sigSrc = realComps.length > 0 ? realComps.slice(0, 4) : intel.signals;
-  sigSrc.forEach((c, i) => {
-    const name = c.name || c.comp || 'Competitor';
-    bulletItem(`[${sigTypes[i % 4]}] ${name}`,
-      'Recommended Action: attack vacated keywords and target price-dissatisfied customers');
+  const sigTypeLabels = {
+    dark_period:  'Dark Period Detected',
+    new_campaign: 'New Campaign Launched',
+    budget_surge: 'Budget Surge',
+    price_change: 'Price Change'
+  };
+  signalsSrc.forEach((s) => {
+    const compName = s.comp || s.name || 'Competitor';
+    const typeLbl  = sigTypeLabels[s.type] || (s.type ? String(s.type) : 'Signal');
+    const sev      = s.severity ? String(s.severity).toUpperCase() : '';
+    const ago      = s.detectedAgo ? `Detected ${s.detectedAgo}` : '';
+    const meta     = [sev && `Severity: ${sev}`, ago].filter(Boolean).join('   ·   ');
+    bulletItem(`[${typeLbl}] ${compName}`, [
+      String(s.message || s.msg || '').slice(0, 360),
+      meta,
+      `Recommended Action: ${s.action || 'Review competitor activity'}`
+    ].filter(Boolean));
   });
 
   // ── SECTION 4: PREDICTIONS ──────────────────────────────────────────────────
   sectionTitle(4, 'AI Predictive Intelligence');
-  intel.predictions.forEach((p, i) => {
+  predictionsSrc.forEach((p, i) => {
     bulletItem(`${i+1}. ${p.comp} — ${p.timeframe} warning  (Confidence ${p.confidence}%)`, [
-      String(p.prediction || '').slice(0, 320),
+      String(p.prediction || '').slice(0, 360),
       `Recommended: ${p.action}`
     ]);
   });
 
   // ── SECTION 5: ROADMAP ──────────────────────────────────────────────────────
   sectionTitle(5, '90-Day Domination Roadmap');
-  intel.roadmap.forEach(r => {
-    bulletItem(`[${String(r.week).toUpperCase()}]  ${r.title}`, String(r.desc || '').slice(0, 320));
+  roadmapSrc.forEach(r => {
+    bulletItem(`[${String(r.week).toUpperCase()}]  ${r.title}`, String(r.desc || '').slice(0, 360));
   });
 
   // ── SECTION 6: WIN/LOSS ─────────────────────────────────────────────────────
   sectionTitle(6, 'Win / Loss Intelligence');
-  intel.winLoss.forEach(w => {
+  winLossSrc.forEach(w => {
     bulletItem(`${w.comp}  ·  ${w.channel}`, [
       `Winning Message: ${w.message}`,
       `Loss Rate: ${w.lossRate} of deals`,
