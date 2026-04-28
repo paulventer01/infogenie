@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "id": "g_1777391541888_z3ob6i",
+    "metric": "drip.bounceRate",
+    "target": 2,
+    "label": "Drip Bounce Rate",
+    "createdAt": "2026-04-28T15:52:21.888Z"
+  }
+]

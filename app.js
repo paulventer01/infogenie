@@ -27063,19 +27063,333 @@ document.addEventListener('keydown', (e) => {
   document.head.appendChild(s);
 })();
 
+/* =============================================================================
+   LEAD QUALIFIER — qualify inbound leads with GPT-4o (BANT + score + actions)
+   ============================================================================= */
+function refreshLeadQualifier() { buildLeadQualifier(); }
+async function buildLeadQualifier() {
+  const wrap = document.getElementById('leadQualifierBody');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="text-align:center;padding:48px;color:#64748B">⏳ Loading qualified leads…</div>';
+  try {
+    const r = await fetch('/api/leads/qualified');
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Failed');
+    wrap.innerHTML = _leadQualifierHtml(j.leads || []);
+  } catch (e) {
+    const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    wrap.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:24px;color:#991B1B"><b>⚠️ Could not load</b><div style="font-size:0.85rem;margin-top:6px">${esc(e.message)}</div></div>`;
+  }
+}
+function _leadQualifierHtml(leads) {
+  return `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start">
+      <!-- Left: qualify form -->
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:22px;box-shadow:0 1px 2px rgba(0,0,0,.04)">
+        <div style="font-size:1rem;font-weight:800;color:#0F172A;margin-bottom:4px">Qualify a new lead</div>
+        <div style="font-size:0.8rem;color:#64748B;margin-bottom:16px">GPT-4o scores fit + intent and gives you the best next move.</div>
+        <div style="display:grid;gap:10px">
+          <input id="leadName"     placeholder="Name (optional)"            style="padding:10px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:0.88rem">
+          <input id="leadEmail"    placeholder="Email * (required)"          style="padding:10px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:0.88rem">
+          <input id="leadCompany"  placeholder="Company (optional)"          style="padding:10px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:0.88rem">
+          <input id="leadSource"   placeholder="Source — webform, demo, referral…"  style="padding:10px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:0.88rem">
+          <textarea id="leadNotes" placeholder="Notes — anything you know (role, budget, timing, pain)…"  rows="3" style="padding:10px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:0.88rem;resize:vertical;font-family:inherit"></textarea>
+          <textarea id="leadBehaviour" placeholder="Recent behaviour (optional) — e.g. visited pricing 3x, downloaded CAC ebook"  rows="2" style="padding:10px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:0.88rem;resize:vertical;font-family:inherit"></textarea>
+          <button onclick="submitLeadQualification()" id="leadQualifyBtn" style="margin-top:6px;padding:11px 18px;background:linear-gradient(135deg,#0369A1,#0EA5E9);color:white;border:none;border-radius:9px;font-weight:700;font-size:0.88rem;cursor:pointer">🧲 Qualify Lead</button>
+        </div>
+        <div id="leadQualifyResult" style="margin-top:14px"></div>
+      </div>
+      <!-- Right: history list -->
+      <div>
+        <div style="font-size:1rem;font-weight:800;color:#0F172A;margin-bottom:10px">Recent qualifications <span style="font-weight:500;color:#94A3B8">(${leads.length})</span></div>
+        ${leads.length === 0
+          ? `<div style="background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:14px;padding:32px;text-align:center;color:#64748B"><div style="font-size:2rem;margin-bottom:8px">🧲</div><div style="font-weight:600;color:#475569">No leads qualified yet</div><div style="font-size:0.82rem;margin-top:4px">Qualify your first lead with the form on the left, or ask the ✨ command bar: <i>"qualify jane@acme.com, CMO at Acme, downloaded our CAC ebook"</i>.</div></div>`
+          : leads.map(_leadCard).join('')}
+      </div>
+    </div>`;
+}
+function _leadCard(lead) {
+  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const q = lead.qualification || {};
+  const tier = String(q.tier || 'cold').toLowerCase();
+  const tierStyle = tier === 'hot'  ? { bg:'#FEE2E2', border:'#FCA5A5', text:'#991B1B', label:'🔥 HOT'  }
+                   : tier === 'warm' ? { bg:'#FFEDD5', border:'#FDBA74', text:'#9A3412', label:'☀️ WARM' }
+                                     : { bg:'#E0F2FE', border:'#7DD3FC', text:'#075985', label:'❄️ COLD' };
+  const score = Number(q.score || 0);
+  const bant = q.bant || {};
+  const actions = Array.isArray(q.suggestedActions) ? q.suggestedActions : [];
+  const safeId = String(lead.id || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  const bantRow = (k, v) => {
+    const verdict = String((v && v.verdict) || 'unknown').toLowerCase();
+    const vc = verdict === 'strong' ? '#065F46' : verdict === 'weak' ? '#991B1B' : '#475569';
+    const vbg = verdict === 'strong' ? '#ECFDF5' : verdict === 'weak' ? '#FEF2F2' : '#F1F5F9';
+    return `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid #F1F5F9">
+      <div style="font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#64748B;width:72px;flex-shrink:0">${esc(k)}</div>
+      <div style="flex:1">
+        <span style="display:inline-block;font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:999px;background:${vbg};color:${vc};margin-right:6px">${esc(verdict.toUpperCase())}</span>
+        <span style="font-size:0.78rem;color:#475569">${esc((v && v.why) || '—')}</span>
+      </div>
+    </div>`;
+  };
+  return `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;color:#0F172A;font-size:0.95rem">${esc(lead.name || '(no name)')} <span style="color:#94A3B8;font-weight:500;font-size:0.82rem">· ${esc(lead.email)}</span></div>
+          <div style="font-size:0.78rem;color:#64748B;margin-top:2px">${esc(lead.company || '—')}${lead.source ? ' · via ' + esc(lead.source) : ''}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <span style="font-size:0.7rem;font-weight:800;padding:4px 10px;border-radius:999px;background:${tierStyle.bg};color:${tierStyle.text};border:1px solid ${tierStyle.border}">${tierStyle.label}</span>
+          <span style="font-size:0.72rem;color:#64748B"><b style="color:#0F172A">${score}</b>/100</span>
+        </div>
+      </div>
+      ${q.reasoning ? `<div style="font-size:0.82rem;color:#475569;background:#F8FAFC;border-left:3px solid #0EA5E9;padding:8px 12px;border-radius:0 8px 8px 0;margin:8px 0">${esc(q.reasoning)}</div>` : ''}
+      <div style="margin-top:6px">
+        ${bantRow('Budget',    bant.budget)}
+        ${bantRow('Authority', bant.authority)}
+        ${bantRow('Need',      bant.need)}
+        ${bantRow('Timeline',  bant.timeline)}
+      </div>
+      ${actions.length ? `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #F1F5F9">
+        <div style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#0F172A;margin-bottom:6px">Suggested next moves</div>
+        ${actions.map(a => `<div style="font-size:0.82rem;color:#0F172A;padding:4px 0">→ ${esc(a)}</div>`).join('')}
+      </div>` : ''}
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+        ${tier === 'hot' ? `<button type="button" data-lead-action="enroll-hot" data-lead-email="${esc(lead.email)}" style="padding:7px 12px;background:#0369A1;color:white;border:none;border-radius:7px;font-size:0.78rem;font-weight:700;cursor:pointer">→ Enrol in nurture</button>` : ''}
+        <button type="button" data-lead-action="delete" data-lead-id="${safeId}" style="padding:7px 12px;background:#FEE2E2;color:#991B1B;border:none;border-radius:7px;font-size:0.78rem;font-weight:700;cursor:pointer">Delete</button>
+      </div>
+    </div>`;
+}
+async function submitLeadQualification() {
+  const btn = document.getElementById('leadQualifyBtn');
+  const result = document.getElementById('leadQualifyResult');
+  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const payload = {
+    name:      document.getElementById('leadName').value.trim(),
+    email:     document.getElementById('leadEmail').value.trim(),
+    company:   document.getElementById('leadCompany').value.trim(),
+    source:    document.getElementById('leadSource').value.trim(),
+    notes:     document.getElementById('leadNotes').value.trim(),
+    behaviour: document.getElementById('leadBehaviour').value.trim(),
+  };
+  if (!payload.email) { result.innerHTML = '<div style="color:#991B1B;font-size:0.82rem">⚠️ Email is required.</div>'; return; }
+  btn.disabled = true; btn.textContent = '⏳ Qualifying…';
+  result.innerHTML = '';
+  try {
+    const r = await fetch('/api/leads/qualify', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Failed');
+    result.innerHTML = `<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:10px 12px;font-size:0.82rem;color:#065F46">✓ Lead qualified — see the panel on the right.</div>`;
+    ['leadName','leadEmail','leadCompany','leadSource','leadNotes','leadBehaviour'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    setTimeout(() => buildLeadQualifier(), 600);
+  } catch (e) {
+    result.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 12px;font-size:0.82rem;color:#991B1B">⚠️ ${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '🧲 Qualify Lead';
+  }
+}
+async function deleteQualifiedLead(id) {
+  if (!confirm('Delete this qualified lead?')) return;
+  try {
+    await fetch('/api/leads/qualified/' + encodeURIComponent(id), { method:'DELETE' });
+    buildLeadQualifier();
+  } catch (_) {}
+}
+function enrollHotLead(email) {
+  if (!email) return;
+  if (typeof openCommandBar === 'function') {
+    openCommandBar();
+    setTimeout(() => {
+      const inp = document.getElementById('commandBarInput');
+      if (inp) { inp.value = `Enrol ${email} into the default 3-touch drip`; inp.focus(); }
+    }, 80);
+  } else { alert('Command bar not available — open it with ⌘K and ask to enrol ' + email); }
+}
+
+/* =============================================================================
+   RE-ENGAGE AUDIENCE — find dormant subs, generate adaptive copy, launch
+   ============================================================================= */
+let _reengageState = { dormant: [], variants: [], chosenIdx: 0, segment: '', tone: 'warm-and-curious' };
+function loadReengage() { buildReengage(); }
+async function buildReengage() {
+  const wrap = document.getElementById('reengageBody');
+  if (!wrap) return;
+  const days = parseInt(document.getElementById('reengageDays')?.value || '30', 10);
+  wrap.innerHTML = '<div style="text-align:center;padding:48px;color:#64748B">⏳ Scanning drip subscribers and Amplitude inactivity…</div>';
+  try {
+    const r = await fetch('/api/reengage/dormant?days=' + days);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Failed');
+    _reengageState.dormant = j.dormant || [];
+    _reengageState.segment = `dormant subscribers (${days}+ days inactive)`;
+    wrap.innerHTML = _reengageHtml(j);
+  } catch (e) {
+    const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    wrap.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:24px;color:#991B1B"><b>⚠️ Could not load</b><div style="font-size:0.85rem;margin-top:6px">${esc(e.message)}</div></div>`;
+  }
+}
+function _reengageHtml(j) {
+  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const list = j.dormant || [];
+  const dormantList = list.length === 0
+    ? `<div style="font-size:0.85rem;color:#64748B;padding:14px;text-align:center;background:#F8FAFC;border-radius:8px">🎉 Nobody is dormant in this window — your audience is engaged.</div>`
+    : `<div style="max-height:240px;overflow-y:auto;border:1px solid #F1F5F9;border-radius:8px">
+        ${list.slice(0, 50).map(d => `
+          <div style="display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #F8FAFC;font-size:0.8rem">
+            <div style="color:#0F172A;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.email)}</div>
+            <div style="color:#94A3B8;flex-shrink:0;margin-left:10px">${d.daysSinceLastSend}d · ${d.allFailed ? '<span style="color:#991B1B">all failed</span>' : `${d.totalSends} sends`}</div>
+          </div>`).join('')}
+        ${list.length > 50 ? `<div style="padding:8px 12px;font-size:0.78rem;color:#64748B;text-align:center">… and ${list.length - 50} more</div>` : ''}
+       </div>`;
+  return `
+    <!-- Hero dormant tile -->
+    <div style="background:linear-gradient(135deg,#7C2D12 0%,#F97316 100%);border-radius:18px;padding:28px;color:white;margin-bottom:22px;box-shadow:0 4px 14px rgba(249,115,22,.25)">
+      <div style="font-size:0.78rem;text-transform:uppercase;letter-spacing:.5px;opacity:.85;font-weight:700;margin-bottom:8px">Dormant audience · ${esc(j.amplitudeNote || '')}</div>
+      <div style="display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:0.72rem;opacity:.8;font-weight:600;margin-bottom:4px">SUBSCRIBERS TO RE-ENGAGE</div>
+          <div style="font-size:2.4rem;font-weight:800;line-height:1.1">${list.length}</div>
+        </div>
+        <div style="opacity:.85;font-size:0.85rem;line-height:1.5;max-width:520px">${list.length > 0
+          ? `Generate three adaptive copy angles, pick the strongest, then launch a one-touch re-engagement campaign — or run a dry-run first to preview the copy without sending.`
+          : `Nothing to do here. Try a longer inactivity window, or come back when you've grown the list.`}</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start">
+      <!-- Left: dormant list + generate -->
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:22px">
+        <div style="font-size:1rem;font-weight:800;color:#0F172A;margin-bottom:12px">Dormant subscribers</div>
+        ${dormantList}
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid #F1F5F9">
+          <div style="font-size:0.85rem;font-weight:700;color:#0F172A;margin-bottom:8px">Generate adaptive copy</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="reengageTone" style="flex:1;padding:9px 11px;border:1px solid #E5E7EB;border-radius:7px;font-size:0.83rem">
+              <option value="warm-and-curious" selected>Warm & curious</option>
+              <option value="value-reminder">Value reminder</option>
+              <option value="urgent-but-friendly">Urgent but friendly</option>
+              <option value="soft-breakup">Soft breakup ("is this goodbye?")</option>
+              <option value="social-proof">Social proof heavy</option>
+            </select>
+            <button onclick="generateReengageVariants()" id="reengageGenBtn" ${list.length === 0 ? 'disabled' : ''} style="padding:9px 14px;background:linear-gradient(135deg,#C2410C,#F97316);color:white;border:none;border-radius:7px;font-weight:700;font-size:0.83rem;cursor:pointer;${list.length === 0 ? 'opacity:.5;cursor:not-allowed' : ''}">✨ Generate</button>
+          </div>
+        </div>
+      </div>
+      <!-- Right: variants + launch -->
+      <div id="reengageVariantsPanel" style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:22px;min-height:200px">
+        <div style="text-align:center;color:#94A3B8;font-size:0.85rem;padding:32px 0">Generated copy variants will appear here. Pick one to launch.</div>
+      </div>
+    </div>`;
+}
+async function generateReengageVariants() {
+  const btn = document.getElementById('reengageGenBtn');
+  const panel = document.getElementById('reengageVariantsPanel');
+  const tone = document.getElementById('reengageTone')?.value || 'warm-and-curious';
+  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  btn.disabled = true; btn.textContent = '⏳ Generating…';
+  panel.innerHTML = '<div style="text-align:center;padding:32px;color:#64748B"><div class="cmdSpinner" style="margin:0 auto 10px"></div>GPT-4o is drafting 3 angles…</div>';
+  try {
+    const r = await fetch('/api/reengage/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ segment: _reengageState.segment, tone }) });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Failed');
+    _reengageState.variants = j.variants;
+    _reengageState.tone = tone;
+    _reengageState.chosenIdx = 0;
+    panel.innerHTML = _reengageVariantsHtml();
+  } catch (e) {
+    panel.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:14px;color:#991B1B;font-size:0.85rem">⚠️ ${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '✨ Generate';
+  }
+}
+function _reengageVariantsHtml() {
+  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const variants = _reengageState.variants || [];
+  return `
+    <div style="font-size:1rem;font-weight:800;color:#0F172A;margin-bottom:4px">Adaptive copy variants</div>
+    <div style="font-size:0.78rem;color:#64748B;margin-bottom:14px">Pick one and launch — or run a dry-run to preview without sending.</div>
+    ${variants.map((v, i) => `
+      <label style="display:block;background:${i === _reengageState.chosenIdx ? '#FFF7ED' : '#F8FAFC'};border:2px solid ${i === _reengageState.chosenIdx ? '#F97316' : '#E5E7EB'};border-radius:10px;padding:14px;margin-bottom:10px;cursor:pointer;transition:all .15s">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <input type="radio" name="reengageVariant" value="${i}" ${i === _reengageState.chosenIdx ? 'checked' : ''} onchange="_reengageState.chosenIdx=${i};buildReengageVariantsRedraw()" style="margin:0">
+          <span style="font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:3px 8px;background:#FFEDD5;color:#9A3412;border-radius:999px">${esc(v.angle || ('Variant ' + (i+1)))}</span>
+        </div>
+        <div style="font-size:0.85rem;font-weight:700;color:#0F172A;margin-bottom:4px">${esc(v.subject || '')}</div>
+        ${v.preheader ? `<div style="font-size:0.74rem;color:#64748B;margin-bottom:6px;font-style:italic">${esc(v.preheader)}</div>` : ''}
+        <div style="font-size:0.82rem;color:#475569;line-height:1.5;white-space:pre-wrap">${esc(v.body || '')}</div>
+        ${v.cta ? `<div style="font-size:0.78rem;color:#0F172A;margin-top:8px"><b>CTA:</b> ${esc(v.cta)}</div>` : ''}
+      </label>`).join('')}
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button onclick="launchReengage(true)"  style="flex:1;padding:10px 14px;background:#F1F5F9;color:#0F172A;border:none;border-radius:8px;font-weight:700;font-size:0.83rem;cursor:pointer">📋 Dry-run (no sends)</button>
+      <button onclick="launchReengage(false)" style="flex:1;padding:10px 14px;background:linear-gradient(135deg,#DC2626,#F97316);color:white;border:none;border-radius:8px;font-weight:700;font-size:0.83rem;cursor:pointer">🚀 Launch for real</button>
+    </div>
+    <div id="reengageLaunchResult" style="margin-top:12px"></div>`;
+}
+function buildReengageVariantsRedraw() {
+  const panel = document.getElementById('reengageVariantsPanel');
+  if (panel) panel.innerHTML = _reengageVariantsHtml();
+}
+async function launchReengage(dryRun) {
+  const out  = document.getElementById('reengageLaunchResult');
+  const esc  = (typeof _escapeHtml === 'function') ? _escapeHtml : (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const variants = _reengageState.variants || [];
+  const variant  = variants[_reengageState.chosenIdx];
+  if (!variant) { out.innerHTML = '<div style="color:#991B1B;font-size:0.82rem">⚠️ No variant selected.</div>'; return; }
+  const emails = (_reengageState.dormant || []).map(d => d.email).filter(Boolean);
+  if (!dryRun && !confirm(`Launch ${variant.angle || 'this variant'} to ${emails.length} dormant subscriber(s)? Real emails WILL be sent.`)) return;
+  out.innerHTML = '<div style="font-size:0.82rem;color:#64748B"><span class="cmdSpinner" style="display:inline-block;vertical-align:middle;margin-right:6px"></span>Launching…</div>';
+  try {
+    const r = await fetch('/api/reengage/launch', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ variant, emails, segment: _reengageState.segment, tone: _reengageState.tone, dryRun: !!dryRun }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Failed');
+    const c = j.campaign || {};
+    out.innerHTML = `<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:8px;padding:12px;color:#065F46;font-size:0.83rem">
+      ✓ Campaign <b>${esc(c.id || '')}</b> ${dryRun ? 'recorded (dry-run, no sends)' : 'launched'} — ${c.emailCount || 0} subscriber(s).
+      ${c.enrollmentError ? `<div style="margin-top:6px;color:#991B1B">Enrollment error: ${esc(c.enrollmentError)}</div>` : ''}
+    </div>`;
+  } catch (e) {
+    out.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:12px;color:#991B1B;font-size:0.83rem">⚠️ ${esc(e.message)}</div>`;
+  }
+}
+
 // View-switch hooks for the new views — match the existing pattern in the
 // view-router. Hook into navigation by piggy-backing on the same DOM event
 // the existing nav-link handlers fire.
+//
+// Also installs a delegated click handler for the Lead Qualifier card buttons.
+// Lead emails / IDs come from user-controlled input, so we use data-* attributes
+// + addEventListener instead of inline onclick="…(${esc(value)})" — _escapeHtml
+// only escapes HTML context, and entities are decoded *before* inline JS runs,
+// which would let a single-quote in an email break out of the JS string.
 (function wireNewViews(){
   const orig = window.buildAmplitudeAgents;  // sentinel — confirms script loaded
   document.addEventListener('click', (e) => {
+    // 1) Sidebar nav links → re-render the matching view
     const a = e.target.closest && e.target.closest('a.nav-link[data-view]');
-    if (!a) return;
-    const v = a.getAttribute('data-view');
-    // Defer so the existing router has a chance to flip view-* hidden classes first
-    setTimeout(() => {
-      if (v === 'goals')        { try { buildGoals(); }       catch(_){} }
-      if (v === 'blended-perf') { try { buildBlendedPerf(); } catch(_){} }
-    }, 60);
+    if (a) {
+      const v = a.getAttribute('data-view');
+      setTimeout(() => {
+        if (v === 'goals')          { try { buildGoals(); }          catch(_){} }
+        if (v === 'blended-perf')   { try { buildBlendedPerf(); }    catch(_){} }
+        if (v === 'lead-qualifier') { try { buildLeadQualifier(); }  catch(_){} }
+        if (v === 'reengage')       { try { buildReengage(); }       catch(_){} }
+      }, 60);
+      return;
+    }
+    // 2) Lead-card delegated buttons (read from data-* — never via inline JS)
+    const leadBtn = e.target.closest && e.target.closest('button[data-lead-action]');
+    if (leadBtn) {
+      const action = leadBtn.getAttribute('data-lead-action');
+      if (action === 'enroll-hot') {
+        const email = leadBtn.getAttribute('data-lead-email') || '';
+        if (email) enrollHotLead(email);
+      } else if (action === 'delete') {
+        const id = leadBtn.getAttribute('data-lead-id') || '';
+        if (id) deleteQualifiedLead(id);
+      }
+    }
   });
 })();

@@ -7159,6 +7159,293 @@ app.get('/api/goals/check', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LEAD QUALIFIER — GPT-4o classifies an inbound lead (BANT + intent + fit) and
+// persists the qualification. File-backed store mirroring the goals pattern
+// (mutex + atomic tmp+rename writes).
+// ─────────────────────────────────────────────────────────────────────────────
+const LEADS_FILE = path.join(__dirname, 'data', 'qualified-leads.json');
+let _leadsLockTail = Promise.resolve();
+function _leadsLock(fn) {
+  const next = _leadsLockTail.then(() => fn());
+  _leadsLockTail = next.catch(() => {});
+  return next;
+}
+async function _readLeads() {
+  try { return JSON.parse(await fsp.readFile(LEADS_FILE, 'utf8')); }
+  catch (e) { if (e.code === 'ENOENT') return []; throw e; }
+}
+async function _writeLeads(leads) {
+  await fsp.mkdir(path.dirname(LEADS_FILE), { recursive: true });
+  const tmp = LEADS_FILE + '.tmp';
+  await fsp.writeFile(tmp, JSON.stringify(leads, null, 2));
+  await fsp.rename(tmp, LEADS_FILE);
+}
+
+app.get('/api/leads/qualified', async (req, res) => {
+  try {
+    const leads = await _leadsLock(_readLeads);
+    leads.sort((a, b) => (b.qualifiedAt || 0) - (a.qualifiedAt || 0));
+    res.json({ ok:true, leads });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.post('/api/leads/qualify', async (req, res) => {
+  try {
+    const { name, email, company, source, notes, behaviour } = req.body || {};
+    if (!email || typeof email !== 'string' || !email.trim()) {
+      return res.status(400).json({ ok:false, error: 'email is required' });
+    }
+    const sysPrompt = `You are a B2B SaaS sales-development qualifier for InfoGenie (an AI marketing intelligence platform that helps marketing teams analyse competitors, run drip campaigns, monitor KPIs, and act on Amplitude data).
+
+Score the lead 0–100 on overall fit + intent. Tier them: hot (75+), warm (45–74), cold (<45).
+
+Apply BANT individually: each of budget, authority, need, timeline gets a string verdict ("strong" / "weak" / "unknown") and a one-line rationale.
+
+Then list 1–3 concrete suggestedActions a salesperson can take next (e.g. "Send blended-CAC case study", "Enrol in 3-touch nurture", "Book discovery call this week").
+
+Return ONLY valid JSON in this exact shape:
+{ "score": number, "tier": "hot"|"warm"|"cold", "reasoning": string, "bant": { "budget": {"verdict": string, "why": string}, "authority": {...}, "need": {...}, "timeline": {...} }, "suggestedActions": [string, ...] }`;
+    const userPrompt = `Lead context:
+- name: ${name || '(not provided)'}
+- email: ${email}
+- company: ${company || '(not provided)'}
+- source: ${source || '(not provided)'}
+- notes: ${notes || '(none)'}
+- recent behaviour: ${behaviour || '(none)'}`;
+    let qualification;
+    try {
+      const completion = await openaiChatWithRetry({
+        model: 'gpt-4o',
+        messages: [
+          { role:'system', content: sysPrompt },
+          { role:'user',   content: userPrompt },
+        ],
+        response_format: { type: 'json_object' },
+        max_tokens: 700,
+      });
+      qualification = JSON.parse(completion.choices[0].message.content || '{}');
+    } catch (e) {
+      return res.status(502).json({ ok:false, error: 'GPT qualification failed: ' + e.message });
+    }
+    if (typeof qualification.score !== 'number') qualification.score = 0;
+    if (!qualification.tier) qualification.tier = qualification.score >= 75 ? 'hot' : qualification.score >= 45 ? 'warm' : 'cold';
+    const record = {
+      id: 'lead_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+      name: name || '',
+      email: String(email).trim(),
+      company: company || '',
+      source: source || '',
+      notes: notes || '',
+      behaviour: behaviour || '',
+      qualification,
+      qualifiedAt: Date.now(),
+    };
+    await _leadsLock(async () => {
+      const list = await _readLeads();
+      list.push(record);
+      await _writeLeads(list);
+    });
+    res.json({ ok:true, lead: record });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.delete('/api/leads/qualified/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    let removed = null;
+    await _leadsLock(async () => {
+      const list = await _readLeads();
+      const idx = list.findIndex(l => l.id === id);
+      if (idx === -1) return;
+      removed = list.splice(idx, 1)[0];
+      await _writeLeads(list);
+    });
+    if (!removed) return res.status(404).json({ ok:false, error: 'lead not found' });
+    res.json({ ok:true, removed });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RE-ENGAGEMENT — find dormant subscribers (drip-store + Amplitude inactivity),
+// generate adaptive copy variants via GPT-4o, optionally launch a re-engagement
+// campaign via the existing drip enrollment endpoint. File-backed campaign
+// store mirrors the leads/goals pattern.
+// ─────────────────────────────────────────────────────────────────────────────
+const REENGAGE_FILE = path.join(__dirname, 'data', 'reengagement-campaigns.json');
+let _reengageLockTail = Promise.resolve();
+function _reengageLock(fn) {
+  const next = _reengageLockTail.then(() => fn());
+  _reengageLockTail = next.catch(() => {});
+  return next;
+}
+async function _readReengage() {
+  try { return JSON.parse(await fsp.readFile(REENGAGE_FILE, 'utf8')); }
+  catch (e) { if (e.code === 'ENOENT') return []; throw e; }
+}
+async function _writeReengage(list) {
+  await fsp.mkdir(path.dirname(REENGAGE_FILE), { recursive: true });
+  const tmp = REENGAGE_FILE + '.tmp';
+  await fsp.writeFile(tmp, JSON.stringify(list, null, 2));
+  await fsp.rename(tmp, REENGAGE_FILE);
+}
+
+// Find dormant subscribers — drip enrollees whose last touch (sentAt) is older
+// than `days` ago, OR whose most recent send hard-failed. Always returns a list
+// even when there's no data, so the UI never hangs.
+app.get('/api/reengage/dormant', async (req, res) => {
+  try {
+    const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30));
+    const cutoff = Date.now() - days * 86400000;
+    const enrollments = _dripLoad();
+    const dormant = [];
+    for (const e of enrollments) {
+      const history = e.history || [];
+      const lastSend = history.length ? history[history.length - 1] : null;
+      const lastSentAt = lastSend?.sentAt || e.startedAt || 0;
+      const allFailed = history.length > 0 && history.every(h => !h.ok);
+      const isDormant = lastSentAt < cutoff || allFailed;
+      if (!isDormant) continue;
+      dormant.push({
+        email: e.email,
+        name: e.name || '',
+        brand: e.brand || '',
+        lastSentAt,
+        daysSinceLastSend: Math.round((Date.now() - lastSentAt) / 86400000),
+        totalSends: history.filter(h => h.ok).length,
+        allFailed,
+        status: e.status || 'unknown',
+      });
+    }
+    let amplitudeNote = null;
+    try {
+      const auth = _amplitudeAuthHeader && _amplitudeAuthHeader();
+      if (auth) amplitudeNote = `Amplitude is connected — cross-channel inactivity check would refine this list further.`;
+      else amplitudeNote = 'Amplitude not configured — using drip-store inactivity only.';
+    } catch (_) { amplitudeNote = 'Amplitude lookup skipped.'; }
+    res.json({ ok:true, days, cutoff, count: dormant.length, dormant, amplitudeNote });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.post('/api/reengage/generate', async (req, res) => {
+  try {
+    const segment = (req.body && req.body.segment) || 'dormant subscribers (no email opens in 30+ days)';
+    const tone    = (req.body && req.body.tone)    || 'warm-and-curious';
+    const brand   = (req.body && req.body.brand)   || 'InfoGenie';
+    const sysPrompt = `You write re-engagement email copy for the brand "${brand}". The audience is: ${segment}. Tone: ${tone}.
+
+Produce 3 distinct adaptive variants. Each variant should test a different psychological angle (e.g. curiosity, value-reminder, low-friction CTA, soft-breakup, social-proof).
+
+Return ONLY valid JSON in this exact shape:
+{ "variants": [ { "angle": string, "subject": string, "preheader": string, "body": string, "cta": string }, ... ] }
+
+Body should be plain text under 100 words, second-person, no emojis unless they fit the tone, and use {{name}} as a merge token where natural.`;
+    let parsed;
+    try {
+      const completion = await openaiChatWithRetry({
+        model: 'gpt-4o',
+        messages: [
+          { role:'system', content: sysPrompt },
+          { role:'user',   content: 'Generate the 3 variants now.' },
+        ],
+        response_format: { type: 'json_object' },
+        max_tokens: 1100,
+      });
+      parsed = JSON.parse(completion.choices[0].message.content || '{}');
+    } catch (e) {
+      return res.status(502).json({ ok:false, error: 'GPT generation failed: ' + e.message });
+    }
+    const variants = Array.isArray(parsed.variants) ? parsed.variants.slice(0, 5) : [];
+    if (!variants.length) return res.status(502).json({ ok:false, error: 'No variants generated' });
+    res.json({ ok:true, segment, tone, brand, variants, generatedAt: new Date().toISOString() });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// Launch a re-engagement campaign. Records the campaign and (when emails are
+// supplied) enrolls them via the existing drip endpoint with a single-touch
+// sequence built from the chosen variant. Set dryRun:true to record without
+// actually sending.
+app.post('/api/reengage/launch', async (req, res) => {
+  try {
+    const { variant, emails, segment, tone, brand, dryRun } = req.body || {};
+    if (!variant || !variant.subject || !variant.body) {
+      return res.status(400).json({ ok:false, error: 'variant.subject and variant.body required' });
+    }
+    const cleanEmails = Array.isArray(emails)
+      ? emails.map(e => String(e || '').trim()).filter(e => /\S+@\S+\.\S+/.test(e))
+      : [];
+    const campaign = {
+      id: 'rec_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+      segment: segment || 'dormant',
+      tone:    tone    || 'warm-and-curious',
+      brand:   brand   || 'InfoGenie',
+      variant: { angle: variant.angle || '', subject: variant.subject, preheader: variant.preheader || '', body: variant.body, cta: variant.cta || '' },
+      emailCount: cleanEmails.length,
+      dryRun: !!dryRun,
+      createdAt: Date.now(),
+      enrollment: null,
+      enrollmentError: null,
+    };
+    let enrollmentOk = true;   // true when no enrollment was attempted, OR
+                                // when the inner /api/drips/enroll call succeeded
+    if (cleanEmails.length > 0) {
+      enrollmentOk = false;     // assume failure until proven otherwise
+      const port = process.env.PORT || 5000;
+      const baseUrl = `http://localhost:${port}`;
+      const sequence = [{
+        day: 0,
+        channel: 'email',
+        label: 'Re-engagement: ' + (variant.angle || 'adaptive'),
+        subject: variant.subject,
+        msg: variant.body,
+      }];
+      const contacts = cleanEmails.map(e => ({ email: e }));
+      try {
+        const enrollResp = await fetch(`${baseUrl}/api/drips/enroll`, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ contacts, sequence, brand: campaign.brand, dryRun: !!dryRun }),
+        });
+        const body = await enrollResp.json().catch(() => ({}));
+        campaign.enrollment = body;
+        if (enrollResp.ok && body && body.ok === true) {
+          enrollmentOk = true;
+        } else {
+          campaign.enrollmentError =
+            (body && (body.error || body.message)) ||
+            `drips/enroll returned HTTP ${enrollResp.status}`;
+        }
+      } catch (e) { campaign.enrollmentError = e.message; }
+    }
+    // Persist the campaign record either way — useful for audit even on failure
+    await _reengageLock(async () => {
+      const list = await _readReengage();
+      list.push(campaign);
+      await _writeReengage(list);
+    });
+    // Top-level ok reflects whether the launch actually succeeded end-to-end.
+    // When enrollment was attempted and failed, ok:false so callers (UI + assistant)
+    // do not show a misleading success state.
+    if (!enrollmentOk) {
+      return res.status(502).json({
+        ok: false,
+        error: 'enrollment-failed',
+        details: campaign.enrollmentError || 'unknown',
+        campaign,
+      });
+    }
+    res.json({ ok:true, campaign });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.get('/api/reengage/campaigns', async (req, res) => {
+  try {
+    const list = await _reengageLock(_readReengage);
+    list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    res.json({ ok:true, campaigns: list });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ASSISTANT COMMAND BAR — natural-language → executes real InfoGenie endpoints
 // via GPT-4o function calling. Two-shot: tool selection, then result summary.
 // Destructive tools require explicit confirmation (preview then re-call with
@@ -7228,8 +7515,47 @@ const _ASSISTANT_TOOLS = [
     description: 'Get current drip-campaign deliverability stats (sends, bounces, delivery rate).',
     parameters: { type:'object', properties:{} },
   }},
+  { type:'function', function: {
+    name: 'qualify_lead',
+    description: 'Qualify an inbound lead with BANT + fit + intent scoring. Returns score, tier (hot/warm/cold), reasoning, BANT breakdown and 1-3 suggested next actions. Persists the qualification.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name:      { type:'string' },
+        email:     { type:'string' },
+        company:   { type:'string' },
+        source:    { type:'string', description:'How the lead reached us — webform, demo, content download, referral, etc.' },
+        notes:     { type:'string', description:'Free-text notes from sales/marketing about this lead.' },
+        behaviour: { type:'string', description:'Recent product / site behaviour summary if known.' },
+      },
+      required: ['email'],
+    },
+  }},
+  { type:'function', function: {
+    name: 'find_dormant_audience',
+    description: 'List subscribers who have not been touched in N days (default 30) or whose recent sends all failed. Returns count + the dormant list.',
+    parameters: {
+      type: 'object',
+      properties: { days: { type:'number', description:'Inactivity window in days (default 30, max 365).' } },
+    },
+  }},
+  { type:'function', function: {
+    name: 'launch_reengagement',
+    description: 'Generate adaptive re-engagement copy for a segment + tone, then enroll the supplied emails (or the dormant cohort if no emails provided) into a single-touch re-engagement campaign. DESTRUCTIVE — actually sends email when dryRun is false.',
+    parameters: {
+      type: 'object',
+      properties: {
+        segment:    { type:'string', description:'Segment description (e.g. "dormant 30+ days, no opens").' },
+        tone:       { type:'string', description:'Tone for the copy (e.g. warm-and-curious, urgent, soft-breakup).' },
+        emails:     { type:'array',  items: { type:'string' }, description:'Optional explicit recipient list. If omitted, uses the current dormant cohort.' },
+        dormantDays:{ type:'number', description:'Inactivity window when emails are not supplied (default 30).' },
+        variantIndex:{type:'number', description:'Which generated variant to use (0, 1 or 2). Defaults to 0.' },
+        dryRun:     { type:'boolean', description:'If true, records the campaign and goes through enrollment but no real sends happen.' },
+      },
+    },
+  }},
 ];
-const _DESTRUCTIVE_TOOLS = new Set(['enroll_drip_campaign', 'create_goal']);
+const _DESTRUCTIVE_TOOLS = new Set(['enroll_drip_campaign', 'create_goal', 'launch_reengagement']);
 
 async function _executeAssistantTool(name, args) {
   const port = process.env.PORT || 5000;
@@ -7259,12 +7585,40 @@ async function _executeAssistantTool(name, args) {
     case 'list_goals':                    return await GET ('/api/goals/check');
     case 'create_goal':                   return await POST('/api/goals', args);
     case 'get_drip_stats':                return await GET ('/api/drips/stats');
+    case 'qualify_lead':                  return await POST('/api/leads/qualify', args);
+    case 'find_dormant_audience':         return await GET (`/api/reengage/dormant?days=${Math.min(365, Math.max(1, Number(args.days) || 30))}`);
+    case 'launch_reengagement': {
+      // Three-step orchestration: (1) find dormant if no emails, (2) generate
+      // variants, (3) pick chosen index and launch.
+      let emails = Array.isArray(args.emails) ? args.emails.filter(e => typeof e === 'string' && e.trim()) : [];
+      if (emails.length === 0) {
+        const days = Math.min(365, Math.max(1, Number(args.dormantDays) || 30));
+        const dormantResp = await GET(`/api/reengage/dormant?days=${days}`);
+        emails = (dormantResp.dormant || []).map(d => d.email).filter(Boolean);
+        if (emails.length === 0) return { error: 'No dormant subscribers found and no explicit emails supplied.' };
+      }
+      const segment = args.segment || `dormant subscribers (${args.dormantDays || 30}+ days inactive)`;
+      const tone    = args.tone    || 'warm-and-curious';
+      const gen = await POST('/api/reengage/generate', { segment, tone });
+      if (!gen.ok || !gen.variants || !gen.variants.length) return { error: 'Variant generation failed', details: gen };
+      const idx = Math.min(gen.variants.length - 1, Math.max(0, Number(args.variantIndex) || 0));
+      const variant = gen.variants[idx];
+      const launch = await POST('/api/reengage/launch', { variant, emails, segment, tone, dryRun: !!args.dryRun });
+      return { generated: gen.variants, chosenIndex: idx, launch };
+    }
     default:                              return { error: `Unknown tool ${name}` };
   }
 }
 function _describeToolCall(name, args) {
   if (name === 'enroll_drip_campaign') return `Enroll ${(args.emails || []).length} email address(es) into the "${args.sequenceId || 'default'}" drip sequence: ${(args.emails || []).join(', ')}`;
   if (name === 'create_goal')          return `Create a new goal — metric: ${args.metric}, target: ${args.target}${args.label ? `, label: "${args.label}"` : ''}.`;
+  if (name === 'launch_reengagement') {
+    const who = Array.isArray(args.emails) && args.emails.length
+      ? `${args.emails.length} explicit recipient(s)`
+      : `the dormant cohort (≥${args.dormantDays || 30} days inactive)`;
+    const mode = args.dryRun ? ' (DRY-RUN — no real sends)' : ' — REAL SENDS will be issued';
+    return `Generate adaptive copy and launch a re-engagement campaign to ${who}${mode}.`;
+  }
   return `Run ${name}.`;
 }
 const _assistantRateBuckets = new Map();

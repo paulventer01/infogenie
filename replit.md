@@ -202,6 +202,24 @@ Added 10 new modules in cache buster `v=20260425Q`. All client-side, simulated f
   - The catch-all `app.get('*')` SPA fallback near the original line 6040 was patched to skip `/api/*` paths — required so any GET endpoint registered AFTER that line (including the three new ones above) reaches its handler instead of returning index.html.
 - **Frontend**: global floating `✨` button (always visible, fixed position) + Cmd+K / Ctrl+K shortcut opens modal with hint chips. `openCommandBar()` / `runCommandBar()` / `prefillCommand()` in app.js. The confirm button on a `needs-confirmation` response re-runs with `confirm:true`. Esc closes the modal.
 
+## Two AgentOS Features (added 2026-04-28 — server.js ~7160-7345 and ~7480-7600, app.js end, index.html)
+### 4. Lead Qualifier Agent (Reach › Lead Qualifier)
+- **Server**: file-backed store at `data/qualified-leads.json` with `_leadsLock` mutex + atomic tmp+rename writes (mirrors goals/drip pattern).
+  - `POST /api/leads/qualify` — accepts `{name?, email*, company?, source?, notes?, behaviour?}`, fires GPT-4o (JSON-mode) with a B2B-SDR prompt that returns `{score 0-100, tier 'hot'|'warm'|'cold', reasoning, bant:{budget,authority,need,timeline each {verdict,why}}, suggestedActions:[1-3]}`. Persists with `lead_<ts>_<rand>` ID.
+  - `GET /api/leads/qualified` — list (newest first).
+  - `DELETE /api/leads/qualified/:id`.
+- **Frontend**: `buildLeadQualifier()` + `_leadQualifierHtml()` + `_leadCard()` + `submitLeadQualification()` + `enrollHotLead()` + `deleteQualifiedLead()` in app.js. Two-pane layout: qualify form on the left, history list on the right. Hot leads get a one-click "Enrol in nurture" that prefills the command bar with an `enroll_drip_campaign` request.
+- **Assistant tool**: `qualify_lead` registered in `_ASSISTANT_TOOLS` (non-destructive — just classifies). Cmd+K example: *"qualify jane@acme.com, CMO at Acme, downloaded our CAC ebook"*.
+
+### 5. Re-engagement Agent (Grow › Re-engage Audience)
+- **Server**: file-backed store at `data/reengagement-campaigns.json` with `_reengageLock` mutex + atomic writes.
+  - `GET /api/reengage/dormant?days=N` (default 30, cap 365) — reads `data/drip-enrollments.json`, filters subscribers whose last `sentAt` is older than the cutoff OR whose recent sends *all* failed. Cross-checks Amplitude when `_amplitudeAuthHeader()` is configured (note only; doesn't yet refine the list).
+  - `POST /api/reengage/generate` — `{segment, tone, brand?}` → GPT-4o (JSON-mode) returns `{variants:[{angle, subject, preheader, body, cta}, ×3]}` testing different psychological angles (curiosity, value-reminder, soft-breakup, social-proof, urgency).
+  - `POST /api/reengage/launch` — `{variant, emails, segment, tone, dryRun}`. Records the campaign and (when emails are supplied) wraps `/api/drips/enroll` with a single-touch sequence built from the variant. `dryRun:true` records but produces no real sends.
+  - `GET /api/reengage/campaigns` — list (newest first).
+- **Frontend**: `buildReengage()` + `_reengageHtml()` + `_reengageVariantsHtml()` + `generateReengageVariants()` + `launchReengage()` in app.js. Hero dormant-count tile + dormant-list pane + tone selector + 3-variant card chooser + Dry-run/Launch buttons (real-launch behind `confirm()`). Module-scoped `_reengageState` holds dormant list + variants + chosen index.
+- **Assistant tools** (extends registry): `find_dormant_audience` (read), `launch_reengagement` (DESTRUCTIVE — added to `_DESTRUCTIVE_TOOLS`). The `launch_reengagement` execute case orchestrates 3 calls in sequence: dormant-list → generate-variants → launch-with-chosen-variant. The `_describeToolCall` preview clearly distinguishes DRY-RUN vs REAL SENDS for the confirmation modal.
+
 ## Real Competitor Data Pipeline (no more fakes)
 - **Removed all `Math.random()` initial values** for competitor traffic / adSpend / ROAS / CTR (app.js ~2893). They now start as `null` sentinels.
 - **Three-stage data pipeline** for every competitor surfaced after "Analyse Now":

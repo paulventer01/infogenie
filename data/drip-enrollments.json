@@ -45,5 +45,38 @@
         "failureType": "config"
       }
     ]
+  },
+  {
+    "id": "drip_moithn35_oxop0n",
+    "email": "happy@example.com",
+    "name": "",
+    "brand": "InfoGenie",
+    "sequence": [
+      {
+        "day": 0,
+        "channel": "email",
+        "label": "Re-engagement: x",
+        "subject": "X",
+        "msg": "hi"
+      }
+    ],
+    "_seqSig": "0|email|Re-engagement: x",
+    "startedAt": 1777392309280,
+    "currentStep": 1,
+    "nextSendAt": 1777392309280,
+    "status": "completed",
+    "dryRun": true,
+    "appOrigin": "",
+    "history": [
+      {
+        "stepIndex": 0,
+        "label": "Re-engagement: x",
+        "channel": "email",
+        "sentAt": 1777392309282,
+        "ok": true,
+        "note": "dry-run (no real send)"
+      }
+    ],
+    "completedAt": 1777392309282
   }
 ]
