@@ -12262,10 +12262,37 @@ function buildIntelligence() {
   `).join('');
 
   // ── Prediction cards ──
-  window._predLaunch = window._predLaunch || function(i){
-    const p = (window._displayPredictions||[])[i];
-    if (!p) { showToast('🚀 Pre-emptive campaign queued'); return; }
-    showToast(`🚀 Pre-emptive campaign queued vs ${p.comp}: ${p.action}`);
+  // Launch Now → open the Battle Plan, focused on the predicted competitor.
+  // Stash the prediction context so the Battle Plan can highlight it on arrival.
+  window._predLaunch = function(i){
+    try {
+      const p = (window._displayPredictions||[])[i];
+      if (p) {
+        // Find this competitor in the analysis so the Battle Plan opens on the right one.
+        // Normalise both sides (trim + lowercase) to absorb minor name variance.
+        const comps = (analysisData && analysisData.competitors) || [];
+        const norm = s => String(s == null ? '' : s).trim().toLowerCase();
+        const matchIdx = comps.findIndex(c => c && c.name && p.comp && norm(c.name) === norm(p.comp));
+        if (matchIdx >= 0) {
+          window._bpIdx = matchIdx;
+          showToast(`⚔️ Opening Battle Plan vs ${p.comp}…`);
+        } else {
+          // No exact match — reset to first competitor so we never open a stale selection
+          window._bpIdx = 0;
+          showToast(`⚔️ Opening Battle Plan (${p.comp} not in tracked list — showing default)`);
+        }
+        window._bpFromPrediction = {
+          comp: p.comp, timeframe: p.timeframe, confidence: p.confidence,
+          prediction: p.prediction, action: p.action, at: Date.now()
+        };
+      } else {
+        showToast('⚔️ Opening Battle Plan…');
+      }
+      if (typeof navigateTo === 'function') navigateTo('battleplan');
+    } catch(err) {
+      console.error('[predLaunch] failed:', err);
+      showToast('⚠️ Could not open Battle Plan: ' + (err.message || 'unknown error'));
+    }
   };
   window._displayPredictions = displayPredictions;
   const predCards = displayPredictions.map((p, i) => `
@@ -12320,7 +12347,6 @@ function buildIntelligence() {
       <div class="wl-message">${w.message}</div>
       <div class="wl-weakness" title="The specific gap or weakness in this competitor's positioning that you can exploit to win customers back.">💡 <strong>Exploitable Weakness:</strong> ${w.weakness}</div>
       <button class="btn-wl-counter" type="button"
-        onclick="window._wlClick&&window._wlClick(this)"
         data-wl-id="${id}"
         data-wl-comp="${enc(w.comp)}"
         data-wl-channel="${enc(w.channel)}"
