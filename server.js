@@ -6890,10 +6890,32 @@ CRITICAL: Be SPECIFIC. Quote real words from the scrape. Name ${competitorName} 
 // blended CAC. Each per-channel fetch is independent so Promise.all surfaces
 // partial data even when one platform errors.
 // ─────────────────────────────────────────────────────────────────────────────
+// Strip whitespace, surrounding quotes, and other characters secrets often
+// pick up when copy-pasted (e.g. "Bearer ", smart quotes, BOM, newlines).
+function _cleanSecret(v) {
+  if (v == null) return '';
+  let s = String(v).replace(/^\uFEFF/, '').trim();
+  s = s.replace(/^Bearer\s+/i, '');
+  // Strip a single pair of MATCHING surrounding quotes (straight or smart).
+  // Pair-aware so "value' / 'value" / “value' don't accidentally get stripped.
+  const quotePairs = [['"','"'], ["'","'"], ['\u201C','\u201D'], ['\u2018','\u2019']];
+  for (const [open, close] of quotePairs) {
+    if (s.length >= 2 && s[0] === open && s[s.length-1] === close) {
+      s = s.slice(1, -1).trim();
+      break;
+    }
+  }
+  return s;
+}
+function _digitsOnly(v) { return String(v == null ? '' : v).replace(/\D+/g, ''); }
+
 async function _fetchMetaSpend(days = 30) {
-  const accountId   = process.env.META_AD_ACCOUNT_ID;
-  const accessToken = process.env.META_ACCESS_TOKEN;
-  if (!accountId || !accessToken) return { ok:false, channel:'meta', error:'not-configured' };
+  const rawAccountId = _cleanSecret(process.env.META_AD_ACCOUNT_ID);
+  const accessToken  = _cleanSecret(process.env.META_ACCESS_TOKEN);
+  if (!rawAccountId || !accessToken) return { ok:false, channel:'meta', error:'not-configured' };
+  // Account IDs are numeric; allow optional act_ prefix and strip stray chars
+  const numericId = _digitsOnly(rawAccountId);
+  const accountId = numericId || rawAccountId;
   const acct  = accountId.startsWith('act_') ? accountId : `act_${accountId}`;
   const since = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
   const until = new Date().toISOString().slice(0,10);
@@ -6918,11 +6940,11 @@ async function _fetchMetaSpend(days = 30) {
 }
 
 async function _fetchGoogleAdsSpend(days = 30) {
-  const devToken     = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
-  const clientId     = process.env.GOOGLE_ADS_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
-  const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
-  const customerId   = (process.env.GOOGLE_ADS_CUSTOMER_ID || '').replace(/-/g, '');
+  const devToken     = _cleanSecret(process.env.GOOGLE_ADS_DEVELOPER_TOKEN);
+  const clientId     = _cleanSecret(process.env.GOOGLE_ADS_CLIENT_ID);
+  const clientSecret = _cleanSecret(process.env.GOOGLE_ADS_CLIENT_SECRET);
+  const refreshToken = _cleanSecret(process.env.GOOGLE_ADS_REFRESH_TOKEN);
+  const customerId   = _digitsOnly(_cleanSecret(process.env.GOOGLE_ADS_CUSTOMER_ID));
   if (!devToken || !refreshToken || !customerId || !clientId || !clientSecret) {
     return { ok:false, channel:'google', error:'not-configured' };
   }
@@ -6971,9 +6993,15 @@ async function _fetchGoogleAdsSpend(days = 30) {
 }
 
 async function _fetchTikTokSpend(days = 30) {
-  const advertiserId = process.env.TIKTOK_ADVERTISER_ID;
-  const accessToken  = process.env.TIKTOK_ACCESS_TOKEN;
-  if (!advertiserId || !accessToken) return { ok:false, channel:'tiktok', error:'not-configured' };
+  const rawAdvertiserId = _cleanSecret(process.env.TIKTOK_ADVERTISER_ID);
+  const accessToken     = _cleanSecret(process.env.TIKTOK_ACCESS_TOKEN);
+  if (!rawAdvertiserId || !accessToken) return { ok:false, channel:'tiktok', error:'not-configured' };
+  // TikTok requires a pure integer string — strip any stray non-digit chars
+  // (whitespace, dashes, quotes, "act_" prefix from a pasted Meta ID, etc.)
+  const advertiserId = _digitsOnly(rawAdvertiserId);
+  if (!advertiserId) {
+    return { ok:false, channel:'tiktok', error:'TIKTOK_ADVERTISER_ID is not a number — paste only the numeric advertiser ID from TikTok Ads Manager' };
+  }
   try {
     const since = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
     const until = new Date().toISOString().slice(0,10);

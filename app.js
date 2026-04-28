@@ -27032,11 +27032,45 @@ function _blendedHtml(j) {
       ${channels.map(c => {
         const d = c.data;
         if (!d.ok) {
-          const reason = d.error === 'not-configured' ? 'Not connected — add credentials in Secrets' : (d.error || 'unknown error');
+          // Map raw API errors to plain-English "what to do" guidance
+          const errStr = String(d.error || '').toLowerCase();
+          let headline, fixHint, fixSecrets;
+          if (d.error === 'not-configured') {
+            headline = 'Not connected';
+            fixHint  = 'Add the credentials below in Secrets to start pulling live data.';
+          } else if (c.key === 'meta' && (errStr.includes('oauth') || errStr.includes('access token') || errStr.includes('parse'))) {
+            headline = 'Meta access token invalid or expired';
+            fixHint  = 'Generate a fresh long-lived token in Meta Business Manager → System Users, then re-paste it. Make sure there are no quotes or trailing spaces.';
+          } else if (c.key === 'google' && (errStr.includes('oauth') || errStr.includes('refresh') || errStr.includes('invalid_grant'))) {
+            headline = 'Google Ads OAuth failed';
+            fixHint  = 'Your refresh token has expired or the client ID/secret pair is wrong. Re-authorise in the Google OAuth playground and update the refresh token.';
+          } else if (c.key === 'tiktok' && errStr.includes('advertiser')) {
+            headline = 'TikTok advertiser ID rejected';
+            fixHint  = 'The TIKTOK_ADVERTISER_ID secret must be the numeric advertiser ID only (no dashes, no quotes). Find it in TikTok Ads Manager → top-right account picker.';
+          } else {
+            headline = 'Could not connect';
+            fixHint  = d.error || 'Unknown error from the platform';
+          }
+          fixSecrets = c.key === 'meta'   ? ['META_ACCESS_TOKEN', 'META_AD_ACCOUNT_ID']
+                     : c.key === 'google' ? ['GOOGLE_ADS_REFRESH_TOKEN', 'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET', 'GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_ADS_CUSTOMER_ID']
+                     : c.key === 'tiktok' ? ['TIKTOK_ACCESS_TOKEN', 'TIKTOK_ADVERTISER_ID']
+                     : [];
           return `
-            <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:20px;opacity:.75">
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="font-size:1.2rem">${c.icon}</span><div style="font-weight:700;color:#0F172A">${esc(c.name)}</div></div>
-              <div style="font-size:0.82rem;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:7px;padding:9px 11px">⚠️ ${esc(reason)}</div>
+            <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:20px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <span style="font-size:1.2rem">${c.icon}</span>
+                <div style="font-weight:700;color:#0F172A">${esc(c.name)}</div>
+                <span style="margin-left:auto;font-size:0.66rem;font-weight:700;padding:3px 9px;border-radius:999px;background:#FEF2F2;color:#991B1B;border:1px solid #FECACA">NOT LIVE</span>
+              </div>
+              <div style="font-size:0.82rem;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;margin-bottom:10px">
+                <div style="font-weight:700;margin-bottom:4px">⚠️ ${esc(headline)}</div>
+                <div style="font-size:0.78rem;line-height:1.45">${esc(fixHint)}</div>
+              </div>
+              ${fixSecrets.length ? `
+                <div style="font-size:0.7rem;color:#64748B;margin-bottom:6px"><strong>Secrets to update:</strong> ${fixSecrets.map(s => `<code style="background:#F1F5F9;padding:1px 6px;border-radius:4px;font-size:0.72rem">${esc(s)}</code>`).join(' ')}</div>
+              ` : ''}
+              <button type="button" onclick="navigateTo&&navigateTo('settings');showToast&&showToast('Open Secrets to update ${esc(c.name)} credentials, then click Refresh')" style="margin-top:6px;background:white;color:#0EA5E9;border:1.5px solid #0EA5E9;padding:7px 14px;border-radius:8px;font-size:0.76rem;font-weight:700;cursor:pointer">⚙️ Open Settings</button>
+              <button type="button" onclick="loadBlendedPerf&&loadBlendedPerf()" style="margin-top:6px;margin-left:6px;background:#F0F9FF;color:#0369A1;border:1px solid #BAE6FD;padding:7px 14px;border-radius:8px;font-size:0.76rem;font-weight:700;cursor:pointer">🔄 Retry</button>
             </div>`;
         }
         return `
