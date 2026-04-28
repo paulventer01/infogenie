@@ -21577,8 +21577,10 @@ function previewGeneratedArticle(idx) {
     </div>
     <button onclick="this.closest('[style*=fixed]').remove()" style="padding:6px 12px;background:#F3F4F6;border:none;border-radius:8px;cursor:pointer;font-size:0.8rem;font-weight:700">✕ Close</button>
   </div>
-  <div id="art-preview-body" style="flex:1;overflow-y:auto;padding:24px 30px;font-size:0.88rem;line-height:1.7;color:#374151">${art.generatedHtml}</div>
-  <div id="art-fact-check-results" style="padding:0 30px"></div>
+  <div id="art-preview-scroll" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch">
+    <div id="art-preview-body" style="padding:24px 30px;font-size:0.88rem;line-height:1.7;color:#374151">${art.generatedHtml}</div>
+    <div id="art-fact-check-results" style="padding:0 30px 24px"></div>
+  </div>
   <div style="padding:14px 20px;border-top:1px solid #E5E7EB;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
     <button id="art-fact-check-btn" onclick="runArticleFactCheck(${idx})" style="padding:8px 16px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:8px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🔍 Check Facts</button>
     <button onclick="navigator.clipboard.writeText(document.querySelector('#art-preview-body').innerHTML);showToast('📋 Copied!')" style="padding:8px 16px;background:white;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer">📋 Copy HTML</button>
@@ -21621,6 +21623,14 @@ async function runArticleFactCheck(idx) {
       ${renderList(d.unverifiable||[],  '#F59E0B', '#FFFBEB', '⚠️', { label:'Unverifiable Claims', detail:'reason' })}
       ${renderList(d.aligned||[],       '#10B981', '#F0FDF4', '✅', { label:'Aligned Claims', detail:'evidence' })}
     </div>`;
+    // Auto-scroll the report into view so the user sees the verdict immediately
+    requestAnimationFrame(() => {
+      const scroller = document.getElementById('art-preview-scroll');
+      const target = document.getElementById('art-fact-check-results');
+      if (scroller && target) {
+        scroller.scrollTo({ top: target.offsetTop - 12, behavior: 'smooth' });
+      }
+    });
   } catch(e) {
     if (out) out.innerHTML = `<div style="padding:12px;background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;font-size:0.78rem;color:#991B1B;margin:10px 0">❌ ${e.message}</div>`;
   } finally {
