@@ -23728,23 +23728,48 @@ window.disconnectAnalytics = function(svc) {
 
 window.connectAllAnalytics = function() {
   if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  if (window._analyticsConnectInFlight) { showToast('⏳ Already authorising — hang tight…'); return; }
+  window._analyticsConnectInFlight = true;
   const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="connectAllAnalytics"]', 'Authorising GSC + GA4 via Google OAuth') : (() => {});
   setTimeout(() => {
     window._analyticsConnections.gsc = true;
     window._analyticsConnections.ga4 = true;
     window._analyticsHubData = _ahSeed();
     stop();
+    window._analyticsConnectInFlight = false;
     showToast('✓ Connected GSC + GA4');
     buildAnalyticsHub();
   }, 1200);
 };
 
 window.loadAnalyticsHub = function() {
-  if (!window._analyticsConnections.gsc || !window._analyticsConnections.ga4) {
-    showToast('⚠️ Connect both GSC and GA4 first');
-    buildAnalyticsHub();
+  if (!_lsDomain()) { showToast('⚠️ Run an analysis on the home page first'); navigateTo('home'); return; }
+  const conn = window._analyticsConnections || (window._analyticsConnections = { gsc:false, ga4:false });
+
+  // If either core source is missing, connect them first then auto-load —
+  // the user shouldn't have to perform two clicks for a single "give me data" action.
+  if (!conn.gsc || !conn.ga4) {
+    if (window._analyticsConnectInFlight) { showToast('⏳ Already authorising — hang tight…'); return; }
+    window._analyticsConnectInFlight = true;
+    const missing = [];
+    if (!conn.gsc) missing.push('Google Search Console');
+    if (!conn.ga4) missing.push('Google Analytics 4');
+    const stop = window.startButtonTimer
+      ? window.startButtonTimer('button[onclick*="loadAnalyticsHub"]', `Authorising ${missing.join(' + ')} via Google OAuth`)
+      : (() => {});
+    setTimeout(() => {
+      conn.gsc = true;
+      conn.ga4 = true;
+      window._analyticsHubData = _ahSeed();
+      stop('📡 Refresh Data');
+      window._analyticsConnectInFlight = false;
+      showToast(`✓ Connected ${missing.length === 2 ? 'GSC + GA4' : missing[0]} — pulled the latest 28 days`);
+      buildAnalyticsHub();
+    }, 1400);
     return;
   }
+
+  // Both already connected — straight refresh
   const stop = window.startButtonTimer ? window.startButtonTimer('button[onclick*="loadAnalyticsHub"]', 'Pulling latest 28 days from GSC + GA4') : (() => {});
   setTimeout(() => {
     window._analyticsHubData = _ahSeed();
