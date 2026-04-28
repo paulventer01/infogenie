@@ -3528,7 +3528,7 @@ function buildDashboard() {
         <h3 title="Real-time AI-generated alerts about competitor activity — ad spend changes, new creatives, pricing shifts and market opportunities detected in the last 72 hours.">🔔 Live AI Alert Feed</h3>
         <span class="atag" style="background:#EF4444;color:white;animation:pulse 2s infinite" title="Competitor signals are monitored continuously. New alerts appear as soon as the AI detects a significant change.">● Live Monitoring</span>
       </div>
-      <div style="display:flex;flex-direction:column;gap:0">${alertHTML}</div>
+      <div class="dtc-flush" style="display:flex;flex-direction:column;gap:0">${alertHTML}</div>
     </div>
   `;
 
@@ -4979,7 +4979,7 @@ function buildCampaigns() {
           <h3 style="color:#0A1628">🚀 Launched Campaigns</h3>
           <span class="atag" style="background:linear-gradient(135deg,#00C9C8,#0066FF)">${(window._launchedCampaigns||[]).length} Live</span>
         </div>
-        <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="dtc-flush" style="display:flex;flex-direction:column;gap:14px;padding:14px">
           ${(window._launchedCampaigns||[]).map((c, ci) => {
             const m = c.metrics || {};
             const cr = c.creatives || {};
@@ -9341,7 +9341,7 @@ function buildResults() {
         <h3>⚡ InfoGenie Action History</h3>
         <span class="atag">${allActions.length} Actions</span>
       </div>
-      <div style="display:flex;flex-direction:column;gap:0">
+      <div class="dtc-flush" style="display:flex;flex-direction:column;gap:0;padding:0 24px">
         ${allActions.map((a, i) => {
           const iconMap = { campaign_launch: '🚀', config: '⚙️', audience: '👥', analysis: '🔍', campaigns: '🎯', intelligence: '⚡', budget: '💰' };
           const colorMap = { campaign_launch: '#0066FF', config: '#6B7280', audience: '#7C3AED', analysis: '#00C9C8', campaigns: '#10B981', intelligence: '#F59E0B', budget: '#D97706' };

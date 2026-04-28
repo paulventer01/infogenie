@@ -4339,6 +4339,29 @@ body.dashboard-active,
 .ig-table th { background: #F6FAFF !important; color: #7A92B4 !important; }
 .ig-table tr:hover td { background: #F6FAFF !important; }
 
+/* ─── Unified body padding for .data-table-card ───────────────────────────
+   The .dtc-header has its own padding (18px 24px). Everything else placed
+   directly inside .data-table-card was previously flush to the card edge,
+   making descriptions and grids look mis-aligned with the title. The rule
+   below gives every non-header, non-table direct child the same horizontal
+   inset so titles, descriptions and content grids line up neatly across
+   every page and sub-page. Inline padding on individual elements still
+   wins (higher specificity), so empty-state pads etc. are preserved. */
+.data-table-card > *:not(.dtc-header):not(.dtc-flush):not(.table-scroll):not(table):not(thead):not(tbody) {
+  padding-left: 24px;
+  padding-right: 24px;
+  box-sizing: border-box;
+}
+.data-table-card > .dtc-header + *:not(.dtc-flush):not(.table-scroll):not(table) {
+  padding-top: 16px;
+}
+.data-table-card > *:last-child:not(.dtc-header):not(.dtc-flush):not(.table-scroll):not(table) {
+  padding-bottom: 18px;
+}
+/* When the body wrapper is itself a flex/grid layout, also make sure any
+   stray descriptive <p> right under the card aligns its text with the title. */
+.data-table-card > p { margin-left: 0; margin-right: 0; }
+
 /* ─── Module cards 3.0 ─── */
 .module-card {
   background: #FFFFFF !important;
