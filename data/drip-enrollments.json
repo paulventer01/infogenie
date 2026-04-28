@@ -1,0 +1,49 @@
+[
+  {
+    "id": "drip_moisfwcz_nfp0cc",
+    "email": "smoketest@example.com",
+    "name": "",
+    "brand": "InfoGenie",
+    "sequence": [
+      {
+        "day": 0,
+        "channel": "email",
+        "label": "Welcome",
+        "subject": "Welcome to InfoGenie",
+        "msg": "Hi {{name}}, thanks for trying InfoGenie. Reply to this email if you have any questions."
+      },
+      {
+        "day": 2,
+        "channel": "email",
+        "label": "Value",
+        "subject": "Quick win to get you started",
+        "msg": "Here's one thing most marketing teams miss in their first week: blended CAC across paid channels."
+      },
+      {
+        "day": 5,
+        "channel": "email",
+        "label": "Check-in",
+        "subject": "How is it going?",
+        "msg": "Just checking in — anything we can help with? Reply and a real human will respond."
+      }
+    ],
+    "_seqSig": "0|email|Welcome::2|email|Value::5|email|Check-in",
+    "startedAt": 1777390548371,
+    "currentStep": 1,
+    "nextSendAt": 1777563348371,
+    "status": "active",
+    "dryRun": false,
+    "appOrigin": "",
+    "history": [
+      {
+        "stepIndex": 0,
+        "label": "Welcome",
+        "channel": "email",
+        "sentAt": 1777390548373,
+        "ok": false,
+        "error": "Resend 403: {\"statusCode\":403,\"name\":\"validation_error\",\"message\":\"You can only send testing emails to your own email address (paul@suretrade.co.za). To send emails to other recipients, please verify a domain at resend.com/domains, and chan",
+        "failureType": "config"
+      }
+    ]
+  }
+]

@@ -174,7 +174,33 @@ Added 10 new modules in cache buster `v=20260425Q`. All client-side, simulated f
 - **Content persistence** (app.js lines 188-235): The Master Calendar reads `_socialPosts` / `_launchedCampaigns` / `_autoSeoArticles` / `_autoSeoSchedule` — but those were in-memory only, so refreshes wiped them and the calendar showed zeros. Added a 1.5s polling loop that JSON-stringifies each tracked window var and writes only when changed. Restores on DOMContentLoaded BEFORE other init handlers (registered first at top of file) so the module-load resets don't clobber persisted values.
 
 ## Cache-buster
-- Bumped to `v=20260428Z` (next bump → `AA`).
+- Bumped to `v=20260428AF` (next bump → `AG`).
+
+## Three Standout Features (added 2026-04-28 — server.js ~7000-7340, app.js end, index.html)
+### 1. Blended Performance / CAC (the "ground truth" tile)
+- **Server**: `GET /api/blended-roas?days=N` (cap 90) aggregates ad spend across Meta + Google Ads + TikTok in parallel via `_fetchMetaSpend` / `_fetchGoogleAdsSpend` / `_fetchTikTokSpend`, then divides by Amplitude conversions (`_fetchAmplitudeConversions` — pulls events list + matches signup/purchase/subscribe/checkout/payment/order/conversion/booking/install patterns, sums event_count via `/api/2/events/segmentation`). ROAS is intentionally returned as `null` with a `roasNote` because we don't yet have a revenue-per-conversion source — CAC is the honest number we can compute.
+- **Each channel returns its own `{ok, spend, error?}`** so partial failures don't kill the tile (e.g. Meta token expired but Google works → blended still shows Google spend ÷ Amplitude conversions).
+- **`customerSource`** field flips between `amplitude` (preferred) and `ad-platform` (fallback) so the UI can label "Customers from Amplitude (true conversions)" vs "Customers from ad platforms (estimated)".
+- **Frontend**: `buildBlendedPerf()` + `loadBlendedPerf()` + `_blendedHtml()` in app.js. Hero CAC + total spend + total customers tile, per-channel mini-tiles with status/error badges. View at sidebar `Grow → Blended Performance`.
+
+### 2. Goal-Based Autonomous Monitoring
+- **Server**: file-backed store at `data/goals.json` with `_goalsLock` mutex + atomic `tmp+rename` writes (mirrors the drip-engine pattern). Endpoints:
+  - `GET /api/goals` — list goals + the `GOAL_METRICS` registry (6 metrics: `drip.bounceRate`, `drip.totalSends`, `drip.deliveryRate`, `amp.sessions`, `ads.totalSpend`, `ads.cac` — each with `direction: 'lte'|'gte'` and a `fetch` resolver function).
+  - `POST /api/goals` — create `{metric, target, label?}` (validates against registry, generates `g_<ts>_<rand>` ID).
+  - `DELETE /api/goals/:id` — remove.
+  - `GET /api/goals/check` — resolves every goal's current value in parallel, computes status (`on-track` / `off-track`), and **for every off-track goal fires a single GPT-4o root-cause call** that returns `{hypothesis, fixes:[3]}` with the metric, current vs target, gap, and last-7-days context. Errors per-goal are caught so one broken metric doesn't kill the dashboard.
+- **`GOAL_METRICS` registry pattern**: each metric is `{label, unit, direction, fetch: async () => Number}`. To add a new metric, push one entry — UI/server pick it up automatically.
+- **Frontend**: `buildGoals()` + `_goalCard()` (progress bar + status pill + GPT root-cause panel when off-track) + `openAddGoalModal()` / `submitNewGoal()` / `deleteGoal()`. View at sidebar `Grow → Goals & Targets`.
+
+### 3. Agentic Command Bar (NL → real endpoint via GPT-4o function calling)
+- **Server**: `POST /api/assistant/command` with two-shot GPT-4o function calling.
+  - Tool registry `_ASSISTANT_TOOLS` (8 tools): `enroll_drip_campaign`, `get_drip_stats`, `get_blended_performance`, `list_goals`, `create_goal`, `run_amplitude_dashboard_agent`, `run_amplitude_replay_agent`, `run_amplitude_feedback_agent`. Each has a strict JSON schema parameter object.
+  - `_executeAssistantTool(name, args)` dispatches to internal `localhost:5000` HTTP calls (so we reuse existing endpoint validation/locking rather than re-implementing logic). The `enroll_drip_campaign` wrapper builds the `{contacts:[{email}], sequence:[…]}` shape required by `/api/drips/enroll` (with a sane default 3-touch welcome sequence when none is supplied).
+  - **Confirmation gate** (`_DESTRUCTIVE_TOOLS = {'enroll_drip_campaign', 'create_goal'}`): on first call, server returns `{type:'needs-confirmation', toolName, toolArgs, preview}`. UI shows the preview + Confirm button → re-POSTs with `{confirm:true}` → server executes.
+  - **Two-shot pattern**: (1) GPT-4o picks the tool + args, (2) we execute, (3) feed result back to GPT-4o for a plain-English summary.
+  - **`_assistantRateLimit`**: 3s min interval + 30 calls/minute per IP (returns HTTP 429 with `{ok:false, error:'rate-limited'}`).
+  - The catch-all `app.get('*')` SPA fallback near the original line 6040 was patched to skip `/api/*` paths — required so any GET endpoint registered AFTER that line (including the three new ones above) reaches its handler instead of returning index.html.
+- **Frontend**: global floating `✨` button (always visible, fixed position) + Cmd+K / Ctrl+K shortcut opens modal with hint chips. `openCommandBar()` / `runCommandBar()` / `prefillCommand()` in app.js. The confirm button on a `needs-confirmation` response re-runs with `confirm:true`. Esc closes the modal.
 
 ## Real Competitor Data Pipeline (no more fakes)
 - **Removed all `Math.random()` initial values** for competitor traffic / adSpend / ROAS / CTR (app.js ~2893). They now start as `null` sentinels.

@@ -146,6 +146,8 @@
           <a href="#" class="nav-link" onclick="event.preventDefault();openWpCredentialsModal()"><span class="ndl-icon">🟦</span><span class="ndl-text">Connect to WordPress</span></a>
           <a href="#" class="nav-link" data-view="aivisibility"><span class="ndl-icon">🤖</span><span class="ndl-text">AI Visibility</span></a>
           <a href="#" class="nav-link" data-view="amplitude-agents"><span class="ndl-icon">📡</span><span class="ndl-text">Amplitude AI Agents</span></a>
+          <a href="#" class="nav-link" data-view="goals"><span class="ndl-icon">🎯</span><span class="ndl-text">Goals &amp; Targets</span></a>
+          <a href="#" class="nav-link" data-view="blended-perf"><span class="ndl-icon">💎</span><span class="ndl-text">Blended Performance</span></a>
           <a href="#" class="nav-link" data-view="ai-audit-suite"><span class="ndl-icon">🧪</span><span class="ndl-text">AI Audit Suite</span></a>
           <a href="#" class="nav-link" data-view="link-suggester"><span class="ndl-icon">🔗</span><span class="ndl-text">Internal Link Suggester</span></a>
           <a href="#" class="nav-link" data-view="cro-lab"><span class="ndl-icon">🧪</span><span class="ndl-text">CRO Lab</span></a>
@@ -987,6 +989,54 @@
   </div>
 </div>
 
+<!-- GOALS & TARGETS VIEW -->
+<div class="view hidden" id="view-goals">
+  <div class="view-header" style="background:linear-gradient(135deg,#0F172A 0%,#7C3AED 50%,#A855F7 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#E9D5FF"><span class="bc-group" style="color:rgba(233,213,255,.8)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Goals &amp; Targets</div>
+          <h2 class="view-title">Goals &amp; Targets</h2>
+          <p class="view-sub">Set targets on the metrics that matter, then let InfoGenie autonomously check progress and surface a GPT-4o root-cause hypothesis the moment a goal goes off-track.</p>
+        </div>
+        <div class="vh-actions">
+          <button onclick="openAddGoalModal()" style="padding:10px 16px;background:white;color:#7C3AED;border:none;border-radius:9px;font-weight:700;font-size:0.85rem;cursor:pointer">+ Add Goal</button>
+          <button onclick="refreshGoals()" style="margin-left:8px;padding:10px 14px;background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:9px;font-weight:600;font-size:0.85rem;cursor:pointer">↻ Refresh</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" style="padding-top:24px;padding-bottom:40px">
+    <div id="goalsList"></div>
+  </div>
+</div>
+
+<!-- BLENDED PERFORMANCE VIEW -->
+<div class="view hidden" id="view-blended-perf">
+  <div class="view-header" style="background:linear-gradient(135deg,#064E3B 0%,#047857 50%,#10B981 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#A7F3D0"><span class="bc-group" style="color:rgba(167,243,208,.8)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Blended Performance</div>
+          <h2 class="view-title">Blended Performance</h2>
+          <p class="view-sub">One blended view of ad spend, customers, and CAC across Meta + Google + TikTok — using your Amplitude conversion events as ground truth instead of channel-reported numbers.</p>
+        </div>
+        <div class="vh-actions">
+          <select id="blendedDays" onchange="loadBlendedPerf()" style="padding:9px 12px;background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;font-size:0.85rem;font-weight:600">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+          <button onclick="loadBlendedPerf()" style="margin-left:8px;padding:9px 14px;background:white;color:#047857;border:none;border-radius:9px;font-weight:700;font-size:0.85rem;cursor:pointer">↻ Refresh</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" style="padding-top:24px;padding-bottom:40px">
+    <div id="blendedPerfBody"><div style="text-align:center;padding:48px;color:#64748B">⏳ Loading…</div></div>
+  </div>
+</div>
+
 <div class="view hidden" id="view-aivisibility">
   <div class="view-header" style="background:linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%)">
     <div class="container">
@@ -1726,7 +1776,32 @@
 </div>
 
 <script src="/data.js"></script>
-<script src="/app.js?v=20260428AE"></script>
+<!-- ─────────────────────────────────────────────────────────────────
+     GLOBAL COMMAND BAR (⌘K / Ctrl+K) — natural-language → real actions
+     ───────────────────────────────────────────────────────────────── -->
+<button id="askInfoGenieBtn" onclick="openCommandBar()" title="Ask InfoGenie (⌘K)" style="position:fixed;bottom:24px;right:24px;z-index:9998;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#7C3AED 0%,#0EA5E9 100%);border:none;color:white;font-size:1.4rem;cursor:pointer;box-shadow:0 8px 22px rgba(124,58,237,.45);display:flex;align-items:center;justify-content:center;transition:transform .15s" onmouseover="this.style.transform='scale(1.07)'" onmouseout="this.style.transform='scale(1)'">✨</button>
+
+<div id="commandBarBackdrop" onclick="closeCommandBar(event)" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);backdrop-filter:blur(4px);z-index:9999;align-items:flex-start;justify-content:center;padding-top:10vh">
+  <div onclick="event.stopPropagation()" style="width:min(640px,92vw);background:white;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">
+    <div style="padding:18px 20px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;gap:12px">
+      <span style="font-size:1.3rem">✨</span>
+      <input id="commandBarInput" type="text" placeholder="Ask InfoGenie to do something… (e.g. 'show me blended CAC for the last 30 days')" autocomplete="off" style="flex:1;border:none;outline:none;font-size:1rem;font-weight:500;color:#0F172A">
+      <kbd style="font-size:0.7rem;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:5px;padding:3px 7px;color:#64748B">esc</kbd>
+    </div>
+    <div id="commandBarHints" style="padding:14px 20px;font-size:0.78rem;color:#64748B;border-bottom:1px solid #F1F5F9">
+      <div style="font-weight:700;color:#0F172A;margin-bottom:8px">Try one of these:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <button class="cmdHint" onclick="prefillCommand(this.textContent)" style="padding:5px 10px;border:1px solid #CBD5E1;border-radius:6px;background:white;font-size:0.75rem;cursor:pointer;color:#475569">Run the Amplitude Dashboard agent</button>
+        <button class="cmdHint" onclick="prefillCommand(this.textContent)" style="padding:5px 10px;border:1px solid #CBD5E1;border-radius:6px;background:white;font-size:0.75rem;cursor:pointer;color:#475569">Show blended CAC last 30 days</button>
+        <button class="cmdHint" onclick="prefillCommand(this.textContent)" style="padding:5px 10px;border:1px solid #CBD5E1;border-radius:6px;background:white;font-size:0.75rem;cursor:pointer;color:#475569">List all my goals</button>
+        <button class="cmdHint" onclick="prefillCommand(this.textContent)" style="padding:5px 10px;border:1px solid #CBD5E1;border-radius:6px;background:white;font-size:0.75rem;cursor:pointer;color:#475569">Get drip campaign stats</button>
+      </div>
+    </div>
+    <div id="commandBarResult" style="padding:18px 20px;max-height:50vh;overflow-y:auto"></div>
+  </div>
+</div>
+
+<script src="/app.js?v=20260428AF"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');

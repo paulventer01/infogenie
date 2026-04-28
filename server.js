@@ -6037,7 +6037,12 @@ app.post('/api/auth/verify-code', (req, res) => {
 });
 
 // ── Catch-all → SPA ──────────────────────────────────────────────────────────
-app.get('*', (req, res) => {
+// Critical: skip /api/* so unmatched API routes return a proper JSON 404
+// instead of being silently swallowed by the SPA fallback. Endpoints
+// registered AFTER this catch-all (like the blended-roas / goals / assistant
+// command bar added in the Apr 2026 update) need this exemption to be reached.
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
@@ -6794,6 +6799,542 @@ CRITICAL: Be SPECIFIC. Quote real words from the scrape. Name ${competitorName} 
   } catch (err) {
     console.error('/api/competitor-deep-analysis error:', err);
     res.status(500).json({ error: err.message || 'Internal error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BLENDED PERFORMANCE — Meta + Google + TikTok spend, Amplitude conversions,
+// blended CAC. Each per-channel fetch is independent so Promise.all surfaces
+// partial data even when one platform errors.
+// ─────────────────────────────────────────────────────────────────────────────
+async function _fetchMetaSpend(days = 30) {
+  const accountId   = process.env.META_AD_ACCOUNT_ID;
+  const accessToken = process.env.META_ACCESS_TOKEN;
+  if (!accountId || !accessToken) return { ok:false, channel:'meta', error:'not-configured' };
+  const acct  = accountId.startsWith('act_') ? accountId : `act_${accountId}`;
+  const since = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
+  const until = new Date().toISOString().slice(0,10);
+  try {
+    const r = await fetch(
+      `https://graph.facebook.com/v19.0/${acct}/insights?fields=spend,impressions,clicks,actions&time_range[since]=${since}&time_range[until]=${until}&access_token=${accessToken}`
+    );
+    const j = await r.json();
+    if (j.error) return { ok:false, channel:'meta', error: j.error.message, status:r.status };
+    const row = j.data?.[0] || {};
+    const purchases = (row.actions || [])
+      .filter(a => /purchase|fb_pixel_purchase|complete_registration|lead/i.test(a.action_type))
+      .reduce((s, a) => s + Number(a.value || 0), 0);
+    return {
+      ok:true, channel:'meta',
+      spend:       Number(row.spend       || 0),
+      impressions: Number(row.impressions || 0),
+      clicks:      Number(row.clicks      || 0),
+      conversions: purchases,
+    };
+  } catch (e) { return { ok:false, channel:'meta', error: e.message }; }
+}
+
+async function _fetchGoogleAdsSpend(days = 30) {
+  const devToken     = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+  const clientId     = process.env.GOOGLE_ADS_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
+  const customerId   = (process.env.GOOGLE_ADS_CUSTOMER_ID || '').replace(/-/g, '');
+  if (!devToken || !refreshToken || !customerId || !clientId || !clientSecret) {
+    return { ok:false, channel:'google', error:'not-configured' };
+  }
+  try {
+    const tokRes = await fetch('https://oauth2.googleapis.com/token', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId, client_secret: clientSecret,
+        refresh_token: refreshToken, grant_type: 'refresh_token',
+      }).toString(),
+    });
+    const tok = await tokRes.json();
+    if (!tok.access_token) return { ok:false, channel:'google', error:'oauth-failed', detail: tok.error_description || tok.error };
+    const since = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
+    const until = new Date().toISOString().slice(0,10);
+    const query = `SELECT metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions FROM customer WHERE segments.date BETWEEN '${since}' AND '${until}'`;
+    const r = await fetch(
+      `https://googleads.googleapis.com/v17/customers/${customerId}/googleAds:searchStream`,
+      {
+        method:'POST',
+        headers:{
+          'Authorization':  `Bearer ${tok.access_token}`,
+          'developer-token': devToken,
+          'Content-Type':    'application/json',
+        },
+        body: JSON.stringify({ query }),
+      }
+    );
+    const txt = await r.text();
+    let j; try { j = JSON.parse(txt); } catch { j = { _raw: txt.slice(0,200) }; }
+    if (!r.ok) {
+      const e = (Array.isArray(j) ? j[0]?.error : j.error) || { message:'unknown' };
+      return { ok:false, channel:'google', error: e.message, status:r.status };
+    }
+    const rows = (Array.isArray(j) ? j : [j]).flatMap(p => p.results || []);
+    let spend=0, imp=0, clk=0, conv=0;
+    for (const row of rows) {
+      spend += Number(row.metrics?.costMicros   || 0) / 1_000_000;
+      imp   += Number(row.metrics?.impressions  || 0);
+      clk   += Number(row.metrics?.clicks       || 0);
+      conv  += Number(row.metrics?.conversions  || 0);
+    }
+    return { ok:true, channel:'google', spend:+spend.toFixed(2), impressions:imp, clicks:clk, conversions:conv };
+  } catch (e) { return { ok:false, channel:'google', error: e.message }; }
+}
+
+async function _fetchTikTokSpend(days = 30) {
+  const advertiserId = process.env.TIKTOK_ADVERTISER_ID;
+  const accessToken  = process.env.TIKTOK_ACCESS_TOKEN;
+  if (!advertiserId || !accessToken) return { ok:false, channel:'tiktok', error:'not-configured' };
+  try {
+    const since = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
+    const until = new Date().toISOString().slice(0,10);
+    const url = new URL('https://business-api.tiktok.com/open_api/v1.3/report/integrated/get/');
+    url.searchParams.set('advertiser_id', advertiserId);
+    url.searchParams.set('report_type',  'BASIC');
+    url.searchParams.set('data_level',   'AUCTION_ADVERTISER');
+    url.searchParams.set('dimensions',   JSON.stringify(['advertiser_id']));
+    url.searchParams.set('metrics',      JSON.stringify(['spend','impressions','clicks','conversion']));
+    url.searchParams.set('start_date',   since);
+    url.searchParams.set('end_date',     until);
+    const r = await fetch(url, { headers:{ 'Access-Token': accessToken } });
+    const j = await r.json();
+    if (j.code && j.code !== 0) return { ok:false, channel:'tiktok', error: j.message, status: j.code };
+    const row = j.data?.list?.[0]?.metrics || {};
+    return {
+      ok:true, channel:'tiktok',
+      spend:       Number(row.spend       || 0),
+      impressions: Number(row.impressions || 0),
+      clicks:      Number(row.clicks      || 0),
+      conversions: Number(row.conversion  || 0),
+    };
+  } catch (e) { return { ok:false, channel:'tiktok', error: e.message }; }
+}
+
+// Look for conversion-pattern events in the user's Amplitude project. Used as
+// the ground-truth customer count for blended CAC when available.
+async function _fetchAmplitudeConversions(days = 30) {
+  const apiKey    = process.env.AMPLITUDE_API_KEY;
+  const secretKey = process.env.AMPLITUDE_SECRET_KEY;
+  if (!apiKey || !secretKey) return { ok:false, channel:'amplitude', error:'not-configured' };
+  const auth = 'Basic ' + Buffer.from(`${apiKey}:${secretKey}`).toString('base64');
+  try {
+    const eventsList = await _amplitudeFetch('/api/2/events/list', auth);
+    const all = (eventsList?.data || []).map(e => e.value).filter(Boolean);
+    const convPatterns = /signup|sign_up|register|subscribe|subscription|purchase|checkout|conversion|order_completed|paid|new_customer|trial_start|account_created/i;
+    const matches = all.filter(e => convPatterns.test(e));
+    if (!matches.length) {
+      return { ok:true, channel:'amplitude', conversions:0, conversionEvents:[],
+               note:'No conversion-pattern events in this Amplitude project (looked for signup/purchase/subscribe/etc).' };
+    }
+    const end   = new Date();
+    const start = new Date(); start.setDate(start.getDate() - days);
+    const fmt = _amplitudeFmtDate;
+    let total = 0;
+    const byEvent = [];
+    for (const ev of matches.slice(0, 5)) {
+      try {
+        const e = encodeURIComponent(JSON.stringify({ event_type: ev }));
+        const j = await _amplitudeFetch(
+          `/api/2/events/segmentation?e=${e}&start=${fmt(start)}&end=${fmt(end)}&m=totals`,
+          auth
+        );
+        const series = j?.data?.series?.[0] || [];
+        const sum = series.reduce((a, b) => a + (Number(b) || 0), 0);
+        total += sum;
+        byEvent.push({ event: ev, count: sum });
+      } catch (_) { /* skip events that fail individually */ }
+    }
+    return { ok:true, channel:'amplitude', conversions: total, conversionEvents: byEvent };
+  } catch (e) { return { ok:false, channel:'amplitude', error: e.message, status: e.status }; }
+}
+
+app.get('/api/blended-roas', async (req, res) => {
+  const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 30));
+  const [meta, google, tiktok, amp] = await Promise.all([
+    _fetchMetaSpend(days),
+    _fetchGoogleAdsSpend(days),
+    _fetchTikTokSpend(days),
+    _fetchAmplitudeConversions(days),
+  ]);
+  const adChannels = [meta, google, tiktok];
+  const totalSpend       = adChannels.filter(c => c.ok).reduce((s, c) => s + (c.spend       || 0), 0);
+  const totalImpressions = adChannels.filter(c => c.ok).reduce((s, c) => s + (c.impressions || 0), 0);
+  const totalClicks      = adChannels.filter(c => c.ok).reduce((s, c) => s + (c.clicks      || 0), 0);
+  const adReportedConv   = adChannels.filter(c => c.ok).reduce((s, c) => s + (c.conversions || 0), 0);
+  // Prefer Amplitude as ground truth; fall back to ad-platform-reported conversions.
+  const customers      = (amp.ok && amp.conversions > 0) ? amp.conversions : adReportedConv;
+  const customerSource = (amp.ok && amp.conversions > 0) ? 'amplitude' : 'ad-platform';
+  const cac = customers > 0 ? +(totalSpend / customers).toFixed(2) : null;
+  res.json({
+    ok: true, days,
+    totalSpend:      +totalSpend.toFixed(2),
+    totalImpressions, totalClicks,
+    customers, customerSource,
+    cac,
+    roas: null,
+    roasNote: 'ROAS requires order/revenue values. Wire your order data (Stripe/Shopify webhook → /api/orders) to enable blended ROAS.',
+    channels: { meta, google, tiktok },
+    amplitude: amp,
+    generatedAt: new Date().toISOString(),
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GOALS — file-backed metric goals with autonomous status checks + GPT-4o
+// root-cause for off-track goals. Mirrors the drip-store pattern (mutex +
+// atomic tmp+rename writes).
+// ─────────────────────────────────────────────────────────────────────────────
+const fsp = require('fs/promises');
+const GOALS_FILE = path.join(__dirname, 'data', 'goals.json');
+let _goalsLockTail = Promise.resolve();
+function _goalsLock(fn) {
+  const next = _goalsLockTail.then(() => fn());
+  _goalsLockTail = next.catch(() => {});
+  return next;
+}
+async function _readGoals() {
+  try { return JSON.parse(await fsp.readFile(GOALS_FILE, 'utf8')); }
+  catch (e) { if (e.code === 'ENOENT') return []; throw e; }
+}
+async function _writeGoals(goals) {
+  await fsp.mkdir(path.dirname(GOALS_FILE), { recursive: true });
+  const tmp = GOALS_FILE + '.tmp';
+  await fsp.writeFile(tmp, JSON.stringify(goals, null, 2));
+  await fsp.rename(tmp, GOALS_FILE);
+}
+const GOAL_METRICS = {
+  'drip.bounceRate':   { label:'Drip Bounce Rate',         direction:'lte', unit:'%' },
+  'drip.totalSends':   { label:'Drip Email Sends',          direction:'gte', unit:''  },
+  'drip.deliveryRate': { label:'Drip Delivery Rate',        direction:'gte', unit:'%' },
+  'amp.sessions':      { label:'Amplitude Sessions (30d)',  direction:'gte', unit:''  },
+  'ads.totalSpend':    { label:'Total Ad Spend (30d)',      direction:'lte', unit:'$' },
+  'ads.cac':           { label:'Blended CAC',               direction:'lte', unit:'$' },
+};
+async function _measureGoal(metric) {
+  if (metric.startsWith('drip.')) {
+    // Reuse drip-store logic inline (cheaper than HTTP self-call)
+    const list = _dripLoad();
+    let attempts = 0, bounced = 0, sentTotal = 0, delivered = 0;
+    for (const e of list) {
+      for (const h of (e.history || [])) {
+        if (h.ok) sentTotal++;
+        if (!/email/i.test(h.channel || '')) continue;
+        if (h.note && /dry-run/i.test(h.note)) continue;
+        attempts++;
+        if (h.bounced || h.failureType === 'bounce') bounced++;
+        else if (h.delivered === true) delivered++;
+        else if (h.ok && !h.bounced) delivered++;
+      }
+    }
+    const bounceRate    = attempts > 0 ? +((bounced   / attempts) * 100).toFixed(1) : 0;
+    const deliveryRate  = attempts > 0 ? +((delivered / attempts) * 100).toFixed(1) : 0;
+    if (metric === 'drip.bounceRate')   return bounceRate;
+    if (metric === 'drip.totalSends')   return sentTotal;
+    if (metric === 'drip.deliveryRate') return deliveryRate;
+  }
+  if (metric === 'amp.sessions') {
+    const auth = _amplitudeAuthHeader();
+    if (!auth) return null;
+    const end = new Date(); const start = new Date(); start.setDate(start.getDate() - 30);
+    const fmt = _amplitudeFmtDate;
+    const e = encodeURIComponent(JSON.stringify({ event_type:'_active' }));
+    const j = await _amplitudeFetch(`/api/2/sessions/average?start=${fmt(start)}&end=${fmt(end)}&e=${e}`, auth);
+    const series = j?.data?.series?.[0] || [];
+    return series.reduce((a, b) => a + (Number(b) || 0), 0);
+  }
+  if (metric === 'ads.totalSpend' || metric === 'ads.cac') {
+    const [meta, google, tiktok] = await Promise.all([
+      _fetchMetaSpend(30), _fetchGoogleAdsSpend(30), _fetchTikTokSpend(30),
+    ]);
+    const totalSpend = [meta, google, tiktok].filter(c => c.ok).reduce((s, c) => s + (c.spend || 0), 0);
+    if (metric === 'ads.totalSpend') return +totalSpend.toFixed(2);
+    const amp = await _fetchAmplitudeConversions(30);
+    const customers = amp.ok && amp.conversions
+      ? amp.conversions
+      : [meta, google, tiktok].filter(c => c.ok).reduce((s, c) => s + (c.conversions || 0), 0);
+    return customers > 0 ? +(totalSpend / customers).toFixed(2) : null;
+  }
+  return null;
+}
+function _goalStatus(g, current) {
+  if (current == null) return { status:'unknown', pct:null, current:null };
+  const meta = GOAL_METRICS[g.metric];
+  const dir  = meta?.direction || 'gte';
+  let pct, status;
+  if (dir === 'gte') {
+    pct = g.target > 0 ? Math.min(100, Math.round((current / g.target) * 100)) : 0;
+    status = current >= g.target ? 'on-track' : (pct >= 80 ? 'at-risk' : 'off-track');
+  } else {
+    // For "lower-is-better" metrics (CAC, bounce rate, spend cap):
+    //  - <= target = on-track
+    //  - within 20% over target = at-risk
+    //  - more than 20% over = off-track
+    pct = current > 0 ? Math.min(100, Math.round((g.target / current) * 100)) : 100;
+    status = current <= g.target ? 'on-track' : (current <= g.target * 1.2 ? 'at-risk' : 'off-track');
+  }
+  return { status, pct, current };
+}
+app.get('/api/goals', async (req, res) => {
+  try {
+    const goals = await _goalsLock(_readGoals);
+    res.json({ ok:true, goals, metrics: GOAL_METRICS });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+app.post('/api/goals', async (req, res) => {
+  const { metric, target, label } = req.body || {};
+  if (!metric || !GOAL_METRICS[metric]) return res.status(400).json({ ok:false, error:'invalid-metric' });
+  const t = Number(target);
+  if (!Number.isFinite(t) || t < 0) return res.status(400).json({ ok:false, error:'invalid-target' });
+  const goal = {
+    id: `g_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+    metric, target: t,
+    label: label || GOAL_METRICS[metric].label,
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    await _goalsLock(async () => {
+      const goals = await _readGoals();
+      goals.push(goal);
+      await _writeGoals(goals);
+    });
+    res.json({ ok:true, goal });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+app.delete('/api/goals/:id', async (req, res) => {
+  try {
+    let removed = false;
+    await _goalsLock(async () => {
+      const goals = await _readGoals();
+      const idx = goals.findIndex(g => g.id === req.params.id);
+      if (idx === -1) return;
+      goals.splice(idx, 1);
+      await _writeGoals(goals);
+      removed = true;
+    });
+    if (!removed) return res.status(404).json({ ok:false, error:'not-found' });
+    res.json({ ok:true });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+app.get('/api/goals/check', async (req, res) => {
+  try {
+    const goals = await _goalsLock(_readGoals);
+    const evaluated = await Promise.all(goals.map(async g => {
+      try {
+        const current = await _measureGoal(g.metric);
+        const st = _goalStatus(g, current);
+        return { ...g, ...st, meta: GOAL_METRICS[g.metric] };
+      } catch (e) {
+        return { ...g, status:'error', error: e.message, current:null, pct:null, meta: GOAL_METRICS[g.metric] };
+      }
+    }));
+    const offTrack = evaluated.filter(g => g.status === 'off-track' || g.status === 'at-risk');
+    let rootCause = null;
+    if (offTrack.length > 0) {
+      try {
+        const completion = await openaiChatWithRetry({
+          model: 'gpt-4o',
+          messages: [
+            { role:'system', content:'You are a marketing performance analyst. For each off-track or at-risk goal below, give one root-cause hypothesis (1 sentence) and one specific corrective action a marketer can take in InfoGenie (1 sentence). Return JSON: { "byGoalId": { "<id>": { "hypothesis": string, "action": string } } }' },
+            { role:'user', content: `Goals:\n${JSON.stringify(offTrack.map(g => ({
+              id: g.id, label: g.label, metric: g.metric,
+              target: g.target, current: g.current,
+              direction: g.meta?.direction, unit: g.meta?.unit,
+              status: g.status,
+            })), null, 2)}` },
+          ],
+          response_format: { type: 'json_object' },
+          max_tokens: 900,
+        });
+        rootCause = JSON.parse(completion.choices[0].message.content || '{}').byGoalId || {};
+      } catch (e) { rootCause = { _error: e.message }; }
+    }
+    res.json({ ok:true, goals: evaluated, rootCause, generatedAt: new Date().toISOString() });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASSISTANT COMMAND BAR — natural-language → executes real InfoGenie endpoints
+// via GPT-4o function calling. Two-shot: tool selection, then result summary.
+// Destructive tools require explicit confirmation (preview then re-call with
+// confirm:true).
+// ─────────────────────────────────────────────────────────────────────────────
+const _ASSISTANT_TOOLS = [
+  { type:'function', function: {
+    name: 'enroll_drip_campaign',
+    description: 'Enroll one or more email addresses into the default drip-campaign sequence.',
+    parameters: {
+      type:'object',
+      properties: {
+        emails:     { type:'array', items:{ type:'string' }, description:'Email addresses to enroll.' },
+        sequenceId: { type:'string', description:'Optional sequence ID. Defaults to "default".' },
+      },
+      required: ['emails'],
+    },
+  }},
+  { type:'function', function: {
+    name: 'run_amplitude_dashboard_agent',
+    description: 'Run the Amplitude Dashboard Agent — surfaces trends and anomalies from product-analytics events over the last 14 days.',
+    parameters: { type:'object', properties:{} },
+  }},
+  { type:'function', function: {
+    name: 'run_amplitude_replay_agent',
+    description: 'Run the Session Replay Agent to find the steepest drop-off in a funnel.',
+    parameters: {
+      type:'object',
+      properties: {
+        events: { type:'array', items:{ type:'string' }, description:'Optional ordered funnel-step event names. Empty = auto-pick from top events.' },
+      },
+    },
+  }},
+  { type:'function', function: {
+    name: 'run_amplitude_feedback_agent',
+    description: 'Run the Customer Feedback Agent to summarise recent NPS/feedback/support events.',
+    parameters: { type:'object', properties:{} },
+  }},
+  { type:'function', function: {
+    name: 'get_blended_performance',
+    description: 'Get blended ad spend, customer count, and CAC across Meta + Google + TikTok over the last N days.',
+    parameters: {
+      type:'object',
+      properties: { days: { type:'integer', description:'Look-back window in days (default 30, max 90).' } },
+    },
+  }},
+  { type:'function', function: {
+    name: 'list_goals',
+    description: 'List all configured marketing-performance goals with their current values and status.',
+    parameters: { type:'object', properties:{} },
+  }},
+  { type:'function', function: {
+    name: 'create_goal',
+    description: 'Create a new metric goal. Available metrics: drip.bounceRate, drip.totalSends, drip.deliveryRate, amp.sessions, ads.totalSpend, ads.cac.',
+    parameters: {
+      type:'object',
+      properties: {
+        metric: { type:'string', enum:['drip.bounceRate','drip.totalSends','drip.deliveryRate','amp.sessions','ads.totalSpend','ads.cac'] },
+        target: { type:'number' },
+        label:  { type:'string' },
+      },
+      required: ['metric', 'target'],
+    },
+  }},
+  { type:'function', function: {
+    name: 'get_drip_stats',
+    description: 'Get current drip-campaign deliverability stats (sends, bounces, delivery rate).',
+    parameters: { type:'object', properties:{} },
+  }},
+];
+const _DESTRUCTIVE_TOOLS = new Set(['enroll_drip_campaign', 'create_goal']);
+
+async function _executeAssistantTool(name, args) {
+  const port = process.env.PORT || 5000;
+  const baseUrl = `http://localhost:${port}`;
+  const POST = (p, body) => fetch(`${baseUrl}${p}`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body || {}) }).then(r => r.json());
+  const GET  = (p)       => fetch(`${baseUrl}${p}`).then(r => r.json());
+  switch (name) {
+    case 'enroll_drip_campaign': {
+      const emails = (args.emails || []).filter(e => typeof e === 'string' && e.trim());
+      if (!emails.length) return { error: 'No emails provided.' };
+      const contacts = emails.map(e => ({ email: String(e).trim() }));
+      // Minimal default 3-touch welcome sequence (used when caller doesn't pass one).
+      // Real sequences come from the Re-Engage UI; this keeps NL command-bar enrollments working.
+      const defaultSequence = [
+        { day: 0, channel: 'email', label: 'Welcome',  subject: 'Welcome to InfoGenie',         msg: 'Hi {{name}}, thanks for trying InfoGenie. Reply to this email if you have any questions.' },
+        { day: 2, channel: 'email', label: 'Value',    subject: 'Quick win to get you started', msg: 'Here\'s one thing most marketing teams miss in their first week: blended CAC across paid channels.' },
+        { day: 5, channel: 'email', label: 'Check-in', subject: 'How is it going?',             msg: 'Just checking in — anything we can help with? Reply and a real human will respond.' },
+      ];
+      const sequence = Array.isArray(args.sequence) && args.sequence.length ? args.sequence : defaultSequence;
+      const result = await POST('/api/drips/enroll', { contacts, sequence, brand: args.brand || 'InfoGenie' });
+      return { result };
+    }
+    case 'run_amplitude_dashboard_agent': return await POST('/api/amplitude/dashboard-agent', {});
+    case 'run_amplitude_replay_agent':    return await POST('/api/amplitude/replay-agent', { events: args.events || [] });
+    case 'run_amplitude_feedback_agent':  return await POST('/api/amplitude/feedback-agent', {});
+    case 'get_blended_performance':       return await GET (`/api/blended-roas?days=${Math.min(90, Math.max(1, args.days || 30))}`);
+    case 'list_goals':                    return await GET ('/api/goals/check');
+    case 'create_goal':                   return await POST('/api/goals', args);
+    case 'get_drip_stats':                return await GET ('/api/drips/stats');
+    default:                              return { error: `Unknown tool ${name}` };
+  }
+}
+function _describeToolCall(name, args) {
+  if (name === 'enroll_drip_campaign') return `Enroll ${(args.emails || []).length} email address(es) into the "${args.sequenceId || 'default'}" drip sequence: ${(args.emails || []).join(', ')}`;
+  if (name === 'create_goal')          return `Create a new goal — metric: ${args.metric}, target: ${args.target}${args.label ? `, label: "${args.label}"` : ''}.`;
+  return `Run ${name}.`;
+}
+const _assistantRateBuckets = new Map();
+function _assistantRateLimit(req, res) {
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || req.socket?.remoteAddress || 'unknown';
+  const now = Date.now();
+  let b = _assistantRateBuckets.get(ip);
+  if (!b || now - b.windowStart > 60000) b = { count:0, windowStart:now, lastAt:0 };
+  if (now - b.lastAt < 3000) { res.status(429).json({ ok:false, error:'rate-limited', message:'Please wait a few seconds between commands.' }); return false; }
+  if (b.count >= 30)         { res.status(429).json({ ok:false, error:'rate-limited', message:'Per-minute command limit reached (30/min).' }); return false; }
+  b.count++; b.lastAt = now;
+  _assistantRateBuckets.set(ip, b);
+  if (_assistantRateBuckets.size > 5000) {
+    for (const [k, v] of _assistantRateBuckets) if (now - v.windowStart > 120000) _assistantRateBuckets.delete(k);
+  }
+  return true;
+}
+app.post('/api/assistant/command', async (req, res) => {
+  if (!_assistantRateLimit(req, res)) return;
+  const { command, confirm } = req.body || {};
+  if (!command || typeof command !== 'string') return res.status(400).json({ ok:false, error:'missing-command' });
+  const sysPrompt = `You are InfoGenie's Command Assistant. The user types a natural-language command and you execute it by calling exactly one of the registered tools. Rules:
+- Pick the single best tool. If genuinely ambiguous, reply with a brief clarifying question instead of calling a tool.
+- For DESTRUCTIVE tools (enroll_drip_campaign, create_goal): you may call the tool — the server will gate it with a confirmation step automatically.
+- If no tool fits, briefly explain what you CAN do (1-2 sentences).
+Available capability areas: drip campaigns, Amplitude product-analytics agents, blended ad performance/CAC, goals CRUD.`;
+  try {
+    const first = await openaiChatWithRetry({
+      model: 'gpt-4o',
+      messages: [
+        { role:'system', content: sysPrompt },
+        { role:'user',   content: command + (confirm ? '\n\n[User has explicitly confirmed any destructive action.]' : '') },
+      ],
+      tools: _ASSISTANT_TOOLS,
+      tool_choice: 'auto',
+      max_tokens: 600,
+    });
+    const msg = first.choices[0].message;
+    if (!msg.tool_calls || msg.tool_calls.length === 0) {
+      return res.json({ ok:true, type:'text', text: msg.content || '(no response)' });
+    }
+    const tc       = msg.tool_calls[0];
+    const toolName = tc.function.name;
+    let toolArgs;
+    try { toolArgs = JSON.parse(tc.function.arguments || '{}'); }
+    catch { return res.json({ ok:false, error:'invalid-tool-arguments', raw: tc.function.arguments }); }
+
+    if (_DESTRUCTIVE_TOOLS.has(toolName) && !confirm) {
+      return res.json({
+        ok: true, type: 'needs-confirmation',
+        toolName, toolArgs,
+        preview: _describeToolCall(toolName, toolArgs),
+      });
+    }
+    const toolResult = await _executeAssistantTool(toolName, toolArgs);
+    let summary = '';
+    try {
+      const second = await openaiChatWithRetry({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role:'system', content:'Summarise the tool result for the user in 1-3 sentences. Speak directly to them. If the result contains an error, explain what went wrong and suggest a next step.' },
+          { role:'user',   content:`User said: "${command}"\n\nTool: ${toolName}\nArgs: ${JSON.stringify(toolArgs)}\nResult: ${JSON.stringify(toolResult).slice(0, 4000)}` },
+        ],
+        max_tokens: 400,
+      });
+      summary = second.choices[0].message.content || '';
+    } catch (e) { summary = `Tool ${toolName} ran but the summary step failed: ${e.message}`; }
+    res.json({ ok:true, type:'tool-executed', toolName, toolArgs, toolResult, summary });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e.message });
   }
 });
 

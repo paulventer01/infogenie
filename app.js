@@ -26738,3 +26738,344 @@ window.renderForecastSavingsWidget = renderForecastSavingsWidget;
     setTimeout(tryRoute, 1200);
   }
 })();
+
+/* =============================================================================
+   GOALS & TARGETS — autonomous metric monitoring with GPT-4o root-cause
+   ============================================================================= */
+async function buildGoals() {
+  const wrap = document.getElementById('goalsList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="text-align:center;padding:48px;color:#64748B">⏳ Evaluating your goals…</div>';
+  try {
+    const r = await fetch('/api/goals/check');
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Failed to load goals');
+    if (!j.goals || j.goals.length === 0) {
+      wrap.innerHTML = `
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:48px;text-align:center">
+          <div style="font-size:2.5rem;margin-bottom:14px">🎯</div>
+          <div style="font-size:1.15rem;font-weight:700;color:#0F172A;margin-bottom:8px">No goals yet</div>
+          <div style="font-size:0.88rem;color:#64748B;margin-bottom:22px;max-width:480px;margin-left:auto;margin-right:auto;line-height:1.55">Add a goal on any of InfoGenie's tracked metrics — drip bounce rate, ad spend cap, blended CAC, Amplitude sessions — and InfoGenie will autonomously check progress and ask GPT-4o for a root-cause hypothesis when you go off-track.</div>
+          <button onclick="openAddGoalModal()" style="padding:11px 22px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:white;border:none;border-radius:9px;font-weight:700;font-size:0.9rem;cursor:pointer">+ Create Your First Goal</button>
+        </div>`;
+      return;
+    }
+    const rc = j.rootCause || {};
+    wrap.innerHTML = j.goals.map(g => _goalCard(g, rc[g.id])).join('');
+  } catch (e) {
+    const safe = (typeof _escapeHtml === 'function') ? _escapeHtml(e.message) : String(e.message || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    wrap.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:24px;color:#991B1B"><b>⚠️ Could not load goals</b><div style="font-size:0.85rem;margin-top:6px">${safe}</div></div>`;
+  }
+}
+function _goalCard(g, rc) {
+  // Reuse the global escaper defined just below this section. Defined locally
+  // here as a fallback so this card can render even if function ordering changes.
+  const esc = (typeof _escapeHtml === 'function')
+    ? _escapeHtml
+    : (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const colors = {
+    'on-track':  { bg:'#ECFDF5', border:'#A7F3D0', text:'#065F46', label:'✓ On Track' },
+    'at-risk':   { bg:'#FFFBEB', border:'#FDE68A', text:'#92400E', label:'⚠️ At Risk' },
+    'off-track': { bg:'#FEF2F2', border:'#FECACA', text:'#991B1B', label:'🔴 Off Track' },
+    'unknown':   { bg:'#F1F5F9', border:'#CBD5E1', text:'#475569', label:'❔ No Data' },
+    'error':     { bg:'#FEF2F2', border:'#FECACA', text:'#991B1B', label:'⚠️ Error' },
+  };
+  const c = colors[g.status] || colors.unknown;
+  const unit = g.meta?.unit || '';
+  const fmt = (v) => {
+    if (v == null || v === '') return '—';
+    if (unit === '$') return '$' + Number(v).toLocaleString(undefined,{maximumFractionDigits:2});
+    if (unit === '%') return Number(v).toFixed(1) + '%';
+    return Number(v).toLocaleString();
+  };
+  const pct = g.pct == null ? 0 : g.pct;
+  const barColor = g.status === 'on-track' ? '#10B981' : g.status === 'at-risk' ? '#F59E0B' : g.status === 'off-track' ? '#EF4444' : '#94A3B8';
+  // Goal IDs are server-generated (`g_<ts>_<rand>`) but we still keep them
+  // safe for an HTML attribute single-quoted string just in case.
+  const safeId = String(g.id || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  return `
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:22px;margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.04)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px">
+        <div style="flex:1">
+          <div style="font-size:1.05rem;font-weight:700;color:#0F172A">${esc(g.label || g.metric)}</div>
+          <div style="font-size:0.78rem;color:#64748B;margin-top:3px">${esc(g.metric)} · target ${g.meta?.direction === 'lte' ? '≤' : '≥'} ${esc(fmt(g.target))}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:0.75rem;font-weight:700;padding:5px 11px;border-radius:999px;background:${c.bg};border:1px solid ${c.border};color:${c.text}">${c.label}</span>
+          <button onclick="deleteGoal('${safeId}')" style="background:transparent;border:1px solid #E5E7EB;border-radius:7px;padding:5px 9px;cursor:pointer;color:#64748B;font-size:0.78rem">Delete</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:10px">
+        <div><div style="font-size:0.7rem;color:#64748B;text-transform:uppercase;letter-spacing:.4px;font-weight:600">Current</div><div style="font-size:1.4rem;font-weight:700;color:#0F172A">${esc(fmt(g.current))}</div></div>
+        <div><div style="font-size:0.7rem;color:#64748B;text-transform:uppercase;letter-spacing:.4px;font-weight:600">Target</div><div style="font-size:1.4rem;font-weight:700;color:#475569">${esc(fmt(g.target))}</div></div>
+      </div>
+      <div style="height:8px;background:#F1F5F9;border-radius:999px;overflow:hidden;margin-bottom:${rc ? '14px' : '0'}">
+        <div style="height:100%;width:${pct}%;background:${barColor};transition:width .4s"></div>
+      </div>
+      ${rc && rc.hypothesis ? `
+        <div style="margin-top:14px;padding:14px;background:#FAFAFA;border:1px solid #E5E7EB;border-radius:10px">
+          <div style="font-size:0.7rem;color:#7C3AED;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px">🤖 GPT-4o root-cause hypothesis</div>
+          <div style="font-size:0.85rem;color:#0F172A;line-height:1.55;margin-bottom:8px">${esc(rc.hypothesis)}</div>
+          <div style="font-size:0.7rem;color:#0EA5E9;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px">💡 Suggested action</div>
+          <div style="font-size:0.85rem;color:#0F172A;line-height:1.55">${esc(rc.action)}</div>
+        </div>` : ''}
+      ${g.status === 'error' ? `<div style="margin-top:10px;padding:10px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;font-size:0.78rem;color:#991B1B">${esc(g.error)}</div>` : ''}
+    </div>`;
+}
+function refreshGoals() { buildGoals(); }
+async function deleteGoal(id) {
+  if (!confirm('Delete this goal?')) return;
+  await fetch('/api/goals/' + id, { method:'DELETE' });
+  buildGoals();
+}
+function openAddGoalModal() {
+  // Re-use any existing modal pattern; build one inline so it's self-contained
+  let m = document.getElementById('addGoalModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'addGoalModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:9999;display:flex;align-items:center;justify-content:center';
+    m.onclick = (e) => { if (e.target === m) m.remove(); };
+    m.innerHTML = `
+      <div onclick="event.stopPropagation()" style="background:white;border-radius:14px;padding:26px;width:min(440px,92vw);box-shadow:0 20px 60px rgba(0,0,0,.3)">
+        <div style="font-size:1.15rem;font-weight:700;color:#0F172A;margin-bottom:16px">Add a new goal</div>
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">Metric</label>
+          <select id="newGoalMetric" style="width:100%;padding:10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.88rem">
+            <option value="drip.bounceRate">Drip Bounce Rate (%) — lower is better</option>
+            <option value="drip.totalSends">Drip Email Sends — higher is better</option>
+            <option value="drip.deliveryRate">Drip Delivery Rate (%) — higher is better</option>
+            <option value="amp.sessions">Amplitude Sessions, last 30d — higher is better</option>
+            <option value="ads.totalSpend">Total Ad Spend, last 30d ($) — lower is better</option>
+            <option value="ads.cac">Blended CAC ($) — lower is better</option>
+          </select>
+        </div>
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">Target value</label>
+          <input id="newGoalTarget" type="number" step="0.01" min="0" placeholder="e.g. 50" style="width:100%;padding:10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div style="margin-bottom:18px">
+          <label style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">Label (optional)</label>
+          <input id="newGoalLabel" type="text" placeholder="e.g. Q2 customer acquisition target" style="width:100%;padding:10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button onclick="document.getElementById('addGoalModal').remove()" style="padding:10px 16px;background:white;border:1px solid #CBD5E1;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:600">Cancel</button>
+          <button onclick="submitNewGoal()" style="padding:10px 18px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:700">Create Goal</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+  }
+}
+async function submitNewGoal() {
+  const metric = document.getElementById('newGoalMetric').value;
+  const target = parseFloat(document.getElementById('newGoalTarget').value);
+  const label  = document.getElementById('newGoalLabel').value.trim();
+  if (!Number.isFinite(target) || target < 0) { alert('Please enter a valid non-negative target.'); return; }
+  const r = await fetch('/api/goals', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ metric, target, label: label || undefined }) });
+  const j = await r.json();
+  if (!j.ok) { alert('Could not create goal: ' + (j.error || 'unknown')); return; }
+  document.getElementById('addGoalModal')?.remove();
+  buildGoals();
+}
+
+/* =============================================================================
+   BLENDED PERFORMANCE — one tile, all channels, Amplitude as ground truth
+   ============================================================================= */
+function buildBlendedPerf() { loadBlendedPerf(); }
+async function loadBlendedPerf() {
+  const wrap = document.getElementById('blendedPerfBody');
+  if (!wrap) return;
+  const days = parseInt(document.getElementById('blendedDays')?.value || '30', 10);
+  wrap.innerHTML = '<div style="text-align:center;padding:48px;color:#64748B">⏳ Pulling spend from Meta + Google + TikTok and conversions from Amplitude…</div>';
+  try {
+    const r = await fetch('/api/blended-roas?days=' + days);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Failed');
+    wrap.innerHTML = _blendedHtml(j);
+  } catch (e) {
+    const safe = (typeof _escapeHtml === 'function') ? _escapeHtml(e.message) : String(e.message || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    wrap.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:24px;color:#991B1B"><b>⚠️ Could not load</b><div style="font-size:0.85rem;margin-top:6px">${safe}</div></div>`;
+  }
+}
+function _blendedHtml(j) {
+  // Escape every interpolated upstream string. Channel error strings + Amplitude
+  // notes/error/event names all originate from third-party APIs and must be sanitised.
+  const esc = (typeof _escapeHtml === 'function')
+    ? _escapeHtml
+    : (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const fmtMoney = (n) => '$' + Number(n || 0).toLocaleString(undefined,{maximumFractionDigits:2});
+  const fmtNum   = (n) => Number(n || 0).toLocaleString();
+  const channels = [
+    { key:'meta',   name:'Meta Ads',     color:'#1877F2', icon:'📘', data: j.channels.meta   },
+    { key:'google', name:'Google Ads',   color:'#4285F4', icon:'🔵', data: j.channels.google },
+    { key:'tiktok', name:'TikTok Ads',   color:'#000000', icon:'⚫', data: j.channels.tiktok },
+  ];
+  const okCount = channels.filter(c => c.data.ok).length;
+  return `
+    <!-- Hero blended tile -->
+    <div style="background:linear-gradient(135deg,#064E3B 0%,#10B981 100%);border-radius:18px;padding:32px;color:white;margin-bottom:22px;box-shadow:0 4px 14px rgba(16,185,129,.25)">
+      <div style="font-size:0.78rem;text-transform:uppercase;letter-spacing:.5px;opacity:.85;font-weight:700;margin-bottom:8px">Blended performance · last ${Number(j.days) || 0} days · ${okCount}/3 channels live</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:24px;margin-top:14px">
+        <div>
+          <div style="font-size:0.72rem;opacity:.8;font-weight:600;margin-bottom:4px">TOTAL SPEND</div>
+          <div style="font-size:2.1rem;font-weight:800;line-height:1.1">${fmtMoney(j.totalSpend)}</div>
+        </div>
+        <div>
+          <div style="font-size:0.72rem;opacity:.8;font-weight:600;margin-bottom:4px">CUSTOMERS <span style="opacity:.7;font-weight:500">(${esc(j.customerSource)})</span></div>
+          <div style="font-size:2.1rem;font-weight:800;line-height:1.1">${fmtNum(j.customers)}</div>
+        </div>
+        <div>
+          <div style="font-size:0.72rem;opacity:.8;font-weight:600;margin-bottom:4px">BLENDED CAC</div>
+          <div style="font-size:2.1rem;font-weight:800;line-height:1.1">${j.cac != null ? fmtMoney(j.cac) : '—'}</div>
+        </div>
+        <div>
+          <div style="font-size:0.72rem;opacity:.8;font-weight:600;margin-bottom:4px">BLENDED ROAS</div>
+          <div style="font-size:2.1rem;font-weight:800;line-height:1.1;opacity:.6">—</div>
+          <div style="font-size:0.7rem;opacity:.75;margin-top:3px">Wire revenue source</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Per-channel breakdown -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:22px">
+      ${channels.map(c => {
+        const d = c.data;
+        if (!d.ok) {
+          const reason = d.error === 'not-configured' ? 'Not connected — add credentials in Secrets' : (d.error || 'unknown error');
+          return `
+            <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:20px;opacity:.75">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="font-size:1.2rem">${c.icon}</span><div style="font-weight:700;color:#0F172A">${esc(c.name)}</div></div>
+              <div style="font-size:0.82rem;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:7px;padding:9px 11px">⚠️ ${esc(reason)}</div>
+            </div>`;
+        }
+        return `
+          <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:20px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="font-size:1.2rem">${c.icon}</span><div style="font-weight:700;color:#0F172A">${esc(c.name)}</div><span style="margin-left:auto;font-size:0.7rem;font-weight:700;padding:3px 9px;border-radius:999px;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0">LIVE</span></div>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
+              <div><div style="font-size:0.68rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Spend</div><div style="font-size:1.15rem;font-weight:700;color:#0F172A">${fmtMoney(d.spend)}</div></div>
+              <div><div style="font-size:0.68rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Conversions</div><div style="font-size:1.15rem;font-weight:700;color:#0F172A">${fmtNum(d.conversions)}</div></div>
+              <div><div style="font-size:0.68rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Clicks</div><div style="font-size:1rem;font-weight:600;color:#475569">${fmtNum(d.clicks)}</div></div>
+              <div><div style="font-size:0.68rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Impressions</div><div style="font-size:1rem;font-weight:600;color:#475569">${fmtNum(d.impressions)}</div></div>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>
+
+    <!-- Amplitude conversion source detail -->
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:20px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span style="font-size:1.2rem">📊</span><div style="font-weight:700;color:#0F172A">Amplitude conversion source</div></div>
+      ${j.amplitude.ok ? (
+        j.amplitude.conversions > 0 ?
+          `<div style="font-size:0.85rem;color:#475569;margin-bottom:10px">Counted <b style="color:#0F172A">${fmtNum(j.amplitude.conversions)}</b> conversions across these events:</div>
+           <div style="display:flex;flex-wrap:wrap;gap:6px">${(j.amplitude.conversionEvents||[]).map(e=>`<span style="font-size:0.78rem;padding:5px 10px;background:#F1F5F9;border-radius:999px;color:#0F172A"><b>${esc(e.event)}</b>: ${fmtNum(e.count)}</span>`).join('')}</div>` :
+          `<div style="font-size:0.85rem;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:11px">${esc(j.amplitude.note || 'No conversion-pattern events found.')} Falling back to <b>ad-platform-reported conversions</b> for blended CAC.</div>`
+      ) : `<div style="font-size:0.85rem;color:#991B1B;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:11px">⚠️ Amplitude error: ${esc(j.amplitude.error || 'unknown')}. CAC computed from ad-platform-reported conversions instead.</div>`}
+    </div>
+
+    <div style="margin-top:18px;font-size:0.78rem;color:#64748B;line-height:1.5"><b>Note on ROAS:</b> ${esc(j.roasNote)}</div>`;
+}
+
+/* =============================================================================
+   GLOBAL COMMAND BAR (⌘K / Ctrl+K)
+   ============================================================================= */
+function openCommandBar() {
+  const bd = document.getElementById('commandBarBackdrop');
+  if (!bd) return;
+  bd.style.display = 'flex';
+  setTimeout(() => document.getElementById('commandBarInput')?.focus(), 50);
+}
+function closeCommandBar(e) {
+  const bd = document.getElementById('commandBarBackdrop');
+  if (!bd) return;
+  if (e && e.target !== bd) return;
+  bd.style.display = 'none';
+}
+function prefillCommand(text) {
+  const inp = document.getElementById('commandBarInput');
+  if (inp) { inp.value = text; inp.focus(); }
+}
+async function runCommandBar(commandOverride, confirm) {
+  const inp = document.getElementById('commandBarInput');
+  const out = document.getElementById('commandBarResult');
+  const command = commandOverride != null ? commandOverride : (inp?.value || '').trim();
+  if (!command) { out.innerHTML = '<div style="color:#64748B;font-size:0.85rem">Type a command first.</div>'; return; }
+  out.innerHTML = '<div style="display:flex;align-items:center;gap:10px;color:#64748B;font-size:0.88rem"><div class="cmdSpinner"></div>InfoGenie is figuring out which action to run…</div>';
+  try {
+    const r = await fetch('/api/assistant/command', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ command, confirm: !!confirm }),
+    });
+    const j = await r.json();
+    if (!j.ok) { out.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;padding:12px;color:#991B1B;font-size:0.85rem">⚠️ ${_escapeHtml(j.error || 'Failed')}${j.message ? ': ' + _escapeHtml(j.message) : ''}</div>`; return; }
+    if (j.type === 'text') {
+      out.innerHTML = `<div style="font-size:0.9rem;color:#0F172A;line-height:1.55;white-space:pre-wrap">${_escapeHtml(j.text)}</div>`;
+    } else if (j.type === 'needs-confirmation') {
+      out.innerHTML = `
+        <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:14px;margin-bottom:12px">
+          <div style="font-weight:700;color:#92400E;margin-bottom:6px;font-size:0.88rem">⚠️ Confirm this action</div>
+          <div style="font-size:0.85rem;color:#78350F;line-height:1.55">${_escapeHtml(j.preview)}</div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button onclick="document.getElementById('commandBarResult').innerHTML=''" style="padding:9px 14px;background:white;border:1px solid #CBD5E1;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:600">Cancel</button>
+          <button onclick="runCommandBar(${JSON.stringify(command).replace(/"/g,'&quot;')}, true)" style="padding:9px 16px;background:#DC2626;color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:700">Yes, do it</button>
+        </div>`;
+    } else if (j.type === 'tool-executed') {
+      out.innerHTML = `
+        <div style="font-size:0.7rem;color:#0EA5E9;text-transform:uppercase;letter-spacing:.4px;font-weight:700;margin-bottom:6px">✅ Ran: ${_escapeHtml(j.toolName)}</div>
+        <div style="font-size:0.9rem;color:#0F172A;line-height:1.55;margin-bottom:12px;white-space:pre-wrap">${_escapeHtml(j.summary)}</div>
+        <details style="margin-top:8px"><summary style="font-size:0.78rem;color:#64748B;cursor:pointer">Show raw result</summary><pre style="background:#0F172A;color:#A7F3D0;padding:12px;border-radius:8px;font-size:0.74rem;overflow:auto;max-height:200px;margin-top:8px">${_escapeHtml(JSON.stringify(j.toolResult, null, 2))}</pre></details>`;
+    }
+  } catch (e) {
+    out.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:9px;padding:12px;color:#991B1B;font-size:0.85rem">⚠️ ${_escapeHtml(e.message)}</div>`;
+  }
+}
+function _escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Global keyboard shortcut: ⌘K / Ctrl+K opens, Esc closes, Enter inside input runs.
+document.addEventListener('keydown', (e) => {
+  // Cmd/Ctrl+K
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    openCommandBar();
+    return;
+  }
+  // Esc closes the bar
+  if (e.key === 'Escape') {
+    const bd = document.getElementById('commandBarBackdrop');
+    if (bd && bd.style.display === 'flex') { bd.style.display = 'none'; }
+    return;
+  }
+  // Enter inside the input runs the command
+  if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'commandBarInput') {
+    e.preventDefault();
+    runCommandBar();
+  }
+});
+
+// Spinner CSS (injected once)
+(function injectCmdSpinnerCSS(){
+  if (document.getElementById('cmdSpinnerCSS')) return;
+  const s = document.createElement('style');
+  s.id = 'cmdSpinnerCSS';
+  s.textContent = '.cmdSpinner{width:14px;height:14px;border:2px solid #CBD5E1;border-top-color:#7C3AED;border-radius:50%;animation:cmdSpin .7s linear infinite}@keyframes cmdSpin{to{transform:rotate(360deg)}}';
+  document.head.appendChild(s);
+})();
+
+// View-switch hooks for the new views — match the existing pattern in the
+// view-router. Hook into navigation by piggy-backing on the same DOM event
+// the existing nav-link handlers fire.
+(function wireNewViews(){
+  const orig = window.buildAmplitudeAgents;  // sentinel — confirms script loaded
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('a.nav-link[data-view]');
+    if (!a) return;
+    const v = a.getAttribute('data-view');
+    // Defer so the existing router has a chance to flip view-* hidden classes first
+    setTimeout(() => {
+      if (v === 'goals')        { try { buildGoals(); }       catch(_){} }
+      if (v === 'blended-perf') { try { buildBlendedPerf(); } catch(_){} }
+    }, 60);
+  });
+})();
