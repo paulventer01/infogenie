@@ -1755,6 +1755,47 @@ Rules:
   }
 });
 
+// ── POST /api/reddit-studio-suggest — AI persona + title suggestions ────────
+app.post('/api/reddit-studio-suggest', async (req, res) => {
+  try {
+    const { domain = '', tone = 'Helpful', keywords = '', competitors = '' } = req.body || {};
+    if (!domain) return res.json({ persona: '', titles: [], error: 'Missing domain' });
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{
+        role: 'user',
+        content: `You are a Reddit marketing strategist. The brand is "${domain}".
+Tone preference: "${tone}".
+Keywords this brand targets: ${keywords || '(none provided)'}
+Competitors mentioned: ${competitors || '(none provided)'}
+
+Return ONLY valid JSON (no markdown):
+{
+  "persona": "1–2 sentence brand-voice description that a community manager would use when replying on Reddit. Should reflect the chosen tone, mention the brand's specialty, and include one explicit guardrail (e.g. never sound salesy, never name competitors, always cite sources). Max 220 characters.",
+  "titles": ["3 realistic Reddit post titles that this brand's audience would actually post — written from a USER perspective asking for help, comparing options, or sharing experience. No clickbait. Each 6–14 words. Should be answerable by ${domain}."]
+}
+
+Rules:
+- "persona" must read like a real internal style guide line, not marketing copy.
+- "titles" must sound like genuine Reddit posts (questions, comparisons, experience reports). NOT promotional.
+- Be specific to ${domain}'s actual industry and use cases.`
+      }],
+      max_tokens: 400,
+      response_format: { type: 'json_object' }
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim() || '{}';
+    let result;
+    try { result = JSON.parse(raw); } catch { result = {}; }
+    const titles = Array.isArray(result.titles) ? result.titles.filter(t => typeof t === 'string' && t.trim()).slice(0, 3) : [];
+    res.json({ persona: (result.persona || '').toString().trim(), titles });
+  } catch(err) {
+    console.error('/api/reddit-studio-suggest error:', err.message);
+    res.json({ persona: '', titles: [], error: err.message });
+  }
+});
+
 // ── POST /api/intent-map — Classify keywords by search intent + page-fit ────
 app.post('/api/intent-map', async (req, res) => {
   try {

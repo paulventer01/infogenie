@@ -9919,7 +9919,7 @@ function buildRedditIntel() {
             </div>
             <div>
               <label style="font-size:0.63rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Tone</label>
-              <select id="rpl-tone" style="width:100%;padding:9px 12px;background:#1A2E4A;border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
+              <select id="rpl-tone" class="rpl-select" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
                 <option value="Helpful" ${window._redditPersona.tone==='Helpful'?'selected':''}>Helpful Expert</option>
                 <option value="Professional" ${window._redditPersona.tone==='Professional'?'selected':''}>Professional</option>
                 <option value="Friendly" ${window._redditPersona.tone==='Friendly'?'selected':''}>Friendly &amp; Conversational</option>
@@ -9928,8 +9928,11 @@ function buildRedditIntel() {
               </select>
             </div>
             <div>
-              <label style="font-size:0.63rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Persona Description</label>
-              <textarea id="rpl-persona" rows="3" placeholder="e.g. Senior SaaS consultant who focuses on ROI and practical solutions. Never mention competitors by name." style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.78rem;box-sizing:border-box;resize:vertical">${window._redditPersona.persona}</textarea>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+                <label style="font-size:0.63rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Persona Description</label>
+                <button type="button" onclick="suggestRedditPersona()" id="rpl-persona-suggest-btn" style="padding:4px 10px;background:linear-gradient(135deg,rgba(255,69,0,.18),rgba(255,107,53,.18));border:1px solid rgba(255,107,53,.35);border-radius:6px;font-size:0.65rem;font-weight:700;color:#FF6B35;cursor:pointer;display:inline-flex;align-items:center;gap:4px">✨ AI Suggest</button>
+              </div>
+              <textarea id="rpl-persona" rows="3" placeholder="e.g. Senior SaaS consultant who focuses on ROI and practical solutions. Never mention competitors by name. — or click ✨ AI Suggest above" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.78rem;box-sizing:border-box;resize:vertical">${window._redditPersona.persona}</textarea>
             </div>
           </div>
         </div>
@@ -9942,8 +9945,12 @@ function buildRedditIntel() {
             <div id="rpl-thread-sub" style="font-size:0.68rem;color:#FF6B35">${window._redditSelPost ? window._redditSelPost.subreddit : ''}</div>
           </div>
           <div style="margin-bottom:10px">
-            <label style="font-size:0.63rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Or paste a post title manually</label>
-            <input id="rpl-manual-title" placeholder="Paste Reddit post title here…" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.78rem;box-sizing:border-box">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+              <label style="font-size:0.63rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Or paste a post title manually</label>
+              <button type="button" onclick="suggestRedditTitle()" id="rpl-title-suggest-btn" style="padding:4px 10px;background:linear-gradient(135deg,rgba(255,69,0,.18),rgba(255,107,53,.18));border:1px solid rgba(255,107,53,.35);border-radius:6px;font-size:0.65rem;font-weight:700;color:#FF6B35;cursor:pointer;display:inline-flex;align-items:center;gap:4px">✨ Suggest Title</button>
+            </div>
+            <input id="rpl-manual-title" placeholder="Paste Reddit post title here… — or click ✨ Suggest Title to draft one" style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.78rem;box-sizing:border-box">
+            <div id="rpl-title-suggestions" style="display:none;margin-top:8px;flex-direction:column;gap:6px"></div>
           </div>
           <button onclick="generateRedditReply()" style="width:100%;padding:11px;background:linear-gradient(135deg,#FF4500,#FF6B35);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;margin-bottom:14px">✍️ Generate Brand Reply</button>
           <div id="rpl-result" style="display:none">
@@ -10076,6 +10083,127 @@ function rdtOpenReply(idx) {
   if (manEl) manEl.value = '';
   switchRedditTab('reply');
 }
+
+// Shared in-flight lock so the two suggest buttons can't fire concurrent
+// requests against /api/reddit-studio-suggest and clobber each other's state.
+window._rdtSuggestLock = window._rdtSuggestLock || { busy: false, reqId: 0 };
+
+// ── ✨ AI Suggest: Persona Description ──────────────────────────────────────
+// Uses brand + tone + tracked keywords/competitors to draft a brand-voice line.
+window.suggestRedditPersona = async function() {
+  const btn      = document.getElementById('rpl-persona-suggest-btn');
+  const personaEl= document.getElementById('rpl-persona');
+  const brand    = (document.getElementById('rpl-brand')?.value || document.getElementById('rdt-brand')?.value || '').trim();
+  const tone     = document.getElementById('rpl-tone')?.value || 'Helpful';
+  const keywords = (document.getElementById('rdt-keywords')?.value || '').trim();
+  const compsRaw = (document.getElementById('rdt-competitors')?.value || '').trim();
+  if (!brand) { showToast('⚠️ Enter a brand name first'); return; }
+  if (!btn || !personaEl) return;
+  if (window._rdtSuggestLock.busy) { showToast('⏳ Already drafting — one moment…'); return; }
+  window._rdtSuggestLock.busy = true;
+  const myReqId = ++window._rdtSuggestLock.reqId;
+
+  const original = btn.innerHTML;
+  btn.innerHTML  = '⏳ Drafting…';
+  btn.disabled   = true;
+  btn.style.opacity = '0.7';
+
+  try {
+    const resp = await fetch('/api/reddit-studio-suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: brand, tone, keywords, competitors: compsRaw })
+    });
+    const data = await resp.json();
+    // Stale-response guard: ignore if a newer request superseded us
+    if (myReqId !== window._rdtSuggestLock.reqId) return;
+    if (data && data.persona) {
+      personaEl.value = data.persona;
+      window._redditPersona.persona = data.persona;
+      // Cache titles too if returned (so 'Suggest Title' is instant on first click)
+      if (Array.isArray(data.titles) && data.titles.length) window._redditTitleCache = data.titles;
+      showToast('✨ Persona drafted by AI');
+    } else {
+      showToast('⚠️ Could not draft persona — ' + (data.error || 'try again'));
+    }
+  } catch(err) {
+    console.error('suggestRedditPersona failed:', err);
+    if (myReqId === window._rdtSuggestLock.reqId) {
+      showToast('⚠️ Suggestion failed: ' + (err.message || 'network error'));
+    }
+  } finally {
+    btn.innerHTML  = original;
+    btn.disabled   = false;
+    btn.style.opacity = '1';
+    window._rdtSuggestLock.busy = false;
+  }
+};
+
+// ── ✨ Suggest Title: 3 realistic Reddit post titles ────────────────────────
+window._redditTitleCache = null;
+window.suggestRedditTitle = async function() {
+  const btn      = document.getElementById('rpl-title-suggest-btn');
+  const inputEl  = document.getElementById('rpl-manual-title');
+  const listEl   = document.getElementById('rpl-title-suggestions');
+  const brand    = (document.getElementById('rpl-brand')?.value || document.getElementById('rdt-brand')?.value || '').trim();
+  const tone     = document.getElementById('rpl-tone')?.value || 'Helpful';
+  const keywords = (document.getElementById('rdt-keywords')?.value || '').trim();
+  const compsRaw = (document.getElementById('rdt-competitors')?.value || '').trim();
+  if (!brand) { showToast('⚠️ Enter a brand name first'); return; }
+  if (!btn || !inputEl || !listEl) return;
+
+  const renderList = (titles) => {
+    if (!titles || !titles.length) { listEl.style.display = 'none'; return; }
+    listEl.innerHTML = titles.map((t, i) => {
+      const safe = (t || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      return `<button type="button" onclick="document.getElementById('rpl-manual-title').value=this.dataset.t;document.getElementById('rpl-title-suggestions').style.display='none';showToast('✅ Title selected')" data-t="${safe}" style="text-align:left;padding:8px 11px;background:rgba(255,255,255,.04);border:1px solid rgba(255,107,53,.2);border-radius:7px;color:rgba(255,255,255,.85);font-size:0.74rem;cursor:pointer;line-height:1.4">💡 ${safe}</button>`;
+    }).join('');
+    listEl.style.display = 'flex';
+  };
+
+  // Use cache if available (filled by suggestRedditPersona)
+  if (window._redditTitleCache && window._redditTitleCache.length) {
+    renderList(window._redditTitleCache);
+    return;
+  }
+
+  if (window._rdtSuggestLock.busy) { showToast('⏳ Already drafting — one moment…'); return; }
+  window._rdtSuggestLock.busy = true;
+  const myReqId = ++window._rdtSuggestLock.reqId;
+
+  const original = btn.innerHTML;
+  btn.innerHTML  = '⏳ Drafting…';
+  btn.disabled   = true;
+  btn.style.opacity = '0.7';
+
+  try {
+    const resp = await fetch('/api/reddit-studio-suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: brand, tone, keywords, competitors: compsRaw })
+    });
+    const data = await resp.json();
+    // Stale-response guard: ignore if a newer request superseded us
+    if (myReqId !== window._rdtSuggestLock.reqId) return;
+    if (data && Array.isArray(data.titles) && data.titles.length) {
+      window._redditTitleCache = data.titles;
+      renderList(data.titles);
+      showToast('✨ ' + data.titles.length + ' title ideas ready');
+    } else {
+      showToast('⚠️ No title ideas returned — ' + (data.error || 'try again'));
+    }
+  } catch(err) {
+    console.error('suggestRedditTitle failed:', err);
+    if (myReqId === window._rdtSuggestLock.reqId) {
+      showToast('⚠️ Suggestion failed: ' + (err.message || 'network error'));
+    }
+  } finally {
+    btn.innerHTML  = original;
+    btn.disabled   = false;
+    btn.style.opacity = '1';
+    window._rdtSuggestLock.busy = false;
+  }
+};
 
 async function scanRedditMonitor() {
   const brand       = (document.getElementById('rdt-brand')?.value || '').trim();
