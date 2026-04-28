@@ -19400,6 +19400,8 @@ function buildReEngagement() {
           ${seqRows}
         </div>
         <button onclick="launchCustomSequence()" style="width:100%;padding:13px;background:linear-gradient(135deg,#D97706,#B45309);border:none;border-radius:12px;font-size:0.88rem;font-weight:700;color:white;cursor:pointer">🚀 Launch This Sequence to All High-Priority Leads</button>
+        <div id="dripStatusPanel"></div>
+        <script>setTimeout(function(){ if(typeof refreshDripStatus==='function') refreshDripStatus(); }, 50);</script>
       </div>
       <div style="display:flex;flex-direction:column;gap:12px">
         <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:18px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
@@ -19698,10 +19700,205 @@ window.launchReEngageTemplate = function(id, title, count) {
   showToast(`🚀 "${title}" campaign launched for ${count} leads — tracking in Results`);
 };
 
-// ── Launch custom sequence ────────────────────────────────────────────────────
-window.launchCustomSequence = function() {
-  const highPri = (window._socialPosts||[]).length;
-  showToast(`🚀 Custom ${(window._reEngageSeq||[]).length}-step sequence launched for high-priority leads!`);
+// ── Launch custom sequence — REAL drip-engine enrollment ──────────────────────
+// Sends the contacts + sequence to the server-side drip engine, which stores
+// the enrollment, schedules the day-0 send immediately, and ticks every 60s.
+// dryRun is on by default because the seeded "leads" use placeholder emails
+// like james@acmecorp.com — flipping it off only makes sense once the user
+// adds REAL contacts via the "Add Real Contact" form.
+window.launchCustomSequence = async function() {
+  const seq = window._reEngageSeq || [];
+  if (!seq.length) { showToast('⚠️ No sequence steps defined'); return; }
+  if (seq.some(s => !s.msg || !s.msg.trim())) {
+    showToast('⚠️ Generate the sequence content first (✨ Generate All Content)');
+    return;
+  }
+  // Gather contacts: real ones added by the user + (when not dry-run) the
+  // demo leads. Demo leads always use synthetic emails so we route them
+  // through dryRun=true to avoid bouncing real-looking addresses.
+  const realContacts = window._dripRealContacts || [];
+  const dryRun = !!window._dripDryRun || realContacts.length === 0;
+  const contacts = realContacts.length
+    ? realContacts.map(c => ({ email: c.email, name: c.name }))
+    : (function(){
+        // Fall back to seeded demo leads, but always dry-run them
+        const out = [];
+        const dom = (analysisData?.url || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0] || 'example.com';
+        const COMP = ['Acme Corp','BlueSky Ltd','Nexus Digital','Orbit Systems','Pinnacle Group'];
+        const FIRST = ['James','Sarah','Michael','Emma','David'];
+        for (let i = 0; i < 5; i++) {
+          out.push({ email: `${FIRST[i].toLowerCase()}@${COMP[i].toLowerCase().replace(/\s/g,'')}.com`, name: FIRST[i] });
+        }
+        return out;
+      })();
+  if (!contacts.length) {
+    showToast('⚠️ Add at least one contact under "Real Contacts" first');
+    return;
+  }
+  try {
+    const r = await fetch('/api/drips/enroll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contacts,
+        sequence: seq.map(s => ({
+          day: s.day, channel: s.channel, label: s.label, msg: s.msg,
+          subject: s.subject || s.label
+        })),
+        brand: (analysisData?.url || 'InfoGenie').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0],
+        dryRun,
+        appOrigin: window.location.origin,
+      })
+    });
+    const j = await r.json();
+    if (!r.ok || !j.ok) { showToast('❌ Launch failed: ' + (j.error || r.status)); return; }
+    showToast(`🚀 Sequence launched! ${j.enrolled} enrolled${dryRun ? ' (dry-run)' : ''}${j.skipped?.length ? `, ${j.skipped.length} skipped` : ''}`);
+    if (typeof refreshDripStatus === 'function') refreshDripStatus();
+    // Auto-poll for the next 30 seconds so the user sees first sends land
+    if (window._dripPollTimer) clearInterval(window._dripPollTimer);
+    let ticks = 0;
+    window._dripPollTimer = setInterval(() => {
+      if (++ticks > 6) { clearInterval(window._dripPollTimer); window._dripPollTimer = null; return; }
+      if (typeof refreshDripStatus === 'function') refreshDripStatus();
+    }, 5000);
+  } catch (e) {
+    showToast('❌ Network error: ' + e.message);
+  }
+};
+
+// ── Add a real contact (used by the contacts mini-form in the Sequence tab) ──
+window.addRealContact = function() {
+  const emailEl = document.getElementById('dripContactEmail');
+  const nameEl  = document.getElementById('dripContactName');
+  const email = (emailEl?.value || '').trim().toLowerCase();
+  const name  = (nameEl?.value || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('⚠️ Enter a valid email'); return; }
+  window._dripRealContacts = window._dripRealContacts || [];
+  if (window._dripRealContacts.find(c => c.email === email)) { showToast('Already added'); return; }
+  window._dripRealContacts.push({ email, name });
+  try { localStorage.setItem('ig-drip-real-contacts', JSON.stringify(window._dripRealContacts)); } catch(e) {}
+  if (emailEl) emailEl.value = '';
+  if (nameEl)  nameEl.value  = '';
+  if (typeof refreshDripStatus === 'function') refreshDripStatus();
+  showToast(`✅ Added ${email}`);
+};
+window.removeRealContact = function(email) {
+  window._dripRealContacts = (window._dripRealContacts || []).filter(c => c.email !== email);
+  try { localStorage.setItem('ig-drip-real-contacts', JSON.stringify(window._dripRealContacts)); } catch(e) {}
+  if (typeof refreshDripStatus === 'function') refreshDripStatus();
+};
+window.toggleDripDryRun = function(on) {
+  window._dripDryRun = !!on;
+  try { localStorage.setItem('ig-drip-dryrun', on ? '1' : '0'); } catch(e) {}
+};
+// Restore from storage
+try {
+  window._dripRealContacts = JSON.parse(localStorage.getItem('ig-drip-real-contacts') || '[]');
+  window._dripDryRun = localStorage.getItem('ig-drip-dryrun') !== '0';
+} catch(e) { window._dripRealContacts = []; window._dripDryRun = true; }
+
+// ── Drip engine status panel — fetches /api/drips and /api/drips/stats ────
+window.refreshDripStatus = async function() {
+  const panel = document.getElementById('dripStatusPanel');
+  if (!panel) return;
+  try {
+    const [statsR, listR] = await Promise.all([
+      fetch('/api/drips/stats').then(r => r.json()),
+      fetch('/api/drips').then(r => r.json()),
+    ]);
+    const s = statsR.stats || {};
+    const enrollments = (listR.enrollments || []).slice(0, 12);
+    const tile = (label, val, color) => `
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;text-align:center;min-width:0">
+        <div style="font-size:1.15rem;font-weight:800;color:${color}">${val}</div>
+        <div style="font-size:.62rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-top:2px">${label}</div>
+      </div>`;
+    const realContacts = window._dripRealContacts || [];
+    const dryRun = !!window._dripDryRun;
+    const contactRows = realContacts.length
+      ? realContacts.map(c => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #F3F4F6">
+          <div style="font-size:.74rem;color:#0A1628"><b>${c.name || c.email.split('@')[0]}</b> <span style="color:#6B7280">· ${c.email}</span></div>
+          <button onclick="removeRealContact('${c.email}')" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:.7rem">✕</button>
+        </div>`).join('')
+      : `<div style="font-size:.72rem;color:#9CA3AF;font-style:italic;padding:6px 0">No real contacts yet — add your own email below to test live sends.</div>`;
+    const enrollRows = enrollments.length
+      ? enrollments.map(e => {
+        const stepLabel = e.sequence?.[e.currentStep]?.label || (e.status === 'completed' ? '✓ all sent' : '—');
+        const statusColor = { active:'#059669', paused:'#D97706', completed:'#6B7280', cancelled:'#9CA3AF', unsubscribed:'#DC2626' }[e.status] || '#6B7280';
+        const sentN = (e.history || []).filter(h => h.ok).length;
+        const failN = (e.history || []).filter(h => !h.ok).length;
+        const nextWhen = e.status === 'active' && e.nextSendAt ? new Date(e.nextSendAt).toLocaleString() : '—';
+        return `
+          <tr>
+            <td style="padding:7px 8px;border-bottom:1px solid #F3F4F6;font-size:.74rem;color:#0A1628"><b>${(e.name || e.email.split('@')[0])}</b><br><span style="color:#6B7280;font-size:.7rem">${e.email}</span></td>
+            <td style="padding:7px 8px;border-bottom:1px solid #F3F4F6;font-size:.72rem;color:#374151">${e.currentStep+1}/${e.sequence?.length || 0} · ${stepLabel}</td>
+            <td style="padding:7px 8px;border-bottom:1px solid #F3F4F6;font-size:.72rem"><span style="color:${statusColor};font-weight:700;text-transform:uppercase;letter-spacing:.04em">${e.status}</span>${e.dryRun?` <span style="color:#9CA3AF;font-size:.65rem">· dry</span>`:''}</td>
+            <td style="padding:7px 8px;border-bottom:1px solid #F3F4F6;font-size:.7rem;color:#6B7280">${sentN}✓${failN?` ${failN}✕`:''}</td>
+            <td style="padding:7px 8px;border-bottom:1px solid #F3F4F6;font-size:.7rem;color:#6B7280">${nextWhen}</td>
+            <td style="padding:7px 8px;border-bottom:1px solid #F3F4F6;text-align:right">
+              ${e.status === 'active' ? `<button onclick="dripAction('${e.id}','pause')" style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;padding:3px 8px;font-size:.65rem;color:#92400E;cursor:pointer">Pause</button>` : ''}
+              ${e.status === 'paused' ? `<button onclick="dripAction('${e.id}','resume')" style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:6px;padding:3px 8px;font-size:.65rem;color:#059669;cursor:pointer">Resume</button>` : ''}
+              ${(e.status === 'active' || e.status === 'paused') ? `<button onclick="dripAction('${e.id}','cancel')" style="background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:3px 8px;font-size:.65rem;color:#DC2626;cursor:pointer;margin-left:4px">Cancel</button>` : ''}
+            </td>
+          </tr>`;
+      }).join('')
+      : `<tr><td colspan="6" style="padding:14px;text-align:center;font-size:.74rem;color:#9CA3AF;font-style:italic">No active enrollments yet — click "🚀 Launch This Sequence" above.</td></tr>`;
+    panel.innerHTML = `
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.04);margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div>
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:.92rem;font-weight:800;color:#0A1628">⚡ Live Drip Engine</div>
+            <div style="font-size:.7rem;color:#6B7280;margin-top:2px">Server-side scheduler · processes due steps every 60 seconds</div>
+          </div>
+          <button onclick="refreshDripStatus()" style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:6px 12px;font-size:.72rem;font-weight:600;color:#374151;cursor:pointer">↻ Refresh</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px;margin-bottom:14px">
+          ${tile('Total',       s.total||0,        '#0A1628')}
+          ${tile('Active',      s.active||0,       '#059669')}
+          ${tile('Paused',      s.paused||0,       '#D97706')}
+          ${tile('Completed',   s.completed||0,    '#6B7280')}
+          ${tile('Sent',        s.sentTotal||0,    '#0066FF')}
+          ${tile('Failed',      s.failedTotal||0,  s.failedTotal?'#DC2626':'#6B7280')}
+          ${tile('Unsubbed',    s.unsubscribed||0, '#DC2626')}
+        </div>
+        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:12px;margin-bottom:12px">
+          <div style="font-size:.74rem;font-weight:700;color:#374151;margin-bottom:8px">Real contacts (will receive live emails when dry-run is OFF)</div>
+          ${contactRows}
+          <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+            <input id="dripContactName" placeholder="Name" style="flex:1;min-width:90px;padding:7px 10px;border:1px solid #E5E7EB;border-radius:7px;font-size:.74rem">
+            <input id="dripContactEmail" placeholder="email@example.com" style="flex:2;min-width:140px;padding:7px 10px;border:1px solid #E5E7EB;border-radius:7px;font-size:.74rem">
+            <button onclick="addRealContact()" style="background:#0A1628;color:white;border:none;border-radius:7px;padding:7px 14px;font-size:.72rem;font-weight:700;cursor:pointer">+ Add</button>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:.72rem;color:#374151;cursor:pointer">
+            <input type="checkbox" ${dryRun?'checked':''} onchange="toggleDripDryRun(this.checked)">
+            <span><b>Dry-run mode</b> — record sends but don't actually email. Recommended while testing. Turn off to send real emails (Resend's free tier requires a verified domain or only delivers to your own verified address).</span>
+          </label>
+        </div>
+        <div style="overflow-x:auto;max-width:100%">
+          <table style="width:100%;border-collapse:collapse;min-width:580px">
+            <thead><tr style="background:#F9FAFB">
+              <th style="text-align:left;padding:8px;font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Contact</th>
+              <th style="text-align:left;padding:8px;font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Step</th>
+              <th style="text-align:left;padding:8px;font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Status</th>
+              <th style="text-align:left;padding:8px;font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Sends</th>
+              <th style="text-align:left;padding:8px;font-size:.65rem;color:#6B7280;text-transform:uppercase;letter-spacing:.06em">Next</th>
+              <th></th>
+            </tr></thead>
+            <tbody>${enrollRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  } catch (e) {
+    panel.innerHTML = `<div style="padding:14px;color:#DC2626;font-size:.78rem">Drip status unavailable: ${e.message}</div>`;
+  }
+};
+window.dripAction = async function(id, action) {
+  try {
+    const r = await fetch(`/api/drips/${id}/${action}`, { method: 'POST' });
+    if (r.ok) { showToast(`✓ ${action}d`); refreshDripStatus(); }
+    else showToast('Failed');
+  } catch(e) { showToast('Error: ' + e.message); }
 };
 
 // ── Generate sequence content ─────────────────────────────────────────────────

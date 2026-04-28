@@ -5117,6 +5117,263 @@ async function _sendVerificationEmail({ to, name, code }) {
   return true;
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// ── DRIP-CAMPAIGN EXECUTION ENGINE ─────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// File-backed enrollment store + a 60-second scheduler that processes any
+// due email-channel steps via Resend. Non-email channels (Retarget Ad,
+// LinkedIn DM, SMS, etc.) are recorded as "pending integration" — they won't
+// fire but the enrollment still progresses through the sequence so the
+// timeline reflects what would happen in production.
+
+const DRIP_DATA_DIR  = path.join(__dirname, 'data');
+const DRIP_FILE      = path.join(DRIP_DATA_DIR, 'drip-enrollments.json');
+const DRIP_UNSUB_FILE = path.join(DRIP_DATA_DIR, 'drip-unsubscribes.json');
+try { fs.mkdirSync(DRIP_DATA_DIR, { recursive: true }); } catch(e) {}
+
+function _dripLoad() {
+  try { return JSON.parse(fs.readFileSync(DRIP_FILE, 'utf8')); }
+  catch(e) { return []; }
+}
+function _dripSave(list) {
+  try { fs.writeFileSync(DRIP_FILE, JSON.stringify(list, null, 2)); }
+  catch(e) { console.error('drip save failed:', e.message); }
+}
+function _dripLoadUnsubs() {
+  try { return new Set(JSON.parse(fs.readFileSync(DRIP_UNSUB_FILE, 'utf8'))); }
+  catch(e) { return new Set(); }
+}
+function _dripSaveUnsubs(set) {
+  try { fs.writeFileSync(DRIP_UNSUB_FILE, JSON.stringify([...set], null, 2)); }
+  catch(e) {}
+}
+
+// Generic Resend email sender — extracted from _sendVerificationEmail so the
+// drip engine can reuse it without coupling to verification-specific HTML.
+async function _sendEmailViaResend({ to, subject, html, text, fromOverride }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error('RESEND_API_KEY missing');
+  const fromAddr = fromOverride || process.env.RESEND_FROM_EMAIL || 'InfoGenie <onboarding@resend.dev>';
+  const resp = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: fromAddr, to: [to], subject, text: text || '', html: html || '' })
+  });
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => '');
+    throw new Error(`Resend ${resp.status}: ${txt.slice(0, 240)}`);
+  }
+  return resp.json().catch(() => ({}));
+}
+
+// Wrap a step's plain text content into a branded HTML email body that
+// includes a working unsubscribe link (CAN-SPAM / GDPR requirement).
+function _dripEmailHtml({ subject, body, brand, unsubUrl }) {
+  const safeBody = String(body || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  const safeBrand = String(brand || 'InfoGenie').replace(/[<>&"]/g,'').slice(0,80);
+  return `<!doctype html><html><body style="margin:0;background:#F3F4F6;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
+    <div style="max-width:520px;margin:0 auto;background:#FFFFFF;border-radius:14px;overflow:hidden;box-shadow:0 2px 14px rgba(0,0,0,.05)">
+      <div style="background:linear-gradient(135deg,#D97706,#B45309);padding:18px 26px;color:#FFFFFF">
+        <div style="font-size:1.1rem;font-weight:800;letter-spacing:-.01em">${safeBrand}</div>
+      </div>
+      <div style="padding:26px 28px;font-size:.94rem;color:#0A1628;line-height:1.6">${safeBody}</div>
+      <div style="padding:14px 28px;background:#F9FAFB;border-top:1px solid #F3F4F6;font-size:.7rem;color:#9CA3AF;text-align:center">
+        Sent by ${safeBrand} via InfoGenie · <a href="${unsubUrl}" style="color:#9CA3AF;text-decoration:underline">Unsubscribe</a>
+      </div>
+    </div></body></html>`;
+}
+
+// Process every active enrollment whose nextSendAt has come due. Runs in a
+// timer below. Pure function over (enrollments, unsubs, now) → mutates each
+// enrollment's currentStep / nextSendAt / status / history.
+async function _dripTick() {
+  let list  = _dripLoad();
+  if (!list.length) return;
+  const unsubs = _dripLoadUnsubs();
+  const now = Date.now();
+  let mutated = false;
+  for (const enr of list) {
+    if (enr.status !== 'active') continue;
+    if (unsubs.has(String(enr.email || '').toLowerCase())) {
+      enr.status = 'unsubscribed';
+      mutated = true;
+      continue;
+    }
+    if (!Array.isArray(enr.sequence) || !enr.sequence.length) {
+      enr.status = 'completed';
+      mutated = true;
+      continue;
+    }
+    if ((enr.nextSendAt || 0) > now) continue;
+    const step = enr.sequence[enr.currentStep];
+    if (!step) {
+      enr.status = 'completed';
+      enr.completedAt = now;
+      mutated = true;
+      continue;
+    }
+    const channel = String(step.channel || 'Email');
+    const isEmail = /email/i.test(channel);
+    const entry = { stepIndex: enr.currentStep, label: step.label || '', channel, sentAt: now, ok: false };
+    try {
+      if (enr.dryRun) {
+        entry.ok = true; entry.note = 'dry-run (no real send)';
+      } else if (isEmail) {
+        const subject = (step.subject || step.label || `Message from ${enr.brand || 'InfoGenie'}`).slice(0, 140);
+        const unsubUrl = `${enr.appOrigin || ''}/api/drips/unsubscribe?email=${encodeURIComponent(enr.email)}`;
+        const html = _dripEmailHtml({ subject, body: step.msg || '', brand: enr.brand, unsubUrl });
+        const text = (step.msg || '') + `\n\n— Unsubscribe: ${unsubUrl}`;
+        await _sendEmailViaResend({ to: enr.email, subject, html, text });
+        entry.ok = true;
+      } else {
+        entry.ok = true; entry.note = `${channel} — pending platform integration (recorded only)`;
+      }
+    } catch (sendErr) {
+      entry.ok = false;
+      entry.error = String(sendErr.message || sendErr).slice(0, 240);
+    }
+    enr.history = enr.history || [];
+    enr.history.push(entry);
+    enr.currentStep += 1;
+    if (enr.currentStep >= enr.sequence.length) {
+      enr.status = 'completed';
+      enr.completedAt = now;
+    } else {
+      const startedAt = enr.startedAt || now;
+      const nextStep = enr.sequence[enr.currentStep];
+      const dayOffset = (typeof nextStep.day === 'number' && nextStep.day >= 0) ? nextStep.day : (enr.currentStep);
+      enr.nextSendAt = startedAt + dayOffset * 86400000;
+    }
+    mutated = true;
+  }
+  if (mutated) _dripSave(list);
+}
+
+// Tick every 60 seconds. Errors in the engine should never crash the server.
+setInterval(() => { _dripTick().catch(e => console.error('[drip] tick error:', e.message)); }, 60_000);
+// Also fire once 5 seconds after boot so freshly-enrolled day-0 sends go out.
+setTimeout(() => { _dripTick().catch(()=>{}); }, 5_000);
+
+// ── POST /api/drips/enroll ────────────────────────────────────────────────
+// body: { contacts:[{email, name?}], sequence:[{day, channel, msg, label, subject?}],
+//         brand?, dryRun?:bool, appOrigin? }
+app.post('/api/drips/enroll', (req, res) => {
+  try {
+    const { contacts, sequence, brand, dryRun, appOrigin } = req.body || {};
+    if (!Array.isArray(contacts) || !contacts.length) {
+      return res.status(400).json({ ok: false, error: 'contacts array required' });
+    }
+    if (!Array.isArray(sequence) || !sequence.length) {
+      return res.status(400).json({ ok: false, error: 'sequence array required' });
+    }
+    const validEmail = e => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+    const list = _dripLoad();
+    const unsubs = _dripLoadUnsubs();
+    const startedAt = Date.now();
+    const dayZeroOffset = (sequence[0] && typeof sequence[0].day === 'number') ? sequence[0].day : 0;
+    const created = [];
+    const skipped = [];
+    for (const c of contacts.slice(0, 500)) {
+      const email = String(c.email || '').trim().toLowerCase();
+      if (!validEmail(email)) { skipped.push({ email: c.email, reason: 'invalid email' }); continue; }
+      if (unsubs.has(email))  { skipped.push({ email, reason: 'unsubscribed' });          continue; }
+      // Detect duplicate (active enrollment for same email + same sequence length+labels)
+      const seqSig = sequence.map(s => `${s.day}|${s.channel}|${s.label||''}`).join('::');
+      const dup = list.find(e => e.email === email && e.status === 'active' && e._seqSig === seqSig);
+      if (dup) { skipped.push({ email, reason: 'already enrolled in this sequence' }); continue; }
+      const id = 'drip_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+      list.push({
+        id, email,
+        name: String(c.name || '').slice(0, 80),
+        brand: String(brand || 'InfoGenie').slice(0, 80),
+        sequence: sequence.map(s => ({
+          day: Number(s.day) || 0,
+          channel: String(s.channel || 'Email').slice(0, 32),
+          label: String(s.label || '').slice(0, 80),
+          subject: String(s.subject || s.label || '').slice(0, 140),
+          msg: String(s.msg || '').slice(0, 6000),
+        })),
+        _seqSig: seqSig,
+        startedAt,
+        currentStep: 0,
+        nextSendAt: startedAt + dayZeroOffset * 86400000,
+        status: 'active',
+        dryRun: !!dryRun,
+        appOrigin: String(appOrigin || '').slice(0, 200),
+        history: [],
+      });
+      created.push({ id, email });
+    }
+    _dripSave(list);
+    // Kick off an immediate tick so day-0 sends fire right away
+    _dripTick().catch(()=>{});
+    res.json({ ok: true, enrolled: created.length, skipped, created });
+  } catch (err) {
+    console.error('/api/drips/enroll error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── GET /api/drips ─ list all enrollments (most recent first), optionally filtered
+app.get('/api/drips', (req, res) => {
+  const list = _dripLoad().sort((a,b) => (b.startedAt||0) - (a.startedAt||0));
+  const status = (req.query.status || '').toString();
+  const filtered = status ? list.filter(e => e.status === status) : list;
+  res.json({ ok: true, count: filtered.length, enrollments: filtered.slice(0, 200) });
+});
+
+// ── GET /api/drips/stats ─ aggregate counters for the live UI panel
+app.get('/api/drips/stats', (req, res) => {
+  const list = _dripLoad();
+  const stats = { total: list.length, active: 0, paused: 0, completed: 0, unsubscribed: 0, sentTotal: 0, failedTotal: 0 };
+  for (const e of list) {
+    stats[e.status] = (stats[e.status] || 0) + 1;
+    for (const h of (e.history || [])) {
+      if (h.ok) stats.sentTotal++; else stats.failedTotal++;
+    }
+  }
+  res.json({ ok: true, stats });
+});
+
+// ── POST /api/drips/:id/(pause|resume|cancel)
+app.post('/api/drips/:id/:action', (req, res) => {
+  const { id, action } = req.params;
+  const list = _dripLoad();
+  const enr = list.find(e => e.id === id);
+  if (!enr) return res.status(404).json({ ok: false, error: 'not found' });
+  if (action === 'pause')      enr.status = 'paused';
+  else if (action === 'resume') enr.status = 'active';
+  else if (action === 'cancel') enr.status = 'cancelled';
+  else return res.status(400).json({ ok: false, error: 'invalid action' });
+  _dripSave(list);
+  res.json({ ok: true, enrollment: enr });
+});
+
+// ── GET /api/drips/unsubscribe?email=... ─ public unsubscribe (no auth)
+// Returns a small HTML page so the link in the email works in any browser.
+app.get('/api/drips/unsubscribe', (req, res) => {
+  const email = String(req.query.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).send('Missing email parameter');
+  const unsubs = _dripLoadUnsubs();
+  unsubs.add(email);
+  _dripSaveUnsubs(unsubs);
+  // Mark all of this email's active enrollments as unsubscribed
+  const list = _dripLoad();
+  let touched = 0;
+  for (const e of list) {
+    if (e.email === email && e.status === 'active') { e.status = 'unsubscribed'; touched++; }
+  }
+  if (touched) _dripSave(list);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!doctype html><html><head><title>Unsubscribed</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+    <body style="font-family:-apple-system,sans-serif;background:#F3F4F6;margin:0;padding:60px 20px;text-align:center">
+      <div style="max-width:420px;margin:0 auto;background:white;border-radius:14px;padding:36px 28px;box-shadow:0 2px 16px rgba(0,0,0,.06)">
+        <div style="font-size:2.2rem;margin-bottom:10px">✓</div>
+        <h1 style="font-size:1.2rem;color:#0A1628;margin:0 0 10px">You're unsubscribed</h1>
+        <p style="color:#6B7280;font-size:.92rem;margin:0">${email} will no longer receive drip-campaign emails from InfoGenie. ${touched} active sequence${touched===1?'':'s'} stopped.</p>
+      </div></body></html>`);
+});
+
 // ── POST /api/ai-validate-metrics ────────────────────────────────────────────
 // Takes a list of competitors (each with whatever metrics we already have from
 // DataForSEO + AI detection) and asks GPT-4o-mini to validate / refine the
