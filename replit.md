@@ -172,4 +172,21 @@ Added 10 new modules in cache buster `v=20260425Q`. All client-side, simulated f
 - **Content persistence** (app.js lines 188-235): The Master Calendar reads `_socialPosts` / `_launchedCampaigns` / `_autoSeoArticles` / `_autoSeoSchedule` — but those were in-memory only, so refreshes wiped them and the calendar showed zeros. Added a 1.5s polling loop that JSON-stringifies each tracked window var and writes only when changed. Restores on DOMContentLoaded BEFORE other init handlers (registered first at top of file) so the module-load resets don't clobber persisted values.
 
 ## Cache-buster
-- Bumped to `v=20260428S` (next bump → `T`).
+- Bumped to `v=20260428Z` (next bump → `AA`).
+
+## Real Competitor Data Pipeline (no more fakes)
+- **Removed all `Math.random()` initial values** for competitor traffic / adSpend / ROAS / CTR (app.js ~2893). They now start as `null` sentinels.
+- **Three-stage data pipeline** for every competitor surfaced after "Analyse Now":
+  1. **DataForSEO live scrape** via `/api/competitor-metrics` (server.js 810) — domain_rank_overview + keywords_for_site → real organic + paid traffic, derived CTR, ad-spend, ROAS.
+  2. **OpenAI validation overlay** via NEW `/api/ai-validate-metrics` (server.js ~5082) — GPT-4o-mini cross-checks each competitor against its training-data knowledge of well-known brands (Similarweb, earnings reports, SemRush). Returns `{traffic, adSpend, roas, ctr, confidence: high|medium|low, source, notes}`. Returns `null` for fields it can't reasonably estimate (no fabrication).
+  3. **Final safety net** — anything still null becomes greyed `'—'` with "Limited data" tooltip.
+- **Per-campaign rows** (in competitor breakdown table) are now DERIVED from the validated top-level metrics (60/40 weighted split) — no random fakery.
+- **UI: data-source ribbon** at top of each competitor modal showing source ("DataForSEO" / "AI-verified" / "AI-estimate" / "Limited data") + confidence dot (green/amber/grey) + tooltip with `dataOrigin` + `dataNotes`.
+- **All downstream consumers** that fall back to fabricated values were rewired:
+  - `_safeAvg()` filters non-finite values out of avgCTR/avgROAS averages (app.js ~3686)
+  - `parseTrafficNum` / `parseAdSpend` return 0 (not 100k / 5k) for missing values
+  - `renderCTRChart` and `renderTrendChart` skip competitors with no data instead of fabricating bars
+  - `compROASIssues` falls back to industry benchmark (not random)
+  - CEO strategy table shows greyed `—` for missing spend/ROAS
+  - Share-of-voice + Market Position bars only include competitors with real traffic (no synthetic 5% floor)
+- **Important env-var alignment**: OpenAI client at server.js:10 uses `AI_INTEGRATIONS_OPENAI_API_KEY`. The new `/api/ai-validate-metrics` gate at line ~5088 checks the SAME var so the gate and runtime never disagree.

@@ -5062,6 +5062,91 @@ async function _sendVerificationEmail({ to, name, code }) {
   return true;
 }
 
+// ── POST /api/ai-validate-metrics ────────────────────────────────────────────
+// Takes a list of competitors (each with whatever metrics we already have from
+// DataForSEO + AI detection) and asks GPT-4o-mini to validate / refine the
+// numbers based on its training-data knowledge of the brands.
+//
+// For well-known public brands (Stripe, Shopify, eToro, Plus500, XM, etc.) the
+// model returns realistic numbers from public sources (Similarweb estimates,
+// earnings reports, news). For lesser-known SMBs it returns conservative
+// industry-benchmark estimates with `confidence: "low"` instead of guessing.
+//
+// Body:  { competitors: [{name, domain, currentTraffic, currentAdSpend,
+//          currentROAS, currentCTR, dataSource}], industry: "Forex Trading" }
+// Returns: { results: [{ name, traffic, adSpend, roas, ctr, confidence,
+//            source, notes }] }
+app.post('/api/ai-validate-metrics', async (req, res) => {
+  try {
+    const { competitors, industry } = req.body || {};
+    if (!Array.isArray(competitors) || !competitors.length) {
+      return res.status(400).json({ error: 'competitors array required' });
+    }
+    // Use the SAME env var the OpenAI client was initialised from at boot,
+    // otherwise the gate passes but the client calls OpenAI with 'dummy'.
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      return res.status(503).json({ error: 'OpenAI not configured', results: [] });
+    }
+
+    const list = competitors.slice(0, 12).map((c, i) =>
+      `${i+1}. ${c.name || c.domain} (${c.domain || 'no domain'})\n` +
+      `   Currently shown: traffic=${c.currentTraffic || 'unknown'}, ` +
+      `adSpend=${c.currentAdSpend || 'unknown'}, ` +
+      `ROAS=${c.currentROAS || 'unknown'}, CTR=${c.currentCTR || 'unknown'}` +
+      (c.dataSource ? `  [source: ${c.dataSource}]` : '')
+    ).join('\n');
+
+    const prompt = `You are a senior digital-marketing analyst with deep knowledge of public web traffic, ad spend, and performance data for major brands and digital businesses.
+
+For each of the ${Math.min(competitors.length, 12)} competitors below in the "${industry || 'unknown'}" industry, validate or refine the metrics shown using your knowledge of public sources (Similarweb, SemRush, Ahrefs estimates, company earnings reports, marketing trade press, and well-documented industry benchmarks).
+
+Competitors:
+${list}
+
+Return JSON in EXACTLY this shape:
+{
+  "results": [
+    {
+      "name": "<exact name from list>",
+      "traffic":  "1.2M" | "350K" | "45K" | null,         // monthly visits
+      "adSpend":  "$45K/mo" | "$2.1M/mo" | null,           // monthly ad budget estimate
+      "roas":     3.2 | null,                              // number 1.0–8.0
+      "ctr":      "2.8%" | null,                           // typical paid-ad CTR
+      "confidence": "high" | "medium" | "low",
+      "source":   "Brief 1-line: 'Similarweb Q4 2024' or 'fintech industry benchmark' or 'earnings report'",
+      "notes":    "Any caveat (max 80 chars), or empty"
+    }
+  ]
+}
+
+CRITICAL RULES:
+- Use REALISTIC numbers grounded in what you actually know. Never fabricate.
+- For well-known brands: cite the most reasonable public source you'd expect.
+- For lesser-known/regional brands you don't recognise: return null for the fields you can't reasonably estimate (traffic/adSpend especially) and set confidence to "low". Industry-average ROAS/CTR may still be safely returned.
+- Traffic format: "1.2M" or "350K" or "45K" (no decimals if whole, one decimal if needed).
+- AdSpend format: "$45K/mo" or "$1.2M/mo" or "$8K/mo".
+- ROAS: a single number, typically 1.5–5.0 in most industries.
+- CTR: "2.8%" — typically 1.5%–6% for paid search/social.
+- "high" confidence ONLY if you have specific knowledge of this brand.
+- "medium" if extrapolating from category leaders.
+- "low" for pure industry-benchmark estimates.
+- The output array MUST be in the same order and same names as the input list.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.2,
+      max_tokens: 2000
+    });
+    const parsed = JSON.parse(completion.choices[0].message.content);
+    res.json({ ok: true, results: parsed.results || [], count: (parsed.results || []).length });
+  } catch (err) {
+    console.error('/api/ai-validate-metrics error:', err.message);
+    res.status(500).json({ error: err.message, results: [] });
+  }
+});
+
 app.post('/api/auth/send-verification', async (req, res) => {
   try {
     const { email, name } = req.body || {};

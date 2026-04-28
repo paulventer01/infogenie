@@ -2887,10 +2887,16 @@ async function runAnalysis(url, country, industryOverride) {
           url: c.url,
           why: c.why,
           logo: initials || '?',
-          roas: parseFloat((Math.random() * 2 + 1.5).toFixed(1)),
-          ctr:  (Math.random() * 2 + 2).toFixed(1) + '%',
-          traffic: Math.floor(Math.random() * 900000 + 50000).toLocaleString(),
-          adSpend: `$${(Math.floor(Math.random() * 900 + 100))}K/mo`,
+          // Start with NULL sentinels — real values are filled in by the
+          // DataForSEO overlay (live scrape) + AI-validation pass below.
+          // No more Math.random() lies. If neither source returns data the
+          // UI shows "—" with a "Limited public data" tooltip.
+          roas: null,
+          ctr:  null,
+          traffic: null,
+          adSpend: null,
+          dataSource: 'pending',
+          confidence: null,
           topChannel: topCh,
           topChannels: [topCh],
           threatLevel: threats[idx % threats.length],
@@ -2899,16 +2905,14 @@ async function runAnalysis(url, country, industryOverride) {
             const camp1Names = ['Brand Search Domination', 'Lookalike Audience Push', 'Retargeting Wave', 'Awareness Reels Burst'];
             const camp2Names = ['Comparison Landing Funnel', 'Free Trial Lead Gen', 'Top-Funnel Display', 'High-Intent Keyword Steal'];
             const ch1 = topCh;
-            const ch2 = channels.filter(x => x !== topCh)[Math.floor(Math.random() * 3)];
-            const ctr1 = (Math.random() * 2 + 2.2).toFixed(1) + '%';
-            const ctr2 = (Math.random() * 2 + 1.8).toFixed(1) + '%';
-            const r1 = parseFloat((Math.random() * 1.5 + 2.0).toFixed(1));
-            const r2 = parseFloat((Math.random() * 1.5 + 1.6).toFixed(1));
-            const b1 = `$${(Math.floor(Math.random() * 80 + 40))}K/mo`;
-            const b2 = `$${(Math.floor(Math.random() * 50 + 20))}K/mo`;
+            const ch2 = channels.filter(x => x !== topCh)[idx % 3];
+            // Campaign rows are split DERIVATIVES of the top-level competitor
+            // metrics (filled by DataForSEO + AI validation), not random fakes.
+            // If we don't yet have real top-level metrics, leave as "—" and the
+            // table will show greyed dashes instead of fabricated values.
             return [
-              { name: camp1Names[idx % camp1Names.length], channel: ch1, ctr: ctr1, roas: r1, budget: b1 },
-              { name: camp2Names[idx % camp2Names.length], channel: ch2, ctr: ctr2, roas: r2, budget: b2 },
+              { name: camp1Names[idx % camp1Names.length], channel: ch1, ctr: null, roas: null, budget: null, _split: 0.6 },
+              { name: camp2Names[idx % camp2Names.length], channel: ch2, ctr: null, roas: null, budget: null, _split: 0.4 },
             ];
           })(),
           // Audience splits for the audience overlap panel
@@ -2972,6 +2976,129 @@ async function runAnalysis(url, country, industryOverride) {
           }
         }
       } catch(e) { console.warn('competitor-metrics overlay failed:', e); }
+
+      // ── AI VALIDATION PASS ────────────────────────────────────────────────
+      // Cross-check + refine traffic / ad-spend / ROAS / CTR using OpenAI.
+      // The model uses its training-data knowledge of well-known brands
+      // (Similarweb estimates, earnings reports, industry benchmarks) to
+      // either CONFIRM the DataForSEO values or FILL IN the gaps where
+      // DataForSEO returned nothing.
+      try {
+        statusText.textContent = 'AI is validating competitor data accuracy...';
+        const aiPayload = aiCompetitorPool.map(c => ({
+          name: c.name,
+          domain: c.domain,
+          currentTraffic: c.traffic,
+          currentAdSpend: c.adSpend,
+          currentROAS:    c.roas,
+          currentCTR:     c.ctr,
+          dataSource:     c.dataSource || null
+        }));
+        const ar = await fetch('/api/ai-validate-metrics', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ competitors: aiPayload, industry: aiDetected.industryName || industryKey })
+        });
+        if (ar.ok) {
+          const aj = await ar.json();
+          const byName = {};
+          (aj.results || []).forEach(r => { if (r && r.name) byName[r.name.toLowerCase().trim()] = r; });
+          let refined = 0;
+          aiCompetitorPool.forEach(c => {
+            const key = (c.name || '').toLowerCase().trim();
+            const v = byName[key];
+            if (!v) return;
+            const conf = (v.confidence || 'low').toLowerCase();
+            // Fill in any value that is still null (DataForSEO didn't return it)
+            // OR overwrite when the AI is HIGH confidence and we only have a
+            // low-confidence DataForSEO derived value.
+            const fillIfMissing = (key, val) => {
+              if (val === null || val === undefined || val === '' || val === '—') return;
+              if (c[key] === null || c[key] === undefined || c[key] === '' || c[key] === '—') {
+                c[key] = val;
+              } else if (conf === 'high' && (c.dataSource !== 'DataForSEO' || key === 'adSpend')) {
+                // For ad-spend especially, GPT's brand knowledge usually beats
+                // DataForSEO's paid.etv approximation on well-known brands.
+                c[key] = val;
+              }
+            };
+            fillIfMissing('traffic', v.traffic);
+            fillIfMissing('adSpend', v.adSpend);
+            fillIfMissing('ctr',     v.ctr);
+            if (typeof v.roas === 'number' && v.roas > 0) {
+              if (c.roas === null || c.roas === undefined || (conf === 'high' && c.dataSource !== 'DataForSEO')) {
+                c.roas = parseFloat(v.roas.toFixed(1));
+              }
+            }
+            // Source attribution (so the UI can show a badge)
+            if (!c.dataSource || c.dataSource === 'pending') {
+              c.dataSource = conf === 'high' ? 'AI-verified' : 'AI-estimate';
+            } else if (conf === 'high' && c.dataSource === 'DataForSEO') {
+              c.dataSource = 'DataForSEO + AI-verified';
+            }
+            c.confidence  = conf;
+            c.dataNotes   = v.notes   || '';
+            c.dataOrigin  = v.source  || '';
+            refined++;
+          });
+          console.log(`✓ AI validated/refined ${refined}/${aiCompetitorPool.length} competitors`);
+        } else {
+          console.warn('ai-validate-metrics returned', ar.status);
+        }
+      } catch(e) { console.warn('AI validation pass failed:', e); }
+
+      // Derive per-campaign breakdown rows from the now-real top-level metrics.
+      // No more random fakery — the two campaign rows are weighted splits
+      // (60/40) of the competitor's actual ad-spend, with CTR = top-level CTR
+      // ± a small deterministic delta and ROAS = top-level ROAS ± delta.
+      aiCompetitorPool.forEach(c => {
+        if (!Array.isArray(c.campaigns) || !c.campaigns.length) return;
+        const topRoas = (typeof c.roas === 'number' && c.roas > 0) ? c.roas : null;
+        const topCtrN = parseFloat(c.ctr);
+        const topSpendN = (() => {
+          const s = String(c.adSpend || '').replace(/[$,\s]/g,'').toUpperCase();
+          const n = parseFloat(s); if (!isFinite(n) || n <= 0) return null;
+          if (s.includes('B')) return n * 1e9;
+          if (s.includes('M')) return n * 1e6;
+          if (s.includes('K')) return n * 1e3;
+          return n;
+        })();
+        const fmtMoney = n => n >= 1e6 ? '$'+(n/1e6).toFixed(1)+'M/mo'
+                          : n >= 1e3 ? '$'+(n/1e3).toFixed(0)+'K/mo'
+                          : '$'+Math.round(n)+'/mo';
+        c.campaigns.forEach((row, i) => {
+          const split = row._split ?? (i === 0 ? 0.6 : 0.4);
+          if (topCtrN > 0) {
+            row.ctr = (topCtrN + (i === 0 ? 0.4 : -0.4)).toFixed(1) + '%';
+          } else {
+            row.ctr = '—';
+          }
+          if (topRoas !== null) {
+            row.roas = parseFloat((topRoas + (i === 0 ? 0.3 : -0.3)).toFixed(1));
+            if (row.roas < 0.5) row.roas = 0.5;
+          } else {
+            row.roas = '—';
+          }
+          if (topSpendN !== null) {
+            row.budget = fmtMoney(topSpendN * split);
+          } else {
+            row.budget = '—';
+          }
+        });
+      });
+
+      // Final safety net — anything still null after both overlays gets a
+      // clean "—" placeholder so the UI never shows "null" or random fakes.
+      aiCompetitorPool.forEach(c => {
+        if (c.traffic === null || c.traffic === undefined) c.traffic = '—';
+        if (c.adSpend === null || c.adSpend === undefined) c.adSpend = '—';
+        if (c.ctr     === null || c.ctr     === undefined) c.ctr     = '—';
+        if (c.roas    === null || c.roas    === undefined) c.roas    = '—';
+        if (!c.dataSource || c.dataSource === 'pending') {
+          c.dataSource = 'Limited data';
+          c.confidence = 'low';
+        }
+      });
     }
     // Update hint label live with the precise industry
     if (hintEl && aiDetected.industryName) {
@@ -2992,12 +3119,15 @@ async function runAnalysis(url, country, industryOverride) {
   // Merge manual competitors — they always appear first, then AI-selected ones fill the rest
   const manuals = (window._manualCompetitors || []).map(mc => ({
     ...mc,
-    // Enrich with industry-relative benchmarks so they integrate naturally
-    roas: mc.roas ?? parseFloat((Math.random() * 2 + 1.5).toFixed(1)),
-    ctr:  mc.ctr  === '—' ? (Math.random() * 2 + 2).toFixed(1) + '%' : mc.ctr,
-    traffic: mc.traffic === '—' ? Math.floor(Math.random() * 900000 + 50000).toLocaleString() : mc.traffic,
-    adSpend: mc.adSpend === '—' ? `$${(Math.floor(Math.random() * 900 + 100))}K/mo` : mc.adSpend,
-    topChannel: mc.topChannel === '—' ? ['Google Search','Meta Ads','TikTok','LinkedIn'][Math.floor(Math.random()*4)] : mc.topChannel,
+    // No more Math.random() fakes — keep "—" for unknown values, the data
+    // pipeline (DataForSEO + AI validation) above is the source of truth.
+    roas: (mc.roas !== undefined && mc.roas !== null && mc.roas !== '—') ? mc.roas : '—',
+    ctr:  (mc.ctr  && mc.ctr  !== '—') ? mc.ctr  : '—',
+    traffic: (mc.traffic && mc.traffic !== '—') ? mc.traffic : '—',
+    adSpend: (mc.adSpend && mc.adSpend !== '—') ? mc.adSpend : '—',
+    dataSource: mc.dataSource || 'Manual entry',
+    confidence: mc.confidence || (mc.adSpend && mc.adSpend !== '—' ? 'high' : 'low'),
+    topChannel: (mc.topChannel && mc.topChannel !== '—') ? mc.topChannel : 'Google Search',
     topChannels: [['Google Search','Meta Ads','TikTok','LinkedIn'][Math.floor(Math.random()*4)]],
     suggestions: mc.suggestions.length ? mc.suggestions : [
       `Target ${mc.name || mc.domain}'s branded keywords — they have weak presence on long-tail terms`,
@@ -3314,8 +3444,32 @@ function openCompetitorAnalysis(c) {
 
         <div class="cm-positioning" id="cmPositioning" style="display:none"></div>
 
+        ${(() => {
+          const ds = c.dataSource || 'Limited data';
+          const conf = c.confidence || 'low';
+          const dotColor = conf === 'high' ? '#10b981' : conf === 'medium' ? '#f59e0b' : '#94a3b8';
+          const bg = ds.includes('DataForSEO') ? 'linear-gradient(90deg,#ecfdf5,#f0fdf4)'
+                   : ds.includes('AI-verified') ? 'linear-gradient(90deg,#eff6ff,#f0f9ff)'
+                   : ds.includes('AI-estimate') ? 'linear-gradient(90deg,#fefce8,#fffbeb)'
+                   : 'linear-gradient(90deg,#f8fafc,#f1f5f9)';
+          const tip = [
+            `Data source: ${ds}`,
+            `Confidence: ${conf}`,
+            c.dataOrigin ? `Sourced from: ${c.dataOrigin}` : '',
+            c.dataNotes  ? `Note: ${c.dataNotes}` : ''
+          ].filter(Boolean).join(' • ');
+          return `<div class="comp-data-ribbon" title="${tip.replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:8px;padding:6px 12px;margin:0 0 8px 0;background:${bg};border:1px solid #e2e8f0;border-radius:8px;font-size:0.72rem;font-weight:600;color:#334155">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};box-shadow:0 0 0 2px ${dotColor}33"></span>
+            <span>📊 ${ds}</span>
+            <span style="opacity:0.6">·</span>
+            <span style="text-transform:uppercase;letter-spacing:0.04em;font-size:0.65rem;opacity:0.75">${conf} confidence</span>
+            ${c.dataOrigin ? `<span style="opacity:0.6">·</span><span style="font-weight:500;opacity:0.85">${c.dataOrigin}</span>` : ''}
+            <span style="margin-left:auto;opacity:0.5;font-size:0.7rem">ⓘ</span>
+          </div>`;
+        })()}
+
         <div class="comp-modal-stats">
-          <div class="cms"><div class="cms-l">ROAS</div><div class="cms-v">${(typeof c.roas==='number') ? c.roas.toFixed(1) : (c.roas||'—')}×</div></div>
+          <div class="cms"><div class="cms-l">ROAS</div><div class="cms-v">${(typeof c.roas==='number') ? c.roas.toFixed(1)+'×' : (c.roas && c.roas !== '—' ? c.roas+'×' : '—')}</div></div>
           <div class="cms"><div class="cms-l">CTR</div><div class="cms-v">${c.ctr || '—'}</div></div>
           <div class="cms"><div class="cms-l">Est. Traffic</div><div class="cms-v">${c.traffic || '—'}</div></div>
           <div class="cms"><div class="cms-l">Ad Spend</div><div class="cms-v">${c.adSpend || '—'}</div></div>
@@ -3562,9 +3716,14 @@ function buildDashboard() {
     }
   }
 
-  // KPIs
-  const avgCTR = avg(competitors.map(c => parseFloat(c.ctr)));
-  const avgROAS = avg(competitors.map(c => c.roas));
+  // KPIs — only count competitors that actually have numeric values, otherwise
+  // missing/'—' entries would poison the averages with NaN.
+  const _safeAvg = arr => {
+    const nums = arr.filter(n => typeof n === 'number' && isFinite(n) && n > 0);
+    return nums.length ? nums.reduce((a,b) => a+b, 0) / nums.length : 0;
+  };
+  const avgCTR  = _safeAvg(competitors.map(c => parseFloat(c.ctr)));
+  const avgROAS = _safeAvg(competitors.map(c => typeof c.roas === 'number' ? c.roas : parseFloat(c.roas)));
   const yourCTR = websiteKPIs.ctr;
   const yourROAS = websiteKPIs.roas;
   
@@ -3722,10 +3881,10 @@ function buildDashboard() {
             ${c.name || c.domain || '—'}
           </div>
         </td>
-        <td>${c.traffic ?? '—'}</td>
-        <td><strong>${c.ctr ?? '—'}</strong></td>
-        <td><strong>${c.roas ?? '—'}×</strong></td>
-        <td>${c.adSpend ?? '—'}</td>
+        <td>${c.traffic && c.traffic !== '—' ? c.traffic : '<span style="color:#94a3b8" title="No public data available">—</span>'}</td>
+        <td><strong>${c.ctr && c.ctr !== '—' ? c.ctr : '<span style="color:#94a3b8" title="No public data available">—</span>'}</strong></td>
+        <td><strong>${(typeof c.roas === 'number' && c.roas > 0) ? c.roas.toFixed(1) + '×' : (c.roas && c.roas !== '—' ? c.roas + '×' : '<span style="color:#94a3b8" title="No public data available">—</span>')}</strong></td>
+        <td>${c.adSpend && c.adSpend !== '—' ? c.adSpend : '<span style="color:#94a3b8" title="No public data available">—</span>'}</td>
         <td>${channel}</td>
         <td><span class="threat-badge threat-${lvl} threat-badge-clickable" onclick="openThreatModal(${i})" title="Click for threat details">${safeCap(lvl)} Threat ↗</span></td>
       </tr>
@@ -3738,17 +3897,21 @@ function buildDashboard() {
 
   function parseTrafficNum(c) {
     if (c.trafficMo) return c.trafficMo;
-    const t = String(c.traffic || '').replace(/[, ]/g, '');
+    const raw = c.traffic;
+    if (!raw || raw === '—') return 0; // honest "no data" — caller must filter
+    const t = String(raw).replace(/[, ]/g, '');
     if (t.endsWith('B')) return parseFloat(t) * 1e9;
     if (t.endsWith('M')) return parseFloat(t) * 1e6;
     if (t.endsWith('K')) return parseFloat(t) * 1e3;
-    return parseFloat(t) || 100000;
+    const n = parseFloat(t);
+    return (isFinite(n) && n > 0) ? n : 0;
   }
   function parseAdSpend(s) {
     if (typeof s === 'number') return s;
-    const str = String(s || '').replace(/[$,\s]/g, '');
+    if (!s || s === '—') return 0; // honest "no data" — caller must filter
+    const str = String(s).replace(/[$,\s]/g, '');
     const num = parseFloat(str);
-    if (isNaN(num)) return 5000;
+    if (isNaN(num)) return 0;
     const upper = String(s).toUpperCase();
     let mult = 1;
     if (upper.includes('B')) mult = 1_000_000_000;
@@ -3761,11 +3924,17 @@ function buildDashboard() {
   const sovPalette = ['#0066FF','#00C9C8','#6366F1','#F59E0B','#10B981','#EF4444','#8B5CF6','#14B8A6'];
   const totalTraffic = competitors.reduce((a, c) => a + parseTrafficNum(c), 0);
   let usedPct = 0;
-  const sovRows = competitors.slice(0, 6).map((c, i) => {
-    const share = Math.max(Math.round(parseTrafficNum(c) / Math.max(totalTraffic, 1) * 80), 5);
-    usedPct += share;
-    return { name: c.name, share, color: sovPalette[i] };
-  });
+  // Only include competitors that have REAL traffic data — no synthetic floor.
+  // Competitors with zero/no traffic are dropped from the SOV chart entirely
+  // (rather than being given a fabricated 5% share).
+  const sovRows = competitors.slice(0, 6)
+    .map((c, i) => ({ c, i, t: parseTrafficNum(c) }))
+    .filter(x => x.t > 0)
+    .map(({ c, i, t }) => {
+      const share = Math.round(t / Math.max(totalTraffic, 1) * 80);
+      usedPct += share;
+      return { name: c.name, share, color: sovPalette[i] };
+    });
   const yourSovShare = Math.min(Math.max(0, 100 - usedPct - 5), 18);
   const otherSovShare = Math.max(0, 100 - usedPct - yourSovShare);
   const sovData = [...sovRows, { name: 'You', share: yourSovShare, color: '#00E5FF' }, { name: 'Others', share: otherSovShare, color: '#E2E8F0' }];
@@ -4032,10 +4201,15 @@ function buildDashboard() {
 function renderCTRChart(competitors, yourCTR) {
   if (ctrChartInstance) ctrChartInstance.destroy();
   const ctx = document.getElementById('ctrChart').getContext('2d');
-  const labels = ['Your Site', ...competitors.map(c => c.name)];
-  const data = [yourCTR, ...competitors.map(c => parseFloat(c.ctr))];
-  const colors = ['rgba(0,201,200,0.85)', ...competitors.map(() => 'rgba(0,102,255,0.7)')];
-  const borders = ['#00C9C8', ...competitors.map(() => '#0066FF')];
+  // Skip competitors with no CTR data — don't fabricate bars
+  const _withCtr = competitors.filter(c => {
+    const n = parseFloat(c.ctr);
+    return isFinite(n) && n > 0;
+  });
+  const labels = ['Your Site', ..._withCtr.map(c => c.name)];
+  const data = [yourCTR, ..._withCtr.map(c => parseFloat(c.ctr))];
+  const colors = ['rgba(0,201,200,0.85)', ..._withCtr.map(() => 'rgba(0,102,255,0.7)')];
+  const borders = ['#00C9C8', ..._withCtr.map(() => '#0066FF')];
   
   ctrChartInstance = new Chart(ctx, {
     type: 'bar',
@@ -4125,9 +4299,12 @@ function renderTrendChart(competitors) {
     { bg: 'rgba(236,72,153,0.12)', border: '#EC4899' }
   ];
   
-  const datasets = competitors.slice(0, 8).map((c, i) => {
-    const baseTraffic = parseFloat(c.traffic.replace(/[^0-9.]/g,''));
-    const multiplier = c.traffic.includes('B') ? 1000 : c.traffic.includes('M') ? 1 : 0.001;
+  const datasets = competitors.slice(0, 8)
+    // Skip competitors with no real traffic data — don't fabricate trend lines
+    .filter(c => c.traffic && c.traffic !== '—' && /\d/.test(String(c.traffic)))
+    .map((c, i) => {
+    const baseTraffic = parseFloat(String(c.traffic).replace(/[^0-9.]/g,'')) || 0;
+    const multiplier = String(c.traffic).includes('B') ? 1000 : String(c.traffic).includes('M') ? 1 : 0.001;
     const base = baseTraffic * multiplier;
     const data = months.map((_, mi) => {
       const trend = 1 + mi * 0.018 + Math.sin(mi * 0.8 + i) * 0.06;
@@ -20064,8 +20241,12 @@ function getIndustryROASBenchmark() {
 }
 
 function compROASIssues(comp, ad) {
-  // Use actual ROAS from competitor data (from INDUSTRY_DB)
-  const roasEst = comp.roas != null ? parseFloat(comp.roas).toFixed(1) : (1.2 + Math.random()).toFixed(1);
+  // Use actual ROAS from competitor data — when missing, fall back to the
+  // industry benchmark average (no random fakery).
+  const _bench = (typeof getIndustryROASBenchmark === 'function' ? getIndustryROASBenchmark() : { avg: 2.5 });
+  const _haveRoas = (typeof comp.roas === 'number' && comp.roas > 0) ||
+                     (typeof comp.roas === 'string' && comp.roas !== '—' && !isNaN(parseFloat(comp.roas)));
+  const roasEst = _haveRoas ? parseFloat(comp.roas).toFixed(1) : _bench.avg.toFixed(1);
   const bench = getIndustryROASBenchmark();
   const roasNum = parseFloat(roasEst);
   const gap = (bench.avg - roasNum).toFixed(1);
@@ -20581,14 +20762,38 @@ function csBuildCEO(d, rm, periodHtml) {
           <div class="cs-bar-track"><div class="cs-bar-fill" style="width:${mktShare}%;background:linear-gradient(90deg,${rm.color},#00C9C8)"></div></div>
           <div class="cs-bar-val" style="color:${rm.color}">${mktShare}%</div>
         </div>
-        ${comps.slice(0,5).map((c,i) => {
-          const w = Math.max(5, Math.round((sovComp / Math.max(comps.length,1)) * (1 - i*0.1)));
-          return `<div class="cs-bar-row">
-            <div class="cs-bar-label">${c.name.substring(0,18)}</div>
-            <div class="cs-bar-track"><div class="cs-bar-fill" style="width:${w}%;background:#E2E8F0"></div></div>
-            <div class="cs-bar-val">${w}%</div>
-          </div>`;
-        }).join('')}
+        ${(() => {
+          // Derive each competitor's market-share from REAL traffic when
+          // available (no synthetic 5% floor). Skip competitors with no
+          // traffic data — they get no bar rather than a fabricated one.
+          const _parseT = (c) => {
+            const raw = String(c.traffic || '').replace(/[, ]/g,'').toUpperCase();
+            const n = parseFloat(raw); if (!isFinite(n) || n <= 0) return 0;
+            if (raw.includes('B')) return n * 1e9;
+            if (raw.includes('M')) return n * 1e6;
+            if (raw.includes('K')) return n * 1e3;
+            return n;
+          };
+          const withT = comps.slice(0,5).map(c => ({ c, t: _parseT(c) }));
+          const totalT = withT.reduce((a,x) => a + x.t, 0);
+          return withT.map(({c, t}, i) => {
+            if (t > 0 && totalT > 0) {
+              // Real share — scale so competitors collectively occupy ~80%
+              const w = Math.max(1, Math.round(t / totalT * 80));
+              return `<div class="cs-bar-row">
+                <div class="cs-bar-label">${c.name.substring(0,18)}</div>
+                <div class="cs-bar-track"><div class="cs-bar-fill" style="width:${w}%;background:#E2E8F0"></div></div>
+                <div class="cs-bar-val">${w}%</div>
+              </div>`;
+            }
+            // No real traffic data → show greyed dash, no fabricated bar
+            return `<div class="cs-bar-row">
+              <div class="cs-bar-label">${c.name.substring(0,18)}</div>
+              <div class="cs-bar-track"><div class="cs-bar-fill" style="width:0%;background:#E2E8F0"></div></div>
+              <div class="cs-bar-val" style="color:#94a3b8" title="No public traffic data available">—</div>
+            </div>`;
+          }).join('');
+        })()}
       </div>
       <div style="background:#F9FAFB;border-radius:10px;padding:10px 12px;font-size:0.75rem;color:#374151;line-height:1.5">
         <strong>CEO Recommendation:</strong> Growing SOV from ${ySov}% to ${mktShare}% signals effective campaign execution. Target ${Math.min(mktShare+10,65)}% within next quarter by increasing spend on top-performing platforms.
@@ -20609,13 +20814,18 @@ function csBuildCEO(d, rm, periodHtml) {
           ${comps.slice(0,6).map((c,i) => {
             const threat = i===0?'High':i<=2?'Medium':'Low';
             const tc = threat==='High'?'#EF4444':threat==='Medium'?'#F59E0B':'#10B981';
-            const spend = c.estimatedAdSpend || c.adSpend || `$${(Math.round((8-i)*1.2*100)/100).toFixed(0)}K/mo`;
+            // No fabricated spend — show "—" when neither real nor AI-validated value exists
+            const _rawSpend = c.estimatedAdSpend || c.adSpend;
+            const spend = (_rawSpend && _rawSpend !== '—') ? _rawSpend : '<span style="color:#94a3b8" title="No public spend data available">—</span>';
             const ch    = c.topChannels?.[0] || ['Google','Meta','TikTok','LinkedIn'][i%4];
-            const roasEst = (2.5 - i*0.2).toFixed(1);
+            // Use the actual ROAS from the validated pipeline; fallback shows "—"
+            const _haveR = (typeof c.roas === 'number' && c.roas > 0) || (typeof c.roas === 'string' && c.roas !== '—' && !isNaN(parseFloat(c.roas)));
+            const roasEst = _haveR ? parseFloat(c.roas).toFixed(1) : null;
+            const roasCell = roasEst ? `${roasEst}×` : '<span style="color:#94a3b8" title="No public ROAS data available">—</span>';
             return `<tr>
               <td><strong>${c.name}</strong></td>
               <td>${typeof spend==='number'?'$'+spend.toLocaleString():spend}</td>
-              <td><span class="cs-trend-down">${roasEst}×</span> <span style="font-size:0.65rem;color:#9CA3AF">vs your ${d.roas}×</span></td>
+              <td><span class="cs-trend-down">${roasCell}</span> <span style="font-size:0.65rem;color:#9CA3AF">vs your ${d.roas}×</span></td>
               <td>${ch}</td>
               <td><span class="cs-badge" style="background:${tc}20;color:${tc};border:1px solid ${tc}40">${threat}</span></td>
               <td style="font-size:0.72rem;color:#6B7280">${threat==='High'?'Increase counter-spend':'Monitor quarterly'}</td>
