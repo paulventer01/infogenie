@@ -13563,6 +13563,7 @@ function buildIntelligence() {
         data-wl-loss="${enc(w.lossRate)}"
         data-wl-message="${enc(w.message)}"
         data-wl-weakness="${enc(w.weakness)}"
+        onclick="try{window._wlClick&&window._wlClick(this);}catch(e){console.error('[wl] inline failed',e);}return false;"
         title="Generate an AI counter-message specifically designed to neutralise this competitor's winning argument.">Counter This Message</button>
     </div>
   `;
@@ -24245,7 +24246,12 @@ window._wlClick = function(btn) {
 // .btn-wl-counter button that arrives without an inline onclick (e.g. an
 // older cached render). Routes through the same _wlClick helper.
 document.addEventListener('click', function(ev) {
-  const btn = ev.target.closest && ev.target.closest('.btn-wl-counter');
+  // Resilient target resolution: ev.target can be a non-Element node (e.g. text
+  // node) in some browsers, in which case `.closest` is undefined and the
+  // handler used to silently no-op. Walk up to the nearest Element first.
+  let t = ev.target;
+  if (t && t.nodeType !== 1 && t.parentElement) t = t.parentElement;
+  const btn = (t && t.closest) ? t.closest('.btn-wl-counter') : null;
   if (!btn) return;
   // If the button already has an inline onclick handler, let it fire instead
   // of duplicating the work here. This avoids opening the modal twice.
