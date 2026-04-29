@@ -6633,11 +6633,13 @@ window.openBuildContentModal = function(topic, intent) {
         <div style="font-size:0.7rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Content Type</div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px" id="bcTypeGrid">
           ${types.map(t=>`
-            <button onclick="window._bcType='${t.id}';document.querySelectorAll('.bcTypeBtn').forEach(b=>{b.style.background='rgba(255,255,255,.05)';b.style.borderColor='rgba(255,255,255,.1)'});this.style.background='rgba(0,201,200,.15)';this.style.borderColor='#00C9C8';if(window._bcContent){runBuildContent('${topic.replace(/'/g,"\\'").replace(/"/g,'\\"')}','${intent.replace(/'/g,"\\'").replace(/"/g,'\\"')}')}"
-              class="bcTypeBtn" style="padding:10px 8px;background:${t.id==='article'?'rgba(0,201,200,.15)':'rgba(255,255,255,.05)'};border:1.5px solid ${t.id==='article'?'#00C9C8':'rgba(255,255,255,.1)'};border-radius:10px;color:white;font-size:0.7rem;font-weight:700;cursor:pointer;text-align:center;transition:all .15s">
-              <div style="font-size:1rem;margin-bottom:3px">${t.label.split(' ')[0]}</div>
-              <div>${t.label.split(' ').slice(1).join(' ')}</div>
-              <div style="font-size:0.58rem;color:rgba(255,255,255,.35);margin-top:2px;font-weight:400">${t.desc}</div>
+            <button onclick="window._bcSelectType('${t.id}', this, '${topic.replace(/'/g,"\\'").replace(/"/g,'\\&quot;')}', '${intent.replace(/'/g,"\\'").replace(/"/g,'\\&quot;')}')"
+              onmouseover="if(window._bcType!=='${t.id}'){this.style.background='rgba(0,201,200,.08)';this.style.borderColor='rgba(0,201,200,.4)'}"
+              onmouseout="if(window._bcType!=='${t.id}'){this.style.background='rgba(100,116,139,.1)';this.style.borderColor='rgba(100,116,139,.3)'}"
+              class="bcTypeBtn" data-bctype="${t.id}" style="padding:12px 8px;background:${t.id==='article'?'rgba(0,201,200,.15)':'rgba(100,116,139,.1)'};border:1.5px solid ${t.id==='article'?'#00C9C8':'rgba(100,116,139,.3)'};border-radius:10px;color:white;font-size:0.7rem;font-weight:700;cursor:pointer;text-align:center;transition:all .15s">
+              <div style="font-size:1.4rem;margin-bottom:4px">${t.label.split(' ')[0]}</div>
+              <div style="color:white;font-weight:700">${t.label.split(' ').slice(1).join(' ')}</div>
+              <div style="font-size:0.58rem;color:rgba(255,255,255,.55);margin-top:3px;font-weight:400;line-height:1.3">${t.desc}</div>
             </button>`).join('')}
         </div>
       </div>
@@ -6660,6 +6662,26 @@ window.openBuildContentModal = function(topic, intent) {
     </div>`;
   window._bcType = 'article';
   window._bcContent = '';
+};
+
+// Handles selecting one of the 4 Content Type tiles. Visually marks the
+// chosen tile as selected (mint bg + teal border), resets the others to the
+// neutral slate look, and — if content was already generated — re-generates
+// for the new type so the user sees the change immediately.
+window._bcSelectType = function(typeId, btnEl, topic, intent) {
+  window._bcType = typeId;
+  document.querySelectorAll('.bcTypeBtn').forEach(b => {
+    if (b === btnEl) {
+      b.style.background = 'rgba(0,201,200,.15)';
+      b.style.borderColor = '#00C9C8';
+    } else {
+      b.style.background = 'rgba(100,116,139,.1)';
+      b.style.borderColor = 'rgba(100,116,139,.3)';
+    }
+  });
+  if (window._bcContent && typeof runBuildContent === 'function') {
+    try { runBuildContent(topic, intent); } catch(_) {}
+  }
 };
 
 window.runBuildContent = async function(topic, intent) {
