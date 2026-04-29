@@ -8206,17 +8206,48 @@ function buildSocialCalendar() {
     ? `<div style="text-align:center;padding:32px 16px;color:#9CA3AF"><div style="font-size:2rem;margin-bottom:8px">📅</div><div style="font-size:0.82rem">No posts scheduled yet — click any day or the Create Post button</div></div>`
     : upcomingPosts.map(p => {
         const pl = SOCIAL_PLATFORMS.find(sp=>sp.name===p.platform)||{color:'#6B7280',icon:'📣',bg:'#F9FAFB'};
+        // Friendly "goes live" timestamp — uses local-time formatting + relative
+        // hint (e.g. "in 2 days") so the user immediately sees when the post will fire.
+        let goLiveLabel = `${p.scheduledDate} ${p.scheduledTime||''}`.trim();
+        let relHint = '';
+        let jumpY = '', jumpM = '';
+        try {
+          const dt = new Date(p.scheduledDate + 'T' + (p.scheduledTime||'09:00'));
+          if (!isNaN(dt.getTime())) {
+            jumpY = dt.getFullYear();
+            jumpM = dt.getMonth();
+            const diffMs = dt - new Date();
+            const diffMin = Math.round(diffMs/60000);
+            if (diffMin < 0) relHint = 'overdue';
+            else if (diffMin < 60) relHint = `in ${diffMin}m`;
+            else if (diffMin < 60*24) relHint = `in ${Math.round(diffMin/60)}h`;
+            else relHint = `in ${Math.round(diffMin/(60*24))}d`;
+            const opts = {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'};
+            goLiveLabel = dt.toLocaleString(undefined, opts);
+          }
+        } catch(_) {}
+        const isPublished = p.status === 'published';
+        const isDraft = p.status === 'draft';
+        // Clickable "Goes live" pill jumps the calendar to the post's month so
+        // posts in future months become visible (fixes "post doesn't show in calendar").
+        const jumpAttr = (jumpY !== '' && jumpM !== '')
+          ? `onclick="window._socialViewYear=${jumpY};window._socialViewMonth=${jumpM};buildSocialCalendar();setTimeout(function(){var c=document.querySelector('#socialWrap');if(c)c.scrollIntoView({behavior:'smooth',block:'start'});},50)" title="Show this date on the calendar"`
+          : '';
         return `<div style="background:${pl.bg};border:1px solid ${pl.color}33;border-radius:10px;padding:12px 14px;margin-bottom:8px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px;flex-wrap:wrap">
             <span style="font-size:0.65rem;font-weight:700;color:${pl.color};background:white;border-radius:5px;padding:2px 7px">${pl.icon} ${p.platform}</span>
-            <span style="font-size:0.65rem;color:#9CA3AF">${p.scheduledDate} ${p.scheduledTime}</span>
+            <button ${jumpAttr} style="font-size:0.65rem;font-weight:700;color:#0A1628;background:white;border:1px solid ${pl.color}55;border-radius:5px;padding:3px 8px;cursor:${jumpAttr?'pointer':'default'};display:inline-flex;align-items:center;gap:4px">🕐 ${goLiveLabel}${relHint?` <span style="color:${relHint==='overdue'?'#DC2626':'#6B7280'};font-weight:600">· ${relHint}</span>`:''}</button>
           </div>
-          <div style="font-size:0.8rem;color:#374151;line-height:1.4;margin-bottom:6px">${p.caption.substring(0,100)}${p.caption.length>100?'…':''}</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${p.status==='scheduled'?'#EFF6FF':p.status==='published'?'#F0FDF4':'#F9FAFB'};color:${p.status==='scheduled'?'#0066FF':p.status==='published'?'#059669':'#6B7280'};text-transform:uppercase">${p.status||'scheduled'}</span>
+          <div style="font-size:0.8rem;color:#374151;line-height:1.4;margin-bottom:8px">${p.caption.substring(0,100)}${p.caption.length>100?'…':''}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${p.status==='scheduled'?'#EFF6FF':isPublished?'#F0FDF4':'#F9FAFB'};color:${p.status==='scheduled'?'#0066FF':isPublished?'#059669':'#6B7280'};text-transform:uppercase">${p.status||'scheduled'}</span>
             ${p.funnelStage ? (()=>{ const fs=FUNNEL_STAGES.find(s=>s.id===p.funnelStage); return fs?`<span style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:${fs.bg};color:${fs.color}">${fs.icon} ${fs.label}</span>`:''; })() : ''}
             ${p.archetypeTitle ? `<span title="2026 Post Archetype: ${p.archetypeTitle}" style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;background:#F5F3FF;color:#7C3AED;border:1px solid #DDD6FE">✨ ${p.archetypeTitle}</span>` : ''}
-            <button onclick="window._socialPosts=window._socialPosts.filter(x=>x.id!=='${p.id}');buildSocialCalendar()" style="font-size:0.62rem;color:#DC2626;background:white;border:1px solid #FCA5A5;border-radius:5px;padding:2px 7px;cursor:pointer">Remove</button>
+            <span style="flex:1"></span>
+            ${isPublished
+              ? `<span style="font-size:0.62rem;color:#059669;font-weight:700;padding:2px 7px">✅ Live</span>`
+              : `<button onclick="socialPublishNow('${p.id}')" title="Publish this post immediately to ${pl.name}" style="font-size:0.62rem;font-weight:800;color:white;background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:5px;padding:4px 9px;cursor:pointer;box-shadow:0 1px 2px rgba(16,185,129,0.3)">⚡ Activate Post Now</button>`}
+            <button onclick="window._socialPosts=window._socialPosts.filter(x=>x.id!=='${p.id}');buildSocialCalendar()" style="font-size:0.62rem;color:#DC2626;background:white;border:1px solid #FCA5A5;border-radius:5px;padding:3px 8px;cursor:pointer">Remove</button>
           </div>
         </div>`;
       }).join('');
