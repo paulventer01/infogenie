@@ -2,6 +2,65 @@
 // InfoGenie — Main Application Controller
 // ============================================================
 
+// ── EARLY-LOAD: Counter This Message click handler ────────────────────────────
+// Defined at the very top of app.js so it is GUARANTEED to be defined even if
+// any later runtime error halts the rest of the script. The actual modal
+// renderer (openWLCounterModal) is defined further down — if it isn't loaded
+// yet when the user clicks, we show a friendly toast instead of silently
+// doing nothing. A document-level delegated listener is attached as a final
+// safety net for any cached/old button HTML missing the inline onclick.
+(function earlyWLCounterWireup(){
+  function wlClick(btn) {
+    try {
+      if (!btn || !btn.getAttribute) return;
+      const dec = s => { try { return decodeURIComponent(s || ''); } catch(_) { return s || ''; } };
+      const data = {
+        comp:     dec(btn.getAttribute('data-wl-comp')),
+        channel:  dec(btn.getAttribute('data-wl-channel')),
+        lossRate: dec(btn.getAttribute('data-wl-loss')),
+        message:  dec(btn.getAttribute('data-wl-message')),
+        weakness: dec(btn.getAttribute('data-wl-weakness'))
+      };
+      console.log('[wlClick] Counter This Message clicked:', data.comp, data);
+      if (!data.comp) {
+        if (typeof window.showToast === 'function') window.showToast('⚠️ Counter data missing — please re-run analysis');
+        else alert('Counter data missing — please re-run analysis');
+        return;
+      }
+      if (typeof window.openWLCounterModal === 'function') {
+        window.openWLCounterModal(data);
+      } else {
+        console.error('[wlClick] openWLCounterModal not yet defined — script may still be loading');
+        if (typeof window.showToast === 'function') window.showToast('⚠️ Counter modal still loading — try again in a moment');
+        else alert('Counter modal still loading — try again in a moment');
+      }
+    } catch(err) {
+      console.error('[wlClick] failed:', err);
+      if (typeof window.showToast === 'function') window.showToast('⚠️ Counter modal error: ' + err.message);
+      else alert('Counter modal error: ' + err.message);
+    }
+  }
+  window._wlClick = wlClick;
+
+  // Document-level delegated handler in CAPTURE phase — fires for ANY click
+  // on a .btn-wl-counter button before it reaches the button's own inline
+  // onclick. We call stopImmediatePropagation so the inline onclick does NOT
+  // also fire and double-open the modal. This way the inline is just a
+  // belt-and-braces fallback for the (impossible-in-practice) case where
+  // this top-of-file IIFE didn't run.
+  document.addEventListener('click', function(ev){
+    let t = ev.target;
+    if (t && t.nodeType !== 1 && t.parentElement) t = t.parentElement;
+    const btn = (t && t.closest) ? t.closest('.btn-wl-counter') : null;
+    if (!btn) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+    wlClick(btn);
+  }, true);
+  console.log('[wl-counter] early click wireup installed');
+})();
+
 // ── Account system + per-user localStorage namespacing ────────────────────────
 // Wraps localStorage so every key is automatically scoped to the active user
 // (e.g. `_u:alice@example.com::ig-domain`). System keys (auth state + theme)
@@ -24579,66 +24638,10 @@ try { window.queueCounterCampaign = queueCounterCampaign; } catch(e) {}
 try { window.closeAttackModal = closeAttackModal; } catch(e) {}
 try { window.openAttackModal = openAttackModal; } catch(e) {}
 
-// Self-contained click helper: reads competitor data directly from the button's
-// data-* attributes and renders the modal. Does not depend on any in-memory
-// cache (window._wlData) or template-string interpolation, so it cannot be
-// broken by re-renders, cached HTML, quoting issues, or other edge cases.
-window._wlClick = function(btn) {
-  try {
-    if (!btn || !btn.getAttribute) return;
-    const dec = s => { try { return decodeURIComponent(s || ''); } catch(_) { return s || ''; } };
-    const data = {
-      comp:     dec(btn.getAttribute('data-wl-comp')),
-      channel:  dec(btn.getAttribute('data-wl-channel')),
-      lossRate: dec(btn.getAttribute('data-wl-loss')),
-      message:  dec(btn.getAttribute('data-wl-message')),
-      weakness: dec(btn.getAttribute('data-wl-weakness'))
-    };
-    console.log('[wlClick] Counter This Message clicked:', data.comp);
-    if (!data.comp) {
-      if (typeof showToast === 'function') showToast('⚠️ Counter data missing — please re-run analysis');
-      return;
-    }
-    if (typeof window.openWLCounterModal === 'function') {
-      window.openWLCounterModal(data);
-    } else {
-      console.error('[wlClick] openWLCounterModal not defined on window');
-      if (typeof showToast === 'function') showToast('⚠️ Counter modal not loaded — please refresh the page');
-    }
-  } catch(err) {
-    console.error('[wlClick] failed:', err);
-    if (typeof showToast === 'function') showToast('⚠️ Counter modal error: ' + err.message);
-  }
-};
-
-// Document-level delegated handler as a final safety net for any
-// .btn-wl-counter button that arrives without an inline onclick (e.g. an
-// older cached render). Routes through the same _wlClick helper.
-document.addEventListener('click', function(ev) {
-  // Resilient target resolution: ev.target can be a non-Element node (e.g. text
-  // node) in some browsers, in which case `.closest` is undefined and the
-  // handler used to silently no-op. Walk up to the nearest Element first.
-  let t = ev.target;
-  if (t && t.nodeType !== 1 && t.parentElement) t = t.parentElement;
-  const btn = (t && t.closest) ? t.closest('.btn-wl-counter') : null;
-  if (!btn) return;
-  // Skip if a direct per-button listener has already been bound by
-  // buildIntelligence() (see ~13860) — that path handles the click and
-  // calls preventDefault + stopPropagation on its own.
-  if (btn._wlBound) return;
-  // If the button still carries an inline onclick handler (no direct binding
-  // yet), let that fire instead of duplicating the work here.
-  if (btn.hasAttribute('onclick')) return;
-  ev.preventDefault();
-  try {
-    if (typeof window._wlClick === 'function') {
-      window._wlClick(btn);
-    }
-  } catch(err) {
-    console.error('Counter modal failed:', err);
-    if (typeof showToast === 'function') showToast('⚠️ Counter modal error: ' + err.message);
-  }
-}, true);
+// NOTE: window._wlClick and the document-level click handler are now defined
+// at the very TOP of app.js (see the earlyWLCounterWireup IIFE) so they are
+// guaranteed to exist even if a runtime error halts the rest of script
+// execution. Don't redefine them here.
 
 // ════════════════════════════════════════════════════════════════════════════
 // INTERNAL LINK SUGGESTER — AI-driven link recommendations
