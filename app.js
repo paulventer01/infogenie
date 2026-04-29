@@ -11117,8 +11117,13 @@ function buildRedditIntel() {
     <!-- Tab: Monitor -->
     <div id="rdtpanel-monitor">
       <div id="rdt-feed" style="display:flex;flex-direction:column;gap:12px">
-        <div style="text-align:center;padding:48px 24px;color:rgba(255,255,255,.3)">
-          <div style="font-size:2.5rem;margin-bottom:10px">🔴</div>
+        <div style="text-align:center;padding:48px 24px;color:rgba(255,255,255,.5)">
+          <!-- Official Reddit Snoo logo (orange circle + white alien) -->
+          <div style="margin:0 auto 14px;width:78px;height:78px;background:#FF4500;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 28px rgba(255,69,0,.4)">
+            <svg width="50" height="50" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" aria-label="Reddit">
+              <path d="M14.238 15.348c.085.084.085.221 0 .306-.465.462-1.194.687-2.231.687l-.008-.002-.008.002c-1.036 0-1.766-.225-2.231-.688-.085-.084-.085-.221 0-.305.084-.084.222-.084.307 0 .379.377 1.008.561 1.924.561l.008.002.008-.002c.915 0 1.544-.184 1.924-.562.085-.084.223-.084.307.001zm-3.44-2.418c0-.507-.414-.919-.922-.919-.509 0-.923.412-.923.919 0 .506.414.918.923.918.508.001.922-.411.922-.918zm13.202-.93c0 6.627-5.373 12-12 12s-12-5.373-12-12 5.373-12 12-12 12 5.373 12 12zm-5-.288c0-.732-.594-1.327-1.328-1.327-.358 0-.682.142-.921.372-.893-.65-2.121-1.073-3.485-1.123l.594-2.799 1.945.413c.023.589.508 1.064 1.103 1.064.61 0 1.105-.495 1.105-1.105s-.495-1.104-1.105-1.104c-.435 0-.812.252-.992.618l-2.169-.461c-.064-.014-.131-.001-.187.034-.055.038-.092.094-.106.16l-.665 3.13c-1.385.041-2.636.464-3.538 1.119-.238-.227-.561-.367-.916-.367-.733 0-1.328.595-1.328 1.327 0 .539.324 1.001.785 1.211-.022.135-.034.273-.034.412 0 2.084 2.421 3.772 5.405 3.772s5.404-1.689 5.404-3.772c0-.139-.012-.276-.033-.411.46-.21.785-.671.785-1.211zm-4.594.012c-.508 0-.922.412-.922.918 0 .506.414.918.922.918s.922-.412.922-.918c0-.506-.414-.918-.922-.918z"/>
+            </svg>
+          </div>
           <div style="font-family:Sora,sans-serif;font-size:0.9rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:6px">Ready to scan</div>
           <div style="font-size:0.78rem;margin-bottom:18px">Find brand mentions, competitor threads &amp; rising discussions</div>
           <button onclick="scanRedditMonitor()" style="padding:11px 26px;background:linear-gradient(135deg,#FF4500,#FF6B35);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 14px rgba(255,69,0,.35)">🔍 Scan Now</button>
