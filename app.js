@@ -28551,7 +28551,7 @@ function buildContentScorer() {
                 <button type="button" class="cs-multi-link" onclick="_csClearCountries()">Clear</button>
               </div>
               <div class="cs-multi-list" id="csCountryListEl">Loading…</div>
-              <div class="cs-multi-foot">Max ${CS_MAX_COUNTRIES} per run · the scorer compares your page across each country in parallel.</div>
+              <div class="cs-multi-foot">Pick any number — the scorer runs the top ${CS_MAX_COUNTRIES} (by market priority) per submission.</div>
             </div>
           </div>
         </div>
@@ -28613,32 +28613,37 @@ function _csFilterCountries() {
   _csRenderCountryList(v);
 }
 
+// Priority order used when more than CS_MAX_COUNTRIES are selected — the run-time
+// trim picks markets in this order; everything else is processed afterwards.
+const CS_COUNTRY_PRIORITY = ['US','GB','CA','AU','DE','FR','IN','JP','BR','MX','ES','IT','NL','IE','SG','AE','ZA','SA','TR','PL','SE','NO','DK','FI','CH','AT','BE','PT','GR','CZ','RO','HU','UA','RU','HK','TW','MY','TH','ID','PH','VN','PK','BD','EG','NG','KE','MA','AR','CL','CO','PE','NZ'];
+
 function _csToggleCountry(code, checked) {
   const sel = new Set(window._csSelectedCountries);
-  if (checked) {
-    if (sel.size >= CS_MAX_COUNTRIES) {
-      // Re-render to flip the checkbox back off.
-      _csRenderCountryList(document.getElementById('csCountrySearch')?.value || '');
-      _flashHint(`Maximum ${CS_MAX_COUNTRIES} countries per run.`);
-      return;
-    }
-    sel.add(code);
-  } else {
-    sel.delete(code);
-  }
+  if (checked) sel.add(code); else sel.delete(code);
   window._csSelectedCountries = Array.from(sel);
   _csUpdateCountryLabel();
   _csRenderCountryList(document.getElementById('csCountrySearch')?.value || '');
 }
 
 function _csSelectAllCountries() {
-  // "Select all" caps at the per-run limit and picks a representative spread of major markets.
-  const priority = ['US','GB','CA','AU','DE','FR','IN','JP','BR','MX','ES','IT','NL','IE','SG','AE','ZA'];
-  const ordered = priority.filter(c => window._csCountryList.some(x => x.code === c));
-  window._csSelectedCountries = ordered.slice(0, CS_MAX_COUNTRIES);
+  // Really selects every country. Run-time cap is enforced at submit (top CS_MAX_COUNTRIES by priority).
+  if (!window._csCountryList.length) { _flashHint('Country list still loading — try again in a moment.'); return; }
+  window._csSelectedCountries = window._csCountryList.map(c => c.code);
   _csUpdateCountryLabel();
   _csRenderCountryList(document.getElementById('csCountrySearch')?.value || '');
-  _flashHint(`Selected the top ${window._csSelectedCountries.length} markets (capped at ${CS_MAX_COUNTRIES} per run to keep scoring fast).`);
+  const n = window._csSelectedCountries.length;
+  _flashHint(`Selected all ${n} countries · only the top ${CS_MAX_COUNTRIES} (by market priority) will actually be scored per run.`);
+}
+
+// Picks the top CS_MAX_COUNTRIES from a selection using CS_COUNTRY_PRIORITY ordering.
+function _csTrimToCap(codes) {
+  if (codes.length <= CS_MAX_COUNTRIES) return { kept: codes.slice(), dropped: [] };
+  const sorted = codes.slice().sort((a, b) => {
+    const ia = CS_COUNTRY_PRIORITY.indexOf(a); const ib = CS_COUNTRY_PRIORITY.indexOf(b);
+    const ra = ia === -1 ? 999 : ia; const rb = ib === -1 ? 999 : ib;
+    return ra - rb;
+  });
+  return { kept: sorted.slice(0, CS_MAX_COUNTRIES), dropped: sorted.slice(CS_MAX_COUNTRIES) };
 }
 
 function _csClearCountries() {
@@ -28657,9 +28662,12 @@ function _csUpdateCountryLabel() {
     const found = window._csCountryList.find(c => c.code === sel[0]);
     lbl.textContent = found ? found.name : sel[0];
     hint.textContent = '(1 selected — click to add more)';
-  } else {
+  } else if (sel.length <= CS_MAX_COUNTRIES) {
     lbl.textContent = `${sel[0]} + ${sel.length - 1} more`;
     hint.textContent = `(${sel.length} selected — runs in parallel)`;
+  } else {
+    lbl.textContent = `${sel.length} countries selected`;
+    hint.textContent = `(${sel.length} selected — only top ${CS_MAX_COUNTRIES} will be scored)`;
   }
 }
 
@@ -28736,13 +28744,25 @@ async function runContentScorer() {
   const draft = (document.getElementById('csDraft')?.value || '').trim();
   const out   = document.getElementById('csResult');
   const btn   = document.getElementById('csRunBtn');
-  const countries = (window._csSelectedCountries || []).slice();
-  if (!kw)             { out.innerHTML = `<div class="cs-warn">Enter a target keyword first.</div>`; return; }
-  if (!countries.length) { out.innerHTML = `<div class="cs-warn">Pick at least one country.</div>`; return; }
-  if (!url && !draft)  { out.innerHTML = `<div class="cs-warn">Enter your page URL or paste a draft.</div>`; return; }
+  const allSelected = (window._csSelectedCountries || []).slice();
+  if (!kw)                 { out.innerHTML = `<div class="cs-warn">Enter a target keyword first.</div>`; return; }
+  if (!allSelected.length) { out.innerHTML = `<div class="cs-warn">Pick at least one country.</div>`; return; }
+  if (!url && !draft)      { out.innerHTML = `<div class="cs-warn">Enter your page URL or paste a draft.</div>`; return; }
+  // Trim oversize selections to the top CS_MAX_COUNTRIES by market priority.
+  const { kept: countries, dropped } = _csTrimToCap(allSelected);
+  let trimNotice = '';
+  if (dropped.length) {
+    const keptStr    = countries.map(_escapeHtml).join(', ');
+    const droppedStr = dropped.map(_escapeHtml).join(', ');
+    trimNotice = `<div class="cs-trim-notice">
+      <strong>Trimmed for this run:</strong> you selected ${allSelected.length} countries; the scorer caps at ${CS_MAX_COUNTRIES} per run to stay fast and stay within data-provider limits.
+      <div style="margin-top:6px"><strong>Scoring:</strong> ${keptStr}</div>
+      <div style="margin-top:4px"><strong>Skipped:</strong> ${droppedStr} <span style="opacity:.65">— re-submit with these selected to score them.</span></div>
+    </div>`;
+  }
   if (btn) { btn.disabled = true; btn.textContent = 'Scoring…'; }
   const noun = countries.length === 1 ? 'country' : `${countries.length} countries`;
-  out.innerHTML = `
+  out.innerHTML = trimNotice + `
     <div class="cs-loading">
       <div class="cs-spinner"></div>
       <div>
@@ -28760,12 +28780,12 @@ async function runContentScorer() {
     });
     const j = await r.json();
     if (!r.ok || !j.ok) {
-      out.innerHTML = `<div class="cs-warn">Scoring failed: ${_escapeHtml(j?.error || 'unknown error')}</div>`;
+      out.innerHTML = trimNotice + `<div class="cs-warn">Scoring failed: ${_escapeHtml(j?.error || 'unknown error')}</div>`;
       return;
     }
-    out.innerHTML = _contentScorerHtml(j);
+    out.innerHTML = trimNotice + _contentScorerHtml(j);
   } catch (e) {
-    out.innerHTML = `<div class="cs-warn">Network error: ${_escapeHtml(e.message)}</div>`;
+    out.innerHTML = trimNotice + `<div class="cs-warn">Network error: ${_escapeHtml(e.message)}</div>`;
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Score my content'; }
   }

@@ -7664,8 +7664,9 @@ async function _runScoreForCountry({ keyword, target, country, countryCode }) {
   };
 }
 
-// Cap on simultaneous countries — guards against accidental 50-country runs.
-const CONTENT_SCORER_MAX_COUNTRIES = 6;
+// Hard cap on simultaneous countries per request — frontend trims to 6 by priority,
+// but we accept up to 8 here as a safety margin in case a custom client submits more.
+const CONTENT_SCORER_MAX_COUNTRIES = 8;
 
 app.post('/api/content-scorer/analyze', async (req, res) => {
   try {

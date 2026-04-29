@@ -7494,6 +7494,8 @@ select option { background: #FFFFFF !important; color: #0F4C4A !important; }
 .cs-go:disabled { opacity:.6; cursor:wait; }
 .cs-warn { background:rgba(239,68,68,.1); color:#FCA5A5; border:1px solid rgba(239,68,68,.3); padding:14px 18px; border-radius:10px; font-weight:600; }
 [data-theme="light"] .cs-warn { background:#FEF2F2; color:#B91C1C; border-color:#FECACA; }
+.cs-trim-notice { background:rgba(245,158,11,.1); color:#FCD34D; border:1px solid rgba(245,158,11,.3); padding:12px 16px; border-radius:10px; font-size:.92rem; line-height:1.5; margin-bottom:14px; }
+[data-theme="light"] .cs-trim-notice { background:#FFFBEB; color:#92400E; border-color:#FDE68A; }
 .cs-loading { display:flex; gap:18px; align-items:center; padding:24px; background:rgba(124,58,237,.08); border:1px solid rgba(124,58,237,.25); border-radius:12px; }
 .cs-spinner { width:36px; height:36px; border:3px solid rgba(124,58,237,.25); border-top-color:#7C3AED; border-radius:50%; animation:cs-spin 0.85s linear infinite; flex-shrink:0; }
 @keyframes cs-spin { to { transform:rotate(360deg); } }
