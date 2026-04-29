@@ -4554,7 +4554,7 @@ p, span, label, td, li {
   font-size: 0.8rem !important;
 }
 .nav-group-btn .ngb-chevron {
-  opacity: .35 !important;
+  opacity: .65 !important;
   flex-shrink: 0 !important;
   transition: transform .22s cubic-bezier(.4,0,.2,1), opacity .15s !important;
 }
@@ -4618,6 +4618,24 @@ p, span, label, td, li {
 .nav-group-wrap:focus-within .nav-dropdown.nav-dropdown-right {
   transform: translateX(0) translateY(0) !important;
 }
+
+/* Suppress state — applied for ~600ms after the user picks a link, so the
+   dropdown reliably closes (overrides hover + focus-within). The wrap loses
+   the class on a short timeout, restoring normal hover behaviour. */
+.nav-group-wrap.nav-dropdown-suppress .nav-dropdown,
+.nav-group-wrap.nav-dropdown-suppress:hover .nav-dropdown,
+.nav-group-wrap.nav-dropdown-suppress:focus-within .nav-dropdown {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateX(-50%) translateY(-10px) !important;
+}
+.nav-group-wrap.nav-dropdown-suppress .nav-dropdown.nav-dropdown-right,
+.nav-group-wrap.nav-dropdown-suppress:hover .nav-dropdown.nav-dropdown-right,
+.nav-group-wrap.nav-dropdown-suppress:focus-within .nav-dropdown.nav-dropdown-right {
+  transform: translateX(0) translateY(-10px) !important;
+}
+/* Chevron rotates 180° while the dropdown is actually open */
+.nav-group-wrap.nav-dropdown-suppress .ngb-chevron { transform: none !important; }
 
 /* ── Dropdown section header ── */
 .nav-drop-header {

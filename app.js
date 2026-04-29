@@ -3528,12 +3528,12 @@ function openCompetitorAnalysis(c) {
             c.dataOrigin ? `Sourced from: ${c.dataOrigin}` : '',
             c.dataNotes  ? `Note: ${c.dataNotes}` : ''
           ].filter(Boolean).join(' • ');
-          return `<div class="comp-data-ribbon" title="${tip.replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:8px;padding:6px 12px;margin:0 0 8px 0;background:${bg};border:1px solid #e2e8f0;border-radius:8px;font-size:0.72rem;font-weight:600;color:#334155">
+          return `<div class="comp-data-ribbon" title="${_esc(tip)}" style="display:flex;align-items:center;gap:8px;padding:6px 12px;margin:0 0 8px 0;background:${bg};border:1px solid #e2e8f0;border-radius:8px;font-size:0.72rem;font-weight:600;color:#334155">
             <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};box-shadow:0 0 0 2px ${dotColor}33"></span>
-            <span>📊 ${ds}</span>
+            <span>📊 ${_esc(ds)}</span>
             <span style="opacity:0.6">·</span>
-            <span style="text-transform:uppercase;letter-spacing:0.04em;font-size:0.65rem;opacity:0.75">${conf} confidence</span>
-            ${c.dataOrigin ? `<span style="opacity:0.6">·</span><span style="font-weight:500;opacity:0.85">${c.dataOrigin}</span>` : ''}
+            <span style="text-transform:uppercase;letter-spacing:0.04em;font-size:0.65rem;opacity:0.75">${_esc(conf)} confidence</span>
+            ${c.dataOrigin ? `<span style="opacity:0.6">·</span><span style="font-weight:500;opacity:0.85">${_esc(c.dataOrigin)}</span>` : ''}
             <span style="margin-left:auto;opacity:0.5;font-size:0.7rem">ⓘ</span>
           </div>`;
         })()}
@@ -28182,6 +28182,14 @@ async function exportLookalikeCSV(platform) {
     const a = e.target.closest && e.target.closest('a.nav-link[data-view]');
     if (a) {
       const v = a.getAttribute('data-view');
+      // Force-close the parent nav-dropdown after the click so it doesn't stay
+      // pinned open by :focus-within / mouse-still-over-panel and overlay the page.
+      const wrap = a.closest('.nav-group-wrap');
+      if (wrap) {
+        try { if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur(); } catch(_) {}
+        wrap.classList.add('nav-dropdown-suppress');
+        setTimeout(() => wrap.classList.remove('nav-dropdown-suppress'), 600);
+      }
       setTimeout(() => {
         if (v === 'goals')          { try { buildGoals(); }          catch(_){} }
         if (v === 'blended-perf')   { try { buildBlendedPerf(); }    catch(_){} }

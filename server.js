@@ -2139,8 +2139,8 @@ async function _imageViaDataForSEO(query) {
   try {
     const raw = await callDataForSEO(
       '/v3/serp/google/images/live/advanced',
-      [{ language_code: 'en', location_code: 2840, keyword: query, depth: 20 }],
-      9000
+      [{ language_code: 'en', location_code: 2840, keyword: query, depth: 10 }],
+      5000
     );
     const items = raw?.tasks?.[0]?.result?.[0]?.items;
     if (!Array.isArray(items)) return null;
@@ -2200,10 +2200,13 @@ app.post('/api/template-images', async (req, res) => {
     if (!Array.isArray(items) || !items.length) return res.json({ images: [] });
     const ctx = (industry || sector || 'business').toString().trim();
 
-    // Cap items processed in one request to keep latency + quota in check
-    const work = items.slice(0, 32);
+    // Cap items processed in one request to keep latency + quota in check.
+    // 26 templates is the typical full set; we fetch real images for the first 18
+    // and let the rest stay as branded SVG placeholders to keep page-load fast.
+    const work = items.slice(0, 18);
 
-    // Process with limited parallelism (4 at a time)
+    // Process with parallelism 8 — DataForSEO image SERP calls are ~2-4s each;
+    // 8-way parallel fetches the typical 18-item batch in ~6-9s instead of ~25s.
     const out = new Array(work.length).fill(null);
     let cursor = 0;
     async function worker() {
@@ -2223,7 +2226,7 @@ app.post('/api/template-images', async (req, res) => {
         }
       }
     }
-    await Promise.all([worker(), worker(), worker(), worker()]);
+    await Promise.all([worker(), worker(), worker(), worker(), worker(), worker(), worker(), worker()]);
 
     const sourceLabel = (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD)
       ? 'dataforseo+serpapi-fallback'
@@ -6144,7 +6147,7 @@ Return JSON in EXACTLY this shape:
       "roas":     3.2 | null,                              // number 1.0–8.0
       "ctr":      "2.8%" | null,                           // typical paid-ad CTR
       "confidence": "high" | "medium" | "low",
-      "source":   "Brief 1-line: 'Similarweb Q4 2024' or 'fintech industry benchmark' or 'earnings report'",
+      "source":   "Brief 1-line citation — use a SOURCE CATEGORY only, NEVER a specific date or quarter. Examples: 'Similarweb estimate', 'Public earnings report', 'Industry benchmark', 'SemRush data', 'Trade-press estimate'. Do NOT write 'Q4 2023' or any year/quarter — the user sees the citation as a freshness signal and stale dates damage trust.",
       "notes":    "Any caveat (max 80 chars), or empty"
     }
   ]
@@ -6179,7 +6182,24 @@ CRITICAL RULES:
       max_tokens: 2000
     }, { fallbackModel: 'gpt-3.5-turbo', retries: 2 });
     const parsed = JSON.parse(completion.choices[0].message.content);
-    res.json({ ok: true, results: parsed.results || [], count: (parsed.results || []).length });
+    // Belt-and-braces: strip any year/quarter token the model may still slip into
+    // the source citation (e.g. "Similarweb Q4 2023") so users never see stale dates.
+    // Guard against the model returning a non-array (e.g. object, null) for results.
+    const rawResults = Array.isArray(parsed && parsed.results) ? parsed.results : [];
+    const cleaned = rawResults.map(r => {
+      if (r && typeof r.source === 'string') {
+        r.source = r.source
+          .replace(/\b(?:Q[1-4]\s*)?(?:19|20)\d{2}\b/gi, '')
+          .replace(/\bQ[1-4]\b/gi, '')
+          .replace(/\s{2,}/g, ' ')
+          .replace(/\s+([,.;:])/g, '$1')
+          .replace(/[(),\s-]+$/, '')
+          .trim();
+        if (!r.source) r.source = 'AI estimate';
+      }
+      return r;
+    });
+    res.json({ ok: true, results: cleaned, count: cleaned.length });
   } catch (err) {
     console.error('/api/ai-validate-metrics error (after retry+fallback):', err.message);
     res.status(500).json({ error: err.message, results: [] });
