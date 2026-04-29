@@ -460,6 +460,119 @@ Return only this JSON:
   }
 });
 
+// ── AI Counter-Message Generator (Win/Loss Intelligence) ──────────────────────
+// Takes a competitor's winning message + exploitable weakness and asks an LLM
+// to generate 3 counter-message variants tailored to neutralise the competitor.
+// Tries OpenAI first, falls back to Anthropic, then to a deterministic template.
+app.post('/api/wl/counter-message', async (req, res) => {
+  const {
+    comp     = 'Competitor',
+    channel  = 'Google Ads',
+    lossRate = '30%',
+    message  = '',
+    weakness = '',
+    yourBrand = '',
+    industry  = 'marketing'
+  } = req.body || {};
+
+  const yourBrandClean = String(yourBrand || '').replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0] || 'Your brand';
+
+  const systemPrompt = 'You are a senior performance-marketing copywriter who writes high-converting counter-positioning ad messages. You write tight, punchy copy that exploits a competitor\'s specific weakness. Return ONLY valid JSON, no markdown, no commentary.';
+
+  const userPrompt = `Generate 3 distinct counter-ad-messages for ${yourBrandClean} to deploy against ${comp} on ${channel}.
+
+CONTEXT
+- Industry: ${industry}
+- Competitor: ${comp}
+- Channel: ${channel}
+- Current loss rate to this competitor: ${lossRate} of deals
+- ${comp}'s winning message: "${message}"
+- ${comp}'s exploitable weakness: "${weakness}"
+
+REQUIREMENTS
+- Each variant must directly attack the named weakness above (do NOT generate generic copy).
+- Each variant should feel native to ${channel} (length, tone, format).
+- Headlines: max 60 characters. Body: max 140 characters. CTA: 2-4 words.
+- Use a different angle for each variant (e.g. social-proof, contrast, value-prop, FOMO, transparency).
+- Mention what ${yourBrandClean} does BETTER — never name ${comp} directly in the ad copy (compliance).
+
+Return ONLY this JSON shape:
+{"variants":[{"angle":"short label","headline":"...","body":"...","cta":"...","why":"1 sentence on why this neutralises the weakness"},{"angle":"...","headline":"...","body":"...","cta":"...","why":"..."},{"angle":"...","headline":"...","body":"...","cta":"...","why":"..."}],"strategy":"2-3 sentence overall counter-positioning strategy","targeting":"1 sentence on which audience segment to target with these"}`;
+
+  // ── Try OpenAI first ──
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      response_format: { type: 'json_object' },
+      max_tokens: 900,
+      temperature: 0.75,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: userPrompt }
+      ]
+    });
+    const parsed = JSON.parse(completion.choices[0].message.content);
+    if (!Array.isArray(parsed.variants) || parsed.variants.length < 1) throw new Error('bad shape');
+    return res.json({ success: true, source: 'openai', ...parsed });
+  } catch(openaiErr) {
+    console.warn('[wl-counter] OpenAI failed, trying Anthropic:', openaiErr.message);
+
+    // ── Fallback to Anthropic ──
+    try {
+      const msg = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 900,
+        system: systemPrompt + ' Output ONLY the JSON object — no surrounding prose.',
+        messages: [{ role: 'user', content: userPrompt }]
+      });
+      const text = (msg.content || [])
+        .map(c => (c && c.text) ? c.text : '')
+        .join('')
+        .trim();
+      // Strip ```json fences if present
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('no JSON object in Anthropic response');
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (!Array.isArray(parsed.variants) || parsed.variants.length < 1) throw new Error('bad shape');
+      return res.json({ success: true, source: 'anthropic', ...parsed });
+    } catch(anthropicErr) {
+      console.error('[wl-counter] Anthropic also failed:', anthropicErr.message);
+
+      // ── Final deterministic fallback ──
+      const w = String(weakness || 'over-indexing on brand terms').replace(/^Outflank\s+\w+\s+on\s+/i, '');
+      return res.json({
+        success: true,
+        source:  'fallback',
+        variants: [
+          {
+            angle:    'Direct Contrast',
+            headline: `${yourBrandClean}: Where ${comp.split(' ')[0]} Falls Short`,
+            body:     `Don't settle for ${w}. Get the full picture — better data, real results.`,
+            cta:      'See the Difference',
+            why:      `Directly contrasts ${yourBrandClean}'s strength against ${comp}'s identified weakness.`
+          },
+          {
+            angle:    'Social Proof',
+            headline: `Why Smart Marketers Switched to ${yourBrandClean}`,
+            body:     `Teams who needed more than ${w.split(' ').slice(0,6).join(' ')}… chose us. Here's why.`,
+            cta:      'Read the Stories',
+            why:      `Leverages credibility to peel away prospects already frustrated by ${comp}'s gap.`
+          },
+          {
+            angle:    'Transparency',
+            headline: `No Tricks. No ${w.split(' ').slice(0,3).join(' ')}.`,
+            body:     `${yourBrandClean} shows you exactly what works — and what doesn't. Try it free.`,
+            cta:      'Start Free',
+            why:      `Reframes ${comp}'s weakness as a category-wide problem ${yourBrandClean} solves head-on.`
+          }
+        ],
+        strategy: `Position ${yourBrandClean} as the transparent, results-focused alternative to ${comp}. Lead with the gap their "${(message||'').substring(0,50)}…" leaves open, then close with proof. (AI providers temporarily unavailable — generic counter-positioning template shown.)`,
+        targeting: `Target ${comp}'s branded keyword pool + lookalike audiences on ${channel} with this counter-ad.`
+      });
+    }
+  }
+});
+
 // ── Competitor Ad Spend (DataForSEO paid traffic value) ───────────────────────
 app.post('/api/competitor-spend', async (req, res) => {
   const { domains = [], yourDomain = '', yourBudget = 5000 } = req.body;

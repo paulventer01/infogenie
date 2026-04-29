@@ -16598,56 +16598,194 @@ function openWLCounterModal(wlIdOrData) {
   }
   if (!w || !w.comp) { showToast('⚠️ No counter data found — try refreshing the Intelligence Hub'); return; }
   const modal = document.getElementById('attackModal');
+  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
+
+  // Per-open request token: every time the modal is (re)opened we bump this
+  // counter so any in-flight fetch from a previous open is ignored when it
+  // finally returns. Prevents a stale response from a previous click
+  // overwriting the modal that the user is currently looking at.
+  window._wlReqId = (window._wlReqId || 0) + 1;
+  const myReqId = window._wlReqId;
+  // Cancel any prior in-flight request.
+  if (window._wlAbort) { try { window._wlAbort.abort(); } catch(_) {} }
+  const controller = (typeof AbortController === 'function') ? new AbortController() : null;
+  window._wlAbort = controller;
+  // 25-second client-side timeout so the spinner can't hang forever.
+  const timeoutHandle = controller ? setTimeout(() => { try { controller.abort(); } catch(_) {} }, 25000) : null;
+
+  // Open the modal IMMEDIATELY with a loading state, then fire the AI request.
   document.getElementById('attackModalInner').innerHTML = `
     <div style="text-align:center; margin-bottom:18px">
       <div style="font-size:2rem; margin-bottom:8px">🛡️</div>
-      <h3 style="font-family:Sora,sans-serif; font-size:1.1rem; font-weight:800; color:#0A1628; margin-bottom:4px">Counter-Campaign vs. ${w.comp}</h3>
-      <p style="color:#6B7280; font-size:0.8rem; max-width:360px; margin:0 auto">InfoGenie has built a 3-step counter-strategy targeting <strong>${w.comp}'s</strong> exploitable weakness</p>
+      <h3 style="font-family:Sora,sans-serif; font-size:1.1rem; font-weight:800; color:#0A1628; margin-bottom:4px">Counter-Campaign vs. ${esc(w.comp)}</h3>
+      <p style="color:#6B7280; font-size:0.8rem; max-width:380px; margin:0 auto">InfoGenie AI is writing counter-ad messages tuned to <strong>${esc(w.comp)}'s</strong> exploitable weakness…</p>
     </div>
-    <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:14px 16px; margin-bottom:16px; font-size:0.8125rem; color:#166534;">
-      <strong>Their Winning Message:</strong> ${w.message}<br/>
-      <strong style="color:#991B1B;">Their Weakness:</strong> ${w.weakness}
+    <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:14px 16px; margin-bottom:16px; font-size:0.8125rem; color:#166534; line-height:1.55;">
+      <div style="margin-bottom:6px"><strong>Their Winning Message:</strong> ${esc(w.message)}</div>
+      <div><strong style="color:#991B1B;">Their Exploitable Weakness:</strong> ${esc(w.weakness)}</div>
     </div>
-    <div class="attack-steps">
-      <div class="attack-step">
-        <div class="attack-step-num">1</div>
-        <div class="attack-step-icon">✍️</div>
-        <div class="attack-step-body">
-          <div class="attack-step-title">Counter-Messaging Created</div>
-          <div class="attack-step-desc">InfoGenie AI has drafted 5 ad variants that directly counter ${w.comp}'s "${(w.message||'').substring(0,60)}…" messaging with your superior positioning.</div>
-        </div>
-      </div>
-      <div class="attack-step">
-        <div class="attack-step-num">2</div>
-        <div class="attack-step-icon">🎯</div>
-        <div class="attack-step-body">
-          <div class="attack-step-title">Audience Targeting Prepared</div>
-          <div class="attack-step-desc">Targeting ${w.comp}'s audiences on ${w.channel} — the same segments where you're currently losing ${w.lossRate} of deals. Counter-bid strategy pre-configured.</div>
-        </div>
-      </div>
-      <div class="attack-step">
-        <div class="attack-step-num">3</div>
-        <div class="attack-step-icon">📊</div>
-        <div class="attack-step-body">
-          <div class="attack-step-title">Campaign Ready for Review</div>
-          <div class="attack-step-desc">The full counter-campaign will appear in your Campaigns view as a Queued Draft — review the creative, budget, and targeting before launching.</div>
-        </div>
+    <div id="wlCounterBody">
+      <div style="display:flex; flex-direction:column; align-items:center; gap:14px; padding:32px 0;">
+        <div class="wl-spinner" style="width:42px; height:42px; border:4px solid #E2E8F0; border-top-color:#0066FF; border-radius:50%; animation:wlSpin .9s linear infinite;"></div>
+        <div style="font-size:0.85rem; color:#475569; font-weight:600;">Generating counter-messages with AI…</div>
+        <div style="font-size:0.72rem; color:#94A3B8;">OpenAI GPT-4o · fallback to Claude Sonnet</div>
       </div>
     </div>
-    <div class="attack-modal-footer">
-      <button class="btn-attack-activate" onclick="queueCounterCampaign('${wlId}', this)">
-        📋 Add to Campaign Queue
-      </button>
-      <button class="btn-attack-cancel" onclick="closeAttackModal()">Maybe Later</button>
+    <style>@keyframes wlSpin{to{transform:rotate(360deg)}}</style>
+    <div class="attack-modal-footer" id="wlCounterFooter">
+      <button class="btn-attack-cancel" onclick="closeAttackModal()">Close</button>
     </div>
   `;
   modal.classList.remove('hidden');
   modal.style.display = 'flex';
+
+  // Fire the AI request asynchronously.
+  const yourBrand = (typeof analysisData !== 'undefined' && analysisData && analysisData.url) ? analysisData.url
+                  : (window.analysisData && window.analysisData.url ? window.analysisData.url : '');
+  const industry  = (typeof analysisData !== 'undefined' && analysisData && analysisData.industry && analysisData.industry.name)
+                  ? analysisData.industry.name : 'marketing';
+
+  fetch('/api/wl/counter-message', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      comp:     w.comp,
+      channel:  w.channel,
+      lossRate: w.lossRate,
+      message:  w.message,
+      weakness: w.weakness,
+      yourBrand,
+      industry
+    }),
+    signal: controller ? controller.signal : undefined
+  })
+  .then(async r => {
+    if (!r.ok) {
+      let detail = '';
+      try { detail = (await r.text() || '').slice(0, 200); } catch(_) {}
+      throw new Error(`Server error ${r.status}${detail ? ' — ' + detail : ''}`);
+    }
+    try { return await r.json(); }
+    catch(parseErr) { throw new Error('Server returned a non-JSON response — please retry.'); }
+  })
+  .then(data => {
+    // Race guard: ignore stale responses from previous opens of the modal.
+    if (myReqId !== window._wlReqId) return;
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+    if (!data || !data.success || !Array.isArray(data.variants) || !data.variants.length) {
+      throw new Error(data && data.error ? data.error : 'AI returned no variants');
+    }
+    // Stash the AI output on the wlData so queueCounterCampaign can use the
+    // selected variant when adding to the campaign queue.
+    window._wlData[wlId].aiVariants = data.variants;
+    window._wlData[wlId].aiStrategy = data.strategy || '';
+    window._wlData[wlId].aiTargeting = data.targeting || '';
+    window._wlData[wlId].aiSource = data.source || 'ai';
+
+    const variantsHtml = data.variants.map((v, i) => `
+      <div class="wl-variant" data-vidx="${i}" style="border:1.5px solid #E2E8F0; border-radius:12px; padding:14px 16px; background:#fff; cursor:pointer; transition:border-color .15s, box-shadow .15s;" onclick="_wlSelectVariant(this)">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="background:linear-gradient(135deg,#00C9C8,#0066FF); color:#fff; font-size:0.65rem; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; padding:3px 9px; border-radius:6px;">${esc(v.angle || ('Variant ' + (i+1)))}</span>
+          <span class="wl-variant-radio" style="width:18px; height:18px; border:2px solid #CBD5E1; border-radius:50%; flex-shrink:0;"></span>
+        </div>
+        <div style="font-family:Sora,sans-serif; font-size:0.95rem; font-weight:800; color:#0A1628; margin-bottom:6px; line-height:1.35;">${esc(v.headline || '')}</div>
+        <div style="font-size:0.82rem; color:#475569; line-height:1.5; margin-bottom:10px;">${esc(v.body || '')}</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <button style="background:#0A1628; color:#fff; border:none; border-radius:6px; padding:6px 14px; font-size:0.75rem; font-weight:700; cursor:default; pointer-events:none;">${esc(v.cta || 'Learn More')}</button>
+          <span style="font-size:0.7rem; color:#94A3B8; font-style:italic; text-align:right; flex:1;">💡 ${esc(v.why || '')}</span>
+        </div>
+      </div>
+    `).join('');
+
+    const sourceLabel = data.source === 'openai'    ? '⚡ OpenAI GPT-4o'
+                     : data.source === 'anthropic' ? '🧠 Claude Sonnet 4.6'
+                     : '📋 Template (AI offline)';
+
+    document.getElementById('wlCounterBody').innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div style="font-size:0.7rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#475569;">AI Counter-Messages — pick one to queue</div>
+        <div style="font-size:0.65rem; color:#94A3B8;">${sourceLabel}</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:14px;">${variantsHtml}</div>
+      ${data.strategy ? `<div style="background:#F8FAFC; border-left:3px solid #0066FF; border-radius:0 8px 8px 0; padding:10px 14px; margin-bottom:10px;">
+        <div style="font-size:0.65rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#475569; margin-bottom:4px;">Counter-Positioning Strategy</div>
+        <div style="font-size:0.78rem; color:#334155; line-height:1.55;">${esc(data.strategy)}</div>
+      </div>` : ''}
+      ${data.targeting ? `<div style="background:#FFF7ED; border-left:3px solid #F59E0B; border-radius:0 8px 8px 0; padding:10px 14px;">
+        <div style="font-size:0.65rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#92400E; margin-bottom:4px;">🎯 Targeting Recommendation</div>
+        <div style="font-size:0.78rem; color:#7C2D12; line-height:1.55;">${esc(data.targeting)}</div>
+      </div>` : ''}
+    `;
+
+    // Pre-select the first variant.
+    const first = document.querySelector('#wlCounterBody .wl-variant[data-vidx="0"]');
+    if (first) _wlSelectVariant(first);
+
+    document.getElementById('wlCounterFooter').innerHTML = `
+      <button class="btn-attack-activate" onclick="queueCounterCampaign('${wlId}', this)">
+        📋 Queue Selected Counter-Message
+      </button>
+      <button class="btn-attack-cancel" onclick="closeAttackModal()">Maybe Later</button>
+    `;
+  })
+  .catch(err => {
+    // Race guard: don't render stale errors over a newer modal.
+    if (myReqId !== window._wlReqId) return;
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+    // Aborted requests are expected when the user closes/reopens — stay quiet.
+    if (err && (err.name === 'AbortError' || /aborted/i.test(err.message || ''))) return;
+    console.error('[wl-counter] AI fetch failed:', err);
+    const bodyEl = document.getElementById('wlCounterBody');
+    if (!bodyEl) return;
+    bodyEl.innerHTML = `
+      <div style="background:#FEF2F2; border:1px solid #FECACA; border-radius:10px; padding:18px; text-align:center;">
+        <div style="font-size:1.6rem; margin-bottom:8px;">⚠️</div>
+        <div style="font-family:Sora,sans-serif; font-weight:800; color:#991B1B; font-size:0.9rem; margin-bottom:6px;">AI counter-message generation failed</div>
+        <div style="font-size:0.8rem; color:#7F1D1D; margin-bottom:14px;">${esc(err && err.message || String(err))}</div>
+        <button class="btn-primary" style="padding:8px 18px; font-size:0.8rem;" onclick="(function(){closeAttackModal(); openWLCounterModal(window._wlData['${wlId}']);})()">🔄 Retry</button>
+      </div>
+    `;
+  });
 }
+
+// Selects a counter-message variant card in the modal (visual radio behaviour).
+window._wlSelectVariant = function(el) {
+  if (!el) return;
+  const all = document.querySelectorAll('#wlCounterBody .wl-variant');
+  all.forEach(c => {
+    c.style.borderColor = '#E2E8F0';
+    c.style.boxShadow = 'none';
+    // Clear previous selection state — without this the queue helper would
+    // pick up the FIRST card with data-selected="true", not the latest click.
+    delete c.dataset.selected;
+    const r = c.querySelector('.wl-variant-radio');
+    if (r) { r.style.background = 'transparent'; r.style.borderColor = '#CBD5E1'; r.innerHTML = ''; }
+  });
+  el.style.borderColor = '#0066FF';
+  el.style.boxShadow = '0 0 0 3px rgba(0,102,255,0.12)';
+  const radio = el.querySelector('.wl-variant-radio');
+  if (radio) {
+    radio.style.background = '#0066FF';
+    radio.style.borderColor = '#0066FF';
+    radio.innerHTML = '<span style="display:block; width:8px; height:8px; background:#fff; border-radius:50%; margin:3px auto;"></span>';
+  }
+  el.dataset.selected = 'true';
+};
 
 function queueCounterCampaign(wlId, btn) {
   const w = (window._wlData || {})[wlId];
   if (!w) return;
+
+  // Find which AI variant is currently selected (if the modal showed any).
+  let selectedVariant = null;
+  try {
+    const sel = document.querySelector('#wlCounterBody .wl-variant[data-selected="true"]');
+    if (sel && Array.isArray(w.aiVariants)) {
+      const idx = parseInt(sel.getAttribute('data-vidx'), 10);
+      if (!isNaN(idx) && w.aiVariants[idx]) selectedVariant = w.aiVariants[idx];
+    }
+  } catch(_) {}
+
   btn.disabled = true;
   btn.textContent = '⏳ Queuing…';
   setTimeout(() => {
@@ -16658,14 +16796,28 @@ function queueCounterCampaign(wlId, btn) {
       weakness: w.weakness,
       message: w.message,
       lossRate: w.lossRate,
+      // AI-generated counter-message attached to the queued campaign so the
+      // Campaigns view can show the actual headline/body/cta the user picked.
+      counterAd: selectedVariant ? {
+        angle:    selectedVariant.angle    || '',
+        headline: selectedVariant.headline || '',
+        body:     selectedVariant.body     || '',
+        cta:      selectedVariant.cta      || '',
+        why:      selectedVariant.why      || ''
+      } : null,
+      aiStrategy:  w.aiStrategy  || '',
+      aiTargeting: w.aiTargeting || '',
+      aiSource:    w.aiSource    || '',
       status: 'draft',
       createdAt: new Date().toLocaleTimeString()
     });
     closeAttackModal();
     if (analysisData) buildCampaigns();
     navigateTo('campaigns');
-    showToast('📋 Counter-campaign queued — review it at the top of Campaigns before launching');
-  }, 900);
+    showToast(selectedVariant
+      ? `📋 Counter-message "${(selectedVariant.headline||'').substring(0,40)}…" queued — review it in Campaigns`
+      : '📋 Counter-campaign queued — review it at the top of Campaigns before launching');
+  }, 600);
 }
 
 // ── Expose Win/Loss counter helpers on window IMMEDIATELY (early), so even
