@@ -263,3 +263,10 @@ Added 10 new modules in cache buster `v=20260425Q`. All client-side, simulated f
 - **SSRF guard**: `_isPrivateIp` + `_isUrlSafeToFetch` block non-HTTP(S) protocols, `localhost`/`metadata.google.internal`, and any hostname resolving to private/loopback/link-local/CGNAT/multicast IPv4 or IPv6 ranges. Applied to BOTH user-supplied target URL and DataForSEO competitor URLs (defence-in-depth).
 - **Frontend**: `buildContentScorer/runContentScorer/_contentScorerHtml` (app.js end) — form (keyword + country select + URL + draft textarea) → score circle (conic-gradient), 6-bar breakdown, LSI covered/missing tag clouds, prioritised recommendations cards, SERP top-10 competitor table with status indicators.
 - **Cache busters bumped**: app.js?v=20260429G, style.css?v=20260429D.
+
+## CRM Pivot — PAUSED (Apr 29 2026)
+- User chose **Path B (full CRM management)** as a pivot from the outward-facing-only positioning. Phase 1 plan was: HubSpot OAuth + read contacts/deals into a new Contacts view + sync engine scaffold. Future phases would add lead scoring, drip campaigns, journey orchestration, then Zoho + Salesforce.
+- **Status: paused.** HubSpot OAuth flow was dismissed by the user before completing. No CRM code was written.
+- When resuming, ask which connect method to use (re-try Replit OAuth connector `connector:ccfg_hubspot_96987450B7BE4A05A4843E3756`, or paste a HubSpot Private App token as a secret named `HUBSPOT_PRIVATE_APP_TOKEN`).
+- **Important**: this pivot fundamentally changes InfoGenie's identity from "Marketing Intelligence" to "Marketing Automation + CRM" platform. The current outward-facing-only guardrail in `<project_goal>` would need to be lifted, and the Marketing Journey panel + dashboard messaging would need to be re-written. Confirm the pivot is still on before resuming.
+- **Not built** (Phase 1 work that was planned but not started): Contacts DB schema, OAuth/token storage, sync engine, contacts/deals/companies UI, GDPR/CCPA compliance for stored PII, deliverability infra for downstream email features.
