@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <base href="/">
-  <link rel="stylesheet" href="/style.css?v=20260429B" />
+  <link rel="stylesheet" href="/style.css?v=20260429C" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
   <!-- PostHog SDK stub — init called from app.js after config fetch -->
@@ -1883,7 +1883,14 @@
       </div>
     </div>
   </div>
-  <div class="container" id="attributionWrap" style="padding-top:24px;padding-bottom:60px"></div>
+  <div class="container" style="padding-top:18px">
+    <div id="attrTabs" style="display:flex;gap:8px;border-bottom:2px solid #E5E7EB;padding-bottom:0">
+      <button class="attr-tab attr-tab-active" data-attr-tab="channels" onclick="switchAttributionTab('channels')" title="Per-channel ROAS, ROI, CAC and reallocation recommendations across the chosen attribution model.">📊 Channels</button>
+      <button class="attr-tab" data-attr-tab="cohorts" onclick="switchAttributionTab('cohorts')" title="Weekly acquisition cohorts — see how spend and conversions move week over week, with per-channel breakdown.">🗓️ Cohorts</button>
+      <button class="attr-tab" data-attr-tab="forecast" onclick="switchAttributionTab('forecast')" title="Linear+EMA projection of the next 30 days of spend, conversions, ROAS and CAC based on your trailing daily trend.">🔮 Forecast</button>
+    </div>
+  </div>
+  <div class="container" id="attributionWrap" style="padding-top:18px;padding-bottom:60px"></div>
 </div>
 
 <!-- LOOKALIKE AUDIENCE BUILDER VIEW -->
@@ -1902,7 +1909,7 @@
   <div class="container" id="lookalikeWrap" style="padding-top:24px;padding-bottom:60px"></div>
 </div>
 
-<script src="/app.js?v=20260429E"></script>
+<script src="/app.js?v=20260429F"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');

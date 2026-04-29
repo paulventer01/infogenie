@@ -3961,6 +3961,9 @@ function buildDashboard() {
     `;
   }).join('');
 
+  // ── Marketing Journey stages panel (Express → Tailor → Amplify → Evolve) ──
+  try { window._renderJourneyStages && window._renderJourneyStages(); } catch (e) { console.warn('renderJourneyStages error:', e); }
+
   // ── Live Data Panels ──────────────────────────────────────────────────────
   const liveWrap = document.getElementById('dashLivePanels');
   if (!liveWrap) return;
@@ -28203,3 +28206,305 @@ async function exportLookalikeCSV(platform) {
     }
   });
 })();
+
+/* =============================================================================
+   ATTRIBUTION TABS — Channels (existing) / Cohorts / Forecast
+   ============================================================================= */
+window._attrCurrentTab = 'channels';
+function switchAttributionTab(tab) {
+  window._attrCurrentTab = tab;
+  document.querySelectorAll('.attr-tab').forEach(b => {
+    b.classList.toggle('attr-tab-active', b.getAttribute('data-attr-tab') === tab);
+  });
+  // Hide model dropdown when not on Channels tab (it doesn't apply elsewhere)
+  const modelSel = document.getElementById('attrModel');
+  if (modelSel) modelSel.style.display = (tab === 'channels') ? '' : 'none';
+  if (tab === 'channels')      loadAttribution();
+  else if (tab === 'cohorts')  loadAttributionCohorts();
+  else if (tab === 'forecast') loadAttributionForecast();
+}
+// Patch existing dropdown change handlers to refresh whichever tab is active
+(function patchAttrControls(){
+  const ids = ['attrDays','attrModel','attrAOV'];
+  ids.forEach(id => {
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.id === id) {
+        const t = window._attrCurrentTab || 'channels';
+        if (t === 'channels')      loadAttribution();
+        else if (t === 'cohorts')  loadAttributionCohorts();
+        else if (t === 'forecast') loadAttributionForecast();
+      }
+    });
+  });
+})();
+
+async function loadAttributionCohorts() {
+  const wrap = document.getElementById('attributionWrap');
+  if (!wrap) return;
+  const days = Math.max(28, parseInt(document.getElementById('attrDays')?.value || '30', 10) * 3); // expand range — cohorts need a few weeks
+  const aov  = parseFloat(document.getElementById('attrAOV')?.value || '0') || 0;
+  wrap.innerHTML = '<div style="text-align:center;padding:64px;color:#64748B;font-weight:600">⏳ Pulling daily breakdown from Meta + Google + TikTok and bucketing into weekly cohorts…</div>';
+  try {
+    const r = await fetch(`/api/attribution/cohorts?days=${Math.min(120, days)}&aov=${aov}`);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Failed to load');
+    wrap.innerHTML = _cohortHtml(j);
+  } catch (e) {
+    const safe = (typeof _escapeHtml === 'function') ? _escapeHtml(e.message) : String(e.message);
+    wrap.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:24px;color:#991B1B"><b>⚠️ Could not load cohorts</b><div style="font-size:.85rem;margin-top:6px">${safe}</div></div>`;
+  }
+}
+function _cohortHtml(j) {
+  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s)=>String(s==null?'':s);
+  const fmt$ = (n) => n == null ? '—' : '$' + Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
+  const fmtN = (n) => n == null ? '—' : Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
+  if (!j.weeks?.length) {
+    const offline = Object.entries(j.channelStatus || {}).filter(([,v]) => !v).map(([k]) => k);
+    return `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:32px;text-align:center">
+      <div style="font-size:2rem;margin-bottom:8px">🗓️</div>
+      <div style="font-weight:800;color:#92400E;font-size:1.05rem;margin-bottom:6px">No cohort data yet</div>
+      <div style="font-size:.85rem;color:#78350F">No spend or conversions detected in the last ${j.days} days${offline.length ? ` — ${offline.join(', ')} not connected.` : '.'} Once your ad accounts have daily traffic, weekly cohorts will appear here.</div>
+    </div>`;
+  }
+  const maxSpend = Math.max(...j.weeks.map(w => w.spend));
+  const channelDefs = [
+    { key:'meta',   color:'#1877F2', name:'Meta' },
+    { key:'google', color:'#4285F4', name:'Google' },
+    { key:'tiktok', color:'#0F172A', name:'TikTok' },
+  ];
+  const trendBadge = (val, suffix='', invert=false) => {
+    if (val == null) return '';
+    const up = invert ? val < 0 : val > 0;
+    const cls = val === 0 ? 'cohort-trend-flat' : (up ? 'cohort-trend-up' : 'cohort-trend-down');
+    const sym = val === 0 ? '→' : (val > 0 ? '▲' : '▼');
+    return `<span class="${cls}">${sym} ${Math.abs(val).toFixed(1)}${suffix}</span>`;
+  };
+  const headerTrend = j.trend ? `
+    <div style="display:flex;flex-wrap:wrap;gap:18px;font-size:.82rem;color:#475569">
+      <div title="Week-over-week change in total ad spend">Spend WoW: ${trendBadge(j.trend.spendDelta, '%')}</div>
+      <div title="Week-over-week change in conversions (${esc(j.conversionSource)})">Conversions WoW: ${trendBadge(j.trend.conversionsDelta, '%')}</div>
+      ${j.trend.roasDelta != null ? `<div title="Week-over-week change in ROAS multiple">ROAS WoW: ${trendBadge(j.trend.roasDelta, 'x')}</div>` : ''}
+      ${j.trend.cacDelta  != null ? `<div title="Week-over-week change in CAC (lower is better)">CAC WoW: ${trendBadge(j.trend.cacDelta,  '$', true)}</div>` : ''}
+    </div>` : '';
+  const rows = j.weeks.slice().reverse().map(w => {
+    const barPct = maxSpend > 0 ? (w.spend / maxSpend) * 100 : 0;
+    const chMix = channelDefs.map(d => {
+      const c = w.channels[d.key];
+      const pct = w.spend > 0 ? (c.spend / w.spend) * 100 : 0;
+      if (pct < 1) return '';
+      return `<span title="${d.name} · ${fmt$(c.spend)} · ${pct.toFixed(0)}%" style="display:inline-block;width:${pct}%;height:6px;background:${d.color}"></span>`;
+    }).join('');
+    return `<tr>
+      <td><b style="color:#0A1628">${esc(w.weekStart)}</b><div style="font-size:.66rem;color:#94A3B8;font-weight:600">${esc(w.week)}</div></td>
+      <td>${fmt$(w.spend)}<div style="margin-top:4px;height:6px;background:#F1F5F9;border-radius:3px;overflow:hidden;display:flex">${chMix || `<span class="cohort-bar" style="width:${barPct}%"></span>`}</div></td>
+      <td>${fmtN(w.conversions)}</td>
+      <td>${fmt$(w.revenue)}</td>
+      <td>${w.roas != null ? `<b>${w.roas}x</b>` : '—'}</td>
+      <td>${w.cac  != null ? fmt$(w.cac) : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div style="background:linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%);border-radius:18px;padding:24px;color:white;margin-bottom:18px">
+      <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;opacity:.85;font-weight:700">Weekly Cohorts · last ${j.days} days · ${j.weeks.length} cohorts · conversions from <b>${esc(j.conversionSource === 'amplitude' ? 'Amplitude (ground truth)' : 'ad-platform reported')}</b></div>
+      <div style="font-size:1.4rem;font-weight:900;margin-top:6px">Acquisition cohort decay</div>
+      <div style="font-size:.85rem;opacity:.85;margin-top:4px">Each row = a Monday-starting week. Spend bar shows the channel split. Compare weeks side-by-side to spot rising or falling efficiency.</div>
+    </div>
+    ${headerTrend ? `<div style="background:white;border:1.5px solid #E5E7EB;border-radius:14px;padding:14px 18px;margin-bottom:14px">${headerTrend}</div>` : ''}
+    <div style="background:white;border:1.5px solid #E5E7EB;border-radius:14px;padding:6px 8px;overflow-x:auto">
+      <table class="cohort-table">
+        <thead><tr>
+          <th title="ISO week starting Monday — the cohort acquisition period.">Week</th>
+          <th title="Total ad spend across all live channels for that week. Coloured bar shows channel split.">Spend</th>
+          <th title="Conversions for that week — sourced from ${esc(j.conversionSource)}.">Conversions</th>
+          <th title="Revenue from that week's conversions (uses Meta action_values where available, otherwise conversions × AOV).">Revenue</th>
+          <th title="Return on Ad Spend = Revenue ÷ Spend. Higher is better.">ROAS</th>
+          <th title="Customer Acquisition Cost = Spend ÷ Conversions. Lower is better.">CAC</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:14px;margin-top:10px;font-size:.74rem;color:#64748B">
+      ${channelDefs.map(d => `<span><span style="display:inline-block;width:10px;height:10px;background:${d.color};border-radius:2px;vertical-align:middle"></span> ${d.name}</span>`).join('')}
+    </div>
+    <div style="text-align:center;font-size:.68rem;color:#94A3B8;margin-top:14px">Generated ${new Date(j.generatedAt).toLocaleString()}</div>`;
+}
+
+async function loadAttributionForecast() {
+  const wrap = document.getElementById('attributionWrap');
+  if (!wrap) return;
+  const days = parseInt(document.getElementById('attrDays')?.value || '30', 10);
+  const aov  = parseFloat(document.getElementById('attrAOV')?.value || '0') || 0;
+  wrap.innerHTML = '<div style="text-align:center;padding:64px;color:#64748B;font-weight:600">⏳ Building forecast from trailing daily data…</div>';
+  try {
+    const r = await fetch(`/api/attribution/forecast?days=${Math.max(14,days)}&horizon=30&aov=${aov}`);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Failed to load');
+    wrap.innerHTML = _forecastHtml(j);
+  } catch (e) {
+    const safe = (typeof _escapeHtml === 'function') ? _escapeHtml(e.message) : String(e.message);
+    wrap.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:24px;color:#991B1B"><b>⚠️ Could not load forecast</b><div style="font-size:.85rem;margin-top:6px">${safe}</div></div>`;
+  }
+}
+function _forecastHtml(j) {
+  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s)=>String(s==null?'':s);
+  const fmt$ = (n) => n == null ? '—' : '$' + Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
+  const fmtN = (n) => n == null ? '—' : Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
+  if (j.warning) {
+    return `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:32px;text-align:center">
+      <div style="font-size:2rem;margin-bottom:8px">🔮</div>
+      <div style="font-weight:800;color:#92400E;font-size:1.05rem;margin-bottom:6px">Not enough history yet</div>
+      <div style="font-size:.85rem;color:#78350F">${esc(j.warning)}</div>
+    </div>`;
+  }
+  const s = j.summary || {};
+  const trendArrow = (dir) => dir === 'up' ? '<span style="color:#10B981">▲ Rising</span>' : (dir === 'down' ? '<span style="color:#DC2626">▼ Falling</span>' : '<span style="color:#94A3B8">→ Flat</span>');
+  // SVG sparkline of actual + forecast for spend & conversions
+  const spark = (actualVals, forecastVals, label, color, fmt) => {
+    const all = [...actualVals, ...forecastVals];
+    const max = Math.max(...all, 1);
+    const min = 0;
+    const W = 700, H = 120, pad = 8;
+    const totalN = all.length;
+    const x = (i) => pad + (i / Math.max(1, totalN - 1)) * (W - pad*2);
+    const y = (v) => H - pad - ((v - min) / (max - min || 1)) * (H - pad*2);
+    const actualPath = actualVals.map((v,i) => `${i===0?'M':'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const fcPath = forecastVals.map((v,i) => {
+      const idx = actualVals.length - 1 + i; // start from last actual point
+      return `${i===0?'M'+x(actualVals.length-1).toFixed(1)+','+y(actualVals[actualVals.length-1]).toFixed(1)+' L':'L'}${x(idx+1).toFixed(1)},${y(v).toFixed(1)}`;
+    }).join(' ');
+    const splitX = x(actualVals.length - 1);
+    return `
+      <div style="background:white;border:1.5px solid #E5E7EB;border-radius:14px;padding:18px;margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-weight:800;color:#0A1628;font-size:.95rem">${label}</div>
+          <div style="font-size:.72rem;color:#64748B">
+            <span style="display:inline-block;width:18px;height:2px;background:${color};vertical-align:middle"></span> Actual ·
+            <span style="display:inline-block;width:18px;height:2px;background:${color};opacity:.5;border-top:1px dashed ${color};vertical-align:middle"></span> Forecast
+          </div>
+        </div>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:140px;display:block">
+          <line x1="${splitX}" x2="${splitX}" y1="${pad}" y2="${H-pad}" stroke="#CBD5E1" stroke-dasharray="3,3" stroke-width="1"/>
+          <text x="${splitX+4}" y="${pad+10}" font-size="10" fill="#94A3B8" font-weight="700">Today</text>
+          <path d="${actualPath}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="${fcPath}" fill="none" stroke="${color}" stroke-width="2.5" stroke-dasharray="5,4" stroke-linecap="round" stroke-linejoin="round" opacity=".65"/>
+        </svg>
+        <div style="display:flex;justify-content:space-between;font-size:.7rem;color:#94A3B8;margin-top:4px">
+          <span>${esc(actualVals.length ? j.actual[0].date : '')}</span>
+          <span>Today</span>
+          <span>${esc(j.forecast.length ? j.forecast[j.forecast.length-1].date : '')}</span>
+        </div>
+      </div>`;
+  };
+  return `
+    <div style="background:linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%);border-radius:18px;padding:24px;color:white;margin-bottom:18px">
+      <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;opacity:.85;font-weight:700">30-Day Forecast · trailing ${j.days} days of daily data · conversions from <b>${esc(j.conversionSource === 'amplitude' ? 'Amplitude' : 'ad platforms')}</b></div>
+      <div style="font-size:1.4rem;font-weight:900;margin-top:6px">Where you're heading</div>
+      <div style="font-size:.85rem;opacity:.85;margin-top:4px">Linear trend + EMA smoothing on your daily spend & conversions, projected forward 30 days. Use it to size next month's budget and spot where you'll land before you commit.</div>
+    </div>
+    <div class="fc-summary">
+      <div class="fc-card"><div class="fc-card-label">Avg daily spend (last ${j.days}d)</div><div class="fc-card-value">${fmt$(s.avgDailySpend)}</div><div class="fc-card-sub">Trend ${trendArrow(s.trendDirection)}</div></div>
+      <div class="fc-card"><div class="fc-card-label">Avg daily conversions</div><div class="fc-card-value">${fmtN(s.avgDailyConversions)}</div><div class="fc-card-sub">Trend ${trendArrow(s.conversionsTrend)}</div></div>
+      <div class="fc-card"><div class="fc-card-label">Projected spend (next 30d)</div><div class="fc-card-value">${fmt$(s.projSpend)}</div><div class="fc-card-sub">Forecast horizon</div></div>
+      <div class="fc-card"><div class="fc-card-label">Projected conversions</div><div class="fc-card-value">${fmtN(s.projConversions)}</div><div class="fc-card-sub">${j.aov > 0 || s.projRevenue > 0 ? 'Rev ' + fmt$(s.projRevenue) : 'Add AOV for revenue'}</div></div>
+      <div class="fc-card"><div class="fc-card-label">Projected ROAS</div><div class="fc-card-value">${s.projROAS != null ? s.projROAS + 'x' : '—'}</div><div class="fc-card-sub">${j.aov > 0 ? 'using AOV $' + j.aov : 'reported revenue only'}</div></div>
+      <div class="fc-card"><div class="fc-card-label">Projected CAC</div><div class="fc-card-value">${s.projCAC != null ? fmt$(s.projCAC) : '—'}</div><div class="fc-card-sub">Cost per conversion</div></div>
+    </div>
+    ${spark(j.actual.map(d => d.spend), j.forecast.map(d => d.spend), 'Daily Spend', '#4338CA')}
+    ${spark(j.actual.map(d => d.conversions), j.forecast.map(d => d.conversions), 'Daily Conversions', '#059669')}
+    <div style="text-align:center;font-size:.68rem;color:#94A3B8;margin-top:14px">Generated ${new Date(j.generatedAt).toLocaleString()} · forecast is a directional estimate, not a guarantee</div>`;
+}
+
+/* =============================================================================
+   MARKETING JOURNEY STAGES — dashboard panel mapping existing features into
+   a 4-stage Express → Tailor → Amplify → Evolve narrative arc.
+   ============================================================================= */
+window._renderJourneyStages = function() {
+  const host = document.getElementById('dashLivePanels');
+  if (!host) return;
+  // Avoid duplicating if the panel is already there
+  if (document.getElementById('journeyStagesPanel')) return;
+  const stages = [
+    { num: 1, key: 'express', tag: 'Stage 1', title: 'Express',
+      desc: 'Define your unique brand position with deep audience insight.',
+      features: [
+        { icon: '⚡', name: 'Intelligence Hub',  view: 'intelligence' },
+        { icon: '⚔️', name: 'Battle Plan',       view: 'battleplan' },
+        { icon: '🎯', name: 'ICP Studio',        view: 'icp-studio' },
+        { icon: '🏆', name: 'Competitors',       view: 'competitors' },
+        { icon: '🖼️', name: 'Brand Assets',      view: 'brand-assets' },
+      ] },
+    { num: 2, key: 'tailor', tag: 'Stage 2', title: 'Tailor',
+      desc: 'Make every message personal with intent + behavioural signals.',
+      features: [
+        { icon: '🧭', name: 'Intent Map',        view: 'intent-map' },
+        { icon: '🗺️', name: 'Keyword Map',       view: 'keyword-map' },
+        { icon: '🎯', name: 'Audience',          view: 'audience' },
+        { icon: '🎨', name: 'AI Creative',       view: 'creative' },
+        { icon: '🌐', name: 'Landing Builder',   view: 'landing-builder' },
+      ] },
+    { num: 3, key: 'amplify', tag: 'Stage 3', title: 'Amplify',
+      desc: 'Distribute through diversified channels and trusted voices.',
+      features: [
+        { icon: '📣', name: 'Advertise Hub',     view: 'advertise' },
+        { icon: '👥', name: 'Lookalike Audiences', view: 'lookalike' },
+        { icon: '🤖', name: 'AI Visibility',     view: 'aivisibility' },
+        { icon: '🚀', name: 'AutoSEO Pro',       view: 'autoseo' },
+        { icon: '🧑‍🎤', name: 'AI UGC Avatars',  view: 'ugc-avatars' },
+        { icon: '📅', name: 'Social Calendar',   view: 'social' },
+      ] },
+    { num: 4, key: 'evolve', tag: 'Stage 4', title: 'Evolve',
+      desc: 'Optimise in real time with feedback loops that compound growth.',
+      features: [
+        { icon: '🎯', name: 'Attribution & ROI', view: 'attribution' },
+        { icon: '💎', name: 'Blended Performance', view: 'blended-perf' },
+        { icon: '📈', name: 'KPI Tracker',       view: 'kpi-tracker' },
+        { icon: '🎯', name: 'Action Center',     view: 'action-center' },
+        { icon: '🧪', name: 'CRO Lab',           view: 'cro-lab' },
+        { icon: '📡', name: 'GSC / GA4 Hub',     view: 'analytics-hub' },
+      ] },
+  ];
+  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s)=>String(s==null?'':s);
+  const stageCards = stages.map(s => `
+    <div class="journey-stage" data-stage="${s.key}">
+      <div class="journey-stage-head">
+        <div class="journey-stage-num">${s.num}</div>
+        <div>
+          <div class="journey-stage-tag">${esc(s.tag)}</div>
+          <div class="journey-stage-title">${esc(s.title)}</div>
+        </div>
+      </div>
+      <div class="journey-stage-desc">${esc(s.desc)}</div>
+      <div>
+        ${s.features.map(f => `
+          <a href="#" class="journey-feature" data-jump-view="${f.view}" title="Open ${esc(f.name)}">
+            <span class="jf-icon">${f.icon}</span>
+            <span class="jf-name">${esc(f.name)}</span>
+            <span class="jf-arrow">→</span>
+          </a>`).join('')}
+      </div>
+    </div>`).join('');
+  const panel = document.createElement('div');
+  panel.id = 'journeyStagesPanel';
+  panel.className = 'journey-wrap';
+  panel.innerHTML = `
+    <div class="journey-head">
+      <div>
+        <h3>Your Marketing Journey</h3>
+        <p>Every InfoGenie capability mapped to the four stages of modern marketing. Start at Express, evolve into Evolve — and let the loop compound.</p>
+      </div>
+      <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;opacity:.85;font-weight:700;background:rgba(255,255,255,.1);padding:6px 12px;border-radius:8px">Express → Tailor → Amplify → Evolve</div>
+    </div>
+    <div class="journey-grid">${stageCards}</div>`;
+  // Place ABOVE dashLivePanels so it shows just under the table but above
+  // the live ad-account widgets that load asynchronously
+  host.parentNode.insertBefore(panel, host);
+  // Wire jumps using the same nav-switch path the sidebar uses
+  panel.querySelectorAll('[data-jump-view]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      const view = el.getAttribute('data-jump-view');
+      const link = document.querySelector(`.nav-link[data-view="${view}"]`);
+      if (link) link.click();
+    });
+  });
+};
