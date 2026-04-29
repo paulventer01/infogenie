@@ -13877,59 +13877,19 @@ function buildIntelligence() {
     </div>
   `;
 
-  // ── Belt-and-suspenders: directly bind click handlers to every Counter
-  // This Message button immediately after render. This is independent of:
-  //   • the inline onclick attribute (in case the browser strips it)
-  //   • the document-level delegated handler (in case event ordering bites)
-  //   • window._wlClick / window.openWLCounterModal globals (in case a later
-  //     runtime error halts top-level script execution before they're set)
-  // The handler reads data-* attributes directly and calls the local
-  // openWLCounterModal reference captured in this closure.
+  // ── Counter This Message buttons: just count + log. The inline onclick on
+  // each button calls window._wlClick(this), and a document-level delegated
+  // handler is the safety net. Past attempts to strip the inline onclick and
+  // attach a direct addEventListener silently failed for some clicks (events
+  // not reaching the handler), so we now keep the inline path as the primary
+  // wireup — it always fires because it's part of the HTML attribute.
   try {
     const wlButtons = wrap.querySelectorAll('.btn-wl-counter');
-    console.log('[wl-counter] buildIntelligence binding', wlButtons.length, 'Counter This Message button(s)');
-    wlButtons.forEach(b => {
-      if (b._wlBound) return;
-      b._wlBound = true;
-      // Strip inline onclick so the inline path can't double-fire alongside
-      // this direct listener. The delegated document handler also skips
-      // buttons with `_wlBound === true` (see ~24320).
-      try { b.removeAttribute('onclick'); b.onclick = null; } catch(_) {}
-      b.style.pointerEvents = 'auto';
-      b.style.position = 'relative';
-      b.style.zIndex = '5';
-      b.addEventListener('click', function(ev) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        console.log('[wl-counter] click registered on', b.getAttribute('data-wl-comp'));
-        try {
-          const dec = s => { try { return decodeURIComponent(s || ''); } catch(_) { return s || ''; } };
-          const data = {
-            comp:     dec(b.getAttribute('data-wl-comp')),
-            channel:  dec(b.getAttribute('data-wl-channel')),
-            lossRate: dec(b.getAttribute('data-wl-loss')),
-            message:  dec(b.getAttribute('data-wl-message')),
-            weakness: dec(b.getAttribute('data-wl-weakness'))
-          };
-          if (!data.comp) {
-            if (typeof showToast === 'function') showToast('⚠️ Counter data missing — please re-run analysis');
-            return;
-          }
-          if (typeof openWLCounterModal === 'function') {
-            openWLCounterModal(data);
-          } else if (typeof window.openWLCounterModal === 'function') {
-            window.openWLCounterModal(data);
-          } else {
-            console.error('[wl-counter] openWLCounterModal not in scope or on window');
-            if (typeof showToast === 'function') showToast('⚠️ Counter modal not loaded — please refresh the page');
-          }
-        } catch(err) {
-          console.error('[wl-counter direct] failed:', err);
-          if (typeof showToast === 'function') showToast('⚠️ Counter modal error: ' + (err && err.message || err));
-        }
-      }, { capture: true });
-    });
-  } catch(e) { console.warn('[wl-counter] direct bind skipped:', e); }
+    console.log('[wl-counter] buildIntelligence rendered', wlButtons.length, 'Counter This Message button(s) — using inline onclick wireup');
+    // Make sure no stale "_wlBound" flag from previous renders blocks the
+    // delegated document handler from firing as a fallback.
+    wlButtons.forEach(b => { try { delete b._wlBound; } catch(_) {} });
+  } catch(e) { console.warn('[wl-counter] post-render check skipped:', e); }
 
   // Build Share of Voice horizontal bar chart
   const sovBarCtx = document.getElementById('sovBarChartIntel');
@@ -16761,8 +16721,11 @@ function openWLCounterModal(wlIdOrData) {
     if (first) _wlSelectVariant(first);
 
     document.getElementById('wlCounterFooter').innerHTML = `
+      <button class="btn-attack-activate" onclick="publishCounterNow('${wlId}', this)" style="background:linear-gradient(135deg,#10B981,#059669);">
+        ⚡ Post Now
+      </button>
       <button class="btn-attack-activate" onclick="queueCounterCampaign('${wlId}', this)">
-        📋 Queue Selected Counter-Message
+        📋 Queue for Review
       </button>
       <button class="btn-attack-cancel" onclick="closeAttackModal()">Maybe Later</button>
     `;
@@ -16859,6 +16822,83 @@ function queueCounterCampaign(wlId, btn) {
   }, 600);
 }
 
+// Publishes the selected AI counter-message immediately as a live social post.
+// Maps the W/L "channel" (TikTok, Meta Ads, Google Search, etc.) to the closest
+// matching social platform, then drops a published post into _socialPosts so it
+// appears in the social calendar / Upcoming Posts.
+function publishCounterNow(wlId, btn) {
+  const w = (window._wlData || {})[wlId];
+  if (!w) { showToast('⚠️ No counter data found'); return; }
+
+  // Find the currently-selected variant.
+  let selectedVariant = null;
+  try {
+    const sel = document.querySelector('#wlCounterBody .wl-variant[data-selected="true"]');
+    if (sel && Array.isArray(w.aiVariants)) {
+      const idx = parseInt(sel.getAttribute('data-vidx'), 10);
+      if (!isNaN(idx) && w.aiVariants[idx]) selectedVariant = w.aiVariants[idx];
+    }
+  } catch(_) {}
+  if (!selectedVariant) { showToast('⚠️ Pick a variant first, then click Post Now'); return; }
+
+  // Map the W/L channel to a social platform from SOCIAL_PLATFORMS.
+  const ch = (w.channel || '').toLowerCase();
+  const mapPlatform = () => {
+    if (ch.includes('tiktok')) return 'TikTok';
+    if (ch.includes('instagram') || ch === 'ig') return 'Instagram';
+    if (ch.includes('meta') || ch.includes('facebook')) return 'Meta';
+    if (ch.includes('linkedin')) return 'LinkedIn';
+    if (ch.includes('youtube')) return 'YouTube';
+    if (ch.includes('pinterest')) return 'Pinterest';
+    if (ch.includes('snapchat') || ch.includes('snap')) return 'Snapchat';
+    if (ch.includes('threads')) return 'Threads';
+    if (ch.includes('twitter') || ch === 'x') return 'X';
+    // Search/display channels don't map cleanly — default to LinkedIn so the
+    // post still lands somewhere useful for B2B counter-positioning.
+    return 'LinkedIn';
+  };
+  const platform = mapPlatform();
+
+  // Build the live caption from the selected variant.
+  const caption = `${selectedVariant.headline ? selectedVariant.headline + '\n\n' : ''}${selectedVariant.body || ''}${selectedVariant.cta ? '\n\n👉 ' + selectedVariant.cta : ''}`.trim();
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Posting…';
+
+  setTimeout(() => {
+    if (!window._socialPosts) window._socialPosts = [];
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toTimeString().slice(0,5);
+    const postId = 'post_counter_' + Date.now();
+    window._socialPosts.push({
+      id: postId,
+      platform: platform,
+      caption: caption,
+      scheduledDate: dateStr,
+      scheduledTime: timeStr,
+      status: 'published',
+      publishedAt: now.toLocaleString(),
+      funnelStage: 'consideration',
+      archetypeId: null,
+      archetypeTitle: `Counter-${w.comp}`,
+      fileName: null,
+      createdAt: now.toLocaleString(),
+      counterMeta: {
+        comp: w.comp,
+        weakness: w.weakness,
+        angle: selectedVariant.angle || ''
+      }
+    });
+    closeAttackModal();
+    showToast(`🚀 Counter-message posted live to ${platform} — view it in Reach › Social`);
+    // If the social calendar is currently mounted, refresh it so the new post shows up.
+    if (document.getElementById('socialWrap') && typeof buildSocialCalendar === 'function') {
+      try { buildSocialCalendar(); } catch(_) {}
+    }
+  }, 700);
+}
+
 // ── Expose Win/Loss counter helpers on window IMMEDIATELY (early), so even
 // if a later runtime error halts top-level script execution, these are still
 // callable from the inline onclick attribute on the rendered buttons. The
@@ -16866,6 +16906,7 @@ function queueCounterCampaign(wlId, btn) {
 // these names but harmless.
 try { window.openWLCounterModal  = openWLCounterModal;  } catch(e) {}
 try { window.queueCounterCampaign = queueCounterCampaign; } catch(e) {}
+try { window.publishCounterNow   = publishCounterNow;   } catch(e) {}
 try { window.closeAttackModal    = closeAttackModal;    } catch(e) {}
 try { window.openAttackModal     = openAttackModal;     } catch(e) {}
 
