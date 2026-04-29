@@ -16631,6 +16631,14 @@ function openWLCounterModal(wlIdOrData) {
   const modal = document.getElementById('attackModal');
   const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
 
+  // CRITICAL: actually MAKE THE MODAL VISIBLE. The element starts with the
+  // `.hidden` class (display:none !important) so without these two lines the
+  // innerHTML below is rendered into a hidden node and the user sees nothing.
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+  }
+
   // Per-open request token: every time the modal is (re)opened we bump this
   // counter so any in-flight fetch from a previous open is ignored when it
   // finally returns. Prevents a stale response from a previous click
