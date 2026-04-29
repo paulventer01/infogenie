@@ -6517,6 +6517,330 @@ app.post('/api/tech-index-signals', async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ATTRIBUTION & ROI DASHBOARD
+// Pulls spend from Meta/Google/TikTok, conversions from Amplitude (preferred),
+// and computes per-channel ROAS / CAC / ROI under a chosen attribution model.
+// Revenue is derived from Meta action_values when available, else AOV * conv.
+// ─────────────────────────────────────────────────────────────────────────────
+async function _fetchMetaSpendRich(days = 30) {
+  const rawAccountId = _cleanSecret(process.env.META_AD_ACCOUNT_ID);
+  const accessToken  = _cleanSecret(process.env.META_ACCESS_TOKEN);
+  if (!rawAccountId || !accessToken) return { ok:false, channel:'meta', error:'not-configured' };
+  const numericId = _digitsOnly(rawAccountId) || rawAccountId;
+  const acct = numericId.startsWith('act_') ? numericId : `act_${numericId}`;
+  const since = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
+  const until = new Date().toISOString().slice(0,10);
+  try {
+    // Pass token via Authorization header instead of query string to avoid
+    // leaking the access token through proxy / nginx / CDN access logs.
+    const r = await fetch(
+      `https://graph.facebook.com/v19.0/${acct}/insights?fields=spend,impressions,clicks,actions,action_values&time_range[since]=${since}&time_range[until]=${until}`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    );
+    const j = await r.json();
+    if (j.error) return { ok:false, channel:'meta', error: j.error.message, status:r.status };
+    const row = j.data?.[0] || {};
+    const purchases = (row.actions || [])
+      .filter(a => /purchase|fb_pixel_purchase|complete_registration|lead/i.test(a.action_type))
+      .reduce((s, a) => s + Number(a.value || 0), 0);
+    const revenue = (row.action_values || [])
+      .filter(a => /purchase|fb_pixel_purchase/i.test(a.action_type))
+      .reduce((s, a) => s + Number(a.value || 0), 0);
+    return {
+      ok:true, channel:'meta',
+      spend:       Number(row.spend       || 0),
+      impressions: Number(row.impressions || 0),
+      clicks:      Number(row.clicks      || 0),
+      conversions: purchases,
+      revenue,
+    };
+  } catch (e) { return { ok:false, channel:'meta', error: e.message }; }
+}
+
+// Returns { channels: <copy with modelAdjusted conversions>, weights: {channel: 0..1} }.
+// Weights always sum to 1.0 so callers can redistribute external conversion
+// totals (e.g. Amplitude) using the same model.
+function _applyAttributionWeights(channels, model) {
+  const live = channels.filter(c => c.ok);
+  if (live.length === 0) return { channels, weights: {} };
+  const equalShare = 1 / live.length;
+  // Default weights = current per-channel conversion share (used as fallback
+  // when click data is missing). Falls back to equal share if no conv either.
+  const totalConv   = live.reduce((s,c) => s + (c.conversions || 0), 0);
+  const totalClicks = live.reduce((s,c) => s + (c.clicks      || 0), 0);
+  let weights = {};
+  if (model === 'last-click' || live.length === 1) {
+    if (totalConv > 0) live.forEach(c => { weights[c.channel] = (c.conversions || 0) / totalConv; });
+    else live.forEach(c => { weights[c.channel] = equalShare; });
+  } else if (model === 'linear') {
+    if (totalClicks > 0) live.forEach(c => { weights[c.channel] = (c.clicks || 0) / totalClicks; });
+    else live.forEach(c => { weights[c.channel] = equalShare; });
+  } else if (model === 'time-decay') {
+    if (totalClicks > 0) {
+      const raw = live.map(c => Math.pow((c.clicks || 0) / totalClicks, 2));
+      const sum = raw.reduce((a,b)=>a+b, 0) || 1;
+      live.forEach((c,i) => { weights[c.channel] = raw[i] / sum; });
+    } else { live.forEach(c => { weights[c.channel] = equalShare; }); }
+  } else if (model === 'position-based') {
+    // 40% to top spender, 40% to top click-share, 20% spread across the rest.
+    // If top spender == top click-share, that single channel still gets 40%
+    // and the remaining 60% is split among the others (40% to runner-up by
+    // clicks, 20% across the long tail) so weights always sum to 1.0.
+    const sortedSpend  = [...live].sort((a,b) => (b.spend  || 0) - (a.spend  || 0));
+    const sortedClicks = [...live].sort((a,b) => (b.clicks || 0) - (a.clicks || 0));
+    const topSpend  = sortedSpend[0]?.channel;
+    const topClicks = sortedClicks[0]?.channel;
+    live.forEach(c => { weights[c.channel] = 0; });
+    if (topSpend === topClicks) {
+      // Single dominant channel
+      weights[topSpend] = 0.40;
+      const runnerUp = sortedClicks.find(c => c.channel !== topSpend)?.channel;
+      if (runnerUp) {
+        weights[runnerUp] = 0.40;
+        const rest = live.filter(c => c.channel !== topSpend && c.channel !== runnerUp);
+        const restShare = rest.length > 0 ? 0.20 / rest.length : 0;
+        rest.forEach(c => { weights[c.channel] = restShare; });
+        // If only 2 channels live, runner-up should absorb the 20% as well
+        if (rest.length === 0) weights[runnerUp] = 0.60;
+      } else {
+        weights[topSpend] = 1.0; // Only 1 channel
+      }
+    } else {
+      weights[topSpend]  = 0.40;
+      weights[topClicks] = 0.40;
+      const rest = live.filter(c => c.channel !== topSpend && c.channel !== topClicks);
+      const restShare = rest.length > 0 ? 0.20 / rest.length : 0;
+      rest.forEach(c => { weights[c.channel] = restShare; });
+      // Only 2 channels live → split the 20% between the two
+      if (rest.length === 0) { weights[topSpend] = 0.50; weights[topClicks] = 0.50; }
+    }
+  } else {
+    live.forEach(c => { weights[c.channel] = equalShare; });
+  }
+  // Apply weights to the (current) total conversions so the channel-level
+  // numbers reflect the chosen model. Caller can override if it has a more
+  // authoritative conversion total (e.g. Amplitude).
+  const adjusted = channels.map(c => {
+    if (!c.ok) return c;
+    const w = weights[c.channel] || 0;
+    return { ...c, conversions: +(totalConv * w).toFixed(2), modelAdjusted: model !== 'last-click' };
+  });
+  return { channels: adjusted, weights };
+}
+
+app.get('/api/attribution/overview', async (req, res) => {
+  try {
+    const days  = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 30));
+    const aov   = Math.max(0, parseFloat(req.query.aov) || 0);
+    const model = ['last-click','linear','time-decay','position-based'].includes(req.query.model) ? req.query.model : 'last-click';
+    const [meta, google, tiktok, amp] = await Promise.all([
+      _fetchMetaSpendRich(days),
+      _fetchGoogleAdsSpend(days),
+      _fetchTikTokSpend(days),
+      _fetchAmplitudeConversions(days),
+    ]);
+    const sourceChannels = [meta, google, tiktok];
+    // Apply attribution model — get normalised weights (sum to 1.0) we can use
+    // to redistribute the most authoritative conversion total across channels.
+    const { weights } = _applyAttributionWeights(sourceChannels, model);
+    // Ground-truth conversion total: prefer Amplitude when it has data, else
+    // fall back to the sum of ad-platform-reported conversions.
+    const adReportedConv = sourceChannels.filter(c => c.ok).reduce((s,c) => s + (c.conversions || 0), 0);
+    const useAmplitude   = !!(amp.ok && Number(amp.conversions) > 0);
+    const groundTruthConv = useAmplitude ? Number(amp.conversions) : adReportedConv;
+    const conversionSource = useAmplitude ? 'amplitude' : 'ad-platform';
+    const enriched = sourceChannels.map(c => {
+      if (!c.ok) return c;
+      // Per-channel conversions = ground-truth total × model weight for this channel
+      const w    = weights[c.channel] || 0;
+      const conv = +(groundTruthConv * w).toFixed(2);
+      // Revenue: Meta action_values if present, else AOV*conv if AOV given, else null
+      let revenue = Number(c.revenue || 0);
+      if (!revenue && aov > 0) revenue = +(aov * conv).toFixed(2);
+      const cpa  = conv > 0    ? +(c.spend / conv).toFixed(2) : null;
+      const ctr  = (c.impressions||0) > 0 ? +((c.clicks||0)/c.impressions*100).toFixed(2) : null;
+      const cpc  = (c.clicks||0) > 0 ? +((c.spend||0)/c.clicks).toFixed(2) : null;
+      const roas = revenue > 0 && c.spend > 0 ? +(revenue / c.spend).toFixed(2) : null;
+      const roi  = revenue > 0 && c.spend > 0 ? +(((revenue - c.spend) / c.spend) * 100).toFixed(1) : null;
+      return {
+        ...c,
+        conversions: conv,
+        modelAdjusted: model !== 'last-click' || useAmplitude,
+        weight: +(w * 100).toFixed(1),
+        revenue, cpa, ctr, cpc, roas, roi,
+      };
+    });
+    const live = enriched.filter(c => c.ok);
+    const totals = {
+      spend:       +live.reduce((s,c)=>s+(c.spend||0),0).toFixed(2),
+      impressions: live.reduce((s,c)=>s+(c.impressions||0),0),
+      clicks:      live.reduce((s,c)=>s+(c.clicks||0),0),
+      conversions: +live.reduce((s,c)=>s+(c.conversions||0),0).toFixed(2),
+      revenue:     +live.reduce((s,c)=>s+(c.revenue||0),0).toFixed(2),
+    };
+    totals.blendedROAS = totals.spend > 0 && totals.revenue > 0 ? +(totals.revenue / totals.spend).toFixed(2) : null;
+    totals.blendedCAC  = totals.conversions > 0 ? +(totals.spend / totals.conversions).toFixed(2) : null;
+    totals.blendedROI  = totals.revenue > 0 && totals.spend > 0 ? +(((totals.revenue - totals.spend) / totals.spend) * 100).toFixed(1) : null;
+    // Best/worst channel by ROAS (only among live with revenue)
+    const ranked = live.filter(c => c.roas != null).sort((a,b) => (b.roas||0) - (a.roas||0));
+    const winner = ranked[0] || null;
+    const loser  = ranked.length > 1 ? ranked[ranked.length-1] : null;
+    res.json({
+      ok:true, days, attributionModel: model, aov,
+      totals,
+      channels: { meta: enriched[0], google: enriched[1], tiktok: enriched[2] },
+      conversionSource,
+      groundTruthConversions: groundTruthConv,
+      amplitude: amp,
+      insight: {
+        winner: winner ? { channel: winner.channel, roas: winner.roas, roi: winner.roi } : null,
+        loser:  loser  ? { channel: loser.channel,  roas: loser.roas,  roi: loser.roi  } : null,
+      },
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOOKALIKE AUDIENCE BUILDER
+// Generates platform-ready lookalike audience specs (Meta LLA / Google Customer
+// Match / TikTok LLA) from a seed (competitor domain, audience description, or
+// existing customer profile). Uses DataForSEO competitor signals when seedType
+// is 'competitor', then OpenAI to compose structured audience specs.
+// ─────────────────────────────────────────────────────────────────────────────
+async function _seedSignalsFromCompetitor(domain) {
+  const login = process.env.DATAFORSEO_LOGIN;
+  const password = process.env.DATAFORSEO_PASSWORD;
+  if (!login || !password) return { ok:false, error:'DataForSEO not configured' };
+  const auth = 'Basic ' + Buffer.from(`${login}:${password}`).toString('base64');
+  try {
+    const r = await fetch('https://api.dataforseo.com/v3/dataforseo_labs/google/ranked_keywords/live', {
+      method:'POST',
+      headers:{ 'Authorization': auth, 'Content-Type':'application/json' },
+      body: JSON.stringify([{ target: domain, location_code: 2840, language_code: 'en', limit: 30 }]),
+    });
+    const j = await r.json();
+    const items = j?.tasks?.[0]?.result?.[0]?.items || [];
+    const keywords = items.map(it => ({
+      keyword: it.keyword_data?.keyword,
+      volume:  it.keyword_data?.keyword_info?.search_volume,
+      intent:  it.keyword_data?.search_intent_info?.main_intent,
+    })).filter(k => k.keyword).slice(0, 25);
+    return { ok:true, domain, topKeywords: keywords };
+  } catch (e) { return { ok:false, error: e.message }; }
+}
+
+app.post('/api/lookalike/generate', async (req, res) => {
+  try {
+    const {
+      seedType = 'description',           // 'competitor' | 'description' | 'customer-profile'
+      seedValue = '',                     // domain | text | profile JSON
+      platforms = ['meta','google','tiktok'],
+      country = 'US',
+      lookalikeSize = '1%',               // Meta LLA size (1%-10%)
+      excludeExistingCustomers = true,
+      additionalContext = '',
+    } = req.body || {};
+    if (!seedValue || typeof seedValue !== 'string') {
+      return res.status(400).json({ ok:false, error:'seedValue is required' });
+    }
+    let signals = null;
+    if (seedType === 'competitor') {
+      const domain = seedValue.replace(/^https?:\/\//,'').replace(/\/.*$/,'').trim();
+      signals = await _seedSignalsFromCompetitor(domain);
+    }
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      return res.status(503).json({ ok:false, error:'OpenAI is not configured. Add the OpenAI integration in Settings → Integrations to enable AI-generated audiences.' });
+    }
+    const sys = `You are a senior paid-media strategist who builds lookalike audience specifications for Meta, Google, and TikTok ad platforms. Output must be valid JSON only — no prose.`;
+    const userPrompt = [
+      `Build lookalike audience specifications for these platforms: ${platforms.join(', ')}.`,
+      `Country: ${country}`,
+      `Lookalike size: ${lookalikeSize} (Meta LLA size scale)`,
+      `Exclude existing customers: ${excludeExistingCustomers}`,
+      `Seed type: ${seedType}`,
+      `Seed value: ${seedValue}`,
+      signals ? `Competitor SERP signals (top organic keywords, volume, intent):\n${JSON.stringify(signals.topKeywords?.slice(0,15) || [], null, 2)}` : '',
+      additionalContext ? `Additional context: ${additionalContext}` : '',
+      ``,
+      `Respond with this exact JSON shape:`,
+      `{`,
+      `  "summary": "1-2 sentence persona summary of the lookalike target",`,
+      `  "demographics": { "ageRange": "25-44", "genders": ["..."], "incomeBand": "...", "education": "...", "languages": ["..."] },`,
+      `  "geo": { "primaryCountry": "${country}", "topCities": ["..."], "exclusions": ["..."] },`,
+      `  "interests":   ["12-18 specific interests/topics scraped to Meta-sized strings"],`,
+      `  "behaviors":   ["8-12 buyer behaviors / life-events / purchase signals"],`,
+      `  "jobTitles":   ["8-12 likely job titles or roles, if applicable"],`,
+      `  "industries":  ["6-10 industries"],`,
+      `  "intentKeywords": ["10-15 high-intent search/browsing keywords"],`,
+      `  "platforms": {`,
+      `    "meta":   { "audienceName":"...", "sourceAudienceSuggestion":"Pixel: Purchasers (180d)", "lookalikeSize":"${lookalikeSize}", "detailedTargeting": { "interests":[...], "behaviors":[...], "demographics":[...] }, "exclusions":[...], "estReachM": 4.2, "uploadInstructions":"step-by-step" },`,
+      `    "google": { "audienceName":"...", "matchType":"Customer Match", "uploadFormat":"CSV (email_sha256, phone_sha256, first_name, last_name, country, postal_code)", "sampleHeaders":["email_sha256","phone_sha256","first_name","last_name","country","zip"], "similarAudienceTopics":[...], "inMarketSegments":[...], "uploadInstructions":"step-by-step" },`,
+      `    "tiktok": { "audienceName":"...", "lookalikeMode":"Balanced", "seedAudienceSuggestion":"Past-180-day purchasers", "interestCategories":[...], "behaviors":[...], "creators":[...], "uploadInstructions":"step-by-step" }`,
+      `  },`,
+      `  "seedExamples": [ { "persona":"...", "demographics":"...", "channels":["..."], "buyingTrigger":"..." }, ... 5 entries ],`,
+      `  "estimatedSize": { "low": 800000, "mid": 1500000, "high": 2400000 },`,
+      `  "warnings":  ["any compliance/quality risks like PII handling, small seed risk, etc"]`,
+      `}`,
+      `Be specific and concrete. Use real platform-recognised category names where possible (e.g. Meta detailed targeting names like "Engaged shoppers", "Online shopping").`,
+    ].filter(Boolean).join('\n');
+    const r = await openaiChatWithRetry({
+      model: 'gpt-4o',
+      messages: [
+        { role:'system', content: sys },
+        { role:'user',   content: userPrompt },
+      ],
+      response_format: { type:'json_object' },
+      max_tokens: 2400,
+      temperature: 0.6,
+    });
+    let spec = {};
+    try { spec = JSON.parse(r.choices[0].message.content); }
+    catch (e) { return res.status(500).json({ ok:false, error:'Model returned invalid JSON', raw: r.choices[0].message.content?.slice(0,500) }); }
+    res.json({ ok:true, spec, signals: signals?.ok ? signals : null, generatedAt: new Date().toISOString() });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e.message });
+  }
+});
+
+// Export a lookalike spec to a CSV-like text payload for the requested platform.
+app.post('/api/lookalike/export', async (req, res) => {
+  try {
+    const { spec = {}, platform = 'meta' } = req.body || {};
+    if (!spec || typeof spec !== 'object') return res.status(400).json({ ok:false, error:'spec required' });
+    const lines = [];
+    if (platform === 'google') {
+      const gp = spec.platforms?.google || {};
+      lines.push('# Google Customer Match upload template');
+      lines.push('# Hash email + phone with SHA-256 before uploading. Lowercase emails, E.164 phones.');
+      lines.push((gp.sampleHeaders || ['email_sha256','phone_sha256','first_name','last_name','country','zip']).join(','));
+      const examples = spec.seedExamples || [];
+      examples.forEach((p,i) => lines.push(`<sha256(email_${i+1})>,<sha256(phone_${i+1})>,First${i+1},Last${i+1},${(spec.geo?.primaryCountry || 'US')},`));
+    } else if (platform === 'tiktok') {
+      const tp = spec.platforms?.tiktok || {};
+      lines.push(`# TikTok LLA seed audience: ${tp.audienceName || ''}`);
+      lines.push(`# Mode: ${tp.lookalikeMode || 'Balanced'}`);
+      lines.push('email,phone,IDFA,GAID,country');
+      const examples = spec.seedExamples || [];
+      examples.forEach((p,i) => lines.push(`seed${i+1}@example.com,+15555550${100+i},,,${(spec.geo?.primaryCountry || 'US')}`));
+    } else {
+      const mp = spec.platforms?.meta || {};
+      lines.push(`# Meta Lookalike Audience: ${mp.audienceName || ''}`);
+      lines.push(`# Source: ${mp.sourceAudienceSuggestion || 'Pixel: Purchasers (180d)'}`);
+      lines.push(`# LLA size: ${mp.lookalikeSize || '1%'}`);
+      lines.push('email,phone,fn,ln,country,zip,city,state,dob');
+      const examples = spec.seedExamples || [];
+      examples.forEach((p,i) => lines.push(`seed${i+1}@example.com,+15555550${100+i},First${i+1},Last${i+1},${(spec.geo?.primaryCountry || 'US')},,,,`));
+    }
+    res.json({ ok:true, platform, csv: lines.join('\n'), filename: `lookalike-${platform}-${Date.now()}.csv` });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e.message });
+  }
+});
+
 // Port 5000 — Replit preview pane (webview)
 app.listen(5000, '0.0.0.0', () => {
   console.log('InfoGenie listening on port 5000 (preview pane)');

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <base href="/">
-  <link rel="stylesheet" href="/style.css?v=20260429A" />
+  <link rel="stylesheet" href="/style.css?v=20260429B" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
   <!-- PostHog SDK stub — init called from app.js after config fetch -->
@@ -125,6 +125,7 @@
           <div class="nav-drop-header">Distribute to audiences</div>
           <a href="#" class="nav-link" data-view="audience"><span class="ndl-icon">🎯</span><span class="ndl-text">Audience</span></a>
           <a href="#" class="nav-link" data-view="advertise"><span class="ndl-icon">📣</span><span class="ndl-text">Advertise Hub</span></a>
+          <a href="#" class="nav-link" data-view="lookalike"><span class="ndl-icon">👥</span><span class="ndl-text">Lookalike Audiences</span></a>
           <a href="#" class="nav-link" data-view="lead-qualifier"><span class="ndl-icon">🧲</span><span class="ndl-text">Lead Qualifier</span></a>
           <a href="#" class="nav-link" data-view="opt-folders"><span class="ndl-icon">📁</span><span class="ndl-text">Optimization Folders</span></a>
           <a href="#" class="nav-link" data-view="import-campaigns"><span class="ndl-icon">📥</span><span class="ndl-text">Import Campaigns</span></a>
@@ -149,6 +150,7 @@
           <a href="#" class="nav-link" data-view="amplitude-agents"><span class="ndl-icon">📡</span><span class="ndl-text">Amplitude AI Agents</span></a>
           <a href="#" class="nav-link" data-view="goals"><span class="ndl-icon">🎯</span><span class="ndl-text">Goals &amp; Targets</span></a>
           <a href="#" class="nav-link" data-view="blended-perf"><span class="ndl-icon">💎</span><span class="ndl-text">Blended Performance</span></a>
+          <a href="#" class="nav-link" data-view="attribution"><span class="ndl-icon">🎯</span><span class="ndl-text">Attribution &amp; ROI</span></a>
           <a href="#" class="nav-link" data-view="reengage"><span class="ndl-icon">📨</span><span class="ndl-text">Re-engage Audience</span></a>
           <a href="#" class="nav-link" data-view="ai-audit-suite"><span class="ndl-icon">🧪</span><span class="ndl-text">AI Audit Suite</span></a>
           <a href="#" class="nav-link" data-view="link-suggester"><span class="ndl-icon">🔗</span><span class="ndl-text">Internal Link Suggester</span></a>
@@ -1853,7 +1855,54 @@
   </div>
 </div>
 
-<script src="/app.js?v=20260429C"></script>
+<!-- ATTRIBUTION & ROI VIEW -->
+<div class="view hidden" id="view-attribution">
+  <div class="view-header" style="background:linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#C7D2FE"><span class="bc-group" style="color:rgba(199,210,254,.75)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Attribution &amp; ROI</div>
+          <h2 class="view-title">Attribution &amp; ROI Dashboard</h2>
+          <p class="view-sub">Unify Meta, Google, and TikTok ad spend with Amplitude/PostHog conversion data — pick an attribution model, plug in your AOV, and see exactly which channels are paying back.</p>
+        </div>
+        <div class="vh-actions" style="gap:8px">
+          <select id="attrDays" onchange="loadAttribution()" style="padding:9px 12px;background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;font-size:0.85rem;font-weight:600">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+          <select id="attrModel" onchange="loadAttribution()" style="padding:9px 12px;background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;font-size:0.85rem;font-weight:600">
+            <option value="last-click" selected>Last-Click</option>
+            <option value="linear">Linear</option>
+            <option value="time-decay">Time-Decay</option>
+            <option value="position-based">Position-Based</option>
+          </select>
+          <input id="attrAOV" type="number" min="0" step="1" placeholder="AOV $" value="" style="width:90px;padding:9px 10px;background:rgba(255,255,255,0.12);color:white;border:1px solid rgba(255,255,255,0.25);border-radius:8px;font-size:0.85rem;font-weight:600" onchange="loadAttribution()">
+          <button onclick="loadAttribution()" style="padding:9px 14px;background:white;color:#4338CA;border:none;border-radius:9px;font-weight:700;font-size:0.85rem;cursor:pointer">↻ Refresh</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="attributionWrap" style="padding-top:24px;padding-bottom:60px"></div>
+</div>
+
+<!-- LOOKALIKE AUDIENCE BUILDER VIEW -->
+<div class="view hidden" id="view-lookalike">
+  <div class="view-header" style="background:linear-gradient(135deg,#0F172A 0%,#1E40AF 50%,#0EA5E9 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#BAE6FD"><span class="bc-group" style="color:rgba(186,230,253,.75)">Reach</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Lookalike Audiences</div>
+          <h2 class="view-title">Lookalike Audience Builder</h2>
+          <p class="view-sub">Turn competitor signals or seed audience descriptions into platform-ready Meta Lookalike, Google Customer Match, and TikTok LLA audience specs you can upload directly.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="lookalikeWrap" style="padding-top:24px;padding-bottom:60px"></div>
+</div>
+
+<script src="/app.js?v=20260429E"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');

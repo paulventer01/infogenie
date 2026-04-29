@@ -27819,6 +27819,359 @@ async function launchReengage(dryRun) {
 // + addEventListener instead of inline onclick="…(${esc(value)})" — _escapeHtml
 // only escapes HTML context, and entities are decoded *before* inline JS runs,
 // which would let a single-quote in an email break out of the JS string.
+/* =============================================================================
+   ATTRIBUTION & ROI DASHBOARD — unifies Meta+Google+TikTok spend with
+   Amplitude conversions, applies the chosen attribution model, and computes
+   ROAS / CAC / ROI per channel + blended.
+   ============================================================================= */
+function buildAttribution() { loadAttribution(); }
+async function loadAttribution() {
+  const wrap = document.getElementById('attributionWrap');
+  if (!wrap) return;
+  const days  = parseInt(document.getElementById('attrDays')?.value  || '30', 10);
+  const model = document.getElementById('attrModel')?.value || 'last-click';
+  const aov   = parseFloat(document.getElementById('attrAOV')?.value || '0') || 0;
+  wrap.innerHTML = '<div style="text-align:center;padding:64px;color:#64748B;font-weight:600">⏳ Pulling spend from Meta + Google + TikTok and conversions from Amplitude…</div>';
+  try {
+    const r = await fetch(`/api/attribution/overview?days=${days}&model=${encodeURIComponent(model)}&aov=${aov}`);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Failed to load');
+    wrap.innerHTML = _attributionHtml(j);
+  } catch (e) {
+    const safe = (typeof _escapeHtml === 'function') ? _escapeHtml(e.message) : String(e.message);
+    wrap.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:24px;color:#991B1B"><b>⚠️ Could not load</b><div style="font-size:0.85rem;margin-top:6px">${safe}</div></div>`;
+  }
+}
+function _attributionHtml(j) {
+  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s)=>String(s==null?'':s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const fmtMoney = (n) => n == null ? '—' : '$' + Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
+  const fmtNum   = (n) => n == null ? '—' : Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
+  const fmtPct   = (n) => n == null ? '—' : Number(n).toFixed(1) + '%';
+  const channelDefs = [
+    { key:'meta',   name:'Meta Ads',   color:'#1877F2', bg:'#EFF6FF', icon:'📘' },
+    { key:'google', name:'Google Ads', color:'#4285F4', bg:'#F0F7FF', icon:'🔵' },
+    { key:'tiktok', name:'TikTok Ads', color:'#0F172A', bg:'#F1F5F9', icon:'⚫' },
+  ];
+  const t = j.totals || {};
+  const okCount = channelDefs.filter(d => j.channels?.[d.key]?.ok).length;
+  const modelLabel = { 'last-click':'Last-Click', linear:'Linear', 'time-decay':'Time-Decay', 'position-based':'Position-Based' }[j.attributionModel] || 'Last-Click';
+  const insight = j.insight || {};
+  // Hero
+  const hero = `
+    <div style="background:linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%);border-radius:18px;padding:30px;color:white;margin-bottom:22px;box-shadow:0 8px 28px rgba(67,56,202,.28)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px;margin-bottom:18px">
+        <div>
+          <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.6px;opacity:.85;font-weight:700">Attribution model · ${esc(modelLabel)} · last ${j.days} days · ${okCount}/3 channels live</div>
+          <div style="font-size:0.78rem;opacity:.78;margin-top:4px">Conversions sourced from <b>${j.conversionSource === 'amplitude' ? 'Amplitude (ground truth)' : 'ad-platform reported'}</b>${j.aov > 0 ? ` · AOV $${j.aov}` : ''}</div>
+        </div>
+        ${insight.winner ? `<div style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:10px 14px;font-size:0.82rem"><b style="text-transform:capitalize">🏆 ${esc(insight.winner.channel)}</b> is your top ROAS at <b>${insight.winner.roas != null ? insight.winner.roas + 'x' : '—'}</b></div>` : ''}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:18px">
+        <div><div style="font-size:0.7rem;opacity:.75;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Total Spend</div><div style="font-size:1.85rem;font-weight:900;margin-top:4px">${fmtMoney(t.spend)}</div></div>
+        <div><div style="font-size:0.7rem;opacity:.75;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Conversions</div><div style="font-size:1.85rem;font-weight:900;margin-top:4px">${fmtNum(t.conversions)}</div></div>
+        <div><div style="font-size:0.7rem;opacity:.75;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Revenue</div><div style="font-size:1.85rem;font-weight:900;margin-top:4px">${fmtMoney(t.revenue)}</div></div>
+        <div><div style="font-size:0.7rem;opacity:.75;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Blended ROAS</div><div style="font-size:1.85rem;font-weight:900;margin-top:4px;color:${(t.blendedROAS||0)>=1?'#A7F3D0':'#FECACA'}">${t.blendedROAS != null ? t.blendedROAS + 'x' : '—'}</div></div>
+        <div><div style="font-size:0.7rem;opacity:.75;text-transform:uppercase;letter-spacing:.5px;font-weight:700">Blended CAC</div><div style="font-size:1.85rem;font-weight:900;margin-top:4px">${fmtMoney(t.blendedCAC)}</div></div>
+        <div><div style="font-size:0.7rem;opacity:.75;text-transform:uppercase;letter-spacing:.5px;font-weight:700">ROI</div><div style="font-size:1.85rem;font-weight:900;margin-top:4px;color:${(t.blendedROI||0)>=0?'#A7F3D0':'#FECACA'}">${t.blendedROI != null ? t.blendedROI + '%' : '—'}</div></div>
+      </div>
+    </div>`;
+  // Channel cards
+  const channelCards = channelDefs.map(d => {
+    const c = j.channels?.[d.key] || {};
+    if (!c.ok) {
+      return `
+        <div style="background:#FAFAFA;border:1.5px dashed #E5E7EB;border-radius:14px;padding:22px;color:#64748B">
+          <div style="font-size:1.5rem;margin-bottom:6px">${d.icon}</div>
+          <div style="font-weight:800;color:#0A1628;margin-bottom:4px">${esc(d.name)}</div>
+          <div style="font-size:0.78rem;color:#94A3B8">Not configured · ${esc(c.error || 'connect this platform to see ROI')}</div>
+        </div>`;
+    }
+    const spendShare = (t.spend > 0) ? ((c.spend || 0) / t.spend * 100) : 0;
+    const roasColor = c.roas == null ? '#94A3B8' : (c.roas >= 2 ? '#10B981' : c.roas >= 1 ? '#F59E0B' : '#EF4444');
+    return `
+      <div style="background:white;border:1.5px solid ${d.color}33;border-radius:14px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.04)">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div style="width:36px;height:36px;border-radius:9px;background:${d.bg};display:flex;align-items:center;justify-content:center;font-size:1.2rem">${d.icon}</div>
+          <div style="flex:1">
+            <div style="font-weight:800;color:#0A1628;font-size:1rem">${esc(d.name)}</div>
+            <div style="font-size:0.7rem;color:#64748B">${spendShare.toFixed(1)}% of spend${c.weight != null ? ` · ${c.weight}% of conversions` : ''}${c.modelAdjusted ? ' · model-adjusted' : ''}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:0.65rem;color:#64748B;text-transform:uppercase;letter-spacing:.5px;font-weight:700">ROAS</div>
+            <div style="font-size:1.4rem;font-weight:900;color:${roasColor}">${c.roas != null ? c.roas + 'x' : '—'}</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px 14px;font-size:0.8rem">
+          <div><div style="color:#64748B;font-size:0.68rem;text-transform:uppercase;font-weight:700">Spend</div><div style="font-weight:700;color:#0A1628">${fmtMoney(c.spend)}</div></div>
+          <div><div style="color:#64748B;font-size:0.68rem;text-transform:uppercase;font-weight:700">Revenue</div><div style="font-weight:700;color:#0A1628">${fmtMoney(c.revenue)}</div></div>
+          <div><div style="color:#64748B;font-size:0.68rem;text-transform:uppercase;font-weight:700">Impressions</div><div style="font-weight:700;color:#0A1628">${fmtNum(c.impressions)}</div></div>
+          <div><div style="color:#64748B;font-size:0.68rem;text-transform:uppercase;font-weight:700">Clicks</div><div style="font-weight:700;color:#0A1628">${fmtNum(c.clicks)}</div></div>
+          <div><div style="color:#64748B;font-size:0.68rem;text-transform:uppercase;font-weight:700">Conversions</div><div style="font-weight:700;color:#0A1628">${fmtNum(c.conversions)}</div></div>
+          <div><div style="color:#64748B;font-size:0.68rem;text-transform:uppercase;font-weight:700">CPA</div><div style="font-weight:700;color:#0A1628">${fmtMoney(c.cpa)}</div></div>
+          <div><div style="color:#64748B;font-size:0.68rem;text-transform:uppercase;font-weight:700">CTR</div><div style="font-weight:700;color:#0A1628">${fmtPct(c.ctr)}</div></div>
+          <div><div style="color:#64748B;font-size:0.68rem;text-transform:uppercase;font-weight:700">CPC</div><div style="font-weight:700;color:#0A1628">${fmtMoney(c.cpc)}</div></div>
+          <div style="grid-column:1/-1;padding-top:8px;margin-top:4px;border-top:1px dashed #E5E7EB"><div style="color:#64748B;font-size:0.68rem;text-transform:uppercase;font-weight:700">ROI</div><div style="font-weight:800;color:${(c.roi||0)>=0?'#10B981':'#EF4444'};font-size:1rem">${c.roi != null ? c.roi + '%' : '—'}</div></div>
+        </div>
+      </div>`;
+  }).join('');
+  // Spend allocation bar
+  let allocBar = '';
+  if (t.spend > 0) {
+    const segs = channelDefs.filter(d => j.channels?.[d.key]?.ok).map(d => {
+      const c = j.channels[d.key];
+      const pct = (c.spend || 0) / t.spend * 100;
+      return `<div style="background:${d.color};height:100%;width:${pct}%" title="${esc(d.name)} · ${pct.toFixed(1)}%"></div>`;
+    }).join('');
+    const legend = channelDefs.filter(d => j.channels?.[d.key]?.ok).map(d => {
+      const c = j.channels[d.key];
+      const pct = (c.spend || 0) / t.spend * 100;
+      return `<div style="display:flex;align-items:center;gap:6px;font-size:0.78rem"><div style="width:10px;height:10px;border-radius:2px;background:${d.color}"></div><b style="color:#0A1628">${esc(d.name)}</b><span style="color:#64748B">${pct.toFixed(1)}%</span></div>`;
+    }).join('');
+    allocBar = `
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;margin-top:18px">
+        <div style="font-weight:800;color:#0A1628;font-size:0.95rem;margin-bottom:10px">📊 Spend allocation</div>
+        <div style="display:flex;height:14px;border-radius:8px;overflow:hidden;background:#F1F5F9">${segs}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:10px">${legend}</div>
+      </div>`;
+  }
+  // Recommendation
+  let rec = '';
+  if (insight.winner && insight.loser && insight.winner.channel !== insight.loser.channel) {
+    rec = `
+      <div style="background:linear-gradient(135deg,#ECFDF5 0%,#D1FAE5 100%);border:1px solid #6EE7B7;border-radius:14px;padding:18px;margin-top:18px">
+        <div style="font-weight:800;color:#065F46;font-size:0.95rem;margin-bottom:6px">💡 Reallocation recommendation</div>
+        <div style="font-size:0.86rem;color:#047857;line-height:1.5">Based on the <b>${esc(modelLabel)}</b> attribution model over ${j.days} days, <b style="text-transform:capitalize">${esc(insight.winner.channel)}</b> is returning <b>${insight.winner.roas}x ROAS</b> (${insight.winner.roi}% ROI), while <b style="text-transform:capitalize">${esc(insight.loser.channel)}</b> is at <b>${insight.loser.roas}x</b> (${insight.loser.roi}% ROI). Consider shifting 10–20% of <b style="text-transform:capitalize">${esc(insight.loser.channel)}</b> spend into <b style="text-transform:capitalize">${esc(insight.winner.channel)}</b> and re-measuring next week.</div>
+      </div>`;
+  }
+  // Configuration warnings
+  let warnings = '';
+  const missing = channelDefs.filter(d => !j.channels?.[d.key]?.ok);
+  if (missing.length || j.aov === 0 && t.revenue === 0) {
+    const items = [];
+    if (missing.length) items.push(`<li>${missing.map(m => esc(m.name)).join(', ')} not connected — settings → integrations to wire them up.</li>`);
+    if (j.aov === 0 && t.revenue === 0) items.push(`<li>No revenue detected from Meta action_values. Enter your <b>average order value</b> in the toolbar to estimate ROAS from conversions.</li>`);
+    if (j.conversionSource !== 'amplitude') items.push(`<li>Using ad-platform-reported conversions. Configure <b>Amplitude</b> conversion events for ground-truth measurement.</li>`);
+    warnings = `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:16px;margin-top:18px"><div style="font-weight:800;color:#92400E;font-size:0.9rem;margin-bottom:8px">⚙️ Setup checks</div><ul style="margin:0;padding-left:18px;color:#78350F;font-size:0.82rem;line-height:1.7">${items.join('')}</ul></div>`;
+  }
+  return `
+    ${hero}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">${channelCards}</div>
+    ${allocBar}
+    ${rec}
+    ${warnings}
+    <div style="text-align:center;font-size:0.7rem;color:#94A3B8;margin-top:14px">Generated ${new Date(j.generatedAt).toLocaleString()}</div>`;
+}
+
+/* =============================================================================
+   LOOKALIKE AUDIENCE BUILDER — generate Meta LLA / Google CM / TikTok LLA
+   audience specs from competitor signals or seed descriptions, with CSV export.
+   ============================================================================= */
+window._lookalikeLastSpec = null;
+function buildLookalike() {
+  const wrap = document.getElementById('lookalikeWrap');
+  if (!wrap) return;
+  if (wrap.dataset.built === '1') return;
+  wrap.dataset.built = '1';
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr;gap:18px">
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:24px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
+        <div style="font-weight:800;color:#0A1628;font-size:1.05rem;margin-bottom:4px">1 · Define your seed</div>
+        <div style="font-size:0.82rem;color:#64748B;margin-bottom:18px">Pick the source InfoGenie should use to model the lookalike audience.</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:18px" id="laSeedTypeGrid">
+          ${[
+            {v:'competitor', t:'🏆 Competitor domain', d:'Pull SERP signals from a competitor URL'},
+            {v:'description', t:'✍️ Audience description', d:'Free-text persona / customer description'},
+            {v:'customer-profile', t:'🧬 Customer profile', d:'Paste an existing customer/buyer profile'},
+          ].map((o, i) => `
+            <button type="button" data-la-seed="${o.v}" onclick="_laSelectSeed('${o.v}')" style="text-align:left;padding:14px;background:${i===0?'#EEF2FF':'#F8FAFC'};border:1.5px solid ${i===0?'#6366F1':'#E5E7EB'};border-radius:12px;cursor:pointer;transition:all .15s">
+              <div style="font-weight:700;color:#0A1628;font-size:0.88rem">${o.t}</div>
+              <div style="font-size:0.72rem;color:#64748B;margin-top:3px">${o.d}</div>
+            </button>`).join('')}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+          <label style="display:block">
+            <div style="font-size:0.74rem;font-weight:700;color:#0A1628;margin-bottom:5px">Country</div>
+            <select id="laCountry" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:0.86rem">
+              <option value="US" selected>United States</option><option value="GB">United Kingdom</option><option value="CA">Canada</option><option value="AU">Australia</option><option value="DE">Germany</option><option value="FR">France</option><option value="ES">Spain</option><option value="IT">Italy</option><option value="NL">Netherlands</option><option value="BR">Brazil</option><option value="MX">Mexico</option><option value="JP">Japan</option><option value="IN">India</option>
+            </select>
+          </label>
+          <label style="display:block">
+            <div style="font-size:0.74rem;font-weight:700;color:#0A1628;margin-bottom:5px">Meta lookalike size</div>
+            <select id="laSize" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:0.86rem">
+              <option value="1%" selected>1% (most similar, smallest)</option><option value="2%">2%</option><option value="3%">3%</option><option value="5%">5%</option><option value="10%">10% (broadest)</option>
+            </select>
+          </label>
+        </div>
+        <label style="display:block;margin-bottom:14px">
+          <div style="font-size:0.74rem;font-weight:700;color:#0A1628;margin-bottom:5px"><span id="laSeedLabel">Competitor domain</span></div>
+          <input id="laSeedValue" type="text" placeholder="e.g. competitor.com" style="width:100%;padding:11px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:0.9rem">
+        </label>
+        <label style="display:block;margin-bottom:18px">
+          <div style="font-size:0.74rem;font-weight:700;color:#0A1628;margin-bottom:5px">Additional context (optional)</div>
+          <textarea id="laContext" placeholder="e.g. We sell premium B2B SaaS, ACV $12k, primarily targeting Heads of Marketing at Series B+ companies." style="width:100%;min-height:64px;padding:11px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:0.86rem;font-family:inherit;resize:vertical"></textarea>
+        </label>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:18px">
+          <div style="font-size:0.78rem;font-weight:700;color:#0A1628">Target platforms:</div>
+          ${[
+            {v:'meta', l:'📘 Meta LLA', c:'#1877F2'},
+            {v:'google', l:'🔵 Google CM', c:'#4285F4'},
+            {v:'tiktok', l:'⬛ TikTok LLA', c:'#0F172A'},
+          ].map(p => `<label style="display:flex;align-items:center;gap:6px;font-size:0.84rem;color:#0A1628;cursor:pointer"><input type="checkbox" class="la-platform" value="${p.v}" checked> <span>${p.l}</span></label>`).join('')}
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.84rem;color:#0A1628;cursor:pointer;margin-left:auto"><input type="checkbox" id="laExclude" checked> <span>Exclude existing customers</span></label>
+        </div>
+        <button onclick="generateLookalike()" id="laGenBtn" style="width:100%;padding:14px;background:linear-gradient(135deg,#1E40AF 0%,#0EA5E9 100%);color:white;border:none;border-radius:12px;font-weight:800;font-size:0.95rem;cursor:pointer;box-shadow:0 4px 14px rgba(14,165,233,.3)">⚡ Generate Lookalike Audiences</button>
+      </div>
+      <div id="laResult"></div>
+    </div>`;
+}
+window._laSelectSeed = function(v) {
+  document.querySelectorAll('#laSeedTypeGrid button[data-la-seed]').forEach(b => {
+    const sel = b.getAttribute('data-la-seed') === v;
+    b.style.background = sel ? '#EEF2FF' : '#F8FAFC';
+    b.style.borderColor = sel ? '#6366F1' : '#E5E7EB';
+  });
+  const lbl = document.getElementById('laSeedLabel');
+  const inp = document.getElementById('laSeedValue');
+  if (v === 'competitor') { lbl.textContent = 'Competitor domain'; inp.placeholder = 'e.g. competitor.com'; }
+  else if (v === 'description') { lbl.textContent = 'Audience description'; inp.placeholder = 'e.g. Marketing leaders at SaaS companies who buy attribution tools'; }
+  else { lbl.textContent = 'Customer profile'; inp.placeholder = 'e.g. CMOs / VPs of Marketing at $10M-100M ARR B2B SaaS, urban US/CA/UK'; }
+  inp.dataset.seedType = v;
+};
+async function generateLookalike() {
+  const seedType = document.querySelector('#laSeedTypeGrid button[data-la-seed][style*="EEF2FF"]')?.getAttribute('data-la-seed') || 'competitor';
+  const seedValue = document.getElementById('laSeedValue').value.trim();
+  if (!seedValue) { alert('Please enter a seed value first.'); return; }
+  const country = document.getElementById('laCountry').value;
+  const lookalikeSize = document.getElementById('laSize').value;
+  const additionalContext = document.getElementById('laContext').value.trim();
+  const excludeExistingCustomers = document.getElementById('laExclude').checked;
+  const platforms = Array.from(document.querySelectorAll('input.la-platform:checked')).map(c => c.value);
+  if (!platforms.length) { alert('Select at least one target platform.'); return; }
+  const btn = document.getElementById('laGenBtn');
+  const resBox = document.getElementById('laResult');
+  btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = '⏳ Generating audiences (this can take 20-40s)…';
+  resBox.innerHTML = '<div style="background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:14px;padding:32px;text-align:center;color:#64748B;font-weight:600">⏳ Pulling competitor signals and composing audience specs…</div>';
+  try {
+    const r = await fetch('/api/lookalike/generate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ seedType, seedValue, platforms, country, lookalikeSize, excludeExistingCustomers, additionalContext }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Failed to generate');
+    window._lookalikeLastSpec = j.spec;
+    resBox.innerHTML = _lookalikeResultHtml(j);
+  } catch (e) {
+    const safe = (typeof _escapeHtml === 'function') ? _escapeHtml(e.message) : String(e.message);
+    resBox.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:24px;color:#991B1B"><b>⚠️ Generation failed</b><div style="font-size:0.85rem;margin-top:6px">${safe}</div></div>`;
+  } finally {
+    btn.disabled = false; btn.style.opacity = '1'; btn.textContent = '⚡ Generate Lookalike Audiences';
+  }
+}
+function _lookalikeResultHtml(j) {
+  const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s)=>String(s==null?'':s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const s = j.spec || {};
+  const fmtRange = (rng) => rng ? `${(rng.low/1e6).toFixed(1)}M – ${(rng.high/1e6).toFixed(1)}M` : '—';
+  const tag = (txt, color) => `<span style="display:inline-block;background:${color}15;color:${color};padding:4px 10px;border-radius:99px;font-size:0.74rem;font-weight:600;margin:3px 4px 3px 0">${esc(txt)}</span>`;
+  const list = (arr, color) => (arr||[]).slice(0, 24).map(t => tag(t, color)).join('');
+  const platforms = s.platforms || {};
+  const platformBlocks = [];
+  if (platforms.meta) {
+    const mp = platforms.meta;
+    platformBlocks.push(`
+      <div style="background:white;border:1.5px solid #1877F233;border-radius:14px;padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div style="font-weight:800;color:#0A1628;font-size:1rem">📘 Meta Lookalike Audience</div>
+          <button onclick="exportLookalikeCSV('meta')" style="padding:7px 12px;background:#1877F2;color:white;border:none;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer">⬇ Download CSV template</button>
+        </div>
+        <div style="font-size:0.85rem;color:#0A1628;margin-bottom:8px"><b>${esc(mp.audienceName || 'Meta LLA')}</b> · Size: <b>${esc(mp.lookalikeSize || '1%')}</b> · Est reach: <b>${mp.estReachM ? mp.estReachM + 'M' : '—'}</b></div>
+        <div style="font-size:0.78rem;color:#64748B;margin-bottom:8px">Source: ${esc(mp.sourceAudienceSuggestion || 'Pixel: Purchasers (180d)')}</div>
+        ${mp.detailedTargeting?.interests ? `<div style="margin-top:10px"><div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">Detailed targeting · interests</div>${list(mp.detailedTargeting.interests, '#1877F2')}</div>` : ''}
+        ${mp.detailedTargeting?.behaviors ? `<div style="margin-top:10px"><div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">Behaviors</div>${list(mp.detailedTargeting.behaviors, '#1877F2')}</div>` : ''}
+        ${mp.exclusions?.length ? `<div style="margin-top:10px"><div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">Exclusions</div>${list(mp.exclusions, '#EF4444')}</div>` : ''}
+        ${mp.uploadInstructions ? `<div style="margin-top:12px;padding:10px 12px;background:#EFF6FF;border-left:3px solid #1877F2;border-radius:6px;font-size:0.78rem;color:#1E3A8A;white-space:pre-wrap;line-height:1.5">${esc(mp.uploadInstructions)}</div>` : ''}
+      </div>`);
+  }
+  if (platforms.google) {
+    const gp = platforms.google;
+    platformBlocks.push(`
+      <div style="background:white;border:1.5px solid #4285F433;border-radius:14px;padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div style="font-weight:800;color:#0A1628;font-size:1rem">🔵 Google Customer Match</div>
+          <button onclick="exportLookalikeCSV('google')" style="padding:7px 12px;background:#4285F4;color:white;border:none;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer">⬇ Download CSV template</button>
+        </div>
+        <div style="font-size:0.85rem;color:#0A1628;margin-bottom:8px"><b>${esc(gp.audienceName || 'Customer Match list')}</b> · Type: <b>${esc(gp.matchType || 'Customer Match')}</b></div>
+        <div style="font-size:0.78rem;color:#64748B;margin-bottom:8px">Upload format: ${esc(gp.uploadFormat || 'CSV with SHA-256 hashed identifiers')}</div>
+        ${gp.similarAudienceTopics?.length ? `<div style="margin-top:10px"><div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">Similar-audience topics</div>${list(gp.similarAudienceTopics, '#4285F4')}</div>` : ''}
+        ${gp.inMarketSegments?.length ? `<div style="margin-top:10px"><div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">In-market segments</div>${list(gp.inMarketSegments, '#0F9D58')}</div>` : ''}
+        ${gp.uploadInstructions ? `<div style="margin-top:12px;padding:10px 12px;background:#F0F7FF;border-left:3px solid #4285F4;border-radius:6px;font-size:0.78rem;color:#1E3A8A;white-space:pre-wrap;line-height:1.5">${esc(gp.uploadInstructions)}</div>` : ''}
+      </div>`);
+  }
+  if (platforms.tiktok) {
+    const tp = platforms.tiktok;
+    platformBlocks.push(`
+      <div style="background:white;border:1.5px solid #0F172A33;border-radius:14px;padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div style="font-weight:800;color:#0A1628;font-size:1rem">⬛ TikTok Lookalike Audience</div>
+          <button onclick="exportLookalikeCSV('tiktok')" style="padding:7px 12px;background:#0F172A;color:white;border:none;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer">⬇ Download CSV template</button>
+        </div>
+        <div style="font-size:0.85rem;color:#0A1628;margin-bottom:8px"><b>${esc(tp.audienceName || 'TikTok LLA')}</b> · Mode: <b>${esc(tp.lookalikeMode || 'Balanced')}</b></div>
+        <div style="font-size:0.78rem;color:#64748B;margin-bottom:8px">Seed: ${esc(tp.seedAudienceSuggestion || 'Past-180-day purchasers')}</div>
+        ${tp.interestCategories?.length ? `<div style="margin-top:10px"><div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">Interest categories</div>${list(tp.interestCategories, '#0F172A')}</div>` : ''}
+        ${tp.behaviors?.length ? `<div style="margin-top:10px"><div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">Behaviors</div>${list(tp.behaviors, '#FF2D55')}</div>` : ''}
+        ${tp.creators?.length ? `<div style="margin-top:10px"><div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">Creator categories</div>${list(tp.creators, '#10B981')}</div>` : ''}
+        ${tp.uploadInstructions ? `<div style="margin-top:12px;padding:10px 12px;background:#F1F5F9;border-left:3px solid #0F172A;border-radius:6px;font-size:0.78rem;color:#0F172A;white-space:pre-wrap;line-height:1.5">${esc(tp.uploadInstructions)}</div>` : ''}
+      </div>`);
+  }
+  const seeds = (s.seedExamples || []).map(p => `
+    <div style="border:1px solid #E5E7EB;border-radius:10px;padding:12px;background:white">
+      <div style="font-weight:800;color:#0A1628;font-size:0.86rem;margin-bottom:4px">${esc(p.persona || '—')}</div>
+      <div style="font-size:0.74rem;color:#64748B;margin-bottom:6px">${esc(p.demographics || '')}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">${(p.channels || []).map(c => tag(c, '#6366F1')).join('')}</div>
+      <div style="font-size:0.74rem;color:#0A1628"><b>Trigger:</b> ${esc(p.buyingTrigger || '')}</div>
+    </div>`).join('');
+  return `
+    <div style="background:linear-gradient(135deg,#0F172A 0%,#1E40AF 100%);border-radius:16px;padding:24px;color:white;margin-bottom:18px">
+      <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.6px;opacity:.78;font-weight:700;margin-bottom:6px">Lookalike audience persona</div>
+      <div style="font-size:1.1rem;line-height:1.5;font-weight:600">${esc(s.summary || '')}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-top:18px">
+        <div><div style="font-size:0.65rem;opacity:.72;font-weight:700;text-transform:uppercase">Age</div><div style="font-weight:800;margin-top:3px">${esc(s.demographics?.ageRange || '—')}</div></div>
+        <div><div style="font-size:0.65rem;opacity:.72;font-weight:700;text-transform:uppercase">Income</div><div style="font-weight:800;margin-top:3px">${esc(s.demographics?.incomeBand || '—')}</div></div>
+        <div><div style="font-size:0.65rem;opacity:.72;font-weight:700;text-transform:uppercase">Geo</div><div style="font-weight:800;margin-top:3px">${esc(s.geo?.primaryCountry || '—')}</div></div>
+        <div><div style="font-size:0.65rem;opacity:.72;font-weight:700;text-transform:uppercase">Est. size</div><div style="font-weight:800;margin-top:3px">${fmtRange(s.estimatedSize)}</div></div>
+      </div>
+    </div>
+    ${platformBlocks.length ? `<div style="display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:18px">${platformBlocks.join('')}</div>` : ''}
+    <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;margin-bottom:18px">
+      <div style="font-weight:800;color:#0A1628;font-size:0.95rem;margin-bottom:10px">🎯 Targeting signals</div>
+      ${s.interests?.length ? `<div style="margin-bottom:10px"><div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">Interests</div>${list(s.interests, '#6366F1')}</div>` : ''}
+      ${s.behaviors?.length ? `<div style="margin-bottom:10px"><div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">Behaviors</div>${list(s.behaviors, '#0EA5E9')}</div>` : ''}
+      ${s.jobTitles?.length ? `<div style="margin-bottom:10px"><div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">Job titles</div>${list(s.jobTitles, '#10B981')}</div>` : ''}
+      ${s.industries?.length ? `<div style="margin-bottom:10px"><div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">Industries</div>${list(s.industries, '#F59E0B')}</div>` : ''}
+      ${s.intentKeywords?.length ? `<div style="margin-bottom:10px"><div style="font-size:0.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">Intent keywords</div>${list(s.intentKeywords, '#EF4444')}</div>` : ''}
+    </div>
+    ${seeds ? `<div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;margin-bottom:18px"><div style="font-weight:800;color:#0A1628;font-size:0.95rem;margin-bottom:10px">🧬 Seed personas</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">${seeds}</div></div>` : ''}
+    ${s.warnings?.length ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:14px"><div style="font-weight:800;color:#92400E;font-size:0.86rem;margin-bottom:6px">⚠️ Compliance &amp; quality notes</div><ul style="margin:0;padding-left:18px;color:#78350F;font-size:0.8rem;line-height:1.6">${s.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul></div>` : ''}`;
+}
+async function exportLookalikeCSV(platform) {
+  if (!window._lookalikeLastSpec) { alert('Generate an audience first.'); return; }
+  try {
+    const r = await fetch('/api/lookalike/export', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ spec: window._lookalikeLastSpec, platform }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Export failed');
+    const blob = new Blob([j.csv], { type:'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = j.filename || `lookalike-${platform}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Could not export: ' + e.message);
+  }
+}
+
 (function wireNewViews(){
   const orig = window.buildAmplitudeAgents;  // sentinel — confirms script loaded
   document.addEventListener('click', (e) => {
@@ -27831,6 +28184,8 @@ async function launchReengage(dryRun) {
         if (v === 'blended-perf')   { try { buildBlendedPerf(); }    catch(_){} }
         if (v === 'lead-qualifier') { try { buildLeadQualifier(); }  catch(_){} }
         if (v === 'reengage')       { try { buildReengage(); }       catch(_){} }
+        if (v === 'attribution')    { try { buildAttribution(); }    catch(_){} }
+        if (v === 'lookalike')      { try { buildLookalike(); }      catch(_){} }
       }, 60);
       return;
     }
