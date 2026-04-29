@@ -9140,6 +9140,627 @@ Available capability areas: drip campaigns, Amplitude product-analytics agents, 
   }
 });
 
+// ────────────────────────────────────────────────────────────────────────────
+// MENTION TRACKING + SENTIMENT (Feature 1)
+// POST /api/mentions  — body: { brand, competitors:[], country, days }
+// ────────────────────────────────────────────────────────────────────────────
+const _COUNTRY_TO_DFS_LOC = {
+  US:2840, GB:2826, CA:2124, AU:2036, DE:2276, FR:2250, ES:2724, IT:2380,
+  NL:2528, BE:2056, SE:2752, NO:2578, DK:2208, FI:2246, PL:2616, PT:2620,
+  IE:2372, AT:2040, CH:2756, JP:2392, KR:2410, IN:2356, SG:2702, MY:2458,
+  TH:2764, ID:2360, PH:2608, VN:2704, BR:2076, MX:2484, AR:2032, CL:2152,
+  CO:2170, ZA:2710, AE:2784, SA:2682, IL:2376, TR:2792, EG:2818, NG:2566,
+  KE:2404, NZ:2554, RU:2643, UA:2804, CZ:2203, RO:2642, GR:2300, HU:2348
+};
+
+app.post('/api/mentions', async (req, res) => {
+  try {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const brand = String(body.brand || '').trim().slice(0, 80);
+    if (!brand) return res.status(400).json({ ok:false, error:'brand-required' });
+
+    const competitors = (Array.isArray(body.competitors) ? body.competitors : [])
+      .map(c => String(c || '').trim().slice(0, 80))
+      .filter(Boolean)
+      .slice(0, 4);
+
+    const country = String(body.country || 'US').toUpperCase();
+    const locCode = _COUNTRY_TO_DFS_LOC[country] || 2840;
+    const days    = Math.max(1, Math.min(90, parseInt(body.days, 10) || 30));
+    const allBrands = [brand, ...competitors];
+
+    if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) {
+      return res.status(503).json({ ok:false, error:'dataforseo-not-configured' });
+    }
+
+    const fetchBrandNews = async (name) => {
+      try {
+        const raw = await callDataForSEO(
+          '/v3/serp/google/news/live/advanced',
+          [{ keyword:`"${name}"`, language_code:'en', location_code:locCode, depth:20 }],
+          8000
+        );
+        const items = raw?.tasks?.[0]?.result?.[0]?.items;
+        if (!Array.isArray(items)) return [];
+        return items.slice(0, 12).map(it => {
+          let host = '';
+          try { host = it.url ? new URL(it.url).hostname.replace(/^www\./,'') : ''; } catch {}
+          return {
+            brand: name,
+            title: String(it.title || '').slice(0, 220),
+            url:   String(it.url || it.source_url || ''),
+            source: String(it.source || it.domain || host || '').slice(0, 80),
+            snippet: String(it.snippet || it.description || '').slice(0, 400),
+            date: it.timestamp || it.date_publish || it.date || null,
+            thumb: it.thumbnail_url || it.image_url || null
+          };
+        }).filter(m => m.title && m.url);
+      } catch (e) {
+        console.warn(`mentions fetch failed for ${name}:`, e.message);
+        return [];
+      }
+    };
+
+    const newsPerBrand = await Promise.all(allBrands.map(fetchBrandNews));
+    let allMentions = [].concat(...newsPerBrand);
+
+    const cutoffMs = Date.now() - (days * 86400 * 1000);
+    allMentions = allMentions.filter(m => {
+      if (!m.date) return true;
+      const t = Date.parse(m.date);
+      return isNaN(t) ? true : t >= cutoffMs;
+    });
+
+    if (!allMentions.length) {
+      return res.json({
+        ok:true, brand, competitors, country, days, mentions:[], byBrand:{},
+        byBrandSent:{}, sentiment:{positive:0,neutral:0,negative:0}, sov:[], topSources:[],
+        total:0, dataOrigin:'DataForSEO Google News (no results)', dataSource:'DataForSEO',
+        confidence:'low'
+      });
+    }
+
+    const sentInput = allMentions.map((m, i) => ({
+      i, brand:m.brand, title:m.title, snippet:m.snippet.slice(0, 200), source:m.source
+    }));
+    let sentMap = {};
+    try {
+      const completion = await openaiChatWithRetry({
+        model:'gpt-4o-mini',
+        messages:[
+          { role:'system', content:'You are a media sentiment analyst. For each news mention, classify sentiment toward the named brand as exactly one of: "positive", "neutral", "negative". Be conservative — pure factual reporting is neutral; only mark positive/negative when the article frames the brand favourably/unfavourably. Output strict JSON: { "results": [{ "i": 0, "sentiment": "positive", "score": 0.85, "reason": "one short line" }] }. Score is your confidence 0-1.' },
+          { role:'user', content: JSON.stringify(sentInput).slice(0, 12000) }
+        ],
+        response_format:{ type:'json_object' },
+        temperature:0.2,
+        max_tokens:3000
+      }, { fallbackModel:'gpt-3.5-turbo', retries:2 });
+      const parsed = JSON.parse(completion.choices[0].message.content);
+      const arr = Array.isArray(parsed && parsed.results) ? parsed.results : [];
+      for (const r of arr) {
+        if (typeof r.i !== 'number') continue;
+        const s = String(r.sentiment || '').toLowerCase();
+        sentMap[r.i] = {
+          sentiment: ['positive','negative','neutral'].includes(s) ? s : 'neutral',
+          score: typeof r.score === 'number' ? Math.max(0, Math.min(1, r.score)) : 0.5,
+          reason: String(r.reason || '').slice(0, 200)
+        };
+      }
+    } catch (e) {
+      console.warn('sentiment classification failed:', e.message);
+    }
+
+    const enriched = allMentions.map((m, idx) => ({
+      ...m,
+      sentiment:       sentMap[idx]?.sentiment       || 'neutral',
+      sentimentScore:  sentMap[idx]?.score           || 0.5,
+      sentimentReason: sentMap[idx]?.reason          || ''
+    }));
+    enriched.sort((a, b) => {
+      const ta = a.date ? Date.parse(a.date) : 0;
+      const tb = b.date ? Date.parse(b.date) : 0;
+      return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
+    });
+
+    const byBrand = {};
+    const byBrandSent = {};
+    const sentTotals = { positive:0, neutral:0, negative:0 };
+    for (const m of enriched) {
+      byBrand[m.brand] = (byBrand[m.brand] || 0) + 1;
+      if (!byBrandSent[m.brand]) byBrandSent[m.brand] = { positive:0, neutral:0, negative:0 };
+      byBrandSent[m.brand][m.sentiment]++;
+      sentTotals[m.sentiment]++;
+    }
+
+    const today = new Date(); today.setUTCHours(0,0,0,0);
+    const sov = [];
+    for (let d = days - 1; d >= 0; d--) {
+      const dt = new Date(today.getTime() - d * 86400000);
+      const bucket = { date: dt.toISOString().slice(0, 10), byBrand: {} };
+      for (const b of allBrands) bucket.byBrand[b] = 0;
+      sov.push(bucket);
+    }
+    for (const m of enriched) {
+      if (!m.date) continue;
+      const t = Date.parse(m.date);
+      if (isNaN(t)) continue;
+      const dt = new Date(t); dt.setUTCHours(0,0,0,0);
+      const key = dt.toISOString().slice(0, 10);
+      const bucket = sov.find(b => b.date === key);
+      if (bucket) bucket.byBrand[m.brand] = (bucket.byBrand[m.brand] || 0) + 1;
+    }
+
+    const bySource = {};
+    for (const m of enriched) if (m.source) bySource[m.source] = (bySource[m.source] || 0) + 1;
+    const topSources = Object.entries(bySource)
+      .map(([source, count]) => ({ source, count }))
+      .sort((a,b) => b.count - a.count)
+      .slice(0, 12);
+
+    res.json({
+      ok:true, brand, competitors, country, days,
+      mentions: enriched, byBrand, byBrandSent, sentiment: sentTotals,
+      sov, topSources, total: enriched.length,
+      dataOrigin: `DataForSEO Google News (${enriched.length} mentions, ${allBrands.length} brands) + AI sentiment classification`,
+      dataSource: 'DataForSEO + AI-verified',
+      confidence: enriched.length >= 10 ? 'high' : enriched.length >= 3 ? 'medium' : 'low'
+    });
+  } catch (err) {
+    console.error('/api/mentions error:', err.message);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// REAL-TIME ALERTS (Feature 2)
+// ────────────────────────────────────────────────────────────────────────────
+const _ALERTS_DIR  = path.join(__dirname, 'data');
+const _ALERTS_FILE = path.join(_ALERTS_DIR, 'alerts.json');
+const _SNAP_FILE   = path.join(_ALERTS_DIR, 'alerts_snapshot.json');
+
+// Atomic temp+rename + single-writer mutex chain to prevent races
+function _atomicWriteJson(file, data) {
+  const tmp = file + '.' + process.pid + '.' + Date.now() + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, file);
+}
+let _alertsWriteChain = Promise.resolve();
+function _alertsMutate(mutator) {
+  _alertsWriteChain = _alertsWriteChain.then(async () => {
+    const cur = _readAlerts();
+    const next = await mutator(cur);
+    if (next !== false) {
+      try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_ALERTS_FILE, next); }
+      catch (e) { console.warn('alerts write failed:', e.message); }
+    }
+    return next;
+  }).catch(e => { console.warn('alerts mutator error:', e.message); });
+  return _alertsWriteChain;
+}
+let _snapWriteChain = Promise.resolve();
+function _snapMutate(mutator) {
+  _snapWriteChain = _snapWriteChain.then(async () => {
+    const cur = _readSnap();
+    const next = await mutator(cur);
+    if (next !== false) {
+      try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_SNAP_FILE, next); }
+      catch (e) { console.warn('snapshot write failed:', e.message); }
+    }
+    return next;
+  }).catch(e => { console.warn('snapshot mutator error:', e.message); });
+  return _snapWriteChain;
+}
+function _readAlerts() {
+  try {
+    const d = JSON.parse(fs.readFileSync(_ALERTS_FILE, 'utf8'));
+    return (d && Array.isArray(d.alerts)) ? d : { alerts: [] };
+  } catch { return { alerts: [] }; }
+}
+function _writeAlerts(d) {
+  try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_ALERTS_FILE, d); }
+  catch (e) { console.warn('alerts write failed:', e.message); }
+}
+function _readSnap() {
+  try {
+    const d = JSON.parse(fs.readFileSync(_SNAP_FILE, 'utf8'));
+    return (d && typeof d === 'object') ? d : {};
+  } catch { return {}; }
+}
+function _writeSnap(d) {
+  try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_SNAP_FILE, d); }
+  catch (e) { console.warn('snapshot write failed:', e.message); }
+}
+
+const _ALERTS_META = {
+  dataOrigin: 'data/alerts.json (file persistence)',
+  dataSource: 'InfoGenie Alerts Engine',
+  confidence: 'high'
+};
+
+app.get('/api/alerts/list', (req, res) => {
+  const data = _readAlerts();
+  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 30));
+  res.json({
+    ok:true,
+    alerts: data.alerts.slice(0, limit),
+    unread: data.alerts.filter(a => !a.read).length,
+    total: data.alerts.length,
+    ..._ALERTS_META
+  });
+});
+
+app.post('/api/alerts/ack', async (req, res) => {
+  const id = String((req.body && req.body.id) || '');
+  await _alertsMutate(async (data) => {
+    if (id === 'all') data.alerts.forEach(a => a.read = true);
+    else if (id) { const a = data.alerts.find(x => x.id === id); if (a) a.read = true; }
+    return data;
+  });
+  res.json({ ok:true, ..._ALERTS_META });
+});
+
+app.post('/api/alerts/check', async (req, res) => {
+  try {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const brand  = String(body.brand || '').trim().slice(0, 80);
+    const domain = String(body.domain || '').trim().toLowerCase()
+      .replace(/^https?:\/\//, '').replace(/\/$/, '').split('/')[0];
+    const country = String(body.country || 'US').toUpperCase();
+    const locCode = _COUNTRY_TO_DFS_LOC[country] || 2840;
+
+    if (!brand && !domain) return res.status(400).json({ ok:false, error:'brand-or-domain-required' });
+    if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) {
+      return res.status(503).json({ ok:false, error:'dataforseo-not-configured' });
+    }
+
+    const now = Date.now();
+    // Phase 1: do all network IO outside the mutex (slow), collect raw signals only
+    let brandLast24h = null, baseKey = null;
+    if (brand) {
+      try {
+        const raw = await callDataForSEO(
+          '/v3/serp/google/news/live/advanced',
+          [{ keyword:`"${brand}"`, language_code:'en', location_code:locCode, depth:20 }],
+          7000
+        );
+        const items = raw?.tasks?.[0]?.result?.[0]?.items || [];
+        brandLast24h = items.filter(it => {
+          const t = it.timestamp ? Date.parse(it.timestamp) : 0;
+          return !isNaN(t) && t > (now - 86400000);
+        }).length;
+        baseKey = `mention_baseline_${brand.toLowerCase()}`;
+      } catch (e) { console.warn('alerts mention check failed:', e.message); }
+    }
+    let currentRanks = null, rankKey = null;
+    if (domain) {
+      try {
+        const raw = await callDataForSEO(
+          '/v3/dataforseo_labs/google/ranked_keywords/live',
+          [{ target:domain, language_code:'en', location_code:locCode, limit:25,
+             order_by:['ranked_serp_element.serp_item.rank_absolute,asc'] }],
+          9000
+        );
+        const ranked = raw?.tasks?.[0]?.result?.[0]?.items || [];
+        currentRanks = {};
+        for (const r of ranked) {
+          const kw  = r?.keyword_data?.keyword;
+          const pos = r?.ranked_serp_element?.serp_item?.rank_absolute;
+          if (kw && typeof pos === 'number' && pos > 0 && pos <= 100) currentRanks[kw] = pos;
+        }
+        rankKey = `ranks_${domain.toLowerCase()}`;
+      } catch (e) { console.warn('alerts rank check failed:', e.message); }
+    }
+
+    // Phase 2: compare against snapshot + write next snapshot atomically inside mutex
+    const newAlerts = [];
+    await _snapMutate(async (snap) => {
+      if (baseKey !== null && brandLast24h !== null) {
+        const lastBase = typeof snap[baseKey] === 'number' ? snap[baseKey] : 0;
+        if (brandLast24h >= 3 && lastBase > 0 && brandLast24h >= lastBase * 2) {
+          newAlerts.push({
+            id: `mention-surge-${brand.toLowerCase().replace(/\W/g,'_')}-${now}`,
+            type:'mention_surge', severity:'medium',
+            title:`Mention surge: ${brand}`,
+            body:`${brandLast24h} new mentions in the last 24h vs typical ${lastBase.toFixed(1)}. Worth checking what's driving the chatter.`,
+            timestamp: now, read:false
+          });
+        }
+        snap[baseKey] = lastBase === 0 ? brandLast24h : (lastBase * 0.7 + brandLast24h * 0.3);
+      }
+      if (rankKey !== null && currentRanks !== null) {
+        const lastRanks = (snap[rankKey] && typeof snap[rankKey] === 'object') ? snap[rankKey] : {};
+        for (const kw of Object.keys(currentRanks)) {
+          const oldPos = lastRanks[kw];
+          const newPos = currentRanks[kw];
+          if (typeof oldPos === 'number' && newPos > oldPos + 5 && oldPos <= 10) {
+            newAlerts.push({
+              id: `rank-drop-${domain}-${kw.slice(0,30).replace(/\W/g,'_')}-${now}`,
+              type:'rank_drop',
+              severity: newPos > 20 ? 'high' : 'medium',
+              title:`Rank drop on "${kw}"`,
+              body:`${domain} fell from position ${oldPos} → ${newPos}. Check the SERP for a new competitor or content refresh.`,
+              timestamp: now, read:false
+            });
+          }
+        }
+        snap[rankKey] = currentRanks;
+      }
+      snap.lastChecked = now;
+      return snap;
+    });
+
+    if (newAlerts.length) {
+      await _alertsMutate(async (data) => {
+        const existing = new Set(data.alerts.map(a => a.id));
+        for (const a of newAlerts) if (!existing.has(a.id)) data.alerts.unshift(a);
+        data.alerts = data.alerts.slice(0, 100);
+        return data;
+      });
+    }
+
+    res.json({
+      ok:true, newAlerts, newCount: newAlerts.length, lastChecked: now,
+      dataOrigin:'DataForSEO live SERP + Google News diff vs last snapshot',
+      dataSource:'DataForSEO',
+      confidence:'high'
+    });
+  } catch (err) {
+    console.error('/api/alerts/check error:', err.message);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// AI CONTENT-GAP IDEATION (Feature 3)
+// ────────────────────────────────────────────────────────────────────────────
+// SSRF-safe fetch that re-validates every redirect hop
+async function _safeFetchWithRedirects(url, { timeoutMs = 6000, maxHops = 3 } = {}) {
+  let current = url;
+  for (let hop = 0; hop <= maxHops; hop++) {
+    const safety = await _isUrlSafeToFetch(current);
+    if (!safety.ok) return { ok:false, error: safety.error };
+    let r;
+    try {
+      r = await fetch(current, { signal: AbortSignal.timeout(timeoutMs), redirect:'manual' });
+    } catch (e) {
+      return { ok:false, error: e.message };
+    }
+    if (r.status >= 300 && r.status < 400) {
+      const loc = r.headers.get('location');
+      if (!loc) return { ok:false, error:'Redirect without location' };
+      try { current = new URL(loc, current).toString(); } catch { return { ok:false, error:'Invalid redirect URL' }; }
+      continue;
+    }
+    return { ok:true, response:r, finalUrl: current };
+  }
+  return { ok:false, error:'Too many redirects' };
+}
+
+async function _fetchSitemapSlugs(host) {
+  const tryUrls = [
+    `https://${host}/sitemap.xml`,
+    `https://${host}/sitemap_index.xml`,
+    `https://${host}/sitemap-index.xml`,
+    `https://${host}/wp-sitemap.xml`,
+  ];
+  for (const url of tryUrls) {
+    try {
+      const result = await _safeFetchWithRedirects(url, { timeoutMs: 6000 });
+      if (!result.ok || !result.response.ok) continue;
+      const text = await result.response.text();
+      const locs = Array.from(text.matchAll(/<loc[^>]*>([^<]+)<\/loc>/gi))
+        .map(m => m[1].trim())
+        .slice(0, 80);
+      if (!locs.length) continue;
+      if (locs[0].toLowerCase().endsWith('.xml')) {
+        try {
+          const r2 = await _safeFetchWithRedirects(locs[0], { timeoutMs: 6000 });
+          if (r2.ok && r2.response.ok) {
+            const t2 = await r2.response.text();
+            const nested = Array.from(t2.matchAll(/<loc[^>]*>([^<]+)<\/loc>/gi))
+              .map(m => m[1].trim())
+              .slice(0, 100);
+            if (nested.length) return nested;
+          }
+        } catch {}
+      }
+      return locs;
+    } catch (e) { /* try next URL pattern */ }
+  }
+  return [];
+}
+
+function _slugSummaries(urls) {
+  const out = [];
+  for (const u of urls) {
+    try {
+      const p = new URL(u).pathname.toLowerCase();
+      const slug = p.split('/').filter(Boolean).join(' ').replace(/[-_.]/g, ' ').slice(0, 100);
+      if (slug && slug.length > 2) out.push(slug);
+    } catch {}
+  }
+  return [...new Set(out)].slice(0, 80);
+}
+
+app.post('/api/content-gaps', async (req, res) => {
+  try {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const domain = String(body.domain || '').trim().toLowerCase()
+      .replace(/^https?:\/\//, '').replace(/\/$/, '').split('/')[0];
+    if (!domain) return res.status(400).json({ ok:false, error:'domain-required' });
+
+    const competitors = (Array.isArray(body.competitors) ? body.competitors : [])
+      .map(c => String(c || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '').split('/')[0])
+      .filter(Boolean)
+      .slice(0, 4);
+
+    if (!competitors.length) return res.status(400).json({ ok:false, error:'competitors-required' });
+
+    const [yourPages, ...compPages] = await Promise.all([
+      _fetchSitemapSlugs(domain),
+      ...competitors.map(_fetchSitemapSlugs)
+    ]);
+
+    const youSummary = _slugSummaries(yourPages);
+    const compSummary = competitors.map((c, i) => ({ domain:c, slugs:_slugSummaries(compPages[i]) }));
+    const haveAnyComp = compSummary.some(c => c.slugs.length);
+
+    if (!youSummary.length || !haveAnyComp) {
+      return res.status(404).json({
+        ok:false, error:'sitemap-unavailable',
+        detail:'Could not retrieve sitemaps for one or more domains. The site may not expose /sitemap.xml.',
+        yourPages: youSummary.length,
+        competitorsWithSitemap: compSummary.filter(c => c.slugs.length).map(c => c.domain)
+      });
+    }
+
+    const completion = await openaiChatWithRetry({
+      model:'gpt-4o-mini',
+      messages:[
+        { role:'system', content:`You are an SEO content strategist. You receive page-slug lists from a target domain and competitors. Identify the top 8 topic clusters competitors cover that the target does NOT cover (or covers thinly). Output strict JSON: { "gaps": [{ "topic": "...", "rationale": "what evidence in competitor slugs supports this", "suggested_angle": "one specific content angle the target should take", "competitors_covering": ["competitor1.com"], "priority": 1-10 }] }. Be specific — name the actual topic, never generic categories like "blog posts" or "guides". Skip topics already in the target's slugs. Priority 10 = highest opportunity.` },
+        { role:'user', content: JSON.stringify({ target:{ domain, slugs:youSummary }, competitors:compSummary }).slice(0, 14000) }
+      ],
+      response_format:{ type:'json_object' },
+      temperature:0.3,
+      max_tokens:2000
+    }, { fallbackModel:'gpt-3.5-turbo', retries:2 });
+
+    const parsed = JSON.parse(completion.choices[0].message.content);
+    const gaps = (Array.isArray(parsed && parsed.gaps) ? parsed.gaps : [])
+      .filter(g => g && g.topic)
+      .map(g => ({
+        topic: String(g.topic).slice(0, 120),
+        rationale: String(g.rationale || '').slice(0, 400),
+        suggested_angle: String(g.suggested_angle || '').slice(0, 280),
+        competitors_covering: Array.isArray(g.competitors_covering) ? g.competitors_covering.slice(0, 4).map(String) : [],
+        priority: typeof g.priority === 'number' ? Math.max(1, Math.min(10, g.priority)) : 5
+      }))
+      .sort((a, b) => b.priority - a.priority)
+      .slice(0, 12);
+
+    res.json({
+      ok:true, domain, competitors, gaps,
+      yourPagesAnalyzed: youSummary.length,
+      competitorPagesAnalyzed: compSummary.reduce((s, c) => s + c.slugs.length, 0),
+      competitorsWithSitemap: compSummary.filter(c => c.slugs.length).map(c => c.domain),
+      dataOrigin: `Sitemap analysis (${compSummary.filter(c => c.slugs.length).length} competitors) + AI gap classification`,
+      dataSource:'AI-verified',
+      confidence: gaps.length >= 5 ? 'high' : gaps.length >= 2 ? 'medium' : 'low'
+    });
+  } catch (err) {
+    console.error('/api/content-gaps error:', err.message);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// CROSS-CHANNEL REPORTING (Feature 4)
+// GET /api/cross-channel-report?days=30&domain=&brand=
+// ────────────────────────────────────────────────────────────────────────────
+app.get('/api/cross-channel-report', async (req, res) => {
+  try {
+    const days   = Math.max(7, Math.min(90, parseInt(req.query.days, 10) || 30));
+    const domain = String(req.query.domain || '').trim().toLowerCase()
+      .replace(/^https?:\/\//, '').replace(/\/$/, '').split('/')[0];
+    const brand  = String(req.query.brand || '').trim().slice(0, 80);
+
+    const [meta, google, tiktok] = await Promise.all([
+      _fetchMetaSpend(days),
+      _fetchGoogleAdsSpend(days),
+      _fetchTikTokSpend(days),
+    ]);
+    const paidChannels = [
+      { name:'Meta Ads',   icon:'📘', ...meta   },
+      { name:'Google Ads', icon:'🟢', ...google },
+      { name:'TikTok Ads', icon:'⬛', ...tiktok },
+    ];
+    const totalSpend       = paidChannels.filter(c => c.ok).reduce((s, c) => s + (c.spend       || 0), 0);
+    const totalImpressions = paidChannels.filter(c => c.ok).reduce((s, c) => s + (c.impressions || 0), 0);
+    const totalClicks      = paidChannels.filter(c => c.ok).reduce((s, c) => s + (c.clicks      || 0), 0);
+    const totalConv        = paidChannels.filter(c => c.ok).reduce((s, c) => s + (c.conversions || 0), 0);
+    const blendedCPC       = totalClicks > 0 ? totalSpend / totalClicks : 0;
+    const blendedCPA       = totalConv   > 0 ? totalSpend / totalConv   : 0;
+
+    let organic = { ok:false };
+    if (domain && process.env.DATAFORSEO_LOGIN) {
+      try {
+        const raw = await callDataForSEO(
+          '/v3/dataforseo_labs/google/domain_rank_overview/live',
+          [{ target:domain, language_name:'English', location_name:'United States' }],
+          9000
+        );
+        const item = raw?.tasks?.[0]?.result?.[0]?.items?.[0];
+        if (item) {
+          organic = {
+            ok:true,
+            organicTraffic: Math.round(item?.metrics?.organic?.etv || 0),
+            organicKeywords: item?.metrics?.organic?.count || 0,
+            paidTraffic: Math.round(item?.metrics?.paid?.etv || 0),
+            paidKeywords: item?.metrics?.paid?.count || 0
+          };
+        }
+      } catch (e) { organic = { ok:false, error:e.message }; }
+    }
+
+    let earned = { ok:false };
+    if (brand && process.env.DATAFORSEO_LOGIN) {
+      try {
+        const raw = await callDataForSEO(
+          '/v3/serp/google/news/live/advanced',
+          [{ keyword:`"${brand}"`, language_code:'en', location_code:2840, depth:20 }],
+          7000
+        );
+        const items = raw?.tasks?.[0]?.result?.[0]?.items || [];
+        const cutoff = Date.now() - days * 86400 * 1000;
+        const recent = items.filter(it => {
+          const t = it.timestamp ? Date.parse(it.timestamp) : 0;
+          return isNaN(t) ? true : t >= cutoff;
+        });
+        earned = { ok:true, mentions: recent.length, total: items.length };
+      } catch (e) { earned = { ok:false, error:e.message }; }
+    }
+
+    let summary = '';
+    const livePaid = paidChannels.filter(c => c.ok);
+    try {
+      const completion = await openaiChatWithRetry({
+        model:'gpt-4o-mini',
+        messages:[
+          { role:'system', content:'You are a CMO advisor writing a 3-4 sentence executive summary of cross-channel performance. Identify the strongest channel, the weakest, and one concrete next-step recommendation. Be direct, no fluff. Cite which channels are reporting; reference organic visibility or earned media if present.' },
+          { role:'user', content: JSON.stringify({
+            days,
+            paid: livePaid.map(c => ({ channel:c.name, spend:c.spend, clicks:c.clicks, conversions:c.conversions, cpa: c.conversions>0?c.spend/c.conversions:null })),
+            paid_totals: { spend:totalSpend, clicks:totalClicks, conversions:totalConv, cpa: blendedCPA },
+            organic, earned,
+            disconnected: paidChannels.filter(c => !c.ok).map(c => c.name)
+          }).slice(0, 8000) }
+        ],
+        temperature:0.4,
+        max_tokens:400
+      }, { fallbackModel:'gpt-3.5-turbo', retries:2 });
+      summary = completion.choices[0].message.content || '';
+    } catch (e) {
+      summary = livePaid.length
+        ? `(AI summary unavailable: ${e.message})`
+        : 'No paid channels are reporting yet. Connect Meta, Google Ads, or TikTok credentials in your environment to see a unified report.';
+    }
+
+    res.json({
+      ok:true, days,
+      paid: { channels: paidChannels, totals: { spend:+totalSpend.toFixed(2), impressions:totalImpressions, clicks:totalClicks, conversions:totalConv, cpc:+blendedCPC.toFixed(2), cpa:+blendedCPA.toFixed(2) } },
+      organic, earned, summary,
+      dataOrigin: livePaid.length
+        ? `Live data from ${livePaid.map(c => c.name).join(', ')}${organic.ok ? ' + DataForSEO organic' : ''}${earned.ok ? ' + Google News earned media' : ''} + AI summary`
+        : 'No paid channels connected',
+      dataSource: livePaid.length ? 'Live API' : 'partial',
+      confidence: livePaid.length >= 2 ? 'high' : livePaid.length === 1 ? 'medium' : 'low'
+    });
+  } catch (err) {
+    console.error('/api/cross-channel-report error:', err.message);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
 // Port 80 — external URL (*.spock.replit.dev / new tab)
 app.listen(80, '0.0.0.0', () => {
   console.log('InfoGenie listening on port 80 (external URL)');

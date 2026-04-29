@@ -2630,6 +2630,15 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'analytics-hub') {
     try { buildAnalyticsHub(); } catch(e) { console.warn('buildAnalyticsHub error:', e); }
   }
+  if (viewId === 'mentions') {
+    try { buildMentionTracker(); } catch(e) { console.warn('buildMentionTracker error:', e); }
+  }
+  if (viewId === 'content-gaps') {
+    try { buildContentGaps(); } catch(e) { console.warn('buildContentGaps error:', e); }
+  }
+  if (viewId === 'cross-channel') {
+    try { buildCrossChannel(); } catch(e) { console.warn('buildCrossChannel error:', e); }
+  }
   // ── Tier 1+2 Plai-parity modules ─────────────────────────────────────────
   if (viewId === 'landing-builder') {
     try { buildLandingBuilder(); } catch(e) { console.warn('buildLandingBuilder error:', e); }
@@ -28975,4 +28984,573 @@ function _csCountryHtml(j, targetSummary, generatedAt, isMulti) {
       </table>
       </div>
     </div>`;
+}
+
+/* =============================================================================
+   FEATURE 1: MENTION TRACKER + SENTIMENT
+   ============================================================================= */
+window._mentionsState = { brand:'', competitors:[], country:'US', days:30, data:null, loading:false };
+
+function buildMentionTracker() {
+  const wrap = document.getElementById('mentionsWrap');
+  if (!wrap) return;
+  // Auto-fill from last analysis if available
+  const camp = window.currentCampaign || {};
+  const brand     = window._mentionsState.brand || camp.brand || camp.businessName || '';
+  const country   = window._mentionsState.country || camp.country || 'US';
+  const competitors = window._mentionsState.competitors.length
+    ? window._mentionsState.competitors
+    : (Array.isArray(camp.competitors) ? camp.competitors.slice(0,4).map(c => typeof c === 'string' ? c : (c.name || '')).filter(Boolean) : []);
+  window._mentionsState.brand = brand;
+  window._mentionsState.competitors = competitors;
+  window._mentionsState.country = country;
+
+  const COUNTRIES = [
+    ['US','United States'],['GB','United Kingdom'],['CA','Canada'],['AU','Australia'],
+    ['DE','Germany'],['FR','France'],['ES','Spain'],['IT','Italy'],['NL','Netherlands'],
+    ['SE','Sweden'],['JP','Japan'],['IN','India'],['SG','Singapore'],['BR','Brazil'],
+    ['MX','Mexico'],['ZA','South Africa'],['AE','UAE'],['NZ','New Zealand']
+  ];
+  const countryOpts = COUNTRIES.map(([c,n]) =>
+    `<option value="${c}" ${c===country?'selected':''}>${_esc(n)}</option>`
+  ).join('');
+
+  wrap.innerHTML = `
+    <div class="mt-controls">
+      <div class="mt-control">
+        <label class="mt-lbl">Your brand</label>
+        <input id="mtBrand" type="text" class="mt-input" placeholder="Acme Inc" value="${_esc(brand)}" maxlength="80" />
+      </div>
+      <div class="mt-control" style="flex:2">
+        <label class="mt-lbl">Competitors (up to 4, comma-separated)</label>
+        <input id="mtComps" type="text" class="mt-input" placeholder="competitor1, competitor2" value="${_esc(competitors.join(', '))}" maxlength="320" />
+      </div>
+      <div class="mt-control" style="flex:0 0 160px">
+        <label class="mt-lbl">Country</label>
+        <select id="mtCountry" class="mt-input">${countryOpts}</select>
+      </div>
+      <div class="mt-control" style="flex:0 0 110px">
+        <label class="mt-lbl">Window</label>
+        <select id="mtDays" class="mt-input">
+          <option value="7" ${window._mentionsState.days===7?'selected':''}>7 days</option>
+          <option value="14" ${window._mentionsState.days===14?'selected':''}>14 days</option>
+          <option value="30" ${window._mentionsState.days===30?'selected':''}>30 days</option>
+          <option value="60" ${window._mentionsState.days===60?'selected':''}>60 days</option>
+          <option value="90" ${window._mentionsState.days===90?'selected':''}>90 days</option>
+        </select>
+      </div>
+      <div class="mt-control" style="flex:0 0 auto;justify-content:flex-end;display:flex;align-items:flex-end">
+        <button class="mt-btn-run" id="mtRun" onclick="runMentionTracker()">🔍 Pull mentions</button>
+      </div>
+    </div>
+    <div id="mtResults" style="margin-top:24px"></div>
+  `;
+  if (brand) {
+    document.getElementById('mtResults').innerHTML = `<div class="mt-empty">Click <strong>Pull mentions</strong> to analyse coverage for <strong>${_esc(brand)}</strong>.</div>`;
+  } else {
+    document.getElementById('mtResults').innerHTML = `<div class="mt-empty">Enter your brand name above and click <strong>Pull mentions</strong> to start.</div>`;
+  }
+}
+
+async function runMentionTracker() {
+  const brand = (document.getElementById('mtBrand')?.value || '').trim();
+  const compsRaw = (document.getElementById('mtComps')?.value || '').trim();
+  const country = document.getElementById('mtCountry')?.value || 'US';
+  const days = parseInt(document.getElementById('mtDays')?.value || '30', 10) || 30;
+  const competitors = compsRaw ? compsRaw.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4) : [];
+  if (!brand) { showToast('⚠️ Enter your brand name'); return; }
+
+  window._mentionsState = { brand, competitors, country, days, data:null, loading:true };
+  const btn = document.getElementById('mtRun');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Pulling…'; }
+  const results = document.getElementById('mtResults');
+  if (results) results.innerHTML = `<div class="mt-loading">⏳ Pulling Google News for ${[brand, ...competitors].length} brand${competitors.length?'s':''}, then classifying sentiment…</div>`;
+
+  try {
+    const r = await fetch('/api/mentions', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ brand, competitors, country, days })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Failed to fetch mentions');
+    window._mentionsState.data = j;
+    renderMentionResults(j);
+  } catch (e) {
+    if (results) results.innerHTML = `<div class="mt-error">⚠️ ${_esc(e.message)}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Pull mentions'; }
+    window._mentionsState.loading = false;
+  }
+}
+
+function renderMentionResults(d) {
+  const wrap = document.getElementById('mtResults');
+  if (!wrap) return;
+  const total = d.total || 0;
+  if (!total) {
+    wrap.innerHTML = `<div class="mt-empty">No mentions found in the last ${d.days} days. Try a longer window or check the brand spelling.</div>`;
+    return;
+  }
+  const allBrands = [d.brand, ...(d.competitors || [])];
+  const brandColors = ['#0066FF','#10B981','#F59E0B','#EC4899','#8B5CF6'];
+
+  const sentBadge = (s) => {
+    const styles = { positive:{bg:'#DCFCE7',color:'#166534',icon:'😊'}, neutral:{bg:'#F1F5F9',color:'#475569',icon:'😐'}, negative:{bg:'#FEE2E2',color:'#991B1B',icon:'☹️'} };
+    const cfg = styles[s] || styles.neutral;
+    return `<span class="mt-sent-chip" style="background:${cfg.bg};color:${cfg.color}">${cfg.icon} ${s}</span>`;
+  };
+
+  const total_sent = d.sentiment.positive + d.sentiment.neutral + d.sentiment.negative;
+  const sentPct = (k) => total_sent > 0 ? Math.round((d.sentiment[k] / total_sent) * 100) : 0;
+
+  const sentBarHtml = `
+    <div class="mt-sent-bar">
+      <div class="mt-sent-seg" style="width:${sentPct('positive')}%;background:#10B981" title="Positive: ${d.sentiment.positive}"></div>
+      <div class="mt-sent-seg" style="width:${sentPct('neutral')}%;background:#94A3B8" title="Neutral: ${d.sentiment.neutral}"></div>
+      <div class="mt-sent-seg" style="width:${sentPct('negative')}%;background:#EF4444" title="Negative: ${d.sentiment.negative}"></div>
+    </div>
+    <div class="mt-sent-legend">
+      <span><span class="mt-dot" style="background:#10B981"></span> Positive ${d.sentiment.positive} (${sentPct('positive')}%)</span>
+      <span><span class="mt-dot" style="background:#94A3B8"></span> Neutral ${d.sentiment.neutral} (${sentPct('neutral')}%)</span>
+      <span><span class="mt-dot" style="background:#EF4444"></span> Negative ${d.sentiment.negative} (${sentPct('negative')}%)</span>
+    </div>
+  `;
+
+  const brandRows = allBrands.map((b, i) => {
+    const c = d.byBrand[b] || 0;
+    const sb = d.byBrandSent[b] || { positive:0, neutral:0, negative:0 };
+    const color = brandColors[i % brandColors.length];
+    const total = sb.positive + sb.neutral + sb.negative;
+    const pp = total ? (sb.positive/total)*100 : 0;
+    const pn = total ? (sb.neutral/total)*100  : 0;
+    const pg = total ? (sb.negative/total)*100 : 0;
+    return `<tr>
+      <td style="font-weight:700"><span class="mt-brand-dot" style="background:${color}"></span>${_esc(b)}</td>
+      <td style="text-align:right;font-weight:700">${c}</td>
+      <td><div class="mt-mini-bar"><span style="background:#10B981;width:${pp}%"></span><span style="background:#94A3B8;width:${pn}%"></span><span style="background:#EF4444;width:${pg}%"></span></div></td>
+      <td style="text-align:right;color:#64748b;font-size:.78rem">${sb.positive}/${sb.neutral}/${sb.negative}</td>
+    </tr>`;
+  }).join('');
+
+  const sourceRows = (d.topSources || []).map(s => `
+    <tr><td>${_esc(s.source)}</td><td style="text-align:right;font-weight:700">${s.count}</td></tr>
+  `).join('');
+
+  const mentionCards = d.mentions.slice(0, 60).map(m => {
+    let dateStr = '';
+    if (m.date) {
+      const t = Date.parse(m.date);
+      if (!isNaN(t)) {
+        const ago = Math.floor((Date.now() - t) / 86400000);
+        dateStr = ago === 0 ? 'today' : ago === 1 ? 'yesterday' : `${ago}d ago`;
+      }
+    }
+    return `<div class="mt-mention">
+      <div class="mt-mention-head">
+        <span class="mt-mention-brand">${_esc(m.brand)}</span>
+        ${sentBadge(m.sentiment)}
+        <span class="mt-mention-source">${_esc(m.source || '')}</span>
+        ${dateStr ? `<span class="mt-mention-date">· ${_esc(dateStr)}</span>` : ''}
+      </div>
+      <a class="mt-mention-title" href="${_esc(m.url)}" target="_blank" rel="noopener noreferrer">${_esc(m.title)}</a>
+      ${m.snippet ? `<div class="mt-mention-snip">${_esc(m.snippet)}</div>` : ''}
+      ${m.sentimentReason ? `<div class="mt-mention-why">💭 ${_esc(m.sentimentReason)}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  const ribbon = `<div class="mt-ribbon"><span class="mt-ribbon-dot" style="background:#10B981"></span><span>📊 ${_esc(d.dataSource || 'DataForSEO')}</span><span style="opacity:.5">·</span><span style="text-transform:uppercase;letter-spacing:.04em;font-size:.65rem">${_esc(d.confidence || 'medium')} confidence</span><span style="opacity:.5">·</span><span style="font-weight:500;opacity:.85">${_esc(d.dataOrigin || '')}</span></div>`;
+
+  wrap.innerHTML = `
+    ${ribbon}
+    <div class="mt-grid">
+      <div class="mt-card mt-card-wide">
+        <h4 class="mt-h">Sentiment breakdown</h4>
+        ${sentBarHtml}
+      </div>
+      <div class="mt-card">
+        <h4 class="mt-h">Mentions by brand</h4>
+        <table class="mt-table">
+          <thead><tr><th>Brand</th><th style="text-align:right">Total</th><th>Sentiment mix</th><th style="text-align:right">P/N/Ng</th></tr></thead>
+          <tbody>${brandRows}</tbody>
+        </table>
+      </div>
+      <div class="mt-card">
+        <h4 class="mt-h">Top sources</h4>
+        <table class="mt-table">
+          <thead><tr><th>Source</th><th style="text-align:right">Mentions</th></tr></thead>
+          <tbody>${sourceRows || '<tr><td colspan="2" style="color:#94a3b8;text-align:center">No source data</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div class="mt-card mt-card-wide">
+        <h4 class="mt-h">Daily share-of-voice — last ${d.days} days</h4>
+        <canvas id="mtSovChart" height="120"></canvas>
+      </div>
+      <div class="mt-card mt-card-wide">
+        <h4 class="mt-h">Recent mentions (${d.mentions.length})</h4>
+        <div class="mt-mentions-list">${mentionCards}</div>
+      </div>
+    </div>
+  `;
+
+  // Render SOV chart
+  setTimeout(() => {
+    const canvas = document.getElementById('mtSovChart');
+    if (!canvas || !window.Chart) return;
+    const labels = d.sov.map(b => b.date.slice(5));
+    const datasets = allBrands.map((b, i) => ({
+      label: b,
+      data: d.sov.map(s => s.byBrand[b] || 0),
+      borderColor: brandColors[i % brandColors.length],
+      backgroundColor: brandColors[i % brandColors.length] + '20',
+      tension: 0.3, fill: false, borderWidth: 2, pointRadius: 2
+    }));
+    if (window._mtSovChart) try { window._mtSovChart.destroy(); } catch {}
+    window._mtSovChart = new Chart(canvas, {
+      type:'line',
+      data:{ labels, datasets },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:'bottom', labels:{ font:{size:11}, boxWidth:10 } } },
+        scales:{ y:{ beginAtZero:true, ticks:{ stepSize:1, font:{size:10} } }, x:{ ticks:{ font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:10 } } }
+      }
+    });
+  }, 50);
+}
+
+/* =============================================================================
+   FEATURE 2: REAL-TIME ALERTS — bell, panel, polling
+   ============================================================================= */
+window._alertsState = { open:false, alerts:[], unread:0, lastChecked:0, polling:false };
+
+async function loadAlertsList() {
+  try {
+    const r = await fetch('/api/alerts/list?limit=30');
+    const j = await r.json();
+    if (!j.ok) return;
+    window._alertsState.alerts = j.alerts || [];
+    window._alertsState.unread = j.unread || 0;
+    updateAlertsBellBadge();
+    if (window._alertsState.open) renderAlertsPanel();
+  } catch (e) { console.warn('alerts list failed:', e.message); }
+}
+
+function updateAlertsBellBadge() {
+  const badge = document.getElementById('alertsBellBadge');
+  if (!badge) return;
+  const n = window._alertsState.unread;
+  if (n > 0) { badge.textContent = n > 99 ? '99+' : String(n); badge.style.display = ''; }
+  else { badge.style.display = 'none'; }
+}
+
+function toggleAlertsPanel() {
+  const panel = document.getElementById('alertsPanel');
+  if (!panel) return;
+  const opening = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden');
+  window._alertsState.open = opening;
+  if (opening) {
+    renderAlertsPanel();
+    loadAlertsList();
+  }
+}
+
+function renderAlertsPanel() {
+  const body = document.getElementById('alertsPanelBody');
+  const last = document.getElementById('alertsLastChecked');
+  if (!body) return;
+  if (last) {
+    last.textContent = window._alertsState.lastChecked
+      ? `Last checked ${_relativeTimeShort(window._alertsState.lastChecked)}`
+      : 'Never checked — click Check now';
+  }
+  const arr = window._alertsState.alerts || [];
+  if (!arr.length) {
+    body.innerHTML = `<div style="padding:32px;text-align:center;color:#64748b;font-size:.85rem">No alerts yet. Click <strong>Check now</strong> to scan for mention surges and rank drops.</div>`;
+    return;
+  }
+  body.innerHTML = arr.map(a => {
+    const sevColor = a.severity === 'high' ? '#EF4444' : a.severity === 'medium' ? '#F59E0B' : '#3B82F6';
+    return `<div class="alert-item ${a.read ? 'alert-read' : 'alert-unread'}">
+      <div class="alert-bar" style="background:${sevColor}"></div>
+      <div class="alert-content">
+        <div class="alert-title">${_esc(a.title)}</div>
+        <div class="alert-body">${_esc(a.body)}</div>
+        <div class="alert-meta">${_relativeTimeShort(a.timestamp)} · ${_esc(a.type.replace(/_/g,' '))}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function _relativeTimeShort(ts) {
+  if (!ts) return '';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+  return `${Math.floor(s/86400)}d ago`;
+}
+
+async function checkAlertsNow() {
+  const camp = window.currentCampaign || {};
+  const brand  = camp.brand || camp.businessName || '';
+  const domain = (camp.domain || camp.url || '').replace(/^https?:\/\//, '').replace(/\/$/, '').split('/')[0];
+  const country = camp.country || 'US';
+  if (!brand && !domain) {
+    showToast('⚠️ Run an analysis first so alerts know what to monitor');
+    return;
+  }
+  const body = document.getElementById('alertsPanelBody');
+  if (body) body.innerHTML = `<div style="padding:32px;text-align:center;color:#64748b;font-size:.85rem">⏳ Checking…</div>`;
+  try {
+    const r = await fetch('/api/alerts/check', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ brand, domain, country })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Check failed');
+    window._alertsState.lastChecked = j.lastChecked || Date.now();
+    if (j.newCount > 0) showToast(`🔔 ${j.newCount} new alert${j.newCount>1?'s':''}`);
+    await loadAlertsList();
+  } catch (e) {
+    if (body) body.innerHTML = `<div style="padding:32px;text-align:center;color:#EF4444;font-size:.85rem">⚠️ ${_esc(e.message)}</div>`;
+  }
+}
+
+async function markAllAlertsRead() {
+  try {
+    await fetch('/api/alerts/ack', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id:'all' }) });
+    await loadAlertsList();
+  } catch (e) { console.warn('mark read failed:', e.message); }
+}
+
+// Auto-load alert count on app boot
+setTimeout(loadAlertsList, 1500);
+// Refresh every 5 minutes when tab is visible
+setInterval(() => { if (document.visibilityState === 'visible') loadAlertsList(); }, 5 * 60 * 1000);
+
+/* =============================================================================
+   FEATURE 3: AI CONTENT-GAP IDEATION
+   ============================================================================= */
+window._gapsState = { domain:'', competitors:[], data:null };
+
+function buildContentGaps() {
+  const wrap = document.getElementById('contentGapsWrap');
+  if (!wrap) return;
+  const camp = window.currentCampaign || {};
+  const domain = window._gapsState.domain || (camp.domain || camp.url || '').replace(/^https?:\/\//,'').replace(/\/$/,'').split('/')[0] || '';
+  const competitors = window._gapsState.competitors.length
+    ? window._gapsState.competitors
+    : (Array.isArray(camp.competitors) ? camp.competitors.slice(0,4).map(c => (typeof c === 'string' ? c : (c.domain || c.url || ''))).map(d => d.replace(/^https?:\/\//,'').replace(/\/$/,'').split('/')[0]).filter(Boolean) : []);
+  window._gapsState.domain = domain;
+  window._gapsState.competitors = competitors;
+
+  wrap.innerHTML = `
+    <div class="cg-controls">
+      <div class="cg-control">
+        <label class="cg-lbl">Your domain</label>
+        <input id="cgDomain" type="text" class="cg-input" placeholder="example.com" value="${_esc(domain)}" maxlength="120" />
+      </div>
+      <div class="cg-control" style="flex:2">
+        <label class="cg-lbl">Competitor domains (up to 4, comma-separated)</label>
+        <input id="cgComps" type="text" class="cg-input" placeholder="competitor1.com, competitor2.com" value="${_esc(competitors.join(', '))}" maxlength="320" />
+      </div>
+      <div class="cg-control" style="flex:0 0 auto;display:flex;align-items:flex-end">
+        <button class="cg-btn-run" id="cgRun" onclick="runContentGaps()">🧩 Find gaps</button>
+      </div>
+    </div>
+    <div id="cgResults" style="margin-top:24px"></div>
+  `;
+  if (domain && competitors.length) {
+    document.getElementById('cgResults').innerHTML = `<div class="cg-empty">Click <strong>Find gaps</strong> to compare <strong>${_esc(domain)}</strong> vs ${competitors.length} competitor${competitors.length>1?'s':''}.</div>`;
+  } else {
+    document.getElementById('cgResults').innerHTML = `<div class="cg-empty">Enter your domain and at least one competitor, then click <strong>Find gaps</strong>.</div>`;
+  }
+}
+
+async function runContentGaps() {
+  const domain = (document.getElementById('cgDomain')?.value || '').trim();
+  const compsRaw = (document.getElementById('cgComps')?.value || '').trim();
+  const competitors = compsRaw ? compsRaw.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4) : [];
+  if (!domain) { showToast('⚠️ Enter your domain'); return; }
+  if (!competitors.length) { showToast('⚠️ Enter at least one competitor'); return; }
+  window._gapsState = { domain, competitors, data:null };
+
+  const btn = document.getElementById('cgRun');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analysing…'; }
+  const results = document.getElementById('cgResults');
+  if (results) results.innerHTML = `<div class="cg-loading">⏳ Reading sitemaps for ${competitors.length+1} domains and asking AI to spot the topic gaps… (10–25s)</div>`;
+
+  try {
+    const r = await fetch('/api/content-gaps', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ domain, competitors })
+    });
+    const j = await r.json();
+    if (!j.ok) {
+      if (j.error === 'sitemap-unavailable') {
+        const found = (j.competitorsWithSitemap || []).join(', ') || 'none';
+        results.innerHTML = `<div class="cg-error">⚠️ ${_esc(j.detail || 'Sitemap unavailable')}<br><br>Your pages found: ${j.yourPages || 0}. Competitor sitemaps found: ${_esc(found)}.</div>`;
+      } else {
+        results.innerHTML = `<div class="cg-error">⚠️ ${_esc(j.error || 'Failed')}</div>`;
+      }
+      return;
+    }
+    window._gapsState.data = j;
+    renderContentGaps(j);
+  } catch (e) {
+    if (results) results.innerHTML = `<div class="cg-error">⚠️ ${_esc(e.message)}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🧩 Find gaps'; }
+  }
+}
+
+function renderContentGaps(d) {
+  const wrap = document.getElementById('cgResults');
+  if (!wrap) return;
+  if (!d.gaps || !d.gaps.length) {
+    wrap.innerHTML = `<div class="cg-empty">No clear gaps found — your content coverage matches or exceeds the competitors analysed.</div>`;
+    return;
+  }
+  const ribbon = `<div class="mt-ribbon"><span class="mt-ribbon-dot" style="background:#9333EA"></span><span>📊 ${_esc(d.dataSource || 'AI-verified')}</span><span style="opacity:.5">·</span><span style="text-transform:uppercase;letter-spacing:.04em;font-size:.65rem">${_esc(d.confidence || 'medium')} confidence</span><span style="opacity:.5">·</span><span style="font-weight:500;opacity:.85">${_esc(d.dataOrigin || '')} · ${d.yourPagesAnalyzed} of your pages vs ${d.competitorPagesAnalyzed} competitor pages</span></div>`;
+  const cards = d.gaps.map(g => {
+    const pri = g.priority || 5;
+    const priColor = pri >= 8 ? '#EF4444' : pri >= 6 ? '#F59E0B' : '#10B981';
+    const compTags = (g.competitors_covering || []).map(c => `<span class="cg-comp-tag">${_esc(c)}</span>`).join('');
+    return `<div class="cg-card">
+      <div class="cg-card-head">
+        <div class="cg-priority" style="background:${priColor}">P${pri}</div>
+        <div class="cg-card-topic">${_esc(g.topic)}</div>
+      </div>
+      <div class="cg-card-rationale">${_esc(g.rationale)}</div>
+      ${g.suggested_angle ? `<div class="cg-card-angle"><strong>Suggested angle:</strong> ${_esc(g.suggested_angle)}</div>` : ''}
+      ${compTags ? `<div class="cg-card-comps">Covered by: ${compTags}</div>` : ''}
+    </div>`;
+  }).join('');
+  wrap.innerHTML = `${ribbon}<div class="cg-grid">${cards}</div>`;
+}
+
+/* =============================================================================
+   FEATURE 4: CROSS-CHANNEL REPORTING
+   ============================================================================= */
+window._ccrState = { days:30, data:null };
+
+function buildCrossChannel() {
+  const wrap = document.getElementById('crossChannelWrap');
+  if (!wrap) return;
+  const days = window._ccrState.days || 30;
+  wrap.innerHTML = `
+    <div class="ccr-controls">
+      <div class="ccr-control" style="flex:0 0 130px">
+        <label class="cg-lbl">Time window</label>
+        <select id="ccrDays" class="cg-input" onchange="runCrossChannel()">
+          <option value="7"  ${days===7?'selected':''}>Last 7 days</option>
+          <option value="14" ${days===14?'selected':''}>Last 14 days</option>
+          <option value="30" ${days===30?'selected':''}>Last 30 days</option>
+          <option value="60" ${days===60?'selected':''}>Last 60 days</option>
+          <option value="90" ${days===90?'selected':''}>Last 90 days</option>
+        </select>
+      </div>
+      <div class="ccr-control" style="flex:0 0 auto;display:flex;align-items:flex-end">
+        <button class="cg-btn-run" id="ccrRun" onclick="runCrossChannel()">🌐 Generate report</button>
+      </div>
+    </div>
+    <div id="ccrResults" style="margin-top:24px"><div class="cg-empty">Click <strong>Generate report</strong> to pull live data from all connected channels.</div></div>
+  `;
+}
+
+async function runCrossChannel() {
+  const days = parseInt(document.getElementById('ccrDays')?.value || '30', 10) || 30;
+  window._ccrState.days = days;
+  const camp = window.currentCampaign || {};
+  const domain = (camp.domain || camp.url || '').replace(/^https?:\/\//,'').replace(/\/$/,'').split('/')[0] || '';
+  const brand  = camp.brand || camp.businessName || '';
+
+  const btn = document.getElementById('ccrRun');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Pulling…'; }
+  const results = document.getElementById('ccrResults');
+  if (results) results.innerHTML = `<div class="cg-loading">⏳ Pulling live data from Meta, Google Ads, TikTok${domain?', organic SERP':''}${brand?', earned media':''}…</div>`;
+
+  try {
+    const params = new URLSearchParams({ days:String(days) });
+    if (domain) params.set('domain', domain);
+    if (brand)  params.set('brand', brand);
+    const r = await fetch('/api/cross-channel-report?' + params.toString());
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Report failed');
+    window._ccrState.data = j;
+    renderCrossChannel(j);
+  } catch (e) {
+    if (results) results.innerHTML = `<div class="cg-error">⚠️ ${_esc(e.message)}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🌐 Generate report'; }
+  }
+}
+
+function renderCrossChannel(d) {
+  const wrap = document.getElementById('ccrResults');
+  if (!wrap) return;
+  const t = d.paid?.totals || {};
+  const fmtMoney = (n) => '$' + (n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const fmtNum = (n) => (n || 0).toLocaleString('en-US');
+
+  const channelCards = (d.paid?.channels || []).map(c => {
+    if (!c.ok) {
+      return `<div class="ccr-channel ccr-channel-off">
+        <div class="ccr-ch-head"><span class="ccr-ch-icon">${_esc(c.icon || '')}</span><span>${_esc(c.name)}</span></div>
+        <div class="ccr-ch-status">Not connected</div>
+      </div>`;
+    }
+    const cpc = c.clicks > 0 ? c.spend / c.clicks : 0;
+    const cpa = c.conversions > 0 ? c.spend / c.conversions : 0;
+    return `<div class="ccr-channel">
+      <div class="ccr-ch-head"><span class="ccr-ch-icon">${_esc(c.icon || '')}</span><span>${_esc(c.name)}</span><span class="ccr-ch-live">LIVE</span></div>
+      <div class="ccr-ch-stats">
+        <div><div class="ccr-stat-l">Spend</div><div class="ccr-stat-v">${fmtMoney(c.spend)}</div></div>
+        <div><div class="ccr-stat-l">Clicks</div><div class="ccr-stat-v">${fmtNum(c.clicks)}</div></div>
+        <div><div class="ccr-stat-l">Conv.</div><div class="ccr-stat-v">${fmtNum(c.conversions)}</div></div>
+        <div><div class="ccr-stat-l">CPC</div><div class="ccr-stat-v">$${cpc.toFixed(2)}</div></div>
+        <div><div class="ccr-stat-l">CPA</div><div class="ccr-stat-v">${cpa>0?'$'+cpa.toFixed(2):'—'}</div></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const organicHtml = d.organic?.ok ? `
+    <div class="ccr-card">
+      <h4 class="mt-h">🔎 Organic visibility</h4>
+      <div class="ccr-org-stats">
+        <div><div class="ccr-stat-l">Organic traffic (est.)</div><div class="ccr-stat-v">${fmtNum(d.organic.organicTraffic)}/mo</div></div>
+        <div><div class="ccr-stat-l">Ranking keywords</div><div class="ccr-stat-v">${fmtNum(d.organic.organicKeywords)}</div></div>
+        <div><div class="ccr-stat-l">Paid traffic (est.)</div><div class="ccr-stat-v">${fmtNum(d.organic.paidTraffic)}/mo</div></div>
+        <div><div class="ccr-stat-l">Paid keywords</div><div class="ccr-stat-v">${fmtNum(d.organic.paidKeywords)}</div></div>
+      </div>
+    </div>` : '';
+
+  const earnedHtml = d.earned?.ok ? `
+    <div class="ccr-card">
+      <h4 class="mt-h">📰 Earned media (last ${d.days} days)</h4>
+      <div class="ccr-org-stats">
+        <div><div class="ccr-stat-l">Mentions in window</div><div class="ccr-stat-v">${fmtNum(d.earned.mentions)}</div></div>
+        <div><div class="ccr-stat-l">Mentions all-time (in SERP)</div><div class="ccr-stat-v">${fmtNum(d.earned.total)}</div></div>
+      </div>
+    </div>` : '';
+
+  const ribbon = `<div class="mt-ribbon"><span class="mt-ribbon-dot" style="background:#0891B2"></span><span>📊 ${_esc(d.dataSource || '')}</span><span style="opacity:.5">·</span><span style="text-transform:uppercase;letter-spacing:.04em;font-size:.65rem">${_esc(d.confidence || 'medium')} confidence</span><span style="opacity:.5">·</span><span style="font-weight:500;opacity:.85">${_esc(d.dataOrigin || '')}</span></div>`;
+
+  wrap.innerHTML = `
+    ${ribbon}
+    <div class="ccr-summary-card">
+      <div class="ccr-summary-h">📋 Executive summary</div>
+      <div class="ccr-summary-body">${_esc(d.summary || '')}</div>
+    </div>
+    <div class="ccr-totals">
+      <div class="ccr-total"><div class="ccr-total-l">Total paid spend</div><div class="ccr-total-v">${fmtMoney(t.spend)}</div></div>
+      <div class="ccr-total"><div class="ccr-total-l">Total clicks</div><div class="ccr-total-v">${fmtNum(t.clicks)}</div></div>
+      <div class="ccr-total"><div class="ccr-total-l">Total conversions</div><div class="ccr-total-v">${fmtNum(t.conversions)}</div></div>
+      <div class="ccr-total"><div class="ccr-total-l">Blended CPC</div><div class="ccr-total-v">$${(t.cpc||0).toFixed(2)}</div></div>
+      <div class="ccr-total"><div class="ccr-total-l">Blended CPA</div><div class="ccr-total-v">${t.cpa>0?'$'+t.cpa.toFixed(2):'—'}</div></div>
+    </div>
+    <div class="ccr-channels">${channelCards}</div>
+    ${organicHtml}
+    ${earnedHtml}
+  `;
 }
