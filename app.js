@@ -28189,6 +28189,7 @@ async function exportLookalikeCSV(platform) {
         if (v === 'reengage')       { try { buildReengage(); }       catch(_){} }
         if (v === 'attribution')    { try { buildAttribution(); }    catch(_){} }
         if (v === 'lookalike')      { try { buildLookalike(); }      catch(_){} }
+        if (v === 'contentscorer')  { try { buildContentScorer(); }  catch(_){} }
       }, 60);
       return;
     }
@@ -28458,6 +28459,7 @@ window._renderJourneyStages = function() {
         { icon: '🎯', name: 'Attribution & ROI', view: 'attribution' },
         { icon: '💎', name: 'Blended Performance', view: 'blended-perf' },
         { icon: '📈', name: 'KPI Tracker',       view: 'kpi-tracker' },
+        { icon: '🎯', name: 'Content Scorer',    view: 'contentscorer' },
         { icon: '🎯', name: 'Action Center',     view: 'action-center' },
         { icon: '🧪', name: 'CRO Lab',           view: 'cro-lab' },
         { icon: '📡', name: 'GSC / GA4 Hub',     view: 'analytics-hub' },
@@ -28508,3 +28510,213 @@ window._renderJourneyStages = function() {
     });
   });
 };
+
+/* =============================================================================
+   CONTENT OPTIMISATION SCORER — pulls live top-10 SERP for a keyword, scrapes
+   competing pages, scores the user's page 0–100, returns concrete recs.
+   100% outward-facing: only public SERPs + the user's own page/draft.
+   ============================================================================= */
+function buildContentScorer() {
+  const wrap = document.getElementById('contentScorerWrap');
+  if (!wrap) return;
+  if (wrap.dataset.built === '1') return;
+  wrap.dataset.built = '1';
+  wrap.innerHTML = `
+    <div class="cs-card">
+      <div class="cs-form">
+        <div class="cs-field">
+          <label>Target keyword</label>
+          <input type="text" id="csKeyword" placeholder="e.g. ai marketing automation tools" />
+        </div>
+        <div class="cs-field">
+          <label>Country</label>
+          <select id="csCountry">
+            <option value="US" selected>United States</option>
+            <option value="GB">United Kingdom</option>
+            <option value="CA">Canada</option>
+            <option value="AU">Australia</option>
+            <option value="IE">Ireland</option>
+            <option value="DE">Germany</option>
+            <option value="FR">France</option>
+            <option value="ES">Spain</option>
+            <option value="IT">Italy</option>
+            <option value="NL">Netherlands</option>
+            <option value="IN">India</option>
+            <option value="BR">Brazil</option>
+            <option value="MX">Mexico</option>
+            <option value="JP">Japan</option>
+          </select>
+        </div>
+        <div class="cs-field cs-field-wide">
+          <label>Your page URL <span style="opacity:.6;font-weight:400">(or paste draft below)</span></label>
+          <input type="text" id="csUrl" placeholder="https://yoursite.com/your-page" />
+        </div>
+        <div class="cs-field cs-field-full">
+          <label>Or paste your draft content <span style="opacity:.6;font-weight:400">(optional — used if URL is empty)</span></label>
+          <textarea id="csDraft" rows="4" placeholder="Paste your article draft here for scoring before publishing…"></textarea>
+        </div>
+        <div class="cs-field cs-field-full" style="display:flex;gap:10px;align-items:center">
+          <button class="cs-go" id="csRunBtn" onclick="runContentScorer()">Score my content</button>
+          <span style="font-size:.85rem;opacity:.7">Live SERP fetch + page scrape — usually 8–15 seconds.</span>
+        </div>
+      </div>
+    </div>
+    <div id="csResult" style="margin-top:24px"></div>
+  `;
+}
+
+async function runContentScorer() {
+  const kw      = (document.getElementById('csKeyword')?.value || '').trim();
+  const country = (document.getElementById('csCountry')?.value || 'US').trim();
+  const url     = (document.getElementById('csUrl')?.value || '').trim();
+  const draft   = (document.getElementById('csDraft')?.value || '').trim();
+  const out     = document.getElementById('csResult');
+  const btn     = document.getElementById('csRunBtn');
+  if (!kw)              { out.innerHTML = `<div class="cs-warn">Enter a target keyword first.</div>`; return; }
+  if (!url && !draft)   { out.innerHTML = `<div class="cs-warn">Enter your page URL or paste a draft.</div>`; return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Scoring…'; }
+  out.innerHTML = `
+    <div class="cs-loading">
+      <div class="cs-spinner"></div>
+      <div>
+        <div style="font-weight:700;font-size:1.05rem">Analysing the SERP for "${_escapeHtml(kw)}"…</div>
+        <div style="opacity:.75;font-size:.9rem;margin-top:4px">Fetching the top 10 results · scraping each page · extracting LSI terms · scoring your content</div>
+      </div>
+    </div>`;
+  try {
+    const body = { keyword: kw, country };
+    if (url)   body.targetUrl = url;
+    if (draft) body.targetText = draft;
+    const r = await fetch('/api/content-scorer/analyze', {
+      method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (!r.ok || !j.ok) {
+      out.innerHTML = `<div class="cs-warn">Scoring failed: ${_escapeHtml(j?.error || 'unknown error')}</div>`;
+      return;
+    }
+    out.innerHTML = _contentScorerHtml(j);
+  } catch (e) {
+    out.innerHTML = `<div class="cs-warn">Network error: ${_escapeHtml(e.message)}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Score my content'; }
+  }
+}
+
+function _contentScorerHtml(j) {
+  const esc = _escapeHtml;
+  const score = Number(j.score || 0);
+  const scoreColor = score >= 80 ? '#10B981' : score >= 60 ? '#F59E0B' : score >= 40 ? '#F97316' : '#EF4444';
+  const scoreLabel = score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : score >= 40 ? 'Needs work' : 'Underperforming';
+  const b = j.breakdown || {};
+  const barRows = [
+    { key:'wordCount',   label:'Word count',          desc:`Yours ${b.wordCount?.target||0} · SERP median ${b.wordCount?.median||0}` },
+    { key:'headings',    label:'Heading structure',   desc:`H1 ${b.headings?.h1||0} · H2 ${b.headings?.h2||0} · H3 ${b.headings?.h3||0} · SERP avg H2 ${b.headings?.avgH2InSerp||0}` },
+    { key:'lsiCoverage', label:'Topic / LSI coverage',desc:`${b.lsiCoverage?.covered||0} of ${b.lsiCoverage?.total||0} key terms covered` },
+    { key:'faq',         label:'FAQ section',         desc:b.faq?.hasSchema?'FAQPage schema present':b.faq?.hasHeuristic?'FAQ-style headings detected':'No FAQ detected' },
+    { key:'schema',      label:'Schema markup',       desc:(b.schema?.types||[]).length?`Types: ${(b.schema.types||[]).join(', ')}`:'No JSON-LD detected' },
+    { key:'titleMeta',   label:'Title & meta',        desc:`Title ${b.titleMeta?.titleLen||0} chars · Meta ${b.titleMeta?.metaDescLen||0} chars` },
+  ];
+  const bars = barRows.map(row => {
+    const item = b[row.key] || { score:0, max:0 };
+    const pct = item.max ? Math.round((item.score / item.max) * 100) : 0;
+    const barColor = pct >= 80 ? '#10B981' : pct >= 50 ? '#F59E0B' : '#EF4444';
+    return `
+      <div class="cs-bar-row">
+        <div class="cs-bar-label">
+          <div class="cs-bar-name">${esc(row.label)}</div>
+          <div class="cs-bar-desc">${esc(row.desc)}</div>
+        </div>
+        <div class="cs-bar-track"><div class="cs-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+        <div class="cs-bar-score">${item.score}<span style="opacity:.5;font-weight:500">/${item.max}</span></div>
+      </div>`;
+  }).join('');
+
+  // Recommendations
+  const recsHtml = (j.recommendations || []).length ? (j.recommendations || []).map(r => {
+    const pri = (r.priority || 'medium').toLowerCase();
+    const priColor = pri==='high' ? '#EF4444' : pri==='low' ? '#94A3B8' : '#F59E0B';
+    return `
+      <div class="cs-rec">
+        <div class="cs-rec-head">
+          <span class="cs-rec-pri" style="background:${priColor}">${esc(pri.toUpperCase())}</span>
+          <span class="cs-rec-cat">${esc(r.category || 'Improvement')}</span>
+        </div>
+        <div class="cs-rec-action">${esc(r.action || '')}</div>
+        ${r.why ? `<div class="cs-rec-why">${esc(r.why)}</div>` : ''}
+      </div>`;
+  }).join('') : `<div style="opacity:.7;padding:12px">No additional recommendations — your page already covers the basics for this keyword.</div>`;
+
+  // LSI terms
+  const lsiCovered = b.lsiCoverage?.coveredTerms || [];
+  const lsiMissing = b.lsiCoverage?.missingTerms || [];
+  const lsiHtml = `
+    <div class="cs-lsi-grid">
+      <div>
+        <div class="cs-lsi-title" style="color:#10B981">✓ Already covered (${lsiCovered.length})</div>
+        <div class="cs-lsi-tags">${lsiCovered.map(t => `<span class="cs-lsi-tag cs-lsi-ok">${esc(t)}</span>`).join('') || '<span style="opacity:.5;font-size:.85rem">None yet</span>'}</div>
+      </div>
+      <div>
+        <div class="cs-lsi-title" style="color:#EF4444">✗ Missing — add these (${lsiMissing.length})</div>
+        <div class="cs-lsi-tags">${lsiMissing.map(t => `<span class="cs-lsi-tag cs-lsi-miss">${esc(t)}</span>`).join('') || '<span style="opacity:.5;font-size:.85rem">All key terms covered 🎉</span>'}</div>
+      </div>
+    </div>`;
+
+  // Competitor table
+  const compRows = (j.competitorSummary || []).map(c => `
+    <tr>
+      <td style="text-align:center;font-weight:700;color:#7C3AED">${c.rank}</td>
+      <td><div style="font-weight:600;font-size:.88rem">${esc(c.domain)}</div><div style="opacity:.6;font-size:.78rem">${esc((c.title || '').slice(0, 80))}</div></td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums">${c.ok ? c.wordCount.toLocaleString() : '—'}</td>
+      <td style="text-align:center">${c.ok ? c.h2 : '—'}</td>
+      <td style="text-align:center">${c.ok ? (c.hasFAQ?'<span style="color:#10B981">✓</span>':'<span style="opacity:.3">—</span>') : '—'}</td>
+      <td style="text-align:center">${c.ok ? (c.hasSchema?'<span style="color:#10B981">✓</span>':'<span style="opacity:.3">—</span>') : '—'}</td>
+      <td style="text-align:center;font-size:.78rem">${c.ok ? '<span style="color:#10B981">scraped</span>' : `<span style="color:#EF4444" title="${esc(c.error || '')}">${esc(c.error || 'failed')}</span>`}</td>
+    </tr>`).join('');
+
+  return `
+    <div class="cs-result-grid">
+      <!-- Score card -->
+      <div class="cs-card cs-score-card">
+        <div class="cs-score-circle" style="background:conic-gradient(${scoreColor} ${score*3.6}deg, #1E293B 0deg)">
+          <div class="cs-score-inner">
+            <div class="cs-score-num" style="color:${scoreColor}">${score}</div>
+            <div class="cs-score-of">/100</div>
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:14px">
+          <div style="font-weight:800;font-size:1.15rem;color:${scoreColor}">${esc(scoreLabel)}</div>
+          <div style="opacity:.75;font-size:.85rem;margin-top:4px">vs SERP-winning average for "${esc(j.keyword)}"</div>
+        </div>
+        <div style="margin-top:18px;font-size:.85rem;opacity:.85;line-height:1.5">
+          <div><strong>Your page:</strong> ${esc(j.target?.url || '(draft)')}</div>
+          <div style="margin-top:6px"><strong>Country:</strong> ${esc(j.country)} · <strong>Generated:</strong> ${new Date(j.generatedAt).toLocaleString()}</div>
+        </div>
+      </div>
+      <!-- Breakdown bars -->
+      <div class="cs-card">
+        <h4 class="cs-h">Score breakdown</h4>
+        <div class="cs-bars">${bars}</div>
+      </div>
+    </div>
+    <div class="cs-card" style="margin-top:24px">
+      <h4 class="cs-h">Topic coverage — semantic terms competitors use</h4>
+      <p class="cs-h-sub">Extracted from the live top-10 SERP. Adding the missing terms is the single biggest content lever.</p>
+      ${lsiHtml}
+    </div>
+    <div class="cs-card" style="margin-top:24px">
+      <h4 class="cs-h">Concrete recommendations</h4>
+      <p class="cs-h-sub">Prioritised actions to close the gap with what's already winning.</p>
+      <div class="cs-recs">${recsHtml}</div>
+    </div>
+    <div class="cs-card" style="margin-top:24px">
+      <h4 class="cs-h">SERP top 10 — what you're up against</h4>
+      <div style="overflow-x:auto">
+      <table class="cs-comp-table">
+        <thead><tr><th>#</th><th>Domain &amp; title</th><th style="text-align:right">Words</th><th>H2s</th><th>FAQ</th><th>Schema</th><th>Status</th></tr></thead>
+        <tbody>${compRows}</tbody>
+      </table>
+      </div>
+    </div>`;
+}

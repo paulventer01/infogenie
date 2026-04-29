@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <base href="/">
-  <link rel="stylesheet" href="/style.css?v=20260429C" />
+  <link rel="stylesheet" href="/style.css?v=20260429D" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
   <!-- PostHog SDK stub — init called from app.js after config fetch -->
@@ -145,6 +145,7 @@
         <div class="nav-dropdown nav-dropdown-right">
           <div class="nav-drop-header">Grow your visibility</div>
           <a href="#" class="nav-link" data-view="autoseo"><span class="ndl-icon">🚀</span><span class="ndl-text">AutoSEO Pro</span></a>
+          <a href="#" class="nav-link" data-view="contentscorer"><span class="ndl-icon">🎯</span><span class="ndl-text">Content Scorer</span></a>
           <a href="#" class="nav-link" onclick="event.preventDefault();openWpCredentialsModal()"><span class="ndl-icon">🟦</span><span class="ndl-text">Connect to WordPress</span></a>
           <a href="#" class="nav-link" data-view="aivisibility"><span class="ndl-icon">🤖</span><span class="ndl-text">AI Visibility</span></a>
           <a href="#" class="nav-link" data-view="amplitude-agents"><span class="ndl-icon">📡</span><span class="ndl-text">Amplitude AI Agents</span></a>
@@ -1909,7 +1910,23 @@
   <div class="container" id="lookalikeWrap" style="padding-top:24px;padding-bottom:60px"></div>
 </div>
 
-<script src="/app.js?v=20260429F"></script>
+<!-- CONTENT OPTIMISATION SCORER VIEW -->
+<div class="view hidden" id="view-contentscorer">
+  <div class="view-header" style="background:linear-gradient(135deg,#0F172A 0%,#7C3AED 50%,#22D3EE 100%)">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb" style="color:#E9D5FF"><span class="bc-group" style="color:rgba(233,213,255,.75)">Grow</span> <span class="bc-sep" style="color:rgba(255,255,255,.3)">›</span> Content Scorer</div>
+          <h2 class="view-title">Content Optimisation Scorer</h2>
+          <p class="view-sub">Pulls the live top-10 SERP for any keyword, scrapes what's already winning, and scores your page 0–100 against the SERP-winning average — with concrete recommendations to close the gap.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="contentScorerWrap" style="padding-top:24px;padding-bottom:60px"></div>
+</div>
+
+<script src="/app.js?v=20260429G"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');

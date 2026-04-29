@@ -7465,3 +7465,81 @@ select option { background: #FFFFFF !important; color: #0F4C4A !important; }
 [data-theme="dark"] .cohort-table tbody tr:hover { background: #0F172A; }
 [data-theme="dark"] .fc-card { background: #1E293B; border-color: #334155; }
 [data-theme="dark"] .fc-card-value { color: #F1F5F9; }
+
+/* ============================================================================
+   CONTENT OPTIMISATION SCORER
+   ============================================================================ */
+.cs-card { background:#0F172A; color:#E2E8F0; border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:22px; box-shadow:0 4px 16px rgba(0,0,0,.18); }
+[data-theme="light"] .cs-card { background:#fff; color:#0F172A; border-color:#E5E7EB; box-shadow:0 2px 12px rgba(15,23,42,.05); }
+.cs-form { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
+.cs-field { display:flex; flex-direction:column; gap:6px; }
+.cs-field-wide { grid-column:span 2; }
+.cs-field-full { grid-column:span 2; }
+.cs-field label { font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.4px; opacity:.85; }
+.cs-field input, .cs-field select, .cs-field textarea {
+  background:rgba(15,23,42,.5); color:#E2E8F0; border:1px solid rgba(255,255,255,.12); border-radius:8px;
+  padding:10px 12px; font-size:.95rem; font-family:inherit; outline:none; transition:border-color .15s;
+}
+.cs-field input:focus, .cs-field select:focus, .cs-field textarea:focus { border-color:#7C3AED; }
+[data-theme="light"] .cs-field input, [data-theme="light"] .cs-field select, [data-theme="light"] .cs-field textarea {
+  background:#F8FAFC; color:#0F172A; border-color:#CBD5E1;
+}
+.cs-field textarea { resize:vertical; min-height:80px; }
+.cs-go {
+  background:linear-gradient(135deg,#7C3AED 0%,#22D3EE 100%); color:#fff; border:0; border-radius:10px;
+  padding:11px 22px; font-weight:700; font-size:.95rem; cursor:pointer; transition:transform .12s, box-shadow .12s;
+  box-shadow:0 4px 14px rgba(124,58,237,.35);
+}
+.cs-go:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 6px 18px rgba(124,58,237,.45); }
+.cs-go:disabled { opacity:.6; cursor:wait; }
+.cs-warn { background:rgba(239,68,68,.1); color:#FCA5A5; border:1px solid rgba(239,68,68,.3); padding:14px 18px; border-radius:10px; font-weight:600; }
+[data-theme="light"] .cs-warn { background:#FEF2F2; color:#B91C1C; border-color:#FECACA; }
+.cs-loading { display:flex; gap:18px; align-items:center; padding:24px; background:rgba(124,58,237,.08); border:1px solid rgba(124,58,237,.25); border-radius:12px; }
+.cs-spinner { width:36px; height:36px; border:3px solid rgba(124,58,237,.25); border-top-color:#7C3AED; border-radius:50%; animation:cs-spin 0.85s linear infinite; flex-shrink:0; }
+@keyframes cs-spin { to { transform:rotate(360deg); } }
+.cs-result-grid { display:grid; grid-template-columns:300px 1fr; gap:24px; }
+.cs-score-card { display:flex; flex-direction:column; align-items:center; }
+.cs-score-circle { width:200px; height:200px; border-radius:50%; display:flex; align-items:center; justify-content:center; transition:background 0.6s; }
+.cs-score-inner { width:160px; height:160px; background:#0F172A; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+[data-theme="light"] .cs-score-inner { background:#fff; }
+.cs-score-num { font-size:3.4rem; font-weight:900; line-height:1; font-variant-numeric:tabular-nums; }
+.cs-score-of { font-size:.85rem; opacity:.6; font-weight:600; margin-top:2px; }
+.cs-h { margin:0 0 4px; font-size:1.05rem; font-weight:700; }
+.cs-h-sub { margin:0 0 16px; font-size:.85rem; opacity:.7; }
+.cs-bars { display:flex; flex-direction:column; gap:14px; }
+.cs-bar-row { display:grid; grid-template-columns:1fr 160px 70px; gap:14px; align-items:center; }
+.cs-bar-label { min-width:0; }
+.cs-bar-name { font-weight:700; font-size:.92rem; }
+.cs-bar-desc { font-size:.78rem; opacity:.65; margin-top:2px; }
+.cs-bar-track { height:8px; background:rgba(255,255,255,.08); border-radius:4px; overflow:hidden; }
+[data-theme="light"] .cs-bar-track { background:#F1F5F9; }
+.cs-bar-fill { height:100%; transition:width .6s ease-out; border-radius:4px; }
+.cs-bar-score { font-weight:800; font-size:1rem; text-align:right; font-variant-numeric:tabular-nums; }
+.cs-lsi-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+.cs-lsi-title { font-weight:800; font-size:.95rem; margin-bottom:10px; }
+.cs-lsi-tags { display:flex; flex-wrap:wrap; gap:6px; }
+.cs-lsi-tag { font-size:.8rem; padding:5px 10px; border-radius:14px; font-weight:600; }
+.cs-lsi-ok { background:rgba(16,185,129,.15); color:#10B981; border:1px solid rgba(16,185,129,.3); }
+.cs-lsi-miss { background:rgba(239,68,68,.12); color:#FCA5A5; border:1px solid rgba(239,68,68,.3); }
+[data-theme="light"] .cs-lsi-miss { color:#B91C1C; background:#FEF2F2; }
+.cs-recs { display:flex; flex-direction:column; gap:12px; }
+.cs-rec { padding:14px 16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; border-left:3px solid #7C3AED; }
+[data-theme="light"] .cs-rec { background:#F8FAFC; border-color:#E5E7EB; border-left-color:#7C3AED; }
+.cs-rec-head { display:flex; gap:10px; align-items:center; margin-bottom:6px; }
+.cs-rec-pri { font-size:.7rem; font-weight:800; padding:2px 8px; border-radius:4px; color:#fff; letter-spacing:.5px; }
+.cs-rec-cat { font-size:.78rem; font-weight:700; opacity:.75; text-transform:uppercase; letter-spacing:.3px; }
+.cs-rec-action { font-size:.95rem; font-weight:600; line-height:1.4; }
+.cs-rec-why { margin-top:6px; font-size:.85rem; opacity:.72; line-height:1.45; }
+.cs-comp-table { width:100%; border-collapse:collapse; font-size:.9rem; }
+.cs-comp-table th { text-align:left; padding:10px 12px; font-size:.75rem; text-transform:uppercase; letter-spacing:.4px; opacity:.7; border-bottom:1px solid rgba(255,255,255,.08); font-weight:700; }
+.cs-comp-table td { padding:11px 12px; border-bottom:1px solid rgba(255,255,255,.05); }
+[data-theme="light"] .cs-comp-table th { border-bottom-color:#E5E7EB; }
+[data-theme="light"] .cs-comp-table td { border-bottom-color:#F1F5F9; }
+.cs-comp-table tbody tr:hover { background:rgba(124,58,237,.05); }
+@media (max-width: 880px) {
+  .cs-form { grid-template-columns:1fr; }
+  .cs-field-wide, .cs-field-full { grid-column:span 1; }
+  .cs-result-grid { grid-template-columns:1fr; }
+  .cs-bar-row { grid-template-columns:1fr 100px 60px; }
+  .cs-lsi-grid { grid-template-columns:1fr; }
+}

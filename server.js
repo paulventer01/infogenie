@@ -3,6 +3,8 @@ const path = require('path');
 const https = require('https');
 const fs    = require('fs');
 const multer = require('multer');
+const dns   = require('dns').promises;
+const net   = require('net');
 const OpenAI    = require('openai');
 const Anthropic  = require('@anthropic-ai/sdk');
 
@@ -7254,6 +7256,369 @@ app.post('/api/lookalike/export', async (req, res) => {
       examples.forEach((p,i) => lines.push(`seed${i+1}@example.com,+15555550${100+i},First${i+1},Last${i+1},${(spec.geo?.primaryCountry || 'US')},,,,`));
     }
     res.json({ ok:true, platform, csv: lines.join('\n'), filename: `lookalike-${platform}-${Date.now()}.csv` });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTENT OPTIMISATION SCORER — given a target keyword + the user's page,
+// fetches the top 10 SERP results via DataForSEO, scrapes them for on-page
+// signals (word count, headings, schema, FAQ), extracts LSI terms via OpenAI,
+// and returns a 0-100 SERP-match score with concrete recommendations.
+// 100% outward-facing: only public SERPs + the user's own URL.
+// ─────────────────────────────────────────────────────────────────────────────
+const CONTENT_COUNTRY_CODES = { US:2840, GB:2826, CA:2124, AU:2036, DE:2276, FR:2250, ES:2724, IT:2380, NL:2528, IE:2372, IN:2356, BR:2076, MX:2484, JP:2392 };
+
+async function _fetchSerpTopForKeyword(keyword, countryCode = 2840, limit = 10) {
+  const login = process.env.DATAFORSEO_LOGIN;
+  const password = process.env.DATAFORSEO_PASSWORD;
+  if (!login || !password) return { ok:false, error:'DataForSEO not configured', results:[] };
+  const auth = 'Basic ' + Buffer.from(`${login}:${password}`).toString('base64');
+  try {
+    const r = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
+      method:'POST',
+      headers:{ 'Authorization': auth, 'Content-Type':'application/json' },
+      body: JSON.stringify([{ keyword, location_code: countryCode, language_code:'en', depth: limit, device:'desktop' }]),
+    });
+    const j = await r.json();
+    const items = j?.tasks?.[0]?.result?.[0]?.items || [];
+    const organic = items
+      .filter(it => it.type === 'organic' && it.url)
+      .slice(0, limit)
+      .map((it, rank) => ({
+        rank: rank + 1,
+        url:    it.url,
+        domain: it.domain,
+        title:  it.title,
+        snippet: it.description,
+      }));
+    return { ok:true, keyword, count: organic.length, results: organic };
+  } catch (e) { return { ok:false, error: e.message, results:[] }; }
+}
+
+function _stripHtmlNoise(html) {
+  return String(html || '')
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+}
+
+// Returns structured on-page signals for SERP-match scoring. Pure regex, no
+// DOM library — keeps memory bounded and works on partial responses.
+function _extractContentSignals(html, sourceUrl = '') {
+  const cleanHtml = _stripHtmlNoise(html);
+  const titleMatch = cleanHtml.match(/<title[^>]*>([^<]{1,300})<\/title>/i);
+  const title = titleMatch ? titleMatch[1].trim() : '';
+  const metaDescMatch = cleanHtml.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']{0,400})["']/i);
+  const metaDesc = metaDescMatch ? metaDescMatch[1].trim() : '';
+  const h1s = (cleanHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/gi) || []).map(h => h.replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim()).filter(Boolean);
+  const h2s = (cleanHtml.match(/<h2[^>]*>([\s\S]*?)<\/h2>/gi) || []).map(h => h.replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim()).filter(Boolean);
+  const h3s = (cleanHtml.match(/<h3[^>]*>([\s\S]*?)<\/h3>/gi) || []).map(h => h.replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim()).filter(Boolean);
+  const text = cleanHtml.replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+  const wordCount = text ? text.split(/\s+/).length : 0;
+  // Schema markup (JSON-LD blocks)
+  const schemaBlocks = cleanHtml.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || [];
+  const schemaTypes = new Set();
+  let hasFAQSchema = false;
+  for (const block of schemaBlocks) {
+    const inner = block.replace(/<script[^>]*>|<\/script>/gi, '').trim();
+    try {
+      const parsed = JSON.parse(inner);
+      const arr = Array.isArray(parsed) ? parsed : [parsed];
+      for (const node of arr) {
+        const collect = (n) => {
+          if (!n || typeof n !== 'object') return;
+          if (n['@type']) {
+            const t = Array.isArray(n['@type']) ? n['@type'] : [n['@type']];
+            t.forEach(x => { schemaTypes.add(String(x)); if (/FAQPage/i.test(String(x))) hasFAQSchema = true; });
+          }
+          if (Array.isArray(n['@graph'])) n['@graph'].forEach(collect);
+        };
+        collect(node);
+      }
+    } catch (_) { /* malformed JSON-LD — ignore */ }
+  }
+  // FAQ heuristic — H2/H3 ending with '?' counts as FAQ-style
+  const faqStyleHeadings = [...h2s, ...h3s].filter(h => /\?\s*$/.test(h)).length;
+  const hasFAQ = hasFAQSchema || faqStyleHeadings >= 3 || /<h[23][^>]*>\s*FAQ/i.test(cleanHtml);
+  // Internal vs external links (only when sourceUrl supplied)
+  let internalLinks = 0, externalLinks = 0;
+  if (sourceUrl) {
+    try {
+      const host = new URL(sourceUrl).hostname.replace(/^www\./, '');
+      const linkMatches = cleanHtml.match(/<a[^>]+href=["']([^"']+)["']/gi) || [];
+      for (const m of linkMatches) {
+        const hrefMatch = m.match(/href=["']([^"']+)["']/i);
+        if (!hrefMatch) continue;
+        const href = hrefMatch[1];
+        if (href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) continue;
+        if (href.startsWith('/') || href.startsWith('?')) { internalLinks++; continue; }
+        try {
+          const linkHost = new URL(href, sourceUrl).hostname.replace(/^www\./, '');
+          if (linkHost === host) internalLinks++; else externalLinks++;
+        } catch (_) { /* skip malformed */ }
+      }
+    } catch (_) { /* skip */ }
+  }
+  return {
+    title, metaDesc, h1s, h2s, h3s, wordCount,
+    schemaTypes: Array.from(schemaTypes), hasFAQ, hasFAQSchema, faqStyleHeadings,
+    internalLinks, externalLinks,
+    text: text.slice(0, 4000), // for LSI extraction downstream
+  };
+}
+
+// SSRF guard — block non-HTTP(S) protocols and any hostname that resolves to a
+// private, loopback, link-local, or otherwise reserved IP range. Used for both
+// user-supplied target URLs and (defence-in-depth) for SERP competitor URLs.
+function _isPrivateIp(ip) {
+  if (!ip) return true;
+  if (net.isIP(ip) === 4) {
+    const p = ip.split('.').map(Number);
+    if (p[0] === 10) return true;                            // 10.0.0.0/8
+    if (p[0] === 127) return true;                           // 127.0.0.0/8 loopback
+    if (p[0] === 0) return true;                             // 0.0.0.0/8
+    if (p[0] === 169 && p[1] === 254) return true;           // 169.254.0.0/16 link-local (incl. cloud metadata)
+    if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true; // 172.16.0.0/12
+    if (p[0] === 192 && p[1] === 168) return true;           // 192.168.0.0/16
+    if (p[0] === 100 && p[1] >= 64 && p[1] <= 127) return true; // 100.64.0.0/10 CGNAT
+    if (p[0] >= 224) return true;                            // multicast / reserved
+    return false;
+  }
+  if (net.isIP(ip) === 6) {
+    const lower = ip.toLowerCase();
+    if (lower === '::' || lower === '::1') return true;      // unspecified / loopback
+    if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // unique-local
+    if (lower.startsWith('fe80')) return true;               // link-local
+    if (lower.startsWith('::ffff:')) return _isPrivateIp(lower.replace('::ffff:','')); // v4-mapped
+    return false;
+  }
+  return true; // unknown form → reject
+}
+
+async function _isUrlSafeToFetch(rawUrl) {
+  let u;
+  try { u = new URL(rawUrl); } catch (_) { return { ok:false, error:'Invalid URL' }; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return { ok:false, error:'Only http/https URLs are allowed' };
+  const host = u.hostname;
+  if (!host) return { ok:false, error:'Missing hostname' };
+  // Block obvious local hostnames before doing DNS
+  if (/^(localhost|metadata\.google\.internal|metadata\.goog)$/i.test(host)) return { ok:false, error:'Blocked hostname' };
+  try {
+    const records = await dns.lookup(host, { all:true });
+    for (const rec of records) {
+      if (_isPrivateIp(rec.address)) return { ok:false, error:`Hostname resolves to a private/internal IP (${rec.address})` };
+    }
+  } catch (e) {
+    return { ok:false, error:'DNS lookup failed: ' + e.message };
+  }
+  return { ok:true };
+}
+
+async function _scrapePageForScoring(url, timeoutMs = 9000) {
+  try {
+    const safety = await _isUrlSafeToFetch(url);
+    if (!safety.ok) return { ok:false, url, error: safety.error };
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const r = await fetch(url, {
+      signal: ctrl.signal,
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; InfoGenieBot/1.0; +https://infogenie.ai/bot)',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+    });
+    clearTimeout(t);
+    if (!r.ok) return { ok:false, url, error: `HTTP ${r.status}` };
+    // Cap at ~600KB to bound memory on bloated pages
+    const buf = await r.arrayBuffer();
+    const html = new TextDecoder('utf-8', { fatal:false }).decode(buf.slice(0, 600 * 1024));
+    const signals = _extractContentSignals(html, url);
+    return { ok:true, url, ...signals };
+  } catch (e) {
+    return { ok:false, url, error: e.name === 'AbortError' ? 'timeout' : e.message };
+  }
+}
+
+function _scoreContent({ target, competitors, lsiTerms, keyword }) {
+  const live = competitors.filter(c => c.ok);
+  const breakdown = {};
+  // ── 1) Word count vs SERP median (20 pts) ──────────────────────────────
+  const wcs = live.map(c => c.wordCount).sort((a,b) => a-b);
+  const median = wcs.length ? wcs[Math.floor(wcs.length / 2)] : 0;
+  const mean   = wcs.length ? wcs.reduce((a,b)=>a+b,0) / wcs.length : 0;
+  let wcScore = 0;
+  if (median > 0) {
+    const ratio = target.wordCount / median;
+    // Continuous piecewise: 0 at ratio=0, 10 at ratio=0.5, 20 at ratio>=1.
+    if (ratio >= 1)        wcScore = 20;
+    else if (ratio >= 0.5) wcScore = Math.round(10 + 20 * (ratio - 0.5));
+    else                   wcScore = Math.round(20 * ratio);
+  } else if (target.wordCount > 800) wcScore = 20; // fallback when SERP scrape fails
+  breakdown.wordCount = { score: wcScore, max: 20, target: target.wordCount, median, mean: Math.round(mean) };
+  // ── 2) Heading structure (15 pts) ──────────────────────────────────────
+  let headScore = 0;
+  if (target.h1s.length >= 1) headScore += 5;
+  if (target.h2s.length >= 3) headScore += 5;
+  else if (target.h2s.length >= 1) headScore += Math.floor((target.h2s.length / 3) * 5);
+  if (target.h3s.length >= 2) headScore += 5;
+  else if (target.h3s.length >= 1) headScore += 2;
+  const avgH2 = live.length ? Math.round(live.reduce((a,c)=>a+c.h2s.length,0) / live.length) : 0;
+  breakdown.headings = { score: headScore, max: 15, h1: target.h1s.length, h2: target.h2s.length, h3: target.h3s.length, avgH2InSerp: avgH2 };
+  // ── 3) LSI / topic coverage (35 pts) ───────────────────────────────────
+  const tgtTextLower = (target.title + ' ' + target.metaDesc + ' ' + target.h1s.join(' ') + ' ' + target.h2s.join(' ') + ' ' + target.h3s.join(' ') + ' ' + target.text).toLowerCase();
+  const covered = lsiTerms.filter(t => tgtTextLower.includes(String(t).toLowerCase()));
+  const missing = lsiTerms.filter(t => !tgtTextLower.includes(String(t).toLowerCase()));
+  const lsiScore = lsiTerms.length ? Math.round((covered.length / lsiTerms.length) * 35) : 0;
+  breakdown.lsiCoverage = { score: lsiScore, max: 35, covered: covered.length, total: lsiTerms.length, coveredTerms: covered.slice(0, 12), missingTerms: missing.slice(0, 12) };
+  // ── 4) FAQ section (10 pts) ────────────────────────────────────────────
+  let faqScore = 0;
+  if (target.hasFAQSchema) faqScore = 10;
+  else if (target.hasFAQ)  faqScore = 7;
+  else if (target.faqStyleHeadings >= 1) faqScore = 3;
+  const faqInSerp = live.filter(c => c.hasFAQ).length;
+  breakdown.faq = { score: faqScore, max: 10, hasSchema: target.hasFAQSchema, hasHeuristic: target.hasFAQ, competitorsWithFAQ: faqInSerp, totalCompetitors: live.length };
+  // ── 5) Schema markup (10 pts) ──────────────────────────────────────────
+  let schemaScore = 0;
+  const richTypes = ['Article','BlogPosting','HowTo','Product','Recipe','Review','VideoObject','Course'];
+  if (target.schemaTypes.length >= 1) schemaScore += 5;
+  if (target.schemaTypes.some(t => richTypes.includes(t))) schemaScore += 5;
+  const schemaInSerp = live.filter(c => c.schemaTypes.length > 0).length;
+  breakdown.schema = { score: schemaScore, max: 10, types: target.schemaTypes, competitorsWithSchema: schemaInSerp, totalCompetitors: live.length };
+  // ── 6) Title & meta (10 pts) ───────────────────────────────────────────
+  let metaScore = 0;
+  const kwLower = String(keyword).toLowerCase();
+  if (target.title) {
+    const len = target.title.length;
+    if (len >= 30 && len <= 65 && target.title.toLowerCase().includes(kwLower)) metaScore += 5;
+    else if (len >= 20 && target.title.toLowerCase().includes(kwLower)) metaScore += 3;
+    else if (target.title.toLowerCase().includes(kwLower)) metaScore += 2;
+    else if (len >= 30 && len <= 65) metaScore += 2;
+  }
+  if (target.metaDesc) {
+    const len = target.metaDesc.length;
+    if (len >= 120 && len <= 165 && target.metaDesc.toLowerCase().includes(kwLower)) metaScore += 5;
+    else if (len >= 70 && target.metaDesc.toLowerCase().includes(kwLower)) metaScore += 3;
+    else if (target.metaDesc.toLowerCase().includes(kwLower)) metaScore += 2;
+    else if (len >= 120 && len <= 165) metaScore += 2;
+  }
+  breakdown.titleMeta = { score: metaScore, max: 10, titleLen: target.title.length, metaDescLen: target.metaDesc.length, keywordInTitle: target.title.toLowerCase().includes(kwLower), keywordInMeta: target.metaDesc.toLowerCase().includes(kwLower) };
+  const total = Object.values(breakdown).reduce((s,b) => s + b.score, 0);
+  return { score: total, max: 100, breakdown };
+}
+
+app.post('/api/content-scorer/analyze', async (req, res) => {
+  try {
+    const { keyword, targetUrl, targetText, country = 'US' } = req.body || {};
+    if (!keyword || typeof keyword !== 'string' || keyword.trim().length < 2) {
+      return res.status(400).json({ ok:false, error:'keyword is required' });
+    }
+    if (!targetUrl && !targetText) {
+      return res.status(400).json({ ok:false, error:'Provide either targetUrl or targetText' });
+    }
+    const countryCode = CONTENT_COUNTRY_CODES[String(country).toUpperCase()] || 2840;
+    // 1) Fetch SERP top 10
+    const serp = await _fetchSerpTopForKeyword(keyword.trim(), countryCode, 10);
+    if (!serp.ok) return res.status(502).json({ ok:false, error:'SERP fetch failed: ' + (serp.error || 'unknown') });
+    if (!serp.results.length) return res.json({ ok:true, score:0, warning:'No SERP results returned for that keyword in this country.', serp });
+    // 2) Scrape user page (or use raw text) + top competitors in parallel
+    const targetPromise = targetUrl
+      ? _scrapePageForScoring(String(targetUrl).startsWith('http') ? targetUrl : 'https://' + targetUrl)
+      : Promise.resolve({ ok:true, url:'(pasted draft)', ..._extractContentSignals(`<html><body>${targetText}</body></html>`, '') });
+    const [target, ...competitors] = await Promise.all([
+      targetPromise,
+      ...serp.results.map(r => _scrapePageForScoring(r.url)),
+    ]);
+    if (!target.ok) return res.status(502).json({ ok:false, error: 'Could not scrape target: ' + (target.error || 'unknown') });
+    // 3) Extract LSI terms from competitor headings + first slice of body via OpenAI
+    let lsiTerms = [];
+    let recommendations = [];
+    if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      const competitorBrief = competitors.filter(c => c.ok).slice(0, 8).map((c, i) => ({
+        rank: i + 1, domain: serp.results[competitors.indexOf(c)]?.domain || '',
+        title: c.title, h1: c.h1s[0] || '',
+        h2s: c.h2s.slice(0, 8), h3s: c.h3s.slice(0, 6),
+        snippet: c.text.slice(0, 600),
+      }));
+      const sys = `You are an SEO content strategist. Analyse the SERP-winning pages for a target keyword and extract (a) the 15 most important semantic / LSI terms competitors cover, and (b) 6-8 concrete content recommendations. Output valid JSON only.`;
+      const userPrompt = [
+        `Target keyword: "${keyword}"`,
+        `Country: ${country}`,
+        `Target page word count: ${target.wordCount}, H2 count: ${target.h2s.length}, H3 count: ${target.h3s.length}, has FAQ: ${target.hasFAQ}`,
+        `Target page title: "${(target.title || '').slice(0, 120)}"`,
+        `Target page H2s: ${JSON.stringify(target.h2s.slice(0, 12))}`,
+        ``,
+        `Competitor SERP-winning pages:`,
+        JSON.stringify(competitorBrief, null, 2),
+        ``,
+        `Respond with this exact JSON shape:`,
+        `{`,
+        `  "lsiTerms": ["15 specific multi-word semantic terms competitors use that the target should also cover — concrete entities/phrases, not generic words"],`,
+        `  "recommendations": [`,
+        `    { "category": "Word count|Headings|Topic coverage|FAQ|Schema|Title/Meta|Structure", "priority": "high|medium|low", "action": "concrete action statement", "why": "one-sentence rationale tied to what SERP winners do" }`,
+        `  ]`,
+        `}`,
+        `Recommendations should be specific and actionable, never generic SEO advice.`,
+      ].join('\n');
+      try {
+        const r = await openaiChatWithRetry({
+          model:'gpt-4o',
+          response_format:{ type:'json_object' },
+          messages:[{ role:'system', content: sys }, { role:'user', content: userPrompt }],
+          temperature: 0.3,
+        });
+        const parsed = JSON.parse(r.choices[0].message.content);
+        lsiTerms = Array.isArray(parsed.lsiTerms) ? parsed.lsiTerms.slice(0, 20) : [];
+        recommendations = Array.isArray(parsed.recommendations) ? parsed.recommendations.slice(0, 10) : [];
+      } catch (e) {
+        // OpenAI failure — degrade gracefully with a regex-only LSI fallback
+        const allHeadings = competitors.filter(c => c.ok).flatMap(c => [...c.h2s, ...c.h3s]).join(' ');
+        const tokens = (allHeadings.toLowerCase().match(/\b[a-z][a-z\-]{4,}\b/g) || []);
+        const freq = {};
+        tokens.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
+        lsiTerms = Object.entries(freq).filter(([t,n]) => n >= 2 && !/^(the|and|for|with|that|this|your|from|will|have|what|when|where|which|their|other|about|more|some|than|into|also|been|like|just|over|very|most|such|many|only|even|need|want)$/.test(t)).sort((a,b) => b[1]-a[1]).slice(0, 15).map(([t]) => t);
+      }
+    } else {
+      // No OpenAI — regex-only LSI (less precise but functional)
+      const allHeadings = competitors.filter(c => c.ok).flatMap(c => [...c.h2s, ...c.h3s]).join(' ');
+      const tokens = (allHeadings.toLowerCase().match(/\b[a-z][a-z\-]{4,}\b/g) || []);
+      const freq = {};
+      tokens.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
+      lsiTerms = Object.entries(freq).filter(([t,n]) => n >= 2).sort((a,b) => b[1]-a[1]).slice(0, 15).map(([t]) => t);
+    }
+    // 4) Score the target
+    const scored = _scoreContent({ target, competitors, lsiTerms, keyword });
+    // 5) Build per-competitor summary table
+    const competitorSummary = serp.results.map((r, i) => {
+      const c = competitors[i] || {};
+      return {
+        rank: r.rank,
+        url: r.url, domain: r.domain, title: r.title,
+        ok: !!c.ok,
+        wordCount: c.wordCount || 0,
+        h1: c.h1s?.length || 0, h2: c.h2s?.length || 0, h3: c.h3s?.length || 0,
+        hasFAQ: !!c.hasFAQ, hasSchema: (c.schemaTypes?.length || 0) > 0,
+        error: c.error || null,
+      };
+    });
+    res.json({
+      ok:true,
+      keyword, country,
+      target: {
+        url: target.url, wordCount: target.wordCount, title: target.title, metaDesc: target.metaDesc,
+        h1: target.h1s.length, h2: target.h2s.length, h3: target.h3s.length,
+        hasFAQ: target.hasFAQ, hasFAQSchema: target.hasFAQSchema,
+        schemaTypes: target.schemaTypes,
+        internalLinks: target.internalLinks, externalLinks: target.externalLinks,
+      },
+      score: scored.score, max: scored.max, breakdown: scored.breakdown,
+      lsiTerms, recommendations,
+      competitorSummary,
+      generatedAt: new Date().toISOString(),
+    });
   } catch (e) {
     res.status(500).json({ ok:false, error: e.message });
   }
