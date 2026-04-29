@@ -28516,6 +28516,11 @@ window._renderJourneyStages = function() {
    competing pages, scores the user's page 0–100, returns concrete recs.
    100% outward-facing: only public SERPs + the user's own page/draft.
    ============================================================================= */
+// Module-level state for the multi-select country picker + related keyword chips.
+window._csCountryList = window._csCountryList || []; // [{code, name}]
+window._csSelectedCountries = window._csSelectedCountries || ['US'];
+const CS_MAX_COUNTRIES = 6;
+
 function buildContentScorer() {
   const wrap = document.getElementById('contentScorerWrap');
   if (!wrap) return;
@@ -28526,26 +28531,29 @@ function buildContentScorer() {
       <div class="cs-form">
         <div class="cs-field">
           <label>Target keyword</label>
-          <input type="text" id="csKeyword" placeholder="e.g. ai marketing automation tools" />
+          <input type="text" id="csKeyword" placeholder="e.g. ai marketing automation tools" oninput="_csOnKeywordChange()" />
+          <div class="cs-related-row">
+            <button type="button" class="cs-related-btn" id="csSuggestBtn" onclick="loadRelatedKeywords()" disabled>✨ Suggest related</button>
+            <div class="cs-related-chips" id="csRelatedChips"></div>
+          </div>
         </div>
         <div class="cs-field">
-          <label>Country</label>
-          <select id="csCountry">
-            <option value="US" selected>United States</option>
-            <option value="GB">United Kingdom</option>
-            <option value="CA">Canada</option>
-            <option value="AU">Australia</option>
-            <option value="IE">Ireland</option>
-            <option value="DE">Germany</option>
-            <option value="FR">France</option>
-            <option value="ES">Spain</option>
-            <option value="IT">Italy</option>
-            <option value="NL">Netherlands</option>
-            <option value="IN">India</option>
-            <option value="BR">Brazil</option>
-            <option value="MX">Mexico</option>
-            <option value="JP">Japan</option>
-          </select>
+          <label>Country <span style="opacity:.6;font-weight:400" id="csCountryHint">(1 selected — click to add more)</span></label>
+          <div class="cs-multi" id="csCountryPicker">
+            <button type="button" class="cs-multi-toggle" id="csCountryToggle" onclick="_csToggleCountryPanel()">
+              <span id="csCountryLabel">United States</span>
+              <span class="cs-multi-caret">▾</span>
+            </button>
+            <div class="cs-multi-panel" id="csCountryPanel" hidden>
+              <div class="cs-multi-actions">
+                <input type="text" class="cs-multi-search" id="csCountrySearch" placeholder="Search countries…" oninput="_csFilterCountries()" />
+                <button type="button" class="cs-multi-link" onclick="_csSelectAllCountries()">Select all</button>
+                <button type="button" class="cs-multi-link" onclick="_csClearCountries()">Clear</button>
+              </div>
+              <div class="cs-multi-list" id="csCountryListEl">Loading…</div>
+              <div class="cs-multi-foot">Max ${CS_MAX_COUNTRIES} per run · the scorer compares your page across each country in parallel.</div>
+            </div>
+          </div>
         </div>
         <div class="cs-field cs-field-wide">
           <label>Your page URL <span style="opacity:.6;font-weight:400">(or paste draft below)</span></label>
@@ -28557,34 +28565,193 @@ function buildContentScorer() {
         </div>
         <div class="cs-field cs-field-full" style="display:flex;gap:10px;align-items:center">
           <button class="cs-go" id="csRunBtn" onclick="runContentScorer()">Score my content</button>
-          <span style="font-size:.85rem;opacity:.7">Live SERP fetch + page scrape — usually 8–15 seconds.</span>
+          <span style="font-size:.85rem;opacity:.7" id="csRunHint">Live SERP fetch + page scrape — usually 8–15 seconds.</span>
         </div>
       </div>
     </div>
     <div id="csResult" style="margin-top:24px"></div>
   `;
+  // Click-outside closes the multi-select panel.
+  document.addEventListener('click', _csOutsideClick, true);
+  // Load country list from server (single source of truth).
+  _csLoadCountries();
+}
+
+async function _csLoadCountries() {
+  if (window._csCountryList.length) { _csRenderCountryList(); _csUpdateCountryLabel(); return; }
+  try {
+    const r = await fetch('/api/content-scorer/countries');
+    const j = await r.json();
+    if (j.ok && Array.isArray(j.countries)) window._csCountryList = j.countries;
+  } catch (_) {}
+  if (!window._csCountryList.length) {
+    // Fallback list if endpoint fails — keeps UI usable.
+    window._csCountryList = [{code:'US', name:'United States'}, {code:'GB', name:'United Kingdom'}, {code:'CA', name:'Canada'}, {code:'AU', name:'Australia'}];
+  }
+  _csRenderCountryList();
+  _csUpdateCountryLabel();
+}
+
+function _csRenderCountryList(filter = '') {
+  const list = document.getElementById('csCountryListEl');
+  if (!list) return;
+  const f = (filter || '').toLowerCase().trim();
+  const items = window._csCountryList.filter(c => !f || c.name.toLowerCase().includes(f) || c.code.toLowerCase().includes(f));
+  if (!items.length) { list.innerHTML = '<div style="opacity:.6;padding:12px;font-size:.85rem">No countries match.</div>'; return; }
+  list.innerHTML = items.map(c => {
+    const sel = window._csSelectedCountries.includes(c.code);
+    return `<label class="cs-multi-item ${sel ? 'cs-multi-item-sel' : ''}">
+      <input type="checkbox" ${sel ? 'checked' : ''} onchange="_csToggleCountry('${c.code}', this.checked)" />
+      <span class="cs-multi-code">${_escapeHtml(c.code)}</span>
+      <span class="cs-multi-name">${_escapeHtml(c.name)}</span>
+    </label>`;
+  }).join('');
+}
+
+function _csFilterCountries() {
+  const v = (document.getElementById('csCountrySearch')?.value || '');
+  _csRenderCountryList(v);
+}
+
+function _csToggleCountry(code, checked) {
+  const sel = new Set(window._csSelectedCountries);
+  if (checked) {
+    if (sel.size >= CS_MAX_COUNTRIES) {
+      // Re-render to flip the checkbox back off.
+      _csRenderCountryList(document.getElementById('csCountrySearch')?.value || '');
+      _flashHint(`Maximum ${CS_MAX_COUNTRIES} countries per run.`);
+      return;
+    }
+    sel.add(code);
+  } else {
+    sel.delete(code);
+  }
+  window._csSelectedCountries = Array.from(sel);
+  _csUpdateCountryLabel();
+  _csRenderCountryList(document.getElementById('csCountrySearch')?.value || '');
+}
+
+function _csSelectAllCountries() {
+  // "Select all" caps at the per-run limit and picks a representative spread of major markets.
+  const priority = ['US','GB','CA','AU','DE','FR','IN','JP','BR','MX','ES','IT','NL','IE','SG','AE','ZA'];
+  const ordered = priority.filter(c => window._csCountryList.some(x => x.code === c));
+  window._csSelectedCountries = ordered.slice(0, CS_MAX_COUNTRIES);
+  _csUpdateCountryLabel();
+  _csRenderCountryList(document.getElementById('csCountrySearch')?.value || '');
+  _flashHint(`Selected the top ${window._csSelectedCountries.length} markets (capped at ${CS_MAX_COUNTRIES} per run to keep scoring fast).`);
+}
+
+function _csClearCountries() {
+  window._csSelectedCountries = [];
+  _csUpdateCountryLabel();
+  _csRenderCountryList(document.getElementById('csCountrySearch')?.value || '');
+}
+
+function _csUpdateCountryLabel() {
+  const lbl  = document.getElementById('csCountryLabel');
+  const hint = document.getElementById('csCountryHint');
+  const sel  = window._csSelectedCountries;
+  if (!lbl || !hint) return;
+  if (!sel.length) { lbl.textContent = 'No country selected'; hint.textContent = '(pick at least one)'; return; }
+  if (sel.length === 1) {
+    const found = window._csCountryList.find(c => c.code === sel[0]);
+    lbl.textContent = found ? found.name : sel[0];
+    hint.textContent = '(1 selected — click to add more)';
+  } else {
+    lbl.textContent = `${sel[0]} + ${sel.length - 1} more`;
+    hint.textContent = `(${sel.length} selected — runs in parallel)`;
+  }
+}
+
+function _csToggleCountryPanel() {
+  const p = document.getElementById('csCountryPanel');
+  if (!p) return;
+  p.hidden = !p.hidden;
+}
+
+function _csOutsideClick(e) {
+  const p = document.getElementById('csCountryPanel');
+  const w = document.getElementById('csCountryPicker');
+  if (!p || !w || p.hidden) return;
+  if (!w.contains(e.target)) p.hidden = true;
+}
+
+function _csOnKeywordChange() {
+  const kw = (document.getElementById('csKeyword')?.value || '').trim();
+  const btn = document.getElementById('csSuggestBtn');
+  if (btn) btn.disabled = kw.length < 2;
+  // Clear stale chips when keyword changes.
+  const chips = document.getElementById('csRelatedChips');
+  if (chips && chips.dataset.forKw && chips.dataset.forKw !== kw.toLowerCase()) chips.innerHTML = '';
+}
+
+async function loadRelatedKeywords() {
+  const kw = (document.getElementById('csKeyword')?.value || '').trim();
+  const chips = document.getElementById('csRelatedChips');
+  const btn = document.getElementById('csSuggestBtn');
+  if (!kw || kw.length < 2 || !chips) return;
+  // Use the first selected country (or US) for regional volume context.
+  const country = window._csSelectedCountries[0] || 'US';
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  chips.innerHTML = '<span style="opacity:.6;font-size:.8rem">Fetching related keywords…</span>';
+  try {
+    const r = await fetch(`/api/content-scorer/related?keyword=${encodeURIComponent(kw)}&country=${encodeURIComponent(country)}`);
+    const j = await r.json();
+    if (!j.ok || !Array.isArray(j.keywords) || !j.keywords.length) {
+      chips.innerHTML = `<span style="opacity:.6;font-size:.8rem">No related keywords found${j.error ? ' — ' + _escapeHtml(j.error) : ''}.</span>`;
+      return;
+    }
+    chips.dataset.forKw = kw.toLowerCase();
+    chips.innerHTML = j.keywords.map(k => {
+      const vol = k.searchVolume != null ? `<span class="cs-chip-vol">${Number(k.searchVolume).toLocaleString()}/mo</span>` : '';
+      return `<button type="button" class="cs-rel-chip" onclick="_csUseKeyword(this.dataset.kw)" data-kw="${_escapeHtml(k.keyword)}" title="Click to use this keyword">${_escapeHtml(k.keyword)}${vol}</button>`;
+    }).join('');
+  } catch (e) {
+    chips.innerHTML = `<span style="opacity:.6;font-size:.8rem">Failed: ${_escapeHtml(e.message)}</span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Suggest related'; }
+  }
+}
+
+function _csUseKeyword(kw) {
+  const input = document.getElementById('csKeyword');
+  if (!input) return;
+  input.value = kw;
+  _csOnKeywordChange();
+  input.focus();
+}
+
+function _flashHint(msg) {
+  const hint = document.getElementById('csRunHint');
+  if (!hint) return;
+  const orig = hint.textContent;
+  hint.textContent = msg;
+  hint.style.color = '#F59E0B';
+  setTimeout(() => { hint.textContent = orig; hint.style.color = ''; }, 3500);
 }
 
 async function runContentScorer() {
-  const kw      = (document.getElementById('csKeyword')?.value || '').trim();
-  const country = (document.getElementById('csCountry')?.value || 'US').trim();
-  const url     = (document.getElementById('csUrl')?.value || '').trim();
-  const draft   = (document.getElementById('csDraft')?.value || '').trim();
-  const out     = document.getElementById('csResult');
-  const btn     = document.getElementById('csRunBtn');
-  if (!kw)              { out.innerHTML = `<div class="cs-warn">Enter a target keyword first.</div>`; return; }
-  if (!url && !draft)   { out.innerHTML = `<div class="cs-warn">Enter your page URL or paste a draft.</div>`; return; }
+  const kw    = (document.getElementById('csKeyword')?.value || '').trim();
+  const url   = (document.getElementById('csUrl')?.value || '').trim();
+  const draft = (document.getElementById('csDraft')?.value || '').trim();
+  const out   = document.getElementById('csResult');
+  const btn   = document.getElementById('csRunBtn');
+  const countries = (window._csSelectedCountries || []).slice();
+  if (!kw)             { out.innerHTML = `<div class="cs-warn">Enter a target keyword first.</div>`; return; }
+  if (!countries.length) { out.innerHTML = `<div class="cs-warn">Pick at least one country.</div>`; return; }
+  if (!url && !draft)  { out.innerHTML = `<div class="cs-warn">Enter your page URL or paste a draft.</div>`; return; }
   if (btn) { btn.disabled = true; btn.textContent = 'Scoring…'; }
+  const noun = countries.length === 1 ? 'country' : `${countries.length} countries`;
   out.innerHTML = `
     <div class="cs-loading">
       <div class="cs-spinner"></div>
       <div>
-        <div style="font-weight:700;font-size:1.05rem">Analysing the SERP for "${_escapeHtml(kw)}"…</div>
+        <div style="font-weight:700;font-size:1.05rem">Analysing the SERP for "${_escapeHtml(kw)}" across ${noun}…</div>
         <div style="opacity:.75;font-size:.9rem;margin-top:4px">Fetching the top 10 results · scraping each page · extracting LSI terms · scoring your content</div>
       </div>
     </div>`;
   try {
-    const body = { keyword: kw, country };
+    const body = { keyword: kw, countries };
     if (url)   body.targetUrl = url;
     if (draft) body.targetText = draft;
     const r = await fetch('/api/content-scorer/analyze', {
@@ -28604,12 +28771,73 @@ async function runContentScorer() {
   }
 }
 
+// Top-level renderer. Accepts the new envelope: { ok, multi, countries, target, results, generatedAt, keyword }
 function _contentScorerHtml(j) {
+  const esc = _escapeHtml;
+  // New envelope path
+  if (Array.isArray(j.results)) {
+    const ok = j.results.filter(r => r && r.ok && r.score != null);
+    const failed = j.results.filter(r => !r || !r.ok || r.score == null);
+    if (!ok.length) {
+      const msgs = failed.map(r => `<li><strong>${esc(r.country || '?')}</strong>: ${esc(r.error || r.warning || 'no SERP results')}</li>`).join('');
+      return `<div class="cs-warn"><div style="font-weight:700;margin-bottom:6px">No countries returned scoreable results.</div><ul style="margin:0;padding-left:18px">${msgs}</ul></div>`;
+    }
+    const isMulti = ok.length > 1;
+    // Country comparison summary card (only when multi)
+    let summary = '';
+    if (isMulti) {
+      const sorted = ok.slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+      summary = `
+        <div class="cs-card cs-multi-summary">
+          <h4 class="cs-h">Cross-country comparison · "${esc(j.keyword)}"</h4>
+          <p class="cs-h-sub">Same page, scored against the live top-10 SERP in each country. Higher = your page is closer to what's already winning there.</p>
+          <div class="cs-multi-grid">
+            ${sorted.map(r => {
+              const sc = Number(r.score || 0);
+              const col = sc >= 80 ? '#10B981' : sc >= 60 ? '#F59E0B' : sc >= 40 ? '#F97316' : '#EF4444';
+              return `<div class="cs-multi-card">
+                <div class="cs-multi-circle" style="background:conic-gradient(${col} ${sc*3.6}deg, #1E293B 0deg)">
+                  <div class="cs-multi-circle-inner"><div style="color:${col};font-weight:800;font-size:1.4rem">${sc}</div><div style="opacity:.6;font-size:.7rem">/100</div></div>
+                </div>
+                <div class="cs-multi-cc">${esc(r.country)}</div>
+              </div>`;
+            }).join('')}
+          </div>
+          ${failed.length ? `<div style="margin-top:12px;font-size:.82rem;opacity:.7">Note: ${failed.length} country${failed.length>1?'ies':''} failed — ${failed.map(r => esc(r.country) + ' (' + esc(r.error || r.warning || 'unknown') + ')').join(', ')}</div>` : ''}
+        </div>`;
+    }
+    // Per-country tabs (or single full card)
+    const tabsHtml = isMulti ? `
+      <div class="cs-tabs">
+        ${ok.map((r, i) => `<button class="cs-tab ${i===0?'cs-tab-active':''}" onclick="_csSwitchTab(this, ${i})" data-tab="${i}">${esc(r.country)} · ${r.score}</button>`).join('')}
+      </div>` : '';
+    const panelsHtml = ok.map((r, i) => `
+      <div class="cs-tab-panel" data-panel="${i}" ${i===0 ? '' : 'hidden'}>
+        ${_csCountryHtml(r, j.target, j.generatedAt, isMulti)}
+      </div>`).join('');
+    return summary + tabsHtml + panelsHtml;
+  }
+  // Legacy single-country path (kept for back-compat in case anything else calls it)
+  return _csCountryHtml(j, j.target, j.generatedAt, false);
+}
+
+function _csSwitchTab(btn, idx) {
+  // Toggle active tab + show matching panel
+  const tabsRow = btn.parentElement;
+  Array.from(tabsRow.children).forEach(b => b.classList.toggle('cs-tab-active', Number(b.dataset.tab) === idx));
+  const root = tabsRow.parentElement;
+  Array.from(root.querySelectorAll('.cs-tab-panel')).forEach(p => { p.hidden = Number(p.dataset.panel) !== idx; });
+}
+
+// Renders one country's full result (score circle, breakdown, LSI, recs, competitors).
+function _csCountryHtml(j, targetSummary, generatedAt, isMulti) {
   const esc = _escapeHtml;
   const score = Number(j.score || 0);
   const scoreColor = score >= 80 ? '#10B981' : score >= 60 ? '#F59E0B' : score >= 40 ? '#F97316' : '#EF4444';
   const scoreLabel = score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : score >= 40 ? 'Needs work' : 'Underperforming';
   const b = j.breakdown || {};
+  const target = targetSummary || j.target || {};
+  const country = j.country || '';
   const barRows = [
     { key:'wordCount',   label:'Word count',          desc:`Yours ${b.wordCount?.target||0} · SERP median ${b.wordCount?.median||0}` },
     { key:'headings',    label:'Heading structure',   desc:`H1 ${b.headings?.h1||0} · H2 ${b.headings?.h2||0} · H3 ${b.headings?.h3||0} · SERP avg H2 ${b.headings?.avgH2InSerp||0}` },
@@ -28690,8 +28918,8 @@ function _contentScorerHtml(j) {
           <div style="opacity:.75;font-size:.85rem;margin-top:4px">vs SERP-winning average for "${esc(j.keyword)}"</div>
         </div>
         <div style="margin-top:18px;font-size:.85rem;opacity:.85;line-height:1.5">
-          <div><strong>Your page:</strong> ${esc(j.target?.url || '(draft)')}</div>
-          <div style="margin-top:6px"><strong>Country:</strong> ${esc(j.country)} · <strong>Generated:</strong> ${new Date(j.generatedAt).toLocaleString()}</div>
+          <div><strong>Your page:</strong> ${esc(target?.url || '(draft)')}</div>
+          <div style="margin-top:6px"><strong>Country:</strong> ${esc(country)} · <strong>Generated:</strong> ${generatedAt ? new Date(generatedAt).toLocaleString() : '—'}</div>
         </div>
       </div>
       <!-- Breakdown bars -->

@@ -7268,7 +7268,83 @@ app.post('/api/lookalike/export', async (req, res) => {
 // and returns a 0-100 SERP-match score with concrete recommendations.
 // 100% outward-facing: only public SERPs + the user's own URL.
 // ─────────────────────────────────────────────────────────────────────────────
-const CONTENT_COUNTRY_CODES = { US:2840, GB:2826, CA:2124, AU:2036, DE:2276, FR:2250, ES:2724, IT:2380, NL:2528, IE:2372, IN:2356, BR:2076, MX:2484, JP:2392 };
+// DataForSEO numeric location codes for major markets worldwide.
+const CONTENT_COUNTRY_CODES = {
+  // North America
+  US:2840, CA:2124, MX:2484,
+  // South / Latin America
+  BR:2076, AR:2032, CL:2152, CO:2170, PE:2604, VE:2862, EC:2218, UY:2858, BO:2068, PY:2600, CR:2188, GT:2320, DO:2214,
+  // Europe — west
+  GB:2826, IE:2372, FR:2250, DE:2276, ES:2724, IT:2380, PT:2620, NL:2528, BE:2056, LU:2442, CH:2756, AT:2040,
+  // Europe — north
+  SE:2752, NO:2578, DK:2208, FI:2246, IS:2352,
+  // Europe — east
+  PL:2616, CZ:2203, SK:2703, HU:2348, RO:2642, BG:2100, HR:2191, SI:2705, RS:2688, GR:2300, RU:2643, UA:2804, BY:2112, EE:2233, LV:2428, LT:2440,
+  // Middle East
+  AE:2784, SA:2682, IL:2376, TR:2792, EG:2818, QA:2634, KW:2414, JO:2400, LB:2422,
+  // Africa
+  ZA:2710, NG:2566, KE:2404, MA:2504, GH:2288, TN:2788, DZ:2012, ET:2231,
+  // Asia
+  IN:2356, JP:2392, CN:2156, KR:2410, HK:2344, TW:2158, SG:2702, MY:2458, TH:2764, ID:2360, PH:2608, VN:2704, PK:2586, BD:2050, LK:2144,
+  // Oceania
+  AU:2036, NZ:2554,
+};
+
+// Country display names (used by frontend dropdown — kept in server for single source of truth)
+const CONTENT_COUNTRY_NAMES = {
+  US:'United States', CA:'Canada', MX:'Mexico',
+  BR:'Brazil', AR:'Argentina', CL:'Chile', CO:'Colombia', PE:'Peru', VE:'Venezuela', EC:'Ecuador', UY:'Uruguay', BO:'Bolivia', PY:'Paraguay', CR:'Costa Rica', GT:'Guatemala', DO:'Dominican Republic',
+  GB:'United Kingdom', IE:'Ireland', FR:'France', DE:'Germany', ES:'Spain', IT:'Italy', PT:'Portugal', NL:'Netherlands', BE:'Belgium', LU:'Luxembourg', CH:'Switzerland', AT:'Austria',
+  SE:'Sweden', NO:'Norway', DK:'Denmark', FI:'Finland', IS:'Iceland',
+  PL:'Poland', CZ:'Czechia', SK:'Slovakia', HU:'Hungary', RO:'Romania', BG:'Bulgaria', HR:'Croatia', SI:'Slovenia', RS:'Serbia', GR:'Greece', RU:'Russia', UA:'Ukraine', BY:'Belarus', EE:'Estonia', LV:'Latvia', LT:'Lithuania',
+  AE:'United Arab Emirates', SA:'Saudi Arabia', IL:'Israel', TR:'Turkey', EG:'Egypt', QA:'Qatar', KW:'Kuwait', JO:'Jordan', LB:'Lebanon',
+  ZA:'South Africa', NG:'Nigeria', KE:'Kenya', MA:'Morocco', GH:'Ghana', TN:'Tunisia', DZ:'Algeria', ET:'Ethiopia',
+  IN:'India', JP:'Japan', CN:'China', KR:'South Korea', HK:'Hong Kong', TW:'Taiwan', SG:'Singapore', MY:'Malaysia', TH:'Thailand', ID:'Indonesia', PH:'Philippines', VN:'Vietnam', PK:'Pakistan', BD:'Bangladesh', LK:'Sri Lanka',
+  AU:'Australia', NZ:'New Zealand',
+};
+
+// Endpoint exposed to frontend so the dropdown stays in sync.
+app.get('/api/content-scorer/countries', (req, res) => {
+  const list = Object.keys(CONTENT_COUNTRY_CODES).map(code => ({ code, name: CONTENT_COUNTRY_NAMES[code] || code }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  res.json({ ok:true, countries: list });
+});
+
+// Suggest related keywords for the seed keyword via DataForSEO Labs.
+async function _fetchRelatedKeywords(keyword, countryCode = 2840, limit = 12) {
+  const login = process.env.DATAFORSEO_LOGIN;
+  const password = process.env.DATAFORSEO_PASSWORD;
+  if (!login || !password) return { ok:false, error:'DataForSEO not configured', keywords:[] };
+  const auth = 'Basic ' + Buffer.from(`${login}:${password}`).toString('base64');
+  try {
+    const r = await fetch('https://api.dataforseo.com/v3/dataforseo_labs/google/keyword_suggestions/live', {
+      method:'POST',
+      headers:{ 'Authorization': auth, 'Content-Type':'application/json' },
+      body: JSON.stringify([{ keyword, location_code: countryCode, language_code:'en', limit, include_seed_keyword: false }]),
+    });
+    const j = await r.json();
+    const items = j?.tasks?.[0]?.result?.[0]?.items || [];
+    const out = items
+      .filter(it => it.keyword && it.keyword.toLowerCase() !== String(keyword).toLowerCase())
+      .slice(0, limit)
+      .map(it => ({
+        keyword: it.keyword,
+        searchVolume: it.keyword_info?.search_volume ?? null,
+        competition:  it.keyword_info?.competition_level ?? null,
+        cpc:          it.keyword_info?.cpc ?? null,
+      }));
+    return { ok:true, seed: keyword, keywords: out };
+  } catch (e) { return { ok:false, error: e.message, keywords:[] }; }
+}
+
+app.get('/api/content-scorer/related', async (req, res) => {
+  const kw = (req.query.keyword || '').toString().trim();
+  const country = (req.query.country || 'US').toString().toUpperCase();
+  if (!kw) return res.status(400).json({ ok:false, error:'keyword query param required' });
+  const code = CONTENT_COUNTRY_CODES[country] || 2840;
+  const r = await _fetchRelatedKeywords(kw, code, 12);
+  res.json(r);
+});
 
 async function _fetchSerpTopForKeyword(keyword, countryCode = 2840, limit = 10) {
   const login = process.env.DATAFORSEO_LOGIN;
@@ -7510,113 +7586,133 @@ function _scoreContent({ target, competitors, lsiTerms, keyword }) {
   return { score: total, max: 100, breakdown };
 }
 
+// Per-country pipeline: SERP → scrape → LSI → score. Reused by single + multi.
+async function _runScoreForCountry({ keyword, target, country, countryCode }) {
+  const serp = await _fetchSerpTopForKeyword(keyword.trim(), countryCode, 10);
+  if (!serp.ok) return { ok:false, country, error:'SERP fetch failed: ' + (serp.error || 'unknown') };
+  if (!serp.results.length) return { ok:true, country, keyword, score:0, warning:'No SERP results returned for that keyword in this country.', serp };
+  const competitors = await Promise.all(serp.results.map(r => _scrapePageForScoring(r.url)));
+  let lsiTerms = [];
+  let recommendations = [];
+  if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    const competitorBrief = competitors.filter(c => c.ok).slice(0, 8).map((c) => ({
+      rank: serp.results[competitors.indexOf(c)]?.rank || 0,
+      domain: serp.results[competitors.indexOf(c)]?.domain || '',
+      title: c.title, h1: c.h1s[0] || '',
+      h2s: c.h2s.slice(0, 8), h3s: c.h3s.slice(0, 6),
+      snippet: c.text.slice(0, 600),
+    }));
+    const sys = `You are an SEO content strategist. Analyse the SERP-winning pages for a target keyword and extract (a) the 15 most important semantic / LSI terms competitors cover, and (b) 6-8 concrete content recommendations. Output valid JSON only.`;
+    const userPrompt = [
+      `Target keyword: "${keyword}"`,
+      `Country: ${country}`,
+      `Target page word count: ${target.wordCount}, H2 count: ${target.h2s.length}, H3 count: ${target.h3s.length}, has FAQ: ${target.hasFAQ}`,
+      `Target page title: "${(target.title || '').slice(0, 120)}"`,
+      `Target page H2s: ${JSON.stringify(target.h2s.slice(0, 12))}`,
+      ``,
+      `Competitor SERP-winning pages:`,
+      JSON.stringify(competitorBrief, null, 2),
+      ``,
+      `Respond with this exact JSON shape:`,
+      `{`,
+      `  "lsiTerms": ["15 specific multi-word semantic terms competitors use that the target should also cover — concrete entities/phrases, not generic words"],`,
+      `  "recommendations": [`,
+      `    { "category": "Word count|Headings|Topic coverage|FAQ|Schema|Title/Meta|Structure", "priority": "high|medium|low", "action": "concrete action statement", "why": "one-sentence rationale tied to what SERP winners do" }`,
+      `  ]`,
+      `}`,
+      `Recommendations should be specific and actionable, never generic SEO advice.`,
+    ].join('\n');
+    try {
+      const r = await openaiChatWithRetry({
+        model:'gpt-4o',
+        response_format:{ type:'json_object' },
+        messages:[{ role:'system', content: sys }, { role:'user', content: userPrompt }],
+        temperature: 0.3,
+      });
+      const parsed = JSON.parse(r.choices[0].message.content);
+      lsiTerms = Array.isArray(parsed.lsiTerms) ? parsed.lsiTerms.slice(0, 20) : [];
+      recommendations = Array.isArray(parsed.recommendations) ? parsed.recommendations.slice(0, 10) : [];
+    } catch (_) {
+      const allHeadings = competitors.filter(c => c.ok).flatMap(c => [...c.h2s, ...c.h3s]).join(' ');
+      const tokens = (allHeadings.toLowerCase().match(/\b[a-z][a-z\-]{4,}\b/g) || []);
+      const freq = {};
+      tokens.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
+      lsiTerms = Object.entries(freq).filter(([t,n]) => n >= 2 && !/^(the|and|for|with|that|this|your|from|will|have|what|when|where|which|their|other|about|more|some|than|into|also|been|like|just|over|very|most|such|many|only|even|need|want)$/.test(t)).sort((a,b) => b[1]-a[1]).slice(0, 15).map(([t]) => t);
+    }
+  } else {
+    const allHeadings = competitors.filter(c => c.ok).flatMap(c => [...c.h2s, ...c.h3s]).join(' ');
+    const tokens = (allHeadings.toLowerCase().match(/\b[a-z][a-z\-]{4,}\b/g) || []);
+    const freq = {};
+    tokens.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
+    lsiTerms = Object.entries(freq).filter(([t,n]) => n >= 2).sort((a,b) => b[1]-a[1]).slice(0, 15).map(([t]) => t);
+  }
+  const scored = _scoreContent({ target, competitors, lsiTerms, keyword });
+  const competitorSummary = serp.results.map((r, i) => {
+    const c = competitors[i] || {};
+    return {
+      rank: r.rank, url: r.url, domain: r.domain, title: r.title,
+      ok: !!c.ok, wordCount: c.wordCount || 0,
+      h1: c.h1s?.length || 0, h2: c.h2s?.length || 0, h3: c.h3s?.length || 0,
+      hasFAQ: !!c.hasFAQ, hasSchema: (c.schemaTypes?.length || 0) > 0,
+      error: c.error || null,
+    };
+  });
+  return {
+    ok:true, country, keyword,
+    score: scored.score, max: scored.max, breakdown: scored.breakdown,
+    lsiTerms, recommendations, competitorSummary,
+  };
+}
+
+// Cap on simultaneous countries — guards against accidental 50-country runs.
+const CONTENT_SCORER_MAX_COUNTRIES = 6;
+
 app.post('/api/content-scorer/analyze', async (req, res) => {
   try {
-    const { keyword, targetUrl, targetText, country = 'US' } = req.body || {};
+    const { keyword, targetUrl, targetText, country, countries } = req.body || {};
     if (!keyword || typeof keyword !== 'string' || keyword.trim().length < 2) {
       return res.status(400).json({ ok:false, error:'keyword is required' });
     }
     if (!targetUrl && !targetText) {
       return res.status(400).json({ ok:false, error:'Provide either targetUrl or targetText' });
     }
-    const countryCode = CONTENT_COUNTRY_CODES[String(country).toUpperCase()] || 2840;
-    // 1) Fetch SERP top 10
-    const serp = await _fetchSerpTopForKeyword(keyword.trim(), countryCode, 10);
-    if (!serp.ok) return res.status(502).json({ ok:false, error:'SERP fetch failed: ' + (serp.error || 'unknown') });
-    if (!serp.results.length) return res.json({ ok:true, score:0, warning:'No SERP results returned for that keyword in this country.', serp });
-    // 2) Scrape user page (or use raw text) + top competitors in parallel
+    // Normalise country list — accept string `country` (back-compat) or array `countries`
+    let countryList = [];
+    if (Array.isArray(countries) && countries.length) countryList = countries;
+    else if (typeof country === 'string' && country)  countryList = [country];
+    else countryList = ['US'];
+    countryList = countryList.map(c => String(c).toUpperCase().trim()).filter((c, i, a) => c && a.indexOf(c) === i);
+    if (countryList.length > CONTENT_SCORER_MAX_COUNTRIES) {
+      return res.status(400).json({ ok:false, error:`Maximum ${CONTENT_SCORER_MAX_COUNTRIES} countries per run (received ${countryList.length}). Pick a smaller subset.` });
+    }
+    const unknown = countryList.filter(c => !CONTENT_COUNTRY_CODES[c]);
+    if (unknown.length) return res.status(400).json({ ok:false, error:`Unknown country code(s): ${unknown.join(', ')}` });
+
+    // Scrape the user's target page ONCE — same target for every country.
     const targetPromise = targetUrl
       ? _scrapePageForScoring(String(targetUrl).startsWith('http') ? targetUrl : 'https://' + targetUrl)
       : Promise.resolve({ ok:true, url:'(pasted draft)', ..._extractContentSignals(`<html><body>${targetText}</body></html>`, '') });
-    const [target, ...competitors] = await Promise.all([
-      targetPromise,
-      ...serp.results.map(r => _scrapePageForScoring(r.url)),
-    ]);
+    const target = await targetPromise;
     if (!target.ok) return res.status(502).json({ ok:false, error: 'Could not scrape target: ' + (target.error || 'unknown') });
-    // 3) Extract LSI terms from competitor headings + first slice of body via OpenAI
-    let lsiTerms = [];
-    let recommendations = [];
-    if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
-      const competitorBrief = competitors.filter(c => c.ok).slice(0, 8).map((c, i) => ({
-        rank: i + 1, domain: serp.results[competitors.indexOf(c)]?.domain || '',
-        title: c.title, h1: c.h1s[0] || '',
-        h2s: c.h2s.slice(0, 8), h3s: c.h3s.slice(0, 6),
-        snippet: c.text.slice(0, 600),
-      }));
-      const sys = `You are an SEO content strategist. Analyse the SERP-winning pages for a target keyword and extract (a) the 15 most important semantic / LSI terms competitors cover, and (b) 6-8 concrete content recommendations. Output valid JSON only.`;
-      const userPrompt = [
-        `Target keyword: "${keyword}"`,
-        `Country: ${country}`,
-        `Target page word count: ${target.wordCount}, H2 count: ${target.h2s.length}, H3 count: ${target.h3s.length}, has FAQ: ${target.hasFAQ}`,
-        `Target page title: "${(target.title || '').slice(0, 120)}"`,
-        `Target page H2s: ${JSON.stringify(target.h2s.slice(0, 12))}`,
-        ``,
-        `Competitor SERP-winning pages:`,
-        JSON.stringify(competitorBrief, null, 2),
-        ``,
-        `Respond with this exact JSON shape:`,
-        `{`,
-        `  "lsiTerms": ["15 specific multi-word semantic terms competitors use that the target should also cover — concrete entities/phrases, not generic words"],`,
-        `  "recommendations": [`,
-        `    { "category": "Word count|Headings|Topic coverage|FAQ|Schema|Title/Meta|Structure", "priority": "high|medium|low", "action": "concrete action statement", "why": "one-sentence rationale tied to what SERP winners do" }`,
-        `  ]`,
-        `}`,
-        `Recommendations should be specific and actionable, never generic SEO advice.`,
-      ].join('\n');
-      try {
-        const r = await openaiChatWithRetry({
-          model:'gpt-4o',
-          response_format:{ type:'json_object' },
-          messages:[{ role:'system', content: sys }, { role:'user', content: userPrompt }],
-          temperature: 0.3,
-        });
-        const parsed = JSON.parse(r.choices[0].message.content);
-        lsiTerms = Array.isArray(parsed.lsiTerms) ? parsed.lsiTerms.slice(0, 20) : [];
-        recommendations = Array.isArray(parsed.recommendations) ? parsed.recommendations.slice(0, 10) : [];
-      } catch (e) {
-        // OpenAI failure — degrade gracefully with a regex-only LSI fallback
-        const allHeadings = competitors.filter(c => c.ok).flatMap(c => [...c.h2s, ...c.h3s]).join(' ');
-        const tokens = (allHeadings.toLowerCase().match(/\b[a-z][a-z\-]{4,}\b/g) || []);
-        const freq = {};
-        tokens.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
-        lsiTerms = Object.entries(freq).filter(([t,n]) => n >= 2 && !/^(the|and|for|with|that|this|your|from|will|have|what|when|where|which|their|other|about|more|some|than|into|also|been|like|just|over|very|most|such|many|only|even|need|want)$/.test(t)).sort((a,b) => b[1]-a[1]).slice(0, 15).map(([t]) => t);
-      }
-    } else {
-      // No OpenAI — regex-only LSI (less precise but functional)
-      const allHeadings = competitors.filter(c => c.ok).flatMap(c => [...c.h2s, ...c.h3s]).join(' ');
-      const tokens = (allHeadings.toLowerCase().match(/\b[a-z][a-z\-]{4,}\b/g) || []);
-      const freq = {};
-      tokens.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
-      lsiTerms = Object.entries(freq).filter(([t,n]) => n >= 2).sort((a,b) => b[1]-a[1]).slice(0, 15).map(([t]) => t);
-    }
-    // 4) Score the target
-    const scored = _scoreContent({ target, competitors, lsiTerms, keyword });
-    // 5) Build per-competitor summary table
-    const competitorSummary = serp.results.map((r, i) => {
-      const c = competitors[i] || {};
-      return {
-        rank: r.rank,
-        url: r.url, domain: r.domain, title: r.title,
-        ok: !!c.ok,
-        wordCount: c.wordCount || 0,
-        h1: c.h1s?.length || 0, h2: c.h2s?.length || 0, h3: c.h3s?.length || 0,
-        hasFAQ: !!c.hasFAQ, hasSchema: (c.schemaTypes?.length || 0) > 0,
-        error: c.error || null,
-      };
-    });
+
+    const targetSummary = {
+      url: target.url, wordCount: target.wordCount, title: target.title, metaDesc: target.metaDesc,
+      h1: target.h1s.length, h2: target.h2s.length, h3: target.h3s.length,
+      hasFAQ: target.hasFAQ, hasFAQSchema: target.hasFAQSchema,
+      schemaTypes: target.schemaTypes,
+      internalLinks: target.internalLinks, externalLinks: target.externalLinks,
+    };
+
+    // Run per-country pipelines in parallel.
+    const perCountry = await Promise.all(countryList.map(c =>
+      _runScoreForCountry({ keyword: keyword.trim(), target, country: c, countryCode: CONTENT_COUNTRY_CODES[c] })
+    ));
+
     res.json({
-      ok:true,
-      keyword, country,
-      target: {
-        url: target.url, wordCount: target.wordCount, title: target.title, metaDesc: target.metaDesc,
-        h1: target.h1s.length, h2: target.h2s.length, h3: target.h3s.length,
-        hasFAQ: target.hasFAQ, hasFAQSchema: target.hasFAQSchema,
-        schemaTypes: target.schemaTypes,
-        internalLinks: target.internalLinks, externalLinks: target.externalLinks,
-      },
-      score: scored.score, max: scored.max, breakdown: scored.breakdown,
-      lsiTerms, recommendations,
-      competitorSummary,
+      ok:true, keyword, multi: countryList.length > 1,
+      countries: countryList,
+      target: targetSummary,
+      results: perCountry,
       generatedAt: new Date().toISOString(),
     });
   } catch (e) {
