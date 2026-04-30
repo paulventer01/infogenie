@@ -7639,6 +7639,19 @@ select option { background: #FFFFFF !important; color: #0F4C4A !important; }
 .cs-chip-vol { font-size:.68rem; opacity:.55; font-variant-numeric:tabular-nums; }
 [data-theme="light"] .cs-rel-chip { background:#F8FAFC; color:#475569; border-color:#E2E8F0; }
 [data-theme="light"] .cs-rel-chip:hover { background:#EDE9FE; color:#1E293B; border-color:#7C3AED; }
+.cs-rel-section { display:flex; flex-wrap:wrap; gap:6px; align-items:center; width:100%; margin-top:6px; }
+.cs-rel-section-label {
+  font-size:.65rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+  color:#94A3B8; padding:2px 8px; border-right:1px solid rgba(148,163,184,.25);
+  margin-right:4px;
+}
+[data-theme="light"] .cs-rel-section-label { color:#64748B; border-right-color:#CBD5E1; }
+.cs-rel-chip-analysis { background:rgba(13,148,136,.18); border-color:rgba(13,148,136,.45); color:#5EEAD4; }
+.cs-rel-chip-analysis:hover { background:rgba(13,148,136,.32); border-color:rgba(13,148,136,.7); color:#CCFBF1; }
+[data-theme="light"] .cs-rel-chip-analysis { background:#F0FDFA; color:#0F766E; border-color:#99F6E4; }
+[data-theme="light"] .cs-rel-chip-analysis:hover { background:#CCFBF1; color:#134E4A; border-color:#0D9488; }
+.cs-chip-vol-local { color:#0D9488; font-weight:700; opacity:.85; }
+[data-theme="light"] .cs-chip-vol-local { color:#0F766E; }
 
 /* ── Multi-country comparison summary + tabs ─────────────────────────────── */
 .cs-multi-summary { margin-bottom:18px; }

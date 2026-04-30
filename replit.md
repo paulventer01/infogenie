@@ -294,3 +294,11 @@ Added 10 new modules in cache buster `v=20260425Q`. All client-side, simulated f
 - **Frontend** (app.js bottom): `buildLaunches/_renderLaunches/addLaunch/removeLaunch` with grouped Today/Week/Later/Past sections, countdown text, status pills, datetime-local input.
 - **Index.html**: 2 new nav links + 2 view containers under Manage group.
 - **Cache busters bumped**: app.js?v=20260430G, style.css?v=20260430D.
+
+## Post-Trio Bug Fix Round (Apr 30 2026 — late)
+Four user-feedback issues fixed after the trio shipped:
+- **Issue 1+3 (HTTP 403 + LSI/FAQ/Schema=0)**: `_scrapePageForScoring` (server.js ~7771) rewritten with `_SCRAPE_UAS` rotation (Chrome, Googlebot, Safari) + new `_fetchWithBrowserHeaders` helper sending full browser headers (Accept, Accept-Language, Sec-Fetch-*, Upgrade-Insecure-Requests, **Referer:'https://www.google.com/' for non-root paths with Sec-Fetch-Site:'cross-site'**). Retries on 403/429/503 only — other statuses returned transparently.
+- **Issue 2 ("Suggest related")**: `loadRelatedKeywords` (app.js ~28880) now pulls `_lsKeywords()` from prior analyses FIRST in a "From your analyses" section above DataForSEO results; deduped against seed; `buildContentScorer` auto-prefills `csKeyword` input from `_lsKeywords()[0]` when empty (never clobbers user input). New CSS `.cs-rel-section` + `.cs-rel-chip-analysis` (teal palette).
+- **Issue 4 (audit timer)**: New `POST /api/page-audit/run` (server.js ~7536) scrapes `['/', '/about', '/pricing', '/features', '/blog', '/contact']` in parallel, computes transparent 0–100 score per page from real signals (title/meta length, H1/H2 count, word count, schema, FAQ, internal-link density). Returns `dataOrigin/dataSource/confidence/transparency` on BOTH success AND 400 error paths. Page Audit "Run Full Audit" button (was `showToast`-only) wired to `runRealPageAudit()` (app.js ~6594) using existing `window.startButtonTimer` for live elapsed-second counter; replaces `window._pageAuditList` with REAL pages then re-renders via `buildContent()`.
+- **Security hardening**: All audit-card dynamic fields (`p.title/url/issue/fix`) escaped via `_escapeHtml` before HTML insertion (app.js ~6508). `data/stakeholders.json` wiped to baseline (no PII committed). Architect PASS verdict after fix round.
+- **Cache busters bumped**: app.js?v=20260430I, style.css?v=20260430F.

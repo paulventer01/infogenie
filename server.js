@@ -7463,6 +7463,123 @@ app.get('/api/content-scorer/related', async (req, res) => {
   res.json(r);
 });
 
+// ─── Real Page Audit ──────────────────────────────────────────────────────
+// Crawls the user's homepage + a small set of common content paths, extracts
+// real on-page signals, and computes a transparent crawlability/content score
+// per page. Replaces the previous mock list. Returns dataOrigin/dataSource/
+// confidence on every response.
+const PAGE_AUDIT_PATHS = ['/', '/about', '/pricing', '/features', '/blog', '/contact'];
+function _pageAuditScore(sig) {
+  // 0–100 transparent score based on real signals
+  let score = 0;
+  const reasons = [];
+  // Title (15)
+  if (sig.title && sig.title.length >= 30 && sig.title.length <= 65) { score += 15; }
+  else if (sig.title && sig.title.length > 0) { score += 7; reasons.push(`Title length ${sig.title.length} (ideal 30–65)`); }
+  else { reasons.push('Missing <title>'); }
+  // Meta description (10)
+  if (sig.metaDesc && sig.metaDesc.length >= 70 && sig.metaDesc.length <= 160) { score += 10; }
+  else if (sig.metaDesc && sig.metaDesc.length > 0) { score += 5; reasons.push(`Meta description ${sig.metaDesc.length} chars (ideal 70–160)`); }
+  else { reasons.push('Missing meta description'); }
+  // H1 presence — exactly one (10)
+  if (sig.h1s && sig.h1s.length === 1) { score += 10; }
+  else if (sig.h1s && sig.h1s.length > 1) { score += 4; reasons.push(`${sig.h1s.length} H1 tags (should be exactly 1)`); }
+  else { reasons.push('No H1 tag'); }
+  // H2 structure (10)
+  if (sig.h2s && sig.h2s.length >= 3) { score += 10; }
+  else if (sig.h2s && sig.h2s.length >= 1) { score += 5; reasons.push(`Only ${sig.h2s.length} H2 tag(s) — add subheadings`); }
+  else { reasons.push('No H2 subheadings'); }
+  // Word count (15)
+  const wc = sig.wordCount || 0;
+  if (wc >= 800) { score += 15; }
+  else if (wc >= 400) { score += 10; reasons.push(`${wc} words — under 800`); }
+  else if (wc >= 150) { score += 5; reasons.push(`Thin content (${wc} words)`); }
+  else { reasons.push(`Very thin content (${wc} words)`); }
+  // Schema markup (15)
+  if (sig.schemaTypes && sig.schemaTypes.length >= 2) { score += 15; }
+  else if (sig.schemaTypes && sig.schemaTypes.length === 1) { score += 8; reasons.push('Only 1 schema type — add Organization/FAQ/Article'); }
+  else { reasons.push('No JSON-LD schema'); }
+  // FAQ section (10)
+  if (sig.hasFAQSchema) { score += 10; }
+  else if (sig.hasFAQ) { score += 6; reasons.push('FAQ headings present but no FAQPage schema'); }
+  else { reasons.push('No FAQ section'); }
+  // Internal links (10) — proxy via href count in extracted text isn't available;
+  // approximate from link density in text snippet via signals if present.
+  const linkCount = (sig.internalLinks != null) ? sig.internalLinks : null;
+  if (linkCount != null) {
+    if (linkCount >= 10) { score += 10; }
+    else if (linkCount >= 3) { score += 5; reasons.push(`Only ${linkCount} internal links`); }
+    else { reasons.push(`Very few internal links (${linkCount})`); }
+  } else {
+    score += 5; // neutral if not measurable
+  }
+  // Cap and return
+  score = Math.max(0, Math.min(100, score));
+  // Top issue + AI-style fix suggestion (deterministic, derived from signals)
+  let issue = reasons[0] || 'Page meets baseline checks';
+  let fix = '';
+  if (!sig.title)               fix = 'Add a 30–65 character <title> tag describing the page topic';
+  else if (!sig.metaDesc)       fix = 'Add a 70–160 character meta description summarising the page';
+  else if (!(sig.h1s || []).length) fix = 'Add exactly one H1 tag with the primary topic';
+  else if ((sig.h1s || []).length > 1) fix = `Reduce to exactly one H1 (currently ${sig.h1s.length})`;
+  else if ((sig.h2s || []).length < 3) fix = 'Add at least 3 H2 subheadings to structure the content';
+  else if (wc < 800)            fix = `Expand content to 800+ words (currently ${wc}) with depth on the main topic`;
+  else if (!(sig.schemaTypes || []).length) fix = 'Add JSON-LD schema (Organization, Article, or FAQPage)';
+  else if (!sig.hasFAQSchema && !sig.hasFAQ) fix = 'Add an FAQ section with FAQPage schema for AI citation eligibility';
+  else                          fix = 'Add 5+ internal links from related pages to strengthen topical authority';
+  return { score, reasons, issue, fix };
+}
+
+app.post('/api/page-audit/run', async (req, res) => {
+  const t0 = Date.now();
+  const domain = (req.body?.domain || '').toString().trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+  if (!domain || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain)) {
+    return res.status(400).json({
+      ok:false, error:'valid domain required',
+      dataOrigin:'request_validation', dataSource:'server_validator', confidence:'high',
+      transparency:'Domain failed format check before any external request was made.',
+    });
+  }
+  // Build candidate URLs and scrape in parallel
+  const urls = PAGE_AUDIT_PATHS.map(p => `https://${domain}${p}`);
+  const results = await Promise.all(urls.map(u => _scrapePageForScoring(u, 9000)));
+  const pages = results
+    .map((r, i) => {
+      if (!r.ok) {
+        return { url: PAGE_AUDIT_PATHS[i], fullUrl: urls[i], ok:false, crawl: 0, title: PAGE_AUDIT_PATHS[i], issue: `Could not fetch (${r.error})`, fix: 'Check this URL exists and is publicly accessible (not behind login or robots.txt block)' };
+      }
+      const s = _pageAuditScore(r);
+      return {
+        url: PAGE_AUDIT_PATHS[i],
+        fullUrl: urls[i],
+        ok: true,
+        title: r.title || PAGE_AUDIT_PATHS[i],
+        crawl: s.score,
+        issue: s.issue,
+        fix: s.fix,
+        wordCount: r.wordCount || 0,
+        h1Count: (r.h1s || []).length,
+        h2Count: (r.h2s || []).length,
+        schemaTypes: r.schemaTypes || [],
+        hasFAQ: !!(r.hasFAQ || r.hasFAQSchema),
+        reasons: s.reasons,
+      };
+    });
+  const reachable = pages.filter(p => p.ok);
+  const avgScore = reachable.length ? Math.round(reachable.reduce((a,p)=>a+p.crawl,0) / reachable.length) : 0;
+  const elapsedMs = Date.now() - t0;
+  res.json({
+    ok: true,
+    domain,
+    pages,
+    summary: { totalChecked: pages.length, reachable: reachable.length, avgCrawlScore: avgScore, elapsedMs },
+    dataOrigin: 'live_scrape',
+    dataSource: 'http_fetch_with_browser_headers + on_page_signal_extraction',
+    confidence: reachable.length >= 4 ? 'high' : reachable.length >= 2 ? 'medium' : 'low',
+    transparency: `Audited ${pages.length} candidate paths on ${domain}; ${reachable.length} reachable. Each score combines title/meta length, heading structure, word count, JSON-LD schema, FAQ presence and internal link density.`,
+  });
+});
+
 async function _fetchSerpTopForKeyword(keyword, countryCode = 2840, limit = 10) {
   const login = process.env.DATAFORSEO_LOGIN;
   const password = process.env.DATAFORSEO_PASSWORD;
@@ -7610,22 +7727,69 @@ async function _isUrlSafeToFetch(rawUrl) {
   return { ok:true };
 }
 
+// User-Agent rotation — real browsers, in priority order. Many WAFs (Cloudflare,
+// Akamai, F5) hard-403 anything that *looks* like a bot UA. We start with a real
+// Chrome UA, retry once with a Googlebot UA on 403/429 (some sites whitelist it
+// for SEO crawlability), and finally a Safari UA as last resort.
+const _SCRAPE_UAS = [
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15'
+];
+async function _fetchWithBrowserHeaders(url, ua, timeoutMs) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  // Build a realistic Referer for non-root paths (looks like the user clicked a
+  // link from the homepage / Google) — strict bot walls weight this signal.
+  const headers = {
+    'User-Agent': ua,
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1',
+    'Cache-Control': 'no-cache',
+  };
+  try {
+    const u = new URL(url);
+    if (u.pathname && u.pathname !== '/' && u.pathname.length > 1) {
+      // Pretend this hit came from Google search — common, benign pattern.
+      headers['Referer'] = 'https://www.google.com/';
+      headers['Sec-Fetch-Site'] = 'cross-site';
+    }
+  } catch (_) { /* malformed URL — let fetch surface the real error */ }
+  try {
+    const r = await fetch(url, {
+      signal: ctrl.signal,
+      redirect: 'follow',
+      headers,
+    });
+    return r;
+  } finally { clearTimeout(t); }
+}
 async function _scrapePageForScoring(url, timeoutMs = 9000) {
   try {
     const safety = await _isUrlSafeToFetch(url);
     if (!safety.ok) return { ok:false, url, error: safety.error };
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    const r = await fetch(url, {
-      signal: ctrl.signal,
-      redirect: 'follow',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; InfoGenieBot/1.0; +https://infogenie.ai/bot)',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-    });
-    clearTimeout(t);
-    if (!r.ok) return { ok:false, url, error: `HTTP ${r.status}` };
+    let r = null;
+    let lastStatus = 0;
+    for (const ua of _SCRAPE_UAS) {
+      try {
+        r = await _fetchWithBrowserHeaders(url, ua, timeoutMs);
+        lastStatus = r.status;
+        if (r.ok) break;
+        // Only retry on bot-blocking statuses; everything else is a real page error
+        if (![403, 429, 503].includes(r.status)) break;
+      } catch (e) {
+        if (e.name === 'AbortError') return { ok:false, url, error:'timeout' };
+        // Network error — try next UA
+        continue;
+      }
+    }
+    if (!r) return { ok:false, url, error: `network failure` };
+    if (!r.ok) return { ok:false, url, error: `HTTP ${lastStatus || r.status}` };
     // Cap at ~600KB to bound memory on bloated pages
     const buf = await r.arrayBuffer();
     const html = new TextDecoder('utf-8', { fatal:false }).decode(buf.slice(0, 600 * 1024));

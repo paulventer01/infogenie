@@ -6492,7 +6492,7 @@ function buildContent() {
           <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🛠️ Page Crawlability & Content Audit</div>
           <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">Outdated content and crawlability issues hurting your rankings and LLM visibility</div>
         </div>
-        <button onclick="showToast('🤖 AI crawl audit started — this may take 30–60 seconds in production')" style="padding:9px 18px;background:linear-gradient(135deg,#065F46,#059669);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚡ Run Full Audit</button>
+        <button id="pageAuditRunBtn" onclick="runRealPageAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#065F46,#059669);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚡ Run Full Audit</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:12px">
         ${pages.map(p=>{
@@ -6502,11 +6502,11 @@ function buildContent() {
             <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;box-shadow:0 1px 4px rgba(0,0,0,0.04);display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center">
               <div>
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-                  <div style="font-size:0.85rem;font-weight:700;color:#0A1628">${p.title}</div>
-                  <code style="font-size:0.68rem;color:#6B7280;background:#F3F4F6;padding:1px 7px;border-radius:4px">${p.url}</code>
+                  <div style="font-size:0.85rem;font-weight:700;color:#0A1628">${_escapeHtml(p.title || '')}</div>
+                  <code style="font-size:0.68rem;color:#6B7280;background:#F3F4F6;padding:1px 7px;border-radius:4px">${_escapeHtml(p.url || '')}</code>
                 </div>
-                <div style="font-size:0.75rem;color:#DC2626;font-weight:600;margin-bottom:4px">⚠️ ${p.issue}</div>
-                <div style="font-size:0.74rem;color:#059669;line-height:1.4"><strong>AI Fix:</strong> ${p.fix}</div>
+                <div style="font-size:0.75rem;color:#DC2626;font-weight:600;margin-bottom:4px">⚠️ ${_escapeHtml(p.issue || '')}</div>
+                <div style="font-size:0.74rem;color:#059669;line-height:1.4"><strong>AI Fix:</strong> ${_escapeHtml(p.fix || '')}</div>
               </div>
               <div style="text-align:center;flex-shrink:0">
                 <div style="width:52px;height:52px;border-radius:50%;background:conic-gradient(${sc} ${score*3.6}deg,#E5E7EB ${score*3.6}deg);display:flex;align-items:center;justify-content:center;position:relative;margin:0 auto 4px">
@@ -6582,6 +6582,53 @@ function buildContent() {
     showToast('⚡ Content analysis refreshed!');
   };
 }
+
+// ── Real Page Audit ──────────────────────────────────────────────────────
+// Calls /api/page-audit/run with the user's analysed domain, shows a live
+// elapsed-time counter on the Run Full Audit button while it works, then
+// re-renders the audit list with REAL crawled signals (replacing the mock
+// fallback list). All scores come from server-side on-page extraction.
+window.runRealPageAudit = async function() {
+  if (window._pageAuditRunning) return;
+  window._pageAuditRunning = true;
+  const btn = document.getElementById('pageAuditRunBtn');
+  const stopTimer = window.startButtonTimer ? window.startButtonTimer(btn, 'Auditing pages') : (() => {});
+  const domain = (analysisData?.url || '').replace(/^https?:\/\//, '').split('/')[0];
+  if (!domain) {
+    stopTimer('⚡ Run Full Audit');
+    window._pageAuditRunning = false;
+    showToast('⚠️ Run a homepage analysis first so we know which domain to audit.');
+    return;
+  }
+  try {
+    const r = await fetch('/api/page-audit/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain }),
+    });
+    const j = await r.json();
+    if (!j.ok || !Array.isArray(j.pages)) {
+      throw new Error(j.error || 'Audit failed');
+    }
+    // Map server pages → frontend list shape (url, title, issue, crawl, fix)
+    window._pageAuditList = j.pages.map(p => ({
+      url: p.url,
+      title: p.title || p.url,
+      issue: p.issue,
+      crawl: p.crawl,
+      fix: p.fix,
+    }));
+    window._contentTab = 'audit';
+    buildContent();
+    const elapsed = j.summary?.elapsedMs ? Math.round(j.summary.elapsedMs / 1000) : '?';
+    showToast(`✅ Audited ${j.summary?.reachable || 0} of ${j.summary?.totalChecked || 0} pages on ${j.domain} in ${elapsed}s — avg score ${j.summary?.avgCrawlScore || 0}/100`);
+  } catch (e) {
+    showToast(`❌ Page audit failed: ${e.message}`);
+  } finally {
+    stopTimer('⚡ Run Full Audit');
+    window._pageAuditRunning = false;
+  }
+};
 
 window.generateCluster = async function() {
   const seed = document.getElementById('cluster-seed')?.value?.trim();
@@ -28707,6 +28754,14 @@ function buildContentScorer() {
     if (dom && urlInput && !urlInput.value) {
       urlInput.value = `https://${dom}`;
     }
+    // Auto-prefill the target keyword from prior analyses so the user doesn't
+    // have to retype what InfoGenie already discovered. They can edit / clear it.
+    const kwInput = document.getElementById('csKeyword');
+    const priorKws = _lsKeywords();
+    if (kwInput && !kwInput.value && priorKws.length) {
+      kwInput.value = priorKws[0];
+      _csOnKeywordChange();
+    }
   } catch (_) {}
   // Load country list from server (single source of truth).
   _csLoadCountries();
@@ -28867,32 +28922,74 @@ function _csFocusAndFlash(elId, msg) {
 }
 
 async function loadRelatedKeywords() {
-  const kw = (document.getElementById('csKeyword')?.value || '').trim();
+  const kwInput = document.getElementById('csKeyword');
+  let kw = (kwInput?.value || '').trim();
   const chips = document.getElementById('csRelatedChips');
   const btn = document.getElementById('csSuggestBtn');
+  if (!chips) return;
+  // First — pull keywords already discovered by previous analyses (smart-detect,
+  // intent map, keyword map, content gaps). These are surfaced FIRST so the user
+  // sees their own analysis context before remote DataForSEO suggestions.
+  const priorKws = _lsKeywords();
+  // If the keyword field is empty but we have prior analysis keywords, auto-fill
+  // the input with the top one so the user can immediately scan related ideas.
+  if ((!kw || kw.length < 2) && priorKws.length) {
+    kw = String(priorKws[0]).trim();
+    if (kwInput) { kwInput.value = kw; _csOnKeywordChange(); }
+  }
   if (!kw || kw.length < 2) {
-    _csFocusAndFlash('csKeyword', '⚠️ Type a target keyword first, then click Suggest related.');
+    _csFocusAndFlash('csKeyword', '⚠️ No prior analysis found and no keyword typed. Run a homepage analysis first or type a keyword above.');
     return;
   }
-  if (!chips) return;
   // Use the first selected country (or US) for regional volume context.
-  const country = window._csSelectedCountries[0] || 'US';
+  const country = (window._csSelectedCountries && window._csSelectedCountries[0]) || 'US';
   if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
-  chips.innerHTML = '<span style="opacity:.6;font-size:.8rem">Fetching related keywords…</span>';
+  // Build "From your analyses" section IMMEDIATELY so the user sees something
+  // even before DataForSEO responds (or if it fails entirely).
+  const renderChips = (priorList, remoteList, remoteError) => {
+    const seen = new Set();
+    const dedupe = (list) => list.filter(k => {
+      const key = String(k.keyword || k).toLowerCase();
+      if (seen.has(key) || key === kw.toLowerCase()) return false;
+      seen.add(key);
+      return true;
+    });
+    const priorClean = dedupe(priorList.map(k => ({ keyword: k, source: 'analysis' })));
+    const remoteClean = dedupe((remoteList || []).map(k => ({ ...k, source: 'serp' })));
+    let html = '';
+    if (priorClean.length) {
+      html += `<div class="cs-rel-section"><span class="cs-rel-section-label">From your analyses</span>` +
+        priorClean.map(k => `<button type="button" class="cs-rel-chip cs-rel-chip-analysis" onclick="_csUseKeyword(this.dataset.kw)" data-kw="${_escapeHtml(k.keyword)}" title="From a prior InfoGenie analysis — click to use">${_escapeHtml(k.keyword)}<span class="cs-chip-vol cs-chip-vol-local">your data</span></button>`).join('') +
+        `</div>`;
+    }
+    if (remoteClean.length) {
+      html += `<div class="cs-rel-section"><span class="cs-rel-section-label">Live SERP related (DataForSEO)</span>` +
+        remoteClean.map(k => {
+          const vol = k.searchVolume != null ? `<span class="cs-chip-vol">${Number(k.searchVolume).toLocaleString()}/mo</span>` : '';
+          return `<button type="button" class="cs-rel-chip" onclick="_csUseKeyword(this.dataset.kw)" data-kw="${_escapeHtml(k.keyword)}" title="Click to use this keyword">${_escapeHtml(k.keyword)}${vol}</button>`;
+        }).join('') +
+        `</div>`;
+    }
+    if (!html) {
+      html = `<span style="opacity:.6;font-size:.8rem">No related keywords found${remoteError ? ' — ' + _escapeHtml(remoteError) : ''}.</span>`;
+    }
+    chips.dataset.forKw = kw.toLowerCase();
+    chips.innerHTML = html;
+  };
+  // Show prior keywords immediately while DataForSEO is loading
+  renderChips(priorKws, [], null);
+  if (priorKws.length) {
+    // Append a loading hint
+    chips.insertAdjacentHTML('beforeend', `<span id="csRelLoading" style="opacity:.6;font-size:.8rem;margin-left:8px">+ live SERP related…</span>`);
+  } else {
+    chips.innerHTML = '<span style="opacity:.6;font-size:.8rem">Fetching related keywords…</span>';
+  }
   try {
     const r = await fetch(`/api/content-scorer/related?keyword=${encodeURIComponent(kw)}&country=${encodeURIComponent(country)}`);
     const j = await r.json();
-    if (!j.ok || !Array.isArray(j.keywords) || !j.keywords.length) {
-      chips.innerHTML = `<span style="opacity:.6;font-size:.8rem">No related keywords found${j.error ? ' — ' + _escapeHtml(j.error) : ''}.</span>`;
-      return;
-    }
-    chips.dataset.forKw = kw.toLowerCase();
-    chips.innerHTML = j.keywords.map(k => {
-      const vol = k.searchVolume != null ? `<span class="cs-chip-vol">${Number(k.searchVolume).toLocaleString()}/mo</span>` : '';
-      return `<button type="button" class="cs-rel-chip" onclick="_csUseKeyword(this.dataset.kw)" data-kw="${_escapeHtml(k.keyword)}" title="Click to use this keyword">${_escapeHtml(k.keyword)}${vol}</button>`;
-    }).join('');
+    renderChips(priorKws, (j.ok && Array.isArray(j.keywords)) ? j.keywords : [], j.error);
   } catch (e) {
-    chips.innerHTML = `<span style="opacity:.6;font-size:.8rem">Failed: ${_escapeHtml(e.message)}</span>`;
+    renderChips(priorKws, [], e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '✨ Suggest related'; }
   }
