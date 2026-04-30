@@ -359,3 +359,11 @@ Targeted polish of duplicated functions, navigation, copy, and button consistenc
 - **F5 Internal Link Suggester subtitle clarified**: Subtitle now states "Apply marks a row as Done in this view (you still add the link in your CMS) · use Export CSV to hand the full list to your content team". Apply toast updated to "Marked done — remember to add … as a link in your CMS".
 - **Cache busters bumped**: app.js?v=20260430K (no CSS changes).
 - **Architect verdict**: PASS. Cleaned `data/drip-enrollments.json` and `data/reengagement-campaigns.json` back to `[]` after manual smoketest of CSV upload.
+
+### 2026-04-30 — Four UI/UX screenshot fixes (architect PASS)
+- **#1 Daily share-of-voice chart not rendering** (app.js ~29980): Chart.js with `maintainAspectRatio:false` had no fixed-height parent. Wrapped canvas in `<div style="position:relative;height:280px;width:100%">`.
+- **#2 Viral Content Funnel Planner subtitle invisible** (app.js ~6583): On the dark-green panel header `rgba(255,255,255,.7)` was unreadable. Changed to `#D1FAE5`, font 0.78→0.85rem, line-height 1.5.
+- **#3 Intelligence APIs panel title invisible in light theme** (style.css ~6397, ~6713): The light-theme dark-text sweep was forcing `.ich-title/.ich-sub` dark, but `.integ-category-header` keeps a dark navy gradient in BOTH themes. Excluded `.ich-title/.ich-sub` from the sweep and added explicit `[data-theme="light"]` overrides forcing white/translucent-white on those headers.
+- **#4 OAuth "Connected via OAuth" pill reverting** (app.js ~17582): `restoreConnectedStates()` was choosing button styling from the STORED VALUE (`_isOAuth(id)`) instead of the BUTTON TYPE (`item.authType === 'oauth'`). For OAuth-type integrations auto-detected by the server (stored as `'1'`), the green OAuth pill never re-rendered. Now keys off `item.authType === 'oauth'` AND upgrades the stored value to `'oauth'` so future reads are consistent. localStorage remains per-user namespaced (lines 60-100), so persistence holds across reload + login.
+- **Cache busters bumped**: app.js?v=20260430Q, style.css?v=20260430H.
+- **Architect verdict**: PASS — no critical/high findings.

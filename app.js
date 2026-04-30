@@ -17585,9 +17585,22 @@ function restoreConnectedStates() {
         const status = document.getElementById('status-' + item.id);
         const card = document.getElementById('card-' + item.id);
         if (btn) {
-          if (_isOAuth(item.id)) {
+          // Decide button styling based on the BUTTON TYPE (item.authType),
+          // not the stored value. This ensures an OAuth-type integration
+          // (Google Analytics 4, Search Console, Meta, TikTok, LinkedIn
+          // Ads, Pinterest, etc.) ALWAYS renders as the green
+          // "✓ Connected via OAuth" pill once it's flagged connected —
+          // even if the stored value is '1' (server-detected) instead of
+          // 'oauth' (user-clicked). Previously this only kept the green
+          // pill when the user clicked "Connect via OAuth" in this exact
+          // browser session, which made the connected state look like it
+          // reverted on refresh.
+          if (item.authType === 'oauth') {
             btn.innerHTML = '<span>✓</span> Connected via OAuth';
             btn.classList.add('connected');
+            // Upgrade the stored value to 'oauth' so future renders
+            // are consistent and `_isOAuth(id)` returns true elsewhere.
+            try { localStorage.setItem('ig_integ_' + item.id, 'oauth'); } catch(e) {}
           } else {
             btn.textContent = '✓ Connected';
             btn.classList.add('btn-connected-card');
