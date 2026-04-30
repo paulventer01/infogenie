@@ -6486,7 +6486,11 @@ function buildContent() {
       { url:'/blog/roi-guide',            title:'Marketing ROI Guide',             issue:'No internal links pointing here',       crawl:66, fix:'Add internal links from 5 related blog posts' },
     ];
     window._pageAuditList = pages;
+    const noticeBanner = window._pageAuditNotice
+      ? `<div style="background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:12px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px"><div style="font-size:1.25rem;line-height:1">⛔</div><div><div style="font-size:0.82rem;font-weight:700;color:#92400E;margin-bottom:3px">Site blocks automated crawlers</div><div style="font-size:0.75rem;color:#78350F;line-height:1.55">${_escapeHtml(window._pageAuditNotice)}</div></div></div>`
+      : '';
     return `
+      ${noticeBanner}
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
         <div>
           <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🛠️ Page Crawlability & Content Audit</div>
@@ -6578,6 +6582,7 @@ function buildContent() {
     window._contentTab = 'gaps';
     window._contentGapList = null;
     window._pageAuditList = null;
+    window._pageAuditNotice = null;
     buildContent();
     showToast('⚡ Content analysis refreshed!');
   };
@@ -6610,18 +6615,25 @@ window.runRealPageAudit = async function() {
     if (!j.ok || !Array.isArray(j.pages)) {
       throw new Error(j.error || 'Audit failed');
     }
-    // Map server pages → frontend list shape (url, title, issue, crawl, fix)
+    // Map server pages → frontend list shape (url, title, issue, crawl, fix, errorKind)
     window._pageAuditList = j.pages.map(p => ({
       url: p.url,
       title: p.title || p.url,
       issue: p.issue,
       crawl: p.crawl,
       fix: p.fix,
+      errorKind: p.errorKind,
+      ok: p.ok,
     }));
+    window._pageAuditNotice = j.notice || null;
     window._contentTab = 'audit';
     buildContent();
     const elapsed = j.summary?.elapsedMs ? Math.round(j.summary.elapsedMs / 1000) : '?';
-    showToast(`✅ Audited ${j.summary?.reachable || 0} of ${j.summary?.totalChecked || 0} pages on ${j.domain} in ${elapsed}s — avg score ${j.summary?.avgCrawlScore || 0}/100`);
+    if (j.summary?.blockedAll) {
+      showToast(`⛔ ${j.domain} blocks crawlers — see banner above for what to do.`);
+    } else {
+      showToast(`✅ Audited ${j.summary?.reachable || 0} of ${j.summary?.totalChecked || 0} pages on ${j.domain} in ${elapsed}s — avg score ${j.summary?.avgCrawlScore || 0}/100`);
+    }
   } catch (e) {
     showToast(`❌ Page audit failed: ${e.message}`);
   } finally {
@@ -24880,7 +24892,7 @@ function buildLinkSuggester() {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
         <div>
           <div style="font-family:Sora,sans-serif;font-size:1.05rem;font-weight:800;color:#0A1628">📋 Recommended Internal Links</div>
-          <div style="font-size:0.75rem;color:#64748B;margin-top:2px">Sorted by priority · click <strong>Apply</strong> to add to your CMS task list</div>
+          <div style="font-size:0.75rem;color:#64748B;margin-top:2px">Sorted by priority · <strong>Apply</strong> marks a row as Done in this view (you still add the link in your CMS) · use <strong>Export CSV</strong> to hand the full list to your content team</div>
         </div>
         <button onclick="exportLinkSuggestions()" style="padding:8px 16px;background:#F3F4F6;border:1px solid #D1D5DB;border-radius:8px;font-size:0.78rem;font-weight:600;color:#374151;cursor:pointer">📥 Export CSV</button>
       </div>
@@ -24935,7 +24947,7 @@ window.applyLinkSuggestion = function(id) {
   if (!s) return;
   s.status = 'applied';
   buildLinkSuggester();
-  showToast(`✓ Applied — anchor "${s.anchorText}" queued for CMS`);
+  showToast(`✓ Marked done — remember to add "${s.anchorText}" as a link in your CMS`);
 };
 
 window.dismissLinkSuggestion = function(id) {
@@ -27595,7 +27607,29 @@ function openCommandBar() {
   const bd = document.getElementById('commandBarBackdrop');
   if (!bd) return;
   bd.style.display = 'flex';
-  setTimeout(() => document.getElementById('commandBarInput')?.focus(), 50);
+  // Robust focus: belt-and-braces because some browsers race the display:flex
+  // with the focus call. Three staggered attempts + a click-to-focus handler
+  // on the input itself ensures the user can always type.
+  const focusInput = () => {
+    const inp = document.getElementById('commandBarInput');
+    if (!inp) return;
+    try { inp.removeAttribute('disabled'); inp.removeAttribute('readonly'); } catch(_){}
+    try { inp.focus({ preventScroll: true }); } catch(_) { try { inp.focus(); } catch(__){} }
+    // If focus didn't stick (e.g. another modal stole it), try again.
+    if (document.activeElement !== inp) {
+      try { inp.focus(); } catch(_){}
+    }
+  };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focusInput);
+  setTimeout(focusInput, 80);
+  setTimeout(focusInput, 200);
+  // One-time guard: if the user clicks anywhere inside the input row but
+  // focus is still elsewhere (e.g. body), force-focus the input.
+  const inp = document.getElementById('commandBarInput');
+  if (inp && !inp._cmdBarClickWired) {
+    inp._cmdBarClickWired = true;
+    inp.addEventListener('click', () => { try { inp.focus(); } catch(_){} });
+  }
 }
 function closeCommandBar(e) {
   const bd = document.getElementById('commandBarBackdrop');
@@ -27605,7 +27639,7 @@ function closeCommandBar(e) {
 }
 function prefillCommand(text) {
   const inp = document.getElementById('commandBarInput');
-  if (inp) { inp.value = text; inp.focus(); }
+  if (inp) { inp.value = text; try { inp.focus(); } catch(_){} }
 }
 async function runCommandBar(commandOverride, confirm) {
   const inp = document.getElementById('commandBarInput');
@@ -27824,6 +27858,84 @@ function enrollHotLead(email) {
    ============================================================================= */
 let _reengageState = { dormant: [], variants: [], chosenIdx: 0, segment: '', tone: 'warm-and-curious' };
 function loadReengage() { buildReengage(); }
+
+// CSV-upload modal for the Re-engage view. Lets the user paste a CSV body or
+// pick a .csv file (name,email,phone) and seeds the drip store with backdated
+// startedAt timestamps so the rows immediately appear as dormant in the
+// current days-window. Phone is stored but currently unused for outreach.
+function openReengageCsvUpload() {
+  // Remove any existing instance so reopening is clean.
+  document.getElementById('reengageCsvBackdrop')?.remove();
+  const bd = document.createElement('div');
+  bd.id = 'reengageCsvBackdrop';
+  bd.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(4px);z-index:99998;display:flex;align-items:flex-start;justify-content:center;padding-top:8vh';
+  bd.onclick = (e) => { if (e.target === bd) bd.remove(); };
+  bd.innerHTML = `
+    <div onclick="event.stopPropagation()" style="width:min(640px,92vw);background:white;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden;max-height:85vh;display:flex;flex-direction:column">
+      <div style="padding:18px 22px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0F172A">📤 Upload Audience CSV</div>
+          <div style="font-size:0.74rem;color:#64748B;margin-top:3px">Seed your dormant audience from a contact list</div>
+        </div>
+        <button onclick="document.getElementById('reengageCsvBackdrop').remove()" style="background:none;border:none;color:#94A3B8;font-size:1.4rem;cursor:pointer;padding:0 4px;line-height:1">×</button>
+      </div>
+      <div style="padding:20px 22px;overflow-y:auto">
+        <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:9px;padding:12px 14px;font-size:0.78rem;color:#075985;line-height:1.55;margin-bottom:14px">
+          <strong>Required header row:</strong> <code style="background:white;padding:1px 6px;border-radius:4px">email</code> (mandatory) plus optional <code style="background:white;padding:1px 6px;border-radius:4px">name</code> and <code style="background:white;padding:1px 6px;border-radius:4px">phone</code>. Column order doesn't matter.<br>
+          <span style="color:#0C4A6E;font-weight:600">⚠️ Phone numbers are stored but not yet used for outreach</span> — InfoGenie has no SMS channel yet, so re-engagement campaigns send by email only.
+        </div>
+        <label style="display:block;margin-bottom:14px">
+          <span style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">Pick a .csv file</span>
+          <input type="file" id="reengageCsvFile" accept=".csv,text/csv" style="font-size:0.82rem">
+        </label>
+        <label style="display:block;margin-bottom:14px">
+          <span style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">Or paste CSV directly</span>
+          <textarea id="reengageCsvText" rows="7" placeholder="name,email,phone&#10;Jane Doe,jane@example.com,+15551234567&#10;John Roe,john@example.com," style="width:100%;padding:10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.82rem;font-family:monospace;resize:vertical;box-sizing:border-box"></textarea>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:0.8rem;color:#374151;margin-bottom:6px">
+          <span style="font-weight:600">Treat as inactive for</span>
+          <input type="number" id="reengageCsvBackdate" value="60" min="1" max="365" style="width:70px;padding:6px 8px;border:1px solid #CBD5E1;border-radius:6px;font-size:0.82rem">
+          <span>days (so they show up in the current dormant window)</span>
+        </label>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid #E5E7EB;display:flex;justify-content:flex-end;gap:8px">
+        <button onclick="document.getElementById('reengageCsvBackdrop').remove()" style="padding:8px 14px;background:white;color:#64748B;border:1px solid #CBD5E1;border-radius:7px;font-size:0.82rem;font-weight:600;cursor:pointer">Cancel</button>
+        <button id="reengageCsvSubmit" onclick="submitReengageCsv()" style="padding:8px 18px;background:linear-gradient(135deg,#C2410C,#F97316);color:white;border:none;border-radius:7px;font-size:0.82rem;font-weight:700;cursor:pointer">📥 Import</button>
+      </div>
+    </div>`;
+  document.body.appendChild(bd);
+  // Auto-fill the textarea when a file is chosen.
+  document.getElementById('reengageCsvFile').addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => { document.getElementById('reengageCsvText').value = String(reader.result || ''); };
+    reader.onerror = () => { showToast('⚠️ Could not read file'); };
+    reader.readAsText(f);
+  });
+}
+
+async function submitReengageCsv() {
+  const txt = (document.getElementById('reengageCsvText')?.value || '').trim();
+  const backdateDays = parseInt(document.getElementById('reengageCsvBackdate')?.value || '60', 10);
+  const btn = document.getElementById('reengageCsvSubmit');
+  if (!txt) { showToast('⚠️ Paste a CSV or pick a file first'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Importing…'; }
+  try {
+    const r = await fetch('/api/reengage/upload-csv', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ csv: txt, backdateDays }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Import failed');
+    document.getElementById('reengageCsvBackdrop')?.remove();
+    showToast(`✅ Imported ${j.imported} contacts · ${j.skipped} skipped (duplicate or invalid email)`);
+    buildReengage();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '📥 Import'; }
+    showToast(`⚠️ ${e.message}`);
+  }
+}
 async function buildReengage() {
   const wrap = document.getElementById('reengageBody');
   if (!wrap) return;
@@ -27872,7 +27984,10 @@ function _reengageHtml(j) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start">
       <!-- Left: dormant list + generate -->
       <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:22px">
-        <div style="font-size:1rem;font-weight:800;color:#0F172A;margin-bottom:12px">Dormant subscribers</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+          <div style="font-size:1rem;font-weight:800;color:#0F172A">Dormant subscribers</div>
+          <button onclick="openReengageCsvUpload()" style="padding:7px 12px;background:#0F172A;color:white;border:none;border-radius:7px;font-size:0.74rem;font-weight:700;cursor:pointer" title="Upload a CSV of contacts to seed your audience">📤 Upload audience CSV</button>
+        </div>
         ${dormantList}
         <div style="margin-top:18px;padding-top:14px;border-top:1px solid #F1F5F9">
           <div style="font-size:0.85rem;font-weight:700;color:#0F172A;margin-bottom:8px">Generate adaptive copy</div>
@@ -28930,8 +29045,26 @@ async function loadRelatedKeywords() {
     kw = String(priorKws[0]).trim();
     if (kwInput) { kwInput.value = kw; _csOnKeywordChange(); }
   }
+  // ── Fallback: derive a seed from the URL field if user pasted a URL but no
+  // keyword and no prior analyses (common when first opening Content Scorer
+  // with just a URL like https://fxpro.com).
   if (!kw || kw.length < 2) {
-    _csFocusAndFlash('csKeyword', '⚠️ No prior analysis found and no keyword typed. Run a homepage analysis first or type a keyword above.');
+    const urlVal = (document.getElementById('csUrl')?.value || '').trim();
+    if (urlVal) {
+      try {
+        const host = urlVal.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
+        // Strip leading "www." and the TLD, keep the brand stem (e.g. "fxpro").
+        const stem = host.replace(/^www\./, '').split('.')[0];
+        if (stem && stem.length >= 2) {
+          kw = stem;
+          if (kwInput) { kwInput.value = kw; _csOnKeywordChange(); }
+          _flashHint(`💡 No keyword set — using brand seed "${stem}" from your URL.`);
+        }
+      } catch (_) { /* ignore parse errors */ }
+    }
+  }
+  if (!kw || kw.length < 2) {
+    _csFocusAndFlash('csKeyword', '⚠️ Type a keyword above (or paste a URL in the URL field) — we need a seed to suggest related ideas.');
     return;
   }
   // Use the first selected country (or US) for regional volume context.

@@ -83,7 +83,7 @@ app.use((req, res, next) => {
 // Capture the raw request body alongside the parsed JSON so HMAC-signed
 // webhooks (Resend / Svix) can verify against the exact bytes that were
 // signed by the sender. Body parser still hands the parsed object to routes.
-app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); } }));
+app.use(express.json({ limit: '5mb', verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); } }));
 app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
 
 // ── User Manual PDF (clean URLs) ─────────────────────────────────────────────
@@ -7543,36 +7543,66 @@ app.post('/api/page-audit/run', async (req, res) => {
   // Build candidate URLs and scrape in parallel
   const urls = PAGE_AUDIT_PATHS.map(p => `https://${domain}${p}`);
   const results = await Promise.all(urls.map(u => _scrapePageForScoring(u, 9000)));
-  const pages = results
-    .map((r, i) => {
-      if (!r.ok) {
-        return { url: PAGE_AUDIT_PATHS[i], fullUrl: urls[i], ok:false, crawl: 0, title: PAGE_AUDIT_PATHS[i], issue: `Could not fetch (${r.error})`, fix: 'Check this URL exists and is publicly accessible (not behind login or robots.txt block)' };
-      }
-      const s = _pageAuditScore(r);
+  // Helper: classify the failure so we can give an honest, useful message instead
+  // of the misleading "URL might not exist" wording. Cloudflare/Akamai/PerimeterX
+  // protected sites (e.g. fxpro.com) consistently return 403 to non-JS clients.
+  const classifyError = (errStr) => {
+    const e = String(errStr || '').toLowerCase();
+    if (/\bhttp\s*403\b|forbidden/.test(e)) {
       return {
-        url: PAGE_AUDIT_PATHS[i],
-        fullUrl: urls[i],
-        ok: true,
-        title: r.title || PAGE_AUDIT_PATHS[i],
-        crawl: s.score,
-        issue: s.issue,
-        fix: s.fix,
-        wordCount: r.wordCount || 0,
-        h1Count: (r.h1s || []).length,
-        h2Count: (r.h2s || []).length,
-        schemaTypes: r.schemaTypes || [],
-        hasFAQ: !!(r.hasFAQ || r.hasFAQSchema),
-        reasons: s.reasons,
+        issue: 'Site blocks automated crawlers (HTTP 403)',
+        fix:   'This domain uses bot-protection (Cloudflare / Akamai / PerimeterX). InfoGenie can\'t score it from outside — to audit it, run the scan from inside your own infrastructure or whitelist our user-agent in your WAF.',
+        kind:  'blocked',
       };
-    });
+    }
+    if (/\bhttp\s*429\b|rate.?limit/.test(e)) {
+      return { issue: 'Rate-limited by the site (HTTP 429)', fix: 'Too many requests in a short window. Wait a minute and re-run, or audit one path at a time.', kind: 'blocked' };
+    }
+    if (/\bhttp\s*5\d{2}\b|server.error/.test(e)) {
+      return { issue: 'Site returned a server error (5xx)', fix: 'The page is reachable but the server is failing. Try again later or check your origin server logs.', kind: 'server' };
+    }
+    if (/\bhttp\s*404\b|not.found/.test(e)) {
+      return { issue: 'Page not found (HTTP 404)', fix: 'This path doesn\'t exist on the site. Remove it from your sitemap or add a redirect.', kind: 'notfound' };
+    }
+    if (/timeout|timed.out|aborted/.test(e)) {
+      return { issue: 'Request timed out', fix: 'Page took longer than 9s to respond. Often caused by slow origin or large payloads — check Core Web Vitals.', kind: 'timeout' };
+    }
+    return { issue: `Could not fetch (${errStr})`, fix: 'Check this URL exists and is publicly accessible (not behind login or robots.txt block).', kind: 'other' };
+  };
+  const pages = results.map((r, i) => {
+    if (!r.ok) {
+      const c = classifyError(r.error);
+      return { url: PAGE_AUDIT_PATHS[i], fullUrl: urls[i], ok:false, crawl: 0, title: PAGE_AUDIT_PATHS[i], issue: c.issue, fix: c.fix, errorKind: c.kind };
+    }
+    const s = _pageAuditScore(r);
+    return {
+      url: PAGE_AUDIT_PATHS[i],
+      fullUrl: urls[i],
+      ok: true,
+      title: r.title || PAGE_AUDIT_PATHS[i],
+      crawl: s.score,
+      issue: s.issue,
+      fix: s.fix,
+      wordCount: r.wordCount || 0,
+      h1Count: (r.h1s || []).length,
+      h2Count: (r.h2s || []).length,
+      schemaTypes: r.schemaTypes || [],
+      hasFAQ: !!(r.hasFAQ || r.hasFAQSchema),
+      reasons: s.reasons,
+    };
+  });
   const reachable = pages.filter(p => p.ok);
+  const blockedAll = pages.length > 0 && pages.every(p => !p.ok && p.errorKind === 'blocked');
   const avgScore = reachable.length ? Math.round(reachable.reduce((a,p)=>a+p.crawl,0) / reachable.length) : 0;
   const elapsedMs = Date.now() - t0;
   res.json({
     ok: true,
     domain,
     pages,
-    summary: { totalChecked: pages.length, reachable: reachable.length, avgCrawlScore: avgScore, elapsedMs },
+    summary: { totalChecked: pages.length, reachable: reachable.length, avgCrawlScore: avgScore, elapsedMs, blockedAll },
+    notice: blockedAll
+      ? `${domain} is protected by an anti-bot service that returns HTTP 403 to all our requests. The pages exist — InfoGenie just can't fetch them from outside. Either whitelist our crawler in your WAF, or run this audit from inside your own infrastructure.`
+      : null,
     dataOrigin: 'live_scrape',
     dataSource: 'http_fetch_with_browser_headers + on_page_signal_extraction',
     confidence: reachable.length >= 4 ? 'high' : reachable.length >= 2 ? 'medium' : 'low',
@@ -9032,6 +9062,76 @@ app.get('/api/reengage/dormant', async (req, res) => {
       else amplitudeNote = 'Amplitude not configured — using drip-store inactivity only.';
     } catch (_) { amplitudeNote = 'Amplitude lookup skipped.'; }
     res.json({ ok:true, days, cutoff, count: dormant.length, dormant, amplitudeNote });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// Upload a CSV of contacts (name,email,phone) and seed them into the drip
+// store with a backdated startedAt so they immediately appear in the dormant
+// audience list for the active days-window. The phone column is preserved on
+// the record but currently UNUSED for outreach (no SMS channel yet) — the UI
+// makes this clear so users don't expect SMS sends.
+app.post('/api/reengage/upload-csv', async (req, res) => {
+  try {
+    const csv = String((req.body && req.body.csv) || '').trim();
+    const backdateDays = Math.min(365, Math.max(1, parseInt(req.body && req.body.backdateDays, 10) || 60));
+    if (!csv) return res.status(400).json({ ok:false, error:'csv body required' });
+    const lines = csv.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) return res.status(400).json({ ok:false, error:'CSV must have a header row + at least one data row' });
+    // Tiny-but-correct CSV parser: handles quoted fields with embedded commas
+    // and escaped double quotes (""). Sufficient for hand-edited audience lists.
+    const parseRow = (line) => {
+      const out = []; let cur = ''; let inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQ) {
+          if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; }
+          else if (ch === '"') { inQ = false; }
+          else { cur += ch; }
+        } else {
+          if (ch === ',') { out.push(cur); cur = ''; }
+          else if (ch === '"' && cur === '') { inQ = true; }
+          else { cur += ch; }
+        }
+      }
+      out.push(cur);
+      return out.map(s => s.trim());
+    };
+    const header = parseRow(lines[0]).map(h => h.toLowerCase());
+    const idxEmail = header.findIndex(h => /^e-?mail$/i.test(h));
+    const idxName  = header.findIndex(h => /^(name|full.?name|first.?name)$/i.test(h));
+    const idxPhone = header.findIndex(h => /^(phone|mobile|cell|tel(ephone)?)$/i.test(h));
+    if (idxEmail < 0) return res.status(400).json({ ok:false, error:'CSV must include an "email" column header' });
+    const startedAt = Date.now() - (backdateDays * 86400000);
+    let imported = 0; let skipped = 0; const errors = [];
+    await _dripLock(async () => {
+      const list = _dripLoad();
+      const existingEmails = new Set(list.map(e => String(e.email || '').toLowerCase()));
+      for (let li = 1; li < lines.length; li++) {
+        const cols = parseRow(lines[li]);
+        const email = (cols[idxEmail] || '').toLowerCase().trim();
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { skipped++; continue; }
+        if (existingEmails.has(email)) { skipped++; continue; }
+        existingEmails.add(email);
+        const name  = idxName  >= 0 ? (cols[idxName]  || '').trim() : '';
+        const phone = idxPhone >= 0 ? (cols[idxPhone] || '').trim() : '';
+        list.push({
+          id: 'enr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+          email,
+          name,
+          phone, // recorded but not used for outreach yet (no SMS channel)
+          brand: 'CSV import',
+          source: 'csv-upload',
+          startedAt,
+          status: 'imported',
+          history: [], // empty history → counted as dormant by /api/reengage/dormant
+          sequence: [],
+          stepIdx: 0,
+        });
+        imported++;
+      }
+      _dripSave(list);
+    });
+    res.json({ ok:true, imported, skipped, total: lines.length - 1, backdateDays });
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
 });
 

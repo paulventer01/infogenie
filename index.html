@@ -1866,7 +1866,7 @@
   <div onclick="event.stopPropagation()" style="width:min(640px,92vw);background:white;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">
     <div style="padding:18px 20px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;gap:12px">
       <span style="font-size:1.3rem">✨</span>
-      <input id="commandBarInput" type="text" placeholder="Ask InfoGenie to do something… (e.g. 'show me blended CAC for the last 30 days')" autocomplete="off" style="flex:1;border:none;outline:none;font-size:1rem;font-weight:500;color:#0F172A">
+      <input id="commandBarInput" type="text" tabindex="0" placeholder="Ask InfoGenie to do something… (e.g. 'show me blended CAC for the last 30 days')" style="flex:1;border:none;outline:none;font-size:1rem;font-weight:500;color:#0F172A;pointer-events:auto;user-select:text;-webkit-user-select:text">
       <kbd style="font-size:0.7rem;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:5px;padding:3px 7px;color:#64748B">esc</kbd>
     </div>
     <div id="commandBarHints" style="padding:14px 20px;font-size:0.78rem;color:#64748B;border-bottom:1px solid #F1F5F9">
@@ -2018,7 +2018,7 @@
   </div>
 </div>
 
-<script src="/app.js?v=20260430J"></script>
+<script src="/app.js?v=20260430K"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');
