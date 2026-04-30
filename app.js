@@ -28575,7 +28575,7 @@ function buildContentScorer() {
           <label>Target keyword</label>
           <input type="text" id="csKeyword" placeholder="e.g. ai marketing automation tools" oninput="_csOnKeywordChange()" />
           <div class="cs-related-row">
-            <button type="button" class="cs-related-btn" id="csSuggestBtn" onclick="loadRelatedKeywords()" disabled>✨ Suggest related</button>
+            <button type="button" class="cs-related-btn" id="csSuggestBtn" onclick="loadRelatedKeywords()" title="Type a target keyword above first, then click for related keyword ideas with search volume.">✨ Suggest related</button>
             <div class="cs-related-chips" id="csRelatedChips"></div>
           </div>
         </div>
@@ -28755,19 +28755,33 @@ function _csOutsideClick(e) {
 }
 
 function _csOnKeywordChange() {
-  const kw = (document.getElementById('csKeyword')?.value || '').trim();
-  const btn = document.getElementById('csSuggestBtn');
-  if (btn) btn.disabled = kw.length < 2;
+  // Keep the button enabled at all times so a click always provides feedback.
   // Clear stale chips when keyword changes.
+  const kw = (document.getElementById('csKeyword')?.value || '').trim();
   const chips = document.getElementById('csRelatedChips');
   if (chips && chips.dataset.forKw && chips.dataset.forKw !== kw.toLowerCase()) chips.innerHTML = '';
+}
+
+function _csFocusAndFlash(elId, msg) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.focus();
+  try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+  const orig = el.style.boxShadow;
+  el.style.boxShadow = '0 0 0 3px rgba(239,68,68,.45)';
+  setTimeout(() => { el.style.boxShadow = orig; }, 1600);
+  if (msg) _flashHint(msg);
 }
 
 async function loadRelatedKeywords() {
   const kw = (document.getElementById('csKeyword')?.value || '').trim();
   const chips = document.getElementById('csRelatedChips');
   const btn = document.getElementById('csSuggestBtn');
-  if (!kw || kw.length < 2 || !chips) return;
+  if (!kw || kw.length < 2) {
+    _csFocusAndFlash('csKeyword', '⚠️ Type a target keyword first, then click Suggest related.');
+    return;
+  }
+  if (!chips) return;
   // Use the first selected country (or US) for regional volume context.
   const country = window._csSelectedCountries[0] || 'US';
   if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
@@ -28815,9 +28829,22 @@ async function runContentScorer() {
   const out   = document.getElementById('csResult');
   const btn   = document.getElementById('csRunBtn');
   const allSelected = (window._csSelectedCountries || []).slice();
-  if (!kw)                 { out.innerHTML = `<div class="cs-warn">Enter a target keyword first.</div>`; return; }
-  if (!allSelected.length) { out.innerHTML = `<div class="cs-warn">Pick at least one country.</div>`; return; }
-  if (!url && !draft)      { out.innerHTML = `<div class="cs-warn">Enter your page URL or paste a draft.</div>`; return; }
+  if (!kw) {
+    out.innerHTML = `<div class="cs-warn">⚠️ Enter a target keyword first.</div>`;
+    _csFocusAndFlash('csKeyword', '⚠️ Enter a target keyword first.');
+    return;
+  }
+  if (!allSelected.length) {
+    out.innerHTML = `<div class="cs-warn">⚠️ Pick at least one country.</div>`;
+    _flashHint('⚠️ Pick at least one country.');
+    try { document.getElementById('csCountryToggle')?.scrollIntoView({ behavior:'smooth', block:'center' }); } catch(_){}
+    return;
+  }
+  if (!url && !draft) {
+    out.innerHTML = `<div class="cs-warn">⚠️ Enter your page URL or paste a draft.</div>`;
+    _csFocusAndFlash('csUrl', '⚠️ Enter your page URL or paste a draft below.');
+    return;
+  }
   // Trim oversize selections to the top CS_MAX_COUNTRIES by market priority.
   const { kept: countries, dropped } = _csTrimToCap(allSelected);
   let trimNotice = '';
