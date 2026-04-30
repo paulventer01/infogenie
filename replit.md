@@ -180,7 +180,15 @@ Added 10 new modules in cache buster `v=20260425Q`. All client-side, simulated f
 - **Content persistence** (app.js lines 188-235): The Master Calendar reads `_socialPosts` / `_launchedCampaigns` / `_autoSeoArticles` / `_autoSeoSchedule` — but those were in-memory only, so refreshes wiped them and the calendar showed zeros. Added a 1.5s polling loop that JSON-stringifies each tracked window var and writes only when changed. Restores on DOMContentLoaded BEFORE other init handlers (registered first at top of file) so the module-load resets don't clobber persisted values.
 
 ## Cache-buster
-- Bumped to `v=20260428AF` (next bump → `AG`).
+- Bumped to `v=20260430L` (next bump → `M`).
+
+## Mention Tracker + Content Gaps auto-fill (added 2026-04-30)
+- **Helpers in app.js (~line 29388)**: `_getDomainFromAnalysis()`, `_getBrandFromAnalysis()`, `_getCompetitorsFromAnalysis()` derive brand/domain/competitors from `window.analysisData` (set on home-page analysis at app.js ~3239). Sector-only analyses skip the URL-derived fields.
+- **Reusable multi-select component**: `_igMultiselect`/`_igMultiselectInit`/`_igMultiselectToggle`/`_igMultiselectFlip`/`_igMultiselectAll`/`_igMultiselectRefreshTrigger`. Click-only dropdown panel with checkboxes + "Select all" header. State stored in `window[stateKey]` arrays. Registry in `window._igMultiselectMeta`.
+- **Mention Tracker** (`buildMentionTracker`): brand auto-fills from analysis, competitors are a multi-select prepopulated with all detected competitors (cap 4 sent to API). Country is now multi-select with ~50 entries plus 🌍 Global at the top (default = `GLOBAL`). State keys: `_mtSelectedComps`, `_mtSelectedCountries`. `runMentionTracker` runs one `/api/mentions` call per selected country in parallel and merges results client-side (dedupe by URL, recompute SoV/sentiment/topSources). When `GLOBAL` is selected with other countries, only `GLOBAL` is used to avoid duplicate news.
+- **Server `/api/mentions`** (server.js ~9531): accepts `country='GLOBAL'|'WORLDWIDE'|'ALL'` and omits `location_code` from the DataForSEO request entirely (DFS treats missing location as worldwide; passing 0 is rejected).
+- **Content Gaps** (`buildContentGaps`): domain auto-fills from analysis, competitors are a multi-select of detected competitor **domains** (cap 4). State key: `_cgSelectedComps`. `runContentGaps` reads from the array.
+- **Edit-tracking flags**: `window._mtSelectedCompsTouched` / `_mtSelectedCountriesTouched` / `_cgSelectedCompsTouched` prevent repopulating the dropdown after the user has manually deselected entries.
 
 ## Three Standout Features (added 2026-04-28 — server.js ~7000-7340, app.js end, index.html)
 ### 1. Blended Performance / CAC (the "ground truth" tile)

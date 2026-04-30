@@ -9526,7 +9526,12 @@ app.post('/api/mentions', async (req, res) => {
       .slice(0, 4);
 
     const country = String(body.country || 'US').toUpperCase();
-    const locCode = _COUNTRY_TO_DFS_LOC[country] || 2840;
+    // GLOBAL = no location filter → DataForSEO returns worldwide Google News
+    // results. We omit location_code from the request payload entirely in
+    // that case (instead of passing 0) since DFS treats missing location as
+    // worldwide while 0 is rejected as invalid.
+    const isGlobal = country === 'GLOBAL' || country === 'WORLDWIDE' || country === 'ALL';
+    const locCode = isGlobal ? null : (_COUNTRY_TO_DFS_LOC[country] || 2840);
     const days    = Math.max(1, Math.min(90, parseInt(body.days, 10) || 30));
     const allBrands = [brand, ...competitors];
 
@@ -9536,9 +9541,11 @@ app.post('/api/mentions', async (req, res) => {
 
     const fetchBrandNews = async (name) => {
       try {
+        const dfsParams = { keyword:`"${name}"`, language_code:'en', depth:20 };
+        if (locCode != null) dfsParams.location_code = locCode;
         const raw = await callDataForSEO(
           '/v3/serp/google/news/live/advanced',
-          [{ keyword:`"${name}"`, language_code:'en', location_code:locCode, depth:20 }],
+          [dfsParams],
           8000
         );
         const items = raw?.tasks?.[0]?.result?.[0]?.items;

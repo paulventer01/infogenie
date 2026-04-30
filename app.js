@@ -29383,47 +29383,237 @@ function _csCountryHtml(j, targetSummary, generatedAt, isMulti) {
 }
 
 /* =============================================================================
+   ANALYSIS-DERIVED HELPERS — pull "Your brand", "Your domain" and the list
+   of detected competitors from the home-page analysis (analysisData) so the
+   Mention Tracker / Content Gaps views are pre-filled with real context
+   instead of empty placeholders.
+   ============================================================================= */
+function _getDomainFromAnalysis() {
+  // analysisData.url is the cleaned domain entered on the home page (e.g.
+  // "fxpro.com"). When the user typed a sector instead of a URL,
+  // analysisData.sectorOnly is true and url contains a placeholder — return
+  // empty so the input keeps its placeholder rather than showing junk.
+  try {
+    const a = window.analysisData || null;
+    if (!a || a.sectorOnly) return '';
+    const raw = String(a.url || '').replace(/^https?:\/\//i, '').replace(/\/$/, '').split('/')[0].toLowerCase();
+    return raw && /\./.test(raw) ? raw : '';
+  } catch (_) { return ''; }
+}
+function _getBrandFromAnalysis() {
+  // Brand-display name. For sector-only analyses use the sector name. For URL
+  // analyses use the brand stem (first label of the registrable domain) with
+  // first letter uppercased — "fxpro.com" → "Fxpro", "acme-corp.io" → "Acme-corp".
+  try {
+    const a = window.analysisData || null;
+    if (!a) return '';
+    if (a.sectorOnly) return String(a.industry?.name || a.url || '').replace(/^#/, '').trim();
+    const dom = _getDomainFromAnalysis();
+    if (!dom) return '';
+    const stem = dom.replace(/^www\./, '').split('.')[0];
+    return stem ? stem.charAt(0).toUpperCase() + stem.slice(1) : '';
+  } catch (_) { return ''; }
+}
+function _getCompetitorsFromAnalysis() {
+  // Returns array of { name, domain } for every detected competitor (manual
+  // and auto-detected). Both fields are lowercased/cleaned. Caller decides
+  // whether to display name (Mention Tracker) or domain (Content Gaps).
+  try {
+    const list = (window.analysisData && Array.isArray(window.analysisData.competitors))
+      ? window.analysisData.competitors : [];
+    return list.map(c => {
+      if (typeof c === 'string') {
+        const d = c.replace(/^https?:\/\//i,'').replace(/\/$/,'').split('/')[0].toLowerCase();
+        return { name: d.split('.')[0], domain: d };
+      }
+      const name = String(c.name || '').trim();
+      const domain = String(c.domain || c.url || '').replace(/^https?:\/\//i,'').replace(/\/$/,'').split('/')[0].toLowerCase();
+      return { name: name || domain.split('.')[0], domain };
+    }).filter(c => c.name || c.domain);
+  } catch (_) { return []; }
+}
+
+/* Reusable multi-select dropdown. Click the trigger to open a panel of
+ * checkboxes (with a "Select all" toggle). Selected values are surfaced via
+ * `_igMultiselectValues(stateKey)` and stored on `window[stateKey]` (an
+ * array). Pure-DOM, no framework. The trigger button shows a live summary
+ * ("All 3 selected" / "2 selected" / "Select competitors").
+ *
+ *  options       — [{ value, label }]
+ *  stateKey      — name of the global array that holds the current selection
+ *  emptyLabel    — text shown when nothing is selected
+ *  onChange      — optional callback after a value flips
+ */
+function _igMultiselect({ id, options, stateKey, emptyLabel = 'Select…', onChange }) {
+  if (!Array.isArray(window[stateKey])) window[stateKey] = [];
+  const selected = window[stateKey];
+  const summary = (() => {
+    if (!options.length) return 'No options available';
+    if (selected.length === 0) return emptyLabel;
+    if (selected.length === options.length) return `All ${options.length} selected`;
+    if (selected.length === 1) {
+      const o = options.find(x => x.value === selected[0]);
+      return o ? o.label : '1 selected';
+    }
+    return `${selected.length} of ${options.length} selected`;
+  })();
+  return `
+    <div class="ig-ms" data-ig-ms="${_esc(id)}" style="position:relative">
+      <button type="button" id="${_esc(id)}-trigger" class="ig-ms-trigger" onclick="_igMultiselectToggle('${_esc(id)}')" style="width:100%;padding:9px 12px;border:1px solid #CBD5E1;border-radius:7px;background:white;text-align:left;font-size:0.85rem;color:${selected.length?'#0F172A':'#94A3B8'};cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(summary)}</span>
+        <span style="color:#64748B;flex-shrink:0">▾</span>
+      </button>
+      <div id="${_esc(id)}-panel" class="ig-ms-panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:white;border:1px solid #CBD5E1;border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.12);z-index:50;max-height:280px;overflow-y:auto">
+        ${options.length === 0
+          ? `<div style="padding:14px;color:#94A3B8;font-size:0.82rem;text-align:center">No competitors detected — run a website analysis on the home page first.</div>`
+          : `<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #F1F5F9;cursor:pointer;font-size:0.82rem;font-weight:700;color:#0F172A;background:#F8FAFC">
+              <input type="checkbox" id="${_esc(id)}-all" ${selected.length === options.length ? 'checked' : ''} onchange="_igMultiselectAll('${_esc(id)}', this.checked)">
+              Select all
+            </label>
+            ${options.map(o => `
+              <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;font-size:0.82rem;color:#0F172A;border-bottom:1px solid #F8FAFC">
+                <input type="checkbox" class="ig-ms-opt" data-value="${_esc(o.value)}" ${selected.includes(o.value) ? 'checked' : ''} onchange="_igMultiselectFlip('${_esc(id)}', '${_esc(o.value)}', this.checked)">
+                <span>${_esc(o.label)}</span>
+              </label>`).join('')}`}
+      </div>
+    </div>`;
+}
+window._igMultiselectMeta = window._igMultiselectMeta || {};
+function _igMultiselectInit({ id, options, stateKey, emptyLabel, onChange }) {
+  window._igMultiselectMeta[id] = { options, stateKey, emptyLabel, onChange };
+}
+function _igMultiselectToggle(id) {
+  // Close any other open panels first so only one is visible at a time.
+  document.querySelectorAll('.ig-ms-panel').forEach(p => { if (p.id !== `${id}-panel`) p.style.display = 'none'; });
+  const p = document.getElementById(`${id}-panel`);
+  if (!p) return;
+  p.style.display = p.style.display === 'block' ? 'none' : 'block';
+  if (p.style.display === 'block') {
+    setTimeout(() => {
+      const off = (e) => {
+        const root = document.querySelector(`[data-ig-ms="${id}"]`);
+        if (!root || !root.contains(e.target)) {
+          p.style.display = 'none';
+          document.removeEventListener('click', off);
+        }
+      };
+      document.addEventListener('click', off);
+    }, 0);
+  }
+}
+function _igMultiselectFlip(id, value, checked) {
+  const meta = window._igMultiselectMeta[id];
+  if (!meta) return;
+  const arr = window[meta.stateKey] || (window[meta.stateKey] = []);
+  if (checked && !arr.includes(value)) arr.push(value);
+  else if (!checked) {
+    const i = arr.indexOf(value);
+    if (i >= 0) arr.splice(i, 1);
+  }
+  _igMultiselectRefreshTrigger(id);
+  if (typeof meta.onChange === 'function') meta.onChange(arr);
+}
+function _igMultiselectAll(id, checked) {
+  const meta = window._igMultiselectMeta[id];
+  if (!meta) return;
+  window[meta.stateKey] = checked ? meta.options.map(o => o.value) : [];
+  // Sync visible checkboxes
+  document.querySelectorAll(`#${id}-panel .ig-ms-opt`).forEach(cb => { cb.checked = checked; });
+  _igMultiselectRefreshTrigger(id);
+  if (typeof meta.onChange === 'function') meta.onChange(window[meta.stateKey]);
+}
+function _igMultiselectRefreshTrigger(id) {
+  const meta = window._igMultiselectMeta[id];
+  if (!meta) return;
+  const trigger = document.getElementById(`${id}-trigger`);
+  if (!trigger) return;
+  const selected = window[meta.stateKey] || [];
+  let summary;
+  if (!meta.options.length) summary = 'No options available';
+  else if (selected.length === 0) summary = meta.emptyLabel;
+  else if (selected.length === meta.options.length) summary = `All ${meta.options.length} selected`;
+  else if (selected.length === 1) {
+    const o = meta.options.find(x => x.value === selected[0]);
+    summary = o ? o.label : '1 selected';
+  } else summary = `${selected.length} of ${meta.options.length} selected`;
+  const span = trigger.querySelector('span:first-child');
+  if (span) span.textContent = summary;
+  trigger.style.color = selected.length ? '#0F172A' : '#94A3B8';
+  // Sync the "Select all" checkbox header
+  const allCb = document.getElementById(`${id}-all`);
+  if (allCb) allCb.checked = selected.length === meta.options.length && meta.options.length > 0;
+}
+
+/* =============================================================================
    FEATURE 1: MENTION TRACKER + SENTIMENT
    ============================================================================= */
 window._mentionsState = { brand:'', competitors:[], country:'US', days:30, data:null, loading:false };
+window._mtSelectedComps = window._mtSelectedComps || [];
+window._mtSelectedCountries = window._mtSelectedCountries || [];
 
 function buildMentionTracker() {
   const wrap = document.getElementById('mentionsWrap');
   if (!wrap) return;
-  // Auto-fill from last analysis if available
+  // ── Auto-derive from analysisData (set by the home-page "enter a website
+  // or sector" analysis). Falls back to currentCampaign for legacy state.
   const camp = window.currentCampaign || {};
-  const brand     = window._mentionsState.brand || camp.brand || camp.businessName || '';
-  const country   = window._mentionsState.country || camp.country || 'US';
-  const competitors = window._mentionsState.competitors.length
-    ? window._mentionsState.competitors
-    : (Array.isArray(camp.competitors) ? camp.competitors.slice(0,4).map(c => typeof c === 'string' ? c : (c.name || '')).filter(Boolean) : []);
-  window._mentionsState.brand = brand;
-  window._mentionsState.competitors = competitors;
-  window._mentionsState.country = country;
+  const analysisBrand = _getBrandFromAnalysis();
+  const brand = window._mentionsState.brand || analysisBrand || camp.brand || camp.businessName || '';
 
+  const detectedCompetitors = _getCompetitorsFromAnalysis();
+  const competitorOptions = detectedCompetitors.map(c => ({ value: c.name, label: c.name }));
+  // First time visiting after an analysis: pre-select every detected competitor
+  // (matches what the user expects when they see the dropdown auto-populated).
+  if (window._mtSelectedComps.length === 0 && competitorOptions.length > 0 && !window._mtSelectedCompsTouched) {
+    window._mtSelectedComps = competitorOptions.map(o => o.value).slice(0, 4);
+  }
+
+  // Country list — broad coverage with a GLOBAL option that omits the
+  // location filter on the server. Synced with server _COUNTRY_TO_DFS_LOC.
   const COUNTRIES = [
-    ['US','United States'],['GB','United Kingdom'],['CA','Canada'],['AU','Australia'],
-    ['DE','Germany'],['FR','France'],['ES','Spain'],['IT','Italy'],['NL','Netherlands'],
-    ['SE','Sweden'],['JP','Japan'],['IN','India'],['SG','Singapore'],['BR','Brazil'],
-    ['MX','Mexico'],['ZA','South Africa'],['AE','UAE'],['NZ','New Zealand']
+    ['GLOBAL','🌍 Global (worldwide)'],
+    ['US','United States'],['GB','United Kingdom'],['CA','Canada'],['AU','Australia'],['NZ','New Zealand'],['IE','Ireland'],
+    ['DE','Germany'],['FR','France'],['ES','Spain'],['IT','Italy'],['NL','Netherlands'],['BE','Belgium'],['CH','Switzerland'],['AT','Austria'],['PT','Portugal'],
+    ['SE','Sweden'],['NO','Norway'],['DK','Denmark'],['FI','Finland'],['PL','Poland'],['CZ','Czech Republic'],['HU','Hungary'],['RO','Romania'],['GR','Greece'],['UA','Ukraine'],['RU','Russia'],
+    ['JP','Japan'],['KR','South Korea'],['IN','India'],['SG','Singapore'],['MY','Malaysia'],['TH','Thailand'],['ID','Indonesia'],['PH','Philippines'],['VN','Vietnam'],
+    ['BR','Brazil'],['MX','Mexico'],['AR','Argentina'],['CL','Chile'],['CO','Colombia'],
+    ['ZA','South Africa'],['NG','Nigeria'],['KE','Kenya'],['EG','Egypt'],
+    ['AE','UAE'],['SA','Saudi Arabia'],['IL','Israel'],['TR','Turkey']
   ];
-  const countryOpts = COUNTRIES.map(([c,n]) =>
-    `<option value="${c}" ${c===country?'selected':''}>${_esc(n)}</option>`
-  ).join('');
+  const countryOptions = COUNTRIES.map(([code, label]) => ({ value: code, label }));
+  // Default: "Global" so users without prior preference get worldwide coverage.
+  if (window._mtSelectedCountries.length === 0 && !window._mtSelectedCountriesTouched) {
+    const initialCountry = window._mentionsState.country || 'GLOBAL';
+    window._mtSelectedCountries = [initialCountry];
+  }
+
+  // Register multiselect metadata so the toggle/all/flip helpers can find them.
+  _igMultiselectInit({
+    id: 'mtComps', options: competitorOptions, stateKey: '_mtSelectedComps',
+    emptyLabel: detectedCompetitors.length ? 'Select competitors' : 'No competitors detected yet',
+    onChange: () => { window._mtSelectedCompsTouched = true; },
+  });
+  _igMultiselectInit({
+    id: 'mtCountry', options: countryOptions, stateKey: '_mtSelectedCountries',
+    emptyLabel: 'Select country / region',
+    onChange: () => { window._mtSelectedCountriesTouched = true; },
+  });
+
+  window._mentionsState.brand = brand;
 
   wrap.innerHTML = `
     <div class="mt-controls">
       <div class="mt-control">
         <label class="mt-lbl">Your brand</label>
-        <input id="mtBrand" type="text" class="mt-input" placeholder="Acme Inc" value="${_esc(brand)}" maxlength="80" />
+        <input id="mtBrand" type="text" class="mt-input" placeholder="Acme Inc" value="${_esc(brand)}" maxlength="80" title="${analysisBrand ? `Auto-filled from your home-page analysis (${_esc(analysisBrand)})` : 'Type your brand name'}" />
       </div>
       <div class="mt-control" style="flex:2">
-        <label class="mt-lbl">Competitors (up to 4, comma-separated)</label>
-        <input id="mtComps" type="text" class="mt-input" placeholder="competitor1, competitor2" value="${_esc(competitors.join(', '))}" maxlength="320" />
+        <label class="mt-lbl">Competitors ${detectedCompetitors.length ? `· <span style="font-weight:400;color:#64748B">${detectedCompetitors.length} detected from your analysis</span>` : ''}</label>
+        ${_igMultiselect({ id:'mtComps', options:competitorOptions, stateKey:'_mtSelectedComps', emptyLabel: detectedCompetitors.length ? 'Select competitors' : 'No competitors detected yet' })}
       </div>
-      <div class="mt-control" style="flex:0 0 160px">
-        <label class="mt-lbl">Country</label>
-        <select id="mtCountry" class="mt-input">${countryOpts}</select>
+      <div class="mt-control" style="flex:0 0 220px">
+        <label class="mt-lbl">Country / region</label>
+        ${_igMultiselect({ id:'mtCountry', options:countryOptions, stateKey:'_mtSelectedCountries', emptyLabel:'Select country / region' })}
       </div>
       <div class="mt-control" style="flex:0 0 110px">
         <label class="mt-lbl">Window</label>
@@ -29442,35 +29632,119 @@ function buildMentionTracker() {
     <div id="mtResults" style="margin-top:24px"></div>
   `;
   if (brand) {
-    document.getElementById('mtResults').innerHTML = `<div class="mt-empty">Click <strong>Pull mentions</strong> to analyse coverage for <strong>${_esc(brand)}</strong>.</div>`;
+    document.getElementById('mtResults').innerHTML = `<div class="mt-empty">Click <strong>Pull mentions</strong> to analyse coverage for <strong>${_esc(brand)}</strong>${competitorOptions.length ? ` and ${window._mtSelectedComps.length} competitor${window._mtSelectedComps.length===1?'':'s'}` : ''}.</div>`;
   } else {
-    document.getElementById('mtResults').innerHTML = `<div class="mt-empty">Enter your brand name above and click <strong>Pull mentions</strong> to start.</div>`;
+    document.getElementById('mtResults').innerHTML = `<div class="mt-empty">Run an analysis on the home page first, or type your brand name above and click <strong>Pull mentions</strong>.</div>`;
   }
 }
 
 async function runMentionTracker() {
   const brand = (document.getElementById('mtBrand')?.value || '').trim();
-  const compsRaw = (document.getElementById('mtComps')?.value || '').trim();
-  const country = document.getElementById('mtCountry')?.value || 'US';
+  const competitors = (window._mtSelectedComps || []).slice(0, 4);
+  // Country selection is now multi-select. The /api/mentions endpoint accepts
+  // a single country code per call, so we run one call per selected country
+  // and merge the results client-side. "GLOBAL" alone is the default.
+  let countries = (window._mtSelectedCountries || []).slice();
+  if (!countries.length) countries = ['GLOBAL'];
+  // If user picked GLOBAL alongside specific countries, GLOBAL alone subsumes
+  // the others — just use GLOBAL to avoid duplicate news being merged.
+  if (countries.includes('GLOBAL')) countries = ['GLOBAL'];
   const days = parseInt(document.getElementById('mtDays')?.value || '30', 10) || 30;
-  const competitors = compsRaw ? compsRaw.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4) : [];
   if (!brand) { showToast('⚠️ Enter your brand name'); return; }
 
-  window._mentionsState = { brand, competitors, country, days, data:null, loading:true };
+  window._mentionsState = { brand, competitors, country: countries[0], days, data:null, loading:true };
   const btn = document.getElementById('mtRun');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Pulling…'; }
   const results = document.getElementById('mtResults');
-  if (results) results.innerHTML = `<div class="mt-loading">⏳ Pulling Google News for ${[brand, ...competitors].length} brand${competitors.length?'s':''}, then classifying sentiment…</div>`;
+  if (results) results.innerHTML = `<div class="mt-loading">⏳ Pulling Google News for ${[brand, ...competitors].length} brand${competitors.length?'s':''} across ${countries.length} ${countries.length===1?'region':'regions'}, then classifying sentiment…</div>`;
 
   try {
-    const r = await fetch('/api/mentions', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ brand, competitors, country, days })
-    });
-    const j = await r.json();
-    if (!j.ok) throw new Error(j.error || 'Failed to fetch mentions');
-    window._mentionsState.data = j;
-    renderMentionResults(j);
+    // Run one /api/mentions call per selected country, in parallel. Merge
+    // mentions and recompute sentiment / SoV / topSources from the union.
+    const responses = await Promise.all(countries.map(country =>
+      fetch('/api/mentions', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ brand, competitors, country, days }),
+      }).then(r => r.json()).catch(e => ({ ok:false, error: e.message }))
+    ));
+    const ok = responses.find(r => r.ok);
+    if (!ok) throw new Error((responses.find(r => !r.ok) || {}).error || 'Failed to fetch mentions');
+    let merged;
+    if (responses.length === 1) {
+      merged = responses[0];
+    } else {
+      // Multi-country merge. Dedupe by **brand + normalized url** so the same
+      // article appearing under two different brand queries (or the same
+      // brand in two regions) is only counted once for that brand. Output
+      // matches the server's response shape exactly so renderMentionResults
+      // works unchanged: `sov` is a daily timeline `[{date, byBrand}]`.
+      const seen = new Set();
+      const allMentions = [];
+      const byBrand = {};
+      const byBrandSent = {};
+      const sentiment = { positive:0, neutral:0, negative:0 };
+      const sourceCount = {};
+      const allBrands = [brand, ...competitors];
+      allBrands.forEach(b => {
+        byBrand[b] = 0;
+        byBrandSent[b] = { positive:0, neutral:0, negative:0 };
+      });
+      responses.filter(r => r.ok).forEach(r => {
+        (r.mentions || []).forEach(m => {
+          const urlKey = String(m.url || '').toLowerCase().replace(/[?#].*$/, '');
+          const key = `${m.brand}::${urlKey}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          allMentions.push(m);
+          if (m.brand) {
+            byBrand[m.brand] = (byBrand[m.brand] || 0) + 1;
+            byBrandSent[m.brand] = byBrandSent[m.brand] || { positive:0, neutral:0, negative:0 };
+            const s = (m.sentiment || 'neutral');
+            byBrandSent[m.brand][s] = (byBrandSent[m.brand][s] || 0) + 1;
+            sentiment[s] = (sentiment[s] || 0) + 1;
+          }
+          if (m.source) sourceCount[m.source] = (sourceCount[m.source] || 0) + 1;
+        });
+      });
+      // Sort newest-first to match server behaviour
+      allMentions.sort((a, b) => {
+        const ta = a.date ? Date.parse(a.date) : 0;
+        const tb = b.date ? Date.parse(b.date) : 0;
+        return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta);
+      });
+      // Build daily SoV buckets in the same shape the renderer expects
+      const today = new Date(); today.setUTCHours(0,0,0,0);
+      const sov = [];
+      for (let d = days - 1; d >= 0; d--) {
+        const dt = new Date(today.getTime() - d * 86400000);
+        const bucket = { date: dt.toISOString().slice(0, 10), byBrand: {} };
+        allBrands.forEach(b => { bucket.byBrand[b] = 0; });
+        sov.push(bucket);
+      }
+      allMentions.forEach(m => {
+        if (!m.date) return;
+        const t = Date.parse(m.date);
+        if (isNaN(t)) return;
+        const dt = new Date(t); dt.setUTCHours(0,0,0,0);
+        const key = dt.toISOString().slice(0, 10);
+        const bucket = sov.find(b => b.date === key);
+        if (bucket && m.brand) bucket.byBrand[m.brand] = (bucket.byBrand[m.brand] || 0) + 1;
+      });
+      const topSources = Object.entries(sourceCount)
+        .map(([source, count]) => ({ source, count }))
+        .sort((a,b) => b.count - a.count)
+        .slice(0, 12);
+      merged = {
+        ok: true, brand, competitors, country: countries.join('+'), days,
+        mentions: allMentions, byBrand, byBrandSent, sentiment, sov, topSources,
+        total: allMentions.length,
+        dataOrigin: `DataForSEO Google News (${countries.length} regions merged, ${allMentions.length} mentions) + AI sentiment`,
+        dataSource: 'DataForSEO + AI-verified',
+        confidence: allMentions.length >= 10 ? 'high' : allMentions.length >= 3 ? 'medium' : 'low',
+      };
+    }
+    window._mentionsState.data = merged;
+    renderMentionResults(merged);
   } catch (e) {
     if (results) results.innerHTML = `<div class="mt-error">⚠️ ${_esc(e.message)}</div>`;
   } finally {
@@ -29728,27 +30002,42 @@ setInterval(() => { if (document.visibilityState === 'visible') loadAlertsList()
    FEATURE 3: AI CONTENT-GAP IDEATION
    ============================================================================= */
 window._gapsState = { domain:'', competitors:[], data:null };
+window._cgSelectedComps = window._cgSelectedComps || [];
 
 function buildContentGaps() {
   const wrap = document.getElementById('contentGapsWrap');
   if (!wrap) return;
+  // ── Auto-derive from analysisData (set on the home page) so "Your domain"
+  // and the competitor dropdown show real values immediately.
+  const analysisDomain = _getDomainFromAnalysis();
   const camp = window.currentCampaign || {};
-  const domain = window._gapsState.domain || (camp.domain || camp.url || '').replace(/^https?:\/\//,'').replace(/\/$/,'').split('/')[0] || '';
-  const competitors = window._gapsState.competitors.length
-    ? window._gapsState.competitors
-    : (Array.isArray(camp.competitors) ? camp.competitors.slice(0,4).map(c => (typeof c === 'string' ? c : (c.domain || c.url || ''))).map(d => d.replace(/^https?:\/\//,'').replace(/\/$/,'').split('/')[0]).filter(Boolean) : []);
+  const domain = window._gapsState.domain
+    || analysisDomain
+    || (camp.domain || camp.url || '').replace(/^https?:\/\//,'').replace(/\/$/,'').split('/')[0]
+    || '';
+
+  const detectedCompetitors = _getCompetitorsFromAnalysis().filter(c => c.domain);
+  const competitorOptions = detectedCompetitors.map(c => ({ value: c.domain, label: c.domain }));
+  if (window._cgSelectedComps.length === 0 && competitorOptions.length > 0 && !window._cgSelectedCompsTouched) {
+    window._cgSelectedComps = competitorOptions.map(o => o.value).slice(0, 4);
+  }
+  _igMultiselectInit({
+    id: 'cgComps', options: competitorOptions, stateKey: '_cgSelectedComps',
+    emptyLabel: detectedCompetitors.length ? 'Select competitor domains' : 'No competitors detected yet',
+    onChange: () => { window._cgSelectedCompsTouched = true; },
+  });
+
   window._gapsState.domain = domain;
-  window._gapsState.competitors = competitors;
 
   wrap.innerHTML = `
     <div class="cg-controls">
       <div class="cg-control">
         <label class="cg-lbl">Your domain</label>
-        <input id="cgDomain" type="text" class="cg-input" placeholder="example.com" value="${_esc(domain)}" maxlength="120" />
+        <input id="cgDomain" type="text" class="cg-input" placeholder="example.com" value="${_esc(domain)}" maxlength="120" title="${analysisDomain ? `Auto-filled from your home-page analysis (${_esc(analysisDomain)})` : 'Type a domain'}" />
       </div>
       <div class="cg-control" style="flex:2">
-        <label class="cg-lbl">Competitor domains (up to 4, comma-separated)</label>
-        <input id="cgComps" type="text" class="cg-input" placeholder="competitor1.com, competitor2.com" value="${_esc(competitors.join(', '))}" maxlength="320" />
+        <label class="cg-lbl">Competitor domains ${detectedCompetitors.length ? `· <span style="font-weight:400;color:#64748B">${detectedCompetitors.length} detected from your analysis</span>` : ''}</label>
+        ${_igMultiselect({ id:'cgComps', options:competitorOptions, stateKey:'_cgSelectedComps', emptyLabel: detectedCompetitors.length ? 'Select competitor domains' : 'No competitors detected yet' })}
       </div>
       <div class="cg-control" style="flex:0 0 auto;display:flex;align-items:flex-end">
         <button class="cg-btn-run" id="cgRun" onclick="runContentGaps()">🧩 Find gaps</button>
@@ -29756,19 +30045,19 @@ function buildContentGaps() {
     </div>
     <div id="cgResults" style="margin-top:24px"></div>
   `;
-  if (domain && competitors.length) {
-    document.getElementById('cgResults').innerHTML = `<div class="cg-empty">Click <strong>Find gaps</strong> to compare <strong>${_esc(domain)}</strong> vs ${competitors.length} competitor${competitors.length>1?'s':''}.</div>`;
+  if (domain && (window._cgSelectedComps.length || competitorOptions.length)) {
+    const n = window._cgSelectedComps.length;
+    document.getElementById('cgResults').innerHTML = `<div class="cg-empty">Click <strong>Find gaps</strong> to compare <strong>${_esc(domain)}</strong>${n ? ` vs ${n} competitor${n>1?'s':''}` : ''}.</div>`;
   } else {
-    document.getElementById('cgResults').innerHTML = `<div class="cg-empty">Enter your domain and at least one competitor, then click <strong>Find gaps</strong>.</div>`;
+    document.getElementById('cgResults').innerHTML = `<div class="cg-empty">Run an analysis on the home page first, or enter your domain and pick at least one competitor, then click <strong>Find gaps</strong>.</div>`;
   }
 }
 
 async function runContentGaps() {
   const domain = (document.getElementById('cgDomain')?.value || '').trim();
-  const compsRaw = (document.getElementById('cgComps')?.value || '').trim();
-  const competitors = compsRaw ? compsRaw.split(',').map(s => s.trim()).filter(Boolean).slice(0, 4) : [];
+  const competitors = (window._cgSelectedComps || []).slice(0, 4);
   if (!domain) { showToast('⚠️ Enter your domain'); return; }
-  if (!competitors.length) { showToast('⚠️ Enter at least one competitor'); return; }
+  if (!competitors.length) { showToast('⚠️ Pick at least one competitor from the dropdown'); return; }
   window._gapsState = { domain, competitors, data:null };
 
   const btn = document.getElementById('cgRun');
