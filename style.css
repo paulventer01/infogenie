@@ -6391,7 +6391,8 @@ h3:hover {
 [data-theme="light"] .roi-sub         { color: rgba(255,255,255,.65) !important; }
 [data-theme="light"] .roi-metric-lbl  { color: rgba(255,255,255,.7) !important; }
 [data-theme="light"] .roi-label       { color: #00C9C8 !important; }
-[data-theme="light"] .ich-sub         { color: #64748B !important; }
+/* .ich-sub kept WHITE in light theme — header background is dark navy in both themes */
+[data-theme="light"] .ich-sub         { color: rgba(255,255,255,.75) !important; }
 [data-theme="light"] .loading-brand   { color: #0A1628 !important; }
 [data-theme="light"] .loading-title   { color: #64748B !important; }
 [data-theme="light"] .lstep-text strong { color: #FFFFFF !important; }
@@ -6707,11 +6708,12 @@ h3:hover {
   color: #0A1628 !important;
 }
 
-/* CLASS-BASED white text — sweep common patterns */
+/* CLASS-BASED white text — sweep common patterns.
+   NOTE: .ich-title / .ich-sub are EXCLUDED from this sweep because the
+   .integ-category-header parent keeps a dark-navy gradient background in
+   BOTH themes, so we must keep the text white in light mode too. */
 [data-theme="light"] .serp-meta-query,
 [data-theme="light"] .serp-result-snippet,
-[data-theme="light"] .ich-sub,
-[data-theme="light"] .ich-title,
 [data-theme="light"] .cs-title,
 [data-theme="light"] .cs-sub,
 [data-theme="light"] .kpi-title,
@@ -6733,8 +6735,12 @@ h3:hover {
   color: #0A1628 !important;
 }
 
+/* Force .ich-title / .ich-sub to stay white in light theme since the
+   parent header gradient is dark navy in both themes. */
+[data-theme="light"] .ich-title { color: #FFFFFF !important; }
+[data-theme="light"] .ich-sub   { color: rgba(255,255,255,.75) !important; }
+
 /* Sub-titles / muted subtext */
-[data-theme="light"] .ich-sub,
 [data-theme="light"] .cs-sub,
 [data-theme="light"] .kpi-sub,
 [data-theme="light"] .cal-sub,

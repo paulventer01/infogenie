@@ -6578,8 +6578,8 @@ function buildContent() {
     }).join('');
     return `
     <div style="background:linear-gradient(135deg,#064E3B,#065F46);border-radius:20px;padding:24px 28px;margin-bottom:24px">
-      <div style="font-family:Sora,sans-serif;font-size:1.15rem;font-weight:800;color:white;margin-bottom:4px">🎯 Viral Content Funnel Planner</div>
-      <div style="font-size:0.78rem;color:rgba(255,255,255,.7)">5-stage Instagram growth framework — map every post to a stage and build a funnel that converts strangers into brand evangelists</div>
+      <div style="font-family:Sora,sans-serif;font-size:1.15rem;font-weight:800;color:#FFFFFF;margin-bottom:6px">🎯 Viral Content Funnel Planner</div>
+      <div style="font-size:0.85rem;color:#D1FAE5;line-height:1.5">5-stage Instagram growth framework — map every post to a stage and build a funnel that converts strangers into brand evangelists</div>
     </div>
     ${stagePanels}`;
   })();
@@ -29976,7 +29976,9 @@ function renderMentionResults(d) {
       </div>
       <div class="mt-card mt-card-wide">
         <h4 class="mt-h">Daily share-of-voice — last ${d.days} days</h4>
-        <canvas id="mtSovChart" height="120"></canvas>
+        <div style="position:relative;height:280px;width:100%">
+          <canvas id="mtSovChart"></canvas>
+        </div>
       </div>
       <div class="mt-card mt-card-wide">
         <h4 class="mt-h">Recent mentions (${d.mentions.length})</h4>
