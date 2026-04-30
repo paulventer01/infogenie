@@ -6490,7 +6490,7 @@ function buildContent() {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
         <div>
           <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🛠️ Page Crawlability & Content Audit</div>
-          <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">Outdated content and crawlability issues hurting your rankings and LLM visibility</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">Find pages with crawl issues, thin content, and missing structured data — ranked by fix impact.</div>
         </div>
         <button id="pageAuditRunBtn" onclick="runRealPageAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#065F46,#059669);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚡ Run Full Audit</button>
       </div>
@@ -6597,7 +6597,7 @@ window.runRealPageAudit = async function() {
   if (!domain) {
     stopTimer('⚡ Run Full Audit');
     window._pageAuditRunning = false;
-    showToast('⚠️ Run a homepage analysis first so we know which domain to audit.');
+    showToast("⚠️ Analyse a website on the home page first — we'll audit that domain.");
     return;
   }
   try {
@@ -6661,7 +6661,7 @@ window.generateCluster = async function() {
       aiNote: `Create a pillar page on "${seed}" and link to all subtopics. Include FAQ schema to maximise LLM citation chances. Publish one supporting page per week for best cluster authority.`,
     });
     buildContent();
-    showToast(`✅ Cluster built for "${seed}" (AI offline — using smart template)`);
+    showToast(`✅ Cluster built for "${seed}" — built-in template (add an OpenAI key for richer AI suggestions)`);
   }
   if (btn) { btn.disabled = false; btn.textContent = '🧩 Build Cluster'; }
 };
@@ -9124,7 +9124,7 @@ function buildAiVisibility() {
 
   const auditBlock = window._aiVisibilityAudit ? `
     <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:14px;padding:22px 26px">
-      <div style="font-size:0.7rem;font-weight:700;color:#15803D;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">✅ Audit Complete — GPT-4 Report</div>
+      <div style="font-size:0.7rem;font-weight:700;color:#15803D;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">✅ Audit Complete — AI Visibility Report</div>
       <div style="font-size:0.83rem;color:#1A2F4A;line-height:1.75;white-space:pre-wrap">${window._aiVisibilityAudit}</div>
     </div>` : `
     <div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:30px;text-align:center">
@@ -10170,7 +10170,9 @@ window.runSingleAiVis = async function(kind) {
   } catch(e) {
     showToast(`❌ ${m.label}: ${e.message}`);
   } finally {
-    stopTimer('✨ Run AI Audit');
+    // Pass no label so each button restores to its OWN original innerHTML
+    // (per-module buttons say "Run This Module", master button says "Run Full Audit").
+    stopTimer();
   }
 };
 
@@ -10244,10 +10246,10 @@ window.generateAiVisibilityAudit = async function() {
     window._aiVisibilityAudit = `AI Visibility Analysis for ${d}\n\n🔴 CRITICAL GAPS (Action Required)\n• Missing definitional pages — LLMs cannot answer "what does ${d} do?" from your current content\n• No FAQ schema markup — adding structured data could increase citation rate by ~40%\n• Low third-party review volume — Trustpilot, G2, Capterra scores heavily weighted by LLMs\n\n🟡 IMPROVEMENT OPPORTUNITIES\n• Create a "${ind} guide" pillar page — this category earns 5× more citations than product pages\n• Add comparison pages ("${d} vs alternatives") — cited in 73% of comparison-intent queries\n• Publish monthly industry data reports — data-rich content earns 3× more LLM citations\n• Build authority backlinks from ${ind} publications and .edu sources\n\n🟢 CURRENT STRENGTHS\n• Domain is indexed by Google AI Overviews — appearing in multiple query clusters\n• Gemini visibility above industry average — maintain with consistent structured data\n\n📋 30-DAY ACTION PLAN\n1. Write "What is ${iw}?" pillar page with FAQ schema (Week 1)\n2. Create 5 competitor comparison pages (Weeks 1–2)\n3. Submit to G2 and Capterra; generate 20+ verified reviews (Weeks 2–3)\n4. Pitch 3 industry publications for guest posts with brand mentions (Weeks 3–4)\n5. Implement HowTo and Organization schema across all key pages (Week 4)`;
     buildAiVisibility(); try { buildAiAuditSuite(); } catch(_){ }
     setTimeout(() => document.getElementById('aivis-results-anchor')?.scrollIntoView({ behavior:'smooth', block:'start' }), 80);
-    showToast('✅ AI Audit ready!');
+    showToast('✅ AI Visibility audit complete — open the modules below to review');
   }
   window._aiVisRunning = false;
-  stopTimer('✨ Run AI Audit');
+  stopTimer();
 };
 
 
@@ -12032,11 +12034,11 @@ function buildCreative() {
   wrap.innerHTML = `
     <div class="creative-controls">
       <div class="platform-filter">
-        <button class="pf-btn active" onclick="filterCreatives('all', this)">All Platforms</button>
-        <button class="pf-btn" onclick="filterCreatives('google', this)">Google</button>
-        <button class="pf-btn" onclick="filterCreatives('meta', this)">Meta</button>
-        <button class="pf-btn" onclick="filterCreatives('tiktok', this)">TikTok</button>
-        <button class="pf-btn" onclick="filterCreatives('linkedin', this)">LinkedIn</button>
+        <button class="pf-btn active" onclick="filterCreativeCards('all', this)">All Platforms</button>
+        <button class="pf-btn" onclick="filterCreativeCards('google', this)">Google</button>
+        <button class="pf-btn" onclick="filterCreativeCards('meta', this)">Meta</button>
+        <button class="pf-btn" onclick="filterCreativeCards('tiktok', this)">TikTok</button>
+        <button class="pf-btn" onclick="filterCreativeCards('linkedin', this)">LinkedIn</button>
       </div>
       <button class="creative-regen-btn" onclick="regenCreatives()">⚡ Regenerate All</button>
     </div>
@@ -12502,7 +12504,7 @@ function launchCreativeCampaign(index) {
   showToast('🚀 Campaign launched with this AI creative — InfoGenie is deploying and optimising in real-time');
 }
 
-function filterCreatives(platform, btn) {
+function filterCreativeCards(platform, btn) {
   document.querySelectorAll('.pf-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   document.querySelectorAll('#creativeCardGrid .creative-card').forEach(card => {
@@ -16849,7 +16851,7 @@ function openWLCounterModal(wlIdOrData) {
 
     const sourceLabel = data.source === 'openai'    ? '⚡ OpenAI GPT-4o'
                      : data.source === 'anthropic' ? '🧠 Claude Sonnet 4.6'
-                     : '📋 Template (AI offline)';
+                     : '📋 Built-in Template';
 
     document.getElementById('wlCounterBody').innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -17086,17 +17088,8 @@ function discardQueuedCampaign(qcId) {
   showToast('🗑️ Counter-campaign discarded');
 }
 
-function openExclusiveModal() {
-  const modal = document.getElementById('exclusiveModal');
-  modal.classList.remove('hidden');
-  modal.style.display = 'flex';
-}
-
-function closeExclusiveModal() {
-  const modal = document.getElementById('exclusiveModal');
-  modal.classList.add('hidden');
-  modal.style.display = 'none';
-}
+// openExclusiveModal/closeExclusiveModal are defined as window.* near line 14118
+// with a delegated click safety-net — single source of truth.
 
 function switchSettingsTab(key) {
   document.querySelectorAll('.stab').forEach(t => t.classList.toggle('active', t.dataset.tab === key));
@@ -24158,7 +24151,7 @@ function buildAiAuditSuite() {
   if (!wrap) return;
   const auditBlock = window._aiVisibilityAudit ? `
     <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:14px;padding:22px 26px">
-      <div style="font-size:0.7rem;font-weight:700;color:#15803D;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">✅ Audit Complete — GPT-4 Report</div>
+      <div style="font-size:0.7rem;font-weight:700;color:#15803D;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px">✅ Audit Complete — AI Visibility Report</div>
       <div style="font-size:0.83rem;color:#1A2F4A;line-height:1.75;white-space:pre-wrap">${window._aiVisibilityAudit}</div>
     </div>` : `
     <div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:14px;padding:22px 26px;display:flex;align-items:center;gap:18px">
@@ -24192,7 +24185,7 @@ function buildAiAuditSuite() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Prompt Coverage Matrix</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to fire 8 industry prompts × every connected model and see real per-cell citation results.</div>
           </div>
-          <button onclick="runSingleAiVis('coverage')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('coverage')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run This Module</button>
         </div>`;
       }
       const overallPct = Math.round((cov.overallCoverage || 0) * 100);
@@ -24256,7 +24249,7 @@ function buildAiAuditSuite() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">AI Visibility Trend Tracking</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">${tr ? `Run ${tr.runs}/2 captured. Run the AI Audit again tomorrow to start seeing daily citation deltas per model.` : 'Run the AI Audit at least twice to see how your AI citation rate trends over time.'}</div>
           </div>
-          <button onclick="generateAiVisibilityAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="generateAiVisibilityAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run Full Audit</button>
         </div>`;
       }
       // Sparkline helper.
@@ -24308,7 +24301,7 @@ function buildAiAuditSuite() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Answer Accuracy Check</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to scrape your live site, ask each model to describe your brand, and grade every claim for factual accuracy against your real content.</div>
           </div>
-          <button onclick="runSingleAiVis('accuracy')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('accuracy')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run This Module</button>
         </div>`;
       }
       const ovColor = acc.overallAccuracy >= 75 ? '#10B981' : acc.overallAccuracy >= 50 ? '#F59E0B' : '#DC2626';
@@ -24351,7 +24344,7 @@ function buildAiAuditSuite() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Competitive Citation Intelligence</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">${cc?.note || 'Run the AI Audit to fire industry prompts across every model for you AND your competitors and see who wins each query.'}</div>
           </div>
-          <button onclick="runSingleAiVis('competitors')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('competitors')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run This Module</button>
         </div>`;
       }
       const sortedSov = Object.entries(cc.shareOfVoicePct || {}).sort((a,b)=>b[1]-a[1]);
@@ -24393,7 +24386,7 @@ function buildAiAuditSuite() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Entity Identification & Mapping</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to see how each model maps your brand as a knowledge-graph entity — category, attributes, relationships, positioning.</div>
           </div>
-          <button onclick="runSingleAiVis('entity')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('entity')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run This Module</button>
         </div>`;
       }
       const c = en.consolidated;
@@ -24442,7 +24435,7 @@ function buildAiAuditSuite() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Sentiment & Context Analysis</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to grade how every model talks about your brand — sentiment, positives, negatives, and narrative gaps.</div>
           </div>
-          <button onclick="runSingleAiVis('sentiment')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('sentiment')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run This Module</button>
         </div>`;
       }
       const total = (s.distribution.positive||0)+(s.distribution.neutral||0)+(s.distribution.negative||0)+(s.distribution.mixed||0) || 1;
@@ -24482,7 +24475,7 @@ function buildAiAuditSuite() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Google AI Overview Tracking</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to detect Google AI Overview presence, citations, and your organic position across 5 industry queries.</div>
           </div>
-          <button onclick="runSingleAiVis('sge')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('sge')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run This Module</button>
         </div>`;
       }
       if (g.configured === false) {
@@ -24530,7 +24523,7 @@ function buildAiAuditSuite() {
             <div style="font-size:0.85rem;font-weight:700;color:#0A1628">Citation-to-Traffic Attribution</div>
             <div style="font-size:0.7rem;color:#64748B;margin-top:2px">Run the AI Audit to connect AI citations to real traffic via Amplitude.</div>
           </div>
-          <button onclick="runSingleAiVis('attribution')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run AI Audit</button>
+          <button onclick="runSingleAiVis('attribution')" style="padding:9px 18px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:9px;font-size:0.76rem;font-weight:700;color:white;cursor:pointer">✨ Run This Module</button>
         </div>`;
       }
       if (!at.connected) {

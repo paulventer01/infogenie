@@ -7815,3 +7815,11 @@ select option { background: #FFFFFF !important; color: #0F4C4A !important; }
 [data-theme="dark"] .ccr-controls,[data-theme="dark"] .ccr-total,[data-theme="dark"] .ccr-channel,[data-theme="dark"] .ccr-card { background:#1E293B; border-color:#334155; }
 [data-theme="dark"] .ccr-channel-off { background:#0F172A; }
 [data-theme="dark"] .ccr-total-v,[data-theme="dark"] .ccr-stat-v,[data-theme="dark"] .ccr-ch-head { color:#F1F5F9; }
+
+/* === Standardised header refresh buttons (in-page section headers) === */
+.btn-refresh-light{margin-left:8px;padding:9px 14px;background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:9px;font-weight:600;font-size:.85rem;cursor:pointer;transition:background .15s ease,transform .1s ease;display:inline-flex;align-items:center;gap:6px;line-height:1}
+.btn-refresh-light:hover{background:rgba(255,255,255,.2)}
+.btn-refresh-light:active{transform:scale(.97)}
+.btn-refresh-solid{margin-left:8px;padding:9px 14px;background:#fff;color:#0F172A;border:none;border-radius:9px;font-weight:700;font-size:.85rem;cursor:pointer;transition:transform .1s ease,box-shadow .15s ease;display:inline-flex;align-items:center;gap:6px;line-height:1;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.btn-refresh-solid:hover{box-shadow:0 2px 6px rgba(0,0,0,.12)}
+.btn-refresh-solid:active{transform:scale(.97)}

@@ -302,3 +302,22 @@ Four user-feedback issues fixed after the trio shipped:
 - **Issue 4 (audit timer)**: New `POST /api/page-audit/run` (server.js ~7536) scrapes `['/', '/about', '/pricing', '/features', '/blog', '/contact']` in parallel, computes transparent 0–100 score per page from real signals (title/meta length, H1/H2 count, word count, schema, FAQ, internal-link density). Returns `dataOrigin/dataSource/confidence/transparency` on BOTH success AND 400 error paths. Page Audit "Run Full Audit" button (was `showToast`-only) wired to `runRealPageAudit()` (app.js ~6594) using existing `window.startButtonTimer` for live elapsed-second counter; replaces `window._pageAuditList` with REAL pages then re-renders via `buildContent()`.
 - **Security hardening**: All audit-card dynamic fields (`p.title/url/issue/fix`) escaped via `_escapeHtml` before HTML insertion (app.js ~6508). `data/stakeholders.json` wiped to baseline (no PII committed). Architect PASS verdict after fix round.
 - **Cache busters bumped**: app.js?v=20260430I, style.css?v=20260430F.
+
+## UI/UX Audit Polish Pass (Apr 30 2026 — later)
+Targeted polish of duplicated functions, navigation, copy, and button consistency. Architect-pass intent.
+- **Nav dedup**: Removed orphan `data-view="reengage"` link from the Grow group in `index.html` — Re-engage now lives only under Manage (lifecycle stage), one canonical entry.
+- **Function-name collision fixed**: Renamed the original `function filterCreatives(platform, btn)` (Creative view) to `filterCreativeCards(...)` and updated its 5 onclick callers — `window.filterCreatives` from Smart Creative was shadowing it globally and breaking the Creative-view platform filter buttons.
+- **Duplicate modal helpers removed**: Deleted orphan `function openExclusiveModal()/closeExclusiveModal()` near app.js line 17089 — robust `window.openExclusiveModal/closeExclusiveModal` definitions near line 14118 (with delegated click safety-net) are now the single source of truth.
+- **Copy polish**:
+  - "Audit Complete — GPT-4 Report" badges (×2) → "Audit Complete — AI Visibility Report" (we now use multiple models).
+  - Per-module AI-Visibility buttons (×7 — coverage/accuracy/competitors/entity/sentiment/sge/attribution): "✨ Run AI Audit" → "✨ Run This Module". Trend-card master button → "✨ Run Full Audit". Distinguishes module scope from full-audit scope.
+  - `runSingleAiVis` and `generateAiVisibilityAudit` `finally` blocks now call `stopTimer()` with **no** label so each button restores to its OWN original innerHTML — fixes label-collision bug where stopping the timer overwrote both module and master labels with one shared string.
+  - Toast "✅ AI Audit ready!" → "✅ AI Visibility audit complete — open the modules below to review".
+  - "AI offline — using smart template" cluster toast → "built-in template (add an OpenAI key for richer AI suggestions)". Counter-message source label "📋 Template (AI offline)" → "📋 Built-in Template".
+  - Page Audit subtitle: clearer outcome-driven copy ("Find pages with crawl issues, thin content, and missing structured data — ranked by fix impact").
+  - `runRealPageAudit` no-domain warning: friendlier wording.
+- **Refresh-button standardisation**: Added `.btn-refresh-light` (translucent on dark headers) and `.btn-refresh-solid` (white pill on coloured headers) in `style.css`. Replaced 5 inline-styled `↻ Refresh` buttons across Goals / Blended Performance / Lead Qualifier / Re-engage / Attribution with these classes (accent colour preserved via tiny inline `style="color:..."`).
+- **Cache busters bumped**: app.js?v=20260430J, style.css?v=20260430G.
+
+### Post-architect cleanup
+- Architect flagged PII in committed runtime artifacts. Wiped `data/drip-enrollments.json` and `data/reengagement-campaigns.json` to baseline `[]` (both `_dripLoad`/`_readReengage` already default to `[]` on missing/empty). No further runtime PII committed.
