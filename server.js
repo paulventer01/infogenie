@@ -774,6 +774,13 @@ async function callDataForSEO(endpoint, body, timeoutMs = 18000) {
 
 // ── Competitor domain map (used when user doesn't specify) ───────────────────
 
+// ── Reusable filter: aggregator / news / review / info domains we never want
+//    to surface as a "competitor". Used by both /api/smart-detect and
+//    /api/sector-competitors as a belt-and-braces post-AI scrub so a domain
+//    like investopedia.com or bloomberg.com can never end up on the list
+//    even if the LLM slips it through.
+const INFO_SITE_PATTERN = /^(?:[a-z]{2}\.)?(investopedia|investing|forexbrokers|stockbrokers|bestbrokers|tradingpedia|brokersview|brokerchooser|brokernotes|comparison|comparis|nerdwallet|wisebread|smallworldfs|metatrader[0-9]?|tradingview|myfxbook|fxstreet|tradingeconomics|babypips|dailyfx|investorjunkie|fool|reuters|cnbc|bloomberg|forbes|nytimes|wsj|techcrunch|theverge|wired|mashable|venturebeat|crunchbase|g2|capterra|getapp|trustpilot|sitejabber|glassdoor|wikipedia)\.[a-z.]+$/i;
+
 const COMPETITOR_DOMAINS = {
   ecommerce:  ['amazon.com', 'ebay.com', 'shopify.com', 'etsy.com', 'walmart.com', 'target.com', 'asos.com', 'zalando.com'],
   fintech:    ['revolut.com', 'wise.com', 'stripe.com', 'paypal.com', 'robinhood.com', 'coinbase.com', 'robinhood.com', 'interactivebrokers.com'],
@@ -6227,9 +6234,12 @@ app.post('/api/ai-validate-metrics', async (req, res) => {
       (c.dataSource ? `  [source: ${c.dataSource}]` : '')
     ).join('\n');
 
-    const prompt = `You are a senior digital-marketing analyst with deep knowledge of public web traffic, ad spend, and performance data for major brands and digital businesses.
+    // ── Shared analyst prompt — used for BOTH OpenAI GPT-4o and Anthropic
+    //    Claude Sonnet 4.6 so the two models can be compared head-to-head.
+    //    The same schema lets us merge their answers into a consensus value.
+    const buildPrompt = (modelName) => `You are a senior digital-marketing analyst with deep, brand-specific knowledge of public web traffic, monthly paid-media spend, and ROAS/CTR performance for major brands. You are grading a list of competitors in the "${industry || 'unknown'}" industry.
 
-For each of the ${Math.min(competitors.length, 12)} competitors below in the "${industry || 'unknown'}" industry, validate or refine the metrics shown using your knowledge of public sources (Similarweb, SemRush, Ahrefs estimates, company earnings reports, marketing trade press, and well-documented industry benchmarks).
+For EACH of the ${Math.min(competitors.length, 12)} competitors below, return REALISTIC monthly metrics grounded ONLY in what you actually know about that specific brand from public sources (Similarweb, SemRush, Ahrefs, company earnings reports, ad-tech trade press, AdSpyder, MediaRadar, Pathmatics).
 
 Competitors:
 ${list}
@@ -6240,9 +6250,10 @@ Return JSON in EXACTLY this shape:
     {
       "name": "<exact name from list>",
       "traffic":  "1.2M" | "350K" | "45K" | null,         // monthly visits
-      "adSpend":  "$45K/mo" | "$2.1M/mo" | null,           // monthly ad budget estimate
+      "adSpend":  "$45K/mo" | "$2.1M/mo" | null,           // monthly ad budget estimate (Google + Meta + TikTok + LinkedIn + display + native, combined)
       "roas":     3.2 | null,                              // number 1.0–8.0
       "ctr":      "2.8%" | null,                           // typical paid-ad CTR
+      "topChannel": "Google Search" | "Meta Ads" | "TikTok Ads" | "LinkedIn Ads" | "YouTube" | "Display / Programmatic" | "SEO / Organic" | null,
       "confidence": "high" | "medium" | "low",
       "source":   "Brief 1-line citation — use a SOURCE CATEGORY only, NEVER a specific date or quarter. Examples: 'Similarweb estimate', 'Public earnings report', 'Industry benchmark', 'SemRush data', 'Trade-press estimate'. Do NOT write 'Q4 2023' or any year/quarter — the user sees the citation as a freshness signal and stale dates damage trust.",
       "notes":    "Any caveat (max 80 chars), or empty"
@@ -6250,53 +6261,238 @@ Return JSON in EXACTLY this shape:
   ]
 }
 
-CRITICAL RULES:
-- Use REALISTIC numbers grounded in what you actually know. Never fabricate.
-- The "Currently shown" numbers in the input come from a DataForSEO scrape that **systematically OVER-estimates ad-spend** because it sums potential CPC × CTR across ALL ranking keywords as if the brand paid for every position. For high-SEO domains this is often 10–30× the real ad-budget. So if you see e.g. "adSpend=$60M/mo" for a brand you know spends ~$3M/mo, RETURN THE REALISTIC FIGURE ($3M/mo) and set confidence "medium" or "high" — don't just echo back the inflated number.
-- Traffic numbers from DataForSEO are usually within 2-5× of reality; for very high-traffic brands (>10M/mo) they are reasonable, for smaller brands they may be off. Trust your training-data Similarweb knowledge.
-- Realistic ad-spend ranges to sanity-check against:
-    Mid-cap fintech / broker (Plus500, FXTM, XM, AvaTrade): $0.5M–3M/mo
+CRITICAL ACCURACY RULES — your output is being cross-checked against another LLM and the user sees the discrepancy:
+- If you DO NOT recognise the brand specifically, return null for traffic + adSpend + topChannel and set confidence to "low". DO NOT make up a number from "industry benchmark" — the user is paying for accuracy, not averages.
+- The "Currently shown" numbers come from a DataForSEO scrape that **systematically OVER-estimates ad-spend** because it sums potential CPC × CTR across ALL ranking keywords as if the brand paid for every position. For high-SEO domains this is often 10–30× the real ad-budget. So if you see e.g. "adSpend=$60M/mo" for eToro (real ~$3-4M/mo), RETURN THE REALISTIC FIGURE — do NOT echo back the inflated DataForSEO number.
+- Traffic numbers from DataForSEO are usually within 2-5× of reality. Trust your training-data Similarweb knowledge over the input.
+- Realistic monthly ad-spend ranges (sanity check):
+    Mid-cap fintech / broker (Plus500, FXTM, XM, AvaTrade, Pepperstone): $0.5M–3M/mo
     Large-cap fintech (eToro, IG, CMC, Interactive Brokers, Stripe): $1M–8M/mo
     Mega-cap (PayPal, Coinbase, Robinhood): $5M–25M/mo
-    Mid-market SaaS: $50K–500K/mo
-    Indie / small SaaS: $5K–50K/mo
-- For well-known brands: cite the most reasonable public source you'd expect.
-- For lesser-known/regional brands you don't recognise: return null for traffic/adSpend and set confidence to "low". Industry-average ROAS/CTR may still be safely returned.
-- Traffic format: "1.2M" or "350K" or "45K".
-- AdSpend format: "$45K/mo" or "$1.2M/mo" or "$8K/mo".
-- ROAS: a single number, typically 1.5–5.0 in most industries.
-- CTR: "2.8%" — typically 1.5%–6% for paid search/social.
-- "high" confidence ONLY if you have specific knowledge of this brand from your training data (Similarweb data, earnings reports, public filings).
+    Mid-market SaaS (Notion, Asana, Calendly, Monday): $50K–500K/mo
+    Indie / small SaaS or regional broker: $5K–50K/mo
+    DTC mid-tier (Allbirds, Glossier, Warby Parker): $0.5M–5M/mo
+- "topChannel" must be the channel where this brand actually invests the MOST budget — based on your knowledge of their media mix, not a guess. If you don't know, return null.
+- Traffic format: "1.2M" or "350K" or "45K". AdSpend format: "$45K/mo" or "$1.2M/mo".
+- ROAS: a single number 1.0-8.0. CTR: "2.8%" (typically 1.5%-6% for paid).
+- "high" confidence ONLY if you have specific knowledge of this brand from your training data.
 - "medium" if extrapolating from direct category peers you DO know.
-- "low" for pure industry-benchmark estimates.
-- The output array MUST be in the same order and same names as the input list.`;
+- "low" for industry-benchmark estimates (and please prefer null over a benchmark guess).
+- Output array MUST be in the SAME order and SAME names as the input list.
 
-    const completion = await openaiChatWithRetry({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
+Model identity: you are ${modelName}. Output strict JSON only.`;
+
+    // ── Run GPT-4o and Claude Sonnet 4.6 in PARALLEL ──────────────────────
+    // Each model returns its own opinion; we merge them into a consensus
+    // afterward. This dual-LLM approach catches single-model hallucinations
+    // and gives us a confidence boost when both agree on a number.
+    const gptPromise = openaiChatWithRetry({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: buildPrompt('GPT-4o') }],
       response_format: { type: 'json_object' },
-      temperature: 0.2,
-      max_tokens: 2000
-    }, { fallbackModel: 'gpt-3.5-turbo', retries: 2 });
-    const parsed = JSON.parse(completion.choices[0].message.content);
-    // Belt-and-braces: strip any year/quarter token the model may still slip into
-    // the source citation (e.g. "Similarweb Q4 2023") so users never see stale dates.
-    // Guard against the model returning a non-array (e.g. object, null) for results.
-    const rawResults = Array.isArray(parsed && parsed.results) ? parsed.results : [];
-    const cleaned = rawResults.map(r => {
-      if (r && typeof r.source === 'string') {
-        r.source = r.source
-          .replace(/\b(?:Q[1-4]\s*)?(?:19|20)\d{2}\b/gi, '')
-          .replace(/\bQ[1-4]\b/gi, '')
-          .replace(/\s{2,}/g, ' ')
-          .replace(/\s+([,.;:])/g, '$1')
-          .replace(/[(),\s-]+$/, '')
-          .trim();
-        if (!r.source) r.source = 'AI estimate';
+      temperature: 0.15,
+      max_tokens: 2400
+    }, { fallbackModel: 'gpt-4o-mini', retries: 1 })
+      .then(c => JSON.parse(c.choices?.[0]?.message?.content || '{}'))
+      .catch(e => { console.log('[ai-validate-metrics] GPT-4o failed:', e.status || '', e.message); return null; });
+
+    const claudePromise = (async () => {
+      try {
+        const msg = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 2400,
+          temperature: 0.15,
+          system: 'You are a precise market-intelligence analyst. Output strict JSON matching the user-specified schema. Never include markdown code fences.',
+          messages: [{ role: 'user', content: buildPrompt('Claude Sonnet') }]
+        });
+        const raw = msg.content?.[0]?.text || '{}';
+        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+        // Extract first {...} block in case the model added prose
+        const m = cleaned.match(/\{[\s\S]*\}/);
+        return JSON.parse(m ? m[0] : cleaned);
+      } catch (e) {
+        console.log('[ai-validate-metrics] Claude failed:', e.status || '', e.message, '| body:', JSON.stringify(e.error || e.response?.data || '').slice(0, 300));
+        return null;
       }
-      return r;
+    })();
+
+    const [gptResult, claudeResult] = await Promise.all([gptPromise, claudePromise]);
+
+    // Lightweight visibility: how many rows did each model return?
+    console.log('[ai-validate-metrics] gpt:',
+                Array.isArray(gptResult?.results) ? `${gptResult.results.length} rows` : 'failed',
+                '| claude:',
+                Array.isArray(claudeResult?.results) ? `${claudeResult.results.length} rows` : 'failed');
+
+    // Build name-keyed lookup from each LLM's output.
+    // Claude sometimes echoes the prompt format "Plus500 (plus500.com)" as
+    // the name while GPT-4o returns just "Plus500". Normalise by stripping
+    // any trailing "(...)" parenthetical and lower-casing.
+    const norm = s => String(s || '')
+      .toLowerCase()
+      .replace(/\s*\([^)]*\)\s*$/, '')   // drop trailing "(domain)"
+      .replace(/[^a-z0-9]+/g, '')         // drop punctuation/spaces for fuzzy match
+      .trim();
+    const gptByName = {};
+    (Array.isArray(gptResult?.results) ? gptResult.results : []).forEach(r => {
+      if (r && r.name) gptByName[norm(r.name)] = r;
     });
-    res.json({ ok: true, results: cleaned, count: cleaned.length });
+    const claudeByName = {};
+    (Array.isArray(claudeResult?.results) ? claudeResult.results : []).forEach(r => {
+      if (r && r.name) claudeByName[norm(r.name)] = r;
+    });
+
+    // ── Helpers for merging the two LLM opinions ──────────────────────────
+    // Note: keep M/K/B suffixes intact — strip ONLY currency, commas, spaces,
+    // and the trailing "/mo" or "/month" tokens. Earlier version stripped M/m
+    // along with the slash + "mo" which silently lost the millions multiplier.
+    const parseSpend = (s) => {
+      if (s === null || s === undefined) return null;
+      const txt = String(s)
+        .replace(/\/\s*(mo|month|m)\b/gi, '')   // strip "/mo", "/month", "/m"
+        .replace(/[$,\s]/g, '')                  // strip $ , whitespace
+        .toUpperCase();
+      const n = parseFloat(txt);
+      if (!isFinite(n) || n <= 0) return null;
+      if (txt.includes('B')) return n * 1e9;
+      if (txt.includes('M')) return n * 1e6;
+      if (txt.includes('K')) return n * 1e3;
+      return n;
+    };
+    const fmtSpend = (n) => {
+      if (!n || n <= 0) return null;
+      if (n >= 1e6) return '$' + (n/1e6).toFixed(1) + 'M/mo';
+      if (n >= 1e3) return '$' + (n/1e3).toFixed(0) + 'K/mo';
+      return '$' + Math.round(n) + '/mo';
+    };
+    const parseTraffic = (s) => {
+      if (!s) return null;
+      const txt = String(s).replace(/[\s,]/g,'').toUpperCase();
+      const n = parseFloat(txt);
+      if (!isFinite(n) || n <= 0) return null;
+      if (txt.includes('B')) return n * 1e9;
+      if (txt.includes('M')) return n * 1e6;
+      if (txt.includes('K')) return n * 1e3;
+      return n;
+    };
+    const fmtTraffic = (n) => {
+      if (!n || n <= 0) return null;
+      if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+      if (n >= 1e3) return (n/1e3).toFixed(0) + 'K';
+      return String(Math.round(n));
+    };
+    const confRank = c => ({ high:3, medium:2, low:1 }[String(c||'low').toLowerCase()] || 1);
+
+    // ── Merge: for every input competitor, build a consensus row ──────────
+    const consensus = competitors.slice(0, 12).map(c => {
+      const key = norm(c.name || c.domain);
+      const g = gptByName[key] || null;
+      const cl = claudeByName[key] || null;
+
+      // ad-spend consensus: prefer agreement (within ±35%), else take the
+      // LOWER of the two (more conservative — no over-claim) and downgrade
+      // confidence. If only one model has a number, use it but cap confidence
+      // at "medium".
+      const gSpend = parseSpend(g?.adSpend);
+      const clSpend = parseSpend(cl?.adSpend);
+      let spendNum = null;
+      let spendConf = 'low';
+      let spendNotes = '';
+      if (gSpend && clSpend) {
+        const ratio = Math.max(gSpend, clSpend) / Math.min(gSpend, clSpend);
+        if (ratio <= 1.35) {
+          // Strong agreement → average + bump confidence
+          spendNum = (gSpend + clSpend) / 2;
+          spendConf = 'high';
+          spendNotes = `Consensus: GPT-4o ${fmtSpend(gSpend)} · Claude ${fmtSpend(clSpend)}`;
+        } else if (ratio <= 2.5) {
+          // Moderate disagreement → take lower (conservative), medium conf
+          spendNum = Math.min(gSpend, clSpend);
+          spendConf = 'medium';
+          spendNotes = `Models disagreed (${ratio.toFixed(1)}×) — using conservative figure`;
+        } else {
+          // Big disagreement → at least one is hallucinating; take lower, low conf
+          spendNum = Math.min(gSpend, clSpend);
+          spendConf = 'low';
+          spendNotes = `Models diverged sharply (${ratio.toFixed(1)}×) — figure is approximate`;
+        }
+      } else if (gSpend) {
+        spendNum = gSpend;
+        spendConf = confRank(g?.confidence) >= 3 ? 'medium' : 'low';
+        spendNotes = 'Single-model estimate (GPT-4o only)';
+      } else if (clSpend) {
+        spendNum = clSpend;
+        spendConf = confRank(cl?.confidence) >= 3 ? 'medium' : 'low';
+        spendNotes = 'Single-model estimate (Claude only)';
+      }
+
+      // Traffic consensus — same logic, but agreement window is wider (±50%)
+      // because monthly visit estimates inherently vary more between sources.
+      const gTraffic = parseTraffic(g?.traffic);
+      const clTraffic = parseTraffic(cl?.traffic);
+      let trafficNum = null;
+      if (gTraffic && clTraffic) {
+        const ratio = Math.max(gTraffic, clTraffic) / Math.min(gTraffic, clTraffic);
+        trafficNum = ratio <= 1.5 ? (gTraffic + clTraffic) / 2 : Math.min(gTraffic, clTraffic);
+      } else {
+        trafficNum = gTraffic || clTraffic;
+      }
+
+      // ROAS / CTR — average when both present, else use whichever exists
+      const gRoas = (typeof g?.roas === 'number' && g.roas > 0) ? g.roas : null;
+      const clRoas = (typeof cl?.roas === 'number' && cl.roas > 0) ? cl.roas : null;
+      const roas = (gRoas && clRoas) ? parseFloat(((gRoas + clRoas)/2).toFixed(1))
+                 : (gRoas || clRoas || null);
+
+      const gCtr = parseFloat(String(g?.ctr || '').replace('%',''));
+      const clCtr = parseFloat(String(cl?.ctr || '').replace('%',''));
+      const ctrAvg = (isFinite(gCtr) && gCtr > 0 && isFinite(clCtr) && clCtr > 0)
+        ? ((gCtr + clCtr)/2)
+        : (isFinite(gCtr) && gCtr > 0 ? gCtr : (isFinite(clCtr) && clCtr > 0 ? clCtr : null));
+      const ctr = ctrAvg ? ctrAvg.toFixed(1) + '%' : null;
+
+      // topChannel: agreement → use it, disagreement → prefer GPT-4o's
+      // (more comprehensive media-mix knowledge in our testing)
+      const gCh = (g?.topChannel || '').trim();
+      const clCh = (cl?.topChannel || '').trim();
+      const topChannel = (gCh && clCh && gCh.toLowerCase() === clCh.toLowerCase()) ? gCh
+                       : (gCh || clCh || null);
+
+      // Source citation — combine both
+      const sources = [];
+      if (g?.source) sources.push('GPT-4o: ' + String(g.source).replace(/\b(?:Q[1-4]\s*)?(?:19|20)\d{2}\b/gi,'').trim());
+      if (cl?.source) sources.push('Claude: ' + String(cl.source).replace(/\b(?:Q[1-4]\s*)?(?:19|20)\d{2}\b/gi,'').trim());
+      const source = sources.length ? sources.join(' · ') : 'Dual-LLM estimate';
+
+      // Final confidence
+      let confidence = spendConf;
+      if (!spendNum) {
+        // No spend data → confidence reflects whether we got ANY data
+        confidence = (trafficNum || roas || ctr) ? 'low' : 'low';
+      }
+
+      return {
+        name: c.name || c.domain,
+        traffic: fmtTraffic(trafficNum),
+        adSpend: fmtSpend(spendNum),
+        roas,
+        ctr,
+        topChannel,
+        confidence,
+        source,
+        notes: spendNotes || (g?.notes || cl?.notes || '').toString().slice(0, 80)
+      };
+    });
+
+    res.json({
+      ok: true,
+      results: consensus,
+      count: consensus.length,
+      models: {
+        gpt: gptResult ? 'gpt-4o' : 'failed',
+        claude: claudeResult ? 'claude-sonnet-4-6' : 'failed'
+      }
+    });
   } catch (err) {
     console.error('/api/ai-validate-metrics error (after retry+fallback):', err.message);
     res.status(500).json({ error: err.message, results: [] });
@@ -8153,27 +8349,30 @@ TASK — return ONLY valid JSON, no markdown, no commentary:
   ]
 }
 
-CRITICAL RULES for "competitors":
-- Return EXACTLY 8 competitors (never fewer than 6).
-- Every competitor MUST operate in the SAME exact sub-niche as the analysed business — not just the same broad industry.
-- STRONGLY PREFER domains from the "REAL ORGANIC COMPETITORS" list above when they genuinely match the sub-niche — they are verified to compete on the same search terms. Filter out any from that list that are clearly different niches (news sites, marketplaces, generic aggregators, parent-company portals, irrelevant verticals).
+CRITICAL RULES for "competitors" — accuracy matters more than completeness:
+- Return EXACTLY 8 competitors (never fewer than 6, never more than 10).
+- Every competitor MUST operate in the SAME EXACT sub-niche as the analysed business — not just the same broad industry. If you are tempted to say "same broad industry but different niche", REJECT it.
+- Sub-niche test: ask "would a typical customer of the analysed business actively compare it to this candidate before buying?" If the answer is "no" or "maybe", REJECT the candidate.
+- STRONGLY PREFER domains from the "REAL ORGANIC COMPETITORS" list above when they genuinely match the sub-niche — they are verified to compete on the same search terms. Filter out any from that list that are clearly different niches (news sites, marketplaces, generic aggregators, parent-company portals, irrelevant verticals, info/review/comparison sites).
 - You may add 1-3 well-known direct competitors not in that list if they are obvious sub-niche leaders the SERP data missed.
-- Use real, currently-operating company domains (the company's primary domain only, no paths or subdomains). No invented names. No defunct businesses.
+- Use real, currently-operating company domains (the company's primary domain only, no paths or subdomains). No invented names. No defunct businesses. No dead/parked domains.
 - Do NOT include the analysed domain (${cleanInput}) itself.
+- EXCLUDE: news outlets, comparison/review aggregators (NerdWallet, Investopedia, BrokerChooser, BestBrokers, ForexBrokers, etc.), Wikipedia, marketplaces (Amazon, eBay), generic SaaS the brand merely uses (HubSpot, Zendesk), and any domain whose primary purpose is content/info rather than selling the same product.
 - Prioritise competitors active in the same geographic market when possible.
 - If the site looks like a CFD/forex broker, list other CFD/forex brokers (eToro, IG, Plus500, XM, CMC Markets, AvaTrade, Pepperstone, OANDA, Saxo, FXCM, FxPro, ThinkMarkets, etc.) — NOT generic fintechs or stock-trading apps.
 - If it's a pet insurance site, list pet insurance brands. Apply the same sub-niche specificity to every industry.
-- Order results by market relevance / overlap (most direct competitor first).`;
+- Order results by market relevance / overlap (most direct competitor first).
+- In the "why" field, name the SPECIFIC overlapping product or service — not generic phrases like "operates in the same industry".`;
 
     let aiResult = null;
     try {
       const completion = await openaiChatWithRetry({
         model: 'gpt-4o',
         messages: [
-          { role: 'system', content: 'You are a precise market-research analyst. Output strict JSON only — no markdown fences, no prose. Always identify the specific sub-niche, not just the broad industry.' },
+          { role: 'system', content: 'You are a precise market-research analyst. Output strict JSON only — no markdown fences, no prose. Always identify the specific sub-niche, not just the broad industry. When in doubt about a candidate competitor, EXCLUDE it — accuracy beats completeness.' },
           { role: 'user', content: prompt },
         ],
-        temperature: 0.2,
+        temperature: 0.1,
         max_tokens: 1200,
         response_format: { type: 'json_object' },
       });
@@ -8216,6 +8415,10 @@ CRITICAL RULES for "competitors":
         why:  String(c.why || '').trim().slice(0, 200),
       }))
       .filter(c => c.url && c.url !== cleanInput)
+      // Belt-and-braces: strip any aggregator/news/info/review domain the AI
+      // may slip in despite the prompt rules. INFO_SITE_PATTERN is shared
+      // with sector-competitors.
+      .filter(c => !INFO_SITE_PATTERN.test(c.url))
       .slice(0, 10) : [];
 
     res.json({
@@ -8310,25 +8513,25 @@ TASK — return ONLY valid JSON, no markdown, no commentary:
   ]
 }
 
-CRITICAL RULES:
-- Return EXACTLY 8 competitors (or as close as possible — never fewer than 6).
-- STRONGLY PREFER domains from the "LIVE SERP RANKING DOMAINS" list above when they genuinely match the sub-niche — they are verified to currently rank for this niche on Google. Filter out any from that list that are clearly different niches (review sites, news, marketplaces, parent-company portals, irrelevant verticals).
+CRITICAL RULES — accuracy beats completeness:
+- Return EXACTLY 8 competitors (or as close as possible — never fewer than 6, never more than 10).
+- STRONGLY PREFER domains from the "LIVE SERP RANKING DOMAINS" list above when they genuinely match the sub-niche — they are verified to currently rank for this niche on Google. Filter out any from that list that are clearly different niches (review sites, news, marketplaces, parent-company portals, irrelevant verticals, info/comparison sites).
 - You may add 1-3 well-known direct competitors not in that list if they are obvious sub-niche leaders the SERP missed.
-- Every competitor MUST operate in the SAME exact sub-niche as the input — not just the same broad industry. If the input is "online CFD broker", do NOT list generic fintechs or stock-trading apps; list real CFD brokers (eToro, IG, Plus500, XM, CMC Markets, AvaTrade, Pepperstone, OANDA, Saxo, FXCM, FxPro, ThinkMarkets, etc.).
-- Use real, currently-operating, well-known company domains. No invented names. No defunct businesses.
+- Every competitor MUST operate in the SAME EXACT sub-niche as the input — not just the same broad industry. If the input is "online CFD broker", do NOT list generic fintechs or stock-trading apps; list real CFD brokers (eToro, IG, Plus500, XM, CMC Markets, AvaTrade, Pepperstone, OANDA, Saxo, FXCM, FxPro, ThinkMarkets, etc.).
+- Sub-niche test: ask "would a typical customer of "${industryClean}" actively compare it to this candidate before buying?" If the answer is "no" or "maybe", REJECT the candidate.
+- EXCLUDE: news outlets (Bloomberg, Reuters, Forbes, CNBC), comparison/review aggregators (NerdWallet, Investopedia, BrokerChooser, BestBrokers, ForexBrokers.com, G2, Capterra), Wikipedia, marketplaces (Amazon, eBay) unless they ARE the niche, generic SaaS the brand merely uses, and any domain whose primary purpose is content/info rather than selling the same product. When in doubt, EXCLUDE.
+- Use real, currently-operating, well-known company domains. No invented names. No defunct businesses. No dead/parked domains.
 - Prioritise competitors that are active and visible in the target market (${countryClean || 'global'}). Mix in 1-2 global leaders for benchmark context if the niche is mostly local.
 - Domains must be the company's actual primary domain (e.g. "etoro.com", not "etoro.com/uk" or "etoro").
 - Do NOT include the user's own domain (${urlClean || 'n/a'}) in the results.
 - Order results by market relevance (most relevant first).
-- Be very specific — for "vegan meal delivery", list other vegan-only meal delivery brands; for "B2B SaaS project management", list Asana/Monday/ClickUp/Wrike/etc.; for "pet insurance", list Trupanion/Lemonade Pet/Healthy Paws/Embrace/etc.`;
+- Be very specific — for "vegan meal delivery", list other vegan-only meal delivery brands; for "B2B SaaS project management", list Asana/Monday/ClickUp/Wrike/etc.; for "pet insurance", list Trupanion/Lemonade Pet/Healthy Paws/Embrace/etc.
+- In the "why" field, name the SPECIFIC product or service overlap — not generic phrases like "operates in the same industry".`;
 
     // Deterministic same-niche fallback we'll use if AI fails. Filter the SERP
     // candidates to drop info/review/aggregator sites and keep only domains
     // that are most likely to be actual competitors in the niche.
-    // High-confidence info/review/aggregator domain tokens. Kept narrow on
-    // purpose so we don't accidentally exclude a legitimate brand whose name
-    // happens to contain a generic substring (e.g. anything with "finance").
-    const INFO_SITE_PATTERN = /^(investopedia|investing|forexbrokers|stockbrokers|bestbrokers|tradingpedia|brokersview|brokerchooser|brokernotes|comparison|comparis|nerdwallet|wisebread|smallworldfs|metatrader[0-9]?|tradingview|myfxbook|fxstreet|tradingeconomics|babypips|dailyfx|investorjunkie|fool|reuters|cnbc|bloomberg)\.[a-z.]+$/i;
+    // (INFO_SITE_PATTERN is defined at module scope and shared with smart-detect.)
     const serpCompetitorFallback = serpDomains
       .filter(d => !INFO_SITE_PATTERN.test(d))
       .slice(0, 8)
@@ -8344,10 +8547,10 @@ CRITICAL RULES:
       const completion = await openaiChatWithRetry({
         model: 'gpt-4o',
         messages: [
-          { role: 'system', content: 'You are a precise market-research analyst with encyclopedic knowledge of real-world companies in every sub-niche. Output strict JSON only — no markdown, no prose. Always pick competitors operating in the user\'s exact sub-niche, never just the broad industry.' },
+          { role: 'system', content: 'You are a precise market-research analyst with encyclopedic knowledge of real-world companies in every sub-niche. Output strict JSON only — no markdown, no prose. Always pick competitors operating in the user\'s EXACT sub-niche, never just the broad industry. When in doubt about a candidate, EXCLUDE it — accuracy beats completeness.' },
           { role: 'user', content: prompt },
         ],
-        temperature: 0.15,
+        temperature: 0.1,
         max_tokens: 1400,
         response_format: { type: 'json_object' },
       });
@@ -8381,6 +8584,12 @@ CRITICAL RULES:
       .filter(c => c.url && c.url !== urlClean)
       // de-duplicate by domain
       .filter((c, i, arr) => arr.findIndex(x => x.url === c.url) === i)
+      // Belt-and-braces: strip any aggregator/news/info domain the AI may
+      // still slip in despite the prompt rules. INFO_SITE_PATTERN now covers
+      // the news + review + comparison aggregator brands too (defined at
+      // module scope above).
+      .filter(c => !INFO_SITE_PATTERN.test(c.url))
+      .filter(c => !/^(en\.)?wikipedia\.org$/i.test(c.url))
       .slice(0, 10) : [];
 
     res.json({

@@ -2954,9 +2954,7 @@ async function runAnalysis(url, country, industryOverride) {
     if (Array.isArray(aiDetected.competitors) && aiDetected.competitors.length >= 3) {
       // Convert AI competitors into the same shape the rest of the UI expects.
       aiCompetitorPool = aiDetected.competitors.map((c, idx) => {
-        const channels = ['Google Search','Meta Ads','TikTok','LinkedIn'];
         const threats = ['critical','high','medium'];
-        const topCh = channels[Math.floor(Math.random()*channels.length)];
         const initials = (c.name || '?').split(/\s+/).slice(0,2).map(s=>s.charAt(0).toUpperCase()).join('');
         return {
           name: c.name,
@@ -2965,47 +2963,43 @@ async function runAnalysis(url, country, industryOverride) {
           why: c.why,
           logo: initials || '?',
           // Start with NULL sentinels — real values are filled in by the
-          // DataForSEO overlay (live scrape) + AI-validation pass below.
-          // No more Math.random() lies. If neither source returns data the
-          // UI shows "—" with a "Limited public data" tooltip.
+          // DataForSEO overlay (live scrape) + dual-LLM AI-validation pass
+          // below. No Math.random() anywhere. If neither source returns data
+          // the UI shows "—" with a "Limited public data" tooltip.
           roas: null,
           ctr:  null,
           traffic: null,
           adSpend: null,
           dataSource: 'pending',
           confidence: null,
-          topChannel: topCh,
-          topChannels: [topCh],
+          // topChannel is filled by /api/ai-validate-metrics (which asks both
+          // GPT-4o and Claude which channel each brand actually invests in).
+          // Until then it stays null and the UI renders "—".
+          topChannel: null,
+          topChannels: [],
           threatLevel: threats[idx % threats.length],
-          // Synthesize campaign rows so the "Competitor Campaign Breakdown" table renders
+          // Synthesize campaign rows so the "Competitor Campaign Breakdown"
+          // table has structure. Names + channels are filled later from the
+          // validated topChannel; nothing is randomised.
           campaigns: (() => {
             const camp1Names = ['Brand Search Domination', 'Lookalike Audience Push', 'Retargeting Wave', 'Awareness Reels Burst'];
             const camp2Names = ['Comparison Landing Funnel', 'Free Trial Lead Gen', 'Top-Funnel Display', 'High-Intent Keyword Steal'];
-            const ch1 = topCh;
-            const ch2 = channels.filter(x => x !== topCh)[idx % 3];
-            // Campaign rows are split DERIVATIVES of the top-level competitor
-            // metrics (filled by DataForSEO + AI validation), not random fakes.
-            // If we don't yet have real top-level metrics, leave as "—" and the
-            // table will show greyed dashes instead of fabricated values.
             return [
-              { name: camp1Names[idx % camp1Names.length], channel: ch1, ctr: null, roas: null, budget: null, _split: 0.6 },
-              { name: camp2Names[idx % camp2Names.length], channel: ch2, ctr: null, roas: null, budget: null, _split: 0.4 },
+              { name: camp1Names[idx % camp1Names.length], channel: null, ctr: null, roas: null, budget: null, _split: 0.6 },
+              { name: camp2Names[idx % camp2Names.length], channel: null, ctr: null, roas: null, budget: null, _split: 0.4 },
             ];
           })(),
-          // Audience splits for the audience overlap panel
-          audiences: [
-            { label: 'Active Traders 25-44', pct: Math.floor(Math.random()*20+35) },
-            { label: 'High Net Worth 45-64', pct: Math.floor(Math.random()*15+20) },
-            { label: 'Crypto-curious 18-34', pct: Math.floor(Math.random()*15+15) },
-          ],
+          // Audience splits — empty until enriched. The audience overlap
+          // panel handles an empty array gracefully ("No audience data").
+          audiences: [],
           // Sample ad copy so the "InfoGenie Improved Ads" section has material
           adCopy: [
             { headline: `Trade smarter than ${c.name}`, body: `See why thousands switched from ${c.name} to a faster, lower-fee platform.` },
           ],
           suggestions: [
             `Outflank ${c.name} on long-tail variations of their core keywords — they over-index on brand terms`,
-            `${c.name} relies heavily on ${['paid search','display','social'][Math.floor(Math.random()*3)]} — flip them with the opposite mix`,
             `Use comparison content (${c.name} vs You) to capture their branded search intent`,
+            `Target ${c.name}'s mid-funnel comparison queries with high-intent landing pages`,
           ],
           aiDetected: true,
         };
@@ -3115,6 +3109,25 @@ async function runAnalysis(url, country, industryOverride) {
                 c.roas = parseFloat(v.roas.toFixed(1));
               }
             }
+            // Primary channel comes straight from the dual-LLM consensus —
+            // no random pick. Validator returns the brand's actual main paid
+            // channel (Google Search / Meta Ads / TikTok / LinkedIn / etc.).
+            if (typeof v.topChannel === 'string' && v.topChannel.trim() && v.topChannel.trim() !== '—') {
+              const ch = v.topChannel.trim();
+              if (!c.topChannel || c.topChannel === '—' || conf === 'high' || conf === 'medium') {
+                c.topChannel = ch;
+                c.topChannels = [ch];
+                // Cascade to campaign rows so the breakdown table shows the
+                // real channel instead of a null/blank cell.
+                if (Array.isArray(c.campaigns)) {
+                  c.campaigns.forEach((row, i) => {
+                    if (!row.channel) {
+                      row.channel = i === 0 ? ch : ch;
+                    }
+                  });
+                }
+              }
+            }
             // Source attribution (so the UI can show a badge)
             if (!c.dataSource || c.dataSource === 'pending') {
               c.dataSource = conf === 'high' ? 'AI-verified' : 'AI-estimate';
@@ -3212,8 +3225,11 @@ async function runAnalysis(url, country, industryOverride) {
     adSpend: (mc.adSpend && mc.adSpend !== '—') ? mc.adSpend : '—',
     dataSource: mc.dataSource || 'Manual entry',
     confidence: mc.confidence || (mc.adSpend && mc.adSpend !== '—' ? 'high' : 'low'),
-    topChannel: (mc.topChannel && mc.topChannel !== '—') ? mc.topChannel : 'Google Search',
-    topChannels: [['Google Search','Meta Ads','TikTok','LinkedIn'][Math.floor(Math.random()*4)]],
+    // Manual competitors: keep whatever the user entered, otherwise leave
+    // null so the dual-LLM validator below fills it from real intel rather
+    // than randomly picking a channel.
+    topChannel: (mc.topChannel && mc.topChannel !== '—') ? mc.topChannel : null,
+    topChannels: (mc.topChannel && mc.topChannel !== '—') ? [mc.topChannel] : [],
     suggestions: mc.suggestions.length ? mc.suggestions : [
       `Target ${mc.name || mc.domain}'s branded keywords — they have weak presence on long-tail terms`,
       'Their landing pages likely lack mobile optimisation — use mobile-first creative to capture mobile share',
@@ -3957,7 +3973,7 @@ function buildDashboard() {
   tbody.innerHTML = competitors.map((c, i) => {
     const lvl = (c.threatLevel || 'medium').toLowerCase();
     const initials = c.logo || (c.name || '?').split(/\s+/).slice(0,2).map(s=>s.charAt(0).toUpperCase()).join('');
-    const channel = c.topChannel || (c.topChannels && c.topChannels[0]) || 'Google Search';
+    const channel = c.topChannel || (c.topChannels && c.topChannels[0]) || '—';
     return `
       <tr>
         <td>
@@ -4300,7 +4316,7 @@ function buildDashboard() {
     body: JSON.stringify({ industry: industry.name, competitors: compNames, monthlyBudget: campaignBudget })
   }).then(r => r.json()).then(data => {
     const esEl = document.getElementById('efficiencyStatus');
-    if (esEl) esEl.textContent = `Top channel: ${data.topChannel || 'Google Search Ads'}`;
+    if (esEl) esEl.textContent = `Top channel: ${data.topChannel || '—'}`;
     if (efficiencyChartInstance) efficiencyChartInstance.destroy();
     const eCtx = document.getElementById('efficiencyChart');
     if (eCtx && data.channels) {
@@ -14527,7 +14543,7 @@ function buildBattlePlan() {
   window._bpCache = window._bpCache || {};
   window._bpCache[idx] = {
     name: c.name || 'Competitor',
-    channel: c.topChannel || 'Google Ads',
+    channel: c.topChannel || null,
     keywords: (c.topKeywords || ['competitor brand alternative','industry best tool','vs competitor','top rated solution']).slice(0, 8),
     campaigns: (c.campaigns || []).slice(0, 4),
     audiences: (c.audiences || [{label:'High-Intent Buyers',pct:38},{label:'Decision Makers',pct:24},{label:'Mid-Market Segment',pct:22}]).slice(0, 3),
@@ -14586,7 +14602,7 @@ function buildBattlePlan() {
     const badgeStyle = i < 2 ? 'background:#FEE2E2;color:#991B1B' : 'background:#FEF3C7;color:#92400E';
     return card(i<2?'#EF4444':'#F59E0B', badgeStyle, priority,
       s.length > 70 ? s.slice(0,70)+'…' : s,
-      `${c.name} leaves this gap unaddressed. A targeted counter-campaign on ${c.topChannel||'Google Ads'} can capture this audience now.`,
+      `${c.name} leaves this gap unaddressed. A targeted counter-campaign ${c.topChannel ? 'on '+c.topChannel : 'on their primary channel'} can capture this audience now.`,
       dangerBtn('⚡ Launch Counter-Campaign', `bpLC(${idx},${i})`) +
       purpleBtn('✨ Creative Studio', `bpCS(${idx},${i})`)
     );
@@ -14716,7 +14732,7 @@ function buildBattlePlan() {
           <div style="text-align:center" title="Click-Through Rate: % of ad impressions that result in a click. This competitor's average across all campaigns."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.ctr||'—'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">CTR</div></div>
           <div style="text-align:center" title="Return on Ad Spend — estimated revenue earned per $1 spent on ads by this competitor."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.roas||'—'}×</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">ROAS</div></div>
           <div style="text-align:center" title="Estimated monthly advertising budget across Google, Meta, TikTok and other paid channels."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.adSpend||'—'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Ad Spend</div></div>
-          <div style="text-align:center" title="The marketing channel where this competitor is investing the most budget and generating the best results."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.topChannel||'Google'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Top Channel</div></div>
+          <div style="text-align:center" title="The marketing channel where this competitor is investing the most budget and generating the best results."><div style="font-size:0.92rem;font-weight:800;color:#00E5FF">${c.topChannel||'—'}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Top Channel</div></div>
           <div style="text-align:center" title="AI threat assessment — how directly this competitor threatens your market position. High = immediate action required."><div style="font-size:0.92rem;font-weight:800;color:${threat==='high'?'#EF4444':threat==='medium'?'#F59E0B':'#10B981'}">${threat.toUpperCase()}</div><div style="font-size:0.62rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em">Threat</div></div>
         </div>
         <div style="text-align:right;flex-shrink:0" title="AI-calculated opportunity score — how much market share you can realistically capture from this competitor. Higher = more opportunity.">
