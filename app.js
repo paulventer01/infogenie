@@ -2655,6 +2655,12 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'templates') {
     try { buildTemplates(); } catch(e) { console.warn('buildTemplates error:', e); }
   }
+  if (viewId === 'stakeholders') {
+    try { buildStakeholders(); } catch(e) { console.warn('buildStakeholders error:', e); }
+  }
+  if (viewId === 'launches') {
+    try { buildLaunches(); } catch(e) { console.warn('buildLaunches error:', e); }
+  }
   if (viewId === 'opt-folders') {
     try { buildOptFolders(); } catch(e) { console.warn('buildOptFolders error:', e); }
   }
@@ -26082,8 +26088,12 @@ function buildTemplates() {
       <div style="margin-left:auto;font-size:12px;color:#64748B">Showing ${list.length} templates</div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">
-      ${list.map((t,i) => `
-        <div style="background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden;transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(0,0,0,.08)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='none'">
+      ${list.map((t,i) => {
+        const isPick = (t._aiRank != null && t._aiRank < 3);
+        const rationaleAttr = t._aiRationale ? ` title="${_esc(t._aiRationale)}"` : '';
+        return `
+        <div style="background:white;border-radius:12px;border:${isPick?'2px solid #F59E0B':'1px solid #E2E8F0'};overflow:hidden;transition:transform .15s,box-shadow .15s;position:relative" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(0,0,0,.08)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='none'">
+          ${isPick ? `<div${rationaleAttr} style="position:absolute;top:8px;left:8px;z-index:5;background:linear-gradient(135deg,#F59E0B,#EA580C);color:white;font-size:10px;font-weight:800;padding:4px 9px;border-radius:99px;box-shadow:0 4px 12px rgba(245,158,11,.45);cursor:help">🏆 AI TOP PICK${typeof t._aiScore==='number'?` · ${t._aiScore}`:''}</div>` : ''}
           <div style="aspect-ratio:16/10;background:linear-gradient(135deg,${t.bg1},${t.bg2});position:relative;overflow:hidden">
             <img src="${t.img}" alt="${t.title}" loading="lazy" decoding="async" fetchpriority="low" onerror="this.onerror=null;this.src='${t.imgFallback}'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">
             <div style="position:absolute;inset:0;background:linear-gradient(180deg,${t.bg1}33 0%,${t.bg1}11 35%,rgba(15,23,42,.78) 100%)"></div>
@@ -26094,11 +26104,82 @@ function buildTemplates() {
           </div>
           <div style="padding:12px 14px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:11px;color:#64748B">${t.usage} uses • ⭐ ${t.rating}</div><div style="font-size:10px;color:#10B981;font-weight:700;background:#F0FDF4;padding:2px 6px;border-radius:4px">+${t.lift}% CVR</div></div>
+            ${t._aiRationale ? `<div style="font-size:10.5px;color:#92400E;background:#FEF3C7;border:1px solid #FDE68A;padding:6px 8px;border-radius:6px;margin-bottom:8px;line-height:1.35"><strong>AI:</strong> ${_esc(t._aiRationale)}</div>` : ''}
             <div style="font-size:11px;color:#94A3B8;margin-bottom:8px;line-height:1.4">${t.preview}</div>
-            <button onclick="useTemplate(${i})" style="width:100%;padding:8px;background:#10B981;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">Use Template →</button>
+            <button onclick="useTemplate(${i})" style="width:100%;padding:8px;background:${isPick?'#F59E0B':'#10B981'};color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer">${isPick?'★ Use Top Pick →':'Use Template →'}</button>
           </div>
-        </div>`).join('')}
-    </div>`;
+        </div>`;
+      }).join('')}
+    </div>
+    ${window._templatesAiMeta ? `<div style="margin-top:14px;padding:8px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;font-size:11px;color:#64748B;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span><strong>Ranking source:</strong> ${_esc(window._templatesAiMeta.dataSource || 'n/a')} · <strong>Confidence:</strong> ${_esc(window._templatesAiMeta.confidence || 'n/a')}</span><span style="opacity:.7">${_esc(window._templatesAiMeta.dataOrigin || '')}</span></div>` : ''}`;
+
+  // Kick off AI ranking once per session per (domain|sector|keyword) and re-render on success
+  if (window._templatesData && !window._templatesData._aiPending && !window._templatesData._aiDone) {
+    window._templatesData._aiPending = true;
+    _fetchTemplateRecommendations();
+  }
+}
+
+async function _fetchTemplateRecommendations() {
+  const d = window._templatesData;
+  if (!d || !Array.isArray(d.templates) || !d.templates.length) return;
+  const domain = _lsDomain();
+  const sector = _lsSector();
+  const brand  = _lsBrand();
+  const keyword = (_lsKeywords()[0] || sector || '').slice(0, 80);
+  const cacheKey = `igTplRec_${domain}|${sector}|${keyword}`;
+  // 24h client cache
+  let cached = null;
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.recs) && (Date.now() - (parsed.ts || 0)) < 24*60*60*1000) {
+        cached = parsed;
+      }
+    }
+  } catch (_) {}
+  let recs = cached ? cached.recs : null;
+  let meta = cached ? cached.meta : null;
+  if (!recs) {
+    try {
+      const tplPayload = d.templates.map((t, idx) => ({
+        id: String(idx),
+        title: t.title,
+        type: t.type,
+        tagline: t.tagline
+      }));
+      const r = await fetch('/api/templates/recommend', {
+        method:'POST', headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ domain, sector, keyword, brand, templates: tplPayload })
+      });
+      const j = await r.json();
+      if (j && j.ok && Array.isArray(j.recommendations)) {
+        recs = j.recommendations;
+        meta = { dataOrigin: j.dataOrigin, dataSource: j.dataSource, confidence: j.confidence };
+        try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), recs, meta })); } catch (_) {}
+      }
+    } catch (e) {
+      console.warn('templates/recommend failed:', e.message);
+    }
+  }
+  d._aiPending = false;
+  d._aiDone = true;
+  if (!recs) return;
+  // Annotate templates and reorder so highest-score templates render first
+  const recById = new Map(recs.map(r => [String(r.id), r]));
+  d.templates.forEach((t, idx) => {
+    const r = recById.get(String(idx));
+    if (r) {
+      t._aiScore = r.score;
+      t._aiRationale = r.rationale;
+    }
+  });
+  d.templates.sort((a, b) => (b._aiScore || 0) - (a._aiScore || 0));
+  d.templates.forEach((t, idx) => { t._aiRank = idx; });
+  window._templatesAiMeta = meta;
+  // Re-render with new ordering
+  buildTemplates();
 }
 
 // Curated keyword tags + a hand-picked Unsplash photo ID per template title.
@@ -29645,4 +29726,240 @@ function renderCrossChannel(d) {
     ${organicHtml}
     ${earnedHtml}
   `;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STAKEHOLDERS (per-account email digest list)
+// ═══════════════════════════════════════════════════════════════════════════
+window._stakeholdersData = null;
+
+async function buildStakeholders() {
+  const wrap = document.getElementById('stakeholdersWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `<div style="padding:32px;text-align:center;color:#64748B">Loading stakeholders…</div>`;
+  try {
+    const r = await fetch('/api/stakeholders/list');
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'load failed');
+    window._stakeholdersData = j;
+    _renderStakeholders();
+  } catch (e) {
+    wrap.innerHTML = `<div style="background:white;border:1px solid #FECACA;border-radius:10px;padding:18px;color:#B91C1C">Failed to load: ${_esc(e.message)}</div>`;
+  }
+}
+
+function _renderStakeholders() {
+  const wrap = document.getElementById('stakeholdersWrap');
+  const d = window._stakeholdersData;
+  if (!wrap || !d) return;
+  const last = d.lastEmailSentAt ? new Date(d.lastEmailSentAt).toLocaleString() : '—';
+  const cfg = d.emailConfigured;
+  const rows = (d.stakeholders || []).map(s => `
+    <tr style="border-bottom:1px solid #F1F5F9">
+      <td style="padding:10px 12px;color:#1E293B;font-weight:600">${_esc(s.name)}</td>
+      <td style="padding:10px 12px;color:#475569"><a href="mailto:${_esc(s.email)}" style="color:#0D9488;text-decoration:none">${_esc(s.email)}</a></td>
+      <td style="padding:10px 12px;color:#94A3B8;font-size:11px">${new Date(s.addedAt).toLocaleDateString()}</td>
+      <td style="padding:10px 12px;text-align:right">
+        <button onclick="removeStakeholder('${_esc(s.id)}')" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">Remove</button>
+      </td>
+    </tr>`).join('');
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:18px">
+        <div style="font-size:13px;font-weight:800;color:#0F172A;margin-bottom:10px">Add stakeholder</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <input id="stkName" type="text" placeholder="Full name" style="padding:9px 12px;border:1px solid #CBD5E1;border-radius:6px;font-size:13px" />
+          <input id="stkEmail" type="email" placeholder="email@company.com" style="padding:9px 12px;border:1px solid #CBD5E1;border-radius:6px;font-size:13px" />
+          <button onclick="addStakeholder()" style="background:#0D9488;color:white;border:none;border-radius:6px;padding:9px 12px;font-size:13px;font-weight:700;cursor:pointer">+ Add to alert list</button>
+          <div id="stkMsg" style="font-size:11px;min-height:14px"></div>
+        </div>
+      </div>
+      <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:18px">
+        <div style="font-size:13px;font-weight:800;color:#0F172A;margin-bottom:10px">When emails fire</div>
+        <ul style="margin:0 0 12px 18px;padding:0;color:#475569;font-size:12px;line-height:1.6">
+          <li>Any new alert with <strong>severity ≥ high</strong> from <code>/api/alerts/check</code></li>
+          <li>Launch reminders fired by the calendar (24h, 1h, live)</li>
+          <li>Throttled to <strong>one digest every 30 minutes</strong> to avoid noise</li>
+        </ul>
+        <div style="font-size:11px;color:#64748B;margin-bottom:8px">Last digest sent: <strong>${_esc(last)}</strong></div>
+        <div style="font-size:11px;color:${cfg?'#059669':'#B91C1C'};margin-bottom:10px">Resend ${cfg?'configured ✓':'NOT configured — set RESEND_API_KEY to enable'}</div>
+        <button onclick="testStakeholderEmail()" ${cfg?'':'disabled'} style="background:${cfg?'#1E293B':'#94A3B8'};color:white;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:700;cursor:${cfg?'pointer':'not-allowed'}">Send test email now</button>
+        <div id="stkTestMsg" style="font-size:11px;margin-top:8px;min-height:14px"></div>
+      </div>
+    </div>
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden">
+      <div style="padding:12px 16px;background:#F8FAFC;border-bottom:1px solid #E2E8F0;font-size:12px;font-weight:700;color:#475569;display:flex;justify-content:space-between;align-items:center">
+        <span>${(d.stakeholders||[]).length} stakeholder${(d.stakeholders||[]).length===1?'':'s'} on the list</span>
+        <span style="font-size:10px;color:#94A3B8">Source: ${_esc(d.dataSource)} · ${_esc(d.confidence)} confidence</span>
+      </div>
+      ${(d.stakeholders||[]).length ? `<table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#F8FAFC;color:#64748B;font-size:11px;text-transform:uppercase;letter-spacing:.05em"><th style="text-align:left;padding:9px 12px">Name</th><th style="text-align:left;padding:9px 12px">Email</th><th style="text-align:left;padding:9px 12px">Added</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>` : `<div style="padding:32px;text-align:center;color:#94A3B8">No stakeholders yet — add one above to start receiving digests.</div>`}
+    </div>`;
+}
+
+async function addStakeholder() {
+  const msg  = document.getElementById('stkMsg');
+  const name = (document.getElementById('stkName').value || '').trim();
+  const email= (document.getElementById('stkEmail').value || '').trim();
+  if (!name || !email) { msg.style.color='#B91C1C'; msg.textContent='Name and email are required.'; return; }
+  msg.style.color='#64748B'; msg.textContent='Adding…';
+  try {
+    const r = await fetch('/api/stakeholders/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name,email}) });
+    const j = await r.json();
+    if (!j.ok) { msg.style.color='#B91C1C'; msg.textContent = j.error || 'Failed to add'; return; }
+    document.getElementById('stkName').value = '';
+    document.getElementById('stkEmail').value = '';
+    msg.style.color='#059669'; msg.textContent = `Added ${j.stakeholder.email}`;
+    buildStakeholders();
+  } catch (e) { msg.style.color='#B91C1C'; msg.textContent = e.message; }
+}
+
+async function removeStakeholder(id) {
+  if (!confirm('Remove this stakeholder from the alert list?')) return;
+  try {
+    const r = await fetch('/api/stakeholders/remove', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id}) });
+    const j = await r.json();
+    if (j.ok) buildStakeholders();
+  } catch (e) { alert('Failed to remove: ' + e.message); }
+}
+
+async function testStakeholderEmail() {
+  const msg = document.getElementById('stkTestMsg');
+  msg.style.color='#64748B'; msg.textContent='Sending…';
+  try {
+    const r = await fetch('/api/stakeholders/test-email', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const j = await r.json();
+    if (j.ok) { msg.style.color='#059669'; msg.textContent = `Sent to ${j.sentCount} of ${j.totalStakeholders}.`; }
+    else { msg.style.color='#B91C1C'; msg.textContent = j.error || `Failed (${j.failures && j.failures.length} errors)`; }
+  } catch (e) { msg.style.color='#B91C1C'; msg.textContent = e.message; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LAUNCH CALENDAR (campaign go-live tracker + 24h/1h reminders)
+// ═══════════════════════════════════════════════════════════════════════════
+window._launchesData = null;
+
+async function buildLaunches() {
+  const wrap = document.getElementById('launchesWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `<div style="padding:32px;text-align:center;color:#64748B">Loading launches…</div>`;
+  try {
+    const r = await fetch('/api/launches/list');
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'load failed');
+    window._launchesData = j;
+    _renderLaunches();
+  } catch (e) {
+    wrap.innerHTML = `<div style="background:white;border:1px solid #FECACA;border-radius:10px;padding:18px;color:#B91C1C">Failed to load: ${_esc(e.message)}</div>`;
+  }
+}
+
+function _formatCountdown(ms) {
+  if (ms <= 0) return 'live now';
+  const m = Math.floor(ms/60000) % 60;
+  const h = Math.floor(ms/3600000) % 24;
+  const d = Math.floor(ms/86400000);
+  if (d > 0) return `in ${d}d ${h}h ${m}m`;
+  if (h > 0) return `in ${h}h ${m}m`;
+  return `in ${m}m`;
+}
+
+function _renderLaunches() {
+  const wrap = document.getElementById('launchesWrap');
+  const data = window._launchesData;
+  if (!wrap || !data) return;
+  const now = Date.now();
+  const groups = { today: [], week: [], later: [], past: [] };
+  data.launches.forEach(l => {
+    const ts = Date.parse(l.datetimeISO);
+    const ms = ts - now;
+    if (ms < 0) groups.past.push({ l, ms, ts });
+    else if (ms < 24*60*60*1000) groups.today.push({ l, ms, ts });
+    else if (ms < 7*24*60*60*1000) groups.week.push({ l, ms, ts });
+    else groups.later.push({ l, ms, ts });
+  });
+  const channels = data.channels || ['Email','Social','Paid Ad','PR','Mixed','Other'];
+  const channelOpts = channels.map(c => `<option value="${_esc(c)}">${_esc(c)}</option>`).join('');
+  const minDateAttr = new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,16);
+  const card = (entry, group) => {
+    const { l, ms } = entry;
+    const remPills = [
+      l.reminders.h24 ? '<span style="background:#DCFCE7;color:#166534;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">24h ✓</span>' : '<span style="background:#F1F5F9;color:#94A3B8;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">24h pending</span>',
+      l.reminders.h1  ? '<span style="background:#DCFCE7;color:#166534;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">1h ✓</span>'  : '<span style="background:#F1F5F9;color:#94A3B8;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">1h pending</span>',
+      l.reminders.live ? '<span style="background:#FEE2E2;color:#991B1B;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">LIVE 🚀</span>' : ''
+    ].filter(Boolean).join(' ');
+    const cdColor = group === 'past' ? '#94A3B8' : group === 'today' ? '#DC2626' : group === 'week' ? '#D97706' : '#0F766E';
+    return `<div style="background:white;border:1px solid #E2E8F0;border-radius:10px;padding:14px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:8px">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
+          <span style="background:#EEF2FF;color:#4338CA;font-size:10px;font-weight:800;padding:2px 8px;border-radius:99px;letter-spacing:.04em">${_esc(l.channel.toUpperCase())}</span>
+          <span style="color:${cdColor};font-size:11px;font-weight:800">${_esc(_formatCountdown(ms))}</span>
+        </div>
+        <div style="font-weight:700;color:#0F172A;font-size:14px;margin-bottom:3px">${_esc(l.name)}</div>
+        <div style="color:#64748B;font-size:11px;margin-bottom:6px">${new Date(l.datetimeISO).toLocaleString()} · status: <strong>${_esc(l.status)}</strong></div>
+        ${l.notes ? `<div style="color:#475569;font-size:12px;margin-bottom:8px;line-height:1.4">${_esc(l.notes)}</div>` : ''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${remPills}</div>
+      </div>
+      <button onclick="removeLaunch('${_esc(l.id)}')" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0">Remove</button>
+    </div>`;
+  };
+  const section = (title, arr, group, emoji) => arr.length ? `
+    <div style="margin-bottom:18px">
+      <div style="font-size:11px;font-weight:800;color:#64748B;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">${emoji} ${title} (${arr.length})</div>
+      ${arr.map(e => card(e, group)).join('')}
+    </div>` : '';
+  wrap.innerHTML = `
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:18px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:800;color:#0F172A;margin-bottom:12px">📅 Schedule a launch</div>
+      <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:8px;margin-bottom:8px">
+        <input id="lnchName" type="text" placeholder="Launch name (e.g. Q2 product launch)" style="padding:9px 12px;border:1px solid #CBD5E1;border-radius:6px;font-size:13px" />
+        <input id="lnchDt" type="datetime-local" min="${_esc(minDateAttr)}" style="padding:9px 12px;border:1px solid #CBD5E1;border-radius:6px;font-size:13px" />
+        <select id="lnchChannel" style="padding:9px 12px;border:1px solid #CBD5E1;border-radius:6px;font-size:13px;background:white">${channelOpts}</select>
+      </div>
+      <textarea id="lnchNotes" rows="2" placeholder="Optional notes — what's launching, owner, success metric…" style="width:100%;padding:9px 12px;border:1px solid #CBD5E1;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;margin-bottom:8px"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="font-size:11px;color:#64748B">Reminders fire automatically: 24h before, 1h before, and at go-live. Stakeholders get an email at every reminder.</div>
+        <button onclick="addLaunch()" style="background:#7C3AED;color:white;border:none;border-radius:6px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer">+ Schedule launch</button>
+      </div>
+      <div id="lnchMsg" style="font-size:11px;margin-top:8px;min-height:14px"></div>
+    </div>
+    ${section('Today &amp; next 24h', groups.today, 'today', '🔥')}
+    ${section('This week', groups.week, 'week', '📅')}
+    ${section('Later', groups.later, 'later', '🗓️')}
+    ${section('Past launches', groups.past, 'past', '✅')}
+    ${data.launches.length === 0 ? `<div style="background:white;border:1px dashed #CBD5E1;border-radius:10px;padding:32px;text-align:center;color:#94A3B8">No launches scheduled yet — schedule your first one above.</div>` : ''}
+    <div style="margin-top:14px;padding:8px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;font-size:11px;color:#64748B">Source: ${_esc(data.dataSource)} · ${_esc(data.confidence)} confidence · ${_esc(data.dataOrigin)}</div>`;
+}
+
+async function addLaunch() {
+  const msg = document.getElementById('lnchMsg');
+  const name = (document.getElementById('lnchName').value || '').trim();
+  const dtLocal = (document.getElementById('lnchDt').value || '').trim();
+  const channel = document.getElementById('lnchChannel').value;
+  const notes = (document.getElementById('lnchNotes').value || '').trim();
+  if (!name || !dtLocal) { msg.style.color='#B91C1C'; msg.textContent='Name and date/time are required.'; return; }
+  // datetime-local is naive local — convert to ISO with offset
+  const datetimeISO = new Date(dtLocal).toISOString();
+  msg.style.color='#64748B'; msg.textContent='Scheduling…';
+  try {
+    const r = await fetch('/api/launches/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name,datetimeISO,channel,notes}) });
+    const j = await r.json();
+    if (!j.ok) { msg.style.color='#B91C1C'; msg.textContent = j.error || 'Failed'; return; }
+    document.getElementById('lnchName').value = '';
+    document.getElementById('lnchDt').value = '';
+    document.getElementById('lnchNotes').value = '';
+    msg.style.color='#059669'; msg.textContent = `Scheduled — ${new Date(j.launch.datetimeISO).toLocaleString()}`;
+    buildLaunches();
+  } catch (e) { msg.style.color='#B91C1C'; msg.textContent = e.message; }
+}
+
+async function removeLaunch(id) {
+  if (!confirm('Remove this launch from the calendar?')) return;
+  try {
+    const r = await fetch('/api/launches/remove', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id}) });
+    const j = await r.json();
+    if (j.ok) buildLaunches();
+  } catch (e) { alert('Failed to remove: ' + e.message); }
 }

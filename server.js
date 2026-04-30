@@ -2238,6 +2238,103 @@ app.post('/api/template-images', async (req, res) => {
   }
 });
 
+// ── POST /api/templates/recommend — AI-rank templates against user's context ─
+// Body: { domain, sector, keyword, brand, templates: [{id, title, type, tagline}] }
+// Response: { ok, recommendations: [{id, score 0-100, rationale}], dataOrigin, dataSource, confidence }
+// Falls back to deterministic keyword-overlap scoring if OpenAI fails or is missing.
+app.post('/api/templates/recommend', async (req, res) => {
+  try {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const domain   = String(body.domain || '').trim().slice(0, 120);
+    const sector   = String(body.sector || '').trim().slice(0, 80);
+    const keyword  = String(body.keyword || '').trim().slice(0, 80);
+    const brand    = String(body.brand || '').trim().slice(0, 80);
+    const rawTpls  = Array.isArray(body.templates) ? body.templates : [];
+    if (!rawTpls.length) {
+      return res.status(400).json({ ok:false, error:'templates array required' });
+    }
+    // Cap at 30 to control token cost and latency
+    const templates = rawTpls.slice(0, 30).map((t, idx) => ({
+      id: String(t.id != null ? t.id : idx),
+      title: String(t.title || '').slice(0, 120),
+      type: String(t.type || '').slice(0, 30),
+      tagline: String(t.tagline || '').slice(0, 200)
+    })).filter(t => t.title);
+
+    // Deterministic scoring fallback — keyword/sector token overlap on title+tagline
+    const _deterministicScore = (tpl) => {
+      const haystack = `${tpl.title} ${tpl.tagline}`.toLowerCase();
+      const tokens = `${keyword} ${sector} ${brand}`.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 2);
+      if (!tokens.length) return 50;
+      let hits = 0;
+      for (const tok of tokens) if (haystack.includes(tok)) hits++;
+      return Math.min(100, 30 + Math.round((hits / tokens.length) * 70));
+    };
+
+    let recommendations = null;
+    let dataSource = 'deterministic_overlap';
+    let dataOrigin = 'deterministic keyword/sector overlap (OpenAI unavailable)';
+    let confidence = 'medium';
+
+    if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY && templates.length) {
+      try {
+        const promptCtx = `Domain: ${domain || 'unknown'}\nBrand: ${brand || 'unknown'}\nSector: ${sector || 'unknown'}\nTarget keyword: ${keyword || 'unknown'}`;
+        const tplList = templates.map(t => `${t.id}. [${t.type}] ${t.title} — ${t.tagline}`).join('\n');
+        const completion = await openaiChatWithRetry({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role:'system', content:'You are a senior marketing strategist. Score each template 0-100 for fit to the user\'s domain, sector and target keyword. Reply with ONLY a JSON array of objects {"id": string, "score": number 0-100, "rationale": string ≤120 chars}. No prose.' },
+            { role:'user', content:`${promptCtx}\n\nTemplates:\n${tplList}\n\nReturn JSON array now.` }
+          ],
+          temperature: 0.4,
+          max_tokens: 1200
+        });
+        const raw = (completion.choices?.[0]?.message?.content || '').trim();
+        // Strip code fences if present
+        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        const parsed = JSON.parse(cleaned);
+        if (Array.isArray(parsed)) {
+          const byId = new Map(templates.map(t => [t.id, t]));
+          recommendations = parsed
+            .filter(r => r && byId.has(String(r.id)))
+            .map(r => ({
+              id: String(r.id),
+              score: Math.max(0, Math.min(100, Math.round(Number(r.score) || 0))),
+              rationale: String(r.rationale || '').slice(0, 200)
+            }));
+          // Backfill any templates the model omitted with deterministic scores
+          const seen = new Set(recommendations.map(r => r.id));
+          for (const t of templates) {
+            if (!seen.has(t.id)) {
+              recommendations.push({ id: t.id, score: _deterministicScore(t), rationale: 'Deterministic fallback score (model omitted this template).' });
+            }
+          }
+          dataSource = 'openai_gpt-4o-mini';
+          dataOrigin = `OpenAI gpt-4o-mini ranked ${recommendations.length} templates against domain "${domain}" / sector "${sector}" / keyword "${keyword}"`;
+          confidence = 'high';
+        }
+      } catch (e) {
+        console.warn('[templates/recommend] OpenAI failed, using deterministic fallback:', e.message);
+      }
+    }
+
+    if (!recommendations) {
+      recommendations = templates.map(t => ({
+        id: t.id,
+        score: _deterministicScore(t),
+        rationale: `Keyword/sector token overlap with "${keyword || sector || 'context'}".`
+      }));
+    }
+
+    // Sort by score desc, stable
+    recommendations.sort((a, b) => b.score - a.score);
+    res.json({ ok:true, recommendations, dataOrigin, dataSource, confidence, generatedAt: Date.now() });
+  } catch (err) {
+    console.error('/api/templates/recommend error:', err.message);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
 // ── POST /api/intent-map — Classify keywords by search intent + page-fit ────
 app.post('/api/intent-map', async (req, res) => {
   try {
@@ -9498,8 +9595,22 @@ app.post('/api/alerts/check', async (req, res) => {
       });
     }
 
+    // Stakeholder digest (high/critical only, throttled to one send per 30 min).
+    // TRULY fire-and-forget: outbound email latency must NOT block this response.
+    // Errors are logged internally; status surfaces on the next /list response.
+    let stakeholderEmail = { sent:false, reason:'queued-async' };
+    if (newAlerts.length && typeof _dispatchStakeholderDigest === 'function') {
+      Promise.resolve()
+        .then(() => _dispatchStakeholderDigest(newAlerts, { accountLabel: brand || domain }))
+        .then(r => { if (r && r.sent) console.log(`[stakeholder-email] dispatched ${r.sentCount} digest(s) from /alerts/check`); })
+        .catch(e => console.warn('[stakeholder-email] /alerts/check dispatch failed:', e.message));
+    } else if (!newAlerts.length) {
+      stakeholderEmail = { sent:false, reason:'no-alerts' };
+    }
+
     res.json({
       ok:true, newAlerts, newCount: newAlerts.length, lastChecked: now,
+      stakeholderEmail,
       dataOrigin:'DataForSEO live SERP + Google News diff vs last snapshot',
       dataSource:'DataForSEO',
       confidence:'high'
@@ -9509,6 +9620,340 @@ app.post('/api/alerts/check', async (req, res) => {
     res.status(500).json({ ok:false, error: err.message });
   }
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// STAKEHOLDER DISTRIBUTION (Feature 5 — auto-emails on critical alerts)
+// ────────────────────────────────────────────────────────────────────────────
+const _STAKE_FILE = path.join(_ALERTS_DIR, 'stakeholders.json');
+const _STAKE_META = {
+  dataOrigin: 'data/stakeholders.json (file persistence)',
+  dataSource: 'InfoGenie Stakeholder Engine',
+  confidence: 'high'
+};
+function _readStake() {
+  try {
+    const d = JSON.parse(fs.readFileSync(_STAKE_FILE, 'utf8'));
+    if (d && Array.isArray(d.stakeholders)) return d;
+  } catch {}
+  return { stakeholders: [], lastEmailSentAt: 0 };
+}
+let _stakeWriteChain = Promise.resolve();
+function _stakeMutate(mutator) {
+  _stakeWriteChain = _stakeWriteChain.then(async () => {
+    const cur = _readStake();
+    const next = await mutator(cur);
+    if (next !== false) {
+      try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_STAKE_FILE, next); }
+      catch (e) { console.warn('stakeholders write failed:', e.message); }
+    }
+    return next;
+  }).catch(e => { console.warn('stakeholders mutator error:', e.message); });
+  return _stakeWriteChain;
+}
+
+const _EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+app.get('/api/stakeholders/list', (req, res) => {
+  const d = _readStake();
+  res.json({
+    ok:true,
+    stakeholders: d.stakeholders,
+    lastEmailSentAt: d.lastEmailSentAt || 0,
+    emailConfigured: !!process.env.RESEND_API_KEY,
+    ..._STAKE_META
+  });
+});
+
+app.post('/api/stakeholders/add', async (req, res) => {
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const name  = String(body.name  || '').trim().slice(0, 80);
+  const email = String(body.email || '').trim().slice(0, 120).toLowerCase();
+  if (!name)  return res.status(400).json({ ok:false, error:'name required' });
+  if (!_EMAIL_RE.test(email)) return res.status(400).json({ ok:false, error:'valid email required' });
+  let added = null, dup = false;
+  await _stakeMutate(async (data) => {
+    if (data.stakeholders.some(s => s.email === email)) { dup = true; return false; }
+    added = {
+      id: 'stk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+      name, email, addedAt: Date.now()
+    };
+    data.stakeholders.unshift(added);
+    return data;
+  });
+  if (dup) return res.status(409).json({ ok:false, error:'email already in list' });
+  res.json({ ok:true, stakeholder: added, ..._STAKE_META });
+});
+
+app.post('/api/stakeholders/remove', async (req, res) => {
+  const id = String((req.body && req.body.id) || '');
+  if (!id) return res.status(400).json({ ok:false, error:'id required' });
+  let removed = false;
+  await _stakeMutate(async (data) => {
+    const before = data.stakeholders.length;
+    data.stakeholders = data.stakeholders.filter(s => s.id !== id);
+    removed = data.stakeholders.length < before;
+    return data;
+  });
+  res.json({ ok:true, removed, ..._STAKE_META });
+});
+
+// Build a stakeholder digest email body for a batch of new alerts
+function _buildStakeholderDigest(newAlerts, accountLabel) {
+  const sevOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+  const sorted = [...newAlerts].sort((a,b) => (sevOrder[a.severity]||9) - (sevOrder[b.severity]||9));
+  const sevColor = (s) => s === 'critical' ? '#DC2626' : s === 'high' ? '#EA580C' : s === 'medium' ? '#D97706' : '#0EA5E9';
+  const escHtml = (s) => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const rows = sorted.map(a => `
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid #E5E7EB;vertical-align:top">
+        <div style="display:inline-block;background:${sevColor(a.severity)};color:white;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-bottom:6px">${escHtml(String(a.severity||'info').toUpperCase())}</div>
+        <div style="font-weight:700;color:#111827;font-size:14px;margin-bottom:2px">${escHtml(a.title || a.type || 'Alert')}</div>
+        <div style="color:#4B5563;font-size:13px;line-height:1.4">${escHtml(a.body || '')}</div>
+      </td>
+    </tr>`).join('');
+  const html = `<!doctype html><html><body style="margin:0;background:#F3F4F6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+    <div style="max-width:600px;margin:0 auto;background:white;border-radius:12px;overflow:hidden;margin-top:20px">
+      <div style="background:linear-gradient(135deg,#1E293B,#7C3AED);padding:20px 24px;color:white">
+        <div style="font-size:13px;opacity:.85;letter-spacing:.06em;font-weight:700">INFOGENIE · STAKEHOLDER DIGEST</div>
+        <div style="font-size:20px;font-weight:800;margin-top:4px">${escHtml(newAlerts.length)} new alert${newAlerts.length===1?'':'s'}${accountLabel ? ` · ${escHtml(accountLabel)}` : ''}</div>
+      </div>
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse">${rows}</table>
+      <div style="padding:18px 24px;background:#F9FAFB;color:#6B7280;font-size:12px;border-top:1px solid #E5E7EB">
+        Open InfoGenie to acknowledge these alerts and dive into the data.
+      </div>
+    </div></body></html>`;
+  const text = sorted.map(a => `[${(a.severity||'info').toUpperCase()}] ${a.title}\n${a.body || ''}`).join('\n\n');
+  return { subject: `[InfoGenie] ${newAlerts.length} new alert${newAlerts.length===1?'':'s'}${accountLabel ? ` — ${accountLabel}` : ''}`, html, text };
+}
+
+// Public helper: dispatch a stakeholder digest email for a batch of new alerts.
+// Throttles to one send per 30 minutes via lastEmailSentAt to avoid noise.
+// Filters to high/critical severity only by default (override via opts.minSeverity).
+// THROTTLE IS ATOMIC: lastEmailSentAt is reserved inside _stakeMutate BEFORE the
+// network sends, so two concurrent triggers cannot both pass the throttle.
+async function _dispatchStakeholderDigest(newAlerts, opts = {}) {
+  if (!process.env.RESEND_API_KEY) return { sent:false, reason:'resend-not-configured' };
+  if (!Array.isArray(newAlerts) || !newAlerts.length) return { sent:false, reason:'no-alerts' };
+  const minSev = opts.minSeverity || 'high';
+  const sevRank = { low: 0, medium: 1, high: 2, critical: 3 };
+  const minRank = sevRank[minSev] != null ? sevRank[minSev] : 2;
+  const eligible = newAlerts.filter(a => (sevRank[a.severity] != null ? sevRank[a.severity] : 0) >= minRank);
+  if (!eligible.length) return { sent:false, reason:'no-eligible-severity' };
+  const THROTTLE_MS = 30 * 60 * 1000;
+  // Atomic check-and-reserve: serialised through the mutex chain. Two concurrent
+  // callers cannot both observe lastEmailSentAt < (now-THROTTLE) and proceed.
+  let recipients = null;
+  let reservedAt = 0;
+  await _stakeMutate(async (d) => {
+    if (!d.stakeholders.length) return false;
+    const now = Date.now();
+    if ((now - (d.lastEmailSentAt || 0)) < THROTTLE_MS) return false;
+    d.lastEmailSentAt = now;
+    recipients = d.stakeholders.slice();
+    reservedAt = now;
+    return d;
+  });
+  if (!recipients) {
+    // Either no stakeholders or throttled — figure out which for the response
+    const cur = _readStake();
+    return { sent:false, reason: cur.stakeholders.length ? 'throttled' : 'no-stakeholders' };
+  }
+  const { subject, html, text } = _buildStakeholderDigest(eligible, opts.accountLabel || '');
+  let okCount = 0, failCount = 0;
+  for (const s of recipients) {
+    try {
+      await _sendEmailViaResend({ to: s.email, subject, html, text });
+      okCount++;
+    } catch (e) {
+      failCount++;
+      console.warn(`[stakeholder-email] failed to ${s.email}: ${e.message}`);
+    }
+  }
+  // If every send failed, release the throttle so the next legitimate alert can try
+  if (okCount === 0) {
+    await _stakeMutate(async (d) => {
+      if (d.lastEmailSentAt === reservedAt) { d.lastEmailSentAt = 0; return d; }
+      return false;
+    });
+  }
+  return { sent: okCount > 0, sentCount: okCount, failCount, totalAlerts: eligible.length };
+}
+
+app.post('/api/stakeholders/test-email', async (req, res) => {
+  if (!process.env.RESEND_API_KEY) {
+    return res.status(503).json({ ok:false, error:'RESEND_API_KEY missing — cannot send test email' });
+  }
+  const stake = _readStake();
+  if (!stake.stakeholders.length) {
+    return res.status(400).json({ ok:false, error:'no stakeholders to send to — add at least one first' });
+  }
+  // Build a sample alert and bypass throttle by using the helper directly
+  const sample = [{
+    type:'rank_drop', severity:'high',
+    title:'TEST · Sample rank drop alert',
+    body:'This is a test message from InfoGenie. Real alerts will look like this when stakeholders need to act.',
+    timestamp: Date.now()
+  }];
+  const { subject, html, text } = _buildStakeholderDigest(sample, 'TEST');
+  let okCount = 0, failures = [];
+  for (const s of stake.stakeholders) {
+    try { await _sendEmailViaResend({ to: s.email, subject, html, text }); okCount++; }
+    catch (e) { failures.push({ email: s.email, error: e.message }); }
+  }
+  res.json({ ok: okCount > 0, sentCount: okCount, failures, totalStakeholders: stake.stakeholders.length, ..._STAKE_META });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// LAUNCH CALENDAR (Feature 6 — campaign launch tracker + 24h/1h reminders)
+// ────────────────────────────────────────────────────────────────────────────
+const _LAUNCH_FILE = path.join(_ALERTS_DIR, 'launches.json');
+const _LAUNCH_META = {
+  dataOrigin: 'data/launches.json (file persistence) + setInterval 60s sweeper',
+  dataSource: 'InfoGenie Launch Engine',
+  confidence: 'high'
+};
+const _LAUNCH_CHANNELS = ['Email','Social','Paid Ad','PR','Mixed','Other'];
+function _readLaunches() {
+  try {
+    const d = JSON.parse(fs.readFileSync(_LAUNCH_FILE, 'utf8'));
+    if (d && Array.isArray(d.launches)) return d;
+  } catch {}
+  return { launches: [] };
+}
+let _launchWriteChain = Promise.resolve();
+function _launchMutate(mutator) {
+  _launchWriteChain = _launchWriteChain.then(async () => {
+    const cur = _readLaunches();
+    const next = await mutator(cur);
+    if (next !== false) {
+      try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_LAUNCH_FILE, next); }
+      catch (e) { console.warn('launches write failed:', e.message); }
+    }
+    return next;
+  }).catch(e => { console.warn('launches mutator error:', e.message); });
+  return _launchWriteChain;
+}
+
+app.get('/api/launches/list', (req, res) => {
+  const d = _readLaunches();
+  // Sort soonest first
+  const launches = [...d.launches].sort((a,b) => (a.datetimeISO < b.datetimeISO ? -1 : 1));
+  res.json({ ok:true, launches, channels: _LAUNCH_CHANNELS, now: Date.now(), ..._LAUNCH_META });
+});
+
+app.post('/api/launches/add', async (req, res) => {
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const name = String(body.name || '').trim().slice(0, 120);
+  const datetimeISO = String(body.datetimeISO || '').trim();
+  const channel = String(body.channel || 'Other').trim();
+  const notes = String(body.notes || '').trim().slice(0, 400);
+  if (!name) return res.status(400).json({ ok:false, error:'name required' });
+  const ts = Date.parse(datetimeISO);
+  if (!Number.isFinite(ts)) return res.status(400).json({ ok:false, error:'valid datetimeISO required' });
+  if (ts < Date.now() - 60000) return res.status(400).json({ ok:false, error:'datetime must be in the future' });
+  if (!_LAUNCH_CHANNELS.includes(channel)) return res.status(400).json({ ok:false, error:`channel must be one of: ${_LAUNCH_CHANNELS.join(', ')}` });
+  const launch = {
+    id: 'lnch_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8),
+    name, channel, notes,
+    datetimeISO: new Date(ts).toISOString(),
+    status: 'scheduled',
+    createdAt: Date.now(),
+    reminders: { h24: false, h1: false, live: false }
+  };
+  await _launchMutate(async (d) => { d.launches.push(launch); return d; });
+  res.json({ ok:true, launch, ..._LAUNCH_META });
+});
+
+app.post('/api/launches/remove', async (req, res) => {
+  const id = String((req.body && req.body.id) || '');
+  if (!id) return res.status(400).json({ ok:false, error:'id required' });
+  let removed = false;
+  await _launchMutate(async (d) => {
+    const before = d.launches.length;
+    d.launches = d.launches.filter(l => l.id !== id);
+    removed = d.launches.length < before;
+    return d;
+  });
+  res.json({ ok:true, removed, ..._LAUNCH_META });
+});
+
+// Background sweeper — runs every 60s in-process. For each scheduled launch,
+// fires a 24h-before reminder, a 1h-before reminder, and a "now live" alert.
+// Pushes alerts into alerts.json and emails stakeholders. Idempotent: each
+// reminder fires at most once per launch via the reminders.{h24,h1,live} flags.
+async function _sweepLaunches() {
+  try {
+    const data = _readLaunches();
+    if (!data.launches.length) return;
+    const now = Date.now();
+    const due = []; // alerts to push
+    let mutated = false;
+    await _launchMutate(async (d) => {
+      for (const l of d.launches) {
+        const ts = Date.parse(l.datetimeISO);
+        if (!Number.isFinite(ts)) continue;
+        const msUntil = ts - now;
+        // 24h reminder window: 23h–24h before launch
+        if (!l.reminders.h24 && msUntil <= 24*60*60*1000 && msUntil > 23*60*60*1000) {
+          l.reminders.h24 = true; mutated = true;
+          due.push({
+            id: `launch-24h-${l.id}-${now}`,
+            type:'launch_reminder_24h', severity:'medium',
+            title:`Launch in 24h: ${l.name}`,
+            body:`"${l.name}" (${l.channel}) launches at ${new Date(ts).toUTCString()}. Final QA window opens now.`,
+            launchId: l.id, timestamp: now, read:false
+          });
+        }
+        // 1h reminder window: 55m–60m before launch
+        if (!l.reminders.h1 && msUntil <= 60*60*1000 && msUntil > 55*60*1000) {
+          l.reminders.h1 = true; mutated = true;
+          due.push({
+            id: `launch-1h-${l.id}-${now}`,
+            type:'launch_reminder_1h', severity:'high',
+            title:`Launch in 1h: ${l.name}`,
+            body:`"${l.name}" (${l.channel}) goes live at ${new Date(ts).toUTCString()}. Confirm assets are queued and stakeholders are watching.`,
+            launchId: l.id, timestamp: now, read:false
+          });
+        }
+        // Live transition: 0–60s past launch
+        if (!l.reminders.live && msUntil <= 0 && msUntil > -60*1000) {
+          l.reminders.live = true; l.status = 'launched'; mutated = true;
+          due.push({
+            id: `launch-live-${l.id}-${now}`,
+            type:'launch_live', severity:'high',
+            title:`🚀 LIVE: ${l.name}`,
+            body:`"${l.name}" (${l.channel}) is now live. Watch the first 24h closely — early signal beats late panic.`,
+            launchId: l.id, timestamp: now, read:false
+          });
+        }
+        // Late transition (server was down at the moment) — flip to launched silently
+        if (!l.reminders.live && msUntil <= -60*1000 && l.status !== 'launched') {
+          l.status = 'launched'; mutated = true;
+        }
+      }
+      return mutated ? d : false;
+    });
+    if (due.length) {
+      await _alertsMutate(async (a) => {
+        const seen = new Set(a.alerts.map(x => x.id));
+        for (const x of due) if (!seen.has(x.id)) a.alerts.unshift(x);
+        a.alerts = a.alerts.slice(0, 100);
+        return a;
+      });
+      // Fire stakeholder emails async (helper applies its own atomic 30-min throttle)
+      Promise.resolve()
+        .then(() => _dispatchStakeholderDigest(due, { minSeverity: 'medium', accountLabel: 'Launch reminder' }))
+        .then(r => { if (r && r.sent) console.log(`[launch-sweep] dispatched ${r.sentCount} reminder digest(s)`); })
+        .catch(e => console.warn('[launch-sweep] stakeholder dispatch failed:', e.message));
+    }
+  } catch (e) {
+    console.warn('[launch-sweep] error:', e.message);
+  }
+}
+// Kick off the sweeper. 60s cadence is plenty given the 5-minute reminder windows above.
+setInterval(_sweepLaunches, 60 * 1000);
+// Run once on boot to catch reminders that became due while the server was down
+setTimeout(_sweepLaunches, 5 * 1000);
 
 // ────────────────────────────────────────────────────────────────────────────
 // AI CONTENT-GAP IDEATION (Feature 3)

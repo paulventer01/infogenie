@@ -276,3 +276,21 @@ Added 10 new modules in cache buster `v=20260425Q`. All client-side, simulated f
 - When resuming, ask which connect method to use (re-try Replit OAuth connector `connector:ccfg_hubspot_96987450B7BE4A05A4843E3756`, or paste a HubSpot Private App token as a secret named `HUBSPOT_PRIVATE_APP_TOKEN`).
 - **Important**: this pivot fundamentally changes InfoGenie's identity from "Marketing Intelligence" to "Marketing Automation + CRM" platform. The current outward-facing-only guardrail in `<project_goal>` would need to be lifted, and the Marketing Journey panel + dashboard messaging would need to be re-written. Confirm the pivot is still on before resuming.
 - **Not built** (Phase 1 work that was planned but not started): Contacts DB schema, OAuth/token storage, sync engine, contacts/deals/companies UI, GDPR/CCPA compliance for stored PII, deliverability infra for downstream email features.
+
+## Strong-fit Trio (Apr 30 2026) — Smart Templates · Stakeholders · Launch Calendar
+### Smart Template AI-Recommendation
+- **Server**: `POST /api/templates/recommend` (server.js ~2244). Body `{domain, sector, keyword, brand, templates:[{id,title,type,tagline}]}`. Caps at 30 templates. Gates OpenAI on `process.env.AI_INTEGRATIONS_OPENAI_API_KEY` (matches client init at server.js:13). Uses `openaiChatWithRetry` with `gpt-4o-mini`, JSON-array output `{id,score,rationale}`. Deterministic keyword/sector overlap fallback if key absent or call fails. Returns `dataOrigin/dataSource/confidence`.
+- **Frontend**: `buildTemplates()` re-render loop (app.js ~26088) overlays 🏆 ribbon + AI rationale on top 3 picks, re-sorts gallery by AI score. `_fetchTemplateRecommendations()` (app.js ~26115) handles 24h `localStorage` cache keyed `igTplRec_${domain}|${sector}|${keyword}`.
+
+### Stakeholder Alert Distribution
+- **Persistence**: `data/stakeholders.json` shape `{stakeholders:[{id,name,email,addedAt}], lastEmailSentAt}`. `_atomicWriteJson` + `_stakeMutate` mutex chain.
+- **Server** (server.js ~9613-9778): `GET /api/stakeholders/list` · `POST /add` (email regex + dedupe) · `POST /remove` · `POST /test-email`. `_buildStakeholderDigest` builds severity-coloured HTML+text email. `_dispatchStakeholderDigest` filters severity ≥ high, throttles to one per 30 min via **atomic check-and-reserve inside `_stakeMutate`**, releases reservation only when `lastEmailSentAt === reservedAt` if all sends fail.
+- **Hook**: `/api/alerts/check` invokes dispatcher in `Promise.resolve().then(...).catch(...)` — TRULY fire-and-forget, response returns immediately.
+- **Frontend** (app.js bottom): `buildStakeholders/_renderStakeholders/addStakeholder/removeStakeholder/testStakeholderEmail`. New view `stakeholders` under Manage nav.
+
+### Launch Calendar + 24h/1h Reminders
+- **Persistence**: `data/launches.json` shape `{launches:[{id,name,channel,notes,datetimeISO,status,createdAt,reminders:{h24,h1,live}}]}`. `_launchMutate` mutex.
+- **Server** (server.js ~9780-9956): `GET /api/launches/list` · `POST /add` (future-only, channel whitelist `[Email,Social,Paid Ad,PR,Mixed,Other]`, max 120-char name, 400-char notes) · `POST /remove`. `_sweepLaunches` runs every 60s + once 5s after boot. Idempotent via `reminders.{h24,h1,live}` flags. Pushes alerts into `alerts.json` (capped at 100) and dispatches stakeholder digest async.
+- **Frontend** (app.js bottom): `buildLaunches/_renderLaunches/addLaunch/removeLaunch` with grouped Today/Week/Later/Past sections, countdown text, status pills, datetime-local input.
+- **Index.html**: 2 new nav links + 2 view containers under Manage group.
+- **Cache busters bumped**: app.js?v=20260430G, style.css?v=20260430D.

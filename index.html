@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <base href="/">
-  <link rel="stylesheet" href="/style.css?v=20260430C" />
+  <link rel="stylesheet" href="/style.css?v=20260430D" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
   <!-- PostHog SDK stub — init called from app.js after config fetch -->
@@ -178,6 +178,8 @@
         <div class="nav-dropdown nav-dropdown-right">
           <div class="nav-drop-header">Operate, report &amp; scale</div>
           <a href="#" class="nav-link" data-view="master-calendar"><span class="ndl-icon">🗓️</span><span class="ndl-text">Master Calendar</span></a>
+          <a href="#" class="nav-link" data-view="launches"><span class="ndl-icon">🚀</span><span class="ndl-text">Launch Calendar</span></a>
+          <a href="#" class="nav-link" data-view="stakeholders"><span class="ndl-icon">👤</span><span class="ndl-text">Stakeholders</span></a>
           <a href="#" class="nav-link" data-view="results"><span class="ndl-icon">📊</span><span class="ndl-text">Results</span></a>
           <a href="#" class="nav-link" data-view="reengage"><span class="ndl-icon">🔁</span><span class="ndl-text">Re-Engage</span></a>
           <a href="#" class="nav-link" data-view="automations"><span class="ndl-icon">⚡</span><span class="ndl-text">Automations</span></a>
@@ -1819,6 +1821,24 @@
   <div id="masterCalWrap" style="padding:24px 28px"></div>
 </div>
 
+<div class="view hidden" id="view-launches">
+  <div class="intel-header" style="background:linear-gradient(110deg,#7C3AED 0%,#A855F7 50%,#EC4899 100%)">
+    <div class="breadcrumb" style="color:#FBCFE8"><span class="bc-group" style="color:#FBCFE8;opacity:.85">Manage</span> <span class="bc-sep" style="color:#FBCFE8;opacity:.55">›</span> Launch Calendar</div>
+    <h1 class="ih-title">🚀 Launch Calendar</h1>
+    <p class="ih-sub">Schedule campaign go-live dates — get 24h &amp; 1h reminders in your bell + stakeholder inboxes</p>
+  </div>
+  <div id="launchesWrap" style="padding:24px 28px"></div>
+</div>
+
+<div class="view hidden" id="view-stakeholders">
+  <div class="intel-header" style="background:linear-gradient(110deg,#0F766E 0%,#14B8A6 50%,#5EEAD4 100%)">
+    <div class="breadcrumb" style="color:#CCFBF1"><span class="bc-group" style="color:#CCFBF1;opacity:.85">Manage</span> <span class="bc-sep" style="color:#CCFBF1;opacity:.55">›</span> Stakeholders</div>
+    <h1 class="ih-title">👤 Stakeholders</h1>
+    <p class="ih-sub">Add the people who get a digest email when a high-severity alert fires (max one per 30 min)</p>
+  </div>
+  <div id="stakeholdersWrap" style="padding:24px 28px"></div>
+</div>
+
 <div class="view hidden" id="view-kpi-tracker">
   <div class="view-header intel-header">
     <div class="container">
@@ -1999,7 +2019,7 @@
   </div>
 </div>
 
-<script src="/app.js?v=20260430E"></script>
+<script src="/app.js?v=20260430G"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');
