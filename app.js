@@ -26085,7 +26085,7 @@ function buildTemplates() {
       ${list.map((t,i) => `
         <div style="background:white;border-radius:12px;border:1px solid #E2E8F0;overflow:hidden;transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 12px 32px rgba(0,0,0,.08)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='none'">
           <div style="aspect-ratio:16/10;background:linear-gradient(135deg,${t.bg1},${t.bg2});position:relative;overflow:hidden">
-            <img src="${t.img}" alt="${t.title}" loading="lazy" onerror="this.onerror=null;this.src='${t.imgFallback}'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">
+            <img src="${t.img}" alt="${t.title}" loading="lazy" decoding="async" fetchpriority="low" onerror="this.onerror=null;this.src='${t.imgFallback}'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">
             <div style="position:absolute;inset:0;background:linear-gradient(180deg,${t.bg1}33 0%,${t.bg1}11 35%,rgba(15,23,42,.78) 100%)"></div>
             <div style="position:absolute;inset:0;padding:14px;color:white;display:flex;flex-direction:column;justify-content:space-between">
               <div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="background:rgba(255,255,255,.92);color:#0F172A;font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px;letter-spacing:.05em">${t.type.toUpperCase()}</div>${t.hot?`<div style="background:#EF4444;color:white;font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px">🔥 HOT</div>`:''}</div>
@@ -26249,28 +26249,53 @@ window.runTemplates = function() {
   // different domain mid-fetch) can't overwrite the new templates.
   const requestFingerprint = `${_lsDomain()}|${sector}|${kw}`;
 
-  // Kick off industry-image fetch IMMEDIATELY (parallel with the loading delay)
-  const imagesPromise = (async () => {
-    try {
-      const items = templates.map(t => ({ title: t.title, kw }));
-      const resp = await fetch('/api/template-images', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ industry: sector, sector, brand, items })
-      });
-      const data = await resp.json();
-      return Array.isArray(data.images) ? data.images : null;
-    } catch (e) {
-      console.warn('template-images fetch failed:', e.message);
-      return null;
+  // Client-side image cache (localStorage, 24h TTL). On repeat visits we skip
+  // the network entirely and render the gallery in <50ms.
+  const _IMG_CACHE_KEY = 'igTplImg_' + requestFingerprint;
+  const _IMG_CACHE_TTL = 24 * 60 * 60 * 1000;
+  let cachedImages = null;
+  try {
+    const raw = localStorage.getItem(_IMG_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.images) && (Date.now() - (parsed.ts || 0)) < _IMG_CACHE_TTL) {
+        cachedImages = parsed.images;
+      }
     }
-  })();
+  } catch (_) {}
 
+  // Kick off industry-image fetch IMMEDIATELY (parallel with the loading delay).
+  // If we have a fresh cache, resolve instantly with it (no network call).
+  const imagesPromise = cachedImages
+    ? Promise.resolve(cachedImages)
+    : (async () => {
+        try {
+          const items = templates.map(t => ({ title: t.title, kw }));
+          const resp = await fetch('/api/template-images', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ industry: sector, sector, brand, items })
+          });
+          const data = await resp.json();
+          if (Array.isArray(data.images) && data.images.some(u => u)) {
+            try { localStorage.setItem(_IMG_CACHE_KEY, JSON.stringify({ ts: Date.now(), images: data.images })); } catch (_) {}
+          }
+          return Array.isArray(data.images) ? data.images : null;
+        } catch (e) {
+          console.warn('template-images fetch failed:', e.message);
+          return null;
+        }
+      })();
+
+  // If we already have a cached image set, skip the 1100ms loader animation
+  // entirely so the gallery renders instantly. Otherwise keep the original
+  // pacing so the loader doesn't flash.
+  const initialDelay = cachedImages ? 0 : 1100;
   setTimeout(async () => {
     // Wait briefly for industry images to arrive before first render. If they
-    // beat the 1100ms loader (very common with cache hits) we render straight
-    // to the real photos. If not, we cap at +1500ms to avoid making the user
-    // wait too long, then swap in the photos when they arrive.
+    // beat the loader (very common with cache hits) we render straight to the
+    // real photos. If not, we cap at +1500ms to avoid making the user wait
+    // too long, then swap in the photos when they arrive.
     const earlyImages = await Promise.race([
       imagesPromise,
       new Promise(r => setTimeout(() => r(null), 1500))
@@ -26318,7 +26343,7 @@ window.runTemplates = function() {
         showToast(`🖼️ ${replaced} template visuals refreshed for ${sector || 'your industry'}`);
       }
     } catch(e) { /* silent — placeholders remain */ }
-  }, 1100);
+  }, initialDelay);
 };
 
 window.useTemplate = function(i) {
@@ -28688,17 +28713,53 @@ function _csUpdateCountryLabel() {
   }
 }
 
+let _csClosePending = null;
+function _csCancelClose() {
+  if (_csClosePending) { clearTimeout(_csClosePending); _csClosePending = null; }
+}
+function _csClosePanel() {
+  _csCancelClose();
+  const p = document.getElementById('csCountryPanel');
+  if (p) p.hidden = true;
+}
 function _csToggleCountryPanel() {
   const p = document.getElementById('csCountryPanel');
   if (!p) return;
+  _csCancelClose();
   p.hidden = !p.hidden;
+  // On open, wire mouseleave/mouseenter once so the panel auto-retracts when
+  // the pointer drifts off and the underlying buttons (e.g. Suggest related)
+  // become clickable again.
+  if (!p.hidden && !p.dataset.hoverWired) {
+    p.dataset.hoverWired = '1';
+    p.addEventListener('mouseleave', () => {
+      _csCancelClose();
+      _csClosePending = setTimeout(_csClosePanel, 220);
+    });
+    p.addEventListener('mouseenter', _csCancelClose);
+    // ESC key closes the panel
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !p.hidden) _csClosePanel();
+    });
+  }
+  const w = document.getElementById('csCountryPicker');
+  if (w && !w.dataset.hoverWired) {
+    w.dataset.hoverWired = '1';
+    // If the user moves the cursor off the picker row entirely (not just the
+    // panel), close immediately so it never blocks adjacent controls.
+    w.addEventListener('mouseleave', () => {
+      _csCancelClose();
+      _csClosePending = setTimeout(_csClosePanel, 220);
+    });
+    w.addEventListener('mouseenter', _csCancelClose);
+  }
 }
 
 function _csOutsideClick(e) {
   const p = document.getElementById('csCountryPanel');
   const w = document.getElementById('csCountryPicker');
   if (!p || !w || p.hidden) return;
-  if (!w.contains(e.target)) p.hidden = true;
+  if (!w.contains(e.target)) _csClosePanel();
 }
 
 function _csOnKeywordChange() {
