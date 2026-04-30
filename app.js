@@ -28613,8 +28613,20 @@ function buildContentScorer() {
     </div>
     <div id="csResult" style="margin-top:24px"></div>
   `;
-  // Click-outside closes the multi-select panel.
-  document.addEventListener('click', _csOutsideClick, true);
+  // Click-outside closes the multi-select panel (one-time binding).
+  if (!window._csOutsideBound) {
+    window._csOutsideBound = true;
+    document.addEventListener('click', _csOutsideClick, true);
+  }
+  // Auto-prefill the page URL with the domain the user analysed on the home page,
+  // so they don't have to retype it. They can still edit / replace it.
+  try {
+    const dom = _lsDomain();
+    const urlInput = document.getElementById('csUrl');
+    if (dom && urlInput && !urlInput.value) {
+      urlInput.value = `https://${dom}`;
+    }
+  } catch (_) {}
   // Load country list from server (single source of truth).
   _csLoadCountries();
 }
