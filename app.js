@@ -7124,11 +7124,14 @@ function buildICPStudio() {
   const actDis3 = !hasVoC || !(voc.triggers && voc.triggers.length);
   const actBtn = (icon, title, desc, color, bg, id, disabled, disabledReason, infoTip) => {
     const baseBorder = disabled ? '#E5E7EB' : color+'55';
-    // Build a meaningful native tooltip — never leave it empty (an empty
-    // title="" makes some browsers render a tiny blank black hover box).
-    const tip = disabled
-      ? (disabledReason || '').replace(/&amp;/g, '&').replace(/"/g, '&quot;')
-      : (infoTip || `${title} — ${desc} Click to run this one-click flow.`).replace(/"/g, '&quot;');
+    // Tooltip strategy — when an enabled tile already shows a rich infoBubble
+    // on hover, suppress the native browser title attribute so the user
+    // doesn't see TWO tooltips stacked (the rich one + the plain OS one).
+    // Disabled tiles have no infoBubble, so we keep title="" to surface the
+    // disabled-reason text on hover.
+    const tipAttr = disabled
+      ? `title="${(disabledReason || '').replace(/&amp;/g, '&').replace(/"/g, '&quot;')}"`
+      : '';
     const hoverHandlers = disabled ? '' : `
       onmouseenter="this.style.borderColor='${color}';this.style.boxShadow='0 6px 18px ${color}22';this.style.transform='translateY(-2px)';showTileInfo(this, '${id}-info');"
       onmouseleave="this.style.borderColor='${baseBorder}';this.style.boxShadow='none';this.style.transform='none';hideTileInfo('${id}-info');"
@@ -7143,7 +7146,7 @@ function buildICPStudio() {
     return `
     <div style="position:relative">
       ${infoBubble}
-      <button id="${id}" ${disabled?'disabled':''} title="${tip}" ${hoverHandlers} style="text-align:left;padding:18px 20px;background:${disabled?'#F9FAFB':'white'};border:1.5px solid ${baseBorder};border-radius:14px;cursor:${disabled?'not-allowed':'pointer'};opacity:${disabled?'.55':'1'};transition:border-color .2s,box-shadow .2s,transform .2s;font-family:'Inter',sans-serif;display:flex;flex-direction:column;gap:6px;outline:none;appearance:none;-webkit-tap-highlight-color:transparent;-webkit-appearance:none;width:100%">
+      <button id="${id}" ${disabled?'disabled':''} ${tipAttr} ${hoverHandlers} style="text-align:left;padding:18px 20px;background:${disabled?'#F9FAFB':'white'};border:1.5px solid ${baseBorder};border-radius:14px;cursor:${disabled?'not-allowed':'pointer'};opacity:${disabled?'.55':'1'};transition:border-color .2s,box-shadow .2s,transform .2s;font-family:'Inter',sans-serif;display:flex;flex-direction:column;gap:6px;outline:none;appearance:none;-webkit-tap-highlight-color:transparent;-webkit-appearance:none;width:100%">
         <div style="display:flex;align-items:center;gap:8px;pointer-events:none">
           <div style="width:36px;height:36px;background:${bg};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem">${icon}</div>
           <div style="font-family:Sora,sans-serif;font-size:0.88rem;font-weight:800;color:${disabled?'#9CA3AF':'#0A1628'}">${title}</div>
@@ -27915,6 +27918,80 @@ function openReengageCsvUpload() {
   });
 }
 
+/* Manual add — friendlier path for users who don't want to construct a CSV.
+ * Single email + optional name + optional phone. Submits to the same
+ * /api/reengage/upload-csv endpoint by building a one-row CSV in memory, so
+ * we don't need a new backend route. Modal closes on successful add and the
+ * dormant list reloads automatically — re-open to add another. */
+function openReengageManualAdd() {
+  document.getElementById('reengageManualBackdrop')?.remove();
+  const bd = document.createElement('div');
+  bd.id = 'reengageManualBackdrop';
+  bd.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(4px);z-index:99998;display:flex;align-items:flex-start;justify-content:center;padding-top:10vh';
+  bd.onclick = (e) => { if (e.target === bd) bd.remove(); };
+  bd.innerHTML = `
+    <div onclick="event.stopPropagation()" style="width:min(480px,92vw);background:white;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">
+      <div style="padding:18px 22px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0F172A">✏️ Add Subscriber Manually</div>
+          <div style="font-size:0.74rem;color:#64748B;margin-top:3px">Add one contact at a time — no file needed</div>
+        </div>
+        <button onclick="document.getElementById('reengageManualBackdrop').remove()" style="background:none;border:none;color:#94A3B8;font-size:1.4rem;cursor:pointer;padding:0 4px;line-height:1">×</button>
+      </div>
+      <div style="padding:20px 22px">
+        <label style="display:block;margin-bottom:12px">
+          <span style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">Email <span style="color:#EF4444">*</span></span>
+          <input type="email" id="reengageManualEmail" placeholder="jane@example.com" autofocus style="width:100%;padding:9px 11px;border:1px solid #CBD5E1;border-radius:7px;font-size:0.85rem;box-sizing:border-box">
+        </label>
+        <label style="display:block;margin-bottom:12px">
+          <span style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">Name <span style="color:#94A3B8;font-weight:500">(optional)</span></span>
+          <input type="text" id="reengageManualName" placeholder="Jane Doe" style="width:100%;padding:9px 11px;border:1px solid #CBD5E1;border-radius:7px;font-size:0.85rem;box-sizing:border-box">
+        </label>
+        <label style="display:block;margin-bottom:14px">
+          <span style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">Phone <span style="color:#94A3B8;font-weight:500">(optional, stored but not used yet)</span></span>
+          <input type="tel" id="reengageManualPhone" placeholder="+1 555 123 4567" style="width:100%;padding:9px 11px;border:1px solid #CBD5E1;border-radius:7px;font-size:0.85rem;box-sizing:border-box">
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;font-size:0.8rem;color:#374151">
+          <span style="font-weight:600">Treat as inactive for</span>
+          <input type="number" id="reengageManualBackdate" value="60" min="1" max="365" style="width:70px;padding:6px 8px;border:1px solid #CBD5E1;border-radius:6px;font-size:0.82rem">
+          <span>days</span>
+        </label>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid #E5E7EB;display:flex;justify-content:flex-end;gap:8px">
+        <button onclick="document.getElementById('reengageManualBackdrop').remove()" style="padding:8px 14px;background:white;color:#64748B;border:1px solid #CBD5E1;border-radius:7px;font-size:0.82rem;font-weight:600;cursor:pointer">Cancel</button>
+        <button id="reengageManualSubmit" onclick="submitReengageManual()" style="padding:8px 18px;background:linear-gradient(135deg,#C2410C,#F97316);color:white;border:none;border-radius:7px;font-size:0.82rem;font-weight:700;cursor:pointer">+ Add Subscriber</button>
+      </div>
+    </div>`;
+  document.body.appendChild(bd);
+  setTimeout(() => document.getElementById('reengageManualEmail')?.focus(), 50);
+}
+async function submitReengageManual() {
+  const email = (document.getElementById('reengageManualEmail')?.value || '').trim();
+  const name  = (document.getElementById('reengageManualName')?.value || '').trim();
+  const phone = (document.getElementById('reengageManualPhone')?.value || '').trim();
+  const backdateDays = parseInt(document.getElementById('reengageManualBackdate')?.value || '60', 10);
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('⚠️ Enter a valid email'); return; }
+  // Build a 1-row CSV that the existing upload endpoint already handles.
+  const escCsv = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  const csv = `name,email,phone\n${escCsv(name)},${escCsv(email)},${escCsv(phone)}`;
+  const btn = document.getElementById('reengageManualSubmit');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Adding…'; }
+  try {
+    const r = await fetch('/api/reengage/upload-csv', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ csv, backdateDays }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'Add failed');
+    document.getElementById('reengageManualBackdrop')?.remove();
+    showToast(j.imported > 0 ? `✅ Added ${email}` : `⚠️ ${email} already exists`);
+    buildReengage();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '+ Add Subscriber'; }
+    showToast(`⚠️ ${e.message}`);
+  }
+}
+
 async function submitReengageCsv() {
   const txt = (document.getElementById('reengageCsvText')?.value || '').trim();
   const backdateDays = parseInt(document.getElementById('reengageCsvBackdate')?.value || '60', 10);
@@ -27957,7 +28034,14 @@ function _reengageHtml(j) {
   const esc = (typeof _escapeHtml === 'function') ? _escapeHtml : (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const list = j.dormant || [];
   const dormantList = list.length === 0
-    ? `<div style="font-size:0.85rem;color:#64748B;padding:14px;text-align:center;background:#F8FAFC;border-radius:8px">🎉 Nobody is dormant in this window — your audience is engaged.</div>`
+    ? `<div style="font-size:0.85rem;color:#64748B;padding:18px 14px;text-align:center;background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:10px">
+         <div style="font-weight:700;color:#0F172A;margin-bottom:6px">No dormant subscribers yet</div>
+         <div style="margin-bottom:14px;line-height:1.5">Either everyone in your list is currently engaged, or you haven't seeded an audience yet. Add contacts below to start a re-engagement flow.</div>
+         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+           <button onclick="openReengageCsvUpload()" style="padding:8px 14px;background:#0F172A;color:white;border:none;border-radius:7px;font-size:0.78rem;font-weight:700;cursor:pointer">📤 Upload audience CSV</button>
+           <button onclick="openReengageManualAdd()" style="padding:8px 14px;background:white;color:#0F172A;border:1px solid #0F172A;border-radius:7px;font-size:0.78rem;font-weight:700;cursor:pointer">✏️ Add manually</button>
+         </div>
+       </div>`
     : `<div style="max-height:240px;overflow-y:auto;border:1px solid #F1F5F9;border-radius:8px">
         ${list.slice(0, 50).map(d => `
           <div style="display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #F8FAFC;font-size:0.8rem">
@@ -27986,7 +28070,10 @@ function _reengageHtml(j) {
       <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:22px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap">
           <div style="font-size:1rem;font-weight:800;color:#0F172A">Dormant subscribers</div>
-          <button onclick="openReengageCsvUpload()" style="padding:7px 12px;background:#0F172A;color:white;border:none;border-radius:7px;font-size:0.74rem;font-weight:700;cursor:pointer" title="Upload a CSV of contacts to seed your audience">📤 Upload audience CSV</button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button onclick="openReengageCsvUpload()" style="padding:7px 12px;background:#0F172A;color:white;border:none;border-radius:7px;font-size:0.74rem;font-weight:700;cursor:pointer" title="Upload a CSV of contacts to seed your audience">📤 Upload CSV</button>
+            <button onclick="openReengageManualAdd()" style="padding:7px 12px;background:white;color:#0F172A;border:1px solid #0F172A;border-radius:7px;font-size:0.74rem;font-weight:700;cursor:pointer" title="Add a single contact (or paste a few) without uploading a file">✏️ Add manually</button>
+          </div>
         </div>
         ${dormantList}
         <div style="margin-top:18px;padding-top:14px;border-top:1px solid #F1F5F9">
@@ -29333,7 +29420,27 @@ function _csCountryHtml(j, targetSummary, generatedAt, isMulti) {
       <td style="text-align:center">${c.ok ? c.h2 : '—'}</td>
       <td style="text-align:center">${c.ok ? (c.hasFAQ?'<span style="color:#10B981">✓</span>':'<span style="opacity:.3">—</span>') : '—'}</td>
       <td style="text-align:center">${c.ok ? (c.hasSchema?'<span style="color:#10B981">✓</span>':'<span style="opacity:.3">—</span>') : '—'}</td>
-      <td style="text-align:center;font-size:.78rem">${c.ok ? '<span style="color:#10B981">scraped</span>' : `<span style="color:#EF4444" title="${esc(c.error || '')}">${esc(c.error || 'failed')}</span>`}</td>
+      <td style="text-align:center;font-size:.78rem">${c.ok ? '<span style="color:#10B981">scraped</span>' : (() => {
+        // Map raw error strings to friendlier labels — many top-domain
+        // competitors (Trustpilot, Facebook, LinkedIn, Reddit, G2…) actively
+        // block automated crawlers via WAF, returning 403/400/429. These
+        // aren't InfoGenie failures, they're expected and should be shown as
+        // an informational badge rather than a scary red HTTP code.
+        const raw = String(c.error || 'failed');
+        const m403 = /\b(403|forbidden)\b/i.test(raw);
+        const m400 = /\b400\b/i.test(raw) && !/\b40[1-9]\b/i.test(raw);
+        const m429 = /\b429\b/i.test(raw);
+        const m5xx = /\b5\d{2}\b/i.test(raw);
+        const mTimeout = /timeout|timed out|aborted/i.test(raw);
+        let label, color, tip;
+        if (m403)        { label = 'Bot-blocked'; color = '#94A3B8'; tip = 'This site uses anti-bot protection (Cloudflare/Akamai/etc.) and returned HTTP 403. The page exists — InfoGenie just can\u2019t crawl it from outside.'; }
+        else if (m429)   { label = 'Rate-limited'; color = '#94A3B8'; tip = 'This site rate-limited our crawler (HTTP 429). Re-run the audit in a few minutes.'; }
+        else if (m400)   { label = 'Blocked'; color = '#94A3B8'; tip = 'This site rejected our crawler (HTTP 400). Many sites \u2014 e.g. Facebook, LinkedIn \u2014 require login to view content.'; }
+        else if (m5xx)   { label = 'Server error'; color = '#F59E0B'; tip = `Origin server returned an error: ${raw}`; }
+        else if (mTimeout) { label = 'Timed out'; color = '#F59E0B'; tip = 'The site took too long to respond. Re-run to retry.'; }
+        else             { label = 'Failed'; color = '#EF4444'; tip = raw; }
+        return `<span style="color:${color};font-weight:600" title="${esc(tip)}">${esc(label)}</span>`;
+      })()}</td>
     </tr>`).join('');
 
   return `

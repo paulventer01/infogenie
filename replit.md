@@ -180,7 +180,12 @@ Added 10 new modules in cache buster `v=20260425Q`. All client-side, simulated f
 - **Content persistence** (app.js lines 188-235): The Master Calendar reads `_socialPosts` / `_launchedCampaigns` / `_autoSeoArticles` / `_autoSeoSchedule` — but those were in-memory only, so refreshes wiped them and the calendar showed zeros. Added a 1.5s polling loop that JSON-stringifies each tracked window var and writes only when changed. Restores on DOMContentLoaded BEFORE other init handlers (registered first at top of file) so the module-load resets don't clobber persisted values.
 
 ## Cache-buster
-- Bumped to `v=20260430L` (next bump → `M`).
+- Bumped to `v=20260430M` (next bump → `N`).
+
+## UX polish — three issues fixed (2026-04-30)
+- **Friendlier competitor-scrape errors** (app.js ~29339): Content Scorer competitor table previously showed raw `HTTP 403` / `HTTP 400` in red for bot-blocked sites (Trustpilot, Facebook, LinkedIn, etc.). Now maps to friendlier badges — `Bot-blocked` / `Rate-limited` / `Blocked` / `Server error` / `Timed out` — in muted grey/amber rather than alarming red, with a hover tooltip explaining why and that the page exists. Original raw error preserved in `title=` for power users.
+- **Re-engage Audience manual input** (app.js ~27921 + 27963 + 27999): added `openReengageManualAdd()` modal — one-contact-at-a-time form (email + optional name + phone + backdate days) that submits via the existing `/api/reengage/upload-csv` endpoint by building a 1-row CSV in memory. Empty-state of the dormant list now shows BOTH "Upload audience CSV" and "Add manually" buttons prominently. Header has both buttons too.
+- **Activator tile double-tooltip** (app.js ~7128): the Creative Studio Target / Counter-Objection / Email Sequence tiles previously rendered both a custom dark `infoBubble` tooltip AND a browser-native `title=` tooltip on hover, so the same text appeared twice. Removed the `title` attribute on enabled tiles (kept it on disabled tiles since they have no infoBubble).
 
 ## Mention Tracker + Content Gaps auto-fill (added 2026-04-30)
 - **Helpers in app.js (~line 29388)**: `_getDomainFromAnalysis()`, `_getBrandFromAnalysis()`, `_getCompetitorsFromAnalysis()` derive brand/domain/competitors from `window.analysisData` (set on home-page analysis at app.js ~3239). Sector-only analyses skip the URL-derived fields.
