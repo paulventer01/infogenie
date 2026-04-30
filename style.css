@@ -7583,6 +7583,9 @@ select option { background: #FFFFFF !important; color: #0F4C4A !important; }
   box-shadow:0 18px 40px rgba(0,0,0,.45);
   padding:10px; max-height:340px; display:flex; flex-direction:column;
 }
+/* The class rule above sets display:flex with the same specificity as [hidden],
+   which would let the panel stay visible when hidden is set. Force it closed. */
+.cs-multi-panel[hidden] { display: none !important; }
 [data-theme="light"] .cs-multi-panel { background:#FFFFFF; border-color:#CBD5E1; box-shadow:0 18px 40px rgba(0,0,0,.12); }
 .cs-multi-actions { display:flex; gap:6px; align-items:center; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,.08); }
 [data-theme="light"] .cs-multi-actions { border-bottom-color:#E5E7EB; }
