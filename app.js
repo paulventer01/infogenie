@@ -28714,6 +28714,8 @@ function _csUpdateCountryLabel() {
 }
 
 let _csClosePending = null;
+let _csGlobalMoveBound = false;
+let _csGlobalKeyBound = false;
 function _csCancelClose() {
   if (_csClosePending) { clearTimeout(_csClosePending); _csClosePending = null; }
 }
@@ -28722,36 +28724,42 @@ function _csClosePanel() {
   const p = document.getElementById('csCountryPanel');
   if (p) p.hidden = true;
 }
+// Close the panel as soon as the cursor moves outside the combined visual
+// bounds of the toggle + open panel (with a small forgiveness margin). Using
+// getBoundingClientRect avoids the DOM-hierarchy quirks of mouseleave when an
+// absolutely-positioned child sits outside its parent's box.
+function _csGlobalPointerMove(e) {
+  const p = document.getElementById('csCountryPanel');
+  const w = document.getElementById('csCountryPicker');
+  if (!p || !w || p.hidden) return;
+  const PAD = 24;
+  const rW = w.getBoundingClientRect();
+  const rP = p.getBoundingClientRect();
+  const x = e.clientX, y = e.clientY;
+  const inW = x >= rW.left - PAD && x <= rW.right + PAD && y >= rW.top - PAD && y <= rW.bottom + PAD;
+  const inP = x >= rP.left - PAD && x <= rP.right + PAD && y >= rP.top - PAD && y <= rP.bottom + PAD;
+  if (inW || inP) {
+    _csCancelClose();
+  } else if (!_csClosePending) {
+    _csClosePending = setTimeout(_csClosePanel, 180);
+  }
+}
 function _csToggleCountryPanel() {
   const p = document.getElementById('csCountryPanel');
   if (!p) return;
   _csCancelClose();
   p.hidden = !p.hidden;
-  // On open, wire mouseleave/mouseenter once so the panel auto-retracts when
-  // the pointer drifts off and the underlying buttons (e.g. Suggest related)
-  // become clickable again.
-  if (!p.hidden && !p.dataset.hoverWired) {
-    p.dataset.hoverWired = '1';
-    p.addEventListener('mouseleave', () => {
-      _csCancelClose();
-      _csClosePending = setTimeout(_csClosePanel, 220);
-    });
-    p.addEventListener('mouseenter', _csCancelClose);
-    // ESC key closes the panel
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !p.hidden) _csClosePanel();
-    });
-  }
-  const w = document.getElementById('csCountryPicker');
-  if (w && !w.dataset.hoverWired) {
-    w.dataset.hoverWired = '1';
-    // If the user moves the cursor off the picker row entirely (not just the
-    // panel), close immediately so it never blocks adjacent controls.
-    w.addEventListener('mouseleave', () => {
-      _csCancelClose();
-      _csClosePending = setTimeout(_csClosePanel, 220);
-    });
-    w.addEventListener('mouseenter', _csCancelClose);
+  if (!p.hidden) {
+    if (!_csGlobalMoveBound) {
+      _csGlobalMoveBound = true;
+      document.addEventListener('mousemove', _csGlobalPointerMove, { passive: true });
+    }
+    if (!_csGlobalKeyBound) {
+      _csGlobalKeyBound = true;
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') _csClosePanel();
+      });
+    }
   }
 }
 
@@ -28759,7 +28767,7 @@ function _csOutsideClick(e) {
   const p = document.getElementById('csCountryPanel');
   const w = document.getElementById('csCountryPicker');
   if (!p || !w || p.hidden) return;
-  if (!w.contains(e.target)) _csClosePanel();
+  if (!w.contains(e.target) && !p.contains(e.target)) _csClosePanel();
 }
 
 function _csOnKeywordChange() {
