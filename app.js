@@ -28582,7 +28582,7 @@ function buildContentScorer() {
         <div class="cs-field">
           <label>Country <span style="opacity:.6;font-weight:400" id="csCountryHint">(1 selected — click to add more)</span></label>
           <div class="cs-multi" id="csCountryPicker">
-            <button type="button" class="cs-multi-toggle" id="csCountryToggle" onclick="_csToggleCountryPanel()">
+            <button type="button" class="cs-multi-toggle" id="csCountryToggle" aria-expanded="false" aria-haspopup="listbox" onclick="_csToggleCountryPanel()">
               <span id="csCountryLabel">United States</span>
               <span class="cs-multi-caret">▾</span>
             </button>
@@ -28713,61 +28713,45 @@ function _csUpdateCountryLabel() {
   }
 }
 
-let _csClosePending = null;
-let _csGlobalMoveBound = false;
-let _csGlobalKeyBound = false;
-function _csCancelClose() {
-  if (_csClosePending) { clearTimeout(_csClosePending); _csClosePending = null; }
-}
+// Plain, predictable click-only dropdown.
+//   - Closed by default (the HTML uses `hidden`).
+//   - Click the toggle button to open.
+//   - Click the toggle button again, click anywhere outside, or press Esc to close.
+//   - No hover behavior at all.
+let _csEscBound = false;
 function _csClosePanel() {
-  _csCancelClose();
   const p = document.getElementById('csCountryPanel');
+  const t = document.getElementById('csCountryToggle');
   if (p) p.hidden = true;
+  if (t) t.setAttribute('aria-expanded', 'false');
 }
-// Close the panel as soon as the cursor moves outside the combined visual
-// bounds of the toggle + open panel (with a small forgiveness margin). Using
-// getBoundingClientRect avoids the DOM-hierarchy quirks of mouseleave when an
-// absolutely-positioned child sits outside its parent's box.
-function _csGlobalPointerMove(e) {
+function _csOpenPanel() {
   const p = document.getElementById('csCountryPanel');
-  const w = document.getElementById('csCountryPicker');
-  if (!p || !w || p.hidden) return;
-  const PAD = 24;
-  const rW = w.getBoundingClientRect();
-  const rP = p.getBoundingClientRect();
-  const x = e.clientX, y = e.clientY;
-  const inW = x >= rW.left - PAD && x <= rW.right + PAD && y >= rW.top - PAD && y <= rW.bottom + PAD;
-  const inP = x >= rP.left - PAD && x <= rP.right + PAD && y >= rP.top - PAD && y <= rP.bottom + PAD;
-  if (inW || inP) {
-    _csCancelClose();
-  } else if (!_csClosePending) {
-    _csClosePending = setTimeout(_csClosePanel, 180);
+  const t = document.getElementById('csCountryToggle');
+  if (p) p.hidden = false;
+  if (t) t.setAttribute('aria-expanded', 'true');
+  if (!_csEscBound) {
+    _csEscBound = true;
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') _csClosePanel();
+    });
   }
 }
 function _csToggleCountryPanel() {
   const p = document.getElementById('csCountryPanel');
   if (!p) return;
-  _csCancelClose();
-  p.hidden = !p.hidden;
-  if (!p.hidden) {
-    if (!_csGlobalMoveBound) {
-      _csGlobalMoveBound = true;
-      document.addEventListener('mousemove', _csGlobalPointerMove, { passive: true });
-    }
-    if (!_csGlobalKeyBound) {
-      _csGlobalKeyBound = true;
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') _csClosePanel();
-      });
-    }
-  }
+  if (p.hidden) _csOpenPanel(); else _csClosePanel();
 }
 
 function _csOutsideClick(e) {
   const p = document.getElementById('csCountryPanel');
   const w = document.getElementById('csCountryPicker');
   if (!p || !w || p.hidden) return;
-  if (!w.contains(e.target) && !p.contains(e.target)) _csClosePanel();
+  // Click inside the picker (toggle or panel) — let the toggle handler manage state.
+  if (w.contains(e.target)) return;
+  // Click anywhere else closes the panel; the click still propagates to its target,
+  // so the user only needs ONE click to both close the panel and activate the next control.
+  _csClosePanel();
 }
 
 function _csOnKeywordChange() {
