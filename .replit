@@ -52,3 +52,4 @@ defaultBucketID = "replit-objstore-678f5e65-6432-4209-a8cb-0432d47880dd"
 
 [userenv.shared]
 GOOGLE_SEARCH_CX = "e1a6c6a9068774ace"
+RESEND_FROM_EMAIL = "Suretrade <alerts@suretrade.co.za>"
