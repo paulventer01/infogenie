@@ -2922,7 +2922,10 @@ app.post('/api/ai-visibility-multi', async (req, res) => {
 
     // ── Google Search (Custom Search JSON API) ──────────────────────────────
     const googleP = (async () => {
-      const key = process.env.GOOGLE_SEARCH_API_KEY;
+      // Use GOOGLE_SEARCH_API_KEY only if it looks like a Google Cloud key (AIza...);
+      // otherwise that slot likely holds a RapidAPI key — fall back to GOOGLE_PAGESPEED_API_KEY.
+      const rawSearchKey = process.env.GOOGLE_SEARCH_API_KEY || '';
+      const key = (rawSearchKey.startsWith('AIza') ? rawSearchKey : '') || process.env.GOOGLE_PAGESPEED_API_KEY || rawSearchKey;
       const cx  = process.env.GOOGLE_SEARCH_CX || process.env.GOOGLE_SEARCH_ENGINE_ID;
       if (!key || !cx) return { key:'google', name:'Google', live:false, mentioned:false, score:0, snippet:'GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_CX needed' };
       try {
@@ -2939,7 +2942,8 @@ app.post('/api/ai-visibility-multi', async (req, res) => {
 
     // ── Google AI (re-uses Google Search but checks for top-3 SGE-style position) ─
     const googleAiP = (async () => {
-      const key = process.env.GOOGLE_SEARCH_API_KEY;
+      const rawSearchKey = process.env.GOOGLE_SEARCH_API_KEY || '';
+      const key = (rawSearchKey.startsWith('AIza') ? rawSearchKey : '') || process.env.GOOGLE_PAGESPEED_API_KEY || rawSearchKey;
       const cx  = process.env.GOOGLE_SEARCH_CX || process.env.GOOGLE_SEARCH_ENGINE_ID;
       if (!key || !cx) return { key:'googleAi', name:'Google AI', live:false, mentioned:false, score:0, snippet:'Connect Google Custom Search to enable' };
       try {
