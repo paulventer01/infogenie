@@ -2149,6 +2149,23 @@ function _pickImageFromList(list) {
   return null;
 }
 
+// Resolve a Google Cloud API key suitable for Custom Search / PageSpeed.
+// GOOGLE_SEARCH_API_KEY is shared with a RapidAPI integration, so we only
+// trust it if it looks like a Google Cloud key (starts with "AIza"); otherwise
+// we fall back to GOOGLE_PAGESPEED_API_KEY (which must also be Google-shaped).
+// Returns '' when no valid Google key is available — callers should treat that
+// as "integration not configured" and never send a non-Google key to googleapis.com.
+function _resolveGoogleCloudKey() {
+  const candidates = [
+    (process.env.GOOGLE_SEARCH_API_KEY || '').trim(),
+    (process.env.GOOGLE_PAGESPEED_API_KEY || '').trim(),
+  ];
+  for (const k of candidates) {
+    if (k && k.startsWith('AIza')) return k;
+  }
+  return '';
+}
+
 async function _imageViaDataForSEO(query) {
   if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) return null;
   try {
@@ -2922,11 +2939,8 @@ app.post('/api/ai-visibility-multi', async (req, res) => {
 
     // ── Google Search (Custom Search JSON API) ──────────────────────────────
     const googleP = (async () => {
-      // Use GOOGLE_SEARCH_API_KEY only if it looks like a Google Cloud key (AIza...);
-      // otherwise that slot likely holds a RapidAPI key — fall back to GOOGLE_PAGESPEED_API_KEY.
-      const rawSearchKey = process.env.GOOGLE_SEARCH_API_KEY || '';
-      const key = (rawSearchKey.startsWith('AIza') ? rawSearchKey : '') || process.env.GOOGLE_PAGESPEED_API_KEY || rawSearchKey;
-      const cx  = process.env.GOOGLE_SEARCH_CX || process.env.GOOGLE_SEARCH_ENGINE_ID;
+      const key = _resolveGoogleCloudKey();
+      const cx  = (process.env.GOOGLE_SEARCH_CX || process.env.GOOGLE_SEARCH_ENGINE_ID || '').trim();
       if (!key || !cx) return { key:'google', name:'Google', live:false, mentioned:false, score:0, snippet:'GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_CX needed' };
       try {
         const q = encodeURIComponent(`best ${industry} companies`);
@@ -2942,9 +2956,8 @@ app.post('/api/ai-visibility-multi', async (req, res) => {
 
     // ── Google AI (re-uses Google Search but checks for top-3 SGE-style position) ─
     const googleAiP = (async () => {
-      const rawSearchKey = process.env.GOOGLE_SEARCH_API_KEY || '';
-      const key = (rawSearchKey.startsWith('AIza') ? rawSearchKey : '') || process.env.GOOGLE_PAGESPEED_API_KEY || rawSearchKey;
-      const cx  = process.env.GOOGLE_SEARCH_CX || process.env.GOOGLE_SEARCH_ENGINE_ID;
+      const key = _resolveGoogleCloudKey();
+      const cx  = (process.env.GOOGLE_SEARCH_CX || process.env.GOOGLE_SEARCH_ENGINE_ID || '').trim();
       if (!key || !cx) return { key:'googleAi', name:'Google AI', live:false, mentioned:false, score:0, snippet:'Connect Google Custom Search to enable' };
       try {
         const q = encodeURIComponent(`${brandStem} ${industry} review`);
