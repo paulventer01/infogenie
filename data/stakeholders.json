@@ -1,4 +1,11 @@
 {
-  "stakeholders": [],
+  "stakeholders": [
+    {
+      "id": "stk_more1ihxp2sh6n",
+      "name": "Paul Venter",
+      "email": "paul@suretrade.co.za",
+      "addedAt": 1777910558181
+    }
+  ],
   "lastEmailSentAt": 0
 }
