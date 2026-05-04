@@ -10634,7 +10634,7 @@ app.post('/api/webhooks/test', async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────────
 // Free Google API. Works without a key (rate-limited per IP).
 // If GOOGLE_PAGESPEED_API_KEY is set we'll attach it for higher quotas.
-async function _runPageSpeed(url, strategy = 'mobile', timeoutMs = 30000) {
+async function _runPageSpeed(url, strategy = 'mobile', timeoutMs = 60000) {
   if (!url || !/^https?:\/\//i.test(url)) {
     return { ok:false, error:'valid URL required' };
   }

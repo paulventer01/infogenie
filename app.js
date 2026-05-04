@@ -6630,7 +6630,7 @@ window.runLighthouse = async function(strategy) {
     return;
   }
   const stratNorm = (strategy === 'desktop') ? 'desktop' : 'mobile';
-  if (panel) panel.innerHTML = `<div style="background:#F0FDFA;border:1px solid #99F6E4;border-radius:10px;padding:12px 16px;color:#0F766E;font-size:0.78rem">⏳ Running Google Lighthouse on https://${_escapeHtml(domain)} (${stratNorm}) — this takes 15–30s…</div>`;
+  if (panel) panel.innerHTML = `<div style="background:#F0FDFA;border:1px solid #99F6E4;border-radius:10px;padding:12px 16px;color:#0F766E;font-size:0.78rem">⏳ Running Google Lighthouse on https://${_escapeHtml(domain)} (${stratNorm}) — this can take 30–60s for heavy sites…</div>`;
   try {
     const r = await fetch('/api/pagespeed/run', {
       method:'POST', headers:{'Content-Type':'application/json'},
