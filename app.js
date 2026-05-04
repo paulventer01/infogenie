@@ -6512,8 +6512,12 @@ function buildContent() {
           <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">🛠️ Page Crawlability & Content Audit</div>
           <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">Find pages with crawl issues, thin content, and missing structured data — ranked by fix impact.</div>
         </div>
-        <button id="pageAuditRunBtn" onclick="runRealPageAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#065F46,#059669);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚡ Run Full Audit</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="lighthouseRunBtn" onclick="runLighthouse('mobile')" style="padding:9px 16px;background:linear-gradient(135deg,#0F766E,#14B8A6);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚡ Lighthouse (mobile)</button>
+          <button id="pageAuditRunBtn" onclick="runRealPageAudit()" style="padding:9px 18px;background:linear-gradient(135deg,#065F46,#059669);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">⚡ Run Full Audit</button>
+        </div>
       </div>
+      <div id="lighthousePanel" style="margin-bottom:14px"></div>
       <div style="display:flex;flex-direction:column;gap:12px">
         ${pages.map(p=>{
           const score = p.crawl;
@@ -6609,6 +6613,83 @@ function buildContent() {
 // elapsed-time counter on the Run Full Audit button while it works, then
 // re-renders the audit list with REAL crawled signals (replacing the mock
 // fallback list). All scores come from server-side on-page extraction.
+// ── Lighthouse (Google PageSpeed Insights) ─────────────────────────────────
+// Calls /api/pagespeed/run with the user's analysed domain and renders real
+// Core Web Vitals (LCP/FCP/CLS/TBT/SI/TTI) + top performance opportunities.
+window.runLighthouse = async function(strategy) {
+  if (window._lighthouseRunning) return;
+  window._lighthouseRunning = true;
+  const btn = document.getElementById('lighthouseRunBtn');
+  const panel = document.getElementById('lighthousePanel');
+  const stopTimer = window.startButtonTimer ? window.startButtonTimer(btn, 'Running PSI') : (() => {});
+  const domain = (analysisData?.url || '').replace(/^https?:\/\//, '').split('/')[0];
+  if (!domain) {
+    stopTimer('⚡ Lighthouse (mobile)');
+    window._lighthouseRunning = false;
+    showToast("⚠️ Analyse a website on the home page first — we'll run Lighthouse on that domain.");
+    return;
+  }
+  const stratNorm = (strategy === 'desktop') ? 'desktop' : 'mobile';
+  if (panel) panel.innerHTML = `<div style="background:#F0FDFA;border:1px solid #99F6E4;border-radius:10px;padding:12px 16px;color:#0F766E;font-size:0.78rem">⏳ Running Google Lighthouse on https://${_escapeHtml(domain)} (${stratNorm}) — this takes 15–30s…</div>`;
+  try {
+    const r = await fetch('/api/pagespeed/run', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ url: domain, strategy: stratNorm })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'PSI failed');
+    const sc = j.score >= 90 ? '#10B981' : j.score >= 50 ? '#F59E0B' : '#DC2626';
+    const m = j.metrics || {};
+    const cell = (label, val, hint) => `
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;text-align:center">
+        <div style="font-size:0.62rem;color:#6B7280;font-weight:700;letter-spacing:.05em;text-transform:uppercase">${_escapeHtml(label)}</div>
+        <div style="font-size:1.1rem;font-weight:800;color:#0A1628;margin:3px 0">${_escapeHtml(val || '—')}</div>
+        ${hint ? `<div style="font-size:0.6rem;color:#9CA3AF">${_escapeHtml(hint)}</div>` : ''}
+      </div>`;
+    const oppsHtml = (j.opportunities || []).length ? `
+      <div style="margin-top:12px">
+        <div style="font-size:0.72rem;font-weight:700;color:#0A1628;margin-bottom:6px">Top performance opportunities</div>
+        ${(j.opportunities || []).map(o => `
+          <div style="background:white;border:1px solid #E5E7EB;border-radius:8px;padding:8px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+            <div style="font-size:0.74rem;color:#0A1628;flex:1">${_escapeHtml(o.title)}</div>
+            <div style="font-size:0.7rem;color:#DC2626;font-weight:700;white-space:nowrap">${_escapeHtml(o.display || (Math.round(o.savingsMs)+'ms'))}</div>
+          </div>`).join('')}
+      </div>` : '';
+    panel.innerHTML = `
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:0.85rem;font-weight:800;color:#0A1628">⚡ Lighthouse · ${_escapeHtml(stratNorm)}</div>
+            <div style="font-size:0.7rem;color:#6B7280;margin-top:2px">Real Core Web Vitals via Google PageSpeed Insights · <a href="${_escapeHtml(j.finalUrl)}" target="_blank" style="color:#0F766E">${_escapeHtml(j.finalUrl)}</a></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:64px;height:64px;border-radius:50%;background:conic-gradient(${sc} ${j.score*3.6}deg,#E5E7EB ${j.score*3.6}deg);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <div style="width:46px;height:46px;background:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.95rem;font-weight:800;color:${sc}">${j.score}</div>
+            </div>
+            <button onclick="runLighthouse('${stratNorm === 'mobile' ? 'desktop' : 'mobile'}')" style="padding:7px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:7px;font-size:0.7rem;font-weight:700;color:#475569;cursor:pointer">Switch to ${stratNorm === 'mobile' ? 'desktop' : 'mobile'}</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px">
+          ${cell('LCP', m.lcp && m.lcp.display, 'Largest Contentful Paint')}
+          ${cell('FCP', m.fcp && m.fcp.display, 'First Contentful Paint')}
+          ${cell('CLS', m.cls && m.cls.display, 'Cumulative Layout Shift')}
+          ${cell('TBT', m.tbt && m.tbt.display, 'Total Blocking Time')}
+          ${cell('Speed Index', m.si && m.si.display, '')}
+          ${cell('TTI', m.tti && m.tti.display, 'Time to Interactive')}
+        </div>
+        ${oppsHtml}
+        <div style="margin-top:10px;padding:6px 10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;font-size:0.62rem;color:#6B7280">Source: ${_escapeHtml(j.dataSource)} · ${_escapeHtml(j.confidence)} confidence</div>
+      </div>`;
+    showToast(`✅ Lighthouse score: ${j.score}/100 (${stratNorm}) — see panel above for details`);
+  } catch (e) {
+    if (panel) panel.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:12px 16px;color:#B91C1C;font-size:0.78rem">❌ Lighthouse failed: ${_escapeHtml(e.message)}</div>`;
+    showToast(`❌ Lighthouse failed: ${e.message}`);
+  } finally {
+    stopTimer(`⚡ Lighthouse (${stratNorm})`);
+    window._lighthouseRunning = false;
+  }
+};
+
 window.runRealPageAudit = async function() {
   if (window._pageAuditRunning) return;
   window._pageAuditRunning = true;
@@ -30521,7 +30602,10 @@ function _renderStakeholders() {
         <thead><tr style="background:#F8FAFC;color:#64748B;font-size:11px;text-transform:uppercase;letter-spacing:.05em"><th style="text-align:left;padding:9px 12px">Name</th><th style="text-align:left;padding:9px 12px">Email</th><th style="text-align:left;padding:9px 12px">Added</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>` : `<div style="padding:32px;text-align:center;color:#94A3B8">No stakeholders yet — add one above to start receiving digests.</div>`}
-    </div>`;
+    </div>
+    <div id="webhooksWrap"></div>`;
+  // Load + render webhooks panel below the stakeholders table
+  _loadWebhooks().then(_renderWebhooks);
 }
 
 async function addStakeholder() {
@@ -30559,6 +30643,154 @@ async function testStakeholderEmail() {
     if (j.ok) { msg.style.color='#059669'; msg.textContent = `Sent to ${j.sentCount} of ${j.totalStakeholders}.`; }
     else { msg.style.color='#B91C1C'; msg.textContent = j.error || `Failed (${j.failures && j.failures.length} errors)`; }
   } catch (e) { msg.style.color='#B91C1C'; msg.textContent = e.message; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WEBHOOK CHANNELS (Slack / Teams / Telegram / generic — real-time alert delivery)
+// ═══════════════════════════════════════════════════════════════════════════
+window._webhooksData = null;
+
+async function _loadWebhooks() {
+  try {
+    const r = await fetch('/api/webhooks/list');
+    const j = await r.json();
+    window._webhooksData = j.ok ? j : { ok:false, error: j.error || 'load failed', webhooks:[], types:['slack','teams','telegram','generic'] };
+  } catch (e) {
+    window._webhooksData = { ok:false, error:e.message, webhooks:[], types:['slack','teams','telegram','generic'] };
+  }
+}
+
+function _webhookTypeMeta(type) {
+  const m = {
+    slack:    { label:'Slack',    emoji:'💬', placeholder:'https://hooks.slack.com/services/T0/B0/xxxxxxxx', help:'In Slack: Apps → Incoming Webhooks → Add to channel → copy the webhook URL.' },
+    teams:    { label:'Teams',    emoji:'👥', placeholder:'https://outlook.office.com/webhook/...',          help:'In Teams: channel ⋯ → Connectors → Incoming Webhook → create → copy URL.' },
+    telegram: { label:'Telegram', emoji:'✈️', placeholder:'https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<ID>', help:'Create a bot via @BotFather (get TOKEN). Get your chat_id from @userinfobot. Paste the full URL.' },
+    generic:  { label:'Generic',  emoji:'🔗', placeholder:'https://hook.example.com/...',                    help:'Any HTTPS endpoint — for n8n, Zapier, Make, Pipedream, IFTTT, or your own backend. Receives JSON: { source, alerts:[...] }.' },
+  };
+  return m[type] || m.generic;
+}
+
+function _renderWebhooks() {
+  const wrap = document.getElementById('webhooksWrap');
+  const data = window._webhooksData;
+  if (!wrap) return;
+  if (!data) { wrap.innerHTML = ''; return; }
+  if (data.ok === false && (!data.webhooks || !data.webhooks.length)) {
+    wrap.innerHTML = `<div style="background:white;border:1px solid #FECACA;border-radius:10px;padding:14px;color:#B91C1C;margin-top:16px;font-size:12px">Failed to load webhooks${data.error ? ': ' + _esc(data.error) : ''}</div>`;
+    return;
+  }
+  const types = data.types || ['slack','teams','telegram','generic'];
+  const typeOpts = types.map(t => {
+    const m = _webhookTypeMeta(t);
+    return `<option value="${_esc(t)}">${_esc(m.emoji + ' ' + m.label)}</option>`;
+  }).join('');
+  const helpByType = types.map(t => {
+    const m = _webhookTypeMeta(t);
+    return `<div data-type="${_esc(t)}" class="whk-help" style="display:none;font-size:11px;color:#64748B;margin-top:8px;background:#F8FAFC;border:1px solid #E2E8F0;padding:8px 10px;border-radius:6px">${_esc(m.help)}</div>`;
+  }).join('');
+  const rows = (data.webhooks || []).map(w => {
+    const m = _webhookTypeMeta(w.type);
+    const lastErr = w.lastError ? `<div style="font-size:10px;color:#B91C1C;margin-top:3px">⚠ Last error: ${_esc(w.lastError)} (${new Date(w.lastErrorAt).toLocaleString()})</div>` : '';
+    const lastOk  = w.lastOkAt ? `<div style="font-size:10px;color:#059669;margin-top:3px">✓ Last sent OK: ${new Date(w.lastOkAt).toLocaleString()}</div>` : '';
+    return `<tr style="border-bottom:1px solid #F1F5F9">
+      <td style="padding:10px 12px;color:#1E293B">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="background:#F1F5F9;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:700;color:#475569">${_esc(m.emoji + ' ' + m.label)}</span>
+          <strong style="font-size:13px">${_esc(w.label)}</strong>
+          ${w.active ? '' : '<span style="background:#F1F5F9;color:#94A3B8;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px">paused</span>'}
+        </div>
+        <div style="font-family:monospace;font-size:10px;color:#94A3B8;margin-top:4px">${_esc(w.urlMasked || '')}</div>
+        ${lastOk}${lastErr}
+      </td>
+      <td style="padding:10px 12px;text-align:right;white-space:nowrap;vertical-align:middle">
+        <label style="font-size:11px;color:#475569;margin-right:8px;cursor:pointer;user-select:none">
+          <input type="checkbox" ${w.active ? 'checked' : ''} onchange="toggleWebhook('${_esc(w.id)}')" style="vertical-align:middle" /> Active
+        </label>
+        <button onclick="testWebhook('${_esc(w.id)}')" style="background:#EEF2FF;color:#4338CA;border:1px solid #C7D2FE;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-right:6px">Test</button>
+        <button onclick="removeWebhook('${_esc(w.id)}')" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">Remove</button>
+      </td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:18px;margin-top:16px">
+      <div style="font-size:13px;font-weight:800;color:#0F172A;margin-bottom:4px">📡 Webhook channels — real-time alerts to chat</div>
+      <div style="font-size:11px;color:#64748B;margin-bottom:12px">Same alerts as the email digest, delivered instantly to Slack, Teams, Telegram, or any generic HTTPS endpoint. No API keys from us — paste your own webhook URL.</div>
+      <div style="display:grid;grid-template-columns:150px 1.4fr 2.6fr auto;gap:8px;align-items:start">
+        <select id="whkType" onchange="_whkTypeChanged()" style="padding:9px 10px;border:1px solid #CBD5E1;border-radius:6px;font-size:13px;background:white">${typeOpts}</select>
+        <input id="whkLabel" type="text" placeholder="Label (e.g. #marketing)" style="padding:9px 12px;border:1px solid #CBD5E1;border-radius:6px;font-size:13px" />
+        <input id="whkUrl" type="text" placeholder="${_esc(_webhookTypeMeta(types[0]).placeholder)}" style="padding:9px 12px;border:1px solid #CBD5E1;border-radius:6px;font-size:12px;font-family:monospace" />
+        <button onclick="addWebhook()" style="background:#0D9488;color:white;border:none;border-radius:6px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Add</button>
+      </div>
+      <div id="whkHelpBox">${helpByType}</div>
+      <div id="whkMsg" style="font-size:11px;margin-top:8px;min-height:14px"></div>
+    </div>
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;margin-top:12px">
+      <div style="padding:12px 16px;background:#F8FAFC;border-bottom:1px solid #E2E8F0;font-size:12px;font-weight:700;color:#475569;display:flex;justify-content:space-between;align-items:center">
+        <span>${(data.webhooks||[]).length} webhook${(data.webhooks||[]).length===1?'':'s'} configured</span>
+        <span style="font-size:10px;color:#94A3B8">Last dispatch: ${data.lastDispatchAt ? new Date(data.lastDispatchAt).toLocaleString() : '—'}</span>
+      </div>
+      ${(data.webhooks||[]).length ? `<table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>${rows}</tbody></table>` : `<div style="padding:24px;text-align:center;color:#94A3B8;font-size:12px">No webhooks yet — add one above to start streaming alerts to chat.</div>`}
+    </div>`;
+  _whkTypeChanged();
+}
+
+function _whkTypeChanged() {
+  const sel = document.getElementById('whkType');
+  const inp = document.getElementById('whkUrl');
+  if (!sel || !inp) return;
+  const m = _webhookTypeMeta(sel.value);
+  inp.placeholder = m.placeholder;
+  document.querySelectorAll('.whk-help').forEach(el => { el.style.display = (el.dataset.type === sel.value ? 'block' : 'none'); });
+}
+
+async function addWebhook() {
+  const msg = document.getElementById('whkMsg');
+  const type = document.getElementById('whkType').value;
+  const label = (document.getElementById('whkLabel').value || '').trim();
+  const url = (document.getElementById('whkUrl').value || '').trim();
+  if (!label || !url) { msg.style.color='#B91C1C'; msg.textContent='Label and URL are required.'; return; }
+  msg.style.color='#64748B'; msg.textContent='Adding…';
+  try {
+    const r = await fetch('/api/webhooks/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({type,label,url}) });
+    const j = await r.json();
+    if (!j.ok) { msg.style.color='#B91C1C'; msg.textContent = j.error || 'Failed to add'; return; }
+    document.getElementById('whkLabel').value = '';
+    document.getElementById('whkUrl').value = '';
+    msg.style.color='#059669'; msg.textContent = '✅ Added — click Test to verify it works.';
+    await _loadWebhooks(); _renderWebhooks();
+  } catch (e) { msg.style.color='#B91C1C'; msg.textContent = e.message; }
+}
+
+async function removeWebhook(id) {
+  if (!confirm('Remove this webhook channel?')) return;
+  try {
+    await fetch('/api/webhooks/remove', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id}) });
+    await _loadWebhooks(); _renderWebhooks();
+  } catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function toggleWebhook(id) {
+  try {
+    await fetch('/api/webhooks/toggle', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id}) });
+    await _loadWebhooks(); _renderWebhooks();
+  } catch (e) { alert('Failed: ' + e.message); }
+}
+
+async function testWebhook(id) {
+  const msg = document.getElementById('whkMsg');
+  if (msg) { msg.style.color='#64748B'; msg.textContent='Sending test message…'; }
+  try {
+    const r = await fetch('/api/webhooks/test', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id}) });
+    const j = await r.json();
+    if (j.ok) {
+      if (msg) { msg.style.color='#059669'; msg.textContent = '✅ Test message delivered — check your channel.'; }
+    } else {
+      if (msg) { msg.style.color='#B91C1C'; msg.textContent = '❌ Test failed: ' + (j.error || 'unknown'); }
+    }
+    await _loadWebhooks(); _renderWebhooks();
+  } catch (e) {
+    if (msg) { msg.style.color='#B91C1C'; msg.textContent = e.message; }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

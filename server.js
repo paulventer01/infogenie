@@ -10106,6 +10106,13 @@ app.post('/api/alerts/check', async (req, res) => {
     } else if (!newAlerts.length) {
       stakeholderEmail = { sent:false, reason:'no-alerts' };
     }
+    // Parallel real-time delivery to chat webhooks (Slack/Teams/Telegram/generic)
+    if (newAlerts.length && typeof _dispatchWebhookDigest === 'function') {
+      Promise.resolve()
+        .then(() => _dispatchWebhookDigest(newAlerts, { accountLabel: brand || domain }))
+        .then(r => { if (r && r.sent) console.log(`[webhook] dispatched ${r.sentCount}/${r.sentCount + r.failCount} channels from /alerts/check`); })
+        .catch(e => console.warn('[webhook] /alerts/check dispatch failed:', e.message));
+    }
 
     res.json({
       ok:true, newAlerts, newCount: newAlerts.length, lastChecked: now,
@@ -10303,6 +10310,406 @@ app.post('/api/stakeholders/test-email', async (req, res) => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+// WEBHOOK CHANNELS (Feature 5b — Slack / Teams / Telegram / Generic)
+// ────────────────────────────────────────────────────────────────────────────
+// Stakeholders get email digests; webhooks deliver the same alerts in real-time
+// to chat channels. User pastes their own webhook URL — no API keys needed.
+const _WEBHOOKS_FILE = path.join(_ALERTS_DIR, 'webhooks.json');
+const _WEBHOOK_TYPES = ['slack', 'teams', 'telegram', 'generic'];
+const _WEBHOOKS_META = {
+  dataOrigin: 'data/webhooks.json (file persistence)',
+  dataSource: 'InfoGenie Webhook Engine',
+  confidence: 'high'
+};
+function _readWebhooks() {
+  try {
+    const d = JSON.parse(fs.readFileSync(_WEBHOOKS_FILE, 'utf8'));
+    if (d && Array.isArray(d.webhooks)) return d;
+  } catch {}
+  return { webhooks: [], lastDispatchAt: 0 };
+}
+let _webhookWriteChain = Promise.resolve();
+function _webhookMutate(mutator) {
+  _webhookWriteChain = _webhookWriteChain.then(async () => {
+    const cur = _readWebhooks();
+    const next = await mutator(cur);
+    if (next !== false) {
+      try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_WEBHOOKS_FILE, next); }
+      catch (e) { console.warn('webhooks write failed:', e.message); }
+    }
+    return next;
+  }).catch(e => { console.warn('webhooks mutator error:', e.message); });
+  return _webhookWriteChain;
+}
+
+// SSRF-safe URL validation. Public HTTPS only; per-platform host allowlist for
+// the chat platforms; generic accepts any public HTTPS host.
+function _validateWebhookUrl(type, url) {
+  if (typeof url !== 'string' || !/^https:\/\//i.test(url)) {
+    return { ok:false, error:'webhook URL must start with https://' };
+  }
+  let host;
+  try { host = new URL(url).hostname.toLowerCase(); }
+  catch { return { ok:false, error:'invalid URL' }; }
+  if (!host || host === 'localhost' || /^(\d+\.\d+\.\d+\.\d+|\[[0-9a-f:]+\])$/i.test(host) ||
+      host.endsWith('.local') || host.endsWith('.internal')) {
+    return { ok:false, error:'private/local URLs not allowed' };
+  }
+  if (type === 'slack') {
+    if (!/(^|\.)slack\.com$/.test(host)) return { ok:false, error:'Slack webhook URL must be on slack.com (e.g. hooks.slack.com)' };
+  } else if (type === 'teams') {
+    if (!/(^|\.)office\.com$|(^|\.)outlook\.com$|(^|\.)microsoft\.com$|(^|\.)webhook\.office\.com$/.test(host)) {
+      return { ok:false, error:'Teams webhook URL must be on office.com / outlook.com / microsoft.com' };
+    }
+  } else if (type === 'telegram') {
+    if (host !== 'api.telegram.org') return { ok:false, error:'Telegram URL must be https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<ID>' };
+    if (!/\/bot[\w:-]+\/sendMessage/.test(url)) return { ok:false, error:'Telegram URL must include /bot<TOKEN>/sendMessage' };
+    try {
+      const u = new URL(url);
+      if (!u.searchParams.get('chat_id')) return { ok:false, error:'Telegram URL must include ?chat_id=<ID>' };
+    } catch { return { ok:false, error:'invalid Telegram URL' }; }
+  }
+  return { ok:true };
+}
+
+// Format alerts as a payload for each webhook platform.
+function _formatWebhookPayload(type, newAlerts, accountLabel) {
+  const sevOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+  const sorted = [...newAlerts].sort((a,b) => (sevOrder[a.severity]||9) - (sevOrder[b.severity]||9));
+  const sevEmoji = (s) => s === 'critical' ? '🔴' : s === 'high' ? '🟠' : s === 'medium' ? '🟡' : '🔵';
+
+  if (type === 'slack') {
+    const blocks = [{ type:'header', text:{ type:'plain_text', text:`InfoGenie · ${newAlerts.length} new alert${newAlerts.length===1?'':'s'}${accountLabel ? ` — ${accountLabel}` : ''}` } }];
+    for (const a of sorted) {
+      blocks.push({
+        type:'section',
+        text:{ type:'mrkdwn',
+          text: `${sevEmoji(a.severity)} *${(a.severity||'info').toUpperCase()} — ${a.title || a.type || 'Alert'}*\n${a.body || ''}` }
+      });
+    }
+    blocks.push({ type:'context', elements:[{ type:'mrkdwn', text:'Open InfoGenie to acknowledge these alerts.' }] });
+    return {
+      text: `InfoGenie · ${newAlerts.length} new alert${newAlerts.length===1?'':'s'}\n` +
+            sorted.map(a => `${sevEmoji(a.severity)} ${a.title || a.type}`).join('\n'),
+      blocks
+    };
+  }
+  if (type === 'teams') {
+    return {
+      '@type': 'MessageCard',
+      '@context': 'https://schema.org/extensions',
+      summary: `InfoGenie · ${newAlerts.length} new alert${newAlerts.length===1?'':'s'}`,
+      themeColor: sorted[0]?.severity === 'critical' ? 'DC2626' : sorted[0]?.severity === 'high' ? 'EA580C' : 'D97706',
+      title: `InfoGenie · ${newAlerts.length} new alert${newAlerts.length===1?'':'s'}${accountLabel ? ` — ${accountLabel}` : ''}`,
+      sections: sorted.map(a => ({
+        activityTitle: `${sevEmoji(a.severity)} **${(a.severity||'info').toUpperCase()}** — ${a.title || a.type || 'Alert'}`,
+        text: a.body || ''
+      }))
+    };
+  }
+  if (type === 'telegram') {
+    const escTg = (s) => String(s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    const lines = [`<b>InfoGenie · ${escTg(newAlerts.length)} new alert${newAlerts.length===1?'':'s'}</b>${accountLabel ? ` — <i>${escTg(accountLabel)}</i>` : ''}`, ''];
+    for (const a of sorted) {
+      lines.push(`${sevEmoji(a.severity)} <b>${escTg((a.severity||'info').toUpperCase())} — ${escTg(a.title || a.type || 'Alert')}</b>`);
+      if (a.body) lines.push(escTg(a.body));
+      lines.push('');
+    }
+    return { text: lines.join('\n').slice(0, 4000), parse_mode: 'HTML', disable_web_page_preview: true };
+  }
+  // generic — for n8n / Zapier / Make / Pipedream / IFTTT / custom HTTP catch-alls
+  return {
+    source: 'infogenie',
+    accountLabel: accountLabel || null,
+    timestamp: Date.now(),
+    alerts: sorted.map(a => ({
+      id: a.id, type: a.type, severity: a.severity, title: a.title, body: a.body, timestamp: a.timestamp
+    }))
+  };
+}
+
+async function _sendOneWebhook(wh, newAlerts, accountLabel) {
+  // Re-validate URL each call (defends against stored data drift) AND resolve
+  // the hostname to confirm it doesn't point to a private IP. _isUrlSafeToFetch
+  // does DNS lookup + _isPrivateIp on every record (covers IPv4 short forms,
+  // IPv6 collapsed addresses, RFC1918, link-local, loopback, metadata IPs).
+  const safety = await _isUrlSafeToFetch(wh.url);
+  if (!safety.ok) throw new Error('URL safety check failed: ' + safety.error);
+  const v = _validateWebhookUrl(wh.type, wh.url);
+  if (!v.ok) throw new Error('URL validation failed: ' + v.error);
+
+  const payload = _formatWebhookPayload(wh.type, newAlerts, accountLabel);
+  let body;
+  if (wh.type === 'telegram') {
+    const u = new URL(wh.url);
+    const chatId = u.searchParams.get('chat_id');
+    body = JSON.stringify({ chat_id: chatId, ...payload });
+  } else {
+    body = JSON.stringify(payload);
+  }
+  // redirect:'manual' prevents redirect-follow SSRF (a malicious endpoint
+  // could otherwise return a 302 to an internal/metadata host). Chat-platform
+  // webhooks return 200/204 directly; any 3xx is treated as a hard failure.
+  const r = await fetch(wh.url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    redirect: 'manual',
+    signal: AbortSignal.timeout(8000),
+  });
+  if (r.status >= 300 && r.status < 400) {
+    throw new Error(`HTTP ${r.status} — webhook URL returned a redirect (not allowed; chat platforms post directly)`);
+  }
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '');
+    throw new Error(`HTTP ${r.status}${txt ? ' — ' + txt.slice(0, 200) : ''}`);
+  }
+  return true;
+}
+
+// ── Per-IP rate limit for PSI + webhook-test endpoints ─────────────────────
+// Both endpoints trigger expensive outbound HTTP work (PSI runs on Google's
+// servers but counts against our quota; webhook-test pings a third party).
+// Same shape as _ampRateLimit / _assistantRateLimit elsewhere in this file.
+const _psiWhBuckets = new Map(); // ip -> { lastAt, count, windowStart }
+function _psiWhRateLimit(req, res) {
+  const ip = (req.headers['x-forwarded-for'] || req.ip || 'unknown').toString().split(',')[0].trim();
+  const now = Date.now();
+  let b = _psiWhBuckets.get(ip);
+  if (!b || now - b.windowStart > 60_000) { b = { lastAt: 0, count: 0, windowStart: now }; _psiWhBuckets.set(ip, b); }
+  if (now - b.lastAt < 2_000)  { res.status(429).json({ ok:false, error:'rate-limited', message:'Please wait a couple of seconds between runs.' }); return false; }
+  if (b.count >= 20)           { res.status(429).json({ ok:false, error:'rate-limited', message:'Per-minute limit reached (20/min). Try again shortly.' }); return false; }
+  b.lastAt = now; b.count++;
+  // Opportunistic GC — keep the map bounded
+  if (_psiWhBuckets.size > 1000) {
+    for (const [k, v] of _psiWhBuckets) if (now - v.windowStart > 120_000) _psiWhBuckets.delete(k);
+  }
+  return true;
+}
+
+// Dispatch alerts to all active webhook channels in parallel. Filters by
+// minSeverity (default high). Errors per webhook are isolated. Fire-and-forget.
+async function _dispatchWebhookDigest(newAlerts, opts = {}) {
+  if (!Array.isArray(newAlerts) || !newAlerts.length) return { sent:false, reason:'no-alerts' };
+  const minSev = opts.minSeverity || 'high';
+  const sevRank = { low: 0, medium: 1, high: 2, critical: 3 };
+  const minRank = sevRank[minSev] != null ? sevRank[minSev] : 2;
+  const eligible = newAlerts.filter(a => (sevRank[a.severity] != null ? sevRank[a.severity] : 0) >= minRank);
+  if (!eligible.length) return { sent:false, reason:'no-eligible-severity' };
+  const data = _readWebhooks();
+  const active = (data.webhooks || []).filter(w => w.active !== false);
+  if (!active.length) return { sent:false, reason:'no-webhooks' };
+  const results = await Promise.allSettled(active.map(wh =>
+    _sendOneWebhook(wh, eligible, opts.accountLabel || '')
+  ));
+  let okCount = 0, failCount = 0, failures = [];
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') okCount++;
+    else { failCount++; failures.push({ id: active[i].id, label: active[i].label, error: (r.reason && r.reason.message) || String(r.reason) }); }
+  });
+  await _webhookMutate(async (d) => {
+    d.lastDispatchAt = Date.now();
+    for (const wh of d.webhooks) {
+      const idx = active.findIndex(a => a.id === wh.id);
+      if (idx < 0) continue;
+      const r = results[idx];
+      if (r.status === 'fulfilled') { wh.lastOkAt = Date.now(); wh.lastError = null; }
+      else { wh.lastErrorAt = Date.now(); wh.lastError = ((r.reason && r.reason.message) || String(r.reason)).slice(0, 200); }
+    }
+    return d;
+  });
+  return { sent: okCount > 0, sentCount: okCount, failCount, failures, totalAlerts: eligible.length };
+}
+
+// ── Webhook CRUD endpoints ─────────────────────────────────────────────────
+app.get('/api/webhooks/list', (req, res) => {
+  const d = _readWebhooks();
+  // Mask URLs for safety on display (show only host + last 10 chars)
+  const masked = (d.webhooks || []).map(w => {
+    let urlMasked;
+    try {
+      const u = new URL(w.url);
+      const tail = w.url.slice(-10);
+      urlMasked = `${u.protocol}//${u.hostname}/…${tail}`;
+    } catch { urlMasked = '…' + (w.url || '').slice(-10); }
+    return { id: w.id, type: w.type, label: w.label, active: w.active !== false,
+      addedAt: w.addedAt, lastOkAt: w.lastOkAt || 0, lastErrorAt: w.lastErrorAt || 0,
+      lastError: w.lastError || null, urlMasked };
+  });
+  res.json({
+    ok:true,
+    webhooks: masked,
+    types: _WEBHOOK_TYPES,
+    lastDispatchAt: d.lastDispatchAt || 0,
+    ..._WEBHOOKS_META
+  });
+});
+
+app.post('/api/webhooks/add', async (req, res) => {
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const type = String(body.type || '').toLowerCase();
+  const label = String(body.label || '').trim().slice(0, 80);
+  const url = String(body.url || '').trim().slice(0, 500);
+  if (!_WEBHOOK_TYPES.includes(type)) return res.status(400).json({ ok:false, error:`type must be one of: ${_WEBHOOK_TYPES.join(', ')}` });
+  if (!label) return res.status(400).json({ ok:false, error:'label required' });
+  const v = _validateWebhookUrl(type, url);
+  if (!v.ok) return res.status(400).json({ ok:false, error: v.error });
+  let added = null, dup = false;
+  await _webhookMutate(async (d) => {
+    if (d.webhooks.some(w => w.url === url)) { dup = true; return false; }
+    added = {
+      id: 'whk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+      type, label, url, active: true, addedAt: Date.now(),
+      lastOkAt: 0, lastErrorAt: 0, lastError: null,
+    };
+    d.webhooks.unshift(added);
+    return d;
+  });
+  if (dup) return res.status(409).json({ ok:false, error:'this URL is already configured' });
+  // Don't echo the raw URL back — masked field only
+  const safe = { ...added, urlMasked: '…' + url.slice(-10) };
+  delete safe.url;
+  res.json({ ok:true, webhook: safe, ..._WEBHOOKS_META });
+});
+
+app.post('/api/webhooks/remove', async (req, res) => {
+  const id = String((req.body && req.body.id) || '');
+  if (!id) return res.status(400).json({ ok:false, error:'id required' });
+  let removed = false;
+  await _webhookMutate(async (d) => {
+    const before = d.webhooks.length;
+    d.webhooks = d.webhooks.filter(w => w.id !== id);
+    removed = d.webhooks.length < before;
+    return d;
+  });
+  res.json({ ok:true, removed, ..._WEBHOOKS_META });
+});
+
+app.post('/api/webhooks/toggle', async (req, res) => {
+  const id = String((req.body && req.body.id) || '');
+  if (!id) return res.status(400).json({ ok:false, error:'id required' });
+  let updated = null;
+  await _webhookMutate(async (d) => {
+    const w = d.webhooks.find(x => x.id === id);
+    if (w) { w.active = !w.active; updated = { id: w.id, active: w.active }; return d; }
+    return false;
+  });
+  if (!updated) return res.status(404).json({ ok:false, error:'webhook not found' });
+  res.json({ ok:true, ...updated, ..._WEBHOOKS_META });
+});
+
+app.post('/api/webhooks/test', async (req, res) => {
+  if (!_psiWhRateLimit(req, res)) return;
+  const id = String((req.body && req.body.id) || '');
+  if (!id) return res.status(400).json({ ok:false, error:'id required' });
+  const data = _readWebhooks();
+  const wh = data.webhooks.find(w => w.id === id);
+  if (!wh) return res.status(404).json({ ok:false, error:'webhook not found' });
+  const sample = [{
+    id:'test-' + Date.now(), type:'rank_drop', severity:'high',
+    title:'TEST · Sample alert from InfoGenie',
+    body:'This is a test message — your alert webhook is wired up and reachable.',
+    timestamp: Date.now()
+  }];
+  try {
+    await _sendOneWebhook(wh, sample, 'TEST');
+    await _webhookMutate(async (d) => {
+      const w = d.webhooks.find(x => x.id === id);
+      if (w) { w.lastOkAt = Date.now(); w.lastError = null; return d; }
+      return false;
+    });
+    res.json({ ok:true, sent:true, ..._WEBHOOKS_META });
+  } catch (e) {
+    await _webhookMutate(async (d) => {
+      const w = d.webhooks.find(x => x.id === id);
+      if (w) { w.lastErrorAt = Date.now(); w.lastError = e.message.slice(0, 200); return d; }
+      return false;
+    });
+    res.status(502).json({ ok:false, sent:false, error: e.message, ..._WEBHOOKS_META });
+  }
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// PAGESPEED INSIGHTS (Real Core Web Vitals via Google PSI v5 — no key required)
+// ────────────────────────────────────────────────────────────────────────────
+// Free Google API. Works without a key (rate-limited per IP).
+// If GOOGLE_PAGESPEED_API_KEY is set we'll attach it for higher quotas.
+async function _runPageSpeed(url, strategy = 'mobile', timeoutMs = 30000) {
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return { ok:false, error:'valid URL required' };
+  }
+  const params = new URLSearchParams({ url, strategy, category: 'performance' });
+  if (process.env.GOOGLE_PAGESPEED_API_KEY) params.set('key', process.env.GOOGLE_PAGESPEED_API_KEY);
+  const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${params.toString()}`;
+  try {
+    const r = await fetch(apiUrl, { signal: AbortSignal.timeout(timeoutMs) });
+    const j = await r.json();
+    if (!r.ok || j.error) {
+      return { ok:false, error: (j.error && j.error.message) || `HTTP ${r.status}` };
+    }
+    const lh = j.lighthouseResult || {};
+    const audits = lh.audits || {};
+    const cats = lh.categories || {};
+    const perfScore = Math.round(((cats.performance && cats.performance.score) || 0) * 100);
+    const num = (id) => audits[id] && audits[id].numericValue;
+    const display = (id) => (audits[id] && audits[id].displayValue) || null;
+    return {
+      ok: true,
+      strategy,
+      finalUrl: lh.finalUrl || url,
+      fetchedAt: Date.now(),
+      score: perfScore,
+      metrics: {
+        lcp: { ms: num('largest-contentful-paint'),  display: display('largest-contentful-paint') },
+        fcp: { ms: num('first-contentful-paint'),    display: display('first-contentful-paint') },
+        cls: { value: num('cumulative-layout-shift'),display: display('cumulative-layout-shift') },
+        tbt: { ms: num('total-blocking-time'),       display: display('total-blocking-time') },
+        si:  { ms: num('speed-index'),               display: display('speed-index') },
+        tti: { ms: num('interactive'),               display: display('interactive') },
+      },
+      opportunities: Object.values(audits)
+        .filter(a => a && a.details && a.details.type === 'opportunity' && (a.numericValue || 0) > 0)
+        .sort((a,b) => (b.numericValue || 0) - (a.numericValue || 0))
+        .slice(0, 5)
+        .map(a => ({ id: a.id, title: a.title, savingsMs: a.numericValue, display: a.displayValue || '' })),
+    };
+  } catch (e) {
+    return { ok:false, error: e.message };
+  }
+}
+
+app.post('/api/pagespeed/run', async (req, res) => {
+  if (!_psiWhRateLimit(req, res)) return;
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const rawUrl = String(body.url || '').trim();
+  const strategy = (String(body.strategy || 'mobile').toLowerCase() === 'desktop') ? 'desktop' : 'mobile';
+  if (!rawUrl) return res.status(400).json({ ok:false, error:'url required' });
+  const fullUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : ('https://' + rawUrl);
+  // SSRF guard — _isUrlSafeToFetch resolves DNS + checks _isPrivateIp on every
+  // returned record, so it correctly blocks alternate IPv4 forms (decimal/hex/
+  // octal), collapsed IPv6, and DNS-rebinding-style hostnames.
+  const safety = await _isUrlSafeToFetch(fullUrl);
+  if (!safety.ok) return res.status(400).json({ ok:false, error: safety.error });
+  const result = await _runPageSpeed(fullUrl, strategy);
+  if (!result.ok) {
+    return res.status(502).json({
+      ok:false, error: result.error,
+      dataOrigin: 'google_pagespeed_insights_v5',
+      dataSource: 'Google PageSpeed Insights API',
+      confidence: 'high',
+      transparency: 'PSI returned an error or could not fetch the URL — common causes: site returns 4xx/5xx to Google, very slow page, or PSI rate limit hit.',
+    });
+  }
+  res.json({
+    ok:true, ...result,
+    dataOrigin: 'google_pagespeed_insights_v5',
+    dataSource: process.env.GOOGLE_PAGESPEED_API_KEY ? 'Google PSI (with API key)' : 'Google PSI (no key — public quota)',
+    confidence: 'high',
+    transparency: `PSI score is Lighthouse-based, run by Google's servers. Strategy: ${strategy}.${process.env.GOOGLE_PAGESPEED_API_KEY ? '' : ' Set GOOGLE_PAGESPEED_API_KEY for higher rate limits.'}`,
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
 // LAUNCH CALENDAR (Feature 6 — campaign launch tracker + 24h/1h reminders)
 // ────────────────────────────────────────────────────────────────────────────
 const _LAUNCH_FILE = path.join(_ALERTS_DIR, 'launches.json');
@@ -10444,6 +10851,13 @@ async function _sweepLaunches() {
         .then(() => _dispatchStakeholderDigest(due, { minSeverity: 'medium', accountLabel: 'Launch reminder' }))
         .then(r => { if (r && r.sent) console.log(`[launch-sweep] dispatched ${r.sentCount} reminder digest(s)`); })
         .catch(e => console.warn('[launch-sweep] stakeholder dispatch failed:', e.message));
+      // Parallel chat-webhook delivery for launch reminders
+      if (typeof _dispatchWebhookDigest === 'function') {
+        Promise.resolve()
+          .then(() => _dispatchWebhookDigest(due, { minSeverity: 'medium', accountLabel: 'Launch reminder' }))
+          .then(r => { if (r && r.sent) console.log(`[launch-sweep] webhook dispatched to ${r.sentCount}/${r.sentCount + r.failCount} channels`); })
+          .catch(e => console.warn('[launch-sweep] webhook dispatch failed:', e.message));
+      }
     }
   } catch (e) {
     console.warn('[launch-sweep] error:', e.message);

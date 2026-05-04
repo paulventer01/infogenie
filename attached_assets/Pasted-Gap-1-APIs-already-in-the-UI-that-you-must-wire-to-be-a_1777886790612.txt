@@ -1,0 +1,79 @@
+Gap #1 — APIs already in the UI that you must wire to be accurate
+These are your highest-leverage items because the UI already promises them. Right now they show "Connected ✓" but the server returns simulated/AI-estimated data.
+
+Priority	API	Why it matters	What it unlocks
+🔴 Critical	GA4 Data API	Real conversion + funnel data. Currently ROAS/attribution is modelled, not measured.	Real CVR, real funnel drop-off, real ROAS in Results / Attribution / C-Suite reports.
+🔴 Critical	Google Search Console API	Real organic clicks/impressions/positions per query. AutoSEO traffic projections currently estimate.	Real ranking deltas, real CTR by SERP position, real "winning queries" lists.
+🔴 Critical	Semrush v3 / Ahrefs v3	Real competitor backlinks + keyword rankings. Battle Plan is currently AI-templated.	Real keyword gap, real backlink targets, real domain authority.
+🔴 Critical	Meta Ad Library API	Real competitor ad creatives. SOV daily chart is simulated.	Real Share-of-Voice, real ad-copy intelligence, real "what's running now".
+🟠 High	SimilarWeb API	Real traffic estimates per competitor (replaces our "M / B" estimates in Intelligence Hub).	Accurate market share, real traffic-source mix.
+🟠 High	HubSpot / Salesforce API	Real CRM data for lead-to-revenue attribution + Re-engage targeting.	True LTV, real pipeline reporting, real attribution to closed-won.
+🟠 High	Brandwatch / Talkwalker	Real social-listening signals (currently simulated).	Real sentiment, real competitor mention spikes.
+🟡 Medium	Slack / Teams / Telegram webhooks	Already in UI for alerts — easy 30-min wire-up.	Live alert delivery (currently no-ops).
+🟡 Medium	Klaviyo / Marketo	Email engagement, segment sync for Re-engage.	True drip ROI per segment.
+🟡 Medium	Mixpanel / Hotjar / Segment	Product analytics + heat-maps.	Cross-platform user journey, real session replay.
+Gap #2 — Tools NOT in InfoGenie at all that would meaningfully strengthen it
+Grouped by what they fix.
+
+A. Web-data / scraping infrastructure (currently zero)
+You can't reliably analyze competitors at scale without proxied scraping. Recommendations:
+
+Apify — competitor site monitoring, SERP scraping, social scrapers (Reddit, TikTok, LinkedIn).
+Bright Data or Oxylabs — residential proxies for compliant scraping (fixes the "403 anti-bot" issue Page Audit hits today).
+Diffbot — turns any web page into structured JSON (knowledge graph + article extraction).
+ScrapingBee — simpler/cheaper alternative for moderate volume.
+Firecrawl — LLM-friendly markdown extraction (great pairing with our AI Visibility audits).
+B. AI-Search Visibility (this is your differentiator and you're underbuilt here)
+This is the fastest-growing category in 2025-26 marketing intel. Direct fit for your AI Audit Suite:
+
+Profound — tracks brand mentions in ChatGPT, Claude, Perplexity, Gemini.
+Otterly.AI — same lane, prompt-coverage scoring.
+Athena HQ / Peec.ai / Goodie.ai — LLM citation tracking + competitor benchmarks.
+DataForSEO Labs SGE endpoint (you already have DataForSEO!) — Google AI Overview tracking, just not wired.
+C. Real-traffic / mobile / attribution
+AppsFlyer or Adjust or Branch.io — mobile attribution (you have zero coverage here).
+Triple Whale / Northbeam / Rockerbox — DTC multi-touch attribution (better than GA4 for ecom).
+CallRail or CallTrackingMetrics — call-tracking attribution (huge for service businesses).
+Plausible / Fathom — privacy-first analytics (EU/cookieless coverage).
+D. B2B intent / enrichment (zero coverage today)
+Clearbit (now Breeze Intelligence/HubSpot), Apollo.io, ZoomInfo, Cognism — company + contact enrichment.
+6sense or Demandbase — buying-intent signals.
+Bombora — third-party intent data.
+LinkedIn Sales Navigator API — real account-level intel.
+E. E-commerce / revenue (zero coverage today — blocks DTC use cases)
+Shopify Admin API — real revenue, AOV, cohorts per campaign.
+WooCommerce REST, BigCommerce, Magento.
+Amazon SP-API — for Amazon Ads sellers.
+Stripe — revenue + subscription metrics for SaaS users.
+Recharge — subscription/churn for DTC.
+F. Reviews / Voice-of-customer
+Trustpilot API, G2 API, Capterra, Google Business Profile (reviews + Q&A).
+Typeform, SurveyMonkey, Qualtrics — survey ingestion.
+G. Performance & Web Vitals
+PageSpeed Insights API + Lighthouse CI — real Core Web Vitals (currently simulated in Page Audit).
+Cloudflare Radar API — traffic / availability.
+Screaming Frog API — proper technical-SEO crawl.
+H. Workflow / productivity (you have Slack/Teams/Zapier in catalog but missing)
+Notion + Airtable — campaign briefs, content calendar sync.
+Linear / Jira / Asana / ClickUp / Monday — ticketing for AI-suggested actions.
+Google Workspace (Sheets, Drive, Calendar) — exports + scheduling.
+I. Data warehouse / BI (zero coverage — blocks any agency/enterprise customer)
+Snowflake, BigQuery, Databricks, Redshift — ingest at scale.
+Fivetran or Airbyte — managed ELT pipelines.
+Looker / Tableau / PowerBI / Metabase / Hex — BI hand-off for analysts.
+J. AI / LLM additions
+Cohere, AI21, xAI Grok — broader model coverage for AI-visibility audits (you already do dual-LLM; expand to 6-7 models for stronger consensus).
+Replicate / Together AI — open-source models (cheaper bulk inference).
+Pinecone / Weaviate / Qdrant — vector DB for retrieval-augmented citations.
+Voyage AI — best-in-class embeddings for semantic search.
+K. Customer support
+Zendesk, Freshdesk — pull tickets to feed VoC into content gaps.
+Gap #3 — Pure automation platforms (your current "Automation" category only has Zapier + Make)
+Add these to broaden routing:
+
+n8n — open-source, self-hostable Zapier alternative.
+Pipedream — code-friendly automation.
+Workato — enterprise iPaaS.
+Tray.io — enterprise iPaaS.
+Power Automate (Microsoft) — for Microsoft-heavy customers.
+IFTTT — consumer-side triggers.

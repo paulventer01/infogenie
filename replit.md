@@ -182,6 +182,19 @@ Added 10 new modules in cache buster `v=20260425Q`. All client-side, simulated f
 ## Cache-buster
 - Bumped to `v=20260430M` (next bump → `N`).
 
+## Webhook Channels + PageSpeed Insights (added 2026-05-04)
+- **Webhook channels** (server.js ~10308-10590, app.js ~30567-30720): real-time alert delivery to Slack / Teams / Telegram / generic HTTPS endpoints (n8n / Zapier / Make / Pipedream / IFTTT). User pastes their own webhook URL — no API keys held by us.
+  - Store: `data/webhooks.json`, atomic write via `_atomicWriteJson`, single-writer mutex (`_webhookWriteChain`).
+  - SSRF guard: HTTPS-only, rejects localhost / RFC1918 / `.local` / `.internal`; per-platform host allowlist for Slack (`*.slack.com`), Teams (`*.office.com|outlook.com|microsoft.com|webhook.office.com`), Telegram (`api.telegram.org` + `/bot<TOKEN>/sendMessage` + `chat_id` query param). Generic accepts any public HTTPS host.
+  - Endpoints: `GET /api/webhooks/list` (URLs masked, never returns raw URL), `POST /api/webhooks/{add,remove,toggle,test}`.
+  - Per-platform payload formatters (`_formatWebhookPayload`): Slack uses Block Kit (`text` + `blocks`), Teams uses MessageCard, Telegram uses HTML `parse_mode` with `<b>`/`<i>` and chat_id moved into the body, generic emits `{ source:'infogenie', accountLabel, timestamp, alerts:[...] }`.
+  - Dispatcher (`_dispatchWebhookDigest`): filters by `minSeverity` (default `high`), sends to all active webhooks via `Promise.allSettled`, isolates per-webhook errors, persists `lastOkAt` / `lastErrorAt` / `lastError` per webhook for the UI.
+  - Wired into both alert pipelines as fire-and-forget, parallel to the existing email digest: `/api/alerts/check` (line ~10112) and the launch-calendar sweeper (line ~10823).
+  - UI: extends the Stakeholders page (`_renderStakeholders` adds `<div id="webhooksWrap">`, `_loadWebhooks` + `_renderWebhooks` render the panel below the stakeholders table). Add/Remove/Test/Active-toggle controls; per-webhook last-OK / last-error display; type-aware help and placeholder.
+- **PageSpeed Insights** (server.js ~10592-10670, app.js ~6519-6701): real Core Web Vitals via Google PSI v5 (free public API, no key required for low volume; honours optional `GOOGLE_PAGESPEED_API_KEY` env var for higher quotas).
+  - Endpoint: `POST /api/pagespeed/run` with `{ url, strategy:'mobile'|'desktop' }`. SSRF-guarded the same way as webhooks. Returns Lighthouse perf score, LCP/FCP/CLS/TBT/SI/TTI metrics + display strings, and top-5 performance opportunities sorted by `numericValue`.
+  - UI: "⚡ Lighthouse (mobile)" button next to "Run Full Audit" on the Page Audit tab. Result panel renders score gauge (red/amber/green), 6-cell metric grid, top opportunities, and a "Switch to desktop/mobile" toggle. Errors render a friendly red panel + toast.
+
 ## UX polish — three issues fixed (2026-04-30)
 - **Friendlier competitor-scrape errors** (app.js ~29339): Content Scorer competitor table previously showed raw `HTTP 403` / `HTTP 400` in red for bot-blocked sites (Trustpilot, Facebook, LinkedIn, etc.). Now maps to friendlier badges — `Bot-blocked` / `Rate-limited` / `Blocked` / `Server error` / `Timed out` — in muted grey/amber rather than alarming red, with a hover tooltip explaining why and that the page exists. Original raw error preserved in `title=` for power users.
 - **Re-engage Audience manual input** (app.js ~27921 + 27963 + 27999): added `openReengageManualAdd()` modal — one-contact-at-a-time form (email + optional name + phone + backdate days) that submits via the existing `/api/reengage/upload-csv` endpoint by building a 1-row CSV in memory. Empty-state of the dormant list now shows BOTH "Upload audience CSV" and "Add manually" buttons prominently. Header has both buttons too.
