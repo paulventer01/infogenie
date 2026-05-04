@@ -707,6 +707,14 @@ app.get('/api/integrations/status', (req, res) => {
   if (process.env.POSTHOG_API_KEY) configured.push('posthog');
   if (process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD) configured.push('dataforseo');
   if (process.env.RAPIDAPI_KEY) configured.push('rapidapi');
+  // ── Newly wired (2026-04-30) ────────────────────────────────────────────
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) { configured.push('ga4'); configured.push('gsc'); }
+  if (process.env.SEMRUSH_API_KEY) configured.push('semrush');
+  if (process.env.HUBSPOT_PRIVATE_APP_TOKEN) configured.push('hubspot');
+  if (process.env.FIRECRAWL_API_KEY) configured.push('firecrawl');
+  if (process.env.PROFOUND_API_KEY) configured.push('profound');
+  if (process.env.SHOPIFY_SHOP && process.env.SHOPIFY_ADMIN_TOKEN) configured.push('shopify');
+  if (process.env.APPSFLYER_API_TOKEN && process.env.APPSFLYER_APP_ID) configured.push('appsflyer');
   res.json({ configured });
 });
 
@@ -8014,6 +8022,17 @@ async function _scrapePageForScoring(url, timeoutMs = 9000) {
         continue;
       }
     }
+    // ── Firecrawl fallback for bot-blocked pages ────────────────────────────
+    // When direct fetch returns 403/429/503 (Cloudflare / Akamai / PerimeterX),
+    // try Firecrawl which uses its own headless-browser proxy network. Only
+    // runs if FIRECRAWL_API_KEY is set; otherwise the original failure stands.
+    if ((!r || !r.ok) && process.env.FIRECRAWL_API_KEY && [403, 429, 503].includes(lastStatus)) {
+      const fc = await _firecrawlGetHtml(url, timeoutMs + 3000);
+      if (fc.ok) {
+        const signals = _extractContentSignals(fc.html.slice(0, 600 * 1024), url);
+        return { ok:true, url, _via:'firecrawl', ...signals };
+      }
+    }
     if (!r) return { ok:false, url, error: `network failure` };
     if (!r.ok) return { ok:false, url, error: `HTTP ${lastStatus || r.status}` };
     // Cap at ~600KB to bound memory on bloated pages
@@ -10684,6 +10703,557 @@ app.get('/api/cross-channel-report', async (req, res) => {
     console.error('/api/cross-channel-report error:', err.message);
     res.status(500).json({ ok:false, error: err.message });
   }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// EXTRA INTEGRATIONS — wired 2026-04-30
+// Each endpoint returns { ok, configured, ... } and degrades gracefully when
+// the required env var(s) are missing (configured:false + helpful note).
+// ═════════════════════════════════════════════════════════════════════════════
+
+function _missingCreds(res, integration, missing) {
+  return res.json({
+    ok: true, configured: false, integration, missing,
+    note: `${integration} not configured — set ${missing.join(' + ')} in Secrets to enable live data.`,
+    dataOrigin: 'fallback', dataSource: 'env_check', confidence: 'none',
+  });
+}
+
+// ─── Meta Ad Library API (uses META_ACCESS_TOKEN) ────────────────────────────
+// POST /api/meta-ad-library/search { query?, domain?, country?, limit? }
+app.post('/api/meta-ad-library/search', async (req, res) => {
+  const token = process.env.META_ACCESS_TOKEN;
+  if (!token) return _missingCreds(res, 'meta-ad-library', ['META_ACCESS_TOKEN']);
+  try {
+    const { query = '', domain = '', country = 'US', limit = 25 } = req.body || {};
+    const term = (query || domain || '').toString().trim();
+    if (!term) return res.status(400).json({ ok:false, error:'query or domain required' });
+    const fields = [
+      'id','ad_creation_time','ad_creative_bodies','ad_creative_link_titles',
+      'ad_creative_link_descriptions','page_name','publisher_platforms',
+      'ad_snapshot_url','ad_delivery_start_time','ad_delivery_stop_time'
+    ].join(',');
+    const url = `https://graph.facebook.com/v19.0/ads_archive`
+      + `?search_terms=${encodeURIComponent(term)}`
+      + `&ad_reached_countries=['${country}']`
+      + `&ad_active_status=ALL&fields=${fields}`
+      + `&limit=${Math.min(limit, 50)}&access_token=${token}`;
+    const r = await fetch(url);
+    const j = await r.json();
+    if (j.error) return res.json({ ok:true, configured:true, error: j.error.message, ads:[] });
+    const ads = (j.data || []).map(a => ({
+      id: a.id, page: a.page_name, platforms: a.publisher_platforms || [],
+      bodies: a.ad_creative_bodies || [], titles: a.ad_creative_link_titles || [],
+      descs: a.ad_creative_link_descriptions || [],
+      startedAt: a.ad_delivery_start_time, stoppedAt: a.ad_delivery_stop_time || null,
+      isRunning: !a.ad_delivery_stop_time, snapshot: a.ad_snapshot_url,
+    }));
+    const running = ads.filter(a => a.isRunning).length;
+    res.json({
+      ok:true, configured:true, term, country,
+      count: ads.length, runningCount: running, ads,
+      dataOrigin:'live_meta_ad_library',
+      dataSource:'graph.facebook.com/v19.0/ads_archive',
+      confidence: ads.length >= 5 ? 'high' : ads.length > 0 ? 'medium' : 'low',
+    });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
+// ─── Notify (Slack / Telegram / Teams webhooks) ──────────────────────────────
+// POST /api/notify/send { channel, webhookUrl|botToken+chatId, text, title? }
+//
+// Defense-in-depth (added per architect review 2026-04-30):
+//  1. Strict canonical-URL validation via new URL() + hostname allowlist —
+//     never regex alone (prevents URL-parser-confusion SSRF).
+//  2. Per-IP rate limit (sliding window, in-memory). 30 req / 60s.
+//  3. Optional shared-secret gate via INFOGENIE_NOTIFY_SECRET — when set,
+//     requests must include matching X-InfoGenie-Token header.
+//  4. fetch with redirect:'error' + 8s timeout to stop chains/long polls.
+//  5. Outgoing payloads are size-capped (already 3500 chars).
+const _NOTIFY_RL = new Map(); // ip → number[] (timestamps within window)
+const _NOTIFY_RL_WINDOW_MS = 60_000;
+const _NOTIFY_RL_MAX = 30;
+function _notifyRateLimitOk(ip) {
+  const now = Date.now();
+  const arr = (_NOTIFY_RL.get(ip) || []).filter(t => now - t < _NOTIFY_RL_WINDOW_MS);
+  if (arr.length >= _NOTIFY_RL_MAX) { _NOTIFY_RL.set(ip, arr); return false; }
+  arr.push(now);
+  _NOTIFY_RL.set(ip, arr);
+  // Janitor: keep map small
+  if (_NOTIFY_RL.size > 500) {
+    for (const [k, v] of _NOTIFY_RL) {
+      if (!v.length || now - v[v.length-1] > _NOTIFY_RL_WINDOW_MS * 5) _NOTIFY_RL.delete(k);
+    }
+  }
+  return true;
+}
+async function _safeOutboundFetch(url, opts, timeoutMs = 8000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...opts, redirect: 'error', signal: ctrl.signal });
+  } finally { clearTimeout(t); }
+}
+app.post('/api/notify/send', async (req, res) => {
+  try {
+    // 1. Optional shared-secret gate
+    if (process.env.INFOGENIE_NOTIFY_SECRET) {
+      const supplied = req.headers['x-infogenie-token'] || req.body?._token;
+      if (supplied !== process.env.INFOGENIE_NOTIFY_SECRET) {
+        return res.status(401).json({ ok:false, error:'unauthorized', dataOrigin:'auth_check' });
+      }
+    }
+    // 2. Per-IP rate limit
+    const ip = (req.headers['x-forwarded-for']?.split(',')[0]?.trim()) || req.ip || req.socket?.remoteAddress || 'unknown';
+    if (!_notifyRateLimitOk(ip)) {
+      return res.status(429).json({ ok:false, error:'rate_limit_exceeded', retryAfterSec:60 });
+    }
+
+    const { channel, webhookUrl, botToken, chatId, text, title } = req.body || {};
+    if (!text) return res.status(400).json({ ok:false, error:'text required' });
+    if (!['slack','teams','telegram'].includes(channel)) {
+      return res.status(400).json({ ok:false, error:'channel must be slack|teams|telegram' });
+    }
+    const safeText = String(text).slice(0, 3500);
+    const baseMeta = { dataOrigin:'live_webhook', confidence:'high' };
+
+    // 3. Canonical-URL parse + hostname allowlist (Slack & Teams)
+    let parsed = null;
+    if (channel !== 'telegram') {
+      if (!webhookUrl || typeof webhookUrl !== 'string') {
+        return res.status(400).json({ ok:false, error:'webhookUrl required' });
+      }
+      try { parsed = new URL(webhookUrl); }
+      catch { return res.status(400).json({ ok:false, error:'invalid webhookUrl' }); }
+      if (parsed.protocol !== 'https:') return res.status(400).json({ ok:false, error:'webhookUrl must be https' });
+    }
+
+    if (channel === 'slack') {
+      if (parsed.hostname !== 'hooks.slack.com') {
+        return res.status(400).json({ ok:false, error:'Slack webhook host must be hooks.slack.com' });
+      }
+      const r = await _safeOutboundFetch(webhookUrl, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ text: title ? `*${title}*\n${safeText}` : safeText })
+      });
+      if (!r.ok) return res.json({ ok:false, error:`Slack returned ${r.status}`, ...baseMeta, dataSource:'hooks.slack.com' });
+      return res.json({ ok:true, channel:'slack', ...baseMeta, dataSource:'hooks.slack.com' });
+    }
+    if (channel === 'teams') {
+      // Allow only Microsoft Teams Incoming Webhook hosts:
+      // <tenant>.webhook.office.com  (legacy)  OR  outlook.office.com (some tenants)
+      const okHost = /^[a-z0-9-]+\.webhook\.office\.com$/i.test(parsed.hostname)
+                  || parsed.hostname === 'outlook.office.com'
+                  || parsed.hostname === 'outlook.office365.com';
+      if (!okHost) {
+        return res.status(400).json({ ok:false, error:'Teams webhook host must be *.webhook.office.com' });
+      }
+      const r = await _safeOutboundFetch(webhookUrl, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          '@type':'MessageCard', '@context':'https://schema.org/extensions',
+          themeColor:'0066FF', summary: title || 'InfoGenie alert',
+          title: title || 'InfoGenie alert', text: safeText
+        })
+      });
+      if (!r.ok) return res.json({ ok:false, error:`Teams returned ${r.status}`, ...baseMeta, dataSource: parsed.hostname });
+      return res.json({ ok:true, channel:'teams', ...baseMeta, dataSource: parsed.hostname });
+    }
+    // Telegram — host is fixed; bot token must look right
+    if (!botToken || !chatId) {
+      return res.status(400).json({ ok:false, error:'botToken + chatId required for Telegram' });
+    }
+    if (!/^\d+:[A-Za-z0-9_-]{30,}$/.test(String(botToken))) {
+      return res.status(400).json({ ok:false, error:'botToken format invalid' });
+    }
+    const tgUrl = `https://api.telegram.org/bot${encodeURIComponent(botToken)}/sendMessage`;
+    const r = await _safeOutboundFetch(tgUrl, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ chat_id: chatId, text: title ? `${title}\n${safeText}` : safeText, parse_mode:'Markdown' })
+    });
+    const j = await r.json();
+    if (!j.ok) return res.json({ ok:false, error: j.description || `Telegram returned ${r.status}`, ...baseMeta, dataSource:'api.telegram.org' });
+    return res.json({ ok:true, channel:'telegram', ...baseMeta, dataSource:'api.telegram.org' });
+  } catch (err) {
+    if (err?.name === 'AbortError') return res.status(504).json({ ok:false, error:'webhook timeout' });
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
+// ─── Google Service Account helper (for GA4 + GSC) ──────────────────────────
+// Mints + caches an access token from a GOOGLE_SERVICE_ACCOUNT_JSON secret
+// (raw JSON or base64). Cached for ~50min per scope.
+let _googleSAToken = null;
+let _googleSATokenExp = 0;
+async function _getGoogleSAToken(scopes) {
+  const now = Date.now();
+  if (_googleSAToken && _googleSAToken._scopes === scopes && now < _googleSATokenExp) {
+    return _googleSAToken.token;
+  }
+  let raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON not set');
+  if (!raw.trim().startsWith('{')) {
+    try { raw = Buffer.from(raw, 'base64').toString('utf8'); } catch(e){}
+  }
+  const sa = JSON.parse(raw);
+  const crypto = require('crypto');
+  const header = Buffer.from(JSON.stringify({alg:'RS256', typ:'JWT'})).toString('base64url');
+  const iat = Math.floor(Date.now()/1000);
+  const claim = Buffer.from(JSON.stringify({
+    iss: sa.client_email, scope: scopes,
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: iat + 3600, iat,
+  })).toString('base64url');
+  const signingInput = `${header}.${claim}`;
+  const signer = crypto.createSign('RSA-SHA256');
+  signer.update(signingInput);
+  const sig = signer.sign(sa.private_key, 'base64url');
+  const jwt = `${signingInput}.${sig}`;
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+  });
+  const j = await r.json();
+  if (!j.access_token) throw new Error('SA token exchange failed: ' + (j.error_description || JSON.stringify(j)));
+  _googleSAToken = { token: j.access_token, _scopes: scopes };
+  _googleSATokenExp = Date.now() + (j.expires_in - 120) * 1000;
+  return j.access_token;
+}
+
+// ─── GA4 Data API ────────────────────────────────────────────────────────────
+app.post('/api/ga4/run-report', async (req, res) => {
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) return _missingCreds(res, 'ga4', ['GOOGLE_SERVICE_ACCOUNT_JSON']);
+  try {
+    const { propertyId, days = 28,
+      metrics = ['sessions','totalUsers','conversions','totalRevenue','engagementRate','bounceRate'],
+      dimensions = ['date'] } = req.body || {};
+    if (!propertyId) return res.status(400).json({ ok:false, error:'propertyId required (numeric, e.g. 12345678)' });
+    const token = await _getGoogleSAToken('https://www.googleapis.com/auth/analytics.readonly');
+    const r = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
+      method:'POST',
+      headers:{ 'Authorization':`Bearer ${token}`, 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        dateRanges: [{ startDate: `${days}daysAgo`, endDate: 'today' }],
+        metrics: metrics.map(m => ({ name:m })),
+        dimensions: dimensions.map(d => ({ name:d })),
+      })
+    });
+    const j = await r.json();
+    if (j.error) return res.json({ ok:false, configured:true, error: j.error.message });
+    res.json({
+      ok:true, configured:true, propertyId, days,
+      rows: (j.rows || []).map(row => ({
+        dims: row.dimensionValues?.map(v => v.value) || [],
+        metrics: Object.fromEntries((row.metricValues || []).map((v,i) => [metrics[i], +v.value || v.value]))
+      })),
+      dataOrigin:'live_ga4', dataSource:'analyticsdata.googleapis.com/v1beta runReport',
+      confidence:'high'
+    });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
+app.get('/api/ga4/properties', async (req, res) => {
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) return _missingCreds(res, 'ga4', ['GOOGLE_SERVICE_ACCOUNT_JSON']);
+  try {
+    const token = await _getGoogleSAToken('https://www.googleapis.com/auth/analytics.readonly');
+    const r = await fetch('https://analyticsadmin.googleapis.com/v1beta/accountSummaries', {
+      headers:{ 'Authorization':`Bearer ${token}` }
+    });
+    const j = await r.json();
+    const flat = [];
+    for (const acc of (j.accountSummaries || [])) {
+      for (const prop of (acc.propertySummaries || [])) {
+        flat.push({ account: acc.displayName, property: prop.displayName, propertyId: prop.property?.split('/').pop() });
+      }
+    }
+    res.json({ ok:true, configured:true, properties: flat,
+      dataOrigin:'live_ga4', dataSource:'analyticsadmin.googleapis.com/v1beta accountSummaries', confidence:'high' });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
+// ─── Google Search Console API ───────────────────────────────────────────────
+app.post('/api/gsc/query', async (req, res) => {
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) return _missingCreds(res, 'gsc', ['GOOGLE_SERVICE_ACCOUNT_JSON']);
+  try {
+    const { siteUrl, days = 28, dimensions = ['query'], rowLimit = 100 } = req.body || {};
+    if (!siteUrl) return res.status(400).json({ ok:false, error:'siteUrl required (e.g. https://yourdomain.com/ or sc-domain:yourdomain.com)' });
+    const token = await _getGoogleSAToken('https://www.googleapis.com/auth/webmasters.readonly');
+    const end = new Date(); const start = new Date(); start.setDate(start.getDate() - days);
+    const fmt = d => d.toISOString().slice(0,10);
+    const r = await fetch(`https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`, {
+      method:'POST',
+      headers:{ 'Authorization':`Bearer ${token}`, 'Content-Type':'application/json' },
+      body: JSON.stringify({ startDate: fmt(start), endDate: fmt(end), dimensions, rowLimit })
+    });
+    const j = await r.json();
+    if (j.error) return res.json({ ok:false, configured:true, error: j.error.message });
+    res.json({
+      ok:true, configured:true, siteUrl, days,
+      rows: (j.rows || []).map(row => ({
+        keys: row.keys || [],
+        clicks: row.clicks, impressions: row.impressions,
+        ctr: +(row.ctr * 100).toFixed(2), position: +row.position.toFixed(1)
+      })),
+      dataOrigin:'live_gsc', dataSource:'searchconsole.googleapis.com searchAnalytics.query',
+      confidence:'high'
+    });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
+app.get('/api/gsc/sites', async (req, res) => {
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) return _missingCreds(res, 'gsc', ['GOOGLE_SERVICE_ACCOUNT_JSON']);
+  try {
+    const token = await _getGoogleSAToken('https://www.googleapis.com/auth/webmasters.readonly');
+    const r = await fetch('https://searchconsole.googleapis.com/webmasters/v3/sites', {
+      headers:{ 'Authorization':`Bearer ${token}` }
+    });
+    const j = await r.json();
+    res.json({ ok:true, configured:true,
+      sites: (j.siteEntry || []).map(s => ({ siteUrl: s.siteUrl, permission: s.permissionLevel })),
+      dataOrigin:'live_gsc', dataSource:'searchconsole.googleapis.com/webmasters/v3 sites', confidence:'high' });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
+// ─── Semrush API ─────────────────────────────────────────────────────────────
+app.post('/api/semrush/keyword', async (req, res) => {
+  const key = process.env.SEMRUSH_API_KEY;
+  if (!key) return _missingCreds(res, 'semrush', ['SEMRUSH_API_KEY']);
+  try {
+    const { keyword, database = 'us' } = req.body || {};
+    if (!keyword) return res.status(400).json({ ok:false, error:'keyword required' });
+    const url = `https://api.semrush.com/?type=phrase_this&key=${key}&phrase=${encodeURIComponent(keyword)}&database=${database}&export_columns=Ph,Nq,Cp,Co,Nr,Td`;
+    const r = await fetch(url);
+    const txt = await r.text();
+    if (txt.startsWith('ERROR')) return res.json({ ok:false, configured:true, error: txt });
+    const lines = txt.trim().split('\n');
+    if (lines.length < 2) return res.json({ ok:true, configured:true, keyword, data:null, note:'No data for this keyword in this database' });
+    const headers = lines[0].split(';');
+    const vals = lines[1].split(';');
+    const obj = Object.fromEntries(headers.map((h,i) => [h, vals[i]]));
+    res.json({ ok:true, configured:true, keyword,
+      volume: +obj.Nq || 0, cpc: +obj.Cp || 0, competition: +obj.Co || 0,
+      results: +obj.Nr || 0, trend: obj.Td,
+      dataOrigin:'live_semrush', dataSource:'api.semrush.com phrase_this', confidence:'high' });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
+app.post('/api/semrush/domain', async (req, res) => {
+  const key = process.env.SEMRUSH_API_KEY;
+  if (!key) return _missingCreds(res, 'semrush', ['SEMRUSH_API_KEY']);
+  try {
+    const { domain, database = 'us' } = req.body || {};
+    if (!domain) return res.status(400).json({ ok:false, error:'domain required' });
+    const cleanDomain = String(domain).replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0];
+    const url = `https://api.semrush.com/?type=domain_overview&key=${key}&domain=${encodeURIComponent(cleanDomain)}&database=${database}&export_columns=Dn,Rk,Or,Ot,Oc,Ad,At,Ac`;
+    const r = await fetch(url);
+    const txt = await r.text();
+    if (txt.startsWith('ERROR')) return res.json({ ok:false, configured:true, error: txt });
+    const lines = txt.trim().split('\n');
+    if (lines.length < 2) return res.json({ ok:true, configured:true, domain:cleanDomain, data:null });
+    const headers = lines[0].split(';');
+    const vals = lines[1].split(';');
+    const obj = Object.fromEntries(headers.map((h,i) => [h, vals[i]]));
+    res.json({ ok:true, configured:true, domain:cleanDomain,
+      rank: +obj.Rk || 0, organicKeywords: +obj.Or || 0,
+      organicTraffic: +obj.Ot || 0, organicCost: +obj.Oc || 0,
+      adwordsKeywords: +obj.Ad || 0, adwordsTraffic: +obj.At || 0, adwordsCost: +obj.Ac || 0,
+      dataOrigin:'live_semrush', dataSource:'api.semrush.com domain_overview', confidence:'high' });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
+// ─── HubSpot CRM ─────────────────────────────────────────────────────────────
+app.get('/api/hubspot/status', async (req, res) => {
+  const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
+  if (!token) return _missingCreds(res, 'hubspot', ['HUBSPOT_PRIVATE_APP_TOKEN']);
+  try {
+    const r = await fetch('https://api.hubapi.com/account-info/v3/details', {
+      headers:{ 'Authorization':`Bearer ${token}` }
+    });
+    const j = await r.json();
+    if (j.status === 'error') return res.json({ ok:false, configured:true, error: j.message });
+    res.json({ ok:true, configured:true, portalId: j.portalId, currency: j.companyCurrency, timeZone: j.timeZone,
+      dataOrigin:'live_hubspot', dataSource:'api.hubapi.com/account-info/v3', confidence:'high' });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
+app.post('/api/hubspot/contacts/upsert', async (req, res) => {
+  const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
+  if (!token) return _missingCreds(res, 'hubspot', ['HUBSPOT_PRIVATE_APP_TOKEN']);
+  try {
+    const { contacts = [] } = req.body || {};
+    if (!Array.isArray(contacts) || !contacts.length) return res.status(400).json({ ok:false, error:'contacts array required' });
+    const results = [];
+    for (const c of contacts.slice(0, 100)) {
+      if (!c.email) continue;
+      try {
+        const r = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${encodeURIComponent(c.email)}?idProperty=email`, {
+          method:'PATCH',
+          headers:{ 'Authorization':`Bearer ${token}`, 'Content-Type':'application/json' },
+          body: JSON.stringify({ properties: c })
+        });
+        if (r.status === 404) {
+          const cr = await fetch('https://api.hubapi.com/crm/v3/objects/contacts', {
+            method:'POST',
+            headers:{ 'Authorization':`Bearer ${token}`, 'Content-Type':'application/json' },
+            body: JSON.stringify({ properties: c })
+          });
+          const cj = await cr.json();
+          results.push({ email: c.email, action: 'created', id: cj.id, ok: !cj.status });
+        } else {
+          const j = await r.json();
+          results.push({ email: c.email, action: 'updated', id: j.id, ok: !j.status });
+        }
+      } catch (e) {
+        results.push({ email: c.email, ok: false, error: e.message });
+      }
+    }
+    res.json({ ok:true, configured:true, results,
+      created: results.filter(r => r.action === 'created').length,
+      updated: results.filter(r => r.action === 'updated').length,
+      failed: results.filter(r => !r.ok).length,
+      dataOrigin:'live_hubspot', dataSource:'api.hubapi.com crm/v3' });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
+app.get('/api/hubspot/deals', async (req, res) => {
+  const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
+  if (!token) return _missingCreds(res, 'hubspot', ['HUBSPOT_PRIVATE_APP_TOKEN']);
+  try {
+    const r = await fetch('https://api.hubapi.com/crm/v3/objects/deals?limit=100&properties=dealname,amount,dealstage,closedate,pipeline,createdate', {
+      headers:{ 'Authorization':`Bearer ${token}` }
+    });
+    const j = await r.json();
+    if (j.status === 'error') return res.json({ ok:false, configured:true, error: j.message });
+    const deals = (j.results || []).map(d => ({
+      id: d.id, name: d.properties.dealname, amount: +d.properties.amount || 0,
+      stage: d.properties.dealstage, closeDate: d.properties.closedate, createdAt: d.properties.createdate
+    }));
+    const totalValue = deals.reduce((a,d) => a + d.amount, 0);
+    res.json({ ok:true, configured:true, deals, count: deals.length, totalValue,
+      dataOrigin:'live_hubspot', dataSource:'api.hubapi.com crm/v3 deals', confidence:'high' });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
+// ─── Firecrawl ──────────────────────────────────────────────────────────────
+app.post('/api/firecrawl/scrape', async (req, res) => {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key) return _missingCreds(res, 'firecrawl', ['FIRECRAWL_API_KEY']);
+  try {
+    const { url, formats = ['markdown','html'] } = req.body || {};
+    if (!url) return res.status(400).json({ ok:false, error:'url required' });
+    const r = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method:'POST',
+      headers:{ 'Authorization':`Bearer ${key}`, 'Content-Type':'application/json' },
+      body: JSON.stringify({ url, formats })
+    });
+    const j = await r.json();
+    if (!j.success) return res.json({ ok:false, configured:true, error: j.error || 'scrape failed' });
+    res.json({ ok:true, configured:true, url,
+      markdown: j.data?.markdown, html: j.data?.html, metadata: j.data?.metadata,
+      dataOrigin:'live_firecrawl', dataSource:'api.firecrawl.dev/v1/scrape', confidence:'high' });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
+// Internal helper: scrape a URL via Firecrawl and return raw HTML for our
+// existing on-page-signal extractor in _scrapePageForScoring.
+async function _firecrawlGetHtml(url, timeoutMs = 12000) {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key) return { ok:false, error:'firecrawl_not_configured' };
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method:'POST', signal: ctrl.signal,
+      headers:{ 'Authorization':`Bearer ${key}`, 'Content-Type':'application/json' },
+      body: JSON.stringify({ url, formats:['html'] })
+    });
+    const j = await r.json();
+    if (!j.success || !j.data?.html) return { ok:false, error: j.error || 'no html returned' };
+    return { ok:true, html: j.data.html };
+  } catch (err) {
+    return { ok:false, error: err.name === 'AbortError' ? 'timeout' : err.message };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// ─── Profound (LLM brand-mention tracker) ───────────────────────────────────
+app.post('/api/profound/visibility', async (req, res) => {
+  const key = process.env.PROFOUND_API_KEY;
+  if (!key) return _missingCreds(res, 'profound', ['PROFOUND_API_KEY']);
+  try {
+    const { brand, queries = [] } = req.body || {};
+    if (!brand) return res.status(400).json({ ok:false, error:'brand required' });
+    const r = await fetch('https://api.profound.ai/v1/visibility', {
+      method:'POST',
+      headers:{ 'Authorization':`Bearer ${key}`, 'Content-Type':'application/json' },
+      body: JSON.stringify({ brand, queries })
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      return res.json({ ok:false, configured:true, error:`Profound API ${r.status}: ${txt.slice(0,200)}` });
+    }
+    const j = await r.json();
+    res.json({ ok:true, configured:true, brand, raw:j,
+      dataOrigin:'live_profound', dataSource:'api.profound.ai/v1/visibility', confidence:'high' });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
+// ─── Shopify Admin API ──────────────────────────────────────────────────────
+app.get('/api/shopify/orders/summary', async (req, res) => {
+  const shop = process.env.SHOPIFY_SHOP;
+  const token = process.env.SHOPIFY_ADMIN_TOKEN;
+  if (!shop || !token) return _missingCreds(res, 'shopify', ['SHOPIFY_SHOP','SHOPIFY_ADMIN_TOKEN']);
+  try {
+    const days = +(req.query.days || 30);
+    const since = new Date(Date.now() - days*86400000).toISOString();
+    const url = `https://${shop}/admin/api/2024-04/orders.json?status=any&created_at_min=${since}&limit=250&fields=id,total_price,currency,financial_status,created_at,line_items`;
+    const r = await fetch(url, { headers:{ 'X-Shopify-Access-Token': token } });
+    if (!r.ok) {
+      const txt = await r.text();
+      return res.json({ ok:false, configured:true, error:`Shopify ${r.status}: ${txt.slice(0,200)}` });
+    }
+    const j = await r.json();
+    const orders = j.orders || [];
+    const paid = orders.filter(o => o.financial_status === 'paid');
+    const revenue = paid.reduce((a,o) => a + (+o.total_price || 0), 0);
+    const aov = paid.length ? revenue / paid.length : 0;
+    res.json({ ok:true, configured:true, shop, days,
+      orderCount: orders.length, paidCount: paid.length,
+      revenue: +revenue.toFixed(2), aov: +aov.toFixed(2),
+      currency: orders[0]?.currency || 'USD',
+      dataOrigin:'live_shopify', dataSource:`${shop}/admin/api/2024-04`, confidence:'high' });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+});
+
+// ─── AppsFlyer ──────────────────────────────────────────────────────────────
+app.get('/api/appsflyer/installs', async (req, res) => {
+  const token = process.env.APPSFLYER_API_TOKEN;
+  const appId = process.env.APPSFLYER_APP_ID;
+  if (!token || !appId) return _missingCreds(res, 'appsflyer', ['APPSFLYER_API_TOKEN','APPSFLYER_APP_ID']);
+  try {
+    const days = +(req.query.days || 14);
+    const end = new Date().toISOString().slice(0,10);
+    const start = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
+    const url = `https://hq1.appsflyer.com/api/agg-data/export/app/${encodeURIComponent(appId)}/daily_report/v5?from=${start}&to=${end}`;
+    const r = await fetch(url, { headers:{ 'Authorization':`Bearer ${token}` } });
+    if (!r.ok) {
+      const txt = await r.text();
+      return res.json({ ok:false, configured:true, error:`AppsFlyer ${r.status}: ${txt.slice(0,200)}` });
+    }
+    const csv = await r.text();
+    const lines = csv.trim().split('\n');
+    if (lines.length < 2) return res.json({ ok:true, configured:true, appId, days, rows:[], totalInstalls:0 });
+    const header = lines[0].split(',').map(h => h.replace(/^"|"$/g,''));
+    const rows = lines.slice(1).map(l => {
+      const cells = l.split(',').map(c => c.replace(/^"|"$/g,''));
+      return Object.fromEntries(header.map((h,i) => [h, cells[i]]));
+    });
+    const totalInstalls = rows.reduce((a,r) => a + (+r['Installs'] || 0), 0);
+    res.json({ ok:true, configured:true, appId, days, rows: rows.slice(0, 200), totalInstalls,
+      dataOrigin:'live_appsflyer', dataSource:'hq1.appsflyer.com agg-data daily_report v5', confidence:'high' });
+  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
 });
 
 // Port 80 — external URL (*.spock.replit.dev / new tab)

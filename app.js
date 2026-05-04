@@ -12707,7 +12707,7 @@ const INTEGRATIONS = {
     label: 'Intelligence APIs',
     icon: '🔍',
     desc: 'Power InfoGenie\'s competitor analysis engine with the industry\'s best intelligence data sources — traffic estimates, keyword data, ad libraries, and tech stack detection.',
-    badge: '8 Sources',
+    badge: '10 Sources',
     items: [
       {
         id: 'semrush', logo: '📊', name: 'Semrush API',
@@ -12858,6 +12858,43 @@ const INTEGRATIONS = {
           { text: 'After signup, your <strong>Login</strong> (email) and <strong>Password</strong> are your API credentials' },
           { text: 'Enter them in the format <code>email@domain.com:YourPassword</code> above' },
           { text: 'Click <strong>Test Connection</strong> — InfoGenie will immediately begin pulling live competitor data' }
+        ]
+      },
+      {
+        id: 'firecrawl', logo: '🔥', name: 'Firecrawl',
+        tagline: 'Headless-browser scraping that bypasses Cloudflare/Akamai bot walls',
+        authType: 'apikey',
+        placeholder: 'Firecrawl API Key (fc-...)',
+        unlocks: [
+          'Scrape competitor sites that block normal crawlers (403/429)',
+          'Auto-fallback for Page Audit when origin returns anti-bot blocks',
+          'LLM-friendly markdown extraction for AI Visibility ingestion',
+          'Structured metadata + clean HTML for content gap analysis'
+        ],
+        steps: [
+          { text: 'Sign up at <a href="https://firecrawl.dev" target="_blank">firecrawl.dev</a>' },
+          { text: 'Open <strong>Dashboard → API Keys</strong>' },
+          { text: 'Click <strong>Create API Key</strong> (key starts with <code>fc-</code>)' },
+          { text: 'In Replit Secrets, add <code>FIRECRAWL_API_KEY</code> with the value' },
+          { text: 'InfoGenie auto-detects it on next request — no restart needed' }
+        ]
+      },
+      {
+        id: 'profound', logo: '🧠', name: 'Profound',
+        tagline: 'Brand mention tracking across ChatGPT, Claude, Perplexity, Gemini',
+        authType: 'apikey',
+        placeholder: 'Profound API Key',
+        unlocks: [
+          'Live brand-visibility scores in answer-engine results',
+          'Competitor benchmark across all major LLMs',
+          'Prompt-coverage gap analysis for AI search',
+          'Citation source tracking (which sites the LLMs quote about you)'
+        ],
+        steps: [
+          { text: 'Visit <a href="https://www.tryprofound.com" target="_blank">tryprofound.com</a> and request API access' },
+          { text: 'Once approved, copy your <strong>API Key</strong> from the dashboard' },
+          { text: 'In Replit Secrets, add <code>PROFOUND_API_KEY</code>' },
+          { text: 'Open the AI Visibility Suite — Profound metrics appear automatically when configured' }
         ]
       },
       {
@@ -13254,8 +13291,46 @@ const INTEGRATIONS = {
     label: 'Analytics & Data',
     icon: '📈',
     desc: 'Connect analytics and data platforms to give InfoGenie complete visibility into your performance — enabling smarter competitor benchmarking and ROI attribution.',
-    badge: '7 Platforms',
+    badge: '9 Platforms',
     items: [
+      {
+        id: 'shopify', logo: '🛍️', name: 'Shopify Admin API',
+        tagline: 'Live revenue, AOV & order volume from your Shopify store',
+        authType: 'apikey',
+        placeholder: 'Shopify Admin Access Token (shpat_...)',
+        unlocks: [
+          'Real revenue & paid-orders KPIs in Results dashboard',
+          'AOV trend tied directly to ad-campaign spend',
+          'Refund + cancellation tracking for ROAS accuracy',
+          'Auto-attribute orders to InfoGenie campaign UTMs'
+        ],
+        steps: [
+          { text: 'Open your Shopify admin → <strong>Settings → Apps and sales channels → Develop apps</strong>' },
+          { text: 'Click <strong>Create an app</strong>, name it "InfoGenie"' },
+          { text: 'Under <strong>Configuration → Admin API access scopes</strong>, enable <code>read_orders</code>, <code>read_products</code>, <code>read_customers</code>' },
+          { text: 'Click <strong>Install app</strong> and copy the <strong>Admin API access token</strong> (shown once)' },
+          { text: 'In Replit Secrets, add <code>SHOPIFY_SHOP</code> (e.g. <code>mystore.myshopify.com</code>) and <code>SHOPIFY_ADMIN_TOKEN</code>' }
+        ]
+      },
+      {
+        id: 'appsflyer', logo: '📱', name: 'AppsFlyer',
+        tagline: 'Mobile install attribution, in-app events & cohort analysis',
+        authType: 'apikey',
+        placeholder: 'AppsFlyer API Token (V2)',
+        unlocks: [
+          'Real install + event totals in the Mobile section of Results',
+          'Cross-channel mobile attribution alongside Meta/Google/TikTok',
+          'Cohort retention curves tied to acquisition source',
+          'CPI / CPA monitoring per campaign for mobile'
+        ],
+        steps: [
+          { text: 'Sign in to <a href="https://hq1.appsflyer.com" target="_blank">hq1.appsflyer.com</a>' },
+          { text: 'Click your account icon → <strong>Security Center → Manage your AppsFlyer API tokens</strong>' },
+          { text: 'Generate a <strong>V2 API token</strong> with Pull API access' },
+          { text: 'Locate your <strong>App ID</strong> (e.g. <code>com.example.app</code> or <code>id123456789</code>) under My Apps' },
+          { text: 'In Replit Secrets, add <code>APPSFLYER_API_TOKEN</code> and <code>APPSFLYER_APP_ID</code>' }
+        ]
+      },
       {
         id: 'ga4', logo: '📊', name: 'Google Analytics 4',
         tagline: 'Website traffic, user behaviour & conversion events',
