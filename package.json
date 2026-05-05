@@ -16,6 +16,7 @@
     "p-limit": "^7.3.0",
     "p-retry": "^7.1.1",
     "pdfkit": "^0.18.0",
+    "pg": "^8.20.0",
     "puppeteer": "^24.42.0",
     "zod": "^4.3.6",
     "zod-validation-error": "^5.0.0"

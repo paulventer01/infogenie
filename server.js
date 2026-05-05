@@ -86,6 +86,91 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '5mb', verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); } }));
 app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
 
+// Trust the Replit proxy so req.ip returns the real client IP for budget caps.
+app.set('trust proxy', true);
+
+// ── Auth gate for /api/* (production hardening) ──────────────────────────────
+// When INFOGENIE_API_KEY is set, all /api/* requests must include it via:
+//   Authorization: Bearer <key>  |  X-InfoGenie-Key: <key>  |  ?key=<key> (GET only)
+// When the env var is unset (e.g. local dev), the middleware is a no-op so
+// existing workflows keep working unchanged. Public routes (auth flow, signed
+// webhooks, status pings) are allowlisted and stay open even when auth is on.
+const _AUTH_PUBLIC_API_PATHS = [
+  /^\/api\/auth\//,                  // verification-code login flow
+  /^\/api\/drips\/webhook\/resend$/, // Svix-signed inbound webhook
+  /^\/api\/notify\/send$/,           // already gated by INFOGENIE_NOTIFY_SECRET
+  /^\/api\/status$/,                 // global status
+  /^\/api\/[^\/]+\/status$/,         // per-integration status pings
+  /^\/api\/budget\/status$/,         // budget telemetry (useful pre-login)
+];
+function _isApiPublic(p) { return _AUTH_PUBLIC_API_PATHS.some(rx => rx.test(p)); }
+app.use((req, res, next) => {
+  const expected = process.env.INFOGENIE_API_KEY;
+  if (!expected) return next();                     // dev mode — no auth
+  if (!req.path.startsWith('/api/')) return next(); // only gate API
+  if (_isApiPublic(req.path)) return next();
+  const supplied =
+       (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
+    || (req.headers['x-infogenie-key'] || '').trim()
+    || (req.method === 'GET' ? String(req.query.key || '').trim() : '');
+  if (supplied && supplied === expected) return next();
+  res.status(401).json({ ok:false, error:'auth_required',
+    hint:'Include INFOGENIE_API_KEY via Authorization: Bearer, X-InfoGenie-Key header, or ?key= (GET only).' });
+});
+
+// ── Per-provider budget caps (cost-abuse protection) ────────────────────────
+// Tracks calls per IP per day and globally per day. Resets at UTC midnight.
+// Only enforced when INFOGENIE_API_KEY is set (i.e. paired with auth gate).
+// Per-provider override via env: BUDGET_LIMIT_GEMINI_IP=200, BUDGET_LIMIT_GEMINI_GLOBAL=5000
+const _budget = Object.create(null);
+function _todayUtc() { return new Date().toISOString().slice(0,10); }
+function _budgetLimits(provider) {
+  const up = provider.toUpperCase();
+  return {
+    ip:     +(process.env[`BUDGET_LIMIT_${up}_IP`])     || 50,
+    global: +(process.env[`BUDGET_LIMIT_${up}_GLOBAL`]) || 2000,
+  };
+}
+function _chargeBudget(provider, ip) {
+  if (!process.env.INFOGENIE_API_KEY) return;       // budgets only enforced when auth is on
+  const day = _todayUtc();
+  const lim = _budgetLimits(provider);
+  const slot = (_budget[provider] = _budget[provider] || { day, global:0, perIp:{} });
+  if (slot.day !== day) { slot.day = day; slot.global = 0; slot.perIp = {}; }
+  const ipKey = String(ip || 'unknown');
+  const ipCount = slot.perIp[ipKey] || 0;
+  if (slot.global >= lim.global || ipCount >= lim.ip) {
+    const err = new Error(`budget_exceeded:${provider}`);
+    err.status = 429; err.retryAfter = 3600;
+    throw err;
+  }
+  slot.global += 1;
+  slot.perIp[ipKey] = ipCount + 1;
+}
+function _budgetSnapshot() {
+  const day = _todayUtc();
+  const out = {};
+  for (const p of Object.keys(_budget)) {
+    const s = _budget[p];
+    out[p] = (s.day === day)
+      ? { day:s.day, global:s.global, uniqueIps:Object.keys(s.perIp).length, limits:_budgetLimits(p) }
+      : { day, global:0, uniqueIps:0, limits:_budgetLimits(p) };
+  }
+  return out;
+}
+function _send429IfBudget(res, err) {
+  if (err && err.status === 429 && /^budget_exceeded:/.test(err.message)) {
+    res.setHeader('Retry-After', String(err.retryAfter || 3600));
+    res.status(429).json({ ok:false, error: err.message,
+      hint:'Daily budget for this provider exhausted. Override via env BUDGET_LIMIT_*_IP / _GLOBAL.' });
+    return true;
+  }
+  return false;
+}
+app.get('/api/budget/status', (_req, res) => {
+  res.json({ ok:true, enforced: !!process.env.INFOGENIE_API_KEY, budgets: _budgetSnapshot() });
+});
+
 // ── User Manual PDF (clean URLs) ─────────────────────────────────────────────
 // Serve the manual at friendly paths with proper inline-PDF headers so it
 // opens directly in the browser tab instead of triggering a download dialog
@@ -2994,8 +3079,8 @@ app.post('/api/ai-visibility-multi', async (req, res) => {
 
     const [chatgpt, claude, google, googleAi, bing, gemini, perplexity, llama, deepseek] = await Promise.all([
       chatgptP, claudeP, googleP, googleAiP, bingP,
-      process.env.GEMINI_API_KEY     ? (async () => { try { const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ contents:[{ parts:[{ text: queryQ }] }] }) }); const d = await r.json(); const text = d?.candidates?.[0]?.content?.parts?.[0]?.text || ''; const m = detectMention(text); return { key:'gemini', name:'Gemini', live:true, mentioned:m, score:scoreFor(m,true), snippet:text.slice(0,240) }; } catch(e){ return { key:'gemini', name:'Gemini', live:false, mentioned:false, score:0, error:e.message }; } })() : pending('gemini','Gemini','GEMINI_API_KEY'),
-      process.env.PERPLEXITY_API_KEY ? (async () => { try { const r = await fetch('https://api.perplexity.ai/chat/completions', { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.PERPLEXITY_API_KEY}`}, body: JSON.stringify({ model:'sonar', messages:[{role:'user',content:queryQ}] }) }); const d = await r.json(); const text = d?.choices?.[0]?.message?.content || ''; const m = detectMention(text); return { key:'perplexity', name:'Perplexity', live:true, mentioned:m, score:scoreFor(m,true), snippet:text.slice(0,240) }; } catch(e){ return { key:'perplexity', name:'Perplexity', live:false, mentioned:false, score:0, error:e.message }; } })() : pending('perplexity','Perplexity','PERPLEXITY_API_KEY'),
+      process.env.GEMINI_API_KEY     ? (async () => { try { _chargeBudget('gemini', req.ip); const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ contents:[{ parts:[{ text: queryQ }] }] }) }); const d = await r.json(); const text = d?.candidates?.[0]?.content?.parts?.[0]?.text || ''; const m = detectMention(text); return { key:'gemini', name:'Gemini', live:true, mentioned:m, score:scoreFor(m,true), snippet:text.slice(0,240) }; } catch(e){ return { key:'gemini', name:'Gemini', live:false, mentioned:false, score:0, error:e.message }; } })() : pending('gemini','Gemini','GEMINI_API_KEY'),
+      process.env.PERPLEXITY_API_KEY ? (async () => { try { _chargeBudget('perplexity', req.ip); const r = await fetch('https://api.perplexity.ai/chat/completions', { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.PERPLEXITY_API_KEY}`}, body: JSON.stringify({ model:'sonar', messages:[{role:'user',content:queryQ}] }) }); const d = await r.json(); const text = d?.choices?.[0]?.message?.content || ''; const m = detectMention(text); return { key:'perplexity', name:'Perplexity', live:true, mentioned:m, score:scoreFor(m,true), snippet:text.slice(0,240) }; } catch(e){ return { key:'perplexity', name:'Perplexity', live:false, mentioned:false, score:0, error:e.message }; } })() : pending('perplexity','Perplexity','PERPLEXITY_API_KEY'),
       pending('llama','Llama','TOGETHER_API_KEY (or GROQ_API_KEY)'),
       process.env.DEEPSEEK_API_KEY   ? (async () => { try { const r = await fetch('https://api.deepseek.com/chat/completions', { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.DEEPSEEK_API_KEY}`}, body: JSON.stringify({ model:'deepseek-chat', messages:[{role:'user',content:queryQ}] }) }); const d = await r.json(); const text = d?.choices?.[0]?.message?.content || ''; const m = detectMention(text); return { key:'deepseek', name:'DeepSeek', live:true, mentioned:m, score:scoreFor(m,true), snippet:text.slice(0,240) }; } catch(e){ return { key:'deepseek', name:'DeepSeek', live:false, mentioned:false, score:0, error:e.message }; } })() : pending('deepseek','DeepSeek','DEEPSEEK_API_KEY'),
     ]);
@@ -11571,6 +11656,8 @@ app.post('/api/firecrawl/scrape', async (req, res) => {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) return _missingCreds(res, 'firecrawl', ['FIRECRAWL_API_KEY']);
   try {
+    try { _chargeBudget('firecrawl', req.ip); }
+    catch (e) { if (_send429IfBudget(res, e)) return; throw e; }
     const { url, formats = ['markdown','html'] } = req.body || {};
     if (!url) return res.status(400).json({ ok:false, error:'url required' });
     const r = await fetch('https://api.firecrawl.dev/v1/scrape', {
