@@ -102,7 +102,9 @@ async function writeJsonFileOrDb(filePath, value) {
   try {
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const tmp = filePath + '.tmp';
+    // Unique tmp name per write — prevents concurrent writers to the same
+    // file from clobbering each other's tmp file before rename.
+    const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2,8)}`;
     fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
     fs.renameSync(tmp, filePath);
   } catch (e) { console.error('[db] file mirror failed:', e.message); }

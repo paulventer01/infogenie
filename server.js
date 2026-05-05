@@ -3081,7 +3081,21 @@ app.post('/api/ai-visibility-multi', async (req, res) => {
       chatgptP, claudeP, googleP, googleAiP, bingP,
       process.env.GEMINI_API_KEY     ? (async () => { try { _chargeBudget('gemini', req.ip); const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ contents:[{ parts:[{ text: queryQ }] }] }) }); const d = await r.json(); const text = d?.candidates?.[0]?.content?.parts?.[0]?.text || ''; const m = detectMention(text); return { key:'gemini', name:'Gemini', live:true, mentioned:m, score:scoreFor(m,true), snippet:text.slice(0,240) }; } catch(e){ return { key:'gemini', name:'Gemini', live:false, mentioned:false, score:0, error:e.message }; } })() : pending('gemini','Gemini','GEMINI_API_KEY'),
       process.env.PERPLEXITY_API_KEY ? (async () => { try { _chargeBudget('perplexity', req.ip); const r = await fetch('https://api.perplexity.ai/chat/completions', { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.PERPLEXITY_API_KEY}`}, body: JSON.stringify({ model:'sonar', messages:[{role:'user',content:queryQ}] }) }); const d = await r.json(); const text = d?.choices?.[0]?.message?.content || ''; const m = detectMention(text); return { key:'perplexity', name:'Perplexity', live:true, mentioned:m, score:scoreFor(m,true), snippet:text.slice(0,240) }; } catch(e){ return { key:'perplexity', name:'Perplexity', live:false, mentioned:false, score:0, error:e.message }; } })() : pending('perplexity','Perplexity','PERPLEXITY_API_KEY'),
-      pending('llama','Llama','TOGETHER_API_KEY (or GROQ_API_KEY)'),
+      (process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_AI_TOKEN)
+        ? (async () => { try {
+            const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
+              { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.CLOUDFLARE_AI_TOKEN}`},
+                body: JSON.stringify({ messages:[{role:'user',content:queryQ}] }) });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const d = await r.json();
+            const text = d?.result?.response || '';
+            // Only charge budget after a successful upstream response so failed
+            // calls (auth/5xx/rate-limit) don't burn the daily quota.
+            try { _chargeBudget('cloudflare', req.ip); } catch (_) {}
+            const m = detectMention(text);
+            return { key:'llama', name:'Llama 3.1 (Cloudflare)', live:true, mentioned:m, score:scoreFor(m,true), snippet:text.slice(0,240) };
+          } catch(e){ return { key:'llama', name:'Llama 3.1 (Cloudflare)', live:false, mentioned:false, score:0, error:e.message }; } })()
+        : pending('llama','Llama','CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN'),
       process.env.DEEPSEEK_API_KEY   ? (async () => { try { const r = await fetch('https://api.deepseek.com/chat/completions', { method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.DEEPSEEK_API_KEY}`}, body: JSON.stringify({ model:'deepseek-chat', messages:[{role:'user',content:queryQ}] }) }); const d = await r.json(); const text = d?.choices?.[0]?.message?.content || ''; const m = detectMention(text); return { key:'deepseek', name:'DeepSeek', live:true, mentioned:m, score:scoreFor(m,true), snippet:text.slice(0,240) }; } catch(e){ return { key:'deepseek', name:'DeepSeek', live:false, mentioned:false, score:0, error:e.message }; } })() : pending('deepseek','DeepSeek','DEEPSEEK_API_KEY'),
     ]);
 
@@ -8347,6 +8361,41 @@ app.post('/api/content-scorer/analyze', async (req, res) => {
   } catch (e) {
     res.status(500).json({ ok:false, error: e.message });
   }
+});
+
+// ── Postgres init (T003 foundation) ──────────────────────────────────────────
+// Boots the kv_store schema and migrates existing data/*.json blobs into the
+// DB on first run. Idempotent — subsequent boots no-op. If DATABASE_URL is
+// unset (e.g. local dev without Replit Postgres), the helpers silently fall
+// back to filesystem persistence so nothing breaks.
+const _db = require('./db');
+(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _db.ensureSchema();
+      const rep = await _db.migrateJsonFilesIfNeeded();
+      console.log('[db] kv_store ready. migration:', JSON.stringify(rep));
+    } else {
+      console.log('[db] DATABASE_URL not set — file persistence only');
+    }
+  } catch (e) { console.error('[db] init failed:', e.message); }
+})();
+
+// Cloudflare Workers AI status ping (used by frontend to show provider state).
+app.get('/api/cloudflare/status', (_req, res) => {
+  const ok = !!(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_AI_TOKEN);
+  res.json({ ok, configured: ok, model: '@cf/meta/llama-3.1-8b-instruct',
+    missing: ok ? [] : ['CLOUDFLARE_ACCOUNT_ID','CLOUDFLARE_AI_TOKEN'].filter(k => !process.env[k]) });
+});
+
+// Postgres / kv_store status ping.
+app.get('/api/db/status', async (_req, res) => {
+  try {
+    if (!_db.hasDb()) return res.json({ ok:true, mode:'file', configured:false });
+    await _db.ensureSchema(); // guard against race with boot initializer
+    const r = await _db.getPool().query('SELECT count(*)::int AS n FROM kv_store');
+    res.json({ ok:true, mode:'postgres', configured:true, kvRows: r.rows[0].n });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
 });
 
 // Port 5000 — Replit preview pane (webview)
