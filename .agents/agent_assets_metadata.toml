@@ -36,3 +36,9 @@ id = "ebU2MDxP4H3_x2StChSD8"
 uri = "file://attached_assets/InfoGenie_Source_Code_Only.tar.gz"
 type = "unspecified"
 title = "InfoGenie Source Code Only (576 KB — code only, no media)"
+
+[[outputs]]
+id = "Lxc1eeTj1LQNOZfPOm8SB"
+uri = "file://backups/InfoGenie_Source_20260505_085112.tar.gz"
+type = "unspecified"
+title = "InfoGenie Full Source Backup (2026-05-05)"
