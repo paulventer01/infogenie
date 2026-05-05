@@ -42,3 +42,9 @@ id = "Lxc1eeTj1LQNOZfPOm8SB"
 uri = "file://backups/InfoGenie_Source_20260505_085112.tar.gz"
 type = "unspecified"
 title = "InfoGenie Full Source Backup (2026-05-05)"
+
+[[outputs]]
+id = "ic6JrZPDfqwsM89E-He3N"
+uri = "file://backups/InfoGenie_Full_20260505_085339.tar.gz"
+type = "unspecified"
+title = "InfoGenie Full Backup with Assets (2026-05-05)"

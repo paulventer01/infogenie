@@ -1,1 +1,2 @@
 attached_assets/InfoGenie_Source_Backup.tar.gz filter=lfs diff=lfs merge=lfs -text
+backups/InfoGenie_Full_20260505_085339.tar.gz filter=lfs diff=lfs merge=lfs -text
