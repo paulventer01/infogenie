@@ -6948,7 +6948,7 @@ window.openBuildContentModal = function(topic, intent) {
         <div style="display:flex;gap:8px">
           <button id="bcCopyBtn" onclick="bcCopy()" style="display:none;padding:9px 16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:9px;color:rgba(255,255,255,.7);font-size:0.75rem;font-weight:700;cursor:pointer">📋 Copy</button>
           <button id="bcDlBtn" onclick="bcDownload('${topic.replace(/'/g,"\\'")}','${intent}')" style="display:none;padding:9px 16px;background:rgba(0,201,200,.12);border:1px solid rgba(0,201,200,.25);border-radius:9px;color:#00C9C8;font-size:0.75rem;font-weight:700;cursor:pointer">⬇️ Download</button>
-          <button onclick="runBuildContent('${topic.replace(/'/g,"\\'")}','${intent}')" id="bcGenBtn" style="padding:9px 20px;background:linear-gradient(135deg,#059669,#065F46);border:none;border-radius:9px;color:white;font-size:0.78rem;font-weight:700;cursor:pointer">⚡ Generate Content</button>
+          <button onclick="runBuildContent('${topic.replace(/'/g,"\\'")}','${intent}')" id="bcGenBtn" style="padding:11px 22px;background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:9px;color:#FFFFFF;font-size:0.85rem;font-weight:800;cursor:pointer;letter-spacing:.02em;text-shadow:0 1px 2px rgba(0,0,0,.35);box-shadow:0 4px 12px rgba(16,185,129,.35)">⚡ Generate Content</button>
         </div>
       </div>
     </div>`;
