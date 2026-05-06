@@ -5439,7 +5439,7 @@ function buildCampaigns() {
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
           <button class="counter-banner-clear" onclick="window._counterTarget=null;document.getElementById('counterTargetBanner')?.remove();const hb=document.getElementById('launchCampaignBtn');if(hb)hb.style.display=''" title="Clear target — return to general campaign mode">✕ Clear target</button>
-          <button class="btn-primary counter-banner-launch" onclick="document.getElementById('launchCampaignBtn')?.click()" title="Launch a counter-campaign against ${_ct.name}" style="white-space:nowrap">🚀 Launch Campaign</button>
+          <button class="btn-primary counter-banner-launch" onclick="window._igLaunch && window._igLaunch(0)" title="Open the Campaign Launch Brief for the top counter-campaign against ${_ct.name}" style="white-space:nowrap">🚀 Launch Campaign</button>
         </div>
       </div>
       ${_ct.counterPlays && _ct.counterPlays.length ? `
@@ -18005,12 +18005,18 @@ document.addEventListener('DOMContentLoaded', () => {
     navigateTo('competitors');
   });
   
-  // Launch campaign button (header)
+  // Launch campaign button (header) — opens Campaign Launch Brief for top recommended campaign
   document.getElementById('launchCampaignBtn').addEventListener('click', () => {
+    if (typeof window._igLaunch === 'function' && window._lastCampRecs && window._lastCampRecs.length) {
+      window._igLaunch(0);
+      return;
+    }
     const modal = document.getElementById('launchModal');
-    modal.querySelector('.modal-title').textContent = 'Launch Campaign';
-    modal.classList.remove('hidden');
-    modal.style.display = 'flex';
+    if (modal) {
+      modal.querySelector('.modal-title').textContent = 'Launch Campaign';
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+    }
   });
   
   // Auto-target audience
