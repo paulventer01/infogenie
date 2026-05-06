@@ -5271,6 +5271,7 @@ function buildCompCard(c, cardIdx = 0) {
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <button class="btn-view-plan" onclick="openCompPlan('${c.name.replace(/'/g,'').replace(/"/g,'').replace(/\\/g,'')}')" title="Open the detailed strategy plan for outperforming ${c.name}.">View Plan →</button>
+            <button onclick="showCompanyIntel('${c.name.replace(/'/g,'').replace(/"/g,'').replace(/\\/g,'')}')" title="Look up ${c.name} on Apollo + BuiltWith — company profile, employee count, tech stack, etc." style="padding:7px 12px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-size:0.75rem;font-weight:700;color:#0369A1;cursor:pointer;white-space:nowrap">🔍 Intel</button>
             <button onclick="window._bpIdx=${cardIdx};navigateTo('battleplan')" title="Open the Battle Plan page — a full AI-generated 8-week action plan to capture market share from ${c.name}." style="padding:7px 14px;background:var(--ig-grad);border:1px solid rgba(0,201,200,.4);border-radius:8px;font-size:0.75rem;font-weight:700;color:#00C9C8;cursor:pointer;white-space:nowrap">⚔️ Battle Plan</button>
           </div>
         </div>
@@ -27990,6 +27991,7 @@ function _leadCard(lead) {
         ${actions.map(a => `<div style="font-size:0.82rem;color:#0F172A;padding:4px 0">→ ${esc(a)}</div>`).join('')}
       </div>` : ''}
       <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+        <button type="button" data-lead-action="intel" data-lead-email="${esc(lead.email)}" title="Enrich this lead's company via Apollo + BuiltWith" style="padding:7px 12px;background:#F1F5F9;color:#0369A1;border:1px solid #CBD5E1;border-radius:7px;font-size:0.78rem;font-weight:700;cursor:pointer">🔍 Intel</button>
         ${tier === 'hot' ? `<button type="button" data-lead-action="enroll-hot" data-lead-email="${esc(lead.email)}" style="padding:7px 12px;background:#0369A1;color:white;border:none;border-radius:7px;font-size:0.78rem;font-weight:700;cursor:pointer">→ Enrol in nurture</button>` : ''}
         <button type="button" data-lead-action="delete" data-lead-id="${safeId}" style="padding:7px 12px;background:#FEE2E2;color:#991B1B;border:none;border-radius:7px;font-size:0.78rem;font-weight:700;cursor:pointer">Delete</button>
       </div>
@@ -28753,6 +28755,9 @@ async function exportLookalikeCSV(platform) {
       } else if (action === 'delete') {
         const id = leadBtn.getAttribute('data-lead-id') || '';
         if (id) deleteQualifiedLead(id);
+      } else if (action === 'intel') {
+        const email = leadBtn.getAttribute('data-lead-email') || '';
+        if (email && typeof showCompanyIntel === 'function') showCompanyIntel(email);
       }
     }
   });
@@ -30590,7 +30595,9 @@ function _renderStakeholders() {
         <div style="font-size:11px;color:#64748B;margin-bottom:8px">Last digest sent: <strong>${_esc(last)}</strong></div>
         <div style="font-size:11px;color:${cfg?'#059669':'#B91C1C'};margin-bottom:10px">Resend ${cfg?'configured ✓':'NOT configured — set RESEND_API_KEY to enable'}</div>
         <button onclick="testStakeholderEmail()" ${cfg?'':'disabled'} style="background:${cfg?'#1E293B':'#94A3B8'};color:white;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:700;cursor:${cfg?'pointer':'not-allowed'}">Send test email now</button>
+        <button onclick="testSlackWebhook()" style="background:#4A154B;color:white;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;margin-left:6px">💬 Test Slack/Discord</button>
         <div id="stkTestMsg" style="font-size:11px;margin-top:8px;min-height:14px"></div>
+        <div id="slackTestMsg" style="font-size:11px;margin-top:4px;min-height:14px"></div>
       </div>
     </div>
     <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden">
@@ -30920,3 +30927,115 @@ async function removeLaunch(id) {
     if (j.ok) buildLaunches();
   } catch (e) { alert('Failed to remove: ' + e.message); }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPANY INTEL MODAL — wraps /api/apollo/enrich + /api/builtwith/lookup.
+// Used by competitor cards, lead rows, and ad-hoc lookups.
+// ═══════════════════════════════════════════════════════════════════════════
+function showCompanyIntel(prefill) {
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  // strip protocol/path/email; accept "Shopify Inc." too (best-effort guess)
+  let seed = String(prefill || '').trim().toLowerCase();
+  if (seed.includes('@')) seed = seed.split('@')[1];
+  seed = seed.replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/.*$/,'');
+  if (seed && !seed.includes('.')) seed = seed.replace(/[^a-z0-9-]/g,'') + '.com';
+
+  // build / reuse a single overlay
+  let host = document.getElementById('intelModalHost');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'intelModalHost';
+    document.body.appendChild(host);
+  }
+  host.innerHTML = `
+    <div id="intelOverlay" style="position:fixed;inset:0;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:60px 20px;overflow-y:auto" onclick="if(event.target===this)document.getElementById('intelModalHost').innerHTML=''">
+      <div style="background:white;border-radius:14px;width:100%;max-width:760px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">
+        <div style="padding:18px 22px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#0369A1,#0EA5E9);color:white">
+          <div>
+            <div style="font-size:1.05rem;font-weight:800;font-family:Sora,sans-serif">🔍 Company Intel</div>
+            <div style="font-size:0.78rem;opacity:.9;margin-top:2px">Apollo profile + BuiltWith tech footprint</div>
+          </div>
+          <button onclick="document.getElementById('intelModalHost').innerHTML=''" style="background:rgba(255,255,255,.2);color:white;border:none;border-radius:8px;width:32px;height:32px;font-size:1rem;cursor:pointer">✕</button>
+        </div>
+        <div style="padding:18px 22px">
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <input id="intelDomain" type="text" placeholder="example.com" value="${esc(seed)}" style="flex:1;padding:10px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.9rem" onkeydown="if(event.key==='Enter')runCompanyIntel()" />
+            <button onclick="runCompanyIntel()" id="intelGoBtn" style="padding:10px 18px;background:#0369A1;color:white;border:none;border-radius:8px;font-weight:700;font-size:0.86rem;cursor:pointer">Look up</button>
+          </div>
+          <div id="intelResult"></div>
+        </div>
+      </div>
+    </div>`;
+  if (seed) runCompanyIntel();
+  setTimeout(() => { const i = document.getElementById('intelDomain'); if (i && !seed) i.focus(); }, 50);
+}
+async function runCompanyIntel() {
+  const out = document.getElementById('intelResult');
+  const btn = document.getElementById('intelGoBtn');
+  const domain = (document.getElementById('intelDomain').value || '').trim();
+  if (!domain) { out.innerHTML = '<div style="color:#B91C1C;font-size:0.85rem">⚠️ Enter a domain.</div>'; return; }
+  btn.disabled = true; btn.textContent = '⏳…';
+  out.innerHTML = '<div style="text-align:center;padding:32px;color:#64748B">⏳ Fetching Apollo + BuiltWith…</div>';
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  try {
+    const [aRes, bRes] = await Promise.all([
+      fetch('/api/apollo/enrich',   { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain}) }).then(r=>r.json()).catch(e=>({ok:false,error:e.message})),
+      fetch('/api/builtwith/lookup',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({domain}) }).then(r=>r.json()).catch(e=>({ok:false,error:e.message})),
+    ]);
+    // Apollo card
+    const co = aRes.ok ? (aRes.company || {}) : null;
+    const apolloHtml = aRes.ok && co && co.name
+      ? `<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            ${co.logo ? `<img src="${esc(co.logo)}" style="width:40px;height:40px;border-radius:8px;background:white;object-fit:contain" onerror="this.style.display='none'"/>` : ''}
+            <div style="flex:1">
+              <div style="font-weight:800;color:#0F172A;font-size:1rem">${esc(co.name)}</div>
+              <div style="font-size:0.78rem;color:#64748B">${esc(co.industry||'')} ${co.size?'· '+co.size+' employees':''} ${co.founded?'· founded '+co.founded:''}</div>
+            </div>
+          </div>
+          ${co.description ? `<div style="font-size:0.82rem;color:#475569;margin-bottom:10px;line-height:1.5">${esc(co.description)}</div>` : ''}
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px 14px;font-size:0.78rem;color:#475569">
+            ${co.annualRevenue ? `<div><b>Revenue:</b> ${esc(co.annualRevenue)}</div>` : ''}
+            ${co.address ? `<div><b>Location:</b> ${esc(co.address)}</div>` : ''}
+            ${co.phone ? `<div><b>Phone:</b> ${esc(co.phone)}</div>` : ''}
+            ${co.linkedIn ? `<div><b>LinkedIn:</b> <a href="${esc(co.linkedIn)}" target="_blank" rel="noopener" style="color:#0369A1">view</a></div>` : ''}
+            ${co.twitter ? `<div><b>Twitter:</b> <a href="${esc(co.twitter)}" target="_blank" rel="noopener" style="color:#0369A1">view</a></div>` : ''}
+          </div>
+          ${(co.keywords||[]).length ? `<div style="margin-top:10px"><div style="font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#64748B;margin-bottom:6px">Keywords</div><div style="display:flex;flex-wrap:wrap;gap:4px">${co.keywords.slice(0,18).map(k=>`<span style="background:#E0F2FE;color:#075985;padding:2px 8px;border-radius:999px;font-size:0.7rem">${esc(k)}</span>`).join('')}</div></div>` : ''}
+        </div>`
+      : `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;padding:12px;margin-bottom:12px;font-size:0.82rem;color:#92400E">⚠️ Apollo: ${esc((aRes.error||'no data for this domain'))}</div>`;
+    // BuiltWith card
+    const buHtml = bRes.ok && (bRes.categoryCount||0) > 0
+      ? `<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="font-weight:800;color:#0F172A;font-size:0.95rem">🛠 Tech footprint</div>
+            <div style="font-size:0.74rem;color:#64748B">${bRes.totalLiveTechnologies||0} live techs · ${bRes.categoryCount} categories${bRes.firstSeen?` · since ${esc(bRes.firstSeen)}`:''}</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;max-height:240px;overflow-y:auto">
+            ${bRes.categories.slice(0,40).map(c=>`<div style="display:flex;justify-content:space-between;background:white;border:1px solid #E5E7EB;border-radius:6px;padding:6px 10px;font-size:0.76rem"><span style="color:#475569;truncate">${esc(c.category)}</span><b style="color:#0369A1">${c.live}</b></div>`).join('')}
+          </div>
+          ${bRes.note ? `<div style="margin-top:10px;font-size:0.7rem;color:#94A3B8;font-style:italic">${esc(bRes.note)}</div>` : ''}
+        </div>`
+      : `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;padding:12px;font-size:0.82rem;color:#92400E">⚠️ BuiltWith: ${esc((bRes.error||'no tech data found'))}</div>`;
+    out.innerHTML = apolloHtml + buHtml;
+  } catch (e) {
+    out.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:12px;color:#991B1B;font-size:0.85rem">⚠️ ${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Look up';
+  }
+}
+window.showCompanyIntel = showCompanyIntel;
+window.runCompanyIntel  = runCompanyIntel;
+
+// Test the configured Slack/Discord webhook from the Stakeholders page.
+async function testSlackWebhook() {
+  const msg = document.getElementById('slackTestMsg');
+  if (msg) { msg.style.color='#64748B'; msg.textContent='Sending…'; }
+  try {
+    const r = await fetch('/api/slack/send', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text:'🧞 InfoGenie test alert — your webhook is wired correctly.'}) });
+    const j = await r.json();
+    if (j.ok) { msg.style.color='#059669'; msg.textContent = `✓ Sent to ${j.kind} — check your channel.`; }
+    else      { msg.style.color='#B91C1C'; msg.textContent = '✗ ' + (j.error || 'Failed'); }
+  } catch (e) { if (msg) { msg.style.color='#B91C1C'; msg.textContent = e.message; } }
+}
+window.testSlackWebhook = testSlackWebhook;
