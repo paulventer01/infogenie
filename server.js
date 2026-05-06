@@ -8388,6 +8388,126 @@ app.get('/api/cloudflare/status', (_req, res) => {
     missing: ok ? [] : ['CLOUDFLARE_ACCOUNT_ID','CLOUDFLARE_AI_TOKEN'].filter(k => !process.env[k]) });
 });
 
+// ── Slack / Discord webhook (real-time alert delivery alongside email) ───────
+// Auto-detects payload format based on the hostname. Slack expects { text: ... }
+// or { blocks: [...] }; Discord expects { content: ... } or { embeds: [...] }.
+function _slackOrDiscordKind(url) {
+  if (!url) return null;
+  if (url.includes('hooks.slack.com'))            return 'slack';
+  if (url.includes('discord.com/api/webhooks'))   return 'discord';
+  if (url.includes('discordapp.com/api/webhooks'))return 'discord';
+  return 'slack'; // default — most webhooks accept Slack payload shape
+}
+async function _sendChatWebhook(text, opts = {}) {
+  const url = process.env.SLACK_WEBHOOK_URL;
+  if (!url) throw new Error('SLACK_WEBHOOK_URL not configured');
+  const kind = _slackOrDiscordKind(url);
+  const payload = (kind === 'discord')
+    ? { content: text.slice(0, 1900), username: opts.username || 'InfoGenie' }
+    : { text, username: opts.username || 'InfoGenie', icon_emoji: opts.icon || ':robot_face:' };
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  if (!r.ok) throw new Error(`webhook HTTP ${r.status}`);
+  return { ok:true, kind };
+}
+app.get('/api/slack/status', (_req, res) => {
+  const ok = !!process.env.SLACK_WEBHOOK_URL;
+  res.json({ ok, configured: ok, kind: _slackOrDiscordKind(process.env.SLACK_WEBHOOK_URL),
+    missing: ok ? [] : ['SLACK_WEBHOOK_URL'] });
+});
+app.post('/api/slack/send', async (req, res) => {
+  try {
+    const text = String(req.body?.text || '').trim();
+    if (!text) return res.status(400).json({ ok:false, error:'text required' });
+    try { _chargeBudget('slack', req.ip); } catch (e) { if (_send429IfBudget(res, e)) return; throw e; }
+    const out = await _sendChatWebhook(text, { username: req.body?.username, icon: req.body?.icon });
+    res.json(out);
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// ── Apollo.io people enrichment (turn email → full prospect profile) ─────────
+// Returns name, title, company, LinkedIn, location for a given email. Used by
+// the Re-engage Audience flow to upgrade dormant emails into named contacts.
+app.get('/api/apollo/status', (_req, res) => {
+  const ok = !!process.env.APOLLO_API_KEY;
+  res.json({ ok, configured: ok, missing: ok ? [] : ['APOLLO_API_KEY'] });
+});
+app.post('/api/apollo/enrich', async (req, res) => {
+  const key = process.env.APOLLO_API_KEY;
+  if (!key) return _missingCreds(res, 'apollo', ['APOLLO_API_KEY']);
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email || !email.includes('@')) return res.status(400).json({ ok:false, error:'valid email required' });
+    try { _chargeBudget('apollo', req.ip); } catch (e) { if (_send429IfBudget(res, e)) return; throw e; }
+    const r = await fetch('https://api.apollo.io/api/v1/people/match', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'X-Api-Key': key, 'Cache-Control':'no-cache' },
+      body: JSON.stringify({ email, reveal_personal_emails: false })
+    });
+    if (!r.ok) {
+      const body = await r.text();
+      return res.status(r.status).json({ ok:false, error:`HTTP ${r.status}`, detail: body.slice(0, 500) });
+    }
+    const d = await r.json();
+    const p = d?.person || {};
+    res.json({
+      ok: true,
+      person: {
+        name:       p.name || [p.first_name, p.last_name].filter(Boolean).join(' ') || null,
+        firstName:  p.first_name || null,
+        lastName:   p.last_name  || null,
+        title:      p.title || null,
+        seniority:  p.seniority || null,
+        linkedIn:   p.linkedin_url || null,
+        twitter:    p.twitter_url || null,
+        github:     p.github_url || null,
+        photo:      p.photo_url || null,
+        city:       p.city || null,
+        country:    p.country || null,
+        company: p.organization ? {
+          name:    p.organization.name || null,
+          domain:  p.organization.website_url || p.organization.primary_domain || null,
+          industry:p.organization.industry || null,
+          size:    p.organization.estimated_num_employees || null,
+          founded: p.organization.founded_year || null,
+          logo:    p.organization.logo_url || null,
+        } : null,
+      }
+    });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// ── BuiltWith API (detect competitors' tech stack) ───────────────────────────
+// Returns the technologies a domain is using: CMS, analytics, ads, hosting,
+// payment, marketing automation, etc. Free tier ~200 lookups/mo.
+app.get('/api/builtwith/status', (_req, res) => {
+  const ok = !!process.env.BUILTWITH_API_KEY;
+  res.json({ ok, configured: ok, missing: ok ? [] : ['BUILTWITH_API_KEY'] });
+});
+app.post('/api/builtwith/lookup', async (req, res) => {
+  const key = process.env.BUILTWITH_API_KEY;
+  if (!key) return _missingCreds(res, 'builtwith', ['BUILTWITH_API_KEY']);
+  try {
+    let domain = String(req.body?.domain || '').trim().toLowerCase()
+      .replace(/^https?:\/\//,'').replace(/\/.*$/,'');
+    if (!domain || !domain.includes('.')) return res.status(400).json({ ok:false, error:'valid domain required' });
+    try { _chargeBudget('builtwith', req.ip); } catch (e) { if (_send429IfBudget(res, e)) return; throw e; }
+    const r = await fetch(`https://api.builtwith.com/free1/api.json?KEY=${encodeURIComponent(key)}&LOOKUP=${encodeURIComponent(domain)}`);
+    if (!r.ok) {
+      const body = await r.text();
+      return res.status(r.status).json({ ok:false, error:`HTTP ${r.status}`, detail: body.slice(0, 500) });
+    }
+    const d = await r.json();
+    // BuiltWith free API returns groups[].categories[].technologies[]. Flatten
+    // for easier consumption by the frontend.
+    const groups = d?.groups || [];
+    const techs = [];
+    for (const g of groups) for (const c of (g.categories || [])) for (const t of (c.live || [])) {
+      techs.push({ category: c.name || g.name || '', name: t.Name || t.name, premium: !!t.Premium });
+    }
+    res.json({ ok:true, domain, count: techs.length, technologies: techs, groups });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
 // Postgres / kv_store status ping.
 app.get('/api/db/status', async (_req, res) => {
   try {
