@@ -9651,8 +9651,9 @@ function buildAiVisibility() {
               <div style="font-size:0.62rem;color:#4338CA;font-weight:800;margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">Key Elements</div>
               ${c.keys.map(k => `<div style="font-size:0.7rem;color:#1F2937;margin-bottom:4px;font-weight:500"><span style="color:#059669;font-weight:800">✓</span> ${k}</div>`).join('')}
             </div>
-            <!-- Brighter, more saturated indigo + larger bold white text + strong shadow for legibility -->
-            <button onclick="openAiContentBrief('${c.type}','${domain}','${industry}')" style="width:100%;padding:12px 0;background:linear-gradient(135deg,#4F46E5,#3730A3);border:none;border-radius:9px;font-size:0.85rem;font-weight:800;color:#FFFFFF;cursor:pointer;letter-spacing:.02em;text-shadow:0 1px 2px rgba(0,0,0,.4);box-shadow:0 4px 14px rgba(67,56,202,.45)">✨ Generate Brief →</button>
+            <!-- Solid #1E1B4B (deep navy-indigo) with bright white text — extreme contrast,
+                 immune to any inherited CSS gradient/text-fill overrides. -->
+            <button onclick="openAiContentBrief('${c.type}','${domain}','${industry}')" style="width:100%;padding:13px 0;background:#1E1B4B;background-image:none;border:2px solid #1E1B4B;border-radius:9px;font-size:0.9rem;font-weight:800;color:#FFFFFF;-webkit-text-fill-color:#FFFFFF;cursor:pointer;letter-spacing:.03em;text-shadow:0 1px 2px rgba(0,0,0,.5);box-shadow:0 4px 14px rgba(30,27,75,.4)">✨ Generate Brief →</button>
           </div>`).join('')}
         </div>
 
