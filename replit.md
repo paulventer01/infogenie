@@ -20,6 +20,10 @@ InfoGenie is an AI-powered marketing intelligence and campaign automation platfo
     *   `SLACK_WEBHOOK_URL` (auto-detects Slack vs Discord from URL)
     *   `APOLLO_API_KEY` (Organizations Enrich endpoint — free tier)
     *   `BUILTWITH_API_KEY` (free1 endpoint — category counts only)
+    *   **Ad platform credentials** (optional but required for live Cross-Channel Report data — see Gotchas):
+        *   Meta Ads: `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID`
+        *   Google Ads: `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_CUSTOMER_ID`
+        *   TikTok Ads: `TIKTOK_ACCESS_TOKEN`, `TIKTOK_ADVERTISER_ID`
 
 ## Stack
 
@@ -86,6 +90,7 @@ InfoGenie is an AI-powered marketing intelligence and campaign automation platfo
 *   **Google Analytics/Search Console**: GA4/GSC integrations are currently parked due to Google Workspace org policy blocking external identities for service accounts. Re-enable by configuring Workspace admin settings or recreating the service account within the correct org.
 *   **SSRF Guards**: The platform employs strict SSRF guards for fetching external URLs (sitemaps, content scoring, webhooks, PageSpeed), rejecting private IPs and non-HTTPS protocols.
 *   **Postgres Migration**: At server boot, `migrateJsonFilesIfNeeded()` attempts to migrate existing `data/*.json` files into the Postgres `kv_store`. This is idempotent.
+*   **Ad Platform Connections (Meta / Google Ads / TikTok)**: The Cross-Channel Report UI + backend fetchers (`/api/cross-channel-report`, `_fetchMetaSpendRich`, `_fetchGoogleAdsSpend`, `_fetchTikTokSpend`) are fully wired and live. **Setup requires real platform credentials** (see env vars above). Until those secrets are set, channel cards display "Not connected" with a "🔌 Connect now" button that opens a setup-steps modal (`showAdPlatformSetup` in `app.js`). Status is exposed by `GET /api/ad-platforms/status`. Approval timelines: Meta same-day, TikTok ~24h, Google Ads developer token 1–3 business days.
 
 ## Pointers
 

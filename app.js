@@ -30432,6 +30432,7 @@ function buildCrossChannel() {
   if (!wrap) return;
   const days = window._ccrState.days || 30;
   wrap.innerHTML = `
+    <div id="ccrConnections" style="margin-bottom:18px"></div>
     <div class="ccr-controls">
       <div class="ccr-control" style="flex:0 0 130px">
         <label class="cg-lbl">Time window</label>
@@ -30449,6 +30450,7 @@ function buildCrossChannel() {
     </div>
     <div id="ccrResults" style="margin-top:24px"><div class="cg-empty">Click <strong>Generate report</strong> to pull live data from all connected channels.</div></div>
   `;
+  renderAdPlatformConnections();
 }
 
 async function runCrossChannel() {
@@ -30488,9 +30490,16 @@ function renderCrossChannel(d) {
 
   const channelCards = (d.paid?.channels || []).map(c => {
     if (!c.ok) {
+      const platformKey = /meta|facebook/i.test(c.name) ? 'meta'
+                        : /google/i.test(c.name) ? 'google'
+                        : /tiktok/i.test(c.name) ? 'tiktok' : '';
+      const connectBtn = platformKey
+        ? `<button onclick="showAdPlatformSetup('${platformKey}')" style="margin-top:8px;padding:7px 14px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:8px;font-size:0.72rem;font-weight:700;color:white;cursor:pointer;width:100%">🔌 Connect now</button>`
+        : '';
       return `<div class="ccr-channel ccr-channel-off">
         <div class="ccr-ch-head"><span class="ccr-ch-icon">${_esc(c.icon || '')}</span><span>${_esc(c.name)}</span></div>
         <div class="ccr-ch-status">Not connected</div>
+        ${connectBtn}
       </div>`;
     }
     const cpc = c.clicks > 0 ? c.spend / c.clicks : 0;
@@ -31048,3 +31057,147 @@ async function testSlackWebhook() {
   } catch (e) { if (msg) { msg.style.color='#B91C1C'; msg.textContent = e.message; } }
 }
 window.testSlackWebhook = testSlackWebhook;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AD PLATFORM CONNECTIONS — UI for Meta / Google Ads / TikTok credentials
+// Backend already exposes /api/ad-platforms/status and the live fetchers.
+// This file only builds the user-facing strip + setup-instructions modal.
+// SETUP REQUIRES CREDENTIALS — see modal copy and replit.md for the env vars.
+// ═══════════════════════════════════════════════════════════════════════════
+
+window._adPlatformDefs = {
+  meta: {
+    name: 'Meta Ads (Facebook + Instagram)',
+    icon: '📘',
+    color: '#1877F2',
+    envVars: ['META_ACCESS_TOKEN', 'META_AD_ACCOUNT_ID'],
+    steps: [
+      'Go to <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener" style="color:#0066FF">developers.facebook.com/apps</a> and create a new app (type: Business).',
+      'Add the <strong>Marketing API</strong> product to your app.',
+      'Generate a long-lived <strong>System User access token</strong> with the <code>ads_read</code> and <code>ads_management</code> permissions.',
+      'Copy your Ad Account ID from <a href="https://business.facebook.com/adsmanager" target="_blank" rel="noopener" style="color:#0066FF">Ads Manager</a> (the number after <code>act=</code> in the URL).',
+      'Add both values as Replit secrets: <code>META_ACCESS_TOKEN</code> and <code>META_AD_ACCOUNT_ID</code>.',
+    ],
+    timeline: 'Same day — no Meta review needed for personal use.',
+  },
+  google: {
+    name: 'Google Ads',
+    icon: '🔵',
+    color: '#4285F4',
+    envVars: ['GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET', 'GOOGLE_ADS_REFRESH_TOKEN', 'GOOGLE_ADS_CUSTOMER_ID'],
+    steps: [
+      'Apply for a <strong>Google Ads Developer Token</strong> from your MCC manager account at <a href="https://ads.google.com/aw/apicenter" target="_blank" rel="noopener" style="color:#0066FF">ads.google.com/aw/apicenter</a>. Approval takes 1–3 business days.',
+      'Create an OAuth 2.0 Client ID in <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener" style="color:#0066FF">Google Cloud Console → Credentials</a> (type: Desktop app).',
+      'Generate a <strong>refresh token</strong> using Google\'s OAuth 2.0 Playground or the <code>oauth2l</code> CLI with scope <code>https://www.googleapis.com/auth/adwords</code>.',
+      'Find your Customer ID in the top-right of any Google Ads page (format: 123-456-7890).',
+      'Add all five values as Replit secrets.',
+    ],
+    timeline: '1–3 business days for the developer token approval.',
+  },
+  tiktok: {
+    name: 'TikTok Ads',
+    icon: '⬛',
+    color: '#010101',
+    envVars: ['TIKTOK_ACCESS_TOKEN', 'TIKTOK_ADVERTISER_ID'],
+    steps: [
+      'Sign up for <a href="https://ads.tiktok.com/marketing_api" target="_blank" rel="noopener" style="color:#0066FF">TikTok for Business — Marketing API</a> and create a developer app.',
+      'Submit the app for basic-tier approval (usually granted within 24 hours).',
+      'After approval, generate an <strong>access token</strong> from the app dashboard.',
+      'Copy your Advertiser ID from <a href="https://ads.tiktok.com" target="_blank" rel="noopener" style="color:#0066FF">TikTok Ads Manager</a> (top-right of any campaigns page).',
+      'Add both values as Replit secrets: <code>TIKTOK_ACCESS_TOKEN</code> and <code>TIKTOK_ADVERTISER_ID</code>.',
+    ],
+    timeline: 'Approx. 24 hours for app approval.',
+  },
+};
+
+async function renderAdPlatformConnections() {
+  const wrap = document.getElementById('ccrConnections');
+  if (!wrap) return;
+  wrap.innerHTML = `<div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:14px 18px;font-size:0.78rem;color:#6B7280">⏳ Checking ad platform connections…</div>`;
+  let status = { meta:false, googleAds:false, tiktok:false };
+  try {
+    const r = await fetch('/api/ad-platforms/status');
+    if (r.ok) status = await r.json();
+  } catch (e) { /* render with all-disconnected fallback */ }
+
+  const map = [
+    { key:'meta',   on: !!status.meta },
+    { key:'google', on: !!status.googleAds },
+    { key:'tiktok', on: !!status.tiktok },
+  ];
+  const allOn  = map.every(m => m.on);
+  const noneOn = map.every(m => !m.on);
+
+  const bannerStyle = allOn
+    ? 'background:linear-gradient(135deg,rgba(5,150,105,.08),rgba(5,150,105,.02));border:1px solid rgba(5,150,105,.25);color:#065F46'
+    : noneOn
+      ? 'background:linear-gradient(135deg,rgba(217,119,6,.08),rgba(217,119,6,.02));border:1px solid rgba(217,119,6,.25);color:#92400E'
+      : 'background:linear-gradient(135deg,rgba(0,102,255,.06),rgba(0,201,200,.04));border:1px solid rgba(0,102,255,.2);color:#0C4A6E';
+  const bannerText = allOn
+    ? '✅ All ad platforms connected — your Cross-Channel Report is pulling live data.'
+    : noneOn
+      ? '⚠️ No ad platforms connected — click <strong>Connect now</strong> on any channel below to see the setup steps. Each requires credentials from that platform.'
+      : `🟡 ${map.filter(m=>m.on).length} of 3 ad platforms connected — connect the rest for a full unified report.`;
+
+  wrap.innerHTML = `
+    <div style="${bannerStyle};font-weight:700;font-size:0.78rem;padding:12px 16px;border-radius:12px 12px 0 0">${bannerText}</div>
+    <div style="background:white;border:1px solid #E5E7EB;border-top:none;border-radius:0 0 14px 14px;padding:14px 18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:0.7rem;color:#6B7280;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Channels</span>
+      ${map.map(m => {
+        const def = window._adPlatformDefs[m.key];
+        const dot = m.on ? '#10B981' : '#9CA3AF';
+        const label = m.on ? 'Connected' : 'Not connected';
+        return `<button onclick="showAdPlatformSetup('${m.key}')" style="display:inline-flex;align-items:center;gap:8px;background:${m.on?'#F0FDF4':'#F9FAFB'};border:1px solid ${m.on?'#BBF7D0':'#E5E7EB'};border-radius:999px;padding:6px 12px;font-size:0.74rem;font-weight:600;color:#0F172A;cursor:pointer">
+          <span style="width:7px;height:7px;border-radius:50%;background:${dot}"></span>
+          <span>${def.icon} ${_esc(def.name.split(' (')[0])}</span>
+          <span style="color:${m.on?'#059669':'#9CA3AF'};font-weight:700">${label}</span>
+        </button>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+function showAdPlatformSetup(key) {
+  const def = window._adPlatformDefs[key];
+  if (!def) return;
+  let modal = document.getElementById('adPlatformSetupModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'adPlatformSetupModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+  }
+  const stepsHtml = def.steps.map((s, i) => `
+    <li style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #F1F5F9">
+      <div style="flex-shrink:0;width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#0066FF,#00C9C8);color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.78rem">${i+1}</div>
+      <div style="flex:1;font-size:0.84rem;color:#0F172A;line-height:1.55">${s}</div>
+    </li>`).join('');
+  const envHtml = def.envVars.map(v => `<code style="display:inline-block;background:#0F172A;color:#67E8F9;padding:3px 9px;border-radius:6px;font-size:0.74rem;font-family:'JetBrains Mono',monospace;margin:2px 4px 2px 0">${v}</code>`).join('');
+  modal.innerHTML = `
+    <div style="background:white;border-radius:18px;max-width:640px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 25px 80px rgba(0,0,0,.4)">
+      <div style="background:linear-gradient(135deg,${def.color},#0066FF);padding:22px 26px;border-radius:18px 18px 0 0;color:white">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <div>
+            <div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800">🔌 Connect ${_esc(def.name)}</div>
+            <div style="font-size:0.78rem;opacity:.85;margin-top:4px">${_esc(def.timeline)}</div>
+          </div>
+          <button onclick="document.getElementById('adPlatformSetupModal').remove()" style="background:rgba(255,255,255,.15);border:none;color:white;width:32px;height:32px;border-radius:50%;font-size:1rem;cursor:pointer">✕</button>
+        </div>
+      </div>
+      <div style="padding:22px 26px">
+        <div style="background:#FFFBEB;border:1px solid #FCD34D;border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:0.8rem;color:#78350F;line-height:1.55">
+          <strong>⚠️ Setup requires credentials from the platform.</strong> InfoGenie cannot fetch live data until you complete these steps and add the credentials as Replit secrets. Once added, refresh this page and the channel will show <strong style="color:#059669">Connected</strong>.
+        </div>
+        <div style="font-size:0.7rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Required Replit secrets</div>
+        <div style="margin-bottom:18px">${envHtml}</div>
+        <div style="font-size:0.7rem;font-weight:700;color:#6B7280;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Setup steps</div>
+        <ol style="list-style:none;padding:0;margin:0">${stepsHtml}</ol>
+      </div>
+      <div style="padding:14px 26px;border-top:1px solid #F1F5F9;display:flex;justify-content:flex-end;gap:10px;background:#FAFBFC;border-radius:0 0 18px 18px">
+        <button onclick="document.getElementById('adPlatformSetupModal').remove()" style="padding:10px 20px;background:white;border:1px solid #E5E7EB;border-radius:9px;font-size:0.82rem;font-weight:700;color:#374151;cursor:pointer">Close</button>
+        <button onclick="document.getElementById('adPlatformSetupModal').remove();renderAdPlatformConnections();showToast('🔄 Re-checking connection status…')" style="padding:10px 20px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:9px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">↻ Re-check status</button>
+      </div>
+    </div>
+  `;
+}
