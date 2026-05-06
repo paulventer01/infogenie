@@ -85,6 +85,11 @@ async function ensureOptimizerSchema() {
       UNIQUE (campaign_id, platform_ad_id)
     );
     CREATE INDEX IF NOT EXISTS idx_ad_creatives_camp ON ad_creatives(campaign_id);
+    -- Google Ads RSA support (multi-headline / multi-description). Meta rows
+    -- leave these NULL and use the singular headline/body columns above.
+    ALTER TABLE ad_creatives ADD COLUMN IF NOT EXISTS headlines    JSONB;
+    ALTER TABLE ad_creatives ADD COLUMN IF NOT EXISTS descriptions JSONB;
+    ALTER TABLE ad_creatives ADD COLUMN IF NOT EXISTS final_url    TEXT;
 
     -- Audit log of every creative-refresh decision (generated copy/image,
     -- whether it was uploaded, which old ad got paused).

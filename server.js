@@ -8418,15 +8418,31 @@ const _optimizerCreative = require('./services/optimizer/creative_refresh');
 const _optimizerBandit   = require('./services/optimizer/bandit');
 const _optimizerRouter   = require('./services/optimizer/api');
 app.use('/api/optimizer', _optimizerRouter);
+let _googleCronsStarted = false;
 (async () => {
   try {
     if (_db.hasDb()) {
       await _optimizerSchema.ensureOptimizerSchema();
       _optimizerIngest.startIngestCron(60);              // every 60 min
       _optimizerRules.startOptimizerCron(6);             // every 6 hours
-      _optimizerCreative.startCreativeRefreshCron(24);   // every 24h (Phase 8)
-      _optimizerBandit.startBanditCron(12);              // every 12h (Phase 7)
-      console.log('[optimizer] schema ready, ingest=60m, rules=6h, creative-refresh=24h, bandit=12h, dry-run=default');
+      _optimizerCreative.startCreativeRefreshCron(24);   // every 24h (Phase 8 — Meta)
+      _optimizerBandit.startBanditCron(12);              // every 12h (Phase 7 — Meta)
+      // Google Ads ports — same cadence as their Meta counterparts. Each is
+      // its own mutex-guarded module that no-ops when GOOGLE_ADS_* creds are
+      // missing, so it's safe to start them unconditionally.
+      try {
+        const _gBandit   = require('./services/optimizer/google_bandit');
+        const _gCreative = require('./services/optimizer/google_creative_refresh');
+        if (!_googleCronsStarted) {
+          _googleCronsStarted = true;
+          // First runs offset from Meta (10 + 8 min) so they don't all fire at once
+          setTimeout(() => _gBandit.runGoogleBanditOnce().catch(e => console.error('[google-bandit]', e.message)), 10 * 60 * 1000);
+          setInterval(() => _gBandit.runGoogleBanditOnce().catch(e => console.error('[google-bandit]', e.message)), 12 * 3600 * 1000);
+          setTimeout(() => _gCreative.runGoogleCreativeRefreshOnce().catch(e => console.error('[google-creative-refresh]', e.message)), 8 * 60 * 1000);
+          setInterval(() => _gCreative.runGoogleCreativeRefreshOnce().catch(e => console.error('[google-creative-refresh]', e.message)), 24 * 3600 * 1000);
+        }
+      } catch (e) { console.error('[google-optimizer] init failed:', e.message); }
+      console.log('[optimizer] schema ready, ingest=60m, rules=6h, creative-refresh=24h, bandit=12h, google-bandit=12h, google-creative-refresh=24h, dry-run=default');
     } else {
       console.log('[optimizer] disabled — DATABASE_URL not set');
     }

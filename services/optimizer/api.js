@@ -7,6 +7,8 @@ const { getSetting, setSetting } = require('./schema');
 const { platformConnected } = require('./platforms');
 const { runCreativeRefreshOnce } = require('./creative_refresh');
 const { runBanditOnce } = require('./bandit');
+const { runGoogleCreativeRefreshOnce } = require('./google_creative_refresh');
+const { runGoogleBanditOnce } = require('./google_bandit');
 
 const router = express.Router();
 
@@ -174,8 +176,13 @@ router.post('/creative-refresh/dry-run', express.json(), async (req, res) => {
 router.post('/creative-refresh/run-now', express.json(), async (_req, res) => {
   // force=true so it runs even if the user-facing "enabled" toggle is off,
   // but it still respects the current dry-run setting unless overridden.
-  const r = await runCreativeRefreshOnce({ force: true });
-  res.json({ ok: true, run: r });
+  // Runs BOTH Meta and Google modules in parallel — each no-ops cleanly when
+  // its platform creds are missing, so this is safe regardless of connection state.
+  const [meta, google] = await Promise.all([
+    runCreativeRefreshOnce({ force: true }),
+    runGoogleCreativeRefreshOnce({ force: true }),
+  ]);
+  res.json({ ok: true, run: { meta, google } });
 });
 
 // ── Phase 7: Multi-Armed Bandit (ad-set budget allocation) ─────────────────
@@ -220,8 +227,11 @@ router.post('/bandit/dry-run', express.json(), async (req, res) => {
 });
 
 router.post('/bandit/run-now', express.json(), async (_req, res) => {
-  const r = await runBanditOnce({ force: true });
-  res.json({ ok: true, run: r });
+  const [meta, google] = await Promise.all([
+    runBanditOnce({ force: true }),
+    runGoogleBanditOnce({ force: true }),
+  ]);
+  res.json({ ok: true, run: { meta, google } });
 });
 
 router.delete('/campaigns/:id', async (req, res) => {
