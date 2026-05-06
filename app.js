@@ -5437,7 +5437,10 @@ function buildCampaigns() {
             <span title="Their dominant channel — the one we will hit hardest">Top channel <strong>${_ct.topChannel}</strong></span>
           </div>
         </div>
-        <button class="counter-banner-clear" onclick="window._counterTarget=null;document.getElementById('counterTargetBanner')?.remove()" title="Clear target — return to general campaign mode">✕ Clear target</button>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+          <button class="counter-banner-clear" onclick="window._counterTarget=null;document.getElementById('counterTargetBanner')?.remove();const hb=document.getElementById('launchCampaignBtn');if(hb)hb.style.display=''" title="Clear target — return to general campaign mode">✕ Clear target</button>
+          <button class="btn-primary counter-banner-launch" onclick="document.getElementById('launchCampaignBtn')?.click()" title="Launch a counter-campaign against ${_ct.name}" style="white-space:nowrap">🚀 Launch Campaign</button>
+        </div>
       </div>
       ${_ct.counterPlays && _ct.counterPlays.length ? `
         <div class="counter-banner-plays">
