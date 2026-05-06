@@ -9616,22 +9616,23 @@ function buildAiVisibility() {
     </div>
 
     <!-- ── ACTION CENTER ──────────────────────────────────────────────── -->
+    <!-- Light lavender background → all text colours below are dark-on-light for contrast. -->
     <div style="background:linear-gradient(135deg,#F5F3FF 0%,#EDE9FE 55%,#DDD6FE 100%);border-radius:20px;padding:28px 30px;margin-top:4px;position:relative;overflow:hidden;border:1px solid rgba(99,102,241,.18)">
-      <div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;background:rgba(255,255,255,0.04);border-radius:50%"></div>
-      <div style="position:absolute;bottom:-30px;left:40%;width:120px;height:120px;background:rgba(255,255,255,0.03);border-radius:50%"></div>
+      <div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;background:rgba(99,102,241,0.06);border-radius:50%"></div>
+      <div style="position:absolute;bottom:-30px;left:40%;width:120px;height:120px;background:rgba(99,102,241,0.05);border-radius:50%"></div>
       <div style="position:relative">
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <div style="display:flex;align-items:center;gap:12px">
-            <div style="background:rgba(255,255,255,0.12);padding:10px;border-radius:12px;font-size:1.3rem;line-height:1">⚡</div>
+            <div style="background:rgba(99,102,241,0.15);padding:10px;border-radius:12px;font-size:1.3rem;line-height:1">⚡</div>
             <div>
-              <div style="font-family:Sora,sans-serif;font-size:1.15rem;font-weight:800;color:white;margin-bottom:2px">Action Center</div>
-              <div style="font-size:0.75rem;color:rgba(255,255,255,0.55)">Create &amp; Optimize Content That AI Picks</div>
+              <div style="font-family:Sora,sans-serif;font-size:1.15rem;font-weight:800;color:#1E1B4B;margin-bottom:2px">Action Center</div>
+              <div style="font-size:0.75rem;color:#4B5563;font-weight:600">Create &amp; Optimize Content That AI Picks</div>
             </div>
           </div>
-          <span style="background:rgba(255,255,255,0.1);padding:5px 14px;border-radius:20px;font-size:0.69rem;font-weight:700;color:#A5B4FC">GPT-4 Powered</span>
+          <span style="background:#FFFFFF;padding:5px 14px;border-radius:20px;font-size:0.69rem;font-weight:800;color:#4338CA;border:1px solid rgba(99,102,241,.25);box-shadow:0 2px 6px rgba(99,102,241,.12)">GPT-4 Powered</span>
         </div>
-        <p style="font-size:0.78rem;color:rgba(255,255,255,0.6);margin:0 0 22px;line-height:1.65;max-width:700px">AI engines prioritise authoritative, structured, and directly-answerable content. Use these tools to build pages that get cited across ChatGPT, Claude, Gemini &amp; every major LLM.</p>
+        <p style="font-size:0.8rem;color:#374151;margin:0 0 22px;line-height:1.65;max-width:700px;font-weight:500">AI engines prioritise authoritative, structured, and directly-answerable content. Use these tools to build pages that get cited across ChatGPT, Claude, Gemini &amp; every major LLM.</p>
 
         <!-- Content Type Cards -->
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px">
@@ -9640,35 +9641,35 @@ function buildAiVisibility() {
             { icon:'⚖️', type:'comparison', title:'"X vs Y" Comparison Pages',      cite:'73% comparison queries',   desc:'When users ask LLMs to compare tools, structured comparison pages win citations in nearly all queries.', keys:['Side-by-side comparison table','Honest pros/cons for both','Clear verdict & recommendation','Verdict/Review schema'] },
             { icon:'📋', type:'how-to',     title:'How-To & Step-by-Step Guides',  cite:'3× more task citations',   desc:'LLMs favour procedural content. How-to guides with HowTo schema earn dramatically more citations.',       keys:['Numbered steps (7 or fewer)','HowTo schema markup','Time & difficulty estimate','Video or visual support'] },
           ].map(c => `
-          <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.11);border-radius:14px;padding:18px;display:flex;flex-direction:column">
+          <div style="background:#FFFFFF;border:1px solid rgba(99,102,241,0.18);border-radius:14px;padding:18px;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(99,102,241,0.08)">
             <div style="font-size:1.5rem;margin-bottom:8px">${c.icon}</div>
-            <div style="font-weight:800;font-size:0.83rem;color:white;margin-bottom:5px">${c.title}</div>
-            <div style="align-self:flex-start;background:linear-gradient(135deg,#6366F1,#4338CA);padding:4px 11px;border-radius:7px;font-size:0.62rem;font-weight:800;color:#FFFFFF;margin-bottom:9px;letter-spacing:.03em;box-shadow:0 2px 6px rgba(99,102,241,.35);text-shadow:0 1px 2px rgba(0,0,0,.18)">${c.cite}</div>
-            <div style="font-size:0.7rem;color:rgba(255,255,255,0.55);line-height:1.55;margin-bottom:12px;flex:1">${c.desc}</div>
-            <div style="background:rgba(0,0,0,0.2);border-radius:9px;padding:10px 12px;margin-bottom:14px">
-              <div style="font-size:0.6rem;color:#A5B4FC;font-weight:700;margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em">Key Elements</div>
-              ${c.keys.map(k => `<div style="font-size:0.66rem;color:rgba(255,255,255,0.65);margin-bottom:3px">✓ ${k}</div>`).join('')}
+            <div style="font-weight:800;font-size:0.88rem;color:#0F172A;margin-bottom:7px">${c.title}</div>
+            <div style="align-self:flex-start;background:linear-gradient(135deg,#6366F1,#4338CA);padding:5px 12px;border-radius:7px;font-size:0.66rem;font-weight:800;color:#FFFFFF;margin-bottom:10px;letter-spacing:.03em;box-shadow:0 2px 6px rgba(99,102,241,.35);text-shadow:0 1px 2px rgba(0,0,0,.25)">${c.cite}</div>
+            <div style="font-size:0.74rem;color:#475569;line-height:1.55;margin-bottom:12px;flex:1;font-weight:500">${c.desc}</div>
+            <div style="background:#F5F3FF;border:1px solid rgba(99,102,241,0.15);border-radius:9px;padding:10px 12px;margin-bottom:14px">
+              <div style="font-size:0.62rem;color:#4338CA;font-weight:800;margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">Key Elements</div>
+              ${c.keys.map(k => `<div style="font-size:0.7rem;color:#1F2937;margin-bottom:4px;font-weight:500"><span style="color:#059669;font-weight:800">✓</span> ${k}</div>`).join('')}
             </div>
-            <button onclick="openAiContentBrief('${c.type}','${domain}','${industry}')" style="width:100%;padding:9px 0;background:linear-gradient(135deg,#6366F1,#4338CA);border:none;border-radius:9px;font-size:0.73rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 3px 10px rgba(99,102,241,0.3)">✨ Generate Brief →</button>
+            <button onclick="openAiContentBrief('${c.type}','${domain}','${industry}')" style="width:100%;padding:10px 0;background:linear-gradient(135deg,#6366F1,#4338CA);border:none;border-radius:9px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 3px 10px rgba(99,102,241,0.3)">✨ Generate Brief →</button>
           </div>`).join('')}
         </div>
 
         <!-- E-E-A-T Tracker + Schema Generator -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
 
-          <!-- E-E-A-T Checklist -->
-          <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.11);border-radius:14px;padding:18px">
+          <!-- E-E-A-T Checklist (light theme — sits inside lavender Action Center wrapper) -->
+          <div style="background:#FFFFFF;border:1px solid rgba(99,102,241,0.18);border-radius:14px;padding:18px;box-shadow:0 4px 14px rgba(99,102,241,0.08)">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
               <div>
-                <div style="font-weight:800;font-size:0.85rem;color:white">🏆 E-E-A-T Signal Tracker</div>
-                <div style="font-size:0.63rem;color:rgba(255,255,255,0.45);margin-top:2px">Experience · Expertise · Authority · Trust</div>
+                <div style="font-weight:800;font-size:0.88rem;color:#0F172A">🏆 E-E-A-T Signal Tracker</div>
+                <div style="font-size:0.66rem;color:#6B7280;margin-top:2px;font-weight:500">Experience · Expertise · Authority · Trust</div>
               </div>
               <div style="text-align:center">
-                <div id="eeaTScore" style="font-family:Sora,sans-serif;font-size:1.4rem;font-weight:800;color:#A5B4FC">0%</div>
-                <div style="font-size:0.58rem;color:rgba(255,255,255,0.4)">score</div>
+                <div id="eeaTScore" style="font-family:Sora,sans-serif;font-size:1.4rem;font-weight:800;color:#4338CA">0%</div>
+                <div style="font-size:0.6rem;color:#6B7280;font-weight:600">score</div>
               </div>
             </div>
-            <div style="background:rgba(0,0,0,0.25);border-radius:6px;height:5px;margin-bottom:14px">
+            <div style="background:rgba(99,102,241,0.15);border-radius:6px;height:5px;margin-bottom:14px">
               <div id="eeaTBar" style="height:5px;border-radius:6px;background:linear-gradient(90deg,#6366F1,#00C9C8);width:0%;transition:width .4s"></div>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px">
@@ -9682,23 +9683,23 @@ function buildAiVisibility() {
                 ['eeaT6','HowTo schema on guide pages'],
                 ['eeaT7','Wikipedia brand page or mention'],
               ].map(([id,label]) => `
-              <label style="display:flex;align-items:center;gap:9px;cursor:pointer;padding:7px 10px;background:rgba(255,255,255,0.05);border-radius:8px;border:1px solid rgba(255,255,255,0.07)">
+              <label style="display:flex;align-items:center;gap:9px;cursor:pointer;padding:7px 10px;background:#F5F3FF;border-radius:8px;border:1px solid rgba(99,102,241,0.15)">
                 <input type="checkbox" id="${id}" onchange="updateEeaT()" ${(window._eeaT||{})[id]?'checked':''} style="width:14px;height:14px;accent-color:#6366F1;cursor:pointer;flex-shrink:0">
-                <span style="font-size:0.68rem;color:rgba(255,255,255,0.75)">${label}</span>
+                <span style="font-size:0.72rem;color:#1F2937;font-weight:500">${label}</span>
               </label>`).join('')}
             </div>
           </div>
 
-          <!-- Schema Generator -->
-          <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.11);border-radius:14px;padding:18px;display:flex;flex-direction:column">
-            <div style="font-weight:800;font-size:0.85rem;color:white;margin-bottom:3px">🔧 Schema Markup Generator</div>
-            <div style="font-size:0.63rem;color:rgba(255,255,255,0.45);margin-bottom:14px">Pick a schema type → get ready-to-paste JSON-LD</div>
+          <!-- Schema Generator (light theme) -->
+          <div style="background:#FFFFFF;border:1px solid rgba(99,102,241,0.18);border-radius:14px;padding:18px;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(99,102,241,0.08)">
+            <div style="font-weight:800;font-size:0.88rem;color:#0F172A;margin-bottom:3px">🔧 Schema Markup Generator</div>
+            <div style="font-size:0.66rem;color:#6B7280;margin-bottom:14px;font-weight:500">Pick a schema type → get ready-to-paste JSON-LD</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:14px">
               ${['FAQ','HowTo','Organization','Product','Article','BreadcrumbList'].map(t => `
-              <button onclick="generateSchemaSnippet('${t}','${domain}')" style="padding:8px 4px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:8px;font-size:0.68rem;font-weight:700;color:rgba(255,255,255,0.82);cursor:pointer" onmouseover="this.style.background='rgba(99,102,241,0.4)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'">${t}</button>`).join('')}
+              <button onclick="generateSchemaSnippet('${t}','${domain}')" style="padding:8px 4px;background:#F5F3FF;border:1px solid rgba(99,102,241,0.25);border-radius:8px;font-size:0.7rem;font-weight:700;color:#4338CA;cursor:pointer" onmouseover="this.style.background='#E0E7FF';this.style.borderColor='rgba(99,102,241,0.5)'" onmouseout="this.style.background='#F5F3FF';this.style.borderColor='rgba(99,102,241,0.25)'">${t}</button>`).join('')}
             </div>
-            <div id="schemaOutput" style="flex:1;background:rgba(0,0,0,0.35);border-radius:10px;padding:12px 14px;font-size:0.61rem;font-family:monospace;color:#86EFAC;line-height:1.7;overflow-y:auto;max-height:200px;min-height:80px;white-space:pre-wrap;word-break:break-all">// Select a schema type above to generate\n// ready-to-paste JSON-LD for your website</div>
-            <button onclick="copySchemaOutput()" id="schemaCopyBtn" style="margin-top:10px;padding:8px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:8px;font-size:0.7rem;font-weight:700;color:white;cursor:pointer">📋 Copy to Clipboard</button>
+            <div id="schemaOutput" style="flex:1;background:#0F172A;border-radius:10px;padding:12px 14px;font-size:0.62rem;font-family:monospace;color:#86EFAC;line-height:1.7;overflow-y:auto;max-height:200px;min-height:80px;white-space:pre-wrap;word-break:break-all">// Select a schema type above to generate\n// ready-to-paste JSON-LD for your website</div>
+            <button onclick="copySchemaOutput()" id="schemaCopyBtn" style="margin-top:10px;padding:9px;background:linear-gradient(135deg,#6366F1,#4338CA);border:none;border-radius:8px;font-size:0.73rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 3px 10px rgba(99,102,241,0.3)">📋 Copy to Clipboard</button>
           </div>
         </div>
 
