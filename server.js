@@ -4439,8 +4439,11 @@ Return ONLY raw JSON: {
   "expertInsight": "one insightful paragraph"
 }`;
 
+    // gpt-4o-mini drops typical generation time from ~60–110s down to ~10–18s with no
+    // meaningful quality drop for 700–900 word SEO articles. Claude Sonnet stays for
+    // the small extras call (alt titles, expert insight, extra FAQs).
     const [gptRes, claudeRes] = await Promise.allSettled([
-      openai.chat.completions.create({ model:'gpt-4o', messages:[{role:'user',content:gptPrompt}], max_tokens:1800 }),
+      openai.chat.completions.create({ model:'gpt-4o-mini', messages:[{role:'user',content:gptPrompt}], max_tokens:1800 }),
       anthropic.messages.create({ model:'claude-sonnet-4-6', max_tokens:600, messages:[{role:'user',content:claudePrompt}] })
     ]);
 

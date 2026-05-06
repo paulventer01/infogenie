@@ -6987,7 +6987,17 @@ window.runBuildContent = async function(topic, intent) {
   const dlBtn    = document.getElementById('bcDlBtn');
   if (!output) return;
 
-  if (genBtn)  { genBtn.disabled = true; genBtn.textContent = '⏳ Generating…'; }
+  if (genBtn)  {
+    genBtn.disabled = true;
+    genBtn.textContent = '⏳ Generating…';
+    // Override the browser's faded disabled-button look so the white text stays
+    // legible against the green gradient while content is being generated.
+    genBtn.style.opacity = '1';
+    genBtn.style.color = '#FFFFFF';
+    genBtn.style.background = 'linear-gradient(135deg,#059669,#065F46)';
+    genBtn.style.cursor = 'wait';
+    genBtn.style.textShadow = '0 1px 2px rgba(0,0,0,.35)';
+  }
   if (status)  status.textContent = 'GPT-4o + Claude Sonnet generating in parallel…';
   if (copyBtn) copyBtn.style.display = 'none';
   if (dlBtn)   dlBtn.style.display = 'none';
