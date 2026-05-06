@@ -6,6 +6,7 @@ const { runOptimizerOnce } = require('./rules');
 const { getSetting, setSetting } = require('./schema');
 const { platformConnected } = require('./platforms');
 const { runCreativeRefreshOnce } = require('./creative_refresh');
+const { runBanditOnce } = require('./bandit');
 
 const router = express.Router();
 
@@ -174,6 +175,52 @@ router.post('/creative-refresh/run-now', express.json(), async (_req, res) => {
   // force=true so it runs even if the user-facing "enabled" toggle is off,
   // but it still respects the current dry-run setting unless overridden.
   const r = await runCreativeRefreshOnce({ force: true });
+  res.json({ ok: true, run: r });
+});
+
+// ── Phase 7: Multi-Armed Bandit (ad-set budget allocation) ─────────────────
+router.get('/bandit/status', async (_req, res) => {
+  const enabled = await getSetting('bandit_enabled', { v: false });
+  const dryRun  = await getSetting('bandit_dry_run', { v: true });
+  let lastRun = null, total = 0;
+  if (_db.hasDb()) {
+    const lr = await _db.getPool().query(`SELECT MAX(created_at) AS t, COUNT(*)::int n FROM bandit_allocations`);
+    lastRun = lr.rows[0]?.t || null;
+    total   = lr.rows[0]?.n || 0;
+  }
+  res.json({ ok: true, enabled: !!enabled.v, dryRun: !!dryRun.v, lastRunAt: lastRun, totalAllocations: total });
+});
+
+router.get('/bandit/allocations', async (req, res) => {
+  if (!_db.hasDb()) return res.json({ ok: false, allocations: [] });
+  const n = parseInt(req.query.limit, 10);
+  const limit = Math.min(Number.isFinite(n) && n > 0 ? n : 50, 300);
+  const r = await _db.getPool().query(`
+    SELECT b.*, c.name AS campaign_name, s.name AS adset_name, s.platform_adset_id
+    FROM bandit_allocations b
+      LEFT JOIN ad_campaigns c ON c.id = b.campaign_id
+      LEFT JOIN ad_sets s      ON s.id = b.ad_set_id
+    ORDER BY b.created_at DESC LIMIT $1
+  `, [limit]);
+  res.json({ ok: true, allocations: r.rows });
+});
+
+router.post('/bandit/toggle', express.json(), async (req, res) => {
+  const raw = req.body && req.body.enabled;
+  if (raw !== true && raw !== false) return res.status(400).json({ ok: false, error: 'enabled must be boolean true or false' });
+  await setSetting('bandit_enabled', { v: raw });
+  res.json({ ok: true, enabled: raw });
+});
+
+router.post('/bandit/dry-run', express.json(), async (req, res) => {
+  const raw = req.body && req.body.dryRun;
+  if (raw !== true && raw !== false) return res.status(400).json({ ok: false, error: 'dryRun must be boolean true or false' });
+  await setSetting('bandit_dry_run', { v: raw });
+  res.json({ ok: true, dryRun: raw });
+});
+
+router.post('/bandit/run-now', express.json(), async (_req, res) => {
+  const r = await runBanditOnce({ force: true });
   res.json({ ok: true, run: r });
 });
 

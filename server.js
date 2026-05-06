@@ -8415,6 +8415,7 @@ const _optimizerSchema   = require('./services/optimizer/schema');
 const _optimizerIngest   = require('./services/optimizer/ingest');
 const _optimizerRules    = require('./services/optimizer/rules');
 const _optimizerCreative = require('./services/optimizer/creative_refresh');
+const _optimizerBandit   = require('./services/optimizer/bandit');
 const _optimizerRouter   = require('./services/optimizer/api');
 app.use('/api/optimizer', _optimizerRouter);
 (async () => {
@@ -8424,7 +8425,8 @@ app.use('/api/optimizer', _optimizerRouter);
       _optimizerIngest.startIngestCron(60);              // every 60 min
       _optimizerRules.startOptimizerCron(6);             // every 6 hours
       _optimizerCreative.startCreativeRefreshCron(24);   // every 24h (Phase 8)
-      console.log('[optimizer] schema ready, ingest=60m, rules=6h, creative-refresh=24h, dry-run=default');
+      _optimizerBandit.startBanditCron(12);              // every 12h (Phase 7)
+      console.log('[optimizer] schema ready, ingest=60m, rules=6h, creative-refresh=24h, bandit=12h, dry-run=default');
     } else {
       console.log('[optimizer] disabled — DATABASE_URL not set');
     }

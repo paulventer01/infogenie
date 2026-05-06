@@ -107,6 +107,59 @@ async function ensureOptimizerSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_creative_refresh_camp_time
       ON creative_refreshes(campaign_id, created_at DESC);
+
+    -- ── Phase 7: Multi-Armed Bandit (ad-set-level budget allocation) ───────
+    -- Tracks ad sets under each campaign (one "arm" per ad set) and their
+    -- rolling 7-day performance, used by the Thompson-sampling allocator.
+    CREATE TABLE IF NOT EXISTS ad_sets (
+      id                SERIAL PRIMARY KEY,
+      campaign_id       INTEGER NOT NULL REFERENCES ad_campaigns(id) ON DELETE CASCADE,
+      platform_adset_id TEXT NOT NULL,
+      name              TEXT,
+      daily_budget      NUMERIC(12,2),
+      status            TEXT DEFAULT 'active',
+      first_seen_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (campaign_id, platform_adset_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ad_sets_camp ON ad_sets(campaign_id);
+
+    CREATE TABLE IF NOT EXISTS ad_set_performance_hourly (
+      id            BIGSERIAL PRIMARY KEY,
+      ad_set_id     INTEGER NOT NULL REFERENCES ad_sets(id) ON DELETE CASCADE,
+      bucket_hour   TIMESTAMPTZ NOT NULL,
+      spend         NUMERIC(12,2) DEFAULT 0,
+      impressions   BIGINT DEFAULT 0,
+      clicks        BIGINT DEFAULT 0,
+      conversions   NUMERIC(12,2) DEFAULT 0,
+      revenue       NUMERIC(12,2) DEFAULT 0,
+      raw           JSONB,
+      fetched_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (ad_set_id, bucket_hour)
+    );
+    CREATE INDEX IF NOT EXISTS idx_adset_perf_time
+      ON ad_set_performance_hourly(ad_set_id, bucket_hour DESC);
+
+    -- One row per (run, ad-set) bandit allocation decision.
+    CREATE TABLE IF NOT EXISTS bandit_allocations (
+      id              BIGSERIAL PRIMARY KEY,
+      campaign_id     INTEGER REFERENCES ad_campaigns(id) ON DELETE CASCADE,
+      ad_set_id       INTEGER REFERENCES ad_sets(id) ON DELETE CASCADE,
+      run_id          TEXT,
+      prior_alpha     NUMERIC(12,2),
+      prior_beta      NUMERIC(12,2),
+      sampled_score   NUMERIC(12,6),
+      avg_value       NUMERIC(12,4),
+      old_budget      NUMERIC(12,2),
+      new_budget      NUMERIC(12,2),
+      share           NUMERIC(6,4),
+      applied         BOOLEAN DEFAULT false,
+      apply_error     TEXT,
+      reason          TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_bandit_alloc_camp_time
+      ON bandit_allocations(campaign_id, created_at DESC);
   `);
   return true;
 }

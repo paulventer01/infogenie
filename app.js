@@ -31436,3 +31436,117 @@ window.creativeRefreshRunNow = async function() {
   showToast(`✅ Done — scanned ${s.scanned||0}, refreshed ${s.refreshed||0}, errors ${s.errors||0}`);
   renderOptimizerDashboard();
 };
+
+// ========================================================================
+// Phase 7 — Multi-Armed Bandit UI section
+// Wraps renderOptimizerDashboard to also append the bandit card + log.
+// ========================================================================
+(function () {
+  const _prevRender = window.renderOptimizerDashboard;
+  if (!_prevRender) return;
+  window.renderOptimizerDashboard = async function () {
+    await _prevRender();
+    const wrap = document.getElementById('optimizerWrap');
+    if (!wrap) return;
+    const section = document.createElement('div');
+    section.id = 'banditSection';
+    section.innerHTML = `<div style="text-align:center;padding:30px;color:#6B7280">Loading bandit status…</div>`;
+    wrap.appendChild(section);
+    try {
+      const [stR, alR] = await Promise.all([
+        fetch('/api/optimizer/bandit/status').then(r => r.json()),
+        fetch('/api/optimizer/bandit/allocations?limit=30').then(r => r.json()),
+      ]);
+      const allocs = alR.allocations || [];
+      const dryBadge = stR.dryRun
+        ? `<span style="background:#FEF3C7;color:#92400E;padding:4px 11px;border-radius:14px;font-size:0.72rem;font-weight:700">DRY-RUN — sampling only</span>`
+        : `<span style="background:#D1FAE5;color:#065F46;padding:4px 11px;border-radius:14px;font-size:0.72rem;font-weight:700">LIVE — reallocating Meta budgets</span>`;
+      const enBadge = stR.enabled
+        ? `<span style="background:#D1FAE5;color:#065F46;padding:4px 11px;border-radius:14px;font-size:0.72rem;font-weight:700">● Enabled</span>`
+        : `<span style="background:#F3F4F6;color:#6B7280;padding:4px 11px;border-radius:14px;font-size:0.72rem;font-weight:700">○ Disabled (off by default)</span>`;
+      // Group allocations by run_id so the user sees one row per run with all arms
+      const byRun = {};
+      allocs.forEach(a => { (byRun[a.run_id] = byRun[a.run_id] || []).push(a); });
+      const runs = Object.entries(byRun).slice(0, 10);
+      section.innerHTML = `
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px 22px;margin-top:18px">
+          <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div>
+              <h3 style="margin:0 0 4px;font-size:1.05rem;color:#0A1628">🎰 Multi-Armed Bandit — Ad-Set Budget Allocator <span style="font-size:0.72rem;color:#6B7280;font-weight:500">— Meta only</span></h3>
+              <div style="display:flex;gap:8px;margin-top:4px">${enBadge}${dryBadge}</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button onclick="banditToggleEnabled(${!stR.enabled})" style="padding:9px 14px;background:${stR.enabled?'#FFFFFF':'linear-gradient(135deg,#10B981,#059669)'};color:${stR.enabled?'#374151':'white'};border:1px solid ${stR.enabled?'#D1D5DB':'transparent'};border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">${stR.enabled?'⏸ Disable':'▶ Enable'}</button>
+              <button onclick="banditToggleDryRun(${!stR.dryRun})" style="padding:9px 14px;background:${stR.dryRun?'linear-gradient(135deg,#0066FF,#00C9C8)':'#FFFFFF'};color:${stR.dryRun?'white':'#374151'};border:1px solid ${stR.dryRun?'transparent':'#D1D5DB'};border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">${stR.dryRun?'⚡ Switch to LIVE':'🛑 Back to dry-run'}</button>
+              <button onclick="banditRunNow()" style="padding:9px 14px;background:linear-gradient(135deg,#F59E0B,#DC2626);color:white;border:none;border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">🎲 Run bandit now</button>
+            </div>
+          </div>
+          <p style="margin:0 0 14px;color:#6B7280;font-size:0.82rem;line-height:1.55">
+            Every 12h, for each enabled Meta campaign with ≥2 active ad sets, draws a Thompson sample from <code>Beta(conversions+1, clicks-conv+1)</code> per ad set, multiplies by AOV, and reallocates the campaign's existing budget pool. Floors at 10% per arm (preserves exploration), ceilings at 60% (no winner-takes-all). Only changes >$1 / >10% are pushed to Meta. Total campaign budget is preserved — money just moves between ad sets.
+          </p>
+          ${runs.length === 0
+            ? `<div style="padding:30px;text-align:center;color:#6B7280;background:#F9FAFB;border-radius:10px">No bandit runs yet. Needs at least one Meta campaign with ≥2 active ad sets and the optimizer ON. Click "Run bandit now" above.</div>`
+            : `<div style="display:flex;flex-direction:column;gap:14px">${runs.map(([rid, arms]) => {
+                const when = new Date(arms[0].created_at).toLocaleString();
+                const camp = arms[0].campaign_name || 'Campaign';
+                const totalNew = arms.reduce((s,a) => s + parseFloat(a.new_budget || 0), 0);
+                const anyApplied = arms.some(a => a.applied);
+                const tag = anyApplied ? '<span style="color:#059669;font-size:0.7rem;font-weight:700;margin-left:8px">APPLIED</span>' : '<span style="color:#92400E;font-size:0.7rem;font-weight:700;margin-left:8px">SAMPLED ONLY</span>';
+                return `<div style="border-left:3px solid #F59E0B;background:#FAFBFC;border-radius:8px;padding:12px 14px">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                    <div style="font-size:0.85rem;color:#0A1628"><strong>${camp}</strong>${tag}<span style="color:#6B7280;font-size:0.74rem;margin-left:8px">${arms.length} arm(s) · total $${totalNew.toFixed(2)}/day</span></div>
+                    <div style="font-size:0.7rem;color:#9CA3AF">${when}</div>
+                  </div>
+                  <table style="width:100%;border-collapse:collapse;font-size:0.78rem">
+                    <thead><tr style="color:#6B7280;font-size:0.7rem;text-transform:uppercase;letter-spacing:.04em">
+                      <th style="text-align:left;padding:4px 6px">Ad Set</th>
+                      <th style="text-align:right;padding:4px 6px">Sample</th>
+                      <th style="text-align:right;padding:4px 6px">AOV</th>
+                      <th style="text-align:right;padding:4px 6px">Old $/d</th>
+                      <th style="text-align:right;padding:4px 6px">New $/d</th>
+                      <th style="text-align:right;padding:4px 6px">Share</th>
+                      <th></th>
+                    </tr></thead>
+                    <tbody>${arms.map(a => {
+                      const oldB = parseFloat(a.old_budget||0), newB = parseFloat(a.new_budget||0);
+                      const diff = newB - oldB;
+                      const arrow = diff > 0.01 ? `<span style="color:#059669">▲ $${diff.toFixed(2)}</span>` : (diff < -0.01 ? `<span style="color:#DC2626">▼ $${Math.abs(diff).toFixed(2)}</span>` : '<span style="color:#9CA3AF">—</span>');
+                      return `<tr style="border-top:1px solid #F3F4F6">
+                        <td style="padding:6px;color:#0A1628">${a.adset_name || a.platform_adset_id || '?'}</td>
+                        <td style="padding:6px;text-align:right;color:#4B5563">${parseFloat(a.sampled_score||0).toFixed(4)}</td>
+                        <td style="padding:6px;text-align:right;color:#4B5563">$${parseFloat(a.avg_value||0).toFixed(2)}</td>
+                        <td style="padding:6px;text-align:right;color:#6B7280">$${oldB.toFixed(2)}</td>
+                        <td style="padding:6px;text-align:right;color:#0A1628;font-weight:600">$${newB.toFixed(2)}</td>
+                        <td style="padding:6px;text-align:right;color:#4B5563">${(parseFloat(a.share||0)*100).toFixed(1)}%</td>
+                        <td style="padding:6px;text-align:right">${arrow}${a.apply_error?`<div style="color:#DC2626;font-size:0.7rem">⚠ ${a.apply_error}</div>`:''}</td>
+                      </tr>`;
+                    }).join('')}</tbody>
+                  </table>
+                </div>`;
+              }).join('')}</div>`}
+        </div>
+      `;
+    } catch (e) {
+      section.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:14px;border-radius:10px;margin-top:18px">Failed to load bandit: ${e.message}</div>`;
+    }
+  };
+})();
+
+window.banditToggleEnabled = async function(enabled) {
+  await fetch('/api/optimizer/bandit/toggle', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({enabled}) });
+  showToast(enabled ? '✅ Bandit enabled' : '⏸ Bandit disabled');
+  renderOptimizerDashboard();
+};
+window.banditToggleDryRun = async function(toLive) {
+  if (toLive && !confirm('Switch the bandit to LIVE? Every 12h it will reallocate your Meta ad-set budgets based on Thompson sampling. The TOTAL campaign budget stays the same — money just moves between ad sets within the campaign. Only changes >$1 / >10% are pushed.')) return;
+  await fetch('/api/optimizer/bandit/dry-run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({dryRun: !toLive}) });
+  showToast(toLive ? '⚡ Bandit is now LIVE' : '🛑 Bandit back in dry-run');
+  renderOptimizerDashboard();
+};
+window.banditRunNow = async function() {
+  showToast('🎲 Sampling and reallocating — this may take 15-30 seconds…');
+  const r = await fetch('/api/optimizer/bandit/run-now', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' }).then(x=>x.json());
+  const s = r.run || {};
+  showToast(`✅ Done — ${s.campaigns||0} campaigns, ${s.scanned||0} arms, ${s.applied||0} reallocations`);
+  renderOptimizerDashboard();
+};
