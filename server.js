@@ -8424,53 +8424,56 @@ app.post('/api/slack/send', async (req, res) => {
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
 });
 
-// ── Apollo.io people enrichment (turn email → full prospect profile) ─────────
-// Returns name, title, company, LinkedIn, location for a given email. Used by
-// the Re-engage Audience flow to upgrade dormant emails into named contacts.
+// ── Apollo.io organization enrichment (turn domain → company profile) ────────
+// Free-tier endpoint: returns company name, industry, employee count, founded
+// year, LinkedIn, location, tech keywords for any domain. Accepts either a
+// domain ("example.com") or a full email — the email's domain part is used.
+// Useful for both competitor intel AND inferring company info from lead emails.
 app.get('/api/apollo/status', (_req, res) => {
   const ok = !!process.env.APOLLO_API_KEY;
-  res.json({ ok, configured: ok, missing: ok ? [] : ['APOLLO_API_KEY'] });
+  res.json({ ok, configured: ok, mode:'organizations_enrich', missing: ok ? [] : ['APOLLO_API_KEY'] });
 });
 app.post('/api/apollo/enrich', async (req, res) => {
   const key = process.env.APOLLO_API_KEY;
   if (!key) return _missingCreds(res, 'apollo', ['APOLLO_API_KEY']);
   try {
-    const email = String(req.body?.email || '').trim().toLowerCase();
-    if (!email || !email.includes('@')) return res.status(400).json({ ok:false, error:'valid email required' });
+    let raw = String(req.body?.domain || req.body?.email || '').trim().toLowerCase();
+    if (!raw) return res.status(400).json({ ok:false, error:'domain or email required' });
+    // Extract domain from email if needed; strip protocol + path from full URLs.
+    if (raw.includes('@')) raw = raw.split('@')[1];
+    raw = raw.replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/.*$/,'');
+    if (!raw.includes('.')) return res.status(400).json({ ok:false, error:'valid domain required' });
+
     try { _chargeBudget('apollo', req.ip); } catch (e) { if (_send429IfBudget(res, e)) return; throw e; }
-    const r = await fetch('https://api.apollo.io/api/v1/people/match', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json', 'X-Api-Key': key, 'Cache-Control':'no-cache' },
-      body: JSON.stringify({ email, reveal_personal_emails: false })
+    const r = await fetch(`https://api.apollo.io/api/v1/organizations/enrich?domain=${encodeURIComponent(raw)}`, {
+      method:'GET',
+      headers:{ 'X-Api-Key': key, 'Cache-Control':'no-cache', 'Accept':'application/json' }
     });
     if (!r.ok) {
       const body = await r.text();
       return res.status(r.status).json({ ok:false, error:`HTTP ${r.status}`, detail: body.slice(0, 500) });
     }
     const d = await r.json();
-    const p = d?.person || {};
+    const o = d?.organization || {};
     res.json({
       ok: true,
-      person: {
-        name:       p.name || [p.first_name, p.last_name].filter(Boolean).join(' ') || null,
-        firstName:  p.first_name || null,
-        lastName:   p.last_name  || null,
-        title:      p.title || null,
-        seniority:  p.seniority || null,
-        linkedIn:   p.linkedin_url || null,
-        twitter:    p.twitter_url || null,
-        github:     p.github_url || null,
-        photo:      p.photo_url || null,
-        city:       p.city || null,
-        country:    p.country || null,
-        company: p.organization ? {
-          name:    p.organization.name || null,
-          domain:  p.organization.website_url || p.organization.primary_domain || null,
-          industry:p.organization.industry || null,
-          size:    p.organization.estimated_num_employees || null,
-          founded: p.organization.founded_year || null,
-          logo:    p.organization.logo_url || null,
-        } : null,
+      domain: raw,
+      company: {
+        name:        o.name || null,
+        domain:      o.primary_domain || o.website_url || raw,
+        industry:    o.industry || null,
+        keywords:    o.keywords || [],
+        description: o.short_description || null,
+        size:        o.estimated_num_employees || null,
+        annualRevenue: o.annual_revenue_printed || null,
+        founded:     o.founded_year || null,
+        logo:        o.logo_url || null,
+        linkedIn:    o.linkedin_url || null,
+        twitter:     o.twitter_url || null,
+        facebook:    o.facebook_url || null,
+        phone:       o.sanitized_phone || o.phone || null,
+        address:     [o.street_address, o.city, o.state, o.country].filter(Boolean).join(', ') || null,
+        techStack:   o.technology_names || [],
       }
     });
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
