@@ -92,7 +92,9 @@ InfoGenie is an AI-powered marketing intelligence and campaign automation platfo
 
 ## User preferences
 
-*   _Populate as you build_
+*   Non-technical user — prefers plain language + execution over options.
+*   Every "Launch Campaign" registers the campaign in the AI Optimizer dashboard automatically. Without Meta/Google/TikTok creds, it lands as `platform_camp_id='local_<ts>'` so the user still sees it under Tracked Campaigns; once creds are connected the next launch uses the real platform id and the optimizer can ingest live data.
+*   Counter-Message modal exposes a 🚀 **Launch Now** button that takes the selected AI variant straight into the Campaign Launch Brief — pre-fills name/platform/description/seed creative + sets `window._counterTarget` so the Campaigns view shows the "Targeting: <competitor>" banner.
 
 ## Gotchas
 

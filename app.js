@@ -1571,6 +1571,44 @@ function buildLaunchModal(camp, idx) {
     document.getElementById('lm-view-results').addEventListener('click', () => { modal.classList.add('hidden'); modal.style.display = 'none'; navigateTo('results'); });
     showToast(`✅ Campaign "${finalName}" launched — tracking in Results`);
 
+    // ── Always register the campaign in the AI Optimizer dashboard ───────────
+    // Maps the user-selected platform name to one of meta|google|tiktok (the
+    // only platforms the optimizer can act on). When the real platform API
+    // call succeeds we re-register with the live platform_camp_id; when it
+    // fails (or when the user hasn't connected creds yet) the local_<ts> id
+    // ensures the campaign STILL appears in "Tracked Campaigns" so the user
+    // sees what they launched and can connect creds later.
+    const _trackedPlatform = platformKey.includes('google') ? 'google'
+                           : (platformKey.includes('meta') || platformKey.includes('facebook')) ? 'meta'
+                           : platformKey.includes('tiktok') ? 'tiktok'
+                           : null;
+    const _registerTracked = (campId) => {
+      if (!_trackedPlatform || !campId) return;
+      try {
+        const dailyBud = Math.max(1, Math.round((finalBudgetNum || 2000) / 30));
+        fetch('/api/optimizer/campaigns/upsert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            platform: _trackedPlatform,
+            platform_camp_id: String(campId),
+            name: finalName,
+            daily_budget: dailyBud,
+            target_roas: parseFloat(projROAS) || 2.0
+          })
+        }).catch(() => {});
+      } catch(_) {}
+    };
+    // Register the campaign with the optimizer dashboard EXACTLY ONCE:
+    //   • If no platform creds configured, register a local_<ts> placeholder
+    //     so the user still sees their campaign in Tracked Campaigns.
+    //   • If creds ARE configured, defer registration until the platform API
+    //     responds — use the real platform_camp_id on success, fall back to
+    //     local_<ts> on failure. This avoids a duplicate placeholder row.
+    //   (When the server route succeeds it ALSO upserts the real id, but
+    //   that's idempotent via ON CONFLICT (platform, platform_camp_id).)
+    const _localCampId = 'local_' + Date.now();
+
     // ── Call real ad platform API in the background ───────────────────────────
     if (isPlatformConnected) {
       const apiBody = JSON.stringify({ campaignName: finalName, budget: finalBudgetNum, startDate: finalDate, endDate: finalEndDate });
@@ -1580,6 +1618,12 @@ function buildLaunchModal(camp, idx) {
       fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: apiBody })
         .then(r => r.json())
         .then(apiResult => {
+          // Register with whichever id is real-or-fallback. Single row only.
+          if (apiResult && apiResult.success && apiResult.campaignId) {
+            _registerTracked(apiResult.campaignId);
+          } else {
+            _registerTracked(_localCampId);
+          }
           const statusEl = document.getElementById(apiStatusId);
           if (!statusEl) return; // user navigated away — that's fine
           if (apiResult.success) {
@@ -1617,7 +1661,15 @@ function buildLaunchModal(camp, idx) {
             }
           }
         })
-        .catch(() => {}); // silently fail — campaign is already in Results
+        .catch(() => {
+          // Network error reaching our own /api/launch/* endpoint — still
+          // register the local placeholder so the user sees the campaign.
+          _registerTracked(_localCampId);
+        });
+    } else {
+      // No platform credentials configured — register a local placeholder so
+      // the campaign appears under Tracked Campaigns regardless.
+      _registerTracked(_localCampId);
     }
   });
 
@@ -17068,6 +17120,9 @@ function openWLCounterModal(wlIdOrData) {
     if (first) _wlSelectVariant(first);
 
     document.getElementById('wlCounterFooter').innerHTML = `
+      <button class="btn-attack-activate" onclick="launchCounterAsCampaign('${wlId}', this)" style="background:linear-gradient(135deg,#0066FF,#00C9C8);" title="Open the Campaign Launch Brief pre-filled with this counter-message — pick budget + audience and push it live.">
+        🚀 Launch Now
+      </button>
       <button class="btn-attack-activate" onclick="publishCounterNow('${wlId}', this)" style="background:linear-gradient(135deg,#10B981,#059669);">
         ⚡ Post Now
       </button>
@@ -17246,6 +17301,96 @@ function publishCounterNow(wlId, btn) {
   }, 700);
 }
 
+// Takes the currently-selected counter-message variant and opens the full
+// Campaign Launch Brief pre-filled with it — so the user goes directly from
+// "I see a competitor winning" to "I'm launching a real ad against them" in
+// two clicks. Maps the W/L channel to a launchable ad platform (Meta / Google
+// Ads / TikTok); other channels default to Meta Ads.
+function launchCounterAsCampaign(wlId, btn) {
+  const w = (window._wlData || {})[wlId];
+  if (!w) { showToast('⚠️ No counter data found'); return; }
+
+  // Find the currently-selected variant (the user pre-selected the first).
+  let selectedVariant = null;
+  try {
+    const sel = document.querySelector('#wlCounterBody .wl-variant[data-selected="true"]');
+    if (sel && Array.isArray(w.aiVariants)) {
+      const idx = parseInt(sel.getAttribute('data-vidx'), 10);
+      if (!isNaN(idx) && w.aiVariants[idx]) selectedVariant = w.aiVariants[idx];
+    }
+  } catch(_) {}
+  if (!selectedVariant) { showToast('⚠️ Pick a variant first, then click Launch Now'); return; }
+
+  // Map the W/L "channel" to a launchable ad platform supported by the
+  // optimizer. Search/display channels can't be launched directly from the
+  // counter modal — fall back to Meta Ads (the broadest & easiest to set up).
+  const ch = (w.channel || '').toLowerCase();
+  const platform = ch.includes('google') || ch.includes('search') ? 'Google Ads'
+                 : ch.includes('tiktok')                          ? 'TikTok Ads'
+                 :                                                  'Meta Ads';
+
+  // SANITISE all user/AI-derived strings before they reach buildLaunchModal,
+  // which interpolates camp.name / camp.description / camp.tags / camp.objective
+  // straight into innerHTML. Competitor names + AI variant text can both be
+  // poisoned (scraped sites, prompt injection) so strip < > to defuse any
+  // <script> / <img onerror> sinks. Also caps length to keep the modal tidy.
+  const _safe = (s, max) => String(s == null ? '' : s).replace(/[<>]/g, '').slice(0, max || 200);
+  const safeComp     = _safe(w.comp, 80);
+  const safeWeakness = _safe(w.weakness, 200);
+  const safeChannel  = _safe(w.channel, 60);
+  const safeAngle    = _safe(selectedVariant.angle, 40) || 'Direct Response';
+  const safeHeadline = _safe(selectedVariant.headline, 200);
+  const safeBody     = _safe(selectedVariant.body, 600);
+  const safeCTA      = _safe(selectedVariant.cta, 60);
+
+  // Build a camp object that buildLaunchModal understands. The headline +
+  // body from the AI variant become the seed creative; the launcher's own
+  // GPT-4 brief call will then expand on it.
+  const camp = {
+    name:        `Counter ${safeComp} — ${safeAngle}`,
+    platform,
+    budget:      '$2,000/mo',
+    description: safeBody || `Counter-message vs. ${safeComp} on ${safeChannel}. Exploits weakness: ${safeWeakness}`,
+    objective:   'Counter-Position vs. ' + safeComp,
+    tags:        [platform, 'Counter-Campaign', safeComp],
+    estROAS:     '3.2',
+    estCTR:      '4.5%',
+    estCPA:      '$32',
+    // Hand the variant straight to the launcher so its GPT-4 brief can use
+    // the AI counter-message as the starting point.
+    seedHeadline: safeHeadline,
+    seedBody:     safeBody,
+    seedCTA:      safeCTA
+  };
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Opening launcher…';
+
+  // Stash the counter context so the campaigns page can show a "Targeting:"
+  // banner above the launch button. The campaigns view checks freshness via
+  // `Date.now() - _ct.at < 30*60*1000` so we MUST use the `at` key (not
+  // `expiresAt`) to match the existing reader at app.js ~5474.
+  window._counterTarget = {
+    name: safeComp,
+    weakness: safeWeakness,
+    message: _safe(w.message, 400),
+    counterAngle: safeAngle,
+    source: 'wl-counter',
+    at: Date.now()
+  };
+
+  closeAttackModal();
+  // Tiny delay so the close animation doesn't fight the open animation.
+  setTimeout(() => {
+    try {
+      buildLaunchModal(camp, 0);
+    } catch(e) {
+      console.error('[launchCounterAsCampaign] buildLaunchModal failed:', e);
+      showToast('⚠️ Couldn\'t open launcher: ' + (e && e.message || e));
+    }
+  }, 180);
+}
+
 // ── Expose Win/Loss counter helpers on window IMMEDIATELY (early), so even
 // if a later runtime error halts top-level script execution, these are still
 // callable from the inline onclick attribute on the rendered buttons. The
@@ -17254,6 +17399,7 @@ function publishCounterNow(wlId, btn) {
 try { window.openWLCounterModal  = openWLCounterModal;  } catch(e) {}
 try { window.queueCounterCampaign = queueCounterCampaign; } catch(e) {}
 try { window.publishCounterNow   = publishCounterNow;   } catch(e) {}
+try { window.launchCounterAsCampaign = launchCounterAsCampaign; } catch(e) {}
 try { window.closeAttackModal    = closeAttackModal;    } catch(e) {}
 try { window.openAttackModal     = openAttackModal;     } catch(e) {}
 
