@@ -9702,7 +9702,7 @@ function buildAiVisibility() {
               <button onclick="generateSchemaSnippet('${t}','${domain}')" style="padding:8px 4px;background:#F5F3FF;border:1px solid rgba(99,102,241,0.25);border-radius:8px;font-size:0.7rem;font-weight:700;color:#4338CA;cursor:pointer" onmouseover="this.style.background='#E0E7FF';this.style.borderColor='rgba(99,102,241,0.5)'" onmouseout="this.style.background='#F5F3FF';this.style.borderColor='rgba(99,102,241,0.25)'">${t}</button>`).join('')}
             </div>
             <div id="schemaOutput" style="flex:1;background:#0F172A;border-radius:10px;padding:12px 14px;font-size:0.62rem;font-family:monospace;color:#86EFAC;line-height:1.7;overflow-y:auto;max-height:200px;min-height:80px;white-space:pre-wrap;word-break:break-all">// Select a schema type above to generate\n// ready-to-paste JSON-LD for your website</div>
-            <button onclick="copySchemaOutput()" id="schemaCopyBtn" style="margin-top:10px;padding:9px;background:linear-gradient(135deg,#6366F1,#4338CA);border:none;border-radius:8px;font-size:0.73rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 3px 10px rgba(99,102,241,0.3)">📋 Copy to Clipboard</button>
+            <button onclick="copySchemaOutput()" id="schemaCopyBtn" style="margin-top:10px;padding:12px;background:#1E1B4B;background-image:none;border:2px solid #1E1B4B;border-radius:8px;font-size:0.85rem;font-weight:800;color:#FFFFFF;-webkit-text-fill-color:#FFFFFF;cursor:pointer;letter-spacing:.03em;text-shadow:0 1px 2px rgba(0,0,0,.5);box-shadow:0 4px 14px rgba(30,27,75,.4)">📋 Copy to Clipboard</button>
           </div>
         </div>
 
