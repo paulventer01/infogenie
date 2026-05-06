@@ -1615,12 +1615,21 @@ body {
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
-  background: white;
-  color: var(--gray-500);
+  background: #FFFFFF !important;
+  color: #334155 !important;
   font-family: 'Inter', sans-serif;
   transition: all 0.15s;
+  text-shadow: none !important;
+  -webkit-text-fill-color: #334155 !important;
 }
-.atp-pill.active { background: var(--navy); border-color: var(--navy); color: white; }
+.atp-pill.active,
+.atp-pill.active * {
+  background: var(--navy) !important;
+  border-color: var(--navy) !important;
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+  text-shadow: none !important;
+}
 .btn-activate-targeting {
   width: 100%;
   padding: 12px;
