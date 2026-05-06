@@ -9644,13 +9644,15 @@ function buildAiVisibility() {
           <div style="background:#FFFFFF;border:1px solid rgba(99,102,241,0.18);border-radius:14px;padding:18px;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(99,102,241,0.08)">
             <div style="font-size:1.5rem;margin-bottom:8px">${c.icon}</div>
             <div style="font-weight:800;font-size:0.88rem;color:#0F172A;margin-bottom:7px">${c.title}</div>
-            <div style="align-self:flex-start;background:linear-gradient(135deg,#6366F1,#4338CA);padding:5px 12px;border-radius:7px;font-size:0.66rem;font-weight:800;color:#FFFFFF;margin-bottom:10px;letter-spacing:.03em;box-shadow:0 2px 6px rgba(99,102,241,.35);text-shadow:0 1px 2px rgba(0,0,0,.25)">${c.cite}</div>
+            <!-- Stat pill: white bg + dark indigo text gives maximum contrast against the white card -->
+            <div style="align-self:flex-start;background:#FFFFFF;border:2px solid #4338CA;padding:4px 11px;border-radius:7px;font-size:0.7rem;font-weight:800;color:#312E81;margin-bottom:10px;letter-spacing:.02em;box-shadow:0 2px 6px rgba(99,102,241,.18)">${c.cite}</div>
             <div style="font-size:0.74rem;color:#475569;line-height:1.55;margin-bottom:12px;flex:1;font-weight:500">${c.desc}</div>
             <div style="background:#F5F3FF;border:1px solid rgba(99,102,241,0.15);border-radius:9px;padding:10px 12px;margin-bottom:14px">
               <div style="font-size:0.62rem;color:#4338CA;font-weight:800;margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">Key Elements</div>
               ${c.keys.map(k => `<div style="font-size:0.7rem;color:#1F2937;margin-bottom:4px;font-weight:500"><span style="color:#059669;font-weight:800">✓</span> ${k}</div>`).join('')}
             </div>
-            <button onclick="openAiContentBrief('${c.type}','${domain}','${industry}')" style="width:100%;padding:10px 0;background:linear-gradient(135deg,#6366F1,#4338CA);border:none;border-radius:9px;font-size:0.75rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 3px 10px rgba(99,102,241,0.3)">✨ Generate Brief →</button>
+            <!-- Brighter, more saturated indigo + larger bold white text + strong shadow for legibility -->
+            <button onclick="openAiContentBrief('${c.type}','${domain}','${industry}')" style="width:100%;padding:12px 0;background:linear-gradient(135deg,#4F46E5,#3730A3);border:none;border-radius:9px;font-size:0.85rem;font-weight:800;color:#FFFFFF;cursor:pointer;letter-spacing:.02em;text-shadow:0 1px 2px rgba(0,0,0,.4);box-shadow:0 4px 14px rgba(67,56,202,.45)">✨ Generate Brief →</button>
           </div>`).join('')}
         </div>
 
