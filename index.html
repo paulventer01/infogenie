@@ -223,7 +223,9 @@
       </p>
       <style>@keyframes heroPulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.85)}70%{box-shadow:0 0 0 8px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}</style>
       <script>
-        // v3 — hero pill stopwatch: 0 idle → counts up live during analysis → freezes at final duration
+        // v4 — hero pill stopwatch: counts UP live from click → freezes at final duration when dashboard appears.
+        // While running, the pill lifts above the loading overlay (z-index 10001 vs overlay's 9999) so the
+        // user can actually watch the seconds tick by until the dashboard is ready.
         (function(){
           function startTicker(){
             try {
@@ -231,7 +233,6 @@
               if (!el) { setTimeout(startTicker, 100); return; }
               const wrap = el.parentElement;
               if (!wrap) { setTimeout(startTicker, 100); return; }
-              // Find or create a dedicated label text node so we can update it safely
               let labelNode = null;
               for (const n of wrap.childNodes) {
                 if (n.nodeType === 3 && n.textContent.trim().length > 0) { labelNode = n; break; }
@@ -240,23 +241,33 @@
                 labelNode = document.createTextNode(' seconds');
                 wrap.appendChild(labelNode);
               }
+              // Snapshot the original inline styling so we can restore it after a run finishes.
+              const _origCss = wrap.getAttribute('style') || '';
+              // Eye-catching "live" styling — bigger, fixed top-center, on top of the loading overlay.
+              const _liveCss = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:10001;display:inline-flex;align-items:center;gap:9px;background:linear-gradient(135deg,#0066FF,#00D8D7);color:#FFFFFF;padding:10px 22px;border-radius:999px;font-weight:800;font-size:1.05rem;letter-spacing:.02em;box-shadow:0 8px 28px rgba(0,102,255,.45);font-variant-numeric:tabular-nums';
+              let _isLive = false;
               console.log('[hero-timer] ticker started');
               function tick(){
                 if (window._analysisStartedAt) {
+                  if (!_isLive) { wrap.setAttribute('style', _liveCss); _isLive = true; }
                   const elapsed = Math.floor((Date.now() - window._analysisStartedAt) / 1000);
                   el.textContent = String(elapsed);
-                  labelNode.textContent = elapsed === 1 ? ' second' : ' seconds';
-                } else if (window._lastRunDuration) {
-                  const whole = Math.round(window._lastRunDuration);
-                  el.textContent = String(whole);
-                  labelNode.textContent = whole === 1 ? ' sec — last run' : ' sec — last run';
+                  labelNode.textContent = elapsed === 1 ? ' second — analysing…' : ' seconds — analysing…';
                 } else {
-                  el.textContent = '0';
-                  labelNode.textContent = ' seconds';
+                  if (_isLive) { wrap.setAttribute('style', _origCss); _isLive = false; }
+                  if (window._lastRunDuration) {
+                    const whole = Math.round(window._lastRunDuration);
+                    el.textContent = String(whole);
+                    labelNode.textContent = ' sec — last run';
+                  } else {
+                    el.textContent = '0';
+                    labelNode.textContent = ' seconds';
+                  }
                 }
               }
               tick();
-              setInterval(tick, 250);
+              // 100ms tick gives a sub-second-feeling update without flooding the layout.
+              setInterval(tick, 100);
             } catch (e) {
               console.error('[hero-timer] error:', e);
               setTimeout(startTicker, 500);

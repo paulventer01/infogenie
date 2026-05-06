@@ -11,5 +11,39 @@
     "history": [],
     "sequence": [],
     "stepIdx": 0
+  },
+  {
+    "id": "drip_mou3d1xo_ajabge",
+    "email": "paul@suretrade.co.za",
+    "name": "",
+    "brand": "InfoGenie",
+    "sequence": [
+      {
+        "day": 0,
+        "channel": "email",
+        "label": "Re-engagement: curiosity",
+        "subject": "Have you seen what’s new, {{name}}?",
+        "msg": "We’ve been busy updating InfoGenie with fresh insights, tools, and resources you might love. Haven’t checked in for a while? Don’t worry—your account’s ready, and there’s a lot to discover when you return. The question is: what will surprise you today?"
+      }
+    ],
+    "_seqSig": "0|email|Re-engagement: curiosity",
+    "startedAt": 1778074019340,
+    "currentStep": 1,
+    "nextSendAt": 1778074019340,
+    "status": "completed",
+    "dryRun": false,
+    "appOrigin": "",
+    "history": [
+      {
+        "stepIndex": 0,
+        "label": "Re-engagement: curiosity",
+        "channel": "email",
+        "sentAt": 1778074019341,
+        "ok": false,
+        "error": "Resend 403: {\"statusCode\":403,\"message\":\"The suretrade.co.za domain is not verified. Please, add and verify your domain on https://resend.com/domains\",\"name\":\"validation_error\"}",
+        "failureType": "config"
+      }
+    ],
+    "completedAt": 1778074019341
   }
 ]

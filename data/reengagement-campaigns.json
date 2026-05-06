@@ -1,1 +1,30 @@
-[]
+[
+  {
+    "id": "rec_mou3d1xl_0ipi5l",
+    "segment": "dormant subscribers (30+ days inactive)",
+    "tone": "warm-and-curious",
+    "brand": "InfoGenie",
+    "variant": {
+      "angle": "curiosity",
+      "subject": "Have you seen what’s new, {{name}}?",
+      "preheader": "There’s something intriguing waiting for you inside InfoGenie.",
+      "body": "We’ve been busy updating InfoGenie with fresh insights, tools, and resources you might love. Haven’t checked in for a while? Don’t worry—your account’s ready, and there’s a lot to discover when you return. The question is: what will surprise you today?",
+      "cta": "See what’s new"
+    },
+    "emailCount": 1,
+    "dryRun": false,
+    "createdAt": 1778074019337,
+    "enrollment": {
+      "ok": true,
+      "enrolled": 1,
+      "skipped": [],
+      "created": [
+        {
+          "id": "drip_mou3d1xo_ajabge",
+          "email": "paul@suretrade.co.za"
+        }
+      ]
+    },
+    "enrollmentError": null
+  }
+]
