@@ -8547,7 +8547,7 @@ app.post('/api/builtwith/lookup', async (req, res) => {
       ok: true,
       domain,
       tier: 'free',
-      note: 'Free tier returns category counts only. Upgrade to Domain API for actual technology names.',
+      note: 'Showing category-level counts. For specific tool names per category, a paid BuiltWith plan is required.',
       firstSeen: d?.first ? new Date(d.first).toISOString().slice(0,10) : null,
       lastSeen:  d?.last  ? new Date(d.last ).toISOString().slice(0,10) : null,
       totalLiveTechnologies: totalLive,
