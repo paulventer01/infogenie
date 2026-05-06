@@ -8398,14 +8398,34 @@ function _slackOrDiscordKind(url) {
   if (url.includes('discordapp.com/api/webhooks'))return 'discord';
   return 'slack'; // default — most webhooks accept Slack payload shape
 }
+// Allowlist of webhook hosts we will deliver to. Prevents SSRF / misconfig.
+const _CHAT_WEBHOOK_HOSTS = new Set(['hooks.slack.com', 'discord.com', 'discordapp.com']);
 async function _sendChatWebhook(text, opts = {}) {
   const url = process.env.SLACK_WEBHOOK_URL;
   if (!url) throw new Error('SLACK_WEBHOOK_URL not configured');
+  // Parse + enforce HTTPS + allowlist host before any network call.
+  let parsed;
+  try { parsed = new URL(url); } catch { throw new Error('SLACK_WEBHOOK_URL is not a valid URL'); }
+  if (parsed.protocol !== 'https:') throw new Error('SLACK_WEBHOOK_URL must use https');
+  if (!_CHAT_WEBHOOK_HOSTS.has(parsed.hostname)) {
+    throw new Error(`SLACK_WEBHOOK_URL host not allowed: ${parsed.hostname}`);
+  }
+  // DNS + private-IP guard reuses the codebase's hardened SSRF helper.
+  const safety = await _isUrlSafeToFetch(url);
+  if (!safety.ok) throw new Error(`webhook URL rejected: ${safety.reason}`);
+
   const kind = _slackOrDiscordKind(url);
   const payload = (kind === 'discord')
     ? { content: text.slice(0, 1900), username: opts.username || 'InfoGenie' }
     : { text, username: opts.username || 'InfoGenie', icon_emoji: opts.icon || ':robot_face:' };
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    redirect: 'manual',                       // refuse cross-host redirects
+    signal: AbortSignal.timeout(8000),        // hard 8s ceiling
+  });
+  if (r.status >= 300 && r.status < 400) throw new Error(`webhook redirected (${r.status}) — refused`);
   if (!r.ok) throw new Error(`webhook HTTP ${r.status}`);
   return { ok:true, kind };
 }
@@ -8415,6 +8435,7 @@ app.get('/api/slack/status', (_req, res) => {
     missing: ok ? [] : ['SLACK_WEBHOOK_URL'] });
 });
 app.post('/api/slack/send', async (req, res) => {
+  if (!process.env.SLACK_WEBHOOK_URL) return _missingCreds(res, 'slack', ['SLACK_WEBHOOK_URL']);
   try {
     const text = String(req.body?.text || '').trim();
     if (!text) return res.status(400).json({ ok:false, error:'text required' });

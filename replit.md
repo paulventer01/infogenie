@@ -17,6 +17,9 @@ InfoGenie is an AI-powered marketing intelligence and campaign automation platfo
     *   `INFOGENIE_API_KEY` (for API authentication in production)
     *   `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_TOKEN`
     *   `DATABASE_URL` (for Postgres)
+    *   `SLACK_WEBHOOK_URL` (auto-detects Slack vs Discord from URL)
+    *   `APOLLO_API_KEY` (Organizations Enrich endpoint — free tier)
+    *   `BUILTWITH_API_KEY` (free1 endpoint — category counts only)
 
 ## Stack
 
