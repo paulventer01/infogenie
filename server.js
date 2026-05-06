@@ -8500,14 +8500,39 @@ app.post('/api/builtwith/lookup', async (req, res) => {
       return res.status(r.status).json({ ok:false, error:`HTTP ${r.status}`, detail: body.slice(0, 500) });
     }
     const d = await r.json();
-    // BuiltWith free API returns groups[].categories[].technologies[]. Flatten
-    // for easier consumption by the frontend.
+    // BuiltWith free1 returns aggregate COUNTS per group/category, not tech
+    // names (those require a paid plan). Reshape into a flat, sorted list of
+    // active categories so the frontend can display "what they're using".
     const groups = d?.groups || [];
-    const techs = [];
-    for (const g of groups) for (const c of (g.categories || [])) for (const t of (c.live || [])) {
-      techs.push({ category: c.name || g.name || '', name: t.Name || t.name, premium: !!t.Premium });
+    const categories = [];
+    let totalLive = 0;
+    for (const g of groups) {
+      for (const c of (g.categories || [])) {
+        const live = Number(c.live || 0);
+        if (live > 0) {
+          totalLive += live;
+          categories.push({
+            group: g.name || '',
+            category: c.name || '',
+            live,
+            dead: Number(c.dead || 0),
+            latest: c.latest ? new Date(c.latest).toISOString().slice(0,10) : null,
+          });
+        }
+      }
     }
-    res.json({ ok:true, domain, count: techs.length, technologies: techs, groups });
+    categories.sort((a,b) => b.live - a.live);
+    res.json({
+      ok: true,
+      domain,
+      tier: 'free',
+      note: 'Free tier returns category counts only. Upgrade to Domain API for actual technology names.',
+      firstSeen: d?.first ? new Date(d.first).toISOString().slice(0,10) : null,
+      lastSeen:  d?.last  ? new Date(d.last ).toISOString().slice(0,10) : null,
+      totalLiveTechnologies: totalLive,
+      categoryCount: categories.length,
+      categories,
+    });
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
 });
 
