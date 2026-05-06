@@ -223,25 +223,35 @@
       <style>@keyframes heroPulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.85)}70%{box-shadow:0 0 0 8px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}</style>
       <script>
         (function(){
-          const el = document.getElementById('heroCountdownNum');
-          if (!el) return;
-          let n = 60;
-          setInterval(() => {
-            // If an analysis is running, show live elapsed seconds counting UP from 0; otherwise loop 60→1
-            if (window._analysisStartedAt) {
-              const elapsed = Math.floor((Date.now() - window._analysisStartedAt) / 1000);
-              el.textContent = elapsed;
-              el.parentElement.lastChild.textContent = elapsed === 1 ? ' second' : ' seconds';
-            } else if (window._lastRunDuration) {
-              const whole = Math.round(window._lastRunDuration);
-              el.textContent = whole;
-              el.parentElement.lastChild.textContent = whole === 1 ? ' sec last run' : ' sec last run';
-            } else {
-              n = n <= 1 ? 60 : n - 1;
-              el.textContent = n;
-              el.parentElement.lastChild.textContent = ' seconds';
+          function startTicker(){
+            const el = document.getElementById('heroCountdownNum');
+            if (!el) { setTimeout(startTicker, 50); return; }
+            const labelNode = el.parentElement.lastChild;
+            function tick(){
+              if (window._analysisStartedAt) {
+                // Analysis running — count UP live from 0
+                const elapsed = Math.floor((Date.now() - window._analysisStartedAt) / 1000);
+                el.textContent = elapsed;
+                if (labelNode) labelNode.textContent = elapsed === 1 ? ' second' : ' seconds';
+              } else if (window._lastRunDuration) {
+                // After a run — freeze at the final duration
+                const whole = Math.round(window._lastRunDuration);
+                el.textContent = whole;
+                if (labelNode) labelNode.textContent = whole === 1 ? ' sec last run' : ' sec last run';
+              } else {
+                // Idle — sit at 0 and wait for Analyse Now
+                el.textContent = '0';
+                if (labelNode) labelNode.textContent = ' seconds';
+              }
             }
-          }, 1000);
+            tick();
+            setInterval(tick, 250);
+          }
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startTicker);
+          } else {
+            startTicker();
+          }
         })();
       </script>
 
