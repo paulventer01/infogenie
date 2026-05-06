@@ -9751,7 +9751,10 @@ function buildAiVisibility() {
             <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📈 Citation-to-Traffic Attribution <span style="display:inline-flex;align-items:center;gap:4px;background:#DCFCE7;color:#15803D;padding:2px 8px;border-radius:6px;font-size:0.62rem;font-weight:800;margin-left:6px"><span style="width:6px;height:6px;background:#10B981;border-radius:50%"></span>CONNECTED · AMPLITUDE</span></div>
             <div style="font-size:0.72rem;color:#6B7280;margin-top:4px">Live Amplitude data · last ${at.windowDays || 30} days · ${totalAi.toLocaleString()} AI-referred sessions of ${totalSess.toLocaleString()} total</div>
           </div>
-          <div style="text-align:right"><div style="font-size:1.4rem;font-weight:800;color:${at.aiShare>=5?'#10B981':at.aiShare>=1?'#F59E0B':'#DC2626'}">${at.aiShare}%</div><div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">AI traffic share</div></div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="text-align:right"><div style="font-size:1.4rem;font-weight:800;color:${at.aiShare>=5?'#10B981':at.aiShare>=1?'#F59E0B':'#DC2626'}">${at.aiShare}%</div><div style="font-size:0.62rem;color:#9CA3AF;font-weight:600;text-transform:uppercase;letter-spacing:.06em">AI traffic share</div></div>
+            <button id="aivisAttribToggleBtn" onclick="(function(b){var body=document.getElementById('aivisAttribBody');if(!body)return;var open=body.style.display!=='none';body.style.display=open?'none':'block';b.textContent=open?'👁 View':'▲ Hide';})(this)" style="padding:9px 16px;background:#1E1B4B;background-image:none;border:2px solid #1E1B4B;border-radius:8px;font-size:0.78rem;font-weight:800;color:#FFFFFF;-webkit-text-fill-color:#FFFFFF;cursor:pointer;letter-spacing:.03em;text-shadow:0 1px 2px rgba(0,0,0,.5);box-shadow:0 3px 10px rgba(30,27,75,.35)">👁 View</button>
+          </div>
         </div>`;
 
       let bodyHtml = '';
@@ -9791,7 +9794,7 @@ function buildAiVisibility() {
           <div style="height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${((s.sessions||0)/maxAi)*100}%;background:linear-gradient(90deg,#7C3AED,#4338CA);border-radius:4px"></div></div>
         </div>`).join('');
       }
-      card.innerHTML = `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">${headerHtml}${bodyHtml}</div>`;
+      card.innerHTML = `<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.04)">${headerHtml}<div id="aivisAttribBody" style="display:none">${bodyHtml}</div></div>`;
     }
     wrap.appendChild(card);
 
