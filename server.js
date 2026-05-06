@@ -8411,18 +8411,20 @@ const _db = require('./db');
 // crons: hourly Insights ingest and 6-hourly rule evaluation. All optimizer
 // work is dry-run by default (logs decisions but does NOT call platform APIs)
 // until the user explicitly toggles `dryRun=false` from the dashboard.
-const _optimizerSchema = require('./services/optimizer/schema');
-const _optimizerIngest = require('./services/optimizer/ingest');
-const _optimizerRules  = require('./services/optimizer/rules');
-const _optimizerRouter = require('./services/optimizer/api');
+const _optimizerSchema   = require('./services/optimizer/schema');
+const _optimizerIngest   = require('./services/optimizer/ingest');
+const _optimizerRules    = require('./services/optimizer/rules');
+const _optimizerCreative = require('./services/optimizer/creative_refresh');
+const _optimizerRouter   = require('./services/optimizer/api');
 app.use('/api/optimizer', _optimizerRouter);
 (async () => {
   try {
     if (_db.hasDb()) {
       await _optimizerSchema.ensureOptimizerSchema();
-      _optimizerIngest.startIngestCron(60);     // every 60 min
-      _optimizerRules.startOptimizerCron(6);    // every 6 hours
-      console.log('[optimizer] schema ready, ingest=60m, rules=6h, dry-run=default');
+      _optimizerIngest.startIngestCron(60);              // every 60 min
+      _optimizerRules.startOptimizerCron(6);             // every 6 hours
+      _optimizerCreative.startCreativeRefreshCron(24);   // every 24h (Phase 8)
+      console.log('[optimizer] schema ready, ingest=60m, rules=6h, creative-refresh=24h, dry-run=default');
     } else {
       console.log('[optimizer] disabled — DATABASE_URL not set');
     }

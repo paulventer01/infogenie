@@ -61,6 +61,52 @@ async function ensureOptimizerSchema() {
       value       JSONB NOT NULL,
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+
+    -- ── Phase 8: 72h Creative Auto-Refresh ──────────────────────────────────
+    -- Tracks individual ads (under a campaign) so we can rotate creative when
+    -- it goes stale. Each row is one Meta/Google/TikTok ad object.
+    CREATE TABLE IF NOT EXISTS ad_creatives (
+      id              SERIAL PRIMARY KEY,
+      campaign_id     INTEGER NOT NULL REFERENCES ad_campaigns(id) ON DELETE CASCADE,
+      platform_ad_id  TEXT NOT NULL,
+      adset_id        TEXT,
+      headline        TEXT,
+      body            TEXT,
+      image_hash      TEXT,
+      image_url       TEXT,
+      cta             TEXT,
+      link_url        TEXT,
+      status          TEXT DEFAULT 'active',
+      generation      INTEGER DEFAULT 1,
+      parent_ad_id    TEXT,
+      first_seen_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+      paused_at       TIMESTAMPTZ,
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (campaign_id, platform_ad_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ad_creatives_camp ON ad_creatives(campaign_id);
+
+    -- Audit log of every creative-refresh decision (generated copy/image,
+    -- whether it was uploaded, which old ad got paused).
+    CREATE TABLE IF NOT EXISTS creative_refreshes (
+      id              BIGSERIAL PRIMARY KEY,
+      campaign_id     INTEGER REFERENCES ad_campaigns(id) ON DELETE CASCADE,
+      old_ad_id       TEXT,
+      old_headline    TEXT,
+      old_body        TEXT,
+      new_ad_id       TEXT,
+      new_headline    TEXT,
+      new_body        TEXT,
+      new_image_url   TEXT,
+      reason          TEXT,
+      perf_snapshot   JSONB,
+      applied         BOOLEAN DEFAULT false,
+      apply_error     TEXT,
+      run_id          TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_creative_refresh_camp_time
+      ON creative_refreshes(campaign_id, created_at DESC);
   `);
   return true;
 }

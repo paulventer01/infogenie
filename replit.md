@@ -67,7 +67,8 @@ InfoGenie is an AI-powered marketing intelligence and campaign automation platfo
 *   **Tables**: `ad_campaigns`, `ad_performance_hourly`, `optimizer_actions`, `optimizer_settings` (created by `services/optimizer/schema.js` at boot).
 *   **Modules**: `services/optimizer/{schema,platforms,ingest,rules,api}.js`. Crons started in `server.js` after kv_store init.
 *   **Endpoints**: `GET /api/optimizer/status|campaigns|actions`, `POST /api/optimizer/{enable,target,dry-run,run-now,campaigns/upsert}`, `DELETE /api/optimizer/campaigns/:id`.
-*   **Out of scope (next phases)**: multi-armed bandit at ad-set level (Phase 7), 72-hour creative auto-refresh via GPT-4o + image gen (Phase 8).
+*   **Phase 8 — 72h Creative Auto-Refresh (live)**: Every 24h scans all enabled Meta campaigns; ads >72h old that have spent ≥$25 in 72h with CTR <0.5% OR ROAS <0.5×target are flagged. GPT-4o-mini writes a fresh angle (headline ≤40 chars, body ≤125 chars, CTA), gpt-image-1 generates a new 1024×1024 image, both uploaded to Meta as a NEW PAUSED ad in the same ad set, the old ad is paused. Logged to `creative_refreshes`. Dry-run default — generates copy+image but skips upload until user opts in. Newly-created ads are ALWAYS paused regardless of mode (human approves before activation). Tables: `ad_creatives`, `creative_refreshes`. Module: `services/optimizer/creative_refresh.js`. Endpoints: `GET /api/optimizer/creative-refreshes|creative-refresh/status`, `POST /api/optimizer/creative-refresh/{toggle,dry-run,run-now}`. Meta only — Google/TikTok creative upload deferred.
+*   **Out of scope (next)**: multi-armed bandit at ad-set level (Phase 7), creative refresh for Google/TikTok.
 
 ## Architecture decisions
 

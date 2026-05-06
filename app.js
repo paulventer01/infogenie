@@ -31341,3 +31341,98 @@ window.optimizerDeleteCampaign = async function(id, name) {
   showToast('🗑 Removed from optimizer');
   renderOptimizerDashboard();
 };
+
+// ========================================================================
+// Phase 8 — Creative Auto-Refresh UI section
+// Wraps the existing renderOptimizerDashboard to also append the Creative
+// Refresh card + decisions log without touching its internals.
+// ========================================================================
+(function () {
+  const _origRender = window.renderOptimizerDashboard;
+  if (!_origRender) return;
+  window.renderOptimizerDashboard = async function () {
+    await _origRender();
+    const wrap = document.getElementById('optimizerWrap');
+    if (!wrap) return;
+    const section = document.createElement('div');
+    section.id = 'creativeRefreshSection';
+    section.innerHTML = `<div style="text-align:center;padding:30px;color:#6B7280">Loading creative refresh status…</div>`;
+    wrap.appendChild(section);
+    try {
+      const [stR, rfR] = await Promise.all([
+        fetch('/api/optimizer/creative-refresh/status').then(r => r.json()),
+        fetch('/api/optimizer/creative-refreshes?limit=20').then(r => r.json()),
+      ]);
+      const refreshes = rfR.refreshes || [];
+      const dryBadge = stR.dryRun
+        ? `<span style="background:#FEF3C7;color:#92400E;padding:4px 11px;border-radius:14px;font-size:0.72rem;font-weight:700">DRY-RUN — generating only</span>`
+        : `<span style="background:#D1FAE5;color:#065F46;padding:4px 11px;border-radius:14px;font-size:0.72rem;font-weight:700">LIVE — uploading new ads (PAUSED) to Meta</span>`;
+      const enBadge = stR.enabled
+        ? `<span style="background:#D1FAE5;color:#065F46;padding:4px 11px;border-radius:14px;font-size:0.72rem;font-weight:700">● Enabled</span>`
+        : `<span style="background:#F3F4F6;color:#6B7280;padding:4px 11px;border-radius:14px;font-size:0.72rem;font-weight:700">○ Disabled</span>`;
+      section.innerHTML = `
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px 22px;margin-top:18px">
+          <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div>
+              <h3 style="margin:0 0 4px;font-size:1.05rem;color:#0A1628">🎨 72-Hour Creative Auto-Refresh <span style="font-size:0.72rem;color:#6B7280;font-weight:500">— Meta only</span></h3>
+              <div style="display:flex;gap:8px;margin-top:4px">${enBadge}${dryBadge}</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button onclick="creativeRefreshToggleEnabled(${!stR.enabled})" style="padding:9px 14px;background:${stR.enabled?'#FFFFFF':'linear-gradient(135deg,#10B981,#059669)'};color:${stR.enabled?'#374151':'white'};border:1px solid ${stR.enabled?'#D1D5DB':'transparent'};border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">${stR.enabled?'⏸ Disable':'▶ Enable'}</button>
+              <button onclick="creativeRefreshToggleDryRun(${!stR.dryRun})" style="padding:9px 14px;background:${stR.dryRun?'linear-gradient(135deg,#0066FF,#00C9C8)':'#FFFFFF'};color:${stR.dryRun?'white':'#374151'};border:1px solid ${stR.dryRun?'transparent':'#D1D5DB'};border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">${stR.dryRun?'⚡ Switch to LIVE':'🛑 Back to dry-run'}</button>
+              <button onclick="creativeRefreshRunNow()" style="padding:9px 14px;background:linear-gradient(135deg,#7C3AED,#EC4899);color:white;border:none;border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">🔄 Run refresh now</button>
+            </div>
+          </div>
+          <p style="margin:0 0 14px;color:#6B7280;font-size:0.82rem;line-height:1.55">
+            Every 24h, scans active ads under enabled Meta campaigns. Any ad >72h old that has spent ≥$25 with CTR &lt;0.5% or ROAS &lt;50% of target gets a <strong>fresh GPT-4o headline + body + new gpt-image-1 visual</strong>, uploaded to Meta as a <strong>PAUSED</strong> ad in the same ad set (so you approve before it spends). The old ad is paused. New ads stay paused regardless of mode — humans always approve before activation.
+          </p>
+          ${refreshes.length === 0
+            ? `<div style="padding:30px;text-align:center;color:#6B7280;background:#F9FAFB;border-radius:10px">No refreshes yet. The cron runs every 24h, or click "Run refresh now" above. Needs at least one Meta campaign with the optimizer ON and ads >72h old that are underperforming.</div>`
+            : `<div style="display:flex;flex-direction:column;gap:10px">${refreshes.map(r => {
+                const tag   = r.applied ? '<span style="color:#059669;font-size:0.7rem;font-weight:700;margin-left:8px">UPLOADED</span>' : (r.apply_error ? '<span style="color:#DC2626;font-size:0.7rem;font-weight:700;margin-left:8px">FAILED</span>' : '<span style="color:#92400E;font-size:0.7rem;font-weight:700;margin-left:8px">GENERATED ONLY</span>');
+                const color = r.applied ? '#7C3AED' : (r.apply_error ? '#DC2626' : '#F59E0B');
+                const when  = new Date(r.created_at).toLocaleString();
+                const perf  = r.perf_snapshot || {};
+                const imgPreview = (r.new_image_url && !r.new_image_url.startsWith('data:'))
+                  ? `<img src="${r.new_image_url}" style="width:80px;height:80px;border-radius:8px;object-fit:cover;border:1px solid #E5E7EB">`
+                  : `<div style="width:80px;height:80px;border-radius:8px;background:#F3F4F6;display:flex;align-items:center;justify-content:center;font-size:1.6rem">🎨</div>`;
+                return `<div style="display:flex;gap:14px;padding:14px;border-left:3px solid ${color};background:#FAFBFC;border-radius:8px">
+                  ${imgPreview}
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:0.85rem;color:#0A1628"><strong>${r.campaign_name || 'Campaign'}</strong> <span style="color:#6B7280;font-size:0.74rem">(${r.platform || 'meta'})</span>${tag}</div>
+                    <div style="font-size:0.78rem;color:#4B5563;margin-top:6px"><strong>New headline:</strong> ${r.new_headline || '(none)'}</div>
+                    <div style="font-size:0.78rem;color:#4B5563;margin-top:2px"><strong>New body:</strong> ${r.new_body || '(none)'}</div>
+                    ${r.old_headline ? `<div style="font-size:0.74rem;color:#9CA3AF;margin-top:4px;text-decoration:line-through">Old: ${r.old_headline}</div>` : ''}
+                    <div style="font-size:0.74rem;color:#6B7280;margin-top:4px">${r.reason || ''}</div>
+                    ${(perf.spend || perf.ctr) ? `<div style="font-size:0.72rem;color:#9CA3AF;margin-top:3px">Old ad 72h: $${(perf.spend||0).toFixed(2)} spend · CTR ${((perf.ctr||0)*100).toFixed(2)}% · ROAS ${(perf.roas||0).toFixed(2)}×</div>` : ''}
+                    ${r.apply_error ? `<div style="font-size:0.74rem;color:#DC2626;margin-top:4px">⚠ ${r.apply_error}</div>` : ''}
+                    <div style="font-size:0.7rem;color:#9CA3AF;margin-top:6px">${when}</div>
+                  </div>
+                </div>`;
+              }).join('')}</div>`}
+        </div>
+      `;
+    } catch (e) {
+      section.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:14px;border-radius:10px;margin-top:18px">Failed to load creative refresh: ${e.message}</div>`;
+    }
+  };
+})();
+
+window.creativeRefreshToggleEnabled = async function(enabled) {
+  await fetch('/api/optimizer/creative-refresh/toggle', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({enabled}) });
+  showToast(enabled ? '✅ Creative auto-refresh enabled' : '⏸ Creative auto-refresh disabled');
+  renderOptimizerDashboard();
+};
+window.creativeRefreshToggleDryRun = async function(toLive) {
+  if (toLive && !confirm('Switch creative refresh to LIVE? Generated copy + images will be uploaded to your Meta ad account as NEW ads (always created PAUSED so you approve before they spend), and the old underperforming ads will be paused. You can review every new ad in Meta Ads Manager before unpausing.')) return;
+  await fetch('/api/optimizer/creative-refresh/dry-run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({dryRun: !toLive}) });
+  showToast(toLive ? '⚡ Creative refresh is now LIVE (new ads still created paused)' : '🛑 Creative refresh back in dry-run');
+  renderOptimizerDashboard();
+};
+window.creativeRefreshRunNow = async function() {
+  showToast('⏳ Scanning ads + generating fresh creative — this may take 30-60 seconds…');
+  const r = await fetch('/api/optimizer/creative-refresh/run-now', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' }).then(x=>x.json());
+  const s = r.run || {};
+  showToast(`✅ Done — scanned ${s.scanned||0}, refreshed ${s.refreshed||0}, errors ${s.errors||0}`);
+  renderOptimizerDashboard();
+};

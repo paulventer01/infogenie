@@ -5,6 +5,7 @@ const { ingestOnce } = require('./ingest');
 const { runOptimizerOnce } = require('./rules');
 const { getSetting, setSetting } = require('./schema');
 const { platformConnected } = require('./platforms');
+const { runCreativeRefreshOnce } = require('./creative_refresh');
 
 const router = express.Router();
 
@@ -136,6 +137,44 @@ router.post('/run-now', async (_req, res) => {
   const ing = await ingestOnce();
   const opt = await runOptimizerOnce();
   res.json({ ok: true, ingest: ing, optimizer: opt });
+});
+
+// ── Phase 8: Creative Auto-Refresh ─────────────────────────────────────────
+router.get('/creative-refreshes', async (req, res) => {
+  if (!_db.hasDb()) return res.json({ ok: false, refreshes: [] });
+  const n = parseInt(req.query.limit, 10);
+  const limit = Math.min(Number.isFinite(n) && n > 0 ? n : 30, 200);
+  const r = await _db.getPool().query(`
+    SELECT cr.*, c.name AS campaign_name, c.platform
+    FROM creative_refreshes cr LEFT JOIN ad_campaigns c ON c.id = cr.campaign_id
+    ORDER BY cr.created_at DESC LIMIT $1
+  `, [limit]);
+  res.json({ ok: true, refreshes: r.rows });
+});
+
+router.get('/creative-refresh/status', async (_req, res) => {
+  const enabled = await getSetting('creative_refresh_enabled', { v: true });
+  const dryRun  = await getSetting('creative_refresh_dry_run', { v: true });
+  res.json({ ok: true, enabled: !!enabled.v, dryRun: !!dryRun.v });
+});
+
+router.post('/creative-refresh/toggle', express.json(), async (req, res) => {
+  const v = !!(req.body && req.body.enabled);
+  await setSetting('creative_refresh_enabled', { v });
+  res.json({ ok: true, enabled: v });
+});
+
+router.post('/creative-refresh/dry-run', express.json(), async (req, res) => {
+  const v = !!(req.body && req.body.dryRun);
+  await setSetting('creative_refresh_dry_run', { v });
+  res.json({ ok: true, dryRun: v });
+});
+
+router.post('/creative-refresh/run-now', express.json(), async (_req, res) => {
+  // force=true so it runs even if the user-facing "enabled" toggle is off,
+  // but it still respects the current dry-run setting unless overridden.
+  const r = await runCreativeRefreshOnce({ force: true });
+  res.json({ ok: true, run: r });
 });
 
 router.delete('/campaigns/:id', async (req, res) => {
