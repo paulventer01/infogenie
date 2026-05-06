@@ -9776,17 +9776,32 @@ function buildAiVisibility() {
             ${(at.sessions || []).map(s => `<span style="display:inline-flex;align-items:center;gap:5px;background:#F1F5F9;color:#475569;padding:5px 11px;border-radius:99px;font-size:0.7rem;font-weight:600"><span style="width:6px;height:6px;background:#CBD5E1;border-radius:50%"></span>${s.label}</span>`).join('')}
           </div>`;
       } else if (totalAi === 0) {
-        // (2) Tracking sessions but no AI referrals yet
+        // (2) Tracking sessions but no AI referrals yet — but still render the live
+        //     per-source breakdown so the user can see the real data Amplitude returned
+        //     (even if every source is currently 0). Includes a refresh-now button.
+        const checkedAt = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
         bodyHtml = `
           <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:14px 16px;margin-bottom:14px">
             <div style="font-size:0.82rem;font-weight:800;color:#1E3A8A;margin-bottom:4px">📡 Tracking ${totalSess.toLocaleString()} sessions — no AI referral traffic yet</div>
-            <div style="font-size:0.72rem;color:#1E3A8A;opacity:.8;line-height:1.55">Amplitude is collecting data, but none of your visitors in the last ${at.windowDays || 30} days had an AI source as their <code style="background:rgba(0,0,0,.05);padding:1px 5px;border-radius:4px">referring_domain</code>. As ChatGPT, Perplexity, Gemini, Claude or Copilot start citing your domain, those sessions will appear here automatically — usually within hours of your first AI-cited mention.</div>
+            <div style="font-size:0.72rem;color:#1E3A8A;opacity:.8;line-height:1.55">Amplitude is collecting data, but none of your visitors in the last ${at.windowDays || 30} days had an AI source as their <code style="background:rgba(0,0,0,.05);padding:1px 5px;border-radius:4px">referring_domain</code>. The live counts below are pulled directly from Amplitude — as ChatGPT, Perplexity, Gemini, Claude or Copilot start citing your domain, those numbers will tick up automatically within hours.</div>
           </div>
-          <div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Watching these AI sources</div>
-          ${(at.sessions || []).map(s => `<div style="margin-bottom:9px">
-            <div style="display:flex;justify-content:space-between;font-size:0.74rem;margin-bottom:4px"><span style="font-weight:700;color:#0A1628">${s.label}</span><span style="font-weight:800;color:#94A3B8">—</span></div>
-            <div style="height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden"></div>
-          </div>`).join('')}`;
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap">
+            <div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.05em">Watching these AI sources <span style="display:inline-flex;align-items:center;gap:4px;background:#DCFCE7;color:#15803D;padding:2px 7px;border-radius:5px;font-size:0.58rem;margin-left:6px"><span style="width:5px;height:5px;background:#10B981;border-radius:50%;animation:pulse 1.4s infinite"></span>LIVE · last checked ${checkedAt}</span></div>
+            <button onclick="(async function(b){b.disabled=true;var orig=b.textContent;b.textContent='⏳ Refreshing…';b.style.opacity='.7';try{var dom=(window._currentAnalysis&&window._currentAnalysis.url||'').replace(/https?:\\/\\//,'').split('/')[0]||'yourdomain.com';var r=await fetch('/api/ai-visibility-attribution',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:dom})});var j=await r.json();if(j&&j.ok){window._aiVisAttribution=j;if(typeof buildAiVisibility==='function')buildAiVisibility();}}catch(e){alert('Refresh failed: '+e.message);}finally{b.disabled=false;b.textContent=orig;b.style.opacity='1';}})(this)" style="padding:7px 14px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:8px;font-size:0.72rem;font-weight:800;color:#FFFFFF;-webkit-text-fill-color:#FFFFFF;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5);box-shadow:0 2px 8px rgba(30,27,75,.3)">🔄 Refresh now</button>
+          </div>
+          ${(at.sessions || []).map(s => {
+            const sess = Number(s.sessions || 0);
+            const dot = sess > 0 ? '#10B981' : '#CBD5E1';
+            const label = sess > 0 ? `${sess.toLocaleString()} sessions` : '0 sessions · live';
+            const labelColor = sess > 0 ? '#0A1628' : '#64748B';
+            return `<div style="margin-bottom:9px;padding:9px 12px;background:#FAFAFA;border:1px solid #F1F5F9;border-radius:8px">
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.74rem;margin-bottom:5px">
+                <span style="display:flex;align-items:center;gap:7px;font-weight:700;color:#0A1628"><span style="width:7px;height:7px;background:${dot};border-radius:50%"></span>${s.label}</span>
+                <span style="font-weight:800;color:${labelColor};font-variant-numeric:tabular-nums">${label}</span>
+              </div>
+              <div style="height:6px;background:#F3F4F6;border-radius:3px;overflow:hidden"><div style="height:100%;width:${sess>0?Math.min(100,(sess/Math.max(1,totalSess))*100):0}%;background:linear-gradient(90deg,#7C3AED,#4338CA);border-radius:3px"></div></div>
+            </div>`;
+          }).join('')}`;
       } else {
         // (3) Live AI sessions — render the breakdown bars
         bodyHtml = (at.sessions || []).map(s => `<div style="margin-bottom:9px">
