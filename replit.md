@@ -59,6 +59,16 @@ InfoGenie is an AI-powered marketing intelligence and campaign automation platfo
     *   `scripts/build_user_manual.js`: Generates the user manual PDF.
     *   `scripts/capture_screenshots.js`: Captures screenshots for the user manual.
 
+## AI Campaign Optimizer (Phase 1 — live)
+
+*   **What it does**: Hourly Insights ingest from connected ad platforms, stored in Postgres. Every 6 hours a rule-based optimizer evaluates each tracked campaign on its rolling 7-day metrics and decides PAUSE / SCALE BUDGET / HOLD. All decisions logged to `optimizer_actions`.
+*   **Dry-run by default**: Decisions are LOGGED ONLY until the user flips the switch in the AI Optimizer dashboard (Manage → 🤖 AI Optimizer). LIVE mode then calls the platform APIs (Meta apply implemented; Google/TikTok apply read-only this phase).
+*   **Auto-registration**: `/api/launch/{meta,google-ads,tiktok}` upsert into `ad_campaigns` so anything launched from the brief is immediately trackable.
+*   **Tables**: `ad_campaigns`, `ad_performance_hourly`, `optimizer_actions`, `optimizer_settings` (created by `services/optimizer/schema.js` at boot).
+*   **Modules**: `services/optimizer/{schema,platforms,ingest,rules,api}.js`. Crons started in `server.js` after kv_store init.
+*   **Endpoints**: `GET /api/optimizer/status|campaigns|actions`, `POST /api/optimizer/{enable,target,dry-run,run-now,campaigns/upsert}`, `DELETE /api/optimizer/campaigns/:id`.
+*   **Out of scope (next phases)**: multi-armed bandit at ad-set level (Phase 7), 72-hour creative auto-refresh via GPT-4o + image gen (Phase 8).
+
 ## Architecture decisions
 
 *   **Dual-AI Attack Plan**: For key analyses (`/api/ai-attack-plan`), GPT-4o and Claude run in parallel. Their outputs are synthesized by a third GPT-4o call for a robust, blended intelligence.

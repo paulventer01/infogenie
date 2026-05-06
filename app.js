@@ -2555,6 +2555,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'results') {
     try { buildResults(); } catch(e) { console.warn('buildResults error:', e); }
   }
+  if (viewId === 'optimizer') {
+    try { renderOptimizerDashboard(); } catch(e) { console.warn('renderOptimizerDashboard error:', e); }
+  }
   if (viewId === 'advertise') {
     try { buildAdvertise(); } catch(e) { console.warn('buildAdvertise error:', e); }
   }
@@ -31201,3 +31204,140 @@ function showAdPlatformSetup(key) {
     </div>
   `;
 }
+
+// ========================================================================
+// AI OPTIMIZER DASHBOARD — Phase 1 (ingest + rule-based)
+// ========================================================================
+async function renderOptimizerDashboard() {
+  const wrap = document.getElementById('optimizerWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `<div style="text-align:center;padding:60px;color:#6B7280">Loading optimizer status…</div>`;
+  try {
+    const [statusR, campsR, actionsR] = await Promise.all([
+      fetch('/api/optimizer/status').then(r => r.json()),
+      fetch('/api/optimizer/campaigns').then(r => r.json()),
+      fetch('/api/optimizer/actions?limit=50').then(r => r.json()),
+    ]);
+    if (!statusR.ok) {
+      wrap.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:18px;border-radius:12px"><strong>Optimizer unavailable.</strong> ${statusR.error || 'Database not configured.'}</div>`;
+      return;
+    }
+    const camps   = campsR.campaigns || [];
+    const actions = actionsR.actions || [];
+    const dryBadge = statusR.dryRun
+      ? `<span style="background:#FEF3C7;color:#92400E;padding:4px 11px;border-radius:14px;font-size:0.72rem;font-weight:700">DRY-RUN — logging only</span>`
+      : `<span style="background:#D1FAE5;color:#065F46;padding:4px 11px;border-radius:14px;font-size:0.72rem;font-weight:700">LIVE — applying to ad platforms</span>`;
+
+    const platChip = (n, on) => `<span style="display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:14px;font-size:0.74rem;font-weight:700;background:${on?'#D1FAE5':'#F3F4F6'};color:${on?'#065F46':'#6B7280'}">${on?'●':'○'} ${n}</span>`;
+
+    wrap.innerHTML = `
+      <!-- Status strip -->
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px 22px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:18px;align-items:center;justify-content:space-between">
+        <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center">
+          <div><div style="font-size:0.72rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Mode</div><div style="margin-top:4px">${dryBadge}</div></div>
+          <div><div style="font-size:0.72rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Tracked</div><div style="font-size:1.25rem;font-weight:800;color:#0A1628;margin-top:2px">${statusR.campaigns?.n || 0}</div></div>
+          <div><div style="font-size:0.72rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Optimizer ON</div><div style="font-size:1.25rem;font-weight:800;color:#0A1628;margin-top:2px">${statusR.campaigns?.enabled || 0}</div></div>
+          <div><div style="font-size:0.72rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Decisions 24h</div><div style="font-size:1.25rem;font-weight:800;color:#0A1628;margin-top:2px">${statusR.actionsLast24h || 0}</div></div>
+          <div><div style="font-size:0.72rem;color:#6B7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Platforms</div><div style="margin-top:4px;display:flex;gap:6px">${platChip('Meta', statusR.platforms.meta)}${platChip('Google', statusR.platforms.google)}${platChip('TikTok', statusR.platforms.tiktok)}</div></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="optimizerToggleDryRun(${!statusR.dryRun})" style="padding:9px 16px;background:${statusR.dryRun?'linear-gradient(135deg,#10B981,#059669)':'#FFFFFF'};color:${statusR.dryRun?'white':'#374151'};border:1px solid ${statusR.dryRun?'transparent':'#D1D5DB'};border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">${statusR.dryRun?'⚡ Switch to LIVE':'🛑 Back to dry-run'}</button>
+          <button onclick="optimizerRunNow()" style="padding:9px 16px;background:linear-gradient(135deg,#0066FF,#00C9C8);color:white;border:none;border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">▶ Run optimizer now</button>
+        </div>
+      </div>
+
+      <!-- Tracked campaigns -->
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px 22px;margin-bottom:18px">
+        <h3 style="margin:0 0 14px;font-size:1.05rem;color:#0A1628">📡 Tracked Campaigns (${camps.length})</h3>
+        ${camps.length === 0
+          ? `<div style="padding:36px;text-align:center;color:#6B7280;background:#F9FAFB;border-radius:10px">No campaigns yet. Launch a campaign from the <a href="#" onclick="navigateTo('campaigns');return false;" style="color:#0066FF;font-weight:600">Create</a> page (with Meta/Google/TikTok credentials connected) and it will appear here automatically.</div>`
+          : `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+              <thead><tr style="border-bottom:2px solid #E5E7EB;color:#6B7280;font-size:0.72rem;text-transform:uppercase;letter-spacing:.04em">
+                <th style="text-align:left;padding:10px 8px">Campaign</th><th style="text-align:left;padding:10px 8px">Platform</th>
+                <th style="text-align:right;padding:10px 8px">7d Spend</th><th style="text-align:right;padding:10px 8px">7d ROAS</th>
+                <th style="text-align:right;padding:10px 8px">Target ROAS</th><th style="text-align:right;padding:10px 8px">Daily Budget</th>
+                <th style="text-align:center;padding:10px 8px">Optimizer</th><th></th>
+              </tr></thead>
+              <tbody>${camps.map(c => {
+                const p = c.perf7d || {};
+                const spend = parseFloat(p.spend || 0), rev = parseFloat(p.revenue || 0);
+                const roas  = spend > 0 ? (rev/spend).toFixed(2) : '—';
+                const roasColor = (roas !== '—' && parseFloat(roas) >= parseFloat(c.target_roas)) ? '#059669' : (roas === '—' ? '#9CA3AF' : '#DC2626');
+                return `<tr style="border-bottom:1px solid #F3F4F6">
+                  <td style="padding:11px 8px;font-weight:600;color:#0A1628">${c.name}</td>
+                  <td style="padding:11px 8px;color:#6B7280;text-transform:capitalize">${c.platform}</td>
+                  <td style="padding:11px 8px;text-align:right;color:#0A1628;font-weight:600">$${spend.toFixed(2)}</td>
+                  <td style="padding:11px 8px;text-align:right;font-weight:800;color:${roasColor}">${roas}${roas!=='—'?'×':''}</td>
+                  <td style="padding:11px 8px;text-align:right">
+                    <input type="number" step="0.1" value="${c.target_roas}" onchange="optimizerSetTarget(${c.id}, this.value)"
+                      style="width:64px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.78rem;text-align:right">×
+                  </td>
+                  <td style="padding:11px 8px;text-align:right;color:#0A1628">$${parseFloat(c.daily_budget || 0).toFixed(2)}</td>
+                  <td style="padding:11px 8px;text-align:center">
+                    <label style="display:inline-flex;align-items:center;cursor:pointer">
+                      <input type="checkbox" ${c.optimizer_enabled?'checked':''} onchange="optimizerToggle(${c.id}, this.checked)" style="cursor:pointer;width:16px;height:16px">
+                    </label>
+                  </td>
+                  <td style="padding:11px 8px;text-align:right">
+                    <button onclick="optimizerDeleteCampaign(${c.id}, '${(c.name||'').replace(/'/g,'')}')" title="Stop tracking" style="background:transparent;border:none;color:#9CA3AF;cursor:pointer;font-size:0.95rem">🗑</button>
+                  </td>
+                </tr>`;
+              }).join('')}</tbody>
+            </table></div>`}
+      </div>
+
+      <!-- Decisions log -->
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px 22px">
+        <h3 style="margin:0 0 14px;font-size:1.05rem;color:#0A1628">📜 Optimizer Decisions Log</h3>
+        ${actions.length === 0
+          ? `<div style="padding:30px;text-align:center;color:#6B7280;background:#F9FAFB;border-radius:10px">No decisions yet. The optimizer runs every 6 hours, or click "Run optimizer now" above.</div>`
+          : `<div style="display:flex;flex-direction:column;gap:8px">${actions.map(a => {
+              const color = a.action_type==='pause' ? '#DC2626' : a.action_type==='scale_budget' ? '#059669' : a.action_type==='hold' ? '#6B7280' : '#F59E0B';
+              const icon  = a.action_type==='pause' ? '⏸' : a.action_type==='scale_budget' ? '📈' : a.action_type==='hold' ? '✓' : '⚠';
+              const when  = new Date(a.created_at).toLocaleString();
+              const tag   = a.applied ? '<span style="color:#059669;font-size:0.7rem;font-weight:700;margin-left:8px">APPLIED</span>' : '<span style="color:#92400E;font-size:0.7rem;font-weight:700;margin-left:8px">LOGGED</span>';
+              return `<div style="display:flex;gap:12px;padding:11px 14px;border-left:3px solid ${color};background:#FAFBFC;border-radius:6px">
+                <div style="font-size:1.2rem">${icon}</div>
+                <div style="flex:1">
+                  <div style="font-size:0.82rem;color:#0A1628"><strong>${a.action_type.replace(/_/g,' ')}</strong> · ${a.campaign_name || '?'} <span style="color:#6B7280;font-size:0.74rem">(${a.platform || '?'})</span>${tag}</div>
+                  <div style="font-size:0.78rem;color:#4B5563;margin-top:3px">${a.reason || ''}</div>
+                  ${a.apply_error ? `<div style="font-size:0.74rem;color:#DC2626;margin-top:3px">⚠ ${a.apply_error}</div>` : ''}
+                  <div style="font-size:0.7rem;color:#9CA3AF;margin-top:4px">${when}</div>
+                </div>
+              </div>`;
+            }).join('')}</div>`}
+      </div>
+    `;
+  } catch (e) {
+    wrap.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:18px;border-radius:12px"><strong>Failed to load optimizer.</strong> ${e.message}</div>`;
+  }
+}
+
+window.renderOptimizerDashboard = renderOptimizerDashboard;
+window.optimizerToggle = async function(id, enabled) {
+  await fetch('/api/optimizer/enable', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id, enabled}) });
+  showToast(enabled ? '✅ Optimizer enabled for this campaign' : '⏸ Optimizer disabled');
+  renderOptimizerDashboard();
+};
+window.optimizerSetTarget = async function(id, target_roas) {
+  await fetch('/api/optimizer/target', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id, target_roas: parseFloat(target_roas)}) });
+  showToast('✅ Target ROAS updated');
+};
+window.optimizerToggleDryRun = async function(toLive) {
+  if (toLive && !confirm('Switch to LIVE mode? The optimizer will start calling Meta/Google/TikTok APIs to PAUSE campaigns and CHANGE BUDGETS based on its rules. This affects real ad spend.')) return;
+  await fetch('/api/optimizer/dry-run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({dryRun: !toLive}) });
+  showToast(toLive ? '⚡ Optimizer is now LIVE' : '🛑 Optimizer back in dry-run');
+  renderOptimizerDashboard();
+};
+window.optimizerRunNow = async function() {
+  showToast('⏳ Running optimizer — may take a few seconds…');
+  const r = await fetch('/api/optimizer/run-now', { method:'POST' }).then(x=>x.json());
+  showToast(`✅ Done — evaluated ${r.optimizer?.evaluated || 0} campaign(s)`);
+  renderOptimizerDashboard();
+};
+window.optimizerDeleteCampaign = async function(id, name) {
+  if (!confirm(`Stop tracking "${name}"? This removes it from the optimizer (does not affect the platform).`)) return;
+  await fetch('/api/optimizer/campaigns/' + id, { method:'DELETE' });
+  showToast('🗑 Removed from optimizer');
+  renderOptimizerDashboard();
+};

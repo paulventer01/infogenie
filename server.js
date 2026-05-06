@@ -372,6 +372,15 @@ app.post('/api/launch/google-ads', async (req, res) => {
     if (!campData.results) throw new Error('Campaign creation failed: ' + JSON.stringify(campData));
     const campaignId = campData.results[0].resourceName.split('/').pop();
 
+    // Register with optimizer (best-effort)
+    try {
+      const dailyBud = (parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30;
+      await _db.getPool().query(`
+        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status)
+        VALUES ('google', $1, $2, $3, 'paused')
+        ON CONFLICT (platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
+      `, [String(campaignId), campaignName, dailyBud]);
+    } catch (_e) {}
     res.json({
       success: true, platform: 'Google Ads', campaignId, status: 'PAUSED',
       message: `Campaign "${campaignName}" created in Google Ads (ID: ${campaignId}). It's paused — activate it in your Google Ads dashboard.`,
@@ -415,6 +424,14 @@ app.post('/api/launch/meta', async (req, res) => {
     if (campData.error) throw new Error(campData.error.message || 'Meta API error');
     if (!campData.id)   throw new Error('No campaign ID returned from Meta');
 
+    try {
+      const dailyBud = (parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30;
+      await _db.getPool().query(`
+        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status)
+        VALUES ('meta', $1, $2, $3, 'paused')
+        ON CONFLICT (platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
+      `, [String(campData.id), campaignName, dailyBud]);
+    } catch (_e) {}
     res.json({
       success: true, platform: 'Meta Ads', campaignId: campData.id, status: 'PAUSED',
       message: `Campaign "${campaignName}" created in Meta Ads Manager (ID: ${campData.id}). Add an Ad Set and Ads in Business Manager to go live.`,
@@ -454,6 +471,14 @@ app.post('/api/launch/tiktok', async (req, res) => {
     if (campData.code !== 0) throw new Error(campData.message || 'TikTok error code ' + campData.code);
     const campaignId = campData.data && campData.data.campaign_id;
 
+    try {
+      const dailyBud = Math.max((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30, 50);
+      await _db.getPool().query(`
+        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status)
+        VALUES ('tiktok', $1, $2, $3, 'paused')
+        ON CONFLICT (platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
+      `, [String(campaignId), campaignName, dailyBud]);
+    } catch (_e) {}
     res.json({
       success: true, platform: 'TikTok Ads', campaignId, status: 'DISABLED',
       message: `Campaign "${campaignName}" created in TikTok Ads Manager (ID: ${campaignId}). Enable it and add an Ad Group in TikTok Business Center.`,
@@ -8379,6 +8404,29 @@ const _db = require('./db');
       console.log('[db] DATABASE_URL not set — file persistence only');
     }
   } catch (e) { console.error('[db] init failed:', e.message); }
+})();
+
+// ── Autonomous Campaign Optimizer (Phase 1: ingest + rule-based) ──────────────
+// Boots the optimizer schema, mounts /api/optimizer routes, and starts two
+// crons: hourly Insights ingest and 6-hourly rule evaluation. All optimizer
+// work is dry-run by default (logs decisions but does NOT call platform APIs)
+// until the user explicitly toggles `dryRun=false` from the dashboard.
+const _optimizerSchema = require('./services/optimizer/schema');
+const _optimizerIngest = require('./services/optimizer/ingest');
+const _optimizerRules  = require('./services/optimizer/rules');
+const _optimizerRouter = require('./services/optimizer/api');
+app.use('/api/optimizer', _optimizerRouter);
+(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _optimizerSchema.ensureOptimizerSchema();
+      _optimizerIngest.startIngestCron(60);     // every 60 min
+      _optimizerRules.startOptimizerCron(6);    // every 6 hours
+      console.log('[optimizer] schema ready, ingest=60m, rules=6h, dry-run=default');
+    } else {
+      console.log('[optimizer] disabled — DATABASE_URL not set');
+    }
+  } catch (e) { console.error('[optimizer] init failed:', e.message); }
 })();
 
 // Cloudflare Workers AI status ping (used by frontend to show provider state).
