@@ -8602,6 +8602,25 @@ app.use('/api/video-script', _videoScriptRouter);
   }
 } catch (e) { console.warn('[tier18] schema init failed:', e.message); }})();
 
+// ── Tier 19 ────────────────────────────────────────────────────────────────
+const _chatbotSchema = require('./services/chatbot_builder/schema');
+const _chatbotRouter = require('./services/chatbot_builder/api');
+const _glassdoorSchema = require('./services/glassdoor_sentiment/schema');
+const _glassdoorRouter = require('./services/glassdoor_sentiment/api');
+const _quoraSchema = require('./services/quora_mining/schema');
+const _quoraRouter = require('./services/quora_mining/api');
+app.use('/api/chatbot', _chatbotRouter);
+app.use('/api/glassdoor', _glassdoorRouter);
+app.use('/api/quora-mining', _quoraRouter);
+(async () => { try {
+  if (process.env.DATABASE_URL) {
+    await _chatbotSchema.ensureChatbotBuilderSchema();
+    await _glassdoorSchema.ensureGlassdoorSentimentSchema();
+    await _quoraSchema.ensureQuoraMiningSchema();
+    console.log('[tier19] chatbot-builder + glassdoor-sentiment + quora-mining schemas ready');
+  }
+} catch (e) { console.warn('[tier19] schema init failed:', e.message); }})();
+
 // ── Tier 17 ────────────────────────────────────────────────────────────────
 const _redditRouter = require('./services/reddit_pulse/api');
 const _redditSchema = require('./services/reddit_pulse/schema');

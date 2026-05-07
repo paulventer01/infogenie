@@ -2677,6 +2677,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'twitter-pulse')        { try { buildTwitterPulse(); }         catch(e) { console.warn('buildTwitterPulse error:', e); } }
   if (viewId === 'job-board-spy')        { try { buildJobBoardSpy(); }          catch(e) { console.warn('buildJobBoardSpy error:', e); } }
   if (viewId === 'video-script')         { try { buildVideoScript(); }          catch(e) { console.warn('buildVideoScript error:', e); } }
+  if (viewId === 'chatbot-builder')      { try { buildChatbotBuilder(); }       catch(e) { console.warn('buildChatbotBuilder error:', e); } }
+  if (viewId === 'glassdoor')            { try { buildGlassdoor(); }            catch(e) { console.warn('buildGlassdoor error:', e); } }
+  if (viewId === 'quora-mining')         { try { buildQuoraMining(); }          catch(e) { console.warn('buildQuoraMining error:', e); } }
   if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
@@ -36904,6 +36907,192 @@ window.buildVideoScript = function() {
         </div>
         <div style="font-size:0.78rem;color:#6B7280">${(s.hashtags||[]).map(h => `<span style="background:#F3F4F6;padding:2px 8px;border-radius:10px;margin-right:4px;color:#0066FF;font-weight:700">${_escapeHtml(h)}</span>`).join('')}</div>
       </div>`).join('')}</div>`;
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};
+
+// ============================================================================
+// TIER 19-A — Chatbot Builder
+// ============================================================================
+window.buildChatbotBuilder = function() {
+  const wrap = document.getElementById('cbWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND NAME *</label><input id="cbBrand" placeholder="e.g. Acme Inc" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">AUDIENCE</label><input id="cbAud" placeholder="e.g. small-business owners" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+      </div>
+      <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">PRODUCT / SERVICE DESCRIPTION</label>
+      <textarea id="cbDesc" rows="3" placeholder="e.g. We sell AI-powered marketing intelligence software starting at $99/month. Self-serve signup, 14-day free trial. Integrates with HubSpot and Salesforce." style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box;margin-bottom:10px"></textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">TONE</label><select id="cbTone" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+          <option value="friendly">Friendly</option><option value="professional">Professional</option><option value="playful">Playful</option><option value="concise">Concise</option><option value="enthusiastic">Enthusiastic</option>
+        </select></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">ACCENT COLOR</label><input id="cbAccent" type="color" value="#6366F1" style="width:100%;padding:3px;border:1px solid #D1D5DB;border-radius:5px;height:34px;box-sizing:border-box"></div>
+      </div>
+      <button id="cbGo" style="background:linear-gradient(135deg,#6366F1,#8B5CF6);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">💬 Generate Chatbot</button>
+    </div>
+    <div id="cbOut"></div>
+  `;
+  document.getElementById('cbGo').addEventListener('click', async () => {
+    const brand = document.getElementById('cbBrand').value.trim();
+    const description = document.getElementById('cbDesc').value.trim();
+    const audience = document.getElementById('cbAud').value.trim();
+    const tone = document.getElementById('cbTone').value;
+    const accent = document.getElementById('cbAccent').value;
+    const out = document.getElementById('cbOut');
+    if (!brand) { out.innerHTML = '<div style="color:#991B1B">⚠ Brand required</div>'; return; }
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ GPT-4o-mini drafting greeting + FAQ + lead-capture (10-20s)…</div>';
+    try {
+      const r = await fetch('/api/chatbot/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, description, audience, tone, accent }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      const safeAccent = /^#[0-9a-f]{3,8}$/i.test(r.accent || '') ? r.accent : '#6366F1';
+      const embedSnippet = `<!-- ${brand.replace(/[<>]/g,'')} chatbot -->
+<div id="ig-chatbot-${_n(r.id) || 0}" data-brand="${brand.replace(/"/g,'&quot;')}"></div>
+<script>
+(function(){
+  var cfg = ${JSON.stringify({id:_n(r.id), greeting:r.greeting, faq:r.faq, fallback:r.fallback, lead_fields:r.lead_fields, accent:safeAccent}, null, 2)};
+  // TODO: wire cfg into your chatbot frontend (Tidio, Crisp, Intercom, or custom).
+  console.log('${brand.replace(/'/g,"\\'")} chatbot config loaded:', cfg);
+})();
+<\/script>`;
+      out.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+          <div>
+            <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;border-left:4px solid ${safeAccent}">
+              <div style="background:${safeAccent};color:#fff;padding:12px 16px;font-weight:800">💬 ${_escapeHtml(r.brand)} <span style="opacity:.8;font-weight:500;font-size:0.8rem">· Live preview</span></div>
+              <div style="padding:14px 16px;background:#F9FAFB;font-size:0.85rem;color:#0A1628;border-bottom:1px solid #F3F4F6"><strong>Bot:</strong> ${_escapeHtml(r.greeting)}</div>
+              <div style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid #F3F4F6">${(r.quick_replies||[]).map(q => `<span style="background:#fff;border:1px solid ${safeAccent};color:${safeAccent};padding:4px 10px;border-radius:14px;font-size:0.74rem;font-weight:700">${_escapeHtml(q)}</span>`).join('')}</div>
+              <div style="max-height:340px;overflow-y:auto">${(r.faq||[]).map(f => `<div style="padding:10px 16px;border-bottom:1px solid #F3F4F6">
+                <div style="font-size:0.72rem;color:#6B7280;font-weight:700;text-transform:uppercase;margin-bottom:3px">${_escapeHtml(f.kind)}</div>
+                <div style="font-size:0.84rem;font-weight:700;color:#0A1628;margin-bottom:4px">Q: ${_escapeHtml(f.q)}</div>
+                <div style="font-size:0.8rem;color:#374151;line-height:1.5">A: ${_escapeHtml(f.a)}</div>
+              </div>`).join('')}</div>
+              <div style="padding:12px 16px;background:#F9FAFB;font-size:0.78rem;color:#6B7280;font-style:italic">Fallback: ${_escapeHtml(r.fallback)}</div>
+            </div>
+          </div>
+          <div>
+            <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px;margin-bottom:14px">
+              <h3 style="margin:0 0 8px;font-size:0.92rem;color:#0A1628">📝 Lead-capture fields</h3>
+              ${(r.lead_fields||[]).map(lf => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #F3F4F6;font-size:0.82rem"><span><strong>${_escapeHtml(lf.label)}</strong> <code style="background:#F3F4F6;padding:1px 6px;border-radius:4px;font-size:0.72rem;color:#6B7280">${_escapeHtml(lf.key)}</code></span>${lf.required ? '<span style="color:#DC2626;font-weight:700;font-size:0.72rem">REQUIRED</span>' : '<span style="color:#9CA3AF;font-size:0.72rem">optional</span>'}</div>`).join('')}
+            </div>
+            <div style="background:#0A1628;border-radius:12px;padding:14px;color:#E5E7EB">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h3 style="margin:0;font-size:0.92rem;color:#fff">📋 Embed snippet</h3><button id="cbCopy" style="background:${safeAccent};color:#fff;border:none;padding:5px 12px;border-radius:5px;font-size:0.74rem;font-weight:700;cursor:pointer">📋 Copy</button></div>
+              <pre id="cbCode" style="background:#1F2937;padding:10px;border-radius:6px;font-size:0.7rem;color:#A7F3D0;overflow:auto;max-height:280px;margin:0;white-space:pre-wrap;word-break:break-word">${_escapeHtml(embedSnippet)}</pre>
+            </div>
+          </div>
+        </div>`;
+      const copyBtn = document.getElementById('cbCopy');
+      if (copyBtn) copyBtn.addEventListener('click', () => {
+        const codeEl = document.getElementById('cbCode');
+        if (codeEl && navigator.clipboard) navigator.clipboard.writeText(codeEl.textContent || '').then(() => { copyBtn.textContent = '✓ Copied'; setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 1800); });
+      });
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};
+
+// ============================================================================
+// TIER 19-B — Glassdoor Sentiment
+// ============================================================================
+window.buildGlassdoor = function() {
+  const wrap = document.getElementById('gdWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:3fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">COMPANY *</label><input id="gdCo" placeholder="e.g. Salesforce" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+        <div style="display:flex;align-items:flex-end"><button id="gdGo" style="width:100%;background:linear-gradient(135deg,#0E9F6E,#14B8A6);color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">🏢 Scan Glassdoor</button></div>
+      </div>
+    </div>
+    <div id="gdOut"></div>
+  `;
+  document.getElementById('gdGo').addEventListener('click', async () => {
+    const company = document.getElementById('gdCo').value.trim();
+    const out = document.getElementById('gdOut');
+    if (!company) { out.innerHTML = '<div style="color:#991B1B">⚠ Company required</div>'; return; }
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Searching Glassdoor (20-40s)…</div>';
+    try {
+      const r = await fetch('/api/glassdoor/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ company }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      const sentColor = { positive:['#ECFDF5','#065F46'], neutral:['#F3F4F6','#374151'], negative:['#FEF2F2','#991B1B'] };
+      const ratingNum = _f(r.overall_rating);
+      const ratingPct = ratingNum ? Math.min(100, Math.max(0, (ratingNum/5)*100)) : 0;
+      out.innerHTML = `
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px 20px;margin-bottom:14px">
+          <h3 style="margin:0 0 12px;color:#0A1628">🏢 ${_escapeHtml(r.company)}</h3>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;text-align:center">
+            <div><div style="font-size:1.6rem;font-weight:800;color:#0E9F6E">${ratingNum ? ratingNum.toFixed(1) : '—'}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">OVERALL ⭐</div><div style="background:#E5E7EB;height:5px;border-radius:3px;margin-top:6px;overflow:hidden"><div style="background:#0E9F6E;height:100%;width:${ratingPct}%"></div></div></div>
+            <div><div style="font-size:1.6rem;font-weight:800;color:#0066FF">${_n(r.ceo_approval) || '—'}${r.ceo_approval != null ? '%' : ''}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">CEO APPROVAL</div></div>
+            <div><div style="font-size:1.6rem;font-weight:800;color:#7C3AED">${_n(r.recommend_pct) || '—'}${r.recommend_pct != null ? '%' : ''}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">RECOMMEND</div></div>
+            <div><div style="font-size:1.6rem;font-weight:800;color:#374151">${_n(r.total_reviews) || '—'}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">REVIEWS</div></div>
+          </div>
+        </div>
+        ${(r.culture_signals||[]).length ? `<div style="background:linear-gradient(135deg,#F3E8FF,#FAE8FF);border-radius:12px;padding:16px 20px;margin-bottom:14px;border-left:4px solid #7C3AED">
+          <h3 style="margin:0 0 8px;color:#5B21B6;font-size:0.96rem">🎯 Culture Signals (Strategic)</h3>
+          <ul style="margin:0;padding-left:22px;color:#0A1628;font-size:0.85rem;line-height:1.65">${(r.culture_signals||[]).map(s => `<li style="margin-bottom:4px">${_escapeHtml(s)}</li>`).join('')}</ul>
+        </div>` : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+          <div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:12px;padding:14px"><h4 style="margin:0 0 8px;color:#065F46">👍 Top Praises</h4><ul style="margin:0;padding-left:20px;color:#065F46;font-size:0.82rem;line-height:1.6">${(r.top_praises||[]).map(t => `<li>${_escapeHtml(t)}</li>`).join('') || '<li><em>None</em></li>'}</ul></div>
+          <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:14px"><h4 style="margin:0 0 8px;color:#991B1B">👎 Top Complaints</h4><ul style="margin:0;padding-left:20px;color:#991B1B;font-size:0.82rem;line-height:1.6">${(r.top_complaints||[]).map(t => `<li>${_escapeHtml(t)}</li>`).join('') || '<li><em>None</em></li>'}</ul></div>
+        </div>
+        <h3 style="color:#0A1628;font-size:1rem;margin:16px 0 10px">💬 Recent Reviews (${(r.reviews||[]).length})</h3>
+        <div style="display:grid;gap:10px">${(r.reviews||[]).map(rev => {
+          const sk = (rev.sentiment||'neutral').toLowerCase();
+          const c = sentColor[sk] || sentColor.neutral;
+          return `<div style="background:${c[0]};border:1px solid #E5E7EB;border-left:4px solid ${c[1]};border-radius:8px;padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:6px;align-items:start">
+              <div><strong style="color:#0A1628;font-size:0.9rem">${_escapeHtml(rev.title||'(no title)')}</strong> <span style="color:#6B7280;font-size:0.74rem">· ${_escapeHtml(rev.role||'')} · ${_escapeHtml(rev.tenure||'')}</span></div>
+              <div style="white-space:nowrap"><span style="font-weight:800;color:${c[1]}">${_f(rev.rating) ? _f(rev.rating).toFixed(1)+'⭐' : ''}</span> <span style="color:#9CA3AF;font-size:0.72rem;margin-left:6px">${_escapeHtml(rev.date||'')}</span></div>
+            </div>
+            ${rev.pros ? `<div style="font-size:0.8rem;color:#065F46;margin-top:4px"><strong>Pros:</strong> ${_escapeHtml(rev.pros)}</div>` : ''}
+            ${rev.cons ? `<div style="font-size:0.8rem;color:#991B1B;margin-top:4px"><strong>Cons:</strong> ${_escapeHtml(rev.cons)}</div>` : ''}
+          </div>`;
+        }).join('')}</div>`;
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};
+
+// ============================================================================
+// TIER 19-C — Quora Mining
+// ============================================================================
+window.buildQuoraMining = function() {
+  const wrap = document.getElementById('qmWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">TOPIC *</label><input id="qmTopic" placeholder="e.g. CRM software for small business" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">YOUR BRAND (opt.)</label><input id="qmBrand" placeholder="e.g. HubSpot" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+        <div style="display:flex;align-items:flex-end"><button id="qmGo" style="width:100%;background:linear-gradient(135deg,#B92B27,#DC2626);color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">❓ Mine Quora</button></div>
+      </div>
+    </div>
+    <div id="qmOut"></div>
+  `;
+  document.getElementById('qmGo').addEventListener('click', async () => {
+    const topic = document.getElementById('qmTopic').value.trim();
+    const brand = document.getElementById('qmBrand').value.trim();
+    const out = document.getElementById('qmOut');
+    if (!topic) { out.innerHTML = '<div style="color:#991B1B">⚠ Topic required</div>'; return; }
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Searching Quora (20-40s)…</div>';
+    try {
+      const r = await fetch('/api/quora-mining/mine', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ topic, brand }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      const intentColor = { informational:'#0066FF', comparison:'#7C3AED', recommendation:'#EC4899', complaint:'#DC2626', 'how-to':'#0E9F6E', definition:'#F59E0B' };
+      out.innerHTML = `
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px 18px;margin-bottom:14px">
+          <strong style="color:#0A1628;font-size:0.96rem">${_n(r.total)} Quora questions about "${_escapeHtml(r.topic)}"</strong>
+          <span style="color:#6B7280;font-size:0.8rem;margin-left:8px">Sorted by engagement (answers + views)</span>
+        </div>
+        <div style="display:grid;gap:12px">${(r.questions||[]).map((q, i) => {
+          const c = intentColor[(q.intent||'informational').toLowerCase()] || '#6B7280';
+          return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid ${c};border-radius:10px;padding:14px 16px">
+            <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:8px;align-items:start">
+              <div style="flex:1"><strong style="color:#0A1628;font-size:0.92rem">${_n(i+1)}. ${_escapeHtml(q.question||'')}</strong></div>
+              <span style="background:${c};color:#fff;padding:2px 10px;border-radius:12px;font-size:0.68rem;font-weight:700;text-transform:uppercase;white-space:nowrap">${_escapeHtml(q.intent||'')}</span>
+            </div>
+            <div style="font-size:0.74rem;color:#6B7280;margin-bottom:6px">📝 ${_n(q.answer_count)} answers · 👁 ${_n(q.view_count).toLocaleString()} views ${q.url ? `· <a href="${_safeUrl(q.url)}" target="_blank" rel="noopener" style="color:#B92B27;text-decoration:none;font-weight:700">View on Quora ↗</a>` : ''}</div>
+            ${q.top_answer_summary ? `<div style="background:#F9FAFB;padding:8px 12px;border-radius:6px;font-size:0.8rem;color:#374151;margin-bottom:8px"><strong>Top answer:</strong> ${_escapeHtml(q.top_answer_summary)}</div>` : ''}
+            ${q.suggested_response_angle ? `<div style="background:#FEF3C7;border-left:3px solid #F59E0B;padding:8px 12px;border-radius:4px;font-size:0.82rem;color:#78350F"><strong>💡 Your angle:</strong> ${_escapeHtml(q.suggested_response_angle)}</div>` : ''}
+          </div>`;
+        }).join('')}</div>`;
     } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
   });
 };
