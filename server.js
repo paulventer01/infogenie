@@ -8484,17 +8484,25 @@ const _replyRouter  = require('./services/reply_assistant/api');
 app.use('/api/digest',          _digestRouter);
 app.use('/api/reply-assistant', _replyRouter);
 
+// ── Tier 5 ─────────────────────────────────────────────────────────────────
+const _pressRouter      = require('./services/press_release/api');
+const _alertRouteSchema = require('./services/alert_routing/schema');
+const _alertRouteRouter = require('./services/alert_routing/api');
+app.use('/api/press-release',  _pressRouter);
+app.use('/api/alert-routing',  _alertRouteRouter);
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
     await _battleSchema.ensureBattleCardsSchema();
     await _sovSchema.ensureSovSchema();
     await _digestSchema.ensureDigestSchema();
+    await _alertRouteSchema.ensureAlertRoutingSchema();
     _crisisDetector.startCron(6);
     _digestRouter.startCron(24);
-    console.log('[tier2+3+4] crisis + battle + trends + sov + discovery + digest + reply-assistant mounted');
+    console.log('[tier2-5] crisis + battle + trends + sov + discovery + digest + reply + press-release + alert-routing mounted');
   }
-} catch(e) { console.error('[tier2+3+4] init failed:', e.message); } })();
+} catch(e) { console.error('[tier2-5] init failed:', e.message); } })();
 (async () => {
   try {
     if (_db.hasDb()) {

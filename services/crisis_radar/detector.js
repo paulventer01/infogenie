@@ -125,6 +125,12 @@ async function _runOne(w) {
       { type:'section', text:{ type:'mrkdwn', text:`*${inc.headline}*\n${inc.detail || ''}` } },
     ]);
     if (slackOk) await pool.query(`UPDATE crisis_incidents SET slack_sent=true WHERE id=$1`, [r.rows[0].id]);
+    // Tier 5: also fan out to Smart Alert Routing rules
+    try {
+      const { dispatchEvent } = require('../alert_routing/dispatcher');
+      await dispatchEvent({ kind:'crisis_incident', brand:w.brand, severity:inc.severity,
+        incident_kind:inc.kind, headline:inc.headline, detail:inc.detail, incident_id:r.rows[0].id });
+    } catch (e) { console.warn('[alert-routing] dispatch failed:', e.message); }
     created.push(r.rows[0]);
   }
   return { snapshot: snap.rows[0], incidents: created };

@@ -2644,6 +2644,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'discovery')       { try { buildDiscovery(); }     catch(e) { console.warn('buildDiscovery error:', e); } }
   if (viewId === 'digest')          { try { buildDigest(); }         catch(e) { console.warn('buildDigest error:', e); } }
   if (viewId === 'reply-assistant') { try { buildReplyAssistant(); } catch(e) { console.warn('buildReplyAssistant error:', e); } }
+  if (viewId === 'press-release')   { try { buildPressRelease(); }   catch(e) { console.warn('buildPressRelease error:', e); } }
+  if (viewId === 'alert-routing')   { try { buildAlertRouting(); }   catch(e) { console.warn('buildAlertRouting error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -33629,4 +33631,229 @@ window._raCopyText = async function(id) {
   const el = document.getElementById(id); if (!el) return;
   try { await navigator.clipboard.writeText(el.innerText || el.textContent || ''); showToast('✅ Copied'); }
   catch (e) { showToast('❌ '+e.message); }
+};
+
+// ── Tier 5 #1: AI Press Release Generator ─────────────────────────────────
+window.buildPressRelease = function() {
+  const el = document.getElementById('prWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brand</label>
+          <input id="prBrand" placeholder="e.g. Nike" value="Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Type</label>
+          <select id="prKind" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+            <option value="crisis_response">🚨 Crisis Response</option>
+            <option value="product_launch">🚀 Product Launch</option>
+            <option value="milestone">🏆 Milestone</option>
+            <option value="counter_competitor">⚔️ Counter Competitor</option>
+            <option value="partnership">🤝 Partnership</option>
+            <option value="custom">📝 Custom</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Spokesperson (optional)</label>
+          <input id="prSpoke" placeholder="e.g. Jane Doe, CEO" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Headline hint (optional)</label>
+          <input id="prHead" placeholder="e.g. emphasise innovation" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+      </div>
+      <div>
+        <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Context (what's the news?)</label>
+        <textarea id="prCtx" rows="5" placeholder="Describe the situation, news, or angle the release should cover. Be specific — facts, dates, numbers." style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;font-family:inherit;resize:vertical"></textarea>
+      </div>
+      <button onclick="_prGo()" style="margin-top:12px;padding:10px 22px;background:#EC4899;border:2px solid #EC4899;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">📰 Generate Press Release</button>
+    </div>
+    <div id="prOut"></div>`;
+};
+window._prGo = async function() {
+  const brand = (document.getElementById('prBrand')||{}).value || '';
+  const kind  = (document.getElementById('prKind')||{}).value || 'custom';
+  const ctx   = (document.getElementById('prCtx')||{}).value || '';
+  const spoke = (document.getElementById('prSpoke')||{}).value || '';
+  const head  = (document.getElementById('prHead')||{}).value || '';
+  if (!brand.trim()) return showToast('⚠️ Brand required');
+  if (!ctx.trim())   return showToast('⚠️ Context required');
+  const out = document.getElementById('prOut');
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Drafting press release…</div>`;
+  try {
+    const r = await fetch('/api/press-release/generate', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ brand:brand.trim(), kind, context:ctx, spokesperson:spoke, headline_hint:head }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    const p = r.release;
+    out.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:28px 32px;font-family:Georgia,serif">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;font-family:system-ui,sans-serif">
+          <div style="font-size:0.66rem;color:#9CA3AF;font-weight:700;letter-spacing:.1em">FOR IMMEDIATE RELEASE · ${_escapeHtml((r.source||'').toUpperCase())}</div>
+          <div style="display:flex;gap:6px">
+            <button onclick="_prCopy('prFull')" style="padding:6px 12px;background:#fff;border:2px solid #D1D5DB;border-radius:5px;font-size:0.7rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy All</button>
+          </div>
+        </div>
+        <div id="prFull">
+          <h1 style="font-size:1.6rem;color:#0A1628;margin:0 0 8px;line-height:1.25">${_escapeHtml(p.headline||'')}</h1>
+          <div style="font-size:1rem;color:#475569;margin-bottom:18px;font-style:italic">${_escapeHtml(p.subhead||'')}</div>
+          <div style="font-size:0.86rem;color:#0A1628;font-weight:700;margin-bottom:14px">${_escapeHtml(p.dateline||'')}</div>
+          <div style="font-size:0.95rem;color:#1F2937;line-height:1.7;white-space:pre-wrap;margin-bottom:18px">${_escapeHtml(p.body||'')}</div>
+          ${p.quote?`<blockquote style="border-left:4px solid #EC4899;padding:10px 18px;margin:18px 0;background:#FDF2F8;font-style:italic;color:#1F2937;font-size:0.95rem;line-height:1.6">"${_escapeHtml(p.quote.text||'')}"<div style="margin-top:8px;font-size:0.8rem;color:#6B7280;font-style:normal;font-weight:600">— ${_escapeHtml(p.quote.attribution||'')}</div></blockquote>`:''}
+          <div style="margin-top:20px;padding-top:16px;border-top:1px solid #E5E7EB;font-size:0.85rem;color:#475569;line-height:1.6;white-space:pre-wrap">${_escapeHtml(p.boilerplate||'')}</div>
+          ${p.contact?`<div style="margin-top:14px;font-size:0.78rem;color:#6B7280">Press contact: <strong>${_escapeHtml(p.contact.name||'')}</strong> — ${_escapeHtml(p.contact.email||'')}</div>`:''}
+        </div>
+      </div>`;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._prCopy = async function(id) {
+  const el = document.getElementById(id); if (!el) return;
+  try { await navigator.clipboard.writeText(el.innerText || el.textContent || ''); showToast('✅ Copied to clipboard'); }
+  catch (e) { showToast('❌ '+e.message); }
+};
+
+// ── Tier 5 #2: Smart Alert Routing ────────────────────────────────────────
+window.buildAlertRouting = async function() {
+  const el = document.getElementById('arWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-weight:800;color:#0A1628;font-size:0.95rem">📋 Active Rules</div>
+      <button onclick="_arEdit(null)" style="padding:9px 18px;background:#EC4899;border:2px solid #EC4899;border-radius:8px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">+ New Rule</button>
+    </div>
+    <div id="arRules"></div>
+    <div id="arEditor"></div>
+    <div style="margin-top:24px">
+      <div style="font-weight:800;color:#0A1628;font-size:0.95rem;margin-bottom:10px">📜 Recent Dispatches</div>
+      <div id="arDispatches"></div>
+    </div>`;
+  await _arLoad();
+  await _arDispatches();
+};
+window._arLoad = async function() {
+  const el = document.getElementById('arRules'); if (!el) return;
+  try {
+    const r = await fetch('/api/alert-routing/').then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    if (!r.rules.length) { el.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280;font-size:0.88rem">No rules yet. Click <strong>+ New Rule</strong> to create one.</div>`; return; }
+    window._arCache = r.rules;
+    el.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px">
+      ${r.rules.map(rule=>`<div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid ${rule.enabled?'#15803D':'#9CA3AF'};border-radius:8px;padding:14px 16px;display:flex;gap:14px;align-items:center">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;color:#0A1628;font-size:0.92rem">${_escapeHtml(rule.name)}</div>
+          <div style="font-size:0.72rem;color:#6B7280;margin-top:3px">${_escapeHtml(rule.trigger_kind)} ${rule.trigger_filter?.brand?'· brand: '+_escapeHtml(rule.trigger_filter.brand):''} ${rule.trigger_filter?.min_severity?'· min severity: '+_escapeHtml(rule.trigger_filter.min_severity):''} · channels: ${(rule.channels||[]).map(c=>_escapeHtml(c.kind)).join(', ')||'none'}</div>
+          <div style="font-size:0.66rem;color:#9CA3AF;margin-top:2px">Fired ${rule.fire_count||0}× ${rule.last_fired_at?'· last '+new Date(rule.last_fired_at).toLocaleString():''}</div>
+        </div>
+        <button onclick="_arTest(${rule.id})" style="padding:7px 12px;background:#fff;border:2px solid #0891B2;border-radius:6px;font-size:0.72rem;font-weight:800;color:#0891B2;cursor:pointer">⚡ Test</button>
+        <button onclick="_arEdit(${rule.id})" style="padding:7px 12px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.72rem;font-weight:700;color:#374151;cursor:pointer">Edit</button>
+        <button onclick="_arDelete(${rule.id})" style="padding:7px 12px;background:#fff;border:2px solid #FCA5A5;border-radius:6px;font-size:0.72rem;font-weight:700;color:#B91C1C;cursor:pointer">Delete</button>
+      </div>`).join('')}
+    </div>`;
+  } catch (e) { el.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._arEdit = function(id) {
+  const r = id ? (window._arCache||[]).find(x=>x.id===id) : null;
+  const ed = document.getElementById('arEditor'); if (!ed) return;
+  const f = (r && r.trigger_filter) || {};
+  const ch = (r && r.channels) || [];
+  ed.innerHTML = `
+    <div style="background:#fff;border:2px solid #EC4899;border-radius:12px;padding:20px;margin-top:14px">
+      <div style="font-weight:800;color:#0A1628;font-size:1rem;margin-bottom:14px">${id?'✏️ Edit Rule':'➕ New Rule'}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Rule name</label>
+          <input id="arName" value="${_escapeHtml(r?r.name:'')}" placeholder="e.g. High-sev Nike crisis to Slack" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.86rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Trigger</label>
+          <select id="arKind" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.86rem">
+            ${['crisis_incident','sov_drop','digest_ready','mention_volume','custom'].map(k=>`<option value="${k}" ${r&&r.trigger_kind===k?'selected':''}>${k}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Filter: brand (optional)</label>
+          <input id="arFBrand" value="${_escapeHtml(f.brand||'')}" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.86rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Filter: min severity (crisis only)</label>
+          <select id="arFSev" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.86rem">
+            <option value="">any</option>
+            ${['low','med','high'].map(s=>`<option value="${s}" ${f.min_severity===s?'selected':''}>${s}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:6px">Channels</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;margin-right:18px;font-size:0.82rem;color:#374151"><input type="checkbox" id="arChSlack" ${ch.find(c=>c.kind==='slack')?'checked':''}> Slack (uses SLACK_WEBHOOK_URL)</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.82rem;color:#374151"><input type="checkbox" id="arChEmail" ${ch.find(c=>c.kind==='email')?'checked':''}> Email →</label>
+        <input id="arChEmailTo" value="${_escapeHtml((ch.find(c=>c.kind==='email')||{}).email||'')}" placeholder="alerts@you.com" style="margin-left:6px;padding:6px 10px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.78rem;width:240px">
+      </div>
+      <div style="margin-top:14px;display:flex;gap:8px">
+        <button onclick="_arSave(${id||'null'})" style="padding:9px 18px;background:#15803D;border:2px solid #15803D;border-radius:6px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">💾 Save</button>
+        <button onclick="document.getElementById('arEditor').innerHTML=''" style="padding:9px 18px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.78rem;font-weight:700;color:#374151;cursor:pointer">Cancel</button>
+      </div>
+    </div>`;
+};
+window._arSave = async function(id) {
+  const channels = [];
+  if (document.getElementById('arChSlack').checked) channels.push({ kind:'slack' });
+  if (document.getElementById('arChEmail').checked) channels.push({ kind:'email', email: document.getElementById('arChEmailTo').value });
+  const trigger_filter = {};
+  const fBrand = document.getElementById('arFBrand').value.trim();
+  const fSev   = document.getElementById('arFSev').value;
+  if (fBrand) trigger_filter.brand = fBrand;
+  if (fSev) trigger_filter.min_severity = fSev;
+  const payload = {
+    name: document.getElementById('arName').value,
+    trigger_kind: document.getElementById('arKind').value,
+    trigger_filter, channels, enabled: true,
+  };
+  try {
+    const url = id ? '/api/alert-routing/'+id : '/api/alert-routing/';
+    const r = await fetch(url, { method: id?'PUT':'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    showToast('✅ Saved');
+    document.getElementById('arEditor').innerHTML = '';
+    await _arLoad();
+  } catch (e) { showToast('❌ '+e.message); }
+};
+window._arDelete = async function(id) {
+  if (!confirm('Delete this rule?')) return;
+  try {
+    const r = await fetch('/api/alert-routing/'+id, { method:'DELETE' }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    showToast('✅ Deleted'); await _arLoad();
+  } catch (e) { showToast('❌ '+e.message); }
+};
+window._arTest = async function(id) {
+  try {
+    const r = await fetch('/api/alert-routing/test/'+id, { method:'POST' }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    const channels = r.dispatched?.dispatched?.[0]?.channels || [];
+    const okCount = channels.filter(c=>c.ok).length;
+    const failCount = channels.filter(c=>!c.ok).length;
+    showToast(`✅ Test fired — ${okCount} ok, ${failCount} failed`);
+    await _arDispatches(); await _arLoad();
+  } catch (e) { showToast('❌ '+e.message); }
+};
+window._arDispatches = async function() {
+  const el = document.getElementById('arDispatches'); if (!el) return;
+  try {
+    const r = await fetch('/api/alert-routing/dispatches?limit=15').then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    if (!r.dispatches.length) { el.innerHTML = `<div style="color:#9CA3AF;font-size:0.8rem">No dispatches yet.</div>`; return; }
+    el.innerHTML = `<div style="display:flex;flex-direction:column;gap:6px">
+      ${r.dispatches.map(d=>{
+        const chs = d.channels_sent || [];
+        const okCount = chs.filter(c=>c.ok).length;
+        const status = okCount===chs.length ? '#15803D' : okCount>0 ? '#F59E0B' : '#B91C1C';
+        return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:3px solid ${status};border-radius:6px;padding:10px 14px;font-size:0.78rem;color:#374151">
+          <div style="display:flex;justify-content:space-between;gap:14px">
+            <div><strong>${_escapeHtml(d.rule_name||'(deleted rule)')}</strong> · ${_escapeHtml(d.event_kind)}</div>
+            <div style="color:#9CA3AF;font-size:0.7rem">${new Date(d.created_at).toLocaleString()}</div>
+          </div>
+          <div style="font-size:0.7rem;color:#6B7280;margin-top:3px">${chs.map(c=>`${c.ok?'✅':'❌'} ${_escapeHtml(c.kind)}${c.error?' — '+_escapeHtml(c.error):''}`).join(' · ')}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  } catch (e) { el.innerHTML = `<div style="color:#B91C1C;font-size:0.8rem">${_escapeHtml(e.message)}</div>`; }
 };
