@@ -5,6 +5,7 @@
 // the 15-min cron, the manual /refresh endpoint, or the HubSpot webhook.
 const _db = require('../../db');
 const { evaluateContact } = require('./engine');
+const _bridge = require('./drip_bridge');
 
 const HUBSPOT_PROPS = [
   'email','firstname','lastname','lifecyclestage','country','jobtitle',
@@ -97,6 +98,7 @@ async function _applySegmentDiff(client, segment, contacts) {
   const leaves = [...currentlyIn].filter(id => !matchedNow.has(id));
 
   // Apply joins. If a row exists with left_at IS NOT NULL (re-entry), reopen it.
+  const joinTargets = [];
   for (const cid of joins) {
     const contact = contacts.find(c => c.id === cid);
     await client.query(`
@@ -105,9 +107,18 @@ async function _applySegmentDiff(client, segment, contacts) {
       ON CONFLICT (segment_id, contact_id) DO UPDATE
         SET joined_at = now(), left_at = NULL, contact_email = EXCLUDED.contact_email
     `, [segment.id, cid, contact?.email || null]);
+    joinTargets.push({ id: cid, email: contact?.email || null });
   }
-  // Apply leaves
+  // Apply leaves — capture the emails BEFORE we mark them left_at so the drip
+  // bridge has something to match on.
+  let leaveTargets = [];
   if (leaves.length) {
+    const before = await client.query(
+      `SELECT contact_id, contact_email FROM audience_segment_members
+       WHERE segment_id=$1 AND contact_id = ANY($2::text[]) AND left_at IS NULL`,
+      [segment.id, leaves]
+    );
+    leaveTargets = before.rows.map(r => ({ id: r.contact_id, email: r.contact_email }));
     await client.query(
       `UPDATE audience_segment_members SET left_at = now()
        WHERE segment_id = $1 AND contact_id = ANY($2::text[]) AND left_at IS NULL`,
@@ -120,7 +131,13 @@ async function _applySegmentDiff(client, segment, contacts) {
     [matchedNow.size, segment.id]
   );
 
-  return { matched: matchedNow.size, added: joins.length, removed: leaves.length };
+  return {
+    matched: matchedNow.size,
+    added: joins.length,
+    removed: leaves.length,
+    joinTargets,    // [{id,email}] for drip bridge — fired AFTER commit
+    leaveTargets,
+  };
 }
 
 // ── Mutex (single-writer) ───────────────────────────────────────────────────
@@ -162,7 +179,25 @@ async function runSweepOnce(opts = {}) {
           [seg.id, fetchRes.contacts.length, r.added, r.removed, Date.now()-segT0, source]
         );
         await client.query('COMMIT');
-        results.push({ segmentId: seg.id, name: seg.name, ...r });
+
+        // Drip bridge — fire onJoin/onLeave AFTER commit so a bridge failure
+        // can never roll back the membership writes. Best-effort, logged only.
+        let bridgeJoins = 0, bridgeLeaves = 0;
+        for (const t of (r.joinTargets || [])) {
+          try {
+            const out = await _bridge.onJoin(seg.id, t.id, t.email);
+            if (out?.enrolled) bridgeJoins++;
+          } catch (e) { console.warn(`[audiences→drip] join seg=${seg.id} ${t.id}: ${e.message}`); }
+        }
+        for (const t of (r.leaveTargets || [])) {
+          try {
+            const out = await _bridge.onLeave(seg.id, t.id, t.email);
+            bridgeLeaves += (out?.unsubscribed || 0);
+          } catch (e) { console.warn(`[audiences→drip] leave seg=${seg.id} ${t.id}: ${e.message}`); }
+        }
+
+        const { joinTargets, leaveTargets, ...slim } = r;
+        results.push({ segmentId: seg.id, name: seg.name, ...slim, bridgeJoins, bridgeLeaves });
       } catch (e) {
         await client.query('ROLLBACK').catch(()=>{});
         await pool.query(
@@ -240,13 +275,13 @@ async function reevaluateContact(contactId) {
               VALUES ($1,$2,$3, now(), NULL)
               ON CONFLICT (segment_id, contact_id) DO UPDATE SET joined_at = now(), left_at = NULL, contact_email = EXCLUDED.contact_email
             `, [seg.id, contact.id, contact.email || null]);
-            summary.push({ segmentId: seg.id, action: 'joined' });
+            summary.push({ segmentId: seg.id, action: 'joined', segName: seg.name });
           } else if (!matches && isIn) {
             await client.query(
               `UPDATE audience_segment_members SET left_at=now() WHERE segment_id=$1 AND contact_id=$2 AND left_at IS NULL`,
               [seg.id, contact.id]
             );
-            summary.push({ segmentId: seg.id, action: 'left' });
+            summary.push({ segmentId: seg.id, action: 'left', segName: seg.name });
           }
         } catch (e) { console.warn(`[audiences-reeval] seg=${seg.id} ${e.message}`); }
       }
@@ -255,6 +290,14 @@ async function reevaluateContact(contactId) {
       await client.query('ROLLBACK').catch(()=>{});
       throw e;
     } finally { client.release(); }
+
+    // Bridge after commit — best effort.
+    for (const ch of summary) {
+      try {
+        if (ch.action === 'joined') await _bridge.onJoin(ch.segmentId, contact.id, contact.email);
+        else if (ch.action === 'left') await _bridge.onLeave(ch.segmentId, contact.id, contact.email);
+      } catch (e) { console.warn(`[audiences→drip] reeval seg=${ch.segmentId}: ${e.message}`); }
+    }
     return { ok:true, contactId: contact.id, email: contact.email, changes: summary };
   });
 }

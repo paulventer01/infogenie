@@ -43,6 +43,23 @@ async function ensureAudiencesSchema() {
       source       TEXT,
       error        TEXT
     );
+
+    -- Phase 3: bind a saved audience to a Drip campaign sequence. When a
+    -- contact JOINS the segment they are auto-enrolled; when they LEAVE the
+    -- segment, any active enrollment that originated from this binding is
+    -- auto-marked unsubscribed so contacts auto-flow in/out of the funnel.
+    CREATE TABLE IF NOT EXISTS audience_drip_bindings (
+      id           SERIAL PRIMARY KEY,
+      audience_id  INTEGER NOT NULL UNIQUE REFERENCES audience_segments(id) ON DELETE CASCADE,
+      sequence     JSONB NOT NULL,
+      brand        TEXT,
+      dry_run      BOOLEAN NOT NULL DEFAULT true,
+      enabled      BOOLEAN NOT NULL DEFAULT true,
+      app_origin   TEXT,
+      auto_exit    BOOLEAN NOT NULL DEFAULT true,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
   return true;
 }

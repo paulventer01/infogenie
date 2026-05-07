@@ -3,6 +3,7 @@ const express = require('express');
 const _db = require('../../db');
 const { previewSegmentLive, snapshotSegmentCount } = require('./engine');
 const { runSweepOnce, reevaluateContact } = require('./sweep');
+const _bridge = require('./drip_bridge');
 
 const router = express.Router();
 
@@ -220,6 +221,32 @@ router.post('/webhooks/hubspot', async (req, res) => {
       try { await reevaluateContact(String(cid)); }
       catch (e) { console.error('[audiences-webhook]', cid, e.message); }
     }
+  } catch (err) { _err(res, 500, err.message); }
+});
+
+// ── Phase 3 — Drip binding CRUD ────────────────────────────────────────────
+router.get('/:id/drip-binding', async (req, res) => {
+  try {
+    const id = _validId(req.params.id);
+    if (!id) return _err(res, 400, 'invalid id');
+    const b = await _bridge.getBinding(id);
+    res.json({ ok:true, binding: b });
+  } catch (err) { _err(res, 500, err.message); }
+});
+router.post('/:id/drip-binding', async (req, res) => {
+  try {
+    const id = _validId(req.params.id);
+    if (!id) return _err(res, 400, 'invalid id');
+    const b = await _bridge.setBinding(id, req.body || {});
+    res.json({ ok:true, binding: b });
+  } catch (err) { _err(res, 400, err.message); }
+});
+router.delete('/:id/drip-binding', async (req, res) => {
+  try {
+    const id = _validId(req.params.id);
+    if (!id) return _err(res, 400, 'invalid id');
+    await _bridge.deleteBinding(id);
+    res.json({ ok:true });
   } catch (err) { _err(res, 500, err.message); }
 });
 

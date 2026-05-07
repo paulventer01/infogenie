@@ -32148,3 +32148,190 @@ window.buildDynAudiences = async function() {
     wrap.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:16px;color:#B91C1C;font-weight:600">Failed to load audiences: ${_escapeHtml(e.message)}</div>`;
   }
 };
+
+// ── DYNAMIC AUDIENCES — Phase 3 UI (Drip binding) ─────────────────────────
+window.dynSegOpenDripBinding = async function(id, name) {
+  let modal = document.getElementById('dynSegDripModal');
+  if (!modal) { modal = document.createElement('div'); modal.id = 'dynSegDripModal'; document.body.appendChild(modal); }
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:10010;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;overflow-y:auto;backdrop-filter:blur(4px)';
+  modal.innerHTML = `
+    <div style="background:#fff;width:100%;max-width:760px;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:28px 32px;color:#0A1628">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1.3rem;font-weight:800">📨 Drip binding for "${_escapeHtml(name)}"</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:3px;line-height:1.5">When a contact joins this audience, they're auto-enrolled into the email sequence below. When they leave, their active enrollment is auto-unsubscribed.</div>
+        </div>
+        <button onclick="(function(){var m=document.getElementById('dynSegDripModal');if(m)m.remove();})()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6B7280;padding:4px 10px">×</button>
+      </div>
+      <div id="dynSegDripBody" style="font-size:0.85rem;color:#6B7280;text-align:center;padding:32px">Loading…</div>
+    </div>`;
+
+  const body = document.getElementById('dynSegDripBody');
+  let existing = null;
+  try { existing = (await fetch('/api/audiences/' + id + '/drip-binding').then(x=>x.json())).binding; } catch(_){}
+
+  const seq = (existing && Array.isArray(existing.sequence) && existing.sequence.length)
+    ? existing.sequence
+    : [
+      { day:0, channel:'Email', label:'Welcome',     subject:'Welcome — quick intro',         msg:'Hi! You just qualified for our audience. Here\'s what to expect…' },
+      { day:2, channel:'Email', label:'Value drop',  subject:'Idea you might find useful',    msg:'Quick tip / case study you can use today.' },
+      { day:5, channel:'Email', label:'Soft CTA',    subject:'Want to chat?',                  msg:'If this is on your radar, reply and we\'ll set up 15 min.' },
+    ];
+
+  body.style.textAlign = 'left';
+  body.style.padding = '0';
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+      <label style="font-size:0.72rem;font-weight:700;color:#374151"><div style="margin-bottom:4px">Brand name</div><input id="dynBindBrand" value="${_escapeHtml((existing&&existing.brand)||'')}" placeholder="My Co" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem"></label>
+      <label style="font-size:0.72rem;font-weight:700;color:#374151"><div style="margin-bottom:4px">Mode</div><select id="dynBindDryRun" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;background:#fff"><option value="true" ${!existing||existing.dry_run?'selected':''}>Dry-run (safe — no real sends)</option><option value="false" ${existing&&!existing.dry_run?'selected':''}>Live (send real emails via Resend)</option></select></label>
+      <label style="font-size:0.72rem;font-weight:700;color:#374151"><div style="margin-bottom:4px">Auto-exit on leave</div><select id="dynBindAutoExit" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;background:#fff"><option value="true" ${!existing||existing.auto_exit?'selected':''}>Yes — unsubscribe when they leave</option><option value="false" ${existing&&!existing.auto_exit?'selected':''}>No — let sequence finish</option></select></label>
+    </div>
+    <div style="font-size:0.78rem;font-weight:800;color:#0A1628;margin:8px 0">Email sequence</div>
+    <div id="dynBindSteps"></div>
+    <button id="dynBindAddStep" style="margin-top:8px;padding:7px 14px;background:#fff;border:1.5px dashed #C7D2FE;border-radius:7px;font-size:0.75rem;font-weight:700;color:#4338CA;cursor:pointer">+ Add step</button>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid #F1F5F9">
+      ${existing?`<button id="dynBindDelete" style="padding:9px 16px;background:#fff;border:2px solid #FCA5A5;border-radius:8px;font-size:0.78rem;font-weight:800;color:#B91C1C;-webkit-text-fill-color:#B91C1C;cursor:pointer">🗑 Remove binding</button>`:''}
+      <button id="dynBindSave" style="padding:9px 18px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:8px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">💾 Save binding</button>
+    </div>`;
+
+  const stepsBox = document.getElementById('dynBindSteps');
+  function renderSteps(arr) {
+    stepsBox.innerHTML = arr.map((s, i) => `
+      <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:11px 13px;margin-bottom:8px">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:7px">
+          <span style="background:#1E1B4B;color:#fff;-webkit-text-fill-color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:800">${i+1}</span>
+          <input data-k="day"     data-i="${i}" type="number" min="0" max="365" value="${s.day||0}" placeholder="day" style="width:70px;padding:6px 8px;border:1px solid #E5E7EB;border-radius:6px;font-size:0.78rem"/>
+          <span style="font-size:0.68rem;color:#9CA3AF">days after join</span>
+          <input data-k="label"   data-i="${i}" value="${_escapeHtml(s.label||'')}" placeholder="Step label" style="flex:1;padding:6px 8px;border:1px solid #E5E7EB;border-radius:6px;font-size:0.78rem"/>
+          <button data-rm="${i}" style="background:#fff;border:1px solid #FCA5A5;color:#B91C1C;-webkit-text-fill-color:#B91C1C;border-radius:6px;padding:4px 10px;font-size:0.7rem;cursor:pointer">×</button>
+        </div>
+        <input data-k="subject" data-i="${i}" value="${_escapeHtml(s.subject||'')}" placeholder="Email subject" style="width:100%;padding:6px 8px;border:1px solid #E5E7EB;border-radius:6px;font-size:0.78rem;margin-bottom:6px"/>
+        <textarea data-k="msg" data-i="${i}" rows="3" placeholder="Email body" style="width:100%;padding:6px 8px;border:1px solid #E5E7EB;border-radius:6px;font-size:0.78rem;font-family:inherit;resize:vertical">${_escapeHtml(s.msg||'')}</textarea>
+      </div>`).join('');
+    stepsBox.querySelectorAll('input,textarea').forEach(el => {
+      el.addEventListener('input', () => {
+        const i = +el.dataset.i, k = el.dataset.k;
+        seq[i][k] = (k === 'day') ? (parseInt(el.value,10)||0) : el.value;
+      });
+    });
+    stepsBox.querySelectorAll('[data-rm]').forEach(b => {
+      b.addEventListener('click', () => { seq.splice(+b.dataset.rm, 1); renderSteps(seq); });
+    });
+  }
+  renderSteps(seq);
+
+  document.getElementById('dynBindAddStep').onclick = () => {
+    const lastDay = seq.length ? Number(seq[seq.length-1].day||0) : -1;
+    seq.push({ day:lastDay+2, channel:'Email', label:`Step ${seq.length+1}`, subject:'', msg:'' });
+    renderSteps(seq);
+  };
+  document.getElementById('dynBindSave').onclick = async () => {
+    const payload = {
+      sequence: seq.filter(s => (s.subject||'').trim() || (s.msg||'').trim()),
+      brand:    document.getElementById('dynBindBrand').value.trim() || null,
+      dry_run:  document.getElementById('dynBindDryRun').value === 'true',
+      auto_exit:document.getElementById('dynBindAutoExit').value === 'true',
+      app_origin: window.location.origin,
+    };
+    if (!payload.sequence.length) return showToast('❌ Add at least one step with subject or body');
+    try {
+      const r = await fetch('/api/audiences/' + id + '/drip-binding', {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+      }).then(x=>x.json());
+      if (!r.ok) throw new Error(r.error || 'save failed');
+      showToast(`✅ Drip binding saved (${payload.sequence.length} steps · ${payload.dry_run?'dry-run':'LIVE'})`);
+      modal.remove();
+      buildDynAudiences();
+    } catch (e) { showToast('❌ ' + e.message); }
+  };
+  const delBtn = document.getElementById('dynBindDelete');
+  if (delBtn) delBtn.onclick = async () => {
+    if (!confirm('Remove the Drip binding? Existing in-flight enrollments are NOT touched — only future joins will stop auto-enrolling.')) return;
+    try {
+      const r = await fetch('/api/audiences/' + id + '/drip-binding', { method:'DELETE' }).then(x=>x.json());
+      if (!r.ok) throw new Error(r.error || 'delete failed');
+      showToast('🗑 Drip binding removed');
+      modal.remove();
+      buildDynAudiences();
+    } catch (e) { showToast('❌ ' + e.message); }
+  };
+};
+
+// Re-define the segment-card list so each card now shows a Drip-binding badge
+// and a "📨 Drip" button that opens the binding modal.
+const _origBuildDynAudiencesP2 = window.buildDynAudiences;
+window.buildDynAudiences = async function() {
+  const wrap = document.getElementById('dynAudWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `<div style="text-align:center;padding:48px;color:#64748B;font-weight:600">Loading audiences…</div>`;
+  try {
+    const [r, hubConn] = await Promise.all([
+      fetch('/api/audiences').then(x=>x.json()),
+      fetch('/api/hubspot/status').then(x=>x.json()).catch(()=>({ok:false})),
+    ]);
+    const segs = r.segments || [];
+    // Fetch every binding in parallel so the badge can render with the card.
+    const bindings = await Promise.all(segs.map(s =>
+      fetch('/api/audiences/' + s.id + '/drip-binding').then(x=>x.json()).catch(()=>({binding:null}))
+    ));
+    const byId = {}; segs.forEach((s,i) => byId[s.id] = bindings[i]?.binding || null);
+
+    const sourceBadge = hubConn.ok && hubConn.configured
+      ? `<span style="display:inline-flex;align-items:center;gap:5px;background:#DCFCE7;color:#15803D;padding:3px 9px;border-radius:6px;font-size:0.65rem;font-weight:800"><span style="width:6px;height:6px;background:#10B981;border-radius:50%"></span>HUBSPOT CONNECTED · live data</span>`
+      : `<span style="display:inline-flex;align-items:center;gap:5px;background:#FEF3C7;color:#92400E;padding:3px 9px;border-radius:6px;font-size:0.65rem;font-weight:800"><span style="width:6px;height:6px;background:#F59E0B;border-radius:50%"></span>HUBSPOT NOT CONNECTED · using demo data</span>`;
+
+    const intro = `
+      <div style="background:linear-gradient(135deg,#EEF2FF,#F5F3FF);border:1px solid #C7D2FE;border-radius:14px;padding:18px 22px;margin-bottom:22px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#312E81;margin-bottom:4px">⚡ Dynamic Audiences → Drip Campaigns</div>
+          <div style="font-size:0.78rem;color:#4338CA;line-height:1.55;max-width:680px">Phase 3: bind any audience to an email sequence — contacts are auto-enrolled the moment they qualify, and auto-unsubscribed the moment they no longer match.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">${sourceBadge}<div style="font-size:0.62rem;color:#6B7280;font-weight:700">Phase 3 · Drip auto-enrol/exit · 15-min sweep + webhook</div></div>
+      </div>`;
+
+    const cards = segs.length === 0
+      ? `<div style="background:#fff;border:2px dashed #C7D2FE;border-radius:14px;padding:48px;text-align:center">
+           <div style="font-size:2.4rem;margin-bottom:8px">🎯</div>
+           <div style="font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px">No dynamic audiences yet</div>
+           <div style="font-size:0.82rem;color:#6B7280;margin-bottom:16px">Create a rule-based segment, then connect it to a Drip sequence — qualified contacts auto-flow into your funnel.</div>
+           <button onclick="openDynSegmentBuilder()" style="padding:11px 22px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:9px;font-size:0.85rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5);box-shadow:0 4px 14px rgba(30,27,75,.35)">+ Create your first audience</button>
+         </div>`
+      : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px">
+          ${segs.map(s => {
+            const last = s.last_evaluated_at ? new Date(s.last_evaluated_at).toLocaleString() : 'never';
+            const conds = (s.rules && Array.isArray(s.rules.conditions)) ? s.rules.conditions.length : 0;
+            const safeName = _escapeHtml(s.name).replace(/'/g, '&#39;');
+            const b = byId[s.id];
+            const dripBadge = b
+              ? `<span style="background:${b.enabled?'#DCFCE7':'#F3F4F6'};color:${b.enabled?'#15803D':'#6B7280'};padding:2px 8px;border-radius:5px;font-size:0.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em">📨 Drip ${b.enabled?(b.dry_run?'· dry-run':'· LIVE'):'paused'} · ${(b.sequence||[]).length} steps</span>`
+              : `<span style="background:#F3F4F6;color:#9CA3AF;padding:2px 8px;border-radius:5px;font-size:0.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em">📨 No drip bound</span>`;
+            return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.04);display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+                <div>
+                  <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628">${_escapeHtml(s.name)}</div>
+                  ${s.description ? `<div style="font-size:0.72rem;color:#6B7280;margin-top:3px;line-height:1.45">${_escapeHtml(s.description)}</div>` : ''}
+                </div>
+                <span style="background:${s.enabled?'#DCFCE7':'#F3F4F6'};color:${s.enabled?'#15803D':'#6B7280'};padding:2px 8px;border-radius:5px;font-size:0.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em">${s.enabled?'Live':'Paused'}</span>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">${dripBadge}</div>
+              <div style="display:flex;gap:14px;padding:10px 0;border-top:1px solid #F1F5F9;border-bottom:1px solid #F1F5F9">
+                <div style="flex:1"><div style="font-size:0.6rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Members</div><div style="font-size:1.4rem;font-weight:800;color:#1E1B4B;font-variant-numeric:tabular-nums">${(s.member_count||0).toLocaleString()}</div></div>
+                <div style="flex:1"><div style="font-size:0.6rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Rules</div><div style="font-size:1.4rem;font-weight:800;color:#1E1B4B;font-variant-numeric:tabular-nums">${conds}</div></div>
+              </div>
+              <div style="font-size:0.66rem;color:#9CA3AF">Last evaluated: ${last}</div>
+              <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+                <button onclick="dynSegRefresh(${s.id},'${safeName}')" style="flex:1;min-width:90px;padding:8px;background:#0EA5E9;border:2px solid #0EA5E9;border-radius:7px;font-size:0.7rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🔄 Sync</button>
+                <button onclick="dynSegViewMembers(${s.id},'${safeName}')" style="flex:1;min-width:90px;padding:8px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:7px;font-size:0.7rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">👥 Members</button>
+                <button onclick="dynSegOpenDripBinding(${s.id},'${safeName}')" style="flex:1;min-width:90px;padding:8px;background:${b?'#15803D':'#fff'};border:2px solid #15803D;border-radius:7px;font-size:0.7rem;font-weight:800;color:${b?'#fff':'#15803D'};-webkit-text-fill-color:${b?'#fff':'#15803D'};cursor:pointer;${b?'text-shadow:0 1px 2px rgba(0,0,0,.4)':''}">📨 ${b?'Edit drip':'Bind drip'}</button>
+                <button onclick="openDynSegmentBuilder(${s.id})" style="padding:8px 10px;background:#fff;border:2px solid #C7D2FE;border-radius:7px;font-size:0.7rem;font-weight:800;color:#4338CA;-webkit-text-fill-color:#4338CA;cursor:pointer">✏️</button>
+                <button onclick="deleteDynSegment(${s.id},'${safeName}')" style="padding:8px 10px;background:#fff;border:2px solid #FCA5A5;border-radius:7px;font-size:0.7rem;font-weight:800;color:#B91C1C;-webkit-text-fill-color:#B91C1C;cursor:pointer">🗑</button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`;
+
+    wrap.innerHTML = intro + cards;
+  } catch (e) {
+    wrap.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:16px;color:#B91C1C;font-weight:600">Failed to load audiences: ${_escapeHtml(e.message)}</div>`;
+  }
+};

@@ -5966,6 +5966,16 @@ function _dripSaveUnsubs(set) {
   catch(e) {}
 }
 
+// Expose the drip store helpers on a global so other modules (e.g. the
+// Dynamic Audiences → Drip bridge in services/audiences/drip_bridge.js)
+// can read/mutate the store under the same single-writer mutex without
+// taking the latency hit of an internal HTTP loopback to /api/drips/enroll.
+global._dripStore = {
+  load: _dripLoad, save: _dripSave, lock: _dripLock,
+  loadUnsubs: _dripLoadUnsubs, saveUnsubs: _dripSaveUnsubs,
+  file: DRIP_FILE,
+};
+
 // Generic Resend email sender — extracted from _sendVerificationEmail so the
 // drip engine can reuse it without coupling to verification-specific HTML.
 // Returns the Resend response (incl. message id) on success; throws on
