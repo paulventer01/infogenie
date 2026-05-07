@@ -8421,6 +8421,20 @@ const _optimizerCreative = require('./services/optimizer/creative_refresh');
 const _optimizerBandit   = require('./services/optimizer/bandit');
 const _optimizerRouter   = require('./services/optimizer/api');
 app.use('/api/optimizer', _optimizerRouter);
+// ── Dynamic Audiences (Drip-style real-time segments) ──────────────────────
+const _audiencesSchema = require('./services/audiences/schema');
+const _audiencesRouter = require('./services/audiences/api');
+app.use('/api/audiences', _audiencesRouter);
+(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _audiencesSchema.ensureAudiencesSchema();
+      console.log('[audiences] schema ready (dynamic segments — Phase 1)');
+    } else {
+      console.log('[audiences] disabled — DATABASE_URL not set');
+    }
+  } catch (e) { console.error('[audiences] init failed:', e.message); }
+})();
 let _googleCronsStarted = false;
 (async () => {
   try {

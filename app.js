@@ -31728,3 +31728,292 @@ window.banditRunNow = async function() {
   showToast(`✅ Done — ${s.campaigns||0} campaigns, ${s.scanned||0} arms, ${s.applied||0} reallocations`);
   renderOptimizerDashboard();
 };
+
+// ── DYNAMIC AUDIENCES (Drip-style real-time segments) — Phase 1 ─────────────
+// Backend: /api/audiences (CRUD + /preview live count via HubSpot or synthetic).
+// UI: list of saved segments + builder modal with rule blocks + live count.
+window._dynSegEditing = null; // current segment id being edited (null = new)
+
+window.buildDynAudiences = async function() {
+  const wrap = document.getElementById('dynAudWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `<div style="text-align:center;padding:48px;color:#64748B;font-weight:600">Loading audiences…</div>`;
+  try {
+    const r = await fetch('/api/audiences').then(x=>x.json());
+    const segs = r.segments || [];
+    const hubConn = await fetch('/api/hubspot/status').then(x=>x.json()).catch(()=>({ok:false}));
+    const sourceBadge = hubConn.ok && hubConn.configured
+      ? `<span style="display:inline-flex;align-items:center;gap:5px;background:#DCFCE7;color:#15803D;padding:3px 9px;border-radius:6px;font-size:0.65rem;font-weight:800"><span style="width:6px;height:6px;background:#10B981;border-radius:50%"></span>HUBSPOT CONNECTED · live data</span>`
+      : `<span style="display:inline-flex;align-items:center;gap:5px;background:#FEF3C7;color:#92400E;padding:3px 9px;border-radius:6px;font-size:0.65rem;font-weight:800"><span style="width:6px;height:6px;background:#F59E0B;border-radius:50%"></span>HUBSPOT NOT CONNECTED · using demo data</span>`;
+
+    const intro = `
+      <div style="background:linear-gradient(135deg,#EEF2FF,#F5F3FF);border:1px solid #C7D2FE;border-radius:14px;padding:18px 22px;margin-bottom:22px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#312E81;margin-bottom:4px">⚡ How Dynamic Audiences work</div>
+          <div style="font-size:0.78rem;color:#4338CA;line-height:1.55;max-width:680px">Define rules once — InfoGenie continuously re-evaluates every contact. People auto-flow IN when they match, OUT when they don't. Drip campaigns target a segment ID, never a stale list.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">${sourceBadge}<div style="font-size:0.62rem;color:#6B7280;font-weight:700">Phase 1 · Builder + Live Preview</div></div>
+      </div>`;
+
+    const cards = segs.length === 0
+      ? `<div style="background:#fff;border:2px dashed #C7D2FE;border-radius:14px;padding:48px;text-align:center">
+           <div style="font-size:2.4rem;margin-bottom:8px">🎯</div>
+           <div style="font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px">No dynamic audiences yet</div>
+           <div style="font-size:0.82rem;color:#6B7280;margin-bottom:16px">Create your first rule-based segment — the live count updates the moment you tweak a rule.</div>
+           <button onclick="openDynSegmentBuilder()" style="padding:11px 22px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:9px;font-size:0.85rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5);box-shadow:0 4px 14px rgba(30,27,75,.35)">+ Create your first audience</button>
+         </div>`
+      : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px">
+          ${segs.map(s => {
+            const last = s.last_evaluated_at ? new Date(s.last_evaluated_at).toLocaleString() : 'never';
+            const conds = (s.rules && Array.isArray(s.rules.conditions)) ? s.rules.conditions.length : 0;
+            return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.04);display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+                <div>
+                  <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628">${_escapeHtml(s.name)}</div>
+                  ${s.description ? `<div style="font-size:0.72rem;color:#6B7280;margin-top:3px;line-height:1.45">${_escapeHtml(s.description)}</div>` : ''}
+                </div>
+                <span style="background:${s.enabled?'#DCFCE7':'#F3F4F6'};color:${s.enabled?'#15803D':'#6B7280'};padding:2px 8px;border-radius:5px;font-size:0.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em">${s.enabled?'Live':'Paused'}</span>
+              </div>
+              <div style="display:flex;gap:14px;padding:10px 0;border-top:1px solid #F1F5F9;border-bottom:1px solid #F1F5F9">
+                <div style="flex:1"><div style="font-size:0.6rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Members</div><div style="font-size:1.4rem;font-weight:800;color:#1E1B4B;font-variant-numeric:tabular-nums">${(s.member_count||0).toLocaleString()}</div></div>
+                <div style="flex:1"><div style="font-size:0.6rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Rules</div><div style="font-size:1.4rem;font-weight:800;color:#1E1B4B;font-variant-numeric:tabular-nums">${conds}</div></div>
+              </div>
+              <div style="font-size:0.66rem;color:#9CA3AF">Last evaluated: ${last}</div>
+              <div style="display:flex;gap:8px;margin-top:4px">
+                <button onclick="openDynSegmentBuilder(${s.id})" style="flex:1;padding:8px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:7px;font-size:0.72rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">✏️ Edit</button>
+                <button onclick="deleteDynSegment(${s.id},'${_escapeHtml(s.name).replace(/'/g,'&#39;')}')" style="padding:8px 12px;background:#fff;border:2px solid #FCA5A5;border-radius:7px;font-size:0.72rem;font-weight:800;color:#B91C1C;-webkit-text-fill-color:#B91C1C;cursor:pointer">🗑</button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`;
+
+    wrap.innerHTML = intro + cards;
+  } catch (e) {
+    wrap.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:16px;color:#B91C1C;font-weight:600">Failed to load audiences: ${_escapeHtml(e.message)}</div>`;
+  }
+};
+
+window.deleteDynSegment = async function(id, name) {
+  if (!confirm(`Delete dynamic audience "${name}"? This removes the rules + membership history. Drip campaigns wired to this segment will need re-targeting.`)) return;
+  await fetch('/api/audiences/' + id, { method:'DELETE' });
+  showToast('🗑 Audience deleted');
+  buildDynAudiences();
+};
+
+// Builder modal — creates or edits a segment.
+window.openDynSegmentBuilder = async function(segmentId) {
+  window._dynSegEditing = segmentId || null;
+  let preset = { name:'', description:'', rules:{ match:'all', conditions:[] } };
+  if (segmentId) {
+    try {
+      const r = await fetch('/api/audiences/' + segmentId).then(x=>x.json());
+      if (r.ok && r.segment) preset = { name:r.segment.name, description:r.segment.description||'', rules:r.segment.rules||preset.rules };
+    } catch(_) {}
+  }
+
+  let modal = document.getElementById('dynSegModal');
+  if (!modal) { modal = document.createElement('div'); modal.id = 'dynSegModal'; document.body.appendChild(modal); }
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:10010;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;overflow-y:auto;backdrop-filter:blur(4px)';
+  modal.innerHTML = `
+    <div style="background:#fff;width:100%;max-width:780px;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:28px 32px;color:#0A1628">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1.3rem;font-weight:800">${segmentId ? '✏️ Edit' : '➕ New'} Dynamic Audience</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">Add rules — the live count below updates as you type.</div>
+        </div>
+        <button onclick="closeDynSegModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6B7280;padding:4px 10px">×</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:800;color:#374151;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em">Audience name</label>
+          <input id="dynSegName" type="text" placeholder="e.g. One-time buyers (last 30d)" value="${_escapeHtml(preset.name)}" style="width:100%;padding:10px 12px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:0.9rem;color:#0A1628;background:#fff" />
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:800;color:#374151;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em">Match logic</label>
+          <select id="dynSegMatch" style="width:100%;padding:10px 12px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:0.9rem;color:#0A1628;background:#fff">
+            <option value="all" ${preset.rules.match==='all'?'selected':''}>Match ALL conditions</option>
+            <option value="any" ${preset.rules.match==='any'?'selected':''}>Match ANY condition</option>
+            <option value="none" ${preset.rules.match==='none'?'selected':''}>Match NONE of these</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-bottom:18px">
+        <label style="display:block;font-size:0.7rem;font-weight:800;color:#374151;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em">Description (optional)</label>
+        <input id="dynSegDesc" type="text" placeholder="What is this audience for?" value="${_escapeHtml(preset.description)}" style="width:100%;padding:10px 12px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:0.85rem;color:#0A1628;background:#fff" />
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:0.78rem;font-weight:800;color:#0A1628">Conditions</div>
+        <button onclick="dynSegAddCondition()" style="padding:7px 14px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:7px;font-size:0.72rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">+ Add condition</button>
+      </div>
+      <div id="dynSegConditions" style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px"></div>
+
+      <div id="dynSegPreview" style="background:linear-gradient(135deg,#EEF2FF,#F5F3FF);border:1.5px solid #C7D2FE;border-radius:12px;padding:16px 18px;margin-bottom:18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:0.7rem;font-weight:800;color:#4338CA;text-transform:uppercase;letter-spacing:.05em">Live preview</div>
+            <div id="dynSegPreviewCount" style="font-family:Sora,sans-serif;font-size:1.6rem;font-weight:800;color:#1E1B4B;margin-top:3px">— matches</div>
+            <div id="dynSegPreviewNote" style="font-size:0.7rem;color:#6B7280;margin-top:3px">Add a condition to see your live count.</div>
+          </div>
+          <button onclick="dynSegRunPreview()" style="padding:9px 16px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:8px;font-size:0.75rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">🔄 Refresh count</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="closeDynSegModal()" style="padding:10px 18px;background:#fff;border:2px solid #D1D5DB;border-radius:8px;font-size:0.82rem;font-weight:700;color:#374151;cursor:pointer">Cancel</button>
+        <button onclick="dynSegSave()" style="padding:10px 22px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:8px;font-size:0.82rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5);box-shadow:0 4px 14px rgba(30,27,75,.35)">${segmentId?'💾 Save changes':'✨ Create audience'}</button>
+      </div>
+    </div>`;
+
+  // Render preset conditions (or one blank one for new)
+  window._dynSegConds = (preset.rules.conditions && preset.rules.conditions.length) ? [...preset.rules.conditions] : [];
+  if (!window._dynSegConds.length && !segmentId) window._dynSegConds.push({ type:'property', field:'lifecyclestage', op:'eq', value:'customer' });
+  dynSegRenderConditions();
+  setTimeout(dynSegRunPreview, 200);
+};
+
+window.closeDynSegModal = function() {
+  const m = document.getElementById('dynSegModal');
+  if (m) m.remove();
+};
+
+window.dynSegAddCondition = function() {
+  window._dynSegConds = window._dynSegConds || [];
+  window._dynSegConds.push({ type:'property', field:'lifecyclestage', op:'eq', value:'' });
+  dynSegRenderConditions();
+};
+
+window.dynSegRemoveCondition = function(idx) {
+  window._dynSegConds.splice(idx, 1);
+  dynSegRenderConditions();
+  dynSegRunPreview();
+};
+
+window.dynSegUpdateCondition = function(idx, key, val) {
+  window._dynSegConds[idx] = window._dynSegConds[idx] || {};
+  window._dynSegConds[idx][key] = val;
+  // Reset op/field defaults when type changes so the row stays valid.
+  if (key === 'type') {
+    const c = window._dynSegConds[idx];
+    if (val === 'property')   { c.field='lifecyclestage'; c.op='eq'; c.value=''; }
+    if (val === 'event')      { c.event='page_view'; c.op='happened'; c.days=30; c.value=''; }
+    if (val === 'commerce')   { c.field='total_purchases'; c.op='gt'; c.value=0; }
+    if (val === 'engagement') { c.metric='opened_email'; c.op='happened'; c.days=30; c.value=''; }
+    if (val === 'ai_source')  { c.source='chatgpt'; c.days=30; }
+    dynSegRenderConditions();
+  }
+  // Debounced live preview
+  clearTimeout(window._dynSegPreviewT);
+  window._dynSegPreviewT = setTimeout(dynSegRunPreview, 500);
+};
+
+window.dynSegRenderConditions = function() {
+  const host = document.getElementById('dynSegConditions');
+  if (!host) return;
+  const conds = window._dynSegConds || [];
+  if (!conds.length) {
+    host.innerHTML = `<div style="background:#F9FAFB;border:1.5px dashed #D1D5DB;border-radius:9px;padding:20px;text-align:center;color:#6B7280;font-size:0.8rem">No conditions yet — click "+ Add condition" above.</div>`;
+    return;
+  }
+  host.innerHTML = conds.map((c, i) => `
+    <div style="background:#F9FAFB;border:1.5px solid #E5E7EB;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:0.7rem;font-weight:800;color:#6B7280;min-width:18px">${i+1}.</span>
+      <select onchange="dynSegUpdateCondition(${i},'type',this.value)" style="padding:7px 10px;border:1.5px solid #D1D5DB;border-radius:6px;font-size:0.78rem;color:#0A1628;background:#fff;font-weight:600">
+        <option value="property"   ${c.type==='property'?'selected':''}>Contact property</option>
+        <option value="event"      ${c.type==='event'?'selected':''}>Event</option>
+        <option value="commerce"   ${c.type==='commerce'?'selected':''}>Commerce</option>
+        <option value="engagement" ${c.type==='engagement'?'selected':''}>Engagement</option>
+        <option value="ai_source"  ${c.type==='ai_source'?'selected':''}>AI referral source</option>
+      </select>
+      ${dynSegRowFields(c, i)}
+      <button onclick="dynSegRemoveCondition(${i})" style="margin-left:auto;background:#fff;border:1.5px solid #FCA5A5;border-radius:6px;padding:6px 10px;font-size:0.72rem;font-weight:700;color:#B91C1C;-webkit-text-fill-color:#B91C1C;cursor:pointer">Remove</button>
+    </div>`).join('');
+};
+
+function dynSegRowFields(c, i) {
+  const inp = (key, val, ph='value', w=140) => `<input type="text" placeholder="${ph}" value="${val==null?'':_escapeHtml(String(val))}" oninput="dynSegUpdateCondition(${i},'${key}',this.value)" style="padding:7px 10px;border:1.5px solid #D1D5DB;border-radius:6px;font-size:0.78rem;color:#0A1628;background:#fff;width:${w}px" />`;
+  const num = (key, val, ph='30', w=70) => `<input type="number" placeholder="${ph}" value="${val==null?'':val}" oninput="dynSegUpdateCondition(${i},'${key}',this.value)" style="padding:7px 10px;border:1.5px solid #D1D5DB;border-radius:6px;font-size:0.78rem;color:#0A1628;background:#fff;width:${w}px" />`;
+  const sel = (key, val, opts) => `<select onchange="dynSegUpdateCondition(${i},'${key}',this.value)" style="padding:7px 10px;border:1.5px solid #D1D5DB;border-radius:6px;font-size:0.78rem;color:#0A1628;background:#fff;font-weight:600">${opts.map(([v,l])=>`<option value="${v}" ${val===v?'selected':''}>${l}</option>`).join('')}</select>`;
+  if (c.type === 'property') {
+    return inp('field', c.field, 'property name', 160)
+      + sel('op', c.op, [['eq','is'],['neq','is not'],['contains','contains'],['gt','>'],['lt','<'],['exists','is set']])
+      + (c.op === 'exists' ? '' : inp('value', c.value, 'value', 140));
+  }
+  if (c.type === 'event') {
+    return inp('event', c.event, 'event name', 150)
+      + sel('op', c.op, [['happened','happened'],['not_happened','did not happen'],['count_gt','count >'],['count_lt','count <']])
+      + ((c.op==='count_gt'||c.op==='count_lt') ? num('value', c.value, '0', 60) : '')
+      + `<span style="font-size:0.72rem;color:#6B7280">in last</span>` + num('days', c.days, '30', 60) + `<span style="font-size:0.72rem;color:#6B7280">days</span>`;
+  }
+  if (c.type === 'commerce') {
+    return sel('field', c.field, [['total_purchases','total purchases'],['last_purchase_days','days since last purchase'],['aov','avg order value']])
+      + sel('op', c.op, [['gt','>'],['lt','<'],['eq','=']])
+      + num('value', c.value, '0', 80);
+  }
+  if (c.type === 'engagement') {
+    return sel('metric', c.metric, [['opened_email','opened email'],['clicked_email','clicked email'],['page_visited','visited page']])
+      + sel('op', c.op, [['happened','happened'],['not_happened','did not happen']])
+      + (c.metric==='page_visited' ? inp('value', c.value, 'url contains', 140) : '')
+      + `<span style="font-size:0.72rem;color:#6B7280">in last</span>` + num('days', c.days, '30', 60) + `<span style="font-size:0.72rem;color:#6B7280">days</span>`;
+  }
+  if (c.type === 'ai_source') {
+    return sel('source', c.source, [['chatgpt','ChatGPT'],['perplexity','Perplexity'],['gemini','Gemini'],['claude','Claude'],['copilot','Copilot'],['googleAi','Google AI Overview']])
+      + `<span style="font-size:0.72rem;color:#6B7280">referred in last</span>` + num('days', c.days, '30', 60) + `<span style="font-size:0.72rem;color:#6B7280">days</span>`;
+  }
+  return '';
+}
+
+window.dynSegRunPreview = async function() {
+  const countEl = document.getElementById('dynSegPreviewCount');
+  const noteEl  = document.getElementById('dynSegPreviewNote');
+  if (!countEl) return;
+  const match = (document.getElementById('dynSegMatch')||{}).value || 'all';
+  const rules = { match, conditions: window._dynSegConds || [] };
+  if (!rules.conditions.length) {
+    countEl.textContent = '— matches';
+    noteEl.textContent  = 'Add a condition to see your live count.';
+    return;
+  }
+  countEl.textContent = '⏳ counting…';
+  noteEl.textContent  = 'Sampling contacts and applying rules…';
+  try {
+    const r = await fetch('/api/audiences/preview', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ rules }) }).then(x=>x.json());
+    if (r.ok && r.preview) {
+      const p = r.preview;
+      countEl.textContent = `${(p.matches||0).toLocaleString()} of ${(p.sampleSize||0).toLocaleString()} sampled contacts match`;
+      noteEl.innerHTML    = (p.note || '') + (p.source==='hubspot' ? ' <span style="display:inline-block;background:#DCFCE7;color:#15803D;padding:1px 6px;border-radius:4px;font-size:0.62rem;font-weight:800;margin-left:4px">LIVE · HubSpot</span>' : ' <span style="display:inline-block;background:#FEF3C7;color:#92400E;padding:1px 6px;border-radius:4px;font-size:0.62rem;font-weight:800;margin-left:4px">DEMO · synthetic</span>');
+    } else {
+      countEl.textContent = '⚠ preview failed';
+      noteEl.textContent  = r.error || (r.preview && r.preview.error) || 'Unknown error';
+    }
+  } catch (e) {
+    countEl.textContent = '⚠ preview failed';
+    noteEl.textContent  = e.message;
+  }
+};
+
+window.dynSegSave = async function() {
+  const name  = (document.getElementById('dynSegName')||{}).value || '';
+  const desc  = (document.getElementById('dynSegDesc')||{}).value || '';
+  const match = (document.getElementById('dynSegMatch')||{}).value || 'all';
+  if (!name.trim()) { alert('Give the audience a name first.'); return; }
+  const body = { name, description: desc, rules: { match, conditions: window._dynSegConds || [] } };
+  const url    = window._dynSegEditing ? '/api/audiences/' + window._dynSegEditing : '/api/audiences';
+  const method = window._dynSegEditing ? 'PUT' : 'POST';
+  try {
+    const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error || 'save failed');
+    showToast(window._dynSegEditing ? '💾 Audience updated' : '✨ Audience created');
+    closeDynSegModal();
+    buildDynAudiences();
+  } catch (e) { alert('Save failed: ' + e.message); }
+};
+
+// Wire the nav-link click → render the dynamic-audiences view.
+(function wireDynAudNav(){
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('a.nav-link[data-view="audiences-dynamic"]');
+    if (a) setTimeout(() => { try { buildDynAudiences(); } catch(_){} }, 60);
+  });
+})();

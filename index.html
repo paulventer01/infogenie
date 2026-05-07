@@ -132,6 +132,7 @@
           <a href="#" class="nav-link" data-view="audience"><span class="ndl-icon">🎯</span><span class="ndl-text">Audience</span></a>
           <a href="#" class="nav-link" data-view="advertise"><span class="ndl-icon">📣</span><span class="ndl-text">Advertise Hub</span></a>
           <a href="#" class="nav-link" data-view="lookalike"><span class="ndl-icon">👥</span><span class="ndl-text">Lookalike Audiences</span></a>
+          <a href="#" class="nav-link" data-view="audiences-dynamic"><span class="ndl-icon">⚡</span><span class="ndl-text">Dynamic Audiences <span style="display:inline-block;background:#1E1B4B;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:800;letter-spacing:.04em">NEW</span></span></a>
           <a href="#" class="nav-link" data-view="lead-qualifier"><span class="ndl-icon">🧲</span><span class="ndl-text">Lead Qualifier</span></a>
           <a href="#" class="nav-link" data-view="opt-folders"><span class="ndl-icon">📁</span><span class="ndl-text">Optimization Folders</span></a>
           <a href="#" class="nav-link" data-view="import-campaigns"><span class="ndl-icon">📥</span><span class="ndl-text">Import Campaigns</span></a>
@@ -719,6 +720,25 @@
     </div>
   </div>
   <div class="container" id="campaignsWrap"></div>
+</div>
+
+<!-- DYNAMIC AUDIENCES VIEW (Drip-style real-time segments) -->
+<div class="view hidden" id="view-audiences-dynamic">
+  <div class="view-header">
+    <div class="container">
+      <div class="vh-inner">
+        <div>
+          <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Dynamic Audiences</div>
+          <h2 class="view-title">⚡ Dynamic Audiences</h2>
+          <p class="view-sub">Real-time, rule-based segments — contacts auto-flow in & out as their behaviour changes. No manual list maintenance, ever.</p>
+        </div>
+        <div class="vh-actions">
+          <button class="btn-primary" id="newDynSegBtn" onclick="openDynSegmentBuilder()">+ New Audience</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container" id="dynAudWrap" style="padding-top:24px;padding-bottom:56px"></div>
 </div>
 
 <!-- AUDIENCE VIEW -->
@@ -2063,7 +2083,7 @@
   </div>
 </div>
 
-<script src="/app.js?v=20260506F"></script>
+<script src="/app.js?v=20260507B"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');
