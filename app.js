@@ -2658,6 +2658,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'cold-email')       { try { buildColdEmail(); }        catch(e) { console.warn('buildColdEmail error:', e); } }
   if (viewId === 'web-vitals')       { try { buildWebVitals(); }        catch(e) { console.warn('buildWebVitals error:', e); } }
   if (viewId === 'lead-finder')      { try { buildLeadFinder(); }       catch(e) { console.warn('buildLeadFinder error:', e); } }
+  if (viewId === 'serp-tracker')     { try { buildSerpTracker(); }      catch(e) { console.warn('buildSerpTracker error:', e); } }
+  if (viewId === 'hubspot-sync')     { try { buildHubspotSync(); }      catch(e) { console.warn('buildHubspotSync error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -34752,4 +34754,172 @@ window._lfExportCsv = function() {
   const blob = new Blob([csv], { type:'text/csv' }); const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = `leads-${Date.now()}.csv`; a.click();
   showToast('✅ CSV downloaded');
+};
+
+// ── Tier 12 #1: SERP Position Tracker ────────────────────────────────────
+window.buildSerpTracker = async function() {
+  const el = document.getElementById('stWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:2fr 1fr 90px auto;gap:10px;align-items:end">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Keyword</label><input id="stKw" placeholder="best running shoes" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Your domain</label><input id="stDom" placeholder="nike.com" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Country</label><input id="stCty" value="us" maxlength="5" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <button onclick="_stAdd()" style="padding:10px 18px;background:#F97316;border:2px solid #F97316;border-radius:8px;font-size:0.82rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">+ Track</button>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="margin:0;color:#0A1628;font-size:1.05rem">Tracked keywords</h3>
+      <button onclick="_stScanAll()" style="padding:7px 14px;background:#fff;border:1.5px solid #F97316;color:#F97316;border-radius:6px;font-size:0.78rem;font-weight:700;cursor:pointer">⚡ Scan All</button>
+    </div>
+    <div id="stList"></div>
+    <div id="stDetail"></div>`;
+  await _stRefresh();
+};
+window._stRefresh = async function() {
+  try {
+    const r = await fetch('/api/serp-tracker/keywords').then(x=>x.json());
+    const list = document.getElementById('stList'); if (!list) return;
+    if (!r.ok || !r.keywords?.length) { list.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:30px;text-align:center;color:#6B7280">No keywords tracked yet — add one above.</div>`; return; }
+    list.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:0.84rem">
+        <thead><tr style="background:#F9FAFB;text-align:left">
+          <th style="padding:9px 12px;font-size:0.7rem;color:#6B7280;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Keyword</th>
+          <th style="padding:9px 12px;font-size:0.7rem;color:#6B7280;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Domain</th>
+          <th style="padding:9px 12px;font-size:0.7rem;color:#6B7280;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Country</th>
+          <th style="padding:9px 12px;font-size:0.7rem;color:#6B7280;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Position</th>
+          <th style="padding:9px 12px;font-size:0.7rem;color:#6B7280;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Last scan</th>
+          <th style="padding:9px 12px"></th>
+        </tr></thead>
+        <tbody>${r.keywords.map(k=>{const p=k.last_position; const pc=p===null?'#9CA3AF':p<=3?'#15803D':p<=10?'#F59E0B':'#DC2626'; return `<tr style="border-top:1px solid #F3F4F6">
+          <td style="padding:9px 12px;color:#0A1628;font-weight:600">${_escapeHtml(k.keyword)}</td>
+          <td style="padding:9px 12px;color:#374151">${_escapeHtml(k.target_domain)}</td>
+          <td style="padding:9px 12px;color:#6B7280;text-transform:uppercase;font-size:0.74rem;font-weight:700">${_escapeHtml(k.country)}</td>
+          <td style="padding:9px 12px"><span style="display:inline-block;min-width:34px;text-align:center;background:${pc};color:#fff;padding:3px 8px;border-radius:4px;font-weight:800;font-size:0.78rem">${p===null?'—':'#'+p}</span></td>
+          <td style="padding:9px 12px;color:#9CA3AF;font-size:0.76rem">${k.last_run_at?new Date(k.last_run_at).toLocaleString():'never'}</td>
+          <td style="padding:9px 12px;text-align:right;white-space:nowrap"><button onclick="_stScan(${k.id})" style="padding:5px 10px;background:#F97316;border:none;color:#fff;border-radius:5px;font-size:0.74rem;font-weight:700;cursor:pointer;-webkit-text-fill-color:#fff">Scan</button> <button onclick="_stHist(${k.id},'${_escapeHtml(k.keyword)}')" style="padding:5px 10px;background:#fff;border:1.5px solid #D1D5DB;color:#374151;border-radius:5px;font-size:0.74rem;font-weight:700;cursor:pointer">History</button> <button onclick="_stDel(${k.id})" style="padding:5px 10px;background:#fff;border:1.5px solid #FCA5A5;color:#DC2626;border-radius:5px;font-size:0.74rem;font-weight:700;cursor:pointer">🗑</button></td>
+        </tr>`;}).join('')}</tbody></table></div>`;
+  } catch (e) { console.warn(e); }
+};
+window._stAdd = async function() {
+  const keyword = (document.getElementById('stKw')||{}).value || '';
+  const target_domain = (document.getElementById('stDom')||{}).value || '';
+  const country = (document.getElementById('stCty')||{}).value || 'us';
+  if (!keyword.trim() || !target_domain.trim()) return showToast('⚠️ Keyword + domain required');
+  const r = await fetch('/api/serp-tracker/keywords', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ keyword, target_domain, country }) }).then(x=>x.json());
+  if (!r.ok) return showToast('❌ ' + r.error);
+  document.getElementById('stKw').value = '';
+  showToast('✅ Tracking added'); _stRefresh();
+};
+window._stScan = async function(id) {
+  showToast('⏳ Scanning Google…');
+  const r = await fetch('/api/serp-tracker/scan/'+id, { method:'POST' }).then(x=>x.json());
+  if (!r.ok) return showToast('❌ ' + r.error);
+  if (r.note) return showToast('ℹ️ ' + r.note);
+  showToast(r.target.position ? `✅ Ranked #${r.target.position}` : '⚠️ Not in top 10');
+  _stRefresh();
+};
+window._stScanAll = async function() {
+  showToast('⏳ Scanning all keywords…');
+  const r = await fetch('/api/serp-tracker/scan-all', { method:'POST' }).then(x=>x.json());
+  if (!r.ok) return showToast('❌ ' + r.error);
+  showToast(`✅ Scanned ${r.scanned}/${r.total}`); _stRefresh();
+};
+window._stDel = async function(id) {
+  if (!confirm('Delete this keyword and its history?')) return;
+  await fetch('/api/serp-tracker/keywords/'+id, { method:'DELETE' });
+  _stRefresh();
+};
+window._stHist = async function(id, kw) {
+  const r = await fetch('/api/serp-tracker/history/'+id).then(x=>x.json());
+  const det = document.getElementById('stDetail'); if (!det) return;
+  if (!r.ok || !r.runs.length) { det.innerHTML = `<div style="margin-top:14px;background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:20px;text-align:center;color:#6B7280">No scan history yet for "${_escapeHtml(kw)}"</div>`; return; }
+  det.innerHTML = `<div style="margin-top:18px;background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px 18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-weight:800;color:#0A1628">📈 Position history — ${_escapeHtml(kw)}</div><button onclick="document.getElementById('stDetail').innerHTML=''" style="background:transparent;border:none;color:#6B7280;cursor:pointer;font-size:1.1rem">×</button></div>
+    <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+      <thead><tr style="background:#F9FAFB;text-align:left"><th style="padding:7px 10px;font-size:0.68rem;color:#6B7280">When</th><th style="padding:7px 10px;font-size:0.68rem;color:#6B7280">Position</th><th style="padding:7px 10px;font-size:0.68rem;color:#6B7280">URL</th><th style="padding:7px 10px;font-size:0.68rem;color:#6B7280">Total results</th></tr></thead>
+      <tbody>${r.runs.map(x=>{const p=x.target_position; const pc=p===null?'#9CA3AF':p<=3?'#15803D':p<=10?'#F59E0B':'#DC2626'; return `<tr style="border-top:1px solid #F3F4F6"><td style="padding:7px 10px;color:#374151">${new Date(x.ran_at).toLocaleString()}</td><td style="padding:7px 10px"><span style="background:${pc};color:#fff;padding:2px 7px;border-radius:4px;font-weight:800;font-size:0.74rem">${p===null?'—':'#'+p}</span></td><td style="padding:7px 10px;color:#0A1628;font-size:0.76rem;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x.target_url?`<a href="${_escapeHtml(_safeUrl(x.target_url))}" target="_blank" rel="noopener noreferrer" style="color:#F97316">${_escapeHtml(x.target_url)}</a>`:'—'}</td><td style="padding:7px 10px;color:#6B7280;font-size:0.76rem">${_escapeHtml(x.total_results||'—')}</td></tr>`;}).join('')}</tbody>
+    </table></div>`;
+};
+
+// ── Tier 12 #2: HubSpot Sync ────────────────────────────────────────────
+window.buildHubspotSync = async function() {
+  const el = document.getElementById('hsWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:linear-gradient(135deg,#FF7A59 0%,#FF5C35 100%);color:#fff;border-radius:12px;padding:18px 22px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+      <div><div style="font-weight:800;font-size:1.05rem">🔄 HubSpot CRM</div><div style="font-size:0.82rem;opacity:.92;margin-top:2px">Push prospects + influencers as contacts. Auto-dedups by email, syncs lifecycle stage = lead.</div></div>
+      <button onclick="_hsTest()" style="padding:8px 16px;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.35);color:#fff;-webkit-text-fill-color:#fff;border-radius:8px;font-weight:800;cursor:pointer;font-size:0.82rem">⚡ Test connection</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px">
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
+        <div style="font-weight:800;color:#0A1628;margin-bottom:10px">📥 Sync from Lead Finder</div>
+        <p style="margin:0 0 10px;color:#6B7280;font-size:0.82rem">Run a B2B Lead Finder search first, then click below to push the most recent run into HubSpot.</p>
+        <button onclick="_hsBulkFromLeads()" style="padding:10px 16px;background:#F97316;border:2px solid #F97316;border-radius:8px;color:#fff;-webkit-text-fill-color:#fff;font-weight:800;cursor:pointer;font-size:0.84rem;width:100%;text-shadow:0 1px 2px rgba(0,0,0,.4)">→ Push last lead-finder run</button>
+      </div>
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
+        <div style="font-weight:800;color:#0A1628;margin-bottom:10px">✏️ Push single contact</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <input id="hsName" placeholder="Full name" style="padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.82rem">
+          <input id="hsEmail" placeholder="email@company.com" style="padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.82rem">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <input id="hsTitle" placeholder="Job title" style="padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.82rem">
+          <input id="hsCompany" placeholder="Company" style="padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.82rem">
+        </div>
+        <button onclick="_hsPushOne()" style="padding:9px 14px;background:#F97316;border:2px solid #F97316;border-radius:6px;color:#fff;-webkit-text-fill-color:#fff;font-weight:800;cursor:pointer;font-size:0.82rem;width:100%;text-shadow:0 1px 2px rgba(0,0,0,.4)">→ Push to HubSpot</button>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="margin:0;color:#0A1628;font-size:1.05rem">Recent HubSpot contacts</h3>
+      <button onclick="_hsLoadRecent()" style="padding:7px 14px;background:#fff;border:1.5px solid #F97316;color:#F97316;border-radius:6px;font-size:0.78rem;font-weight:700;cursor:pointer">↻ Refresh</button>
+    </div>
+    <div id="hsRecent"></div>`;
+  _hsLoadRecent();
+};
+window._hsTest = async function() {
+  showToast('⏳ Testing HubSpot…');
+  const r = await fetch('/api/hubspot-sync/test', { method:'POST' }).then(x=>x.json());
+  showToast(r.ok ? '✅ ' + r.message : '❌ ' + r.error);
+};
+window._hsPushOne = async function() {
+  const lead = {
+    name:  (document.getElementById('hsName')||{}).value,
+    email: (document.getElementById('hsEmail')||{}).value,
+    title: (document.getElementById('hsTitle')||{}).value,
+    company: (document.getElementById('hsCompany')||{}).value,
+  };
+  if (!lead.name && !lead.email) return showToast('⚠️ Name or email required');
+  const r = await fetch('/api/hubspot-sync/push-lead', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ lead }) }).then(x=>x.json());
+  if (!r.ok) return showToast('❌ ' + r.error);
+  showToast('✅ Contact ' + r.action + ' (id ' + r.contact_id + ')');
+  ['hsName','hsEmail','hsTitle','hsCompany'].forEach(i => { const e = document.getElementById(i); if (e) e.value = ''; });
+  _hsLoadRecent();
+};
+window._hsBulkFromLeads = async function() {
+  const leads = window._lfLeads || [];
+  if (!leads.length) return showToast('⚠️ No leads cached. Run a B2B Lead Finder search first.');
+  showToast(`⏳ Pushing ${leads.length} leads…`);
+  const r = await fetch('/api/hubspot-sync/push-bulk', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ leads: leads.map(l => ({ ...l, _source:'b2b_lead_finder' })) }) }).then(x=>x.json());
+  if (!r.ok) return showToast('❌ ' + r.error);
+  showToast(`✅ Pushed ${r.pushed}/${r.total_attempted} to HubSpot`);
+  _hsLoadRecent();
+};
+window._hsLoadRecent = async function() {
+  const out = document.getElementById('hsRecent'); if (!out) return;
+  out.innerHTML = `<div style="color:#6B7280;padding:14px">⏳ Loading…</div>`;
+  const r = await fetch('/api/hubspot-sync/recent-contacts?limit=15').then(x=>x.json()).catch(()=>({ok:false,error:'request failed'}));
+  if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+  if (!r.contacts.length) { out.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:30px;text-align:center;color:#6B7280">No contacts in HubSpot yet.</div>`; return; }
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden">
+    <table style="width:100%;border-collapse:collapse;font-size:0.84rem">
+      <thead><tr style="background:#F9FAFB;text-align:left"><th style="padding:9px 12px;font-size:0.7rem;color:#6B7280">Name</th><th style="padding:9px 12px;font-size:0.7rem;color:#6B7280">Email</th><th style="padding:9px 12px;font-size:0.7rem;color:#6B7280">Title</th><th style="padding:9px 12px;font-size:0.7rem;color:#6B7280">Company</th><th style="padding:9px 12px;font-size:0.7rem;color:#6B7280">Stage</th><th style="padding:9px 12px;font-size:0.7rem;color:#6B7280">Created</th></tr></thead>
+      <tbody>${r.contacts.map(c=>`<tr style="border-top:1px solid #F3F4F6">
+        <td style="padding:9px 12px;color:#0A1628;font-weight:600">${_escapeHtml((c.firstname||'')+' '+(c.lastname||''))}</td>
+        <td style="padding:9px 12px;color:#374151;font-size:0.78rem">${_escapeHtml(c.email||'')}</td>
+        <td style="padding:9px 12px;color:#6B7280;font-size:0.78rem">${_escapeHtml(c.jobtitle||'')}</td>
+        <td style="padding:9px 12px;color:#6B7280;font-size:0.78rem">${_escapeHtml(c.company||'')}</td>
+        <td style="padding:9px 12px"><span style="background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px;font-size:0.7rem;font-weight:700">${_escapeHtml(c.lifecyclestage||'lead')}</span></td>
+        <td style="padding:9px 12px;color:#9CA3AF;font-size:0.74rem">${c.createdate?new Date(c.createdate).toLocaleDateString():''}</td>
+      </tr>`).join('')}</tbody></table></div>`;
 };

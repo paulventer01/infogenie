@@ -8535,6 +8535,13 @@ const _leadFinderRouter = require('./services/lead_finder/api');
 app.use('/api/web-vitals',  _webVitalsRouter);
 app.use('/api/lead-finder', _leadFinderRouter);
 
+// ── Tier 12 ────────────────────────────────────────────────────────────────
+const _serpTrackerSchema = require('./services/serp_tracker/schema');
+const _serpTrackerRouter = require('./services/serp_tracker/api');
+const _hubspotSyncRouter = require('./services/hubspot_sync/api');
+app.use('/api/serp-tracker', _serpTrackerRouter);
+app.use('/api/hubspot-sync', _hubspotSyncRouter);
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
@@ -8550,6 +8557,7 @@ app.use('/api/lead-finder', _leadFinderRouter);
     await _lpSchema.ensureLandingPagesSchema();
     await _coldEmailSchema.ensureColdEmailSchema();
     await _leadFinderSchema.ensureLeadFinderSchema();
+    await _serpTrackerSchema.ensureSerpTrackerSchema();
     _crisisDetector.startCron(6);
     _digestRouter.startCron(24);
     console.log('[tier2-5] crisis + battle + trends + sov + discovery + digest + reply + press-release + alert-routing mounted');
