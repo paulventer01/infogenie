@@ -135,6 +135,9 @@
           <a href="#" class="nav-link" data-view="audiences-dynamic"><span class="ndl-icon">⚡</span><span class="ndl-text">Dynamic Audiences <span style="display:inline-block;background:#1E1B4B;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:800;letter-spacing:.04em">NEW</span></span></a>
           <a href="#" class="nav-link" data-view="search-intel"><span class="ndl-icon">🔮</span><span class="ndl-text">Search &amp; AI Visibility <span style="display:inline-block;background:#7C3AED;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:800;letter-spacing:.04em">NEW</span></span></a>
           <a href="#" class="nav-link" data-view="influencers"><span class="ndl-icon">🌟</span><span class="ndl-text">Influencer CRM <span style="display:inline-block;background:#7C3AED;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:800;letter-spacing:.04em">NEW</span></span></a>
+          <a href="#" class="nav-link" data-view="crisis-radar"><span class="ndl-icon">🚨</span><span class="ndl-text">Crisis Radar <span style="display:inline-block;background:#B91C1C;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:800;letter-spacing:.04em">NEW</span></span></a>
+          <a href="#" class="nav-link" data-view="battle-cards"><span class="ndl-icon">⚔️</span><span class="ndl-text">Battle Cards <span style="display:inline-block;background:#B91C1C;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:800;letter-spacing:.04em">NEW</span></span></a>
+          <a href="#" class="nav-link" data-view="trending-topics"><span class="ndl-icon">🔥</span><span class="ndl-text">Trending Topics <span style="display:inline-block;background:#B91C1C;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:800;letter-spacing:.04em">NEW</span></span></a>
           <a href="#" class="nav-link" data-view="lead-qualifier"><span class="ndl-icon">🧲</span><span class="ndl-text">Lead Qualifier</span></a>
           <a href="#" class="nav-link" data-view="opt-folders"><span class="ndl-icon">📁</span><span class="ndl-text">Optimization Folders</span></a>
           <a href="#" class="nav-link" data-view="import-campaigns"><span class="ndl-icon">📥</span><span class="ndl-text">Import Campaigns</span></a>
@@ -776,6 +779,48 @@
     </div>
   </div>
   <div class="container" id="infWrap" style="padding-top:24px;padding-bottom:56px"></div>
+</div>
+
+<!-- CRISIS RADAR VIEW -->
+<div class="view hidden" id="view-crisis-radar">
+  <div class="view-header"><div class="container"><div class="vh-inner">
+    <div>
+      <div class="breadcrumb"><span class="bc-group">Monitor</span> <span class="bc-sep">›</span> Crisis Radar</div>
+      <h2 class="view-title">🚨 Crisis Radar</h2>
+      <p class="view-sub">Daily anomaly detection on mention volume + sentiment. Detects spikes vs your 7-day baseline and fires Slack alerts when configured.</p>
+    </div>
+    <div class="vh-actions">
+      <button class="btn-primary" onclick="_crRunNow()">▶ Run scan now</button>
+    </div>
+  </div></div></div>
+  <div class="container" id="crWrap" style="padding-top:24px;padding-bottom:56px"></div>
+</div>
+
+<!-- BATTLE CARDS VIEW -->
+<div class="view hidden" id="view-battle-cards">
+  <div class="view-header"><div class="container"><div class="vh-inner">
+    <div>
+      <div class="breadcrumb"><span class="bc-group">Compete</span> <span class="bc-sep">›</span> Battle Cards</div>
+      <h2 class="view-title">⚔️ Competitor Battle Cards</h2>
+      <p class="view-sub">Auto-generated 1-page intel briefs per competitor — positioning, strengths, weaknesses, recent moves, and concrete counter-plays.</p>
+    </div>
+    <div class="vh-actions">
+      <button class="btn-primary" onclick="_bcOpenGenerate()">✨ New Battle Card</button>
+    </div>
+  </div></div></div>
+  <div class="container" id="bcWrap" style="padding-top:24px;padding-bottom:56px"></div>
+</div>
+
+<!-- TRENDING TOPICS VIEW -->
+<div class="view hidden" id="view-trending-topics">
+  <div class="view-header"><div class="container"><div class="vh-inner">
+    <div>
+      <div class="breadcrumb"><span class="bc-group">Monitor</span> <span class="bc-sep">›</span> Trending Topics</div>
+      <h2 class="view-title">🔥 Trending Topics</h2>
+      <p class="view-sub">What's spiking in your category right now — powered by live web search via Perplexity.</p>
+    </div>
+  </div></div></div>
+  <div class="container" id="trWrap" style="padding-top:24px;padding-bottom:56px"></div>
 </div>
 
 <!-- AUDIENCE VIEW -->
@@ -2120,7 +2165,7 @@
   </div>
 </div>
 
-<script src="/app.js?v=20260507G"></script>
+<script src="/app.js?v=20260507H"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');

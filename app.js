@@ -2637,6 +2637,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'influencers') {
     try { buildInfluencers(); } catch(e) { console.warn('buildInfluencers error:', e); }
   }
+  if (viewId === 'crisis-radar')    { try { buildCrisisRadar(); }   catch(e) { console.warn('buildCrisisRadar error:', e); } }
+  if (viewId === 'battle-cards')    { try { buildBattleCards(); }   catch(e) { console.warn('buildBattleCards error:', e); } }
+  if (viewId === 'trending-topics') { try { buildTrendingTopics(); } catch(e) { console.warn('buildTrendingTopics error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -33032,3 +33035,245 @@ window._infDraftEmail = async function(id) {
     showToast('✅ Draft loaded ('+r.source+') — review and click + Log to record');
   } catch (e) { showToast('❌ ' + e.message); }
 };
+
+// ════════════════════════════════════════════════════════════════════════════
+// TIER 2 — Crisis Radar, Battle Cards, Trending Topics
+// ════════════════════════════════════════════════════════════════════════════
+const _SEV_COLORS = { low:'#3B82F6', med:'#F59E0B', high:'#B91C1C' };
+const _STATUS_COLORS = { open:'#B91C1C', acknowledged:'#F59E0B', resolved:'#15803D' };
+
+// ── CRISIS RADAR ───────────────────────────────────────────────────────────
+window.buildCrisisRadar = async function() {
+  const wrap = document.getElementById('crWrap'); if (!wrap) return;
+  wrap.innerHTML = `<div style="text-align:center;padding:40px;color:#6B7280">Loading…</div>`;
+  try {
+    const [wl, inc] = await Promise.all([
+      fetch('/api/crisis-radar/watchlist').then(x=>x.json()),
+      fetch('/api/crisis-radar/incidents').then(x=>x.json()),
+    ]);
+    const incidents = inc.incidents || [];
+    const open = incidents.filter(i=>i.status==='open');
+    wrap.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px">
+        <div style="background:#fff;border:1px solid #FCA5A5;border-radius:12px;padding:16px"><div style="font-size:0.62rem;font-weight:800;color:#B91C1C;text-transform:uppercase">Open incidents</div><div style="font-family:Sora,sans-serif;font-size:2rem;font-weight:800;color:#B91C1C">${open.length}</div></div>
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px"><div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase">Tracked brands</div><div style="font-family:Sora,sans-serif;font-size:2rem;font-weight:800;color:#0A1628">${(wl.watchlist||[]).length}</div></div>
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px"><div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase">Total incidents (90d)</div><div style="font-family:Sora,sans-serif;font-size:2rem;font-weight:800;color:#0A1628">${incidents.length}</div></div>
+        <div style="background:linear-gradient(135deg,#FEF3C7,#FDE68A);border:1px solid #F59E0B;border-radius:12px;padding:16px"><div style="font-size:0.62rem;font-weight:800;color:#92400E;text-transform:uppercase">Slack alerts</div><div style="font-family:Sora,sans-serif;font-size:1.05rem;font-weight:800;color:#78350F;padding-top:6px">${incidents.filter(i=>i.slack_sent).length} sent</div></div>
+      </div>
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+        <div style="font-family:Sora,sans-serif;font-weight:800;font-size:1rem;margin-bottom:12px">Watchlist</div>
+        <div style="display:grid;grid-template-columns:1.2fr 1.5fr 80px 100px 100px auto;gap:8px;align-items:end;margin-bottom:14px">
+          <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Brand *</div><input id="crBrand" placeholder="Your brand" style="width:100%;padding:7px 9px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.8rem"></label>
+          <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Competitors (comma)</div><input id="crComp" placeholder="brand1, brand2" style="width:100%;padding:7px 9px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.8rem"></label>
+          <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Country</div><input id="crCountry" value="US" style="width:100%;padding:7px 9px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.8rem"></label>
+          <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Spike ×</div><input id="crSpike" type="number" step="0.1" min="1" value="1.8" style="width:100%;padding:7px 9px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.8rem"></label>
+          <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Neg %</div><input id="crNeg" type="number" step="0.05" min="0" max="1" value="0.35" style="width:100%;padding:7px 9px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.8rem"></label>
+          <button onclick="_crAddWatch()" style="padding:8px 14px;background:#B91C1C;border:2px solid #B91C1C;border-radius:6px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">+ Track</button>
+        </div>
+        ${(wl.watchlist||[]).length===0 ? `<div style="color:#9CA3AF;text-align:center;padding:14px;font-size:0.82rem">No brands tracked yet — add one above.</div>` : `
+          <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+            <thead style="background:#F9FAFB;color:#6B7280;text-transform:uppercase;font-size:0.6rem"><tr><th style="padding:8px 10px;text-align:left">Brand</th><th style="padding:8px;text-align:left">Competitors</th><th style="padding:8px;text-align:left">Country</th><th style="padding:8px;text-align:right">Snapshots</th><th style="padding:8px;text-align:right">Open incidents</th><th></th></tr></thead>
+            <tbody>${wl.watchlist.map(w=>`<tr style="border-top:1px solid #F3F4F6">
+              <td style="padding:8px 10px;font-weight:800;color:#0A1628">${_escapeHtml(w.brand)}</td>
+              <td style="padding:8px;color:#6B7280">${(w.competitors||[]).map(c=>_escapeHtml(c)).join(', ')||'-'}</td>
+              <td style="padding:8px">${_escapeHtml(w.country)}</td>
+              <td style="padding:8px;text-align:right;font-variant-numeric:tabular-nums">${w.snapshots}</td>
+              <td style="padding:8px;text-align:right;font-weight:800;color:${w.open_incidents>0?'#B91C1C':'#15803D'}">${w.open_incidents}</td>
+              <td style="padding:8px;text-align:right"><button onclick="_crDeleteWatch(${w.id},'${_escapeHtml(w.brand).replace(/'/g,'')}')" style="padding:5px 10px;background:#fff;border:1.5px solid #FCA5A5;border-radius:5px;font-size:0.68rem;font-weight:700;color:#B91C1C;cursor:pointer">🗑</button></td>
+            </tr>`).join('')}</tbody>
+          </table>`}
+      </div>
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div style="font-family:Sora,sans-serif;font-weight:800;font-size:1rem">Recent incidents</div>
+          <div style="display:flex;gap:6px">
+            ${['','open','acknowledged','resolved'].map(s=>`<button onclick="window._crIncFilter='${s}';buildCrisisRadar()" style="padding:5px 11px;background:${(window._crIncFilter||'')===s?'#1E1B4B':'#fff'};color:${(window._crIncFilter||'')===s?'#fff':'#374151'};-webkit-text-fill-color:${(window._crIncFilter||'')===s?'#fff':'#374151'};border:1.5px solid ${(window._crIncFilter||'')===s?'#1E1B4B':'#E5E7EB'};border-radius:5px;font-size:0.68rem;font-weight:700;cursor:pointer">${s||'all'}</button>`).join('')}
+          </div>
+        </div>
+        ${incidents.length===0 ? `<div style="color:#9CA3AF;text-align:center;padding:30px;font-size:0.85rem">🎉 No incidents — your radar is quiet.</div>` :
+          `<div style="display:flex;flex-direction:column;gap:8px">${incidents.filter(i=>!window._crIncFilter||i.status===window._crIncFilter).map(i=>`
+            <div style="border:1px solid #E5E7EB;border-left:4px solid ${_SEV_COLORS[i.severity]};border-radius:8px;padding:12px 14px;background:#fff">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+                <div style="flex:1">
+                  <div style="font-weight:800;color:#0A1628;font-size:0.9rem">${_escapeHtml(i.headline)}</div>
+                  ${i.detail?`<div style="font-size:0.78rem;color:#6B7280;margin-top:3px">${_escapeHtml(i.detail)}</div>`:''}
+                  <div style="font-size:0.68rem;color:#9CA3AF;margin-top:5px">${new Date(i.created_at).toLocaleString()} · ${_escapeHtml(i.kind)} · ${i.slack_sent?'📤 slack sent':'no slack'}</div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+                  <span style="background:${_STATUS_COLORS[i.status]};color:#fff;padding:2px 8px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase">${_escapeHtml(i.status)}</span>
+                  ${i.status==='open'?`<button onclick="_crSetStatus(${i.id},'acknowledged')" style="padding:3px 8px;background:#fff;border:1.5px solid #F59E0B;border-radius:4px;font-size:0.66rem;font-weight:700;color:#92400E;cursor:pointer">Acknowledge</button>`:''}
+                  ${i.status!=='resolved'?`<button onclick="_crSetStatus(${i.id},'resolved')" style="padding:3px 8px;background:#fff;border:1.5px solid #15803D;border-radius:4px;font-size:0.66rem;font-weight:700;color:#15803D;cursor:pointer">Resolve</button>`:''}
+                </div>
+              </div>
+            </div>`).join('')}</div>`}
+      </div>`;
+  } catch (e) { wrap.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:16px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._crAddWatch = async function() {
+  const brand = document.getElementById('crBrand').value.trim();
+  if (!brand) return showToast('❌ Brand required');
+  const competitors = document.getElementById('crComp').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const country = document.getElementById('crCountry').value.trim() || 'US';
+  const spike_multiplier = Number(document.getElementById('crSpike').value);
+  const neg_pct_threshold = Number(document.getElementById('crNeg').value);
+  try {
+    const r = await fetch('/api/crisis-radar/watchlist', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, competitors, country, spike_multiplier, neg_pct_threshold }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error);
+    showToast('✅ Tracking ' + brand); buildCrisisRadar();
+  } catch (e) { showToast('❌ ' + e.message); }
+};
+window._crDeleteWatch = async function(id, brand) {
+  if (!confirm(`Stop tracking ${brand}? Incidents and snapshots will be removed.`)) return;
+  try { await fetch('/api/crisis-radar/watchlist/'+id, { method:'DELETE' }); showToast('🗑 Removed'); buildCrisisRadar(); }
+  catch (e) { showToast('❌ ' + e.message); }
+};
+window._crSetStatus = async function(id, status) {
+  try { await fetch('/api/crisis-radar/incidents/'+id, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ status }) }); showToast('✅ ' + status); buildCrisisRadar(); }
+  catch (e) { showToast('❌ ' + e.message); }
+};
+window._crRunNow = async function() {
+  showToast('⏳ Running scan — this may take 30-60s…');
+  try {
+    const r = await fetch('/api/crisis-radar/run-now', { method:'POST' }).then(x=>x.json());
+    if (!r.ok && !r.skipped) throw new Error(r.error || 'failed');
+    if (r.skipped) showToast('⏳ Already running — please wait');
+    else { const newInc = (r.results||[]).reduce((s,x)=>s+(x.incidents?.length||0),0); showToast(`✅ Scanned ${r.ran} brands · ${newInc} new incident(s)`); buildCrisisRadar(); }
+  } catch (e) { showToast('❌ ' + e.message); }
+};
+
+// ── BATTLE CARDS ───────────────────────────────────────────────────────────
+window.buildBattleCards = async function() {
+  const wrap = document.getElementById('bcWrap'); if (!wrap) return;
+  wrap.innerHTML = `<div style="text-align:center;padding:40px;color:#6B7280">Loading cards…</div>`;
+  try {
+    const r = await fetch('/api/battle-cards').then(x=>x.json());
+    const cards = r.cards || [];
+    wrap.innerHTML = cards.length===0 ? `
+      <div style="background:#fff;border:2px dashed #FCA5A5;border-radius:14px;padding:48px;text-align:center">
+        <div style="font-size:2.6rem;margin-bottom:8px">⚔️</div>
+        <div style="font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px">No battle cards yet</div>
+        <div style="font-size:0.82rem;color:#6B7280">Click <strong>✨ New Battle Card</strong> to generate one for any competitor.</div>
+      </div>` :
+      `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:16px">${cards.map(c=>`
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-family:Sora,sans-serif;font-weight:800;font-size:1.15rem;color:#0A1628">${_escapeHtml(c.competitor)}</div>
+              ${c.domain?`<div style="font-size:0.74rem;color:#7C3AED">${_escapeHtml(c.domain)}</div>`:''}
+              ${c.brand?`<div style="font-size:0.7rem;color:#6B7280">vs ${_escapeHtml(c.brand)}</div>`:''}
+            </div>
+            <div style="display:flex;gap:5px">
+              <span style="background:${c.generated_by==='openai'?'#7C3AED':'#9CA3AF'};color:#fff;padding:2px 7px;border-radius:5px;font-size:0.6rem;font-weight:800;text-transform:uppercase">${_escapeHtml(c.generated_by)}</span>
+              <button onclick="_bcRegen(${c.id})" title="Regenerate" style="background:#fff;border:1.5px solid #E5E7EB;border-radius:5px;padding:2px 7px;font-size:0.7rem;cursor:pointer">↻</button>
+              <button onclick="_bcDelete(${c.id})" style="background:#fff;border:1.5px solid #FCA5A5;border-radius:5px;padding:2px 7px;font-size:0.7rem;color:#B91C1C;cursor:pointer">🗑</button>
+            </div>
+          </div>
+          ${c.summary?`<div style="font-size:0.82rem;color:#374151;line-height:1.5">${_escapeHtml(c.summary)}</div>`:''}
+          ${c.positioning?`<div style="background:#F5F3FF;border-left:3px solid #7C3AED;padding:8px 12px;border-radius:5px;font-size:0.78rem;color:#5B21B6"><strong>Positioning:</strong> ${_escapeHtml(c.positioning)}</div>`:''}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div><div style="font-size:0.66rem;font-weight:800;color:#15803D;text-transform:uppercase;margin-bottom:4px">Strengths</div>${(c.strengths||[]).map(s=>`<div style="font-size:0.74rem;color:#374151;padding:2px 0">• ${_escapeHtml(s)}</div>`).join('')}</div>
+            <div><div style="font-size:0.66rem;font-weight:800;color:#B91C1C;text-transform:uppercase;margin-bottom:4px">Weaknesses</div>${(c.weaknesses||[]).map(s=>`<div style="font-size:0.74rem;color:#374151;padding:2px 0">• ${_escapeHtml(s)}</div>`).join('')}</div>
+          </div>
+          ${(c.recent_moves||[]).length?`<div><div style="font-size:0.66rem;font-weight:800;color:#1E40AF;text-transform:uppercase;margin-bottom:4px">Recent moves</div>${(c.recent_moves||[]).map(s=>`<div style="font-size:0.74rem;color:#374151;padding:2px 0">→ ${_escapeHtml(s)}</div>`).join('')}</div>`:''}
+          <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:7px;padding:10px"><div style="font-size:0.66rem;font-weight:800;color:#92400E;text-transform:uppercase;margin-bottom:5px">🎯 Counter-plays</div>${(c.counter_plays||[]).map(s=>`<div style="font-size:0.78rem;color:#78350F;padding:2px 0;font-weight:600">▸ ${_escapeHtml(s)}</div>`).join('')}</div>
+          <div style="font-size:0.66rem;color:#9CA3AF;text-align:right">Generated ${new Date(c.generated_at).toLocaleString()}</div>
+        </div>`).join('')}</div>`;
+  } catch (e) { wrap.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:16px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._bcOpenGenerate = function(prefill) {
+  let m = document.getElementById('bcModal');
+  if (!m) { m = document.createElement('div'); m.id='bcModal'; document.body.appendChild(m); }
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:10010;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;overflow-y:auto;backdrop-filter:blur(4px)';
+  const p = prefill || {};
+  m.innerHTML = `<div style="background:#fff;width:100%;max-width:560px;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:28px 32px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-family:Sora,sans-serif;font-weight:800;font-size:1.15rem">⚔️ Generate Battle Card</div><button onclick="document.getElementById('bcModal').remove()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#6B7280">×</button></div>
+    <div style="display:grid;gap:11px">
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Competitor name *</div><input id="bcComp" value="${_escapeHtml(p.competitor||'')}" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Their domain</div><input id="bcDom" placeholder="competitor.com" value="${_escapeHtml(p.domain||'')}" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Your brand</div><input id="bcBrand" value="${_escapeHtml(p.brand || (window._currentAnalysis?.brand_name) || '')}" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Extra context (optional)</div><textarea id="bcCtx" rows="3" placeholder="Anything the AI should know — pricing tier, target ICP, recent news…" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:6px;resize:vertical"></textarea></label>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+      <button onclick="document.getElementById('bcModal').remove()" style="padding:9px 16px;background:#fff;border:2px solid #E5E7EB;border-radius:7px;font-size:0.78rem;font-weight:700">Cancel</button>
+      <button onclick="_bcGenerate()" style="padding:9px 18px;background:#B91C1C;border:2px solid #B91C1C;border-radius:7px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">✨ Generate</button>
+    </div>
+  </div>`;
+};
+window._bcGenerate = async function() {
+  const competitor = document.getElementById('bcComp').value.trim();
+  if (!competitor) return showToast('❌ Competitor name required');
+  const payload = {
+    competitor,
+    domain: document.getElementById('bcDom').value.trim(),
+    brand: document.getElementById('bcBrand').value.trim(),
+    context: document.getElementById('bcCtx').value.trim(),
+  };
+  showToast('⏳ Generating card (~10s)…');
+  try {
+    const r = await fetch('/api/battle-cards/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error);
+    showToast(`✅ Card created (${r.source})`);
+    document.getElementById('bcModal').remove();
+    buildBattleCards();
+  } catch (e) { showToast('❌ ' + e.message); }
+};
+window._bcRegen = async function(id) {
+  try {
+    const c = await fetch('/api/battle-cards/'+id).then(x=>x.json());
+    if (!c.ok) throw new Error(c.error);
+    _bcOpenGenerate({ competitor:c.card.competitor, domain:c.card.domain, brand:c.card.brand });
+  } catch (e) { showToast('❌ ' + e.message); }
+};
+window._bcDelete = async function(id) {
+  if (!confirm('Delete this battle card?')) return;
+  try { await fetch('/api/battle-cards/'+id, { method:'DELETE' }); showToast('🗑 Removed'); buildBattleCards(); }
+  catch (e) { showToast('❌ ' + e.message); }
+};
+
+// ── TRENDING TOPICS ────────────────────────────────────────────────────────
+window.buildTrendingTopics = async function() {
+  const wrap = document.getElementById('trWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <div style="font-family:Sora,sans-serif;font-weight:800;font-size:1rem;margin-bottom:12px">What's hot in your category?</div>
+      <div style="display:grid;grid-template-columns:1.5fr 2fr 100px auto;gap:10px;align-items:end">
+        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Category *</div><input id="trCat" placeholder="e.g. AI marketing, fintech, fitness apparel" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem"></label>
+        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Keywords (comma, optional)</div><input id="trKw" placeholder="growth, automation" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem"></label>
+        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Country</div><input id="trCountry" value="US" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem"></label>
+        <button onclick="_trDetect()" style="padding:9px 18px;background:#B91C1C;border:2px solid #B91C1C;border-radius:6px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">🔥 Detect</button>
+      </div>
+    </div>
+    <div id="trResults"></div>`;
+  try {
+    const h = await fetch('/api/trends/history').then(x=>x.json());
+    const last = (h.runs||[])[0];
+    if (last) _trRender(last.topics, last.source, last.category);
+  } catch {}
+};
+window._trDetect = async function() {
+  const category = document.getElementById('trCat').value.trim();
+  if (!category) return showToast('❌ Category required');
+  const keywords = document.getElementById('trKw').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const country = document.getElementById('trCountry').value.trim() || 'US';
+  document.getElementById('trResults').innerHTML = `<div style="text-align:center;padding:40px;color:#6B7280">⏳ Searching live web…</div>`;
+  try {
+    const r = await fetch('/api/trends/detect', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ category, keywords, country }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error);
+    _trRender(r.topics, r.source, r.category);
+  } catch (e) { document.getElementById('trResults').innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+function _trRender(topics, source, category) {
+  const el = document.getElementById('trResults'); if (!el) return;
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-family:Sora,sans-serif;font-weight:800;font-size:0.95rem">🔥 Trending in <span style="color:#B91C1C">${_escapeHtml(category)}</span> · ${(topics||[]).length} topics</div>
+      <span style="background:${source==='perplexity'?'#7C3AED':'#9CA3AF'};color:#fff;padding:3px 9px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase">${_escapeHtml(source)}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px">
+      ${(topics||[]).map((t,i)=>`<div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid ${i<3?'#B91C1C':i<6?'#F59E0B':'#9CA3AF'};border-radius:10px;padding:14px 16px">
+        <div style="font-weight:800;color:#0A1628;font-size:0.95rem;margin-bottom:6px">#${i+1}. ${_escapeHtml(t.title||'')}</div>
+        <div style="font-size:0.8rem;color:#374151;margin-bottom:8px;line-height:1.5">${_escapeHtml(t.why||'')}</div>
+        ${(t.sources||[]).length?`<div style="font-size:0.7rem;color:#6B7280">${(t.sources||[]).slice(0,3).map(u=>`<a href="${_escapeHtml(u)}" target="_blank" style="color:#7C3AED;display:block;margin-top:2px">${_escapeHtml(u.replace(/^https?:\/\//,'').slice(0,60))}</a>`).join('')}</div>`:''}
+      </div>`).join('')}
+    </div>`;
+}

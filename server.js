@@ -8458,6 +8458,25 @@ const _influencerSchema = require('./services/influencers/schema');
 const _influencerRouter = require('./services/influencers/api');
 app.use('/api/influencers', _influencerRouter);
 (async () => { try { if (_db.hasDb()) { await _influencerSchema.ensureInfluencerSchema(); console.log('[influencers] schema ready'); } } catch(e) { console.error('[influencers] init failed:', e.message); } })();
+
+// ── Tier 2 ─────────────────────────────────────────────────────────────────
+const _crisisSchema   = require('./services/crisis_radar/schema');
+const _crisisRouter   = require('./services/crisis_radar/api');
+const _crisisDetector = require('./services/crisis_radar/detector');
+const _battleSchema   = require('./services/battle_cards/schema');
+const _battleRouter   = require('./services/battle_cards/api');
+const _trendsRouter   = require('./services/trends/api');
+app.use('/api/crisis-radar',   _crisisRouter);
+app.use('/api/battle-cards',   _battleRouter);
+app.use('/api/trends',         _trendsRouter);
+(async () => { try {
+  if (_db.hasDb()) {
+    await _crisisSchema.ensureCrisisRadarSchema();
+    await _battleSchema.ensureBattleCardsSchema();
+    _crisisDetector.startCron(6);
+    console.log('[tier2] crisis-radar + battle-cards + trends mounted, crisis cron=6h');
+  }
+} catch(e) { console.error('[tier2] init failed:', e.message); } })();
 (async () => {
   try {
     if (_db.hasDb()) {
