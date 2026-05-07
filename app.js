@@ -17192,6 +17192,9 @@ function openWLCounterModal(wlIdOrData) {
       <button class="btn-attack-activate" onclick="publishCounterNow('${wlId}', this)" style="background:linear-gradient(135deg,#10B981,#059669);">
         ⚡ Post Now
       </button>
+      <button class="btn-attack-activate" onclick="publishCounterToSocial('${wlId}', this)" style="background:linear-gradient(135deg,#FF5722,#FF7043);" title="Open the Publish to Social composer pre-filled with the selected variant — pick platforms + schedule and push live via Zernio.">
+        📤 Publish to Social
+      </button>
       <button class="btn-attack-activate" onclick="queueCounterCampaign('${wlId}', this)">
         📋 Queue for Review
       </button>
@@ -17288,6 +17291,30 @@ function queueCounterCampaign(wlId, btn) {
       ? `📋 Counter-message "${(selectedVariant.headline||'').substring(0,40)}…" queued — review it in Campaigns`
       : '📋 Counter-campaign queued — review it at the top of Campaigns before launching');
   }, 600);
+}
+
+// Opens the Tier-15 Publish-to-Social modal pre-filled with the selected
+// AI counter-message variant. Maps W/L channel to a default Zernio platform.
+function publishCounterToSocial(wlId, btn) {
+  const w = (window._wlData || {})[wlId];
+  if (!w) { showToast('⚠️ No counter data found'); return; }
+  let v = null;
+  try {
+    const sel = document.querySelector('#wlCounterBody .wl-variant[data-selected="true"]');
+    if (sel && Array.isArray(w.aiVariants)) {
+      const idx = parseInt(sel.getAttribute('data-vidx'), 10);
+      if (!isNaN(idx) && w.aiVariants[idx]) v = w.aiVariants[idx];
+    }
+  } catch(_) {}
+  if (!v) { showToast('⚠️ Pick a variant first, then click Publish to Social'); return; }
+  const text = [v.headline, v.body, v.cta].filter(Boolean).join('\n\n').trim();
+  // Map W/L channel → closest Zernio platform
+  const ch = String(w.channel || '').toLowerCase();
+  const map = { tiktok:['tiktok'], 'meta ads':['facebook','instagram'], facebook:['facebook'], instagram:['instagram'], linkedin:['linkedin'], twitter:['twitter'], x:['twitter'], youtube:['youtube'], reddit:['reddit'], pinterest:['pinterest'] };
+  let defaultPlatforms = [];
+  for (const k of Object.keys(map)) if (ch.includes(k)) { defaultPlatforms = map[k]; break; }
+  if (typeof closeAttackModal === 'function') closeAttackModal();
+  window._spOpenPublishModal({ text, sourceLabel: `Counter ${w.comp || 'competitor'}`, platforms: defaultPlatforms });
 }
 
 // Publishes the selected AI counter-message immediately as a live social post.
@@ -33637,12 +33664,18 @@ window._raDraftGo = async function(i) {
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:14px;margin-bottom:8px">
         <div style="font-size:0.7rem;font-weight:700;color:#7C3AED;letter-spacing:.06em;margin-bottom:6px">REPLY · ${_escapeHtml((r.source||'').toUpperCase())} · ${_escapeHtml(d.confidence||'')}</div>
         <div id="raReplyText-${i}" style="font-size:0.86rem;color:#0A1628;line-height:1.55;white-space:pre-wrap">${_escapeHtml(d.reply||'')}</div>
-        <button onclick="_raCopyText('raReplyText-${i}')" style="margin-top:10px;padding:6px 12px;background:#fff;border:2px solid #D1D5DB;border-radius:5px;font-size:0.72rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy</button>
+        <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+          <button onclick="_raCopyText('raReplyText-${i}')" style="padding:6px 12px;background:#fff;border:2px solid #D1D5DB;border-radius:5px;font-size:0.72rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy</button>
+          <button onclick="_spPublishFromEl('raReplyText-${i}','Publish reply','')" style="padding:6px 12px;background:linear-gradient(135deg,#FF5722,#FF7043);border:none;border-radius:5px;font-size:0.72rem;font-weight:800;color:#fff;cursor:pointer">📤 Publish to Social</button>
+        </div>
       </div>
       ${d.alt_short?`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:14px">
         <div style="font-size:0.7rem;font-weight:700;color:#0891B2;letter-spacing:.06em;margin-bottom:6px">SHORT (TWITTER/X)</div>
         <div id="raReplyShort-${i}" style="font-size:0.86rem;color:#0A1628;line-height:1.55">${_escapeHtml(d.alt_short)}</div>
-        <button onclick="_raCopyText('raReplyShort-${i}')" style="margin-top:10px;padding:6px 12px;background:#fff;border:2px solid #D1D5DB;border-radius:5px;font-size:0.72rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy</button>
+        <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+          <button onclick="_raCopyText('raReplyShort-${i}')" style="padding:6px 12px;background:#fff;border:2px solid #D1D5DB;border-radius:5px;font-size:0.72rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy</button>
+          <button onclick="window._spOpenPublishModal({text:document.getElementById('raReplyShort-${i}').innerText,sourceLabel:'Publish to X/Twitter',platforms:['twitter','threads','bluesky']})" style="padding:6px 12px;background:linear-gradient(135deg,#FF5722,#FF7043);border:none;border-radius:5px;font-size:0.72rem;font-weight:800;color:#fff;cursor:pointer">📤 Publish to X</button>
+        </div>
       </div>`:''}`;
   } catch (e) { out.innerHTML = `<div style="color:#B91C1C">❌ ${_escapeHtml(e.message)}</div>`; }
 };
@@ -33711,6 +33744,7 @@ window._prGo = async function() {
           <div style="font-size:0.66rem;color:#9CA3AF;font-weight:700;letter-spacing:.1em">FOR IMMEDIATE RELEASE · ${_escapeHtml((r.source||'').toUpperCase())}</div>
           <div style="display:flex;gap:6px">
             <button onclick="_prCopy('prFull')" style="padding:6px 12px;background:#fff;border:2px solid #D1D5DB;border-radius:5px;font-size:0.7rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy All</button>
+            <button onclick="_spPublishFromEl('prFull','Publish press release excerpt',['linkedin','facebook','twitter'])" style="padding:6px 12px;background:linear-gradient(135deg,#FF5722,#FF7043);border:none;border-radius:5px;font-size:0.7rem;font-weight:800;color:#fff;cursor:pointer">📤 Publish to Social</button>
           </div>
         </div>
         <div id="prFull">
@@ -33992,9 +34026,12 @@ window._ccGo = async function() {
     if (!r.ok) throw new Error(r.error||'failed');
     const channelColor = { instagram:'#E1306C', tiktok:'#000', linkedin:'#0A66C2', x:'#000', facebook:'#1877F2', youtube:'#FF0000', blog:'#6B7280', email:'#7C3AED' };
     out.innerHTML = `
-      <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+      <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="font-weight:800;color:#0A1628">📋 ${r.posts.length} posts · ${r.source==='openai'?'AI-generated':'Template'}</div>
-        <button onclick="_ccCopy()" style="padding:7px 14px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.74rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy All as CSV</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button onclick="_ccCopy()" style="padding:7px 14px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.74rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy All as CSV</button>
+          <button onclick="_ccScheduleAll()" style="padding:7px 14px;background:linear-gradient(135deg,#FF5722,#FF7043);border:none;border-radius:6px;font-size:0.74rem;font-weight:800;color:#fff;cursor:pointer" title="Schedule all posts to Zernio (social platforms only — blog/email skipped)">📤 Schedule All to Social</button>
+        </div>
       </div>
       <div id="ccGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px">
         ${r.posts.map((p,i)=>{
@@ -35592,4 +35629,199 @@ window._spDelete = async function(id) {
     if (!r.ok) { alert('Failed: ' + r.error); return; }
     _spLoadPosts();
   } catch (e) { alert('Network error: ' + e.message); }
+};
+
+// ============================================================================
+// TIER 15 — Reusable "Publish to Social" modal (used by Reply Assistant,
+// Press Release, Counter-Message, etc). Opens an overlay, lets user pick
+// platforms + optional schedule + media, then POSTs to /api/social-publisher.
+// ============================================================================
+window._spOpenPublishModal = async function(opts) {
+  opts = opts || {};
+  const initialText = String(opts.text || '').slice(0, 5000);
+  const initialMedia = String(opts.mediaUrl || '');
+  const sourceLabel = String(opts.sourceLabel || 'Publish to Social');
+
+  let modal = document.getElementById('spPubModal');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'spPubModal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:620px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.35)">
+      <div style="background:linear-gradient(135deg,#FF5722 0%,#FF7043 100%);padding:14px 20px;display:flex;justify-content:space-between;align-items:center;color:#fff">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-weight:800;font-size:1rem">📤 ${_escapeHtml(sourceLabel)}</div>
+          <div style="font-size:0.72rem;opacity:.85;margin-top:2px">Pick platforms · post now or schedule · powered by Zernio</div>
+        </div>
+        <button id="spmClose" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);color:#fff;padding:6px 12px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">✕ Close</button>
+      </div>
+      <div style="padding:18px;overflow-y:auto;flex:1">
+        <div id="spmStatus" style="display:none;padding:9px 12px;border-radius:6px;font-size:0.78rem;margin-bottom:12px"></div>
+        <div style="margin-bottom:12px">
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">PROFILE</label>
+          <select id="spmProfile" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.84rem"><option>Loading…</option></select>
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">POST TEXT</label>
+          <textarea id="spmText" rows="5" style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.84rem;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+          <div style="font-size:0.68rem;color:#9CA3AF;margin-top:3px"><span id="spmCount">0</span> chars</div>
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:6px">PUBLISH TO</label>
+          <div id="spmChips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px">
+          <div>
+            <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">📅 SCHEDULE (optional)</label>
+            <input type="datetime-local" id="spmSched" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.78rem;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">🖼 MEDIA URL (optional)</label>
+            <input type="url" id="spmMedia" placeholder="https://…" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.78rem;box-sizing:border-box">
+          </div>
+        </div>
+      </div>
+      <div style="padding:14px 18px;border-top:1px solid #E5E7EB;background:#F9FAFB;display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <a href="#" id="spmManage" style="font-size:0.74rem;color:#6B7280;text-decoration:underline">⚙ Manage profiles & connected accounts</a>
+        <button id="spmPublish" style="background:linear-gradient(135deg,#FF5722 0%,#FF7043 100%);color:#fff;border:none;padding:10px 20px;border-radius:7px;font-size:0.86rem;font-weight:800;cursor:pointer">📤 Publish</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  document.getElementById('spmText').value = initialText;
+  document.getElementById('spmMedia').value = initialMedia;
+  document.getElementById('spmCount').textContent = initialText.length;
+  document.getElementById('spmText').addEventListener('input', e => { document.getElementById('spmCount').textContent = e.target.value.length; });
+  document.getElementById('spmClose').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.getElementById('spmManage').addEventListener('click', e => { e.preventDefault(); modal.remove(); if (typeof navigateTo === 'function') navigateTo('social-publisher'); });
+
+  // Render platform chips (uses _spPlatforms from buildSocialPublisher)
+  const plats = (window._spPlatforms || (typeof _spPlatforms !== 'undefined' ? _spPlatforms : [
+    {id:'twitter',label:'Twitter/X',icon:'𝕏'},{id:'instagram',label:'Instagram',icon:'📷'},
+    {id:'facebook',label:'Facebook',icon:'📘'},{id:'linkedin',label:'LinkedIn',icon:'💼'},
+    {id:'tiktok',label:'TikTok',icon:'🎵'},{id:'youtube',label:'YouTube',icon:'▶️'},
+    {id:'pinterest',label:'Pinterest',icon:'📌'},{id:'reddit',label:'Reddit',icon:'👽'},
+    {id:'bluesky',label:'Bluesky',icon:'🦋'},{id:'threads',label:'Threads',icon:'@'},
+    {id:'googlebusiness',label:'Google Business',icon:'🏢'},{id:'telegram',label:'Telegram',icon:'✈️'},
+    {id:'snapchat',label:'Snapchat',icon:'👻'},{id:'whatsapp',label:'WhatsApp',icon:'💬'},
+    {id:'discord',label:'Discord',icon:'🎮'}
+  ]));
+  window._spPlatforms = plats;
+  const selected = new Set(opts.platforms || []);
+  document.getElementById('spmChips').innerHTML = plats.map(p =>
+    `<button data-p="${p.id}" class="spm-chip" style="background:${selected.has(p.id)?'#FF5722':'#F3F4F6'};color:${selected.has(p.id)?'#fff':'#374151'};border:1px solid ${selected.has(p.id)?'#FF5722':'#E5E7EB'};padding:6px 10px;border-radius:16px;font-size:0.72rem;font-weight:700;cursor:pointer">${p.icon} ${_escapeHtml(p.label)}</button>`
+  ).join('');
+  document.querySelectorAll('#spmChips .spm-chip').forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.p;
+    if (selected.has(id)) { selected.delete(id); b.style.background='#F3F4F6'; b.style.color='#374151'; b.style.borderColor='#E5E7EB'; }
+    else { selected.add(id); b.style.background='#FF5722'; b.style.color='#fff'; b.style.borderColor='#FF5722'; }
+  }));
+
+  // Load profiles
+  const profSel = document.getElementById('spmProfile');
+  const status = document.getElementById('spmStatus');
+  function setStatus(msg, kind) {
+    if (!msg) { status.style.display='none'; return; }
+    const colors = { ok:['#ECFDF5','#065F46'], err:['#FEF2F2','#991B1B'], info:['#FFF7ED','#9A3412'] };
+    const c = colors[kind||'info']; status.style.background=c[0]; status.style.color=c[1]; status.style.display='block'; status.textContent=msg;
+  }
+  try {
+    const r = await fetch('/api/social-publisher/profiles').then(x => x.json());
+    if (!r.ok) { profSel.innerHTML = `<option value="">⚠ ${_escapeHtml(r.error)}</option>`; setStatus(r.error, 'err'); }
+    else if (!r.profiles?.length) {
+      profSel.innerHTML = `<option value="">No profiles yet — open Social Publisher to create one</option>`;
+      setStatus('Create a Zernio profile first via Reach → Social Publisher.', 'info');
+    } else {
+      profSel.innerHTML = r.profiles.map(p => `<option value="${_escapeHtml(p._id || p.id)}">${_escapeHtml(p.name || p._id || p.id)}</option>`).join('');
+    }
+  } catch (e) { profSel.innerHTML = `<option value="">Network error</option>`; setStatus('Network error: ' + e.message, 'err'); }
+
+  document.getElementById('spmPublish').addEventListener('click', async () => {
+    const profileId = profSel.value;
+    const text = document.getElementById('spmText').value.trim();
+    const media = document.getElementById('spmMedia').value.trim();
+    const sched = document.getElementById('spmSched').value;
+    const platforms = Array.from(selected);
+    if (!profileId) return setStatus('Pick a profile first.', 'err');
+    if (!text && !media) return setStatus('Enter text or a media URL.', 'err');
+    if (!platforms.length) return setStatus('Select at least one platform.', 'err');
+    setStatus('📤 Sending to Zernio…', 'info');
+    try {
+      const body = { text, platforms, profileId };
+      if (sched) body.scheduledFor = new Date(sched).toISOString();
+      if (media) body.mediaUrls = [media];
+      const r = await fetch('/api/social-publisher/post', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(x => x.json());
+      if (!r.ok) return setStatus('❌ ' + r.error, 'err');
+      setStatus(`✅ ${r.scheduled ? 'Scheduled' : 'Published'} to ${platforms.length} platform${platforms.length>1?'s':''}!`, 'ok');
+      setTimeout(() => modal.remove(), 1400);
+    } catch (e) { setStatus('Network error: ' + e.message, 'err'); }
+  });
+};
+
+// Helper used by Press Release / Counter-Message — extracts text from a DOM element
+window._spPublishFromEl = function(elId, sourceLabel, platforms) {
+  const el = document.getElementById(elId);
+  if (!el) { showToast('⚠️ Source not found'); return; }
+  const text = (el.innerText || el.textContent || '').trim();
+  if (!text) { showToast('⚠️ No text to publish'); return; }
+  window._spOpenPublishModal({ text, sourceLabel: sourceLabel || 'Publish to Social', platforms: platforms || [] });
+};
+
+// Bulk schedule all Content Calendar posts to Zernio
+window._ccScheduleAll = async function() {
+  const posts = window._ccLastPosts || [];
+  if (!posts.length) { showToast('⚠️ Generate a calendar first'); return; }
+  // Profile picker via prompt
+  let profiles;
+  try {
+    const r = await fetch('/api/social-publisher/profiles').then(x => x.json());
+    if (!r.ok) { showToast('❌ ' + r.error); return; }
+    profiles = r.profiles || [];
+  } catch (e) { showToast('Network error: ' + e.message); return; }
+  if (!profiles.length) {
+    if (confirm('No Zernio profiles yet. Open Social Publisher to create one?')) navigateTo('social-publisher');
+    return;
+  }
+  const profileId = profiles.length === 1 ? (profiles[0]._id || profiles[0].id) :
+    (function(){ const choice = prompt('Pick a profile by number:\n\n' + profiles.map((p,i)=>`${i+1}. ${p.name}`).join('\n'));
+      const idx = parseInt(choice,10)-1;
+      return (idx>=0 && profiles[idx]) ? (profiles[idx]._id || profiles[idx].id) : null;
+    })();
+  if (!profileId) return;
+
+  // Map our channels → Zernio platform ids (x → twitter, blog/email → skipped)
+  const platformMap = { instagram:'instagram', tiktok:'tiktok', linkedin:'linkedin', x:'twitter', twitter:'twitter', facebook:'facebook', youtube:'youtube' };
+  const items = posts.map(p => {
+    const channel = String(p.channel||'').toLowerCase();
+    const mapped = platformMap[channel];
+    if (!mapped) return null;
+    const dateStr = p.date && p.best_time ? `${p.date} ${p.best_time}` : (p.date || null);
+    let scheduledFor = null;
+    if (dateStr) { const d = new Date(dateStr); if (!isNaN(d)) scheduledFor = d.toISOString(); }
+    const text = [p.hook, p.copy, p.cta, Array.isArray(p.hashtags)?p.hashtags.join(' '):''].filter(Boolean).join('\n\n').trim();
+    return { date: scheduledFor, channel: mapped, copy: text };
+  }).filter(Boolean);
+
+  if (!items.length) { showToast('⚠️ No posts mapped to Zernio platforms (blog/email skipped)'); return; }
+  if (!confirm(`Schedule ${items.length} post(s) to Zernio across ${[...new Set(items.map(i=>i.channel))].join(', ')}?\n\n(Posts on blog/email channels are skipped — Zernio handles social only.)`)) return;
+
+  const status = document.getElementById('ccOut');
+  const banner = document.createElement('div');
+  banner.style.cssText = 'background:#FFF7ED;border:1px solid #FED7AA;color:#9A3412;padding:12px;border-radius:8px;margin-bottom:12px;font-size:0.84rem';
+  banner.textContent = `📤 Scheduling ${items.length} posts to Zernio…`;
+  status.prepend(banner);
+
+  try {
+    const r = await fetch('/api/social-publisher/schedule-calendar', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ profileId, items })
+    }).then(x => x.json());
+    if (!r.ok) { banner.style.background='#FEF2F2'; banner.style.borderColor='#FECACA'; banner.style.color='#991B1B'; banner.textContent = '❌ ' + r.error; return; }
+    banner.style.background = r.failed ? '#FFF7ED' : '#ECFDF5';
+    banner.style.borderColor = r.failed ? '#FED7AA' : '#A7F3D0';
+    banner.style.color = r.failed ? '#9A3412' : '#065F46';
+    banner.textContent = `✅ Scheduled ${r.scheduled}/${r.total}${r.failed?` · ${r.failed} failed (open Social Publisher to inspect)`:''}`;
+  } catch (e) { banner.style.background='#FEF2F2'; banner.style.color='#991B1B'; banner.textContent = 'Network error: ' + e.message; }
 };
