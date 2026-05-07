@@ -8521,6 +8521,13 @@ const _lpRouter    = require('./services/landing_pages/api');
 app.use('/api/deliverability', _delivRouter);
 app.use('/api/landing-pages',  _lpRouter);
 
+// ── Tier 10 ────────────────────────────────────────────────────────────────
+const _techStackRouter = require('./services/tech_stack/api');
+const _coldEmailSchema = require('./services/cold_email/schema');
+const _coldEmailRouter = require('./services/cold_email/api');
+app.use('/api/tech-stack',  _techStackRouter);
+app.use('/api/cold-email',  _coldEmailRouter);
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
@@ -8534,6 +8541,7 @@ app.use('/api/landing-pages',  _lpRouter);
     await _vocSchema.ensureVocSchema();
     await _pwSchema.ensurePricingWatchSchema();
     await _lpSchema.ensureLandingPagesSchema();
+    await _coldEmailSchema.ensureColdEmailSchema();
     _crisisDetector.startCron(6);
     _digestRouter.startCron(24);
     console.log('[tier2-5] crisis + battle + trends + sov + discovery + digest + reply + press-release + alert-routing mounted');

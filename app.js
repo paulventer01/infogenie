@@ -2654,6 +2654,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'pricing-watch')    { try { buildPricingWatch(); }     catch(e) { console.warn('buildPricingWatch error:', e); } }
   if (viewId === 'deliverability')   { try { buildDeliverability(); }   catch(e) { console.warn('buildDeliverability error:', e); } }
   if (viewId === 'landing-pages')    { try { buildLandingPages(); }     catch(e) { console.warn('buildLandingPages error:', e); } }
+  if (viewId === 'tech-stack')       { try { buildTechStack(); }        catch(e) { console.warn('buildTechStack error:', e); } }
+  if (viewId === 'cold-email')       { try { buildColdEmail(); }        catch(e) { console.warn('buildColdEmail error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -34461,4 +34463,161 @@ window._lpDownload = function() {
 window._lpOpenTab = function() {
   if (!window._lpLastHtml) return;
   const w = window.open('', '_blank'); if (w) { w.document.open(); w.document.write(window._lpLastHtml); w.document.close(); }
+};
+
+// ── Tier 10 #1: Competitor Tech Stack Detector ────────────────────────────
+window.buildTechStack = function() {
+  const el = document.getElementById('tsWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Single domain — full stack breakdown</label>
+        <div style="display:flex;gap:10px">
+          <input id="tsOne" placeholder="e.g. nike.com" value="nike.com" style="flex:1;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+          <button onclick="_tsOne()" style="padding:10px 22px;background:#DC2626;border:2px solid #DC2626;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🔍 Detect</button>
+        </div>
+      </div>
+      <div style="border-top:1px solid #F1F5F9;padding-top:14px">
+        <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Compare 2-5 domains side-by-side</label>
+        <div style="display:flex;gap:10px">
+          <input id="tsMulti" placeholder="e.g. nike.com, adidas.com, puma.com" style="flex:1;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+          <button onclick="_tsCompare()" style="padding:10px 22px;background:#fff;border:2px solid #DC2626;border-radius:8px;font-size:0.84rem;font-weight:800;color:#DC2626;cursor:pointer">⚖️ Compare</button>
+        </div>
+      </div>
+    </div>
+    <div id="tsOut"></div>`;
+};
+window._tsOne = async function() {
+  const domain = (document.getElementById('tsOne')||{}).value || '';
+  if (!domain.trim()) return showToast('⚠️ Domain required');
+  const out = document.getElementById('tsOut');
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Detecting tech stack…</div>`;
+  try {
+    const r = await fetch('/api/tech-stack/detect', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain: domain.trim() }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    const note = r.note ? `<div style="background:#FEF3C7;color:#92400E;padding:10px 14px;border-radius:8px;font-size:0.78rem;margin-bottom:14px">${_escapeHtml(r.note)}</div>` : '';
+    const groups = r.groups || [];
+    if (!groups.length) { out.innerHTML = `${note}<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:24px;text-align:center;color:#6B7280;font-size:0.88rem">No tech detected for ${_escapeHtml(r.domain)}.</div>`; return; }
+    out.innerHTML = `${note}
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;color:#0A1628;font-size:1.1rem">${_escapeHtml(r.domain)}</div><div style="background:#DC2626;color:#fff;padding:4px 10px;border-radius:6px;font-size:0.7rem;font-weight:800">${r.total} LIVE TECHNOLOGIES</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px">
+        ${groups.map(g=>`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px">
+          <div style="font-weight:800;color:#0A1628;font-size:0.95rem;margin-bottom:10px;display:flex;justify-content:space-between"><span>${_escapeHtml(g.group||'')}</span><span style="background:#DC2626;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.66rem;font-weight:800">${g.live} LIVE</span></div>
+          <div style="display:flex;flex-direction:column;gap:4px">${g.categories.slice(0,12).map(c=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:${c.live>0?'#ECFDF5':'#F3F4F6'};border-radius:5px"><span style="font-size:0.78rem;color:${c.live>0?'#065F46':'#6B7280'};font-weight:600">${_escapeHtml(c.name||'')}</span><span style="font-size:0.7rem;font-weight:700;color:${c.live>0?'#15803D':'#9CA3AF'}">${c.live} live${c.dead?` · ${c.dead} dead`:''}</span></div>`).join('')}</div>
+          ${g.categories.length>12?`<div style="margin-top:6px;font-size:0.7rem;color:#9CA3AF;text-align:center">+${g.categories.length-12} more categories</div>`:''}
+        </div>`).join('')}
+      </div>`;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._tsCompare = async function() {
+  const raw = (document.getElementById('tsMulti')||{}).value || '';
+  const domains = raw.split(/[, \n]+/).map(s=>s.trim()).filter(Boolean).slice(0,5);
+  if (domains.length < 2) return showToast('⚠️ Need 2-5 domains');
+  const out = document.getElementById('tsOut');
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Comparing ${domains.length} domains…</div>`;
+  try {
+    const r = await fetch('/api/tech-stack/compare', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domains }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    const cols = r.domains;
+    const matrix = (r.matrix||[]).slice(0, 100);
+    if (!matrix.length) { out.innerHTML = `<div style="background:#FEF3C7;color:#92400E;padding:14px;border-radius:10px">No comparable tech detected. Set BUILTWITH_API_KEY for real data.</div>`; return; }
+    out.innerHTML = `
+      <div style="background:#FEF3C7;color:#92400E;padding:10px 14px;border-radius:8px;font-size:0.78rem;margin-bottom:10px">BuiltWith Free tier compares at the category level (not individual technology names). Upgrade to BuiltWith Pro for tech-level comparisons.</div>
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
+        <div style="padding:14px 18px;border-bottom:1px solid #E5E7EB;font-weight:800;color:#0A1628">⚖️ Category Comparison Matrix (${matrix.length} categories — counts = live tech in category)</div>
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:0.82rem;min-width:${300+cols.length*120}px">
+          <thead><tr style="background:#F9FAFB">
+            <th style="padding:10px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">CATEGORY</th>
+            <th style="padding:10px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">GROUP</th>
+            ${cols.map(c=>`<th style="padding:10px 14px;text-align:center;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">${_escapeHtml(c)}</th>`).join('')}
+          </tr></thead>
+          <tbody>${matrix.map(t=>`<tr style="border-top:1px solid #F3F4F6">
+            <td style="padding:8px 14px;color:#0A1628;font-weight:600">${_escapeHtml(t.name)}</td>
+            <td style="padding:8px 14px;color:#6B7280;font-size:0.78rem">${_escapeHtml(t.tag||'')}</td>
+            ${cols.map(c=>{ const n = t.counts[c]||0; return `<td style="padding:8px 14px;text-align:center;color:${n>0?'#15803D':'#D1D5DB'};font-weight:${n>0?'700':'400'}">${n>0?n:'·'}</td>`; }).join('')}
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>`;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+
+// ── Tier 10 #2: AI Cold Email Writer ──────────────────────────────────────
+window.buildColdEmail = function() {
+  const el = document.getElementById('ceWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Your brand</label><input id="ceBrand" placeholder="e.g. InfoGenie" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Your name</label><input id="ceName" placeholder="e.g. Paul" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+      </div>
+      <div style="margin-bottom:12px"><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">What you sell / offer</label>
+        <textarea id="ceOffer" rows="2" placeholder="One sentence about your product and the outcome it delivers." style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;font-family:inherit;resize:vertical"></textarea></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Target company (optional)</label><input id="ceComp" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Target role</label><input id="ceRole" placeholder="e.g. Head of Growth" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+      </div>
+      <div style="margin-bottom:12px"><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Their pain / trigger event</label>
+        <textarea id="cePain" rows="2" placeholder="What problem they're hitting right now, or a recent trigger (funding round, hire, product launch)." style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;font-family:inherit;resize:vertical"></textarea></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Tone</label>
+          <select id="ceTone" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem">
+            ${['direct','warm','consultative','witty','executive','curious'].map(t=>`<option value="${t}">${t}</option>`).join('')}
+          </select></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Sequence steps</label>
+          <select id="ceSteps" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem">
+            ${[1,2,3,4,5].map(n=>`<option value="${n}" ${n===3?'selected':''}>${n} step${n>1?'s':''}</option>`).join('')}
+          </select></div>
+        <button onclick="_ceGo()" style="padding:10px 22px;background:#DC2626;border:2px solid #DC2626;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">✉️ Draft Sequence</button>
+      </div>
+    </div>
+    <div id="ceOut"></div>`;
+};
+window._ceGo = async function() {
+  const payload = {
+    sender_brand: (document.getElementById('ceBrand')||{}).value || '',
+    sender_name: (document.getElementById('ceName')||{}).value || '',
+    sender_offer: (document.getElementById('ceOffer')||{}).value || '',
+    target_company: (document.getElementById('ceComp')||{}).value || '',
+    target_role: (document.getElementById('ceRole')||{}).value || '',
+    target_pain: (document.getElementById('cePain')||{}).value || '',
+    tone: (document.getElementById('ceTone')||{}).value || 'direct',
+    steps: parseInt((document.getElementById('ceSteps')||{}).value, 10) || 3,
+  };
+  if (!payload.sender_offer.trim()) return showToast('⚠️ "What you sell" required');
+  const out = document.getElementById('ceOut');
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Drafting ${payload.steps}-step sequence…</div>`;
+  try {
+    const r = await fetch('/api/cold-email/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    out.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-weight:800;color:#0A1628">📧 ${r.emails.length}-step sequence · ${_escapeHtml(r.tone)} tone <span style="background:${r.source==='openai'?'#DC2626':'#9CA3AF'};color:#fff;padding:3px 9px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase;margin-left:8px">${_escapeHtml(r.source)}</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        ${r.emails.map(em=>`<div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid #DC2626;border-radius:10px;padding:18px 22px">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px">
+            <div style="display:flex;gap:8px;align-items:center"><span style="background:#DC2626;color:#fff;width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:0.82rem;text-shadow:0 1px 2px rgba(0,0,0,.4)">${em.step}</span><div style="font-size:0.74rem;color:#6B7280">${em.days_after_prev===0?'Day 0 (opener)':`+${em.days_after_prev} days`}</div></div>
+            <button onclick="_ceCopyEmail(${em.step})" style="padding:6px 12px;background:#fff;border:1.5px solid #D1D5DB;border-radius:5px;font-size:0.72rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy</button>
+          </div>
+          <div id="ceEmail-${em.step}">
+            <div style="font-size:0.7rem;color:#6B7280;font-weight:700;letter-spacing:.06em;margin-bottom:3px">SUBJECT</div>
+            <div style="font-size:1rem;color:#0A1628;font-weight:700;margin-bottom:8px">${_escapeHtml(em.subject||'')}</div>
+            ${em.preview?`<div style="font-size:0.78rem;color:#6B7280;margin-bottom:12px;font-style:italic">↳ ${_escapeHtml(em.preview)}</div>`:''}
+            <div style="font-size:0.7rem;color:#6B7280;font-weight:700;letter-spacing:.06em;margin-bottom:3px">BODY</div>
+            <div style="font-size:0.88rem;color:#1F2937;line-height:1.65;white-space:pre-wrap;background:#F9FAFB;padding:12px 16px;border-radius:6px">${_escapeHtml(em.body||'')}</div>
+            ${em.cta?`<div style="margin-top:10px;font-size:0.82rem;color:#DC2626;font-weight:700">→ CTA: ${_escapeHtml(em.cta)}</div>`:''}
+          </div>
+          ${em.why_this_works?`<div style="margin-top:10px;font-size:0.74rem;color:#6B7280;font-style:italic;padding-top:8px;border-top:1px dashed #E5E7EB">💡 ${_escapeHtml(em.why_this_works)}</div>`:''}
+        </div>`).join('')}
+      </div>`;
+    window._ceEmails = r.emails;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._ceCopyEmail = async function(step) {
+  const em = (window._ceEmails||[]).find(e=>e.step===step); if (!em) return;
+  const txt = `Subject: ${em.subject}\n\n${em.body}`;
+  try { await navigator.clipboard.writeText(txt); showToast('✅ Email copied'); }
+  catch (e) { showToast('❌ '+e.message); }
 };
