@@ -35727,6 +35727,35 @@ window._spOpenPublishModal = async function(opts) {
     const colors = { ok:['#ECFDF5','#065F46'], err:['#FEF2F2','#991B1B'], info:['#FFF7ED','#9A3412'] };
     const c = colors[kind||'info']; status.style.background=c[0]; status.style.color=c[1]; status.style.display='block'; status.textContent=msg;
   }
+  async function checkAccounts(profileId) {
+    if (!profileId) return;
+    try {
+      const a = await fetch(`/api/social-publisher/accounts?profileId=${encodeURIComponent(profileId)}`).then(x => x.json());
+      const accs = (a.ok && a.accounts) ? a.accounts : [];
+      const banner = document.getElementById('spmNoAccts');
+      if (!accs.length) {
+        if (!banner) {
+          const div = document.createElement('div');
+          div.id = 'spmNoAccts';
+          div.style.cssText = 'background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;padding:11px 13px;border-radius:7px;font-size:0.78rem;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap';
+          div.innerHTML = `<div><strong>⚠ No accounts connected</strong> — Zernio can't post until you authorize at least one platform (Twitter, LinkedIn, Instagram, etc.).</div>
+            <button id="spmGoConnect" style="background:#FF5722;color:#fff;border:none;padding:6px 12px;border-radius:5px;font-size:0.74rem;font-weight:800;cursor:pointer;white-space:nowrap">→ Connect now</button>`;
+          status.parentNode.insertBefore(div, status.nextSibling);
+          document.getElementById('spmGoConnect').addEventListener('click', () => {
+            modal.remove();
+            if (typeof navigateTo === 'function') navigateTo('social-publisher');
+          });
+        }
+      } else if (banner) banner.remove();
+      // Show which platforms are connected as a subtle hint
+      const connected = new Set(accs.map(x => String(x.platform || '').toLowerCase()));
+      document.querySelectorAll('#spmChips .spm-chip').forEach(b => {
+        if (!connected.has(b.dataset.p)) { b.style.opacity = '0.55'; b.title = 'Not connected — click "Connect now" to authorize'; }
+        else { b.style.opacity = '1'; b.title = '✓ Connected'; }
+      });
+    } catch(_) {}
+  }
+
   try {
     const r = await fetch('/api/social-publisher/profiles').then(x => x.json());
     if (!r.ok) { profSel.innerHTML = `<option value="">⚠ ${_escapeHtml(r.error)}</option>`; setStatus(r.error, 'err'); }
@@ -35735,6 +35764,8 @@ window._spOpenPublishModal = async function(opts) {
       setStatus('Create a Zernio profile first via Reach → Social Publisher.', 'info');
     } else {
       profSel.innerHTML = r.profiles.map(p => `<option value="${_escapeHtml(p._id || p.id)}">${_escapeHtml(p.name || p._id || p.id)}</option>`).join('');
+      profSel.addEventListener('change', () => checkAccounts(profSel.value));
+      await checkAccounts(profSel.value);
     }
   } catch (e) { profSel.innerHTML = `<option value="">Network error</option>`; setStatus('Network error: ' + e.message, 'err'); }
 
