@@ -14938,7 +14938,7 @@ function buildBattlePlan() {
   // ── 4. Audience Gaps ────────────────────────────────────────────────────────
   const audChannels = ['Meta Ads','Google Ads','LinkedIn Ads','TikTok Ads'];
   const audGaps = ['Underserved by competitor — low ad frequency in this segment','Poor creative resonance — competitor uses generic messaging here','Budget mismatch — competitor over-spends on lower-intent tiers'];
-  const audCards = (c.audiences || [{label:'High-Intent Buyers',pct:38},{label:'Decision Makers',pct:24},{label:'Mid-Market Segment',pct:22}]).slice(0,3).map((a,i)=>{
+  const audCards = ((c.audiences && c.audiences.length) ? c.audiences : [{label:'High-Intent Buyers',pct:38},{label:'Decision Makers',pct:24},{label:'Mid-Market Segment',pct:22}]).slice(0,3).map((a,i)=>{
     const aCh = audChannels[i % audChannels.length];
     return card('#0066FF','background:#EFF6FF;color:#1D4ED8', `${a.pct}% of market`,
       a.label,
@@ -22026,11 +22026,11 @@ async function postReplyToReddit() {
         <a href="${redditUrl}" target="_blank" rel="noopener" style="flex:1;min-width:140px;padding:11px;background:linear-gradient(135deg,#FF4500,#FF6B35);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;text-align:center;text-decoration:none;display:block">
           🔗 Open Reddit Thread
         </a>
-        <button onclick="navigator.clipboard.writeText(${JSON.stringify(replyText)}).then(()=>showToast('✅ Copied again!'))" style="padding:11px 18px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">
+        <button data-rdt-copy style="padding:11px 18px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">
           📋 Copy Again
         </button>
-        <button onclick="this.closest('[style*=fixed]').remove()" style="padding:11px 18px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;font-size:0.82rem;font-weight:600;color:rgba(255,255,255,.5);cursor:pointer">
-          Close
+        <button data-rdt-close style="padding:11px 18px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">
+          ✕ Close
         </button>
       </div>
 
@@ -22041,6 +22041,10 @@ async function postReplyToReddit() {
 
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
+  modal.querySelector('[data-rdt-copy]')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(replyText).then(() => showToast('✅ Copied again!')).catch(() => showToast('❌ Copy failed'));
+  });
+  modal.querySelector('[data-rdt-close]')?.addEventListener('click', () => modal.remove());
 
   showToast('✅ Reply copied — open Reddit to paste!');
 
