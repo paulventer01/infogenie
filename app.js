@@ -2640,6 +2640,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'crisis-radar')    { try { buildCrisisRadar(); }   catch(e) { console.warn('buildCrisisRadar error:', e); } }
   if (viewId === 'battle-cards')    { try { buildBattleCards(); }   catch(e) { console.warn('buildBattleCards error:', e); } }
   if (viewId === 'trending-topics') { try { buildTrendingTopics(); } catch(e) { console.warn('buildTrendingTopics error:', e); } }
+  if (viewId === 'sov-tracker')     { try { buildSovTracker(); }    catch(e) { console.warn('buildSovTracker error:', e); } }
+  if (viewId === 'discovery')       { try { buildDiscovery(); }     catch(e) { console.warn('buildDiscovery error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -33273,7 +33275,153 @@ function _trRender(topics, source, category) {
       ${(topics||[]).map((t,i)=>`<div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid ${i<3?'#B91C1C':i<6?'#F59E0B':'#9CA3AF'};border-radius:10px;padding:14px 16px">
         <div style="font-weight:800;color:#0A1628;font-size:0.95rem;margin-bottom:6px">#${i+1}. ${_escapeHtml(t.title||'')}</div>
         <div style="font-size:0.8rem;color:#374151;margin-bottom:8px;line-height:1.5">${_escapeHtml(t.why||'')}</div>
-        ${(t.sources||[]).length?`<div style="font-size:0.7rem;color:#6B7280">${(t.sources||[]).slice(0,3).map(u=>`<a href="${_escapeHtml(u)}" target="_blank" style="color:#7C3AED;display:block;margin-top:2px">${_escapeHtml(u.replace(/^https?:\/\//,'').slice(0,60))}</a>`).join('')}</div>`:''}
+        ${(t.sources||[]).length?`<div style="font-size:0.7rem;color:#6B7280">${(t.sources||[]).slice(0,3).map(u=>`<a href="${_escapeHtml(_safeUrl(u))}" target="_blank" rel="noopener noreferrer" style="color:#7C3AED;display:block;margin-top:2px">${_escapeHtml(u.replace(/^https?:\/\//,'').slice(0,60))}</a>`).join('')}</div>`:''}
       </div>`).join('')}
     </div>`;
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// TIER 3 — Share of Voice Tracker, Influencer Discovery
+// ════════════════════════════════════════════════════════════════════════════
+const _SOV_PALETTE = ['#7C3AED','#0891B2','#F59E0B','#15803D','#B91C1C','#1E40AF'];
+let _sovChart = null;
+
+window.buildSovTracker = async function() {
+  const wrap = document.getElementById('sovWrap'); if (!wrap) return;
+  wrap.innerHTML = `<div style="text-align:center;padding:40px;color:#6B7280">Loading…</div>`;
+  try {
+    const t = await fetch('/api/sov/targets').then(x=>x.json());
+    const targets = t.targets || [];
+    const lastTarget = window._sovTarget || (targets[0]?.target_brand || '');
+    wrap.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Tracked brand</div>
+          <select id="sovTarget" style="padding:8px 11px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.84rem;min-width:200px">
+            ${targets.length===0 ? `<option value="">No data yet — add a brand in Crisis Radar</option>` :
+              targets.map(t=>`<option value="${_escapeHtml(t.target_brand)}" ${t.target_brand===lastTarget?'selected':''}>${_escapeHtml(t.target_brand)} (${t.snapshots} snapshots)</option>`).join('')}
+          </select>
+        </label>
+        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Window</div>
+          <select id="sovDays" style="padding:8px 11px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.84rem">
+            <option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option>
+          </select>
+        </label>
+        <button onclick="_sovLoad()" style="padding:9px 18px;background:#0891B2;border:2px solid #0891B2;border-radius:6px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">📈 Load chart</button>
+      </div>
+      <div id="sovChartWrap" style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;min-height:380px"></div>
+      <div id="sovTable" style="margin-top:18px"></div>`;
+    if (lastTarget) _sovLoad();
+    else document.getElementById('sovChartWrap').innerHTML = `<div style="text-align:center;padding:60px;color:#9CA3AF;font-size:0.88rem">No snapshots yet. Add a brand + competitors in <a href="#" onclick="navigateTo('crisis-radar');return false" style="color:#7C3AED;font-weight:700">Crisis Radar</a> and click <strong>▶ Run scan now</strong> — every scan also records a Share-of-Voice snapshot.</div>`;
+  } catch (e) { wrap.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:16px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._sovLoad = async function() {
+  const target = document.getElementById('sovTarget').value;
+  const days = document.getElementById('sovDays').value;
+  if (!target) return;
+  window._sovTarget = target;
+  const w = document.getElementById('sovChartWrap');
+  w.innerHTML = `<div style="text-align:center;padding:30px;color:#6B7280">Loading…</div>`;
+  try {
+    const r = await fetch(`/api/sov/series?brand=${encodeURIComponent(target)}&days=${days}`).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error);
+    if (!r.series.length) { w.innerHTML = `<div style="text-align:center;padding:60px;color:#9CA3AF">No snapshots yet for ${_escapeHtml(target)}.</div>`; return; }
+    // Build a unified time axis
+    const tsSet = new Set();
+    r.series.forEach(s => s.points.forEach(p => tsSet.add(p.t)));
+    const labels = Array.from(tsSet).sort();
+    const datasets = r.series.map((s, i) => {
+      const map = Object.fromEntries(s.points.map(p => [p.t, p.mentions]));
+      return {
+        label: s.brand,
+        data: labels.map(l => map[l] || 0),
+        borderColor: _SOV_PALETTE[i % _SOV_PALETTE.length],
+        backgroundColor: _SOV_PALETTE[i % _SOV_PALETTE.length] + '33',
+        fill: true, tension: 0.3, borderWidth: 2,
+      };
+    });
+    w.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-family:Sora,sans-serif;font-weight:800">${_escapeHtml(target)} vs competitors · ${r.snapshots} snapshots</div></div><canvas id="sovCanvas" height="120"></canvas>`;
+    if (_sovChart) { try { _sovChart.destroy(); } catch{} }
+    _sovChart = new Chart(document.getElementById('sovCanvas').getContext('2d'), {
+      type: 'line',
+      data: { labels: labels.map(l => new Date(l).toLocaleDateString(undefined,{month:'short',day:'numeric',hour:'2-digit'})), datasets },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{position:'bottom'} }, scales:{ y:{ stacked:true, beginAtZero:true, title:{display:true, text:'Mentions per snapshot'} } }, elements:{ point:{ radius: 2 } } },
+    });
+    const tbl = document.getElementById('sovTable');
+    tbl.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px"><div style="font-family:Sora,sans-serif;font-weight:800;margin-bottom:10px">Share of Voice (${days}d)</div>
+      <table style="width:100%;border-collapse:collapse;font-size:0.86rem"><thead style="background:#F9FAFB;color:#6B7280;text-transform:uppercase;font-size:0.62rem"><tr><th style="padding:8px 10px;text-align:left">Brand</th><th style="padding:8px;text-align:right">Mentions</th><th style="padding:8px;text-align:right">Share</th><th style="padding:8px"></th></tr></thead>
+      <tbody>${r.sov.map((s, i)=>`<tr style="border-top:1px solid #F3F4F6">
+        <td style="padding:8px 10px;font-weight:700"><span style="display:inline-block;width:12px;height:12px;background:${_SOV_PALETTE[i%_SOV_PALETTE.length]};border-radius:3px;margin-right:6px;vertical-align:middle"></span>${_escapeHtml(s.brand)}${s.brand===target?' <span style="background:#0891B2;color:#fff;font-size:0.6rem;padding:1px 5px;border-radius:4px;margin-left:4px">YOU</span>':''}</td>
+        <td style="padding:8px;text-align:right;font-variant-numeric:tabular-nums">${s.total}</td>
+        <td style="padding:8px;text-align:right;font-weight:800;color:${s.brand===target?'#0891B2':'#0A1628'}">${(s.share*100).toFixed(1)}%</td>
+        <td style="padding:4px 10px"><div style="background:#F3F4F6;border-radius:3px;height:8px;width:160px;margin-left:auto"><div style="background:${_SOV_PALETTE[i%_SOV_PALETTE.length]};height:100%;border-radius:3px;width:${(s.share*100).toFixed(1)}%"></div></div></td>
+      </tr>`).join('')}</tbody></table></div>`;
+  } catch (e) { w.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:16px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+
+window.buildDiscovery = function() {
+  const wrap = document.getElementById('discWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <div style="font-family:Sora,sans-serif;font-weight:800;font-size:1rem;margin-bottom:12px">Find creators</div>
+      <div style="display:grid;grid-template-columns:1.6fr 1fr 100px 90px auto;gap:10px;align-items:end">
+        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Niche *</div><input id="discNiche" placeholder="e.g. sustainable fashion, fintech reviews, home cooking" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem"></label>
+        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Platform</div>
+          <select id="discPlatform" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem"><option value="any">Any</option><option>instagram</option><option>tiktok</option><option>youtube</option><option>x</option><option>linkedin</option></select>
+        </label>
+        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Country</div><input id="discCountry" value="US" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem"></label>
+        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Count</div><input id="discCount" type="number" min="3" max="15" value="8" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem"></label>
+        <button onclick="_discFind()" style="padding:9px 18px;background:#0891B2;border:2px solid #0891B2;border-radius:6px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">🔭 Search</button>
+      </div>
+    </div>
+    <div id="discResults"></div>`;
+};
+window._discFind = async function() {
+  const niche = document.getElementById('discNiche').value.trim();
+  if (!niche) return showToast('❌ Niche required');
+  const platform = document.getElementById('discPlatform').value;
+  const country = document.getElementById('discCountry').value.trim() || 'US';
+  const count = Number(document.getElementById('discCount').value) || 8;
+  const el = document.getElementById('discResults');
+  el.innerHTML = `<div style="text-align:center;padding:40px;color:#6B7280">⏳ Searching live web (~15-30s)…</div>`;
+  try {
+    const r = await fetch('/api/discovery/influencers', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ niche, platform, country, count }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error);
+    window._discCache = r.creators;
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-family:Sora,sans-serif;font-weight:800">Found ${r.creators.length} in <span style="color:#0891B2">${_escapeHtml(niche)}</span></div>
+        <span style="background:${r.source==='perplexity'?'#7C3AED':'#9CA3AF'};color:#fff;padding:3px 9px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase">${_escapeHtml(r.source)}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px">
+        ${r.creators.map((c, i)=>`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div><div style="font-weight:800;color:#0A1628;font-size:1rem">@${_escapeHtml(c.handle)}</div><div style="font-size:0.7rem;color:#7C3AED;text-transform:uppercase;font-weight:700">${_escapeHtml(c.platform)}</div></div>
+            <div style="text-align:right"><div style="font-size:0.85rem;font-weight:800;color:#0A1628">${(c.followers||0).toLocaleString()}</div><div style="font-size:0.66rem;color:#6B7280">followers</div></div>
+          </div>
+          <div style="font-size:0.78rem;color:#374151;line-height:1.45">${_escapeHtml(c.reason||'')}</div>
+          <div style="display:flex;gap:10px;font-size:0.7rem;color:#6B7280"><span>📊 ${(c.engagement*100).toFixed(1)}% engagement</span><span>🏷 ${_escapeHtml(c.niche)}</span></div>
+          ${(c.sources||[]).length?`<div style="font-size:0.66rem">${(c.sources||[]).map(u=>`<a href="${_escapeHtml(_safeUrl(u))}" target="_blank" rel="noopener noreferrer" style="color:#7C3AED;display:block;margin-top:1px">${_escapeHtml(u.replace(/^https?:\/\//,'').slice(0,60))}</a>`).join('')}</div>`:''}
+          <button onclick="_discAdd(${i})" style="padding:8px 14px;background:#15803D;border:2px solid #15803D;border-radius:6px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">+ Add to Influencer CRM</button>
+        </div>`).join('')}
+      </div>`;
+  } catch (e) { el.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._discAdd = async function(i) {
+  const c = (window._discCache || [])[i]; if (!c) return showToast('❌ Lost reference, please re-search');
+  try {
+    const payload = {
+      handle: c.handle, platform: c.platform, niche: c.niche,
+      follower_count: c.followers, engagement_rate: c.engagement,
+      status: 'prospect',
+      notes: `Discovered via Influencer Discovery. ${c.reason||''}\n\nSources:\n${(c.sources||[]).join('\n')}`,
+    };
+    const r = await fetch('/api/influencers', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error || 'failed');
+    showToast(`✅ Added @${c.handle} to CRM`);
+  } catch (e) { showToast('❌ ' + e.message); }
+};
+
+window._safeUrl = function(u) {
+  try { const p = new URL(String(u)); return /^(https?|mailto):$/i.test(p.protocol) ? p.toString() : '#'; }
+  catch { return '#'; }
+};

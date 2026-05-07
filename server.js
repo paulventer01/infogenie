@@ -8469,14 +8469,23 @@ const _trendsRouter   = require('./services/trends/api');
 app.use('/api/crisis-radar',   _crisisRouter);
 app.use('/api/battle-cards',   _battleRouter);
 app.use('/api/trends',         _trendsRouter);
+
+// ── Tier 3 ─────────────────────────────────────────────────────────────────
+const _sovSchema    = require('./services/sov/schema');
+const _sovRouter    = require('./services/sov/api');
+const _discoveryRouter = require('./services/discovery/api');
+app.use('/api/sov',       _sovRouter);
+app.use('/api/discovery', _discoveryRouter);
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
     await _battleSchema.ensureBattleCardsSchema();
+    await _sovSchema.ensureSovSchema();
     _crisisDetector.startCron(6);
-    console.log('[tier2] crisis-radar + battle-cards + trends mounted, crisis cron=6h');
+    console.log('[tier2+3] crisis-radar + battle-cards + trends + sov + discovery mounted, crisis cron=6h');
   }
-} catch(e) { console.error('[tier2] init failed:', e.message); } })();
+} catch(e) { console.error('[tier2+3] init failed:', e.message); } })();
 (async () => {
   try {
     if (_db.hasDb()) {

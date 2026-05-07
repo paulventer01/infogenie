@@ -63,7 +63,8 @@ function _summarise(mentionsResp, brand) {
 
 async function _runOne(w) {
   const pool = _db.getPool();
-  const resp = await _fetchMentions(w.brand, Array.isArray(w.competitors) ? w.competitors : [], w.country);
+  const competitors = Array.isArray(w.competitors) ? w.competitors : [];
+  const resp = await _fetchMentions(w.brand, competitors, w.country);
   if (!resp || !resp.ok) throw new Error(resp?.error || 'mentions-failed');
   const s = _summarise(resp, w.brand);
 
@@ -71,6 +72,20 @@ async function _runOne(w) {
     INSERT INTO crisis_snapshots (watchlist_id, brand, total_mentions, pos_count, neu_count, neg_count, neg_pct, top_sources)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
     [w.id, w.brand, s.total, s.pos, s.neu, s.neg, s.negPct, JSON.stringify(s.topSources)]);
+
+  // Also persist Share-of-Voice rows: one per brand (target + each competitor)
+  // sharing the same taken_at timestamp so the SoV chart can pivot easily.
+  try {
+    const allBrands = [w.brand, ...competitors];
+    const takenAt = snap.rows[0].taken_at;
+    for (const b of allBrands) {
+      const bs = _summarise(resp, b);
+      await pool.query(`
+        INSERT INTO sov_snapshots (watchlist_id, target_brand, brand, mentions, pos_count, neu_count, neg_count, taken_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [w.id, w.brand, b, bs.total, bs.pos, bs.neu, bs.neg, takenAt]);
+    }
+  } catch (e) { console.warn('[sov] persist failed:', e.message); }
 
   // Baseline = mean of previous 7 snapshots (excluding this one).
   const base = await pool.query(`
