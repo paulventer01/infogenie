@@ -2646,6 +2646,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'reply-assistant') { try { buildReplyAssistant(); } catch(e) { console.warn('buildReplyAssistant error:', e); } }
   if (viewId === 'press-release')   { try { buildPressRelease(); }   catch(e) { console.warn('buildPressRelease error:', e); } }
   if (viewId === 'alert-routing')   { try { buildAlertRouting(); }   catch(e) { console.warn('buildAlertRouting error:', e); } }
+  if (viewId === 'backlinks')        { try { buildBacklinks(); }       catch(e) { console.warn('buildBacklinks error:', e); } }
+  if (viewId === 'content-calendar') { try { buildContentCalendar(); } catch(e) { console.warn('buildContentCalendar error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -33856,4 +33858,153 @@ window._arDispatches = async function() {
       }).join('')}
     </div>`;
   } catch (e) { el.innerHTML = `<div style="color:#B91C1C;font-size:0.8rem">${_escapeHtml(e.message)}</div>`; }
+};
+
+// ── Tier 6 #1: Backlink Intel ─────────────────────────────────────────────
+window.buildBacklinks = function() {
+  const el = document.getElementById('blWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="display:flex;gap:10px;align-items:flex-end">
+        <div style="flex:1">
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Target domain</label>
+          <input id="blTarget" placeholder="e.g. nike.com" value="nike.com" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <button onclick="_blGo()" style="padding:10px 22px;background:#059669;border:2px solid #059669;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🔗 Analyze</button>
+      </div>
+    </div>
+    <div id="blOut"></div>`;
+};
+window._blGo = async function() {
+  const target = (document.getElementById('blTarget')||{}).value || '';
+  if (!target.trim()) return showToast('⚠️ Target required');
+  const out = document.getElementById('blOut');
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Pulling backlink data…</div>`;
+  try {
+    const [sumR, domR] = await Promise.all([
+      fetch('/api/backlinks/summary', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ target }) }).then(x=>x.json()),
+      fetch('/api/backlinks/referring-domains', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ target, limit:50 }) }).then(x=>x.json()),
+    ]);
+    const s = sumR.summary || {};
+    const stat = (label, val, tint) => `<div style="background:${tint};border-radius:10px;padding:14px 16px;flex:1"><div style="font-size:0.66rem;font-weight:800;color:#6B7280;letter-spacing:.06em">${label}</div><div style="font-size:1.5rem;font-weight:800;color:#0A1628;margin-top:3px">${val}</div></div>`;
+    const fmt = n => Number(n||0).toLocaleString();
+    const note = sumR.note ? `<div style="background:#FEF3C7;color:#92400E;padding:10px 14px;border-radius:8px;font-size:0.78rem;margin-bottom:14px">${_escapeHtml(sumR.note)}</div>` : '';
+    const domains = (domR.domains || []);
+    out.innerHTML = `
+      ${note}
+      <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+        ${stat('Backlinks', fmt(s.backlinks), '#ECFDF5')}
+        ${stat('Referring Domains', fmt(s.referring_domains), '#EFF6FF')}
+        ${stat('Authority Rank', fmt(s.rank), '#FEF3C7')}
+        ${stat('Broken Links', fmt(s.broken), '#FEE2E2')}
+      </div>
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
+        <div style="padding:14px 18px;border-bottom:1px solid #E5E7EB;font-weight:800;color:#0A1628">🌐 Top Referring Domains (${domains.length})</div>
+        ${domains.length ? `<table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+          <thead><tr style="background:#F9FAFB">
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">DOMAIN</th>
+            <th style="padding:9px 14px;text-align:right;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">RANK</th>
+            <th style="padding:9px 14px;text-align:right;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">BACKLINKS</th>
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">COUNTRY</th>
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">FIRST SEEN</th>
+          </tr></thead>
+          <tbody>${domains.map(d=>`<tr style="border-top:1px solid #F3F4F6">
+            <td style="padding:9px 14px;color:#0A1628;font-weight:600">${_escapeHtml(d.domain||'')}</td>
+            <td style="padding:9px 14px;text-align:right;color:#374151">${fmt(d.rank)}</td>
+            <td style="padding:9px 14px;text-align:right;color:#374151">${fmt(d.backlinks)}</td>
+            <td style="padding:9px 14px;color:#6B7280">${_escapeHtml(d.country||'—')}</td>
+            <td style="padding:9px 14px;color:#6B7280;font-size:0.78rem">${d.first_seen ? new Date(d.first_seen).toLocaleDateString() : '—'}</td>
+          </tr>`).join('')}</tbody>
+        </table>` : `<div style="padding:24px;text-align:center;color:#9CA3AF;font-size:0.85rem">No referring domains returned.</div>`}
+      </div>`;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+
+// ── Tier 6 #2: Content Calendar Auto-Pilot ───────────────────────────────
+window.buildContentCalendar = function() {
+  const el = document.getElementById('ccWrap'); if (!el) return;
+  const channels = ['instagram','tiktok','linkedin','x','facebook','youtube','blog','email'];
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 100px;gap:12px;margin-bottom:12px">
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brand</label>
+          <input id="ccBrand" value="Nike" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Goal</label>
+          <input id="ccGoal" placeholder="e.g. drive 10% more sign-ups" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Days</label>
+          <input id="ccDays" type="number" value="7" min="1" max="30" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Audience</label>
+          <input id="ccAud" placeholder="e.g. urban athletes 18-34" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Tone</label>
+          <input id="ccTone" placeholder="e.g. bold + motivational" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+      </div>
+      <div>
+        <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:6px">Channels</label>
+        <div id="ccChannels" style="display:flex;flex-wrap:wrap;gap:6px">
+          ${channels.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;background:#F3F4F6;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:0.78rem;color:#374151"><input type="checkbox" value="${c}" ${['instagram','linkedin','x'].includes(c)?'checked':''}> ${c}</label>`).join('')}
+        </div>
+      </div>
+      <button onclick="_ccGo()" style="margin-top:14px;padding:10px 22px;background:#059669;border:2px solid #059669;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">📅 Generate Calendar</button>
+    </div>
+    <div id="ccOut"></div>`;
+};
+window._ccGo = async function() {
+  const brand = (document.getElementById('ccBrand')||{}).value || '';
+  const goal  = (document.getElementById('ccGoal')||{}).value || '';
+  const audience = (document.getElementById('ccAud')||{}).value || '';
+  const tone  = (document.getElementById('ccTone')||{}).value || '';
+  const days  = parseInt((document.getElementById('ccDays')||{}).value, 10) || 7;
+  const channels = Array.from(document.querySelectorAll('#ccChannels input[type=checkbox]:checked')).map(c=>c.value);
+  if (!brand.trim()) return showToast('⚠️ Brand required');
+  if (!channels.length) return showToast('⚠️ Pick at least one channel');
+  const out = document.getElementById('ccOut');
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Drafting ${days}-day calendar across ${channels.length} channel(s)…</div>`;
+  try {
+    const r = await fetch('/api/content-calendar/generate', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ brand:brand.trim(), goal, audience, tone, days, channels }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    const channelColor = { instagram:'#E1306C', tiktok:'#000', linkedin:'#0A66C2', x:'#000', facebook:'#1877F2', youtube:'#FF0000', blog:'#6B7280', email:'#7C3AED' };
+    out.innerHTML = `
+      <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:800;color:#0A1628">📋 ${r.posts.length} posts · ${r.source==='openai'?'AI-generated':'Template'}</div>
+        <button onclick="_ccCopy()" style="padding:7px 14px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.74rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy All as CSV</button>
+      </div>
+      <div id="ccGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px">
+        ${r.posts.map((p,i)=>{
+          const tint = channelColor[p.channel] || '#0891B2';
+          return `<div style="background:#fff;border:1px solid #E5E7EB;border-top:3px solid ${tint};border-radius:10px;padding:14px 16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <div style="display:flex;gap:6px;align-items:center"><span style="background:${tint};color:#fff;padding:3px 8px;border-radius:5px;font-size:0.66rem;font-weight:800;text-transform:uppercase">${_escapeHtml(p.channel||'')}</span><span style="font-size:0.7rem;color:#6B7280">${_escapeHtml(p.format||'')}</span></div>
+              <div style="font-size:0.7rem;color:#9CA3AF">Day ${p.day} · ${_escapeHtml(p.date||'')} · ${_escapeHtml(p.best_time||'')}</div>
+            </div>
+            <div style="font-weight:800;color:#0A1628;font-size:0.92rem;margin-bottom:6px">${_escapeHtml(p.hook||'')}</div>
+            <div style="font-size:0.82rem;color:#374151;line-height:1.5;white-space:pre-wrap">${_escapeHtml(p.copy||'')}</div>
+            ${p.cta?`<div style="margin-top:8px;font-size:0.78rem;color:#059669;font-weight:700">→ ${_escapeHtml(p.cta)}</div>`:''}
+            ${Array.isArray(p.hashtags)&&p.hashtags.length?`<div style="margin-top:8px;font-size:0.74rem;color:#0891B2">${p.hashtags.map(h=>_escapeHtml(h)).join(' ')}</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>`;
+    window._ccLastPosts = r.posts;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._ccCopy = async function() {
+  const posts = window._ccLastPosts || [];
+  if (!posts.length) return;
+  const headers = ['day','date','channel','format','hook','copy','cta','hashtags','best_time'];
+  const csv = [headers.join(',')].concat(posts.map(p => headers.map(h => {
+    const v = h === 'hashtags' ? (Array.isArray(p[h])?p[h].join(' '):'') : (p[h]||'');
+    return '"' + String(v).replace(/"/g,'""') + '"';
+  }).join(','))).join('\n');
+  try { await navigator.clipboard.writeText(csv); showToast('✅ Copied as CSV'); }
+  catch (e) { showToast('❌ '+e.message); }
 };

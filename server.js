@@ -8491,6 +8491,13 @@ const _alertRouteRouter = require('./services/alert_routing/api');
 app.use('/api/press-release',  _pressRouter);
 app.use('/api/alert-routing',  _alertRouteRouter);
 
+// ── Tier 6 ─────────────────────────────────────────────────────────────────
+const _backlinksRouter   = require('./services/backlinks/api');
+const _calendarSchema    = require('./services/content_calendar/schema');
+const _calendarRouter    = require('./services/content_calendar/api');
+app.use('/api/backlinks',         _backlinksRouter);
+app.use('/api/content-calendar',  _calendarRouter);
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
@@ -8498,6 +8505,7 @@ app.use('/api/alert-routing',  _alertRouteRouter);
     await _sovSchema.ensureSovSchema();
     await _digestSchema.ensureDigestSchema();
     await _alertRouteSchema.ensureAlertRoutingSchema();
+    await _calendarSchema.ensureContentCalendarSchema();
     _crisisDetector.startCron(6);
     _digestRouter.startCron(24);
     console.log('[tier2-5] crisis + battle + trends + sov + discovery + digest + reply + press-release + alert-routing mounted');
