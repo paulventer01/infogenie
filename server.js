@@ -8429,7 +8429,9 @@ app.use('/api/audiences', _audiencesRouter);
   try {
     if (_db.hasDb()) {
       await _audiencesSchema.ensureAudiencesSchema();
-      console.log('[audiences] schema ready (dynamic segments — Phase 1)');
+      const _audiencesSweep = require('./services/audiences/sweep');
+      _audiencesSweep.startSweepCron(15); // every 15 minutes
+      console.log('[audiences] schema ready, sweep cron=15m (Phase 2 — real-time evaluation)');
     } else {
       console.log('[audiences] disabled — DATABASE_URL not set');
     }

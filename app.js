@@ -32017,3 +32017,134 @@ window.dynSegSave = async function() {
     if (a) setTimeout(() => { try { buildDynAudiences(); } catch(_){} }, 60);
   });
 })();
+
+// ── DYNAMIC AUDIENCES — Phase 2 UI (sync-now, members drill-in, flow log) ──
+window.dynSegRefresh = async function(id, name) {
+  showToast('🔄 Re-evaluating "' + name + '" against your full HubSpot contact list…');
+  try {
+    const r = await fetch('/api/audiences/' + id + '/refresh', { method:'POST' }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error || 'refresh failed');
+    const run = r.run || {};
+    const seg = (run.results || [])[0] || {};
+    if (run.source === 'unavailable' || run.source === 'hubspot_partial') {
+      showToast('⚠ HubSpot fetch failed — ' + (run.hubspotError || 'unavailable'));
+    } else {
+      showToast(`✅ "${name}" — ${seg.matched||0} members (${seg.added||0} joined, ${seg.removed||0} left)`);
+    }
+    buildDynAudiences();
+  } catch (e) { showToast('❌ Refresh failed: ' + e.message); }
+};
+
+window.dynSegViewMembers = async function(id, name) {
+  let modal = document.getElementById('dynSegMembersModal');
+  if (!modal) { modal = document.createElement('div'); modal.id = 'dynSegMembersModal'; document.body.appendChild(modal); }
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:10010;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;overflow-y:auto;backdrop-filter:blur(4px)';
+  modal.innerHTML = `
+    <div style="background:#fff;width:100%;max-width:880px;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:28px 32px;color:#0A1628">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1.3rem;font-weight:800">👥 Members of "${_escapeHtml(name)}"</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">Live membership + recent in/out flow. Updated by the 15-minute sweep, the HubSpot webhook, and any manual sync.</div>
+        </div>
+        <button onclick="(function(){var m=document.getElementById('dynSegMembersModal');if(m)m.remove();})()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6B7280;padding:4px 10px">×</button>
+      </div>
+      <div id="dynSegMembersBody" style="font-size:0.85rem;color:#6B7280;text-align:center;padding:32px">Loading…</div>
+    </div>`;
+  try {
+    const [m, l] = await Promise.all([
+      fetch('/api/audiences/' + id + '/members?limit=200').then(x=>x.json()),
+      fetch('/api/audiences/' + id + '/log').then(x=>x.json()),
+    ]);
+    const members = (m.members || []);
+    const log     = (l.log || []);
+    const totals = log.reduce((a,r) => ({ added:a.added+(r.members_added||0), removed:a.removed+(r.members_removed||0), runs:a.runs+1 }), { added:0, removed:0, runs:0 });
+    const lastRun = log[0] ? new Date(log[0].ran_at).toLocaleString() : 'never';
+
+    document.getElementById('dynSegMembersBody').innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px">
+        <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px"><div style="font-size:0.6rem;font-weight:800;color:#166534;text-transform:uppercase;letter-spacing:.06em">Active members</div><div style="font-size:1.5rem;font-weight:800;color:#166534;font-variant-numeric:tabular-nums">${(m.total||0).toLocaleString()}</div></div>
+        <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px"><div style="font-size:0.6rem;font-weight:800;color:#1E40AF;text-transform:uppercase;letter-spacing:.06em">Joined (7d)</div><div style="font-size:1.5rem;font-weight:800;color:#1E40AF;font-variant-numeric:tabular-nums">+${totals.added.toLocaleString()}</div></div>
+        <div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:12px"><div style="font-size:0.6rem;font-weight:800;color:#991B1B;text-transform:uppercase;letter-spacing:.06em">Left (7d)</div><div style="font-size:1.5rem;font-weight:800;color:#991B1B;font-variant-numeric:tabular-nums">−${totals.removed.toLocaleString()}</div></div>
+        <div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:10px;padding:12px"><div style="font-size:0.6rem;font-weight:800;color:#5B21B6;text-transform:uppercase;letter-spacing:.06em">Sweeps (7d)</div><div style="font-size:1.5rem;font-weight:800;color:#5B21B6;font-variant-numeric:tabular-nums">${totals.runs}</div></div>
+      </div>
+      <div style="font-size:0.7rem;color:#6B7280;margin-bottom:8px">Last evaluated: <strong style="color:#0A1628">${lastRun}</strong>${log[0]?.error?` <span style="color:#B91C1C">· error: ${_escapeHtml(log[0].error)}</span>`:''}</div>
+
+      <div style="font-size:0.78rem;font-weight:800;color:#0A1628;margin:18px 0 8px">Active members ${m.total>members.length?`(showing first ${members.length} of ${m.total})`:`(${members.length})`}</div>
+      ${members.length === 0
+        ? `<div style="background:#FAFAFA;border:1.5px dashed #E5E7EB;border-radius:10px;padding:24px;text-align:center;color:#6B7280;font-size:0.85rem">No active members yet. ${log.length===0?'Run a sync to do the first evaluation.':'No HubSpot contacts currently match these rules.'}</div>`
+        : `<div style="border:1px solid #E5E7EB;border-radius:10px;overflow:hidden"><table style="width:100%;border-collapse:collapse;font-size:0.78rem">
+            <thead style="background:#F9FAFB"><tr><th style="text-align:left;padding:9px 12px;font-weight:800;color:#374151;font-size:0.7rem;text-transform:uppercase;letter-spacing:.05em">Email</th><th style="text-align:left;padding:9px 12px;font-weight:800;color:#374151;font-size:0.7rem;text-transform:uppercase;letter-spacing:.05em">Contact ID</th><th style="text-align:right;padding:9px 12px;font-weight:800;color:#374151;font-size:0.7rem;text-transform:uppercase;letter-spacing:.05em">Joined</th></tr></thead>
+            <tbody>${members.map(c => `<tr style="border-top:1px solid #F1F5F9"><td style="padding:9px 12px;color:#0A1628;font-weight:600">${_escapeHtml(c.contact_email||'(no email)')}</td><td style="padding:9px 12px;color:#6B7280;font-family:'JetBrains Mono',monospace;font-size:0.72rem">${_escapeHtml(c.contact_id)}</td><td style="padding:9px 12px;text-align:right;color:#6B7280">${new Date(c.joined_at).toLocaleDateString()}</td></tr>`).join('')}</tbody>
+          </table></div>`}
+    `;
+  } catch (e) {
+    document.getElementById('dynSegMembersBody').innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:16px;color:#B91C1C">Failed to load members: ${_escapeHtml(e.message)}</div>`;
+  }
+};
+
+// Patch the segment-card row to include the new Phase-2 buttons by wrapping
+// buildDynAudiences's renderer. We do this by re-defining it once Phase 1's
+// version has loaded — same shape, plus the extra "Sync" + "Members" buttons.
+window.buildDynAudiences = async function() {
+  const wrap = document.getElementById('dynAudWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `<div style="text-align:center;padding:48px;color:#64748B;font-weight:600">Loading audiences…</div>`;
+  try {
+    const [r, hubConn] = await Promise.all([
+      fetch('/api/audiences').then(x=>x.json()),
+      fetch('/api/hubspot/status').then(x=>x.json()).catch(()=>({ok:false})),
+    ]);
+    const segs = r.segments || [];
+    const sourceBadge = hubConn.ok && hubConn.configured
+      ? `<span style="display:inline-flex;align-items:center;gap:5px;background:#DCFCE7;color:#15803D;padding:3px 9px;border-radius:6px;font-size:0.65rem;font-weight:800"><span style="width:6px;height:6px;background:#10B981;border-radius:50%"></span>HUBSPOT CONNECTED · live data</span>`
+      : `<span style="display:inline-flex;align-items:center;gap:5px;background:#FEF3C7;color:#92400E;padding:3px 9px;border-radius:6px;font-size:0.65rem;font-weight:800"><span style="width:6px;height:6px;background:#F59E0B;border-radius:50%"></span>HUBSPOT NOT CONNECTED · using demo data</span>`;
+
+    const intro = `
+      <div style="background:linear-gradient(135deg,#EEF2FF,#F5F3FF);border:1px solid #C7D2FE;border-radius:14px;padding:18px 22px;margin-bottom:22px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#312E81;margin-bottom:4px">⚡ How Dynamic Audiences work</div>
+          <div style="font-size:0.78rem;color:#4338CA;line-height:1.55;max-width:680px">Define rules once — InfoGenie continuously re-evaluates every contact every 15 minutes (and instantly via HubSpot webhooks). People auto-flow IN when they match, OUT when they don't.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">${sourceBadge}<div style="font-size:0.62rem;color:#6B7280;font-weight:700">Phase 2 · Real-time evaluation · 15-min sweep</div></div>
+      </div>`;
+
+    const cards = segs.length === 0
+      ? `<div style="background:#fff;border:2px dashed #C7D2FE;border-radius:14px;padding:48px;text-align:center">
+           <div style="font-size:2.4rem;margin-bottom:8px">🎯</div>
+           <div style="font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px">No dynamic audiences yet</div>
+           <div style="font-size:0.82rem;color:#6B7280;margin-bottom:16px">Create your first rule-based segment — the live count updates the moment you tweak a rule.</div>
+           <button onclick="openDynSegmentBuilder()" style="padding:11px 22px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:9px;font-size:0.85rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5);box-shadow:0 4px 14px rgba(30,27,75,.35)">+ Create your first audience</button>
+         </div>`
+      : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">
+          ${segs.map(s => {
+            const last = s.last_evaluated_at ? new Date(s.last_evaluated_at).toLocaleString() : 'never';
+            const conds = (s.rules && Array.isArray(s.rules.conditions)) ? s.rules.conditions.length : 0;
+            const safeName = _escapeHtml(s.name).replace(/'/g, '&#39;');
+            return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:18px 20px;box-shadow:0 1px 4px rgba(0,0,0,.04);display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+                <div>
+                  <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628">${_escapeHtml(s.name)}</div>
+                  ${s.description ? `<div style="font-size:0.72rem;color:#6B7280;margin-top:3px;line-height:1.45">${_escapeHtml(s.description)}</div>` : ''}
+                </div>
+                <span style="background:${s.enabled?'#DCFCE7':'#F3F4F6'};color:${s.enabled?'#15803D':'#6B7280'};padding:2px 8px;border-radius:5px;font-size:0.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em">${s.enabled?'Live':'Paused'}</span>
+              </div>
+              <div style="display:flex;gap:14px;padding:10px 0;border-top:1px solid #F1F5F9;border-bottom:1px solid #F1F5F9">
+                <div style="flex:1"><div style="font-size:0.6rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Members</div><div style="font-size:1.4rem;font-weight:800;color:#1E1B4B;font-variant-numeric:tabular-nums">${(s.member_count||0).toLocaleString()}</div></div>
+                <div style="flex:1"><div style="font-size:0.6rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Rules</div><div style="font-size:1.4rem;font-weight:800;color:#1E1B4B;font-variant-numeric:tabular-nums">${conds}</div></div>
+              </div>
+              <div style="font-size:0.66rem;color:#9CA3AF">Last evaluated: ${last}</div>
+              <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+                <button onclick="dynSegRefresh(${s.id},'${safeName}')" style="flex:1;min-width:100px;padding:8px;background:#0EA5E9;border:2px solid #0EA5E9;border-radius:7px;font-size:0.7rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🔄 Sync now</button>
+                <button onclick="dynSegViewMembers(${s.id},'${safeName}')" style="flex:1;min-width:100px;padding:8px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:7px;font-size:0.7rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">👥 Members</button>
+                <button onclick="openDynSegmentBuilder(${s.id})" style="padding:8px 10px;background:#fff;border:2px solid #C7D2FE;border-radius:7px;font-size:0.7rem;font-weight:800;color:#4338CA;-webkit-text-fill-color:#4338CA;cursor:pointer">✏️</button>
+                <button onclick="deleteDynSegment(${s.id},'${safeName}')" style="padding:8px 10px;background:#fff;border:2px solid #FCA5A5;border-radius:7px;font-size:0.7rem;font-weight:800;color:#B91C1C;-webkit-text-fill-color:#B91C1C;cursor:pointer">🗑</button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`;
+
+    wrap.innerHTML = intro + cards;
+  } catch (e) {
+    wrap.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:16px;color:#B91C1C;font-weight:600">Failed to load audiences: ${_escapeHtml(e.message)}</div>`;
+  }
+};

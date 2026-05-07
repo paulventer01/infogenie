@@ -2,6 +2,7 @@
 const express = require('express');
 const _db = require('../../db');
 const { previewSegmentLive, snapshotSegmentCount } = require('./engine');
+const { runSweepOnce, reevaluateContact } = require('./sweep');
 
 const router = express.Router();
 
@@ -119,6 +120,106 @@ router.post('/preview', async (req, res) => {
       try { await snapshotSegmentCount(sid, result.matches); } catch(_) {}
     }
     res.json({ ok:true, preview:result });
+  } catch (err) { _err(res, 500, err.message); }
+});
+
+// ── Phase 2 — real-time evaluation, members, log, webhook ──────────────────
+
+// Force a sweep against a single segment (or ALL enabled segments if no id).
+router.post('/refresh', async (_req, res) => {
+  try {
+    const result = await runSweepOnce();
+    res.json({ ok:true, run: result });
+  } catch (err) { _err(res, 500, err.message); }
+});
+
+router.post('/:id/refresh', async (req, res) => {
+  try {
+    const id = _validId(req.params.id);
+    if (!id) return _err(res, 400, 'invalid id');
+    const result = await runSweepOnce({ segmentId: id });
+    res.json({ ok:true, run: result });
+  } catch (err) { _err(res, 500, err.message); }
+});
+
+// List the live members of a segment (paginated).
+router.get('/:id/members', async (req, res) => {
+  try {
+    if (!_db.hasDb()) return _err(res, 503, 'db not configured');
+    const id = _validId(req.params.id);
+    if (!id) return _err(res, 400, 'invalid id');
+    const limit  = Math.min(Math.max(parseInt(req.query.limit  || '50', 10), 1), 500);
+    const offset = Math.max(parseInt(req.query.offset || '0',  10), 0);
+    const includeFormer = req.query.includeFormer === '1';
+    const where = includeFormer
+      ? `WHERE segment_id=$1`
+      : `WHERE segment_id=$1 AND left_at IS NULL`;
+    const r = await _db.getPool().query(`
+      SELECT contact_id, contact_email, joined_at, left_at
+      FROM audience_segment_members ${where}
+      ORDER BY joined_at DESC LIMIT $2 OFFSET $3
+    `, [id, limit, offset]);
+    const total = await _db.getPool().query(
+      `SELECT COUNT(*)::int AS n FROM audience_segment_members ${where}`, [id]
+    );
+    res.json({ ok:true, members: r.rows, total: total.rows[0].n, limit, offset });
+  } catch (err) { _err(res, 500, err.message); }
+});
+
+// Recent evaluation runs for a segment — for the "in/out flow" panel.
+router.get('/:id/log', async (req, res) => {
+  try {
+    if (!_db.hasDb()) return _err(res, 503, 'db not configured');
+    const id = _validId(req.params.id);
+    if (!id) return _err(res, 400, 'invalid id');
+    const r = await _db.getPool().query(`
+      SELECT ran_at, contacts_scanned, members_added, members_removed, duration_ms, source, error
+      FROM audience_evaluation_log
+      WHERE segment_id=$1 AND ran_at > now() - interval '7 days'
+      ORDER BY ran_at DESC LIMIT 100
+    `, [id]);
+    res.json({ ok:true, log: r.rows });
+  } catch (err) { _err(res, 500, err.message); }
+});
+
+// HubSpot webhook receiver — fires on contact create/update so we can re-
+// evaluate that single contact in real time. HubSpot POSTs an array of events.
+// SECURITY:
+//   - When HUBSPOT_WEBHOOK_SECRET is set, we enforce HMAC-SHA256 validation
+//     using HubSpot's v3 signature scheme (X-HubSpot-Signature-v3).
+//   - When unset (dev), we still accept but log a loud warning. In production
+//     (NODE_ENV=production) we REJECT unauthenticated webhooks.
+const _crypto = require('crypto');
+function _verifyHubspotSig(req) {
+  const secret = process.env.HUBSPOT_WEBHOOK_SECRET;
+  if (!secret) return { ok: process.env.NODE_ENV !== 'production', reason: 'no-secret' };
+  const sig = req.get('X-HubSpot-Signature-v3') || '';
+  const ts  = req.get('X-HubSpot-Request-Timestamp') || '';
+  if (!sig || !ts) return { ok:false, reason:'missing-headers' };
+  // Reject replays older than 5 minutes
+  if (Math.abs(Date.now() - Number(ts)) > 5 * 60 * 1000) return { ok:false, reason:'stale-timestamp' };
+  const raw = (req.method || 'POST') + (req.originalUrl || req.url) + (typeof req.rawBody === 'string' ? req.rawBody : JSON.stringify(req.body || '')) + ts;
+  const expected = _crypto.createHmac('sha256', secret).update(raw, 'utf8').digest('base64');
+  try {
+    const a = Buffer.from(sig, 'base64'); const b = Buffer.from(expected, 'base64');
+    return { ok: a.length === b.length && _crypto.timingSafeEqual(a, b), reason:'hmac' };
+  } catch { return { ok:false, reason:'sig-decode' }; }
+}
+router.post('/webhooks/hubspot', async (req, res) => {
+  try {
+    const v = _verifyHubspotSig(req);
+    if (!v.ok) {
+      console.warn('[audiences-webhook] rejected:', v.reason);
+      return _err(res, 401, 'unauthorized webhook (' + v.reason + ')');
+    }
+    if (v.reason === 'no-secret') console.warn('[audiences-webhook] HUBSPOT_WEBHOOK_SECRET not set — accepting in dev only');
+    const events = Array.isArray(req.body) ? req.body : [req.body];
+    const ids = [...new Set(events.map(e => e?.objectId || e?.contactId).filter(Boolean))].slice(0, 50);
+    res.json({ ok:true, accepted: ids.length });
+    for (const cid of ids) {
+      try { await reevaluateContact(String(cid)); }
+      catch (e) { console.error('[audiences-webhook]', cid, e.message); }
+    }
   } catch (err) { _err(res, 500, err.message); }
 });
 
