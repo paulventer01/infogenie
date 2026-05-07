@@ -11506,7 +11506,14 @@ async function _safeFetchWithRedirects(url, { timeoutMs = 6000, maxHops = 3 } = 
     if (!safety.ok) return { ok:false, error: safety.error };
     let r;
     try {
-      r = await fetch(current, { signal: AbortSignal.timeout(timeoutMs), redirect:'manual' });
+      r = await fetch(current, {
+        signal: AbortSignal.timeout(timeoutMs),
+        redirect:'manual',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; InfoGenieBot/1.0; +https://infogenie.app)',
+          'Accept': 'text/xml,application/xml,text/html,*/*;q=0.8',
+        },
+      });
     } catch (e) {
       return { ok:false, error: e.message };
     }
@@ -11522,12 +11529,35 @@ async function _safeFetchWithRedirects(url, { timeoutMs = 6000, maxHops = 3 } = 
 }
 
 async function _fetchSitemapSlugs(host) {
-  const tryUrls = [
-    `https://${host}/sitemap.xml`,
-    `https://${host}/sitemap_index.xml`,
-    `https://${host}/sitemap-index.xml`,
-    `https://${host}/wp-sitemap.xml`,
-  ];
+  // Build candidate list: bare host + www. variant + common sitemap paths,
+  // plus any "Sitemap:" lines we can extract from robots.txt up-front so a
+  // CDN-redirect or non-standard path doesn't blank the page.
+  const hosts = host.startsWith('www.') ? [host, host.slice(4)] : [host, 'www.' + host];
+  const tryUrls = [];
+  const robotsSitemaps = [];
+  for (const h of hosts) {
+    try {
+      const robotsRes = await _safeFetchWithRedirects(`https://${h}/robots.txt`, { timeoutMs: 5000 });
+      if (robotsRes.ok && robotsRes.response.ok) {
+        const txt = await robotsRes.response.text();
+        for (const m of txt.matchAll(/^\s*sitemap\s*:\s*(\S+)/gim)) {
+          const u = m[1].trim();
+          if (/^https?:\/\//i.test(u)) robotsSitemaps.push(u);
+        }
+        if (robotsSitemaps.length) break; // first host that gave us robots.txt is enough
+      }
+    } catch { /* try next */ }
+  }
+  for (const u of robotsSitemaps.slice(0, 4)) tryUrls.push(u);
+  for (const h of hosts) {
+    tryUrls.push(
+      `https://${h}/sitemap.xml`,
+      `https://${h}/sitemap_index.xml`,
+      `https://${h}/sitemap-index.xml`,
+      `https://${h}/wp-sitemap.xml`,
+      `https://${h}/sitemap1.xml`,
+    );
+  }
   for (const url of tryUrls) {
     try {
       const result = await _safeFetchWithRedirects(url, { timeoutMs: 6000 });
@@ -11591,9 +11621,16 @@ app.post('/api/content-gaps', async (req, res) => {
     const haveAnyComp = compSummary.some(c => c.slugs.length);
 
     if (!youSummary.length || !haveAnyComp) {
+      const blocked = [];
+      if (!youSummary.length) blocked.push(domain);
+      for (const c of compSummary) if (!c.slugs.length) blocked.push(c.domain);
+      const yourBlocked = !youSummary.length;
       return res.status(404).json({
         ok:false, error:'sitemap-unavailable',
-        detail:'Could not retrieve sitemaps for one or more domains. The site may not expose /sitemap.xml.',
+        detail: yourBlocked
+          ? `We couldn't read the sitemap for "${domain}" — the site is bot-protected (e.g. Cloudflare) or doesn't publish /sitemap.xml. Try the www. variant or a different subdomain.`
+          : `We couldn't read sitemaps for: ${blocked.join(', ')}. These sites are bot-protected or don't publish a sitemap. Remove them from the list and try again.`,
+        blockedDomains: blocked,
         yourPages: youSummary.length,
         competitorsWithSitemap: compSummary.filter(c => c.slugs.length).map(c => c.domain)
       });

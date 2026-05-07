@@ -2709,7 +2709,7 @@ function navigateTo(viewId, updateActive = true) {
     try { initActionCenter(); } catch(e) { console.warn('initActionCenter error:', e); }
   }
   if (viewId === 'reengage') {
-    try { buildReEngagement(); } catch(e) { console.warn('buildReEngagement error:', e); }
+    try { buildReengage(); } catch(e) { console.warn('buildReengage error:', e); }
   }
   if (viewId === 'automations') {
     try { buildAutomations(); } catch(e) { console.warn('buildAutomations error:', e); }

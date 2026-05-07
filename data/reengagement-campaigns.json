@@ -26,5 +26,38 @@
       ]
     },
     "enrollmentError": null
+  },
+  {
+    "id": "rec_movk061l_rgx3jt",
+    "segment": "dormant subscribers (30+ days inactive)",
+    "tone": "warm-and-curious",
+    "brand": "InfoGenie",
+    "variant": {
+      "angle": "curiosity",
+      "subject": "Have you seen what’s new at InfoGenie?",
+      "preheader": "We’ve been working on surprises you won’t want to miss.",
+      "body": "Hi {{name}}, we noticed you’ve been away for a bit. A lot has been happening at InfoGenie, and we think you’ll love what we’ve added! Curious to see what’s waiting for you? Click below for an exclusive sneak peek.",
+      "cta": "Discover What’s New"
+    },
+    "emailCount": 2,
+    "dryRun": false,
+    "createdAt": 1778162437785,
+    "enrollment": {
+      "ok": true,
+      "enrolled": 1,
+      "skipped": [
+        {
+          "email": "paul@suretrade.co.za",
+          "reason": "already enrolled in this sequence"
+        }
+      ],
+      "created": [
+        {
+          "id": "drip_movk061o_afhh6q",
+          "email": "paul@suretrade.co.za"
+        }
+      ]
+    },
+    "enrollmentError": null
   }
 ]
