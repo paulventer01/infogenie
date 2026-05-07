@@ -32335,3 +32335,237 @@ window.buildDynAudiences = async function() {
     wrap.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:16px;color:#B91C1C;font-weight:600">Failed to load audiences: ${_escapeHtml(e.message)}</div>`;
   }
 };
+
+// ── DYNAMIC AUDIENCES — Phase 4A UI (HubSpot Static List sync) ────────────
+window.dynSegOpenHsList = async function(id, name) {
+  let modal = document.getElementById('dynSegHsModal');
+  if (!modal) { modal = document.createElement('div'); modal.id = 'dynSegHsModal'; document.body.appendChild(modal); }
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:10010;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;overflow-y:auto;backdrop-filter:blur(4px)';
+  let existing = null;
+  try { existing = (await fetch('/api/audiences/' + id + '/hubspot-list').then(x=>x.json())).binding; } catch(_){}
+  modal.innerHTML = `
+    <div style="background:#fff;width:100%;max-width:600px;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:28px 32px;color:#0A1628">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1.3rem;font-weight:800">🔗 HubSpot list sync · "${_escapeHtml(name)}"</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:3px;line-height:1.5">Mirror this audience's membership to a HubSpot Static List. Your sales team will see live members inside HubSpot for follow-up, ads custom audiences, etc.</div>
+        </div>
+        <button onclick="(function(){var m=document.getElementById('dynSegHsModal');if(m)m.remove();})()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6B7280;padding:4px 10px">×</button>
+      </div>
+      ${existing && existing.last_error ? `<div style="background:#FEF2F2;border:1px solid #FCA5A5;color:#B91C1C;padding:10px 12px;border-radius:8px;font-size:0.78rem;margin-bottom:12px">⚠ Last sync error: ${_escapeHtml(existing.last_error)}</div>` : ''}
+      ${existing && existing.last_sync_at ? `<div style="font-size:0.7rem;color:#6B7280;margin-bottom:10px">Last synced: <strong>${new Date(existing.last_sync_at).toLocaleString()}</strong></div>` : ''}
+      <label style="display:block;font-size:0.72rem;font-weight:700;color:#374151;margin-bottom:10px"><div style="margin-bottom:4px">List name (auto-creates a Static List in HubSpot the first time you save)</div><input id="dynHsName" value="${_escapeHtml((existing&&existing.list_name)||(name+' — InfoGenie'))}" placeholder="e.g. Hot Leads (auto-synced)" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem"></label>
+      <label style="display:block;font-size:0.72rem;font-weight:700;color:#374151;margin-bottom:10px"><div style="margin-bottom:4px">Existing HubSpot list ID (optional — leave blank to auto-create)</div><input id="dynHsListId" value="${_escapeHtml((existing&&existing.list_id)||'')}" placeholder="e.g. 12345" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;font-family:'JetBrains Mono',monospace"></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <label style="font-size:0.72rem;font-weight:700;color:#374151"><div style="margin-bottom:4px">Status</div><select id="dynHsEnabled" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;background:#fff"><option value="true" ${!existing||existing.enabled?'selected':''}>Enabled — push joins/leaves to HubSpot</option><option value="false" ${existing&&!existing.enabled?'selected':''}>Paused</option></select></label>
+        <label style="font-size:0.72rem;font-weight:700;color:#374151"><div style="margin-bottom:4px">Auto-remove on leave</div><select id="dynHsAutoExit" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;background:#fff"><option value="true" ${!existing||existing.auto_exit?'selected':''}>Yes</option><option value="false" ${existing&&!existing.auto_exit?'selected':''}>No — keep them on the list</option></select></label>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:12px;border-top:1px solid #F1F5F9">
+        ${existing?`<button id="dynHsDelete" style="padding:9px 16px;background:#fff;border:2px solid #FCA5A5;border-radius:8px;font-size:0.78rem;font-weight:800;color:#B91C1C;-webkit-text-fill-color:#B91C1C;cursor:pointer">🗑 Remove</button>`:''}
+        <button id="dynHsSave" style="padding:9px 18px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:8px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">💾 Save</button>
+      </div>
+    </div>`;
+  document.getElementById('dynHsSave').onclick = async () => {
+    const payload = {
+      list_name: document.getElementById('dynHsName').value.trim(),
+      list_id:   document.getElementById('dynHsListId').value.trim() || null,
+      enabled:   document.getElementById('dynHsEnabled').value === 'true',
+      auto_exit: document.getElementById('dynHsAutoExit').value === 'true',
+    };
+    if (!payload.list_name) return showToast('❌ List name required');
+    try {
+      const r = await fetch('/api/audiences/' + id + '/hubspot-list', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }).then(x=>x.json());
+      if (!r.ok) throw new Error(r.error || 'save failed');
+      const lid = r.binding?.list_id;
+      showToast(lid ? `✅ Synced — HubSpot list ID ${lid}` : `⚠ Saved but list not yet created (check HubSpot permissions)`);
+      modal.remove(); buildDynAudiences();
+    } catch (e) { showToast('❌ ' + e.message); }
+  };
+  const del = document.getElementById('dynHsDelete');
+  if (del) del.onclick = async () => {
+    if (!confirm('Remove HubSpot list binding? The HubSpot list itself is NOT deleted — only the auto-sync stops.')) return;
+    try {
+      const r = await fetch('/api/audiences/' + id + '/hubspot-list', { method:'DELETE' }).then(x=>x.json());
+      if (!r.ok) throw new Error(r.error || 'delete failed');
+      showToast('🗑 HubSpot list binding removed'); modal.remove(); buildDynAudiences();
+    } catch (e) { showToast('❌ ' + e.message); }
+  };
+};
+
+// ── DYNAMIC AUDIENCES — Phase 4B UI (Re-Engagement bridge) ────────────────
+window.dynSegOpenReengage = async function(id, name) {
+  let modal = document.getElementById('dynSegRengModal');
+  if (!modal) { modal = document.createElement('div'); modal.id = 'dynSegRengModal'; document.body.appendChild(modal); }
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:10010;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;overflow-y:auto;backdrop-filter:blur(4px)';
+  let existing = null;
+  try { existing = (await fetch('/api/audiences/' + id + '/reengage').then(x=>x.json())).binding; } catch(_){}
+  const v = (existing && existing.variant) || { subject:'', preheader:'', body:'', cta:'', angle:'', tone:'friendly' };
+  modal.innerHTML = `
+    <div style="background:#fff;width:100%;max-width:760px;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:28px 32px;color:#0A1628">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1.3rem;font-weight:800">💔 Re-engage on join · "${_escapeHtml(name)}"</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:3px;line-height:1.5">Auto-fire a single-touch personalised win-back the moment a contact qualifies (e.g. lands in your churn-risk audience). Generated by AI, editable, sent via the existing Drip engine.</div>
+        </div>
+        <button onclick="(function(){var m=document.getElementById('dynSegRengModal');if(m)m.remove();})()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6B7280;padding:4px 10px">×</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+        <label style="font-size:0.72rem;font-weight:700;color:#374151"><div style="margin-bottom:4px">Brand</div><input id="dynRengBrand" value="${_escapeHtml((existing&&existing.brand)||'')}" placeholder="My Co" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem"></label>
+        <label style="font-size:0.72rem;font-weight:700;color:#374151"><div style="margin-bottom:4px">Tone</div><select id="dynRengTone" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;background:#fff">${['friendly','warm','direct','playful','professional','urgent'].map(t=>`<option ${v.tone===t?'selected':''}>${t}</option>`).join('')}</select></label>
+        <label style="font-size:0.72rem;font-weight:700;color:#374151"><div style="margin-bottom:4px">Mode</div><select id="dynRengDryRun" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;background:#fff"><option value="true" ${!existing||existing.dry_run?'selected':''}>Dry-run</option><option value="false" ${existing&&!existing.dry_run?'selected':''}>LIVE (real sends)</option></select></label>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <input id="dynRengAngle" value="${_escapeHtml(v.angle||'churn-risk · 30 days inactive')}" placeholder="Angle / context (e.g. abandoned trial)" style="flex:1;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
+        <button id="dynRengGenerate" style="padding:8px 14px;background:#7C3AED;border:2px solid #7C3AED;border-radius:7px;font-size:0.75rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4);white-space:nowrap">✨ Generate with AI</button>
+      </div>
+      <input id="dynRengSubject" value="${_escapeHtml(v.subject||'')}" placeholder="Email subject" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;margin-bottom:8px">
+      <input id="dynRengPreheader" value="${_escapeHtml(v.preheader||'')}" placeholder="Preheader (optional)" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;margin-bottom:8px">
+      <textarea id="dynRengBody" rows="7" placeholder="Email body" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;font-family:inherit;resize:vertical;margin-bottom:8px">${_escapeHtml(v.body||'')}</textarea>
+      <input id="dynRengCta" value="${_escapeHtml(v.cta||'')}" placeholder="CTA line (optional)" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;margin-bottom:14px">
+      <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;padding-top:12px;border-top:1px solid #F1F5F9">
+        <label style="font-size:0.72rem;color:#374151;margin-right:auto"><input id="dynRengAutoExit" type="checkbox" ${!existing||existing.auto_exit?'checked':''}/> Auto-unsubscribe when they leave the audience</label>
+        ${existing?`<button id="dynRengDelete" style="padding:9px 16px;background:#fff;border:2px solid #FCA5A5;border-radius:8px;font-size:0.78rem;font-weight:800;color:#B91C1C;-webkit-text-fill-color:#B91C1C;cursor:pointer">🗑 Remove</button>`:''}
+        <button id="dynRengSave" style="padding:9px 18px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:8px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">💾 Save</button>
+      </div>
+    </div>`;
+
+  document.getElementById('dynRengGenerate').onclick = async () => {
+    const btn = document.getElementById('dynRengGenerate');
+    btn.disabled = true; btn.textContent = '✨ Generating…';
+    try {
+      const r = await fetch('/api/reengage/generate', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          brand: document.getElementById('dynRengBrand').value || 'InfoGenie',
+          tone:  document.getElementById('dynRengTone').value,
+          segment: document.getElementById('dynRengAngle').value || 'churn-risk',
+        })
+      }).then(x=>x.json());
+      const variant = r.variant || (r.variants && r.variants[0]) || r;
+      if (variant.subject)   document.getElementById('dynRengSubject').value   = variant.subject;
+      if (variant.preheader) document.getElementById('dynRengPreheader').value = variant.preheader;
+      if (variant.body)      document.getElementById('dynRengBody').value      = variant.body;
+      if (variant.cta)       document.getElementById('dynRengCta').value       = variant.cta;
+      showToast('✨ AI-generated win-back drafted — review & save');
+    } catch (e) { showToast('❌ Generate failed: ' + e.message); }
+    finally { btn.disabled = false; btn.textContent = '✨ Generate with AI'; }
+  };
+  document.getElementById('dynRengSave').onclick = async () => {
+    const payload = {
+      variant: {
+        subject:   document.getElementById('dynRengSubject').value.trim(),
+        preheader: document.getElementById('dynRengPreheader').value.trim(),
+        body:      document.getElementById('dynRengBody').value.trim(),
+        cta:       document.getElementById('dynRengCta').value.trim(),
+        angle:     document.getElementById('dynRengAngle').value.trim(),
+        tone:      document.getElementById('dynRengTone').value,
+      },
+      brand:     document.getElementById('dynRengBrand').value.trim() || null,
+      dry_run:   document.getElementById('dynRengDryRun').value === 'true',
+      auto_exit: document.getElementById('dynRengAutoExit').checked,
+      app_origin: window.location.origin,
+    };
+    if (!payload.variant.subject || !payload.variant.body) return showToast('❌ Subject and body required');
+    try {
+      const r = await fetch('/api/audiences/' + id + '/reengage', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }).then(x=>x.json());
+      if (!r.ok) throw new Error(r.error || 'save failed');
+      showToast(`✅ Re-engagement saved (${payload.dry_run?'dry-run':'LIVE'})`); modal.remove(); buildDynAudiences();
+    } catch (e) { showToast('❌ ' + e.message); }
+  };
+  const del = document.getElementById('dynRengDelete');
+  if (del) del.onclick = async () => {
+    if (!confirm('Remove the re-engagement binding? In-flight win-back enrollments are NOT touched.')) return;
+    try {
+      const r = await fetch('/api/audiences/' + id + '/reengage', { method:'DELETE' }).then(x=>x.json());
+      if (!r.ok) throw new Error(r.error || 'delete failed');
+      showToast('🗑 Re-engagement binding removed'); modal.remove(); buildDynAudiences();
+    } catch (e) { showToast('❌ ' + e.message); }
+  };
+};
+
+// Re-define buildDynAudiences once more to add Phase 4 badges + buttons.
+window.buildDynAudiences = async function() {
+  const wrap = document.getElementById('dynAudWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `<div style="text-align:center;padding:48px;color:#64748B;font-weight:600">Loading audiences…</div>`;
+  try {
+    const [r, hubConn] = await Promise.all([
+      fetch('/api/audiences').then(x=>x.json()),
+      fetch('/api/hubspot/status').then(x=>x.json()).catch(()=>({ok:false})),
+    ]);
+    const segs = r.segments || [];
+    const allBindings = await Promise.all(segs.map(s => Promise.all([
+      fetch('/api/audiences/' + s.id + '/drip-binding').then(x=>x.json()).catch(()=>({})),
+      fetch('/api/audiences/' + s.id + '/hubspot-list').then(x=>x.json()).catch(()=>({})),
+      fetch('/api/audiences/' + s.id + '/reengage').then(x=>x.json()).catch(()=>({})),
+    ])));
+    const bindMap = {};
+    segs.forEach((s,i) => bindMap[s.id] = { drip: allBindings[i][0]?.binding||null, hsList: allBindings[i][1]?.binding||null, reng: allBindings[i][2]?.binding||null });
+
+    const sourceBadge = hubConn.ok && hubConn.configured
+      ? `<span style="display:inline-flex;align-items:center;gap:5px;background:#DCFCE7;color:#15803D;padding:3px 9px;border-radius:6px;font-size:0.65rem;font-weight:800"><span style="width:6px;height:6px;background:#10B981;border-radius:50%"></span>HUBSPOT CONNECTED · live data</span>`
+      : `<span style="display:inline-flex;align-items:center;gap:5px;background:#FEF3C7;color:#92400E;padding:3px 9px;border-radius:6px;font-size:0.65rem;font-weight:800"><span style="width:6px;height:6px;background:#F59E0B;border-radius:50%"></span>HUBSPOT NOT CONNECTED</span>`;
+
+    const intro = `
+      <div style="background:linear-gradient(135deg,#EEF2FF,#F5F3FF);border:1px solid #C7D2FE;border-radius:14px;padding:18px 22px;margin-bottom:22px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#312E81;margin-bottom:4px">⚡ Dynamic Audiences · cross-channel</div>
+          <div style="font-size:0.78rem;color:#4338CA;line-height:1.55;max-width:700px">Define rules once, fan out everywhere: Drip nurture, HubSpot Static List, AI win-back. Contacts auto-flow in/out the moment they qualify or stop matching.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">${sourceBadge}<div style="font-size:0.62rem;color:#6B7280;font-weight:700">Phase 4 · Drip + HubSpot list + Re-engage</div></div>
+      </div>`;
+
+    const cards = segs.length === 0
+      ? `<div style="background:#fff;border:2px dashed #C7D2FE;border-radius:14px;padding:48px;text-align:center">
+           <div style="font-size:2.4rem;margin-bottom:8px">🎯</div>
+           <div style="font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px">No dynamic audiences yet</div>
+           <button onclick="openDynSegmentBuilder()" style="padding:11px 22px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:9px;font-size:0.85rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5);box-shadow:0 4px 14px rgba(30,27,75,.35)">+ Create your first audience</button>
+         </div>`
+      : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px">
+          ${segs.map(s => {
+            const last = s.last_evaluated_at ? new Date(s.last_evaluated_at).toLocaleString() : 'never';
+            const conds = (s.rules && Array.isArray(s.rules.conditions)) ? s.rules.conditions.length : 0;
+            const safeName = _escapeHtml(s.name).replace(/'/g, '&#39;');
+            const b = bindMap[s.id];
+            function badge(label, on, sub) {
+              const bg = on ? '#DCFCE7' : '#F3F4F6';
+              const fg = on ? '#15803D' : '#9CA3AF';
+              return `<span style="background:${bg};color:${fg};padding:2px 8px;border-radius:5px;font-size:0.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em">${label}${sub?' · '+_escapeHtml(sub):''}</span>`;
+            }
+            const dripB = b.drip   ? badge('📨 Drip',    !!b.drip.enabled, b.drip.dry_run?'dry':'LIVE') : badge('📨 Drip', false, 'off');
+            const hsB   = b.hsList ? badge('🔗 HS list', !!b.hsList.enabled && !!b.hsList.list_id, b.hsList.list_id?'#'+b.hsList.list_id:'no id') : badge('🔗 HS list', false, 'off');
+            const rngB  = b.reng   ? badge('💔 Re-eng',  !!b.reng.enabled, b.reng.dry_run?'dry':'LIVE') : badge('💔 Re-eng', false, 'off');
+            return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:14px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.04);display:flex;flex-direction:column;gap:9px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+                <div>
+                  <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628">${_escapeHtml(s.name)}</div>
+                  ${s.description ? `<div style="font-size:0.72rem;color:#6B7280;margin-top:3px;line-height:1.45">${_escapeHtml(s.description)}</div>` : ''}
+                </div>
+                <span style="background:${s.enabled?'#DCFCE7':'#F3F4F6'};color:${s.enabled?'#15803D':'#6B7280'};padding:2px 8px;border-radius:5px;font-size:0.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em">${s.enabled?'Live':'Paused'}</span>
+              </div>
+              <div style="display:flex;gap:5px;flex-wrap:wrap">${dripB}${hsB}${rngB}</div>
+              <div style="display:flex;gap:14px;padding:8px 0;border-top:1px solid #F1F5F9;border-bottom:1px solid #F1F5F9">
+                <div style="flex:1"><div style="font-size:0.6rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Members</div><div style="font-size:1.3rem;font-weight:800;color:#1E1B4B;font-variant-numeric:tabular-nums">${(s.member_count||0).toLocaleString()}</div></div>
+                <div style="flex:1"><div style="font-size:0.6rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Rules</div><div style="font-size:1.3rem;font-weight:800;color:#1E1B4B;font-variant-numeric:tabular-nums">${conds}</div></div>
+              </div>
+              <div style="font-size:0.64rem;color:#9CA3AF">Last evaluated: ${last}</div>
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-top:2px">
+                <button onclick="dynSegRefresh(${s.id},'${safeName}')"      style="padding:7px;background:#0EA5E9;border:2px solid #0EA5E9;border-radius:6px;font-size:0.68rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🔄 Sync</button>
+                <button onclick="dynSegViewMembers(${s.id},'${safeName}')"  style="padding:7px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:6px;font-size:0.68rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">👥 Members</button>
+                <button onclick="dynSegOpenDripBinding(${s.id},'${safeName}')" style="padding:7px;background:${b.drip?'#15803D':'#fff'};border:2px solid #15803D;border-radius:6px;font-size:0.68rem;font-weight:800;color:${b.drip?'#fff':'#15803D'};-webkit-text-fill-color:${b.drip?'#fff':'#15803D'};cursor:pointer;${b.drip?'text-shadow:0 1px 2px rgba(0,0,0,.4)':''}">📨 Drip</button>
+                <button onclick="dynSegOpenHsList(${s.id},'${safeName}')"   style="padding:7px;background:${b.hsList?'#EA580C':'#fff'};border:2px solid #EA580C;border-radius:6px;font-size:0.68rem;font-weight:800;color:${b.hsList?'#fff':'#EA580C'};-webkit-text-fill-color:${b.hsList?'#fff':'#EA580C'};cursor:pointer;${b.hsList?'text-shadow:0 1px 2px rgba(0,0,0,.4)':''}">🔗 HS List</button>
+                <button onclick="dynSegOpenReengage(${s.id},'${safeName}')" style="padding:7px;background:${b.reng?'#7C3AED':'#fff'};border:2px solid #7C3AED;border-radius:6px;font-size:0.68rem;font-weight:800;color:${b.reng?'#fff':'#7C3AED'};-webkit-text-fill-color:${b.reng?'#fff':'#7C3AED'};cursor:pointer;${b.reng?'text-shadow:0 1px 2px rgba(0,0,0,.4)':''}">💔 Re-eng</button>
+                <div style="display:flex;gap:5px">
+                  <button onclick="openDynSegmentBuilder(${s.id})"            style="flex:1;padding:7px;background:#fff;border:2px solid #C7D2FE;border-radius:6px;font-size:0.68rem;font-weight:800;color:#4338CA;-webkit-text-fill-color:#4338CA;cursor:pointer">✏️ Edit</button>
+                  <button onclick="deleteDynSegment(${s.id},'${safeName}')"   style="padding:7px 10px;background:#fff;border:2px solid #FCA5A5;border-radius:6px;font-size:0.68rem;font-weight:800;color:#B91C1C;-webkit-text-fill-color:#B91C1C;cursor:pointer">🗑</button>
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`;
+
+    wrap.innerHTML = intro + cards;
+  } catch (e) {
+    wrap.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:16px;color:#B91C1C;font-weight:600">Failed to load audiences: ${_escapeHtml(e.message)}</div>`;
+  }
+};

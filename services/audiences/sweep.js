@@ -5,7 +5,9 @@
 // the 15-min cron, the manual /refresh endpoint, or the HubSpot webhook.
 const _db = require('../../db');
 const { evaluateContact } = require('./engine');
-const _bridge = require('./drip_bridge');
+const _bridge   = require('./drip_bridge');
+const _hsList   = require('./hubspot_list_bridge');
+const _reengage = require('./reengage_bridge');
 
 const HUBSPOT_PROPS = [
   'email','firstname','lastname','lifecyclestage','country','jobtitle',
@@ -180,24 +182,44 @@ async function runSweepOnce(opts = {}) {
         );
         await client.query('COMMIT');
 
-        // Drip bridge — fire onJoin/onLeave AFTER commit so a bridge failure
-        // can never roll back the membership writes. Best-effort, logged only.
-        let bridgeJoins = 0, bridgeLeaves = 0;
-        for (const t of (r.joinTargets || [])) {
-          try {
-            const out = await _bridge.onJoin(seg.id, t.id, t.email);
-            if (out?.enrolled) bridgeJoins++;
-          } catch (e) { console.warn(`[audiences→drip] join seg=${seg.id} ${t.id}: ${e.message}`); }
+        // Bridges — fire onJoin/onLeave AFTER commit so a bridge failure can
+        // never roll back the membership writes. Best-effort + per-target
+        // try/catch, so one failure never blocks subsequent contacts. We
+        // run all three bridges (drip, hubspot list, re-engagement) for
+        // each contact in parallel for speed.
+        const counters = { drip:{j:0,l:0}, hslist:{j:0,l:0}, reng:{j:0,l:0} };
+        async function _fanOut(action, targets, counter) {
+          for (const t of targets) {
+            const calls = [
+              _bridge[action](seg.id, t.id, t.email).catch(e => ({ _err:'drip:'+e.message })),
+              _hsList[action](seg.id, t.id, t.email).catch(e => ({ _err:'hslist:'+e.message })),
+              _reengage[action](seg.id, t.id, t.email).catch(e => ({ _err:'reng:'+e.message })),
+            ];
+            const [d,h,n] = await Promise.all(calls);
+            if (d?._err) console.warn(`[audiences→${d._err.split(':')[0]}] ${action} seg=${seg.id} ${t.id}: ${d._err}`);
+            if (h?._err) console.warn(`[audiences→${h._err.split(':')[0]}] ${action} seg=${seg.id} ${t.id}: ${h._err}`);
+            if (n?._err) console.warn(`[audiences→${n._err.split(':')[0]}] ${action} seg=${seg.id} ${t.id}: ${n._err}`);
+            if (action === 'onJoin') {
+              if (d?.enrolled) counter.drip.j++;
+              if (h?.added)    counter.hslist.j++;
+              if (n?.enrolled) counter.reng.j++;
+            } else {
+              if (d?.unsubscribed) counter.drip.l   += d.unsubscribed;
+              if (h?.removed)      counter.hslist.l += 1;
+              if (n?.unsubscribed) counter.reng.l   += n.unsubscribed;
+            }
+          }
         }
-        for (const t of (r.leaveTargets || [])) {
-          try {
-            const out = await _bridge.onLeave(seg.id, t.id, t.email);
-            bridgeLeaves += (out?.unsubscribed || 0);
-          } catch (e) { console.warn(`[audiences→drip] leave seg=${seg.id} ${t.id}: ${e.message}`); }
-        }
+        await _fanOut('onJoin',  r.joinTargets  || [], counters);
+        await _fanOut('onLeave', r.leaveTargets || [], counters);
 
         const { joinTargets, leaveTargets, ...slim } = r;
-        results.push({ segmentId: seg.id, name: seg.name, ...slim, bridgeJoins, bridgeLeaves });
+        results.push({
+          segmentId: seg.id, name: seg.name, ...slim,
+          bridgeJoins:  counters.drip.j,  bridgeLeaves:  counters.drip.l,
+          hsListAdded:  counters.hslist.j, hsListRemoved: counters.hslist.l,
+          reengageFired: counters.reng.j,  reengageExited: counters.reng.l,
+        });
       } catch (e) {
         await client.query('ROLLBACK').catch(()=>{});
         await pool.query(
@@ -291,12 +313,16 @@ async function reevaluateContact(contactId) {
       throw e;
     } finally { client.release(); }
 
-    // Bridge after commit — best effort.
+    // Bridges after commit — best effort, parallel per change.
     for (const ch of summary) {
-      try {
-        if (ch.action === 'joined') await _bridge.onJoin(ch.segmentId, contact.id, contact.email);
-        else if (ch.action === 'left') await _bridge.onLeave(ch.segmentId, contact.id, contact.email);
-      } catch (e) { console.warn(`[audiences→drip] reeval seg=${ch.segmentId}: ${e.message}`); }
+      const action = ch.action === 'joined' ? 'onJoin' : ch.action === 'left' ? 'onLeave' : null;
+      if (!action) continue;
+      const calls = [
+        _bridge[action](ch.segmentId, contact.id, contact.email).catch(e => console.warn(`[audiences→drip] reeval seg=${ch.segmentId}: ${e.message}`)),
+        _hsList[action](ch.segmentId, contact.id, contact.email).catch(e => console.warn(`[audiences→hslist] reeval seg=${ch.segmentId}: ${e.message}`)),
+        _reengage[action](ch.segmentId, contact.id, contact.email).catch(e => console.warn(`[audiences→reng] reeval seg=${ch.segmentId}: ${e.message}`)),
+      ];
+      await Promise.all(calls);
     }
     return { ok:true, contactId: contact.id, email: contact.email, changes: summary };
   });

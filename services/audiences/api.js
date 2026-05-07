@@ -3,7 +3,9 @@ const express = require('express');
 const _db = require('../../db');
 const { previewSegmentLive, snapshotSegmentCount } = require('./engine');
 const { runSweepOnce, reevaluateContact } = require('./sweep');
-const _bridge = require('./drip_bridge');
+const _bridge   = require('./drip_bridge');
+const _hsList   = require('./hubspot_list_bridge');
+const _reengage = require('./reengage_bridge');
 
 const router = express.Router();
 
@@ -246,6 +248,54 @@ router.delete('/:id/drip-binding', async (req, res) => {
     const id = _validId(req.params.id);
     if (!id) return _err(res, 400, 'invalid id');
     await _bridge.deleteBinding(id);
+    res.json({ ok:true });
+  } catch (err) { _err(res, 500, err.message); }
+});
+
+// ── Phase 4A — HubSpot List binding CRUD ───────────────────────────────────
+router.get('/:id/hubspot-list', async (req, res) => {
+  try {
+    const id = _validId(req.params.id);
+    if (!id) return _err(res, 400, 'invalid id');
+    res.json({ ok:true, binding: await _hsList.getBinding(id) });
+  } catch (err) { _err(res, 500, err.message); }
+});
+router.post('/:id/hubspot-list', async (req, res) => {
+  try {
+    const id = _validId(req.params.id);
+    if (!id) return _err(res, 400, 'invalid id');
+    res.json({ ok:true, binding: await _hsList.setBinding(id, req.body || {}) });
+  } catch (err) { _err(res, 400, err.message); }
+});
+router.delete('/:id/hubspot-list', async (req, res) => {
+  try {
+    const id = _validId(req.params.id);
+    if (!id) return _err(res, 400, 'invalid id');
+    await _hsList.deleteBinding(id);
+    res.json({ ok:true });
+  } catch (err) { _err(res, 500, err.message); }
+});
+
+// ── Phase 4B — Re-Engagement binding CRUD ──────────────────────────────────
+router.get('/:id/reengage', async (req, res) => {
+  try {
+    const id = _validId(req.params.id);
+    if (!id) return _err(res, 400, 'invalid id');
+    res.json({ ok:true, binding: await _reengage.getBinding(id) });
+  } catch (err) { _err(res, 500, err.message); }
+});
+router.post('/:id/reengage', async (req, res) => {
+  try {
+    const id = _validId(req.params.id);
+    if (!id) return _err(res, 400, 'invalid id');
+    res.json({ ok:true, binding: await _reengage.setBinding(id, req.body || {}) });
+  } catch (err) { _err(res, 400, err.message); }
+});
+router.delete('/:id/reengage', async (req, res) => {
+  try {
+    const id = _validId(req.params.id);
+    if (!id) return _err(res, 400, 'invalid id');
+    await _reengage.deleteBinding(id);
     res.json({ ok:true });
   } catch (err) { _err(res, 500, err.message); }
 });
