@@ -2667,6 +2667,11 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'email-personalizer')   { try { buildEmailPersonalizer(); }    catch(e) { console.warn('buildEmailPersonalizer error:', e); } }
   if (viewId === 'youtube-monitor')      { try { buildYoutubeMonitor(); }       catch(e) { console.warn('buildYoutubeMonitor error:', e); } }
   if (viewId === 'weekly-report')        { try { buildWeeklyReport(); }         catch(e) { console.warn('buildWeeklyReport error:', e); } }
+  if (viewId === 'reddit-pulse')         { try { buildRedditPulse(); }          catch(e) { console.warn('buildRedditPulse error:', e); } }
+  if (viewId === 'ad-library')           { try { buildAdLibrary(); }            catch(e) { console.warn('buildAdLibrary error:', e); } }
+  if (viewId === 'newsletter-tracker')   { try { buildNewsletterTracker(); }    catch(e) { console.warn('buildNewsletterTracker error:', e); } }
+  if (viewId === 'meeting-notes')        { try { buildMeetingNotes(); }         catch(e) { console.warn('buildMeetingNotes error:', e); } }
+  if (viewId === 'headline-tester')      { try { buildHeadlineTester(); }       catch(e) { console.warn('buildHeadlineTester error:', e); } }
   if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
@@ -36231,3 +36236,355 @@ async function _wrLoadRuns() {
     </div>`).join('')}</div>`;
   } catch (e) { el.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
 }
+
+// ============================================================================
+// TIER 17-A — Reddit & Community Pulse
+// ============================================================================
+window.buildRedditPulse = function() {
+  const wrap = document.getElementById('rpWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">🔍 Scan Reddit</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND</label><input id="rpBrand" placeholder="e.g. Nike" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">SUBREDDITS (comma-sep, no r/)</label><input id="rpSubs" placeholder="all, marketing, sneakers" value="all" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+      </div>
+      <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">EXTRA KEYWORDS (optional, comma-sep)</label><input id="rpKw" placeholder="defaults to brand name" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+      <button id="rpGo" style="margin-top:12px;background:linear-gradient(135deg,#FF4500,#FF8C42);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">🔍 Scan now</button>
+    </div>
+    <div id="rpOut"></div>
+  `;
+  document.getElementById('rpGo').addEventListener('click', async () => {
+    const brand = document.getElementById('rpBrand').value.trim();
+    const subs = document.getElementById('rpSubs').value.split(',').map(s => s.trim()).filter(Boolean);
+    const kws = document.getElementById('rpKw').value.split(',').map(s => s.trim()).filter(Boolean);
+    const out = document.getElementById('rpOut');
+    if (!brand) { out.innerHTML = '<div style="color:#991B1B">⚠ Brand required</div>'; return; }
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Searching Reddit + classifying sentiment…</div>';
+    try {
+      const r = await fetch('/api/reddit-pulse/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, subreddits: subs, keywords: kws.length ? kws : undefined }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      const sentColor = { positive:['#ECFDF5','#065F46'], neutral:['#F3F4F6','#374151'], negative:['#FEF2F2','#991B1B'] };
+      out.innerHTML = `
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px 18px;margin-bottom:14px;display:flex;justify-content:space-around;text-align:center;gap:10px;flex-wrap:wrap">
+          <div><div style="font-size:1.5rem;font-weight:800;color:#0A1628">${r.total}</div><div style="font-size:0.74rem;color:#6B7280;font-weight:700">TOTAL POSTS</div></div>
+          <div><div style="font-size:1.5rem;font-weight:800;color:#10B981">${r.counts.pos}</div><div style="font-size:0.74rem;color:#6B7280;font-weight:700">POSITIVE</div></div>
+          <div><div style="font-size:1.5rem;font-weight:800;color:#6B7280">${r.counts.neu}</div><div style="font-size:0.74rem;color:#6B7280;font-weight:700">NEUTRAL</div></div>
+          <div><div style="font-size:1.5rem;font-weight:800;color:#EF4444">${r.counts.neg}</div><div style="font-size:0.74rem;color:#6B7280;font-weight:700">NEGATIVE</div></div>
+        </div>
+        ${r.posts.length === 0 ? '<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">No posts found in the last 7 days. Try different subreddits or keywords.</div>' :
+        '<div style="display:grid;gap:10px">' + r.posts.slice(0, 50).map(p => {
+          const sc = sentColor[(p.sentiment||'neutral').toLowerCase()] || sentColor.neutral;
+          return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:3px solid #FF4500;border-radius:8px;padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:start">
+              <div style="flex:1">
+                <div style="font-weight:700;color:#0A1628;font-size:0.88rem;line-height:1.4">${p.url && _safeUrl(p.url) ? `<a href="${_safeUrl(p.url)}" target="_blank" rel="noopener" style="color:#0A1628;text-decoration:none">${_escapeHtml(p.title)}</a>` : _escapeHtml(p.title)}</div>
+                <div style="font-size:0.72rem;color:#6B7280;margin-top:3px">r/${_escapeHtml(p.subreddit||'')} · u/${_escapeHtml(p.author||'')} · ⬆ ${p.upvotes} · 💬 ${p.comments} · ${p.created ? new Date(p.created).toLocaleDateString() : ''}</div>
+                ${p.selftext ? `<div style="font-size:0.78rem;color:#374151;margin-top:5px;line-height:1.4">${_escapeHtml(p.selftext.slice(0, 200))}${p.selftext.length>200?'…':''}</div>` : ''}
+              </div>
+              <span style="background:${sc[0]};color:${sc[1]};padding:2px 8px;border-radius:4px;font-size:0.68rem;font-weight:700;flex-shrink:0;height:fit-content">${_escapeHtml(p.sentiment||'neutral')}</span>
+            </div>
+          </div>`;
+        }).join('') + '</div>'}`;
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};
+
+// ============================================================================
+// TIER 17-B — Ad Library Spy (Meta + TikTok)
+// ============================================================================
+window.buildAdLibrary = function() {
+  const wrap = document.getElementById('alWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">🔍 Search Ad Libraries</h3>
+      <div style="display:grid;grid-template-columns:2fr 100px;gap:10px;margin-bottom:12px">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND / ADVERTISER</label><input id="alBrand" placeholder="e.g. Nike" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">COUNTRY</label><input id="alCountry" placeholder="US" value="US" maxlength="2" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box;text-transform:uppercase"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="alMeta" style="flex:1;background:linear-gradient(135deg,#1877F2,#42A5F5);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">📘 Meta Ad Library</button>
+        <button id="alTiktok" style="flex:1;background:linear-gradient(135deg,#000,#333);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">🎵 TikTok Ad Library</button>
+      </div>
+    </div>
+    <div id="alOut"></div>
+  `;
+  document.getElementById('alMeta').addEventListener('click', () => _alScan('meta'));
+  document.getElementById('alTiktok').addEventListener('click', () => _alScan('tiktok'));
+};
+
+window._alScan = async function(platform) {
+  const brand = document.getElementById('alBrand').value.trim();
+  const country = document.getElementById('alCountry').value.trim() || 'US';
+  const out = document.getElementById('alOut');
+  if (!brand) { out.innerHTML = '<div style="color:#991B1B">⚠ Brand required</div>'; return; }
+  out.innerHTML = `<div style="color:#9CA3AF">⏳ Searching ${platform === 'meta' ? 'Meta Ad Library' : 'TikTok Ad Library'}…</div>`;
+  try {
+    const r = await fetch(`/api/ad-library/${platform}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, country }) }).then(x => x.json());
+    if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+    if (!r.ads.length) { out.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">${_escapeHtml(r.note || 'No active ads found.')}</div>`; return; }
+    out.innerHTML = `
+      <div style="font-weight:700;color:#0A1628;margin-bottom:10px">✅ Found ${r.ads.length} ${platform} ad(s) for ${_escapeHtml(brand)} (${_escapeHtml(country)})</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">
+        ${r.ads.map(a => `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px">
+          <div style="font-weight:700;color:#0A1628;font-size:0.86rem;margin-bottom:5px">${_escapeHtml(a.page_name || a.advertiser || brand)}</div>
+          ${a.title ? `<div style="font-weight:600;color:#1E1B4B;font-size:0.84rem;margin-bottom:4px">${_escapeHtml(a.title)}</div>` : ''}
+          <div style="color:#374151;font-size:0.8rem;line-height:1.45;white-space:pre-wrap">${_escapeHtml((a.body || a.ad_text || '').slice(0, 280))}</div>
+          ${a.description ? `<div style="color:#6B7280;font-size:0.75rem;margin-top:5px;font-style:italic">${_escapeHtml(a.description.slice(0, 150))}</div>` : ''}
+          <div style="font-size:0.7rem;color:#9CA3AF;margin-top:8px;border-top:1px solid #F3F4F6;padding-top:8px">
+            ${a.created ? '📅 ' + new Date(a.created).toLocaleDateString() + ' · ' : ''}${a.first_seen ? '👁 ' + _escapeHtml(a.first_seen) + ' · ' : ''}${Array.isArray(a.platforms) ? a.platforms.map(p => _escapeHtml(String(p))).join(', ') : ''}${a.industry ? ' · ' + _escapeHtml(a.industry) : ''}
+            ${(a.snapshot_url || a.url) && _safeUrl(a.snapshot_url || a.url) ? ` · <a href="${_safeUrl(a.snapshot_url || a.url)}" target="_blank" rel="noopener" style="color:#0066FF;font-weight:700">View →</a>` : ''}
+          </div>
+        </div>`).join('')}
+      </div>`;
+  } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+};
+
+// ============================================================================
+// TIER 17-C — Newsletter Tracker
+// ============================================================================
+window.buildNewsletterTracker = async function() {
+  const wrap = document.getElementById('ntWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">➕ Track a Newsletter Archive</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1.6fr auto;gap:8px;align-items:end">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND</label><input id="ntBrand" placeholder="e.g. Stripe" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">NEWSLETTER NAME</label><input id="ntName" placeholder="e.g. Stripe Weekly" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">ARCHIVE URL (Substack/Beehiiv/Mailchimp/etc)</label><input id="ntUrl" placeholder="https://example.substack.com/archive" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+        <button id="ntAdd" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:0.78rem;font-weight:800;cursor:pointer">➕ Track</button>
+      </div>
+    </div>
+    <div id="ntList"></div>
+  `;
+  document.getElementById('ntAdd').addEventListener('click', _ntAdd);
+  await _ntLoad();
+};
+
+async function _ntLoad() {
+  const list = document.getElementById('ntList');
+  list.innerHTML = '<div style="color:#9CA3AF">Loading…</div>';
+  try {
+    const r = await fetch('/api/newsletter-tracker/targets').then(x => x.json());
+    if (!r.ok) { list.innerHTML = `<div style="color:#991B1B">⚠ ${_escapeHtml(r.error)}</div>`; return; }
+    if (!r.targets.length) { list.innerHTML = '<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">No newsletters tracked yet. Add an archive URL above.</div>'; return; }
+    list.innerHTML = r.targets.map(t => `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:8px">
+        <div>
+          <div style="font-weight:800;color:#0A1628;font-size:1rem">📧 ${_escapeHtml(t.newsletter_name)}</div>
+          <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${_escapeHtml(t.brand)} · ${_safeUrl(t.archive_url) ? `<a href="${_safeUrl(t.archive_url)}" target="_blank" rel="noopener" style="color:#0066FF">${_escapeHtml(t.archive_url)}</a>` : _escapeHtml(t.archive_url)}</div>
+          <div style="font-size:0.68rem;color:#9CA3AF;margin-top:2px">${t.last_scanned_at ? 'Last scanned ' + new Date(t.last_scanned_at).toLocaleString() : 'Never scanned'}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onclick="_ntScan(${t.id})" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:0.74rem;font-weight:800;cursor:pointer">🔍 Scan</button>
+          <button onclick="_ntHistory(${t.id})" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:7px 12px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">📜 History</button>
+          <button onclick="_ntDelete(${t.id})" style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:7px 12px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">🗑</button>
+        </div>
+      </div>
+      <div id="ntRes-${t.id}" style="margin-top:10px;font-size:0.82rem;color:#9CA3AF"></div>
+    </div>`).join('');
+  } catch (e) { list.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+}
+
+window._ntAdd = async function() {
+  const brand = document.getElementById('ntBrand').value.trim();
+  const newsletter_name = document.getElementById('ntName').value.trim();
+  const archive_url = document.getElementById('ntUrl').value.trim();
+  if (!brand || !newsletter_name || !archive_url) { showToast('⚠ All fields required'); return; }
+  try {
+    const r = await fetch('/api/newsletter-tracker/targets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, newsletter_name, archive_url }) }).then(x => x.json());
+    if (!r.ok) { showToast('❌ ' + r.error); return; }
+    document.getElementById('ntName').value = ''; document.getElementById('ntUrl').value = '';
+    await _ntLoad(); showToast('✅ Newsletter tracked');
+  } catch (e) { showToast('Network error: ' + e.message); }
+};
+
+window._ntScan = async function(id) {
+  const out = document.getElementById('ntRes-' + id);
+  out.innerHTML = '⏳ Scraping + extracting issues (10-30s)…';
+  try {
+    const r = await fetch(`/api/newsletter-tracker/scan/${id}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' }).then(x => x.json());
+    if (!r.ok) { out.innerHTML = `<div style="color:#991B1B">❌ ${_escapeHtml(r.error)}</div>`; return; }
+    if (!r.issues.length) { out.innerHTML = '<div style="color:#9CA3AF">No issues extracted. Try a different archive URL.</div>'; return; }
+    _ntRender(out, r.issues);
+    await _ntLoad();
+  } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+};
+
+window._ntHistory = async function(id) {
+  const out = document.getElementById('ntRes-' + id);
+  out.innerHTML = '⏳ Loading…';
+  try {
+    const r = await fetch(`/api/newsletter-tracker/history/${id}`).then(x => x.json());
+    if (!r.ok) { out.innerHTML = `<div style="color:#991B1B">❌ ${_escapeHtml(r.error)}</div>`; return; }
+    if (!r.issues.length) { out.innerHTML = '<div style="color:#9CA3AF">No history yet — click Scan.</div>'; return; }
+    _ntRender(out, r.issues.map(i => ({ subject: i.subject, sent_date: i.sent_date, preview: i.preview, url: i.url })));
+  } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+};
+
+function _ntRender(el, issues) {
+  el.innerHTML = '<div style="display:grid;gap:6px">' + issues.map(i => `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;padding:9px 12px">
+    <div style="font-weight:700;color:#0A1628;font-size:0.86rem">${i.url && _safeUrl(i.url) ? `<a href="${_safeUrl(i.url)}" target="_blank" rel="noopener" style="color:#0A1628;text-decoration:none">${_escapeHtml(i.subject||'')}</a>` : _escapeHtml(i.subject||'')}</div>
+    <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${_escapeHtml(i.sent_date||'')}${i.preview?` · ${_escapeHtml(i.preview)}`:''}</div>
+  </div>`).join('') + '</div>';
+}
+
+window._ntDelete = async function(id) {
+  if (!confirm('Stop tracking this newsletter? (history retained)')) return;
+  await fetch(`/api/newsletter-tracker/targets/${id}`, { method:'DELETE' });
+  await _ntLoad();
+};
+
+// ============================================================================
+// TIER 17-D — AI Meeting Note Summarizer
+// ============================================================================
+window.buildMeetingNotes = function() {
+  const wrap = document.getElementById('mnWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">🎙️ Sales-Call Transcript</h3>
+      <textarea id="mnTranscript" rows="14" placeholder="Paste your sales-call transcript here (50+ chars)…&#10;&#10;Sales: Hi Jane, thanks for taking the call.&#10;Jane: Sure, happy to chat. We're evaluating tools right now…" style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.82rem;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">
+        <input id="mnContactName" placeholder="Contact name (optional)" style="padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">
+        <input id="mnContactCompany" placeholder="Company (optional)" style="padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">
+        <input id="mnContactRole" placeholder="Role (optional)" style="padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">
+      </div>
+      <button id="mnGo" style="margin-top:12px;background:linear-gradient(135deg,#1E1B4B,#312E81);color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:0.86rem;font-weight:800;cursor:pointer">🤖 Summarize + Score</button>
+    </div>
+    <div id="mnOut"></div>
+  `;
+  document.getElementById('mnGo').addEventListener('click', async () => {
+    const transcript = document.getElementById('mnTranscript').value.trim();
+    const contact = { name: document.getElementById('mnContactName').value.trim(), company: document.getElementById('mnContactCompany').value.trim(), role: document.getElementById('mnContactRole').value.trim() };
+    const out = document.getElementById('mnOut');
+    if (!transcript) { out.innerHTML = '<div style="color:#991B1B">⚠ Transcript required</div>'; return; }
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Analyzing transcript…</div>';
+    try {
+      const r = await fetch('/api/meeting-notes/summarize', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ transcript, contact: contact.name || contact.company ? contact : null }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      const s = r.summary; const bant = s.bant || {};
+      const stageColor = { discovery:'#6B7280', qualification:'#3B82F6', proposal:'#8B5CF6', negotiation:'#F59E0B', closed_won:'#10B981', closed_lost:'#EF4444' };
+      const sentColor = { positive:'#10B981', neutral:'#6B7280', negative:'#EF4444' };
+      out.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+          <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px;text-align:center">
+            <div style="font-size:1.8rem;font-weight:800;color:#1E1B4B">${s.overall_score||0}</div>
+            <div style="font-size:0.7rem;color:#6B7280;font-weight:700">DEAL SCORE / 100</div>
+          </div>
+          <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px;text-align:center">
+            <div style="font-size:0.9rem;font-weight:800;color:${stageColor[s.deal_stage]||'#6B7280'};text-transform:uppercase">${_escapeHtml(s.deal_stage||'?')}</div>
+            <div style="font-size:0.7rem;color:#6B7280;font-weight:700;margin-top:4px">DEAL STAGE</div>
+          </div>
+          <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px;text-align:center">
+            <div style="font-size:0.9rem;font-weight:800;color:${sentColor[s.sentiment]||'#6B7280'};text-transform:uppercase">${_escapeHtml(s.sentiment||'?')}</div>
+            <div style="font-size:0.7rem;color:#6B7280;font-weight:700;margin-top:4px">SENTIMENT</div>
+          </div>
+          <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px">
+            <div style="font-size:0.74rem;font-weight:700;color:#6B7280">NEXT STEP</div>
+            <div style="font-size:0.82rem;color:#0A1628;margin-top:2px;line-height:1.4">${_escapeHtml(s.next_step||'')}</div>
+          </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:14px">
+          <h3 style="margin:0 0 8px;color:#0A1628;font-size:0.96rem">📝 Summary</h3>
+          <div style="color:#374151;font-size:0.86rem;line-height:1.55">${_escapeHtml(s.summary||'')}</div>
+          ${s.key_points?.length ? `<div style="margin-top:10px"><strong style="font-size:0.82rem;color:#0A1628">Key points:</strong><ul style="margin:6px 0 0;padding-left:22px;color:#374151;font-size:0.82rem;line-height:1.6">${s.key_points.map(k => `<li>${_escapeHtml(k)}</li>`).join('')}</ul></div>` : ''}
+        </div>
+
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:14px">
+          <h3 style="margin:0 0 10px;color:#0A1628;font-size:0.96rem">🎯 BANT Score</h3>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+            ${['budget','authority','need','timeline'].map(k => {
+              const b = bant[k] || {};
+              return `<div style="background:#F9FAFB;border-radius:8px;padding:10px">
+                <div style="font-weight:800;color:#0A1628;font-size:0.78rem;text-transform:uppercase">${k}</div>
+                <div style="font-size:1.4rem;font-weight:800;color:#1E1B4B;margin:4px 0">${b.score||0}<span style="font-size:0.7rem;color:#9CA3AF">/10</span></div>
+                <div style="font-size:0.72rem;color:#6B7280;line-height:1.4">${_escapeHtml(b.evidence||'')}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+
+        ${s.action_items?.length ? `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:14px">
+          <h3 style="margin:0 0 10px;color:#0A1628;font-size:0.96rem">✅ Action Items</h3>
+          <div style="display:grid;gap:6px">${s.action_items.map(a => `<div style="background:#F0FDF4;border-left:3px solid #10B981;padding:8px 12px;border-radius:6px;font-size:0.82rem">
+            <strong style="color:#065F46">${_escapeHtml(a.owner||'?')}:</strong> ${_escapeHtml(a.task||'')} <span style="color:#6B7280;font-size:0.74rem">· ${_escapeHtml(a.due||'')}</span>
+          </div>`).join('')}</div>
+        </div>` : ''}
+
+        ${s.objections_raised?.length || s.risks?.length ? `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
+          ${s.objections_raised?.length ? `<div style="margin-bottom:10px"><h4 style="margin:0 0 6px;color:#92400E;font-size:0.86rem">⚠ Objections raised</h4><ul style="margin:0;padding-left:22px;color:#374151;font-size:0.82rem;line-height:1.6">${s.objections_raised.map(o => `<li>${_escapeHtml(o)}</li>`).join('')}</ul></div>` : ''}
+          ${s.risks?.length ? `<div><h4 style="margin:0 0 6px;color:#991B1B;font-size:0.86rem">🚨 Risks</h4><ul style="margin:0;padding-left:22px;color:#374151;font-size:0.82rem;line-height:1.6">${s.risks.map(r => `<li>${_escapeHtml(r)}</li>`).join('')}</ul></div>` : ''}
+        </div>` : ''}
+      `;
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};
+
+// ============================================================================
+// TIER 17-E — Headline & Hook Tester
+// ============================================================================
+window.buildHeadlineTester = function() {
+  const wrap = document.getElementById('htWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">🎯 Test a Headline</h3>
+      <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">HEADLINE</label><input id="htHeadline" placeholder='e.g. "Stop wasting ad budget — automate it"' style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem;box-sizing:border-box"></div>
+      <div style="display:grid;grid-template-columns:1.5fr 1fr 100px;gap:10px;margin-top:10px">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">AUDIENCE</label><input id="htAudience" placeholder="e.g. SaaS founders, Series A-B" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">CHANNEL</label><select id="htChannel" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">
+          <option value="landing_page">Landing page</option><option value="email">Email subject</option><option value="ad">Paid ad</option><option value="social">Social post</option><option value="blog">Blog post</option>
+        </select></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">VARIANTS</label><input id="htCount" type="number" min="3" max="10" value="8" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+      </div>
+      <button id="htGo" style="margin-top:12px;background:linear-gradient(135deg,#DC2626,#EF4444);color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:0.86rem;font-weight:800;cursor:pointer">🎯 Score + Generate Variants</button>
+    </div>
+    <div id="htOut"></div>
+  `;
+  document.getElementById('htGo').addEventListener('click', async () => {
+    const headline = document.getElementById('htHeadline').value.trim();
+    const audience = document.getElementById('htAudience').value.trim();
+    const channel = document.getElementById('htChannel').value;
+    const count = parseInt(document.getElementById('htCount').value, 10);
+    const out = document.getElementById('htOut');
+    if (!headline) { out.innerHTML = '<div style="color:#991B1B">⚠ Headline required</div>'; return; }
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Scoring + generating variants…</div>';
+    try {
+      const r = await fetch('/api/headline-tester/test-headline', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ headline, audience, channel, count }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      const scoreColor = (s) => s >= 80 ? '#10B981' : s >= 60 ? '#F59E0B' : '#EF4444';
+      const sortedV = (r.variants || []).slice().sort((a,b) => (b.score||0) - (a.score||0));
+      out.innerHTML = `
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:14px;border-left:4px solid #1E1B4B">
+          <div style="font-size:0.74rem;font-weight:700;color:#6B7280;text-transform:uppercase">📌 Original</div>
+          <div style="font-size:1.05rem;font-weight:700;color:#0A1628;margin:6px 0">${_escapeHtml(r.original?.text||headline)}</div>
+          <div style="display:flex;align-items:center;gap:14px;margin-top:8px">
+            <div style="background:${scoreColor(r.original?.score||0)};color:#fff;padding:4px 12px;border-radius:20px;font-weight:800;font-size:1rem">${r.original?.score||0}/100</div>
+            <div style="font-size:0.78rem;color:#6B7280">${(r.original?.strengths||[]).map(x => `✓ ${_escapeHtml(x)}`).join(' · ')}</div>
+          </div>
+          ${(r.original?.weaknesses||[]).length ? `<div style="margin-top:6px;font-size:0.76rem;color:#991B1B">${r.original.weaknesses.map(x => `⚠ ${_escapeHtml(x)}`).join(' · ')}</div>` : ''}
+        </div>
+        <div style="font-weight:800;color:#0A1628;margin-bottom:8px">🔥 Variants (ranked best-first)</div>
+        <div style="display:grid;gap:10px">${sortedV.map((v,i) => `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px;border-left:3px solid ${scoreColor(v.score||0)}">
+          <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:5px">
+            <div style="flex:1">
+              <div style="font-weight:700;color:#0A1628;font-size:0.92rem;line-height:1.4">${_escapeHtml(v.text||'')}</div>
+              <div style="font-size:0.72rem;color:#6B7280;margin-top:4px">${i===0?'🏆 ':''}<strong style="text-transform:uppercase">${_escapeHtml(v.kind||'')}</strong> · ${(v.patterns_hit||[]).map(p => _escapeHtml(p)).join(' · ')}</div>
+              ${v.reasoning ? `<div style="font-size:0.74rem;color:#9CA3AF;margin-top:3px;font-style:italic">${_escapeHtml(v.reasoning)}</div>` : ''}
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+              <div style="background:${scoreColor(v.score||0)};color:#fff;padding:3px 10px;border-radius:14px;font-weight:800;font-size:0.86rem">${v.score||0}</div>
+              <button data-ht-copy="${i}" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:3px 8px;border-radius:4px;font-size:0.66rem;font-weight:700;cursor:pointer">📋</button>
+            </div>
+          </div>
+        </div>`).join('')}</div>`;
+      out.querySelectorAll('button[data-ht-copy]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.getAttribute('data-ht-copy'), 10);
+          const text = (sortedV[idx] && sortedV[idx].text) || '';
+          navigator.clipboard.writeText(text).then(() => showToast('✅ Copied')).catch(() => showToast('❌ Copy failed'));
+        });
+      });
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};

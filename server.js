@@ -8577,6 +8577,27 @@ app.use('/api/weekly-report', _wrModule.router);
   }
 } catch (e) { console.warn('[tier16] schema/cron init failed:', e.message); }})();
 
+// ── Tier 17 ────────────────────────────────────────────────────────────────
+const _redditRouter = require('./services/reddit_pulse/api');
+const _redditSchema = require('./services/reddit_pulse/schema');
+const _adLibRouter = require('./services/ad_library/api');
+const _nlSchema = require('./services/newsletter_tracker/schema');
+const _nlRouter = require('./services/newsletter_tracker/api');
+const _meetingRouter = require('./services/meeting_notes/api');
+const _headlineRouter = require('./services/headline_tester/api');
+app.use('/api/reddit-pulse', _redditRouter);
+app.use('/api/ad-library', _adLibRouter);
+app.use('/api/newsletter-tracker', _nlRouter);
+app.use('/api/meeting-notes', _meetingRouter);
+app.use('/api/headline-tester', _headlineRouter);
+(async () => { try {
+  if (process.env.DATABASE_URL) {
+    await _redditSchema.ensureRedditPulseSchema();
+    await _nlSchema.ensureNewsletterTrackerSchema();
+    console.log('[tier17] reddit-pulse + newsletter-tracker schemas ready');
+  }
+} catch (e) { console.warn('[tier17] schema init failed:', e.message); }})();
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
