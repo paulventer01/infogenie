@@ -8477,15 +8477,24 @@ const _discoveryRouter = require('./services/discovery/api');
 app.use('/api/sov',       _sovRouter);
 app.use('/api/discovery', _discoveryRouter);
 
+// ── Tier 4 ─────────────────────────────────────────────────────────────────
+const _digestSchema = require('./services/digest/schema');
+const _digestRouter = require('./services/digest/api');
+const _replyRouter  = require('./services/reply_assistant/api');
+app.use('/api/digest',          _digestRouter);
+app.use('/api/reply-assistant', _replyRouter);
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
     await _battleSchema.ensureBattleCardsSchema();
     await _sovSchema.ensureSovSchema();
+    await _digestSchema.ensureDigestSchema();
     _crisisDetector.startCron(6);
-    console.log('[tier2+3] crisis-radar + battle-cards + trends + sov + discovery mounted, crisis cron=6h');
+    _digestRouter.startCron(24);
+    console.log('[tier2+3+4] crisis + battle + trends + sov + discovery + digest + reply-assistant mounted');
   }
-} catch(e) { console.error('[tier2+3] init failed:', e.message); } })();
+} catch(e) { console.error('[tier2+3+4] init failed:', e.message); } })();
 (async () => {
   try {
     if (_db.hasDb()) {

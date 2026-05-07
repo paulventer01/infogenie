@@ -140,6 +140,8 @@
           <a href="#" class="nav-link" data-view="trending-topics"><span class="ndl-icon">🔥</span><span class="ndl-text">Trending Topics <span style="display:inline-block;background:#B91C1C;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:800;letter-spacing:.04em">NEW</span></span></a>
           <a href="#" class="nav-link" data-view="sov-tracker"><span class="ndl-icon">📈</span><span class="ndl-text">Share of Voice <span style="display:inline-block;background:#0891B2;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:800;letter-spacing:.04em">NEW</span></span></a>
           <a href="#" class="nav-link" data-view="discovery"><span class="ndl-icon">🔭</span><span class="ndl-text">Influencer Discovery <span style="display:inline-block;background:#0891B2;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:800;letter-spacing:.04em">NEW</span></span></a>
+          <a href="#" class="nav-link" data-view="digest"><span class="ndl-icon">📋</span><span class="ndl-text">Daily Digest <span style="display:inline-block;background:#7C3AED;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:800;letter-spacing:.04em">NEW</span></span></a>
+          <a href="#" class="nav-link" data-view="reply-assistant"><span class="ndl-icon">💬</span><span class="ndl-text">Reply Assistant <span style="display:inline-block;background:#7C3AED;color:#fff;font-size:0.55rem;padding:1px 5px;border-radius:4px;margin-left:4px;font-weight:800;letter-spacing:.04em">NEW</span></span></a>
           <a href="#" class="nav-link" data-view="lead-qualifier"><span class="ndl-icon">🧲</span><span class="ndl-text">Lead Qualifier</span></a>
           <a href="#" class="nav-link" data-view="opt-folders"><span class="ndl-icon">📁</span><span class="ndl-text">Optimization Folders</span></a>
           <a href="#" class="nav-link" data-view="import-campaigns"><span class="ndl-icon">📥</span><span class="ndl-text">Import Campaigns</span></a>
@@ -847,6 +849,30 @@
     </div>
   </div></div></div>
   <div class="container" id="discWrap" style="padding-top:24px;padding-bottom:56px"></div>
+</div>
+
+<!-- DAILY DIGEST VIEW (Tier 4 #1) -->
+<div class="view hidden" id="view-digest">
+  <div class="view-header"><div class="container"><div class="vh-inner">
+    <div>
+      <div class="breadcrumb"><span class="bc-group">Plan</span> <span class="bc-sep">›</span> Daily Digest</div>
+      <h2 class="view-title">📋 AI Daily Digest</h2>
+      <p class="view-sub">One-page executive summary across Crisis Radar, Share of Voice, Trending Topics, Battle Cards and Influencer CRM. Auto-generated daily and on demand. Send straight to Slack.</p>
+    </div>
+  </div></div></div>
+  <div class="container" id="digestWrap" style="padding-top:24px;padding-bottom:56px"></div>
+</div>
+
+<!-- REPLY ASSISTANT VIEW (Tier 4 #2) -->
+<div class="view hidden" id="view-reply-assistant">
+  <div class="view-header"><div class="container"><div class="vh-inner">
+    <div>
+      <div class="breadcrumb"><span class="bc-group">Reach</span> <span class="bc-sep">›</span> Reply Assistant</div>
+      <h2 class="view-title">💬 Reply Assistant</h2>
+      <p class="view-sub">Your most-impactful unanswered mentions, ranked by sentiment + source reach. Click any mention to draft an AI reply in the tone you want, then copy + post.</p>
+    </div>
+  </div></div></div>
+  <div class="container" id="replyWrap" style="padding-top:24px;padding-bottom:56px"></div>
 </div>
 
 <!-- AUDIENCE VIEW -->
@@ -2191,7 +2217,7 @@
   </div>
 </div>
 
-<script src="/app.js?v=20260507J"></script>
+<script src="/app.js?v=20260507K"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');

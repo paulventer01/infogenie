@@ -2642,6 +2642,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'trending-topics') { try { buildTrendingTopics(); } catch(e) { console.warn('buildTrendingTopics error:', e); } }
   if (viewId === 'sov-tracker')     { try { buildSovTracker(); }    catch(e) { console.warn('buildSovTracker error:', e); } }
   if (viewId === 'discovery')       { try { buildDiscovery(); }     catch(e) { console.warn('buildDiscovery error:', e); } }
+  if (viewId === 'digest')          { try { buildDigest(); }         catch(e) { console.warn('buildDigest error:', e); } }
+  if (viewId === 'reply-assistant') { try { buildReplyAssistant(); } catch(e) { console.warn('buildReplyAssistant error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -33424,4 +33426,207 @@ window._discAdd = async function(i) {
 window._safeUrl = function(u) {
   try { const p = new URL(String(u)); return /^(https?|mailto):$/i.test(p.protocol) ? p.toString() : '#'; }
   catch { return '#'; }
+};
+
+// ── Tier 4 #1: AI Daily Digest ─────────────────────────────────────────────
+window.buildDigest = async function() {
+  const el = document.getElementById('digestWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+        <div style="flex:1;min-width:180px">
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brand</label>
+          <input id="digBrand" placeholder="e.g. Nike" value="Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <button onclick="_digRun()" style="padding:10px 20px;background:#7C3AED;border:2px solid #7C3AED;border-radius:8px;font-size:0.82rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">⚡ Generate Digest Now</button>
+      </div>
+      <div style="font-size:0.72rem;color:#6B7280;margin-top:8px">Auto-runs daily for every brand in your Crisis Radar watchlist. Generates from real data: SoV, incidents, trends, new battle cards, new creators.</div>
+    </div>
+    <div id="digCurrent" style="margin-bottom:18px"></div>
+    <div id="digHistory"></div>`;
+  await _digHistory();
+};
+window._digHistory = async function() {
+  const el = document.getElementById('digHistory'); if (!el) return;
+  el.innerHTML = `<div style="color:#6B7280;font-size:0.85rem">Loading history…</div>`;
+  try {
+    const r = await fetch('/api/digest/history').then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    if (!r.digests.length) { el.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280;font-size:0.88rem">No digests yet. Click ⚡ Generate Digest Now above.</div>`; return; }
+    el.innerHTML = `<div style="font-weight:800;color:#0A1628;font-size:0.95rem;margin-bottom:10px">📚 History</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${r.digests.map(d=>`<div onclick="_digOpen(${d.id})" style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px;cursor:pointer;display:flex;justify-content:space-between;gap:14px;align-items:center" onmouseover="this.style.borderColor='#7C3AED'" onmouseout="this.style.borderColor='#E5E7EB'">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;color:#0A1628;font-size:0.9rem">${_escapeHtml(d.headline)}</div>
+            <div style="font-size:0.7rem;color:#6B7280;margin-top:3px">${_escapeHtml(d.brand)} · ${new Date(d.created_at).toLocaleString()} · <span style="color:${d.generated_by==='openai'?'#15803D':'#9CA3AF'}">${_escapeHtml(d.generated_by)}</span>${(d.delivered_to||[]).length?` · ✉️ sent`:''}</div>
+          </div>
+          <div style="font-size:1.1rem;color:#7C3AED">→</div>
+        </div>`).join('')}
+      </div>`;
+  } catch (e) { el.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._digRun = async function() {
+  const brand = (document.getElementById('digBrand')||{}).value || '';
+  if (!brand.trim()) return showToast('⚠️ Enter a brand');
+  const cur = document.getElementById('digCurrent');
+  if (cur) cur.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Generating digest…</div>`;
+  try {
+    const r = await fetch('/api/digest/run-now', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand: brand.trim() }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    _digRender(r.digest);
+    await _digHistory();
+    showToast('✅ Digest generated');
+  } catch (e) { if (cur) cur.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._digOpen = async function(id) {
+  try {
+    const r = await fetch('/api/digest/'+id).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    _digRender(r.digest);
+    window.scrollTo({ top: 0, behavior:'smooth' });
+  } catch (e) { showToast('❌ '+e.message); }
+};
+window._digRender = function(d) {
+  const cur = document.getElementById('digCurrent'); if (!cur) return;
+  const kinds = { warning:{bg:'#FEE2E2',border:'#FCA5A5',color:'#991B1B'}, win:{bg:'#D1FAE5',border:'#6EE7B7',color:'#065F46'}, action:{bg:'#FEF3C7',border:'#FCD34D',color:'#92400E'}, highlight:{bg:'#DBEAFE',border:'#93C5FD',color:'#1E40AF'} };
+  cur.innerHTML = `
+    <div style="background:linear-gradient(135deg,#7C3AED 0%,#5B21B6 100%);color:#fff;border-radius:12px 12px 0 0;padding:20px 24px">
+      <div style="font-size:0.7rem;font-weight:700;letter-spacing:.08em;opacity:.85">${_escapeHtml(d.brand)} · ${new Date(d.created_at).toLocaleString()}</div>
+      <div style="font-size:1.2rem;font-weight:800;margin-top:6px;color:#fff;-webkit-text-fill-color:#fff">${_escapeHtml(d.headline)}</div>
+    </div>
+    <div style="background:#fff;border:1px solid #E5E7EB;border-top:0;border-radius:0 0 12px 12px;padding:20px 24px">
+      <div style="color:#374151;font-size:0.88rem;line-height:1.55;white-space:pre-wrap;margin-bottom:16px">${_escapeHtml(d.summary_md)}</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${(d.sections||[]).map(s=>{const k=kinds[s.kind]||kinds.highlight;return `<div style="background:${k.bg};border-left:4px solid ${k.border};border-radius:6px;padding:12px 14px"><div style="font-weight:800;color:${k.color};font-size:0.82rem;margin-bottom:4px">${_escapeHtml(s.title)}</div><div style="color:#374151;font-size:0.85rem;line-height:1.5">${_escapeHtml(s.body)}</div></div>`}).join('')}
+      </div>
+      <div style="display:flex;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid #F3F4F6">
+        <button onclick="_digSend(${d.id})" style="padding:8px 16px;background:#15803D;border:2px solid #15803D;border-radius:6px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">📤 Send to Slack</button>
+        <button onclick="_digCopy(${d.id})" style="padding:8px 16px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.78rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy as Markdown</button>
+      </div>
+    </div>`;
+};
+window._digSend = async function(id) {
+  try {
+    const r = await fetch(`/api/digest/${id}/send`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ channels:['slack'] }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    const ok = (r.delivered||[]).find(x=>x.ok);
+    showToast(ok ? '✅ Sent to Slack' : '⚠️ ' + ((r.delivered||[])[0]?.error || 'no channel configured'));
+    await _digHistory();
+  } catch (e) { showToast('❌ '+e.message); }
+};
+window._digCopy = async function(id) {
+  try {
+    const r = await fetch('/api/digest/'+id).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    const d = r.digest;
+    const md = `# ${d.headline}\n\n${d.summary_md}\n\n${(d.sections||[]).map(s=>`## ${s.title}\n${s.body}`).join('\n\n')}\n\n_${d.brand} · ${new Date(d.created_at).toLocaleString()}_`;
+    await navigator.clipboard.writeText(md);
+    showToast('✅ Copied to clipboard');
+  } catch (e) { showToast('❌ '+e.message); }
+};
+
+// ── Tier 4 #2: Reply Assistant ─────────────────────────────────────────────
+window.buildReplyAssistant = async function() {
+  const el = document.getElementById('replyWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+        <div style="flex:1;min-width:180px">
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brand</label>
+          <input id="raBrand" placeholder="e.g. Nike" value="Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div style="width:100px">
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Days back</label>
+          <input id="raDays" type="number" min="1" max="14" value="3" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <button onclick="_raLoad()" style="padding:10px 20px;background:#7C3AED;border:2px solid #7C3AED;border-radius:8px;font-size:0.82rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🔍 Load Inbox</button>
+      </div>
+      <div style="font-size:0.72rem;color:#6B7280;margin-top:8px">Mentions ranked by sentiment (negative first) + source reach (Reuters / Bloomberg / Twitter etc weighted up).</div>
+    </div>
+    <div id="raInbox"></div>`;
+  await _raLoad();
+};
+window._raLoad = async function() {
+  const brand = (document.getElementById('raBrand')||{}).value || '';
+  const days = (document.getElementById('raDays')||{}).value || 3;
+  const el = document.getElementById('raInbox'); if (!el) return;
+  el.innerHTML = `<div style="color:#6B7280;font-size:0.85rem">⏳ Loading mentions…</div>`;
+  try {
+    const r = await fetch(`/api/reply-assistant/inbox?brand=${encodeURIComponent(brand)}&days=${encodeURIComponent(days)}`).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    if (!r.mentions.length) { el.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280;font-size:0.88rem">No mentions found. Try a wider window or a different brand.</div>`; return; }
+    window._raCache = r.mentions;
+    el.innerHTML = `<div style="font-weight:800;color:#0A1628;font-size:0.95rem;margin-bottom:10px">📥 Inbox — ${r.count} mentions ranked</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${r.mentions.map((m,i)=>{
+          const sc = (m.sentiment||'neutral').toLowerCase();
+          const cl = sc==='negative'?'#B91C1C':sc==='positive'?'#15803D':'#6B7280';
+          const bg = sc==='negative'?'#FEE2E2':sc==='positive'?'#D1FAE5':'#F3F4F6';
+          return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid ${cl};border-radius:8px;padding:14px 16px">
+            <div style="display:flex;justify-content:space-between;gap:14px;align-items:start;margin-bottom:6px">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:700;color:#0A1628;font-size:0.9rem;line-height:1.3">${_escapeHtml(m.title||'(no title)')}</div>
+                <div style="font-size:0.7rem;color:#6B7280;margin-top:3px">${_escapeHtml(m._host||'unknown source')}${m.date?' · '+_escapeHtml(String(m.date).slice(0,10)):''}</div>
+              </div>
+              <div style="background:${bg};color:${cl};font-size:0.66rem;font-weight:800;padding:3px 8px;border-radius:10px;text-transform:uppercase;white-space:nowrap">${_escapeHtml(sc)}</div>
+            </div>
+            <div style="font-size:0.82rem;color:#374151;line-height:1.45;margin-bottom:10px">${_escapeHtml((m.snippet||m.text||'').slice(0,260))}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button onclick="_raDraft(${i})" style="padding:7px 14px;background:#7C3AED;border:2px solid #7C3AED;border-radius:6px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">✨ Draft Reply</button>
+              ${m.url?`<a href="${_escapeHtml(_safeUrl(m.url))}" target="_blank" rel="noopener noreferrer" style="padding:7px 14px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.74rem;font-weight:700;color:#374151;text-decoration:none">🔗 Open source</a>`:''}
+            </div>
+            <div id="raDraftBox-${i}"></div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  } catch (e) { el.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._raDraft = async function(i) {
+  const m = (window._raCache||[])[i]; if (!m) return showToast('❌ Lost reference, please reload');
+  const brand = (document.getElementById('raBrand')||{}).value || '';
+  const box = document.getElementById('raDraftBox-'+i); if (!box) return;
+  box.innerHTML = `<div style="margin-top:12px;padding:14px;background:#F9FAFB;border-radius:8px">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+      <label style="font-size:0.72rem;font-weight:700;color:#6B7280">Tone:</label>
+      <select id="raTone-${i}" style="padding:6px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.78rem">
+        <option value="neutral">Neutral</option>
+        <option value="supportive">Supportive</option>
+        <option value="firm">Firm</option>
+        <option value="grateful">Grateful</option>
+        <option value="curious">Curious</option>
+      </select>
+      <input id="raPos-${i}" placeholder="Optional: our position / context" style="flex:1;padding:6px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.78rem">
+      <button onclick="_raDraftGo(${i})" style="padding:7px 14px;background:#15803D;border:2px solid #15803D;border-radius:6px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">Draft</button>
+    </div>
+    <div id="raDraftOut-${i}" style="font-size:0.82rem;color:#6B7280">Pick a tone, optionally add context, then click Draft.</div>
+  </div>`;
+};
+window._raDraftGo = async function(i) {
+  const m = (window._raCache||[])[i]; if (!m) return;
+  const brand = (document.getElementById('raBrand')||{}).value || '';
+  const tone = (document.getElementById('raTone-'+i)||{}).value || 'neutral';
+  const pos = (document.getElementById('raPos-'+i)||{}).value || '';
+  const out = document.getElementById('raDraftOut-'+i); if (!out) return;
+  out.innerHTML = `⏳ Drafting…`;
+  try {
+    const r = await fetch('/api/reply-assistant/draft', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, tone, ourPosition: pos, mention:{ title:m.title, snippet:m.snippet||m.text, url:m.url, sentiment:m.sentiment } }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    const d = r.draft;
+    out.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:14px;margin-bottom:8px">
+        <div style="font-size:0.7rem;font-weight:700;color:#7C3AED;letter-spacing:.06em;margin-bottom:6px">REPLY · ${_escapeHtml((r.source||'').toUpperCase())} · ${_escapeHtml(d.confidence||'')}</div>
+        <div id="raReplyText-${i}" style="font-size:0.86rem;color:#0A1628;line-height:1.55;white-space:pre-wrap">${_escapeHtml(d.reply||'')}</div>
+        <button onclick="_raCopyText('raReplyText-${i}')" style="margin-top:10px;padding:6px 12px;background:#fff;border:2px solid #D1D5DB;border-radius:5px;font-size:0.72rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy</button>
+      </div>
+      ${d.alt_short?`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:14px">
+        <div style="font-size:0.7rem;font-weight:700;color:#0891B2;letter-spacing:.06em;margin-bottom:6px">SHORT (TWITTER/X)</div>
+        <div id="raReplyShort-${i}" style="font-size:0.86rem;color:#0A1628;line-height:1.55">${_escapeHtml(d.alt_short)}</div>
+        <button onclick="_raCopyText('raReplyShort-${i}')" style="margin-top:10px;padding:6px 12px;background:#fff;border:2px solid #D1D5DB;border-radius:5px;font-size:0.72rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy</button>
+      </div>`:''}`;
+  } catch (e) { out.innerHTML = `<div style="color:#B91C1C">❌ ${_escapeHtml(e.message)}</div>`; }
+};
+window._raCopyText = async function(id) {
+  const el = document.getElementById(id); if (!el) return;
+  try { await navigator.clipboard.writeText(el.innerText || el.textContent || ''); showToast('✅ Copied'); }
+  catch (e) { showToast('❌ '+e.message); }
 };
