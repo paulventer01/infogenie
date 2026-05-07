@@ -2652,6 +2652,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'ab-designer')      { try { buildAbDesigner(); }      catch(e) { console.warn('buildAbDesigner error:', e); } }
   if (viewId === 'voc')              { try { buildVoc(); }              catch(e) { console.warn('buildVoc error:', e); } }
   if (viewId === 'pricing-watch')    { try { buildPricingWatch(); }     catch(e) { console.warn('buildPricingWatch error:', e); } }
+  if (viewId === 'deliverability')   { try { buildDeliverability(); }   catch(e) { console.warn('buildDeliverability error:', e); } }
+  if (viewId === 'landing-pages')    { try { buildLandingPages(); }     catch(e) { console.warn('buildLandingPages error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -34331,4 +34333,132 @@ window._pwHistory = async function(id) {
       </table>
     </div>`;
   } catch (e) { el.innerHTML = `<div style="color:#B91C1C;font-size:0.8rem">${_escapeHtml(e.message)}</div>`; }
+};
+
+// ── Tier 9 #1: Email Deliverability Auditor ───────────────────────────────
+window.buildDeliverability = function() {
+  const el = document.getElementById('delivWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="display:flex;gap:10px;align-items:flex-end">
+        <div style="flex:1">
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Domain</label>
+          <input id="dlvDomain" placeholder="e.g. nike.com" value="nike.com" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <button onclick="_dlvGo()" style="padding:10px 22px;background:#14B8A6;border:2px solid #14B8A6;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">📬 Audit</button>
+      </div>
+    </div>
+    <div id="dlvOut"></div>`;
+};
+window._dlvGo = async function() {
+  const domain = (document.getElementById('dlvDomain')||{}).value || '';
+  if (!domain.trim()) return showToast('⚠️ Domain required');
+  const out = document.getElementById('dlvOut');
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Looking up DNS records (SPF · DKIM · DMARC · MX · MTA-STS · BIMI)…</div>`;
+  try {
+    const r = await fetch('/api/deliverability/audit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain: domain.trim() }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    const gradeColor = { A:'#15803D', B:'#16A34A', C:'#F59E0B', D:'#EA580C', F:'#B91C1C' };
+    const gc = gradeColor[r.grade] || '#6B7280';
+    const checkRow = (key, label) => {
+      const c = r.checks[key]; const ok = c.ok;
+      const sev = c.severity || 'low';
+      const sevColor = sev==='high'?'#B91C1C':sev==='med'?'#EA580C':'#15803D';
+      const recPreview = c.record ? `<div style="font-family:ui-monospace,monospace;font-size:0.72rem;color:#475569;background:#F1F5F9;padding:6px 10px;border-radius:4px;margin-top:6px;word-break:break-all">${_escapeHtml(typeof c.record==='string'?c.record.slice(0,200):JSON.stringify(c.record).slice(0,200))}</div>` : '';
+      return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid ${ok?'#15803D':sevColor};border-radius:8px;padding:14px 16px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:800;color:#0A1628;font-size:0.9rem">${ok?'✅':'❌'} ${_escapeHtml(label)}</div>
+          <div style="font-size:0.78rem;font-weight:700;color:${ok?'#15803D':sevColor}">${c.score||0}/100</div>
+        </div>
+        <div style="font-size:0.82rem;color:#374151;margin-top:6px">${_escapeHtml(c.msg||'')}</div>
+        ${recPreview}
+      </div>`;
+    };
+    out.innerHTML = `
+      <div style="display:flex;gap:18px;align-items:center;background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:24px;margin-bottom:14px">
+        <div style="background:${gc};color:#fff;-webkit-text-fill-color:#fff;width:90px;height:90px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:3rem;font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.4)">${r.grade}</div>
+        <div style="flex:1">
+          <div style="font-size:0.7rem;color:#6B7280;font-weight:700;letter-spacing:.06em">DELIVERABILITY GRADE</div>
+          <div style="font-size:1.6rem;font-weight:800;color:#0A1628;margin-top:2px">${_escapeHtml(r.domain)}</div>
+          <div style="font-size:0.85rem;color:#374151;margin-top:4px">Overall score: <strong>${r.score}/100</strong></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px;margin-bottom:14px">
+        ${checkRow('mx','MX (Mail Servers)')}
+        ${checkRow('spf','SPF (Sender Policy)')}
+        ${checkRow('dkim','DKIM (Signature)')}
+        ${checkRow('dmarc','DMARC (Policy)')}
+        ${checkRow('mta_sts','MTA-STS (TLS)')}
+        ${checkRow('bimi','BIMI (Logo)')}
+      </div>
+      ${r.recommendations.length?`<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;padding:16px 20px">
+        <div style="font-weight:800;color:#92400E;margin-bottom:8px">🔧 Recommended fixes (${r.recommendations.length})</div>
+        <ul style="margin:0;padding-left:22px;color:#92400E;font-size:0.85rem;line-height:1.7">${r.recommendations.map(x=>`<li>${_escapeHtml(x)}</li>`).join('')}</ul>
+      </div>`:`<div style="background:#D1FAE5;color:#065F46;padding:14px 18px;border-radius:10px;font-size:0.88rem;font-weight:700">🎉 No critical issues found — your email auth is solid.</div>`}`;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+
+// ── Tier 9 #2: AI Landing Page Builder ────────────────────────────────────
+window.buildLandingPages = function() {
+  const el = document.getElementById('lpWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 110px;gap:12px;margin-bottom:12px">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brand (optional)</label><input id="lpBrand" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Page title</label><input id="lpTitle" placeholder="e.g. Air Max 270 launch" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Accent</label><input id="lpAccent" type="color" value="#14B8A6" style="width:100%;height:38px;padding:2px;border:1px solid #D1D5DB;border-radius:8px;cursor:pointer"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Goal</label><input id="lpGoal" placeholder="e.g. drive 1000 signups in week 1" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Audience</label><input id="lpAud" placeholder="e.g. urban runners, 25-40" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+      </div>
+      <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brief (optional)</label>
+        <textarea id="lpBrief" rows="3" placeholder="Anything the page should mention — features, offer, deadline, USP." style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;font-family:inherit;resize:vertical"></textarea></div>
+      <button onclick="_lpGo()" style="margin-top:12px;padding:10px 22px;background:#14B8A6;border:2px solid #14B8A6;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🎨 Generate Page</button>
+    </div>
+    <div id="lpOut"></div>`;
+};
+window._lpGo = async function() {
+  const brand = (document.getElementById('lpBrand')||{}).value || '';
+  const title = (document.getElementById('lpTitle')||{}).value || '';
+  const goal = (document.getElementById('lpGoal')||{}).value || '';
+  const audience = (document.getElementById('lpAud')||{}).value || '';
+  const brief = (document.getElementById('lpBrief')||{}).value || '';
+  const accent = (document.getElementById('lpAccent')||{}).value || '#14B8A6';
+  if (!title.trim()) return showToast('⚠️ Page title required');
+  const out = document.getElementById('lpOut');
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Drafting full landing page…</div>`;
+  try {
+    const r = await fetch('/api/landing-pages/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, title, goal, audience, brief, accent }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    window._lpLastHtml = r.html;
+    out.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-weight:800;color:#0A1628">🖼️ Live Preview <span style="background:${r.source==='openai'?'#14B8A6':'#9CA3AF'};color:#fff;padding:3px 9px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase;margin-left:8px">${_escapeHtml(r.source)}</span></div>
+        <div style="display:flex;gap:8px">
+          <button onclick="_lpDownload()" style="padding:8px 16px;background:#15803D;border:2px solid #15803D;border-radius:6px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">⬇️ Download HTML</button>
+          <button onclick="_lpCopyHtml()" style="padding:8px 16px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.78rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy HTML</button>
+          <button onclick="_lpOpenTab()" style="padding:8px 16px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.78rem;font-weight:700;color:#374151;cursor:pointer">↗️ Open</button>
+        </div>
+      </div>
+      <iframe id="lpPreview" style="width:100%;height:720px;border:1px solid #E5E7EB;border-radius:12px;background:#fff" sandbox="allow-same-origin"></iframe>`;
+    const iframe = document.getElementById('lpPreview');
+    iframe.srcdoc = r.html;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._lpCopyHtml = async function() {
+  if (!window._lpLastHtml) return;
+  try { await navigator.clipboard.writeText(window._lpLastHtml); showToast('✅ HTML copied'); }
+  catch (e) { showToast('❌ '+e.message); }
+};
+window._lpDownload = function() {
+  if (!window._lpLastHtml) return;
+  const blob = new Blob([window._lpLastHtml], { type:'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'landing-page.html';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  showToast('✅ Downloaded');
+};
+window._lpOpenTab = function() {
+  if (!window._lpLastHtml) return;
+  const w = window.open('', '_blank'); if (w) { w.document.open(); w.document.write(window._lpLastHtml); w.document.close(); }
 };

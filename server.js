@@ -8514,6 +8514,13 @@ const _pwRouter    = require('./services/pricing_watch/api');
 app.use('/api/voc',            _vocRouter);
 app.use('/api/pricing-watch',  _pwRouter);
 
+// ── Tier 9 ─────────────────────────────────────────────────────────────────
+const _delivRouter = require('./services/deliverability/api');
+const _lpSchema    = require('./services/landing_pages/schema');
+const _lpRouter    = require('./services/landing_pages/api');
+app.use('/api/deliverability', _delivRouter);
+app.use('/api/landing-pages',  _lpRouter);
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
@@ -8526,6 +8533,7 @@ app.use('/api/pricing-watch',  _pwRouter);
     await _abdSchema.ensureAbDesignerSchema();
     await _vocSchema.ensureVocSchema();
     await _pwSchema.ensurePricingWatchSchema();
+    await _lpSchema.ensureLandingPagesSchema();
     _crisisDetector.startCron(6);
     _digestRouter.startCron(24);
     console.log('[tier2-5] crisis + battle + trends + sov + discovery + digest + reply + press-release + alert-routing mounted');
