@@ -8506,6 +8506,14 @@ const _abdRouter     = require('./services/ab_designer/api');
 app.use('/api/podcast-monitor', _podcastRouter);
 app.use('/api/ab-designer',     _abdRouter);
 
+// ── Tier 8 ─────────────────────────────────────────────────────────────────
+const _vocSchema   = require('./services/voc/schema');
+const _vocRouter   = require('./services/voc/api');
+const _pwSchema    = require('./services/pricing_watch/schema');
+const _pwRouter    = require('./services/pricing_watch/api');
+app.use('/api/voc',            _vocRouter);
+app.use('/api/pricing-watch',  _pwRouter);
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
@@ -8516,6 +8524,8 @@ app.use('/api/ab-designer',     _abdRouter);
     await _calendarSchema.ensureContentCalendarSchema();
     await _podcastSchema.ensurePodcastMonitorSchema();
     await _abdSchema.ensureAbDesignerSchema();
+    await _vocSchema.ensureVocSchema();
+    await _pwSchema.ensurePricingWatchSchema();
     _crisisDetector.startCron(6);
     _digestRouter.startCron(24);
     console.log('[tier2-5] crisis + battle + trends + sov + discovery + digest + reply + press-release + alert-routing mounted');

@@ -2650,6 +2650,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'content-calendar') { try { buildContentCalendar(); } catch(e) { console.warn('buildContentCalendar error:', e); } }
   if (viewId === 'podcast-monitor')  { try { buildPodcastMonitor(); }  catch(e) { console.warn('buildPodcastMonitor error:', e); } }
   if (viewId === 'ab-designer')      { try { buildAbDesigner(); }      catch(e) { console.warn('buildAbDesigner error:', e); } }
+  if (viewId === 'voc')              { try { buildVoc(); }              catch(e) { console.warn('buildVoc error:', e); } }
+  if (viewId === 'pricing-watch')    { try { buildPricingWatch(); }     catch(e) { console.warn('buildPricingWatch error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -34169,4 +34171,164 @@ window._abGo = async function() {
 window._abCopy = async function(s) {
   try { await navigator.clipboard.writeText(s); showToast('✅ Copied'); }
   catch (e) { showToast('❌ '+e.message); }
+};
+
+// ── Tier 8 #1: Voice of Customer Mining ───────────────────────────────────
+window.buildVoc = function() {
+  const el = document.getElementById('vocWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 110px auto;gap:12px;align-items:end">
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brand</label>
+          <input id="vocBrand" value="Nike" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Days back</label>
+          <input id="vocDays" type="number" min="1" max="60" value="14" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <button onclick="_vocGo()" style="padding:10px 22px;background:#0EA5E9;border:2px solid #0EA5E9;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🔍 Mine Themes</button>
+      </div>
+    </div>
+    <div id="vocOut"></div>`;
+};
+window._vocGo = async function() {
+  const brand = (document.getElementById('vocBrand')||{}).value || '';
+  const days = (document.getElementById('vocDays')||{}).value || 14;
+  if (!brand.trim()) return showToast('⚠️ Brand required');
+  const out = document.getElementById('vocOut');
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Pulling mentions and clustering themes…</div>`;
+  try {
+    const r = await fetch('/api/voc/mine', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand:brand.trim(), days:Number(days) }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    if (!r.themes.length) {
+      out.innerHTML = `<div style="background:#FEF3C7;color:#92400E;padding:14px 18px;border-radius:10px;font-size:0.85rem">${_escapeHtml(r.summary || 'No themes found.')}</div>`;
+      return;
+    }
+    const kindColor = { praise:'#15803D', complaint:'#B91C1C', question:'#0891B2', feature_request:'#7C3AED', neutral:'#6B7280' };
+    const kindBg    = { praise:'#D1FAE5', complaint:'#FEE2E2', question:'#CFFAFE', feature_request:'#EDE9FE', neutral:'#F3F4F6' };
+    out.innerHTML = `
+      <div style="background:linear-gradient(135deg,#0EA5E9 0%,#0369A1 100%);color:#fff;border-radius:12px 12px 0 0;padding:18px 22px">
+        <div style="font-size:0.7rem;font-weight:700;letter-spacing:.06em;opacity:.9">${_escapeHtml(r.brand)} · ${r.mention_count} mentions · last ${r.days}d · ${_escapeHtml((r.source||'').toUpperCase())}</div>
+        <div style="font-size:0.95rem;line-height:1.55;margin-top:6px;color:#fff;-webkit-text-fill-color:#fff">${_escapeHtml(r.summary||'')}</div>
+      </div>
+      <div style="background:#fff;border:1px solid #E5E7EB;border-top:0;border-radius:0 0 12px 12px;padding:18px 22px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:14px">
+          ${r.themes.map(t=>{
+            const kc = kindColor[t.kind] || '#6B7280';
+            const kbg = kindBg[t.kind] || '#F3F4F6';
+            const sharePct = Math.round((t.share||0)*100);
+            return `<div style="background:${kbg};border:1px solid ${kc}33;border-left:4px solid ${kc};border-radius:8px;padding:14px 16px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div style="font-weight:800;color:#0A1628;font-size:0.95rem">${_escapeHtml(t.label||'')}</div>
+                <span style="background:${kc};color:#fff;font-size:0.62rem;font-weight:800;padding:3px 8px;border-radius:5px;text-transform:uppercase">${_escapeHtml(t.kind||'')}</span>
+              </div>
+              <div style="display:flex;gap:14px;font-size:0.74rem;color:#374151;margin-bottom:8px"><span>📊 ${t.frequency||0} mentions</span><span>🔵 ${sharePct}% share</span><span>${t.sentiment_score>=0?'😊':'😟'} ${(t.sentiment_score||0).toFixed(2)}</span></div>
+              ${(t.top_quotes||[]).length?`<div style="background:#fff;border-radius:6px;padding:8px 12px;margin-bottom:10px">${(t.top_quotes||[]).map(q=>`<div style="font-size:0.78rem;color:#374151;font-style:italic;line-height:1.45;margin-bottom:4px">"${_escapeHtml(q)}"</div>`).join('')}</div>`:''}
+              ${t.recommended_action?`<div style="font-size:0.78rem;color:#0A1628;background:#fff;border-radius:6px;padding:8px 12px"><strong style="color:${kc}">→ Action:</strong> ${_escapeHtml(t.recommended_action)}</div>`:''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+
+// ── Tier 8 #2: Competitor Pricing Watcher ─────────────────────────────────
+window.buildPricingWatch = async function() {
+  const el = document.getElementById('pwWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="font-weight:800;color:#0A1628;margin-bottom:10px;font-size:0.95rem">+ Add product URL to track</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Label</label><input id="pwLabel" placeholder="e.g. Nike Air Max 270" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Competitor</label><input id="pwComp" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">URL</label><input id="pwUrl" placeholder="https://…" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <button onclick="_pwAdd()" style="padding:10px 18px;background:#0EA5E9;border:2px solid #0EA5E9;border-radius:8px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">+ Add</button>
+      </div>
+    </div>
+    <div id="pwTargets"></div>`;
+  await _pwLoad();
+};
+window._pwAdd = async function() {
+  const label = (document.getElementById('pwLabel')||{}).value || '';
+  const url = (document.getElementById('pwUrl')||{}).value || '';
+  const competitor = (document.getElementById('pwComp')||{}).value || '';
+  if (!label.trim() || !url.trim()) return showToast('⚠️ Label + URL required');
+  try {
+    const r = await fetch('/api/pricing-watch/targets', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ label, url, competitor }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    document.getElementById('pwLabel').value=''; document.getElementById('pwUrl').value=''; document.getElementById('pwComp').value='';
+    showToast('✅ Target added'); await _pwLoad();
+  } catch (e) { showToast('❌ '+e.message); }
+};
+window._pwLoad = async function() {
+  const el = document.getElementById('pwTargets'); if (!el) return;
+  el.innerHTML = `<div style="color:#6B7280;font-size:0.85rem">Loading…</div>`;
+  try {
+    const r = await fetch('/api/pricing-watch/targets').then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    if (!r.targets.length) { el.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280;font-size:0.88rem">No targets yet. Add a product URL above to start tracking.</div>`; return; }
+    el.innerHTML = `<div style="font-weight:800;color:#0A1628;font-size:0.95rem;margin-bottom:10px">📊 Tracked products (${r.targets.length})</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${r.targets.map(t=>{
+          const lat = t.latest;
+          const priceTxt = lat && lat.price!=null ? `${_escapeHtml(lat.currency||'')}${lat.price}` : '—';
+          const orig = lat && lat.original_price ? `<span style="text-decoration:line-through;color:#9CA3AF;font-size:0.78rem;margin-left:6px">${_escapeHtml(lat.currency||'')}${lat.original_price}</span>` : '';
+          return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px 18px">
+            <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:800;color:#0A1628;font-size:0.95rem">${_escapeHtml(t.label)}</div>
+                <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${t.competitor?_escapeHtml(t.competitor)+' · ':''}<a href="${_escapeHtml(_safeUrl(t.url))}" target="_blank" rel="noopener noreferrer" style="color:#0EA5E9">${_escapeHtml(t.url.slice(0,80))}${t.url.length>80?'…':''}</a></div>
+                <div style="margin-top:8px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+                  <div style="font-size:1.4rem;font-weight:800;color:#0A1628">${priceTxt}${orig}</div>
+                  ${lat&&lat.promo?`<span style="background:#FEF3C7;color:#92400E;padding:3px 8px;border-radius:5px;font-size:0.7rem;font-weight:700">${_escapeHtml(lat.promo)}</span>`:''}
+                  ${lat&&lat.in_stock===false?`<span style="background:#FEE2E2;color:#B91C1C;padding:3px 8px;border-radius:5px;font-size:0.7rem;font-weight:700">OUT OF STOCK</span>`:''}
+                  <span style="font-size:0.72rem;color:#9CA3AF">${lat?'last: '+new Date(lat.taken_at).toLocaleString():'never scanned'} · ${t.snapshot_count} snapshot(s)</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <button onclick="_pwScan(${t.id})" style="padding:7px 14px;background:#15803D;border:2px solid #15803D;border-radius:6px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4);white-space:nowrap">⚡ Scan Now</button>
+                <button onclick="_pwHistory(${t.id})" style="padding:6px 14px;background:#fff;border:1.5px solid #D1D5DB;border-radius:6px;font-size:0.72rem;font-weight:700;color:#374151;cursor:pointer;white-space:nowrap">📈 History</button>
+                <button onclick="_pwDel(${t.id})" style="padding:6px 14px;background:#fff;border:1.5px solid #FECACA;border-radius:6px;font-size:0.72rem;font-weight:700;color:#B91C1C;cursor:pointer;white-space:nowrap">🗑 Delete</button>
+              </div>
+            </div>
+            <div id="pwHist-${t.id}"></div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  } catch (e) { el.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._pwScan = async function(id) {
+  showToast('⏳ Scanning…');
+  try {
+    const r = await fetch('/api/pricing-watch/scan/'+id, { method:'POST' }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    showToast(`✅ Scanned: ${r.snapshot.currency||''}${r.snapshot.price ?? '—'}`);
+    await _pwLoad();
+  } catch (e) { showToast('❌ '+e.message); }
+};
+window._pwDel = async function(id) {
+  if (!confirm('Delete this tracked product and all its snapshots?')) return;
+  try {
+    const r = await fetch('/api/pricing-watch/targets/'+id, { method:'DELETE' }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    showToast('✅ Deleted'); await _pwLoad();
+  } catch (e) { showToast('❌ '+e.message); }
+};
+window._pwHistory = async function(id) {
+  const el = document.getElementById('pwHist-'+id); if (!el) return;
+  if (el.innerHTML) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div style="margin-top:10px;color:#6B7280;font-size:0.8rem">Loading…</div>`;
+  try {
+    const r = await fetch('/api/pricing-watch/snapshots/'+id+'?limit=50').then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    if (!r.snapshots.length) { el.innerHTML = `<div style="margin-top:10px;color:#9CA3AF;font-size:0.8rem">No snapshots yet — click ⚡ Scan Now.</div>`; return; }
+    el.innerHTML = `<div style="margin-top:12px;background:#F9FAFB;border-radius:8px;padding:10px 14px">
+      <div style="font-weight:800;color:#0A1628;font-size:0.78rem;margin-bottom:6px">📈 Last ${r.snapshots.length} snapshots</div>
+      <table style="width:100%;border-collapse:collapse;font-size:0.78rem">
+        <thead><tr style="color:#6B7280"><th style="text-align:left;padding:4px 6px">When</th><th style="text-align:right;padding:4px 6px">Price</th><th style="text-align:right;padding:4px 6px">Original</th><th style="text-align:left;padding:4px 6px">Promo</th><th style="text-align:left;padding:4px 6px">Stock</th></tr></thead>
+        <tbody>${r.snapshots.map(s=>`<tr style="border-top:1px solid #E5E7EB"><td style="padding:4px 6px;color:#374151">${new Date(s.taken_at).toLocaleString()}</td><td style="padding:4px 6px;text-align:right;color:#0A1628;font-weight:700">${_escapeHtml(s.currency||'')}${s.price ?? '—'}</td><td style="padding:4px 6px;text-align:right;color:#9CA3AF">${s.original_price?(_escapeHtml(s.currency||'')+s.original_price):'—'}</td><td style="padding:4px 6px;color:#92400E">${_escapeHtml(s.promo||'')}</td><td style="padding:4px 6px;color:${s.in_stock===false?'#B91C1C':s.in_stock===true?'#15803D':'#6B7280'}">${s.in_stock==null?'?':s.in_stock?'in':'out'}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+  } catch (e) { el.innerHTML = `<div style="color:#B91C1C;font-size:0.8rem">${_escapeHtml(e.message)}</div>`; }
 };
