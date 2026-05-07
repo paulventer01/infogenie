@@ -8447,6 +8447,22 @@ app.use('/api/audiences', _audiencesRouter);
     }
   } catch (e) { console.error('[audiences] init failed:', e.message); }
 })();
+// ── Search & AI Visibility Intelligence (Tier 1) ──────────────────────────
+const _searchIntelSchema = require('./services/search_intel/schema');
+const _searchIntelRouter = require('./services/search_intel/api');
+app.use('/api/search-intel', _searchIntelRouter);
+(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _searchIntelSchema.ensureSearchIntelSchema();
+      const _aiVis = require('./services/search_intel/ai_visibility');
+      _aiVis.startCron(24); // daily
+      console.log('[search-intel] schema ready, ai-visibility cron=24h');
+    } else {
+      console.log('[search-intel] disabled — DATABASE_URL not set');
+    }
+  } catch (e) { console.error('[search-intel] init failed:', e.message); }
+})();
 let _googleCronsStarted = false;
 (async () => {
   try {

@@ -2631,6 +2631,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'aivisibility') {
     try { buildAiVisibility(); } catch(e) { console.warn('buildAiVisibility error:', e); }
   }
+  if (viewId === 'search-intel') {
+    try { buildSearchIntel(); } catch(e) { console.warn('buildSearchIntel error:', e); }
+  }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -32568,4 +32571,226 @@ window.buildDynAudiences = async function() {
   } catch (e) {
     wrap.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:16px;color:#B91C1C;font-weight:600">Failed to load audiences: ${_escapeHtml(e.message)}</div>`;
   }
+};
+
+// ── SEARCH & AI VISIBILITY INTELLIGENCE (Tier 1 #1+#2+#3) ─────────────────
+window._siTab = window._siTab || 'ai';
+
+window.buildSearchIntel = function() {
+  const wrap = document.getElementById('searchIntelWrap'); if (!wrap) return;
+  const tabs = [
+    { id:'ai',    label:'🤖 AI Visibility',  desc:'Track how your brand shows up in ChatGPT, Claude, Perplexity, Gemini' },
+    { id:'pulse', label:'🔍 Search Pulse',    desc:'See what the world is searching for around your topic (DataForSEO)' },
+    { id:'img',   label:'📸 Image / Logo',   desc:'Detect brands & logos in any image URL (find brand mentions even when nobody @-mentions you)' },
+  ];
+  wrap.innerHTML = `
+    <div style="background:linear-gradient(135deg,#F5F3FF,#EEF2FF);border:1px solid #C4B5FD;border-radius:14px;padding:18px 22px;margin-bottom:22px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+      <div>
+        <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#5B21B6;margin-bottom:4px">🔮 Search & AI Visibility — Brandwatch-killer module</div>
+        <div style="font-size:0.78rem;color:#6D28D9;line-height:1.55;max-width:780px">Find demand before competitors do, track your AI-engine visibility daily, and detect logos in any image. Powered by GPT-4o + Claude + Perplexity + Gemini + DataForSEO + GPT-4o Vision.</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;border-bottom:2px solid #E5E7EB;margin-bottom:20px">
+      ${tabs.map(t => `<button onclick="window._siTab='${t.id}';buildSearchIntel()" style="padding:11px 18px;background:${window._siTab===t.id?'#7C3AED':'transparent'};border:none;border-bottom:3px solid ${window._siTab===t.id?'#7C3AED':'transparent'};font-size:0.82rem;font-weight:800;color:${window._siTab===t.id?'#fff':'#6B7280'};-webkit-text-fill-color:${window._siTab===t.id?'#fff':'#6B7280'};cursor:pointer;border-radius:8px 8px 0 0;${window._siTab===t.id?'text-shadow:0 1px 2px rgba(0,0,0,.4)':''}">${t.label}</button>`).join('')}
+    </div>
+    <div id="siTabBody"></div>`;
+  if (window._siTab === 'ai')    return _siRenderAi();
+  if (window._siTab === 'pulse') return _siRenderPulse();
+  if (window._siTab === 'img')   return _siRenderImage();
+};
+
+async function _siRenderAi() {
+  const body = document.getElementById('siTabBody'); if (!body) return;
+  body.innerHTML = `<div style="text-align:center;padding:40px;color:#6B7280">Loading tracked queries…</div>`;
+  try {
+    const r = await fetch('/api/search-intel/queries').then(x=>x.json());
+    const qs = r.queries || [];
+    body.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+        <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:4px">+ Track a new prompt</div>
+        <div style="font-size:0.72rem;color:#6B7280;margin-bottom:12px">Examples: "best CRM for SaaS startups", "alternatives to Hubspot", "what is the best email marketing platform"</div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px">
+          <input id="siQuery" placeholder="Prompt to track" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
+          <input id="siBrand" placeholder="Your brand" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
+          <input id="siCompetitors" placeholder="Comp1, Comp2" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
+          <input id="siLocale" value="en-US" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
+          <button onclick="_siCreateQuery()" style="padding:9px 18px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:7px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5);white-space:nowrap">+ Add</button>
+        </div>
+      </div>
+      ${qs.length === 0 ? `
+        <div style="background:#fff;border:2px dashed #C4B5FD;border-radius:14px;padding:48px;text-align:center">
+          <div style="font-size:2.4rem;margin-bottom:8px">🤖</div>
+          <div style="font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px">No tracked AI prompts yet</div>
+          <div style="font-size:0.82rem;color:#6B7280">Add a prompt above — we'll ask 4 AIs daily and track whether your brand is named, where it ranks, and which competitors steal the spotlight.</div>
+        </div>` : `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px">
+          ${qs.map(q => {
+            const last = q.last_run_at ? new Date(q.last_run_at).toLocaleString() : 'never';
+            const hitRate = q.run_count ? Math.round(100*q.hit_count/q.run_count) : 0;
+            return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;justify-content:space-between;gap:10px">
+                <div style="font-family:Sora,sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628">"${_escapeHtml(q.query)}"</div>
+                <span style="background:${hitRate>50?'#DCFCE7':hitRate>0?'#FEF3C7':'#FEE2E2'};color:${hitRate>50?'#15803D':hitRate>0?'#92400E':'#B91C1C'};padding:2px 8px;border-radius:5px;font-size:0.62rem;font-weight:800;white-space:nowrap">${hitRate}% hit</span>
+              </div>
+              <div style="font-size:0.7rem;color:#6B7280">Brand: <strong>${_escapeHtml(q.brand)}</strong> · Locale: <strong>${_escapeHtml(q.locale)}</strong>${q.competitors?.length?' · vs '+q.competitors.map(_escapeHtml).join(', '):''}</div>
+              <div style="display:flex;gap:14px;padding:8px 0;border-top:1px solid #F1F5F9;border-bottom:1px solid #F1F5F9">
+                <div style="flex:1"><div style="font-size:0.6rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Runs</div><div style="font-size:1.2rem;font-weight:800;color:#1E1B4B">${q.run_count||0}</div></div>
+                <div style="flex:1"><div style="font-size:0.6rem;font-weight:700;color:#9CA3AF;text-transform:uppercase;letter-spacing:.06em">Brand cited</div><div style="font-size:1.2rem;font-weight:800;color:#1E1B4B">${q.hit_count||0}</div></div>
+              </div>
+              <div style="font-size:0.62rem;color:#9CA3AF">Last run: ${last}</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">
+                <button onclick="_siRunQuery(${q.id})"     style="padding:7px;background:#7C3AED;border:2px solid #7C3AED;border-radius:6px;font-size:0.7rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">▶ Run now</button>
+                <button onclick="_siHistory(${q.id})" style="padding:7px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:6px;font-size:0.7rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">📜 History</button>
+                <button onclick="_siDeleteQuery(${q.id})"  style="padding:7px;background:#fff;border:2px solid #FCA5A5;border-radius:6px;font-size:0.7rem;font-weight:800;color:#B91C1C;-webkit-text-fill-color:#B91C1C;cursor:pointer">🗑</button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`}`;
+  } catch (e) {
+    body.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:16px;color:#B91C1C;font-weight:600">Failed: ${_escapeHtml(e.message)}</div>`;
+  }
+}
+
+window._siCreateQuery = async function() {
+  const payload = {
+    query: document.getElementById('siQuery').value.trim(),
+    brand: document.getElementById('siBrand').value.trim(),
+    competitors: document.getElementById('siCompetitors').value.split(',').map(s=>s.trim()).filter(Boolean),
+    locale: document.getElementById('siLocale').value.trim() || 'en-US',
+  };
+  if (!payload.query || !payload.brand) return showToast('❌ Prompt and brand required');
+  try {
+    const r = await fetch('/api/search-intel/queries', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error || 'create failed');
+    showToast('✅ Tracking added — click ▶ Run now to fire it across 4 AIs'); _siRenderAi();
+  } catch (e) { showToast('❌ ' + e.message); }
+};
+window._siDeleteQuery = async function(id) {
+  if (!confirm('Stop tracking this prompt? History is preserved.')) return;
+  try { await fetch('/api/search-intel/queries/'+id, { method:'DELETE' }); showToast('🗑 Removed'); _siRenderAi(); }
+  catch (e) { showToast('❌ ' + e.message); }
+};
+window._siRunQuery = async function(id) {
+  showToast('⏳ Asking 4 AIs in parallel… this takes ~10s');
+  try {
+    const r = await fetch('/api/search-intel/queries/'+id+'/run', { method:'POST' }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error || 'run failed');
+    const s = r.summary;
+    const hits = s.brandHits, total = Object.keys(s.providers||{}).length;
+    showToast(`✅ Done — brand cited in ${hits}/${total} AI answers (${s.competitorTotal} competitor mentions)`);
+    _siRenderAi();
+  } catch (e) { showToast('❌ ' + e.message); }
+};
+window._siHistory = async function(id) {
+  const r0 = await fetch('/api/search-intel/queries').then(x=>x.json()).catch(()=>({queries:[]}));
+  const name = ((r0.queries||[]).find(x=>x.id===id)||{}).query || '';
+  let modal = document.getElementById('siHistModal');
+  if (!modal) { modal = document.createElement('div'); modal.id='siHistModal'; document.body.appendChild(modal); }
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:10010;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;overflow-y:auto;backdrop-filter:blur(4px)';
+  modal.innerHTML = `<div style="background:#fff;width:100%;max-width:840px;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:28px 32px;color:#0A1628"><div style="text-align:center;color:#6B7280;padding:30px">Loading run history…</div></div>`;
+  try {
+    const r = await fetch('/api/search-intel/queries/'+id+'/history?limit=40').then(x=>x.json());
+    const runs = r.runs || [];
+    modal.innerHTML = `<div style="background:#fff;width:100%;max-width:840px;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:28px 32px;color:#0A1628">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1.2rem;font-weight:800">📜 AI Visibility history</div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">"${_escapeHtml(name)}" · ${runs.length} runs</div>
+        </div>
+        <button onclick="(function(){var m=document.getElementById('siHistModal');if(m)m.remove();})()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6B7280">×</button>
+      </div>
+      ${runs.length === 0 ? `<div style="text-align:center;color:#6B7280;padding:24px">No runs yet — click ▶ Run now on the card.</div>` : `
+        <div style="display:flex;flex-direction:column;gap:10px;max-height:62vh;overflow-y:auto">
+        ${runs.map(rn => {
+          const ico = { openai:'🟢', anthropic:'🟠', perplexity:'🔵', gemini:'🟣' }[rn.provider] || '⚪';
+          const cits = Array.isArray(rn.citations) ? rn.citations : [];
+          const comps = Array.isArray(rn.competitor_hits) ? rn.competitor_hits : [];
+          return `<div style="background:#FAFBFC;border:1px solid #E5E7EB;border-radius:9px;padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <div style="font-size:0.8rem;font-weight:800">${ico} ${rn.provider} ${rn.brand_mentioned?'<span style=\"color:#15803D\">· cited'+(rn.brand_position?' #'+rn.brand_position:'')+'</span>':'<span style=\"color:#B91C1C\">· not cited</span>'}</div>
+              <div style="font-size:0.65rem;color:#9CA3AF">${new Date(rn.ran_at).toLocaleString()}</div>
+            </div>
+            ${rn.error ? `<div style="font-size:0.7rem;color:#B91C1C">⚠ ${_escapeHtml(rn.error)}</div>` :
+            `<div style="font-size:0.74rem;color:#374151;line-height:1.5;white-space:pre-wrap">${_escapeHtml((rn.response_text||'').slice(0,500))}${(rn.response_text||'').length>500?'…':''}</div>
+             ${comps.length?`<div style="font-size:0.66rem;color:#92400E;margin-top:4px">Competitors named: ${comps.map(_escapeHtml).join(', ')}</div>`:''}
+             ${cits.length?`<div style="font-size:0.66rem;color:#6B7280;margin-top:4px">Citations: ${cits.slice(0,5).map(c=>`<a href="${_escapeHtml(typeof c==='string'?c:c.url||'')}" target="_blank" style="color:#7C3AED">${_escapeHtml((typeof c==='string'?c:c.url||'').slice(0,60))}</a>`).join(' · ')}</div>`:''}`}
+          </div>`;
+        }).join('')}</div>`}
+    </div>`;
+  } catch (e) { showToast('❌ ' + e.message); }
+};
+
+async function _siRenderPulse() {
+  const body = document.getElementById('siTabBody'); if (!body) return;
+  body.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:4px">🔍 What is the world searching for?</div>
+      <div style="font-size:0.72rem;color:#6B7280;margin-bottom:12px">Enter a seed term — we'll fetch up to 50 related searches with monthly volume, intent, and trend.</div>
+      <div style="display:flex;gap:8px">
+        <input id="siPulseSeed" placeholder="e.g. 'crm software'" style="flex:1;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
+        <select id="siPulseLocale" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;background:#fff">
+          <option>en-US</option><option>en-GB</option><option>en-ZA</option><option>en-AU</option><option>en-CA</option>
+        </select>
+        <button onclick="_siRunPulse()" style="padding:9px 18px;background:#7C3AED;border:2px solid #7C3AED;border-radius:7px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4);white-space:nowrap">🔍 Pulse</button>
+      </div>
+    </div>
+    <div id="siPulseResult"></div>`;
+}
+window._siRunPulse = async function() {
+  const seed = document.getElementById('siPulseSeed').value.trim();
+  const locale = document.getElementById('siPulseLocale').value;
+  if (!seed) return showToast('❌ Seed required');
+  const out = document.getElementById('siPulseResult');
+  out.innerHTML = `<div style="text-align:center;padding:32px;color:#6B7280">Pulsing DataForSEO…</div>`;
+  try {
+    const r = await fetch('/api/search-intel/pulse', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({seed,locale}) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error || 'pulse failed');
+    const sugg = r.suggestions || [];
+    out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-family:Sora,sans-serif;font-weight:800;color:#0A1628">${sugg.length} ideas around "${_escapeHtml(seed)}"</div>
+        <div style="font-size:0.72rem;color:#6B7280">Total monthly volume: <strong style="color:#7C3AED">${(r.totalVolume||0).toLocaleString()}</strong></div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:0.78rem">
+        <thead style="background:#F9FAFB;color:#6B7280;text-transform:uppercase;font-size:0.62rem;letter-spacing:.06em">
+          <tr><th style="padding:10px 16px;text-align:left">Keyword</th><th style="padding:10px;text-align:right">Volume</th><th style="padding:10px;text-align:right">CPC</th><th style="padding:10px;text-align:left">Comp</th><th style="padding:10px;text-align:left">Intent</th></tr>
+        </thead>
+        <tbody>${sugg.map(s => `<tr style="border-top:1px solid #F3F4F6"><td style="padding:8px 16px;font-weight:600;color:#0A1628">${_escapeHtml(s.keyword||'')}</td><td style="padding:8px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#7C3AED">${(s.search_volume||0).toLocaleString()}</td><td style="padding:8px;text-align:right;font-variant-numeric:tabular-nums">$${(s.cpc||0).toFixed(2)}</td><td style="padding:8px">${_escapeHtml(s.competition||'-')}</td><td style="padding:8px;color:#6B7280">${_escapeHtml(s.intent||'-')}</td></tr>`).join('')}</tbody>
+      </table></div>`;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:16px;color:#B91C1C;font-weight:600">${_escapeHtml(e.message)}</div>`; }
+};
+
+async function _siRenderImage() {
+  const body = document.getElementById('siTabBody'); if (!body) return;
+  body.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:4px">📸 Image / Logo Recognition</div>
+      <div style="font-size:0.72rem;color:#6B7280;margin-bottom:12px">Paste any public image URL — GPT-4o Vision lists every brand/logo it can see plus the main objects/scene. Use this to find brand appearances in social images even when nobody @-mentions you.</div>
+      <div style="display:flex;gap:8px">
+        <input id="siImgUrl" placeholder="https://example.com/photo.jpg" style="flex:1;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
+        <button onclick="_siRunImage()" style="padding:9px 18px;background:#7C3AED;border:2px solid #7C3AED;border-radius:7px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4);white-space:nowrap">📸 Analyze</button>
+      </div>
+    </div>
+    <div id="siImgResult"></div>`;
+}
+window._siRunImage = async function() {
+  const url = document.getElementById('siImgUrl').value.trim();
+  if (!url) return showToast('❌ URL required');
+  const out = document.getElementById('siImgResult');
+  out.innerHTML = `<div style="text-align:center;padding:32px;color:#6B7280">Analyzing with GPT-4o Vision…</div>`;
+  try {
+    const r = await fetch('/api/search-intel/image', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url}) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error || 'analyze failed');
+    out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;display:grid;grid-template-columns:280px 1fr;gap:18px">
+      <img src="${_escapeHtml(url)}" style="width:100%;border-radius:8px;border:1px solid #E5E7EB" onerror="this.style.opacity='.3'">
+      <div>
+        <div style="font-family:Sora,sans-serif;font-size:0.9rem;font-weight:800;color:#0A1628;margin-bottom:8px">Detected brands (${(r.brands||[]).length})${r.cached?' <span style=\"font-size:0.6rem;color:#6B7280;font-weight:600\">· cached</span>':''}</div>
+        ${(r.brands||[]).length === 0 ? `<div style="font-size:0.78rem;color:#6B7280">No brand logos detected.</div>` : `
+          <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+            ${(r.brands||[]).map(b => `<div style="background:#F5F3FF;border:1px solid #C4B5FD;border-radius:7px;padding:7px 11px;display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;color:#5B21B6">${_escapeHtml(b.name||b)}</div><div style="font-size:0.7rem;color:#6B7280">${b.confidence?Math.round(b.confidence*100)+'%':''} ${b.location?'· '+_escapeHtml(b.location):''}</div></div>`).join('')}
+          </div>`}
+        <div style="font-family:Sora,sans-serif;font-size:0.85rem;font-weight:800;color:#0A1628;margin-bottom:6px">Objects / scene</div>
+        <div style="font-size:0.78rem;color:#374151">${(r.objects||[]).map(_escapeHtml).join(' · ') || '—'}</div>
+      </div></div>`;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:16px;color:#B91C1C;font-weight:600">${_escapeHtml(e.message)}</div>`; }
 };
