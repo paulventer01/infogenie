@@ -2664,6 +2664,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'google-ads-insights')  { try { buildGoogleAdsInsights(); }   catch(e) { console.warn('buildGoogleAdsInsights error:', e); } }
   if (viewId === 'tiktok-ads-insights')  { try { buildTiktokAdsInsights(); }   catch(e) { console.warn('buildTiktokAdsInsights error:', e); } }
   if (viewId === 'social-publisher')     { try { buildSocialPublisher(); }      catch(e) { console.warn('buildSocialPublisher error:', e); } }
+  if (viewId === 'email-personalizer')   { try { buildEmailPersonalizer(); }    catch(e) { console.warn('buildEmailPersonalizer error:', e); } }
+  if (viewId === 'youtube-monitor')      { try { buildYoutubeMonitor(); }       catch(e) { console.warn('buildYoutubeMonitor error:', e); } }
+  if (viewId === 'weekly-report')        { try { buildWeeklyReport(); }         catch(e) { console.warn('buildWeeklyReport error:', e); } }
   if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
@@ -35856,3 +35859,375 @@ window._ccScheduleAll = async function() {
     banner.textContent = `✅ Scheduled ${r.scheduled}/${r.total}${r.failed?` · ${r.failed} failed (open Social Publisher to inspect)`:''}`;
   } catch (e) { banner.style.background='#FEF2F2'; banner.style.color='#991B1B'; banner.textContent = 'Network error: ' + e.message; }
 };
+
+// ============================================================================
+// TIER 16-A — AI Sales Email Personalizer
+// ============================================================================
+window.buildEmailPersonalizer = function() {
+  const wrap = document.getElementById('epWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;flex-wrap:wrap">
+        <h3 style="margin:0;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">📝 Base Template</h3>
+        <div style="display:flex;gap:6px">
+          <button id="epPullLeads" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:7px 12px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">⬇ Pull leads from B2B Lead Finder</button>
+          <button id="epLoadSample" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:7px 12px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">📋 Load sample</button>
+        </div>
+      </div>
+      <textarea id="epTemplate" rows="6" placeholder="Hi [FIRST_NAME], I noticed [COMPANY] is doing X — wanted to ask about Y. Worth 15 min?" style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.84rem;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+      <div style="font-size:0.7rem;color:#9CA3AF;margin-top:4px">Tokens supported: [NAME] [FIRST_NAME] [COMPANY] [ROLE] [WEBSITE]. AI will replace + personalize using each lead's website.</div>
+      <div style="display:grid;grid-template-columns:1fr 200px;gap:10px;margin-top:12px">
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">TONE</label>
+          <input id="epTone" placeholder="professional, warm, specific" value="professional, warm, specific" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.84rem;box-sizing:border-box">
+        </div>
+        <div style="display:flex;align-items:end">
+          <label style="display:flex;gap:6px;align-items:center;font-size:0.78rem;color:#374151;font-weight:600;cursor:pointer">
+            <input type="checkbox" id="epResearch" checked> Use website research (Firecrawl)
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">👥 Leads (one per line, JSON)</h3>
+      <textarea id="epLeads" rows="6" placeholder='{"name":"Jane Doe","role":"VP Marketing","company":"Acme Corp","website":"acme.com"}' style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.78rem;font-family:monospace;resize:vertical;box-sizing:border-box"></textarea>
+      <div style="font-size:0.7rem;color:#9CA3AF;margin-top:4px">Each line = one lead JSON. Max 25 per batch.</div>
+      <button id="epGo" style="margin-top:14px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:0.86rem;font-weight:800;cursor:pointer">✨ Personalize All</button>
+    </div>
+
+    <div id="epOut"></div>
+  `;
+
+  document.getElementById('epLoadSample').addEventListener('click', () => {
+    document.getElementById('epTemplate').value = `Hi [FIRST_NAME],
+
+I noticed [COMPANY] is in the [ROLE]-led growth space. We help teams like yours cut campaign waste 30% with AI-driven optimization.
+
+Would 15 min next week make sense to walk you through how we'd attack [COMPANY] specifically?
+
+Best,
+Paul`;
+    document.getElementById('epLeads').value = `{"name":"Jane Doe","role":"VP Marketing","company":"Acme Corp","website":"acme.com"}
+{"name":"John Smith","role":"Head of Growth","company":"Stripe","website":"stripe.com"}`;
+  });
+
+  document.getElementById('epPullLeads').addEventListener('click', () => {
+    const cached = window._lfLeads;
+    if (!cached || !cached.length) { showToast('⚠ No B2B Lead Finder cache. Run a search there first.'); return; }
+    const lines = cached.slice(0, 25).map(l => JSON.stringify({
+      name: l.name || l.contact_name || '',
+      role: l.title || l.role || '',
+      company: l.company || l.company_name || '',
+      website: l.website || l.domain || '',
+      linkedin: l.linkedin || ''
+    })).join('\n');
+    document.getElementById('epLeads').value = lines;
+    showToast(`✅ Pulled ${Math.min(cached.length, 25)} lead(s)`);
+  });
+
+  document.getElementById('epGo').addEventListener('click', _epRun);
+};
+
+window._epRun = async function() {
+  const template = document.getElementById('epTemplate').value.trim();
+  const tone = document.getElementById('epTone').value.trim();
+  const research = document.getElementById('epResearch').checked;
+  const raw = document.getElementById('epLeads').value.trim();
+  const out = document.getElementById('epOut');
+  if (!template) { out.innerHTML = '<div style="color:#991B1B">⚠ Template required</div>'; return; }
+  const leads = [];
+  for (const line of raw.split('\n')) {
+    const t = line.trim(); if (!t) continue;
+    try { leads.push(JSON.parse(t)); } catch (e) { out.innerHTML = `<div style="color:#991B1B">⚠ Invalid JSON line: ${_escapeHtml(t.slice(0,80))}</div>`; return; }
+  }
+  if (!leads.length) { out.innerHTML = '<div style="color:#991B1B">⚠ Add at least one lead</div>'; return; }
+
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Personalizing ${leads.length} email${leads.length>1?'s':''}…${research?' (researching websites — this takes 10-30s)':''}</div>`;
+  try {
+    const r = await fetch('/api/email-personalizer/bulk', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ template, leads, tone, research })
+    }).then(x => x.json());
+    if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+    out.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div style="font-weight:800;color:#0A1628">✅ ${r.succeeded}/${r.total} personalized · ${r.ai_personalized} via AI · ${r.total - r.ai_personalized} via template</div>
+        <button onclick="_epExportCsv()" style="padding:7px 14px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.74rem;font-weight:700;color:#374151;cursor:pointer">📋 Export as CSV</button>
+      </div>
+      <div style="display:grid;gap:12px">${r.results.map((x,i) => {
+        if (!x.ok) return `<div style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:12px;border-radius:8px;font-size:0.82rem">❌ ${_escapeHtml(x.lead?.name||'Unknown')} (${_escapeHtml(x.lead?.company||'')}): ${_escapeHtml(x.error||'failed')}</div>`;
+        const e = x.email || {}; const lead = x.lead || {};
+        const sourcePill = x.source==='ai' ? 'AI' : 'TEMPLATE';
+        const sourceColor = x.source==='ai' ? ['#EDE9FE','#5B21B6'] : ['#F3F4F6','#374151'];
+        return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:3px solid #7C3AED;border-radius:10px;padding:14px 16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;flex-wrap:wrap">
+            <div style="font-weight:700;color:#0A1628;font-size:0.88rem">${_escapeHtml(lead.name||'?')} · <span style="color:#6B7280;font-weight:500">${_escapeHtml(lead.role||'')} @ ${_escapeHtml(lead.company||'')}</span></div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span style="background:${sourceColor[0]};color:${sourceColor[1]};padding:2px 8px;border-radius:4px;font-size:0.66rem;font-weight:800">${sourcePill}${x.research_used?' + RESEARCH':''}</span>
+              <button onclick="_epCopyEmail(${i})" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:4px 10px;border-radius:5px;font-size:0.7rem;font-weight:700;cursor:pointer">📋 Copy</button>
+            </div>
+          </div>
+          <div id="epEmail-${i}">
+            <div style="font-weight:700;color:#0A1628;font-size:0.86rem;margin-bottom:6px">Subject: ${_escapeHtml(e.subject||'')}</div>
+            <div style="color:#374151;font-size:0.84rem;line-height:1.55;white-space:pre-wrap">${_escapeHtml(e.body||'')}</div>
+          </div>
+          ${e.reasoning?`<div style="margin-top:8px;font-size:0.7rem;color:#6B7280;font-style:italic">💡 ${_escapeHtml(e.reasoning)}</div>`:''}
+        </div>`;
+      }).join('')}</div>`;
+    window._epLastResults = r.results;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">Network error: ${_escapeHtml(e.message)}</div>`; }
+};
+
+window._epCopyEmail = async function(i) {
+  const el = document.getElementById('epEmail-' + i); if (!el) return;
+  try { await navigator.clipboard.writeText(el.innerText || el.textContent); showToast('✅ Copied'); } catch (e) { showToast('❌ ' + e.message); }
+};
+
+window._epExportCsv = function() {
+  const results = window._epLastResults || [];
+  if (!results.length) return;
+  const headers = ['name','role','company','website','source','subject','body'];
+  const rows = results.filter(r => r.ok).map(r => [
+    r.lead.name||'', r.lead.role||'', r.lead.company||'', r.lead.website||'', r.source||'',
+    (r.email?.subject||''), (r.email?.body||'')
+  ].map(v => '"' + String(v).replace(/"/g,'""') + '"').join(','));
+  const csv = [headers.join(',')].concat(rows).join('\n');
+  const blob = new Blob([csv], { type:'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'personalized-emails.csv'; a.click();
+};
+
+// ============================================================================
+// TIER 16-B — YouTube Channel Monitor
+// ============================================================================
+window.buildYoutubeMonitor = async function() {
+  const wrap = document.getElementById('ymWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">➕ Track a YouTube Channel</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1.4fr auto;gap:8px;align-items:end">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND</label><input id="ymBrand" placeholder="e.g. Nike" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">CHANNEL NAME</label><input id="ymName" placeholder="e.g. MrBeast" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">CHANNEL URL</label><input id="ymUrl" placeholder="https://www.youtube.com/@MrBeast" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+        <button id="ymAdd" style="background:linear-gradient(135deg,#FF0000,#FF4444);color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:0.78rem;font-weight:800;cursor:pointer">➕ Track</button>
+      </div>
+    </div>
+    <div id="ymList"></div>
+  `;
+  document.getElementById('ymAdd').addEventListener('click', _ymAdd);
+  await _ymLoad();
+};
+
+async function _ymLoad() {
+  const list = document.getElementById('ymList');
+  list.innerHTML = '<div style="color:#9CA3AF">Loading…</div>';
+  try {
+    const r = await fetch('/api/youtube-monitor/channels').then(x => x.json());
+    if (!r.ok) { list.innerHTML = `<div style="color:#991B1B">⚠ ${_escapeHtml(r.error)}</div>`; return; }
+    if (!r.channels.length) { list.innerHTML = '<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280;font-size:0.88rem">No channels tracked yet. Add one above (e.g. <code>https://www.youtube.com/@MrBeast</code>).</div>'; return; }
+    list.innerHTML = r.channels.map(c => `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:8px">
+          <div>
+            <div style="font-weight:800;color:#0A1628;font-size:1rem">▶️ ${_escapeHtml(c.channel_name)}</div>
+            <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${_escapeHtml(c.brand)} · ${_safeUrl(c.channel_url) ? `<a href="${_safeUrl(c.channel_url)}" target="_blank" rel="noopener" style="color:#0066FF">${_escapeHtml(c.channel_url)}</a>` : _escapeHtml(c.channel_url)}</div>
+            <div style="font-size:0.68rem;color:#9CA3AF;margin-top:2px">${c.last_scanned_at ? 'Last scanned ' + new Date(c.last_scanned_at).toLocaleString() : 'Never scanned'}</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button onclick="_ymScan(${c.id})" style="background:linear-gradient(135deg,#FF0000,#FF4444);color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:0.74rem;font-weight:800;cursor:pointer">🔍 Scan now</button>
+            <button onclick="_ymHistory(${c.id})" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:7px 12px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">📜 History</button>
+            <button onclick="_ymDelete(${c.id})" style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:7px 12px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">🗑</button>
+          </div>
+        </div>
+        <div id="ymRes-${c.id}" style="margin-top:10px;font-size:0.82rem;color:#9CA3AF"></div>
+      </div>
+    `).join('');
+  } catch (e) { list.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+}
+
+window._ymAdd = async function() {
+  const brand = document.getElementById('ymBrand').value.trim();
+  const channel_name = document.getElementById('ymName').value.trim();
+  const channel_url = document.getElementById('ymUrl').value.trim();
+  if (!brand || !channel_name || !channel_url) { showToast('⚠ All fields required'); return; }
+  try {
+    const r = await fetch('/api/youtube-monitor/channels', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ brand, channel_name, channel_url })
+    }).then(x => x.json());
+    if (!r.ok) { showToast('❌ ' + r.error); return; }
+    document.getElementById('ymName').value = ''; document.getElementById('ymUrl').value = '';
+    await _ymLoad();
+    showToast('✅ Channel tracked');
+  } catch (e) { showToast('Network error: ' + e.message); }
+};
+
+window._ymScan = async function(id) {
+  const out = document.getElementById('ymRes-' + id);
+  out.innerHTML = '⏳ Scanning via Perplexity…';
+  try {
+    const r = await fetch(`/api/youtube-monitor/scan/${id}`, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' }).then(x => x.json());
+    if (!r.ok) { out.innerHTML = `<div style="color:#991B1B">❌ ${_escapeHtml(r.error)}</div>`; return; }
+    if (!r.videos.length) { out.innerHTML = `<div style="color:#9CA3AF">${_escapeHtml(r.note||'No videos')}</div>`; return; }
+    _ymRender(out, r.videos);
+    await _ymLoad();
+  } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+};
+
+window._ymHistory = async function(id) {
+  const out = document.getElementById('ymRes-' + id);
+  out.innerHTML = '⏳ Loading history…';
+  try {
+    const r = await fetch(`/api/youtube-monitor/history/${id}`).then(x => x.json());
+    if (!r.ok) { out.innerHTML = `<div style="color:#991B1B">❌ ${_escapeHtml(r.error)}</div>`; return; }
+    if (!r.snapshots.length) { out.innerHTML = '<div style="color:#9CA3AF">No history yet — click Scan now.</div>'; return; }
+    _ymRender(out, r.snapshots.map(s => ({ title:s.video_title, url:s.video_url, published_at:s.published_at, view_count:s.view_count, like_count:s.like_count, comment_count:s.comment_count, sentiment:s.sentiment, summary:s.summary })));
+  } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+};
+
+function _ymRender(el, videos) {
+  const sentColor = { positive:['#ECFDF5','#065F46'], neutral:['#F3F4F6','#374151'], negative:['#FEF2F2','#991B1B'] };
+  el.innerHTML = `<div style="display:grid;gap:8px">${videos.map(v => {
+    const sc = sentColor[(v.sentiment||'neutral').toLowerCase()] || sentColor.neutral;
+    const views = v.view_count ? Number(v.view_count).toLocaleString() : '?';
+    return `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:start">
+        <div style="flex:1">
+          <div style="font-weight:700;color:#0A1628;font-size:0.86rem;line-height:1.35">${v.url && _safeUrl(v.url) ? `<a href="${_safeUrl(v.url)}" target="_blank" rel="noopener" style="color:#0A1628;text-decoration:none">${_escapeHtml(v.title||'')}</a>` : _escapeHtml(v.title||'')}</div>
+          <div style="font-size:0.74rem;color:#6B7280;margin-top:3px">${_escapeHtml(String(v.published_at||''))} · 👁 ${views}${v.like_count?` · 👍 ${Number(v.like_count).toLocaleString()}`:''}${v.comment_count?` · 💬 ${Number(v.comment_count).toLocaleString()}`:''}</div>
+          ${v.summary?`<div style="font-size:0.78rem;color:#374151;margin-top:4px;line-height:1.45">${_escapeHtml(v.summary)}</div>`:''}
+        </div>
+        <span style="background:${sc[0]};color:${sc[1]};padding:2px 8px;border-radius:4px;font-size:0.68rem;font-weight:700;flex-shrink:0;height:fit-content">${_escapeHtml(v.sentiment||'neutral')}</span>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+window._ymDelete = async function(id) {
+  if (!confirm('Stop tracking this channel? (history retained)')) return;
+  try { await fetch(`/api/youtube-monitor/channels/${id}`, { method:'DELETE' }); await _ymLoad(); }
+  catch (e) { showToast('Network error: ' + e.message); }
+};
+
+// ============================================================================
+// TIER 16-C — Weekly Auto-PDF Report
+// ============================================================================
+window.buildWeeklyReport = async function() {
+  const wrap = document.getElementById('wrWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">📑 Generate / Send Now</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto auto auto;gap:8px;align-items:end">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND</label><input id="wrBrand" placeholder="e.g. Nike" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">EMAIL TO (for send)</label><input id="wrEmail" type="email" placeholder="you@example.com" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+        <button id="wrPreview" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:8px 14px;border-radius:6px;font-size:0.76rem;font-weight:700;cursor:pointer">👁 Preview</button>
+        <button id="wrPdf" style="background:#1E1B4B;color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:0.76rem;font-weight:800;cursor:pointer">📥 Download PDF</button>
+        <button id="wrSend" style="background:linear-gradient(135deg,#059669,#10B981);color:#fff;border:none;padding:8px 14px;border-radius:6px;font-size:0.76rem;font-weight:800;cursor:pointer">📨 Send now</button>
+      </div>
+      <div id="wrPreviewOut" style="margin-top:14px"></div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap">
+        <h3 style="margin:0;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">📬 Auto-send subscriptions (every 7 days)</h3>
+        <button id="wrAddSub" style="background:#1E1B4B;color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:0.74rem;font-weight:800;cursor:pointer">＋ Add</button>
+      </div>
+      <div id="wrSubs" style="font-size:0.84rem;color:#9CA3AF">Loading…</div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
+      <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">📜 Recent runs</h3>
+      <div id="wrRuns" style="font-size:0.84rem;color:#9CA3AF">Loading…</div>
+    </div>
+  `;
+  document.getElementById('wrPreview').addEventListener('click', _wrPreview);
+  document.getElementById('wrPdf').addEventListener('click', _wrPdf);
+  document.getElementById('wrSend').addEventListener('click', _wrSend);
+  document.getElementById('wrAddSub').addEventListener('click', _wrAddSub);
+  await _wrLoadSubs();
+  await _wrLoadRuns();
+};
+
+async function _wrPreview() {
+  const brand = document.getElementById('wrBrand').value.trim();
+  if (!brand) { showToast('⚠ Brand required'); return; }
+  const out = document.getElementById('wrPreviewOut');
+  out.innerHTML = '<div style="color:#9CA3AF">⏳ Building report from your last 7 days of data…</div>';
+  try {
+    const r = await fetch('/api/weekly-report/preview', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand }) }).then(x => x.json());
+    if (!r.ok) { out.innerHTML = `<div style="color:#991B1B">❌ ${_escapeHtml(r.error)}</div>`; return; }
+    out.innerHTML = `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:14px;font-size:0.84rem">
+      <div style="font-weight:800;color:#0A1628;margin-bottom:8px">${_escapeHtml(r.report.title)} · ${r.report.sections.length} section(s)</div>
+      ${r.report.sections.map(s => `<div style="margin:6px 0;padding:8px;background:#fff;border-radius:6px;border-left:3px solid #1E1B4B">
+        <div style="font-weight:700;color:#0A1628">${_escapeHtml(s.title)}</div>
+        ${s.kind==='table' ? `<div style="font-size:0.74rem;color:#6B7280;margin-top:3px">${s.rows.length} row(s)</div>` : `<div style="font-size:0.78rem;color:#374151;margin-top:3px">${_escapeHtml(s.body||'')}</div>`}
+      </div>`).join('')}
+    </div>`;
+  } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+}
+
+function _wrPdf() {
+  const brand = document.getElementById('wrBrand').value.trim();
+  if (!brand) { showToast('⚠ Brand required'); return; }
+  window.open(`/api/weekly-report/pdf?brand=${encodeURIComponent(brand)}`, '_blank');
+}
+
+async function _wrSend() {
+  const brand = document.getElementById('wrBrand').value.trim();
+  const email = document.getElementById('wrEmail').value.trim();
+  if (!brand || !email) { showToast('⚠ Brand + email required'); return; }
+  const out = document.getElementById('wrPreviewOut');
+  out.innerHTML = '<div style="color:#9CA3AF">⏳ Sending via Resend…</div>';
+  try {
+    const r = await fetch('/api/weekly-report/send', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, email }) }).then(x => x.json());
+    if (!r.ok) { out.innerHTML = `<div style="color:#991B1B">❌ ${_escapeHtml(r.error)}</div>`; return; }
+    out.innerHTML = `<div style="background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:12px;border-radius:8px">✅ Sent to ${_escapeHtml(r.sent_to)} · ${r.sections} section(s). Download PDF: <a href="/api/weekly-report/pdf?brand=${encodeURIComponent(brand)}" target="_blank" style="color:#065F46;font-weight:700">here</a></div>`;
+    await _wrLoadRuns();
+  } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+}
+
+async function _wrAddSub() {
+  const brand = document.getElementById('wrBrand').value.trim();
+  const email = document.getElementById('wrEmail').value.trim();
+  if (!brand || !email) { showToast('⚠ Fill brand + email above first'); return; }
+  try {
+    const r = await fetch('/api/weekly-report/subs', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, email }) }).then(x => x.json());
+    if (!r.ok) { showToast('❌ ' + r.error); return; }
+    showToast('✅ Subscription saved'); await _wrLoadSubs();
+  } catch (e) { showToast('Network error: ' + e.message); }
+}
+
+async function _wrLoadSubs() {
+  const el = document.getElementById('wrSubs');
+  try {
+    const r = await fetch('/api/weekly-report/subs').then(x => x.json());
+    if (!r.ok) { el.innerHTML = `<div style="color:#991B1B">⚠ ${_escapeHtml(r.error)}</div>`; return; }
+    if (!r.subs.length) { el.innerHTML = '<div style="color:#9CA3AF;font-style:italic">No subscriptions yet. Add one above to get a weekly auto-emailed PDF.</div>'; return; }
+    el.innerHTML = r.subs.map(s => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;margin-bottom:5px">
+      <div><strong style="color:#0A1628">${_escapeHtml(s.brand)}</strong> → <span style="color:#6B7280">${_escapeHtml(s.email)}</span></div>
+      <div style="font-size:0.7rem;color:#9CA3AF">${s.last_sent_at ? 'Last sent ' + new Date(s.last_sent_at).toLocaleDateString() : 'Never sent'} <button onclick="_wrDelSub(${s.id})" style="margin-left:10px;background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:2px 8px;border-radius:4px;font-size:0.66rem;font-weight:700;cursor:pointer">🗑</button></div>
+    </div>`).join('');
+  } catch (e) { el.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+}
+
+window._wrDelSub = async function(id) {
+  if (!confirm('Cancel this subscription?')) return;
+  await fetch(`/api/weekly-report/subs/${id}`, { method:'DELETE' });
+  await _wrLoadSubs();
+};
+
+async function _wrLoadRuns() {
+  const el = document.getElementById('wrRuns');
+  try {
+    const r = await fetch('/api/weekly-report/runs').then(x => x.json());
+    if (!r.ok) { el.innerHTML = `<div style="color:#991B1B">⚠ ${_escapeHtml(r.error)}</div>`; return; }
+    if (!r.runs.length) { el.innerHTML = '<div style="color:#9CA3AF;font-style:italic">No runs yet.</div>'; return; }
+    el.innerHTML = `<div style="display:grid;gap:5px">${r.runs.slice(0, 15).map(run => `<div style="display:flex;justify-content:space-between;padding:6px 10px;background:#F9FAFB;border-radius:5px;font-size:0.8rem">
+      <div><strong>${_escapeHtml(run.brand)}</strong> · ${run.sections_count} sections</div>
+      <div style="color:#6B7280">${run.sent_to ? '📧 ' + _escapeHtml(run.sent_to) : '📥 download only'} · ${new Date(run.generated_at).toLocaleString()}</div>
+    </div>`).join('')}</div>`;
+  } catch (e) { el.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+}

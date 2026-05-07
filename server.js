@@ -8559,6 +8559,24 @@ app.use('/api/tiktok-ads-insights', _tiktokAdsInsightsRouter);
 const _socialPublisherRouter = require('./services/social_publisher/api');
 app.use('/api/social-publisher', _socialPublisherRouter);
 
+// ── Tier 16 ────────────────────────────────────────────────────────────────
+const _emailPersonalizerRouter = require('./services/email_personalizer/api');
+const _ytSchema = require('./services/youtube_monitor/schema');
+const _ytRouter = require('./services/youtube_monitor/api');
+const _wrSchema = require('./services/weekly_report/schema');
+const _wrModule = require('./services/weekly_report/api');
+app.use('/api/email-personalizer', _emailPersonalizerRouter);
+app.use('/api/youtube-monitor', _ytRouter);
+app.use('/api/weekly-report', _wrModule.router);
+(async () => { try {
+  if (process.env.DATABASE_URL) {
+    await _ytSchema.ensureYoutubeMonitorSchema();
+    await _wrSchema.ensureWeeklyReportSchema();
+    console.log('[tier16] youtube-monitor + weekly-report schemas ready');
+    _wrModule.startWeeklyCron(7);
+  }
+} catch (e) { console.warn('[tier16] schema/cron init failed:', e.message); }})();
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
