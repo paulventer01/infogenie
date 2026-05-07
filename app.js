@@ -2634,6 +2634,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'search-intel') {
     try { buildSearchIntel(); } catch(e) { console.warn('buildSearchIntel error:', e); }
   }
+  if (viewId === 'influencers') {
+    try { buildInfluencers(); } catch(e) { console.warn('buildInfluencers error:', e); }
+  }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -32590,6 +32593,11 @@ window.buildSearchIntel = function() {
         <div style="font-size:0.78rem;color:#6D28D9;line-height:1.55;max-width:780px">Find demand before competitors do, track your AI-engine visibility daily, and detect logos in any image. Powered by GPT-4o + Claude + Perplexity + Gemini + DataForSEO + GPT-4o Vision.</div>
       </div>
     </div>
+    <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:14px">
+      <button onclick="_siExport('pptx')" style="padding:8px 14px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:7px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">📊 PowerPoint</button>
+      <button onclick="_siExport('pdf')"  style="padding:8px 14px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:7px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">📄 PDF</button>
+      <button onclick="_siExport('xlsx')" style="padding:8px 14px;background:#15803D;border:2px solid #15803D;border-radius:7px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">📈 Excel</button>
+    </div>
     <div style="display:flex;gap:6px;border-bottom:2px solid #E5E7EB;margin-bottom:20px">
       ${tabs.map(t => `<button onclick="window._siTab='${t.id}';buildSearchIntel()" style="padding:11px 18px;background:${window._siTab===t.id?'#7C3AED':'transparent'};border:none;border-bottom:3px solid ${window._siTab===t.id?'#7C3AED':'transparent'};font-size:0.82rem;font-weight:800;color:${window._siTab===t.id?'#fff':'#6B7280'};-webkit-text-fill-color:${window._siTab===t.id?'#fff':'#6B7280'};cursor:pointer;border-radius:8px 8px 0 0;${window._siTab===t.id?'text-shadow:0 1px 2px rgba(0,0,0,.4)':''}">${t.label}</button>`).join('')}
     </div>
@@ -32793,4 +32801,234 @@ window._siRunImage = async function() {
         <div style="font-size:0.78rem;color:#374151">${(r.objects||[]).map(_escapeHtml).join(' · ') || '—'}</div>
       </div></div>`;
   } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:16px;color:#B91C1C;font-weight:600">${_escapeHtml(e.message)}</div>`; }
+};
+
+// ── EXPORTS (Tier 1 #4) ────────────────────────────────────────────────────
+window._siExport = function(format) {
+  showToast('⏳ Building ' + format.toUpperCase() + ' — download will start shortly');
+  window.location.href = '/api/exports/' + format + '/search-intel';
+};
+window._campExport = function(format) {
+  showToast('⏳ Building ' + format.toUpperCase() + ' — download will start shortly');
+  window.location.href = '/api/exports/' + format + '/campaigns';
+};
+
+// ── INFLUENCER CRM (Tier 1 #5) ─────────────────────────────────────────────
+window._infFilter = window._infFilter || { status:'', platform:'', q:'' };
+const _INF_STATUSES = ['prospect','contacted','negotiating','active','declined','inactive'];
+const _INF_PLATFORMS = ['instagram','tiktok','youtube','x','linkedin','twitch','facebook','other'];
+const _INF_STATUS_COLORS = {
+  prospect:'#6B7280', contacted:'#3B82F6', negotiating:'#F59E0B',
+  active:'#15803D', declined:'#B91C1C', inactive:'#9CA3AF'
+};
+
+window.buildInfluencers = async function() {
+  const wrap = document.getElementById('infWrap'); if (!wrap) return;
+  wrap.innerHTML = `<div style="text-align:center;padding:40px;color:#6B7280">Loading creators…</div>`;
+  try {
+    const params = new URLSearchParams();
+    if (window._infFilter.status)   params.set('status', window._infFilter.status);
+    if (window._infFilter.platform) params.set('platform', window._infFilter.platform);
+    if (window._infFilter.q)        params.set('q', window._infFilter.q);
+    const r = await fetch('/api/influencers?' + params.toString()).then(x=>x.json());
+    const list = r.influencers || [];
+    const stats = r.stats || [];
+    const totalDeal = stats.reduce((s,x)=>s+Number(x.v||0),0);
+    const totalCount = stats.reduce((s,x)=>s+Number(x.c||0),0);
+    wrap.innerHTML = `
+      <div style="background:linear-gradient(135deg,#F5F3FF,#FDF4FF);border:1px solid #C4B5FD;border-radius:14px;padding:18px 22px;margin-bottom:18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px">
+        <div><div style="font-size:0.62rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em">Creators tracked</div><div style="font-family:Sora,sans-serif;font-size:1.6rem;font-weight:800;color:#1E1B4B">${totalCount}</div></div>
+        <div><div style="font-size:0.62rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em">Total pipeline value</div><div style="font-family:Sora,sans-serif;font-size:1.6rem;font-weight:800;color:#15803D">$${totalDeal.toLocaleString()}</div></div>
+        ${_INF_STATUSES.map(s => { const row=stats.find(x=>x.status===s)||{c:0,v:0}; return `<div><div style="font-size:0.6rem;font-weight:700;color:${_INF_STATUS_COLORS[s]};text-transform:uppercase;letter-spacing:.06em">${s}</div><div style="font-family:Sora,sans-serif;font-size:1.2rem;font-weight:800;color:#0A1628">${row.c}</div></div>`; }).join('')}
+      </div>
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input id="infSearch" placeholder="Search handle, name, niche…" value="${_escapeHtml(window._infFilter.q)}" style="flex:1;min-width:200px;padding:8px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.82rem">
+        <select id="infFStatus" style="padding:8px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.82rem;background:#fff">
+          <option value="">All statuses</option>${_INF_STATUSES.map(s=>`<option ${window._infFilter.status===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+        <select id="infFPlatform" style="padding:8px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.82rem;background:#fff">
+          <option value="">All platforms</option>${_INF_PLATFORMS.map(p=>`<option ${window._infFilter.platform===p?'selected':''}>${p}</option>`).join('')}
+        </select>
+        <button onclick="_infApplyFilters()" style="padding:8px 16px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:7px;font-size:0.76rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">Apply</button>
+        <button onclick="window._infFilter={status:'',platform:'',q:''};buildInfluencers()" style="padding:8px 12px;background:#fff;border:2px solid #E5E7EB;border-radius:7px;font-size:0.76rem;font-weight:700;color:#374151;cursor:pointer">Reset</button>
+      </div>
+      ${list.length===0 ? `
+        <div style="background:#fff;border:2px dashed #C4B5FD;border-radius:14px;padding:48px;text-align:center">
+          <div style="font-size:2.4rem;margin-bottom:8px">🌟</div>
+          <div style="font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:6px">No creators tracked yet</div>
+          <div style="font-size:0.82rem;color:#6B7280">Click <strong>+ New Influencer</strong> at the top right to start your pipeline.</div>
+        </div>` : `
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
+          <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+            <thead style="background:#F9FAFB;color:#6B7280;text-transform:uppercase;font-size:0.6rem;letter-spacing:.06em">
+              <tr><th style="padding:11px 14px;text-align:left">Creator</th><th style="padding:11px;text-align:left">Platform</th><th style="padding:11px;text-align:right">Followers</th><th style="padding:11px;text-align:right">Eng %</th><th style="padding:11px;text-align:left">Niche</th><th style="padding:11px;text-align:left">Status</th><th style="padding:11px;text-align:right">Deal $</th><th style="padding:11px;text-align:left">Last touch</th><th style="padding:11px;text-align:right">Actions</th></tr>
+            </thead>
+            <tbody>${list.map(i => `<tr style="border-top:1px solid #F3F4F6;cursor:pointer" onclick="_infOpenDetail(${i.id})">
+              <td style="padding:9px 14px"><div style="font-weight:800;color:#0A1628">@${_escapeHtml(i.handle)}</div>${i.name?`<div style="font-size:0.7rem;color:#6B7280">${_escapeHtml(i.name)}</div>`:''}</td>
+              <td style="padding:9px;color:#374151">${_escapeHtml(i.platform)}</td>
+              <td style="padding:9px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#7C3AED">${(i.followers||0).toLocaleString()}</td>
+              <td style="padding:9px;text-align:right;font-variant-numeric:tabular-nums">${Number(i.engagement_rate||0).toFixed(2)}%</td>
+              <td style="padding:9px;color:#6B7280">${_escapeHtml(i.niche||'-')}</td>
+              <td style="padding:9px"><span style="background:${_INF_STATUS_COLORS[i.status]};color:#fff;padding:2px 8px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase">${_escapeHtml(i.status)}</span></td>
+              <td style="padding:9px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#15803D">${i.deal_value?'$'+Number(i.deal_value).toLocaleString():'-'}</td>
+              <td style="padding:9px;font-size:0.7rem;color:#9CA3AF">${i.last_contacted_at?new Date(i.last_contacted_at).toLocaleDateString():'never'}</td>
+              <td style="padding:9px;text-align:right" onclick="event.stopPropagation()"><button onclick="_infOpenEdit(${i.id})" style="padding:5px 10px;background:#fff;border:1.5px solid #E5E7EB;border-radius:5px;font-size:0.68rem;font-weight:700;color:#374151;cursor:pointer">✏</button> <button onclick="_infDelete(${i.id})" style="padding:5px 10px;background:#fff;border:1.5px solid #FCA5A5;border-radius:5px;font-size:0.68rem;font-weight:700;color:#B91C1C;cursor:pointer">🗑</button></td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>`}`;
+  } catch (e) { wrap.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:10px;padding:16px;color:#B91C1C">${_escapeHtml(e.message)}</div>`; }
+};
+
+window._infApplyFilters = function() {
+  window._infFilter = {
+    q: document.getElementById('infSearch').value.trim(),
+    status: document.getElementById('infFStatus').value,
+    platform: document.getElementById('infFPlatform').value,
+  };
+  buildInfluencers();
+};
+
+function _infModal() {
+  let m = document.getElementById('infModal');
+  if (!m) { m = document.createElement('div'); m.id='infModal'; document.body.appendChild(m); }
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,.55);z-index:10010;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px;overflow-y:auto;backdrop-filter:blur(4px)';
+  return m;
+}
+window._infCloseModal = function() { const m=document.getElementById('infModal'); if(m)m.remove(); };
+
+window._infOpenEdit = async function(id) {
+  let inf = { id:null, handle:'', platform:'instagram', name:'', niche:'', country:'', followers:0, engagement_rate:0, contact_email:'', profile_url:'', status:'prospect', deal_value:0, notes:'', tags:[] };
+  if (id) {
+    const r = await fetch('/api/influencers/'+id).then(x=>x.json()).catch(()=>({}));
+    if (r.influencer) inf = r.influencer;
+  }
+  const m = _infModal();
+  m.innerHTML = `<div style="background:#fff;width:100%;max-width:680px;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:28px 32px;color:#0A1628">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div style="font-family:Sora,sans-serif;font-size:1.2rem;font-weight:800">${id?'✏ Edit':'+ New'} Influencer</div>
+      <button onclick="_infCloseModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6B7280">×</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Handle *</div><input id="iHandle" value="${_escapeHtml(inf.handle)}" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Platform</div><select id="iPlatform" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;background:#fff">${_INF_PLATFORMS.map(p=>`<option ${inf.platform===p?'selected':''}>${p}</option>`).join('')}</select></label>
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Display name</div><input id="iName" value="${_escapeHtml(inf.name||'')}" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Niche</div><input id="iNiche" value="${_escapeHtml(inf.niche||'')}" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Country</div><input id="iCountry" value="${_escapeHtml(inf.country||'')}" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Status</div><select id="iStatus" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;background:#fff">${_INF_STATUSES.map(s=>`<option ${inf.status===s?'selected':''}>${s}</option>`).join('')}</select></label>
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Followers</div><input id="iFollowers" type="number" min="0" value="${inf.followers||0}" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Engagement %</div><input id="iEng" type="number" min="0" max="100" step="0.01" value="${inf.engagement_rate||0}" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Contact email</div><input id="iEmail" value="${_escapeHtml(inf.contact_email||'')}" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Deal value $</div><input id="iDeal" type="number" min="0" step="0.01" value="${inf.deal_value||0}" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
+      <label style="grid-column:1/-1"><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Profile URL</div><input id="iUrl" value="${_escapeHtml(inf.profile_url||'')}" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
+      <label style="grid-column:1/-1"><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Notes</div><textarea id="iNotes" rows="3" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;resize:vertical">${_escapeHtml(inf.notes||'')}</textarea></label>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+      <button onclick="_infCloseModal()" style="padding:9px 16px;background:#fff;border:2px solid #E5E7EB;border-radius:7px;font-size:0.78rem;font-weight:700;color:#374151;cursor:pointer">Cancel</button>
+      <button onclick="_infSave(${id||'null'})" style="padding:9px 18px;background:#7C3AED;border:2px solid #7C3AED;border-radius:7px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">💾 Save</button>
+    </div>
+  </div>`;
+};
+
+window._infSave = async function(id) {
+  const payload = {
+    handle: document.getElementById('iHandle').value.trim(),
+    platform: document.getElementById('iPlatform').value,
+    name: document.getElementById('iName').value.trim(),
+    niche: document.getElementById('iNiche').value.trim(),
+    country: document.getElementById('iCountry').value.trim(),
+    status: document.getElementById('iStatus').value,
+    followers: Number(document.getElementById('iFollowers').value),
+    engagement_rate: Number(document.getElementById('iEng').value),
+    contact_email: document.getElementById('iEmail').value.trim(),
+    deal_value: Number(document.getElementById('iDeal').value),
+    profile_url: document.getElementById('iUrl').value.trim(),
+    notes: document.getElementById('iNotes').value,
+  };
+  if (!payload.handle) return showToast('❌ Handle required');
+  try {
+    const url = id ? '/api/influencers/'+id : '/api/influencers';
+    const method = id ? 'PATCH' : 'POST';
+    const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error || 'save failed');
+    showToast('✅ Saved'); _infCloseModal(); buildInfluencers();
+  } catch (e) { showToast('❌ ' + e.message); }
+};
+
+window._infDelete = async function(id) {
+  let handle = '';
+  try { const r = await fetch('/api/influencers/'+id).then(x=>x.json()); handle = r?.influencer?.handle || ''; } catch(_){}
+  if (!confirm(`Delete @${handle || '#'+id}? This cannot be undone (outreach log will be removed too).`)) return;
+  try { await fetch('/api/influencers/'+id, { method:'DELETE' }); showToast('🗑 Removed'); buildInfluencers(); }
+  catch (e) { showToast('❌ ' + e.message); }
+};
+
+window._infOpenDetail = async function(id) {
+  const m = _infModal();
+  m.innerHTML = `<div style="background:#fff;width:100%;max-width:760px;border-radius:16px;padding:28px 32px;color:#0A1628"><div style="text-align:center;color:#6B7280;padding:30px">Loading…</div></div>`;
+  try {
+    const r = await fetch('/api/influencers/'+id).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error);
+    const i = r.influencer; const out = r.outreach || [];
+    m.innerHTML = `<div style="background:#fff;width:100%;max-width:760px;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:28px 32px;color:#0A1628">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1.3rem;font-weight:800">@${_escapeHtml(i.handle)}</div>
+          <div style="font-size:0.78rem;color:#6B7280">${_escapeHtml(i.platform)} · ${(i.followers||0).toLocaleString()} followers · ${Number(i.engagement_rate||0).toFixed(2)}% eng</div>
+          ${i.profile_url?`<a href="${_escapeHtml(i.profile_url)}" target="_blank" style="font-size:0.74rem;color:#7C3AED">Open profile ↗</a>`:''}
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onclick="_infOpenEdit(${i.id})" style="padding:7px 12px;background:#fff;border:2px solid #E5E7EB;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">✏ Edit</button>
+          <button onclick="_infDraftEmail(${i.id})" style="padding:7px 12px;background:#7C3AED;border:2px solid #7C3AED;border-radius:6px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">✨ AI draft email</button>
+          <button onclick="_infCloseModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6B7280">×</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;padding:12px 0;border-top:1px solid #F1F5F9;border-bottom:1px solid #F1F5F9;margin-bottom:14px;flex-wrap:wrap">
+        <div><div style="font-size:0.6rem;color:#9CA3AF;font-weight:700;text-transform:uppercase">Status</div><div><span style="background:${_INF_STATUS_COLORS[i.status]};color:#fff;padding:2px 8px;border-radius:5px;font-size:0.66rem;font-weight:800">${_escapeHtml(i.status)}</span></div></div>
+        <div><div style="font-size:0.6rem;color:#9CA3AF;font-weight:700;text-transform:uppercase">Niche</div><div style="font-weight:700">${_escapeHtml(i.niche||'-')}</div></div>
+        <div><div style="font-size:0.6rem;color:#9CA3AF;font-weight:700;text-transform:uppercase">Country</div><div style="font-weight:700">${_escapeHtml(i.country||'-')}</div></div>
+        <div><div style="font-size:0.6rem;color:#9CA3AF;font-weight:700;text-transform:uppercase">Email</div><div style="font-weight:700">${_escapeHtml(i.contact_email||'-')}</div></div>
+        <div><div style="font-size:0.6rem;color:#9CA3AF;font-weight:700;text-transform:uppercase">Deal</div><div style="font-weight:800;color:#15803D">${i.deal_value?'$'+Number(i.deal_value).toLocaleString():'-'}</div></div>
+      </div>
+      ${i.notes?`<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:#78350F;white-space:pre-wrap">${_escapeHtml(i.notes)}</div>`:''}
+      <div style="font-family:Sora,sans-serif;font-weight:800;margin-bottom:8px">Outreach log (${out.length})</div>
+      <div style="background:#FAFBFC;border:1px solid #E5E7EB;border-radius:8px;padding:12px;margin-bottom:10px">
+        <div style="display:grid;grid-template-columns:120px 1fr auto;gap:8px;align-items:start">
+          <select id="oKind" style="padding:7px;border:1.5px solid #E5E7EB;border-radius:6px;background:#fff;font-size:0.78rem"><option>email</option><option>dm</option><option>call</option><option>meeting</option><option>note</option></select>
+          <input id="oSubject" placeholder="Subject (optional)" style="padding:7px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.78rem">
+          <button onclick="_infAddOutreach(${i.id})" style="padding:7px 14px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:6px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">+ Log</button>
+        </div>
+        <textarea id="oBody" placeholder="What was said / next step / outcome…" rows="2" style="width:100%;margin-top:8px;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.78rem;resize:vertical"></textarea>
+      </div>
+      <div style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+        ${out.length===0?'<div style="text-align:center;color:#9CA3AF;padding:14px;font-size:0.8rem">No outreach yet — log your first touch above.</div>':out.map(o=>`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:7px;padding:10px 12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="font-size:0.74rem;font-weight:800;color:#1E1B4B">${_escapeHtml(o.kind)}${o.subject?' · '+_escapeHtml(o.subject):''}</div><div style="font-size:0.66rem;color:#9CA3AF">${new Date(o.created_at).toLocaleString()}</div></div>${o.body?`<div style="font-size:0.78rem;color:#374151;white-space:pre-wrap">${_escapeHtml(o.body)}</div>`:''}</div>`).join('')}
+      </div>
+    </div>`;
+  } catch (e) { showToast('❌ ' + e.message); _infCloseModal(); }
+};
+
+window._infAddOutreach = async function(id) {
+  const payload = {
+    kind: document.getElementById('oKind').value,
+    subject: document.getElementById('oSubject').value.trim(),
+    body: document.getElementById('oBody').value.trim(),
+  };
+  if (!payload.body && !payload.subject) return showToast('❌ Add at least a subject or body');
+  try {
+    await fetch('/api/influencers/'+id+'/outreach', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    showToast('✅ Logged'); _infOpenDetail(id); buildInfluencers();
+  } catch (e) { showToast('❌ ' + e.message); }
+};
+
+window._infDraftEmail = async function(id) {
+  const brand = prompt('Your brand name:', 'InfoGenie'); if (brand===null) return;
+  const product = prompt('Product / campaign:', 'a paid creator collab'); if (product===null) return;
+  showToast('⏳ Drafting…');
+  try {
+    const r = await fetch('/api/influencers/'+id+'/draft-email', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, product, tone:'friendly' }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error);
+    document.getElementById('oKind').value = 'email';
+    document.getElementById('oSubject').value = r.subject || '';
+    document.getElementById('oBody').value = r.body || '';
+    showToast('✅ Draft loaded ('+r.source+') — review and click + Log to record');
+  } catch (e) { showToast('❌ ' + e.message); }
 };

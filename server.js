@@ -8451,6 +8451,13 @@ app.use('/api/audiences', _audiencesRouter);
 const _searchIntelSchema = require('./services/search_intel/schema');
 const _searchIntelRouter = require('./services/search_intel/api');
 app.use('/api/search-intel', _searchIntelRouter);
+const _exportsRouter = require('./services/exports/api');
+app.use('/api/exports', _exportsRouter);
+console.log('[exports] mounted at /api/exports (formats: pptx, pdf, xlsx)');
+const _influencerSchema = require('./services/influencers/schema');
+const _influencerRouter = require('./services/influencers/api');
+app.use('/api/influencers', _influencerRouter);
+(async () => { try { if (_db.hasDb()) { await _influencerSchema.ensureInfluencerSchema(); console.log('[influencers] schema ready'); } } catch(e) { console.error('[influencers] init failed:', e.message); } })();
 (async () => {
   try {
     if (_db.hasDb()) {
