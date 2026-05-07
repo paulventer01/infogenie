@@ -2663,6 +2663,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'meta-insights')        { try { buildMetaInsights(); }        catch(e) { console.warn('buildMetaInsights error:', e); } }
   if (viewId === 'google-ads-insights')  { try { buildGoogleAdsInsights(); }   catch(e) { console.warn('buildGoogleAdsInsights error:', e); } }
   if (viewId === 'tiktok-ads-insights')  { try { buildTiktokAdsInsights(); }   catch(e) { console.warn('buildTiktokAdsInsights error:', e); } }
+  if (viewId === 'social-publisher')     { try { buildSocialPublisher(); }      catch(e) { console.warn('buildSocialPublisher error:', e); } }
   if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
@@ -35319,4 +35320,276 @@ window._ttiLoad = async function() {
         <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:#F0FDF4;color:#15803D;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">CTR ${_ttiFmt(x.ctr,'pct')}</span><span style="background:#EFF6FF;color:#1E40AF;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">${_ttiFmt(x.clicks)} clicks</span><span style="background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">${_ttiFmt(x.spend,'money')}</span></div>
       </div>`).join('')}</div>`;
   }
+};
+
+// ============================================================================
+// TIER 15 — SOCIAL PUBLISHER (Zernio)
+// ============================================================================
+const _spPlatforms = [
+  { id:'twitter',        label:'Twitter/X',       icon:'𝕏'  },
+  { id:'instagram',      label:'Instagram',       icon:'📷' },
+  { id:'facebook',       label:'Facebook',        icon:'📘' },
+  { id:'linkedin',       label:'LinkedIn',        icon:'💼' },
+  { id:'tiktok',         label:'TikTok',          icon:'🎵' },
+  { id:'youtube',        label:'YouTube',         icon:'▶️' },
+  { id:'pinterest',      label:'Pinterest',       icon:'📌' },
+  { id:'reddit',         label:'Reddit',          icon:'👽' },
+  { id:'bluesky',        label:'Bluesky',         icon:'🦋' },
+  { id:'threads',        label:'Threads',         icon:'@'  },
+  { id:'googlebusiness', label:'Google Business', icon:'🏢' },
+  { id:'telegram',       label:'Telegram',        icon:'✈️' },
+  { id:'snapchat',       label:'Snapchat',        icon:'👻' },
+  { id:'whatsapp',       label:'WhatsApp',        icon:'💬' },
+  { id:'discord',        label:'Discord',         icon:'🎮' },
+];
+
+window._spState = { profileId:null, profiles:[], accounts:[], selectedPlatforms:new Set() };
+
+window.buildSocialPublisher = async function() {
+  const wrap = document.getElementById('spWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:0;overflow:hidden;margin-bottom:18px">
+      <div style="background:linear-gradient(135deg,#FF5722 0%,#FF7043 100%);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-family:Sora,sans-serif;font-size:1.05rem;font-weight:800;color:#fff">📤 Social Publisher</div>
+          <div style="font-size:0.75rem;color:rgba(255,255,255,.85);margin-top:2px">Zernio · 15 platforms · post now or schedule</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="spProfileSel" style="padding:7px 10px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;border-radius:6px;font-size:0.78rem;font-weight:600;min-width:160px"><option value="">Loading profiles…</option></select>
+          <button id="spNewProfile" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);color:#fff;padding:7px 12px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">＋ New profile</button>
+          <button id="spTest" style="background:#fff;color:#FF5722;border:none;padding:7px 14px;border-radius:6px;font-size:0.74rem;font-weight:800;cursor:pointer">⚡ Test connection</button>
+        </div>
+      </div>
+      <div id="spStatus" style="padding:10px 20px;background:#FFF7ED;border-bottom:1px solid #FED7AA;color:#9A3412;font-size:0.78rem;display:none"></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start">
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px">
+        <h3 style="margin:0 0 10px;color:#0A1628;font-size:0.95rem;font-family:Sora,sans-serif">🔌 Connected accounts</h3>
+        <div id="spAccounts" style="font-size:0.82rem;color:#6B7280">Pick a profile above to see connected accounts.</div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #F1F5F9">
+          <div style="font-size:0.78rem;color:#374151;font-weight:700;margin-bottom:8px">＋ Connect a new platform</div>
+          <div id="spConnectBtns" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px">
+        <h3 style="margin:0 0 10px;color:#0A1628;font-size:0.95rem;font-family:Sora,sans-serif">✍️ Compose</h3>
+        <textarea id="spText" rows="5" placeholder="What do you want to post? (or paste an AI draft from Reply Assistant, Press Release, Counter-Message, A/B Designer…)" style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.82rem;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+        <div style="margin-top:10px">
+          <div style="font-size:0.74rem;color:#6B7280;font-weight:700;margin-bottom:6px">PUBLISH TO:</div>
+          <div id="spPlatformChips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+          <div>
+            <div style="font-size:0.74rem;color:#6B7280;font-weight:700;margin-bottom:4px">📅 SCHEDULE FOR (optional)</div>
+            <input type="datetime-local" id="spSchedule" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.78rem;box-sizing:border-box">
+          </div>
+          <div>
+            <div style="font-size:0.74rem;color:#6B7280;font-weight:700;margin-bottom:4px">🖼 MEDIA URL (optional)</div>
+            <input type="url" id="spMedia" placeholder="https://example.com/image.jpg" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.78rem;box-sizing:border-box">
+          </div>
+        </div>
+        <button id="spPublish" style="margin-top:12px;width:100%;background:linear-gradient(135deg,#FF5722 0%,#FF7043 100%);color:#fff;border:none;padding:11px;border-radius:8px;font-size:0.86rem;font-weight:800;cursor:pointer">📤 Publish now</button>
+        <div id="spResult" style="margin-top:10px;font-size:0.78rem"></div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-top:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h3 style="margin:0;color:#0A1628;font-size:0.95rem;font-family:Sora,sans-serif">📅 Scheduled & recent posts</h3>
+        <button id="spRefreshPosts" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:5px 10px;border-radius:5px;font-size:0.72rem;font-weight:700;cursor:pointer">🔄 Refresh</button>
+      </div>
+      <div id="spPosts" style="font-size:0.82rem;color:#6B7280">Pick a profile above.</div>
+    </div>
+  `;
+
+  // Render platform chips
+  const chipsEl = document.getElementById('spPlatformChips');
+  chipsEl.innerHTML = _spPlatforms.map(p =>
+    `<button data-platform="${p.id}" class="sp-chip" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:6px 10px;border-radius:16px;font-size:0.72rem;font-weight:700;cursor:pointer">${p.icon} ${_escapeHtml(p.label)}</button>`
+  ).join('');
+  chipsEl.querySelectorAll('.sp-chip').forEach(b => b.addEventListener('click', () => {
+    const id = b.dataset.platform;
+    if (window._spState.selectedPlatforms.has(id)) { window._spState.selectedPlatforms.delete(id); b.style.background='#F3F4F6'; b.style.color='#374151'; b.style.borderColor='#E5E7EB'; }
+    else { window._spState.selectedPlatforms.add(id); b.style.background='#FF5722'; b.style.color='#fff'; b.style.borderColor='#FF5722'; }
+  }));
+
+  // Render connect buttons
+  document.getElementById('spConnectBtns').innerHTML = _spPlatforms.map(p =>
+    `<button data-cp="${p.id}" class="sp-connect" style="background:#FFF;border:1px solid #E5E7EB;color:#374151;padding:6px 10px;border-radius:6px;font-size:0.72rem;font-weight:700;cursor:pointer" title="Connect ${p.label}">${p.icon} ${_escapeHtml(p.label)}</button>`
+  ).join('');
+  document.getElementById('spConnectBtns').querySelectorAll('.sp-connect').forEach(b =>
+    b.addEventListener('click', () => _spConnect(b.dataset.cp))
+  );
+
+  document.getElementById('spTest').addEventListener('click', _spTest);
+  document.getElementById('spNewProfile').addEventListener('click', _spNewProfile);
+  document.getElementById('spProfileSel').addEventListener('change', e => { window._spState.profileId = e.target.value || null; _spLoadAccounts(); _spLoadPosts(); });
+  document.getElementById('spPublish').addEventListener('click', _spPublish);
+  document.getElementById('spRefreshPosts').addEventListener('click', _spLoadPosts);
+
+  await _spLoadProfiles();
+};
+
+async function _spStatus(msg, kind) {
+  const el = document.getElementById('spStatus');
+  if (!el) return;
+  if (!msg) { el.style.display='none'; return; }
+  const colors = { ok:['#ECFDF5','#A7F3D0','#065F46'], err:['#FEF2F2','#FECACA','#991B1B'], info:['#FFF7ED','#FED7AA','#9A3412'] };
+  const c = colors[kind || 'info'];
+  el.style.background = c[0]; el.style.borderColor = c[1]; el.style.color = c[2];
+  el.style.display = 'block'; el.textContent = msg;
+}
+
+async function _spTest() {
+  _spStatus('Testing Zernio connection…', 'info');
+  try {
+    const r = await fetch('/api/social-publisher/test', { method:'POST' }).then(x => x.json());
+    if (r.ok) _spStatus(`✅ Connected to Zernio · ${r.profile_count} profile(s) found`, 'ok');
+    else _spStatus(`❌ ${r.error}`, 'err');
+  } catch (e) { _spStatus(`❌ Network error: ${e.message}`, 'err'); }
+}
+
+async function _spLoadProfiles() {
+  try {
+    const r = await fetch('/api/social-publisher/profiles').then(x => x.json());
+    const sel = document.getElementById('spProfileSel');
+    if (!r.ok) { sel.innerHTML = `<option value="">⚠ ${_escapeHtml(r.error || 'failed')}</option>`; _spStatus(r.error, 'err'); return; }
+    const profs = r.profiles || [];
+    window._spState.profiles = profs;
+    if (!profs.length) {
+      sel.innerHTML = `<option value="">No profiles — click ＋ New profile</option>`;
+      _spStatus('No profiles yet. Click "＋ New profile" to create one (e.g. "InfoGenie main").', 'info');
+      return;
+    }
+    sel.innerHTML = profs.map(p => `<option value="${_escapeHtml(p._id || p.id)}">${_escapeHtml(p.name || p._id || p.id)}</option>`).join('');
+    window._spState.profileId = sel.value;
+    _spStatus('', null);
+    await _spLoadAccounts();
+    await _spLoadPosts();
+  } catch (e) { _spStatus(`Network error: ${e.message}`, 'err'); }
+}
+
+async function _spNewProfile() {
+  const name = prompt('Profile name (e.g. "InfoGenie main"):');
+  if (!name || !name.trim()) return;
+  _spStatus('Creating profile…', 'info');
+  try {
+    const r = await fetch('/api/social-publisher/profiles', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name: name.trim() })
+    }).then(x => x.json());
+    if (!r.ok) { _spStatus(`❌ ${r.error}`, 'err'); return; }
+    _spStatus(`✅ Profile "${name}" created`, 'ok');
+    await _spLoadProfiles();
+  } catch (e) { _spStatus(`Network error: ${e.message}`, 'err'); }
+}
+
+async function _spLoadAccounts() {
+  const el = document.getElementById('spAccounts');
+  if (!el) return;
+  if (!window._spState.profileId) { el.innerHTML = '<div style="color:#9CA3AF">Pick a profile above.</div>'; return; }
+  el.innerHTML = '<div style="color:#9CA3AF">Loading…</div>';
+  try {
+    const r = await fetch(`/api/social-publisher/accounts?profileId=${encodeURIComponent(window._spState.profileId)}`).then(x => x.json());
+    if (!r.ok) { el.innerHTML = `<div style="color:#991B1B">⚠ ${_escapeHtml(r.error)}</div>`; return; }
+    const accs = r.accounts || [];
+    window._spState.accounts = accs;
+    if (!accs.length) { el.innerHTML = '<div style="color:#9CA3AF;font-style:italic">No accounts connected yet. Use "＋ Connect a new platform" below to authorize one.</div>'; return; }
+    el.innerHTML = accs.map(a => {
+      const plat = (a.platform || '').toLowerCase();
+      const meta = _spPlatforms.find(p => p.id === plat) || { icon:'•', label: plat };
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;margin-bottom:5px">
+        <div><span style="font-size:0.95rem">${meta.icon}</span> <strong style="color:#0A1628">${_escapeHtml(meta.label)}</strong> · <span style="color:#6B7280;font-size:0.78rem">${_escapeHtml(a.username || a.handle || a.name || a._id || a.id || '')}</span></div>
+        <span style="background:#ECFDF5;color:#065F46;padding:2px 7px;border-radius:4px;font-size:0.7rem;font-weight:700">connected</span>
+      </div>`;
+    }).join('');
+  } catch (e) { el.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+}
+
+async function _spConnect(platform) {
+  if (!window._spState.profileId) { _spStatus('Pick a profile first.', 'err'); return; }
+  _spStatus(`Getting OAuth URL for ${platform}…`, 'info');
+  try {
+    const r = await fetch('/api/social-publisher/connect-url', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ platform, profileId: window._spState.profileId })
+    }).then(x => x.json());
+    if (!r.ok) { _spStatus(`❌ ${r.error}`, 'err'); return; }
+    const url = r.authUrl?.url || r.authUrl;
+    if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+      _spStatus(`✅ Opening ${platform} authorization in a new tab…`, 'ok');
+      window.open(url, '_blank', 'noopener');
+    } else { _spStatus(`Got response but no auth URL: ${JSON.stringify(r.authUrl).slice(0,200)}`, 'err'); }
+  } catch (e) { _spStatus(`Network error: ${e.message}`, 'err'); }
+}
+
+async function _spPublish() {
+  const text = document.getElementById('spText').value.trim();
+  const platforms = Array.from(window._spState.selectedPlatforms);
+  const sched = document.getElementById('spSchedule').value;
+  const media = document.getElementById('spMedia').value.trim();
+  const result = document.getElementById('spResult');
+
+  if (!window._spState.profileId) { result.innerHTML = '<div style="color:#991B1B">⚠ Pick a profile first.</div>'; return; }
+  if (!text && !media) { result.innerHTML = '<div style="color:#991B1B">⚠ Enter text or a media URL.</div>'; return; }
+  if (!platforms.length) { result.innerHTML = '<div style="color:#991B1B">⚠ Select at least one platform.</div>'; return; }
+
+  result.innerHTML = '<div style="color:#6B7280">📤 Sending to Zernio…</div>';
+  try {
+    const body = { text, platforms, profileId: window._spState.profileId };
+    if (sched) body.scheduledFor = new Date(sched).toISOString();
+    if (media) body.mediaUrls = [media];
+    const r = await fetch('/api/social-publisher/post', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+    }).then(x => x.json());
+    if (!r.ok) { result.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:10px;border-radius:6px">❌ ${_escapeHtml(r.error)}</div>`; return; }
+    result.innerHTML = `<div style="background:#ECFDF5;border:1px solid #A7F3D0;color:#065F46;padding:10px;border-radius:6px">✅ ${r.scheduled ? 'Scheduled' : 'Published'} to ${platforms.length} platform${platforms.length>1?'s':''}!</div>`;
+    document.getElementById('spText').value = '';
+    document.getElementById('spSchedule').value = '';
+    document.getElementById('spMedia').value = '';
+    setTimeout(_spLoadPosts, 700);
+  } catch (e) { result.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+}
+
+async function _spLoadPosts() {
+  const el = document.getElementById('spPosts');
+  if (!el) return;
+  if (!window._spState.profileId) { el.innerHTML = '<div style="color:#9CA3AF">Pick a profile above.</div>'; return; }
+  el.innerHTML = '<div style="color:#9CA3AF">Loading…</div>';
+  try {
+    const r = await fetch(`/api/social-publisher/posts?profileId=${encodeURIComponent(window._spState.profileId)}`).then(x => x.json());
+    if (!r.ok) { el.innerHTML = `<div style="color:#991B1B">⚠ ${_escapeHtml(r.error)}</div>`; return; }
+    const posts = r.posts || [];
+    if (!posts.length) { el.innerHTML = '<div style="color:#9CA3AF;font-style:italic">No posts yet for this profile.</div>'; return; }
+    el.innerHTML = `<div style="display:grid;gap:8px">${posts.slice(0, 30).map(p => {
+      const id = p._id || p.id || '';
+      const status = (p.status || 'unknown').toLowerCase();
+      const statusColors = { scheduled:['#EFF6FF','#1E40AF'], posted:['#ECFDF5','#065F46'], published:['#ECFDF5','#065F46'], draft:['#F3F4F6','#374151'], failed:['#FEF2F2','#991B1B'], error:['#FEF2F2','#991B1B'] };
+      const sc = statusColors[status] || ['#F3F4F6','#374151'];
+      const when = p.scheduledFor || p.createdAt || p.created_at || '';
+      const plats = Array.isArray(p.platforms) ? p.platforms : (p.platform ? [p.platform] : []);
+      return `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:11px">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:6px">
+          <div style="flex:1;color:#0A1628;font-size:0.82rem;line-height:1.45">${_escapeHtml((p.text || '').slice(0, 200))}${(p.text||'').length>200?'…':''}</div>
+          <span style="background:${sc[0]};color:${sc[1]};padding:2px 8px;border-radius:4px;font-size:0.7rem;font-weight:700;flex-shrink:0">${_escapeHtml(status)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:0.72rem;color:#6B7280;flex-wrap:wrap">
+          <div>${plats.map(pl => { const m = _spPlatforms.find(x=>x.id===String(pl).toLowerCase()); return m ? `${m.icon} ${_escapeHtml(m.label)}` : _escapeHtml(String(pl)); }).join(' · ')}${when ? ' · ' + _escapeHtml(new Date(when).toLocaleString()) : ''}</div>
+          ${id && (status==='scheduled' || status==='draft') ? `<button onclick="_spDelete('${_escapeHtml(id)}')" style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:3px 8px;border-radius:4px;font-size:0.7rem;font-weight:700;cursor:pointer">🗑 Cancel</button>` : ''}
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+  } catch (e) { el.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+}
+
+window._spDelete = async function(id) {
+  if (!confirm('Cancel this scheduled post?')) return;
+  try {
+    const r = await fetch(`/api/social-publisher/posts/${encodeURIComponent(id)}`, { method:'DELETE' }).then(x => x.json());
+    if (!r.ok) { alert('Failed: ' + r.error); return; }
+    _spLoadPosts();
+  } catch (e) { alert('Network error: ' + e.message); }
 };

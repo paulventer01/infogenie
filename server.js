@@ -8555,6 +8555,10 @@ const _tiktokAdsInsightsRouter = require('./services/tiktok_ads_insights/api');
 app.use('/api/google-ads-insights', _googleAdsInsightsRouter);
 app.use('/api/tiktok-ads-insights', _tiktokAdsInsightsRouter);
 
+// ── Tier 15 ────────────────────────────────────────────────────────────────
+const _socialPublisherRouter = require('./services/social_publisher/api');
+app.use('/api/social-publisher', _socialPublisherRouter);
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
