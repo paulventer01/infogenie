@@ -8542,6 +8542,13 @@ const _hubspotSyncRouter = require('./services/hubspot_sync/api');
 app.use('/api/serp-tracker', _serpTrackerRouter);
 app.use('/api/hubspot-sync', _hubspotSyncRouter);
 
+// ── Tier 13 ────────────────────────────────────────────────────────────────
+const _metaInsightsRouter = require('./services/meta_ads_insights/api');
+const _kwExplorerSchema   = require('./services/keyword_explorer/schema');
+const _kwExplorerRouter   = require('./services/keyword_explorer/api');
+app.use('/api/meta-insights',     _metaInsightsRouter);
+app.use('/api/keyword-explorer',  _kwExplorerRouter);
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
@@ -8558,6 +8565,7 @@ app.use('/api/hubspot-sync', _hubspotSyncRouter);
     await _coldEmailSchema.ensureColdEmailSchema();
     await _leadFinderSchema.ensureLeadFinderSchema();
     await _serpTrackerSchema.ensureSerpTrackerSchema();
+    await _kwExplorerSchema.ensureKeywordExplorerSchema();
     _crisisDetector.startCron(6);
     _digestRouter.startCron(24);
     console.log('[tier2-5] crisis + battle + trends + sov + discovery + digest + reply + press-release + alert-routing mounted');

@@ -2660,6 +2660,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'lead-finder')      { try { buildLeadFinder(); }       catch(e) { console.warn('buildLeadFinder error:', e); } }
   if (viewId === 'serp-tracker')     { try { buildSerpTracker(); }      catch(e) { console.warn('buildSerpTracker error:', e); } }
   if (viewId === 'hubspot-sync')     { try { buildHubspotSync(); }      catch(e) { console.warn('buildHubspotSync error:', e); } }
+  if (viewId === 'meta-insights')    { try { buildMetaInsights(); }     catch(e) { console.warn('buildMetaInsights error:', e); } }
+  if (viewId === 'keyword-explorer') { try { buildKeywordExplorer(); }  catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -34922,4 +34924,190 @@ window._hsLoadRecent = async function() {
         <td style="padding:9px 12px"><span style="background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px;font-size:0.7rem;font-weight:700">${_escapeHtml(c.lifecyclestage||'lead')}</span></td>
         <td style="padding:9px 12px;color:#9CA3AF;font-size:0.74rem">${c.createdate?new Date(c.createdate).toLocaleDateString():''}</td>
       </tr>`).join('')}</tbody></table></div>`;
+};
+
+// ── Tier 13 #1: Meta Ads Insights ────────────────────────────────────
+window.buildMetaInsights = async function() {
+  const el = document.getElementById('miWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:linear-gradient(135deg,#1877F2 0%,#0D5FBF 100%);color:#fff;border-radius:12px;padding:18px 22px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div><div style="font-weight:800;font-size:1.05rem">📘 Meta Marketing API</div><div style="font-size:0.82rem;opacity:.92;margin-top:2px">Live spend, ROAS, top campaigns and creatives — refreshes on every load.</div></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="miRange" onchange="_miLoad()" style="padding:7px 12px;border-radius:6px;border:none;font-weight:700;font-size:0.82rem;color:#0A1628;cursor:pointer">
+          <option value="last_7d">Last 7 days</option>
+          <option value="last_14d">Last 14 days</option>
+          <option value="last_30d" selected>Last 30 days</option>
+          <option value="last_90d">Last 90 days</option>
+          <option value="this_month">This month</option>
+          <option value="last_month">Last month</option>
+        </select>
+        <button onclick="_miTest()" style="padding:8px 14px;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.35);color:#fff;-webkit-text-fill-color:#fff;border-radius:6px;font-weight:800;cursor:pointer;font-size:0.78rem">⚡ Test</button>
+      </div>
+    </div>
+    <div id="miSummary"></div>
+    <div id="miCamps" style="margin-top:16px"></div>
+    <div id="miAds" style="margin-top:16px"></div>`;
+  _miLoad();
+};
+window._miTest = async function() {
+  showToast('⏳ Pinging Meta…');
+  const r = await fetch('/api/meta-insights/test', { method:'POST' }).then(x=>x.json());
+  showToast(r.ok ? `✅ Connected: ${r.account?.name||''} (${r.account?.currency||''})` : '❌ ' + r.error);
+};
+window._miFmt = function(n, kind) {
+  if (n === null || n === undefined) return '—';
+  if (kind === 'pct') return (parseFloat(n)).toFixed(2) + '%';
+  if (kind === 'money') return '$' + (parseFloat(n)).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  if (kind === 'roas') return (parseFloat(n)).toFixed(2) + '×';
+  return parseInt(n,10).toLocaleString();
+};
+window._miLoad = async function() {
+  const dp = (document.getElementById('miRange')||{}).value || 'last_30d';
+  const sumEl = document.getElementById('miSummary'); if (sumEl) sumEl.innerHTML = `<div style="color:#6B7280;padding:14px">⏳ Loading account…</div>`;
+  const [s, c, a] = await Promise.all([
+    fetch(`/api/meta-insights/account-summary?date_preset=${dp}`).then(x=>x.json()).catch(()=>({ok:false,error:'fetch failed'})),
+    fetch(`/api/meta-insights/campaigns?date_preset=${dp}`).then(x=>x.json()).catch(()=>({ok:false,error:'fetch failed'})),
+    fetch(`/api/meta-insights/top-ads?date_preset=${dp}`).then(x=>x.json()).catch(()=>({ok:false,error:'fetch failed'})),
+  ]);
+
+  if (sumEl) {
+    if (s.note) sumEl.innerHTML = `<div style="background:#FEF3C7;color:#92400E;padding:14px;border-radius:10px;border:1px solid #FDE68A">${_escapeHtml(s.note)}</div>`;
+    else if (!s.ok) sumEl.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(s.error||'failed')}</div>`;
+    else {
+      const m = s.summary;
+      const tile = (label, val, color) => `<div style="background:#fff;border:1px solid #E5E7EB;border-top:3px solid ${color};border-radius:10px;padding:14px"><div style="font-size:0.7rem;color:#6B7280;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${label}</div><div style="font-size:1.5rem;font-weight:800;color:#0A1628;margin-top:4px">${val}</div></div>`;
+      sumEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:12px">
+        ${tile('Spend',_miFmt(m.spend,'money'),'#8B5CF6')}
+        ${tile('Revenue',_miFmt(m.revenue,'money'),'#15803D')}
+        ${tile('ROAS', _miFmt(m.roas,'roas'), m.roas>=2?'#15803D':m.roas>=1?'#F59E0B':'#DC2626')}
+        ${tile('Impressions',_miFmt(m.impressions),'#0EA5E9')}
+        ${tile('Reach',_miFmt(m.reach),'#0EA5E9')}
+        ${tile('Clicks',_miFmt(m.clicks),'#0EA5E9')}
+        ${tile('CTR',_miFmt(m.ctr,'pct'),'#F59E0B')}
+        ${tile('CPC',_miFmt(m.cpc,'money'),'#F59E0B')}
+        ${tile('CPM',_miFmt(m.cpm,'money'),'#F59E0B')}
+        ${tile('Frequency',m.frequency.toFixed(2),'#9CA3AF')}
+        ${tile('Purchases',_miFmt(m.purchases),'#15803D')}
+      </div>`;
+    }
+  }
+
+  const ce = document.getElementById('miCamps');
+  if (ce) {
+    if (!c.ok || c.note || !c.campaigns?.length) ce.innerHTML = `<h3 style="margin:18px 0 10px;color:#0A1628">Campaigns</h3><div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">${_escapeHtml(c.note||'No campaign data for this period.')}</div>`;
+    else ce.innerHTML = `<h3 style="margin:18px 0 10px;color:#0A1628">Campaigns (${c.campaigns.length})</h3>
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:0.82rem;min-width:780px">
+        <thead><tr style="background:#F9FAFB;text-align:left">
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase">Campaign</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Spend</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Revenue</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">ROAS</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Impr.</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Clicks</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">CTR</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">CPC</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Buys</th>
+        </tr></thead>
+        <tbody>${c.campaigns.map(x=>{const rc = x.roas>=2?'#15803D':x.roas>=1?'#F59E0B':'#DC2626'; return `<tr style="border-top:1px solid #F3F4F6">
+          <td style="padding:9px 12px;color:#0A1628;font-weight:600;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_escapeHtml(x.name||'')}</td>
+          <td style="padding:9px 12px;text-align:right;color:#0A1628">${_miFmt(x.spend,'money')}</td>
+          <td style="padding:9px 12px;text-align:right;color:#0A1628">${_miFmt(x.revenue,'money')}</td>
+          <td style="padding:9px 12px;text-align:right"><span style="background:${rc};color:#fff;padding:2px 7px;border-radius:4px;font-weight:800;font-size:0.74rem">${_miFmt(x.roas,'roas')}</span></td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_miFmt(x.impressions)}</td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_miFmt(x.clicks)}</td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_miFmt(x.ctr,'pct')}</td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_miFmt(x.cpc,'money')}</td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_miFmt(x.purchases)}</td>
+        </tr>`;}).join('')}</tbody></table></div>`;
+  }
+
+  const ae = document.getElementById('miAds');
+  if (ae) {
+    if (!a.ok || a.note || !a.ads?.length) ae.innerHTML = '';
+    else ae.innerHTML = `<h3 style="margin:18px 0 10px;color:#0A1628">Top creatives by CTR</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+      ${a.ads.map(x=>`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:13px">
+        <div style="font-weight:700;color:#0A1628;font-size:0.86rem;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_escapeHtml(x.name||'')}</div>
+        <div style="color:#6B7280;font-size:0.74rem;margin-bottom:8px">${_escapeHtml(x.campaign||'')}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:#F0FDF4;color:#15803D;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">CTR ${_miFmt(x.ctr,'pct')}</span><span style="background:#EFF6FF;color:#1E40AF;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">${_miFmt(x.clicks)} clicks</span><span style="background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">${_miFmt(x.spend,'money')}</span></div>
+      </div>`).join('')}</div>`;
+  }
+};
+
+// ── Tier 13 #2: Keyword Explorer ────────────────────────────────────
+window.buildKeywordExplorer = async function() {
+  const el = document.getElementById('keWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:2fr 90px 110px auto;gap:10px;align-items:end">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Seed keyword</label><input id="keSeed" placeholder="running shoes" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Country</label><input id="keCty" value="us" maxlength="5" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Ideas</label><input id="keLim" type="number" value="25" min="5" max="50" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <button onclick="_keGo()" style="padding:10px 18px;background:#8B5CF6;border:2px solid #8B5CF6;border-radius:8px;font-size:0.82rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🔬 Explore</button>
+      </div>
+    </div>
+    <div id="keOut"></div>`;
+};
+window._keKD = function(kd) {
+  if (kd === null || kd === undefined) return { label:'—', color:'#9CA3AF' };
+  if (kd <= 30) return { label: kd+' easy', color:'#15803D' };
+  if (kd <= 60) return { label: kd+' med',  color:'#F59E0B' };
+  return { label: kd+' hard', color:'#DC2626' };
+};
+window._keGo = async function() {
+  const seed = (document.getElementById('keSeed')||{}).value || '';
+  const country = (document.getElementById('keCty')||{}).value || 'us';
+  const limit = parseInt((document.getElementById('keLim')||{}).value, 10) || 25;
+  if (!seed.trim()) return showToast('⚠️ Seed keyword required');
+  const out = document.getElementById('keOut'); if (!out) return;
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:30px;text-align:center;color:#6B7280">⏳ Querying DataForSEO Labs… (this can take 10-20s)</div>`;
+  const r = await fetch('/api/keyword-explorer/explore', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ seed, country, limit }) }).then(x=>x.json());
+  if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:18px;border-radius:10px">${_escapeHtml(r.error||'failed')}</div>`; return; }
+  if (r.note) { out.innerHTML = `<div style="background:#FEF3C7;color:#92400E;padding:18px;border-radius:10px;border:1px solid #FDE68A">${_escapeHtml(r.note)}</div>`; return; }
+  const sm = r.seed_metrics, kd = _keKD(sm.keyword_difficulty);
+  const tile = (label, val, color) => `<div style="background:#fff;border:1px solid #E5E7EB;border-top:3px solid ${color};border-radius:10px;padding:13px"><div style="font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${label}</div><div style="font-size:1.3rem;font-weight:800;color:#0A1628;margin-top:3px">${val}</div></div>`;
+  out.innerHTML = `
+    <div style="background:linear-gradient(135deg,#8B5CF6 0%,#6D28D9 100%);color:#fff;border-radius:12px;padding:16px 20px;margin-bottom:14px">
+      <div style="font-weight:800;font-size:1.1rem">🔬 ${_escapeHtml(sm.keyword)}</div>
+      <div style="font-size:0.78rem;opacity:.9;margin-top:2px">${(country||'us').toUpperCase()} · ${sm.intent ? sm.intent + ' intent' : 'no intent data'}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px;margin-bottom:18px">
+      ${tile('Search volume', (sm.search_volume||0).toLocaleString()+'/mo','#0EA5E9')}
+      ${tile('Difficulty', `<span style="background:${kd.color};color:#fff;padding:2px 8px;border-radius:4px;font-size:0.78rem">${kd.label}</span>`,'#F59E0B')}
+      ${tile('CPC', '$'+(sm.cpc||0).toFixed(2),'#15803D')}
+      ${tile('Competition', (sm.competition_level||'—'),'#9CA3AF')}
+      ${tile('Top-of-page low', '$'+(sm.low_top_of_page_bid||0).toFixed(2),'#9CA3AF')}
+      ${tile('Top-of-page high', '$'+(sm.high_top_of_page_bid||0).toFixed(2),'#9CA3AF')}
+    </div>
+    <h3 style="margin:0 0 10px;color:#0A1628">${r.ideas.length} keyword ideas</h3>
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:0.84rem;min-width:680px">
+        <thead><tr style="background:#F9FAFB;text-align:left">
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase">Keyword</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Volume</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">KD</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">CPC</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase">Comp</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase">Intent</th>
+        </tr></thead>
+        <tbody>${r.ideas.map(it=>{const ikd=_keKD(it.keyword_difficulty); return `<tr style="border-top:1px solid #F3F4F6">
+          <td style="padding:9px 12px;color:#0A1628;font-weight:600">${_escapeHtml(it.keyword)}</td>
+          <td style="padding:9px 12px;text-align:right;color:#0A1628;font-weight:700">${(it.search_volume||0).toLocaleString()}</td>
+          <td style="padding:9px 12px;text-align:right"><span style="background:${ikd.color};color:#fff;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">${ikd.label}</span></td>
+          <td style="padding:9px 12px;text-align:right;color:#15803D;font-weight:700">$${(it.cpc||0).toFixed(2)}</td>
+          <td style="padding:9px 12px;color:#6B7280;font-size:0.78rem">${_escapeHtml(it.competition_level||'—')}</td>
+          <td style="padding:9px 12px;color:#6B7280;font-size:0.78rem">${_escapeHtml(it.intent||'—')}</td>
+        </tr>`;}).join('')}</tbody></table></div>
+    <div style="margin-top:12px;text-align:right"><button id="keCsvBtn" style="padding:8px 14px;background:#fff;border:1.5px solid #8B5CF6;color:#8B5CF6;border-radius:6px;font-size:0.8rem;font-weight:700;cursor:pointer">📥 Export CSV</button></div>`;
+  window._keLastResult = { ideas: r.ideas, seed: sm.keyword };
+  const btn = document.getElementById('keCsvBtn');
+  if (btn) btn.addEventListener('click', () => _keCsv(window._keLastResult.ideas, window._keLastResult.seed));
+};
+window._keCsv = function(ideas, seed) {
+  const rows = [['keyword','search_volume','keyword_difficulty','cpc','competition_level','intent']];
+  ideas.forEach(i => rows.push([i.keyword,i.search_volume||0,i.keyword_difficulty||'',i.cpc||0,i.competition_level||'',i.intent||'']));
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type:'text/csv' }); const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `keyword-ideas-${String(seed||'export').replace(/[^a-z0-9]+/gi,'-')}.csv`; a.click(); URL.revokeObjectURL(url);
 };
