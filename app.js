@@ -2660,8 +2660,10 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'lead-finder')      { try { buildLeadFinder(); }       catch(e) { console.warn('buildLeadFinder error:', e); } }
   if (viewId === 'serp-tracker')     { try { buildSerpTracker(); }      catch(e) { console.warn('buildSerpTracker error:', e); } }
   if (viewId === 'hubspot-sync')     { try { buildHubspotSync(); }      catch(e) { console.warn('buildHubspotSync error:', e); } }
-  if (viewId === 'meta-insights')    { try { buildMetaInsights(); }     catch(e) { console.warn('buildMetaInsights error:', e); } }
-  if (viewId === 'keyword-explorer') { try { buildKeywordExplorer(); }  catch(e) { console.warn('buildKeywordExplorer error:', e); } }
+  if (viewId === 'meta-insights')        { try { buildMetaInsights(); }        catch(e) { console.warn('buildMetaInsights error:', e); } }
+  if (viewId === 'google-ads-insights')  { try { buildGoogleAdsInsights(); }   catch(e) { console.warn('buildGoogleAdsInsights error:', e); } }
+  if (viewId === 'tiktok-ads-insights')  { try { buildTiktokAdsInsights(); }   catch(e) { console.warn('buildTiktokAdsInsights error:', e); } }
+  if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -35110,4 +35112,211 @@ window._keCsv = function(ideas, seed) {
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type:'text/csv' }); const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = `keyword-ideas-${String(seed||'export').replace(/[^a-z0-9]+/gi,'-')}.csv`; a.click(); URL.revokeObjectURL(url);
+};
+
+// ── Tier 14 #1: Google Ads Insights ────────────────────────────────────
+window.buildGoogleAdsInsights = async function() {
+  const el = document.getElementById('gaiWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:linear-gradient(135deg,#4285F4 0%,#34A853 50%,#FBBC04 100%);color:#fff;border-radius:12px;padding:18px 22px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div><div style="font-weight:800;font-size:1.05rem">🅖 Google Ads API</div><div style="font-size:0.82rem;opacity:.92;margin-top:2px">Live spend, ROAS, top campaigns and ads — refreshes on every load.</div></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="gaiRange" style="padding:7px 12px;border-radius:6px;border:none;font-weight:700;font-size:0.82rem;color:#0A1628;cursor:pointer">
+          <option value="last_7d">Last 7 days</option>
+          <option value="last_14d">Last 14 days</option>
+          <option value="last_30d" selected>Last 30 days</option>
+          <option value="this_month">This month</option>
+          <option value="last_month">Last month</option>
+        </select>
+        <button id="gaiTestBtn" style="padding:8px 14px;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.35);color:#fff;-webkit-text-fill-color:#fff;border-radius:6px;font-weight:800;cursor:pointer;font-size:0.78rem">⚡ Test</button>
+      </div>
+    </div>
+    <div id="gaiSummary"></div>
+    <div id="gaiCamps" style="margin-top:16px"></div>
+    <div id="gaiAds" style="margin-top:16px"></div>`;
+  document.getElementById('gaiRange').addEventListener('change', _gaiLoad);
+  document.getElementById('gaiTestBtn').addEventListener('click', _gaiTest);
+  _gaiLoad();
+};
+window._gaiTest = async function() {
+  showToast('⏳ Pinging Google Ads…');
+  const r = await fetch('/api/google-ads-insights/test', { method:'POST' }).then(x=>x.json());
+  showToast(r.ok ? `✅ Connected: ${r.account?.name||''} (${r.account?.currency||''})` : '❌ ' + r.error);
+};
+window._gaiFmt = window._miFmt; // reuse formatter
+window._gaiLoad = async function() {
+  const dp = (document.getElementById('gaiRange')||{}).value || 'last_30d';
+  const sumEl = document.getElementById('gaiSummary'); if (sumEl) sumEl.innerHTML = `<div style="color:#6B7280;padding:14px">⏳ Loading account…</div>`;
+  const [s, c, a] = await Promise.all([
+    fetch(`/api/google-ads-insights/account-summary?date_preset=${dp}`).then(x=>x.json()).catch(()=>({ok:false,error:'fetch failed'})),
+    fetch(`/api/google-ads-insights/campaigns?date_preset=${dp}`).then(x=>x.json()).catch(()=>({ok:false,error:'fetch failed'})),
+    fetch(`/api/google-ads-insights/top-ads?date_preset=${dp}`).then(x=>x.json()).catch(()=>({ok:false,error:'fetch failed'})),
+  ]);
+
+  if (sumEl) {
+    if (s.note) sumEl.innerHTML = `<div style="background:#FEF3C7;color:#92400E;padding:14px;border-radius:10px;border:1px solid #FDE68A">${_escapeHtml(s.note)}</div>`;
+    else if (!s.ok) sumEl.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(s.error||'failed')}</div>`;
+    else {
+      const m = s.summary;
+      const tile = (label, val, color) => `<div style="background:#fff;border:1px solid #E5E7EB;border-top:3px solid ${color};border-radius:10px;padding:14px"><div style="font-size:0.7rem;color:#6B7280;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${label}</div><div style="font-size:1.5rem;font-weight:800;color:#0A1628;margin-top:4px">${val}</div></div>`;
+      sumEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:12px">
+        ${tile('Spend',_gaiFmt(m.spend,'money'),'#4285F4')}
+        ${tile('Revenue',_gaiFmt(m.revenue,'money'),'#15803D')}
+        ${tile('ROAS', _gaiFmt(m.roas,'roas'), m.roas>=2?'#15803D':m.roas>=1?'#F59E0B':'#DC2626')}
+        ${tile('Conversions', m.conversions.toFixed(2),'#15803D')}
+        ${tile('Impressions',_gaiFmt(m.impressions),'#0EA5E9')}
+        ${tile('Clicks',_gaiFmt(m.clicks),'#0EA5E9')}
+        ${tile('CTR',_gaiFmt(m.ctr,'pct'),'#F59E0B')}
+        ${tile('CPC',_gaiFmt(m.cpc,'money'),'#F59E0B')}
+        ${tile('CPM',_gaiFmt(m.cpm,'money'),'#F59E0B')}
+      </div>`;
+    }
+  }
+
+  const ce = document.getElementById('gaiCamps');
+  if (ce) {
+    if (!c.ok || c.note || !c.campaigns?.length) ce.innerHTML = `<h3 style="margin:18px 0 10px;color:#0A1628">Campaigns</h3><div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">${_escapeHtml(c.note||'No campaign data for this period.')}</div>`;
+    else ce.innerHTML = `<h3 style="margin:18px 0 10px;color:#0A1628">Campaigns (${c.campaigns.length})</h3>
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:0.82rem;min-width:780px">
+        <thead><tr style="background:#F9FAFB;text-align:left">
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase">Campaign</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Spend</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Revenue</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">ROAS</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Impr.</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Clicks</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">CTR</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">CPC</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Conv.</th>
+        </tr></thead>
+        <tbody>${c.campaigns.map(x=>{const rc = x.roas>=2?'#15803D':x.roas>=1?'#F59E0B':'#DC2626'; return `<tr style="border-top:1px solid #F3F4F6">
+          <td style="padding:9px 12px;color:#0A1628;font-weight:600;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_escapeHtml(x.name||'')}</td>
+          <td style="padding:9px 12px;text-align:right;color:#0A1628">${_gaiFmt(x.spend,'money')}</td>
+          <td style="padding:9px 12px;text-align:right;color:#0A1628">${_gaiFmt(x.revenue,'money')}</td>
+          <td style="padding:9px 12px;text-align:right"><span style="background:${rc};color:#fff;padding:2px 7px;border-radius:4px;font-weight:800;font-size:0.74rem">${_gaiFmt(x.roas,'roas')}</span></td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_gaiFmt(x.impressions)}</td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_gaiFmt(x.clicks)}</td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_gaiFmt(x.ctr,'pct')}</td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_gaiFmt(x.cpc,'money')}</td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${(x.conversions||0).toFixed(2)}</td>
+        </tr>`;}).join('')}</tbody></table></div>`;
+  }
+
+  const ae = document.getElementById('gaiAds');
+  if (ae) {
+    if (!a.ok || a.note || !a.ads?.length) ae.innerHTML = '';
+    else ae.innerHTML = `<h3 style="margin:18px 0 10px;color:#0A1628">Top ads by CTR</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+      ${a.ads.map(x=>`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:13px">
+        <div style="font-weight:700;color:#0A1628;font-size:0.86rem;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_escapeHtml(x.name||'')}</div>
+        <div style="color:#6B7280;font-size:0.74rem;margin-bottom:8px">${_escapeHtml(x.campaign||'')} · ${_escapeHtml(x.ad_group||'')}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:#F0FDF4;color:#15803D;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">CTR ${_gaiFmt(x.ctr,'pct')}</span><span style="background:#EFF6FF;color:#1E40AF;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">${_gaiFmt(x.clicks)} clicks</span><span style="background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">${_gaiFmt(x.spend,'money')}</span></div>
+      </div>`).join('')}</div>`;
+  }
+};
+
+// ── Tier 14 #2: TikTok Ads Insights ────────────────────────────────────
+window.buildTiktokAdsInsights = async function() {
+  const el = document.getElementById('ttiWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:linear-gradient(135deg,#000 0%,#25F4EE 50%,#FE2C55 100%);color:#fff;border-radius:12px;padding:18px 22px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div><div style="font-weight:800;font-size:1.05rem">🎵 TikTok Marketing API</div><div style="font-size:0.82rem;opacity:.92;margin-top:2px">Live spend, ROAS, top campaigns and creatives — refreshes on every load.</div></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="ttiRange" style="padding:7px 12px;border-radius:6px;border:none;font-weight:700;font-size:0.82rem;color:#0A1628;cursor:pointer">
+          <option value="last_7d">Last 7 days</option>
+          <option value="last_14d">Last 14 days</option>
+          <option value="last_30d" selected>Last 30 days</option>
+          <option value="last_90d">Last 90 days</option>
+          <option value="this_month">This month</option>
+          <option value="last_month">Last month</option>
+        </select>
+        <button id="ttiTestBtn" style="padding:8px 14px;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.45);color:#fff;-webkit-text-fill-color:#fff;border-radius:6px;font-weight:800;cursor:pointer;font-size:0.78rem">⚡ Test</button>
+      </div>
+    </div>
+    <div id="ttiSummary"></div>
+    <div id="ttiCamps" style="margin-top:16px"></div>
+    <div id="ttiAds" style="margin-top:16px"></div>`;
+  document.getElementById('ttiRange').addEventListener('change', _ttiLoad);
+  document.getElementById('ttiTestBtn').addEventListener('click', _ttiTest);
+  _ttiLoad();
+};
+window._ttiTest = async function() {
+  showToast('⏳ Pinging TikTok…');
+  const r = await fetch('/api/tiktok-ads-insights/test', { method:'POST' }).then(x=>x.json());
+  showToast(r.ok ? `✅ Connected: ${r.account?.name||''} (${r.account?.currency||''})` : '❌ ' + r.error);
+};
+window._ttiFmt = window._miFmt; // reuse formatter
+window._ttiLoad = async function() {
+  const dp = (document.getElementById('ttiRange')||{}).value || 'last_30d';
+  const sumEl = document.getElementById('ttiSummary'); if (sumEl) sumEl.innerHTML = `<div style="color:#6B7280;padding:14px">⏳ Loading account…</div>`;
+  const [s, c, a] = await Promise.all([
+    fetch(`/api/tiktok-ads-insights/account-summary?date_preset=${dp}`).then(x=>x.json()).catch(()=>({ok:false,error:'fetch failed'})),
+    fetch(`/api/tiktok-ads-insights/campaigns?date_preset=${dp}`).then(x=>x.json()).catch(()=>({ok:false,error:'fetch failed'})),
+    fetch(`/api/tiktok-ads-insights/top-ads?date_preset=${dp}`).then(x=>x.json()).catch(()=>({ok:false,error:'fetch failed'})),
+  ]);
+
+  if (sumEl) {
+    if (s.note) sumEl.innerHTML = `<div style="background:#FEF3C7;color:#92400E;padding:14px;border-radius:10px;border:1px solid #FDE68A">${_escapeHtml(s.note)}</div>`;
+    else if (!s.ok) sumEl.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(s.error||'failed')}</div>`;
+    else {
+      const m = s.summary;
+      const tile = (label, val, color) => `<div style="background:#fff;border:1px solid #E5E7EB;border-top:3px solid ${color};border-radius:10px;padding:14px"><div style="font-size:0.7rem;color:#6B7280;font-weight:700;text-transform:uppercase;letter-spacing:.04em">${label}</div><div style="font-size:1.5rem;font-weight:800;color:#0A1628;margin-top:4px">${val}</div></div>`;
+      sumEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:12px">
+        ${tile('Spend',_ttiFmt(m.spend,'money'),'#FE2C55')}
+        ${tile('Revenue',_ttiFmt(m.revenue,'money'),'#15803D')}
+        ${tile('ROAS', _ttiFmt(m.roas,'roas'), m.roas>=2?'#15803D':m.roas>=1?'#F59E0B':'#DC2626')}
+        ${tile('Impressions',_ttiFmt(m.impressions),'#25F4EE')}
+        ${tile('Reach',_ttiFmt(m.reach),'#25F4EE')}
+        ${tile('Clicks',_ttiFmt(m.clicks),'#25F4EE')}
+        ${tile('CTR',_ttiFmt(m.ctr,'pct'),'#F59E0B')}
+        ${tile('CPC',_ttiFmt(m.cpc,'money'),'#F59E0B')}
+        ${tile('CPM',_ttiFmt(m.cpm,'money'),'#F59E0B')}
+        ${tile('Frequency',(m.frequency||0).toFixed(2),'#9CA3AF')}
+        ${tile('Conversions',_ttiFmt(m.conversions),'#15803D')}
+      </div>`;
+    }
+  }
+
+  const ce = document.getElementById('ttiCamps');
+  if (ce) {
+    if (!c.ok || c.note || !c.campaigns?.length) ce.innerHTML = `<h3 style="margin:18px 0 10px;color:#0A1628">Campaigns</h3><div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">${_escapeHtml(c.note||'No campaign data for this period.')}</div>`;
+    else ce.innerHTML = `<h3 style="margin:18px 0 10px;color:#0A1628">Campaigns (${c.campaigns.length})</h3>
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:0.82rem;min-width:780px">
+        <thead><tr style="background:#F9FAFB;text-align:left">
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase">Campaign</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Spend</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Revenue</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">ROAS</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Impr.</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Clicks</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">CTR</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">CPC</th>
+          <th style="padding:9px 12px;font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;text-align:right">Conv.</th>
+        </tr></thead>
+        <tbody>${c.campaigns.map(x=>{const rc = x.roas>=2?'#15803D':x.roas>=1?'#F59E0B':'#DC2626'; return `<tr style="border-top:1px solid #F3F4F6">
+          <td style="padding:9px 12px;color:#0A1628;font-weight:600;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_escapeHtml(x.name||'')}</td>
+          <td style="padding:9px 12px;text-align:right;color:#0A1628">${_ttiFmt(x.spend,'money')}</td>
+          <td style="padding:9px 12px;text-align:right;color:#0A1628">${_ttiFmt(x.revenue,'money')}</td>
+          <td style="padding:9px 12px;text-align:right"><span style="background:${rc};color:#fff;padding:2px 7px;border-radius:4px;font-weight:800;font-size:0.74rem">${_ttiFmt(x.roas,'roas')}</span></td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_ttiFmt(x.impressions)}</td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_ttiFmt(x.clicks)}</td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_ttiFmt(x.ctr,'pct')}</td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_ttiFmt(x.cpc,'money')}</td>
+          <td style="padding:9px 12px;text-align:right;color:#374151">${_ttiFmt(x.conversions)}</td>
+        </tr>`;}).join('')}</tbody></table></div>`;
+  }
+
+  const ae = document.getElementById('ttiAds');
+  if (ae) {
+    if (!a.ok || a.note || !a.ads?.length) ae.innerHTML = '';
+    else ae.innerHTML = `<h3 style="margin:18px 0 10px;color:#0A1628">Top creatives by CTR</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+      ${a.ads.map(x=>`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:13px">
+        <div style="font-weight:700;color:#0A1628;font-size:0.86rem;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_escapeHtml(x.name||'')}</div>
+        <div style="color:#6B7280;font-size:0.74rem;margin-bottom:8px">${_escapeHtml(x.campaign||'')}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:#F0FDF4;color:#15803D;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">CTR ${_ttiFmt(x.ctr,'pct')}</span><span style="background:#EFF6FF;color:#1E40AF;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">${_ttiFmt(x.clicks)} clicks</span><span style="background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:700">${_ttiFmt(x.spend,'money')}</span></div>
+      </div>`).join('')}</div>`;
+  }
 };

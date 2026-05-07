@@ -8549,6 +8549,12 @@ const _kwExplorerRouter   = require('./services/keyword_explorer/api');
 app.use('/api/meta-insights',     _metaInsightsRouter);
 app.use('/api/keyword-explorer',  _kwExplorerRouter);
 
+// ── Tier 14 ────────────────────────────────────────────────────────────────
+const _googleAdsInsightsRouter = require('./services/google_ads_insights/api');
+const _tiktokAdsInsightsRouter = require('./services/tiktok_ads_insights/api');
+app.use('/api/google-ads-insights', _googleAdsInsightsRouter);
+app.use('/api/tiktok-ads-insights', _tiktokAdsInsightsRouter);
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
