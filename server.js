@@ -8577,6 +8577,31 @@ app.use('/api/weekly-report', _wrModule.router);
   }
 } catch (e) { console.warn('[tier16] schema/cron init failed:', e.message); }})();
 
+// ── Tier 18 ────────────────────────────────────────────────────────────────
+const _revAggSchema = require('./services/review_aggregator/schema');
+const _revAggRouter = require('./services/review_aggregator/api');
+const _churnSchema = require('./services/churn_scorer/schema');
+const _churnRouter = require('./services/churn_scorer/api');
+const _twPulseSchema = require('./services/twitter_pulse/schema');
+const _twPulseRouter = require('./services/twitter_pulse/api');
+const _jobSpySchema = require('./services/job_board_spy/schema');
+const _jobSpyRouter = require('./services/job_board_spy/api');
+const _videoScriptRouter = require('./services/video_script/api');
+app.use('/api/review-aggregator', _revAggRouter);
+app.use('/api/churn-scorer', _churnRouter);
+app.use('/api/twitter-pulse', _twPulseRouter);
+app.use('/api/job-board-spy', _jobSpyRouter);
+app.use('/api/video-script', _videoScriptRouter);
+(async () => { try {
+  if (process.env.DATABASE_URL) {
+    await _revAggSchema.ensureReviewAggregatorSchema();
+    await _churnSchema.ensureChurnScorerSchema();
+    await _twPulseSchema.ensureTwitterPulseSchema();
+    await _jobSpySchema.ensureJobBoardSpySchema();
+    console.log('[tier18] review-aggregator + churn-scorer + twitter-pulse + job-board-spy schemas ready');
+  }
+} catch (e) { console.warn('[tier18] schema init failed:', e.message); }})();
+
 // ── Tier 17 ────────────────────────────────────────────────────────────────
 const _redditRouter = require('./services/reddit_pulse/api');
 const _redditSchema = require('./services/reddit_pulse/schema');

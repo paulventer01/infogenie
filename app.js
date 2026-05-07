@@ -2672,6 +2672,11 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'newsletter-tracker')   { try { buildNewsletterTracker(); }    catch(e) { console.warn('buildNewsletterTracker error:', e); } }
   if (viewId === 'meeting-notes')        { try { buildMeetingNotes(); }         catch(e) { console.warn('buildMeetingNotes error:', e); } }
   if (viewId === 'headline-tester')      { try { buildHeadlineTester(); }       catch(e) { console.warn('buildHeadlineTester error:', e); } }
+  if (viewId === 'review-aggregator')    { try { buildReviewAggregator(); }     catch(e) { console.warn('buildReviewAggregator error:', e); } }
+  if (viewId === 'churn-scorer')         { try { buildChurnScorer(); }          catch(e) { console.warn('buildChurnScorer error:', e); } }
+  if (viewId === 'twitter-pulse')        { try { buildTwitterPulse(); }         catch(e) { console.warn('buildTwitterPulse error:', e); } }
+  if (viewId === 'job-board-spy')        { try { buildJobBoardSpy(); }          catch(e) { console.warn('buildJobBoardSpy error:', e); } }
+  if (viewId === 'video-script')         { try { buildVideoScript(); }          catch(e) { console.warn('buildVideoScript error:', e); } }
   if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
@@ -36589,6 +36594,316 @@ window.buildHeadlineTester = function() {
           navigator.clipboard.writeText(text).then(() => showToast('✅ Copied')).catch(() => showToast('❌ Copy failed'));
         });
       });
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};
+
+// ============================================================================
+// TIER 18 — XSS-safe numeric coercion helpers (LLM output is untrusted)
+// ============================================================================
+function _n(x, d) { const v = Number(x); return Number.isFinite(v) ? Math.round(v) : (d || 0); }
+function _f(x, d, p) { const v = Number(x); return Number.isFinite(v) ? v.toFixed(p == null ? 1 : p) : (d || '—'); }
+
+// ============================================================================
+// TIER 18-A — Review Aggregator
+// ============================================================================
+window.buildReviewAggregator = function() {
+  const wrap = document.getElementById('raWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="ra-tab active" data-tab="single" style="padding:8px 16px;border-radius:6px;border:1px solid #1E1B4B;background:#1E1B4B;color:#fff;font-size:0.78rem;font-weight:700;cursor:pointer">Single Brand</button>
+        <button class="ra-tab" data-tab="compare" style="padding:8px 16px;border-radius:6px;border:1px solid #E5E7EB;background:#fff;color:#374151;font-size:0.78rem;font-weight:700;cursor:pointer">Compare 2-4 Brands</button>
+      </div>
+      <div id="raSingle">
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px">
+          <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND</label><input id="raBrand" placeholder="e.g. Stripe" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+          <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">PLATFORM</label><select id="raPlatform" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+            <option value="trustpilot">Trustpilot</option><option value="g2">G2</option><option value="google">Google</option><option value="capterra">Capterra</option><option value="tripadvisor">TripAdvisor</option>
+          </select></div>
+        </div>
+        <button id="raGo" style="background:linear-gradient(135deg,#F59E0B,#FBBF24);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">⭐ Scan Reviews</button>
+      </div>
+      <div id="raCompare" style="display:none">
+        <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRANDS (comma-sep, 2-4)</label>
+        <input id="raCompareBrands" placeholder="Stripe, Square, Adyen" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box;margin-bottom:8px">
+        <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">PLATFORM</label>
+        <select id="raComparePlatform" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box;margin-bottom:8px">
+          <option value="trustpilot">Trustpilot</option><option value="g2">G2</option><option value="google">Google</option><option value="capterra">Capterra</option>
+        </select>
+        <button id="raCompareGo" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">⚖️ Compare</button>
+      </div>
+    </div>
+    <div id="raOut"></div>
+  `;
+  wrap.querySelectorAll('.ra-tab').forEach(b => b.addEventListener('click', () => {
+    wrap.querySelectorAll('.ra-tab').forEach(x => { x.classList.remove('active'); x.style.background='#fff'; x.style.color='#374151'; x.style.borderColor='#E5E7EB'; });
+    b.classList.add('active'); b.style.background='#1E1B4B'; b.style.color='#fff'; b.style.borderColor='#1E1B4B';
+    document.getElementById('raSingle').style.display = b.dataset.tab === 'single' ? '' : 'none';
+    document.getElementById('raCompare').style.display = b.dataset.tab === 'compare' ? '' : 'none';
+  }));
+  document.getElementById('raGo').addEventListener('click', async () => {
+    const brand = document.getElementById('raBrand').value.trim();
+    const platform = document.getElementById('raPlatform').value;
+    const out = document.getElementById('raOut');
+    if (!brand) { out.innerHTML = '<div style="color:#991B1B">⚠ Brand required</div>'; return; }
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Scanning ' + platform + '…</div>';
+    try {
+      const r = await fetch('/api/review-aggregator/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, platform }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      if (!r.found) { out.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">No reviews found for ${_escapeHtml(brand)} on ${_escapeHtml(platform)}.</div>`; return; }
+      const sentColor = { positive:['#ECFDF5','#065F46'], neutral:['#F3F4F6','#374151'], negative:['#FEF2F2','#991B1B'] };
+      const stars = (n) => { const k = Math.max(0, Math.min(5, _n(n))); return '★'.repeat(k) + '☆'.repeat(5 - k); };
+      out.innerHTML = `
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px 20px;margin-bottom:14px;display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+          <div><div style="font-size:2rem;font-weight:800;color:#F59E0B">${_f(r.avg_rating)}</div><div style="color:#FBBF24;font-size:1.1rem;letter-spacing:2px">${stars(r.avg_rating)}</div><div style="font-size:0.7rem;color:#6B7280">${_n(r.total_reviews)} total reviews</div></div>
+          <div style="display:flex;gap:14px">
+            <div style="text-align:center"><div style="font-size:1.4rem;font-weight:800;color:#10B981">${_n(r.counts && r.counts.pos)}</div><div style="font-size:0.66rem;color:#6B7280;font-weight:700">POSITIVE</div></div>
+            <div style="text-align:center"><div style="font-size:1.4rem;font-weight:800;color:#6B7280">${_n(r.counts && r.counts.neu)}</div><div style="font-size:0.66rem;color:#6B7280;font-weight:700">NEUTRAL</div></div>
+            <div style="text-align:center"><div style="font-size:1.4rem;font-weight:800;color:#EF4444">${_n(r.counts && r.counts.neg)}</div><div style="font-size:0.66rem;color:#6B7280;font-weight:700">NEGATIVE</div></div>
+          </div>
+        </div>
+        <div style="display:grid;gap:10px">${(r.reviews||[]).map(rv => {
+          const sc = sentColor[(rv.sentiment||'neutral').toLowerCase()] || sentColor.neutral;
+          return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:5px">
+              <div><strong style="color:#0A1628;font-size:0.86rem">${_escapeHtml(rv.author||'Anonymous')}</strong> <span style="color:#FBBF24;letter-spacing:1px">${stars(rv.rating)}</span></div>
+              <span style="background:${sc[0]};color:${sc[1]};padding:2px 8px;border-radius:4px;font-size:0.66rem;font-weight:700">${_escapeHtml(rv.sentiment||'neutral')}</span>
+            </div>
+            ${rv.title ? `<div style="font-weight:700;color:#0A1628;font-size:0.86rem;margin-bottom:4px">${_escapeHtml(rv.title)}</div>` : ''}
+            <div style="color:#374151;font-size:0.82rem;line-height:1.5">${_escapeHtml(rv.body||'')}</div>
+            <div style="font-size:0.7rem;color:#9CA3AF;margin-top:6px">${_escapeHtml(rv.date||'')}</div>
+          </div>`;
+        }).join('')}</div>`;
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+  document.getElementById('raCompareGo').addEventListener('click', async () => {
+    const brands = document.getElementById('raCompareBrands').value.split(',').map(s => s.trim()).filter(Boolean);
+    const platform = document.getElementById('raComparePlatform').value;
+    const out = document.getElementById('raOut');
+    if (brands.length < 2) { out.innerHTML = '<div style="color:#991B1B">⚠ Need at least 2 brands</div>'; return; }
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Comparing ' + brands.length + ' brands…</div>';
+    try {
+      const r = await fetch('/api/review-aggregator/compare', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brands, platform }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      out.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">${r.results.map(b => `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:16px;text-align:center">
+        <div style="font-weight:800;color:#0A1628;font-size:1rem">${_escapeHtml(b.brand)}</div>
+        ${b.found ? `<div style="font-size:2rem;font-weight:800;color:#F59E0B;margin:8px 0">${_f(b.avg_rating)}</div>
+          <div style="font-size:0.74rem;color:#6B7280">${_n(b.total_reviews)} reviews · ${_n(b.recent_count)} recent</div>` : '<div style="color:#9CA3AF;margin-top:14px;font-size:0.78rem">Not found</div>'}
+      </div>`).join('')}</div>`;
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};
+
+// ============================================================================
+// TIER 18-B — Predictive Churn Scorer
+// ============================================================================
+window.buildChurnScorer = function() {
+  const wrap = document.getElementById('csWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">📊 Score Contacts (paste JSON)</h3>
+      <textarea id="csJson" rows="10" placeholder='[{"email":"jane@acme.com","name":"Jane Doe","logins_per_week":0.5,"days_since_last_login":21,"open_tickets":2,"days_since_last_purchase":120,"nps":4,"feature_adoption_pct":18,"tenure_days":340,"plan":"Pro","mrr":499}]' style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.82rem;font-family:monospace;resize:vertical;box-sizing:border-box"></textarea>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button id="csGo" style="background:linear-gradient(135deg,#DC2626,#EF4444);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">⚠️ Score Contacts</button>
+        <button id="csLoad" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:10px 16px;border-radius:6px;font-size:0.78rem;font-weight:700;cursor:pointer">📜 Load Saved Scores</button>
+      </div>
+    </div>
+    <div id="csOut"></div>
+  `;
+  document.getElementById('csGo').addEventListener('click', async () => {
+    const out = document.getElementById('csOut');
+    let parsed;
+    try { parsed = JSON.parse(document.getElementById('csJson').value); }
+    catch (e) { out.innerHTML = '<div style="color:#991B1B">⚠ Invalid JSON: ' + _escapeHtml(e.message) + '</div>'; return; }
+    const arr = Array.isArray(parsed) ? parsed : [parsed];
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Scoring ' + arr.length + ' contact(s)…</div>';
+    try {
+      const r = await fetch('/api/churn-scorer/bulk', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ contacts: arr }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      _csRender(out, r.results);
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+  document.getElementById('csLoad').addEventListener('click', async () => {
+    const out = document.getElementById('csOut');
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Loading…</div>';
+    try {
+      const r = await fetch('/api/churn-scorer/scores').then(x => x.json());
+      if (!r.ok || !r.scores.length) { out.innerHTML = '<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">No scored contacts yet.</div>'; return; }
+      _csRender(out, r.scores.map(s => ({ ok:true, email: s.contact_email, score: s.score, risk_level: s.risk_level, signals: s.signals, recommendation: s.recommendation })));
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};
+function _csRender(out, results) {
+  const riskColor = { critical:'#DC2626', high:'#EF4444', medium:'#F59E0B', low:'#10B981' };
+  const sorted = results.slice().sort((a,b) => (b.score||0) - (a.score||0));
+  out.innerHTML = `<div style="display:grid;gap:10px">${sorted.map(s => {
+    if (!s.ok) return `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:12px;color:#991B1B;font-size:0.82rem">${_escapeHtml(s.email||'?')}: ${_escapeHtml(s.error||'failed')}</div>`;
+    const rc = riskColor[(s.risk_level||'medium').toLowerCase()] || '#F59E0B';
+    return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid ${rc};border-radius:8px;padding:14px 16px">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:6px">
+        <div><strong style="color:#0A1628;font-size:0.92rem">${_escapeHtml(s.email||'')}</strong> <span style="background:${rc};color:#fff;padding:2px 8px;border-radius:10px;font-size:0.68rem;font-weight:700;text-transform:uppercase;margin-left:6px">${_escapeHtml(s.risk_level||'medium')}</span></div>
+        <div style="font-size:1.6rem;font-weight:800;color:${rc}">${_n(s.score)}</div>
+      </div>
+      ${(s.signals||[]).length ? `<div style="font-size:0.78rem;color:#374151;line-height:1.5;margin-top:4px"><strong>Signals:</strong><ul style="margin:4px 0 0;padding-left:20px">${(s.signals||[]).map(x => `<li>${_escapeHtml(x)}</li>`).join('')}</ul></div>` : ''}
+      ${s.recommendation ? `<div style="background:#F0FDF4;border-left:3px solid #10B981;padding:6px 10px;border-radius:4px;font-size:0.8rem;margin-top:8px;color:#065F46"><strong>💡 Action:</strong> ${_escapeHtml(s.recommendation)}</div>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+// ============================================================================
+// TIER 18-C — Twitter/X Pulse
+// ============================================================================
+window.buildTwitterPulse = function() {
+  const wrap = document.getElementById('twWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:10px">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND</label><input id="twBrand" placeholder="e.g. Tesla" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">EXTRA KEYWORDS (optional, comma-sep)</label><input id="twKw" placeholder="cybertruck, FSD, autopilot" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+      </div>
+      <button id="twGo" style="background:linear-gradient(135deg,#1DA1F2,#0EA5E9);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">🐦 Scan X</button>
+    </div>
+    <div id="twOut"></div>
+  `;
+  document.getElementById('twGo').addEventListener('click', async () => {
+    const brand = document.getElementById('twBrand').value.trim();
+    const keywords = document.getElementById('twKw').value.split(',').map(s => s.trim()).filter(Boolean);
+    const out = document.getElementById('twOut');
+    if (!brand) { out.innerHTML = '<div style="color:#991B1B">⚠ Brand required</div>'; return; }
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Searching X (15-30s)…</div>';
+    try {
+      const r = await fetch('/api/twitter-pulse/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, keywords }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      const sentColor = { positive:['#ECFDF5','#065F46'], neutral:['#F3F4F6','#374151'], negative:['#FEF2F2','#991B1B'] };
+      out.innerHTML = `
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px 18px;margin-bottom:14px;display:flex;justify-content:space-around;text-align:center;gap:10px;flex-wrap:wrap">
+          <div><div style="font-size:1.5rem;font-weight:800;color:#0A1628">${_n(r.total)}</div><div style="font-size:0.7rem;color:#6B7280;font-weight:700">TOTAL TWEETS</div></div>
+          <div><div style="font-size:1.5rem;font-weight:800;color:#10B981">${_n(r.counts && r.counts.pos)}</div><div style="font-size:0.7rem;color:#6B7280;font-weight:700">POSITIVE</div></div>
+          <div><div style="font-size:1.5rem;font-weight:800;color:#6B7280">${_n(r.counts && r.counts.neu)}</div><div style="font-size:0.7rem;color:#6B7280;font-weight:700">NEUTRAL</div></div>
+          <div><div style="font-size:1.5rem;font-weight:800;color:#EF4444">${_n(r.counts && r.counts.neg)}</div><div style="font-size:0.7rem;color:#6B7280;font-weight:700">NEGATIVE</div></div>
+          <div><div style="font-size:1.5rem;font-weight:800;color:#7C3AED">🔥 ${_n(r.viral_count)}</div><div style="font-size:0.7rem;color:#6B7280;font-weight:700">VIRAL</div></div>
+        </div>
+        ${r.tweets.length === 0 ? '<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">No recent tweets found.</div>' :
+        '<div style="display:grid;gap:10px">' + r.tweets.map(t => {
+          const sc = sentColor[(t.sentiment||'neutral').toLowerCase()] || sentColor.neutral;
+          return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:3px solid ${t.viral?'#7C3AED':'#1DA1F2'};border-radius:8px;padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:start">
+              <div style="flex:1">
+                <div style="font-weight:700;color:#0A1628;font-size:0.86rem">${_escapeHtml(t.handle||t.author||'@unknown')} ${t.viral ? '<span style="background:#FEF3C7;color:#92400E;padding:1px 6px;border-radius:3px;font-size:0.66rem;font-weight:700">🔥 VIRAL</span>' : ''}</div>
+                <div style="color:#0A1628;font-size:0.86rem;margin-top:4px;line-height:1.5;white-space:pre-wrap">${_escapeHtml(t.text||'')}</div>
+                <div style="font-size:0.72rem;color:#6B7280;margin-top:6px">❤️ ${_n(t.likes)} · 🔁 ${_n(t.retweets)} · 💬 ${_n(t.replies)} · ${_escapeHtml(t.date||'')} ${t.url && _safeUrl(t.url) ? `· <a href="${_safeUrl(t.url)}" target="_blank" rel="noopener" style="color:#1DA1F2;font-weight:700">View →</a>` : ''}</div>
+              </div>
+              <span style="background:${sc[0]};color:${sc[1]};padding:2px 8px;border-radius:4px;font-size:0.68rem;font-weight:700;flex-shrink:0">${_escapeHtml(t.sentiment||'neutral')}</span>
+            </div>
+          </div>`;
+        }).join('') + '</div>'}`;
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};
+
+// ============================================================================
+// TIER 18-D — Job Board Spy
+// ============================================================================
+window.buildJobBoardSpy = function() {
+  const wrap = document.getElementById('jbWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">COMPETITOR / COMPANY</label>
+      <input id="jbCo" placeholder="e.g. Stripe" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem;box-sizing:border-box">
+      <button id="jbGo" style="margin-top:10px;background:linear-gradient(135deg,#0F172A,#1E293B);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">💼 Scan Open Roles</button>
+    </div>
+    <div id="jbOut"></div>
+  `;
+  document.getElementById('jbGo').addEventListener('click', async () => {
+    const company = document.getElementById('jbCo').value.trim();
+    const out = document.getElementById('jbOut');
+    if (!company) { out.innerHTML = '<div style="color:#991B1B">⚠ Company required</div>'; return; }
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Scanning LinkedIn / Indeed / careers page (20-40s)…</div>';
+    try {
+      const r = await fetch('/api/job-board-spy/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ company }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      const dept = r.by_dept || {};
+      const deptColors = { engineering:'#0066FF', sales:'#10B981', marketing:'#F59E0B', product:'#7C3AED', design:'#EC4899', ops:'#6B7280', finance:'#059669', hr:'#DC2626', other:'#9CA3AF' };
+      out.innerHTML = `
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div><div style="font-size:1.8rem;font-weight:800;color:#0A1628">${_n(r.total_jobs)}</div><div style="font-size:0.74rem;color:#6B7280;font-weight:700">OPEN ROLES AT ${_escapeHtml(company.toUpperCase())}</div></div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${Object.entries(dept).map(([k,v]) => `<span style="background:${deptColors[String(k).toLowerCase()]||'#9CA3AF'};color:#fff;padding:4px 10px;border-radius:14px;font-size:0.74rem;font-weight:700;text-transform:capitalize">${_escapeHtml(String(k))}: ${_n(v)}</span>`).join('')}</div>
+        </div>
+        ${(r.strategic_signals||[]).length ? `<div style="background:linear-gradient(135deg,#FEF3C7,#FDE68A);border:1px solid #F59E0B;border-radius:12px;padding:14px 18px;margin-bottom:14px">
+          <h4 style="margin:0 0 8px;color:#92400E;font-size:0.92rem;font-weight:800">🎯 Strategic Signals</h4>
+          <ul style="margin:0;padding-left:20px;color:#78350F;font-size:0.84rem;line-height:1.6">${(r.strategic_signals||[]).map(s => `<li>${_escapeHtml(s)}</li>`).join('')}</ul>
+        </div>` : ''}
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px">${(r.jobs||[]).map(j => `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px">
+          <div style="font-weight:700;color:#0A1628;font-size:0.88rem">${j.url && _safeUrl(j.url) ? `<a href="${_safeUrl(j.url)}" target="_blank" rel="noopener" style="color:#0A1628;text-decoration:none">${_escapeHtml(j.title||'')}</a>` : _escapeHtml(j.title||'')}</div>
+          <div style="font-size:0.72rem;color:#6B7280;margin-top:3px">${_escapeHtml(j.department||'')} · ${_escapeHtml(j.seniority||'')} · ${_escapeHtml(j.location||'')} · ${_escapeHtml(j.posted||'')}</div>
+          ${j.summary ? `<div style="font-size:0.78rem;color:#374151;margin-top:5px;line-height:1.4">${_escapeHtml(j.summary)}</div>` : ''}
+        </div>`).join('')}</div>`;
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};
+
+// ============================================================================
+// TIER 18-E — Video Script Generator
+// ============================================================================
+window.buildVideoScript = function() {
+  const wrap = document.getElementById('vsWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">TOPIC / PRODUCT</label>
+      <input id="vsTopic" placeholder='e.g. "5 hidden features of our analytics dashboard"' style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.88rem;box-sizing:border-box">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:10px">
+        <div><label style="display:block;font-size:0.68rem;font-weight:700;color:#6B7280;margin-bottom:3px">PLATFORM</label><select id="vsPlatform" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.8rem;box-sizing:border-box">
+          <option value="tiktok">TikTok</option><option value="reels">Reels</option><option value="shorts">YT Shorts</option><option value="linkedin">LinkedIn</option>
+        </select></div>
+        <div><label style="display:block;font-size:0.68rem;font-weight:700;color:#6B7280;margin-bottom:3px">TONE</label><select id="vsTone" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.8rem;box-sizing:border-box">
+          <option value="energetic">Energetic</option><option value="educational">Educational</option><option value="funny">Funny</option><option value="dramatic">Dramatic</option><option value="authoritative">Authoritative</option><option value="conversational">Conversational</option>
+        </select></div>
+        <div><label style="display:block;font-size:0.68rem;font-weight:700;color:#6B7280;margin-bottom:3px">DURATION (s)</label><input id="vsDur" type="number" min="15" max="180" value="30" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.8rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.68rem;font-weight:700;color:#6B7280;margin-bottom:3px">VARIANTS</label><input id="vsCount" type="number" min="1" max="5" value="3" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.8rem;box-sizing:border-box"></div>
+      </div>
+      <button id="vsGo" style="margin-top:12px;background:linear-gradient(135deg,#EC4899,#F472B6);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">🎬 Generate Scripts</button>
+    </div>
+    <div id="vsOut"></div>
+  `;
+  document.getElementById('vsGo').addEventListener('click', async () => {
+    const topic = document.getElementById('vsTopic').value.trim();
+    const platform = document.getElementById('vsPlatform').value;
+    const tone = document.getElementById('vsTone').value;
+    const duration = parseInt(document.getElementById('vsDur').value, 10);
+    const count = parseInt(document.getElementById('vsCount').value, 10);
+    const out = document.getElementById('vsOut');
+    if (!topic) { out.innerHTML = '<div style="color:#991B1B">⚠ Topic required</div>'; return; }
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Generating ' + count + ' script(s)…</div>';
+    try {
+      const r = await fetch('/api/video-script/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ topic, platform, tone, duration, count }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      out.innerHTML = `<div style="display:grid;gap:14px">${(r.scripts||[]).map((s, i) => `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;border-left:4px solid #EC4899">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h3 style="margin:0;color:#0A1628;font-size:1rem">🎬 Variant ${i+1} <span style="background:#FCE7F3;color:#9F1239;padding:3px 10px;border-radius:14px;font-size:0.7rem;font-weight:700;margin-left:8px">${_escapeHtml(s.viral_pattern||'')}</span></h3>
+          <span style="font-size:0.74rem;color:#6B7280;font-weight:700">${_n(s.estimated_duration_sec, duration)}s</span>
+        </div>
+        <div style="background:linear-gradient(135deg,#FCE7F3,#FBCFE8);border-radius:8px;padding:10px 14px;margin-bottom:10px">
+          <div style="font-size:0.66rem;font-weight:800;color:#9F1239;text-transform:uppercase;margin-bottom:3px">⚡ HOOK (0-3s)</div>
+          <div style="font-size:0.96rem;font-weight:700;color:#0A1628">"${_escapeHtml(s.hook||'')}"</div>
+        </div>
+        <div style="margin-bottom:10px">
+          <div style="font-size:0.7rem;font-weight:800;color:#6B7280;text-transform:uppercase;margin-bottom:6px">📝 BODY</div>
+          ${(s.body||[]).map((b, bi) => `<div style="display:grid;grid-template-columns:24px 1fr 1fr 1fr;gap:8px;padding:8px 0;border-bottom:1px solid #F3F4F6;font-size:0.78rem">
+            <div style="color:#9CA3AF;font-weight:700">${_n(bi+1)}.</div>
+            <div><div style="font-size:0.66rem;color:#9CA3AF;font-weight:700">SPOKEN</div><div style="color:#0A1628">${_escapeHtml(b.line||'')}</div></div>
+            <div><div style="font-size:0.66rem;color:#9CA3AF;font-weight:700">ON-SCREEN</div><div style="color:#1E1B4B;font-weight:700">${_escapeHtml(b.onscreen_text||'')}</div></div>
+            <div><div style="font-size:0.66rem;color:#9CA3AF;font-weight:700">CUE</div><div style="color:#7C3AED;font-style:italic">${_escapeHtml(b.cue||'')}</div></div>
+          </div>`).join('')}
+        </div>
+        <div style="background:linear-gradient(135deg,#10B981,#34D399);color:#fff;border-radius:8px;padding:10px 14px;margin-bottom:10px">
+          <div style="font-size:0.66rem;font-weight:800;text-transform:uppercase;margin-bottom:3px">🎯 CTA</div>
+          <div style="font-size:0.92rem;font-weight:700">"${_escapeHtml(s.cta||'')}"</div>
+        </div>
+        <div style="font-size:0.78rem;color:#6B7280">${(s.hashtags||[]).map(h => `<span style="background:#F3F4F6;padding:2px 8px;border-radius:10px;margin-right:4px;color:#0066FF;font-weight:700">${_escapeHtml(h)}</span>`).join('')}</div>
+      </div>`).join('')}</div>`;
     } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
   });
 };
