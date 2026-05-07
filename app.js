@@ -2648,6 +2648,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'alert-routing')   { try { buildAlertRouting(); }   catch(e) { console.warn('buildAlertRouting error:', e); } }
   if (viewId === 'backlinks')        { try { buildBacklinks(); }       catch(e) { console.warn('buildBacklinks error:', e); } }
   if (viewId === 'content-calendar') { try { buildContentCalendar(); } catch(e) { console.warn('buildContentCalendar error:', e); } }
+  if (viewId === 'podcast-monitor')  { try { buildPodcastMonitor(); }  catch(e) { console.warn('buildPodcastMonitor error:', e); } }
+  if (viewId === 'ab-designer')      { try { buildAbDesigner(); }      catch(e) { console.warn('buildAbDesigner error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -34006,5 +34008,165 @@ window._ccCopy = async function() {
     return '"' + String(v).replace(/"/g,'""') + '"';
   }).join(','))).join('\n');
   try { await navigator.clipboard.writeText(csv); showToast('✅ Copied as CSV'); }
+  catch (e) { showToast('❌ '+e.message); }
+};
+
+// ── Tier 7 #1: Podcast Mention Monitor ────────────────────────────────────
+window.buildPodcastMonitor = function() {
+  const el = document.getElementById('pmWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 110px 110px auto;gap:10px;align-items:end">
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brand</label>
+          <input id="pmBrand" value="Nike" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Days back</label>
+          <input id="pmDays" type="number" min="1" max="180" value="30" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Max</label>
+          <input id="pmCount" type="number" min="3" max="20" value="10" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <button onclick="_pmGo()" style="padding:10px 22px;background:#F59E0B;border:2px solid #F59E0B;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🎙️ Scan</button>
+      </div>
+    </div>
+    <div id="pmOut"></div>`;
+};
+window._pmGo = async function() {
+  const brand = (document.getElementById('pmBrand')||{}).value || '';
+  const days = (document.getElementById('pmDays')||{}).value || 30;
+  const count = (document.getElementById('pmCount')||{}).value || 10;
+  if (!brand.trim()) return showToast('⚠️ Brand required');
+  const out = document.getElementById('pmOut');
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Searching live web for podcast episodes mentioning ${_escapeHtml(brand)}…</div>`;
+  try {
+    const r = await fetch('/api/podcast-monitor/scan', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ brand:brand.trim(), days:Number(days), count:Number(count) }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    const sentColor = { positive:'#15803D', neutral:'#6B7280', negative:'#B91C1C' };
+    const platColor = { apple:'#A855F7', spotify:'#1DB954', youtube:'#FF0000', other:'#6B7280' };
+    if (!r.episodes.length) {
+      out.innerHTML = `<div style="background:#FEF3C7;color:#92400E;padding:14px 18px;border-radius:10px;font-size:0.85rem">No podcast episodes found in the last ${_escapeHtml(String(days))} days. Try a longer window or a more specific brand. (Source: ${_escapeHtml(r.source)})</div>`;
+      return;
+    }
+    out.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-weight:800;color:#0A1628">🎧 ${r.count} episodes found · last ${_escapeHtml(String(r.days))} days</div>
+        <span style="background:${r.source==='perplexity'?'#7C3AED':'#9CA3AF'};color:#fff;padding:3px 9px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase">${_escapeHtml(r.source)}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${r.episodes.map(ep=>{
+          const sc = sentColor[ep.sentiment] || '#6B7280';
+          const pc = platColor[ep.platform] || platColor.other;
+          return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid ${sc};border-radius:10px;padding:14px 18px">
+            <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:6px">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:800;color:#0A1628;font-size:0.95rem">${_escapeHtml(ep.episode_title||'(untitled)')}</div>
+                <div style="font-size:0.78rem;color:#374151;margin-top:3px">🎙️ <strong>${_escapeHtml(ep.podcast||'')}</strong>${ep.host?` · host: ${_escapeHtml(ep.host)}`:''}</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+                <span style="background:${pc};color:#fff;padding:3px 9px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase">${_escapeHtml(ep.platform||'other')}</span>
+                <span style="background:${sc};color:#fff;padding:3px 9px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase">${_escapeHtml(ep.sentiment||'neutral')}</span>
+                <span style="font-size:0.7rem;color:#9CA3AF">${_escapeHtml(ep.published||'')}</span>
+              </div>
+            </div>
+            <div style="font-size:0.85rem;color:#374151;line-height:1.5;margin-top:6px">${_escapeHtml(ep.summary||'')}</div>
+            ${ep.url?`<div style="margin-top:8px"><a href="${_escapeHtml(_safeUrl(ep.url))}" target="_blank" rel="noopener noreferrer" style="color:#7C3AED;font-size:0.78rem">🔗 Open episode</a></div>`:''}
+          </div>`;
+        }).join('')}
+      </div>`;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+
+// ── Tier 7 #2: AI A/B Test Designer ───────────────────────────────────────
+window.buildAbDesigner = function() {
+  const el = document.getElementById('abWrap'); if (!el) return;
+  const kinds = [
+    ['email_subject','📧 Email subject line'],['ad_headline','📰 Ad headline'],
+    ['ad_body','📝 Ad body copy'],['cta_button','🔘 CTA button'],
+    ['landing_hero','🎯 Landing page hero'],['push_notification','📱 Push notification'],
+    ['sms','💬 SMS'],['social_caption','📣 Social caption'],
+  ];
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 100px;gap:12px;margin-bottom:12px">
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brand (optional)</label>
+          <input id="abBrand" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Element type</label>
+          <select id="abKind" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+            ${kinds.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Variants</label>
+          <input id="abCount" type="number" min="2" max="6" value="4" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Goal</label>
+          <input id="abGoal" placeholder="e.g. drive 10% more click-throughs" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Audience</label>
+          <input id="abAud" placeholder="e.g. lapsed customers, 30-50" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+      </div>
+      <div>
+        <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Original copy (control)</label>
+        <textarea id="abOrig" rows="3" placeholder="Paste the existing subject line, headline, CTA, etc." style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;font-family:inherit;resize:vertical"></textarea>
+      </div>
+      <button onclick="_abGo()" style="margin-top:12px;padding:10px 22px;background:#F59E0B;border:2px solid #F59E0B;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🧪 Design Variants</button>
+    </div>
+    <div id="abOut"></div>`;
+};
+window._abGo = async function() {
+  const brand = (document.getElementById('abBrand')||{}).value || '';
+  const element_kind = (document.getElementById('abKind')||{}).value || 'email_subject';
+  const original = (document.getElementById('abOrig')||{}).value || '';
+  const goal = (document.getElementById('abGoal')||{}).value || '';
+  const audience = (document.getElementById('abAud')||{}).value || '';
+  const count = parseInt((document.getElementById('abCount')||{}).value, 10) || 4;
+  if (!original.trim()) return showToast('⚠️ Paste the original copy first');
+  const out = document.getElementById('abOut');
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Designing ${count} variants…</div>`;
+  try {
+    const r = await fetch('/api/ab-designer/generate', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ brand, element_kind, original, goal, audience, count }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    const angleColor = { control:'#6B7280', emotional:'#EC4899', rational:'#0891B2', FOMO:'#DC2626', social_proof:'#059669', curiosity:'#7C3AED', benefit_led:'#15803D', loss_aversion:'#B91C1C', urgency:'#EA580C', authority:'#1E40AF', novelty:'#DB2777' };
+    out.innerHTML = `
+      <div style="background:linear-gradient(135deg,#F59E0B 0%,#D97706 100%);color:#fff;border-radius:12px 12px 0 0;padding:18px 22px">
+        <div style="font-size:0.7rem;font-weight:700;letter-spacing:.06em;opacity:.9">HYPOTHESIS · ${_escapeHtml((r.source||'').toUpperCase())}</div>
+        <div style="font-size:1.05rem;font-weight:800;margin-top:4px;color:#fff;-webkit-text-fill-color:#fff">${_escapeHtml(r.hypothesis||'')}</div>
+        <div style="display:flex;gap:18px;margin-top:10px;font-size:0.78rem">
+          <div><strong>Primary metric:</strong> ${_escapeHtml(r.primary_metric||'')}</div>
+          <div><strong>Recommended split:</strong> ${_escapeHtml(r.recommended_split||'')}</div>
+        </div>
+      </div>
+      <div style="background:#FEF3C7;color:#92400E;padding:10px 22px;font-size:0.78rem">📊 ${_escapeHtml(r.sample_size_note||'')}</div>
+      <div style="background:#fff;border:1px solid #E5E7EB;border-top:0;border-radius:0 0 12px 12px;padding:18px 22px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">
+          ${(r.variants||[]).map(v=>{
+            const ac = angleColor[v.angle] || '#6B7280';
+            return `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-top:3px solid ${ac};border-radius:8px;padding:14px 16px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div style="display:flex;gap:8px;align-items:center"><span style="background:${ac};color:#fff;width:28px;height:28px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:0.92rem">${_escapeHtml(v.label||'')}</span><span style="font-size:0.7rem;color:#6B7280;text-transform:uppercase;font-weight:700">${_escapeHtml(v.angle||'')}</span></div>
+                <span style="font-size:0.74rem;font-weight:800;color:${v.angle==='control'?'#6B7280':'#15803D'}">${_escapeHtml(v.predicted_lift||'')}</span>
+              </div>
+              <div style="font-size:0.92rem;color:#0A1628;font-weight:600;line-height:1.45;margin-bottom:8px">${_escapeHtml(v.copy||'')}</div>
+              <div style="font-size:0.74rem;color:#6B7280;line-height:1.45;font-style:italic">${_escapeHtml(v.why||'')}</div>
+              <button onclick="_abCopy('${(v.copy||'').replace(/['\\\\]/g,'\\\\$&').replace(/\n/g,'\\\\n')}')" style="margin-top:8px;padding:5px 10px;background:#fff;border:1.5px solid #D1D5DB;border-radius:5px;font-size:0.7rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy</button>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._abCopy = async function(s) {
+  try { await navigator.clipboard.writeText(s); showToast('✅ Copied'); }
   catch (e) { showToast('❌ '+e.message); }
 };

@@ -1,0 +1,17 @@
+const _db = require('../../db');
+async function ensurePodcastMonitorSchema() {
+  if (!_db.hasDb()) return;
+  await _db.getPool().query(`
+    CREATE TABLE IF NOT EXISTS podcast_monitor_runs (
+      id SERIAL PRIMARY KEY,
+      brand TEXT NOT NULL,
+      lookback_days INT NOT NULL DEFAULT 30,
+      episodes JSONB NOT NULL DEFAULT '[]'::jsonb,
+      source TEXT,
+      ran_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_pmr_brand_ran ON podcast_monitor_runs(brand, ran_at DESC);
+  `);
+  console.log('[podcast-monitor] schema ready');
+}
+module.exports = { ensurePodcastMonitorSchema };
