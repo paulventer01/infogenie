@@ -8528,6 +8528,13 @@ const _coldEmailRouter = require('./services/cold_email/api');
 app.use('/api/tech-stack',  _techStackRouter);
 app.use('/api/cold-email',  _coldEmailRouter);
 
+// ── Tier 11 ────────────────────────────────────────────────────────────────
+const _webVitalsRouter  = require('./services/web_vitals/api');
+const _leadFinderSchema = require('./services/lead_finder/schema');
+const _leadFinderRouter = require('./services/lead_finder/api');
+app.use('/api/web-vitals',  _webVitalsRouter);
+app.use('/api/lead-finder', _leadFinderRouter);
+
 (async () => { try {
   if (_db.hasDb()) {
     await _crisisSchema.ensureCrisisRadarSchema();
@@ -8542,6 +8549,7 @@ app.use('/api/cold-email',  _coldEmailRouter);
     await _pwSchema.ensurePricingWatchSchema();
     await _lpSchema.ensureLandingPagesSchema();
     await _coldEmailSchema.ensureColdEmailSchema();
+    await _leadFinderSchema.ensureLeadFinderSchema();
     _crisisDetector.startCron(6);
     _digestRouter.startCron(24);
     console.log('[tier2-5] crisis + battle + trends + sov + discovery + digest + reply + press-release + alert-routing mounted');

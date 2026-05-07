@@ -2656,6 +2656,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'landing-pages')    { try { buildLandingPages(); }     catch(e) { console.warn('buildLandingPages error:', e); } }
   if (viewId === 'tech-stack')       { try { buildTechStack(); }        catch(e) { console.warn('buildTechStack error:', e); } }
   if (viewId === 'cold-email')       { try { buildColdEmail(); }        catch(e) { console.warn('buildColdEmail error:', e); } }
+  if (viewId === 'web-vitals')       { try { buildWebVitals(); }        catch(e) { console.warn('buildWebVitals error:', e); } }
+  if (viewId === 'lead-finder')      { try { buildLeadFinder(); }       catch(e) { console.warn('buildLeadFinder error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -34620,4 +34622,134 @@ window._ceCopyEmail = async function(step) {
   const txt = `Subject: ${em.subject}\n\n${em.body}`;
   try { await navigator.clipboard.writeText(txt); showToast('✅ Email copied'); }
   catch (e) { showToast('❌ '+e.message); }
+};
+
+// ── Tier 11 #1: Web Vitals Auditor ────────────────────────────────────────
+window.buildWebVitals = function() {
+  const el = document.getElementById('wvWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">URL to audit</label>
+      <div style="display:flex;gap:10px">
+        <input id="wvUrl" placeholder="https://nike.com" style="flex:1;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        <button onclick="_wvGo()" style="padding:10px 22px;background:#6366F1;border:2px solid #6366F1;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">⚡ Run Audit</button>
+      </div>
+      <div style="margin-top:8px;font-size:0.74rem;color:#9CA3AF">Audits run in parallel for mobile + desktop · ~30 seconds per URL</div>
+    </div>
+    <div id="wvOut"></div>`;
+};
+window._wvGo = async function() {
+  const url = (document.getElementById('wvUrl')||{}).value || '';
+  if (!url.trim()) return showToast('⚠️ URL required');
+  const out = document.getElementById('wvOut');
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Running Lighthouse on mobile + desktop (this takes ~30s)…</div>`;
+  try {
+    const r = await fetch('/api/web-vitals/audit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url: url.trim() }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    if (r.note) { out.innerHTML = `<div style="background:#FEF3C7;color:#92400E;padding:14px;border-radius:10px">${_escapeHtml(r.note)}</div>`; return; }
+    const renderRun = (run, label) => {
+      if (!run) return `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${label}: audit failed</div>`;
+      const sc = (n) => n>=90?'#15803D':n>=50?'#F59E0B':'#DC2626';
+      const s = run.scores;
+      return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
+        <div style="background:linear-gradient(135deg,#6366F1 0%,#4338CA 100%);color:#fff;padding:14px 20px;font-weight:800;font-size:1rem">${label}</div>
+        <div style="padding:16px 20px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+          ${[['Performance',s.performance],['Accessibility',s.accessibility],['Best Practices',s.best_practices],['SEO',s.seo]].map(([k,v])=>`<div style="text-align:center;background:#F9FAFB;padding:12px;border-radius:8px;border-top:3px solid ${sc(v)}"><div style="font-size:1.7rem;font-weight:800;color:${sc(v)}">${v}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700;text-transform:uppercase;margin-top:2px">${k}</div></div>`).join('')}
+        </div>
+        <div style="padding:0 20px 16px"><div style="font-size:0.7rem;color:#6B7280;font-weight:700;letter-spacing:.06em;margin-bottom:6px">CORE WEB VITALS (LAB)</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            ${[['LCP',run.metrics.lcp],['CLS',run.metrics.cls],['TBT',run.metrics.tbt],['FCP',run.metrics.fcp],['SI',run.metrics.si],['TTI',run.metrics.tti]].map(([k,m])=>`<div style="background:${m.good?'#ECFDF5':'#FEF3C7'};border:1px solid ${m.good?'#A7F3D0':'#FCD34D'};border-radius:6px;padding:8px 10px"><div style="font-size:0.7rem;color:#6B7280;font-weight:700">${k}</div><div style="font-size:0.92rem;color:${m.good?'#065F46':'#92400E'};font-weight:800">${_escapeHtml(m.display||'')}</div></div>`).join('')}
+          </div>
+        </div>
+        ${run.field_data?`<div style="padding:0 20px 16px"><div style="font-size:0.7rem;color:#6B7280;font-weight:700;letter-spacing:.06em;margin-bottom:6px">FIELD DATA (REAL USERS · CrUX)</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            ${[['LCP',run.field_data.lcp_ms?Math.round(run.field_data.lcp_ms)+'ms':'—',run.field_data.lcp_cat],['CLS',(run.field_data.cls||0).toFixed(2),run.field_data.cls_cat],['INP',run.field_data.inp_ms?Math.round(run.field_data.inp_ms)+'ms':'—',run.field_data.inp_cat]].map(([k,v,cat])=>{const cc=cat==='FAST'?'#15803D':cat==='AVERAGE'?'#F59E0B':cat==='SLOW'?'#DC2626':'#6B7280';return `<div style="background:#F9FAFB;border-left:3px solid ${cc};border-radius:5px;padding:8px 10px"><div style="font-size:0.7rem;color:#6B7280;font-weight:700">${k}</div><div style="font-size:0.95rem;color:#0A1628;font-weight:800">${_escapeHtml(v)}</div><div style="font-size:0.62rem;color:${cc};font-weight:700;text-transform:uppercase">${_escapeHtml(cat||'')}</div></div>`;}).join('')}
+          </div>
+        </div>`:''}
+        ${(run.opportunities||[]).length?`<div style="padding:0 20px 16px"><div style="font-size:0.7rem;color:#6B7280;font-weight:700;letter-spacing:.06em;margin-bottom:6px">TOP OPPORTUNITIES</div>
+          <div style="display:flex;flex-direction:column;gap:6px">${run.opportunities.map(o=>`<div style="background:#FEF3C7;border-left:3px solid #F59E0B;border-radius:5px;padding:8px 10px"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:0.82rem;color:#92400E;font-weight:700">${_escapeHtml(o.title)}</span><span style="background:#F59E0B;color:#fff;padding:2px 7px;border-radius:4px;font-size:0.66rem;font-weight:800">SAVE ${Math.round(o.savings_ms/100)/10}s</span></div></div>`).join('')}</div>
+        </div>`:''}
+      </div>`;
+    };
+    out.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">${renderRun(r.mobile,'📱 Mobile')}${renderRun(r.desktop,'🖥️ Desktop')}</div>`;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+
+// ── Tier 11 #2: B2B Lead Finder ───────────────────────────────────────────
+window.buildLeadFinder = function() {
+  const el = document.getElementById('lfWrap'); if (!el) return;
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Job titles (comma-sep)</label><input id="lfTitles" placeholder="VP Marketing, Head of Growth, CMO" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Seniorities</label>
+          <select id="lfSen" multiple size="3" style="width:100%;padding:6px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.82rem">
+            ${['c_suite','vp','director','head','manager','senior'].map(s=>`<option value="${s}">${s.replace('_',' ')}</option>`).join('')}
+          </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Locations (comma-sep)</label><input id="lfLoc" placeholder="United States, United Kingdom" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Company size</label>
+          <div style="display:flex;gap:6px"><input id="lfMin" type="number" placeholder="min" style="flex:1;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"><input id="lfMax" type="number" placeholder="max" style="flex:1;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div style="font-size:0.74rem;color:#9CA3AF">Powered by Apollo.io · 275M+ B2B contacts · per request: 10 leads</div>
+        <button onclick="_lfGo()" style="padding:10px 22px;background:#6366F1;border:2px solid #6366F1;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🎯 Find Leads</button>
+      </div>
+    </div>
+    <div id="lfOut"></div>`;
+};
+window._lfGo = async function() {
+  const titles = ((document.getElementById('lfTitles')||{}).value||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const senSel = document.getElementById('lfSen');
+  const seniorities = senSel ? Array.from(senSel.selectedOptions).map(o=>o.value) : [];
+  const locations = ((document.getElementById('lfLoc')||{}).value||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const company_size_min = parseInt((document.getElementById('lfMin')||{}).value, 10) || null;
+  const company_size_max = parseInt((document.getElementById('lfMax')||{}).value, 10) || null;
+  if (!titles.length && !seniorities.length) return showToast('⚠️ Enter at least one title or seniority');
+  const out = document.getElementById('lfOut');
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Searching Apollo for matching prospects…</div>`;
+  try {
+    const r = await fetch('/api/lead-finder/search', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ titles, seniorities, locations, company_size_min, company_size_max, per_page: 10 }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    if (r.note) { out.innerHTML = `<div style="background:#FEF3C7;color:#92400E;padding:14px;border-radius:10px">${_escapeHtml(r.note)}</div>`; return; }
+    if (!r.leads.length) { out.innerHTML = `<div style="background:#FEF3C7;color:#92400E;padding:14px;border-radius:10px">No leads matched these filters. Try broader criteria.</div>`; return; }
+    out.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-weight:800;color:#0A1628">🎯 ${r.leads.length} leads · ${(r.total||0).toLocaleString()} total matches in Apollo</div>
+        <button onclick="_lfExportCsv()" style="padding:7px 14px;background:#fff;border:1.5px solid #6366F1;border-radius:6px;color:#6366F1;font-size:0.78rem;font-weight:700;cursor:pointer">📥 Export CSV</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px">
+        ${r.leads.map(l=>`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px">
+          <div style="display:flex;gap:10px;align-items:flex-start">
+            ${l.photo_url?`<img src="${_escapeHtml(_safeUrl(l.photo_url))}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'">`:`<div style="width:44px;height:44px;border-radius:50%;background:#6366F1;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0">${_escapeHtml((l.name||'?').charAt(0))}</div>`}
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:800;color:#0A1628;font-size:0.95rem">${_escapeHtml(l.name||'(no name)')}</div>
+              <div style="font-size:0.78rem;color:#374151">${_escapeHtml(l.title||'')}</div>
+              <div style="font-size:0.78rem;color:#6366F1;font-weight:700;margin-top:2px">${_escapeHtml(l.company||'')}${l.company_size?` · ${l.company_size} emp`:''}</div>
+            </div>
+          </div>
+          <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:5px;font-size:0.7rem">
+            ${l.location?`<span style="background:#F3F4F6;color:#374151;padding:2px 7px;border-radius:4px">📍 ${_escapeHtml(l.location)}</span>`:''}
+            ${l.company_industry?`<span style="background:#EDE9FE;color:#5B21B6;padding:2px 7px;border-radius:4px">${_escapeHtml(l.company_industry)}</span>`:''}
+            ${l.email_status==='verified'?`<span style="background:#D1FAE5;color:#065F46;padding:2px 7px;border-radius:4px">✓ email verified</span>`:l.email?`<span style="background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px">${_escapeHtml(l.email_status)}</span>`:''}
+          </div>
+          <div style="margin-top:10px;display:flex;gap:6px">
+            ${l.linkedin_url?`<a href="${_escapeHtml(_safeUrl(l.linkedin_url))}" target="_blank" rel="noopener noreferrer" style="padding:5px 10px;background:#0A66C2;color:#fff;border-radius:5px;font-size:0.72rem;font-weight:700;text-decoration:none">in LinkedIn</a>`:''}
+            ${l.company_domain?`<a href="${_escapeHtml(_safeUrl('https://'+l.company_domain.replace(/^https?:\/\//,'')))}" target="_blank" rel="noopener noreferrer" style="padding:5px 10px;background:#fff;border:1.5px solid #D1D5DB;color:#374151;border-radius:5px;font-size:0.72rem;font-weight:700;text-decoration:none">🌐 Site</a>`:''}
+          </div>
+        </div>`).join('')}
+      </div>`;
+    window._lfLeads = r.leads;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+window._lfExportCsv = function() {
+  const rows = window._lfLeads || []; if (!rows.length) return;
+  const cols = ['name','title','company','company_domain','company_size','company_industry','location','email','email_status','linkedin_url'];
+  const csv = [cols.join(',')].concat(rows.map(r => cols.map(c => `"${String(r[c]||'').replace(/"/g,'""')}"`).join(','))).join('\n');
+  const blob = new Blob([csv], { type:'text/csv' }); const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `leads-${Date.now()}.csv`; a.click();
+  showToast('✅ CSV downloaded');
 };
