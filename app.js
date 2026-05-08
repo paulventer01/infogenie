@@ -2680,6 +2680,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'chatbot-builder')      { try { buildChatbotBuilder(); }       catch(e) { console.warn('buildChatbotBuilder error:', e); } }
   if (viewId === 'glassdoor')            { try { buildGlassdoor(); }            catch(e) { console.warn('buildGlassdoor error:', e); } }
   if (viewId === 'quora-mining')         { try { buildQuoraMining(); }          catch(e) { console.warn('buildQuoraMining error:', e); } }
+  if (viewId === 'social-analytics')     { try { buildSocialAnalytics(); }      catch(e) { console.warn('buildSocialAnalytics error:', e); } }
   if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
@@ -37093,6 +37094,86 @@ window.buildQuoraMining = function() {
             ${q.suggested_response_angle ? `<div style="background:#FEF3C7;border-left:3px solid #F59E0B;padding:8px 12px;border-radius:4px;font-size:0.82rem;color:#78350F"><strong>💡 Your angle:</strong> ${_escapeHtml(q.suggested_response_angle)}</div>` : ''}
           </div>`;
         }).join('')}</div>`;
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};
+
+// ============================================================================
+// SOCIAL ANALYTICS (Zernio per-account engagement)
+// ============================================================================
+window.buildSocialAnalytics = async function() {
+  const wrap = document.getElementById('saWrap'); if (!wrap) return;
+  wrap.innerHTML = '<div style="color:#9CA3AF">⏳ Loading Zernio profiles…</div>';
+  let profiles = [];
+  try {
+    const pr = await fetch('/api/social-publisher/profiles').then(x => x.json());
+    profiles = pr.profiles || [];
+  } catch (e) { wrap.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; return; }
+  if (!profiles.length) { wrap.innerHTML = `<div style="background:#FEF3C7;color:#78350F;padding:16px;border-radius:10px">No Zernio profile yet. <a href="#" id="saGoSP" style="font-weight:700;color:#B45309">Open Social Publisher to create one →</a></div>`; const g = document.getElementById('saGoSP'); if (g) g.addEventListener('click', e => { e.preventDefault(); navigateTo('social-publisher'); }); return; }
+
+  const profOpts = profiles.map(p => `<option value="${_escapeHtml(p._id)}">${_escapeHtml(p.name)}${p.isDefault ? ' (default)' : ''}</option>`).join('');
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;align-items:end">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">PROFILE</label><select id="saProf" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">${profOpts}</select></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">RANGE</label><select id="saRange" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+          <option value="7d">Last 7 days</option><option value="30d" selected>Last 30 days</option><option value="90d">Last 90 days</option>
+        </select></div>
+        <div><button id="saGo" style="width:100%;background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:none;padding:9px 16px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">📈 Load Analytics</button></div>
+      </div>
+    </div>
+    <div id="saOut"></div>
+  `;
+  const platIcon = { twitter:'🐦', instagram:'📷', facebook:'📘', linkedin:'💼', tiktok:'🎵', youtube:'📺', pinterest:'📌', reddit:'🔥', bluesky:'🦋', threads:'🧵', googlebusiness:'🏪', telegram:'✈️', snapchat:'👻', whatsapp:'💚', discord:'🎮' };
+  document.getElementById('saGo').addEventListener('click', async () => {
+    const profileId = document.getElementById('saProf').value;
+    const range = document.getElementById('saRange').value;
+    const out = document.getElementById('saOut');
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Pulling per-account engagement from Zernio (10-30s)…</div>';
+    try {
+      const r = await fetch(`/api/social-publisher/analytics?profileId=${encodeURIComponent(profileId)}&range=${encodeURIComponent(range)}`).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      if (r.note) { out.innerHTML = `<div style="background:#FEF3C7;color:#78350F;padding:16px;border-radius:10px"><strong>${_escapeHtml(r.note)}</strong> <a href="#" id="saGoSP2" style="font-weight:700;color:#B45309;margin-left:8px">Open Social Publisher →</a></div>`; const g = document.getElementById('saGoSP2'); if (g) g.addEventListener('click', e => { e.preventDefault(); navigateTo('social-publisher'); }); return; }
+      const t = r.totals || {};
+      const totalsHtml = `
+        <div style="background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border-radius:12px;padding:18px;margin-bottom:14px">
+          <div style="font-size:0.74rem;font-weight:700;text-transform:uppercase;opacity:.85;margin-bottom:8px">📊 Totals across ${_n((r.accounts||[]).length)} account(s) · last ${_escapeHtml(r.range)}</div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;text-align:center">
+            <div><div style="font-size:1.5rem;font-weight:800">${_n(t.posts).toLocaleString()}</div><div style="font-size:0.68rem;opacity:.85;font-weight:700">POSTS</div></div>
+            <div><div style="font-size:1.5rem;font-weight:800">${_n(t.impressions).toLocaleString()}</div><div style="font-size:0.68rem;opacity:.85;font-weight:700">IMPRESSIONS</div></div>
+            <div><div style="font-size:1.5rem;font-weight:800">${_n(t.likes + t.comments + t.shares + t.clicks).toLocaleString()}</div><div style="font-size:0.68rem;opacity:.85;font-weight:700">ENGAGEMENT</div></div>
+            <div><div style="font-size:1.5rem;font-weight:800">${(_f(t.engagementRate) || 0).toFixed(2)}%</div><div style="font-size:0.68rem;opacity:.85;font-weight:700">ENG. RATE</div></div>
+            <div><div style="font-size:1.5rem;font-weight:800">${_n(t.followers).toLocaleString()}</div><div style="font-size:0.68rem;opacity:.85;font-weight:700">FOLLOWERS</div></div>
+          </div>
+        </div>`;
+      const accountsHtml = (r.accounts || []).length ? `<div style="display:grid;gap:14px">${r.accounts.map(a => {
+        const s = a.stats || {};
+        const icon = platIcon[String(a.platform||'').toLowerCase()] || '🌐';
+        const sourceTag = a.analyticsSource === 'zernio_analytics_endpoint'
+          ? '<span style="background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:10px;font-size:0.66rem;font-weight:700;margin-left:8px">LIVE</span>'
+          : a.analyticsSource === 'derived_from_posts'
+            ? '<span style="background:#FEF3C7;color:#78350F;padding:2px 8px;border-radius:10px;font-size:0.66rem;font-weight:700;margin-left:8px">DERIVED</span>'
+            : '<span style="background:#F3F4F6;color:#6B7280;padding:2px 8px;border-radius:10px;font-size:0.66rem;font-weight:700;margin-left:8px">NO DATA</span>';
+        return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px 18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h3 style="margin:0;color:#0A1628;font-size:1rem">${icon} ${_escapeHtml(a.username || a.platform)} <span style="color:#9CA3AF;font-size:0.78rem;font-weight:500;margin-left:6px">${_escapeHtml(a.platform)}</span>${sourceTag}</h3>
+            ${s.followerGrowth ? `<span style="color:${s.followerGrowth > 0 ? '#0E9F6E' : '#DC2626'};font-weight:800;font-size:0.84rem">${s.followerGrowth > 0 ? '▲' : '▼'} ${Math.abs(s.followerGrowth)}</span>` : ''}
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;text-align:center;margin-bottom:${a.topPost ? '12px' : '0'}">
+            <div><div style="font-size:1.1rem;font-weight:800;color:#0066FF">${_n(s.posts).toLocaleString()}</div><div style="font-size:0.62rem;color:#6B7280;font-weight:700">POSTS</div></div>
+            <div><div style="font-size:1.1rem;font-weight:800;color:#7C3AED">${_n(s.impressions).toLocaleString()}</div><div style="font-size:0.62rem;color:#6B7280;font-weight:700">IMPRESS.</div></div>
+            <div><div style="font-size:1.1rem;font-weight:800;color:#EC4899">${_n(s.likes).toLocaleString()}</div><div style="font-size:0.62rem;color:#6B7280;font-weight:700">LIKES</div></div>
+            <div><div style="font-size:1.1rem;font-weight:800;color:#0E9F6E">${_n(s.comments).toLocaleString()}</div><div style="font-size:0.62rem;color:#6B7280;font-weight:700">COMMENTS</div></div>
+            <div><div style="font-size:1.1rem;font-weight:800;color:#F59E0B">${_n(s.shares).toLocaleString()}</div><div style="font-size:0.62rem;color:#6B7280;font-weight:700">SHARES</div></div>
+            <div><div style="font-size:1.1rem;font-weight:800;color:#374151">${(_f(s.engagementRate) || 0).toFixed(2)}%</div><div style="font-size:0.62rem;color:#6B7280;font-weight:700">ENG. RATE</div></div>
+          </div>
+          ${a.topPost ? `<div style="background:#F9FAFB;border-left:3px solid #FBBF24;padding:10px 14px;border-radius:6px;margin-top:8px">
+            <div style="font-size:0.66rem;font-weight:800;color:#92400E;text-transform:uppercase;margin-bottom:4px">🏆 Top Post · ${_n(a.topPost.engagement).toLocaleString()} engagements</div>
+            <div style="font-size:0.84rem;color:#0A1628;line-height:1.5">${_escapeHtml(a.topPost.text)}${a.topPost.url ? ` <a href="${_safeUrl(a.topPost.url)}" target="_blank" rel="noopener" style="color:#0066FF;font-weight:700;text-decoration:none;margin-left:6px">View ↗</a>` : ''}</div>
+          </div>` : ''}
+        </div>`;
+      }).join('')}</div>` : '<div style="background:#F9FAFB;color:#6B7280;padding:20px;border-radius:10px;text-align:center">No accounts yet</div>';
+      out.innerHTML = totalsHtml + accountsHtml;
     } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
   });
 };

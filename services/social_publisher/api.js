@@ -151,4 +151,145 @@ router.post('/schedule-calendar', async (req, res) => {
   res.json({ ok:true, scheduled, failed: results.length - scheduled, total: results.length, results });
 });
 
+// ── Analytics ─────────────────────────────────────────────────────────────────
+// Aggregates per-account engagement from Zernio. Tries 3 endpoint shapes
+// because Zernio docs vary: /accounts/:id/analytics, /analytics?accountId=:id,
+// and falls back to deriving stats from /posts (which include per-platform
+// engagement once published).
+async function _fetchAccountAnalytics(accountId, dateRange) {
+  const qs = dateRange ? `?range=${encodeURIComponent(dateRange)}` : '';
+  let r = await _zernio('GET', `/accounts/${encodeURIComponent(accountId)}/analytics${qs}`);
+  if (r.ok) return { ok:true, source:'accounts/:id/analytics', data:r.data };
+  r = await _zernio('GET', `/analytics?accountId=${encodeURIComponent(accountId)}${dateRange ? `&range=${encodeURIComponent(dateRange)}` : ''}`);
+  if (r.ok) return { ok:true, source:'analytics?accountId=', data:r.data };
+  return { ok:false, error: r.error, status: r.status };
+}
+
+router.get('/analytics', async (req, res) => {
+  if (!_hasCreds()) return _err(res, 400, 'ZERNIO_API_KEY required.');
+  const profileId = String(req.query.profileId || '').trim();
+  const dateRange = String(req.query.range || '30d').trim();
+  if (!profileId) return _err(res, 400, 'profileId required');
+
+  // 1. Get all connected accounts for this profile
+  const acctR = await _zernio('GET', `/accounts?profileId=${encodeURIComponent(profileId)}`);
+  if (!acctR.ok) return _err(res, 400, _friendlyError(acctR.error, acctR.status));
+  const accounts = acctR.data?.accounts || acctR.data?.data || (Array.isArray(acctR.data) ? acctR.data : []);
+  if (!accounts.length) return res.json({ ok:true, accounts:[], totals:{ posts:0, impressions:0, engagement:0, followers:0 }, note:'No social accounts connected — connect at least one platform in Social Publisher first.' });
+
+  // 2. Pull posts (each may include engagement) — used as fallback if direct analytics endpoint 404s
+  const postsR = await _zernio('GET', `/posts?profileId=${encodeURIComponent(profileId)}`);
+  const posts = postsR.ok ? (postsR.data?.posts || postsR.data?.data || (Array.isArray(postsR.data) ? postsR.data : [])) : [];
+
+  // 3. For each account, fetch dedicated analytics + derive from posts
+  // Build platform-uniqueness map first — platform-only matching is only safe
+  // when this profile has exactly 1 account on that platform (else two
+  // accounts on the same platform would each claim 100% of the platform's posts).
+  const platformCounts = {};
+  for (const a of accounts) {
+    const p = String(a.platform || a.network || '').toLowerCase();
+    platformCounts[p] = (platformCounts[p] || 0) + 1;
+  }
+  // Unified engagement extractor — Zernio's per-post engagement may live under
+  // analytics, engagement, or stats keys depending on platform/SDK version.
+  function _extractEng(p) {
+    const e = p?.analytics || p?.engagement || p?.stats || {};
+    return {
+      impressions: Number(e.impressions || e.views || e.reach || 0),
+      likes: Number(e.likes || e.favorites || 0),
+      comments: Number(e.comments || e.replies || 0),
+      shares: Number(e.shares || e.retweets || e.reposts || 0),
+      clicks: Number(e.clicks || e.linkClicks || 0)
+    };
+  }
+  function _engTotal(eng) { return eng.likes + eng.comments + eng.shares + eng.clicks; }
+
+  const out = [];
+  let totals = { posts: 0, impressions: 0, likes: 0, comments: 0, shares: 0, clicks: 0, followers: 0 };
+  for (const a of accounts) {
+    const acctId = a._id || a.id;
+    const platform = a.platform || a.network || 'unknown';
+    const platformLower = String(platform).toLowerCase();
+    const username = a.username || a.handle || a.name || '';
+    const followerCount = Number(a.followerCount || a.followers || a.audienceSize || 0);
+    const platformIsUnique = platformCounts[platformLower] === 1;
+
+    let dedicated = null;
+    if (acctId) {
+      const dr = await _fetchAccountAnalytics(acctId, dateRange);
+      if (dr.ok) dedicated = dr.data?.analytics || dr.data?.data || dr.data || null;
+    }
+
+    // Strict per-account post matching:
+    //   - If post carries account ID(s), use exact ID match (always correct).
+    //   - Else fall back to platform match ONLY when this profile has exactly
+    //     one account on that platform (otherwise we'd double-count).
+    const myPosts = posts.filter(p => {
+      const pAccts = p.accounts || p.accountIds || [];
+      const hasIdHints = Array.isArray(pAccts) && pAccts.length > 0;
+      if (hasIdHints) return pAccts.some(x => (x?._id || x?.id || x) === acctId);
+      if (!platformIsUnique) return false;
+      const pPlats = (p.platforms || []).map(x => String(x).toLowerCase());
+      return pPlats.includes(platformLower);
+    });
+    const derived = myPosts.reduce((acc, p) => {
+      const e = _extractEng(p);
+      acc.posts += 1;
+      acc.impressions += e.impressions;
+      acc.likes += e.likes;
+      acc.comments += e.comments;
+      acc.shares += e.shares;
+      acc.clicks += e.clicks;
+      return acc;
+    }, { posts:0, impressions:0, likes:0, comments:0, shares:0, clicks:0 });
+
+    // Prefer dedicated stats if present, else derived
+    const stats = {
+      posts: Number(dedicated?.posts || derived.posts),
+      impressions: Number(dedicated?.impressions || dedicated?.views || derived.impressions),
+      likes: Number(dedicated?.likes || derived.likes),
+      comments: Number(dedicated?.comments || derived.comments),
+      shares: Number(dedicated?.shares || derived.shares),
+      clicks: Number(dedicated?.clicks || derived.clicks),
+      followers: Number(dedicated?.followers || dedicated?.followerCount || followerCount),
+      followerGrowth: Number(dedicated?.followerGrowth || dedicated?.growth7d || 0)
+    };
+    const totalEng = stats.likes + stats.comments + stats.shares + stats.clicks;
+    stats.engagementRate = stats.impressions > 0 ? Number(((totalEng / stats.impressions) * 100).toFixed(2)) : 0;
+
+    // Top post for this account — use the same unified engagement extractor
+    // so we don't miss posts whose engagement lives under .engagement or .stats.
+    const topPost = myPosts.slice().sort((a,b) => _engTotal(_extractEng(b)) - _engTotal(_extractEng(a)))[0] || null;
+    const topPostEng = topPost ? _engTotal(_extractEng(topPost)) : 0;
+
+    totals.posts += stats.posts;
+    totals.impressions += stats.impressions;
+    totals.likes += stats.likes;
+    totals.comments += stats.comments;
+    totals.shares += stats.shares;
+    totals.clicks += stats.clicks;
+    totals.followers += stats.followers;
+
+    out.push({
+      accountId: acctId,
+      platform,
+      username,
+      stats,
+      topPost: topPost ? {
+        id: topPost._id || topPost.id,
+        text: String(topPost.text || topPost.content || '').slice(0, 240),
+        publishedAt: topPost.publishedAt || topPost.scheduledFor || topPost.createdAt,
+        url: topPost.url || topPost.permalink || null,
+        engagement: topPostEng
+      } : null,
+      analyticsSource: dedicated ? 'zernio_analytics_endpoint' : (myPosts.length ? 'derived_from_posts' : 'no_data')
+    });
+  }
+  totals.engagementRate = totals.impressions > 0
+    ? Number((((totals.likes + totals.comments + totals.shares + totals.clicks) / totals.impressions) * 100).toFixed(2))
+    : 0;
+
+  res.json({ ok:true, profileId, range: dateRange, accounts: out, totals });
+});
+
 module.exports = router;
