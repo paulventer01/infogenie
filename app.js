@@ -2692,6 +2692,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'bulk-reports')         { try { buildBulkReports(); }          catch(e) { console.warn('buildBulkReports error:', e); } }
   if (viewId === 'backlink-monitor')     { try { buildBacklinkMonitor(); }      catch(e) { console.warn('buildBacklinkMonitor error:', e); } }
   if (viewId === 'true-roas')            { try { buildTrueRoas(); }             catch(e) { console.warn('buildTrueRoas error:', e); } }
+  if (viewId === 'roadmap')              { try { buildRoadmap(); }              catch(e) { console.warn('buildRoadmap error:', e); } }
   if (viewId === 'seo-crawler')          { try { buildSeoCrawler(); }           catch(e) { console.warn('buildSeoCrawler error:', e); } }
   if (viewId === 'geo-audit')            { try { buildGeoAudit(); }             catch(e) { console.warn('buildGeoAudit error:', e); } }
   if (viewId === 'local-seo')            { try { buildLocalSeo(); }             catch(e) { console.warn('buildLocalSeo error:', e); } }
@@ -39452,4 +39453,196 @@ async function _trRunBudgetRecs() {
     if (j.skipped === 'disabled') { status.innerHTML = '<span style="color:#B45309">⚠️ Enable "Profit-aware budget recommendations" first, then save.</span>'; return; }
     status.innerHTML = `<span style="color:#059669">✓ Generated ${j.generated} recommendation${j.generated===1?'':'s'} (visible in Optimizer Decision Log)</span>`;
   } catch (e) { status.innerHTML = `<span style="color:#B91C1C">⚠️ ${_esc(e.message)}</span>`; }
+}
+
+// =============================================================================
+// T37 — GET-STARTED ROADMAP (90-day plan + weekly social cadence)
+// =============================================================================
+window._rmState = { tab:'plan', filter:'ALL', plan:[], cadence:{}, principles:[], completed:{} };
+
+async function buildRoadmap() {
+  const wrap = document.getElementById('roadmapWrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="padding:48px;text-align:center;color:#64748B">⏳ Loading your roadmap…</div>';
+  try {
+    const [catR, progR] = await Promise.all([
+      fetch('/api/roadmap/catalog').then(r=>r.json()),
+      fetch('/api/roadmap/progress').then(r=>r.json()),
+    ]);
+    window._rmState.plan = catR.plan || [];
+    window._rmState.cadence = catR.socialCadence || {};
+    window._rmState.principles = catR.principles || [];
+    window._rmState.completed = progR.completed || {};
+    _rmRender();
+  } catch (e) {
+    wrap.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:24px;color:#991B1B">⚠️ Could not load: ${_esc(e.message)}</div>`;
+  }
+}
+
+function _rmRender() {
+  const wrap = document.getElementById('roadmapWrap');
+  if (!wrap) return;
+  const tab = window._rmState.tab;
+  const tabBtn = (id, label) => `<button onclick="_rmTab('${id}')" style="padding:10px 18px;border:none;background:${tab===id?'#0066FF':'#E2E8F0'};color:${tab===id?'white':'#0F172A'};font-weight:700;border-radius:10px;cursor:pointer;margin-right:8px">${label}</button>`;
+  wrap.innerHTML = `
+    ${_rmHeroHtml()}
+    <div style="margin:24px 0 16px">
+      ${tabBtn('plan','📅 90-Day Plan')}
+      ${tabBtn('cadence','📲 Weekly Social Cadence')}
+      ${tabBtn('principles','🧭 Five Principles')}
+    </div>
+    <div id="rmTabBody"></div>
+  `;
+  const body = document.getElementById('rmTabBody');
+  if (tab === 'plan')           body.innerHTML = _rmPlanHtml();
+  else if (tab === 'cadence')   body.innerHTML = _rmCadenceHtml();
+  else                          body.innerHTML = _rmPrinciplesHtml();
+}
+
+function _rmTab(id) { window._rmState.tab = id; _rmRender(); }
+function _rmFilter(f) { window._rmState.filter = f; _rmRender(); }
+
+function _rmHeroHtml() {
+  const total = window._rmState.plan.length || 90;
+  const done = Object.keys(window._rmState.completed).length;
+  const pct = total ? Math.round((done/total)*100) : 0;
+  return `
+    <div style="background:linear-gradient(135deg,#312E81 0%,#1E293B 50%,#0F172A 100%);border-radius:18px;padding:28px 32px;color:white;box-shadow:0 8px 28px rgba(15,23,42,.35)">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+        <span style="font-size:1.4rem">🗺️</span>
+        <div><div style="font-size:1.05rem;font-weight:800">Your 90-Day Marketing Roadmap</div>
+        <div style="font-size:0.78rem;opacity:.7;margin-top:2px">Stop reading SEO articles. Click each task — InfoGenie does the actual work.</div></div>
+        <button onclick="_rmReset()" style="margin-left:auto;background:rgba(255,255,255,.1);color:white;border:1px solid rgba(255,255,255,.2);padding:8px 14px;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer">↻ Reset progress</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px">
+        <div style="font-size:2.4rem;font-weight:800;line-height:1">${done}<span style="opacity:.5;font-size:1.4rem">/${total}</span></div>
+        <div style="flex:1">
+          <div style="background:rgba(255,255,255,.1);border-radius:999px;height:14px;overflow:hidden">
+            <div style="background:linear-gradient(90deg,#34D399,#0066FF);width:${pct}%;height:100%;transition:width .4s"></div>
+          </div>
+          <div style="font-size:0.74rem;opacity:.65;margin-top:6px">${pct}% complete</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function _rmPlanHtml() {
+  const filter = window._rmState.filter;
+  const filterBtn = (f, label, color) => `<button onclick="_rmFilter('${f}')" style="padding:7px 14px;border:1px solid ${filter===f?color:'#CBD5E1'};background:${filter===f?color:'white'};color:${filter===f?'white':'#475569'};border-radius:999px;font-size:0.78rem;font-weight:700;cursor:pointer;margin-right:6px">${label}</button>`;
+  const focusColor = { SEO:'#0891B2', SMM:'#EC4899', PPC:'#7C3AED' };
+  let plan = window._rmState.plan;
+  if (filter !== 'ALL') plan = plan.filter(p => p.focus === filter);
+  const rows = plan.map(p => {
+    const done = !!window._rmState.completed[p.id];
+    const fc = focusColor[p.focus] || '#64748B';
+    return `
+      <div style="display:flex;align-items:flex-start;gap:14px;padding:14px 16px;background:${done?'#F0FDF4':'white'};border:1px solid ${done?'#BBF7D0':'#E2E8F0'};border-radius:12px;margin-bottom:8px;transition:background .2s">
+        <input type="checkbox" ${done?'checked':''} onchange="_rmToggle('${p.id}', this.checked)" style="width:20px;height:20px;margin-top:2px;cursor:pointer;accent-color:#10B981">
+        <div style="flex:0 0 56px;text-align:center">
+          <div style="font-size:0.65rem;font-weight:700;color:#94A3B8;letter-spacing:.5px">DAY</div>
+          <div style="font-size:1.4rem;font-weight:800;color:#0F172A;line-height:1">${p.day}</div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span style="background:${fc};color:white;padding:2px 8px;border-radius:6px;font-size:0.65rem;font-weight:700;letter-spacing:.5px">${p.focus}</span>
+            <span style="font-weight:700;color:#0F172A;${done?'text-decoration:line-through;opacity:.6':''}">${_esc(p.learn)}</span>
+          </div>
+          <div style="font-size:0.85rem;color:#475569;${done?'opacity:.6':''}">${_esc(p.action)}</div>
+        </div>
+        ${p.view ? `<button onclick="navigateTo('${p.view}')" style="flex:0 0 auto;background:linear-gradient(135deg,#0066FF,#00C9C8);color:white;border:none;padding:8px 14px;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer;white-space:nowrap">${_esc(p.viewLabel||'Open')} →</button>` : ''}
+      </div>`;
+  }).join('');
+  return `
+    <div style="margin-bottom:14px">
+      ${filterBtn('ALL','All 90 days','#0066FF')}
+      ${filterBtn('SEO','SEO (Days 1-30)','#0891B2')}
+      ${filterBtn('SMM','Social (Days 31-60)','#EC4899')}
+      ${filterBtn('PPC','Paid Ads (Days 61-90)','#7C3AED')}
+    </div>
+    ${rows || '<div style="padding:32px;text-align:center;color:#64748B">No tasks in this filter.</div>'}
+  `;
+}
+
+function _rmCadenceHtml() {
+  const c = window._rmState.cadence || {};
+  const platforms = Object.values(c);
+  const card = p => `
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:18px;flex:1;min-width:240px">
+      <div style="display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,${p.color},${p.color}99);color:white;padding:10px 14px;border-radius:10px;margin:-18px -18px 12px">
+        <span style="font-size:1.2rem">${p.icon}</span>
+        <span style="font-weight:800;letter-spacing:.5px">${_esc(p.name).toUpperCase()}</span>
+      </div>
+      ${p.days.map((d,i) => `
+        <div style="display:flex;align-items:center;padding:8px 0;border-bottom:${i===p.days.length-1?'none':'1px solid #F1F5F9'}">
+          <span style="background:linear-gradient(135deg,${p.color},${p.color}99);color:white;width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.78rem;margin-right:12px">${d.day[0]}</span>
+          <span style="font-size:0.88rem;color:#0F172A">${_esc(d.task)}</span>
+        </div>`).join('')}
+      <div style="margin-top:12px;display:flex;gap:6px">
+        <button onclick="navigateTo('social-publisher')" style="flex:1;background:linear-gradient(135deg,#0066FF,#00C9C8);color:white;border:none;padding:8px 10px;border-radius:8px;font-size:0.74rem;font-weight:700;cursor:pointer">📤 Schedule in Publisher</button>
+        <button onclick="navigateTo('content-calendar')" style="flex:1;background:#F1F5F9;color:#0F172A;border:1px solid #CBD5E1;padding:8px 10px;border-radius:8px;font-size:0.74rem;font-weight:700;cursor:pointer">📅 Plan in Calendar</button>
+      </div>
+    </div>`;
+  return `
+    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:14px 18px;margin-bottom:18px;font-size:0.88rem;color:#1E3A8A">
+      💡 This is a recommended weekly cadence — proven to balance reach (Reels/video posts) with engagement (Stories, comments, Q&A) and authority (Carousels, Thought Leadership). Adjust to fit your bandwidth.
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:18px">${platforms.map(card).join('')}</div>
+  `;
+}
+
+function _rmPrinciplesHtml() {
+  const p = window._rmState.principles || [];
+  return `
+    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:14px 18px;margin-bottom:18px;font-size:0.88rem;color:#475569">
+      The 5 principles every social marketer should drill into muscle memory. Tap each card to jump to the InfoGenie tools that help you live by it.
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">
+      ${p.map(x => {
+        const link = { PLAN:'content-calendar', CREATE:'creative', ENGAGE:'unified-inbox', ANALYZE:'cross-channel', GROW:'campaigns' }[x.label];
+        const linkLabel = { PLAN:'Open Content Calendar', CREATE:'Open Creative Studio', ENGAGE:'Open Unified Inbox', ANALYZE:'Open Cross-Channel Report', GROW:'Open Campaigns' }[x.label];
+        return `
+          <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:20px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+              <span style="font-size:1.6rem">${x.icon}</span>
+              <span style="font-weight:800;font-size:1.05rem;letter-spacing:.5px">${_esc(x.label)}</span>
+            </div>
+            <div style="font-size:0.88rem;color:#475569;margin-bottom:14px;min-height:42px">${_esc(x.body)}</div>
+            <button onclick="navigateTo('${link}')" style="background:linear-gradient(135deg,#0066FF,#00C9C8);color:white;border:none;padding:8px 14px;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer;width:100%">${linkLabel} →</button>
+          </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+window._rmInflight = window._rmInflight || new Set();
+async function _rmToggle(taskId, checked) {
+  if (window._rmInflight.has(taskId)) return;     // race guard
+  window._rmInflight.add(taskId);
+  try {
+    const r = await fetch('/api/roadmap/progress/' + encodeURIComponent(taskId), { method: checked ? 'POST' : 'DELETE' });
+    let body = {};
+    try { body = await r.json(); } catch(_) {}
+    if (!r.ok || body.ok === false) throw new Error(body.error || ('HTTP '+r.status));
+    if (checked) window._rmState.completed[taskId] = new Date().toISOString();
+    else         delete window._rmState.completed[taskId];
+    _rmRender();
+  } catch (e) {
+    (window.showToast||alert)('⚠️ Could not save: ' + (e.message||e));
+    _rmRender();   // revert checkbox to true server state
+  } finally {
+    window._rmInflight.delete(taskId);
+  }
+}
+
+async function _rmReset() {
+  if (!confirm('Reset all 90-day progress? This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/roadmap/reset', { method:'POST' });
+    let body = {}; try { body = await r.json(); } catch(_) {}
+    if (!r.ok || body.ok === false) throw new Error(body.error || ('HTTP '+r.status));
+    window._rmState.completed = {};
+    _rmRender();
+  } catch (e) {
+    (window.showToast||alert)('⚠️ Could not reset: ' + (e.message||e));
+  }
 }

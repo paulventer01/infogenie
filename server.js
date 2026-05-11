@@ -8532,6 +8532,17 @@ app.use('/api/true-roas', _trueRoasRouter);
   }
 } catch (e) { console.warn('[t36] init failed:', e.message); }})();
 
+// ── T37 — Get-Started Roadmap (90-day plan + weekly social cadence) ─────────
+const _roadmapSchema = require('./services/roadmap/schema');
+const _roadmapRouter = require('./services/roadmap/api');
+app.use('/api/roadmap', _roadmapRouter);
+(async () => { try {
+  if (_db.hasDb()) {
+    await _roadmapSchema.ensureRoadmapSchema();
+    console.log('[t37] roadmap schema ready');
+  }
+} catch (e) { console.warn('[t37] init failed:', e.message); }})();
+
 // ── Tier 7 ─────────────────────────────────────────────────────────────────
 const _podcastSchema = require('./services/podcast_monitor/schema');
 const _podcastRouter = require('./services/podcast_monitor/api');
