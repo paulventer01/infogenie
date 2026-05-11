@@ -17181,6 +17181,13 @@ function openWLCounterModal(wlIdOrData) {
     window._wlData[wlId].aiTargeting = data.targeting || '';
     window._wlData[wlId].aiSource = data.source || 'ai';
 
+    // Stash plain-text versions of each variant for one-click copy.
+    window._wlCopyText = data.variants.map((v, i) =>
+      `${v.angle ? '['+v.angle+']\n' : ''}HEADLINE: ${v.headline || ''}\nBODY: ${v.body || ''}\nCTA: ${v.cta || ''}${v.why ? '\n— Why: ' + v.why : ''}`
+    );
+    const allText = window._wlCopyText.join('\n\n— — — — — — — —\n\n') + (data.strategy ? `\n\nSTRATEGY:\n${data.strategy}` : '') + (data.targeting ? `\n\nTARGETING:\n${data.targeting}` : '');
+    window._wlCopyAllText = allText;
+
     const variantsHtml = data.variants.map((v, i) => `
       <div class="wl-variant" data-vidx="${i}" style="border:1.5px solid #E2E8F0; border-radius:12px; padding:14px 16px; background:#fff; cursor:pointer; transition:border-color .15s, box-shadow .15s;" onclick="_wlSelectVariant(this)">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -17192,6 +17199,7 @@ function openWLCounterModal(wlIdOrData) {
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
           <button style="background:#0A1628; color:#fff; border:none; border-radius:6px; padding:6px 14px; font-size:0.75rem; font-weight:700; cursor:default; pointer-events:none;">${esc(v.cta || 'Learn More')}</button>
           <span style="font-size:0.7rem; color:#94A3B8; font-style:italic; text-align:right; flex:1;">💡 ${esc(v.why || '')}</span>
+          <button onclick="event.stopPropagation();_wlCopyVariant(${i})" style="background:#EFF6FF;color:#0066FF;border:1px solid #BFDBFE;border-radius:6px;padding:6px 12px;font-size:0.72rem;font-weight:700;cursor:pointer;flex-shrink:0;" title="Copy this variant to your clipboard">📋 Copy</button>
         </div>
       </div>
     `).join('');
@@ -17221,6 +17229,9 @@ function openWLCounterModal(wlIdOrData) {
     if (first) _wlSelectVariant(first);
 
     document.getElementById('wlCounterFooter').innerHTML = `
+      <button class="btn-attack-activate" onclick="_wlCopyAll()" style="background:linear-gradient(135deg,#0EA5E9,#0066FF);" title="Copy all 3 variants + strategy + targeting to your clipboard">
+        📋 Copy All
+      </button>
       <button class="btn-attack-activate" onclick="launchCounterAsCampaign('${wlId}', this)" style="background:linear-gradient(135deg,#0066FF,#00C9C8);" title="Open the Campaign Launch Brief pre-filled with this counter-message — pick budget + audience and push it live.">
         🚀 Launch Now
       </button>
@@ -17254,6 +17265,35 @@ function openWLCounterModal(wlIdOrData) {
       </div>
     `;
   });
+}
+
+// Copy a single counter-message variant to the clipboard.
+window._wlCopyVariant = function(i) {
+  const txt = (window._wlCopyText || [])[i];
+  if (!txt) { (window.showToast||alert)('⚠️ Nothing to copy yet'); return; }
+  _wlClipboardWrite(txt, '✅ Variant ' + (i+1) + ' copied');
+};
+window._wlCopyAll = function() {
+  const txt = window._wlCopyAllText;
+  if (!txt) { (window.showToast||alert)('⚠️ Nothing to copy yet'); return; }
+  _wlClipboardWrite(txt, '✅ All counter-messages copied');
+};
+function _wlClipboardWrite(txt, okMsg) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(
+      () => (window.showToast||alert)(okMsg),
+      () => _wlClipboardLegacy(txt, okMsg)
+    );
+  } else { _wlClipboardLegacy(txt, okMsg); }
+}
+function _wlClipboardLegacy(txt, okMsg) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = txt; ta.style.position='fixed'; ta.style.left='-9999px';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    (window.showToast||alert)(okMsg);
+  } catch(e) { (window.showToast||alert)('⚠️ Copy failed — please select and copy manually'); }
 }
 
 // Selects a counter-message variant card in the modal (visual radio behaviour).
@@ -30285,17 +30325,53 @@ async function runMentionTracker() {
   const btn = document.getElementById('mtRun');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Pulling…'; }
   const results = document.getElementById('mtResults');
-  if (results) results.innerHTML = `<div class="mt-loading">⏳ Pulling Google News for ${[brand, ...competitors].length} brand${competitors.length?'s':''} across ${countries.length} ${countries.length===1?'region':'regions'}, then classifying sentiment…</div>`;
+  const totalRegions = countries.length;
+  const startedAt = Date.now();
+  let done = 0;
+  const renderProgress = () => {
+    if (!results) return;
+    const elapsed = Math.floor((Date.now() - startedAt)/1000);
+    const mm = String(Math.floor(elapsed/60)).padStart(2,'0');
+    const ss = String(elapsed%60).padStart(2,'0');
+    results.innerHTML = `<div class="mt-loading" style="text-align:center;padding:24px">
+      <div style="font-size:0.95rem;font-weight:700;color:#0F172A;margin-bottom:6px">⏳ Pulling Google News for ${[brand, ...competitors].length} brand${competitors.length?'s':''}</div>
+      <div style="font-size:0.82rem;color:#475569;margin-bottom:10px">${done} of ${totalRegions} ${totalRegions===1?'region':'regions'} complete · then classifying sentiment</div>
+      <div style="font-size:1.5rem;font-family:'Sora',sans-serif;font-weight:800;color:#0066FF">⏱ ${mm}:${ss}</div>
+      <div style="background:#E2E8F0;border-radius:99px;height:8px;margin-top:12px;max-width:320px;margin-left:auto;margin-right:auto;overflow:hidden">
+        <div style="background:linear-gradient(90deg,#0066FF,#00C9C8);height:100%;width:${Math.max(4,(done/Math.max(1,totalRegions))*100)}%;transition:width .3s"></div>
+      </div>
+    </div>`;
+  };
+  renderProgress();
+  const tickHandle = setInterval(renderProgress, 1000);
 
   try {
-    // Run one /api/mentions call per selected country, in parallel. Merge
-    // mentions and recompute sentiment / SoV / topSources from the union.
-    const responses = await Promise.all(countries.map(country =>
-      fetch('/api/mentions', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ brand, competitors, country, days }),
-      }).then(r => r.json()).catch(e => ({ ok:false, error: e.message }))
-    ));
+    // Throttle to 6 concurrent region fetches so DataForSEO doesn't rate-limit
+    // and the user sees real progress instead of one long stall.
+    const CONCURRENCY = 6;
+    const responses = new Array(countries.length);
+    let cursor = 0;
+    async function worker() {
+      while (cursor < countries.length) {
+        const myIdx = cursor++;
+        const country = countries[myIdx];
+        try {
+          const r = await fetch('/api/mentions', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ brand, competitors, country, days }),
+          });
+          const txt = await r.text();
+          try { responses[myIdx] = JSON.parse(txt); }
+          catch(_) { responses[myIdx] = { ok:false, error:`Server returned non-JSON (HTTP ${r.status})` }; }
+        } catch (e) {
+          responses[myIdx] = { ok:false, error: e.message };
+        }
+        done++;
+        renderProgress();
+      }
+    }
+    await Promise.all(Array.from({length: Math.min(CONCURRENCY, countries.length)}, worker));
+    clearInterval(tickHandle);
     const ok = responses.find(r => r.ok);
     if (!ok) throw new Error((responses.find(r => !r.ok) || {}).error || 'Failed to fetch mentions');
     let merged;
@@ -30694,14 +30770,37 @@ async function runContentGaps() {
   const btn = document.getElementById('cgRun');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Analysing…'; }
   const results = document.getElementById('cgResults');
-  if (results) results.innerHTML = `<div class="cg-loading">⏳ Reading sitemaps for ${competitors.length+1} domains and asking AI to spot the topic gaps… (10–25s)</div>`;
+  const startedAt = Date.now();
+  const renderProgress = (stage) => {
+    if (!results) return;
+    const elapsed = Math.floor((Date.now() - startedAt)/1000);
+    const mm = String(Math.floor(elapsed/60)).padStart(2,'0');
+    const ss = String(elapsed%60).padStart(2,'0');
+    results.innerHTML = `<div class="cg-loading" style="text-align:center;padding:24px">
+      <div style="font-size:0.95rem;font-weight:700;color:#0F172A;margin-bottom:6px">⏳ ${stage}</div>
+      <div style="font-size:0.82rem;color:#475569;margin-bottom:10px">${competitors.length+1} domains · sitemap fetch + AI gap analysis (typical: 10-25s)</div>
+      <div style="font-size:1.5rem;font-family:'Sora',sans-serif;font-weight:800;color:#0066FF">⏱ ${mm}:${ss}</div>
+    </div>`;
+  };
+  renderProgress('Reading sitemaps and asking AI to spot the topic gaps…');
+  const tickHandle = setInterval(() => renderProgress('Reading sitemaps and asking AI to spot the topic gaps…'), 1000);
 
   try {
     const r = await fetch('/api/content-gaps', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ domain, competitors })
     });
-    const j = await r.json();
+    clearInterval(tickHandle);
+    // Robust parse: read the body as text first so a non-JSON / empty
+    // response (proxy timeout, 502, HTML error page) gives a clear error
+    // instead of "Unexpected end of JSON input".
+    const raw = await r.text();
+    let j;
+    try { j = raw ? JSON.parse(raw) : {}; }
+    catch (parseErr) {
+      results.innerHTML = `<div class="cg-error">⚠️ Server returned a non-JSON response (HTTP ${r.status}). The request may have timed out at the proxy. Please try again with fewer competitors, or one at a time.</div>`;
+      return;
+    }
     if (!j.ok) {
       if (j.error === 'sitemap-unavailable') {
         const found = (j.competitorsWithSitemap || []).join(', ') || 'none';
@@ -30714,8 +30813,10 @@ async function runContentGaps() {
     window._gapsState.data = j;
     renderContentGaps(j);
   } catch (e) {
+    clearInterval(tickHandle);
     if (results) results.innerHTML = `<div class="cg-error">⚠️ ${_esc(e.message)}</div>`;
   } finally {
+    clearInterval(tickHandle);
     if (btn) { btn.disabled = false; btn.textContent = '🧩 Find gaps'; }
   }
 }
