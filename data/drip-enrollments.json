@@ -69,9 +69,9 @@
     ],
     "_seqSig": "7b71ee0217fd",
     "startedAt": 1778136094153,
-    "currentStep": 1,
+    "currentStep": 2,
     "nextSendAt": 1778308894153,
-    "status": "active",
+    "status": "completed",
     "dryRun": true,
     "appOrigin": "",
     "history": [
@@ -82,11 +82,20 @@
         "sentAt": 1778136135664,
         "ok": true,
         "note": "dry-run (no real send)"
+      },
+      {
+        "stepIndex": 1,
+        "label": "Follow up",
+        "channel": "Email",
+        "sentAt": 1778484549413,
+        "ok": true,
+        "note": "dry-run (no real send)"
       }
     ],
     "audienceId": 2,
     "audienceBindingId": 1,
-    "sourceContactId": "767968705723"
+    "sourceContactId": "767968705723",
+    "completedAt": 1778484549413
   },
   {
     "id": "enr_1778136094154_3uz13f",
@@ -111,9 +120,9 @@
     ],
     "_seqSig": "7b71ee0217fd",
     "startedAt": 1778136094154,
-    "currentStep": 1,
+    "currentStep": 2,
     "nextSendAt": 1778308894154,
-    "status": "active",
+    "status": "completed",
     "dryRun": true,
     "appOrigin": "",
     "history": [
@@ -124,11 +133,20 @@
         "sentAt": 1778136135664,
         "ok": true,
         "note": "dry-run (no real send)"
+      },
+      {
+        "stepIndex": 1,
+        "label": "Follow up",
+        "channel": "Email",
+        "sentAt": 1778484549413,
+        "ok": true,
+        "note": "dry-run (no real send)"
       }
     ],
     "audienceId": 2,
     "audienceBindingId": 1,
-    "sourceContactId": "767977202899"
+    "sourceContactId": "767977202899",
+    "completedAt": 1778484549413
   },
   {
     "id": "reng_1778137370362_t4lx13",
