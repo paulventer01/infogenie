@@ -2681,6 +2681,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'glassdoor')            { try { buildGlassdoor(); }            catch(e) { console.warn('buildGlassdoor error:', e); } }
   if (viewId === 'quora-mining')         { try { buildQuoraMining(); }          catch(e) { console.warn('buildQuoraMining error:', e); } }
   if (viewId === 'tiktok-downloader')    { try { buildTiktokDownloader(); }     catch(e) { console.warn('buildTiktokDownloader error:', e); } }
+  if (viewId === 'voiceover')            { try { buildVoiceover(); }            catch(e) { console.warn('buildVoiceover error:', e); } }
+  if (viewId === 'seo-auditor')          { try { buildSeoAuditor(); }           catch(e) { console.warn('buildSeoAuditor error:', e); } }
+  if (viewId === 'seo-widget')           { try { buildSeoWidget(); }            catch(e) { console.warn('buildSeoWidget error:', e); } }
   if (viewId === 'social-analytics')     { try { buildSocialAnalytics(); }      catch(e) { console.warn('buildSocialAnalytics error:', e); } }
   if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
@@ -37257,4 +37260,220 @@ window.buildTiktokDownloader = function() {
       }));
     } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
   });
+};
+
+// ============================================================================
+// VOICEOVER (Tier 21) — OpenAI TTS, 6 voices, mp3 output
+// ============================================================================
+window.buildVoiceover = function() {
+  const wrap = document.getElementById('voWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:6px">SCRIPT (max 4000 chars)</label>
+      <textarea id="voText" rows="7" placeholder="Paste your video script, ad copy, or any text you want narrated..." style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.86rem;font-family:inherit;box-sizing:border-box;resize:vertical"></textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-top:12px;align-items:end">
+        <div><label style="display:block;font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:4px">VOICE</label>
+          <select id="voVoice" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+            <option value="alloy">Alloy (neutral)</option><option value="echo">Echo (male, calm)</option><option value="fable">Fable (British, warm)</option><option value="onyx">Onyx (male, deep)</option><option value="nova">Nova (female, bright)</option><option value="shimmer">Shimmer (female, soft)</option>
+          </select></div>
+        <div><label style="display:block;font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:4px">QUALITY</label>
+          <select id="voModel" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+            <option value="tts-1">Standard (fast & cheap)</option><option value="tts-1-hd">HD (richer, ~3x slower)</option>
+          </select></div>
+        <div><label style="display:block;font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:4px">LABEL (opt.)</label>
+          <input id="voLabel" placeholder="e.g. Q4 launch hero" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+        <div><button id="voGo" style="width:100%;background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:none;padding:9px 16px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">🔊 Generate</button></div>
+      </div>
+      <div id="voCount" style="margin-top:6px;font-size:0.7rem;color:#9CA3AF">0 chars</div>
+    </div>
+    <div id="voOut"></div>
+    <div id="voHistory" style="margin-top:24px"></div>
+  `;
+  const txt = document.getElementById('voText');
+  const cnt = document.getElementById('voCount');
+  txt.addEventListener('input', () => { cnt.textContent = txt.value.length + ' / 4000 chars'; cnt.style.color = txt.value.length > 4000 ? '#B91C1C' : '#9CA3AF'; });
+
+  document.getElementById('voGo').addEventListener('click', async () => {
+    const text = txt.value.trim();
+    const voice = document.getElementById('voVoice').value;
+    const model = document.getElementById('voModel').value;
+    const label = document.getElementById('voLabel').value.trim();
+    const out = document.getElementById('voOut');
+    if (!text) { out.innerHTML = '<div style="color:#991B1B">⚠ Paste some text to narrate</div>'; return; }
+    if (text.length > 4000) { out.innerHTML = '<div style="color:#991B1B">⚠ Text exceeds 4000 character limit. Split into multiple voiceovers.</div>'; return; }
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Generating audio (3-15s)…</div>';
+    try {
+      const r = await fetch('/api/voiceover/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text, voice, model, label }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      const sizeKb = Math.round((r.sizeBytes || 0) / 1024);
+      out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <strong style="color:#0A1628">🔊 ${_escapeHtml(voice)} · ${_escapeHtml(model)}</strong>
+          <span style="color:#6B7280;font-size:0.78rem">${_n(r.charCount)} chars · ${_n(sizeKb)} KB</span>
+        </div>
+        <audio src="${_safeUrl(r.mp3Url)}" controls style="width:100%"></audio>
+        <div style="margin-top:10px"><a href="${_safeUrl(r.mp3Url)}" download style="display:inline-block;background:#0066FF;color:#fff;padding:8px 16px;border-radius:6px;font-size:0.84rem;font-weight:700;text-decoration:none">⬇ Download mp3</a></div>
+      </div>`;
+      _voLoadHistory();
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+
+  function _voLoadHistory() {
+    fetch('/api/voiceover/list').then(x => x.json()).then(j => {
+      if (!j.ok || !j.items.length) { document.getElementById('voHistory').innerHTML = ''; return; }
+      document.getElementById('voHistory').innerHTML = `<h3 style="font-size:0.94rem;color:#374151;margin-bottom:10px">Recent voiceovers</h3>
+        <div style="display:grid;gap:10px">${j.items.slice(0, 10).map(it => `
+          <div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:12px">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:0.84rem;color:#0A1628">${_escapeHtml(it.label || '(no label)')} <span style="color:#9CA3AF;font-weight:500;margin-left:6px">${_escapeHtml(it.voice)} · ${_escapeHtml(it.model)} · ${_n(it.char_count)} chars</span></div>
+              <div style="font-size:0.7rem;color:#6B7280">${new Date(it.created_at).toLocaleString()}</div>
+            </div>
+            <audio src="${_safeUrl(it.mp3_url)}" controls style="height:32px;flex-shrink:0"></audio>
+          </div>`).join('')}</div>`;
+    }).catch(() => {});
+  }
+  _voLoadHistory();
+};
+
+// ============================================================================
+// SEO ON-PAGE AUDITOR (Tier 22)
+// ============================================================================
+window.buildSeoAuditor = function() {
+  const wrap = document.getElementById('seoWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:3fr 1fr;gap:10px;align-items:end">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">URL TO AUDIT</label>
+          <input id="seoUrl" placeholder="https://yoursite.com/page" style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.86rem;box-sizing:border-box"></div>
+        <div><button id="seoGo" style="width:100%;background:linear-gradient(135deg,#10B981,#0066FF);color:#fff;border:none;padding:10px 16px;border-radius:6px;font-size:0.86rem;font-weight:800;cursor:pointer">🧭 Run Audit</button></div>
+      </div>
+    </div>
+    <div id="seoOut"></div>
+  `;
+  document.getElementById('seoGo').addEventListener('click', async () => {
+    let url = document.getElementById('seoUrl').value.trim();
+    if (!url) { document.getElementById('seoOut').innerHTML = '<div style="color:#991B1B">⚠ Enter a URL</div>'; return; }
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    const out = document.getElementById('seoOut');
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Fetching page + running 19 checks (5-15s)…</div>';
+    try {
+      const r = await fetch('/api/seo-auditor/audit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      const gradeColor = { A:'#10B981', B:'#0E9F6E', C:'#F59E0B', D:'#F97316', F:'#EF4444' }[r.grade] || '#6B7280';
+      const statusColor = { pass:'#10B981', warn:'#F59E0B', fail:'#EF4444' };
+      const statusIcon = { pass:'✓', warn:'⚠', fail:'✗' };
+      const sorted = [...r.checks].sort((a,b) => {
+        const order = { fail:0, warn:1, pass:2 };
+        return order[a.status] - order[b.status] || b.weight - a.weight;
+      });
+      out.innerHTML = `
+        <div style="background:linear-gradient(135deg,${gradeColor},${gradeColor}dd);color:#fff;border-radius:14px;padding:24px;margin-bottom:18px;display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center">
+          <div style="text-align:center"><div style="font-size:4rem;font-weight:800;line-height:1">${r.score}</div><div style="font-size:0.78rem;opacity:.85;font-weight:700;letter-spacing:1px">/ 100</div></div>
+          <div>
+            <div style="font-size:1.6rem;font-weight:800;margin-bottom:4px">Grade ${r.grade}</div>
+            <div style="font-size:0.86rem;opacity:.95;margin-bottom:8px">${_escapeHtml(r.url)}</div>
+            <div style="display:flex;gap:18px;font-size:0.84rem;opacity:.95">
+              <span>✓ ${_n(r.summary.passed)} passed</span>
+              <span>⚠ ${_n(r.summary.warned)} warnings</span>
+              <span>✗ ${_n(r.summary.failed)} failed</span>
+            </div>
+          </div>
+        </div>
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px 18px;margin-bottom:14px">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;font-size:0.78rem">
+            <div><span style="color:#6B7280;font-weight:700">TITLE</span><div style="color:#0A1628">${_escapeHtml((r.summary.title||'').slice(0, 80) || '(missing)')}</div></div>
+            <div><span style="color:#6B7280;font-weight:700">H1 COUNT</span><div style="color:#0A1628">${_n(r.summary.h1Count)}</div></div>
+            <div><span style="color:#6B7280;font-weight:700">WORDS</span><div style="color:#0A1628">${_n(r.summary.words)}</div></div>
+            <div><span style="color:#6B7280;font-weight:700">IMAGES</span><div style="color:#0A1628">${_n(r.summary.imgCount)}</div></div>
+          </div>
+        </div>
+        <div style="display:grid;gap:10px">${sorted.map(c => `
+          <div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid ${statusColor[c.status]};border-radius:10px;padding:12px 16px">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:4px">
+              <strong style="color:#0A1628;font-size:0.9rem"><span style="color:${statusColor[c.status]};margin-right:6px;font-weight:800">${statusIcon[c.status]}</span>${_escapeHtml(c.label)}</strong>
+              <span style="font-size:0.7rem;color:#9CA3AF">${c.earned}/${c.weight} pts</span>
+            </div>
+            <div style="font-size:0.82rem;color:#374151;margin-left:20px">${_escapeHtml(c.message)}</div>
+            ${c.status !== 'pass' ? `<div style="font-size:0.78rem;color:#7C3AED;margin-top:4px;margin-left:20px"><strong>Fix:</strong> ${_escapeHtml(c.fix)}</div>` : ''}
+          </div>`).join('')}</div>`;
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};
+
+// ============================================================================
+// EMBEDDABLE SEO WIDGET (Tier 23) — manage sites + view leads + copy embed snippet
+// ============================================================================
+window.buildSeoWidget = function() {
+  const wrap = document.getElementById('swWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <h3 style="margin:0 0 12px;font-size:1rem;color:#0A1628">➕ Create a new widget</h3>
+      <div style="display:grid;grid-template-columns:2fr 1fr 2fr 2fr 1fr;gap:10px;align-items:end">
+        <div><label style="display:block;font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">SITE NAME</label><input id="swName" placeholder="My Agency" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">ACCENT</label><input id="swAccent" type="color" value="#0066FF" style="width:100%;height:35px;padding:2px;border:1px solid #D1D5DB;border-radius:5px;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">CTA TEXT</label><input id="swCta" value="Get my free SEO audit" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">YOUR EMAIL (opt.)</label><input id="swOwner" placeholder="you@agency.com" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+        <div><button id="swCreate" style="width:100%;background:linear-gradient(135deg,#7C3AED,#0066FF);color:#fff;border:none;padding:9px 14px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">Create</button></div>
+      </div>
+    </div>
+    <div id="swList"></div>
+  `;
+  document.getElementById('swCreate').addEventListener('click', async () => {
+    const name = document.getElementById('swName').value.trim();
+    const accent = document.getElementById('swAccent').value;
+    const ctaText = document.getElementById('swCta').value.trim();
+    const ownerEmail = document.getElementById('swOwner').value.trim();
+    if (!name) { alert('Site name required'); return; }
+    const r = await fetch('/api/seo-widget/sites', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, accent, ctaText, ownerEmail }) }).then(x => x.json());
+    if (!r.ok) { alert(r.error); return; }
+    document.getElementById('swName').value = '';
+    _swLoad();
+  });
+  function _swLoad() {
+    fetch('/api/seo-widget/sites').then(x => x.json()).then(j => {
+      const list = document.getElementById('swList');
+      if (!j.ok || !j.sites.length) { list.innerHTML = '<div style="color:#9CA3AF;text-align:center;padding:30px">No widgets yet — create your first one above.</div>'; return; }
+      const origin = window.location.origin;
+      list.innerHTML = j.sites.map(s => {
+        const snippet = `<div id="infogenie-seo-widget"></div>\n<script src="${origin}/api/seo-widget/embed/${s.id}.js" async></script>`;
+        return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:start;gap:12px;margin-bottom:12px">
+            <div>
+              <h3 style="margin:0;font-size:1.04rem;color:#0A1628">${_escapeHtml(s.name)} <span style="background:${_escapeHtml(s.accent)};display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:middle;margin-left:6px"></span></h3>
+              <div style="font-size:0.74rem;color:#6B7280;margin-top:3px">ID: <code style="font-size:0.72rem">${_escapeHtml(s.id)}</code> · ${_n(s.lead_count)} leads captured</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button data-id="${_escapeHtml(s.id)}" class="swViewLeads" style="background:#fff;border:1px solid #D1D5DB;color:#374151;padding:6px 12px;border-radius:5px;font-size:0.76rem;font-weight:700;cursor:pointer">👥 Leads (${_n(s.lead_count)})</button>
+              <button data-id="${_escapeHtml(s.id)}" class="swDel" style="background:#fff;border:1px solid #FCA5A5;color:#B91C1C;padding:6px 12px;border-radius:5px;font-size:0.76rem;font-weight:700;cursor:pointer">🗑</button>
+            </div>
+          </div>
+          <div style="font-size:0.72rem;color:#6B7280;font-weight:700;margin-bottom:5px">📋 EMBED SNIPPET — paste anywhere on your marketing site</div>
+          <pre style="background:#0F172A;color:#A7F3D0;padding:12px;border-radius:8px;font-size:0.74rem;line-height:1.5;overflow-x:auto;margin:0"><code>${_escapeHtml(snippet)}</code></pre>
+          <button data-snippet="${_escapeHtml(snippet)}" class="swCopy" style="background:#0066FF;color:#fff;border:none;padding:6px 14px;border-radius:5px;font-size:0.76rem;font-weight:700;cursor:pointer;margin-top:8px">📋 Copy snippet</button>
+          <div id="leads-${_escapeHtml(s.id)}" style="margin-top:14px"></div>
+        </div>`;
+      }).join('');
+      list.querySelectorAll('.swCopy').forEach(b => b.addEventListener('click', e => {
+        navigator.clipboard.writeText(e.currentTarget.getAttribute('data-snippet') || '').then(() => {
+          const o = e.currentTarget.textContent; e.currentTarget.textContent = '✓ Copied'; setTimeout(() => { e.currentTarget.textContent = o; }, 1500);
+        });
+      }));
+      list.querySelectorAll('.swDel').forEach(b => b.addEventListener('click', async e => {
+        if (!confirm('Delete this widget? Leads will be removed too.')) return;
+        await fetch(`/api/seo-widget/sites/${e.currentTarget.getAttribute('data-id')}`, { method:'DELETE' });
+        _swLoad();
+      }));
+      list.querySelectorAll('.swViewLeads').forEach(b => b.addEventListener('click', async e => {
+        const id = e.currentTarget.getAttribute('data-id');
+        const target = document.getElementById('leads-' + id);
+        const r = await fetch(`/api/seo-widget/sites/${id}/leads`).then(x => x.json());
+        if (!r.ok || !r.leads.length) { target.innerHTML = '<div style="color:#9CA3AF;font-size:0.78rem;padding:8px">No leads yet.</div>'; return; }
+        target.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:0.78rem">
+          <thead><tr style="background:#F9FAFB"><th style="padding:6px;text-align:left;border-bottom:1px solid #E5E7EB">Email</th><th style="padding:6px;text-align:left;border-bottom:1px solid #E5E7EB">URL Audited</th><th style="padding:6px;text-align:left;border-bottom:1px solid #E5E7EB">Score</th><th style="padding:6px;text-align:left;border-bottom:1px solid #E5E7EB">When</th></tr></thead>
+          <tbody>${r.leads.map(l => `<tr><td style="padding:6px;border-bottom:1px solid #F3F4F6">${_escapeHtml(l.email)}</td><td style="padding:6px;border-bottom:1px solid #F3F4F6"><a href="${_safeUrl(l.url)}" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:none">${_escapeHtml(l.url.slice(0, 50))}↗</a></td><td style="padding:6px;border-bottom:1px solid #F3F4F6"><strong>${_n(l.score)}</strong> · ${_escapeHtml(l.grade)}</td><td style="padding:6px;border-bottom:1px solid #F3F4F6">${new Date(l.created_at).toLocaleDateString()}</td></tr>`).join('')}</tbody>
+        </table>`;
+      }));
+    }).catch(() => {});
+  }
+  _swLoad();
 };

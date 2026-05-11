@@ -102,6 +102,8 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/status$/,                 // global status
   /^\/api\/[^\/]+\/status$/,         // per-integration status pings
   /^\/api\/budget\/status$/,         // budget telemetry (useful pre-login)
+  /^\/api\/seo-widget\/embed\/[^\/]+\.js$/, // public embed loader (T23)
+  /^\/api\/seo-widget\/audit\/[^\/]+$/,     // public widget audit endpoint (T23, rate-limited)
 ];
 function _isApiPublic(p) { return _AUTH_PUBLIC_API_PATHS.some(rx => rx.test(p)); }
 app.use((req, res, next) => {
@@ -8631,6 +8633,25 @@ app.use('/api/tiktok-downloader', _ttDlRouter);
     console.log('[tier20] tiktok-downloader schema ready');
   }
 } catch (e) { console.warn('[tier20] schema init failed:', e.message); }})();
+
+// ── Tier 21 + 22 + 23 ──────────────────────────────────────────────────────
+const _voSchema = require('./services/voiceover/schema');
+const _voRouter = require('./services/voiceover/api');
+const _seoSchema = require('./services/seo_auditor/schema');
+const _seoRouter = require('./services/seo_auditor/api');
+const _seoWidgetSchema = require('./services/seo_widget/schema');
+const _seoWidgetRouter = require('./services/seo_widget/api');
+app.use('/api/voiceover', _voRouter);
+app.use('/api/seo-auditor', _seoRouter);
+app.use('/api/seo-widget', _seoWidgetRouter);
+(async () => { try {
+  if (process.env.DATABASE_URL) {
+    await _voSchema.ensureVoiceoverSchema();
+    await _seoSchema.ensureSeoAuditorSchema();
+    await _seoWidgetSchema.ensureSeoWidgetSchema();
+    console.log('[tier21-23] voiceover + seo-auditor + seo-widget schemas ready');
+  }
+} catch (e) { console.warn('[tier21-23] schema init failed:', e.message); }})();
 
 // ── Tier 17 ────────────────────────────────────────────────────────────────
 const _redditRouter = require('./services/reddit_pulse/api');
