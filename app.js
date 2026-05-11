@@ -126,13 +126,25 @@ window._wlViewRealAds = async function(compEnc, domainEnc) {
     if (!r.ok || j.ok === false || j.error) {
       const errRaw = j.error || `HTTP ${r.status}`;
       const errH = _h(errRaw);
-      const hint = /missing[_\s]creds|META_ACCESS_TOKEN/i.test(String(errRaw))
-        ? 'Connect a valid Meta access token in Settings to fetch real ads.'
-        : 'Meta returned an error. The competitor may have no active ads on Meta, or the token lacks Ad Library permissions.';
+      const errStr = String(errRaw).toLowerCase();
+      let hintHtml;
+      if (/missing[_\s]creds|meta_access_token/i.test(errStr)) {
+        hintHtml = 'No Meta access token is configured. Add <code>META_ACCESS_TOKEN</code> in Secrets to enable real-ads pulling.';
+      } else if (/permission|not authorized|access[_\s]token|capabilit/i.test(errStr)) {
+        hintHtml = `<strong>Your Meta token is missing the <code>ads_read</code> permission.</strong><br>
+          Meta's public Ad Library API requires a token with <code>ads_read</code> scope (App Review approval needed).<br>
+          <strong>Quick fix:</strong> Go to <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">Meta Graph API Explorer</a> →
+          select your App → click <em>Generate Access Token</em> → tick <code>ads_read</code> → copy the new token into the <code>META_ACCESS_TOKEN</code> secret and restart.<br>
+          <em>Note: For production use, your Meta App must be approved for the <code>ads_read</code> permission via App Review.</em>`;
+      } else if (/no active ads|no results|empty/i.test(errStr)) {
+        hintHtml = `${compH} doesn't appear to have active ads on Meta right now (or the search term didn't match a Meta Page). Try searching the exact Page name on <a href="https://www.facebook.com/ads/library/" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">Meta Ad Library</a> directly.`;
+      } else {
+        hintHtml = `Meta returned an error. The competitor may have no active ads on Meta, or your token lacks Ad Library permissions. <a href="https://www.facebook.com/ads/library/?search_type=keyword_unordered&q=${encodeURIComponent(comp)}" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">Search Meta Ad Library directly →</a>`;
+      }
       body.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px;color:#991B1B">
         <div style="font-weight:800;margin-bottom:6px">⚠️ Couldn't load real ads</div>
-        <div style="font-size:0.85rem">${errH}</div>
-        <div style="font-size:0.78rem;margin-top:8px;color:#7F1D1D">${hint}</div>
+        <div style="font-size:0.85rem;margin-bottom:8px"><code style="background:#FEE2E2;padding:2px 6px;border-radius:4px">${errH}</code></div>
+        <div style="font-size:0.8rem;margin-top:10px;color:#7F1D1D;line-height:1.55">${hintHtml}</div>
       </div>`;
       return;
     }

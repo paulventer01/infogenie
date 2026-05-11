@@ -3133,8 +3133,15 @@ body {
   cursor: pointer;
   font-family: 'Inter', sans-serif;
   transition: opacity 0.2s;
+  /* Bulletproof clickability — guarantee nothing overlays the button and
+     pointer events always reach it (safety against parent CSS rules
+     accidentally setting pointer-events:none). */
+  position: relative;
+  z-index: 2;
+  pointer-events: auto !important;
 }
 .btn-wl-counter:hover { opacity: 0.88; }
+.btn-wl-counter:active { transform: scale(0.97); }
 
 /* ROAS Plan stat strip — guarantee white labels in both themes (light-theme
    catch-all rules elsewhere try to dark-ify all card text; we override). */
