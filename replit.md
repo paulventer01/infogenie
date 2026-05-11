@@ -59,6 +59,7 @@ InfoGenie is an AI-powered marketing intelligence and campaign automation platfo
     *   **T17** Reddit Pulse · Ad Library Spy (Meta + TikTok) · Newsletter Tracker · Meeting Notes (BANT) · Headline Tester (10 patterns)
     *   **T18** Review Aggregator (5 sites) · Churn Scorer (0-100) · Twitter/X Pulse · Job Board Spy · Video Script Generator (TikTok/Reels/Shorts/LinkedIn)
     *   **T19** Chatbot Builder (FAQ + embed snippet) · Glassdoor Sentiment (culture signals) · Quora Mining (intent + response angle)
+    *   **T20** TikTok Downloader (bulk URL → no-watermark mp4 + meta, pairs with Ad Library Spy)
 *   **Dynamic Audiences (Reach → Dynamic Audiences)**: Real-time rule-based contact segments. Phase 1 builder UI + live preview · Phase 2 15-min sweep cron + HubSpot webhook (HMAC-validated when `HUBSPOT_WEBHOOK_SECRET` is set) · Phase 3 bind to Drip email sequence (only `audienceBindingId`-tagged enrollments touched, manual untouched, mutations under `global._dripStore.lock`) · Phase 4A mirror to HubSpot Static List (auto-creates via `POST /crm/v3/lists` when `crm.lists.write` scope present) · Phase 4B churn-risk audience → single-touch AI win-back drip tagged `reng:<bindingId>`. All three bridges run after membership write commits, fanned out per-contact in parallel with per-target try/catch.
 
 ## Product

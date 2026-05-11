@@ -2680,6 +2680,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'chatbot-builder')      { try { buildChatbotBuilder(); }       catch(e) { console.warn('buildChatbotBuilder error:', e); } }
   if (viewId === 'glassdoor')            { try { buildGlassdoor(); }            catch(e) { console.warn('buildGlassdoor error:', e); } }
   if (viewId === 'quora-mining')         { try { buildQuoraMining(); }          catch(e) { console.warn('buildQuoraMining error:', e); } }
+  if (viewId === 'tiktok-downloader')    { try { buildTiktokDownloader(); }     catch(e) { console.warn('buildTiktokDownloader error:', e); } }
   if (viewId === 'social-analytics')     { try { buildSocialAnalytics(); }      catch(e) { console.warn('buildSocialAnalytics error:', e); } }
   if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
@@ -37174,6 +37175,86 @@ window.buildSocialAnalytics = async function() {
         </div>`;
       }).join('')}</div>` : '<div style="background:#F9FAFB;color:#6B7280;padding:20px;border-radius:10px;text-align:center">No accounts yet</div>';
       out.innerHTML = totalsHtml + accountsHtml;
+    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+  });
+};
+
+// ============================================================================
+// TIKTOK DOWNLOADER (Tier 20) — bulk-paste TikTok URLs → no-watermark mp4 + meta
+// ============================================================================
+window.buildTiktokDownloader = function() {
+  const wrap = document.getElementById('ttdlWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:6px">TIKTOK URLS (one per line · max 25)</label>
+      <textarea id="ttdlUrls" rows="6" placeholder="https://www.tiktok.com/@username/video/1234567890&#10;https://vm.tiktok.com/abc123/" style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.84rem;font-family:ui-monospace,monospace;box-sizing:border-box;resize:vertical"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+        <div style="font-size:0.74rem;color:#6B7280">Supports tiktok.com, vm.tiktok.com, vt.tiktok.com — short links auto-resolve.</div>
+        <button id="ttdlGo" style="background:linear-gradient(135deg,#FE2C55,#25F4EE);color:#000;border:none;padding:9px 18px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">⬇️ Pull videos</button>
+      </div>
+    </div>
+    <div id="ttdlOut"></div>
+  `;
+  document.getElementById('ttdlGo').addEventListener('click', async () => {
+    const urls = document.getElementById('ttdlUrls').value.trim();
+    const out = document.getElementById('ttdlOut');
+    if (!urls) { out.innerHTML = '<div style="color:#991B1B">⚠ Paste at least one TikTok URL</div>'; return; }
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Resolving (5-20s, depends on URL count)…</div>';
+    try {
+      const r = await fetch('/api/tiktok-downloader/parse', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls })
+      }).then(x => x.json());
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+      const summary = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px 18px;margin-bottom:14px">
+        <strong style="color:#0A1628;font-size:0.96rem">${_n(r.succeeded)} of ${_n(r.total)} resolved</strong>
+        ${r.failed ? `<span style="color:#B91C1C;margin-left:10px;font-size:0.8rem">· ${_n(r.failed)} failed</span>` : ''}
+      </div>`;
+      const cards = (r.results || []).map(v => {
+        const tags = (v.hashtags || []).slice(0, 8).map(h => `<span style="background:#F3F4F6;color:#374151;padding:2px 8px;border-radius:10px;font-size:0.7rem;margin-right:4px">${_escapeHtml(h)}</span>`).join('');
+        const proxyUrl = '/api/tiktok-downloader/proxy?url=' + encodeURIComponent(v.videoUrl || '');
+        return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:0;overflow:hidden;display:grid;grid-template-columns:200px 1fr;gap:0">
+          <div style="background:#000;display:flex;align-items:center;justify-content:center">
+            ${v.coverUrl ? `<img src="${_safeUrl(v.coverUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;max-height:280px">` : '<div style="color:#fff;font-size:0.7rem;padding:40px 0">no cover</div>'}
+          </div>
+          <div style="padding:14px 16px">
+            <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:8px">
+              <div style="flex:1">
+                <strong style="color:#0A1628;font-size:0.92rem">@${_escapeHtml(v.author || 'unknown')}</strong>
+                ${v.authorName ? `<span style="color:#6B7280;font-size:0.78rem;margin-left:6px">${_escapeHtml(v.authorName)}</span>` : ''}
+              </div>
+              <a href="${_safeUrl(v.url)}" target="_blank" rel="noopener" style="color:#6B7280;font-size:0.72rem;text-decoration:none">View on TikTok ↗</a>
+            </div>
+            <div style="font-size:0.84rem;color:#0A1628;line-height:1.5;margin-bottom:8px">${_escapeHtml((v.caption || '').slice(0, 240))}${(v.caption || '').length > 240 ? '…' : ''}</div>
+            ${tags ? `<div style="margin-bottom:10px">${tags}</div>` : ''}
+            <div style="display:flex;gap:14px;font-size:0.74rem;color:#6B7280;margin-bottom:10px">
+              <span>👁 ${_n(v.views).toLocaleString()}</span>
+              <span>❤️ ${_n(v.likes).toLocaleString()}</span>
+              <span>💬 ${_n(v.comments).toLocaleString()}</span>
+              <span>↗ ${_n(v.shares).toLocaleString()}</span>
+              <span>⏱ ${_n(v.duration)}s</span>
+            </div>
+            ${v.music ? `<div style="font-size:0.74rem;color:#6B7280;margin-bottom:10px">🎵 ${_escapeHtml(v.music)}${v.musicAuthor ? ` · ${_escapeHtml(v.musicAuthor)}` : ''}</div>` : ''}
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              ${v.videoUrl ? `<a href="${proxyUrl}" download style="background:#0066FF;color:#fff;padding:6px 14px;border-radius:6px;font-size:0.78rem;font-weight:700;text-decoration:none">⬇ Download mp4 (no watermark)</a>` : '<span style="color:#9CA3AF;font-size:0.78rem">no mp4 available</span>'}
+              <button data-cap="${_escapeHtml(v.caption || '')}" class="ttdlCopyCap" style="background:#fff;border:1px solid #D1D5DB;color:#374151;padding:6px 12px;border-radius:6px;font-size:0.78rem;font-weight:700;cursor:pointer">📋 Copy caption</button>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+      const errs = (r.errors || []).length ? `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;padding:12px 16px;margin-top:14px">
+        <strong style="color:#92400E;font-size:0.84rem">⚠ ${_n(r.errors.length)} URL(s) failed</strong>
+        <div style="margin-top:6px;font-size:0.76rem;color:#78350F">${r.errors.map(e => `<div style="margin-top:3px">• <code style="font-size:0.72rem">${_escapeHtml(e.url)}</code> — ${_escapeHtml(e.error || 'unknown')}</div>`).join('')}</div>
+      </div>` : '';
+      out.innerHTML = summary + `<div style="display:grid;gap:14px">${cards}</div>` + errs;
+      out.querySelectorAll('.ttdlCopyCap').forEach(b => b.addEventListener('click', e => {
+        const cap = e.currentTarget.getAttribute('data-cap') || '';
+        navigator.clipboard.writeText(cap).then(() => {
+          const orig = e.currentTarget.textContent;
+          e.currentTarget.textContent = '✓ Copied';
+          setTimeout(() => { e.currentTarget.textContent = orig; }, 1500);
+        });
+      }));
     } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
   });
 };

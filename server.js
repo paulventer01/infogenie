@@ -8621,6 +8621,17 @@ app.use('/api/quora-mining', _quoraRouter);
   }
 } catch (e) { console.warn('[tier19] schema init failed:', e.message); }})();
 
+// ── Tier 20 ────────────────────────────────────────────────────────────────
+const _ttDlSchema = require('./services/tiktok_downloader/schema');
+const _ttDlRouter = require('./services/tiktok_downloader/api');
+app.use('/api/tiktok-downloader', _ttDlRouter);
+(async () => { try {
+  if (process.env.DATABASE_URL) {
+    await _ttDlSchema.ensureTiktokDownloaderSchema();
+    console.log('[tier20] tiktok-downloader schema ready');
+  }
+} catch (e) { console.warn('[tier20] schema init failed:', e.message); }})();
+
 // ── Tier 17 ────────────────────────────────────────────────────────────────
 const _redditRouter = require('./services/reddit_pulse/api');
 const _redditSchema = require('./services/reddit_pulse/schema');
