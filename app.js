@@ -2686,6 +2686,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'seo-widget')           { try { buildSeoWidget(); }            catch(e) { console.warn('buildSeoWidget error:', e); } }
   if (viewId === 'seo-tasks')            { try { buildSeoTasks(); }             catch(e) { console.warn('buildSeoTasks error:', e); } }
   if (viewId === 'schema-generator')     { try { buildSchemaGenerator(); }      catch(e) { console.warn('buildSchemaGenerator error:', e); } }
+  if (viewId === 'unified-inbox')        { try { buildUnifiedInbox(); }         catch(e) { console.warn('buildUnifiedInbox error:', e); } }
   if (viewId === 'social-analytics')     { try { buildSocialAnalytics(); }      catch(e) { console.warn('buildSocialAnalytics error:', e); } }
   if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
@@ -37752,4 +37753,207 @@ window.buildSchemaGenerator = function() {
     selectType(currentType);
     loadSaved();
   });
+};
+
+// ── Tier 26 — Unified Conversation Inbox ───────────────────────────────────
+window.buildUnifiedInbox = function() {
+  const wrap = document.getElementById('uiboxWrap');
+  if (!wrap) return;
+  const esc = (window._escapeHtml) || ((s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])));
+  const safeUrl = (window._safeUrl) || ((u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : '#'; } catch { return '#'; } });
+
+  const SOURCES = [
+    { k: '',          label: 'All sources',  emoji: '📬' },
+    { k: 'reddit',    label: 'Reddit',       emoji: '👽' },
+    { k: 'twitter',   label: 'Twitter/X',    emoji: '🐦' },
+    { k: 'review',    label: 'Reviews',      emoji: '⭐' },
+    { k: 'quora',     label: 'Quora',        emoji: '❓' },
+    { k: 'glassdoor', label: 'Glassdoor',    emoji: '🏢' },
+    { k: 'newsletter',label: 'Newsletters',  emoji: '📧' },
+    { k: 'chatbot',   label: 'Chatbot',      emoji: '💬' },
+  ];
+  const STATUSES = [
+    { k: '',          label: 'All' },
+    { k: 'new',       label: 'New' },
+    { k: 'replied',   label: 'Replied' },
+    { k: 'resolved',  label: 'Resolved' },
+    { k: 'snoozed',   label: 'Snoozed' },
+  ];
+  const SENT_DOT = { positive:'#16a34a', negative:'#dc2626', neutral:'#94a3b8' };
+
+  const filt = { source: '', status: '', sentiment: '', q: '' };
+
+  wrap.innerHTML = `
+    <div class="dna-card" style="padding:18px;margin-bottom:16px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-weight:700;font-size:1.05rem">Inbox</div>
+          <div id="uiboxStats" style="color:#64748b;font-size:0.85rem;margin-top:2px">Loading…</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" id="uiboxIngest">🔄 Refresh from sources</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dna-card" style="padding:14px;margin-bottom:16px">
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+        <div style="flex:1;min-width:240px">
+          <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:4px">Search</label>
+          <input id="uiboxQ" type="text" placeholder="title, content or author…" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff)">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:4px">Source</label>
+          <select id="uiboxSource" style="padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff)">
+            ${SOURCES.map(s => `<option value="${esc(s.k)}">${esc(s.emoji + ' ' + s.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:4px">Status</label>
+          <select id="uiboxStatus" style="padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff)">
+            ${STATUSES.map(s => `<option value="${esc(s.k)}">${esc(s.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:4px">Sentiment</label>
+          <select id="uiboxSent" style="padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff)">
+            <option value="">Any</option>
+            <option value="positive">😀 Positive</option>
+            <option value="neutral">😐 Neutral</option>
+            <option value="negative">😠 Negative</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div id="uiboxList" class="dna-card" style="padding:0"></div>
+  `;
+
+  const sourceEmoji = (k) => (SOURCES.find(s => s.k === k) || {}).emoji || '•';
+  const fmtDate = (d) => { if (!d) return ''; try { const x = new Date(d); return x.toLocaleString(); } catch { return String(d); } };
+
+  function loadStats() {
+    fetch('/api/unified-inbox/stats').then(x => x.json()).then(j => {
+      if (!j.ok) return;
+      const s = j.stats || {};
+      const st = s.status || {};
+      document.getElementById('uiboxStats').innerHTML =
+        `<strong>${s.total || 0}</strong> items · `
+        + `<span style="color:#0ea5e9">${st.new || 0} new</span> · `
+        + `<span style="color:#64748b">${st.replied || 0} replied</span> · `
+        + `<span style="color:#16a34a">${st.resolved || 0} resolved</span> · `
+        + `<span style="color:#94a3b8">${st.snoozed || 0} snoozed</span>`;
+    }).catch(() => {});
+  }
+
+  function load() {
+    const list = document.getElementById('uiboxList');
+    list.innerHTML = '<div style="padding:32px;text-align:center;color:#64748b">Loading…</div>';
+    const q = new URLSearchParams();
+    if (filt.source) q.set('source', filt.source);
+    if (filt.status) q.set('status', filt.status);
+    if (filt.sentiment) q.set('sentiment', filt.sentiment);
+    if (filt.q) q.set('q', filt.q);
+    q.set('limit', '100');
+    fetch('/api/unified-inbox/list?' + q.toString()).then(x => x.json()).then(j => {
+      if (!j.ok) { list.innerHTML = '<div style="padding:32px;text-align:center;color:#dc2626">Failed to load.</div>'; return; }
+      if (!j.items.length) {
+        list.innerHTML = '<div style="padding:48px 32px;text-align:center;color:#64748b"><div style="font-size:2rem;margin-bottom:8px">📭</div>Inbox empty for these filters.<br><span style="font-size:0.85rem">Hit <strong>Refresh from sources</strong> above to pull from Reddit Pulse, Twitter/X Pulse, Reviews, Quora, Glassdoor, Newsletter mentions and Chatbot conversations.</span></div>';
+        return;
+      }
+      list.innerHTML = j.items.map((it) => {
+        const dot = SENT_DOT[it.sentiment] || '#cbd5e1';
+        const url = it.source_url ? `<a href="${esc(safeUrl(it.source_url))}" target="_blank" rel="noopener" style="margin-left:8px;font-size:0.78rem;color:#0ea5e9">open ↗</a>` : '';
+        const statusBadge = `<span class="uibox-badge uibox-st-${esc(it.status)}">${esc(it.status)}</span>`;
+        return `
+          <div class="uibox-row" data-id="${it.id}" style="padding:14px 18px;border-bottom:1px solid var(--border-color,#e2e8f0);display:flex;gap:14px;align-items:flex-start">
+            <div title="${esc(it.sentiment || 'unknown')}" style="width:10px;height:10px;border-radius:50%;background:${dot};margin-top:7px;flex-shrink:0"></div>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">
+                <span style="font-size:0.78rem;background:var(--bg-secondary,#f1f5f9);padding:2px 8px;border-radius:10px">${esc(sourceEmoji(it.source) + ' ' + it.source)}</span>
+                ${statusBadge}
+                <span style="font-size:0.78rem;color:#64748b">${esc(it.author || 'Anonymous')}</span>
+                <span style="font-size:0.72rem;color:#94a3b8">· ${esc(fmtDate(it.occurred_at || it.ingested_at))}</span>
+                ${url}
+              </div>
+              ${it.title ? `<div style="font-weight:600;margin-bottom:2px">${esc(it.title)}</div>` : ''}
+              ${it.content ? `<div style="color:#475569;font-size:0.9rem;white-space:pre-wrap;word-break:break-word">${esc(String(it.content).slice(0, 400))}${it.content.length > 400 ? '…' : ''}</div>` : ''}
+              ${it.notes ? `<div style="margin-top:6px;padding:6px 10px;background:var(--bg-secondary,#f8fafc);border-left:3px solid #0ea5e9;font-size:0.82rem;color:#475569"><strong>Note:</strong> ${esc(it.notes)}</div>` : ''}
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+              <select class="uibox-status" data-id="${it.id}" style="padding:4px 8px;border:1px solid var(--border-color,#e2e8f0);border-radius:4px;font-size:0.78rem;background:var(--card-bg,#fff)">
+                ${['new','replied','resolved','snoozed'].map(s => `<option value="${s}"${s === it.status ? ' selected':''}>${s}</option>`).join('')}
+              </select>
+              <button class="btn btn-link uibox-note" data-id="${it.id}" style="font-size:0.78rem;padding:2px 6px">📝 Note</button>
+              <button class="btn btn-link uibox-del" data-id="${it.id}" style="font-size:0.78rem;padding:2px 6px;color:#dc2626">🗑</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+      list.querySelectorAll('.uibox-status').forEach(sel => {
+        sel.addEventListener('change', async (e) => {
+          const id = e.currentTarget.getAttribute('data-id');
+          const status = e.currentTarget.value;
+          await fetch('/api/unified-inbox/' + id, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ status }) });
+          loadStats();
+        });
+      });
+      list.querySelectorAll('.uibox-note').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const id = e.currentTarget.getAttribute('data-id');
+          const note = prompt('Note:');
+          if (note == null) return;
+          await fetch('/api/unified-inbox/' + id, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ notes: note }) });
+          load();
+        });
+      });
+      list.querySelectorAll('.uibox-del').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          if (!confirm('Delete this inbox item?')) return;
+          const id = e.currentTarget.getAttribute('data-id');
+          await fetch('/api/unified-inbox/' + id, { method:'DELETE' });
+          load(); loadStats();
+        });
+      });
+    }).catch(() => { list.innerHTML = '<div style="padding:32px;text-align:center;color:#dc2626">Failed to load.</div>'; });
+  }
+
+  document.getElementById('uiboxIngest').addEventListener('click', async (e) => {
+    const b = e.currentTarget; const old = b.innerHTML;
+    b.innerHTML = '⏳ Refreshing…'; b.disabled = true;
+    try {
+      const r = await fetch('/api/unified-inbox/ingest', { method:'POST' }).then(x => x.json());
+      if (r.ok) {
+        const c = r.counts || {};
+        const summary = Object.entries(c).filter(([k,v]) => !k.endsWith('_error') && v > 0).map(([k,v]) => `${v} ${k}`).join(', ') || 'no new items';
+        alert('Pulled: ' + summary);
+      } else { alert('Failed: ' + (r.error || 'unknown')); }
+    } catch (err) { alert('Failed: ' + err.message); }
+    b.innerHTML = old; b.disabled = false;
+    load(); loadStats();
+  });
+
+  let qTimer;
+  document.getElementById('uiboxQ').addEventListener('input', (e) => {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => { filt.q = e.target.value.trim(); load(); }, 250);
+  });
+  document.getElementById('uiboxSource').addEventListener('change', (e) => { filt.source = e.target.value; load(); });
+  document.getElementById('uiboxStatus').addEventListener('change', (e) => { filt.status = e.target.value; load(); });
+  document.getElementById('uiboxSent').addEventListener('change', (e) => { filt.sentiment = e.target.value; load(); });
+
+  // tiny CSS for status badges (idempotent inject)
+  if (!document.getElementById('uiboxBadgeCss')) {
+    const st = document.createElement('style');
+    st.id = 'uiboxBadgeCss';
+    st.textContent = `.uibox-badge{font-size:0.72rem;padding:2px 8px;border-radius:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.3px}
+      .uibox-st-new{background:#e0f2fe;color:#0369a1}
+      .uibox-st-replied{background:#f1f5f9;color:#475569}
+      .uibox-st-resolved{background:#dcfce7;color:#166534}
+      .uibox-st-snoozed{background:#fef3c7;color:#92400e}`;
+    document.head.appendChild(st);
+  }
+
+  loadStats();
+  load();
 };
