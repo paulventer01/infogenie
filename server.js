@@ -11904,6 +11904,29 @@ function _slugSummaries(urls) {
   return [...new Set(out)].slice(0, 80);
 }
 
+// Fallback when a competitor's sitemap is blocked (Cloudflare, no /sitemap.xml,
+// etc.) — pull their top organic-ranking URLs from DataForSEO and treat those
+// as a proxy "page list". This guarantees every competitor contributes
+// something to the AI gap analysis instead of being silently dropped.
+async function _fetchRankedPageUrls(domain) {
+  if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) return [];
+  try {
+    const raw = await callDataForSEO('/v3/dataforseo_labs/google/ranked_keywords/live',
+      [{ target: domain, language_code:'en', location_code:2840, limit: 100,
+         filters:[['ranked_serp_element.serp_item.rank_group','<=', 30]] }],
+      12000);
+    if (!raw || raw.status_code !== 20000) return [];
+    const items = raw?.tasks?.[0]?.result?.[0]?.items || [];
+    const urls = items
+      .map(it => it?.ranked_serp_element?.serp_item?.url)
+      .filter(Boolean);
+    return [...new Set(urls)].slice(0, 80);
+  } catch (e) {
+    console.warn(`[content-gaps] DFS fallback failed for ${domain}:`, e.message);
+    return [];
+  }
+}
+
 app.post('/api/content-gaps', async (req, res) => {
   try {
     const body = (req.body && typeof req.body === 'object') ? req.body : {};
@@ -11924,7 +11947,29 @@ app.post('/api/content-gaps', async (req, res) => {
     ]);
 
     const youSummary = _slugSummaries(yourPages);
-    const compSummary = competitors.map((c, i) => ({ domain:c, slugs:_slugSummaries(compPages[i]) }));
+    const compSummary = competitors.map((c, i) => {
+      const slugs = _slugSummaries(compPages[i]);
+      return { domain: c, slugs, source: slugs.length ? 'sitemap' : null };
+    });
+
+    // Fallback path: for any competitor whose sitemap returned nothing
+    // (Cloudflare-protected, no /sitemap.xml, etc.), pull their top organic
+    // ranking URLs from DataForSEO and treat those as a proxy page list. Run
+    // all fallbacks in parallel so we don't add serial latency.
+    const needFallback = compSummary.filter(c => !c.slugs.length);
+    if (needFallback.length) {
+      console.log(`[content-gaps] sitemap blocked for ${needFallback.length} competitor(s) — trying DataForSEO fallback:`, needFallback.map(c=>c.domain).join(', '));
+      const fbResults = await Promise.all(needFallback.map(c => _fetchRankedPageUrls(c.domain)));
+      needFallback.forEach((c, i) => {
+        const slugs = _slugSummaries(fbResults[i]);
+        if (slugs.length) {
+          c.slugs = slugs;
+          c.source = 'dataforseo-ranked';
+          console.log(`[content-gaps] DFS fallback recovered ${slugs.length} pages for ${c.domain}`);
+        }
+      });
+    }
+
     const haveAnyComp = compSummary.some(c => c.slugs.length);
 
     if (!youSummary.length || !haveAnyComp) {
@@ -11967,12 +12012,21 @@ app.post('/api/content-gaps', async (req, res) => {
       .sort((a, b) => b.priority - a.priority)
       .slice(0, 12);
 
+    const sitemapCount = compSummary.filter(c => c.source === 'sitemap').length;
+    const fallbackCount = compSummary.filter(c => c.source === 'dataforseo-ranked').length;
+    const analyzedCount = sitemapCount + fallbackCount;
+    const originParts = [];
+    if (sitemapCount)  originParts.push(`Sitemap analysis (${sitemapCount} competitor${sitemapCount===1?'':'s'})`);
+    if (fallbackCount) originParts.push(`DataForSEO ranking pages (${fallbackCount} competitor${fallbackCount===1?'':'s'})`);
     res.json({
       ok:true, domain, competitors, gaps,
       yourPagesAnalyzed: youSummary.length,
       competitorPagesAnalyzed: compSummary.reduce((s, c) => s + c.slugs.length, 0),
-      competitorsWithSitemap: compSummary.filter(c => c.slugs.length).map(c => c.domain),
-      dataOrigin: `Sitemap analysis (${compSummary.filter(c => c.slugs.length).length} competitors) + AI gap classification`,
+      competitorsAnalyzed: analyzedCount,
+      competitorsWithSitemap: compSummary.filter(c => c.source === 'sitemap').map(c => c.domain),
+      competitorsViaFallback: compSummary.filter(c => c.source === 'dataforseo-ranked').map(c => c.domain),
+      competitorsBlocked: compSummary.filter(c => !c.slugs.length).map(c => c.domain),
+      dataOrigin: `${originParts.join(' + ')} + AI gap classification`,
       dataSource:'AI-verified',
       confidence: gaps.length >= 5 ? 'high' : gaps.length >= 2 ? 'medium' : 'low'
     });
