@@ -195,3 +195,21 @@ Detailed per-feature notes. All tiers follow the same pattern: strict-JSON LLM p
     11. **Title 20-70 chars** (5 pts).
     12. **Meta description 70-160 chars** (5 pts).
 *   **Pure regex, no LLM call** — predictable cost, deterministic output. Each check returns `{id, label, status, weight, earned, message, fix}` and the frontend sorts fail→warn→pass so the user sees the most-impactful fixes first. Same A-F grading bands as T22.
+
+## T31 — Local SEO Basics
+- **Route**: `/local-seo` (nav under Reach)
+- **Endpoints**: `POST /api/local-seo/run`, `GET /api/local-seo/runs`, `GET /api/local-seo/runs/:id`
+- **Storage**: `local_seo_runs` (id, url, score, grade, summary jsonb, checks jsonb, created_at)
+- **Builder**: `buildLocalSeo` in app.js → `#lsWrap`
+- **Service**: `services/local_seo/{schema,api}.js`
+- **Checks (11, sum=100)**: phone (12) · click-to-call (8) · address (12) · LocalBusiness schema (15) · GBP/Maps link (10) · Maps embed (8) · hours (8) · contact page (8) · NAP consistency (6) · service area (8) · hygiene HTTPS+canonical (5)
+- **Notes**: pure regex, no LLM. Recognises 15 LocalBusiness subtypes (Restaurant, Dentist, AutomotiveBusiness, etc).
+
+## T32 — Social Tags Audit
+- **Route**: `/social-tags` (nav under Reach)
+- **Endpoints**: `POST /api/social-tags/run`, `GET /api/social-tags/runs`, `GET /api/social-tags/runs/:id`
+- **Storage**: `social_tags_runs` (id, url, score, grade, summary jsonb, checks jsonb, created_at)
+- **Builder**: `buildSocialTags` in app.js → `#stWrap`
+- **Service**: `services/social_tags/{schema,api}.js`
+- **Checks (13, sum=100)**: og:title (10) · og:description (8) · og:image (12) · og:type (4) · og:url (4) · twitter:card (8) · twitter:image+title (6) · Facebook Pixel (8) · GA4/GTM (8) · social profile links across 6 platforms (10) · favicon (6) · apple-touch-icon (6) · Organization sameAs[] (4)
+- **Notes**: pure regex. UA (deprecated) detection issues warn; GA4/GTM passes. Profile detection excludes share-intent URLs (sharer.php, intent/share, p/, reel/).

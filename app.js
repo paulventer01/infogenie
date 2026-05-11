@@ -2691,6 +2691,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'white-label')          { try { buildWhiteLabel(); }           catch(e) { console.warn('buildWhiteLabel error:', e); } }
   if (viewId === 'seo-crawler')          { try { buildSeoCrawler(); }           catch(e) { console.warn('buildSeoCrawler error:', e); } }
   if (viewId === 'geo-audit')            { try { buildGeoAudit(); }             catch(e) { console.warn('buildGeoAudit error:', e); } }
+  if (viewId === 'local-seo')            { try { buildLocalSeo(); }             catch(e) { console.warn('buildLocalSeo error:', e); } }
+  if (viewId === 'social-tags')          { try { buildSocialTags(); }           catch(e) { console.warn('buildSocialTags error:', e); } }
   if (viewId === 'social-analytics')     { try { buildSocialAnalytics(); }      catch(e) { console.warn('buildSocialAnalytics error:', e); } }
   if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
@@ -38467,6 +38469,187 @@ window.buildGeoAudit = function() {
     const r = await fetch('/api/geo-audit/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) }).then(x=>x.json());
     btn.disabled = false; btn.textContent = '🤖 Audit page';
     if (!r.ok) { document.getElementById('geo-result').innerHTML = '<div style="background:#fee;color:#dc2626;padding:16px;border-radius:8px">Failed: ' + esc(r.error || 'unknown') + '</div>'; return; }
+    renderResult(r);
+    loadList();
+  });
+  loadList();
+};
+
+// ── Tier 31 — Local SEO Basics ─────────────────────────────────────────────
+window.buildLocalSeo = function() {
+  const wrap = document.getElementById('lsWrap');
+  if (!wrap) return;
+  const esc = (window._escapeHtml) || ((s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])));
+  wrap.innerHTML = `
+    <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="font-weight:700;margin-bottom:12px">Run a Local SEO audit</div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end">
+        <label>Page URL (homepage or contact page works best)<input id="ls-url" type="url" placeholder="https://yourbusiness.com" style="width:100%;padding:9px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+        <button id="ls-go" class="btn btn-primary">📍 Audit page</button>
+      </div>
+      <p style="color:#64748b;font-size:0.84rem;margin-top:10px;margin-bottom:0">For brick-and-mortar and service-area businesses. 11 checks summing to 100 points covering NAP, schema, GBP link, hours, click-to-call and more.</p>
+    </div>
+    <div id="ls-result" style="margin-bottom:18px"></div>
+    <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border-color,#e2e8f0);font-weight:700">Recent audits</div>
+      <div id="ls-list" style="padding:14px 20px;color:#64748b">Loading…</div>
+    </div>
+  `;
+  function renderResult(r) {
+    const gradeColor = { 'A':'#16a34a','B':'#65a30d','C':'#ca8a04','D':'#ea580c','F':'#dc2626' }[r.grade] || '#64748b';
+    const sortedChecks = (r.checks || []).slice().sort((a,b) => {
+      const ord = { fail: 0, warn: 1, pass: 2 };
+      if (ord[a.status] !== ord[b.status]) return ord[a.status] - ord[b.status];
+      return b.weight - a.weight;
+    });
+    document.getElementById('ls-result').innerHTML = `
+      <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:24px">
+        <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-bottom:18px">
+          <div style="text-align:center;min-width:110px">
+            <div style="font-size:3.6rem;font-weight:800;color:${gradeColor};line-height:1">${r.grade}</div>
+            <div style="color:#64748b;font-size:0.84rem">Local SEO grade</div>
+          </div>
+          <div style="text-align:center;min-width:110px">
+            <div style="font-size:2.4rem;font-weight:800">${r.score}</div>
+            <div style="color:#64748b;font-size:0.84rem">out of 100</div>
+          </div>
+          <div style="flex:1;min-width:240px">
+            <div style="word-break:break-all;font-weight:600">${esc(r.url)}</div>
+            <div style="color:#64748b;font-size:0.84rem;margin-top:4px">${(r.summary && r.summary.passed)||0} pass · ${(r.summary && r.summary.warned)||0} warn · <span style="color:#dc2626">${(r.summary && r.summary.failed)||0} fail</span></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${sortedChecks.map(c => {
+            const sColor = c.status === 'pass' ? '#16a34a' : c.status === 'warn' ? '#ca8a04' : '#dc2626';
+            const sIcon  = c.status === 'pass' ? '✓' : c.status === 'warn' ? '⚠' : '✕';
+            return `<div style="border:1px solid var(--border-color,#e2e8f0);border-left:4px solid ${sColor};border-radius:6px;padding:10px 14px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+                <div style="font-weight:600"><span style="color:${sColor};margin-right:6px;font-weight:800">${sIcon}</span>${esc(c.label)}</div>
+                <div style="color:#64748b;font-size:0.78rem">${c.earned}/${c.weight} pts</div>
+              </div>
+              <div style="color:#475569;font-size:0.86rem;margin-top:4px">${esc(c.message)}</div>
+              ${c.fix && c.status !== 'pass' ? `<div style="color:#0369a1;font-size:0.84rem;margin-top:6px;background:#f0f9ff;padding:8px 10px;border-radius:4px"><strong>Fix:</strong> ${esc(c.fix)}</div>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+  async function loadList() {
+    const r = await fetch('/api/local-seo/runs').then(x=>x.json());
+    const el = document.getElementById('ls-list');
+    if (!r.ok || !r.runs.length) { el.innerHTML = '<div style="color:#64748b">No audits yet — run your first one above.</div>'; return; }
+    el.innerHTML = r.runs.map(run => {
+      const gradeColor = { 'A':'#16a34a','B':'#65a30d','C':'#ca8a04','D':'#ea580c','F':'#dc2626' }[run.grade] || '#64748b';
+      return `<div style="padding:10px 0;border-top:1px solid var(--border-color,#e2e8f0);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div style="font-size:1.4rem;font-weight:800;color:${gradeColor};min-width:36px;text-align:center">${run.grade}</div>
+        <div style="flex:1;min-width:240px">
+          <div style="font-weight:600;word-break:break-all">${esc(run.url)}</div>
+          <div style="color:#64748b;font-size:0.78rem">Score ${run.score} · ${new Date(run.created_at).toLocaleString()}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('ls-go').addEventListener('click', async () => {
+    const url = document.getElementById('ls-url').value.trim();
+    if (!url) { alert('Enter a URL.'); return; }
+    const btn = document.getElementById('ls-go');
+    btn.disabled = true; btn.textContent = '⏳ Auditing…';
+    document.getElementById('ls-result').innerHTML = '<div style="text-align:center;padding:32px;color:#64748b">Running 11 local SEO checks…</div>';
+    const r = await fetch('/api/local-seo/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) }).then(x=>x.json());
+    btn.disabled = false; btn.textContent = '📍 Audit page';
+    if (!r.ok) { document.getElementById('ls-result').innerHTML = '<div style="background:#fee;color:#dc2626;padding:16px;border-radius:8px">Failed: ' + esc(r.error || 'unknown') + '</div>'; return; }
+    renderResult(r);
+    loadList();
+  });
+  loadList();
+};
+
+// ── Tier 32 — Social Tags Audit ────────────────────────────────────────────
+window.buildSocialTags = function() {
+  const wrap = document.getElementById('stWrap');
+  if (!wrap) return;
+  const esc = (window._escapeHtml) || ((s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])));
+  wrap.innerHTML = `
+    <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="font-weight:700;margin-bottom:12px">Audit social tags &amp; tracking</div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end">
+        <label>Page URL<input id="st-url" type="url" placeholder="https://example.com" style="width:100%;padding:9px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+        <button id="st-go" class="btn btn-primary">🔖 Audit page</button>
+      </div>
+      <p style="color:#64748b;font-size:0.84rem;margin-top:10px;margin-bottom:0">13 checks for Open Graph, Twitter Cards, Facebook Pixel, GA4, social profile links, favicon and Apple touch icon.</p>
+    </div>
+    <div id="st-result" style="margin-bottom:18px"></div>
+    <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border-color,#e2e8f0);font-weight:700">Recent audits</div>
+      <div id="st-list" style="padding:14px 20px;color:#64748b">Loading…</div>
+    </div>
+  `;
+  function renderResult(r) {
+    const gradeColor = { 'A':'#16a34a','B':'#65a30d','C':'#ca8a04','D':'#ea580c','F':'#dc2626' }[r.grade] || '#64748b';
+    const sortedChecks = (r.checks || []).slice().sort((a,b) => {
+      const ord = { fail: 0, warn: 1, pass: 2 };
+      if (ord[a.status] !== ord[b.status]) return ord[a.status] - ord[b.status];
+      return b.weight - a.weight;
+    });
+    const platforms = (r.summary && r.summary.platforms) || [];
+    document.getElementById('st-result').innerHTML = `
+      <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:24px">
+        <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-bottom:18px">
+          <div style="text-align:center;min-width:110px">
+            <div style="font-size:3.6rem;font-weight:800;color:${gradeColor};line-height:1">${r.grade}</div>
+            <div style="color:#64748b;font-size:0.84rem">Social tag grade</div>
+          </div>
+          <div style="text-align:center;min-width:110px">
+            <div style="font-size:2.4rem;font-weight:800">${r.score}</div>
+            <div style="color:#64748b;font-size:0.84rem">out of 100</div>
+          </div>
+          <div style="flex:1;min-width:240px">
+            <div style="word-break:break-all;font-weight:600">${esc(r.url)}</div>
+            <div style="color:#64748b;font-size:0.84rem;margin-top:4px">${(r.summary && r.summary.passed)||0} pass · ${(r.summary && r.summary.warned)||0} warn · <span style="color:#dc2626">${(r.summary && r.summary.failed)||0} fail</span>${platforms.length ? ' · profiles: ' + esc(platforms.join(', ')) : ''}</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${sortedChecks.map(c => {
+            const sColor = c.status === 'pass' ? '#16a34a' : c.status === 'warn' ? '#ca8a04' : '#dc2626';
+            const sIcon  = c.status === 'pass' ? '✓' : c.status === 'warn' ? '⚠' : '✕';
+            return `<div style="border:1px solid var(--border-color,#e2e8f0);border-left:4px solid ${sColor};border-radius:6px;padding:10px 14px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+                <div style="font-weight:600"><span style="color:${sColor};margin-right:6px;font-weight:800">${sIcon}</span>${esc(c.label)}</div>
+                <div style="color:#64748b;font-size:0.78rem">${c.earned}/${c.weight} pts</div>
+              </div>
+              <div style="color:#475569;font-size:0.86rem;margin-top:4px">${esc(c.message)}</div>
+              ${c.fix && c.status !== 'pass' ? `<div style="color:#0369a1;font-size:0.84rem;margin-top:6px;background:#f0f9ff;padding:8px 10px;border-radius:4px"><strong>Fix:</strong> ${esc(c.fix)}</div>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+  async function loadList() {
+    const r = await fetch('/api/social-tags/runs').then(x=>x.json());
+    const el = document.getElementById('st-list');
+    if (!r.ok || !r.runs.length) { el.innerHTML = '<div style="color:#64748b">No audits yet — run your first one above.</div>'; return; }
+    el.innerHTML = r.runs.map(run => {
+      const gradeColor = { 'A':'#16a34a','B':'#65a30d','C':'#ca8a04','D':'#ea580c','F':'#dc2626' }[run.grade] || '#64748b';
+      return `<div style="padding:10px 0;border-top:1px solid var(--border-color,#e2e8f0);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div style="font-size:1.4rem;font-weight:800;color:${gradeColor};min-width:36px;text-align:center">${run.grade}</div>
+        <div style="flex:1;min-width:240px">
+          <div style="font-weight:600;word-break:break-all">${esc(run.url)}</div>
+          <div style="color:#64748b;font-size:0.78rem">Score ${run.score} · ${new Date(run.created_at).toLocaleString()}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('st-go').addEventListener('click', async () => {
+    const url = document.getElementById('st-url').value.trim();
+    if (!url) { alert('Enter a URL.'); return; }
+    const btn = document.getElementById('st-go');
+    btn.disabled = true; btn.textContent = '⏳ Auditing…';
+    document.getElementById('st-result').innerHTML = '<div style="text-align:center;padding:32px;color:#64748b">Running 13 social tag checks…</div>';
+    const r = await fetch('/api/social-tags/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) }).then(x=>x.json());
+    btn.disabled = false; btn.textContent = '🔖 Audit page';
+    if (!r.ok) { document.getElementById('st-result').innerHTML = '<div style="background:#fee;color:#dc2626;padding:16px;border-radius:8px">Failed: ' + esc(r.error || 'unknown') + '</div>'; return; }
     renderResult(r);
     loadList();
   });

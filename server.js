@@ -8670,22 +8670,30 @@ app.use('/api/schema-generator', _schemaGenRouter);
 app.use('/api/unified-inbox', _inboxRouter);
 app.use('/api/conversion-boosters', _cbRouter);
 
-// ── Tier 28 + 29 + 30 ─────────────────────────────────────────────────────
+// ── Tier 28 + 29 + 30 + 31 + 32 ──────────────────────────────────────────
 const _wlRouter = require('./services/white_label/api');
 const _scrRouter = require('./services/seo_crawler/api');
 const _geoRouter = require('./services/geo_audit/api');
+const _lsRouter  = require('./services/local_seo/api');
+const _stRouter  = require('./services/social_tags/api');
 app.use('/api/white-label', _wlRouter);
 app.use('/api/seo-crawler', _scrRouter);
 app.use('/api/geo-audit', _geoRouter);
+app.use('/api/local-seo', _lsRouter);
+app.use('/api/social-tags', _stRouter);
 (async () => { try {
   if (process.env.DATABASE_URL) {
     const { ensureSeoCrawlerSchema } = require('./services/seo_crawler/schema');
     const { ensureGeoAuditSchema } = require('./services/geo_audit/schema');
+    const { ensureLocalSeoSchema }  = require('./services/local_seo/schema');
+    const { ensureSocialTagsSchema } = require('./services/social_tags/schema');
     await ensureSeoCrawlerSchema();
     await ensureGeoAuditSchema();
-    console.log('[tier28-30] white-label + seo-crawler + geo-audit ready');
+    await ensureLocalSeoSchema();
+    await ensureSocialTagsSchema();
+    console.log('[tier28-32] white-label + seo-crawler + geo-audit + local-seo + social-tags ready');
   }
-} catch (e) { console.warn('[tier28-30] schema init failed:', e.message); }})();
+} catch (e) { console.warn('[tier28-32] schema init failed:', e.message); }})();
 (async () => { try {
   if (process.env.DATABASE_URL) {
     await _seoTasksSchema.ensureSeoTasksSchema();
