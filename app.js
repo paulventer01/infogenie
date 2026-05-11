@@ -2688,6 +2688,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'schema-generator')     { try { buildSchemaGenerator(); }      catch(e) { console.warn('buildSchemaGenerator error:', e); } }
   if (viewId === 'unified-inbox')        { try { buildUnifiedInbox(); }         catch(e) { console.warn('buildUnifiedInbox error:', e); } }
   if (viewId === 'conversion-boosters')  { try { buildConversionBoosters(); }   catch(e) { console.warn('buildConversionBoosters error:', e); } }
+  if (viewId === 'white-label')          { try { buildWhiteLabel(); }           catch(e) { console.warn('buildWhiteLabel error:', e); } }
+  if (viewId === 'seo-crawler')          { try { buildSeoCrawler(); }           catch(e) { console.warn('buildSeoCrawler error:', e); } }
+  if (viewId === 'geo-audit')            { try { buildGeoAudit(); }             catch(e) { console.warn('buildGeoAudit error:', e); } }
   if (viewId === 'social-analytics')     { try { buildSocialAnalytics(); }      catch(e) { console.warn('buildSocialAnalytics error:', e); } }
   if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
@@ -38139,5 +38142,333 @@ window.buildConversionBoosters = function() {
     showForm(e.currentTarget.getAttribute('data-type'), null);
   }));
 
+  loadList();
+};
+
+// ── Tier 28 — White-Label Reports ──────────────────────────────────────────
+window.buildWhiteLabel = function() {
+  const wrap = document.getElementById('wlWrap');
+  if (!wrap) return;
+  const esc = (window._escapeHtml) || ((s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])));
+  wrap.innerHTML = `
+    <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:24px;margin-bottom:18px">
+      <div id="wlForm">Loading…</div>
+    </div>
+    <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:20px">
+      <div style="font-weight:700;margin-bottom:12px">Live Preview</div>
+      <p style="color:#64748b;font-size:0.88rem;margin-bottom:14px">Generate a sample report with the current settings to see exactly how your branded exports will look.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="/api/white-label/preview/pdf" target="_blank" class="btn btn-secondary">📄 Sample PDF</a>
+        <a href="/api/white-label/preview/pptx" target="_blank" class="btn btn-secondary">🎞 Sample PPTX</a>
+        <a href="/api/white-label/preview/xlsx" target="_blank" class="btn btn-secondary">📊 Sample XLSX</a>
+      </div>
+    </div>
+  `;
+  function render(brand) {
+    const b = brand || {};
+    document.getElementById('wlForm').innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+        <div style="font-weight:700;font-size:1.1rem">Brand Profile</div>
+        <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">
+          <input type="checkbox" id="wl-enabled" ${b.enabled ? 'checked' : ''}> Apply white-label to all exports
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <label>Agency / Brand name<input id="wl-name" type="text" maxlength="80" value="${esc(b.agencyName || '')}" placeholder="Acme Marketing" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+        <label>Footer text (overrides "Powered by InfoGenie")<input id="wl-footer" type="text" maxlength="200" value="${esc(b.footerText || '')}" placeholder="Prepared by Acme for ACME CLIENT — Confidential" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:14px">
+        <label>Primary colour <span style="color:#64748b;font-size:0.78rem">(cover + headers)</span><input id="wl-primary" type="color" value="${esc(b.primaryColor || '#1E1B4B')}" style="width:100%;padding:4px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px;height:38px"></label>
+        <label>Accent colour <span style="color:#64748b;font-size:0.78rem">(footer line)</span><input id="wl-accent" type="color" value="${esc(b.accentColor || '#7C3AED')}" style="width:100%;padding:4px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px;height:38px"></label>
+        <label>Body text colour<input id="wl-text" type="color" value="${esc(b.textColor || '#0A1628')}" style="width:100%;padding:4px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px;height:38px"></label>
+      </div>
+      <div style="margin-top:14px">
+        <label style="display:block;margin-bottom:6px;font-weight:600">Logo (PNG or JPG, max 256KB)</label>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <input id="wl-logo-file" type="file" accept="image/png,image/jpeg,image/jpg" style="font-size:0.86rem">
+          <button id="wl-logo-clear" class="btn btn-link" style="font-size:0.82rem;color:#dc2626">Remove logo</button>
+        </div>
+        <div id="wl-logo-preview" style="margin-top:10px">${b.logoDataUrl ? `<img src="${esc(b.logoDataUrl)}" style="max-height:60px;max-width:200px;background:#f1f5f9;padding:8px;border-radius:6px">` : '<span style="color:#64748b;font-size:0.82rem">No logo uploaded.</span>'}</div>
+      </div>
+      <div style="margin-top:14px;padding:12px;background:var(--bg-secondary,#f8fafc);border-radius:8px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+          <input type="checkbox" id="wl-hide-ig" ${b.hideInfoGenieBranding ? 'checked' : ''}>
+          Hide "Powered by InfoGenie" line when no custom footer is set
+        </label>
+      </div>
+      <div style="margin-top:18px;display:flex;gap:8px">
+        <button id="wl-save" class="btn btn-primary">💾 Save brand profile</button>
+        <button id="wl-reset" class="btn btn-link" style="color:#dc2626">Reset to InfoGenie defaults</button>
+      </div>
+      <div id="wl-msg" style="margin-top:12px"></div>
+    `;
+    let logoData = b.logoDataUrl || '';
+    document.getElementById('wl-logo-file').addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0]; if (!f) return;
+      if (f.size > 256 * 1024) { alert('Logo too large (max 256KB).'); e.target.value = ''; return; }
+      const r = new FileReader();
+      r.onload = () => {
+        logoData = r.result;
+        document.getElementById('wl-logo-preview').innerHTML = `<img src="${logoData}" style="max-height:60px;max-width:200px;background:#f1f5f9;padding:8px;border-radius:6px">`;
+      };
+      r.readAsDataURL(f);
+    });
+    document.getElementById('wl-logo-clear').addEventListener('click', (e) => {
+      e.preventDefault(); logoData = '';
+      document.getElementById('wl-logo-file').value = '';
+      document.getElementById('wl-logo-preview').innerHTML = '<span style="color:#64748b;font-size:0.82rem">No logo uploaded.</span>';
+    });
+    document.getElementById('wl-save').addEventListener('click', async () => {
+      const payload = {
+        enabled: document.getElementById('wl-enabled').checked,
+        agencyName: document.getElementById('wl-name').value.trim(),
+        footerText: document.getElementById('wl-footer').value.trim(),
+        primaryColor: document.getElementById('wl-primary').value,
+        accentColor: document.getElementById('wl-accent').value,
+        textColor: document.getElementById('wl-text').value,
+        logoDataUrl: logoData,
+        hideInfoGenieBranding: document.getElementById('wl-hide-ig').checked,
+      };
+      const r = await fetch('/api/white-label/profile', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(x=>x.json());
+      const msg = document.getElementById('wl-msg');
+      if (r.ok) { msg.innerHTML = '<div style="background:#dcfce7;color:#166534;padding:10px;border-radius:6px;font-size:0.88rem">✓ Brand profile saved. New exports will use these settings immediately.</div>'; render(r.brand); }
+      else { msg.innerHTML = '<div style="background:#fee;color:#dc2626;padding:10px;border-radius:6px;font-size:0.88rem">Save failed: ' + esc(r.error || 'unknown') + '</div>'; }
+    });
+    document.getElementById('wl-reset').addEventListener('click', async () => {
+      if (!confirm('Reset to InfoGenie defaults? This disables white-labelling and clears your logo.')) return;
+      const r = await fetch('/api/white-label/profile', { method:'DELETE' }).then(x=>x.json());
+      if (r.ok) render(r.brand);
+    });
+  }
+  fetch('/api/white-label/profile').then(x=>x.json()).then(j => {
+    if (j.ok) render(j.brand);
+    else document.getElementById('wlForm').innerHTML = '<div style="color:#dc2626">Failed to load: ' + esc(j.error || 'unknown') + '</div>';
+  });
+};
+
+// ── Tier 29 — Multi-Page SEO Crawler ───────────────────────────────────────
+window.buildSeoCrawler = function() {
+  const wrap = document.getElementById('scrWrap');
+  if (!wrap) return;
+  const esc = (window._escapeHtml) || ((s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])));
+  wrap.innerHTML = `
+    <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="font-weight:700;margin-bottom:12px">Start a new crawl</div>
+      <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:10px;align-items:end">
+        <label>Root URL<input id="scr-url" type="url" placeholder="https://example.com" style="width:100%;padding:9px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+        <label>Max pages<select id="scr-max" style="width:100%;padding:9px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px">
+          <option value="10">10</option><option value="25" selected>25</option><option value="50">50</option><option value="100">100</option>
+        </select></label>
+        <button id="scr-go" class="btn btn-primary">🕸️ Start crawl</button>
+      </div>
+      <div id="scr-active" style="margin-top:14px"></div>
+    </div>
+    <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border-color,#e2e8f0);font-weight:700">Recent crawls</div>
+      <div id="scr-list" style="padding:14px 20px;color:#64748b">Loading…</div>
+    </div>
+  `;
+  let activeRunId = null, pollTimer = null;
+
+  async function loadList() {
+    const r = await fetch('/api/seo-crawler/runs').then(x=>x.json());
+    const el = document.getElementById('scr-list');
+    if (!r.ok || !r.runs.length) { el.innerHTML = '<div style="color:#64748b">No crawls yet — kick off your first one above.</div>'; return; }
+    el.innerHTML = r.runs.map(run => {
+      const grade = run.site_grade || '—';
+      const score = run.avg_score != null ? Number(run.avg_score).toFixed(1) : '—';
+      const gradeColor = { 'A':'#16a34a','B':'#65a30d','C':'#ca8a04','D':'#ea580c','F':'#dc2626' }[grade] || '#64748b';
+      const statusBadge = run.status === 'running' ? '<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:4px;font-size:0.74rem">RUNNING</span>'
+                       : run.status === 'partial' ? '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:0.74rem">PARTIAL</span>'
+                       : run.status === 'failed' ? '<span style="background:#fee;color:#dc2626;padding:2px 8px;border-radius:4px;font-size:0.74rem">FAILED</span>'
+                       : '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-size:0.74rem">DONE</span>';
+      return `<div style="padding:12px 0;border-top:1px solid var(--border-color,#e2e8f0);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div style="font-size:1.6rem;font-weight:800;color:${gradeColor};min-width:42px;text-align:center">${grade}</div>
+        <div style="flex:1;min-width:240px">
+          <div style="font-weight:600">${esc(run.root_url)} ${statusBadge}</div>
+          <div style="color:#64748b;font-size:0.82rem">${run.page_count} pages crawled · avg score ${score} · started ${new Date(run.started_at).toLocaleString()}</div>
+        </div>
+        <button class="btn btn-secondary scr-view" data-id="${esc(run.id)}" style="font-size:0.82rem">View pages →</button>
+        <button class="btn btn-link scr-del" data-id="${esc(run.id)}" style="color:#dc2626;font-size:0.82rem">🗑</button>
+      </div>`;
+    }).join('');
+    el.querySelectorAll('.scr-view').forEach(b => b.addEventListener('click', e => viewRun(e.currentTarget.getAttribute('data-id'))));
+    el.querySelectorAll('.scr-del').forEach(b => b.addEventListener('click', async e => {
+      if (!confirm('Delete this crawl run?')) return;
+      await fetch('/api/seo-crawler/runs/' + e.currentTarget.getAttribute('data-id'), { method:'DELETE' });
+      loadList();
+    }));
+  }
+
+  async function viewRun(id) {
+    const r = await fetch('/api/seo-crawler/runs/' + id).then(x=>x.json());
+    if (!r.ok) { alert('Failed to load run'); return; }
+    const run = r.run;
+    const pages = r.pages || [];
+    const grade = run.site_grade || '—';
+    const gradeColor = { 'A':'#16a34a','B':'#65a30d','C':'#ca8a04','D':'#ea580c','F':'#dc2626' }[grade] || '#64748b';
+    const html = `
+      <div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px" id="scr-modal-bg">
+        <div style="background:var(--card-bg,#fff);border-radius:12px;max-width:1000px;width:100%;max-height:90vh;overflow-y:auto;padding:24px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <div>
+              <div style="font-weight:700;font-size:1.1rem">${esc(run.root_url)}</div>
+              <div style="color:#64748b;font-size:0.84rem">${pages.length} pages · ${run.status}</div>
+            </div>
+            <div style="display:flex;gap:14px;align-items:center">
+              <div style="text-align:center"><div style="font-size:2.4rem;font-weight:800;color:${gradeColor};line-height:1">${grade}</div><div style="font-size:0.74rem;color:#64748b">Site grade</div></div>
+              <button id="scr-modal-close" class="btn btn-link" style="font-size:1.4rem">✕</button>
+            </div>
+          </div>
+          <div style="border:1px solid var(--border-color,#e2e8f0);border-radius:8px;overflow:hidden">
+            <table style="width:100%;border-collapse:collapse;font-size:0.86rem">
+              <thead style="background:var(--bg-secondary,#f8fafc)"><tr>
+                <th style="text-align:left;padding:10px">Page</th><th style="padding:10px;width:80px">Score</th><th style="padding:10px;width:60px">Grade</th><th style="padding:10px">Issues</th>
+              </tr></thead>
+              <tbody>
+                ${pages.map(p => {
+                  const pg = { 'A':'#16a34a','B':'#65a30d','C':'#ca8a04','D':'#ea580c','F':'#dc2626' }[p.grade] || '#64748b';
+                  const s = p.summary || {};
+                  return `<tr style="border-top:1px solid var(--border-color,#e2e8f0)">
+                    <td style="padding:8px 10px"><a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:#0369a1;word-break:break-all">${esc(p.url)}</a></td>
+                    <td style="padding:8px 10px;text-align:center;font-weight:700">${p.score}</td>
+                    <td style="padding:8px 10px;text-align:center;font-weight:800;color:${pg}">${p.grade}</td>
+                    <td style="padding:8px 10px;color:#64748b">${s.passed||0} pass · ${s.warned||0} warn · <span style="color:#dc2626">${s.failed||0} fail</span></td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+    const wrapEl = document.createElement('div');
+    wrapEl.innerHTML = html;
+    document.body.appendChild(wrapEl);
+    const close = () => wrapEl.remove();
+    document.getElementById('scr-modal-close').addEventListener('click', close);
+    document.getElementById('scr-modal-bg').addEventListener('click', e => { if (e.target.id === 'scr-modal-bg') close(); });
+  }
+
+  async function pollActive() {
+    if (!activeRunId) return;
+    const r = await fetch('/api/seo-crawler/runs/' + activeRunId).then(x=>x.json()).catch(() => null);
+    if (!r || !r.ok) return;
+    const run = r.run;
+    const live = r.live || {};
+    document.getElementById('scr-active').innerHTML = `
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;font-size:0.88rem">
+        <div style="font-weight:600;color:#1e40af">${run.status === 'running' ? '⏳ Crawling…' : run.status === 'completed' ? '✓ Crawl complete' : '⚠️ ' + run.status}</div>
+        <div style="color:#475569;margin-top:4px">${run.root_url} · ${run.page_count || live.progress || 0} / ${run.max_pages} pages${(live.errors ? ' · ' + live.errors + ' fetch errors' : '')}</div>
+      </div>`;
+    if (run.status !== 'running') {
+      activeRunId = null;
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      loadList();
+    }
+  }
+
+  document.getElementById('scr-go').addEventListener('click', async () => {
+    const url = document.getElementById('scr-url').value.trim();
+    if (!url) { alert('Enter a URL.'); return; }
+    const maxPages = parseInt(document.getElementById('scr-max').value, 10);
+    const r = await fetch('/api/seo-crawler/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url, maxPages }) }).then(x=>x.json());
+    if (!r.ok) { alert('Failed: ' + (r.error || 'unknown')); return; }
+    activeRunId = r.id;
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(pollActive, 2500);
+    pollActive();
+    loadList();
+  });
+
+  loadList();
+};
+
+// ── Tier 30 — GEO Audit (Generative Engine Optimization) ───────────────────
+window.buildGeoAudit = function() {
+  const wrap = document.getElementById('geoWrap');
+  if (!wrap) return;
+  const esc = (window._escapeHtml) || ((s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])));
+  wrap.innerHTML = `
+    <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="font-weight:700;margin-bottom:12px">Run a GEO audit</div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end">
+        <label>Page URL<input id="geo-url" type="url" placeholder="https://example.com/your-best-article" style="width:100%;padding:9px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+        <button id="geo-go" class="btn btn-primary">🤖 Audit page</button>
+      </div>
+      <p style="color:#64748b;font-size:0.84rem;margin-top:10px;margin-bottom:0">Scores how well a page is structured to be cited by ChatGPT, Perplexity and Gemini. Different from classic SEO — focuses on AI snippet extractability.</p>
+    </div>
+    <div id="geo-result" style="margin-bottom:18px"></div>
+    <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border-color,#e2e8f0);font-weight:700">Recent audits</div>
+      <div id="geo-list" style="padding:14px 20px;color:#64748b">Loading…</div>
+    </div>
+  `;
+  function renderResult(r) {
+    const gradeColor = { 'A':'#16a34a','B':'#65a30d','C':'#ca8a04','D':'#ea580c','F':'#dc2626' }[r.grade] || '#64748b';
+    const sortedChecks = (r.checks || []).slice().sort((a,b) => {
+      const ord = { fail: 0, warn: 1, pass: 2 };
+      if (ord[a.status] !== ord[b.status]) return ord[a.status] - ord[b.status];
+      return b.weight - a.weight;
+    });
+    document.getElementById('geo-result').innerHTML = `
+      <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:24px">
+        <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-bottom:18px">
+          <div style="text-align:center;min-width:110px">
+            <div style="font-size:3.6rem;font-weight:800;color:${gradeColor};line-height:1">${r.grade}</div>
+            <div style="color:#64748b;font-size:0.84rem">GEO grade</div>
+          </div>
+          <div style="text-align:center;min-width:110px">
+            <div style="font-size:2.4rem;font-weight:800">${r.score}</div>
+            <div style="color:#64748b;font-size:0.84rem">out of 100</div>
+          </div>
+          <div style="flex:1;min-width:240px">
+            <div style="word-break:break-all;font-weight:600">${esc(r.url)}</div>
+            <div style="color:#64748b;font-size:0.84rem;margin-top:4px">${(r.summary && r.summary.passed)||0} pass · ${(r.summary && r.summary.warned)||0} warn · <span style="color:#dc2626">${(r.summary && r.summary.failed)||0} fail</span> · ${(r.summary && r.summary.words)||0} words</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${sortedChecks.map(c => {
+            const sColor = c.status === 'pass' ? '#16a34a' : c.status === 'warn' ? '#ca8a04' : '#dc2626';
+            const sIcon  = c.status === 'pass' ? '✓' : c.status === 'warn' ? '⚠' : '✕';
+            return `<div style="border:1px solid var(--border-color,#e2e8f0);border-left:4px solid ${sColor};border-radius:6px;padding:10px 14px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+                <div style="font-weight:600"><span style="color:${sColor};margin-right:6px;font-weight:800">${sIcon}</span>${esc(c.label)}</div>
+                <div style="color:#64748b;font-size:0.78rem">${c.earned}/${c.weight} pts</div>
+              </div>
+              <div style="color:#475569;font-size:0.86rem;margin-top:4px">${esc(c.message)}</div>
+              ${c.fix && c.status !== 'pass' ? `<div style="color:#0369a1;font-size:0.84rem;margin-top:6px;background:#f0f9ff;padding:8px 10px;border-radius:4px"><strong>Fix:</strong> ${esc(c.fix)}</div>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+  async function loadList() {
+    const r = await fetch('/api/geo-audit/runs').then(x=>x.json());
+    const el = document.getElementById('geo-list');
+    if (!r.ok || !r.runs.length) { el.innerHTML = '<div style="color:#64748b">No audits yet — run your first one above.</div>'; return; }
+    el.innerHTML = r.runs.map(run => {
+      const gradeColor = { 'A':'#16a34a','B':'#65a30d','C':'#ca8a04','D':'#ea580c','F':'#dc2626' }[run.grade] || '#64748b';
+      return `<div style="padding:10px 0;border-top:1px solid var(--border-color,#e2e8f0);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div style="font-size:1.4rem;font-weight:800;color:${gradeColor};min-width:36px;text-align:center">${run.grade}</div>
+        <div style="flex:1;min-width:240px">
+          <div style="font-weight:600;word-break:break-all">${esc(run.url)}</div>
+          <div style="color:#64748b;font-size:0.78rem">Score ${run.score} · ${new Date(run.created_at).toLocaleString()}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('geo-go').addEventListener('click', async () => {
+    const url = document.getElementById('geo-url').value.trim();
+    if (!url) { alert('Enter a URL.'); return; }
+    const btn = document.getElementById('geo-go');
+    btn.disabled = true; btn.textContent = '⏳ Auditing…';
+    document.getElementById('geo-result').innerHTML = '<div style="text-align:center;padding:32px;color:#64748b">Fetching page and running 12 GEO checks…</div>';
+    const r = await fetch('/api/geo-audit/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) }).then(x=>x.json());
+    btn.disabled = false; btn.textContent = '🤖 Audit page';
+    if (!r.ok) { document.getElementById('geo-result').innerHTML = '<div style="background:#fee;color:#dc2626;padding:16px;border-radius:8px">Failed: ' + esc(r.error || 'unknown') + '</div>'; return; }
+    renderResult(r);
+    loadList();
+  });
   loadList();
 };

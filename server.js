@@ -8669,6 +8669,23 @@ app.use('/api/seo-tasks', _seoTasksRouter);
 app.use('/api/schema-generator', _schemaGenRouter);
 app.use('/api/unified-inbox', _inboxRouter);
 app.use('/api/conversion-boosters', _cbRouter);
+
+// ── Tier 28 + 29 + 30 ─────────────────────────────────────────────────────
+const _wlRouter = require('./services/white_label/api');
+const _scrRouter = require('./services/seo_crawler/api');
+const _geoRouter = require('./services/geo_audit/api');
+app.use('/api/white-label', _wlRouter);
+app.use('/api/seo-crawler', _scrRouter);
+app.use('/api/geo-audit', _geoRouter);
+(async () => { try {
+  if (process.env.DATABASE_URL) {
+    const { ensureSeoCrawlerSchema } = require('./services/seo_crawler/schema');
+    const { ensureGeoAuditSchema } = require('./services/geo_audit/schema');
+    await ensureSeoCrawlerSchema();
+    await ensureGeoAuditSchema();
+    console.log('[tier28-30] white-label + seo-crawler + geo-audit ready');
+  }
+} catch (e) { console.warn('[tier28-30] schema init failed:', e.message); }})();
 (async () => { try {
   if (process.env.DATABASE_URL) {
     await _seoTasksSchema.ensureSeoTasksSchema();

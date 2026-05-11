@@ -156,3 +156,42 @@ Detailed per-feature notes. All tiers follow the same pattern: strict-JSON LLM p
 *   **Inbox bridge**: every successful `/lead/:id` submit also `INSERT ... ON CONFLICT DO NOTHING` into `unified_inbox_items` with `source='social_proof'|'exit_intent'`, `source_id='cb-<widget>-<ts>-<rand>'`, so leads land in the T26 Unified Inbox stream automatically. Wrapped in try/catch in case the unified_inbox table is missing — non-fatal.
 *   **Frontend builder** (tail of `app.js`): two type-pills (📣 Social Proof / 🚪 Exit Intent) → form with type-specific fields → list of existing widgets with view/lead counters, copy-to-clipboard embed snippet, edit/delete/activity-toggle. Activity panel shows view/lead/dismiss counters + last 200 events with type-coloured row stream. Cache buster bumped to `v=20260511AF`.
 *   **Outcome**: paste one `<script src="…/api/conversion-boosters/embed/<id>.js" async></script>` tag onto any external marketing page → social proof toasts or exit-intent modal renders → captured emails flow into Unified Inbox + cb_events. Same architecture as T23, ready for follow-on work (campaign-tagged variants, A/B split, dynamic items pulled from `contacts` table).
+
+---
+
+## T28 — White-Label Reports
+
+*   **Route**: `Reach › 🎨 White-Label Reports` (`view-white-label`, builder `buildWhiteLabel` at tail of `app.js`).
+*   **Endpoints**: `GET /api/white-label/profile` · `PUT /api/white-label/profile` · `DELETE /api/white-label/profile` · `GET /api/white-label/preview/{pdf,pptx,xlsx}` (renders a sample report so the user can preview their theme without regenerating real data).
+*   **Storage**: single global brand profile in `kv_store` under key `white_label.brand_profile`. No new schema. Shape: `{enabled, agencyName, logoDataUrl, primaryColor, accentColor, textColor, footerText, hideInfoGenieBranding}`. All inputs server-side normalised — colours regex-validated `#RRGGBB`, agency name capped at 80 chars, footer at 200, logo data URL must match `data:image/(png|jpeg|jpg|svg+xml);base64,...` and ≤350,000 chars (~256KB).
+*   **Plumbing**: `services/exports/{pptx_report,pdf_report,xlsx_report}.js` each gained an optional final `brand` arg. Cover backgrounds, section/header bars, body text colour, footer line and (optionally) the cover logo are all parameterised. Defaults are unchanged InfoGenie navy/purple when `brand` is null. `services/exports/api.js` lazy-loads the white_label module, calls `getBrand()`, and passes the result through only when `brand.enabled` is true. Filename stem is also slugified from `agencyName` so exports become e.g. `acme-marketing-attack-plan-2026-05-11.pdf`.
+*   **PDF logo caveat**: pdfkit can render PNG/JPG only — the PDF exporter rejects `data:image/svg+xml` logos silently. PPTX/XLSX accept any of the four formats.
+
+## T29 — Multi-Page SEO Crawler
+
+*   **Route**: `Reach › 🕸️ Site SEO Crawler` (`view-seo-crawler`, builder `buildSeoCrawler`).
+*   **Endpoints**: `POST /api/seo-crawler/run {url, maxPages}` (returns `{id}` and starts BFS in background) · `GET /api/seo-crawler/runs` (list, 40 most recent) · `GET /api/seo-crawler/runs/:id` (full detail with `pages[]` + `live{progress, errors, status}` for in-flight runs) · `DELETE /api/seo-crawler/runs/:id`.
+*   **Storage**: `seo_crawl_runs(id, root_url, max_pages, page_count, avg_score, site_grade, status, error, started_at, completed_at)` + `seo_crawl_pages(id BIGSERIAL, run_id REFERENCES, url, score, grade, summary JSONB, checks JSONB)` with index on `(run_id, score)`.
+*   **Crawl loop**: 4 concurrent workers BFS-pop from a shared queue. Each iteration: SSRF re-validate → call `runAudit(url)` from T22 (which does its own fetch + 19-check audit) → INSERT row immediately so the user sees pages stream in via polling → if more pages still wanted, fetch HTML once more and `_extractLinks` (regex-based, same-host-only, dedupe via Set, drops asset extensions). Hard caps: `HARD_MAX_PAGES=100` · `HARD_TIMEOUT_MS=5min` · `CONCURRENCY=4` · queue buffer `(visited+queue) < maxPages*3`.
+*   **Aggregation**: avg_score = mean of per-page scores, site_grade from same A-F bands as T22. Final status `completed` or `partial` (timeout/cap hit).
+*   **In-memory `_runs` Map** holds live progress so the GET endpoint can return `live.progress` between DB writes — read-only side-channel keyed by unique `runId`, no cross-run contention.
+
+## T30 — GEO Audit (Generative Engine Optimization)
+
+*   **Route**: `Reach › 🤖 GEO Audit` (`view-geo-audit`, builder `buildGeoAudit`).
+*   **Endpoints**: `POST /api/geo-audit/run {url}` · `GET /api/geo-audit/runs` (30 most recent) · `GET /api/geo-audit/runs/:id`. Module also exports `runGeoAudit(url)` for reuse.
+*   **Storage**: `geo_audit_runs(id, url, score, grade, summary JSONB, checks JSONB, created_at)` with index on `(url, created_at DESC)`.
+*   **12 weighted checks summing to 100**:
+    1. **Question-style H2/H3 headings** (12 pts) — pass if ≥3 headings ending in `?`.
+    2. **JSON-LD structured data** (12 pts) — pass if FAQPage present OR ≥2 blocks incl. Article/Organization.
+    3. **Concise answer paragraphs** (10 pts) — pass if avg paragraph ≤80 words.
+    4. **E-E-A-T author signals** (10 pts) — pass if author meta + bio block class found.
+    5. **Freshness** (8 pts) — pass if `article:modified_time` or `<time datetime>` is <1y old.
+    6. **Lead paragraph as direct answer** (10 pts) — pass if first `<p>` is 15-60 words and ends in `.!?`.
+    7. **Lists & tables** (8 pts) — pass if ≥3 `<ul>/<ol>/<table>` blocks.
+    8. **Image alt-text coverage** (6 pts) — pass if ≥90% of images have alt text (or zero images).
+    9. **Internal links** (6 pts) — pass if ≥5 same-host links.
+    10. **`/llms.txt` at site root** (8 pts) — HEAD probe, warn if missing.
+    11. **Title 20-70 chars** (5 pts).
+    12. **Meta description 70-160 chars** (5 pts).
+*   **Pure regex, no LLM call** — predictable cost, deterministic output. Each check returns `{id, label, status, weight, earned, message, fix}` and the frontend sorts fail→warn→pass so the user sees the most-impactful fixes first. Same A-F grading bands as T22.

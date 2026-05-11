@@ -5,23 +5,50 @@ function _trunc(v, max) {
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
 
-function streamPdf(report, res, filename = 'infogenie-report.pdf') {
-  const doc = new PDFDocument({ size: 'A4', margin: 36, info: { Title: report.title || 'InfoGenie Report', Author: 'InfoGenie' } });
+function _safeColor(c, fb) { return /^#[0-9A-Fa-f]{6}$/.test(String(c||'')) ? c : fb; }
+
+function streamPdf(report, res, filename = 'infogenie-report.pdf', brand) {
+  brand = brand || {};
+  const PRIMARY = _safeColor(brand.primaryColor, '#1E1B4B');
+  const ACCENT  = _safeColor(brand.accentColor,  '#7C3AED');
+  const TEXT    = _safeColor(brand.textColor,    '#0A1628');
+  const author  = brand.agencyName || 'InfoGenie';
+  const showIG  = !brand.hideInfoGenieBranding;
+  const doc = new PDFDocument({ size: 'A4', margin: 36, info: { Title: report.title || 'Report', Author: author } });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   doc.pipe(res);
 
   // Cover
-  doc.rect(0, 0, doc.page.width, 200).fill('#1E1B4B');
+  doc.rect(0, 0, doc.page.width, 200).fill(PRIMARY);
+  // Optional logo (data URL: png/jpg only — pdfkit can't render svg)
+  if (brand.logoDataUrl && /^data:image\/(png|jpeg|jpg);base64,/.test(brand.logoDataUrl)) {
+    try {
+      const b64 = brand.logoDataUrl.split(',')[1];
+      const buf = Buffer.from(b64, 'base64');
+      doc.image(buf, 36, 24, { fit: [120, 40] });
+    } catch {}
+  }
   doc.fillColor('#FFFFFF').fontSize(28).font('Helvetica-Bold')
-     .text(report.title || 'InfoGenie Report', 36, 70, { width: doc.page.width - 72 });
+     .text(report.title || 'Report', 36, 70, { width: doc.page.width - 72 });
+  if (brand.agencyName) {
+    doc.fillColor('#FFFFFF').fontSize(13).font('Helvetica-Bold')
+       .text(String(brand.agencyName), 36, 110);
+  }
   doc.fillColor('#C4B5FD').fontSize(11).font('Helvetica')
-     .text('Generated ' + new Date(report.generated_at || Date.now()).toLocaleString(), 36, 130);
+     .text('Generated ' + new Date(report.generated_at || Date.now()).toLocaleString(), 36, brand.agencyName ? 150 : 130);
   doc.fillColor('#000000').moveDown(8);
+  // Footer line under cover band
+  const footer = brand.footerText || (showIG ? 'Powered by InfoGenie · AI Marketing Intelligence' : '');
+  if (footer) {
+    doc.fillColor(ACCENT).fontSize(9).font('Helvetica-Oblique')
+       .text(footer, 36, 178, { width: doc.page.width - 72 });
+    doc.fillColor('#000000');
+  }
 
   for (const sec of report.sections || []) {
     if (doc.y > 720) doc.addPage();
-    doc.fillColor('#1E1B4B').fontSize(16).font('Helvetica-Bold').text(sec.title || 'Section', 36, doc.y);
+    doc.fillColor(PRIMARY).fontSize(16).font('Helvetica-Bold').text(sec.title || 'Section', 36, doc.y);
     doc.moveDown(0.4);
     doc.fillColor('#000000').fontSize(9).font('Helvetica');
 
@@ -36,8 +63,8 @@ function streamPdf(report, res, filename = 'infogenie-report.pdf') {
           doc.fillColor('#000000').fontSize(9).font('Helvetica');
         }
         const y = doc.y;
-        if (isHeader) doc.rect(36, y, colW * colCount, rowH).fill('#1E1B4B');
-        doc.fillColor(isHeader ? '#FFFFFF' : '#0A1628')
+        if (isHeader) doc.rect(36, y, colW * colCount, rowH).fill(PRIMARY);
+        doc.fillColor(isHeader ? '#FFFFFF' : TEXT)
            .font(isHeader ? 'Helvetica-Bold' : 'Helvetica');
         cells.forEach((c, i) => {
           const maxChars = Math.max(8, Math.floor(colW / 5.2));
@@ -52,7 +79,7 @@ function streamPdf(report, res, filename = 'infogenie-report.pdf') {
       if (sec.rows.length > 200) doc.fillColor('#6B7280').fontSize(8).text(`(+${sec.rows.length - 200} more rows in Excel export)`, 36, doc.y + 4);
       doc.moveDown(1.2);
     } else if (sec.kind === 'text') {
-      doc.fillColor('#0A1628').fontSize(11).font('Helvetica').text(String(sec.body || ''), { width: doc.page.width - 72 });
+      doc.fillColor(TEXT).fontSize(11).font('Helvetica').text(String(sec.body || ''), { width: doc.page.width - 72 });
       doc.moveDown(1);
     }
   }

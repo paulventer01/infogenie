@@ -5,40 +5,58 @@ function _truncCell(v, max = 60) {
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
 
-function buildPptx(report) {
+function _hex(c, fb) { return /^#[0-9A-Fa-f]{6}$/.test(String(c||'')) ? String(c).slice(1).toUpperCase() : fb; }
+
+function buildPptx(report, brand) {
+  brand = brand || {};
+  const PRIMARY = _hex(brand.primaryColor, '1E1B4B');
+  const ACCENT  = _hex(brand.accentColor,  '7C3AED');
+  const TEXT    = _hex(brand.textColor,    '0A1628');
+  const showIG  = !brand.hideInfoGenieBranding;
   const pres = new PptxGenJS();
   pres.layout = 'LAYOUT_WIDE';        // 13.33 x 7.5
-  pres.title = report.title || 'InfoGenie Report';
+  pres.title = report.title || 'Report';
 
   // Title slide
   const cover = pres.addSlide();
-  cover.background = { color: '1E1B4B' };
-  cover.addText(report.title || 'InfoGenie Report', {
+  cover.background = { color: PRIMARY };
+  // Optional logo (data URL) — top-left
+  if (brand.logoDataUrl) {
+    try { cover.addImage({ data: brand.logoDataUrl, x: 0.5, y: 0.4, w: 1.6, h: 1.0, sizing: { type: 'contain', w: 1.6, h: 1.0 } }); } catch {}
+  }
+  cover.addText(report.title || 'Report', {
     x: 0.6, y: 2.4, w: 12, h: 1.6, fontSize: 44, bold: true, color: 'FFFFFF',
     fontFace: 'Calibri',
   });
+  if (brand.agencyName) {
+    cover.addText(String(brand.agencyName), {
+      x: 0.6, y: 1.6, w: 12, h: 0.6, fontSize: 18, bold: true, color: 'FFFFFF',
+    });
+  }
   cover.addText('Generated ' + new Date(report.generated_at || Date.now()).toLocaleString(), {
     x: 0.6, y: 4.2, w: 12, h: 0.5, fontSize: 16, color: 'C4B5FD',
   });
-  cover.addText('Powered by InfoGenie · AI Marketing Intelligence', {
-    x: 0.6, y: 6.6, w: 12, h: 0.4, fontSize: 12, color: '7C3AED', italic: true,
-  });
+  const footer = brand.footerText
+    || (showIG ? 'Powered by InfoGenie · AI Marketing Intelligence' : '');
+  if (footer) {
+    cover.addText(footer, { x: 0.6, y: 6.6, w: 12, h: 0.4, fontSize: 12, color: ACCENT, italic: true });
+  }
 
   // Section slides
   for (const sec of report.sections || []) {
     const s = pres.addSlide();
     s.addText(sec.title || 'Section', {
-      x: 0.5, y: 0.3, w: 12.3, h: 0.6, fontSize: 22, bold: true, color: '1E1B4B',
+      x: 0.5, y: 0.3, w: 12.3, h: 0.6, fontSize: 22, bold: true, color: PRIMARY,
     });
 
     if (sec.kind === 'table' && Array.isArray(sec.rows)) {
       const headerRow = (sec.headers || []).map(h => ({
         text: String(h),
-        options: { bold: true, color: 'FFFFFF', fill: { color: '1E1B4B' }, align: 'left' },
+        options: { bold: true, color: 'FFFFFF', fill: { color: PRIMARY }, align: 'left' },
       }));
       const dataRows = sec.rows.slice(0, 22).map(r => r.map(c => ({
         text: _truncCell(c, 70),
-        options: { color: '0A1628', fill: { color: 'FFFFFF' }, align: 'left' },
+        options: { color: TEXT, fill: { color: 'FFFFFF' }, align: 'left' },
       })));
       s.addTable([headerRow, ...dataRows], {
         x: 0.4, y: 1.1, w: 12.5, h: 5.8,
@@ -53,7 +71,7 @@ function buildPptx(report) {
       }
     } else if (sec.kind === 'text') {
       s.addText(String(sec.body || ''), {
-        x: 0.5, y: 1.2, w: 12.3, h: 5.8, fontSize: 14, color: '0A1628',
+        x: 0.5, y: 1.2, w: 12.3, h: 5.8, fontSize: 14, color: TEXT,
       });
     }
   }
@@ -61,8 +79,8 @@ function buildPptx(report) {
   return pres;
 }
 
-async function streamPptx(report, res, filename = 'infogenie-report.pptx') {
-  const pres = buildPptx(report);
+async function streamPptx(report, res, filename = 'infogenie-report.pptx', brand) {
+  const pres = buildPptx(report, brand);
   const buf = await pres.write({ outputType: 'nodebuffer' });
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

@@ -1,19 +1,24 @@
 const ExcelJS = require('exceljs');
 
-async function streamXlsx(report, res, filename = 'infogenie-report.xlsx') {
+function _argb(c, fb) { return 'FF' + (/^#[0-9A-Fa-f]{6}$/.test(String(c||'')) ? String(c).slice(1).toUpperCase() : fb); }
+
+async function streamXlsx(report, res, filename = 'infogenie-report.xlsx', brand) {
+  brand = brand || {};
+  const PRIMARY = _argb(brand.primaryColor, '1E1B4B');
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'InfoGenie';
+  wb.creator = brand.agencyName || 'InfoGenie';
   wb.created = new Date();
 
   // Cover sheet
   const cover = wb.addWorksheet('Overview');
   cover.columns = [{ width: 30 }, { width: 80 }];
-  cover.getCell('A1').value = report.title || 'InfoGenie Report';
-  cover.getCell('A1').font = { size: 18, bold: true, color: { argb: 'FF1E1B4B' } };
-  cover.getCell('A3').value = 'Generated';
-  cover.getCell('B3').value = new Date(report.generated_at || Date.now()).toLocaleString();
-  cover.getCell('A4').value = 'Sections';
-  cover.getCell('B4').value = (report.sections || []).map(s => s.title).join(' · ');
+  cover.getCell('A1').value = report.title || 'Report';
+  cover.getCell('A1').font = { size: 18, bold: true, color: { argb: PRIMARY } };
+  let row = 3;
+  if (brand.agencyName) { cover.getCell('A' + row).value = 'Prepared by'; cover.getCell('B' + row).value = brand.agencyName; row++; }
+  cover.getCell('A' + row).value = 'Generated'; cover.getCell('B' + row).value = new Date(report.generated_at || Date.now()).toLocaleString(); row++;
+  cover.getCell('A' + row).value = 'Sections';  cover.getCell('B' + row).value = (report.sections || []).map(s => s.title).join(' · '); row++;
+  if (brand.footerText) { cover.getCell('A' + row).value = 'Footer'; cover.getCell('B' + row).value = brand.footerText; }
 
   for (const sec of report.sections || []) {
     if (sec.kind !== 'table' || !Array.isArray(sec.rows)) continue;
@@ -25,7 +30,7 @@ async function streamXlsx(report, res, filename = 'infogenie-report.xlsx') {
       ws.addRow(sec.headers);
       const headerRow = ws.getRow(1);
       headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E1B4B' } };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PRIMARY } };
       headerRow.alignment = { vertical: 'middle' };
     }
     for (const r of sec.rows) ws.addRow(r);
