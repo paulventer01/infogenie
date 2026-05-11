@@ -8520,6 +8520,18 @@ app.use('/api/backlink-monitor',  _blMonitorRouter);
   }
 } catch (e) { console.warn('[t35] init failed:', e.message); }})();
 
+// ── T36 — True ROAS (offline conversions + profit-aware budget recs) ───────
+const _trueRoasSchema = require('./services/true_roas/schema');
+const _trueRoasRouter = require('./services/true_roas/api');
+app.use('/api/true-roas', _trueRoasRouter);
+(async () => { try {
+  if (_db.hasDb()) {
+    await _trueRoasSchema.ensureTrueRoasSchema();
+    _trueRoasRouter.startCron();
+    console.log('[t36] true-roas schema ready');
+  }
+} catch (e) { console.warn('[t36] init failed:', e.message); }})();
+
 // ── Tier 7 ─────────────────────────────────────────────────────────────────
 const _podcastSchema = require('./services/podcast_monitor/schema');
 const _podcastRouter = require('./services/podcast_monitor/api');
