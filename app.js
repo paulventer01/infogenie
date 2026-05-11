@@ -30554,6 +30554,14 @@ function buildMentionTracker() {
   ];
   const countryOptions = COUNTRIES.map(([code, label]) => ({ value: code, label }));
   // Default: "Global" so users without prior preference get worldwide coverage.
+  // Safety reset: if a previous session left a runaway selection (e.g. user
+  // hit "Select All" by accident), clamp back to GLOBAL so the next Pull
+  // doesn't fan out to dozens of slow per-region Google News calls.
+  if (window._mtSelectedCountries.length > 10) {
+    console.warn('[mt] resetting runaway country selection (' + window._mtSelectedCountries.length + ') back to GLOBAL');
+    window._mtSelectedCountries = ['GLOBAL'];
+    window._mtSelectedCountriesTouched = false;
+  }
   if (window._mtSelectedCountries.length === 0 && !window._mtSelectedCountriesTouched) {
     const initialCountry = window._mentionsState.country || 'GLOBAL';
     window._mtSelectedCountries = [initialCountry];
@@ -30621,6 +30629,18 @@ async function runMentionTracker() {
   // If user picked GLOBAL alongside specific countries, GLOBAL alone subsumes
   // the others — just use GLOBAL to avoid duplicate news being merged.
   if (countries.includes('GLOBAL')) countries = ['GLOBAL'];
+  // Soft cap: pulling Google News for many regions × many brands is genuinely
+  // slow (each region = one DataForSEO call per brand, 8s timeout each).
+  // Warn the user and offer to switch to GLOBAL when they pick > 10 regions.
+  if (countries.length > 10) {
+    const ok = confirm(`You picked ${countries.length} regions × ${1+competitors.length} brand${competitors.length?'s':''} = up to ${countries.length*(1+competitors.length)} Google News pulls. This will take 1-3 minutes.\n\nClick OK to continue, or Cancel to switch to a single fast worldwide pull (recommended).`);
+    if (!ok) {
+      window._mtSelectedCountries = ['GLOBAL'];
+      countries = ['GLOBAL'];
+      // Re-render the form so the user sees the new selection.
+      try { if (typeof buildMentions === 'function') buildMentions(); } catch(_) {}
+    }
+  }
   const days = parseInt(document.getElementById('mtDays')?.value || '30', 10) || 30;
   if (!brand) { showToast('⚠️ Enter your brand name'); return; }
 
@@ -30649,9 +30669,9 @@ async function runMentionTracker() {
   const tickHandle = setInterval(renderProgress, 1000);
 
   try {
-    // Throttle to 6 concurrent region fetches so DataForSEO doesn't rate-limit
-    // and the user sees real progress instead of one long stall.
-    const CONCURRENCY = 6;
+    // Throttle to 12 concurrent region fetches — DataForSEO comfortably
+    // handles this and it cuts wall-clock time roughly in half versus 6.
+    const CONCURRENCY = 12;
     const responses = new Array(countries.length);
     let cursor = 0;
     async function worker() {
