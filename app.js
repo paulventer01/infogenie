@@ -160,7 +160,10 @@ window._wlViewRealAds = async function(compEnc, domainEnc, wlId) {
             <div style="font-size:0.86rem;color:#334155;line-height:1.5;margin-bottom:6px">${_h(v.body || '')}</div>
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
               <div style="font-size:0.72rem;color:#64748B"><strong>CTA:</strong> ${_h(v.cta || 'Learn More')}${v.why ? ' · <em>' + _h(v.why) + '</em>' : ''}</div>
-              <button type="button" data-cb-i="${i}" style="background:#00C9C8;color:#0A1628;border:none;border-radius:6px;padding:5px 10px;font-size:0.72rem;font-weight:700;cursor:pointer">📋 Copy</button>
+              <div style="display:flex;gap:6px">
+                <button type="button" data-cb-i="${i}" style="background:#00C9C8;color:#0A1628;border:none;border-radius:6px;padding:5px 10px;font-size:0.72rem;font-weight:700;cursor:pointer">📋 Copy</button>
+                <button type="button" data-cal-i="${i}" style="background:#7C3AED;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:0.72rem;font-weight:700;cursor:pointer">📅 Post to Calendar</button>
+              </div>
             </div>
           </div>`).join('');
         const stratHtml = j.strategy ? `<div style="margin-top:10px;padding:10px;background:#F8FAFC;border-left:3px solid #0066FF;border-radius:6px;font-size:0.82rem;color:#334155"><strong>Strategy:</strong> ${_h(j.strategy)}</div>` : '';
@@ -176,6 +179,47 @@ window._wlViewRealAds = async function(compEnc, domainEnc, wlId) {
             const v = j.variants[i] || {};
             const txt = `${v.headline || ''}\n${v.body || ''}\nCTA: ${v.cta || ''}`;
             try { navigator.clipboard.writeText(txt); b.textContent = '✓ Copied'; setTimeout(()=>{b.textContent='📋 Copy';}, 1400); } catch(_){}
+          });
+        });
+        // Wire "Post to Calendar" buttons — POST each variant to /api/content-calendar/add
+        slot.querySelectorAll('[data-cal-i]').forEach(b => {
+          b.addEventListener('click', async () => {
+            const i = parseInt(b.getAttribute('data-cal-i'), 10);
+            const v = j.variants[i] || {};
+            const orig = b.textContent;
+            b.disabled = true; b.style.opacity = '0.6'; b.textContent = '⏳ Scheduling…';
+            try {
+              const compName = (data.comp || 'Counter');
+              const channelMap = { 'google ads':'facebook', 'meta ads':'facebook', 'instagram':'instagram', 'linkedin':'linkedin', 'tiktok':'tiktok', 'youtube':'youtube' };
+              const chKey = String(data.channel || '').toLowerCase();
+              let mapped = 'facebook';
+              for (const k in channelMap) { if (chKey.includes(k.split(' ')[0])) { mapped = channelMap[k]; break; } }
+              const r2 = await fetch('/api/content-calendar/add', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                  brand: 'Counter ' + compName,
+                  channel: mapped,
+                  headline: v.headline || '',
+                  copy: v.body || '',
+                  cta: v.cta || 'Learn More',
+                  date: new Date(Date.now()+86400000).toISOString().slice(0,10),
+                  note: `AI counter-message vs ${compName} on ${data.channel || ''} · angle: ${v.angle || ''} · source: ${v._source || ''}`,
+                }),
+              });
+              const j2 = await r2.json().catch(() => ({}));
+              if (r2.ok && j2.ok) {
+                b.style.background = '#059669';
+                b.textContent = '✓ Posted to Calendar';
+              } else {
+                b.style.background = '#DC2626';
+                b.textContent = '⚠ Failed';
+                console.error('[wl-counter] calendar post failed', j2);
+                setTimeout(() => { b.disabled = false; b.style.opacity = '1'; b.style.background = '#7C3AED'; b.textContent = orig; }, 2000);
+              }
+            } catch (e) {
+              b.style.background = '#DC2626'; b.textContent = '⚠ ' + (e.message || 'failed');
+              setTimeout(() => { b.disabled = false; b.style.opacity = '1'; b.style.background = '#7C3AED'; b.textContent = orig; }, 2000);
+            }
           });
         });
         const allBtn = document.getElementById('wlCopyAllBtn');
