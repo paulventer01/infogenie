@@ -2693,6 +2693,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'backlink-monitor')     { try { buildBacklinkMonitor(); }      catch(e) { console.warn('buildBacklinkMonitor error:', e); } }
   if (viewId === 'true-roas')            { try { buildTrueRoas(); }             catch(e) { console.warn('buildTrueRoas error:', e); } }
   if (viewId === 'roadmap')              { try { buildRoadmap(); }              catch(e) { console.warn('buildRoadmap error:', e); } }
+  if (viewId === 'carousel')             { try { buildCarousel(); }             catch(e) { console.warn('buildCarousel error:', e); } }
   if (viewId === 'seo-crawler')          { try { buildSeoCrawler(); }           catch(e) { console.warn('buildSeoCrawler error:', e); } }
   if (viewId === 'geo-audit')            { try { buildGeoAudit(); }             catch(e) { console.warn('buildGeoAudit error:', e); } }
   if (viewId === 'local-seo')            { try { buildLocalSeo(); }             catch(e) { console.warn('buildLocalSeo error:', e); } }
@@ -7991,23 +7992,23 @@ function _imRender(data) {
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px">
       <div style="background:linear-gradient(135deg,#062A36,#0A4858);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#00E5FF">${summary.total}</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.7);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Keywords Mapped</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.95);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Keywords Mapped</div>
       </div>
       <div style="background:linear-gradient(135deg,#1a0a28,#2D1060);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#A78BFA">${summary.byIntent.commercial + summary.byIntent.transactional}</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.7);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">High-Intent</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.95);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">High-Intent</div>
       </div>
       <div style="background:linear-gradient(135deg,#0A2818,#0D5E30);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#10B981">${summary.avgIntentMatch}%</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.7);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Avg Page-Fit</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.95);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Avg Page-Fit</div>
       </div>
       <div style="background:linear-gradient(135deg,#3a1a0a,#7C2D12);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#FB923C">${summary.gaps}</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.7);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Competitor Gaps</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.95);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Competitor Gaps</div>
       </div>
       <div style="background:linear-gradient(135deg,#28080a,#7C0E20);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#F87171">${summary.mustDoCount}</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.7);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Must-Do</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.95);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Must-Do</div>
       </div>
     </div>`;
 
@@ -16451,19 +16452,19 @@ function openDifferentiatorModal(compName) {
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
         <div style="background:rgba(255,255,255,.08);border-radius:10px;padding:12px;text-align:center">
           <div style="font-size:1.4rem;font-weight:800;color:#00E5FF">${myROAS}×</div>
-          <div style="font-size:0.68rem;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase;letter-spacing:.04em">Your ROAS Now</div>
+          <div style="font-size:0.68rem;color:rgba(255,255,255,.92);margin-top:6px;text-transform:uppercase;letter-spacing:.04em;font-weight:700">Your ROAS Now</div>
         </div>
         <div style="background:rgba(255,255,255,.08);border-radius:10px;padding:12px;text-align:center">
           <div style="font-size:1.4rem;font-weight:800;color:#F59E0B">${compROAS}×</div>
-          <div style="font-size:0.68rem;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase;letter-spacing:.04em">${comp.name} ROAS</div>
+          <div style="font-size:0.68rem;color:rgba(255,255,255,.92);margin-top:6px;text-transform:uppercase;letter-spacing:.04em;font-weight:700">${comp.name} ROAS</div>
         </div>
         <div style="background:rgba(0,201,200,.15);border-radius:10px;padding:12px;text-align:center">
           <div style="font-size:1.4rem;font-weight:800;color:#00C9C8">${projectedROAS}×</div>
-          <div style="font-size:0.68rem;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase;letter-spacing:.04em">Projected ROAS</div>
+          <div style="font-size:0.68rem;color:rgba(255,255,255,.92);margin-top:6px;text-transform:uppercase;letter-spacing:.04em;font-weight:700">Projected ROAS</div>
         </div>
         <div style="background:rgba(16,185,129,.15);border-radius:10px;padding:12px;text-align:center">
           <div style="font-size:1.4rem;font-weight:800;color:#10B981">+${totalGainPct}%</div>
-          <div style="font-size:0.68rem;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase;letter-spacing:.04em">ROAS Uplift</div>
+          <div style="font-size:0.68rem;color:rgba(255,255,255,.92);margin-top:6px;text-transform:uppercase;letter-spacing:.04em;font-weight:700">ROAS Uplift</div>
         </div>
       </div>
     </div>
@@ -16716,19 +16717,19 @@ function buildPlanView(compName) {
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
       <div style="background:linear-gradient(135deg,#062A36,#0A4858);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#00E5FF">${myROAS}×</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.7);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Your ROAS Now</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.95);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Your ROAS Now</div>
       </div>
       <div style="background:linear-gradient(135deg,#1a0a28,#2D1060);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#F59E0B">${compROAS}×</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.6);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">${comp.name} ROAS</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.92);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">${comp.name} ROAS</div>
       </div>
       <div style="background:linear-gradient(135deg,#0A2818,#0D5E30);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#10B981">${projectedROAS}×</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.6);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">Projected ROAS</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.92);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Projected ROAS</div>
       </div>
       <div style="background:linear-gradient(135deg,#0A2818,#1A4A30);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#00C9C8">+${totalGainPct}%</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.6);margin-top:4px;text-transform:uppercase;letter-spacing:.05em">ROAS Uplift</div>
+        <div style="font-size:0.7rem;color:rgba(255,255,255,.92);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">ROAS Uplift</div>
       </div>
     </div>
 
@@ -39645,4 +39646,256 @@ async function _rmReset() {
   } catch (e) {
     (window.showToast||alert)('⚠️ Could not reset: ' + (e.message||e));
   }
+}
+
+// =============================================================================
+// T38 — VIRAL CAROUSEL GENERATOR (Hook → Context → Value → Action)
+// =============================================================================
+window._cgState = { structures:{}, current:null, history:[] };
+
+async function buildCarousel() {
+  const wrap = document.getElementById('carouselWrap');
+  if (!wrap) return;
+  if (!Object.keys(window._cgState.structures).length) {
+    try {
+      const r = await fetch('/api/carousel/structures').then(x=>x.json());
+      window._cgState.structures = r.structures || {};
+    } catch(e) {}
+  }
+  try {
+    const r = await fetch('/api/carousel/list').then(x=>x.json());
+    window._cgState.history = r.items || [];
+  } catch(e) { window._cgState.history = []; }
+  _cgRender();
+}
+
+function _cgRender() {
+  const wrap = document.getElementById('carouselWrap');
+  if (!wrap) return;
+  const structures = window._cgState.structures || {};
+  const structureCards = Object.entries(structures).map(([key, s]) => `
+    <label style="cursor:pointer;display:block">
+      <input type="radio" name="cgStructure" value="${_esc(key)}" ${key==='pure-info'?'checked':''} style="display:none" onchange="_cgUpdateStructureUI()">
+      <div data-cgs="${_esc(key)}" class="cg-structure-card" style="background:white;border:2px solid #E2E8F0;border-radius:12px;padding:14px;transition:all .2s">
+        <div style="font-weight:800;color:#0F172A;margin-bottom:4px">${_esc(s.label)}</div>
+        <div style="font-size:0.78rem;color:#64748B">${_esc(s.description)}</div>
+      </div>
+    </label>
+  `).join('');
+
+  wrap.innerHTML = `
+    <div style="background:linear-gradient(135deg,#FB7185 0%,#F97316 50%,#FACC15 100%);border-radius:18px;padding:24px 28px;color:white;margin-bottom:24px;box-shadow:0 8px 24px rgba(251,113,133,.25)">
+      <div style="font-size:1.3rem;font-weight:800;margin-bottom:6px">🎠 How to Make a Viral Carousel</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:0.85rem">
+        <span><b>1. Hook</b> — capture attention</span>
+        <span style="opacity:.7">→</span>
+        <span><b>2. Context</b> — make people care</span>
+        <span style="opacity:.7">→</span>
+        <span><b>3. Value</b> — deliver the goods</span>
+        <span style="opacity:.7">→</span>
+        <span><b>4. Action</b> — convert goodwill</span>
+      </div>
+    </div>
+
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:22px;margin-bottom:18px">
+      <div style="font-size:0.72rem;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:8px">STEP 1 · TOPIC</div>
+      <input id="cgTopic" placeholder="e.g. How small businesses can rank on Google in 2026" style="width:100%;padding:12px;border:1px solid #CBD5E1;border-radius:9px;font-size:0.95rem;box-sizing:border-box;font-family:inherit;margin-bottom:16px">
+
+      <div style="font-size:0.72rem;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:8px">STEP 2 · STRUCTURE</div>
+      <div id="cgStructures" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:16px">${structureCards}</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div>
+          <div style="font-size:0.72rem;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">BRAND VOICE (optional)</div>
+          <input id="cgVoice" placeholder="expert, plain-spoken, no jargon" style="width:100%;padding:9px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.86rem;box-sizing:border-box;font-family:inherit">
+        </div>
+        <div>
+          <div style="font-size:0.72rem;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:6px">AUDIENCE (optional)</div>
+          <input id="cgAud" placeholder="small business owners and marketers" style="width:100%;padding:9px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.86rem;box-sizing:border-box;font-family:inherit">
+        </div>
+      </div>
+
+      <button id="cgGoBtn" onclick="_cgGenerate()" style="background:linear-gradient(135deg,#0066FF,#7C3AED);color:white;border:none;padding:12px 28px;border-radius:10px;font-size:0.92rem;font-weight:800;cursor:pointer;width:100%">✨ Generate 10-Slide Carousel</button>
+    </div>
+
+    <div id="cgOutput"></div>
+
+    ${window._cgState.history.length ? `
+      <div style="margin-top:32px;background:white;border:1px solid #E2E8F0;border-radius:14px;padding:18px">
+        <div style="font-size:0.72rem;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:10px">📚 RECENT CAROUSELS</div>
+        ${window._cgState.history.slice(0,10).map(h => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px;border-bottom:1px solid #F1F5F9">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_esc(h.topic)}</div>
+              <div style="font-size:0.72rem;color:#64748B">${_esc((window._cgState.structures[h.structure]||{}).label || h.structure)} · ${new Date(h.created_at).toLocaleDateString()}</div>
+            </div>
+            <button onclick="_cgLoad(${h.id})" style="background:#F1F5F9;color:#0F172A;border:1px solid #CBD5E1;padding:6px 12px;border-radius:6px;font-size:0.78rem;font-weight:700;cursor:pointer">Open</button>
+          </div>
+        `).join('')}
+      </div>` : ''}
+  `;
+  _cgUpdateStructureUI();
+}
+
+function _cgUpdateStructureUI() {
+  document.querySelectorAll('.cg-structure-card').forEach(c => {
+    const radio = c.parentElement.querySelector('input[type=radio]');
+    if (radio && radio.checked) { c.style.borderColor = '#0066FF'; c.style.background = '#EFF6FF'; }
+    else { c.style.borderColor = '#E2E8F0'; c.style.background = 'white'; }
+  });
+}
+
+async function _cgGenerate() {
+  const topic = (document.getElementById('cgTopic').value||'').trim();
+  if (!topic) { (window.showToast||alert)('⚠️ Topic is required'); return; }
+  const sel = document.querySelector('input[name=cgStructure]:checked');
+  const structure = sel ? sel.value : 'pure-info';
+  const brandVoice = document.getElementById('cgVoice').value.trim() || undefined;
+  const audience = document.getElementById('cgAud').value.trim() || undefined;
+  const btn = document.getElementById('cgGoBtn');
+  const out = document.getElementById('cgOutput');
+  btn.disabled = true; btn.textContent = '⏳ Drafting your slides…';
+  out.innerHTML = '<div style="padding:32px;text-align:center;color:#64748B">⏳ Generating 10 slides…</div>';
+  try {
+    const r = await fetch('/api/carousel/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ topic, structure, brandVoice, audience }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error || 'Generate failed');
+    window._cgState.current = r;
+    out.innerHTML = _cgRenderResult(r);
+    try { const lst = await fetch('/api/carousel/list').then(x=>x.json()); window._cgState.history = lst.items||[]; } catch(_){}
+  } catch (e) {
+    out.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:18px;color:#991B1B">⚠️ ${_esc(e.message||e)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '✨ Generate 10-Slide Carousel';
+  }
+}
+
+function _cgRenderResult(r) {
+  const slides = r.slides || [];
+  const sourceBadge = r.source === 'openai' ? '<span style="background:#10B981;color:white;padding:3px 8px;border-radius:6px;font-size:0.65rem;font-weight:800;letter-spacing:.05em">AI-WRITTEN</span>' : '<span style="background:#F59E0B;color:white;padding:3px 8px;border-radius:6px;font-size:0.65rem;font-weight:800;letter-spacing:.05em">TEMPLATE</span>';
+  const palette = ['#FB7185','#F97316','#FACC15','#34D399','#10B981','#06B6D4','#3B82F6','#6366F1','#A855F7','#EC4899'];
+  const slideCards = slides.map((s, i) => `
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;display:flex;flex-direction:column">
+      <div style="background:linear-gradient(135deg,${palette[i%palette.length]},${palette[(i+3)%palette.length]});color:white;padding:14px 16px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-weight:800">SLIDE ${_esc(String(s.n))}</span>
+        <span style="background:rgba(255,255,255,.22);padding:3px 10px;border-radius:6px;font-size:0.7rem;font-weight:700;letter-spacing:.05em">${_esc(s.role||'')}</span>
+      </div>
+      <div style="padding:14px 16px;flex:1">
+        <div style="font-size:1rem;font-weight:800;color:#0F172A;margin-bottom:8px;line-height:1.3">${_esc(s.headline||'')}</div>
+        <div style="font-size:0.86rem;color:#475569;line-height:1.5">${_esc(s.body||'')}</div>
+        ${s.visualHint ? `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed #CBD5E1;font-size:0.74rem;color:#94A3B8"><b>Visual:</b> ${_esc(s.visualHint)}</div>` : ''}
+      </div>
+    </div>`).join('');
+  const fullCopy = slides.map(s => `Slide ${s.n} (${s.role}):\n${s.headline}\n\n${s.body}\n${s.visualHint?'[Visual: '+s.visualHint+']\n':''}`).join('\n---\n\n');
+  return `
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:18px 22px;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        <div style="font-size:0.74rem;font-weight:700;color:#64748B;letter-spacing:.05em;margin-bottom:2px">${_esc(r.structureLabel||'')} ${sourceBadge}</div>
+        <div style="font-weight:800;color:#0F172A">${_esc(r.topic||'')}</div>
+      </div>
+      <button onclick="_cgCopyAll()" style="background:#0066FF;color:white;border:none;padding:9px 16px;border-radius:8px;font-size:0.82rem;font-weight:700;cursor:pointer">📋 Copy all slides</button>
+      <button onclick="navigateTo('social-publisher')" style="background:#0F172A;color:white;border:none;padding:9px 16px;border-radius:8px;font-size:0.82rem;font-weight:700;cursor:pointer">📤 Open Social Publisher</button>
+      <button onclick="navigateTo('content-calendar')" style="background:#F1F5F9;color:#0F172A;border:1px solid #CBD5E1;padding:9px 16px;border-radius:8px;font-size:0.82rem;font-weight:700;cursor:pointer">📅 Add to Calendar</button>
+    </div>
+    <textarea id="cgFullCopy" style="position:absolute;left:-9999px;top:-9999px">${_esc(fullCopy)}</textarea>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">${slideCards}</div>
+  `;
+}
+
+function _cgCopyAll() {
+  const ta = document.getElementById('cgFullCopy');
+  if (!ta) return;
+  ta.style.left='0'; ta.style.top='0';
+  ta.select(); ta.setSelectionRange(0, 99999);
+  try { document.execCommand('copy'); (window.showToast||alert)('✅ All slide copy copied to clipboard'); } catch(e) { (window.showToast||alert)('⚠️ Copy failed'); }
+  ta.style.left='-9999px';
+}
+
+async function _cgLoad(id) {
+  try {
+    const r = await fetch('/api/carousel/' + id).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error);
+    const item = r.item;
+    const slides = typeof item.slides === 'string' ? JSON.parse(item.slides) : item.slides;
+    const meta = typeof item.meta === 'string' ? JSON.parse(item.meta) : (item.meta||{});
+    const result = { ok:true, id:item.id, topic:item.topic, structure:item.structure, structureLabel: meta.structureLabel || item.structure, slides, source: meta.source||'template', meta };
+    window._cgState.current = result;
+    document.getElementById('cgOutput').innerHTML = _cgRenderResult(result);
+    document.getElementById('cgOutput').scrollIntoView({ behavior:'smooth', block:'start' });
+  } catch (e) { (window.showToast||alert)('⚠️ Could not load: ' + (e.message||e)); }
+}
+
+// ─── REDDIT DISCOVER QUESTIONS ──────────────────────────────────────────────
+// Pairs with T38 — paste a business type, get the questions real customers
+// are asking on Reddit right now. Inject a button onto the Reddit Pulse view.
+(function() {
+  const _origRP = window.buildRedditPulse;
+  if (!_origRP || _origRP._discoverPatched) return;
+  window.buildRedditPulse = function() {
+    _origRP.apply(this, arguments);
+    setTimeout(_rpInjectDiscover, 0);
+  };
+  window.buildRedditPulse._discoverPatched = true;
+})();
+
+function _rpInjectDiscover() {
+  const wrap = document.getElementById('rpWrap');
+  if (!wrap || document.getElementById('rpDiscoverPanel')) return;
+  const panel = document.createElement('div');
+  panel.id = 'rpDiscoverPanel';
+  panel.style.cssText = 'background:linear-gradient(135deg,#7C3AED 0%,#5B21B6 100%);color:white;border-radius:12px;padding:18px;margin-bottom:18px';
+  panel.innerHTML = `
+    <div style="font-weight:800;margin-bottom:6px">💡 Discover Questions Customers Ask</div>
+    <div style="font-size:0.82rem;opacity:.85;margin-bottom:12px">Enter what you sell — get the real questions strangers ask about it on Reddit right now. Perfect for blog topics, FAQ pages, and your next carousel.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="rpDqInput" placeholder='What do you sell? e.g. "roof repair", "wedding photography"' style="flex:1;min-width:240px;padding:10px;border:none;border-radius:8px;font-size:0.88rem;color:#0F172A">
+      <button onclick="_rpDiscover()" id="rpDqBtn" style="background:white;color:#7C3AED;border:none;padding:10px 18px;border-radius:8px;font-weight:800;cursor:pointer">🔍 Find Questions</button>
+    </div>
+    <div id="rpDqOut" style="margin-top:14px"></div>
+  `;
+  wrap.insertBefore(panel, wrap.firstChild);
+}
+
+async function _rpDiscover() {
+  const inp = document.getElementById('rpDqInput');
+  const btn = document.getElementById('rpDqBtn');
+  const out = document.getElementById('rpDqOut');
+  const businessType = (inp.value||'').trim();
+  if (!businessType) { (window.showToast||alert)('⚠️ Tell me what you sell'); return; }
+  btn.disabled = true; btn.textContent = '⏳ Searching…';
+  out.innerHTML = '<div style="opacity:.8">Searching Reddit for "'+_esc(businessType)+'" questions…</div>';
+  try {
+    const r = await fetch('/api/reddit-pulse/discover-questions', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ businessType }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    if (!r.questions.length) { out.innerHTML = '<div style="opacity:.8">No question-style posts found in the last week. Try a broader term.</div>'; return; }
+    out.innerHTML = `
+      <div style="background:rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;font-size:0.84rem">
+        Found <b>${r.total}</b> question-style posts. Showing top ${r.questions.length} by engagement. Pick one as your next carousel topic.
+      </div>
+      <div style="background:white;border-radius:10px;padding:8px;max-height:380px;overflow-y:auto">
+        ${r.questions.map(q => `
+          <div style="padding:10px 12px;border-bottom:1px solid #F1F5F9;color:#0F172A">
+            <div style="font-size:0.86rem;font-weight:700;line-height:1.35;margin-bottom:4px">${_esc(q.title)}</div>
+            <div style="font-size:0.72rem;color:#64748B;display:flex;gap:10px;flex-wrap:wrap">
+              <span>r/${_esc(q.subreddit||'')}</span>
+              <span>▲ ${q.upvotes||0}</span>
+              <span>💬 ${q.comments||0}</span>
+              ${q.url ? `<a href="${_esc(q.url)}" target="_blank" rel="noopener" style="color:#7C3AED;font-weight:700">View on Reddit ↗</a>` : ''}
+              <button onclick="_rpToCarousel(${JSON.stringify(q.title).replace(/"/g,'&quot;')})" style="margin-left:auto;background:#F1F5F9;color:#0F172A;border:1px solid #CBD5E1;padding:3px 10px;border-radius:6px;font-size:0.7rem;font-weight:700;cursor:pointer">→ Make Carousel</button>
+            </div>
+          </div>`).join('')}
+      </div>
+    `;
+  } catch (e) {
+    out.innerHTML = '<div style="background:rgba(239,68,68,.2);border-radius:8px;padding:10px">⚠️ ' + _esc(e.message||e) + '</div>';
+  } finally {
+    btn.disabled = false; btn.textContent = '🔍 Find Questions';
+  }
+}
+
+function _rpToCarousel(title) {
+  navigateTo('carousel');
+  setTimeout(() => {
+    const t = document.getElementById('cgTopic');
+    if (t) { t.value = title; t.focus(); }
+  }, 300);
 }

@@ -8543,6 +8543,17 @@ app.use('/api/roadmap', _roadmapRouter);
   }
 } catch (e) { console.warn('[t37] init failed:', e.message); }})();
 
+// ── T38 — Carousel Generator (Hook→Context→Value→Action × 4 structures) ─────
+const _carouselSchema = require('./services/carousel/schema');
+const _carouselRouter = require('./services/carousel/api');
+app.use('/api/carousel', _carouselRouter);
+(async () => { try {
+  if (_db.hasDb()) {
+    await _carouselSchema.ensureCarouselSchema();
+    console.log('[t38] carousel schema ready');
+  }
+} catch (e) { console.warn('[t38] init failed:', e.message); }})();
+
 // ── Tier 7 ─────────────────────────────────────────────────────────────────
 const _podcastSchema = require('./services/podcast_monitor/schema');
 const _podcastRouter = require('./services/podcast_monitor/api');

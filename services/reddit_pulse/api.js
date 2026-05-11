@@ -10,7 +10,8 @@ function _hasOpenAI() { const k = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || 
 function _redditSearch(subreddit, query, limit) {
   return new Promise(resolve => {
     const sub = String(subreddit || 'all').replace(/[^a-z0-9_]/gi,'').slice(0,50) || 'all';
-    const path = `/r/${sub}/search.json?q=${encodeURIComponent(query)}&restrict_sr=1&sort=new&limit=${limit}&t=week`;
+    const restrict = (sub.toLowerCase() === 'all') ? '' : '&restrict_sr=1';
+    const path = `/r/${sub}/search.json?q=${encodeURIComponent(query)}${restrict}&sort=new&limit=${limit}&t=week`;
     const req = _https.request({ hostname:'www.reddit.com', path, method:'GET', headers:{ 'User-Agent':'InfoGenie/1.0 (Marketing intelligence; +https://infogenie.app)' } }, r => {
       let d=''; r.on('data', c => d+=c);
       r.on('end', () => {
@@ -98,5 +99,91 @@ router.get('/runs', _safeAsync(async (req, res) => {
   const r = await _db.getPool().query('SELECT id, brand, subreddits, keywords, total_posts, pos_count, neu_count, neg_count, created_at FROM reddit_pulse_runs ORDER BY created_at DESC LIMIT 30');
   res.json({ ok:true, runs: r.rows });
 }));
+
+// ── Discover Questions Customers Are Asking ─────────────────────────────────
+// Pairs with T38 Carousel Generator: "I sell X — what are people asking
+// about X on Reddit right now?" Pure Reddit search, no LLM dependency.
+router.post('/discover-questions', _safeAsync(async (req, res) => {
+  const businessType = String(req.body?.businessType || '').trim().slice(0, 120);
+  if (!businessType) return _err(res, 400, 'businessType is required');
+  const subs = (Array.isArray(req.body?.subreddits) && req.body.subreddits.length)
+    ? req.body.subreddits.map(s => String(s).slice(0, 50)).slice(0, 6)
+    : ['all'];
+
+  const queryVariants = [`${businessType}?`, `how to ${businessType}`, `best ${businessType}`, `${businessType} help`];
+  const collected = new Map();
+  for (const sub of subs) {
+    for (const q of queryVariants) {
+      const posts = await _redditSearch(sub, q, 25);
+      for (const p of posts) {
+        const t = (p.title || '').trim();
+        if (!t || t.length < 8) continue;
+        // keep only posts that look like a question
+        const isQuestion = /\?$/.test(t) || /^(how|why|what|when|where|which|who|is|are|do|does|should|can|could|would|will|anyone|has anyone)\b/i.test(t);
+        if (!isQuestion) continue;
+        if (!collected.has(p.id)) collected.set(p.id, p);
+      }
+    }
+  }
+  let all = Array.from(collected.values());
+
+  // Fallback: Reddit blocks many cloud IPs. If direct search returns nothing,
+  // ask Perplexity (sonar) for the same questions — it can read Reddit.
+  let source = 'reddit-direct';
+  if (all.length === 0 && process.env.PERPLEXITY_API_KEY && !/^_DUMMY/i.test(process.env.PERPLEXITY_API_KEY)) {
+    try {
+      const fromPplx = await _pplxQuestions(businessType);
+      if (fromPplx.length) { all = fromPplx; source = 'perplexity'; }
+    } catch (e) { console.warn('[reddit-pulse] perplexity fallback failed:', e.message); }
+  }
+
+  // Score by upvotes + comments to surface signal
+  all.sort((a, b) => ((b.upvotes||0) + (b.comments||0)*2) - ((a.upvotes||0) + (a.comments||0)*2));
+  const top = all.slice(0, 30).map(p => ({
+    title: p.title, subreddit: p.subreddit, url: p.url,
+    upvotes: p.upvotes, comments: p.comments, created: p.created,
+  }));
+  res.json({ ok: true, businessType, total: all.length, source, questions: top });
+}));
+
+function _pplxQuestions(businessType) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({
+      model: 'sonar',
+      messages: [
+        { role: 'system', content: 'You search Reddit and return real question-style posts. Reply ONLY with valid JSON in shape {"questions":[{"title":"...","subreddit":"...","url":"https://reddit.com/...","upvotes":0,"comments":0}]}. Find 15-25 real Reddit posts where users are asking questions about the topic. Use real urls.' },
+        { role: 'user', content: `Find Reddit questions people are asking about: ${businessType}` },
+      ],
+      response_format: { type: 'json_schema', json_schema: { schema: { type:'object', properties:{ questions:{ type:'array', items:{ type:'object', properties:{ title:{type:'string'}, subreddit:{type:'string'}, url:{type:'string'}, upvotes:{type:'number'}, comments:{type:'number'} }, required:['title'] } } }, required:['questions'] } } },
+      temperature: 0.2,
+    });
+    const req = _https.request({
+      hostname: 'api.perplexity.ai', path: '/chat/completions', method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + process.env.PERPLEXITY_API_KEY, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+    }, r => {
+      let d = ''; r.on('data', c => d += c);
+      r.on('end', () => {
+        try {
+          const j = JSON.parse(d);
+          const txt = j?.choices?.[0]?.message?.content || '';
+          const parsed = JSON.parse(txt);
+          const out = (parsed.questions || []).map((q, i) => ({
+            id: 'pplx_' + i,
+            title: String(q.title || '').slice(0, 300),
+            subreddit: String(q.subreddit || '').replace(/^r\//, '').slice(0, 50),
+            url: typeof q.url === 'string' && /^https:\/\/(www\.|old\.)?reddit\.com\//.test(q.url) ? q.url : null,
+            upvotes: Number(q.upvotes) || 0,
+            comments: Number(q.comments) || 0,
+            created: null,
+          })).filter(q => q.title);
+          resolve(out);
+        } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(30000, () => { req.destroy(new Error('perplexity timeout')); });
+    req.write(body); req.end();
+  });
+}
 
 module.exports = router;
