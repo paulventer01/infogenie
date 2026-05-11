@@ -53,6 +53,10 @@
     if (t && t.nodeType !== 1 && t.parentElement) t = t.parentElement;
     const btn = (t && t.closest) ? t.closest('.btn-wl-counter') : null;
     if (!btn) return;
+    // Only handle Counter-Message buttons (those carry data-wl-id). Other
+    // buttons that share the class for styling (e.g. Real Meta Ads) are
+    // ignored so their own onclick can fire normally.
+    if (!btn.hasAttribute('data-wl-id')) return;
     if (btn._wlFiring) return;
     btn._wlFiring = true;
     setTimeout(() => { try { delete btn._wlFiring; } catch(_) {} }, 600);
@@ -69,6 +73,144 @@
   document.addEventListener('touchstart', _delegated, true);
   console.log('[wl-counter] early wireup installed (pointerdown+mousedown+click+touchstart)');
 })();
+
+// ────────────────────────────────────────────────────────────────────────────
+// _wlViewRealAds(comp, domain) — opens a modal showing this competitor's
+// CURRENTLY-RUNNING ads on Meta (Facebook + Instagram), pulled live from
+// graph.facebook.com/v19.0/ads_archive via /api/meta-ad-library/search.
+// ────────────────────────────────────────────────────────────────────────────
+window._wlViewRealAds = async function(compEnc, domainEnc) {
+  // Local sanitisers (helpers like _esc/_safeUrl are defined later in file
+  // and may not be available yet in this top-of-file IIFE region).
+  const _h = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  const _u = s => {
+    try { const u = new URL(String(s || ''), location.origin);
+          return /^(https?:)$/i.test(u.protocol) ? u.toString() : ''; }
+    catch (_) { return ''; }
+  };
+  const comp = decodeURIComponent(compEnc || '');
+  const domain = decodeURIComponent(domainEnc || '').replace(/^https?:\/\//,'').split('/')[0];
+  const compH = _h(comp), domainH = _h(domain);
+  // Build / reuse a lightweight modal
+  let host = document.getElementById('wlRealAdsModal');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'wlRealAdsModal';
+    host.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,23,.72);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+    host.addEventListener('click', e => { if (e.target === host) host.remove(); });
+    document.body.appendChild(host);
+  } else {
+    host.innerHTML = '';
+  }
+  host.innerHTML = `<div style="background:white;border-radius:16px;max-width:760px;width:100%;max-height:85vh;overflow:auto;padding:24px;position:relative">
+    <button onclick="document.getElementById('wlRealAdsModal').remove()" style="position:absolute;top:14px;right:14px;background:#F3F4F6;border:none;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1.2rem;line-height:1">×</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <div style="font-size:1.15rem;font-weight:800;color:#0A1628">📺 Real Meta Ads — ${compH}</div>
+      ${window._dataBadge('live','graph.facebook.com/ads_archive')}
+    </div>
+    <div style="font-size:0.78rem;color:#64748B;margin-bottom:14px">Searching Meta Ad Library for <strong>${domainH}</strong>… (live, public, no estimates)</div>
+    <div id="wlRealAdsBody" style="min-height:200px"><div style="text-align:center;padding:40px;color:#64748B">⏳ Fetching from Meta…</div></div>
+  </div>`;
+  try {
+    const r = await fetch('/api/meta-ad-library/search', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ query: comp, domain, country:'US', limit: 12 })
+    });
+    const j = await r.json().catch(() => ({}));
+    const body = document.getElementById('wlRealAdsBody');
+    if (!body) return;
+    // Backend is "soft-failure": even on Meta API errors it may still return
+    // ok:true with j.error set + ads:[]. Treat presence of j.error or http
+    // failure as an error case.
+    if (!r.ok || j.ok === false || j.error) {
+      const errRaw = j.error || `HTTP ${r.status}`;
+      const errH = _h(errRaw);
+      const hint = /missing[_\s]creds|META_ACCESS_TOKEN/i.test(String(errRaw))
+        ? 'Connect a valid Meta access token in Settings to fetch real ads.'
+        : 'Meta returned an error. The competitor may have no active ads on Meta, or the token lacks Ad Library permissions.';
+      body.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px;color:#991B1B">
+        <div style="font-weight:800;margin-bottom:6px">⚠️ Couldn't load real ads</div>
+        <div style="font-size:0.85rem">${errH}</div>
+        <div style="font-size:0.78rem;margin-top:8px;color:#7F1D1D">${hint}</div>
+      </div>`;
+      return;
+    }
+    const ads = Array.isArray(j.ads) ? j.ads : [];
+    if (!ads.length) {
+      body.innerHTML = `<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:24px;text-align:center;color:#475569">
+        <div style="font-weight:800;margin-bottom:6px">No active ads found</div>
+        <div style="font-size:0.85rem">${compH} may not be running ads on Meta right now, or the search didn't match. Try the brand domain directly.</div>
+      </div>`;
+      return;
+    }
+    const dsH = _h(j.dataSource || 'graph.facebook.com');
+    body.innerHTML = `<div style="font-size:0.78rem;color:#475569;margin-bottom:10px">Found <strong>${ads.length}</strong> active ad${ads.length>1?'s':''} · source: <code>${dsH}</code></div>
+      <div style="display:grid;grid-template-columns:1fr;gap:10px">
+        ${ads.slice(0, 12).map(a => {
+          // Server schema (server.js /api/meta-ad-library/search):
+          //   { id, page, platforms[], bodies[], titles[], descs[],
+          //     startedAt, stoppedAt, isRunning, snapshot }
+          const txt = String((a.bodies && a.bodies[0]) || '').slice(0, 280);
+          const title = String((a.titles && a.titles[0]) || '').slice(0, 120);
+          const page = String(a.page || comp);
+          const link = _u(a.snapshot);
+          const running = a.isRunning ? 'Running' : 'Stopped';
+          return `<div style="border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;background:#FAFCFF">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <div style="font-size:0.7rem;font-weight:800;color:#1877F2">${_h(page)}</div>
+              <div style="font-size:0.62rem;font-weight:700;color:${a.isRunning?'#059669':'#94A3B8'};text-transform:uppercase">${_h(running)}</div>
+            </div>
+            ${title ? `<div style="font-weight:700;color:#0A1628;margin-bottom:4px">${_h(title)}</div>` : ''}
+            <div style="font-size:0.83rem;color:#334155;line-height:1.5">${txt ? _h(txt) : '<em style="color:#94A3B8">No body text</em>'}</div>
+            ${link ? `<a href="${_h(link)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;font-size:0.75rem;color:#1877F2;text-decoration:none">View on Meta Ad Library →</a>` : ''}
+          </div>`;
+        }).join('')}
+      </div>`;
+  } catch (e) {
+    const body = document.getElementById('wlRealAdsBody');
+    if (body) body.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px;color:#991B1B">⚠️ ${_h(e.message)}</div>`;
+  }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// _enrichWinLossWithHubSpot(displayWinLoss) — fetches real CRM deals and, for
+// each competitor whose name appears in deal names, computes the actual
+// closed_lost / total ratio and updates the loss-rate cell + badge in-place.
+// ────────────────────────────────────────────────────────────────────────────
+window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
+  if (!Array.isArray(displayWinLoss) || !displayWinLoss.length) return;
+  let deals = [];
+  try {
+    const r = await fetch('/api/hubspot/deals');
+    if (!r.ok) return;
+    const j = await r.json();
+    if (!j.ok || !Array.isArray(j.deals)) return;
+    deals = j.deals;
+  } catch (e) { return; }
+  if (!deals.length) return;
+  // Stale-render guard: if Intelligence has re-rendered while we were
+  // fetching, the token won't match — bail before mutating the new DOM.
+  if (renderToken && renderToken !== window._wlRenderToken) return;
+  displayWinLoss.forEach((w, idx) => {
+    const id = `wl_${idx}`;
+    const needle = (w.comp || '').toLowerCase();
+    if (!needle) return;
+    const matched = deals.filter(d => (d.name || '').toLowerCase().includes(needle));
+    if (matched.length < 3) return; // need a meaningful sample
+    const lost = matched.filter(d => /closed.?lost/i.test(d.stage || '')).length;
+    const won  = matched.filter(d => /closed.?won/i.test(d.stage || '')).length;
+    const decided = lost + won;
+    if (decided < 3) return;
+    const realRate = Math.round((lost / decided) * 100) + '%';
+    const card = document.querySelector(`[data-wl-card="${id}"]`);
+    if (!card) return;
+    const cell = card.querySelector('[data-wl-loss-cell]');
+    const badge = card.querySelector('[data-wl-loss-badge]');
+    if (cell) cell.textContent = `Lost ${realRate} of deals (${decided} real CRM deals)`;
+    if (badge) badge.innerHTML = window._dataBadge('live', `HubSpot · ${decided} deals`);
+  });
+};
 
 // ── Account system + per-user localStorage namespacing ────────────────────────
 // Wraps localStorage so every key is automatically scoped to the active user
@@ -13929,7 +14071,7 @@ function buildIntelligence() {
   ];
   let displaySignals;
   if (realComps && realComps.length > 0) {
-    displaySignals = realComps.slice(0, 4).map((c, i) => {
+    displaySignals = realComps.slice(0, 8).map((c, i) => {
       const tmpl = signalTemplates[i % signalTemplates.length];
       return {
         comp: c.name, logo: compLogo(c),
@@ -13975,7 +14117,7 @@ function buildIntelligence() {
   if (realComps && realComps.length > 0) {
     const channels = ['Google Ads', 'Meta Ads', 'LinkedIn Ads'];
     const lossRates = ['38%', '31%', '26%'];
-    displayWinLoss = realComps.slice(0, 3).map((c, i) => {
+    displayWinLoss = realComps.slice(0, 8).map((c, i) => {
       const topCampaign = c.campaigns?.[0];
       const topSuggestion = c.suggestions?.[0] || `${c.name} has exploitable weaknesses in their ad targeting — InfoGenie can create counter-campaigns`;
       const msg = topCampaign
@@ -14138,27 +14280,45 @@ function buildIntelligence() {
     const id = `wl_${idx}`;
     window._wlData[id] = w;
     const enc = s => encodeURIComponent(String(s == null ? '' : s));
+    // Resolve competitor domain for Meta Ad Library lookup
+    const compRow = (realComps || []).find(c => c.name === w.comp) || {};
+    const compDomain = compRow.domain || compRow.url || (w.comp || '').toLowerCase().replace(/\s+/g,'') + '.com';
     return `
-    <div class="winloss-card">
+    <div class="winloss-card" data-wl-card="${id}" data-wl-comp-domain="${enc(compDomain)}">
       <div class="wl-top">
         <span class="wl-comp">${w.comp}</span>
         <span class="wl-channel" title="The marketing or sales channel where this competitor's message is dominating and costing you deals.">${w.channel}</span>
-        <span class="wl-loss-rate" title="Estimated share of competitive deals lost to ${w.comp} on this channel. Use the counter-message below to reduce this rate.">Lost ${w.lossRate} of deals</span>
+        <span class="wl-loss-rate" data-wl-loss-cell title="Estimated share of competitive deals lost to ${w.comp} on this channel. Use the counter-message below to reduce this rate.">Lost ${w.lossRate} of deals</span>
+        <span data-wl-loss-badge style="margin-left:6px">${window._dataBadge('estimate','industry default')}</span>
       </div>
       <div class="wl-message">${w.message}</div>
       <div class="wl-weakness" title="The specific gap or weakness in this competitor's positioning that you can exploit to win customers back.">💡 <strong>Exploitable Weakness:</strong> ${w.weakness}</div>
-      <button class="btn-wl-counter" type="button"
-        data-wl-id="${id}"
-        data-wl-comp="${enc(w.comp)}"
-        data-wl-channel="${enc(w.channel)}"
-        data-wl-loss="${enc(w.lossRate)}"
-        data-wl-message="${enc(w.message)}"
-        data-wl-weakness="${enc(w.weakness)}"
-        onclick="try{window._wlClick&&window._wlClick(this);}catch(e){console.error('[wl] inline failed',e);}return false;"
-        title="Generate an AI counter-message specifically designed to neutralise this competitor's winning argument.">Counter This Message</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn-wl-counter" type="button"
+          data-wl-id="${id}"
+          data-wl-comp="${enc(w.comp)}"
+          data-wl-channel="${enc(w.channel)}"
+          data-wl-loss="${enc(w.lossRate)}"
+          data-wl-message="${enc(w.message)}"
+          data-wl-weakness="${enc(w.weakness)}"
+          onclick="try{window._wlClick&&window._wlClick(this);}catch(e){console.error('[wl] inline failed',e);}return false;"
+          title="Generate an AI counter-message specifically designed to neutralise this competitor's winning argument.">Counter This Message</button>
+        <button type="button" class="btn-wl-real-ads" style="background:#1877F2;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:0.78rem;font-weight:700;cursor:pointer"
+          onclick="event.stopPropagation();window._wlViewRealAds&&window._wlViewRealAds('${enc(w.comp)}','${enc(compDomain)}');return false;"
+          title="Pull this competitor's currently-running ads from Meta's public Ad Library (real, live data).">📺 Real Meta Ads</button>
+      </div>
     </div>
   `;
   }).join('');
+
+  // ── After render: enrich Win/Loss with REAL HubSpot deal-stage data ──
+  // Best-effort: fetches deals and computes real loss rate per competitor by
+  // matching competitor name in deal name. Silent on failure (badge stays red).
+  // Stale-render guard: bump the token on every render so older in-flight
+  // fetches abort their DOM writes if the user re-rendered Intelligence.
+  window._wlRenderToken = (window._wlRenderToken || 0) + 1;
+  const _myToken = window._wlRenderToken;
+  setTimeout(() => { try { window._enrichWinLossWithHubSpot && window._enrichWinLossWithHubSpot(displayWinLoss, _myToken); } catch(e){} }, 80);
 
   // ── Open attack windows ──
   const openWindows = displaySignals.filter(s => s.attackOpen).length;
@@ -16634,13 +16794,45 @@ function closeDifferentiatorModal() {
   modal.style.display = 'none';
 }
 
+// ===== UNIVERSAL DATA-SOURCE BADGE =====
+// level: 'live'    = real-time API data (green)
+//        'ai-real' = AI synthesis grounded in real data (yellow)
+//        'estimate'= industry-typical estimate, no real query (red)
+window._dataBadge = function(level, source) {
+  const cfg = ({
+    'live':     { c: '#065F46', bg: '#D1FAE5', icon: '🟢', label: 'LIVE DATA'  },
+    'ai-real':  { c: '#92400E', bg: '#FEF3C7', icon: '🟡', label: 'AI ANALYSIS' },
+    'estimate': { c: '#991B1B', bg: '#FEE2E2', icon: '🔴', label: 'ESTIMATE'   }
+  })[level] || { c:'#374151', bg:'#F3F4F6', icon:'⚪', label:'UNKNOWN' };
+  const src = source ? String(source).replace(/[<>"]/g,'') : '';
+  return `<span class="ig-data-badge" title="${src.replace(/"/g,'&quot;')}" `
+    + `style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;`
+    + `background:${cfg.bg};color:${cfg.c};font-size:0.62rem;font-weight:800;`
+    + `text-transform:uppercase;letter-spacing:.04em;border:1px solid ${cfg.c}33;line-height:1.4">`
+    + `${cfg.icon} ${cfg.label}${src ? ' · ' + src : ''}</span>`;
+};
+
 // ===== COMPETITOR PLAN VIEW =====
 // Global function called from inline onclick in competitor cards
-window.openCompPlan = function(compName) {
+window.openCompPlan = async function(compName) {
   if (!analysisData) {
     showToast('⚠️ Run an analysis first to view a plan');
     return;
   }
+  // Fetch live blended ROAS first (so the plan reflects real ad-account data
+  // when Meta/Google/TikTok credentials are connected). Falls back gracefully.
+  // Server returns the field as `roas` (server.js /api/blended-roas).
+  window._liveROAS = null;
+  try {
+    const r = await fetch('/api/blended-roas?days=30', { headers:{ 'Accept':'application/json' } });
+    if (r.ok) {
+      const j = await r.json();
+      const v = (j && typeof j.roas === 'number') ? j.roas : null;
+      if (v && v > 0) {
+        window._liveROAS = { value: v, source: 'blended-roas (Meta+Google+TikTok)', spend: j.totalSpend, revenue: j.totalRevenue };
+      }
+    }
+  } catch (e) { /* silent — plan view will badge as ESTIMATE */ }
   buildPlanView(compName);
   navigateTo('plan', false);
 };
@@ -16662,8 +16854,17 @@ function buildPlanView(compName) {
     ).join('');
   }
 
-  const myROAS   = analysisData.websiteKPIs?.roas ? parseFloat(analysisData.websiteKPIs.roas) : 2.8;
+  // Real ROAS preference order: live ad-account blend → analysis-derived → safe default
+  const liveR = window._liveROAS;
+  const myROAS = liveR ? Number(liveR.value.toFixed(2))
+               : (analysisData.websiteKPIs?.roas ? parseFloat(analysisData.websiteKPIs.roas) : 2.8);
+  const myROASBadge = liveR
+    ? window._dataBadge('live', liveR.source)
+    : window._dataBadge('estimate', 'industry default — connect Meta/Google ads for live data');
   const compROAS = comp.roas || 4.5;
+  const compROASBadge = comp.roas
+    ? window._dataBadge('ai-real', 'DataForSEO + AI synthesis')
+    : window._dataBadge('estimate', 'industry default');
   const compCTR  = parseFloat(comp.ctr || '3.2');
   const indName  = analysisData.industry?.name || 'your industry';
   const industryAvgROAS = avg(analysisData.competitors.map(x => x.roas || 3.5));
@@ -16735,23 +16936,35 @@ function buildPlanView(compName) {
 
   document.getElementById('planViewContent').innerHTML = `
 
+    <!-- DATA-SOURCE TRANSPARENCY BAR -->
+    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:12px 16px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+      <span style="font-size:0.72rem;font-weight:800;color:#0A1628;text-transform:uppercase;letter-spacing:.06em">Data sources used:</span>
+      ${myROASBadge}
+      ${compROASBadge}
+      ${window._dataBadge('estimate', 'Phase uplift % · industry-typical')}
+    </div>
+
     <!-- METRICS SUMMARY BAR -->
     <div class="roas-stat-strip" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
-      <div style="background:linear-gradient(135deg,#062A36,#0A4858);border-radius:14px;padding:18px 16px;text-align:center">
+      <div style="background:linear-gradient(135deg,#062A36,#0A4858);border-radius:14px;padding:18px 16px;text-align:center;position:relative">
         <div style="font-size:1.6rem;font-weight:800;color:#00E5FF !important">${myROAS}×</div>
         <div style="font-size:0.72rem;color:#FFFFFF !important;margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.4)">Your ROAS Now</div>
+        <div style="margin-top:8px">${liveR ? window._dataBadge('live','live') : window._dataBadge('estimate','default')}</div>
       </div>
       <div style="background:linear-gradient(135deg,#1a0a28,#2D1060);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#F59E0B !important">${compROAS}×</div>
         <div style="font-size:0.72rem;color:#FFFFFF !important;margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.4)">${comp.name} ROAS</div>
+        <div style="margin-top:8px">${comp.roas ? window._dataBadge('ai-real','AI+SEO') : window._dataBadge('estimate','default')}</div>
       </div>
       <div style="background:linear-gradient(135deg,#0A2818,#0D5E30);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#10B981 !important">${projectedROAS}×</div>
         <div style="font-size:0.72rem;color:#FFFFFF !important;margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.4)">Projected ROAS</div>
+        <div style="margin-top:8px">${window._dataBadge('estimate','forecast')}</div>
       </div>
       <div style="background:linear-gradient(135deg,#0A2818,#1A4A30);border-radius:14px;padding:18px 16px;text-align:center">
         <div style="font-size:1.6rem;font-weight:800;color:#00C9C8 !important">+${totalGainPct}%</div>
         <div style="font-size:0.72rem;color:#FFFFFF !important;margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.4)">ROAS Uplift</div>
+        <div style="margin-top:8px">${window._dataBadge('estimate','forecast')}</div>
       </div>
     </div>
 
