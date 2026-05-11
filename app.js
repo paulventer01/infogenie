@@ -79,7 +79,7 @@
 // CURRENTLY-RUNNING ads on Meta (Facebook + Instagram), pulled live from
 // graph.facebook.com/v19.0/ads_archive via /api/meta-ad-library/search.
 // ────────────────────────────────────────────────────────────────────────────
-window._wlViewRealAds = async function(compEnc, domainEnc) {
+window._wlViewRealAds = async function(compEnc, domainEnc, wlId) {
   // Local sanitisers (helpers like _esc/_safeUrl are defined later in file
   // and may not be available yet in this top-of-file IIFE region).
   const _h = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
@@ -103,11 +103,34 @@ window._wlViewRealAds = async function(compEnc, domainEnc) {
   } else {
     host.innerHTML = '';
   }
+  host._wlId = wlId || null;
+  // Defer-bind the in-modal AI Counter Message button after innerHTML write
+  setTimeout(() => {
+    const cb = document.getElementById('wlOpenCounterBtn');
+    if (cb && wlId) {
+      cb.addEventListener('click', function(ev){
+        ev.preventDefault(); ev.stopPropagation();
+        try {
+          const data = (window._wlData || {})[wlId];
+          if (typeof window.openWLCounterModal === 'function' && data) {
+            // Close the Real Meta Ads modal first so the counter modal is on top cleanly
+            const h = document.getElementById('wlRealAdsModal');
+            if (h) h.remove();
+            window.openWLCounterModal(data);
+          } else {
+            console.error('[wl-counter-in-modal] missing data or openWLCounterModal', { hasFn: typeof window.openWLCounterModal, wlId, hasData: !!data });
+            alert('Counter message generator is still loading. Please try again in a moment.');
+          }
+        } catch(e){ console.error('[wl-counter-in-modal] failed', e); }
+      });
+    }
+  }, 0);
   host.innerHTML = `<div style="background:white;border-radius:16px;max-width:760px;width:100%;max-height:85vh;overflow:auto;padding:24px;position:relative">
     <button onclick="document.getElementById('wlRealAdsModal').remove()" style="position:absolute;top:14px;right:14px;background:#F3F4F6;border:none;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1.2rem;line-height:1">×</button>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
       <div style="font-size:1.15rem;font-weight:800;color:#0A1628">📺 Real Meta Ads — ${compH}</div>
       ${window._dataBadge('live','graph.facebook.com/ads_archive')}
+      ${wlId ? `<button type="button" id="wlOpenCounterBtn" style="margin-left:auto;background:linear-gradient(135deg,#00C9C8,#0066FF);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:0.78rem;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(0,102,255,.25)" title="Generate an AI counter-message designed to neutralise this competitor's winning argument.">🎯 AI Counter Message</button>` : ''}
     </div>
     <div style="font-size:0.78rem;color:#64748B;margin-bottom:14px">Searching Meta Ad Library for <strong>${domainH}</strong>… (live, public, no estimates)</div>
     <div id="wlRealAdsBody" style="min-height:200px"><div style="text-align:center;padding:40px;color:#64748B">⏳ Fetching from Meta…</div></div>
@@ -14310,18 +14333,9 @@ function buildIntelligence() {
       <div class="wl-message">${w.message}</div>
       <div class="wl-weakness" title="The specific gap or weakness in this competitor's positioning that you can exploit to win customers back.">💡 <strong>Exploitable Weakness:</strong> ${w.weakness}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-        <button class="btn-wl-counter" type="button"
-          data-wl-id="${id}"
-          data-wl-comp="${enc(w.comp)}"
-          data-wl-channel="${enc(w.channel)}"
-          data-wl-loss="${enc(w.lossRate)}"
-          data-wl-message="${enc(w.message)}"
-          data-wl-weakness="${enc(w.weakness)}"
-          onclick="try{window._wlClick&&window._wlClick(this);}catch(e){console.error('[wl] inline failed',e);}return false;"
-          title="Generate an AI counter-message specifically designed to neutralise this competitor's winning argument.">Counter This Message</button>
-        <button type="button" class="btn-wl-real-ads" style="background:#1877F2;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:0.78rem;font-weight:700;cursor:pointer"
-          onclick="event.stopPropagation();window._wlViewRealAds&&window._wlViewRealAds('${enc(w.comp)}','${enc(compDomain)}');return false;"
-          title="Pull this competitor's currently-running ads from Meta's public Ad Library (real, live data).">📺 Real Meta Ads</button>
+        <button type="button" class="btn-wl-real-ads" style="background:linear-gradient(135deg,#1877F2,#0066FF);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:0.78rem;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(24,119,242,.25)"
+          onclick="event.stopPropagation();window._wlViewRealAds&&window._wlViewRealAds('${enc(w.comp)}','${enc(compDomain)}','${id}');return false;"
+          title="See this competitor's real Meta ads + generate an AI counter-message.">📺 Real Meta Ads + 🎯 AI Counter</button>
       </div>
     </div>
   `;
@@ -14562,32 +14576,9 @@ function buildIntelligence() {
     </div>
   `;
 
-  // ── Counter This Message buttons: just count + log. The inline onclick on
-  // each button calls window._wlClick(this), and a document-level delegated
-  // handler is the safety net. Past attempts to strip the inline onclick and
-  // attach a direct addEventListener silently failed for some clicks (events
-  // not reaching the handler), so we now keep the inline path as the primary
-  // wireup — it always fires because it's part of the HTML attribute.
-  try {
-    const wlButtons = wrap.querySelectorAll('.btn-wl-counter');
-    console.log('[wl-counter] buildIntelligence rendered', wlButtons.length, 'Counter This Message button(s) — binding direct handlers + inline + delegated');
-    wlButtons.forEach(b => {
-      try { delete b._wlBound; } catch(_) {}
-      // Direct per-button handler as 4th redundancy layer.
-      b.addEventListener('pointerdown', function(ev){
-        ev.preventDefault(); ev.stopPropagation();
-        if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
-        if (b._wlFiring) return;
-        b._wlFiring = true;
-        setTimeout(() => { try { delete b._wlFiring; } catch(_) {} }, 600);
-        console.log('[wl-counter] direct pointerdown for', b.getAttribute('data-wl-comp'));
-        try { window._wlClick && window._wlClick(b); } catch(e) { console.error('[wl-counter] direct failed', e); }
-      });
-      b.style.position = 'relative';
-      b.style.zIndex = '5';
-      b.style.pointerEvents = 'auto';
-    });
-  } catch(e) { console.warn('[wl-counter] post-render check skipped:', e); }
+  // ── Counter This Message has been moved INSIDE the Real Meta Ads modal
+  // (see _wlViewRealAds). The inline button on the card was unreliable across
+  // browsers/cache states, so it now lives in the modal that always loads.
 
   // Build Share of Voice horizontal bar chart
   const sovBarCtx = document.getElementById('sovBarChartIntel');
