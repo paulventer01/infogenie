@@ -2684,6 +2684,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'voiceover')            { try { buildVoiceover(); }            catch(e) { console.warn('buildVoiceover error:', e); } }
   if (viewId === 'seo-auditor')          { try { buildSeoAuditor(); }           catch(e) { console.warn('buildSeoAuditor error:', e); } }
   if (viewId === 'seo-widget')           { try { buildSeoWidget(); }            catch(e) { console.warn('buildSeoWidget error:', e); } }
+  if (viewId === 'seo-tasks')            { try { buildSeoTasks(); }             catch(e) { console.warn('buildSeoTasks error:', e); } }
+  if (viewId === 'schema-generator')     { try { buildSchemaGenerator(); }      catch(e) { console.warn('buildSchemaGenerator error:', e); } }
   if (viewId === 'social-analytics')     { try { buildSocialAnalytics(); }      catch(e) { console.warn('buildSocialAnalytics error:', e); } }
   if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
@@ -37367,7 +37369,7 @@ window.buildSeoAuditor = function() {
         return order[a.status] - order[b.status] || b.weight - a.weight;
       });
       out.innerHTML = `
-        <div style="background:linear-gradient(135deg,${gradeColor},${gradeColor}dd);color:#fff;border-radius:14px;padding:24px;margin-bottom:18px;display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center">
+        <div style="background:linear-gradient(135deg,${gradeColor},${gradeColor}dd);color:#fff;border-radius:14px;padding:24px;margin-bottom:18px;display:grid;grid-template-columns:auto 1fr auto;gap:24px;align-items:center">
           <div style="text-align:center"><div style="font-size:4rem;font-weight:800;line-height:1">${r.score}</div><div style="font-size:0.78rem;opacity:.85;font-weight:700;letter-spacing:1px">/ 100</div></div>
           <div>
             <div style="font-size:1.6rem;font-weight:800;margin-bottom:4px">Grade ${r.grade}</div>
@@ -37378,6 +37380,7 @@ window.buildSeoAuditor = function() {
               <span>✗ ${_n(r.summary.failed)} failed</span>
             </div>
           </div>
+          ${r.runId ? `<button id="seoToTasks" data-run="${r.runId}" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.5);padding:10px 16px;border-radius:8px;font-size:0.84rem;font-weight:800;cursor:pointer;white-space:nowrap">📋 Add to Task Manager</button>` : ''}
         </div>
         <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px 18px;margin-bottom:14px">
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;font-size:0.78rem">
@@ -37396,6 +37399,15 @@ window.buildSeoAuditor = function() {
             <div style="font-size:0.82rem;color:#374151;margin-left:20px">${_escapeHtml(c.message)}</div>
             ${c.status !== 'pass' ? `<div style="font-size:0.78rem;color:#7C3AED;margin-top:4px;margin-left:20px"><strong>Fix:</strong> ${_escapeHtml(c.fix)}</div>` : ''}
           </div>`).join('')}</div>`;
+      const btn = document.getElementById('seoToTasks');
+      if (btn) btn.addEventListener('click', async () => {
+        btn.disabled = true; btn.textContent = '⏳ Importing…';
+        const j = await fetch('/api/seo-tasks/import-from-audit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ auditRunId: parseInt(btn.getAttribute('data-run'),10) }) }).then(x=>x.json()).catch(e=>({ok:false,error:e.message}));
+        btn.disabled = false;
+        if (!j.ok) { btn.textContent = '⚠ ' + j.error.slice(0, 30); return; }
+        btn.textContent = `✓ ${j.created} added${j.skipped?` · ${j.skipped} dup`:''}`;
+        btn.style.background = 'rgba(255,255,255,.35)';
+      });
     } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
   });
 };
@@ -37476,4 +37488,268 @@ window.buildSeoWidget = function() {
     }).catch(() => {});
   }
   _swLoad();
+};
+
+// ============================================================================
+// SEO TASK MANAGER (Tier 24)
+// ============================================================================
+window.buildSeoTasks = function() {
+  const wrap = document.getElementById('stWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div id="stStats" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px"></div>
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px;margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+      <div><label style="display:block;font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">STATUS</label>
+        <select id="stFltStatus" style="padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem">
+          <option value="">All</option><option value="open">Open</option><option value="in_progress">In progress</option><option value="snoozed">Snoozed</option><option value="done">Done</option><option value="wont_fix">Won't fix</option>
+        </select></div>
+      <div><label style="display:block;font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">PRIORITY</label>
+        <select id="stFltPri" style="padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem">
+          <option value="">All</option><option value="1">P1 (high)</option><option value="2">P2 (med)</option><option value="3">P3 (low)</option>
+        </select></div>
+      <div style="flex:1;min-width:160px"><label style="display:block;font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">URL CONTAINS</label>
+        <input id="stFltUrl" placeholder="example.com" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+      <button id="stApply" style="background:#0066FF;color:#fff;border:none;padding:8px 16px;border-radius:5px;font-size:0.82rem;font-weight:800;cursor:pointer">Filter</button>
+      <div style="flex:1"></div>
+      <div><label style="display:block;font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">RE-AUDIT URL</label>
+        <input id="stReUrl" placeholder="https://yoursite.com" style="padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;width:240px;box-sizing:border-box"></div>
+      <button id="stReGo" style="background:linear-gradient(135deg,#10B981,#0066FF);color:#fff;border:none;padding:8px 16px;border-radius:5px;font-size:0.82rem;font-weight:800;cursor:pointer">🔄 Re-audit & auto-close</button>
+    </div>
+    <div id="stList"></div>
+  `;
+  const $ = id => document.getElementById(id);
+  const PRI = { 1:{label:'P1',color:'#EF4444'}, 2:{label:'P2',color:'#F59E0B'}, 3:{label:'P3',color:'#9CA3AF'} };
+  const STATUS_OPTS = [['open','Open'],['in_progress','In progress'],['snoozed','Snoozed'],['done','Done'],['wont_fix',"Won't fix"]];
+
+  function loadStats() {
+    fetch('/api/seo-tasks/stats').then(x=>x.json()).then(j => {
+      if (!j.ok) return;
+      const s = j.stats;
+      const card = (label, n, color) => `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:12px;text-align:center"><div style="font-size:1.6rem;font-weight:800;color:${color}">${_n(n||0)}</div><div style="font-size:0.7rem;color:#6B7280;font-weight:700;margin-top:2px">${label}</div></div>`;
+      $('stStats').innerHTML = card('OPEN', s.open, '#EF4444') + card('IN PROGRESS', s.in_progress, '#F59E0B') + card('SNOOZED', s.snoozed, '#9CA3AF') + card('DONE', s.done, '#10B981') + card('TOTAL', s.total, '#0A1628');
+    }).catch(()=>{});
+  }
+  function load() {
+    const q = new URLSearchParams();
+    if ($('stFltStatus').value) q.set('status', $('stFltStatus').value);
+    if ($('stFltPri').value) q.set('priority', $('stFltPri').value);
+    if ($('stFltUrl').value) q.set('url', $('stFltUrl').value);
+    fetch('/api/seo-tasks/list?' + q.toString()).then(x=>x.json()).then(j => {
+      if (!j.ok) { $('stList').innerHTML = '<div style="color:#B91C1C">'+_escapeHtml(j.error)+'</div>'; return; }
+      if (!j.tasks.length) { $('stList').innerHTML = '<div style="color:#9CA3AF;text-align:center;padding:30px;background:#fff;border-radius:10px">No tasks yet. Run an audit and click <strong>📋 Add to Task Manager</strong>.</div>'; return; }
+      $('stList').innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+          <thead><tr style="background:#F9FAFB">
+            <th style="padding:10px;text-align:left;border-bottom:1px solid #E5E7EB;width:50px">P</th>
+            <th style="padding:10px;text-align:left;border-bottom:1px solid #E5E7EB">Issue</th>
+            <th style="padding:10px;text-align:left;border-bottom:1px solid #E5E7EB">URL</th>
+            <th style="padding:10px;text-align:left;border-bottom:1px solid #E5E7EB;width:130px">Status</th>
+            <th style="padding:10px;text-align:left;border-bottom:1px solid #E5E7EB;width:140px">Assignee</th>
+            <th style="padding:10px;text-align:left;border-bottom:1px solid #E5E7EB;width:120px">Due</th>
+            <th style="padding:10px;text-align:left;border-bottom:1px solid #E5E7EB;width:50px"></th>
+          </tr></thead>
+          <tbody>${j.tasks.map(t => {
+            const p = PRI[t.priority] || PRI[3];
+            const isClosed = t.status === 'done' || t.status === 'wont_fix';
+            return `<tr data-id="${t.id}" style="${isClosed?'opacity:0.55':''}">
+              <td style="padding:10px;border-bottom:1px solid #F3F4F6"><span style="background:${p.color};color:#fff;padding:2px 8px;border-radius:10px;font-size:0.68rem;font-weight:800">${p.label}</span></td>
+              <td style="padding:10px;border-bottom:1px solid #F3F4F6"><strong style="color:#0A1628">${_escapeHtml(t.label)}</strong><div style="font-size:0.74rem;color:#6B7280;margin-top:2px">${_escapeHtml((t.message||'').slice(0,120))}</div>${t.fix?`<div style="font-size:0.72rem;color:#7C3AED;margin-top:2px"><strong>Fix:</strong> ${_escapeHtml(t.fix.slice(0,140))}</div>`:''}</td>
+              <td style="padding:10px;border-bottom:1px solid #F3F4F6"><a href="${_safeUrl(t.source_url)}" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:none;font-size:0.78rem">${_escapeHtml((t.source_url||'').slice(0,40))}↗</a></td>
+              <td style="padding:10px;border-bottom:1px solid #F3F4F6"><select class="stStatus" style="width:100%;padding:5px;border:1px solid #D1D5DB;border-radius:4px;font-size:0.76rem">${STATUS_OPTS.map(([v,l]) => `<option value="${v}"${t.status===v?' selected':''}>${l}</option>`).join('')}</select></td>
+              <td style="padding:10px;border-bottom:1px solid #F3F4F6"><input class="stAssignee" value="${_escapeHtml(t.assignee||'')}" placeholder="—" style="width:100%;padding:5px;border:1px solid #D1D5DB;border-radius:4px;font-size:0.76rem;box-sizing:border-box"></td>
+              <td style="padding:10px;border-bottom:1px solid #F3F4F6"><input type="date" class="stDue" value="${t.due_date?String(t.due_date).slice(0,10):''}" style="padding:5px;border:1px solid #D1D5DB;border-radius:4px;font-size:0.76rem"></td>
+              <td style="padding:10px;border-bottom:1px solid #F3F4F6"><button class="stDel" style="background:none;border:none;color:#B91C1C;cursor:pointer;font-size:1rem">🗑</button></td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table></div>`;
+      // Wire up edits
+      $('stList').querySelectorAll('tr[data-id]').forEach(tr => {
+        const id = tr.getAttribute('data-id');
+        const patch = body => fetch('/api/seo-tasks/' + id, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(()=>loadStats());
+        tr.querySelector('.stStatus').addEventListener('change', e => { patch({ status: e.target.value }); tr.style.opacity = (e.target.value==='done'||e.target.value==='wont_fix') ? 0.55 : 1; });
+        tr.querySelector('.stAssignee').addEventListener('change', e => patch({ assignee: e.target.value }));
+        tr.querySelector('.stDue').addEventListener('change', e => patch({ dueDate: e.target.value || null }));
+        tr.querySelector('.stDel').addEventListener('click', () => { if (!confirm('Delete this task?')) return; fetch('/api/seo-tasks/' + id, { method:'DELETE' }).then(() => { load(); loadStats(); }); });
+      });
+    }).catch(e => { $('stList').innerHTML = '<div style="color:#B91C1C">'+_escapeHtml(e.message)+'</div>'; });
+  }
+  $('stApply').addEventListener('click', load);
+  $('stReGo').addEventListener('click', async () => {
+    let url = $('stReUrl').value.trim(); if (!url) { alert('Enter a URL to re-audit'); return; }
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    $('stReGo').disabled = true; $('stReGo').textContent = '⏳ Auditing…';
+    const r = await fetch('/api/seo-tasks/reaudit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) }).then(x => x.json()).catch(e => ({ ok:false, error:e.message }));
+    $('stReGo').disabled = false; $('stReGo').textContent = '🔄 Re-audit & auto-close';
+    if (!r.ok) { alert(r.error); return; }
+    alert(`✓ New score: ${r.score}/100 (${r.grade})\nAuto-closed: ${r.autoClosed} task(s)\nNewly imported: ${r.imported} task(s)`);
+    load(); loadStats();
+  });
+  loadStats(); load();
+};
+
+// ============================================================================
+// SCHEMA.ORG / JSON-LD GENERATOR (Tier 25)
+// ============================================================================
+window.buildSchemaGenerator = function() {
+  const wrap = document.getElementById('sgWrap'); if (!wrap) return;
+  wrap.innerHTML = '<div style="color:#9CA3AF">Loading schema types…</div>';
+  fetch('/api/schema-generator/types').then(x=>x.json()).then(j => {
+    if (!j.ok) { wrap.innerHTML = '<div style="color:#B91C1C">'+_escapeHtml(j.error||'load failed')+'</div>'; return; }
+    const TYPES = j.types;
+    const typeKeys = Object.keys(TYPES);
+    wrap.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:14px">
+        <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:6px">SCHEMA TYPE</label>
+        <div id="sgTypeBar" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
+          <h3 style="margin:0 0 12px;font-size:1rem;color:#0A1628">📝 Fields</h3>
+          <div id="sgForm"></div>
+          <div style="margin-top:14px;display:flex;gap:8px">
+            <input id="sgName" placeholder="Block name (for saving)" style="flex:1;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+            <button id="sgSave" style="background:linear-gradient(135deg,#7C3AED,#0066FF);color:#fff;border:none;padding:8px 16px;border-radius:5px;font-size:0.82rem;font-weight:800;cursor:pointer">💾 Save</button>
+          </div>
+        </div>
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <h3 style="margin:0;font-size:1rem;color:#0A1628">📋 JSON-LD output</h3>
+            <button id="sgCopy" style="background:#0066FF;color:#fff;border:none;padding:6px 14px;border-radius:5px;font-size:0.78rem;font-weight:700;cursor:pointer">📋 Copy</button>
+          </div>
+          <pre id="sgOut" style="background:#0F172A;color:#A7F3D0;padding:14px;border-radius:8px;font-size:0.74rem;line-height:1.5;overflow:auto;max-height:480px;margin:0"><code>Pick a type to start →</code></pre>
+        </div>
+      </div>
+      <div style="margin-top:24px"><h3 style="font-size:0.94rem;color:#374151;margin-bottom:10px">💾 Saved blocks</h3><div id="sgSaved"></div></div>
+    `;
+    const $ = id => document.getElementById(id);
+    let currentType = typeKeys[0];
+
+    $('sgTypeBar').innerHTML = typeKeys.map(t => `<button data-t="${t}" class="sgType" style="background:#fff;border:1px solid #D1D5DB;color:#374151;padding:7px 14px;border-radius:18px;font-size:0.8rem;font-weight:700;cursor:pointer">${_escapeHtml(TYPES[t].label||t)}</button>`).join('');
+    function selectType(t) {
+      currentType = t;
+      $('sgTypeBar').querySelectorAll('.sgType').forEach(b => {
+        const sel = b.getAttribute('data-t')===t;
+        b.style.background = sel ? '#0066FF' : '#fff';
+        b.style.color = sel ? '#fff' : '#374151';
+        b.style.borderColor = sel ? '#0066FF' : '#D1D5DB';
+      });
+      renderForm();
+    }
+    function fieldInput(f, value, prefix='') {
+      const id = `sgf_${prefix}${f.key}`;
+      const v = value == null ? '' : value;
+      const req = f.required ? '<span style="color:#EF4444">*</span>' : '';
+      const help = f.help ? `<div style="font-size:0.7rem;color:#9CA3AF;margin-top:2px">${_escapeHtml(f.help)}</div>` : '';
+      if (f.kind === 'textarea') return `<div style="margin-bottom:10px"><label style="display:block;font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:3px">${_escapeHtml(f.key)} ${req}</label><textarea id="${id}" rows="2" placeholder="${_escapeHtml(f.placeholder||'')}" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box;font-family:inherit;resize:vertical">${_escapeHtml(v)}</textarea>${help}</div>`;
+      if (f.kind === 'date')   return `<div style="margin-bottom:10px"><label style="display:block;font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:3px">${_escapeHtml(f.key)} ${req}</label><input id="${id}" type="date" value="${_escapeHtml(v)}" style="padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem">${help}</div>`;
+      if (f.kind === 'number') return `<div style="margin-bottom:10px"><label style="display:block;font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:3px">${_escapeHtml(f.key)} ${req}</label><input id="${id}" type="number" step="any" value="${_escapeHtml(v)}" placeholder="${_escapeHtml(f.placeholder||'')}" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">${help}</div>`;
+      // text/url/email/tel
+      return `<div style="margin-bottom:10px"><label style="display:block;font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:3px">${_escapeHtml(f.key)} ${req}</label><input id="${id}" type="${f.kind==='url'?'url':f.kind==='email'?'email':f.kind==='tel'?'tel':'text'}" value="${_escapeHtml(v)}" placeholder="${_escapeHtml(f.placeholder||'')}" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">${help}</div>`;
+    }
+    function renderForm() {
+      const def = TYPES[currentType];
+      const html = def.fields.map(f => {
+        if (f.kind === 'repeat') {
+          // repeat group — initial 1 row
+          const subs = f.subFields || [{ key: f.subKey || 'value', kind: 'text', placeholder: f.placeholder || '' }];
+          return `<div style="margin-bottom:14px;border:1px dashed #D1D5DB;border-radius:8px;padding:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <strong style="font-size:0.78rem;color:#374151">${_escapeHtml(f.key)} ${f.required?'<span style="color:#EF4444">*</span>':''}</strong>
+              <button data-key="${f.key}" data-subs='${JSON.stringify(subs).replace(/'/g, "&apos;")}' class="sgAddRow" style="background:#10B981;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:0.74rem;font-weight:700;cursor:pointer">+ Add row</button>
+            </div>
+            <div id="sgRep_${f.key}" data-subs='${JSON.stringify(subs).replace(/'/g, "&apos;")}'></div>
+            ${f.help?`<div style="font-size:0.7rem;color:#9CA3AF;margin-top:4px">${_escapeHtml(f.help)}</div>`:''}
+          </div>`;
+        }
+        return fieldInput(f, '');
+      }).join('');
+      $('sgForm').innerHTML = html;
+      // Add an initial row to each repeat group
+      def.fields.filter(f => f.kind === 'repeat').forEach(f => addRepeatRow(f.key, f.subFields || [{ key: f.subKey || 'value', kind: 'text', placeholder: f.placeholder || '' }]));
+      $('sgForm').querySelectorAll('.sgAddRow').forEach(b => b.addEventListener('click', e => {
+        const key = e.currentTarget.getAttribute('data-key');
+        const subs = JSON.parse(e.currentTarget.getAttribute('data-subs').replace(/&apos;/g, "'"));
+        addRepeatRow(key, subs);
+      }));
+      // Live regenerate on every input
+      $('sgForm').addEventListener('input', regen);
+      regen();
+    }
+    function addRepeatRow(key, subs) {
+      const container = document.getElementById('sgRep_' + key);
+      const idx = container.children.length;
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:start';
+      row.innerHTML = subs.map(s => {
+        const inputId = `sgrep_${key}_${idx}_${s.key}`;
+        if (s.kind === 'textarea') return `<textarea data-key="${s.key}" id="${inputId}" rows="2" placeholder="${_escapeHtml(s.placeholder||s.key)}" style="flex:1;padding:6px;border:1px solid #D1D5DB;border-radius:4px;font-size:0.78rem;font-family:inherit;resize:vertical"></textarea>`;
+        return `<input data-key="${s.key}" id="${inputId}" type="${s.kind==='url'?'url':'text'}" placeholder="${_escapeHtml(s.placeholder||s.key)}" style="flex:1;padding:6px;border:1px solid #D1D5DB;border-radius:4px;font-size:0.78rem">`;
+      }).join('') + '<button class="sgRmRow" style="background:none;border:none;color:#B91C1C;cursor:pointer;font-size:1rem">×</button>';
+      container.appendChild(row);
+      row.querySelector('.sgRmRow').addEventListener('click', () => { row.remove(); regen(); });
+    }
+    function collect() {
+      const def = TYPES[currentType];
+      const fields = {};
+      def.fields.forEach(f => {
+        if (f.kind === 'repeat') {
+          const container = document.getElementById('sgRep_' + f.key);
+          const subs = f.subFields || [{ key: f.subKey || 'value' }];
+          const rows = Array.from(container.children).map(row => {
+            if (subs.length === 1) {
+              const inp = row.querySelector('[data-key]'); return inp ? inp.value.trim() : '';
+            }
+            const obj = {};
+            row.querySelectorAll('[data-key]').forEach(inp => { obj[inp.getAttribute('data-key')] = inp.value.trim(); });
+            return obj;
+          }).filter(v => v && (typeof v === 'string' ? v : Object.values(v).some(x => x)));
+          if (rows.length) fields[f.key] = rows;
+        } else {
+          const v = (document.getElementById('sgf_' + f.key)?.value || '').trim();
+          if (v) fields[f.key] = v;
+        }
+      });
+      return fields;
+    }
+    function regen() {
+      const fields = collect();
+      fetch('/api/schema-generator/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type: currentType, fields }) })
+        .then(x => x.json()).then(j => {
+          if (!j.ok) { $('sgOut').innerHTML = '<code style="color:#FCA5A5">'+_escapeHtml(j.error)+'</code>'; return; }
+          $('sgOut').innerHTML = '<code>' + _escapeHtml(j.jsonld) + '</code>';
+        }).catch(e => { $('sgOut').innerHTML = '<code style="color:#FCA5A5">'+_escapeHtml(e.message)+'</code>'; });
+    }
+    function loadSaved() {
+      fetch('/api/schema-generator/list').then(x=>x.json()).then(j => {
+        if (!j.ok) return;
+        if (!j.blocks.length) { $('sgSaved').innerHTML = '<div style="color:#9CA3AF;font-size:0.82rem">No saved blocks yet.</div>'; return; }
+        $('sgSaved').innerHTML = j.blocks.map(b => `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+          <div><strong>${_escapeHtml(b.name)}</strong> <span style="background:#EEF2FF;color:#4338CA;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:700;margin-left:6px">${_escapeHtml(b.type)}</span><div style="font-size:0.7rem;color:#9CA3AF;margin-top:2px">${new Date(b.created_at).toLocaleString()}</div></div>
+          <div style="display:flex;gap:6px"><button data-b='${JSON.stringify(b.jsonld).replace(/'/g, "&apos;")}' class="sgCopySaved" style="background:#0066FF;color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:0.74rem;font-weight:700;cursor:pointer">📋 Copy</button><button data-id="${b.id}" class="sgDel" style="background:none;border:1px solid #FCA5A5;color:#B91C1C;padding:5px 10px;border-radius:4px;font-size:0.74rem;font-weight:700;cursor:pointer">🗑</button></div>
+        </div>`).join('');
+        $('sgSaved').querySelectorAll('.sgCopySaved').forEach(b => b.addEventListener('click', e => {
+          const text = JSON.parse(e.currentTarget.getAttribute('data-b').replace(/&apos;/g, "'"));
+          navigator.clipboard.writeText(text); const o = e.currentTarget.textContent; e.currentTarget.textContent = '✓'; setTimeout(()=>e.currentTarget.textContent=o, 1500);
+        }));
+        $('sgSaved').querySelectorAll('.sgDel').forEach(b => b.addEventListener('click', async e => {
+          if (!confirm('Delete this saved block?')) return;
+          await fetch('/api/schema-generator/' + e.currentTarget.getAttribute('data-id'), { method:'DELETE' });
+          loadSaved();
+        }));
+      });
+    }
+    $('sgCopy').addEventListener('click', () => {
+      const text = $('sgOut').textContent || '';
+      navigator.clipboard.writeText(text).then(() => { const o = $('sgCopy').textContent; $('sgCopy').textContent = '✓ Copied'; setTimeout(()=>$('sgCopy').textContent=o, 1500); });
+    });
+    $('sgSave').addEventListener('click', async () => {
+      const name = $('sgName').value.trim() || `${currentType} ${new Date().toLocaleDateString()}`;
+      const fields = collect();
+      const r = await fetch('/api/schema-generator/save', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, type: currentType, fields }) }).then(x=>x.json());
+      if (!r.ok) { alert(r.error); return; }
+      $('sgName').value = ''; loadSaved();
+    });
+    $('sgTypeBar').querySelectorAll('.sgType').forEach(b => b.addEventListener('click', e => selectType(e.currentTarget.getAttribute('data-t'))));
+    selectType(currentType);
+    loadSaved();
+  });
 };

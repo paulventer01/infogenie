@@ -8653,6 +8653,21 @@ app.use('/api/seo-widget', _seoWidgetRouter);
   }
 } catch (e) { console.warn('[tier21-23] schema init failed:', e.message); }})();
 
+// ── Tier 24 + 25 ───────────────────────────────────────────────────────────
+const _seoTasksSchema = require('./services/seo_tasks/schema');
+const _seoTasksRouter = require('./services/seo_tasks/api');
+const _schemaGenSchema = require('./services/schema_generator/schema');
+const _schemaGenRouter = require('./services/schema_generator/api');
+app.use('/api/seo-tasks', _seoTasksRouter);
+app.use('/api/schema-generator', _schemaGenRouter);
+(async () => { try {
+  if (process.env.DATABASE_URL) {
+    await _seoTasksSchema.ensureSeoTasksSchema();
+    await _schemaGenSchema.ensureSchemaGeneratorSchema();
+    console.log('[tier24-25] seo-tasks + schema-generator schemas ready');
+  }
+} catch (e) { console.warn('[tier24-25] schema init failed:', e.message); }})();
+
 // ── Tier 17 ────────────────────────────────────────────────────────────────
 const _redditRouter = require('./services/reddit_pulse/api');
 const _redditSchema = require('./services/reddit_pulse/schema');

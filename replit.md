@@ -5,7 +5,7 @@ InfoGenie is an AI-powered marketing intelligence and campaign automation platfo
 ## Run & Operate
 
 *   **Run**: `node server.js`
-*   **Env Vars**: `AI_INTEGRATIONS_OPENAI_API_KEY`, `AI_INTEGRATIONS_ANTHROPIC_API_KEY`, `RESEND_WEBHOOK_SECRET`, `HUBSPOT_PRIVATE_APP_TOKEN`, `FIRECRAWL_API_KEY`, `PERPLEXITY_API_KEY`, `GEMINI_API_KEY`, `INFOGENIE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_TOKEN`, `DATABASE_URL`, `SLACK_WEBHOOK_URL`, `APOLLO_API_KEY`, `BUILTWITH_API_KEY`, `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID`, `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_CUSTOMER_ID`, `TIKTOK_ACCESS_TOKEN`, `TIKTOK_ADVERTISER_ID`, `ZERNIO_API_KEY`.
+*   **Env Vars**: `AI_INTEGRATIONS_OPENAI_API_KEY`, `AI_INTEGRATIONS_ANTHROPIC_API_KEY`, `RESEND_WEBHOOK_SECRET`, `HUBSPOT_PRIVATE_APP_TOKEN`, `FIRECRAWL_API_KEY`, `PERPLEXITY_API_KEY`, `GEMINI_API_KEY`, `INFOGENIE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_TOKEN`, `DATABASE_URL`, `SLACK_WEBHOOK_URL`, `APOLLO_API_KEY`, `BUILTWITH_API_KEY`, `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID`, `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_CUSTOMER_ID`, `TIKTOK_ACCESS_TOKEN`, `TIKTOK_ADVERTISER_ID`, `TIKTOK_RAPIDAPI_KEY` (optional paid fallback for T20 TikTok Downloader, ~$10/mo), `ZERNIO_API_KEY`.
 
 ## Stack
 
@@ -63,6 +63,8 @@ InfoGenie is an AI-powered marketing intelligence and campaign automation platfo
     *   **T21** Voiceover (OpenAI TTS, 6 voices × 2 quality tiers, mp3 output, pairs with Video Script Generator)
     *   **T22** SEO On-Page Auditor (regex-parsed 19-check 100-pt audit + A-F grade + prioritised fixes, pairs with Web Vitals)
     *   **T23** Embeddable Audit Widget (paste-once `<script>` snippet → visitor URL+email → teaser score + lead capture, built on T22)
+    *   **T24** SEO Task Manager (every T22 warn/fail becomes a tracked task with priority/assignee/due-date · re-audit auto-closes done · dup-skips on url+check_id, pairs with T22)
+    *   **T25** Schema.org / JSON-LD Generator (form-driven 8 types — Organization · Article · Product · FAQPage · LocalBusiness · BreadcrumbList · Event · Recipe — outputs paste-ready `<script type="application/ld+json">`, boosts T1 AI Visibility)
 *   **Dynamic Audiences (Reach → Dynamic Audiences)**: Real-time rule-based contact segments. Phase 1 builder UI + live preview · Phase 2 15-min sweep cron + HubSpot webhook (HMAC-validated when `HUBSPOT_WEBHOOK_SECRET` is set) · Phase 3 bind to Drip email sequence (only `audienceBindingId`-tagged enrollments touched, manual untouched, mutations under `global._dripStore.lock`) · Phase 4A mirror to HubSpot Static List (auto-creates via `POST /crm/v3/lists` when `crm.lists.write` scope present) · Phase 4B churn-risk audience → single-touch AI win-back drip tagged `reng:<bindingId>`. All three bridges run after membership write commits, fanned out per-contact in parallel with per-target try/catch.
 
 ## Product

@@ -21,62 +21,129 @@ function _isTiktokUrl(raw) {
   } catch { return false; }
 }
 
-// tikwm.com is a free, no-auth public TikTok metadata + no-watermark video resolver
-// used by many open-source TikTok tools. We treat it as best-effort and degrade gracefully.
-function _resolveOne(url) {
+// Two-stage resolver:
+//   Stage 1 = tikwm.com (free, no-auth public TikTok metadata + no-watermark video).
+//   Stage 2 = RapidAPI's tiktok-scraper7 (paid ~$10/mo, much higher rate limits +
+//             survives when tikwm gets WAF-blocked or returns 'rate limited').
+// Stage 2 is only attempted when TIKTOK_RAPIDAPI_KEY is set AND stage 1 failed.
+// Both adapters normalise to the same response shape so the frontend never changes.
+function _normalize(url, x, hashtagsFrom) {
+  const hashtags = (hashtagsFrom || '').match(/#[\p{L}\p{N}_]+/gu) || [];
+  return {
+    url, ok: true,
+    author: x.author || '',
+    authorName: x.authorName || '',
+    authorAvatar: x.authorAvatar || '',
+    caption: x.caption || '',
+    hashtags,
+    music: x.music || '',
+    musicAuthor: x.musicAuthor || '',
+    likes: Number(x.likes || 0),
+    views: Number(x.views || 0),
+    comments: Number(x.comments || 0),
+    shares: Number(x.shares || 0),
+    duration: Number(x.duration || 0),
+    videoUrl: x.videoUrl || '',
+    coverUrl: x.coverUrl || '',
+    createTime: x.createTime || null,
+    via: x.via || ''
+  };
+}
+
+function _resolveTikwm(url) {
   return new Promise(resolve => {
     const body = `url=${encodeURIComponent(url)}&hd=1`;
     const req = _https.request({
-      hostname: 'tikwm.com',
-      path: '/api/',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(body),
-        'User-Agent': 'Mozilla/5.0 (compatible; InfoGenie/1.0)'
-      }
+      hostname: 'tikwm.com', path: '/api/', method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body), 'User-Agent': 'Mozilla/5.0 (compatible; InfoGenie/1.0)' }
     }, r => {
-      let d = '';
-      r.on('data', c => d += c);
+      let d = ''; r.on('data', c => d += c);
       r.on('end', () => {
         try {
           const j = JSON.parse(d);
-          if (j.code !== 0 || !j.data) return resolve({ url, ok: false, error: j.msg || 'Resolver returned no data (URL may be private, deleted, or rate-limited)' });
+          if (j.code !== 0 || !j.data) return resolve({ url, ok: false, error: j.msg || 'tikwm returned no data' });
           const x = j.data;
-          const hashtags = (x.title || '').match(/#[\p{L}\p{N}_]+/gu) || [];
-          resolve({
-            url,
-            ok: true,
+          resolve(_normalize(url, {
             author: x.author?.unique_id || x.author?.nickname || '',
             authorName: x.author?.nickname || '',
             authorAvatar: x.author?.avatar || '',
             caption: x.title || '',
-            hashtags,
             music: x.music_info?.title || x.music || '',
             musicAuthor: x.music_info?.author || '',
-            likes: Number(x.digg_count || 0),
-            views: Number(x.play_count || 0),
-            comments: Number(x.comment_count || 0),
-            shares: Number(x.share_count || 0),
-            duration: Number(x.duration || 0),
+            likes: x.digg_count, views: x.play_count, comments: x.comment_count, shares: x.share_count,
+            duration: x.duration,
             videoUrl: x.hdplay || x.play || x.wmplay || '',
             coverUrl: x.cover || x.origin_cover || '',
-            createTime: x.create_time ? new Date(x.create_time * 1000).toISOString() : null
-          });
-        } catch (e) {
-          resolve({ url, ok: false, error: 'Resolver returned invalid response' });
-        }
+            createTime: x.create_time ? new Date(x.create_time * 1000).toISOString() : null,
+            via: 'tikwm.com'
+          }, x.title));
+        } catch (e) { resolve({ url, ok: false, error: 'tikwm: invalid response' }); }
       });
     });
-    req.on('error', e => resolve({ url, ok: false, error: e.message }));
-    req.setTimeout(20000, () => { req.destroy(); resolve({ url, ok: false, error: 'Timeout (20s)' }); });
-    req.write(body);
+    req.on('error', e => resolve({ url, ok: false, error: 'tikwm: ' + e.message }));
+    req.setTimeout(15000, () => { req.destroy(); resolve({ url, ok: false, error: 'tikwm: timeout' }); });
+    req.write(body); req.end();
+  });
+}
+
+// RapidAPI fallback — uses the popular `tiktok-scraper7` endpoint
+// (https://rapidapi.com/yi005/api/tiktok-scraper7). Free tier 100 req/mo,
+// $10/mo for 100k. Set TIKTOK_RAPIDAPI_KEY to enable. Same response shape.
+function _resolveRapidApi(url) {
+  return new Promise(resolve => {
+    const key = process.env.TIKTOK_RAPIDAPI_KEY;
+    if (!key) return resolve({ url, ok: false, error: 'RapidAPI key not configured' });
+    const path = `/?url=${encodeURIComponent(url)}&hd=1`;
+    const req = _https.request({
+      hostname: 'tiktok-scraper7.p.rapidapi.com', path, method: 'GET',
+      headers: { 'X-RapidAPI-Key': key, 'X-RapidAPI-Host': 'tiktok-scraper7.p.rapidapi.com' }
+    }, r => {
+      let d = ''; r.on('data', c => d += c);
+      r.on('end', () => {
+        try {
+          const j = JSON.parse(d);
+          if (j.code !== 0 || !j.data) return resolve({ url, ok: false, error: 'RapidAPI: ' + (j.msg || 'no data') });
+          const x = j.data;
+          resolve(_normalize(url, {
+            author: x.author?.unique_id || x.author?.nickname || '',
+            authorName: x.author?.nickname || '',
+            authorAvatar: x.author?.avatar || '',
+            caption: x.title || '',
+            music: x.music_info?.title || x.music || '',
+            musicAuthor: x.music_info?.author || '',
+            likes: x.digg_count, views: x.play_count, comments: x.comment_count, shares: x.share_count,
+            duration: x.duration,
+            videoUrl: x.hdplay || x.play || x.wmplay || '',
+            coverUrl: x.cover || x.origin_cover || '',
+            createTime: x.create_time ? new Date(x.create_time * 1000).toISOString() : null,
+            via: 'rapidapi:tiktok-scraper7'
+          }, x.title));
+        } catch (e) { resolve({ url, ok: false, error: 'RapidAPI: invalid response' }); }
+      });
+    });
+    req.on('error', e => resolve({ url, ok: false, error: 'RapidAPI: ' + e.message }));
+    req.setTimeout(20000, () => { req.destroy(); resolve({ url, ok: false, error: 'RapidAPI: timeout' }); });
     req.end();
   });
 }
 
+async function _resolveOne(url) {
+  const first = await _resolveTikwm(url);
+  if (first.ok) return first;
+  if (!process.env.TIKTOK_RAPIDAPI_KEY) {
+    return { url, ok: false, error: first.error + ' (set TIKTOK_RAPIDAPI_KEY for paid fallback)' };
+  }
+  const second = await _resolveRapidApi(url);
+  if (second.ok) return second;
+  return { url, ok: false, error: `Both resolvers failed — tikwm: ${first.error} | rapidapi: ${second.error}` };
+}
+
 router.get('/test', (req, res) => {
-  res.json({ ok: true, resolver: 'tikwm.com (public, no auth)', db: _db.hasDb && _db.hasDb() });
+  res.json({
+    ok: true,
+    resolvers: ['tikwm.com (free)', process.env.TIKTOK_RAPIDAPI_KEY ? 'rapidapi:tiktok-scraper7 (paid fallback)' : 'rapidapi: not configured (set TIKTOK_RAPIDAPI_KEY to enable)'],
+    db: _db.hasDb && _db.hasDb()
+  });
 });
 
 // POST /api/tiktok-downloader/parse  { urls: ["https://...","..."] }
