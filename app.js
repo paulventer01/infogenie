@@ -37961,7 +37961,7 @@ window.buildUnifiedInbox = function() {
 
 // ── Tier 27 — Conversion Boosters ──────────────────────────────────────────
 window.buildConversionBoosters = function() {
-  const wrap = document.getElementById('cbWrap');
+  const wrap = document.getElementById('cnvbWrap');
   if (!wrap) return;
   const esc = (window._escapeHtml) || ((s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])));
 
