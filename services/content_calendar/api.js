@@ -91,6 +91,41 @@ router.post('/generate', async (req, res) => {
   res.json({ ok:true, source, brand, days, channels, posts: result.posts });
 });
 
+// POST /add — append a single ready-made post (used by Win/Loss "Add to
+// Calendar" button to schedule a generated counter-message). Persists as a
+// 1-day "ad-hoc" run so it shows up in /history and /:id alongside
+// AI-generated calendars.
+router.post('/add', async (req, res) => {
+  const brand    = String(req.body?.brand    || 'Counter-Message').trim().slice(0, 80);
+  const channel  = String(req.body?.channel  || 'facebook').toLowerCase();
+  const headline = String(req.body?.headline || '').slice(0, 200);
+  const copy     = String(req.body?.copy     || req.body?.body || '').slice(0, 2000);
+  const cta      = String(req.body?.cta      || 'Learn More').slice(0, 60);
+  const date     = String(req.body?.date     || new Date(Date.now()+864e5).toISOString().slice(0,10)).slice(0,10);
+  const note     = String(req.body?.note     || '').slice(0, 500);
+  const channelClean = VALID_CHANNELS.includes(channel) ? channel : 'facebook';
+  if (!copy && !headline) return _err(res, 400, 'headline or copy required');
+  const post = {
+    day: 1, date, channel: channelClean,
+    format: channelClean === 'tiktok' ? 'short' : channelClean === 'instagram' ? 'reel' : 'post',
+    hook: headline || copy.slice(0, 60),
+    copy: copy || headline,
+    hashtags: [`#${brand.replace(/\s+/g,'')}`, '#counter', '#campaign'],
+    cta,
+    best_time: channelClean === 'linkedin' ? '08:30' : channelClean === 'tiktok' ? '19:00' : '12:00',
+    note,
+  };
+  if (_db.hasDb()) {
+    try {
+      const r = await _db.getPool().query(
+        `INSERT INTO content_calendar_runs (brand, goal, channels, days, posts, generated_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [brand, note || 'Counter-message scheduled from Win/Loss', JSON.stringify([channelClean]), 1, JSON.stringify([post]), 'wl-counter']);
+      return res.json({ ok:true, id: r.rows[0].id, post });
+    } catch (e) { return _err(res, 500, 'persist failed: ' + e.message); }
+  }
+  res.json({ ok:true, id: null, post, note: 'no-db — post returned but not persisted' });
+});
+
 router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));

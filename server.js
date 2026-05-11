@@ -582,6 +582,7 @@ Return only this JSON:
 // to generate 3 counter-message variants tailored to neutralise the competitor.
 // Tries OpenAI first, falls back to Anthropic, then to a deterministic template.
 app.post('/api/wl/counter-message', async (req, res) => {
+ try {
   const {
     comp     = 'Competitor',
     channel  = 'Google Ads',
@@ -616,44 +617,120 @@ REQUIREMENTS
 Return ONLY this JSON shape:
 {"variants":[{"angle":"short label","headline":"...","body":"...","cta":"...","why":"1 sentence on why this neutralises the weakness"},{"angle":"...","headline":"...","body":"...","cta":"...","why":"..."},{"angle":"...","headline":"...","body":"...","cta":"...","why":"..."}],"strategy":"2-3 sentence overall counter-positioning strategy","targeting":"1 sentence on which audience segment to target with these"}`;
 
-  // ── Try OpenAI first ──
-  try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      response_format: { type: 'json_object' },
-      max_tokens: 900,
-      temperature: 0.75,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: userPrompt }
-      ]
-    });
-    const parsed = JSON.parse(completion.choices[0].message.content);
-    if (!Array.isArray(parsed.variants) || parsed.variants.length < 1) throw new Error('bad shape');
-    return res.json({ success: true, source: 'openai', ...parsed });
-  } catch(openaiErr) {
-    console.warn('[wl-counter] OpenAI failed, trying Anthropic:', openaiErr.message);
+  // ── Run ALL available AIs in PARALLEL ──
+  // Each provider returns ONE variant tagged with its source. The blender
+  // below merges them into a single response so the user sees genuine
+  // multi-LLM output (OpenAI + Claude + Perplexity + Gemini) instead of
+  // serial fallback. If a provider fails or is not configured, it's silently
+  // dropped — only successful variants make it to the user.
+  const _stripFences = t => { const m = String(t||'').match(/\{[\s\S]*\}/); return m ? m[0] : ''; };
+  const _normVariants = (parsed, src) => {
+    if (!parsed) return [];
+    const arr = Array.isArray(parsed.variants) ? parsed.variants : [];
+    return arr.slice(0, 2).map(v => ({
+      angle:    String(v.angle    || src),
+      headline: String(v.headline || ''),
+      body:     String(v.body     || ''),
+      cta:      String(v.cta      || 'Learn More'),
+      why:      String(v.why      || ''),
+      _source:  src,
+    })).filter(v => v.headline && v.body);
+  };
 
-    // ── Fallback to Anthropic ──
+  const tasks = [];
+  const sysJsonOnly = systemPrompt + ' Output ONLY the JSON object — no markdown, no surrounding prose.';
+
+  // OpenAI GPT-4o
+  const okKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  if (okKey && !/^_DUMMY/i.test(okKey)) tasks.push((async () => {
     try {
-      const msg = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 900,
-        system: systemPrompt + ' Output ONLY the JSON object — no surrounding prose.',
-        messages: [{ role: 'user', content: userPrompt }]
+      const c = await openai.chat.completions.create({
+        model: 'gpt-4o', response_format: { type: 'json_object' },
+        max_tokens: 700, temperature: 0.75,
+        messages: [{ role:'system', content:systemPrompt }, { role:'user', content:userPrompt }],
       });
-      const text = (msg.content || [])
-        .map(c => (c && c.text) ? c.text : '')
-        .join('')
-        .trim();
-      // Strip ```json fences if present
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('no JSON object in Anthropic response');
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (!Array.isArray(parsed.variants) || parsed.variants.length < 1) throw new Error('bad shape');
-      return res.json({ success: true, source: 'anthropic', ...parsed });
-    } catch(anthropicErr) {
-      console.error('[wl-counter] Anthropic also failed:', anthropicErr.message);
+      const parsed = JSON.parse(c.choices[0].message.content);
+      return { provider:'openai', label:'⚡ OpenAI GPT-4o', variants:_normVariants(parsed,'OpenAI GPT-4o'),
+               strategy:parsed.strategy||'', targeting:parsed.targeting||'' };
+    } catch(e) { console.warn('[wl-counter] OpenAI:', e.message); return null; }
+  })());
+
+  // Anthropic Claude
+  const akKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+  if (akKey && !/^_DUMMY/i.test(akKey)) tasks.push((async () => {
+    try {
+      const m = await anthropic.messages.create({
+        model:'claude-sonnet-4-6', max_tokens:700,
+        system:sysJsonOnly, messages:[{ role:'user', content:userPrompt }],
+      });
+      const txt = (m.content||[]).map(c=>c&&c.text?c.text:'').join('').trim();
+      const j = _stripFences(txt); if (!j) return null;
+      const parsed = JSON.parse(j);
+      return { provider:'anthropic', label:'🧠 Claude Sonnet', variants:_normVariants(parsed,'Claude Sonnet'),
+               strategy:parsed.strategy||'', targeting:parsed.targeting||'' };
+    } catch(e) { console.warn('[wl-counter] Claude:', e.message); return null; }
+  })());
+
+  // Perplexity Sonar
+  if (process.env.PERPLEXITY_API_KEY) tasks.push((async () => {
+    try {
+      const r = await fetch('https://api.perplexity.ai/chat/completions', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${process.env.PERPLEXITY_API_KEY}` },
+        body: JSON.stringify({ model:'sonar', max_tokens:700,
+          messages:[{ role:'system', content:sysJsonOnly }, { role:'user', content:userPrompt }] }),
+      });
+      const d = await r.json();
+      const txt = d?.choices?.[0]?.message?.content || '';
+      const j = _stripFences(txt); if (!j) return null;
+      const parsed = JSON.parse(j);
+      return { provider:'perplexity', label:'🔎 Perplexity Sonar', variants:_normVariants(parsed,'Perplexity Sonar'),
+               strategy:parsed.strategy||'', targeting:parsed.targeting||'' };
+    } catch(e) { console.warn('[wl-counter] Perplexity:', e.message); return null; }
+  })());
+
+  // Gemini Flash
+  if (process.env.GEMINI_API_KEY) tasks.push((async () => {
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+        method:'POST', headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ contents:[{ parts:[{ text: sysJsonOnly + '\n\n' + userPrompt }] }],
+          generationConfig:{ temperature:0.75, maxOutputTokens:700, responseMimeType:'application/json' } }),
+      });
+      const d = await r.json();
+      const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const j = _stripFences(txt); if (!j) return null;
+      const parsed = JSON.parse(j);
+      return { provider:'gemini', label:'✨ Gemini Flash', variants:_normVariants(parsed,'Gemini Flash'),
+               strategy:parsed.strategy||'', targeting:parsed.targeting||'' };
+    } catch(e) { console.warn('[wl-counter] Gemini:', e.message); return null; }
+  })());
+
+  {
+    const settled = await Promise.all(tasks);
+    const ok = settled.filter(x => x && x.variants && x.variants.length);
+    if (ok.length) {
+      // Take the first variant from each provider so the user sees true
+      // multi-AI variety. Cap at 6 total.
+      const variants = [];
+      for (const r of ok) variants.push(...r.variants.slice(0, Math.max(1, Math.ceil(6/ok.length))));
+      const trimmed = variants.slice(0, 6);
+      // Pick the longest non-empty strategy / targeting from any provider.
+      const pickLongest = key => ok.map(r => r[key]||'').sort((a,b)=>b.length-a.length)[0] || '';
+      return res.json({
+        success: true,
+        source:  ok.length > 1 ? 'multi-ai' : ok[0].provider,
+        providers: ok.map(r => r.label),
+        variants: trimmed,
+        strategy:  pickLongest('strategy'),
+        targeting: pickLongest('targeting'),
+      });
+    }
+    // No provider succeeded — fall through to template.
+    console.error('[wl-counter] All AI providers failed or returned empty');
+    {
+      const anthropicErr = new Error('all providers failed');
+      const openaiErr = anthropicErr;
 
       // ── Final deterministic fallback ──
       const w = String(weakness || 'over-indexing on brand terms').replace(/^Outflank\s+\w+\s+on\s+/i, '');
@@ -688,6 +765,10 @@ Return ONLY this JSON shape:
       });
     }
   }
+ } catch (outerErr) {
+   console.error('[wl-counter] outer handler crashed:', outerErr && outerErr.message);
+   if (!res.headersSent) return res.status(500).json({ success:false, error: outerErr && outerErr.message || 'unknown error' });
+ }
 });
 
 // ── Competitor Ad Spend (DataForSEO paid traffic value) ───────────────────────
