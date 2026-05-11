@@ -48,17 +48,26 @@
   // also fire and double-open the modal. This way the inline is just a
   // belt-and-braces fallback for the (impossible-in-practice) case where
   // this top-of-file IIFE didn't run.
-  document.addEventListener('click', function(ev){
+  function _delegated(ev){
     let t = ev.target;
     if (t && t.nodeType !== 1 && t.parentElement) t = t.parentElement;
     const btn = (t && t.closest) ? t.closest('.btn-wl-counter') : null;
     if (!btn) return;
+    if (btn._wlFiring) return;
+    btn._wlFiring = true;
+    setTimeout(() => { try { delete btn._wlFiring; } catch(_) {} }, 600);
     ev.preventDefault();
     ev.stopPropagation();
     if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+    console.log('[wl-counter] event="' + ev.type + '" caught for', btn.getAttribute('data-wl-comp'));
+    try { btn.style.opacity = '0.5'; setTimeout(() => { btn.style.opacity = ''; }, 300); } catch(_) {}
     wlClick(btn);
-  }, true);
-  console.log('[wl-counter] early click wireup installed');
+  }
+  document.addEventListener('pointerdown', _delegated, true);
+  document.addEventListener('mousedown',  _delegated, true);
+  document.addEventListener('click',      _delegated, true);
+  document.addEventListener('touchstart', _delegated, true);
+  console.log('[wl-counter] early wireup installed (pointerdown+mousedown+click+touchstart)');
 })();
 
 // ── Account system + per-user localStorage namespacing ────────────────────────
@@ -14385,10 +14394,23 @@ function buildIntelligence() {
   // wireup — it always fires because it's part of the HTML attribute.
   try {
     const wlButtons = wrap.querySelectorAll('.btn-wl-counter');
-    console.log('[wl-counter] buildIntelligence rendered', wlButtons.length, 'Counter This Message button(s) — using inline onclick wireup');
-    // Make sure no stale "_wlBound" flag from previous renders blocks the
-    // delegated document handler from firing as a fallback.
-    wlButtons.forEach(b => { try { delete b._wlBound; } catch(_) {} });
+    console.log('[wl-counter] buildIntelligence rendered', wlButtons.length, 'Counter This Message button(s) — binding direct handlers + inline + delegated');
+    wlButtons.forEach(b => {
+      try { delete b._wlBound; } catch(_) {}
+      // Direct per-button handler as 4th redundancy layer.
+      b.addEventListener('pointerdown', function(ev){
+        ev.preventDefault(); ev.stopPropagation();
+        if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+        if (b._wlFiring) return;
+        b._wlFiring = true;
+        setTimeout(() => { try { delete b._wlFiring; } catch(_) {} }, 600);
+        console.log('[wl-counter] direct pointerdown for', b.getAttribute('data-wl-comp'));
+        try { window._wlClick && window._wlClick(b); } catch(e) { console.error('[wl-counter] direct failed', e); }
+      });
+      b.style.position = 'relative';
+      b.style.zIndex = '5';
+      b.style.pointerEvents = 'auto';
+    });
   } catch(e) { console.warn('[wl-counter] post-render check skipped:', e); }
 
   // Build Share of Voice horizontal bar chart
