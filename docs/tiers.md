@@ -255,3 +255,54 @@ Five Madgicx-inspired enhancements stacked on the existing AI Optimizer. All are
 - **Cron**: `startFatigueForecastCron(24)` — first run 4 min after boot, then every 24h. Mutex-guarded.
 - **Routes**: `GET /api/optimizer/fatigue-forecast?flagged=1` (latest per creative) · `POST /api/optimizer/fatigue-forecast/run-now`.
 - **Pairs with**: existing 72h Creative Auto-Refresh — predictive fatigue is the early-warning layer that catches creatives BEFORE they hit the existing reactive refresh threshold.
+
+## T35 — SEOptimer-inspired upgrades
+
+Three upgrades layered on existing T22 (SEO Auditor) and T6 (Backlinks).
+
+### Feature 1 — Bulk Reporting
+- **Service**: `services/bulk_reporting/{schema,api}.js`
+- **Storage**: 2 tables — runs + per-URL items.
+- **Flow**: multer CSV upload → 500-URL cap → DB-backed queue resumable across restarts → 4-parallel worker reuses T22 `runAudit` per URL → branded PDFs via `archiver` zip stream (reuses T28 brand profile + `streamPdf`-to-buffer adapter).
+- **Routes**: `POST /api/bulk-reports/run` · `GET /api/bulk-reports/:id/{zip,csv}` (csv = flat per-check rows).
+
+### Feature 2 — Backlink Change Monitor
+- **Service**: `services/backlink_monitor/{schema,api}.js`
+- **Storage**: 3 tables — monitors / snapshots / changes.
+- **Logic**: daily/weekly per-domain DataForSEO `referring_domains/live` snapshot diffed against prior snapshot. **Persists `new`/`lost` change rows BEFORE mutating snapshots** so a crash mid-write doesn't lose the diff. Optional Slack webhook + Resend email digest per monitor. Hourly cron with per-monitor frequency gate.
+
+### Feature 3 — Backlink Research dimensions
+- Extends existing T6 `services/backlinks/api.js` with `/anchors`, `/pages`, `/breakdown`. Anchors+pages call DataForSEO live; breakdown derives TLD+Country aggregations locally from a single `referring_domains` pull to save credits. Surfaced via "🔬 Deep Research" button on Backlink Intel view.
+
+## T36 — True ROAS
+
+Closes the offline-revenue blind spot. Recommendation-only — never auto-applies budget changes.
+
+- **Service**: `services/true_roas/{schema,api}.js`
+- **Storage**: `offline_conversions` table — UNIQUE(source, source_deal_id), indexes on closed_at / platform / lower(email). All currency stored as `revenue_cents` BIGINT; mixed-currency NOT auto-converted (UI flags).
+- **CSV uploader**: lenient header detection (deal_id / email / revenue / currency / fbclid / gclid / ttclid / platform / closed_at / lead_created_at), multer 5MB cap, ON CONFLICT upsert.
+- **HubSpot sync**: paginates `/crm/v3/objects/deals` (10 pages × 100), filters by `dealstage` ∈ configured stages, attribution from fbclid/gclid/ttclid → meta/google/tiktok else `unknown`. 6h cron when `hubspotSyncEnabled`.
+- **`computeTrueRoas(days)`**: joins `ad_performance_hourly`+`offline_conversions` per platform → returns `{trueRoas, reportedRoas, online, offline, spend, perPlatform:{uplift%}}`.
+- **Cross-Channel hero patch**: adds inline 💰 `True ROAS:` line to `_blendedHtml` Blended Summary via `_hydrateTrueRoasInline` (fetches after innerHTML swap) showing uplift % vs reported.
+- **Profit-aware budget recommendations**: apportions per-platform offline revenue across each campaign by its share of online revenue, computes 7d True ROAS per campaign, inserts `optimizer_actions` rows with `action='budget_cap_cut'`/`'budget_cap_scale'` (mode='recommend', status='pending', 24h dup gate) when below `minTrueRoasThreshold` (-25%) or above `scaleTrueRoasThreshold` (+20%).
+- **Revenue lag report**: weekly cohorts on `lead_created_at` showing avg days-to-close + total revenue per cohort.
+- **UI**: `/#true-roas` with 3 tabs (Conversions / Revenue Lag / Settings).
+- **Routes**: `/settings`, `/upload`, `/sync-hubspot`, `/conversions`, `/summary`, `/revenue-lag`, `/budget-recommendations/run`.
+
+## T37 — Get-Started Roadmap
+
+- **Service**: `services/roadmap/{schema,catalog,api}.js`
+- **Storage**: `roadmap_progress` table keyed by stable `task_id`.
+- **Catalog**: 90 day-by-day tasks split SEO / SMM / PPC × 30 days each. Every task deep-links to the InfoGenie view that automates it via `navigateTo(view)`. Plus weekly social cadence cards (Instagram / Facebook / LinkedIn) from the lead-magnet schedule + the 5 PLAN/CREATE/ENGAGE/ANALYZE/GROW principles.
+- **UI**: progress bar in hero, filter pills SEO/SMM/PPC/All, ↻ Reset button. Nav link "🗺️ Get Started Roadmap" sits directly under Dashboard so beginners find it first.
+- **Routes**: `GET /catalog`, `GET /progress`, `POST /progress/:taskId`, `DELETE /progress/:taskId`, `POST /reset`.
+
+## T38 — Viral Carousel Generator
+
+- **Service**: `services/carousel/{schema,api}.js`
+- **Storage**: `carousels` table.
+- **Structures**: 4 STRUCTURES = pure-info / storytelling / problem-solution / listicle. Each has a 10-slot 10-slide template following the **Hook → Context → Value → Action** framework.
+- **AI**: OpenAI gpt-4o-mini strict-JSON with `/^_DUMMY/i` key gate + template fallback.
+- **Routes**: `/structures`, `/generate`, `/list`, `/:id`, `DELETE /:id`.
+- **UI**: `/#carousel` under Create nav with structure picker, brand-voice/audience inputs, 10 colour-graded slide cards, "📋 Copy all" + "📤 Open Social Publisher" + "📅 Add to Calendar" handoffs, recent-history list.
+- **Pairs with**: Reddit Pulse "💡 Discover Questions Customers Ask" panel which calls `POST /api/reddit-pulse/discover-questions` (pure Reddit search across 4 query variants `?` / `how to` / `best` / `help`, question-title filter, scored by upvotes+comments×2). "→ Make Carousel" button pre-fills the topic field.
