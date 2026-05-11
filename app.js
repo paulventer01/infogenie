@@ -2687,6 +2687,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'seo-tasks')            { try { buildSeoTasks(); }             catch(e) { console.warn('buildSeoTasks error:', e); } }
   if (viewId === 'schema-generator')     { try { buildSchemaGenerator(); }      catch(e) { console.warn('buildSchemaGenerator error:', e); } }
   if (viewId === 'unified-inbox')        { try { buildUnifiedInbox(); }         catch(e) { console.warn('buildUnifiedInbox error:', e); } }
+  if (viewId === 'conversion-boosters')  { try { buildConversionBoosters(); }   catch(e) { console.warn('buildConversionBoosters error:', e); } }
   if (viewId === 'social-analytics')     { try { buildSocialAnalytics(); }      catch(e) { console.warn('buildSocialAnalytics error:', e); } }
   if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
@@ -37956,4 +37957,187 @@ window.buildUnifiedInbox = function() {
 
   loadStats();
   load();
+};
+
+// ── Tier 27 — Conversion Boosters ──────────────────────────────────────────
+window.buildConversionBoosters = function() {
+  const wrap = document.getElementById('cbWrap');
+  if (!wrap) return;
+  const esc = (window._escapeHtml) || ((s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])));
+
+  let DEFAULTS = null;
+  let editing = null; // {id, type, name, settings}
+
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
+      <div class="dna-card cb-pick" data-type="social_proof" style="padding:22px;cursor:pointer;border:2px solid transparent;transition:.15s">
+        <div style="font-size:1.8rem;margin-bottom:8px">📣</div>
+        <div style="font-weight:700;font-size:1.05rem;margin-bottom:4px">Social Proof Popup</div>
+        <div style="color:#64748b;font-size:0.86rem">Rotating "Sarah from Cape Town just signed up" toasts. Proven 5–15% conversion lift.</div>
+      </div>
+      <div class="dna-card cb-pick" data-type="exit_intent" style="padding:22px;cursor:pointer;border:2px solid transparent;transition:.15s">
+        <div style="font-size:1.8rem;margin-bottom:8px">🚪</div>
+        <div style="font-weight:700;font-size:1.05rem;margin-bottom:4px">Exit Intent Popup</div>
+        <div style="color:#64748b;font-size:0.86rem">Captures email when the visitor's mouse leaves the page. Lands in Unified Inbox.</div>
+      </div>
+    </div>
+
+    <div id="cbForm" class="dna-card" style="padding:20px;margin-bottom:16px;display:none"></div>
+
+    <div class="dna-card" style="padding:0">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border-color,#e2e8f0);font-weight:700">Your widgets</div>
+      <div id="cbList"><div style="padding:32px;text-align:center;color:#64748b">Loading…</div></div>
+    </div>
+  `;
+
+  fetch('/api/conversion-boosters/defaults').then(x=>x.json()).then(j => { DEFAULTS = j.defaults; });
+
+  function loadList() {
+    const list = document.getElementById('cbList');
+    fetch('/api/conversion-boosters/widgets').then(x=>x.json()).then(j => {
+      if (!j.ok || !j.widgets.length) { list.innerHTML = '<div style="padding:32px;text-align:center;color:#64748b">No widgets yet — click a card above to create your first.</div>'; return; }
+      list.innerHTML = j.widgets.map(w => {
+        const origin = location.origin;
+        const snippet = `<script src="${origin}/api/conversion-boosters/embed/${w.id}.js" async></` + `script>`;
+        const emoji = w.type === 'social_proof' ? '📣' : '🚪';
+        return `
+          <div style="padding:16px 20px;border-bottom:1px solid var(--border-color,#e2e8f0)">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+              <div style="flex:1;min-width:240px">
+                <div style="font-weight:700;font-size:1rem;margin-bottom:2px">${emoji} ${esc(w.name)}</div>
+                <div style="color:#64748b;font-size:0.82rem">${esc(w.type)} · ${w.views} views · ${w.leads} leads · ID: <code>${esc(w.id)}</code></div>
+              </div>
+              <div style="display:flex;gap:6px;flex-shrink:0">
+                <button class="btn btn-secondary cb-edit" data-id="${w.id}" data-type="${w.type}" style="font-size:0.82rem">⚙️ Edit</button>
+                <button class="btn btn-secondary cb-events" data-id="${w.id}" style="font-size:0.82rem">📊 Activity</button>
+                <button class="btn btn-link cb-del" data-id="${w.id}" style="color:#dc2626;font-size:0.82rem">🗑</button>
+              </div>
+            </div>
+            <div style="margin-top:10px">
+              <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:4px">Paste this on any page:</label>
+              <div style="display:flex;gap:6px">
+                <input type="text" readonly value='${esc(snippet)}' style="flex:1;padding:8px 10px;font-family:monospace;font-size:0.78rem;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--bg-secondary,#f8fafc)">
+                <button class="btn btn-primary cb-copy" data-snippet='${esc(snippet)}' style="font-size:0.82rem">Copy</button>
+              </div>
+            </div>
+            <div id="cbEv-${w.id}" style="margin-top:12px;display:none"></div>
+          </div>
+        `;
+      }).join('');
+      list.querySelectorAll('.cb-copy').forEach(b => b.addEventListener('click', (e) => {
+        const s = e.currentTarget.getAttribute('data-snippet');
+        navigator.clipboard.writeText(s).then(() => { const o = e.currentTarget.textContent; e.currentTarget.textContent='✓ Copied'; setTimeout(()=>{e.currentTarget.textContent=o;},1500); });
+      }));
+      list.querySelectorAll('.cb-del').forEach(b => b.addEventListener('click', async (e) => {
+        if (!confirm('Delete this widget? The embed snippet will stop working.')) return;
+        await fetch('/api/conversion-boosters/widgets/' + e.currentTarget.getAttribute('data-id'), { method:'DELETE' });
+        loadList();
+      }));
+      list.querySelectorAll('.cb-edit').forEach(b => b.addEventListener('click', async (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        const w = j.widgets.find(x => x.id === id);
+        if (w) showForm(w.type, w);
+      }));
+      list.querySelectorAll('.cb-events').forEach(b => b.addEventListener('click', async (e) => {
+        const id = e.currentTarget.getAttribute('data-id');
+        const tgt = document.getElementById('cbEv-' + id);
+        if (tgt.style.display === 'block') { tgt.style.display='none'; return; }
+        tgt.style.display = 'block'; tgt.innerHTML = '<div style="padding:12px;color:#64748b">Loading…</div>';
+        const r = await fetch('/api/conversion-boosters/widgets/' + id + '/events').then(x=>x.json());
+        if (!r.ok) { tgt.innerHTML = '<div style="padding:12px;color:#dc2626">Failed</div>'; return; }
+        const c = r.counts || {};
+        tgt.innerHTML = `<div style="background:var(--bg-secondary,#f8fafc);padding:12px;border-radius:6px;font-size:0.86rem">
+          <div style="margin-bottom:8px"><strong>${c.view||0}</strong> views · <strong>${c.lead||0}</strong> leads · <strong>${c.dismiss||0}</strong> dismissals</div>
+          ${r.events.length ? '<div style="max-height:240px;overflow-y:auto">' + r.events.map(ev => `<div style="padding:6px 0;border-top:1px solid var(--border-color,#e2e8f0);font-size:0.82rem"><span style="display:inline-block;width:60px;color:${ev.event_type==='lead'?'#16a34a':ev.event_type==='dismiss'?'#dc2626':'#64748b'};font-weight:600">${esc(ev.event_type)}</span> ${ev.email ? esc(ev.email) + ' · ' : ''}<span style="color:#94a3b8">${new Date(ev.created_at).toLocaleString()}</span></div>`).join('') + '</div>' : '<div style="color:#64748b">No activity yet.</div>'}
+        </div>`;
+      }));
+    });
+  }
+
+  function showForm(type, w) {
+    editing = w || null;
+    const def = (DEFAULTS && DEFAULTS[type]) || {};
+    const cur = (w && w.settings) || def;
+    const form = document.getElementById('cbForm');
+    form.style.display = 'block';
+    document.querySelectorAll('.cb-pick').forEach(p => p.style.borderColor = p.getAttribute('data-type') === type ? '#0ea5e9' : 'transparent');
+
+    if (type === 'social_proof') {
+      const items = (cur.items || def.items || []).map(i => `${i.name} | ${i.location||''} | ${i.action||''} | ${i.when||''}`).join('\n');
+      form.innerHTML = `
+        <div style="font-weight:700;margin-bottom:14px">${w ? 'Edit' : 'New'} Social Proof Widget</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <label>Name<input id="cbName" type="text" value="${esc(w?w.name:'My Social Proof')}" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+          <label>Position<select id="cbPos" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px">
+            ${['bottom-left','bottom-right','top-left','top-right'].map(p=>`<option value="${p}"${p===(cur.position||'bottom-left')?' selected':''}>${p}</option>`).join('')}
+          </select></label>
+          <label>Show every (sec)<input id="cbInt" type="number" min="4" max="120" value="${cur.intervalSeconds||12}" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+          <label>Display for (sec)<input id="cbDisp" type="number" min="2" max="30" value="${cur.displaySeconds||5}" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+          <label>Accent color<input id="cbAcc" type="color" value="${esc(cur.accent||'#10B981')}" style="width:100%;padding:4px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px;height:38px"></label>
+        </div>
+        <label style="display:block;margin-top:14px">Recent activity items <span style="color:#64748b;font-weight:normal;font-size:0.8rem">(one per line: Name | Location | Action | When)</span>
+          <textarea id="cbItems" rows="6" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px;font-family:monospace;font-size:0.82rem">${esc(items)}</textarea>
+        </label>
+        <div style="margin-top:14px;display:flex;gap:8px"><button class="btn btn-primary" id="cbSave">${w ? '💾 Save' : '🚀 Create widget'}</button><button class="btn btn-link" id="cbCancel">Cancel</button></div>
+      `;
+      document.getElementById('cbSave').addEventListener('click', () => save(type, () => {
+        const items = document.getElementById('cbItems').value.split('\n').map(l => {
+          const p = l.split('|').map(s => s.trim()); if (!p[0]) return null;
+          return { name:p[0], location:p[1]||'', action:p[2]||'just signed up', when:p[3]||'recently' };
+        }).filter(Boolean);
+        return {
+          position: document.getElementById('cbPos').value,
+          intervalSeconds: parseInt(document.getElementById('cbInt').value, 10),
+          displaySeconds: parseInt(document.getElementById('cbDisp').value, 10),
+          accent: document.getElementById('cbAcc').value,
+          items,
+        };
+      }));
+    } else {
+      form.innerHTML = `
+        <div style="font-weight:700;margin-bottom:14px">${w ? 'Edit' : 'New'} Exit Intent Widget</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <label>Name<input id="cbName" type="text" value="${esc(w?w.name:'My Exit Intent')}" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+          <label>Accent color<input id="cbAcc" type="color" value="${esc(cur.accent||'#0066FF')}" style="width:100%;padding:4px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px;height:38px"></label>
+        </div>
+        <label style="display:block;margin-top:12px">Headline<input id="cbHead" type="text" value="${esc(cur.headline||'Wait — before you go!')}" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+        <label style="display:block;margin-top:12px">Subheadline<input id="cbSub" type="text" value="${esc(cur.subheadline||'')}" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:12px">
+          <label>CTA button text<input id="cbCta" type="text" value="${esc(cur.ctaText||'Send me the guide')}" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+          <label>Cookie days <span style="color:#64748b;font-size:0.78rem">(don't re-show)</span><input id="cbCookie" type="number" min="0" max="365" value="${cur.dismissCookieDays||7}" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+          <label>Redirect after submit (optional)<input id="cbRedir" type="url" value="${esc(cur.redirectUrl||'')}" placeholder="https://…" style="width:100%;padding:8px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px"><button class="btn btn-primary" id="cbSave">${w ? '💾 Save' : '🚀 Create widget'}</button><button class="btn btn-link" id="cbCancel">Cancel</button></div>
+      `;
+      document.getElementById('cbSave').addEventListener('click', () => save(type, () => ({
+        headline: document.getElementById('cbHead').value,
+        subheadline: document.getElementById('cbSub').value,
+        ctaText: document.getElementById('cbCta').value,
+        accent: document.getElementById('cbAcc').value,
+        dismissCookieDays: parseInt(document.getElementById('cbCookie').value, 10) || 0,
+        redirectUrl: document.getElementById('cbRedir').value.trim(),
+      })));
+    }
+    document.getElementById('cbCancel').addEventListener('click', () => { form.style.display='none'; document.querySelectorAll('.cb-pick').forEach(p => p.style.borderColor='transparent'); editing = null; });
+  }
+
+  async function save(type, getSettings) {
+    const name = document.getElementById('cbName').value.trim() || (type === 'social_proof' ? 'Social Proof' : 'Exit Intent');
+    const settings = getSettings();
+    const url = editing ? '/api/conversion-boosters/widgets/' + editing.id : '/api/conversion-boosters/widgets';
+    const method = editing ? 'PATCH' : 'POST';
+    const body = editing ? { name, settings } : { type, name, settings };
+    const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(x=>x.json());
+    if (!r.ok) { alert('Failed: ' + (r.error||'unknown')); return; }
+    document.getElementById('cbForm').style.display='none';
+    document.querySelectorAll('.cb-pick').forEach(p => p.style.borderColor='transparent');
+    editing = null;
+    loadList();
+  }
+
+  document.querySelectorAll('.cb-pick').forEach(p => p.addEventListener('click', (e) => {
+    showForm(e.currentTarget.getAttribute('data-type'), null);
+  }));
+
+  loadList();
 };

@@ -104,6 +104,9 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/budget\/status$/,         // budget telemetry (useful pre-login)
   /^\/api\/seo-widget\/embed\/[^\/]+\.js$/, // public embed loader (T23)
   /^\/api\/seo-widget\/audit\/[^\/]+$/,     // public widget audit endpoint (T23, rate-limited)
+  /^\/api\/conversion-boosters\/embed\/[^\/]+\.js$/, // public booster loader (T27)
+  /^\/api\/conversion-boosters\/event\/[^\/]+$/,     // public event ping (T27, rate-limited)
+  /^\/api\/conversion-boosters\/lead\/[^\/]+$/,      // public lead capture (T27, rate-limited)
 ];
 function _isApiPublic(p) { return _AUTH_PUBLIC_API_PATHS.some(rx => rx.test(p)); }
 app.use((req, res, next) => {
@@ -8653,24 +8656,28 @@ app.use('/api/seo-widget', _seoWidgetRouter);
   }
 } catch (e) { console.warn('[tier21-23] schema init failed:', e.message); }})();
 
-// ── Tier 24 + 25 + 26 ──────────────────────────────────────────────────────
+// ── Tier 24 + 25 + 26 + 27 ─────────────────────────────────────────────────
 const _seoTasksSchema = require('./services/seo_tasks/schema');
 const _seoTasksRouter = require('./services/seo_tasks/api');
 const _schemaGenSchema = require('./services/schema_generator/schema');
 const _schemaGenRouter = require('./services/schema_generator/api');
 const _inboxSchema = require('./services/unified_inbox/schema');
 const _inboxRouter = require('./services/unified_inbox/api');
+const _cbSchema = require('./services/conversion_boosters/schema');
+const _cbRouter = require('./services/conversion_boosters/api');
 app.use('/api/seo-tasks', _seoTasksRouter);
 app.use('/api/schema-generator', _schemaGenRouter);
 app.use('/api/unified-inbox', _inboxRouter);
+app.use('/api/conversion-boosters', _cbRouter);
 (async () => { try {
   if (process.env.DATABASE_URL) {
     await _seoTasksSchema.ensureSeoTasksSchema();
     await _schemaGenSchema.ensureSchemaGeneratorSchema();
     await _inboxSchema.ensureUnifiedInboxSchema();
-    console.log('[tier24-26] seo-tasks + schema-generator + unified-inbox schemas ready');
+    await _cbSchema.ensureConversionBoostersSchema();
+    console.log('[tier24-27] seo-tasks + schema-generator + unified-inbox + conversion-boosters schemas ready');
   }
-} catch (e) { console.warn('[tier24-26] schema init failed:', e.message); }})();
+} catch (e) { console.warn('[tier24-27] schema init failed:', e.message); }})();
 
 // ── Tier 17 ────────────────────────────────────────────────────────────────
 const _redditRouter = require('./services/reddit_pulse/api');
