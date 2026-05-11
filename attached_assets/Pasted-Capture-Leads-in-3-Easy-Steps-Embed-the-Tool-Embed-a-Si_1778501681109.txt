@@ -1,0 +1,82 @@
+Capture Leads in 3 Easy Steps
+
+Embed the Tool
+Embed a Simple Audit Form into your website that matches your website's styling and colors
+
+
+Provide Value
+Show your customer a beautiful branded report as a web page in the browser or a PDF emailed to them
+
+
+Capture the Lead
+Get notified of the lead and their details via email and/or push the lead automatically into your CRM via Zapier
+
+
+Step 1
+Design Your Form
+We’ve got the most options of any product on the market. Customize Embed Form layout style, behaviour, colors, fonts and language. Customize shown Audit Report content including branding, text and checks included.
+
+Show the report as a modal, in a new tab, send the customer to a new page, or just show a 'thankyou' message. Add call to actions to get leads to take the next step.
+
+
+Style it However You Like
+Choose Direction, Fonts, Colors, Border or dive in and modify the clearly exposed CSS yourself.
+
+Embed Form Examples
+Endless Options for Embed Form Customization
+Check out these different live forms you can setup.
+Embed in 5 Minutes
+Installation is a breeze. Simply copy and paste the Embed HTML Code into your webpage.
+
+The Embed Tool has been tested across hundreds of websites and CMS types.
+
+
+
+
+
+
+
+
+Step 2
+Customize Your Report
+Customize reports to your heart’s desire – Add your own logo, company details, fonts and colors to suite your brand.
+
+Choose which specific checks and sections you’d like to show, and add custom text content for that personal touch.
+
+
+Run Reports From Your Own Domain
+SEOptimer's domain names and branding can be hidden from user's reports, and replaced entirely with your own Custom Domain, giving a more consistent and professional brand experience that all runs securely over SSL.
+
+
+Step 3
+Get Leads Straight to Your Inbox
+Get notified of new leads and their details straight to your mailbox.
+
+All leads stored permanently in the versatile Dashboard allowing you to Search, Sort and Export in a variety of formats.
+
+
+Deliver Audits to Prospects via Email
+Send a customer ‘Thank You’ mail that includes their Audit as a PDF.
+
+Add your own message, logo and branding for that custom feel.
+
+Automated workflow
+Integrate With Your Systems
+Send your leads and their PDF reports directly to any other system when they submit your Embed Form. We offer a simple no-code Zapier integration that can be setup in just a few clicks.
+
+
+Add prospects to Hubspot for contact by sales reps, send a drip campaign from Mailchimp or get an alert in Slack when the New Lead comes through. The possibilities are endless with Zapier's 2000 apps and integrations.
+
+
+Alternatively, for more advanced workflows or custom coded integrations, send data directly from our POST based Web Hook to an endpoint or script.
+
+
+See a Live Customer Example
+WebMarketers, a Canadian Digital Marketing Firm, use SEOptimer`s Embeddable Audit Form as an essential Lead Gen tool for their website.
+
+They`ve carefully styled the look and feel to perfection demonstrating SEOptimer`s fine grained CSS & HTML customization abilities.
+
+Why not try it on your site today?
+
+
+Visit Page

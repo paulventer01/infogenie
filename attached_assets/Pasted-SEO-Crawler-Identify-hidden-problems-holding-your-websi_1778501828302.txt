@@ -1,0 +1,89 @@
+SEO Crawler
+Identify hidden problems holding your website back from it’s ranking potential.
+
+
+Scan Every Page of Your Site for Problems
+
+Find On-Page SEO Issues at Scale
+Not only does SEO Crawler crawl all pages on a website but it identifies issues holding your site back from ranking.
+
+
+Set Crawls to Obey robots.txt
+Optionally set SEO Crawler to obey all rules defined in the robots.txt file so it closely emulates Googlebot.
+
+
+Set Custom URL Crawling Rules
+Define your own URL crawling rules based on the same robots.txt syntax to exclude certain pages or directories.
+
+
+Sort On-Page SEO Issues by Severity
+Filter and export all on-page SEO issues and sort or group by severity to isolate affected pages and fix issues quickly.
+
+
+Most modern websites have more pages than you would expect, when you consider e-Commerce product pages, blog posts or category pages.
+
+There is a high chance of unexpected problems in deeper or less obvious pages, which could affect the overall site health.
+
+SEOptimer’s advanced crawling technology will review review every page and provide a simple report identifying problems.
+
+
+Unlock Page Ranking Potential
+Businesses frequently put all their focus on trying to rank their homepage, or a handful a handful of other core pages.
+
+How many of your inner pages have ranking and traffic potential, but have not been well optimised?
+
+Improve your site’s overall traffic by unlocking the potential of previously neglected pages.
+
+
+Get a Consolidated Crawl Report
+We’ll provide you a prioritised list of your site’s pages and issues, ordered by those with the most number of, or most urgent problems.
+
+Maximise the efficiency of your SEO efforts and invest effort on pages where you can have the most impact.
+
+Search, sort and filter pages and issues to focus your efforts.
+
+
+Don’t Wait Hours. See Results in Real Time.
+Other crawl tools can take hours or days to show you any results from your crawl. By then you’ve moved on to other important business challenges.
+
+SEO Crawler show’s you results in real-time, including which pages have been crawled, and the list of issues identified so you can take action immediately.
+
+Done making some site changes? SEO Crawler let’s you re-run a crawl at will.
+
+
+Detailed Recommendations and Guides
+We’ve got informational guides explaining SEO issues and recommendations in simple terms.
+
+Do you use Wordpress, Shopify or Wix? No problem, our guides show you how to address issues across most major CMS’s.
+
+Our point of difference
+Unique Cloud-Based Javascript Crawling Technology
+
+
+Superior Accuracy
+We load every page of your website in a Cloud-based Chrome Browser meaning everything on the page loads.
+
+
+Simulate True User Experience
+SEO Crawler simulates a natural page load and user viewing experience unlike many other crawl tools.
+
+
+Crawl Pages not Code
+Other robotic crawl tools load and read static HTML, whereas SEO Crawler actually loads and runs all code and scripts on the page in Chrome.
+
+
+Full Support for Modern Tech
+Because SEO Crawler loads pages in a cloud-based Chrome browser, it fully supports all modern CMS including Shopify, Webflow, Wix, Weebly and of course Wordpress.
+
+
+
+Access to our Free SEO Toolbox
+Ready to dive into your website? We’ve got SEO Tools for every purpose.
+
+Improve your Meta Tags, or build a Sitemaps & Robots file with just a few clicks. Our SEO Tools are the ultimate resource to help you through.
+
+What our awesome customers are saying
+
+
+
+

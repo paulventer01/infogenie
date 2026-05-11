@@ -27977,27 +27977,42 @@ function _blendedHtml(j) {
   ];
   const okCount = channels.filter(c => c.data.ok).length;
   return `
-    <!-- Hero blended tile -->
-    <div style="background:linear-gradient(135deg,#064E3B 0%,#10B981 100%);border-radius:18px;padding:32px;color:white;margin-bottom:22px;box-shadow:0 4px 14px rgba(16,185,129,.25)">
-      <div style="font-size:0.78rem;text-transform:uppercase;letter-spacing:.5px;opacity:.85;font-weight:700;margin-bottom:8px">Blended performance · last ${Number(j.days) || 0} days · ${okCount}/3 channels live</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:24px;margin-top:14px">
-        <div>
-          <div style="font-size:0.72rem;opacity:.8;font-weight:600;margin-bottom:4px">TOTAL SPEND</div>
-          <div style="font-size:2.1rem;font-weight:800;line-height:1.1">${fmtMoney(j.totalSpend)}</div>
+    <!-- T34 — Madgicx-style Blended Summary hero. Platform pills above; the
+         four CFO-glance metrics (Total Spend · MER · LTV/CAC · Net Sales)
+         dominate; per-channel detail follows below. -->
+    <div style="background:linear-gradient(135deg,#0F172A 0%,#1E293B 50%,#312E81 100%);border-radius:18px;padding:28px 32px;color:white;margin-bottom:22px;box-shadow:0 8px 28px rgba(15,23,42,.35)">
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:18px">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font-size:1.15rem">📊</span><div style="font-size:1.05rem;font-weight:800">Blended Summary</div></div>
+        <div style="display:flex;gap:6px">
+          ${channels.map(c => `<span title="${esc(c.name)} · ${c.data.ok ? 'live' : 'not connected'}" style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;font-size:0.85rem;background:${c.data.ok ? c.color : '#475569'};opacity:${c.data.ok ? '1' : '0.4'}">${c.icon}</span>`).join('')}
         </div>
-        <div>
-          <div style="font-size:0.72rem;opacity:.8;font-weight:600;margin-bottom:4px">CUSTOMERS <span style="opacity:.7;font-weight:500">(${esc(j.customerSource)})</span></div>
-          <div style="font-size:2.1rem;font-weight:800;line-height:1.1">${fmtNum(j.customers)}</div>
+        <div style="margin-left:auto;font-size:0.74rem;opacity:.7">Last ${Number(j.days) || 0} days · ${okCount}/3 channels live</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:18px">
+        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px">
+          <div style="font-size:0.7rem;opacity:.7;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Total Ad Spend</div>
+          <div style="font-size:1.95rem;font-weight:800;line-height:1.1">${fmtMoney(j.totalSpend)}</div>
         </div>
-        <div>
-          <div style="font-size:0.72rem;opacity:.8;font-weight:600;margin-bottom:4px">BLENDED CAC</div>
-          <div style="font-size:2.1rem;font-weight:800;line-height:1.1">${j.cac != null ? fmtMoney(j.cac) : '—'}</div>
+        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px">
+          <div style="font-size:0.7rem;opacity:.7;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">MER</div>
+          <div style="font-size:1.95rem;font-weight:800;line-height:1.1">${j.mer != null ? j.mer.toFixed(1) + '%' : '—'}</div>
+          <div style="font-size:0.66rem;opacity:.6;margin-top:4px">Revenue ÷ Spend</div>
         </div>
-        <div>
-          <div style="font-size:0.72rem;opacity:.8;font-weight:600;margin-bottom:4px">BLENDED ROAS</div>
-          <div style="font-size:2.1rem;font-weight:800;line-height:1.1;opacity:.6">—</div>
-          <div style="font-size:0.7rem;opacity:.75;margin-top:3px">Wire revenue source</div>
+        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px">
+          <div style="font-size:0.7rem;opacity:.7;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">LTV/CAC</div>
+          <div style="font-size:1.95rem;font-weight:800;line-height:1.1">${j.ltvCac != null ? j.ltvCac.toFixed(2) : '—'}</div>
+          <div style="font-size:0.66rem;opacity:.6;margin-top:4px">${j.cac != null ? 'CAC ' + fmtMoney(j.cac) : 'No CAC yet'}${j.ltvAssumed != null ? ' · LTV assumed ' + fmtMoney(j.ltvAssumed) : ''}</div>
         </div>
+        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px">
+          <div style="font-size:0.7rem;opacity:.7;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Net Sales</div>
+          <div style="font-size:1.95rem;font-weight:800;line-height:1.1">${j.netSales != null ? fmtMoney(j.netSales) : '—'}</div>
+          <div style="font-size:0.66rem;opacity:.6;margin-top:4px">Revenue minus ad spend</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:14px;font-size:0.72rem;opacity:.75">
+        <span><b>Customers:</b> ${fmtNum(j.customers)} <span style="opacity:.7">(${esc(j.customerSource)})</span></span>
+        <span><b>Total Revenue:</b> ${j.totalRevenue ? fmtMoney(j.totalRevenue) : '—'}</span>
+        <span><b>Blended ROAS:</b> ${j.roas != null ? j.roas.toFixed(2) + '×' : '—'}</span>
       </div>
     </div>
 
@@ -28047,15 +28062,21 @@ function _blendedHtml(j) {
               <button type="button" onclick="loadBlendedPerf&&loadBlendedPerf()" style="margin-top:6px;margin-left:6px;background:#F0F9FF;color:#0369A1;border:1px solid #BAE6FD;padding:7px 14px;border-radius:8px;font-size:0.76rem;font-weight:700;cursor:pointer">🔄 Retry</button>
             </div>`;
         }
+        // T34 — per-channel card now surfaces Revenue, ROAS, CPM (when ingested
+        // by the optimizer). Gracefully shows '—' when revenue source isn't wired.
+        const hasRev = Number(d.revenue || 0) > 0;
         return `
           <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:20px">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="font-size:1.2rem">${c.icon}</span><div style="font-weight:700;color:#0F172A">${esc(c.name)}</div><span style="margin-left:auto;font-size:0.7rem;font-weight:700;padding:3px 9px;border-radius:999px;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0">LIVE</span></div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="font-size:1.2rem;display:inline-flex;width:26px;height:26px;border-radius:8px;align-items:center;justify-content:center;background:${c.color};color:white">${c.icon}</span><div style="font-weight:700;color:#0F172A">${esc(c.name)}</div><span style="margin-left:auto;font-size:0.7rem;font-weight:700;padding:3px 9px;border-radius:999px;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0">LIVE</span></div>
             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
-              <div><div style="font-size:0.68rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Spend</div><div style="font-size:1.15rem;font-weight:700;color:#0F172A">${fmtMoney(d.spend)}</div></div>
-              <div><div style="font-size:0.68rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Conversions</div><div style="font-size:1.15rem;font-weight:700;color:#0F172A">${fmtNum(d.conversions)}</div></div>
+              <div><div style="font-size:0.68rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Ad Spend</div><div style="font-size:1.15rem;font-weight:700;color:#0F172A">${fmtMoney(d.spend)}</div></div>
+              <div><div style="font-size:0.68rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Revenue</div><div style="font-size:1.15rem;font-weight:700;color:${hasRev?'#059669':'#94A3B8'}">${hasRev ? fmtMoney(d.revenue) : '—'}</div></div>
+              <div><div style="font-size:0.68rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.4px">ROAS</div><div style="font-size:1.15rem;font-weight:700;color:${d.roas!=null?'#0F172A':'#94A3B8'}">${d.roas != null ? d.roas.toFixed(2) + '×' : '—'}</div></div>
+              <div><div style="font-size:0.68rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.4px">CPM</div><div style="font-size:1.15rem;font-weight:700;color:${d.cpm!=null?'#0F172A':'#94A3B8'}">${d.cpm != null ? fmtMoney(d.cpm) : '—'}</div></div>
+              <div><div style="font-size:0.68rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Conversions</div><div style="font-size:1rem;font-weight:600;color:#475569">${fmtNum(d.conversions)}</div></div>
               <div><div style="font-size:0.68rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Clicks</div><div style="font-size:1rem;font-weight:600;color:#475569">${fmtNum(d.clicks)}</div></div>
-              <div><div style="font-size:0.68rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Impressions</div><div style="font-size:1rem;font-weight:600;color:#475569">${fmtNum(d.impressions)}</div></div>
             </div>
+            ${!hasRev ? `<div style="margin-top:10px;font-size:0.68rem;color:#94A3B8">Wire this campaign into the AI Optimizer to populate revenue + ROAS + CPM.</div>` : ''}
           </div>`;
       }).join('')}
     </div>
@@ -31821,6 +31842,213 @@ window.banditRunNow = async function() {
   const r = await fetch('/api/optimizer/bandit/run-now', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' }).then(x=>x.json());
   const s = r.run || {};
   showToast(`✅ Done — ${s.campaigns||0} campaigns, ${s.scanned||0} arms, ${s.applied||0} reallocations`);
+  renderOptimizerDashboard();
+};
+
+// ========================================================================
+// T34 — "Why did the AI do this?" Decision Log
+// Pulls /api/optimizer/decisions which joins optimizer_actions with the
+// campaign so the user gets a plain-English audit trail of every move.
+// ========================================================================
+(function () {
+  const _prevRender = window.renderOptimizerDashboard;
+  if (!_prevRender) return;
+  window.renderOptimizerDashboard = async function () {
+    await _prevRender();
+    const wrap = document.getElementById('optimizerWrap');
+    if (!wrap) return;
+    const section = document.createElement('div');
+    section.id = 't34DecisionSection';
+    section.innerHTML = `<div style="text-align:center;padding:30px;color:#6B7280">Loading decision log…</div>`;
+    wrap.appendChild(section);
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    try {
+      const j = await fetch('/api/optimizer/decisions?limit=50').then(r => r.json());
+      const decisions = j.decisions || [];
+      const grouped = decisions.reduce((m, d) => { const k = d.action_type || 'other'; (m[k] = m[k] || []).push(d); return m; }, {});
+      const counts = Object.entries(grouped).map(([k, v]) => `<span style="background:#F1F5F9;padding:4px 10px;border-radius:999px;font-size:0.72rem;font-weight:700;color:#0F172A">${esc(k.replace(/_/g,' '))}: ${v.length}</span>`).join(' ');
+      section.innerHTML = `
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px 22px;margin-top:18px">
+          <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div>
+              <h3 style="margin:0 0 4px;font-size:1.05rem;color:#0A1628">🧠 Why did the AI do this? <span style="font-size:0.72rem;color:#6B7280;font-weight:500">— full decision audit log</span></h3>
+              <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">${counts || '<span style="color:#94A3B8;font-size:0.72rem">No decisions yet</span>'}</div>
+            </div>
+          </div>
+          <p style="margin:0 0 14px;color:#6B7280;font-size:0.82rem;line-height:1.55">Every PAUSE / SCALE BUDGET / HOLD / CREATIVE REFRESH / BANDIT REALLOCATION the optimizer made — with the exact rule that fired and the before/after values. Read this if a campaign behaves unexpectedly.</p>
+          ${decisions.length === 0
+            ? `<div style="padding:30px;text-align:center;color:#6B7280;background:#F9FAFB;border-radius:10px">No decisions logged yet. The optimizer runs every 6 hours; click "Run optimizer now" above to force a run.</div>`
+            : `<div style="display:flex;flex-direction:column;gap:8px;max-height:600px;overflow-y:auto">${decisions.map(d => {
+                const color = d.action_type === 'pause' ? '#DC2626' : d.action_type === 'scale_budget' ? '#059669' : d.action_type === 'hold' ? '#6B7280' : d.action_type === 'creative_refresh' ? '#7C3AED' : '#F59E0B';
+                const icon  = d.action_type === 'pause' ? '⏸' : d.action_type === 'scale_budget' ? '📈' : d.action_type === 'hold' ? '✓' : d.action_type === 'creative_refresh' ? '🎨' : '🎲';
+                const when  = new Date(d.created_at).toLocaleString();
+                const tag   = d.applied ? '<span style="color:#059669;font-size:0.7rem;font-weight:700;margin-left:8px">APPLIED</span>' : '<span style="color:#92400E;font-size:0.7rem;font-weight:700;margin-left:8px">LOGGED</span>';
+                let beforeAfter = '';
+                if (d.before_value || d.after_value) {
+                  try {
+                    const bv = typeof d.before_value === 'string' ? JSON.parse(d.before_value) : d.before_value;
+                    const av = typeof d.after_value  === 'string' ? JSON.parse(d.after_value)  : d.after_value;
+                    if (bv && av) beforeAfter = `<div style="font-size:0.72rem;color:#475569;margin-top:4px;font-family:ui-monospace,monospace">before: ${esc(JSON.stringify(bv))} → after: ${esc(JSON.stringify(av))}</div>`;
+                  } catch (_) {}
+                }
+                return `<div style="display:flex;gap:12px;padding:11px 14px;border-left:3px solid ${color};background:#FAFBFC;border-radius:6px">
+                  <div style="font-size:1.2rem">${icon}</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:0.82rem;color:#0A1628"><strong>${esc((d.action_type||'').replace(/_/g,' '))}</strong> · ${esc(d.campaign_name || '?')} <span style="color:#6B7280;font-size:0.74rem">(${esc(d.platform || '?')})</span>${tag}</div>
+                    <div style="font-size:0.78rem;color:#4B5563;margin-top:3px">${esc(d.reason || '')}</div>
+                    ${beforeAfter}
+                    ${d.apply_error ? `<div style="font-size:0.74rem;color:#DC2626;margin-top:3px">⚠ ${esc(d.apply_error)}</div>` : ''}
+                    <div style="font-size:0.7rem;color:#9CA3AF;margin-top:4px">${when}${d.run_id ? ` · run ${esc(d.run_id)}` : ''}</div>
+                  </div>
+                </div>`;
+              }).join('')}</div>`}
+        </div>
+      `;
+    } catch (e) {
+      section.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:14px;border-radius:10px;margin-top:18px">Failed to load decision log: ${esc(e.message)}</div>`;
+    }
+  };
+})();
+
+// ========================================================================
+// T34 — Day-part / Hour-of-day Budget Shifting
+// Renders a 24-hour bar chart per campaign with best/worst hour callouts
+// and the recommendation string. Pure inline-SVG bars (no Chart.js dep).
+// ========================================================================
+(function () {
+  const _prevRender = window.renderOptimizerDashboard;
+  if (!_prevRender) return;
+  window.renderOptimizerDashboard = async function () {
+    await _prevRender();
+    const wrap = document.getElementById('optimizerWrap');
+    if (!wrap) return;
+    const section = document.createElement('div');
+    section.id = 't34DaypartingSection';
+    section.innerHTML = `<div style="text-align:center;padding:30px;color:#6B7280">Loading dayparting analysis…</div>`;
+    wrap.appendChild(section);
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    const fmtHour = (h) => { const ap = h < 12 ? 'a' : 'p'; const h12 = (h % 12) || 12; return h12 + ap; };
+    try {
+      const j = await fetch('/api/optimizer/dayparting?limit=50').then(r => r.json());
+      const items = j.items || [];
+      section.innerHTML = `
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px 22px;margin-top:18px">
+          <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div>
+              <h3 style="margin:0 0 4px;font-size:1.05rem;color:#0A1628">🕐 Day-part Budget Shifting <span style="font-size:0.72rem;color:#6B7280;font-weight:500">— hour-of-day performance</span></h3>
+              <div style="font-size:0.72rem;color:#6B7280">14-day rolling window · scored by ROAS → CPA → CTR (in that order) · UTC hours</div>
+            </div>
+            <button onclick="t34DaypartRunNow()" style="padding:9px 14px;background:linear-gradient(135deg,#0EA5E9,#6366F1);color:white;border:none;border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">🔄 Re-analyse now</button>
+          </div>
+          <p style="margin:0 0 14px;color:#6B7280;font-size:0.82rem;line-height:1.55">Recommendation only — surfaces the top 4 and bottom 4 hour-of-day windows so you can apply a day-parting schedule in your ad platform.</p>
+          ${items.length === 0
+            ? `<div style="padding:30px;text-align:center;color:#6B7280;background:#F9FAFB;border-radius:10px">No dayparting analysis yet. Click "Re-analyse now" — needs at least one optimizer-enabled campaign with ≥$25 spend in the last 14 days.</div>`
+            : `<div style="display:flex;flex-direction:column;gap:18px">${items.map(it => {
+                let hours = it.hours_json; if (typeof hours === 'string') { try { hours = JSON.parse(hours); } catch (_) { hours = []; } }
+                hours = hours || [];
+                const scores = hours.map(h => h.score).filter(s => s !== null && s !== undefined);
+                const min = scores.length ? Math.min(...scores) : 0;
+                const max = scores.length ? Math.max(...scores) : 1;
+                const range = (max - min) || 1;
+                const bars = hours.map(h => {
+                  const has = h.score !== null && h.score !== undefined;
+                  const pct = has ? Math.max(2, Math.round(((h.score - min) / range) * 100)) : 2;
+                  const color = !has ? '#E5E7EB' : (h.score >= max - range * 0.25 ? '#10B981' : h.score <= min + range * 0.25 ? '#EF4444' : '#94A3B8');
+                  const tt = `${fmtHour(h.hour)} · spend ${(h.spend||0).toFixed(2)} · ${h.roas != null ? 'ROAS ' + h.roas + '×' : (h.cpa != null ? 'CPA $' + h.cpa : 'CTR ' + ((h.ctr||0)*100).toFixed(2) + '%')}`;
+                  return `<div title="${esc(tt)}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:100%;height:${pct}px;background:${color};border-radius:3px 3px 0 0;min-height:2px"></div><div style="font-size:0.55rem;color:#94A3B8">${h.hour}</div></div>`;
+                }).join('');
+                return `<div style="border:1px solid #E5E7EB;border-radius:10px;padding:14px">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px">
+                    <div>
+                      <div style="font-size:0.9rem;font-weight:700;color:#0A1628">${esc(it.campaign_name || 'Campaign #' + it.campaign_id)} <span style="color:#6B7280;font-size:0.74rem;font-weight:500">(${esc(it.platform || '?')})</span></div>
+                      <div style="font-size:0.7rem;color:#94A3B8;margin-top:2px">Window ${it.window_days}d · spend $${Number(it.total_spend||0).toFixed(2)} · conv ${Number(it.total_conv||0).toFixed(0)}</div>
+                    </div>
+                    <div style="font-size:0.66rem;color:#94A3B8">${new Date(it.created_at).toLocaleString()}</div>
+                  </div>
+                  <div style="display:flex;align-items:flex-end;gap:2px;height:110px;background:#F9FAFB;border-radius:6px;padding:8px;margin-bottom:10px">${bars}</div>
+                  <div style="font-size:0.78rem;color:#4B5563;line-height:1.55">${esc(it.recommendation || '')}</div>
+                </div>`;
+              }).join('')}</div>`}
+        </div>`;
+    } catch (e) {
+      section.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:14px;border-radius:10px;margin-top:18px">Failed to load dayparting: ${esc(e.message)}</div>`;
+    }
+  };
+})();
+window.t34DaypartRunNow = async function () {
+  showToast('⏳ Re-analysing hour-of-day performance…');
+  const r = await fetch('/api/optimizer/dayparting/run-now', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(x => x.json());
+  const s = r.run || {};
+  showToast(`✅ Done — analysed ${s.evaluated || 0} campaign(s)`);
+  renderOptimizerDashboard();
+};
+
+// ========================================================================
+// T34 — Predictive Creative Fatigue
+// Surfaces creatives whose CTR trend predicts they'll cross the 0.5% floor
+// within 3 days. Pairs with the existing 72-hour Creative Auto-Refresh —
+// this is the early-warning layer that catches fatigue BEFORE it hits.
+// ========================================================================
+(function () {
+  const _prevRender = window.renderOptimizerDashboard;
+  if (!_prevRender) return;
+  window.renderOptimizerDashboard = async function () {
+    await _prevRender();
+    const wrap = document.getElementById('optimizerWrap');
+    if (!wrap) return;
+    const section = document.createElement('div');
+    section.id = 't34FatigueSection';
+    section.innerHTML = `<div style="text-align:center;padding:30px;color:#6B7280">Loading fatigue forecast…</div>`;
+    wrap.appendChild(section);
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    try {
+      const j = await fetch('/api/optimizer/fatigue-forecast?limit=100').then(r => r.json());
+      const items = j.items || [];
+      const flagged = items.filter(x => x.predicted_fatigue);
+      const stable  = items.filter(x => !x.predicted_fatigue);
+      section.innerHTML = `
+        <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px 22px;margin-top:18px;margin-bottom:24px">
+          <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div>
+              <h3 style="margin:0 0 4px;font-size:1.05rem;color:#0A1628">📉 Predictive Creative Fatigue <span style="font-size:0.72rem;color:#6B7280;font-weight:500">— refresh BEFORE performance craters</span></h3>
+              <div style="display:flex;gap:8px;margin-top:4px">
+                <span style="background:${flagged.length ? '#FEE2E2' : '#F3F4F6'};color:${flagged.length ? '#991B1B' : '#6B7280'};padding:4px 11px;border-radius:14px;font-size:0.72rem;font-weight:700">${flagged.length} predicted fatigue</span>
+                <span style="background:#ECFDF5;color:#065F46;padding:4px 11px;border-radius:14px;font-size:0.72rem;font-weight:700">${stable.length} stable / improving</span>
+              </div>
+            </div>
+            <button onclick="t34FatigueRunNow()" style="padding:9px 14px;background:linear-gradient(135deg,#F59E0B,#EF4444);color:white;border:none;border-radius:9px;font-size:0.78rem;font-weight:700;cursor:pointer">🔄 Re-forecast now</button>
+          </div>
+          <p style="margin:0 0 14px;color:#6B7280;font-size:0.82rem;line-height:1.55">Linear regression on each creative's daily CTR over 14 days. If the slope is negative AND projected CTR drops below 0.5% within 3 days → flagged so you (or the 72-hour Creative Auto-Refresh) can swap it out before performance actually craters.</p>
+          ${items.length === 0
+            ? `<div style="padding:30px;text-align:center;color:#6B7280;background:#F9FAFB;border-radius:10px">No forecasts yet. Click "Re-forecast now" — needs active creatives under optimizer-enabled campaigns with ≥5 days of impressions data.</div>`
+            : `<div style="display:flex;flex-direction:column;gap:8px">${[...flagged, ...stable].slice(0, 30).map(it => {
+                const color = it.predicted_fatigue ? '#DC2626' : (it.slope_per_day < 0 ? '#F59E0B' : '#10B981');
+                const icon  = it.predicted_fatigue ? '🔥' : (it.slope_per_day < 0 ? '⚠️' : '✓');
+                const when  = new Date(it.created_at).toLocaleString();
+                const ctrNow  = it.current_ctr  != null ? (Number(it.current_ctr)  * 100).toFixed(2) + '%' : '—';
+                const ctrProj = it.projected_ctr_3d != null ? (Number(it.projected_ctr_3d) * 100).toFixed(2) + '%' : '—';
+                const slope = it.slope_per_day != null ? (Number(it.slope_per_day) * 1000).toFixed(2) + '‰/day' : '—';
+                return `<div style="display:flex;gap:12px;padding:12px 14px;border-left:3px solid ${color};background:#FAFBFC;border-radius:6px">
+                  <div style="font-size:1.3rem">${icon}</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:0.84rem;color:#0A1628"><strong>${esc(it.headline || it.platform_ad_id || ('Creative #' + it.creative_id))}</strong> <span style="color:#6B7280;font-size:0.74rem">${esc(it.campaign_name || '?')} (${esc(it.platform || '?')})</span></div>
+                    <div style="font-size:0.78rem;color:#4B5563;margin-top:3px">${esc(it.reason || '')}</div>
+                    <div style="font-size:0.72rem;color:#64748B;margin-top:4px">CTR now <b>${ctrNow}</b> → projected <b>${ctrProj}</b> in 3d · slope ${slope} · ${it.samples} day(s) of data${it.days_until_floor != null ? ' · floor in ~' + Number(it.days_until_floor).toFixed(1) + 'd' : ''}</div>
+                    <div style="font-size:0.7rem;color:#9CA3AF;margin-top:4px">${when}</div>
+                  </div>
+                </div>`;
+              }).join('')}</div>`}
+        </div>`;
+    } catch (e) {
+      section.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:14px;border-radius:10px;margin-top:18px">Failed to load fatigue forecast: ${esc(e.message)}</div>`;
+    }
+  };
+})();
+window.t34FatigueRunNow = async function () {
+  showToast('⏳ Forecasting CTR trends — may take 10-30 seconds…');
+  const r = await fetch('/api/optimizer/fatigue-forecast/run-now', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(x => x.json());
+  const s = r.run || {};
+  showToast(`✅ Done — evaluated ${s.evaluated || 0} creative(s), flagged ${s.flagged || 0}`);
   renderOptimizerDashboard();
 };
 

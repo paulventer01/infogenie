@@ -223,3 +223,35 @@ Detailed per-feature notes. All tiers follow the same pattern: strict-JSON LLM p
 - **Auto-fallback (T22 only)**: when raw HTML matches the empty-SPA heuristic (`looksLikeEmptySpa` — visible text < 400 chars AND markup contains a root container like `#root`/`#app`/`#__next`/`#__nuxt`/`#svelte`), T22 silently retries through headless and returns `renderMode: "headless-auto"`. Manual `headless:true` returns `renderMode: "headless"`. Default returns `renderMode: "http"`.
 - **T22 expanded check inventory (#20-32, 13 new)**: doctype html5 (2) · UTF-8 charset (2) · HSTS response header (4) · X-Robots-Tag header (3) · hreflang (2) · web manifest / PWA (2) · theme-color meta (2) · RSS/Atom feed (2) · inline event handlers (2) · loading="lazy" image % (2) · heading hierarchy with no skipped levels (3) · duplicate `<meta name="description">` (2) · inline `<script>` byte size (2). Total weight grew from ~85 → ~116; final score is still `(earned/totalWeight)*100` so % stays correctly normalised.
 - **Notes**: response headers now flow from `_fetchHtml` (and from puppeteer's `resp.headers()`) into `_parseAndScore(html, finalUrl, headers)` so HSTS and X-Robots-Tag can be checked. T30/T31/T32 INSERT statements now `JSON.stringify` summary/checks for JSONB columns (matched T22's pattern; previous bug submitted raw objects on T30).
+
+## T34 — Madgicx-style Optimizer Upgrades
+
+Five Madgicx-inspired enhancements stacked on the existing AI Optimizer. All are recommendation-only — they never auto-pause campaigns or change budgets without human approval.
+
+### Feature 1 — Blended Summary hero card
+- **Where**: Cross-Channel Report → top of the page (replaces the old Total Spend / Customers / CAC / ROAS hero).
+- **Renders**: 4-card strip — Total Ad Spend · MER · LTV/CAC · Net Sales — with a platform-pill row above (live/dim per connection) and a secondary line for Customers / Total Revenue / Blended ROAS.
+
+### Feature 2 — MER metric (+ per-channel revenue/ROAS/CPM)
+- **Endpoint**: `GET /api/blended-roas`
+- **Helper**: `_revenueByPlatform(days)` queries `ad_performance_hourly JOIN ad_campaigns` summed by platform.
+- **New fields**: `totalRevenue`, `mer` (% — revenue/spend × 100), `netSales` (revenue − spend), `ltvCac`, `ltvAssumed` (default 2× CAC until real LTV wired). Per-channel objects also gain `revenue`, `roas`, `cpm`, `revenueSource`.
+
+### Feature 3 — Day-part / hour-of-day budget shifting
+- **Service**: `services/optimizer/dayparting.js`
+- **Storage**: `optimizer_dayparting` table (campaign_id · window_days · total_spend/conv · hours_json[24] · best_hours[4] · worst_hours[4] · recommendation · run_id).
+- **Logic**: 14-day rolling aggregation by `EXTRACT(HOUR FROM bucket_hour AT TIME ZONE 'UTC')`; scores each hour by ROAS → falls back to inverse CPA → falls back to CTR; skips campaigns with <$25 total spend or <6 hour buckets with data.
+- **Cron**: `startDaypartingCron(24)` — first run 3 min after boot, then every 24h. Mutex-guarded.
+- **Routes**: `GET /api/optimizer/dayparting` (latest per campaign) · `POST /api/optimizer/dayparting/run-now`.
+
+### Feature 4 — "Why did the AI do this?" Decision Log
+- **Route**: `GET /api/optimizer/decisions?limit=&platform=` joins `optimizer_actions`+`ad_campaigns` so each row carries campaign name, platform, before/after JSON, applied/error state, run_id.
+- **UI**: Grouped count pills (pause/scale_budget/hold/creative_refresh/bandit) + scrollable list with colour-coded left border, before→after JSON diff, plain-English reason, run id, timestamp.
+
+### Feature 5 — Predictive creative fatigue
+- **Service**: `services/optimizer/fatigue_forecast.js`
+- **Storage**: `creative_fatigue_forecasts` table (campaign_id · creative_id · platform_ad_id · window_days · samples · current_ctr · slope_per_day · projected_ctr_3d · days_until_floor · ctr_floor · predicted_fatigue · reason · run_id).
+- **Logic**: OLS linear regression on daily CTR over 14d (skips days with <50 impressions, requires ≥5 usable days). Flags `predicted_fatigue=true` when slope<0 AND projected CTR at +3d < 0.005 (0.5% floor — same as `creative_refresh.js`). Computes `days_until_floor` from line crossing.
+- **Cron**: `startFatigueForecastCron(24)` — first run 4 min after boot, then every 24h. Mutex-guarded.
+- **Routes**: `GET /api/optimizer/fatigue-forecast?flagged=1` (latest per creative) · `POST /api/optimizer/fatigue-forecast/run-now`.
+- **Pairs with**: existing 72h Creative Auto-Refresh — predictive fatigue is the early-warning layer that catches creatives BEFORE they hit the existing reactive refresh threshold.

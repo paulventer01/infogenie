@@ -8768,6 +8768,15 @@ let _googleCronsStarted = false;
       _optimizerRules.startOptimizerCron(6);             // every 6 hours
       _optimizerCreative.startCreativeRefreshCron(24);   // every 24h (Phase 8 — Meta)
       _optimizerBandit.startBanditCron(12);              // every 12h (Phase 7 — Meta)
+      // T34 — day-part analysis + predictive creative fatigue (recommendation
+      // only; never auto-pauses anything). Both are mutex-guarded and no-op
+      // when no campaigns are optimizer-enabled.
+      try {
+        const _dayparting = require('./services/optimizer/dayparting');
+        const _fatigue    = require('./services/optimizer/fatigue_forecast');
+        _dayparting.startDaypartingCron(24);
+        _fatigue.startFatigueForecastCron(24);
+      } catch (e) { console.error('[t34-optimizer] init failed:', e.message); }
       // Google Ads ports — same cadence as their Meta counterparts. Each is
       // its own mutex-guarded module that no-ops when GOOGLE_ADS_* creds are
       // missing, so it's safe to start them unconditionally.
@@ -9650,32 +9659,96 @@ async function _fetchAmplitudeConversions(days = 30) {
   } catch (e) { return { ok:false, channel:'amplitude', error: e.message, status: e.status }; }
 }
 
+// T34 — pull revenue per platform from `ad_performance_hourly` (the optimizer's
+// own ingested table). This lets us compute MER + per-channel ROAS without
+// adding new fields to the spend fetchers and without depending on Stripe/Shopify.
+async function _revenueByPlatform(days = 30) {
+  if (!_db.hasDb()) return {};
+  try {
+    const r = await _db.getPool().query(`
+      SELECT c.platform,
+        COALESCE(SUM(p.revenue),0)::float8     AS revenue,
+        COALESCE(SUM(p.conversions),0)::float8 AS conv
+      FROM ad_performance_hourly p
+      JOIN ad_campaigns c ON c.id = p.campaign_id
+      WHERE p.bucket_hour >= now() - ($1 || ' days')::interval
+      GROUP BY 1
+    `, [String(days)]);
+    const out = {};
+    for (const row of r.rows) {
+      const k = (row.platform || '').toLowerCase().replace('facebook', 'meta');
+      out[k] = { revenue: Number(row.revenue || 0), conversions: Number(row.conv || 0) };
+    }
+    return out;
+  } catch (e) { return {}; }
+}
+
 app.get('/api/blended-roas', async (req, res) => {
   const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 30));
-  const [meta, google, tiktok, amp] = await Promise.all([
+  const [meta, google, tiktok, amp, revByPlatform] = await Promise.all([
     _fetchMetaSpend(days),
     _fetchGoogleAdsSpend(days),
     _fetchTikTokSpend(days),
     _fetchAmplitudeConversions(days),
+    _revenueByPlatform(days),
   ]);
-  const adChannels = [meta, google, tiktok];
-  const totalSpend       = adChannels.filter(c => c.ok).reduce((s, c) => s + (c.spend       || 0), 0);
-  const totalImpressions = adChannels.filter(c => c.ok).reduce((s, c) => s + (c.impressions || 0), 0);
-  const totalClicks      = adChannels.filter(c => c.ok).reduce((s, c) => s + (c.clicks      || 0), 0);
-  const adReportedConv   = adChannels.filter(c => c.ok).reduce((s, c) => s + (c.conversions || 0), 0);
+  // Stitch revenue back onto each channel object.
+  const _enrich = (ch, key) => {
+    const r = revByPlatform[key];
+    if (!r) return ch;
+    const revenue = Number(r.revenue || 0);
+    const spend   = Number(ch.spend  || 0);
+    const impressions = Number(ch.impressions || 0);
+    return {
+      ...ch,
+      revenue,
+      roas: spend > 0 && revenue > 0 ? +(revenue / spend).toFixed(2) : null,
+      cpm:  impressions > 0 && spend > 0 ? +((spend / impressions) * 1000).toFixed(2) : null,
+      revenueSource: revenue > 0 ? 'optimizer-ingest' : 'none',
+    };
+  };
+  const metaE   = _enrich(meta,   'meta');
+  const googleE = _enrich(google, 'google');
+  const tiktokE = _enrich(tiktok, 'tiktok');
+  const adChannels = [metaE, googleE, tiktokE];
+  // Architect-flagged correctness fix: spend AND revenue must come from the
+  // same channel set, otherwise MER/ROAS/Net Sales become apples-to-oranges
+  // when one channel's live API is down but historical revenue is still in
+  // ad_performance_hourly. We sum BOTH across all 3 channels (revenue from DB
+  // is independent of API liveness; spend defaults to 0 when not connected).
+  const totalSpend       = adChannels.reduce((s, c) => s + (Number(c.spend)       || 0), 0);
+  const totalImpressions = adChannels.reduce((s, c) => s + (Number(c.impressions) || 0), 0);
+  const totalClicks      = adChannels.reduce((s, c) => s + (Number(c.clicks)      || 0), 0);
+  const adReportedConv   = adChannels.reduce((s, c) => s + (Number(c.conversions) || 0), 0);
+  const totalRevenue     = adChannels.reduce((s, c) => s + (Number(c.revenue)     || 0), 0);
   // Prefer Amplitude as ground truth; fall back to ad-platform-reported conversions.
   const customers      = (amp.ok && amp.conversions > 0) ? amp.conversions : adReportedConv;
   const customerSource = (amp.ok && amp.conversions > 0) ? 'amplitude' : 'ad-platform';
   const cac = customers > 0 ? +(totalSpend / customers).toFixed(2) : null;
+  // T34 — Marketing Efficiency Ratio = revenue / spend. Holistic, not per-platform.
+  // Net Sales is revenue minus spend (the dashboard surfaces it as the "what's
+  // left after ad cost" number). LTV/CAC uses a configurable LTV multiplier
+  // (default 2.0× CAC) until the user wires real LTV from their CRM/Stripe.
+  const mer       = totalSpend > 0 && totalRevenue > 0 ? +((totalRevenue / totalSpend) * 100).toFixed(1) : null;
+  const netSales  = totalRevenue > 0 ? +(totalRevenue - totalSpend).toFixed(2) : null;
+  const ltvAssumed = cac != null ? +(cac * 2).toFixed(2) : null;
+  const ltvCac    = (ltvAssumed && cac && cac > 0) ? +(ltvAssumed / cac).toFixed(2) : null;
   res.json({
     ok: true, days,
     totalSpend:      +totalSpend.toFixed(2),
+    totalRevenue:    +totalRevenue.toFixed(2),
     totalImpressions, totalClicks,
     customers, customerSource,
     cac,
-    roas: null,
-    roasNote: 'ROAS requires order/revenue values. Wire your order data (Stripe/Shopify webhook → /api/orders) to enable blended ROAS.',
-    channels: { meta, google, tiktok },
+    mer,           // T34 — % (e.g. 396 means $3.96 revenue per $1 spend)
+    netSales,      // T34 — revenue minus ad spend (in currency)
+    ltvCac,        // T34 — based on assumed 2× CAC LTV until real LTV is wired
+    ltvAssumed,    // surfaced for transparency
+    roas: totalSpend > 0 && totalRevenue > 0 ? +(totalRevenue / totalSpend).toFixed(2) : null,
+    roasNote: totalRevenue > 0
+      ? 'ROAS computed from Optimizer-ingested revenue (ad_performance_hourly).'
+      : 'No revenue ingested yet. Wire a campaign into the Optimizer to populate revenue, or send order data to /api/orders for true blended ROAS.',
+    channels: { meta: metaE, google: googleE, tiktok: tiktokE },
     amplitude: amp,
     generatedAt: new Date().toISOString(),
   });

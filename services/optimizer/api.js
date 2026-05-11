@@ -9,6 +9,8 @@ const { runCreativeRefreshOnce } = require('./creative_refresh');
 const { runBanditOnce } = require('./bandit');
 const { runGoogleCreativeRefreshOnce } = require('./google_creative_refresh');
 const { runGoogleBanditOnce } = require('./google_bandit');
+const { runDaypartingOnce } = require('./dayparting');
+const { runFatigueForecastOnce } = require('./fatigue_forecast');
 
 const router = express.Router();
 
@@ -239,6 +241,88 @@ router.delete('/campaigns/:id', async (req, res) => {
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, error: 'bad id' });
   await _db.getPool().query(`DELETE FROM ad_campaigns WHERE id=$1`, [id]);
   res.json({ ok: true });
+});
+
+// ── T34: Decision log (richer than /actions — joins campaign + structured) ─
+// Returns recent optimizer_actions enriched with campaign name, platform,
+// before/after JSON, and a stable category (pause/scale/hold/refresh/bandit).
+// The frontend's "Why did the AI do this?" panel renders this directly.
+router.get('/decisions', async (req, res) => {
+  if (!_db.hasDb()) return res.json({ ok: false, decisions: [] });
+  const limit = Math.min(parseInt(req.query.limit || '100', 10), 500);
+  const platform = req.query.platform ? String(req.query.platform).slice(0, 32) : null;
+  const params = [limit];
+  let where = '';
+  if (platform) { params.push(platform); where = `WHERE c.platform = $2`; }
+  const r = await _db.getPool().query(`
+    SELECT a.id, a.action_type, a.reason, a.before_value, a.after_value,
+           a.applied, a.apply_error, a.run_id, a.created_at,
+           c.id AS campaign_id, c.name AS campaign_name, c.platform,
+           c.target_roas, c.daily_budget
+    FROM optimizer_actions a
+    LEFT JOIN ad_campaigns c ON c.id = a.campaign_id
+    ${where}
+    ORDER BY a.created_at DESC LIMIT $1
+  `, params);
+  res.json({ ok: true, decisions: r.rows });
+});
+
+// ── T34: Day-part / hour-of-day budget shifting ───────────────────────────
+router.get('/dayparting', async (req, res) => {
+  if (!_db.hasDb()) return res.json({ ok: false, items: [] });
+  const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+  // Latest dayparting analysis per campaign (one row each).
+  const r = await _db.getPool().query(`
+    SELECT DISTINCT ON (dp.campaign_id)
+      dp.id, dp.campaign_id, dp.window_days, dp.total_spend, dp.total_conv,
+      dp.hours_json, dp.best_hours, dp.worst_hours, dp.recommendation,
+      dp.run_id, dp.created_at,
+      c.name AS campaign_name, c.platform, c.optimizer_enabled
+    FROM optimizer_dayparting dp
+    LEFT JOIN ad_campaigns c ON c.id = dp.campaign_id
+    ORDER BY dp.campaign_id, dp.created_at DESC
+    LIMIT $1
+  `, [limit]);
+  res.json({ ok: true, items: r.rows });
+});
+
+router.post('/dayparting/run-now', express.json(), async (_req, res) => {
+  const r = await runDaypartingOnce({ force: true });
+  res.json({ ok: true, run: r });
+});
+
+// ── T34: Predictive creative fatigue ──────────────────────────────────────
+router.get('/fatigue-forecast', async (req, res) => {
+  if (!_db.hasDb()) return res.json({ ok: false, items: [] });
+  const limit = Math.min(parseInt(req.query.limit || '100', 10), 500);
+  const onlyFlagged = String(req.query.flagged || '') === '1';
+  // Outer WHERE filters the wrapped subquery alias `latest`, NOT `ff`.
+  const where = onlyFlagged ? 'WHERE latest.predicted_fatigue = true' : '';
+  // Latest forecast per creative.
+  const r = await _db.getPool().query(`
+    SELECT * FROM (
+      SELECT DISTINCT ON (ff.creative_id)
+        ff.id, ff.campaign_id, ff.creative_id, ff.platform_ad_id,
+        ff.window_days, ff.samples, ff.current_ctr, ff.slope_per_day,
+        ff.projected_ctr_3d, ff.days_until_floor, ff.ctr_floor,
+        ff.predicted_fatigue, ff.reason, ff.run_id, ff.created_at,
+        c.name AS campaign_name, c.platform,
+        cr.headline, cr.body, cr.image_url
+      FROM creative_fatigue_forecasts ff
+      LEFT JOIN ad_campaigns  c  ON c.id  = ff.campaign_id
+      LEFT JOIN ad_creatives  cr ON cr.id = ff.creative_id
+      ORDER BY ff.creative_id, ff.created_at DESC
+    ) latest
+    ${where}
+    ORDER BY predicted_fatigue DESC, created_at DESC
+    LIMIT $1
+  `, [limit]);
+  res.json({ ok: true, items: r.rows });
+});
+
+router.post('/fatigue-forecast/run-now', express.json(), async (_req, res) => {
+  const r = await runFatigueForecastOnce({ force: true });
+  res.json({ ok: true, run: r });
 });
 
 module.exports = router;

@@ -165,6 +165,55 @@ async function ensureOptimizerSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_bandit_alloc_camp_time
       ON bandit_allocations(campaign_id, created_at DESC);
+
+    -- ── T34: Day-part / hour-of-day budget shifting ────────────────────────
+    -- One row per campaign per analysis run. hours_json is an array of 24
+    -- {hour, spend, conv, revenue, cpa, roas, score} entries; best/worst hour
+    -- arrays cite the top-N performing hour buckets. recommendation is the
+    -- plain-English summary the UI surfaces.
+    CREATE TABLE IF NOT EXISTS optimizer_dayparting (
+      id            BIGSERIAL PRIMARY KEY,
+      campaign_id   INTEGER NOT NULL REFERENCES ad_campaigns(id) ON DELETE CASCADE,
+      window_days   INTEGER DEFAULT 14,
+      total_spend   NUMERIC(12,2) DEFAULT 0,
+      total_conv    NUMERIC(12,2) DEFAULT 0,
+      hours_json    JSONB,
+      best_hours    JSONB,
+      worst_hours   JSONB,
+      recommendation TEXT,
+      run_id        TEXT,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_dayparting_camp_time
+      ON optimizer_dayparting(campaign_id, created_at DESC);
+
+    -- ── T34: Predictive creative fatigue ───────────────────────────────────
+    -- For each ad creative, runs a linear regression on daily CTR over the
+    -- learning window. If the slope is negative AND the projected CTR will
+    -- drop below the floor within days_until_floor days, the creative is
+    -- flagged predicted_fatigue=true so the optimizer can refresh it BEFORE
+    -- performance actually craters.
+    CREATE TABLE IF NOT EXISTS creative_fatigue_forecasts (
+      id                 BIGSERIAL PRIMARY KEY,
+      campaign_id        INTEGER REFERENCES ad_campaigns(id) ON DELETE CASCADE,
+      creative_id        INTEGER REFERENCES ad_creatives(id) ON DELETE CASCADE,
+      platform_ad_id     TEXT,
+      window_days        INTEGER DEFAULT 14,
+      samples            INTEGER DEFAULT 0,
+      current_ctr        NUMERIC(8,5),
+      slope_per_day      NUMERIC(10,7),
+      projected_ctr_3d   NUMERIC(8,5),
+      days_until_floor   NUMERIC(6,2),
+      ctr_floor          NUMERIC(8,5),
+      predicted_fatigue  BOOLEAN DEFAULT false,
+      reason             TEXT,
+      run_id             TEXT,
+      created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_fatigue_camp_time
+      ON creative_fatigue_forecasts(campaign_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_fatigue_creative_time
+      ON creative_fatigue_forecasts(creative_id, created_at DESC);
   `);
   return true;
 }
