@@ -38397,6 +38397,9 @@ window.buildGeoAudit = function() {
         <label>Page URL<input id="geo-url" type="url" placeholder="https://example.com/your-best-article" style="width:100%;padding:9px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
         <button id="geo-go" class="btn btn-primary">🤖 Audit page</button>
       </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;color:#475569;font-size:0.86rem;cursor:pointer">
+        <input id="geo-headless" type="checkbox"> Render with real browser (slower, but works for SPA / JavaScript-heavy sites)
+      </label>
       <p style="color:#64748b;font-size:0.84rem;margin-top:10px;margin-bottom:0">Scores how well a page is structured to be cited by ChatGPT, Perplexity and Gemini. Different from classic SEO — focuses on AI snippet extractability.</p>
     </div>
     <div id="geo-result" style="margin-bottom:18px"></div>
@@ -38466,7 +38469,8 @@ window.buildGeoAudit = function() {
     const btn = document.getElementById('geo-go');
     btn.disabled = true; btn.textContent = '⏳ Auditing…';
     document.getElementById('geo-result').innerHTML = '<div style="text-align:center;padding:32px;color:#64748b">Fetching page and running 12 GEO checks…</div>';
-    const r = await fetch('/api/geo-audit/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) }).then(x=>x.json());
+    const headless = !!document.getElementById('geo-headless') && document.getElementById('geo-headless').checked;
+    const r = await fetch('/api/geo-audit/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url, headless }) }).then(x=>x.json());
     btn.disabled = false; btn.textContent = '🤖 Audit page';
     if (!r.ok) { document.getElementById('geo-result').innerHTML = '<div style="background:#fee;color:#dc2626;padding:16px;border-radius:8px">Failed: ' + esc(r.error || 'unknown') + '</div>'; return; }
     renderResult(r);
@@ -38487,6 +38491,9 @@ window.buildLocalSeo = function() {
         <label>Page URL (homepage or contact page works best)<input id="ls-url" type="url" placeholder="https://yourbusiness.com" style="width:100%;padding:9px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
         <button id="ls-go" class="btn btn-primary">📍 Audit page</button>
       </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;color:#475569;font-size:0.86rem;cursor:pointer">
+        <input id="ls-headless" type="checkbox"> Render with real browser (slower, but works for SPA / JavaScript-heavy sites)
+      </label>
       <p style="color:#64748b;font-size:0.84rem;margin-top:10px;margin-bottom:0">For brick-and-mortar and service-area businesses. 11 checks summing to 100 points covering NAP, schema, GBP link, hours, click-to-call and more.</p>
     </div>
     <div id="ls-result" style="margin-bottom:18px"></div>
@@ -38556,7 +38563,8 @@ window.buildLocalSeo = function() {
     const btn = document.getElementById('ls-go');
     btn.disabled = true; btn.textContent = '⏳ Auditing…';
     document.getElementById('ls-result').innerHTML = '<div style="text-align:center;padding:32px;color:#64748b">Running 11 local SEO checks…</div>';
-    const r = await fetch('/api/local-seo/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) }).then(x=>x.json());
+    const headless = !!document.getElementById('ls-headless') && document.getElementById('ls-headless').checked;
+    const r = await fetch('/api/local-seo/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url, headless }) }).then(x=>x.json());
     btn.disabled = false; btn.textContent = '📍 Audit page';
     if (!r.ok) { document.getElementById('ls-result').innerHTML = '<div style="background:#fee;color:#dc2626;padding:16px;border-radius:8px">Failed: ' + esc(r.error || 'unknown') + '</div>'; return; }
     renderResult(r);
@@ -38577,6 +38585,9 @@ window.buildSocialTags = function() {
         <label>Page URL<input id="st-url" type="url" placeholder="https://example.com" style="width:100%;padding:9px 10px;border:1px solid var(--border-color,#e2e8f0);border-radius:6px;background:var(--card-bg,#fff);margin-top:4px"></label>
         <button id="st-go" class="btn btn-primary">🔖 Audit page</button>
       </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:10px;color:#475569;font-size:0.86rem;cursor:pointer">
+        <input id="st-headless" type="checkbox"> Render with real browser (slower, but works for SPA / JavaScript-heavy sites)
+      </label>
       <p style="color:#64748b;font-size:0.84rem;margin-top:10px;margin-bottom:0">13 checks for Open Graph, Twitter Cards, Facebook Pixel, GA4, social profile links, favicon and Apple touch icon.</p>
     </div>
     <div id="st-result" style="margin-bottom:18px"></div>
@@ -38647,7 +38658,8 @@ window.buildSocialTags = function() {
     const btn = document.getElementById('st-go');
     btn.disabled = true; btn.textContent = '⏳ Auditing…';
     document.getElementById('st-result').innerHTML = '<div style="text-align:center;padding:32px;color:#64748b">Running 13 social tag checks…</div>';
-    const r = await fetch('/api/social-tags/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url }) }).then(x=>x.json());
+    const headless = !!document.getElementById('st-headless') && document.getElementById('st-headless').checked;
+    const r = await fetch('/api/social-tags/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url, headless }) }).then(x=>x.json());
     btn.disabled = false; btn.textContent = '🔖 Audit page';
     if (!r.ok) { document.getElementById('st-result').innerHTML = '<div style="background:#fee;color:#dc2626;padding:16px;border-radius:8px">Failed: ' + esc(r.error || 'unknown') + '</div>'; return; }
     renderResult(r);

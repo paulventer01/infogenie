@@ -10,6 +10,7 @@ const _https = require('https');
 const _http = require('http');
 const _db = require('../../db');
 const { isUrlSafeToFetch } = require('../_shared/ssrf');
+const _headless = require('../_shared/headless_fetch');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safeAsync(h) {
@@ -138,10 +139,12 @@ function _runChecks(html, finalUrl) {
   return { checks, phoneCount: distinctPhones.length, hasLocal, hasMapEmbed };
 }
 
-async function _runLocalSeo(url) {
+async function _runLocalSeo(url, opts = {}) {
   const safe = await isUrlSafeToFetch(url);
   if (!safe.ok) return { ok: false, error: safe.error };
-  const fetched = await _fetchHtml(url);
+  const fetched = (opts.headless && _headless.isAvailable())
+    ? await _headless.fetchHtmlHeadless(url)
+    : await _fetchHtml(url);
   if (!fetched.ok) return { ok: false, error: fetched.error };
   const r = _runChecks(fetched.html, fetched.finalUrl);
   const totalW = r.checks.reduce((s, c) => s + c.weight, 0);
@@ -163,7 +166,7 @@ router.post('/run', _safeAsync(async (req, res) => {
   const url = String((req.body && req.body.url) || '').trim();
   if (!url) return _err(res, 400, 'url required');
   if (!/^https?:\/\//i.test(url)) return _err(res, 400, 'url must start with http:// or https://');
-  const result = await _runLocalSeo(url);
+  const result = await _runLocalSeo(url, { headless: !!(req.body && req.body.headless) });
   if (!result.ok) return _err(res, 400, result.error);
   if (_db.hasDb && _db.hasDb()) {
     try {

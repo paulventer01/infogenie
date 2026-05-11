@@ -4,6 +4,7 @@ const _https = require('https');
 const _http = require('http');
 const _db = require('../../db');
 const { isUrlSafeToFetch } = require('../_shared/ssrf');
+const _headless = require('../_shared/headless_fetch');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safeAsync(h) {
@@ -53,7 +54,7 @@ function _fetchHtml(rawUrl, redirects = 0) {
         if (total > 2 * 1024 * 1024) { r.destroy(); return resolve({ ok: false, error: 'Response too large (>2MB)' }); }
         chunks.push(c);
       });
-      r.on('end', () => resolve({ ok: true, html: Buffer.concat(chunks).toString('utf8'), finalUrl: rawUrl, status: r.statusCode }));
+      r.on('end', () => resolve({ ok: true, html: Buffer.concat(chunks).toString('utf8'), finalUrl: rawUrl, status: r.statusCode, headers: r.headers || {} }));
     });
     req.on('error', e => resolve({ ok: false, error: e.message }));
     req.setTimeout(10000, () => { req.destroy(); resolve({ ok: false, error: 'Timeout (10s)' }); });
@@ -84,10 +85,12 @@ function _probe(rawUrl) {
 }
 
 // Tiny regex-based parser. Cheap, no deps. Good enough for hygiene checks.
-function _parseAndScore(html, finalUrl) {
+function _parseAndScore(html, finalUrl, headers = {}) {
   const lower = html.toLowerCase();
   const checks = [];
   const C = (id, label, status, weight, message, fix) => checks.push({ id, label, status, weight, earned: status === 'pass' ? weight : status === 'warn' ? Math.floor(weight / 2) : 0, message, fix });
+  // Lowercase header keys (Node delivers them lowercased already, but be defensive).
+  const H = {}; for (const k of Object.keys(headers || {})) H[k.toLowerCase()] = headers[k];
 
   // 1. HTTPS
   const isHttps = finalUrl.startsWith('https:');
@@ -232,6 +235,94 @@ function _parseAndScore(html, finalUrl) {
   // 18. Link to robots.txt + sitemap (probed below — placeholder)
   // 19. (placeholder for robots/sitemap, filled by caller)
 
+  // ── Tier 22 expansion (T33 phase 2): 12 additional checks ──────────────
+  // 20. <!doctype html>
+  const hasDoctype = /^\s*<!doctype\s+html/i.test(html);
+  C('doctype', 'HTML5 doctype', hasDoctype ? 'pass' : 'warn', 2,
+    hasDoctype ? '<!doctype html> declared.' : 'No <!doctype html> at top of document.',
+    'Add <!doctype html> as the very first line of every page so browsers render in standards mode.');
+
+  // 21. UTF-8 charset
+  const charsetMatch = html.match(/<meta[^>]+charset=["']?([\w-]+)["']?/i);
+  const charset = charsetMatch ? charsetMatch[1].toLowerCase() : '';
+  if (charset === 'utf-8') C('charset', 'UTF-8 charset', 'pass', 2, '<meta charset="utf-8"> present.', '');
+  else if (charset) C('charset', 'UTF-8 charset', 'warn', 2, `Charset is "${charset}" — not UTF-8.`, 'Switch to <meta charset="utf-8"> for full unicode support.');
+  else C('charset', 'UTF-8 charset', 'warn', 2, 'No <meta charset> declared.', 'Add <meta charset="utf-8"> as the first tag inside <head>.');
+
+  // 22. Strict-Transport-Security (HSTS) header
+  const hsts = H['strict-transport-security'];
+  if (hsts && /max-age=\d+/.test(hsts)) C('hsts', 'HSTS (Strict-Transport-Security)', 'pass', 4, `HSTS active: "${hsts.slice(0,80)}"`, '');
+  else if (isHttps) C('hsts', 'HSTS (Strict-Transport-Security)', 'warn', 4, 'No HSTS response header.', 'Send "Strict-Transport-Security: max-age=31536000; includeSubDomains" to enforce HTTPS for return visitors.');
+  else C('hsts', 'HSTS (Strict-Transport-Security)', 'fail', 4, 'No HSTS (and page is plain HTTP).', 'Move to HTTPS first, then add Strict-Transport-Security header.');
+
+  // 23. X-Robots-Tag response header
+  const xRobots = H['x-robots-tag'] || '';
+  if (/noindex|none/i.test(xRobots)) C('x_robots', 'X-Robots-Tag header', 'fail', 3, `X-Robots-Tag blocks indexing: "${xRobots}"`, 'Remove "noindex" from the X-Robots-Tag response header if you want this page to rank.');
+  else if (xRobots) C('x_robots', 'X-Robots-Tag header', 'pass', 3, `Header set: "${xRobots}"`, '');
+  else C('x_robots', 'X-Robots-Tag header', 'pass', 3, 'No X-Robots-Tag (default = indexable).', '');
+
+  // 24. hreflang (international SEO) — informational pass
+  const hreflangCount = (html.match(/<link[^>]+rel=["']alternate["'][^>]+hreflang=/gi) || []).length;
+  if (hreflangCount >= 1) C('hreflang', 'hreflang for international SEO', 'pass', 2, `${hreflangCount} hreflang link(s) declared.`, '');
+  else C('hreflang', 'hreflang for international SEO', 'pass', 2, 'No hreflang (single-language site assumed).', 'Only relevant if you publish in multiple languages — then add <link rel="alternate" hreflang="..."> for each variant.');
+
+  // 25. Web App Manifest (PWA)
+  const hasManifest = /<link[^>]+rel=["']manifest["'][^>]+href=/i.test(html);
+  C('manifest', 'Web App Manifest', hasManifest ? 'pass' : 'warn', 2,
+    hasManifest ? 'manifest.json linked.' : 'No <link rel="manifest"> — page is not installable as a PWA.',
+    'Add <link rel="manifest" href="/manifest.json"> with name, icons and theme-color so users can install your site.');
+
+  // 26. theme-color meta (mobile address bar)
+  const hasThemeColor = /<meta[^>]+name=["']theme-color["']/i.test(html);
+  C('theme_color', 'theme-color meta', hasThemeColor ? 'pass' : 'warn', 2,
+    hasThemeColor ? 'theme-color set.' : 'No <meta name="theme-color"> — mobile address bar will use default.',
+    'Add <meta name="theme-color" content="#yourbrand"> so Chrome on Android tints the URL bar with your brand.');
+
+  // 27. RSS / Atom feed
+  const hasFeed = /<link[^>]+rel=["']alternate["'][^>]+type=["']application\/(rss|atom)\+xml["']/i.test(html);
+  C('feed', 'RSS / Atom feed', hasFeed ? 'pass' : 'warn', 2,
+    hasFeed ? 'Feed link present.' : 'No RSS/Atom feed linked.',
+    'If you publish content (blog/podcast/news), add <link rel="alternate" type="application/rss+xml" href="/feed.xml">');
+
+  // 28. Inline event handlers (security/CSP smell)
+  const inlineHandlers = (html.match(/\son(?:click|load|error|mouseover|focus|submit|keydown|keyup)\s*=/gi) || []).length;
+  if (inlineHandlers === 0) C('inline_handlers', 'No inline event handlers', 'pass', 2, 'No onclick/onload-style attributes.', '');
+  else if (inlineHandlers <= 3) C('inline_handlers', 'No inline event handlers', 'warn', 2, `${inlineHandlers} inline handler attribute(s).`, 'Move event handlers into addEventListener() calls in your JS — required for strict Content-Security-Policy.');
+  else C('inline_handlers', 'No inline event handlers', 'fail', 2, `${inlineHandlers} inline handler attributes — blocks strict CSP.`, 'Replace onclick="..." attributes with addEventListener() so you can ship a strict CSP and harden against XSS.');
+
+  // 29. Lazy loading on images (perf)
+  if (imgs.length === 0) C('lazy_images', 'Lazy-loaded images', 'pass', 2, 'No images on page.', '');
+  else {
+    const lazyCount = imgs.filter(t => /\bloading\s*=\s*["']lazy["']/i.test(t)).length;
+    const ratio = lazyCount / imgs.length;
+    if (ratio >= 0.6) C('lazy_images', 'Lazy-loaded images', 'pass', 2, `${lazyCount}/${imgs.length} images use loading="lazy".`, '');
+    else if (ratio > 0) C('lazy_images', 'Lazy-loaded images', 'warn', 2, `${lazyCount}/${imgs.length} lazy.`, 'Add loading="lazy" to non-hero images so off-screen images don\'t block first paint.');
+    else C('lazy_images', 'Lazy-loaded images', 'warn', 2, '0 images use loading="lazy".', 'Add loading="lazy" to off-screen images for faster first paint and better Core Web Vitals.');
+  }
+
+  // 30. Heading hierarchy (no skipping levels)
+  const headingTags = html.match(/<h[1-6]\b/gi) || [];
+  const levels = headingTags.map(t => parseInt(t.match(/h([1-6])/i)[1], 10));
+  let skipped = false;
+  for (let i = 1; i < levels.length; i++) {
+    if (levels[i] > levels[i-1] + 1) { skipped = true; break; }
+  }
+  if (levels.length === 0) C('heading_order', 'Heading hierarchy', 'fail', 3, 'No headings on page.', 'Use <h1>-<h6> in order to structure content for search engines and screen readers.');
+  else if (!skipped) C('heading_order', 'Heading hierarchy', 'pass', 3, `${levels.length} heading(s) in correct order.`, '');
+  else C('heading_order', 'Heading hierarchy', 'warn', 3, 'Headings skip levels (e.g. h2 → h4).', 'Don\'t skip heading levels — use h1 → h2 → h3 in order for accessibility and SEO.');
+
+  // 31. Multiple meta descriptions (duplicate-tag smell)
+  const descTagCount = (html.match(/<meta[^>]+name=["']description["']/gi) || []).length;
+  if (descTagCount <= 1) C('dup_meta_desc', 'Single meta description', 'pass', 2, descTagCount === 1 ? 'Exactly one description tag.' : 'No description (covered above).', '');
+  else C('dup_meta_desc', 'Single meta description', 'warn', 2, `${descTagCount} <meta name="description"> tags — Google picks one unpredictably.`, 'Remove duplicate <meta name="description"> tags so Google uses the one you intended.');
+
+  // 32. Inline <script> bytes (page weight smell)
+  const inlineScripts = html.match(/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/gi) || [];
+  const inlineBytes = inlineScripts.reduce((s, b) => s + Buffer.byteLength(b, 'utf8'), 0);
+  if (inlineBytes < 30 * 1024) C('inline_script_size', 'Inline script size', 'pass', 2, `${(inlineBytes/1024).toFixed(1)}KB inline JS.`, '');
+  else if (inlineBytes < 80 * 1024) C('inline_script_size', 'Inline script size', 'warn', 2, `${(inlineBytes/1024).toFixed(1)}KB inline JS — start splitting to external files.`, 'Move large inline <script> blocks into external .js files so the browser can cache them across page loads.');
+  else C('inline_script_size', 'Inline script size', 'fail', 2, `${(inlineBytes/1024).toFixed(1)}KB inline JS — heavy on first paint.`, 'Move inline scripts to external files. Inline JS isn\'t cacheable and bloats every HTML response.');
+
   const totalWeight = checks.reduce((s, c) => s + c.weight, 0);
   const earned = checks.reduce((s, c) => s + c.earned, 0);
   const score = Math.round((earned / totalWeight) * 100);
@@ -245,14 +336,28 @@ router.get('/test', (req, res) => res.json({ ok: true, db: _db.hasDb && _db.hasD
 router.post('/audit', _safeAsync(async (req, res) => {
   const url = String(req.body?.url || '').trim();
   if (!url) return _err(res, 400, 'url required');
+  const useHeadless = !!(req.body && req.body.headless);
 
   const safe = await isUrlSafeToFetch(url);
   if (!safe.ok) return _err(res, 400, safe.error);
 
-  const fetched = await _fetchHtml(url);
+  let fetched;
+  let renderMode = 'http';
+  if (useHeadless) {
+    if (!_headless.isAvailable()) return _err(res, 503, 'Headless browser not available on this server');
+    fetched = await _headless.fetchHtmlHeadless(url);
+    renderMode = 'headless';
+  } else {
+    fetched = await _fetchHtml(url);
+    // Auto-suggest headless if raw HTML looks like an empty SPA shell.
+    if (fetched.ok && _headless.looksLikeEmptySpa(fetched.html) && _headless.isAvailable()) {
+      const headlessAttempt = await _headless.fetchHtmlHeadless(url);
+      if (headlessAttempt.ok) { fetched = headlessAttempt; renderMode = 'headless-auto'; }
+    }
+  }
   if (!fetched.ok) return _err(res, 502, fetched.error);
 
-  const parsed = _parseAndScore(fetched.html, fetched.finalUrl);
+  const parsed = _parseAndScore(fetched.html, fetched.finalUrl, fetched.headers || {});
 
   // Probe robots + sitemap in parallel (root-domain level).
   let originRoot = '';
@@ -279,6 +384,7 @@ router.post('/audit', _safeAsync(async (req, res) => {
   const summary = {
     title: parsed.title, description: parsed.desc, words: parsed.words,
     h1Count: parsed.h1Count, imgCount: parsed.imgCount, finalUrl: fetched.finalUrl,
+    renderMode, renderMs: fetched.renderMs || null,
     passed: parsed.checks.filter(c => c.status === 'pass').length,
     warned: parsed.checks.filter(c => c.status === 'warn').length,
     failed: parsed.checks.filter(c => c.status === 'fail').length
@@ -295,8 +401,10 @@ router.post('/audit', _safeAsync(async (req, res) => {
     } catch (_) {}
   }
 
-  res.json({ ok: true, runId, url: fetched.finalUrl, score, grade, summary, checks: parsed.checks });
+  res.json({ ok: true, runId, url: fetched.finalUrl, score, grade, summary, checks: parsed.checks, renderMode });
 }));
+
+router.get('/headless-status', (req, res) => res.json({ ok: true, available: _headless.isAvailable() }));
 
 router.get('/runs', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, runs: [] });
@@ -307,12 +415,17 @@ router.get('/runs', _safeAsync(async (req, res) => {
 }));
 
 // Internal helper — exported so the embeddable-widget service can reuse the audit logic.
-async function runAudit(url) {
+async function runAudit(url, opts = {}) {
   const safe = await isUrlSafeToFetch(url);
   if (!safe.ok) return { ok: false, error: safe.error };
-  const fetched = await _fetchHtml(url);
+  let fetched;
+  if (opts.headless && _headless.isAvailable()) {
+    fetched = await _headless.fetchHtmlHeadless(url);
+  } else {
+    fetched = await _fetchHtml(url);
+  }
   if (!fetched.ok) return { ok: false, error: fetched.error };
-  const parsed = _parseAndScore(fetched.html, fetched.finalUrl);
+  const parsed = _parseAndScore(fetched.html, fetched.finalUrl, fetched.headers || {});
   let originRoot = '';
   try { const u = new URL(fetched.finalUrl); originRoot = `${u.protocol}//${u.host}`; } catch (_) {}
   const [robotsOk, sitemapOk] = originRoot

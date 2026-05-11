@@ -9,6 +9,7 @@ const _https = require('https');
 const _http = require('http');
 const _db = require('../../db');
 const { isUrlSafeToFetch } = require('../_shared/ssrf');
+const _headless = require('../_shared/headless_fetch');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safeAsync(h) {
@@ -196,10 +197,12 @@ function _runChecks(html, finalUrl, sidecars) {
   return { checks, words: words.length, paragraphs: paragraphs.length, qHeadings, ldjsonCount };
 }
 
-async function _runGeoAudit(url) {
+async function _runGeoAudit(url, opts = {}) {
   const safe = await isUrlSafeToFetch(url);
   if (!safe.ok) return { ok: false, error: safe.error };
-  const fetched = await _fetchHtml(url);
+  const fetched = (opts.headless && _headless.isAvailable())
+    ? await _headless.fetchHtmlHeadless(url)
+    : await _fetchHtml(url);
   if (!fetched.ok) return { ok: false, error: fetched.error };
   let originRoot = '';
   try { const u = new URL(fetched.finalUrl); originRoot = `${u.protocol}//${u.host}`; } catch {}
@@ -223,14 +226,14 @@ router.post('/run', _safeAsync(async (req, res) => {
   const url = String((req.body && req.body.url) || '').trim();
   if (!url) return _err(res, 400, 'url required');
   if (!/^https?:\/\//i.test(url)) return _err(res, 400, 'url must start with http:// or https://');
-  const result = await _runGeoAudit(url);
+  const result = await _runGeoAudit(url, { headless: !!(req.body && req.body.headless) });
   if (!result.ok) return _err(res, 400, result.error);
   if (_db.hasDb && _db.hasDb()) {
     try {
       const id = 'geo_' + crypto.randomBytes(6).toString('hex');
       await _db.getPool().query(
         `INSERT INTO geo_audit_runs (id, url, score, grade, summary, checks) VALUES ($1,$2,$3,$4,$5,$6)`,
-        [id, result.url, result.score, result.grade, result.summary, result.checks]
+        [id, result.url, result.score, result.grade, JSON.stringify(result.summary), JSON.stringify(result.checks)]
       );
       result.id = id;
     } catch (e) { console.warn('[geo-audit] insert failed', e.message); }
