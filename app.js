@@ -104,26 +104,92 @@ window._wlViewRealAds = async function(compEnc, domainEnc, wlId) {
     host.innerHTML = '';
   }
   host._wlId = wlId || null;
-  // Defer-bind the in-modal AI Counter Message button after innerHTML write
+  // Bulletproof in-modal AI Counter Message: calls /api/wl/counter-message
+  // directly (which fans out to OpenAI + Claude + Perplexity + Gemini in
+  // parallel) and renders the result inline inside this same modal. No
+  // dependency on openWLCounterModal or any other late-loaded function.
   setTimeout(() => {
     const cb = document.getElementById('wlOpenCounterBtn');
-    if (cb && wlId) {
-      cb.addEventListener('click', function(ev){
-        ev.preventDefault(); ev.stopPropagation();
-        try {
-          const data = (window._wlData || {})[wlId];
-          if (typeof window.openWLCounterModal === 'function' && data) {
-            // Close the Real Meta Ads modal first so the counter modal is on top cleanly
-            const h = document.getElementById('wlRealAdsModal');
-            if (h) h.remove();
-            window.openWLCounterModal(data);
-          } else {
-            console.error('[wl-counter-in-modal] missing data or openWLCounterModal', { hasFn: typeof window.openWLCounterModal, wlId, hasData: !!data });
-            alert('Counter message generator is still loading. Please try again in a moment.');
-          }
-        } catch(e){ console.error('[wl-counter-in-modal] failed', e); }
-      });
-    }
+    if (!cb || !wlId) return;
+    cb.addEventListener('click', async function(ev){
+      ev.preventDefault(); ev.stopPropagation();
+      const data = (window._wlData || {})[wlId] || {};
+      const body = document.getElementById('wlRealAdsBody');
+      if (!body) return;
+      cb.disabled = true; cb.style.opacity = '0.6'; cb.textContent = '⏳ Generating…';
+      // Render loading state at top of body
+      const loadHtml = `<div id="wlCounterResults" style="background:linear-gradient(135deg,#F0FDFA,#EFF6FF);border:1px solid #99F6E4;border-radius:12px;padding:16px;margin-bottom:14px">
+        <div style="font-weight:800;color:#0F766E;margin-bottom:6px">🎯 AI Counter-Message Generation</div>
+        <div style="font-size:0.82rem;color:#475569">Running OpenAI + Claude + Perplexity + Gemini in parallel against ${_h(data.comp || '')}'s message…</div>
+        <div style="margin-top:10px"><div style="display:inline-block;width:14px;height:14px;border:2px solid #14B8A6;border-top-color:transparent;border-radius:50%;animation:wlspin 0.8s linear infinite"></div></div>
+      </div><style>@keyframes wlspin{to{transform:rotate(360deg)}}</style>`;
+      body.insertAdjacentHTML('afterbegin', loadHtml);
+      try {
+        const yourBrand = (localStorage.getItem('ig-domain') || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0] || '';
+        const r = await fetch('/api/wl/counter-message', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            comp:     data.comp     || '',
+            channel:  data.channel  || 'Google Ads',
+            lossRate: data.lossRate || '30%',
+            message:  data.message  || '',
+            weakness: data.weakness || '',
+            yourBrand,
+            industry: 'marketing',
+          }),
+        });
+        const j = await r.json().catch(() => ({}));
+        const slot = document.getElementById('wlCounterResults');
+        if (!slot) return;
+        if (!r.ok || j.ok === false || !Array.isArray(j.variants) || !j.variants.length) {
+          slot.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px;color:#991B1B">
+            <div style="font-weight:800;margin-bottom:4px">⚠️ Couldn't generate counter-messages</div>
+            <div style="font-size:0.82rem">${_h(j.error || ('HTTP ' + r.status))}</div>
+          </div>`;
+          return;
+        }
+        const provs = (j.providers || j.sourcesUsed || []);
+        const provLabel = Array.isArray(provs) && provs.length ? provs.join(' + ') : (j.source || 'AI');
+        const variantsHtml = j.variants.map((v, i) => `
+          <div style="background:white;border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;margin-top:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <div style="font-size:0.7rem;font-weight:800;color:#0F766E;text-transform:uppercase;letter-spacing:0.04em">Variant ${i+1} · ${_h(v.angle || 'Counter')}</div>
+              ${v._source ? `<div style="font-size:0.62rem;font-weight:700;color:#64748B">${_h(v._source)}</div>` : ''}
+            </div>
+            <div style="font-weight:800;color:#0A1628;margin-bottom:4px">${_h(v.headline || '')}</div>
+            <div style="font-size:0.86rem;color:#334155;line-height:1.5;margin-bottom:6px">${_h(v.body || '')}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+              <div style="font-size:0.72rem;color:#64748B"><strong>CTA:</strong> ${_h(v.cta || 'Learn More')}${v.why ? ' · <em>' + _h(v.why) + '</em>' : ''}</div>
+              <button type="button" data-cb-i="${i}" style="background:#00C9C8;color:#0A1628;border:none;border-radius:6px;padding:5px 10px;font-size:0.72rem;font-weight:700;cursor:pointer">📋 Copy</button>
+            </div>
+          </div>`).join('');
+        const stratHtml = j.strategy ? `<div style="margin-top:10px;padding:10px;background:#F8FAFC;border-left:3px solid #0066FF;border-radius:6px;font-size:0.82rem;color:#334155"><strong>Strategy:</strong> ${_h(j.strategy)}</div>` : '';
+        const targHtml  = j.targeting ? `<div style="margin-top:6px;padding:10px;background:#F8FAFC;border-left:3px solid #00C9C8;border-radius:6px;font-size:0.82rem;color:#334155"><strong>Targeting:</strong> ${_h(j.targeting)}</div>` : '';
+        slot.innerHTML = `<div style="font-weight:800;color:#0F766E;margin-bottom:6px">🎯 AI Counter-Messages — ${_h(data.comp || '')}</div>
+          <div style="font-size:0.74rem;color:#475569;margin-bottom:6px">Generated by <strong>${_h(provLabel)}</strong> · ${j.variants.length} variant${j.variants.length>1?'s':''}</div>
+          ${variantsHtml}${stratHtml}${targHtml}
+          <button type="button" id="wlCopyAllBtn" style="margin-top:10px;background:#0066FF;color:#fff;border:none;border-radius:6px;padding:7px 12px;font-size:0.76rem;font-weight:700;cursor:pointer">📋 Copy All</button>`;
+        // Wire copy buttons
+        slot.querySelectorAll('[data-cb-i]').forEach(b => {
+          b.addEventListener('click', () => {
+            const i = parseInt(b.getAttribute('data-cb-i'), 10);
+            const v = j.variants[i] || {};
+            const txt = `${v.headline || ''}\n${v.body || ''}\nCTA: ${v.cta || ''}`;
+            try { navigator.clipboard.writeText(txt); b.textContent = '✓ Copied'; setTimeout(()=>{b.textContent='📋 Copy';}, 1400); } catch(_){}
+          });
+        });
+        const allBtn = document.getElementById('wlCopyAllBtn');
+        if (allBtn) allBtn.addEventListener('click', () => {
+          const all = j.variants.map((v,i)=>`Variant ${i+1} (${v.angle||''})\n${v.headline||''}\n${v.body||''}\nCTA: ${v.cta||''}\n`).join('\n');
+          try { navigator.clipboard.writeText(all + (j.strategy?'\nStrategy: '+j.strategy:'') + (j.targeting?'\nTargeting: '+j.targeting:'')); allBtn.textContent='✓ All copied'; setTimeout(()=>{allBtn.textContent='📋 Copy All';},1400); } catch(_){}
+        });
+      } catch (e) {
+        const slot = document.getElementById('wlCounterResults');
+        if (slot) slot.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px;color:#991B1B">⚠️ ${_h(e.message)}</div>`;
+      } finally {
+        cb.disabled = false; cb.style.opacity = '1'; cb.textContent = '🎯 Regenerate Counter Message';
+      }
+    });
   }, 0);
   host.innerHTML = `<div style="background:white;border-radius:16px;max-width:760px;width:100%;max-height:85vh;overflow:auto;padding:24px;position:relative">
     <button onclick="document.getElementById('wlRealAdsModal').remove()" style="position:absolute;top:14px;right:14px;background:#F3F4F6;border:none;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1.2rem;line-height:1">×</button>
