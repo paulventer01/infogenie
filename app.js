@@ -2689,6 +2689,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'unified-inbox')        { try { buildUnifiedInbox(); }         catch(e) { console.warn('buildUnifiedInbox error:', e); } }
   if (viewId === 'conversion-boosters')  { try { buildConversionBoosters(); }   catch(e) { console.warn('buildConversionBoosters error:', e); } }
   if (viewId === 'white-label')          { try { buildWhiteLabel(); }           catch(e) { console.warn('buildWhiteLabel error:', e); } }
+  if (viewId === 'bulk-reports')         { try { buildBulkReports(); }          catch(e) { console.warn('buildBulkReports error:', e); } }
+  if (viewId === 'backlink-monitor')     { try { buildBacklinkMonitor(); }      catch(e) { console.warn('buildBacklinkMonitor error:', e); } }
   if (viewId === 'seo-crawler')          { try { buildSeoCrawler(); }           catch(e) { console.warn('buildSeoCrawler error:', e); } }
   if (viewId === 'geo-audit')            { try { buildGeoAudit(); }             catch(e) { console.warn('buildGeoAudit error:', e); } }
   if (viewId === 'local-seo')            { try { buildLocalSeo(); }             catch(e) { console.warn('buildLocalSeo error:', e); } }
@@ -34186,7 +34188,9 @@ window.buildBacklinks = function() {
         <button onclick="_blGo()" style="padding:10px 22px;background:#059669;border:2px solid #059669;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🔗 Analyze</button>
       </div>
     </div>
-    <div id="blOut"></div>`;
+    <div id="blOut"></div>
+    <div style="margin-top:18px"><button onclick="_blResearch()" style="padding:10px 22px;background:#fff;border:2px solid #7C3AED;border-radius:8px;font-size:0.84rem;font-weight:800;color:#7C3AED;cursor:pointer">🔬 Deep Research (Anchors · Top Pages · TLDs · Countries)</button></div>
+    <div id="blResearchOut" style="margin-top:14px"></div>`;
 };
 window._blGo = async function() {
   const target = (document.getElementById('blTarget')||{}).value || '';
@@ -38474,6 +38478,264 @@ window.buildWhiteLabel = function() {
     if (j.ok) render(j.brand);
     else document.getElementById('wlForm').innerHTML = '<div style="color:#dc2626">Failed to load: ' + esc(j.error || 'unknown') + '</div>';
   });
+};
+
+// ── T35.1 — Bulk Reporting ─────────────────────────────────────────────────
+window.buildBulkReports = function() {
+  const wrap = document.getElementById('brWrap'); if (!wrap) return;
+  const esc = (window._escapeHtml) || (s => String(s==null?'':s).replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])));
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="font-weight:800;color:#0A1628;margin-bottom:12px">📥 Upload CSV of URLs</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Run name</label>
+          <input id="brName" placeholder="e.g. Cape Town agency prospects" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">CSV file (one URL per row, max 500)</label>
+          <input id="brFile" type="file" accept=".csv,text/csv" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.85rem">
+        </div>
+      </div>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.82rem;color:#374151;margin-bottom:10px">
+        <input type="checkbox" id="brHeadless"> Render every page in a real browser (slower, but works for JS-heavy SPAs)
+      </label><br>
+      <button onclick="_brStart()" style="padding:10px 22px;background:#059669;border:2px solid #059669;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">📦 Start Batch</button>
+      <div style="font-size:0.75rem;color:#6B7280;margin-top:10px">PDFs use your <a href="#" onclick="navigateTo('white-label');return false" style="color:#7C3AED;font-weight:700">White-Label</a> brand profile if it's enabled.</div>
+    </div>
+    <div id="brList"></div>`;
+  _brList();
+};
+window._brStart = async function() {
+  const f = (document.getElementById('brFile')||{}).files?.[0];
+  if (!f) return showToast('⚠️ Choose a CSV file first');
+  const fd = new FormData();
+  fd.append('file', f);
+  fd.append('name', (document.getElementById('brName')||{}).value || '');
+  fd.append('headless', (document.getElementById('brHeadless')||{}).checked ? '1' : '0');
+  showToast('⏳ Uploading and queuing audits…');
+  try {
+    const r = await fetch('/api/bulk-reports/run', { method:'POST', body: fd }).then(x=>x.json());
+    if (!r.ok) return showToast('❌ ' + (r.error||'failed'));
+    showToast('✅ Run #' + r.runId + ' started — ' + r.total + ' URLs queued');
+    _brList();
+  } catch (e) { showToast('❌ ' + e.message); }
+};
+window._brList = async function() {
+  const list = document.getElementById('brList'); if (!list) return;
+  list.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;color:#6B7280">⏳ Loading runs…</div>`;
+  try {
+    const r = await fetch('/api/bulk-reports').then(x=>x.json());
+    const runs = r.runs || [];
+    if (!runs.length) {
+      list.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:24px;text-align:center;color:#9CA3AF">No bulk runs yet. Upload a CSV above to get started.</div>`;
+      return;
+    }
+    const esc = window._escapeHtml || (s => String(s||''));
+    list.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
+        <div style="padding:14px 18px;border-bottom:1px solid #E5E7EB;font-weight:800;color:#0A1628;display:flex;justify-content:space-between;align-items:center">
+          <span>📦 Recent Bulk Runs (${runs.length})</span>
+          <button onclick="_brList()" style="padding:6px 12px;background:#F3F4F6;border:1px solid #D1D5DB;border-radius:6px;font-size:0.75rem;cursor:pointer">↻ Refresh</button>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+          <thead><tr style="background:#F9FAFB">
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">RUN</th>
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">STATUS</th>
+            <th style="padding:9px 14px;text-align:right;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">PROGRESS</th>
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">DOWNLOADS</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${runs.map(run => {
+            const pct = run.total > 0 ? Math.round(((run.completed||0)+(run.failed||0)) / run.total * 100) : 0;
+            const tone = run.status==='done' ? '#059669' : run.status==='failed' ? '#DC2626' : '#0066FF';
+            return `<tr style="border-top:1px solid #F3F4F6">
+              <td style="padding:11px 14px"><div style="font-weight:700;color:#0A1628">${esc(run.name)}</div><div style="font-size:0.72rem;color:#9CA3AF">#${run.id} · ${new Date(run.created_at).toLocaleString()}</div></td>
+              <td style="padding:11px 14px"><span style="background:${tone}22;color:${tone};padding:3px 9px;border-radius:6px;font-size:0.72rem;font-weight:700;text-transform:uppercase">${esc(run.status)}</span></td>
+              <td style="padding:11px 14px;text-align:right">
+                <div style="font-weight:700;color:#0A1628">${run.completed}/${run.total}${run.failed?` <span style="color:#DC2626;font-size:0.78rem">(${run.failed} failed)</span>`:''}</div>
+                <div style="background:#E5E7EB;height:5px;border-radius:3px;margin-top:5px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${tone}"></div></div>
+              </td>
+              <td style="padding:11px 14px">
+                <a href="/api/bulk-reports/${run.id}/zip" style="color:#7C3AED;font-weight:700;font-size:0.8rem;text-decoration:none;margin-right:10px">📦 Zip of PDFs</a>
+                <a href="/api/bulk-reports/${run.id}/csv" style="color:#0066FF;font-weight:700;font-size:0.8rem;text-decoration:none">📊 CSV</a>
+              </td>
+              <td style="padding:11px 14px;text-align:right">
+                <button onclick="if(confirm('Delete run #${run.id}?')){fetch('/api/bulk-reports/${run.id}',{method:'DELETE'}).then(()=>_brList())}" style="background:none;border:none;color:#9CA3AF;cursor:pointer;font-size:1rem" title="Delete">🗑️</button>
+              </td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>`;
+  } catch (e) { list.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${e.message}</div>`; }
+  // Auto-refresh while any run is in flight.
+  if (document.getElementById('brList') && document.querySelector('#brList span[style*="0066FF"]')) {
+    clearTimeout(window._brTimer);
+    window._brTimer = setTimeout(_brList, 5000);
+  }
+};
+
+// ── T35.2 — Backlink Change Monitor ────────────────────────────────────────
+window.buildBacklinkMonitor = function() {
+  const wrap = document.getElementById('bmWrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
+      <div style="font-weight:800;color:#0A1628;margin-bottom:12px">➕ Add a domain to monitor</div>
+      <div style="display:grid;grid-template-columns:2fr 2fr 1fr 1fr;gap:10px;margin-bottom:12px">
+        <input id="bmDomain" placeholder="example.com" style="padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        <input id="bmEmail" placeholder="alerts@yourcompany.com (optional)" style="padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        <input id="bmSlack" placeholder="Slack webhook URL (optional)" style="padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        <select id="bmFreq" style="padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+          <option value="daily">Daily check</option>
+          <option value="weekly">Weekly check</option>
+        </select>
+      </div>
+      <button onclick="_bmAdd()" style="padding:10px 22px;background:#059669;border:2px solid #059669;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🛰️ Start Monitoring</button>
+      <button onclick="_bmRunAll()" style="padding:10px 22px;background:#fff;border:2px solid #7C3AED;border-radius:8px;font-size:0.84rem;font-weight:800;color:#7C3AED;cursor:pointer;margin-left:8px">⚡ Check All Now</button>
+    </div>
+    <div id="bmList"></div>
+    <div id="bmChanges" style="margin-top:18px"></div>`;
+  _bmRefresh();
+};
+window._bmAdd = async function() {
+  const domain = (document.getElementById('bmDomain')||{}).value || '';
+  if (!domain.trim()) return showToast('⚠️ Domain required');
+  const r = await fetch('/api/backlink-monitor/domains', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+    domain,
+    alert_email: (document.getElementById('bmEmail')||{}).value || '',
+    alert_slack_webhook: (document.getElementById('bmSlack')||{}).value || '',
+    frequency: (document.getElementById('bmFreq')||{}).value || 'daily',
+  })}).then(x=>x.json());
+  if (!r.ok) return showToast('❌ ' + (r.error||'failed'));
+  showToast('✅ Monitoring ' + r.monitor.domain);
+  document.getElementById('bmDomain').value = '';
+  _bmRefresh();
+};
+window._bmDel = async function(id) {
+  if (!confirm('Stop monitoring this domain?')) return;
+  await fetch('/api/backlink-monitor/domains/'+id, { method:'DELETE' });
+  _bmRefresh();
+};
+window._bmRunOne = async function(id) {
+  showToast('⏳ Pulling fresh snapshot…');
+  const r = await fetch('/api/backlink-monitor/run-now', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ monitor_id: id })}).then(x=>x.json());
+  const res = (r.results || [])[0] || {};
+  showToast(res.ok ? `✅ Refreshed: ${res.newCount||0} new, ${res.lostCount||0} lost` : '❌ ' + (res.error||'failed'));
+  _bmRefresh();
+};
+window._bmRunAll = async function() {
+  showToast('⏳ Running all monitors…');
+  const r = await fetch('/api/backlink-monitor/run-now', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' }).then(x=>x.json());
+  showToast('✅ Processed ' + (r.results||[]).length + ' monitor(s)');
+  _bmRefresh();
+};
+window._bmRefresh = async function() {
+  const esc = window._escapeHtml || (s => String(s||''));
+  const list = document.getElementById('bmList'); if (!list) return;
+  try {
+    const [m, c] = await Promise.all([
+      fetch('/api/backlink-monitor/domains').then(x=>x.json()),
+      fetch('/api/backlink-monitor/changes?limit=200').then(x=>x.json()),
+    ]);
+    const monitors = m.monitors || [];
+    list.innerHTML = monitors.length ? `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
+        <div style="padding:14px 18px;border-bottom:1px solid #E5E7EB;font-weight:800;color:#0A1628">🛰️ Monitored Domains (${monitors.length})</div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+          <thead><tr style="background:#F9FAFB">
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">DOMAIN</th>
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">ALERTS</th>
+            <th style="padding:9px 14px;text-align:right;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">REF DOMAINS</th>
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">LAST CHECK</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${monitors.map(mn => `<tr style="border-top:1px solid #F3F4F6">
+            <td style="padding:11px 14px;font-weight:700;color:#0A1628">${esc(mn.domain)}</td>
+            <td style="padding:11px 14px;color:#374151;font-size:0.78rem">${[mn.alert_email && '✉️ '+esc(mn.alert_email), mn.alert_slack_webhook && '💬 Slack'].filter(Boolean).join(' · ') || '<span style="color:#9CA3AF">— none —</span>'} <span style="color:#9CA3AF">· ${esc(mn.frequency)}</span></td>
+            <td style="padding:11px 14px;text-align:right;font-weight:700;color:#0A1628">${(mn.last_total_referring||0).toLocaleString()}</td>
+            <td style="padding:11px 14px;color:#6B7280;font-size:0.78rem">${mn.last_run_at ? new Date(mn.last_run_at).toLocaleString() : '<span style="color:#F59E0B">never</span>'}</td>
+            <td style="padding:11px 14px;text-align:right;white-space:nowrap">
+              <button onclick="_bmRunOne(${mn.id})" style="background:none;border:1px solid #7C3AED;color:#7C3AED;border-radius:6px;padding:4px 10px;font-size:0.72rem;font-weight:700;cursor:pointer">↻ Check</button>
+              <button onclick="_bmDel(${mn.id})" style="background:none;border:none;color:#9CA3AF;cursor:pointer;font-size:1rem" title="Stop">🗑️</button>
+            </td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>` : `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:24px;text-align:center;color:#9CA3AF">No domains monitored yet. Add one above to start tracking link changes.</div>`;
+    const changes = c.changes || [];
+    document.getElementById('bmChanges').innerHTML = changes.length ? `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
+        <div style="padding:14px 18px;border-bottom:1px solid #E5E7EB;font-weight:800;color:#0A1628">📜 Recent Link Changes (${changes.length})</div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+          <thead><tr style="background:#F9FAFB">
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">WHEN</th>
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">DOMAIN</th>
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">CHANGE</th>
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">REFERRING</th>
+            <th style="padding:9px 14px;text-align:right;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">RANK</th>
+            <th style="padding:9px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">COUNTRY</th>
+          </tr></thead>
+          <tbody>${changes.map(ch => {
+            const tone = ch.change_type === 'new' ? '#059669' : '#DC2626';
+            const icon = ch.change_type === 'new' ? '✨ NEW' : '💔 LOST';
+            return `<tr style="border-top:1px solid #F3F4F6">
+              <td style="padding:9px 14px;color:#6B7280;font-size:0.78rem;white-space:nowrap">${new Date(ch.detected_at).toLocaleString()}</td>
+              <td style="padding:9px 14px;font-weight:700;color:#0A1628">${esc(ch.domain)}</td>
+              <td style="padding:9px 14px"><span style="background:${tone}22;color:${tone};padding:3px 9px;border-radius:6px;font-size:0.72rem;font-weight:700">${icon}</span></td>
+              <td style="padding:9px 14px;color:#374151">${esc(ch.referring_domain)}</td>
+              <td style="padding:9px 14px;text-align:right;color:#374151">${ch.rank||0}</td>
+              <td style="padding:9px 14px;color:#6B7280">${esc(ch.country||'—')}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>` : '';
+  } catch (e) { list.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${e.message}</div>`; }
+};
+
+// ── T35.3 — Backlink Research deep dimensions (anchors/pages/tlds/countries) ─
+window._blResearch = async function() {
+  const target = (document.getElementById('blTarget')||{}).value || '';
+  if (!target.trim()) return showToast('⚠️ Enter a target first');
+  const out = document.getElementById('blResearchOut');
+  if (!out) return;
+  const esc = window._escapeHtml || (s => String(s||''));
+  out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;color:#6B7280">⏳ Pulling deep research dimensions…</div>`;
+  try {
+    const [anc, pgs, brk] = await Promise.all([
+      fetch('/api/backlinks/anchors',   { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ target, limit:25 })}).then(x=>x.json()),
+      fetch('/api/backlinks/pages',     { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ target, limit:25 })}).then(x=>x.json()),
+      fetch('/api/backlinks/breakdown', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ target })}).then(x=>x.json()),
+    ]);
+    const tbl = (title, headers, rows) => `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;margin-bottom:14px">
+        <div style="padding:12px 16px;border-bottom:1px solid #E5E7EB;font-weight:800;color:#0A1628">${title}</div>
+        ${rows.length ? `<table style="width:100%;border-collapse:collapse;font-size:0.83rem">
+          <thead><tr style="background:#F9FAFB">${headers.map(h=>`<th style="padding:8px 14px;text-align:${h.align||'left'};color:#6B7280;font-size:0.68rem;font-weight:800;letter-spacing:.06em">${h.label}</th>`).join('')}</tr></thead>
+          <tbody>${rows.map(r=>`<tr style="border-top:1px solid #F3F4F6">${r.map(c=>`<td style="padding:7px 14px;text-align:${c.align||'left'};color:${c.color||'#374151'}">${c.html||esc(c.v)}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>` : `<div style="padding:18px;text-align:center;color:#9CA3AF;font-size:0.82rem">No data returned.</div>`}
+      </div>`;
+    const fmt = n => Number(n||0).toLocaleString();
+    const ancRows = (anc.anchors||[]).map(a => [
+      { v: a.anchor || '(empty)', color: '#0A1628' },
+      { v: fmt(a.backlinks), align: 'right' },
+      { v: fmt(a.referring_domains), align: 'right' },
+    ]);
+    const pgsRows = (pgs.pages||[]).map(p => [
+      { v: p.url || '', color: '#0A1628' },
+      { v: fmt(p.backlinks), align: 'right' },
+      { v: fmt(p.referring_domains), align: 'right' },
+      { v: fmt(p.rank), align: 'right' },
+    ]);
+    const tldRows = (brk.tlds||[]).map(t => [{ v: t.tld, color: '#0A1628' }, { v: fmt(t.domains), align:'right' }, { v: fmt(t.backlinks), align:'right' }]);
+    const ctyRows = (brk.countries||[]).map(t => [{ v: t.country, color: '#0A1628' }, { v: fmt(t.domains), align:'right' }, { v: fmt(t.backlinks), align:'right' }]);
+    const note = (anc.note || pgs.note || brk.note) ? `<div style="background:#FEF3C7;color:#92400E;padding:10px 14px;border-radius:8px;font-size:0.78rem;margin-bottom:12px">${esc(anc.note||pgs.note||brk.note)}</div>` : '';
+    out.innerHTML = note +
+      tbl('🪧 Top Anchor Texts', [{label:'ANCHOR'},{label:'BACKLINKS',align:'right'},{label:'REF DOMAINS',align:'right'}], ancRows) +
+      tbl('🏆 Top Linked Pages (yours)', [{label:'PAGE'},{label:'BACKLINKS',align:'right'},{label:'REF DOMAINS',align:'right'},{label:'RANK',align:'right'}], pgsRows) +
+      `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        ${tbl('🌐 Top Linking TLDs', [{label:'TLD'},{label:'DOMAINS',align:'right'},{label:'BACKLINKS',align:'right'}], tldRows)}
+        ${tbl('🗺️ Top Linking Countries', [{label:'COUNTRY'},{label:'DOMAINS',align:'right'},{label:'BACKLINKS',align:'right'}], ctyRows)}
+      </div>`;
+  } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${e.message}</div>`; }
 };
 
 // ── Tier 29 — Multi-Page SEO Crawler ───────────────────────────────────────

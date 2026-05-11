@@ -8503,6 +8503,23 @@ const _calendarRouter    = require('./services/content_calendar/api');
 app.use('/api/backlinks',         _backlinksRouter);
 app.use('/api/content-calendar',  _calendarRouter);
 
+// ── T35 — Bulk Reporting + Backlink Change Monitoring ──────────────────────
+const _bulkReportSchema  = require('./services/bulk_reporting/schema');
+const _bulkReportRouter  = require('./services/bulk_reporting/api');
+const _blMonitorSchema   = require('./services/backlink_monitor/schema');
+const _blMonitorRouter   = require('./services/backlink_monitor/api');
+app.use('/api/bulk-reports',      _bulkReportRouter);
+app.use('/api/backlink-monitor',  _blMonitorRouter);
+(async () => { try {
+  if (_db.hasDb()) {
+    await _bulkReportSchema.ensureBulkReportingSchema();
+    await _blMonitorSchema.ensureBacklinkMonitorSchema();
+    _bulkReportRouter.resumePendingRuns();
+    _blMonitorRouter.startCron();
+    console.log('[t35] bulk-reports + backlink-monitor schemas ready');
+  }
+} catch (e) { console.warn('[t35] init failed:', e.message); }})();
+
 // ── Tier 7 ─────────────────────────────────────────────────────────────────
 const _podcastSchema = require('./services/podcast_monitor/schema');
 const _podcastRouter = require('./services/podcast_monitor/api');
