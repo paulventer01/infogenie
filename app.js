@@ -256,7 +256,12 @@ window._wlViewRealAds = async function(compEnc, domainEnc, wlId) {
     // Backend is "soft-failure": even on Meta API errors it may still return
     // ok:true with j.error set + ads:[]. Treat presence of j.error or http
     // failure as an error case.
-    if (!r.ok || j.ok === false || j.error) {
+    // Treat j.error as a real error ONLY if there are no ads AND no
+    // manualSearchUrl. The new strict-accuracy backend path returns
+    // ok:true + ads:[] + error + manualSearchUrl + droppedUnrelated, which
+    // should flow to the empty-state renderer (not the red error panel).
+    const isEmptyButValid = (j.ok !== false && Array.isArray(j.ads) && j.ads.length === 0 && j.manualSearchUrl);
+    if ((!r.ok || j.ok === false || j.error) && !isEmptyButValid) {
       const errRaw = j.error || `HTTP ${r.status}`;
       const errH = _h(errRaw);
       const errStr = String(errRaw).toLowerCase();
@@ -264,7 +269,9 @@ window._wlViewRealAds = async function(compEnc, domainEnc, wlId) {
       if (/missing[_\s]creds|meta_access_token/i.test(errStr)) {
         hintHtml = 'No Meta access token is configured. Add <code>META_ACCESS_TOKEN</code> in Secrets to enable real-ads pulling.';
       } else if (/permission|not authoriz|authorisation|login needed|2332002|ads\/library\/api/i.test(errStr)) {
+        const manualLink = _u(j.manualSearchUrl) || `https://www.facebook.com/ads/library/?search_type=keyword_unordered&q=${encodeURIComponent(comp)}`;
         hintHtml = `<strong>Your token is valid, but Meta's Ad Library API requires one extra one-time setup step:</strong> <em>Identity Confirmation for the Ad Library API</em>.<br><br>
+          <a href="${_h(manualLink)}" target="_blank" rel="noopener" style="display:inline-block;margin:6px 0 12px;background:#1877F2;color:#fff;padding:8px 14px;border-radius:6px;text-decoration:none;font-weight:700;font-size:0.85rem">🔍 See ${compH}'s ads on Meta now (manual link) →</a><br>
           <strong>Do this once (takes ~5 min):</strong>
           <ol style="margin:6px 0 6px 18px;padding:0;line-height:1.7">
             <li>Go to <a href="https://www.facebook.com/ID" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">facebook.com/ID</a> and complete <strong>Identity Confirmation</strong> (passport / driver's licence upload). This is the same flow advertisers use.</li>
@@ -287,9 +294,14 @@ window._wlViewRealAds = async function(compEnc, domainEnc, wlId) {
     }
     const ads = Array.isArray(j.ads) ? j.ads : [];
     if (!ads.length) {
+      const manualLink = _u(j.manualSearchUrl) || `https://www.facebook.com/ads/library/?search_type=keyword_unordered&q=${encodeURIComponent(comp)}`;
+      const errMsg = j.error || `${compH} may not be running ads on Meta right now, or the search didn't match.`;
+      const droppedNote = j.droppedUnrelated ? `<div style="font-size:0.78rem;color:#92400E;margin-top:8px;background:#FEF3C7;padding:8px;border-radius:6px"><strong>Accuracy filter:</strong> ${j.droppedUnrelated} unrelated ad${j.droppedUnrelated>1?'s':''} from other Pages were dropped to avoid showing wrong data.</div>` : '';
       body.innerHTML = `<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:24px;text-align:center;color:#475569">
-        <div style="font-weight:800;margin-bottom:6px">No active ads found</div>
-        <div style="font-size:0.85rem">${compH} may not be running ads on Meta right now, or the search didn't match. Try the brand domain directly.</div>
+        <div style="font-weight:800;margin-bottom:6px">No verified ads found for ${compH}</div>
+        <div style="font-size:0.85rem;line-height:1.5">${_h(errMsg)}</div>
+        ${droppedNote}
+        <a href="${_h(manualLink)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:12px;background:#1877F2;color:#fff;padding:8px 14px;border-radius:6px;text-decoration:none;font-weight:700;font-size:0.82rem">🔍 Search Meta Ad Library manually →</a>
       </div>`;
       return;
     }

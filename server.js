@@ -12218,11 +12218,17 @@ app.post('/api/meta-ad-library/search', async (req, res) => {
     metaErr = 'no META_ACCESS_TOKEN configured';
   }
 
-  // Attempt 2: Firecrawl scrape of the public Ad Library page (works without
-  // any Meta auth — same data anyone can see in a browser).
-  if (process.env.FIRECRAWL_API_KEY) {
+  // No Firecrawl fallback: Meta's Ad Library renders ad cards via JS that
+  // static scraping can't reliably attribute to a specific advertiser. The
+  // keyword search also returns unrelated Pages that share a substring.
+  // Per the user's "100% accurate data only" requirement, we do NOT scrape
+  // — instead we return the Meta API error so the frontend shows the
+  // identity-confirmation guidance + a deeplink for manual lookup.
+  const domainBase = String(domain || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].split('.')[0];
+  if (false && process.env.FIRECRAWL_API_KEY) {
     try {
-      const scrapeUrl = `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${encodeURIComponent(country)}&q=${encodeURIComponent(term)}&search_type=keyword_unordered`;
+      const searchTerm = (domainBase && domainBase.length >= 3 && domainBase.length > term.length) ? domainBase : term;
+      const scrapeUrl = `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${encodeURIComponent(country)}&q=${encodeURIComponent(searchTerm)}&search_type=keyword_unordered`;
       const fcResp = await fetch('https://api.firecrawl.dev/v1/scrape', {
         method:'POST',
         headers:{ 'Authorization':`Bearer ${process.env.FIRECRAWL_API_KEY}`, 'Content-Type':'application/json' },
@@ -12283,9 +12289,26 @@ app.post('/api/meta-ad-library/search', async (req, res) => {
           const body = lines.slice(0, 1).join(' ').replace(/\s+/g, ' ').slice(0, 400);
           // Page name: usually appears as a bold/heading near the top of the
           // card; fall back to the search term if we can't extract one.
-          let pageName = term;
-          const pageHeading = /^#+\s+([A-Z][A-Za-z0-9 .,'&-]{2,60})$/m.exec(card);
-          if (pageHeading) pageName = pageHeading[1].trim();
+          // Page name extraction. Meta's Ad Library markup places the
+          // advertiser name in the image alt-text of the ad creative
+          // thumbnail, e.g. `![Marriott Bonvoy](https://scontent...)`.
+          // Try multiple patterns in priority order. NEVER fall back to
+          // the search term — unknown attribution must remain unknown so
+          // the strict filter drops it.
+          let pageName = '';
+          // Pattern 1: image alt right after the card metadata block
+          const altMatch = /!\[([A-Za-z0-9][A-Za-z0-9 .,'&!?\-]{1,80})\]\(https?:\/\/[^\)]*(?:fbcdn|scontent)[^\)]*\)/.exec(card);
+          if (altMatch) pageName = altMatch[1].trim();
+          // Pattern 2: page link to facebook.com/<pageHandle>/ (display text)
+          if (!pageName) {
+            const linkMatch = /\[([A-Za-z0-9][A-Za-z0-9 .,'&!?\-]{1,80})\]\(https?:\/\/(?:www\.)?facebook\.com\/[A-Za-z0-9._-]+\/?\)/.exec(card);
+            if (linkMatch) pageName = linkMatch[1].trim();
+          }
+          // Pattern 3: markdown heading with the advertiser
+          if (!pageName) {
+            const pageHeading = /^#+\s+([A-Za-z0-9][A-Za-z0-9 .,'&!?\-]{2,60})$/m.exec(card);
+            if (pageHeading) pageName = pageHeading[1].trim();
+          }
           const startedAt = startMatch ? startMatch[1].trim() : (rangeMatch ? rangeMatch[1] : null);
           const stoppedAt = rangeMatch ? rangeMatch[2] : null;
           ads.push({
@@ -12300,23 +12323,49 @@ app.post('/api/meta-ad-library/search', async (req, res) => {
             note: body ? null : 'Ad copy is rendered inside Meta\'s iframe — click "View on Meta" to see the creative.',
           });
         }
-        if (ads.length) {
-          const runningCount = ads.filter(a => a.isRunning).length;
+        // Strict accuracy filter: only keep ads whose pageName matches the
+        // competitor or domain. Drops random Pages like "Forex DeCock"
+        // that share a substring with the keyword.
+        // Strict matcher: pageNorm must CONTAIN one of the acceptable names.
+        // Reverse direction (name contains pageNorm) is removed because it
+        // admits partial pages (e.g. page "plus" matching competitor
+        // "plus500"). Page name is required — ads with unknown attribution
+        // are dropped, never assumed to belong to the competitor.
+        const matchedAds = acceptablePageNames.length
+          ? ads.filter(a => {
+              const pageNorm = _normForMatch(a.page);
+              if (!pageNorm) return false;
+              return acceptablePageNames.some(name =>
+                name.length >= 3 && pageNorm.includes(name)
+              );
+            })
+          : ads;
+        const droppedCount = ads.length - matchedAds.length;
+        if (matchedAds.length) {
+          const runningCount = matchedAds.filter(a => a.isRunning).length;
           return res.json({
             ok:true, configured:true, term, country,
-            count: ads.length, runningCount, ads,
+            count: matchedAds.length, runningCount, ads: matchedAds,
             dataOrigin:'firecrawl_scrape_meta_ad_library',
             dataSource:'facebook.com/ads/library (scraped via Firecrawl — Meta API unavailable)',
-            confidence: ads.length >= 5 ? 'medium' : 'low',
+            confidence: matchedAds.length >= 5 ? 'medium' : 'low',
             fallbackReason: metaErr || 'Meta Graph API not authorised',
+            droppedUnrelated: droppedCount,
           });
         }
-        // Scrape ran but no ads parsed — could be no results, or page didn't
-        // hydrate ads in time. Return informative error.
+        // No matching ads — either the competitor doesn't advertise on Meta,
+        // or the scrape only returned unrelated Pages. Return a clear
+        // "no real data" response with a manual-search deeplink, NOT a
+        // random page that happens to share a substring.
+        const manualUrl = `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${encodeURIComponent(country)}&q=${encodeURIComponent(searchTerm)}&search_type=keyword_unordered`;
         return res.json({
           ok:true, configured:true, term, country, count:0, runningCount:0, ads:[],
-          error: `Meta Graph API: ${metaErr}. Firecrawl fallback ran but found no ads on the public Ad Library page for "${term}" in ${country}.`,
+          error: ads.length
+            ? `Meta's Ad Library returned ${ads.length} ad${ads.length>1?'s':''}, but none belonged to ${term} (the keyword matched unrelated Pages). The competitor may not be running ads on Meta in ${country}.`
+            : `Meta Graph API: ${metaErr}. Firecrawl scraped facebook.com/ads/library but found no ads for "${term}" in ${country}.`,
           dataOrigin:'firecrawl_scrape_meta_ad_library',
+          droppedUnrelated: droppedCount,
+          manualSearchUrl: manualUrl,
         });
       }
       var fcFailErr = fcJson.error || 'firecrawl returned no markdown';
@@ -12327,13 +12376,15 @@ app.post('/api/meta-ad-library/search', async (req, res) => {
     }
   }
 
-  // Both attempts failed — return the Meta error (so the frontend shows the
-  // existing identity-confirmation guidance) plus a separate fallbackError
-  // field carrying any Firecrawl diagnostic for support/debugging.
+  // Meta Graph API unavailable — return the error so the frontend shows
+  // the identity-confirmation guidance + a deeplink for manual lookup.
+  // We deliberately do NOT scrape because Meta's keyword search returns
+  // unrelated advertisers and we promised the user 100% accurate data.
+  const manualSearchTerm = (domainBase && domainBase.length >= 3 && domainBase.length > term.length) ? domainBase : term;
   return res.json({
     ok:true, configured:!!token, ads:[],
     error: metaErr || 'Meta Ad Library unavailable',
-    fallbackError: typeof fcFailErr !== 'undefined' ? fcFailErr : (process.env.FIRECRAWL_API_KEY ? null : 'FIRECRAWL_API_KEY not configured — scrape fallback unavailable'),
+    manualSearchUrl: `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${encodeURIComponent(country)}&q=${encodeURIComponent(manualSearchTerm)}&search_type=keyword_unordered`,
   });
 });
 
