@@ -269,9 +269,10 @@ window._wlViewRealAds = async function(compEnc, domainEnc, wlId) {
       if (/missing[_\s]creds|meta_access_token/i.test(errStr)) {
         hintHtml = 'No Meta access token is configured. Add <code>META_ACCESS_TOKEN</code> in Secrets to enable real-ads pulling.';
       } else if (/permission|not authoriz|authorisation|login needed|2332002|ads\/library\/api/i.test(errStr)) {
-        const manualLink = _u(j.manualSearchUrl) || `https://www.facebook.com/ads/library/?search_type=keyword_unordered&q=${encodeURIComponent(comp)}`;
+        const manualLink = _u(j.manualSearchUrl) || `https://www.facebook.com/ads/library/?search_type=page&q=${encodeURIComponent(comp)}`;
         hintHtml = `<strong>Your token is valid, but Meta's Ad Library API requires one extra one-time setup step:</strong> <em>Identity Confirmation for the Ad Library API</em>.<br><br>
-          <a href="${_h(manualLink)}" target="_blank" rel="noopener" style="display:inline-block;margin:6px 0 12px;background:#1877F2;color:#fff;padding:8px 14px;border-radius:6px;text-decoration:none;font-weight:700;font-size:0.85rem">🔍 See ${compH}'s ads on Meta now (manual link) →</a><br>
+          <a href="${_h(manualLink)}" target="_blank" rel="noopener" style="display:inline-block;margin:6px 0 8px;background:#1877F2;color:#fff;padding:8px 14px;border-radius:6px;text-decoration:none;font-weight:700;font-size:0.85rem">🔍 Find ${compH}'s Facebook Page (then click "See ad library") →</a><br>
+          <small style="color:#64748b;display:block;margin-bottom:12px">↑ This opens Meta's <strong>Page</strong> search (not keyword search), so you'll see actual matching Facebook Pages. Click the real ${compH} page, then "See all ads in the Ad Library".</small>
           <strong>Do this once (takes ~5 min):</strong>
           <ol style="margin:6px 0 6px 18px;padding:0;line-height:1.7">
             <li>Go to <a href="https://www.facebook.com/ID" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">facebook.com/ID</a> and complete <strong>Identity Confirmation</strong> (passport / driver's licence upload). This is the same flow advertisers use.</li>
@@ -279,11 +280,11 @@ window._wlViewRealAds = async function(compEnc, domainEnc, wlId) {
             <li>Re-generate your access token in <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">Graph API Explorer</a> (with <code>ads_read</code>) and update <code>META_ACCESS_TOKEN</code> in Secrets.</li>
           </ol>
           The token itself is fine — Meta blocks the Ad Library endpoint specifically until your <em>account</em> (not your app) is identity-verified for political/issue-ad transparency reasons.<br><br>
-          In the meantime, see ${compH}'s ads here: <a href="https://www.facebook.com/ads/library/?search_type=keyword_unordered&q=${encodeURIComponent(comp)}" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline;font-weight:700">Open Meta Ad Library →</a>`;
+          In the meantime, find ${compH}'s page here: <a href="https://www.facebook.com/ads/library/?search_type=page&q=${encodeURIComponent(comp)}" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline;font-weight:700">Search Meta Pages →</a>`;
       } else if (/no active ads|no results|empty/i.test(errStr)) {
         hintHtml = `${compH} doesn't appear to have active ads on Meta right now (or the search term didn't match a Meta Page). Try searching the exact Page name on <a href="https://www.facebook.com/ads/library/" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">Meta Ad Library</a> directly.`;
       } else {
-        hintHtml = `Meta returned an error. The competitor may have no active ads on Meta, or your token lacks Ad Library permissions. <a href="https://www.facebook.com/ads/library/?search_type=keyword_unordered&q=${encodeURIComponent(comp)}" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">Search Meta Ad Library directly →</a>`;
+        hintHtml = `Meta returned an error. The competitor may have no active ads on Meta, or your token lacks Ad Library permissions. <a href="https://www.facebook.com/ads/library/?search_type=page&q=${encodeURIComponent(comp)}" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">Find ${compH}'s page on Meta →</a>`;
       }
       body.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:16px;color:#991B1B">
         <div style="font-weight:800;margin-bottom:6px">⚠️ Couldn't load real ads</div>
@@ -294,7 +295,7 @@ window._wlViewRealAds = async function(compEnc, domainEnc, wlId) {
     }
     const ads = Array.isArray(j.ads) ? j.ads : [];
     if (!ads.length) {
-      const manualLink = _u(j.manualSearchUrl) || `https://www.facebook.com/ads/library/?search_type=keyword_unordered&q=${encodeURIComponent(comp)}`;
+      const manualLink = _u(j.manualSearchUrl) || `https://www.facebook.com/ads/library/?search_type=page&q=${encodeURIComponent(comp)}`;
       const errMsg = j.error || `${compH} may not be running ads on Meta right now, or the search didn't match.`;
       const droppedNote = j.droppedUnrelated ? `<div style="font-size:0.78rem;color:#92400E;margin-top:8px;background:#FEF3C7;padding:8px;border-radius:6px"><strong>Accuracy filter:</strong> ${j.droppedUnrelated} unrelated ad${j.droppedUnrelated>1?'s':''} from other Pages were dropped to avoid showing wrong data.</div>` : '';
       body.innerHTML = `<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:24px;text-align:center;color:#475569">

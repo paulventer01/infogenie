@@ -12384,7 +12384,10 @@ app.post('/api/meta-ad-library/search', async (req, res) => {
   return res.json({
     ok:true, configured:!!token, ads:[],
     error: metaErr || 'Meta Ad Library unavailable',
-    manualSearchUrl: `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${encodeURIComponent(country)}&q=${encodeURIComponent(manualSearchTerm)}&search_type=keyword_unordered`,
+    // Use search_type=page so the user lands on a list of matching
+    // Facebook Pages (not Meta's keyword search, which mixes in unrelated
+    // advertisers). They click the real competitor Page → see only its ads.
+    manualSearchUrl: `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${encodeURIComponent(country)}&q=${encodeURIComponent(manualSearchTerm)}&search_type=page`,
   });
 });
 
