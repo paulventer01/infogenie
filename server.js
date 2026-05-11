@@ -12160,42 +12160,181 @@ function _missingCreds(res, integration, missing) {
 
 // ─── Meta Ad Library API (uses META_ACCESS_TOKEN) ────────────────────────────
 // POST /api/meta-ad-library/search { query?, domain?, country?, limit? }
+//
+// Strategy:
+//  1. Try the official Meta Graph API (/v19.0/ads_archive) — fast + structured.
+//  2. If Meta returns the "Application does not have permission" error (which
+//     happens when the user behind the token has not completed Facebook's
+//     Identity Confirmation flow at facebook.com/ID), fall back to scraping
+//     the public facebook.com/ads/library page via Firecrawl. The scraped
+//     page is the same data anyone can see in a browser, with no auth.
 app.post('/api/meta-ad-library/search', async (req, res) => {
+  const { query = '', domain = '', country = 'US', limit = 25 } = req.body || {};
+  const term = (query || domain || '').toString().trim();
+  if (!term) return res.status(400).json({ ok:false, error:'query or domain required' });
+
   const token = process.env.META_ACCESS_TOKEN;
-  if (!token) return _missingCreds(res, 'meta-ad-library', ['META_ACCESS_TOKEN']);
-  try {
-    const { query = '', domain = '', country = 'US', limit = 25 } = req.body || {};
-    const term = (query || domain || '').toString().trim();
-    if (!term) return res.status(400).json({ ok:false, error:'query or domain required' });
-    const fields = [
-      'id','ad_creation_time','ad_creative_bodies','ad_creative_link_titles',
-      'ad_creative_link_descriptions','page_name','publisher_platforms',
-      'ad_snapshot_url','ad_delivery_start_time','ad_delivery_stop_time'
-    ].join(',');
-    const url = `https://graph.facebook.com/v19.0/ads_archive`
-      + `?search_terms=${encodeURIComponent(term)}`
-      + `&ad_reached_countries=['${country}']`
-      + `&ad_active_status=ALL&fields=${fields}`
-      + `&limit=${Math.min(limit, 50)}&access_token=${token}`;
-    const r = await fetch(url);
-    const j = await r.json();
-    if (j.error) return res.json({ ok:true, configured:true, error: j.error.message, ads:[] });
-    const ads = (j.data || []).map(a => ({
-      id: a.id, page: a.page_name, platforms: a.publisher_platforms || [],
-      bodies: a.ad_creative_bodies || [], titles: a.ad_creative_link_titles || [],
-      descs: a.ad_creative_link_descriptions || [],
-      startedAt: a.ad_delivery_start_time, stoppedAt: a.ad_delivery_stop_time || null,
-      isRunning: !a.ad_delivery_stop_time, snapshot: a.ad_snapshot_url,
-    }));
-    const running = ads.filter(a => a.isRunning).length;
-    res.json({
-      ok:true, configured:true, term, country,
-      count: ads.length, runningCount: running, ads,
-      dataOrigin:'live_meta_ad_library',
-      dataSource:'graph.facebook.com/v19.0/ads_archive',
-      confidence: ads.length >= 5 ? 'high' : ads.length > 0 ? 'medium' : 'low',
-    });
-  } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
+  let metaErr = null;
+
+  // Attempt 1: official Meta Graph API
+  if (token) {
+    try {
+      const fields = [
+        'id','ad_creation_time','ad_creative_bodies','ad_creative_link_titles',
+        'ad_creative_link_descriptions','page_name','publisher_platforms',
+        'ad_snapshot_url','ad_delivery_start_time','ad_delivery_stop_time'
+      ].join(',');
+      const url = `https://graph.facebook.com/v19.0/ads_archive`
+        + `?search_terms=${encodeURIComponent(term)}`
+        + `&ad_reached_countries=['${country}']`
+        + `&ad_active_status=ALL&fields=${fields}`
+        + `&limit=${Math.min(limit, 50)}&access_token=${token}`;
+      const r = await fetch(url);
+      const j = await r.json();
+      if (!j.error) {
+        const ads = (j.data || []).map(a => ({
+          id: a.id, page: a.page_name, platforms: a.publisher_platforms || [],
+          bodies: a.ad_creative_bodies || [], titles: a.ad_creative_link_titles || [],
+          descs: a.ad_creative_link_descriptions || [],
+          startedAt: a.ad_delivery_start_time, stoppedAt: a.ad_delivery_stop_time || null,
+          isRunning: !a.ad_delivery_stop_time, snapshot: a.ad_snapshot_url,
+        }));
+        const running = ads.filter(a => a.isRunning).length;
+        return res.json({
+          ok:true, configured:true, term, country,
+          count: ads.length, runningCount: running, ads,
+          dataOrigin:'live_meta_ad_library',
+          dataSource:'graph.facebook.com/v19.0/ads_archive',
+          confidence: ads.length >= 5 ? 'high' : ads.length > 0 ? 'medium' : 'low',
+        });
+      }
+      metaErr = j.error.message + (j.error.error_user_msg ? ` — ${j.error.error_user_msg}` : '');
+      console.log(`[meta-ad-library] Graph API rejected (${j.error.code}/${j.error.error_subcode}): ${j.error.message} — falling back to Firecrawl scrape`);
+    } catch (err) {
+      metaErr = err.message;
+      console.log(`[meta-ad-library] Graph API failed: ${err.message} — falling back to Firecrawl scrape`);
+    }
+  } else {
+    metaErr = 'no META_ACCESS_TOKEN configured';
+  }
+
+  // Attempt 2: Firecrawl scrape of the public Ad Library page (works without
+  // any Meta auth — same data anyone can see in a browser).
+  if (process.env.FIRECRAWL_API_KEY) {
+    try {
+      const scrapeUrl = `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${encodeURIComponent(country)}&q=${encodeURIComponent(term)}&search_type=keyword_unordered`;
+      const fcResp = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        method:'POST',
+        headers:{ 'Authorization':`Bearer ${process.env.FIRECRAWL_API_KEY}`, 'Content-Type':'application/json' },
+        body: JSON.stringify({ url: scrapeUrl, formats:['markdown','html'], waitFor: 4000, timeout: 25000 })
+      });
+      const fcJson = await fcResp.json();
+      if (fcJson.success && (fcJson.data?.markdown || fcJson.data?.html)) {
+        const md = String(fcJson.data.markdown || '');
+        // Parse ad cards from markdown. Strategy: split the document at every
+        // "Library ID:" marker — each chunk between two markers is one ad
+        // card. This avoids cross-card bleed when extracting body text.
+        const ads = [];
+        const seen = new Set();
+        const VALID_PLATFORMS = ['facebook','instagram','messenger','audience network','threads'];
+        const idMatches = [...md.matchAll(/Library ID:\s*(\d{6,})/gi)];
+        for (let i = 0; i < idMatches.length && ads.length < limit; i++) {
+          const m = idMatches[i];
+          const id = m[1];
+          if (seen.has(id)) continue;
+          seen.add(id);
+          // Card = text between this Library ID marker and the next one.
+          const next = idMatches[i + 1] ? idMatches[i + 1].index : Math.min(m.index + 1500, md.length);
+          const card = md.slice(m.index, next);
+          const startMatch = /Started running on\s+([A-Za-z]+\s+\d{1,2},\s+\d{4})/i.exec(card);
+          // Date range pattern that often appears on cards in the form
+          // "Mar 13, 2026 - Apr 26, 2026" — first date is start, second stop.
+          const rangeMatch = /([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4})\s*[-–]\s*([A-Za-z]{3,9}\s+\d{1,2},\s+\d{4})/.exec(card);
+          // Platforms: only keep tokens that match Meta's known surfaces.
+          // Match known platform phrases directly so multi-word surfaces
+          // like "audience network" aren't broken by whitespace tokenisation.
+          const platforms = [];
+          const platMatch = /(?:Platforms?|Ran on)[\s·:]+([^\n]{1,80})/i.exec(card);
+          if (platMatch) {
+            const haystack = platMatch[1].toLowerCase();
+            for (const surface of VALID_PLATFORMS) {
+              if (haystack.includes(surface) && !platforms.includes(surface)) platforms.push(surface);
+            }
+          }
+          // Body: take lines that look like real ad copy — strip metadata,
+          // image tags, links, date ranges, and short fragments.
+          const isDateLine = s => /^[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}\s*[-–]\s*[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}\s*$/.test(s);
+          const lines = card.split('\n')
+            .map(s => s.trim())
+            .filter(s => s
+              && s.length >= 30
+              && !/^Library ID:/i.test(s)
+              && !/^Started running on/i.test(s)
+              && !/^Sponsored$/i.test(s)
+              && !/^Platforms?[\s·:]/i.test(s)
+              && !/^This ad (has|is)/i.test(s)
+              && !/^\d+ ads? use this/i.test(s)
+              && !/^!\[/.test(s)
+              && !/^\[!\[/.test(s)
+              && !/^\(https?:/.test(s)
+              && !/^See ad details/i.test(s)
+              && !isDateLine(s)
+            );
+          const body = lines.slice(0, 1).join(' ').replace(/\s+/g, ' ').slice(0, 400);
+          // Page name: usually appears as a bold/heading near the top of the
+          // card; fall back to the search term if we can't extract one.
+          let pageName = term;
+          const pageHeading = /^#+\s+([A-Z][A-Za-z0-9 .,'&-]{2,60})$/m.exec(card);
+          if (pageHeading) pageName = pageHeading[1].trim();
+          const startedAt = startMatch ? startMatch[1].trim() : (rangeMatch ? rangeMatch[1] : null);
+          const stoppedAt = rangeMatch ? rangeMatch[2] : null;
+          ads.push({
+            id, page: pageName, platforms,
+            bodies: body ? [body] : [], titles: [], descs: [],
+            startedAt, stoppedAt,
+            // If we have an explicit stop date in the past, this ad is no
+            // longer running. Otherwise assume active (the search filter
+            // includes both active + inactive so we can't be 100% sure).
+            isRunning: !stoppedAt || (Date.parse(stoppedAt) > Date.now()),
+            snapshot: `https://www.facebook.com/ads/library/?id=${id}`,
+            note: body ? null : 'Ad copy is rendered inside Meta\'s iframe — click "View on Meta" to see the creative.',
+          });
+        }
+        if (ads.length) {
+          const runningCount = ads.filter(a => a.isRunning).length;
+          return res.json({
+            ok:true, configured:true, term, country,
+            count: ads.length, runningCount, ads,
+            dataOrigin:'firecrawl_scrape_meta_ad_library',
+            dataSource:'facebook.com/ads/library (scraped via Firecrawl — Meta API unavailable)',
+            confidence: ads.length >= 5 ? 'medium' : 'low',
+            fallbackReason: metaErr || 'Meta Graph API not authorised',
+          });
+        }
+        // Scrape ran but no ads parsed — could be no results, or page didn't
+        // hydrate ads in time. Return informative error.
+        return res.json({
+          ok:true, configured:true, term, country, count:0, runningCount:0, ads:[],
+          error: `Meta Graph API: ${metaErr}. Firecrawl fallback ran but found no ads on the public Ad Library page for "${term}" in ${country}.`,
+          dataOrigin:'firecrawl_scrape_meta_ad_library',
+        });
+      }
+      var fcFailErr = fcJson.error || 'firecrawl returned no markdown';
+      console.warn(`[meta-ad-library] Firecrawl scrape failed:`, fcFailErr);
+    } catch (err) {
+      var fcFailErr = err.message;
+      console.warn(`[meta-ad-library] Firecrawl scrape exception:`, err.message);
+    }
+  }
+
+  // Both attempts failed — return the Meta error (so the frontend shows the
+  // existing identity-confirmation guidance) plus a separate fallbackError
+  // field carrying any Firecrawl diagnostic for support/debugging.
+  return res.json({
+    ok:true, configured:!!token, ads:[],
+    error: metaErr || 'Meta Ad Library unavailable',
+    fallbackError: typeof fcFailErr !== 'undefined' ? fcFailErr : (process.env.FIRECRAWL_API_KEY ? null : 'FIRECRAWL_API_KEY not configured — scrape fallback unavailable'),
+  });
 });
 
 // ─── Notify (Slack / Telegram / Teams webhooks) ──────────────────────────────
