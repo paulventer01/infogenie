@@ -16736,22 +16736,22 @@ function buildPlanView(compName) {
   document.getElementById('planViewContent').innerHTML = `
 
     <!-- METRICS SUMMARY BAR -->
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
+    <div class="roas-stat-strip" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px">
       <div style="background:linear-gradient(135deg,#062A36,#0A4858);border-radius:14px;padding:18px 16px;text-align:center">
-        <div style="font-size:1.6rem;font-weight:800;color:#00E5FF">${myROAS}×</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.95);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Your ROAS Now</div>
+        <div style="font-size:1.6rem;font-weight:800;color:#00E5FF !important">${myROAS}×</div>
+        <div style="font-size:0.72rem;color:#FFFFFF !important;margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.4)">Your ROAS Now</div>
       </div>
       <div style="background:linear-gradient(135deg,#1a0a28,#2D1060);border-radius:14px;padding:18px 16px;text-align:center">
-        <div style="font-size:1.6rem;font-weight:800;color:#F59E0B">${compROAS}×</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.92);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">${comp.name} ROAS</div>
+        <div style="font-size:1.6rem;font-weight:800;color:#F59E0B !important">${compROAS}×</div>
+        <div style="font-size:0.72rem;color:#FFFFFF !important;margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.4)">${comp.name} ROAS</div>
       </div>
       <div style="background:linear-gradient(135deg,#0A2818,#0D5E30);border-radius:14px;padding:18px 16px;text-align:center">
-        <div style="font-size:1.6rem;font-weight:800;color:#10B981">${projectedROAS}×</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.92);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">Projected ROAS</div>
+        <div style="font-size:1.6rem;font-weight:800;color:#10B981 !important">${projectedROAS}×</div>
+        <div style="font-size:0.72rem;color:#FFFFFF !important;margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.4)">Projected ROAS</div>
       </div>
       <div style="background:linear-gradient(135deg,#0A2818,#1A4A30);border-radius:14px;padding:18px 16px;text-align:center">
-        <div style="font-size:1.6rem;font-weight:800;color:#00C9C8">+${totalGainPct}%</div>
-        <div style="font-size:0.7rem;color:rgba(255,255,255,.92);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:700">ROAS Uplift</div>
+        <div style="font-size:1.6rem;font-weight:800;color:#00C9C8 !important">+${totalGainPct}%</div>
+        <div style="font-size:0.72rem;color:#FFFFFF !important;margin-top:6px;text-transform:uppercase;letter-spacing:.05em;font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.4)">ROAS Uplift</div>
       </div>
     </div>
 
@@ -30784,7 +30784,7 @@ function buildContentGaps() {
 
 async function runContentGaps() {
   const domain = (document.getElementById('cgDomain')?.value || '').trim();
-  const competitors = (window._cgSelectedComps || []).slice(0, 4);
+  const competitors = (window._cgSelectedComps || []).slice(0, 8);
   if (!domain) { showToast('⚠️ Enter your domain'); return; }
   if (!competitors.length) { showToast('⚠️ Pick at least one competitor from the dropdown'); return; }
   window._gapsState = { domain, competitors, data:null };
@@ -30826,9 +30826,23 @@ async function runContentGaps() {
     if (!j.ok) {
       if (j.error === 'sitemap-unavailable') {
         const found = (j.competitorsWithSitemap || []).join(', ') || 'none';
-        results.innerHTML = `<div class="cg-error">⚠️ ${_esc(j.detail || 'Sitemap unavailable')}<br><br>Your pages found: ${j.yourPages || 0}. Competitor sitemaps found: ${_esc(found)}.</div>`;
+        const blocked = (j.blockedDomains || []).join(', ') || '—';
+        results.innerHTML = `<div class="cg-error" style="text-align:left;line-height:1.55">
+          <div style="font-weight:800;margin-bottom:8px">⚠️ Sitemap unavailable for one or more domains</div>
+          <div style="font-size:0.85rem;margin-bottom:6px">${_esc(j.detail || '')}</div>
+          <div style="font-size:0.8rem;color:#475569;margin-top:10px">
+            <div>• Blocked / no sitemap: <strong>${_esc(blocked)}</strong></div>
+            <div>• Sitemaps successfully read: <strong>${_esc(found)}</strong></div>
+            <div style="margin-top:8px;color:#0066FF">💡 Fix: remove the blocked domains from the picker above and run again. Many big sites (Cloudflare-protected) block automated sitemap fetches.</div>
+          </div>
+        </div>`;
       } else {
-        results.innerHTML = `<div class="cg-error">⚠️ ${_esc(j.error || 'Failed')}</div>`;
+        const errMsg = j.error || j.detail || j.message || `HTTP ${r.status} — server returned no error message`;
+        results.innerHTML = `<div class="cg-error" style="text-align:left;line-height:1.55">
+          <div style="font-weight:800;margin-bottom:6px">⚠️ Content-gap analysis failed</div>
+          <div style="font-size:0.85rem;color:#475569">${_esc(errMsg)}</div>
+          <div style="font-size:0.78rem;color:#64748B;margin-top:8px">HTTP status: ${r.status}. Try with fewer competitors or one at a time.</div>
+        </div>`;
       }
       return;
     }

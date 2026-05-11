@@ -11833,7 +11833,7 @@ app.post('/api/content-gaps', async (req, res) => {
     const competitors = (Array.isArray(body.competitors) ? body.competitors : [])
       .map(c => String(c || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '').split('/')[0])
       .filter(Boolean)
-      .slice(0, 4);
+      .slice(0, 8);
 
     if (!competitors.length) return res.status(400).json({ ok:false, error:'competitors-required' });
 
