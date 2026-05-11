@@ -130,12 +130,16 @@ window._wlViewRealAds = async function(compEnc, domainEnc) {
       let hintHtml;
       if (/missing[_\s]creds|meta_access_token/i.test(errStr)) {
         hintHtml = 'No Meta access token is configured. Add <code>META_ACCESS_TOKEN</code> in Secrets to enable real-ads pulling.';
-      } else if (/permission|not authorized|access[_\s]token|capabilit/i.test(errStr)) {
-        hintHtml = `<strong>Your Meta token is missing the <code>ads_read</code> permission.</strong><br>
-          Meta's public Ad Library API requires a token with <code>ads_read</code> scope (App Review approval needed).<br>
-          <strong>Quick fix:</strong> Go to <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">Meta Graph API Explorer</a> →
-          select your App → click <em>Generate Access Token</em> → tick <code>ads_read</code> → copy the new token into the <code>META_ACCESS_TOKEN</code> secret and restart.<br>
-          <em>Note: For production use, your Meta App must be approved for the <code>ads_read</code> permission via App Review.</em>`;
+      } else if (/permission|not authoriz|authorisation|login needed|2332002|ads\/library\/api/i.test(errStr)) {
+        hintHtml = `<strong>Your token is valid, but Meta's Ad Library API requires one extra one-time setup step:</strong> <em>Identity Confirmation for the Ad Library API</em>.<br><br>
+          <strong>Do this once (takes ~5 min):</strong>
+          <ol style="margin:6px 0 6px 18px;padding:0;line-height:1.7">
+            <li>Go to <a href="https://www.facebook.com/ID" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">facebook.com/ID</a> and complete <strong>Identity Confirmation</strong> (passport / driver's licence upload). This is the same flow advertisers use.</li>
+            <li>After confirmation, visit <a href="https://www.facebook.com/ads/library/api" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">facebook.com/ads/library/api</a> and accept the Ad Library API terms.</li>
+            <li>Re-generate your access token in <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">Graph API Explorer</a> (with <code>ads_read</code>) and update <code>META_ACCESS_TOKEN</code> in Secrets.</li>
+          </ol>
+          The token itself is fine — Meta blocks the Ad Library endpoint specifically until your <em>account</em> (not your app) is identity-verified for political/issue-ad transparency reasons.<br><br>
+          In the meantime, see ${compH}'s ads here: <a href="https://www.facebook.com/ads/library/?search_type=keyword_unordered&q=${encodeURIComponent(comp)}" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline;font-weight:700">Open Meta Ad Library →</a>`;
       } else if (/no active ads|no results|empty/i.test(errStr)) {
         hintHtml = `${compH} doesn't appear to have active ads on Meta right now (or the search term didn't match a Meta Page). Try searching the exact Page name on <a href="https://www.facebook.com/ads/library/" target="_blank" rel="noopener" style="color:#0066FF;text-decoration:underline">Meta Ad Library</a> directly.`;
       } else {
