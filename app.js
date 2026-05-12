@@ -9075,7 +9075,7 @@ window.openCreatePost = function(preDate) {
       <div style="background:linear-gradient(135deg,#7C3AED,#4F46E5);border-radius:18px 18px 0 0;padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
         <div>
           <div style="font-size:0.65rem;font-weight:700;color:#C4B5FD;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">New Post</div>
-          <div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:white">Create & Schedule Post</div>
+          <div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:#FFFFFF !important">Create & Schedule Post</div>
         </div>
         <button id="cp-close" style="background:rgba(255,255,255,0.15);border:none;border-radius:50%;width:32px;height:32px;font-size:1.1rem;color:white;cursor:pointer;line-height:32px;text-align:center">✕</button>
       </div>
