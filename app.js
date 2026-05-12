@@ -39494,7 +39494,8 @@ window.buildSeoCrawler = function() {
           <div style="font-weight:600">${esc(run.root_url)} ${statusBadge}</div>
           <div style="color:#64748b;font-size:0.82rem">${run.page_count} pages crawled · avg score ${score} · started ${new Date(run.started_at).toLocaleString()}</div>
         </div>
-        <button class="btn btn-secondary scr-view" data-id="${esc(run.id)}" style="font-size:0.82rem">View pages →</button>
+        <button class="btn btn-primary scr-view" data-id="${esc(run.id)}" style="font-size:0.82rem">🎯 Open Insights & Automate →</button>
+        <button class="btn btn-secondary scr-recrawl" data-url="${esc(run.root_url)}" data-max="${run.max_pages||25}" style="font-size:0.82rem" title="Re-crawl this URL">🔄</button>
         <button class="btn btn-link scr-del" data-id="${esc(run.id)}" style="color:#dc2626;font-size:0.82rem">🗑</button>
       </div>`;
     }).join('');
@@ -39502,6 +39503,17 @@ window.buildSeoCrawler = function() {
     el.querySelectorAll('.scr-del').forEach(b => b.addEventListener('click', async e => {
       if (!confirm('Delete this crawl run?')) return;
       await fetch('/api/seo-crawler/runs/' + e.currentTarget.getAttribute('data-id'), { method:'DELETE' });
+      loadList();
+    }));
+    el.querySelectorAll('.scr-recrawl').forEach(b => b.addEventListener('click', async e => {
+      const url = e.currentTarget.getAttribute('data-url');
+      const maxPages = parseInt(e.currentTarget.getAttribute('data-max'), 10) || 25;
+      const r2 = await fetch('/api/seo-crawler/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url, maxPages }) }).then(x=>x.json());
+      if (!r2.ok) { alert('Re-crawl failed: ' + (r2.error || 'unknown')); return; }
+      activeRunId = r2.id;
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(pollActive, 2500);
+      pollActive();
       loadList();
     }));
   }
@@ -39644,6 +39656,16 @@ window.buildSeoCrawler = function() {
           </div>
           <div id="scr-import-result" style="margin-bottom:14px"></div>
 
+          ${(!agg.topIssues.length && pages.length > 0) ? `
+            <div style="background:#FFFBEB;border:1px solid #F59E0B;border-radius:10px;padding:18px;margin-bottom:16px">
+              <div style="font-weight:700;color:#78350F;margin-bottom:6px">⚠️ This crawl was run before per-check insights were enabled</div>
+              <div style="font-size:0.86rem;color:#78350F;line-height:1.55;margin-bottom:12px">${pages.length} page${pages.length===1?'':'s'} were crawled but the per-check details weren't stored, so we can't show top issues, quick wins or send tasks to the SEO Task Manager. Re-run the crawl below to unlock all the new automation features.</div>
+              <button id="scr-recrawl-now" class="btn btn-primary" style="font-size:0.86rem">🔄 Re-crawl ${esc(run.root_url)} now</button>
+            </div>
+          ` : (!pages.length ? `
+            <div style="background:#FFFBEB;border:1px solid #F59E0B;border-radius:10px;padding:18px;margin-bottom:16px;color:#78350F;font-size:0.9rem">No pages were crawled in this run. Try again with a publicly reachable URL.</div>
+          ` : '')}
+
           ${quickWinsHtml}
           ${topIssuesHtml}
           ${worstPagesHtml}
@@ -39675,6 +39697,18 @@ window.buildSeoCrawler = function() {
     document.getElementById('scr-import-fails').addEventListener('click', importBtn(true));
     document.getElementById('scr-import-all').addEventListener('click', importBtn(false));
     document.getElementById('scr-open-tasks').addEventListener('click', () => { close(); if (window.navigateTo) window.navigateTo('seo-tasks'); });
+    const recrawlBtn = document.getElementById('scr-recrawl-now');
+    if (recrawlBtn) recrawlBtn.addEventListener('click', async () => {
+      recrawlBtn.disabled = true; recrawlBtn.textContent = '⏳ Starting re-crawl…';
+      const r2 = await fetch('/api/seo-crawler/run', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ url: run.root_url, maxPages: run.max_pages || 25 }) }).then(x=>x.json()).catch(e=>({ok:false,error:e.message}));
+      if (!r2.ok) { alert('Re-crawl failed: ' + (r2.error || 'unknown')); recrawlBtn.disabled = false; recrawlBtn.textContent = '🔄 Re-crawl ' + run.root_url + ' now'; return; }
+      close();
+      activeRunId = r2.id;
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(pollActive, 2500);
+      pollActive();
+      loadList();
+    });
 
     // "View pages" → drill into which pages have a specific issue.
     wrapEl.querySelectorAll('.scr-issue-pages').forEach(b => b.addEventListener('click', e => {
