@@ -4269,6 +4269,9 @@ function renderYourSwot(opts) {
     }
   }
 
+  // Stash inputs so the AI button can re-render with deeper analysis
+  window._yourSwotOpts = opts;
+
   const list = (items, color) => items.map(it => `
     <li style="display:flex;gap:10px;padding:10px 12px;background:${color}10;border:1px solid ${color}30;border-radius:8px;margin-bottom:8px;align-items:flex-start">
       <span style="font-size:1.05rem;flex:0 0 auto;line-height:1.2">${it.icon}</span>
@@ -4278,6 +4281,11 @@ function renderYourSwot(opts) {
       </div>
     </li>`).join('');
 
+  const aiBtnDisabled = sectorOnly || !yourDomain;
+  const aiBtnTitle = aiBtnDisabled
+    ? 'Add your website URL on the Analyse step to unlock AI SWOT.'
+    : 'Click to scrape your homepage and run a deeper GPT-4o powered SWOT.';
+
   el.innerHTML = `
     <div class="data-table-card" style="padding:18px 20px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:12px">
@@ -4285,22 +4293,102 @@ function renderYourSwot(opts) {
           <h3 style="margin:0 0 4px;font-size:1rem;font-weight:800;color:#0F172A">${heading}</h3>
           <div style="font-size:.78rem;color:#64748B;line-height:1.5">${subtitle}</div>
         </div>
-        <span class="cchip-ai" style="font-size:.62rem;padding:4px 10px;align-self:center" title="Calculated from your KPIs vs the tracked competitor averages — same logic used for the per-competitor analysis modal.">AI SWOT</span>
+        <button type="button" id="yourSwotAiBtn"
+          onclick="runYourSwotAI()"
+          ${aiBtnDisabled ? 'disabled' : ''}
+          class="cchip-ai"
+          title="${aiBtnTitle.replace(/"/g,'&quot;')}"
+          style="font-size:.62rem;padding:6px 14px;align-self:center;border:none;cursor:${aiBtnDisabled?'not-allowed':'pointer'};opacity:${aiBtnDisabled?'0.55':'1'};transition:transform .15s ease, box-shadow .15s ease"
+          onmouseover="if(!this.disabled){this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 12px rgba(139,92,246,.35)';}"
+          onmouseout="this.style.transform='';this.style.boxShadow='';"
+        >✨ Run AI SWOT</button>
       </div>
+      <div id="yourSwotStatus" style="display:none;font-size:.75rem;color:#6366F1;margin-bottom:10px;padding:8px 12px;background:#EEF2FF;border:1px solid #C7D2FE;border-radius:8px"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" id="yourSwotGrid">
         <div>
           <div style="font-size:.7rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#10B981;margin-bottom:8px">✅ Your Strengths</div>
-          <ul style="list-style:none;padding:0;margin:0">${list(strengths, '#10B981')}</ul>
+          <ul id="yourSwotStrengths" style="list-style:none;padding:0;margin:0">${list(strengths, '#10B981')}</ul>
         </div>
         <div>
           <div style="font-size:.7rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#EF4444;margin-bottom:8px">⚠️ Your Weaknesses</div>
-          <ul style="list-style:none;padding:0;margin:0">${list(weaknesses, '#EF4444')}</ul>
+          <ul id="yourSwotWeaknesses" style="list-style:none;padding:0;margin:0">${list(weaknesses, '#EF4444')}</ul>
         </div>
       </div>
     </div>
     <style>@media (max-width:720px){#yourSwotGrid{grid-template-columns:1fr !important}}</style>
   `;
 }
+
+// ── AI-powered SWOT for the user's own site ──────────────────────────────────
+// Reuses /api/competitor-deep-analysis with the user's own domain as the target,
+// so we get GPT-4o-grounded strengths/weaknesses scraped from their real homepage.
+async function runYourSwotAI() {
+  const opts = window._yourSwotOpts || {};
+  const { yourDomain, industryName, competitorsCount = 0 } = opts;
+  const btn = document.getElementById('yourSwotAiBtn');
+  const status = document.getElementById('yourSwotStatus');
+  const sList = document.getElementById('yourSwotStrengths');
+  const wList = document.getElementById('yourSwotWeaknesses');
+  if (!yourDomain || !btn || !sList || !wList) return;
+
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.style.cursor = 'wait';
+  btn.innerHTML = '⏳ Analysing…';
+  if (status) {
+    status.style.display = 'block';
+    status.innerHTML = `🔎 Scraping <strong>${yourDomain}</strong> and running GPT-4o analysis — usually 8-15 seconds…`;
+  }
+
+  try {
+    const r = await fetch('/api/competitor-deep-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        competitorName: yourDomain,
+        competitorUrl:  yourDomain,
+        yourDomain:     yourDomain,
+        industryName:   industryName || '',
+        country:        (window.analysisData && analysisData.country) || 'global',
+      }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const renderItems = (arr, color, icon) => (Array.isArray(arr) && arr.length ? arr : []).map(t => `
+      <li style="display:flex;gap:10px;padding:10px 12px;background:${color}10;border:1px solid ${color}30;border-radius:8px;margin-bottom:8px;align-items:flex-start">
+        <span style="font-size:1.05rem;flex:0 0 auto;line-height:1.2">${icon}</span>
+        <div style="flex:1;min-width:0;font-size:.78rem;color:#334155;line-height:1.5">${esc(t)}</div>
+      </li>`).join('');
+
+    const sHtml = renderItems(data.strengths,  '#10B981', '✅');
+    const wHtml = renderItems(data.weaknesses, '#EF4444', '⚠️');
+    if (sHtml) sList.innerHTML = sHtml;
+    if (wHtml) wList.innerHTML = wHtml;
+
+    const fetched = data.htmlFetched ? `Scraped your homepage successfully` : `Couldn't reach ${yourDomain} directly — analysis based on AI knowledge of your site only`;
+    status.style.background = '#ECFDF5';
+    status.style.borderColor = '#A7F3D0';
+    status.style.color = '#047857';
+    status.innerHTML = `✅ AI SWOT complete — ${fetched}. ${data.positioning ? `<br><strong>Positioning:</strong> ${esc(data.positioning)}` : ''}`;
+    btn.innerHTML = '🔄 Re-run AI SWOT';
+    btn.disabled = false;
+    btn.style.cursor = 'pointer';
+  } catch (err) {
+    console.warn('your-swot AI failed:', err);
+    if (status) {
+      status.style.background = '#FEF2F2';
+      status.style.borderColor = '#FECACA';
+      status.style.color = '#B91C1C';
+      status.innerHTML = `⚠️ AI SWOT failed: ${String(err.message || err)}. The rule-based comparison above still uses your real KPIs.`;
+    }
+    btn.innerHTML = orig;
+    btn.disabled = false;
+    btn.style.cursor = 'pointer';
+  }
+}
+window.runYourSwotAI = runYourSwotAI;
 
 // ===== BUILD DASHBOARD =====
 function buildDashboard() {
