@@ -36,17 +36,6 @@ Each list item is a single short line (max 140 chars). Counter_plays must be con
   }).catch(()=>null);
 }
 
-function _templateCard({ competitor, domain, brand }) {
-  return {
-    summary: `${competitor} is an established player in the same category as ${brand || 'us'}. Public information is limited; refresh this card when richer data is available.`,
-    positioning: `Positions itself as a ${domain ? 'web-first ' : ''}solution targeting overlapping audiences. Verify with their homepage messaging.`,
-    strengths: ['Established brand recognition', 'Existing customer base + reviews', 'Marketing budget for paid channels', 'SEO authority on category terms'],
-    weaknesses: ['Slower release cadence than focused challengers', 'Generic messaging — easy to differentiate against', 'Higher pricing tier in some segments', 'Limited modern integrations'],
-    recent_moves: ['Recent press / launches not yet captured — connect Firecrawl + DataForSEO News for live signal', 'Check their pricing page for changes', 'Monitor their LinkedIn for hiring signals'],
-    counter_plays: [`Position ${brand || 'our brand'} on speed of delivery + AI-native workflow`, 'Run head-to-head landing page targeting "alternatives to" search intent', 'Offer a frictionless trial / migration path', 'Use Search & AI Visibility tracker to dominate AI-engine answers in this category'],
-  };
-}
-
 router.get('/', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
@@ -73,9 +62,9 @@ router.post('/generate', async (req, res) => {
   const brand = req.body?.brand ? String(req.body.brand).slice(0, 80) : null;
   const context = req.body?.context ? String(req.body.context).slice(0, 2000) : null;
   try {
-    let parsed = await _openaiCard({ competitor, domain, brand, context });
-    let source = 'openai';
-    if (!parsed) { parsed = _templateCard({ competitor, domain, brand }); source = 'template'; }
+    const parsed = await _openaiCard({ competitor, domain, brand, context });
+    if (!parsed) return _err(res, 502, 'AI generation unavailable — OpenAI key missing or call failed. No placeholder data will be saved. Try again or check your OpenAI integration.');
+    const source = 'openai';
     const r = await _db.getPool().query(`
       INSERT INTO battle_cards (competitor, domain, brand, summary, positioning, strengths, weaknesses, recent_moves, counter_plays, generated_by)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
