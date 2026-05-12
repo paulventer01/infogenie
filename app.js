@@ -37316,26 +37316,83 @@ window.buildAdLibrary = function() {
       <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">🔍 Search Ad Libraries</h3>
       <div style="display:grid;grid-template-columns:2fr 100px;gap:10px;margin-bottom:12px">
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND / ADVERTISER</label><input id="alBrand" placeholder="e.g. Nike" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">COUNTRY</label><select id="alCountry" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box;background:#fff">${_alCountryOptions('US')}</select></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">COUNTRY</label><select id="alCountry" style="width:100%;padding:7px 28px 7px 10px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box;background:#fff url('data:image/svg+xml;utf8,&lt;svg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 12 8&quot;&gt;&lt;path fill=&quot;%236B7280&quot; d=&quot;M1 1.5l5 5 5-5&quot; stroke=&quot;%236B7280&quot; stroke-width=&quot;1.5&quot; fill=&quot;none&quot; stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot;/&gt;&lt;/svg&gt;') no-repeat right 10px center;background-size:10px;-webkit-appearance:none;-moz-appearance:none;appearance:none">${_alCountryOptions('US')}</select></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <button id="alMeta"     style="background:linear-gradient(135deg,#1877F2,#42A5F5);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">📘 Meta Ad Library</button>
-        <button id="alGoogle"   style="background:linear-gradient(135deg,#4285F4,#34A853);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">🔍 Google Ads (Search · Display · YouTube)</button>
-        <button id="alTiktok"   style="background:linear-gradient(135deg,#000,#333);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">🎵 TikTok Ad Library</button>
-        <button id="alLinkedin" style="background:linear-gradient(135deg,#0A66C2,#1E88E5);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">💼 LinkedIn Ad Library</button>
-        <button id="alX"        style="grid-column:1/-1;background:linear-gradient(135deg,#0F172A,#334155);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">𝕏 X (Twitter) Ads Transparency</button>
+      <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:0.75rem;font-weight:800;color:#0A1628">PLATFORMS TO SEARCH</div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.72rem;font-weight:700;color:#0066FF;cursor:pointer;user-select:none">
+            <input type="checkbox" id="alSelectAll" checked onchange="_alToggleAll(this.checked)" style="width:14px;height:14px;cursor:pointer;accent-color:#0066FF"> Select all
+          </label>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">
+          ${[
+            ['meta',     '📘 Meta Ad Library',                          '#1877F2'],
+            ['google',   '🔍 Google Ads (Search · Display · YouTube)',  '#34A853'],
+            ['tiktok',   '🎵 TikTok Ad Library',                        '#000000'],
+            ['linkedin', '💼 LinkedIn Ad Library',                      '#0A66C2'],
+            ['x',        '𝕏 X (Twitter) Ads Transparency',             '#0F172A'],
+          ].map(([id,label,color]) => `
+            <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid #E5E7EB;border-radius:6px;cursor:pointer;font-size:0.78rem;font-weight:600;color:#0A1628">
+              <input type="checkbox" class="al-plat" value="${id}" checked style="width:15px;height:15px;cursor:pointer;accent-color:${color};flex-shrink:0">
+              <span>${label}</span>
+            </label>`).join('')}
+        </div>
       </div>
+      <button id="alRun" style="width:100%;background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:none;padding:13px;border-radius:8px;font-size:0.92rem;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(0,102,255,.25)">🚀 Run Ad Library Search</button>
       <div style="margin-top:8px;font-size:0.7rem;color:#6B7280;line-height:1.45">
-        📘 Meta = live Graph API · 🔍 Google · 💼 LinkedIn · 🎵 TikTok · 𝕏 X = scraped from each platform's public ad transparency archive (requires PERPLEXITY_API_KEY).
+        📘 Meta = live Graph API · the rest scrape each platform's public ad transparency archive (requires PERPLEXITY_API_KEY).
       </div>
     </div>
     <div id="alOut"></div>
   `;
-  document.getElementById('alMeta')    .addEventListener('click', () => _alScan('meta'));
-  document.getElementById('alGoogle')  .addEventListener('click', () => _alScan('google'));
-  document.getElementById('alTiktok')  .addEventListener('click', () => _alScan('tiktok'));
-  document.getElementById('alLinkedin').addEventListener('click', () => _alScan('linkedin'));
-  document.getElementById('alX')       .addEventListener('click', () => _alScan('x'));
+  document.getElementById('alRun').addEventListener('click', _alRunMulti);
+};
+
+window._alToggleAll = function(checked) {
+  document.querySelectorAll('.al-plat').forEach(cb => { cb.checked = checked; });
+};
+
+window._alRunMulti = async function() {
+  const brand = document.getElementById('alBrand').value.trim();
+  const country = document.getElementById('alCountry').value.trim() || 'US';
+  const out = document.getElementById('alOut');
+  if (!brand) { out.innerHTML = '<div style="background:#FEE2E2;color:#991B1B;padding:12px;border-radius:8px">⚠ Brand required</div>'; return; }
+  const selected = Array.from(document.querySelectorAll('.al-plat:checked')).map(cb => cb.value);
+  if (!selected.length) { out.innerHTML = '<div style="background:#FEF3C7;color:#92400E;padding:12px;border-radius:8px">⚠ Select at least one platform</div>'; return; }
+  const labels = { meta:'Meta Ad Library', google:'Google Ads Transparency Center', tiktok:'TikTok Ad Library', linkedin:'LinkedIn Ad Library', x:'X (Twitter) Ads Transparency' };
+  const btn = document.getElementById('alRun');
+  const origBtn = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = `⏳ Searching ${selected.length} platform${selected.length>1?'s':''}…`; btn.style.opacity = '0.7'; btn.style.cursor = 'wait';
+  out.innerHTML = `<div id="alProgress" style="display:grid;gap:8px;margin-bottom:14px">${selected.map(p => `<div id="alProg_${p}" style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;font-size:0.82rem"><span style="display:inline-block;width:14px;height:14px;border:2px solid #E5E7EB;border-top-color:#0066FF;border-radius:50%;animation:alSpin 0.8s linear infinite"></span><span style="font-weight:700;color:#0A1628">${_escapeHtml(labels[p] || p)}</span><span style="color:#6B7280;font-size:0.74rem">searching…</span></div>`).join('')}<style>@keyframes alSpin{to{transform:rotate(360deg)}}</style></div><div id="alResults" style="display:grid;gap:18px"></div>`;
+  await Promise.all(selected.map(async (platform) => {
+    const progEl = document.getElementById('alProg_' + platform);
+    try {
+      const r = await fetch(`/api/ad-library/${platform}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, country }) }).then(x => x.json());
+      if (progEl) progEl.remove();
+      _alAppendResult(platform, labels[platform] || platform, brand, country, r);
+    } catch (e) {
+      if (progEl) progEl.remove();
+      _alAppendResult(platform, labels[platform] || platform, brand, country, { ok:false, error: 'Network error: ' + e.message });
+    }
+  }));
+  btn.disabled = false; btn.innerHTML = origBtn; btn.style.opacity = ''; btn.style.cursor = 'pointer';
+  const remaining = document.getElementById('alProgress');
+  if (remaining && !remaining.children.length) remaining.remove();
+};
+
+window._alAppendResult = function(platform, label, brand, country, r) {
+  const container = document.getElementById('alResults'); if (!container) return;
+  const block = document.createElement('div');
+  block.style.cssText = 'background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px';
+  if (!r.ok) {
+    block.innerHTML = `<div style="font-weight:800;color:#0A1628;margin-bottom:8px">${_escapeHtml(label)}</div><div style="background:#FEE2E2;color:#B91C1C;padding:10px;border-radius:6px;font-size:0.82rem">${_escapeHtml(r.error || 'Unknown error')}</div>`;
+  } else if (!r.ads || !r.ads.length) {
+    block.innerHTML = `<div style="font-weight:800;color:#0A1628;margin-bottom:8px">${_escapeHtml(label)}</div><div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:6px;padding:14px;text-align:center;color:#6B7280;font-size:0.8rem">${_escapeHtml(r.note || 'No active ads found.')}</div>`;
+  } else {
+    block.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-weight:800;color:#0A1628">${_escapeHtml(label)}</div><div style="font-size:0.74rem;color:#6B7280">✅ ${r.ads.length} ad(s) for ${_escapeHtml(brand)} (${_escapeHtml(country)})</div></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">${r.ads.map(a => `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:11px"><div style="font-weight:700;color:#0A1628;font-size:0.82rem;margin-bottom:4px">${_escapeHtml(a.page_name || a.advertiser || brand)}</div>${a.title ? `<div style="font-weight:600;color:#1E1B4B;font-size:0.8rem;margin-bottom:3px">${_escapeHtml(a.title)}</div>` : ''}<div style="color:#374151;font-size:0.76rem;line-height:1.4;white-space:pre-wrap">${_escapeHtml((a.body || a.ad_text || '').slice(0, 240))}</div>${a.description ? `<div style="color:#6B7280;font-size:0.72rem;margin-top:4px;font-style:italic">${_escapeHtml(a.description.slice(0,140))}</div>` : ''}<div style="font-size:0.68rem;color:#9CA3AF;margin-top:7px;border-top:1px solid #E5E7EB;padding-top:6px">${a.created ? '📅 ' + new Date(a.created).toLocaleDateString() + ' · ' : ''}${a.first_seen ? '👁 ' + _escapeHtml(a.first_seen) + ' · ' : ''}${Array.isArray(a.platforms) ? a.platforms.map(p => _escapeHtml(String(p))).join(', ') : ''}${a.industry ? ' · ' + _escapeHtml(a.industry) : ''}${(a.snapshot_url || a.url) && _safeUrl(a.snapshot_url || a.url) ? ` · <a href="${_safeUrl(a.snapshot_url || a.url)}" target="_blank" rel="noopener" style="color:#0066FF;font-weight:700">View →</a>` : ''}</div></div>`).join('')}</div>`;
+  }
+  container.appendChild(block);
 };
 
 window._alScan = async function(platform) {
