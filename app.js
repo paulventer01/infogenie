@@ -4332,13 +4332,24 @@ async function runYourSwotAI() {
   const orig = btn.innerHTML;
   btn.disabled = true;
   btn.style.cursor = 'wait';
-  btn.innerHTML = '⏳ Analysing…';
+  const _start = Date.now();
+  const _tick = () => {
+    const s = ((Date.now() - _start) / 1000).toFixed(1);
+    btn.innerHTML = `⏳ Analysing… <span style="font-variant-numeric:tabular-nums;opacity:.85">${s}s</span>`;
+    if (status) {
+      const note = parseFloat(s) > 15
+        ? `<span style="opacity:.8">— taking a little longer than usual, hang tight…</span>`
+        : '';
+      status.innerHTML = `🔎 Scraping <strong>${yourDomain}</strong> and running GPT-4o analysis — <span style="font-variant-numeric:tabular-nums;font-weight:700">${s}s</span> elapsed ${note}`;
+    }
+  };
+  _tick();
+  const _timerInt = setInterval(_tick, 100);
   if (status) {
     status.style.display = 'block';
     status.style.background = '#EEF2FF';
     status.style.borderColor = '#C7D2FE';
     status.style.color = '#6366F1';
-    status.innerHTML = `🔎 Scraping <strong>${yourDomain}</strong> and running GPT-4o analysis — usually 8-15 seconds…`;
   }
 
   try {
@@ -4356,6 +4367,8 @@ async function runYourSwotAI() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     window._yourSwotAiData = data;
+    clearInterval(_timerInt);
+    const elapsed = ((Date.now() - _start) / 1000).toFixed(1);
 
     renderYourSwotFull(data);
 
@@ -4364,18 +4377,20 @@ async function runYourSwotAI() {
       status.style.background = '#ECFDF5';
       status.style.borderColor = '#A7F3D0';
       status.style.color = '#047857';
-      status.innerHTML = `✅ AI SWOT complete — ${fetched}.`;
+      status.innerHTML = `✅ AI SWOT complete in <strong style="font-variant-numeric:tabular-nums">${elapsed}s</strong> — ${fetched}.`;
     }
-    btn.innerHTML = '🔄 Re-run AI SWOT';
+    btn.innerHTML = `🔄 Re-run AI SWOT <span style="opacity:.75;font-weight:600">· ${elapsed}s</span>`;
     btn.disabled = false;
     btn.style.cursor = 'pointer';
   } catch (err) {
     console.warn('your-swot AI failed:', err);
+    clearInterval(_timerInt);
+    const elapsed = ((Date.now() - _start) / 1000).toFixed(1);
     if (status) {
       status.style.background = '#FEF2F2';
       status.style.borderColor = '#FECACA';
       status.style.color = '#B91C1C';
-      status.innerHTML = `⚠️ AI SWOT failed: ${String(err.message || err)}. The rule-based comparison above still uses your real KPIs.`;
+      status.innerHTML = `⚠️ AI SWOT failed after ${elapsed}s: ${String(err.message || err)}. The rule-based comparison above still uses your real KPIs.`;
     }
     btn.innerHTML = orig;
     btn.disabled = false;
