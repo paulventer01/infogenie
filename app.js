@@ -35325,16 +35325,91 @@ window.buildPricingWatch = async function() {
   el.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
       <div style="font-weight:800;color:#0A1628;margin-bottom:10px;font-size:0.95rem">+ Add product URL to track</div>
+      ${(() => {
+        const comps = (window.analysisData && Array.isArray(analysisData.competitors)) ? analysisData.competitors : [];
+        if (!comps.length) return '';
+        const opts = comps.map((c,i) => {
+          const name = _escapeHtml(c.name || c.brand || c.domain || `Competitor ${i+1}`);
+          const dom = _escapeHtml(String(c.domain || c.url || c.website || '').replace(/^https?:\/\//i,'').replace(/^www\./i,'').replace(/\/.*$/,'').trim());
+          return `<option value="${i}" data-name="${name}" data-dom="${dom}">${name}${dom?` — ${dom}`:''}</option>`;
+        }).join('');
+        return `<div style="background:linear-gradient(135deg,#EFF6FF,#F5F3FF);border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px;margin-bottom:12px">
+          <div style="font-size:0.7rem;font-weight:800;color:#1D4ED8;margin-bottom:6px">⚡ AI SUGGEST FROM YOUR ANALYSIS</div>
+          <select id="pwPick" onchange="_pwPickCompetitor(this, true)" style="width:100%;padding:8px 10px;border:1px solid #BFDBFE;border-radius:6px;font-size:0.82rem;background:#fff">
+            <option value="">— Pick a competitor to auto-fill all 3 fields —</option>${opts}
+          </select>
+          <div style="font-size:0.68rem;color:#6B7280;margin-top:6px">Picking one fills Label, Competitor, and URL with sensible defaults. You can edit any field, or use the ✨ button next to each field to re-suggest just that one.</div>
+        </div>`;
+      })()}
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end">
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Label</label><input id="pwLabel" placeholder="e.g. Nike Air Max 270" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Competitor</label><input id="pwComp" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">URL</label><input id="pwUrl" placeholder="https://…" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <label style="font-size:0.7rem;font-weight:700;color:#6B7280">Label</label>
+            <button type="button" onclick="_pwSuggestField('label')" title="AI-suggest from the picked competitor" style="padding:2px 7px;background:linear-gradient(135deg,#7C3AED,#0066FF);border:none;border-radius:4px;font-size:0.62rem;font-weight:700;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer">✨ Suggest</button>
+          </div>
+          <input id="pwLabel" placeholder="e.g. Nike Air Max 270" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem">
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <label style="font-size:0.7rem;font-weight:700;color:#6B7280">Competitor</label>
+            <button type="button" onclick="_pwSuggestField('competitor')" title="AI-suggest from the picked competitor" style="padding:2px 7px;background:linear-gradient(135deg,#7C3AED,#0066FF);border:none;border-radius:4px;font-size:0.62rem;font-weight:700;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer">✨ Suggest</button>
+          </div>
+          <input id="pwComp" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem">
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <label style="font-size:0.7rem;font-weight:700;color:#6B7280">URL</label>
+            <button type="button" onclick="_pwSuggestField('url')" title="AI-suggest pricing URL from the picked competitor" style="padding:2px 7px;background:linear-gradient(135deg,#7C3AED,#0066FF);border:none;border-radius:4px;font-size:0.62rem;font-weight:700;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer">✨ Suggest</button>
+          </div>
+          <input id="pwUrl" placeholder="https://…" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem">
+        </div>
         <button onclick="_pwAdd()" style="padding:10px 18px;background:#0EA5E9;border:2px solid #0EA5E9;border-radius:8px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">+ Add</button>
       </div>
     </div>
     <div id="pwTargets"></div>`;
   await _pwLoad();
 };
+window._pwGetPickedCompetitor = function() {
+  const sel = document.getElementById('pwPick');
+  const comps = (window.analysisData && Array.isArray(analysisData.competitors)) ? analysisData.competitors : [];
+  if (!comps.length) return null;
+  let i = 0;
+  if (sel && sel.value !== '' && sel.value != null) i = parseInt(sel.value, 10) || 0;
+  const c = comps[i] || comps[0];
+  if (!c) return null;
+  const name = c.name || c.brand || c.domain || `Competitor ${i+1}`;
+  const dom = String(c.domain || c.url || c.website || '').replace(/^https?:\/\//i,'').replace(/^www\./i,'').replace(/\/.*$/,'').trim().toLowerCase();
+  return { name, domain: dom, picked: !!(sel && sel.value !== '') };
+};
+window._pwPickCompetitor = function(sel, fillAll) {
+  const opt = sel && sel.options[sel.selectedIndex]; if (!opt || !opt.value) return;
+  const name = opt.getAttribute('data-name') || '';
+  const dom = opt.getAttribute('data-dom') || '';
+  if (fillAll) {
+    const labelEl = document.getElementById('pwLabel');
+    const compEl  = document.getElementById('pwComp');
+    const urlEl   = document.getElementById('pwUrl');
+    if (compEl) compEl.value = name;
+    if (labelEl) labelEl.value = `${name} — pricing page`;
+    if (urlEl && dom) urlEl.value = `https://${dom}/pricing`;
+  }
+};
+window._pwSuggestField = function(field) {
+  const c = _pwGetPickedCompetitor();
+  if (!c) { showToast('⚠️ No analysed competitors yet — pick one from the dropdown above, or run an analysis first.'); return; }
+  if (field === 'label') {
+    const el = document.getElementById('pwLabel');
+    if (el) el.value = `${c.name} — pricing page`;
+  } else if (field === 'competitor') {
+    const el = document.getElementById('pwComp');
+    if (el) el.value = c.name;
+  } else if (field === 'url') {
+    const el = document.getElementById('pwUrl');
+    if (!c.domain) { showToast('⚠️ This competitor has no known domain — type one manually.'); return; }
+    if (el) el.value = `https://${c.domain}/pricing`;
+  }
+};
+
 window._pwAdd = async function() {
   const label = (document.getElementById('pwLabel')||{}).value || '';
   const url = (document.getElementById('pwUrl')||{}).value || '';
