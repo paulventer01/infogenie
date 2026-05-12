@@ -39483,40 +39483,143 @@ window.buildSeoCrawler = function() {
     if (!r.ok) { alert('Failed to load run'); return; }
     const run = r.run;
     const pages = r.pages || [];
+    const agg = r.aggregate || { topIssues: [], quickWins: [], worstPages: [], totals: { pages: pages.length, failures: 0, warnings: 0, uniqueIssues: 0 } };
     const grade = run.site_grade || '—';
     const gradeColor = { 'A':'#16a34a','B':'#65a30d','C':'#ca8a04','D':'#ea580c','F':'#dc2626' }[grade] || '#64748b';
+    const sevColor = (n) => n === 0 ? '#16a34a' : n <= 2 ? '#ca8a04' : '#dc2626';
+
+    const quickWinsHtml = agg.quickWins.length ? `
+      <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:10px;padding:14px;margin-bottom:16px">
+        <div style="font-weight:700;color:#78350f;margin-bottom:8px">⚡ Quick wins — fix these first</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${agg.quickWins.map(q => `
+            <div style="background:#fff;border-radius:6px;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+              <div style="flex:1;min-width:240px">
+                <div style="font-weight:600;color:#0f172a">${esc(q.label)}</div>
+                <div style="font-size:0.78rem;color:#475569">Affects <strong>${q.pagesAffected}</strong> of ${agg.totals.pages} pages (${q.pctOfSite}%) · weight ${q.weight}</div>
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-secondary scr-issue-pages" data-cid="${esc(q.id)}" style="font-size:0.78rem;padding:5px 10px">View pages</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>` : '';
+
+    const topIssuesHtml = agg.topIssues.length ? `
+      <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;margin-bottom:16px">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border-color,#e2e8f0);font-weight:700;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <span>🎯 Site-wide top issues (${agg.topIssues.length} unique)</span>
+          <span style="font-size:0.78rem;color:#64748b;font-weight:500">Sorted by impact = pages × weight</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:0.86rem">
+            <thead style="background:var(--bg-secondary,#f8fafc)"><tr>
+              <th style="text-align:left;padding:10px">Issue</th>
+              <th style="padding:10px;width:90px">Fail / Warn</th>
+              <th style="padding:10px;width:90px">Pages</th>
+              <th style="padding:10px;width:80px">Impact</th>
+              <th style="padding:10px;width:140px">Action</th>
+            </tr></thead>
+            <tbody>
+              ${agg.topIssues.map(i => `
+                <tr style="border-top:1px solid var(--border-color,#e2e8f0)">
+                  <td style="padding:8px 10px">
+                    <div style="font-weight:600">${esc(i.label)}</div>
+                    ${i.fix ? `<div style="font-size:0.78rem;color:#0369a1;margin-top:3px"><strong>Fix:</strong> ${esc(i.fix)}</div>` : ''}
+                  </td>
+                  <td style="padding:8px 10px;text-align:center"><span style="color:#dc2626;font-weight:700">${i.failCount}</span> / <span style="color:#ca8a04;font-weight:700">${i.warnCount}</span></td>
+                  <td style="padding:8px 10px;text-align:center"><strong>${i.pagesAffected}</strong> <span style="color:#64748b">(${i.pctOfSite}%)</span></td>
+                  <td style="padding:8px 10px;text-align:center;font-weight:700">${i.impact}</td>
+                  <td style="padding:8px 10px"><button class="btn btn-link scr-issue-pages" data-cid="${esc(i.id)}" style="font-size:0.78rem;padding:0">View pages →</button></td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>` : '';
+
+    const worstPagesHtml = agg.worstPages.length ? `
+      <div style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;margin-bottom:16px">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border-color,#e2e8f0);font-weight:700">🔥 Worst-offender pages (lowest scores)</div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:0.86rem">
+            <thead style="background:var(--bg-secondary,#f8fafc)"><tr>
+              <th style="text-align:left;padding:10px">Page</th>
+              <th style="padding:10px;width:70px">Score</th>
+              <th style="padding:10px;width:60px">Grade</th>
+              <th style="padding:10px;width:160px">Issues</th>
+              <th style="padding:10px;width:120px">Action</th>
+            </tr></thead>
+            <tbody>
+              ${agg.worstPages.map(p => {
+                const pg = { 'A':'#16a34a','B':'#65a30d','C':'#ca8a04','D':'#ea580c','F':'#dc2626' }[p.grade] || '#64748b';
+                const s = p.summary || {};
+                return `<tr style="border-top:1px solid var(--border-color,#e2e8f0)">
+                  <td style="padding:8px 10px"><a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:#0369a1;word-break:break-all">${esc(p.url)}</a></td>
+                  <td style="padding:8px 10px;text-align:center;font-weight:700">${p.score}</td>
+                  <td style="padding:8px 10px;text-align:center;font-weight:800;color:${pg}">${p.grade}</td>
+                  <td style="padding:8px 10px;color:#64748b">${s.passed||0}✓ <span style="color:#ca8a04">${s.warned||0}⚠</span> <span style="color:${sevColor(s.failed||0)}">${s.failed||0}✕</span></td>
+                  <td style="padding:8px 10px"><button class="btn btn-link scr-audit-page" data-url="${esc(p.url)}" style="font-size:0.78rem;padding:0">Re-audit →</button></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>` : '';
+
+    const allPagesHtml = `
+      <details style="background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;margin-bottom:16px">
+        <summary style="padding:12px 16px;font-weight:700;cursor:pointer">📄 All ${pages.length} crawled pages</summary>
+        <div style="overflow-x:auto;border-top:1px solid var(--border-color,#e2e8f0)">
+          <table style="width:100%;border-collapse:collapse;font-size:0.86rem">
+            <thead style="background:var(--bg-secondary,#f8fafc)"><tr>
+              <th style="text-align:left;padding:10px">Page</th>
+              <th style="padding:10px;width:70px">Score</th>
+              <th style="padding:10px;width:60px">Grade</th>
+              <th style="padding:10px">Issues</th>
+            </tr></thead>
+            <tbody>
+              ${pages.map(p => {
+                const pg = { 'A':'#16a34a','B':'#65a30d','C':'#ca8a04','D':'#ea580c','F':'#dc2626' }[p.grade] || '#64748b';
+                const s = p.summary || {};
+                return `<tr style="border-top:1px solid var(--border-color,#e2e8f0)">
+                  <td style="padding:8px 10px"><a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:#0369a1;word-break:break-all">${esc(p.url)}</a></td>
+                  <td style="padding:8px 10px;text-align:center;font-weight:700">${p.score}</td>
+                  <td style="padding:8px 10px;text-align:center;font-weight:800;color:${pg}">${p.grade}</td>
+                  <td style="padding:8px 10px;color:#64748b">${s.passed||0} pass · ${s.warned||0} warn · <span style="color:#dc2626">${s.failed||0} fail</span></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </details>`;
+
     const html = `
-      <div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px" id="scr-modal-bg">
-        <div style="background:var(--card-bg,#fff);border-radius:12px;max-width:1000px;width:100%;max-height:90vh;overflow-y:auto;padding:24px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-            <div>
-              <div style="font-weight:700;font-size:1.1rem">${esc(run.root_url)}</div>
-              <div style="color:#64748b;font-size:0.84rem">${pages.length} pages · ${run.status}</div>
+      <div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto" id="scr-modal-bg">
+        <div style="background:var(--bg-secondary,#f8fafc);border-radius:12px;max-width:1100px;width:100%;padding:24px;margin:auto">
+          <div style="background:var(--card-bg,#fff);border-radius:10px;padding:18px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
+            <div style="flex:1;min-width:240px">
+              <div style="font-weight:700;font-size:1.1rem;word-break:break-all">${esc(run.root_url)}</div>
+              <div style="color:#64748b;font-size:0.84rem;margin-top:3px">${pages.length} pages · ${esc(run.status)} · ${agg.totals.failures} fails · ${agg.totals.warnings} warnings · ${agg.totals.uniqueIssues} unique issues</div>
             </div>
             <div style="display:flex;gap:14px;align-items:center">
-              <div style="text-align:center"><div style="font-size:2.4rem;font-weight:800;color:${gradeColor};line-height:1">${grade}</div><div style="font-size:0.74rem;color:#64748b">Site grade</div></div>
+              <div style="text-align:center"><div style="font-size:2.4rem;font-weight:800;color:${gradeColor};line-height:1">${grade}</div><div style="font-size:0.74rem;color:#64748b">Site grade · ${run.avg_score != null ? Number(run.avg_score).toFixed(1) : '—'}/100</div></div>
               <button id="scr-modal-close" class="btn btn-link" style="font-size:1.4rem">✕</button>
             </div>
           </div>
-          <div style="border:1px solid var(--border-color,#e2e8f0);border-radius:8px;overflow:hidden">
-            <table style="width:100%;border-collapse:collapse;font-size:0.86rem">
-              <thead style="background:var(--bg-secondary,#f8fafc)"><tr>
-                <th style="text-align:left;padding:10px">Page</th><th style="padding:10px;width:80px">Score</th><th style="padding:10px;width:60px">Grade</th><th style="padding:10px">Issues</th>
-              </tr></thead>
-              <tbody>
-                ${pages.map(p => {
-                  const pg = { 'A':'#16a34a','B':'#65a30d','C':'#ca8a04','D':'#ea580c','F':'#dc2626' }[p.grade] || '#64748b';
-                  const s = p.summary || {};
-                  return `<tr style="border-top:1px solid var(--border-color,#e2e8f0)">
-                    <td style="padding:8px 10px"><a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:#0369a1;word-break:break-all">${esc(p.url)}</a></td>
-                    <td style="padding:8px 10px;text-align:center;font-weight:700">${p.score}</td>
-                    <td style="padding:8px 10px;text-align:center;font-weight:800;color:${pg}">${p.grade}</td>
-                    <td style="padding:8px 10px;color:#64748b">${s.passed||0} pass · ${s.warned||0} warn · <span style="color:#dc2626">${s.failed||0} fail</span></td>
-                  </tr>`;
-                }).join('')}
-              </tbody>
-            </table>
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+            <button id="scr-import-fails" class="btn btn-primary" style="font-size:0.86rem">🚀 Send all CRITICAL issues to SEO Task Manager</button>
+            <button id="scr-import-all" class="btn btn-secondary" style="font-size:0.86rem">📋 Send ALL issues (fails + warnings)</button>
+            <a href="/api/seo-crawler/runs/${esc(id)}/export.csv" class="btn btn-secondary" style="font-size:0.86rem;text-decoration:none" download>⬇️ Export CSV</a>
+            <button id="scr-open-tasks" class="btn btn-secondary" style="font-size:0.86rem">📋 Open SEO Task Manager →</button>
           </div>
+          <div id="scr-import-result" style="margin-bottom:14px"></div>
+
+          ${quickWinsHtml}
+          ${topIssuesHtml}
+          ${worstPagesHtml}
+          ${allPagesHtml}
         </div>
       </div>`;
     const wrapEl = document.createElement('div');
@@ -39525,6 +39628,65 @@ window.buildSeoCrawler = function() {
     const close = () => wrapEl.remove();
     document.getElementById('scr-modal-close').addEventListener('click', close);
     document.getElementById('scr-modal-bg').addEventListener('click', e => { if (e.target.id === 'scr-modal-bg') close(); });
+
+    const importBtn = (onlyFails) => async () => {
+      const resBox = document.getElementById('scr-import-result');
+      resBox.innerHTML = `<div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:10px 14px;border-radius:8px;font-size:0.86rem">⏳ Sending issues to SEO Task Manager…</div>`;
+      try {
+        const r2 = await fetch('/api/seo-crawler/runs/' + id + '/import-tasks', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ onlyFails })
+        }).then(x=>x.json());
+        if (!r2.ok) throw new Error(r2.error || 'Import failed');
+        resBox.innerHTML = `<div style="background:#dcfce7;border:1px solid #86efac;color:#166534;padding:10px 14px;border-radius:8px;font-size:0.86rem">✓ Created <strong>${r2.created}</strong> new tasks · skipped ${r2.skipped} existing · out of ${r2.total} total issues. <a href="#" id="scr-goto-tasks" style="color:#166534;text-decoration:underline;margin-left:6px">Open SEO Task Manager →</a></div>`;
+        const goto = document.getElementById('scr-goto-tasks');
+        if (goto) goto.addEventListener('click', e => { e.preventDefault(); close(); if (window.navigateTo) window.navigateTo('seo-tasks'); });
+      } catch (e) {
+        resBox.innerHTML = `<div style="background:#fee;color:#b91c1c;padding:10px 14px;border-radius:8px;font-size:0.86rem">✕ ${esc(e.message)}</div>`;
+      }
+    };
+    document.getElementById('scr-import-fails').addEventListener('click', importBtn(true));
+    document.getElementById('scr-import-all').addEventListener('click', importBtn(false));
+    document.getElementById('scr-open-tasks').addEventListener('click', () => { close(); if (window.navigateTo) window.navigateTo('seo-tasks'); });
+
+    // "View pages" → drill into which pages have a specific issue.
+    wrapEl.querySelectorAll('.scr-issue-pages').forEach(b => b.addEventListener('click', e => {
+      const cid = e.currentTarget.getAttribute('data-cid');
+      const issue = agg.topIssues.find(i => i.id === cid);
+      if (!issue) return;
+      const pagesList = [
+        ...issue.sampleFailPages.map(u => ({ u, sev:'fail' })),
+        ...issue.sampleWarnPages.map(u => ({ u, sev:'warn' }))
+      ];
+      const popHtml = `
+        <div style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px" id="scr-pop-bg">
+          <div style="background:var(--card-bg,#fff);border-radius:10px;max-width:640px;width:100%;max-height:80vh;overflow-y:auto;padding:20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <div style="font-weight:700">${esc(issue.label)}</div>
+              <button id="scr-pop-close" class="btn btn-link" style="font-size:1.2rem">✕</button>
+            </div>
+            <div style="font-size:0.84rem;color:#475569;margin-bottom:10px">${esc(issue.message || '')}</div>
+            ${issue.fix ? `<div style="background:#f0f9ff;border-left:3px solid #0369a1;padding:9px 12px;border-radius:4px;margin-bottom:12px;font-size:0.86rem"><strong>Fix:</strong> ${esc(issue.fix)}</div>` : ''}
+            <div style="font-weight:600;margin-bottom:6px;font-size:0.86rem">Affected pages (showing up to 10):</div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              ${pagesList.map(p => `<div style="display:flex;gap:8px;align-items:center"><span style="color:${p.sev==='fail'?'#dc2626':'#ca8a04'};font-weight:700;width:50px">${p.sev.toUpperCase()}</span><a href="${esc(p.u)}" target="_blank" rel="noopener" style="color:#0369a1;word-break:break-all;font-size:0.84rem">${esc(p.u)}</a></div>`).join('')}
+            </div>
+          </div>
+        </div>`;
+      const pop = document.createElement('div');
+      pop.innerHTML = popHtml;
+      document.body.appendChild(pop);
+      const closePop = () => pop.remove();
+      document.getElementById('scr-pop-close').addEventListener('click', closePop);
+      document.getElementById('scr-pop-bg').addEventListener('click', ev => { if (ev.target.id === 'scr-pop-bg') closePop(); });
+    }));
+
+    // Re-audit a single page → routes to single-page SEO Auditor view with URL pre-filled.
+    wrapEl.querySelectorAll('.scr-audit-page').forEach(b => b.addEventListener('click', e => {
+      const u = e.currentTarget.getAttribute('data-url');
+      close();
+      window._seoAuditorPrefill = u;
+      if (window.navigateTo) window.navigateTo('seo-auditor');
+    }));
   }
 
   async function pollActive() {

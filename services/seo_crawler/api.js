@@ -99,7 +99,7 @@ async function _executeCrawl(runId, rootUrl, maxPages) {
           try {
             await _db.getPool().query(
               `INSERT INTO seo_crawl_pages (run_id, url, score, grade, summary, checks) VALUES ($1,$2,$3,$4,$5,$6)`,
-              [runId, url, audit.score, audit.grade, audit.summary, audit.checks]
+              [runId, url, audit.score, audit.grade, JSON.stringify(audit.summary || {}), JSON.stringify(audit.checks || [])]
             );
           } catch (e) { console.warn('[seo-crawler] insert page failed', e.message); }
         }
@@ -169,10 +169,67 @@ router.get('/runs/:id', _safeAsync(async (req, res) => {
   const meta = await _db.getPool().query(`SELECT * FROM seo_crawl_runs WHERE id=$1`, [id]);
   if (!meta.rowCount) return _err(res, 404, 'Run not found');
   const pages = await _db.getPool().query(
-    `SELECT url, score, grade, summary FROM seo_crawl_pages WHERE run_id=$1 ORDER BY score ASC, url ASC`, [id]
+    `SELECT url, score, grade, summary, checks FROM seo_crawl_pages WHERE run_id=$1 ORDER BY score ASC, url ASC`, [id]
   );
   const live = _runs.get(id);
-  res.json({ ok: true, run: meta.rows[0], pages: pages.rows, live: live ? { progress: live.progress, errors: live.errors || 0, status: live.status } : null });
+  const aggregate = _aggregateInsights(pages.rows);
+  // Strip heavy `checks` from page rows we ship to the frontend (kept only for aggregation).
+  const slimPages = pages.rows.map(({ checks, ...rest }) => rest);
+  res.json({
+    ok: true,
+    run: meta.rows[0],
+    pages: slimPages,
+    aggregate,
+    live: live ? { progress: live.progress, errors: live.errors || 0, status: live.status } : null
+  });
+}));
+
+// CSV export of every page in the crawl + its score/grade/issue counts.
+router.get('/runs/:id/export.csv', _safeAsync(async (req, res) => {
+  if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database unavailable');
+  const id = req.params.id;
+  const r = await _db.getPool().query(
+    `SELECT url, score, grade, summary FROM seo_crawl_pages WHERE run_id=$1 ORDER BY score ASC, url ASC`, [id]
+  );
+  const csvEscape = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const header = ['url','score','grade','passed','warned','failed'];
+  const rows = [header.join(',')];
+  for (const row of r.rows) {
+    const s = row.summary || {};
+    rows.push([row.url, row.score, row.grade, s.passed||0, s.warned||0, s.failed||0].map(csvEscape).join(','));
+  }
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="seo_crawl_${id}.csv"`);
+  res.send(rows.join('\n'));
+}));
+
+// Bulk-import every warn/fail check from every page in the crawl as SEO tasks.
+// De-dupes via the seo_tasks (source_url, check_id) partial unique index.
+router.post('/runs/:id/import-tasks', _safeAsync(async (req, res) => {
+  if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database unavailable');
+  const id = req.params.id;
+  const onlyFails = !!(req.body && req.body.onlyFails);
+  const r = await _db.getPool().query(
+    `SELECT url, checks FROM seo_crawl_pages WHERE run_id=$1`, [id]
+  );
+  if (!r.rowCount) return _err(res, 404, 'No pages in this crawl');
+  let created = 0, skipped = 0, total = 0;
+  for (const row of r.rows) {
+    const issues = (row.checks || []).filter(c => c && c.id && c.label && (onlyFails ? c.status === 'fail' : (c.status === 'fail' || c.status === 'warn')));
+    for (const c of issues) {
+      total++;
+      const priority = c.status === 'fail' ? (c.weight >= 6 ? 1 : 2) : (c.weight >= 6 ? 2 : 3);
+      const ins = await _db.getPool().query(
+        `INSERT INTO seo_tasks (source, source_url, check_id, label, message, fix, priority)
+         VALUES ('seo_crawl', $1, $2, $3, $4, $5, $6)
+         ON CONFLICT (source_url, check_id) WHERE status NOT IN ('done','wont_fix') DO NOTHING
+         RETURNING id`,
+        [row.url, c.id, c.label, c.message, c.fix, priority]
+      );
+      if (ins.rowCount) created++; else skipped++;
+    }
+  }
+  res.json({ ok: true, created, skipped, total });
 }));
 
 router.delete('/runs/:id', _safeAsync(async (req, res) => {
@@ -181,5 +238,49 @@ router.delete('/runs/:id', _safeAsync(async (req, res) => {
   _runs.delete(req.params.id);
   res.json({ ok: true });
 }));
+
+// Roll page-level checks into site-wide insights:
+//  - topIssues: per check_id, how many pages it affects + cumulative weighted impact
+//  - quickWins: top 5 failing checks ordered by impact (pages_affected × weight)
+//  - worstPages: bottom 8 pages by score
+function _aggregateInsights(pages) {
+  if (!pages.length) return { topIssues: [], quickWins: [], worstPages: [], totals: { pages: 0, failures: 0, warnings: 0, uniqueIssues: 0 } };
+  const byCheck = new Map(); // check_id -> { id, label, fix, status, weight, pages:Set, failPages:Set, warnPages:Set }
+  let totalFail = 0, totalWarn = 0;
+  for (const p of pages) {
+    for (const c of (p.checks || [])) {
+      if (c.status === 'pass') continue;
+      if (c.status === 'fail') totalFail++;
+      if (c.status === 'warn') totalWarn++;
+      let entry = byCheck.get(c.id);
+      if (!entry) {
+        entry = { id: c.id, label: c.label, fix: c.fix, message: c.message, weight: c.weight || 1, failPages: [], warnPages: [] };
+        byCheck.set(c.id, entry);
+      }
+      if (c.status === 'fail') entry.failPages.push(p.url);
+      else if (c.status === 'warn') entry.warnPages.push(p.url);
+    }
+  }
+  const topIssues = Array.from(byCheck.values()).map(e => {
+    const pagesAffected = e.failPages.length + e.warnPages.length;
+    return {
+      id: e.id, label: e.label, fix: e.fix, message: e.message, weight: e.weight,
+      failCount: e.failPages.length, warnCount: e.warnPages.length, pagesAffected,
+      impact: pagesAffected * e.weight,
+      pctOfSite: Math.round((pagesAffected / pages.length) * 100),
+      sampleFailPages: e.failPages.slice(0, 5),
+      sampleWarnPages: e.warnPages.slice(0, 5)
+    };
+  }).sort((a, b) => b.impact - a.impact);
+  const quickWins = topIssues.filter(i => i.failCount > 0).slice(0, 5);
+  const worstPages = pages.slice().sort((a, b) => (a.score || 0) - (b.score || 0)).slice(0, 8)
+    .map(p => ({ url: p.url, score: p.score, grade: p.grade, summary: p.summary }));
+  return {
+    topIssues: topIssues.slice(0, 20),
+    quickWins,
+    worstPages,
+    totals: { pages: pages.length, failures: totalFail, warnings: totalWarn, uniqueIssues: byCheck.size }
+  };
+}
 
 module.exports = router;

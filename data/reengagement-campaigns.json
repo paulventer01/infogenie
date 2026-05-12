@@ -59,5 +59,42 @@
       ]
     },
     "enrollmentError": null
+  },
+  {
+    "id": "rec_mp2o0ppy_2lcgub",
+    "segment": "dormant subscribers (30+ days inactive)",
+    "tone": "warm-and-curious",
+    "brand": "InfoGenie",
+    "variant": {
+      "angle": "curiosity",
+      "subject": "Did we miss you, {{name}}?",
+      "preheader": "A lot has happened since your last visit!",
+      "body": "Hey {{name}}, we've been updating InfoGenie with fresh insights you might love. Curious about what we've added lately? We think you’ll find something that sparks your interest. Why not drop in and take a quick look?",
+      "cta": "Explore What's New"
+    },
+    "emailCount": 3,
+    "dryRun": true,
+    "createdAt": 1778592444982,
+    "enrollment": {
+      "ok": true,
+      "enrolled": 1,
+      "skipped": [
+        {
+          "email": "paul@suretrade.co.za",
+          "reason": "already enrolled in this sequence"
+        },
+        {
+          "email": "paul@suretrade.co.za",
+          "reason": "already enrolled in this sequence"
+        }
+      ],
+      "created": [
+        {
+          "id": "drip_mp2o0pq1_czvtfd",
+          "email": "paul@suretrade.co.za"
+        }
+      ]
+    },
+    "enrollmentError": null
   }
 ]
