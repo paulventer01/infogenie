@@ -4201,6 +4201,107 @@ function openCompetitorAnalysis(c) {
   });
 }
 
+// ===== YOUR COMPANY — STRENGTHS & WEAKNESSES =====
+// Mirrors the per-competitor SWOT view but evaluates the user's own KPIs vs
+// the tracked competitor averages. Pure rule-based so it works offline and
+// always renders meaningful, real comparisons (no AI/template fallback).
+function renderYourSwot(opts) {
+  const el = document.getElementById('yourSwotCard');
+  if (!el) return;
+  const {
+    yourDomain, industryName,
+    yourCTR = 0, yourROAS = 0, yourConv = 0, yourTraffic = 0,
+    isLiveTraffic = false,
+    avgCTR = 0, avgROAS = 0,
+    competitorsCount = 0, sectorOnly = false
+  } = opts || {};
+
+  const heading = sectorOnly
+    ? `📍 Your Company — add a website to personalise this`
+    : `📍 Your Company — Strengths & Weaknesses`;
+  const subtitle = sectorOnly
+    ? `No website analysed yet. Below are the typical strengths & gaps for a new entrant in <strong>${industryName}</strong>. Re-run the analysis with your URL for a personalised report.`
+    : `<strong>${yourDomain || 'Your site'}</strong> vs the ${competitorsCount} tracked competitors in <strong>${industryName}</strong>.`;
+
+  const strengths = [];
+  const weaknesses = [];
+
+  if (sectorOnly) {
+    strengths.push({ icon: '🎯', label: 'Clean slate positioning', detail: `New entrants in ${industryName} can pick a sharp niche before incumbents react.` });
+    strengths.push({ icon: '⚡', label: 'Speed advantage', detail: 'No legacy systems or process debt — you can ship landing pages, ads and SEO updates daily.' });
+    strengths.push({ icon: '🤝', label: 'Founder-led brand voice', detail: 'Authentic founder-led content typically outperforms corporate copy by 2-3× on social.' });
+    weaknesses.push({ icon: '🔍', label: 'Zero domain authority', detail: 'No backlinks or organic visibility yet — early growth must come from paid + content.' });
+    weaknesses.push({ icon: '💸', label: 'No ROAS history', detail: 'Ad platforms need 30-60 days of conversion data before optimisation algorithms perform well.' });
+    weaknesses.push({ icon: '👥', label: 'No retargeting pool', detail: 'Without site visitors, retargeting and lookalike audiences cannot be built — start traffic now.' });
+  } else {
+    // Strengths
+    if (yourCTR > 0 && avgCTR > 0 && yourCTR >= avgCTR) {
+      strengths.push({ icon: '📊', label: `Above-average ad CTR (${yourCTR.toFixed(2)}%)`, detail: `You out-click the ${competitorsCount}-competitor average of ${avgCTR.toFixed(2)}% by ${(yourCTR - avgCTR).toFixed(2)} pts — your ad copy is more compelling than rivals'.` });
+    }
+    if (yourROAS > 0 && avgROAS > 0 && yourROAS >= avgROAS) {
+      strengths.push({ icon: '🎯', label: `Strong ROAS (${yourROAS}×)`, detail: `Each $1 of ad spend returns $${yourROAS} for you vs the ${avgROAS.toFixed(1)}× competitor average — your funnel converts efficiently.` });
+    }
+    if (yourConv > 0 && yourConv >= 3) {
+      strengths.push({ icon: '📈', label: `Healthy conversion rate (${yourConv}%)`, detail: `Above the 3% industry baseline — landing pages and offer-fit are working.` });
+    }
+    if (isLiveTraffic && yourTraffic > 0) {
+      strengths.push({ icon: '📡', label: 'Live traffic data connected', detail: `${_fmt ? _fmt(yourTraffic) : yourTraffic} verified monthly visits via DataForSEO — your decisions can be data-led, not guesses.` });
+    }
+    if (strengths.length === 0) {
+      strengths.push({ icon: '🌱', label: 'Plenty of upside', detail: `All key KPIs sit below competitor averages — large absolute lifts are achievable with focused execution.` });
+    }
+
+    // Weaknesses
+    if (yourCTR > 0 && avgCTR > 0 && yourCTR < avgCTR) {
+      weaknesses.push({ icon: '📉', label: `Below-average CTR (${yourCTR.toFixed(2)}%)`, detail: `Competitors average ${avgCTR.toFixed(2)}% — refresh ad headlines, hooks and creative angles. The Counter-Message tool can target their winning copy.` });
+    }
+    if (yourROAS > 0 && avgROAS > 0 && yourROAS < avgROAS) {
+      weaknesses.push({ icon: '💸', label: `ROAS below competitor avg (${yourROAS}× vs ${avgROAS.toFixed(1)}×)`, detail: `Either ad-cost is too high or LTV per conversion is too low — start with the AI Optimizer's BUDGET REALLOC suggestions.` });
+    }
+    if (yourConv > 0 && yourConv < 3) {
+      weaknesses.push({ icon: '🛑', label: `Conversion rate below 3% baseline (${yourConv}%)`, detail: `Run the CRO Lab on your top landing pages — most ${industryName} winners convert in the 3-5% band.` });
+    }
+    if (!isLiveTraffic) {
+      weaknesses.push({ icon: '🔌', label: 'No live analytics connection', detail: `Traffic and conversion figures are AI-estimated. Connect Google Analytics or Search Console to replace estimates with real numbers.` });
+    }
+    if (weaknesses.length === 0) {
+      weaknesses.push({ icon: '🎚️', label: 'Maintain the lead', detail: `You out-perform competitor averages on every tracked KPI — biggest risk now is complacency. Set Goal Monitor alerts for any metric drift.` });
+    }
+  }
+
+  const list = (items, color) => items.map(it => `
+    <li style="display:flex;gap:10px;padding:10px 12px;background:${color}10;border:1px solid ${color}30;border-radius:8px;margin-bottom:8px;align-items:flex-start">
+      <span style="font-size:1.05rem;flex:0 0 auto;line-height:1.2">${it.icon}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.82rem;font-weight:700;color:${color};margin-bottom:3px">${it.label}</div>
+        <div style="font-size:.74rem;color:#475569;line-height:1.45">${it.detail}</div>
+      </div>
+    </li>`).join('');
+
+  el.innerHTML = `
+    <div class="data-table-card" style="padding:18px 20px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:12px">
+        <div style="flex:1;min-width:240px">
+          <h3 style="margin:0 0 4px;font-size:1rem;font-weight:800;color:#0F172A">${heading}</h3>
+          <div style="font-size:.78rem;color:#64748B;line-height:1.5">${subtitle}</div>
+        </div>
+        <span class="cchip-ai" style="font-size:.62rem;padding:4px 10px;align-self:center" title="Calculated from your KPIs vs the tracked competitor averages — same logic used for the per-competitor analysis modal.">AI SWOT</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" id="yourSwotGrid">
+        <div>
+          <div style="font-size:.7rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#10B981;margin-bottom:8px">✅ Your Strengths</div>
+          <ul style="list-style:none;padding:0;margin:0">${list(strengths, '#10B981')}</ul>
+        </div>
+        <div>
+          <div style="font-size:.7rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#EF4444;margin-bottom:8px">⚠️ Your Weaknesses</div>
+          <ul style="list-style:none;padding:0;margin:0">${list(weaknesses, '#EF4444')}</ul>
+        </div>
+      </div>
+    </div>
+    <style>@media (max-width:720px){#yourSwotGrid{grid-template-columns:1fr !important}}</style>
+  `;
+}
+
 // ===== BUILD DASHBOARD =====
 function buildDashboard() {
   const { url, country, industry, websiteKPIs, competitors } = analysisData;
@@ -4367,7 +4468,20 @@ function buildDashboard() {
       </span>
     `;
   }
-  
+
+  // ── Your Company — Strengths & Weaknesses ────────────────────────────────
+  // Mirrors the SWOT layout used in the per-competitor modal so the user can
+  // see their own position next to rivals at a glance. Pulled from real KPIs
+  // vs the competitor averages already computed above.
+  renderYourSwot({
+    yourDomain, industryName: industry.name,
+    yourCTR, yourROAS, yourConv: parseFloat(websiteKPIs.convRate),
+    yourTraffic: trafficVal, isLiveTraffic: !!realTraffic,
+    avgCTR, avgROAS,
+    competitorsCount: competitors.length,
+    sectorOnly: !!analysisData.sectorOnly
+  });
+
   // ROI Banner
   const improvedROAS = (avgROAS * 1.28).toFixed(1);
   const cpaReduction = 35;
