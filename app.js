@@ -34220,8 +34220,14 @@ window._bcOpenGenerate = function(prefill) {
     <div style="display:grid;gap:11px">
       <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Competitor name *</div><input id="bcComp" value="${_escapeHtml(p.competitor||'')}" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
       <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Their domain</div><input id="bcDom" placeholder="competitor.com" value="${_escapeHtml(p.domain||'')}" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
-      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Your brand</div><input id="bcBrand" value="${_escapeHtml(p.brand || (window._currentAnalysis?.brand_name) || '')}" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
-      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Extra context (optional)</div><textarea id="bcCtx" rows="3" placeholder="Anything the AI should know — pricing tier, target ICP, recent news…" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:6px;resize:vertical"></textarea></label>
+      <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Your brand</div><input id="bcBrand" value="${_escapeHtml(p.brand || (window.analysisData && (analysisData.brand_name || (analysisData.url || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split(/[\/?#]/)[0].split('.')[0])) || (window._currentAnalysis?.brand_name) || '')}" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
+      <label>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+          <span style="font-size:0.7rem;font-weight:700;color:#6B7280">Extra context (optional)</span>
+          <button type="button" id="bcAiSuggest" onclick="_bcSuggestContext()" style="padding:4px 10px;background:linear-gradient(135deg,#7C3AED,#0066FF);border:none;border-radius:6px;font-size:0.7rem;font-weight:700;color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:4px">✨ AI suggest</button>
+        </div>
+        <textarea id="bcCtx" rows="3" placeholder="Anything the AI should know — pricing tier, target ICP, recent news…  Or click ✨ AI suggest to have InfoGenie fill this in." style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:6px;resize:vertical"></textarea>
+      </label>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
       <button onclick="document.getElementById('bcModal').remove()" style="padding:9px 16px;background:#fff;border:2px solid #E5E7EB;border-radius:7px;font-size:0.78rem;font-weight:700">Cancel</button>
@@ -34246,6 +34252,28 @@ window._bcGenerate = async function() {
     document.getElementById('bcModal').remove();
     buildBattleCards();
   } catch (e) { showToast('❌ ' + e.message); }
+};
+window._bcSuggestContext = async function() {
+  const competitor = document.getElementById('bcComp').value.trim();
+  if (!competitor) return showToast('❌ Enter the competitor name first');
+  const btn = document.getElementById('bcAiSuggest');
+  const ta  = document.getElementById('bcCtx');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Thinking…'; btn.style.opacity = '0.7'; btn.style.cursor = 'wait'; }
+  try {
+    const r = await fetch('/api/battle-cards/suggest-context', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        competitor,
+        domain: document.getElementById('bcDom').value.trim(),
+        brand:  document.getElementById('bcBrand').value.trim(),
+      }),
+    }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error || 'AI suggest failed');
+    if (ta) { ta.value = r.context; ta.focus(); }
+    showToast('✨ Context suggested — edit if you want, then click Generate');
+  } catch (e) { showToast('❌ ' + e.message); }
+  finally { if (btn) { btn.disabled = false; btn.innerHTML = orig; btn.style.opacity = ''; btn.style.cursor = 'pointer'; } }
 };
 window._bcRegen = async function(id) {
   try {
