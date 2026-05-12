@@ -34218,6 +34218,24 @@ window._bcOpenGenerate = function(prefill) {
   m.innerHTML = `<div style="background:#fff;width:100%;max-width:560px;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:28px 32px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px"><div style="font-family:Sora,sans-serif;font-weight:800;font-size:1.15rem">⚔️ Generate Battle Card</div><button onclick="document.getElementById('bcModal').remove()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#6B7280">×</button></div>
     <div style="display:grid;gap:11px">
+      ${(() => {
+        const comps = (window.analysisData && Array.isArray(analysisData.competitors)) ? analysisData.competitors : [];
+        if (!comps.length) return '';
+        const opts = comps.map((c,i) => {
+          const name = _escapeHtml(c.name || c.brand || c.domain || `Competitor ${i+1}`);
+          const dom = _escapeHtml(String(c.domain || c.url || c.website || '').replace(/^https?:\/\//i,'').replace(/^www\./i,'').replace(/\/.*$/,'').trim());
+          return `<option value="${i}" data-name="${name}" data-dom="${dom}">${name}${dom?` — ${dom}`:''}</option>`;
+        }).join('');
+        return `<div style="background:linear-gradient(135deg,#EFF6FF,#F5F3FF);border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px">
+          <div style="font-size:0.7rem;font-weight:800;color:#1D4ED8;margin-bottom:6px">⚡ AI SUGGEST FROM YOUR ANALYSIS</div>
+          <div style="display:flex;gap:8px">
+            <select id="bcPick" onchange="_bcPickCompetitor(this)" style="flex:1;padding:8px 10px;border:1px solid #BFDBFE;border-radius:6px;font-size:0.82rem;background:#fff">
+              <option value="">— Pick an analysed competitor —</option>${opts}
+            </select>
+          </div>
+          <div style="font-size:0.68rem;color:#6B7280;margin-top:6px">Selecting one will auto-fill the name and domain below. You can still edit them or type a new one manually.</div>
+        </div>`;
+      })()}
       <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Competitor name *</div><input id="bcComp" value="${_escapeHtml(p.competitor||'')}" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
       <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Their domain</div><input id="bcDom" placeholder="competitor.com" value="${_escapeHtml(p.domain||'')}" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
       <label><div style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">Your brand</div><input id="bcBrand" value="${_escapeHtml(p.brand || (window.analysisData && (analysisData.brand_name || (analysisData.url || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split(/[\/?#]/)[0].split('.')[0])) || (window._currentAnalysis?.brand_name) || '')}" style="width:100%;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:6px"></label>
@@ -34235,6 +34253,16 @@ window._bcOpenGenerate = function(prefill) {
     </div>
   </div>`;
 };
+window._bcPickCompetitor = function(sel) {
+  const opt = sel.options[sel.selectedIndex]; if (!opt || !opt.value) return;
+  const name = opt.getAttribute('data-name') || '';
+  const dom = opt.getAttribute('data-dom') || '';
+  const nameEl = document.getElementById('bcComp');
+  const domEl = document.getElementById('bcDom');
+  if (nameEl) nameEl.value = name;
+  if (domEl) domEl.value = dom;
+};
+
 window._bcGenerate = async function() {
   const competitor = document.getElementById('bcComp').value.trim();
   if (!competitor) return showToast('❌ Competitor name required');
