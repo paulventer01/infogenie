@@ -7,12 +7,19 @@ function _safeAsync(h) { return (req, res) => Promise.resolve(h(req, res)).catch
 function _hasMeta() { const k = process.env.META_ACCESS_TOKEN; return k && !/^_DUMMY/i.test(k); }
 function _hasPerplexity() { const k = process.env.PERPLEXITY_API_KEY; return k && !/^_DUMMY/i.test(k); }
 
+// Wide country set used when the user picks "ALL". Meta's Ad Library requires
+// at least one country in ad_reached_countries — we send a broad set covering
+// the world's largest ad markets.
+const _ALL_COUNTRIES = ['US','GB','CA','AU','NZ','IE','ZA','NG','KE','EG','MA','DE','FR','ES','IT','NL','BE','PT','CH','AT','SE','NO','DK','FI','PL','CZ','GR','RO','HU','TR','RU','UA','IL','AE','SA','IN','PK','BD','CN','HK','TW','JP','KR','SG','MY','TH','VN','ID','PH','MX','BR','AR','CL','CO','PE'];
+
 function _metaAdsArchive(searchTerm, country, limit) {
+  const countries = country === 'ALL' ? _ALL_COUNTRIES : [country];
+  const reachedJson = JSON.stringify(countries);
   return new Promise(resolve => {
     const params = new URLSearchParams({
       access_token: process.env.META_ACCESS_TOKEN,
       search_terms: searchTerm,
-      ad_reached_countries: `["${country}"]`,
+      ad_reached_countries: reachedJson,
       ad_active_status: 'ACTIVE',
       limit: String(limit),
       fields: 'id,ad_creation_time,ad_creative_bodies,ad_creative_link_titles,ad_creative_link_descriptions,ad_snapshot_url,page_name,publisher_platforms,impressions,spend,currency'
@@ -74,10 +81,16 @@ async function _tiktokAdsLibraryViaPerplexity(brand, country) {
 
 router.get('/test', (req, res) => res.json({ ok:true, meta: _hasMeta(), perplexity: _hasPerplexity() }));
 
+function _normCountry(raw) {
+  const c = String(raw || 'US').toUpperCase().trim();
+  if (c === 'ALL' || c === 'WORLDWIDE' || c === 'GLOBAL') return 'ALL';
+  return c.slice(0, 2);
+}
+
 router.post('/meta', _safeAsync(async (req, res) => {
   if (!_hasMeta()) return _err(res, 400, 'META_ACCESS_TOKEN required (token needs ads_read scope for Meta Ad Library access)');
   const brand = String(req.body?.brand || '').trim();
-  const country = String(req.body?.country || 'US').toUpperCase().slice(0, 2);
+  const country = _normCountry(req.body?.country);
   const limit = Math.max(5, Math.min(50, parseInt(req.body?.limit || 20, 10)));
   if (!brand) return _err(res, 400, 'brand required');
   const r = await _metaAdsArchive(brand, country, limit);
@@ -92,9 +105,9 @@ router.post('/meta', _safeAsync(async (req, res) => {
 
 router.post('/tiktok', _safeAsync(async (req, res) => {
   const brand = String(req.body?.brand || '').trim();
-  const country = String(req.body?.country || 'US').toUpperCase().slice(0, 2);
+  const country = _normCountry(req.body?.country);
   if (!brand) return _err(res, 400, 'brand required');
-  const r = await _tiktokAdsLibraryViaPerplexity(brand, country);
+  const r = await _tiktokAdsLibraryViaPerplexity(brand, country === 'ALL' ? 'worldwide (all countries)' : country);
   if (r.error) return _err(res, 400, r.error);
   res.json({ ok:true, brand, country, total: r.ads.length, ads: r.ads, note: r.note });
 }));

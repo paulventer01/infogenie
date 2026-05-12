@@ -37293,6 +37293,22 @@ window.buildRedditPulse = function() {
 // ============================================================================
 // TIER 17-B — Ad Library Spy (Meta + TikTok)
 // ============================================================================
+// Full ISO-3166 country list (Meta Ad Library accepts any ISO-2 code; "ALL" = every country).
+window._AL_COUNTRIES = [
+  ['ALL','🌍 All countries'],
+  ['US','United States'],['GB','United Kingdom'],['CA','Canada'],['AU','Australia'],['NZ','New Zealand'],['IE','Ireland'],
+  ['ZA','South Africa'],['NG','Nigeria'],['KE','Kenya'],['EG','Egypt'],['MA','Morocco'],['GH','Ghana'],
+  ['DE','Germany'],['FR','France'],['ES','Spain'],['IT','Italy'],['NL','Netherlands'],['BE','Belgium'],['PT','Portugal'],['CH','Switzerland'],['AT','Austria'],['SE','Sweden'],['NO','Norway'],['DK','Denmark'],['FI','Finland'],['IS','Iceland'],['PL','Poland'],['CZ','Czech Republic'],['SK','Slovakia'],['HU','Hungary'],['RO','Romania'],['BG','Bulgaria'],['GR','Greece'],['HR','Croatia'],['SI','Slovenia'],['EE','Estonia'],['LV','Latvia'],['LT','Lithuania'],['LU','Luxembourg'],['MT','Malta'],['CY','Cyprus'],['UA','Ukraine'],['RS','Serbia'],
+  ['RU','Russia'],['TR','Turkey'],['IL','Israel'],['AE','United Arab Emirates'],['SA','Saudi Arabia'],['QA','Qatar'],['KW','Kuwait'],['BH','Bahrain'],['OM','Oman'],['JO','Jordan'],['LB','Lebanon'],
+  ['IN','India'],['PK','Pakistan'],['BD','Bangladesh'],['LK','Sri Lanka'],['NP','Nepal'],
+  ['CN','China'],['HK','Hong Kong'],['TW','Taiwan'],['JP','Japan'],['KR','South Korea'],['SG','Singapore'],['MY','Malaysia'],['TH','Thailand'],['VN','Vietnam'],['ID','Indonesia'],['PH','Philippines'],
+  ['MX','Mexico'],['BR','Brazil'],['AR','Argentina'],['CL','Chile'],['CO','Colombia'],['PE','Peru'],['UY','Uruguay'],['VE','Venezuela'],['EC','Ecuador'],['BO','Bolivia'],['PY','Paraguay'],['CR','Costa Rica'],['PA','Panama'],['DO','Dominican Republic'],['GT','Guatemala'],['HN','Honduras'],['SV','El Salvador'],['NI','Nicaragua'],['PR','Puerto Rico'],['JM','Jamaica'],['TT','Trinidad and Tobago'],
+];
+function _alCountryOptions(selected) {
+  return window._AL_COUNTRIES.map(([code, name]) =>
+    `<option value="${code}"${code === selected ? ' selected' : ''}>${code === 'ALL' ? name : `${name} (${code})`}</option>`
+  ).join('');
+}
 window.buildAdLibrary = function() {
   const wrap = document.getElementById('alWrap'); if (!wrap) return;
   wrap.innerHTML = `
@@ -37300,7 +37316,7 @@ window.buildAdLibrary = function() {
       <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">🔍 Search Ad Libraries</h3>
       <div style="display:grid;grid-template-columns:2fr 100px;gap:10px;margin-bottom:12px">
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND / ADVERTISER</label><input id="alBrand" placeholder="e.g. Nike" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">COUNTRY</label><input id="alCountry" placeholder="US" value="US" maxlength="2" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box;text-transform:uppercase"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">COUNTRY</label><select id="alCountry" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box;background:#fff">${_alCountryOptions('US')}</select></div>
       </div>
       <div style="display:flex;gap:8px">
         <button id="alMeta" style="flex:1;background:linear-gradient(135deg,#1877F2,#42A5F5);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">📘 Meta Ad Library</button>
