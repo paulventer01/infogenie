@@ -29044,7 +29044,7 @@ function _reengageHtml(j) {
        </div>`;
   return `
     <!-- Hero dormant tile -->
-    <div style="background:linear-gradient(135deg,#7C2D12 0%,#F97316 100%);border-radius:18px;padding:28px;color:white;margin-bottom:22px;box-shadow:0 4px 14px rgba(249,115,22,.25)">
+    <div style="background:linear-gradient(135deg,#1E40AF 0%,#2563EB 50%,#3B82F6 100%);border-radius:18px;padding:28px;color:white;margin-bottom:22px;box-shadow:0 4px 14px rgba(37,99,235,.25)">
       <div style="font-size:0.78rem;text-transform:uppercase;letter-spacing:.5px;opacity:.85;font-weight:700;margin-bottom:8px">Dormant audience · ${esc(j.amplitudeNote || '')}</div>
       <div style="display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap">
         <div>
@@ -33529,10 +33529,61 @@ async function _siRenderAi() {
         <div style="font-family:Sora,sans-serif;font-size:0.95rem;font-weight:800;color:#0A1628;margin-bottom:4px">+ Track a new prompt</div>
         <div style="font-size:0.72rem;color:#6B7280;margin-bottom:12px">Examples: "best CRM for SaaS startups", "alternatives to Hubspot", "what is the best email marketing platform"</div>
         <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px">
-          <input id="siQuery" placeholder="Prompt to track" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
-          <input id="siBrand" placeholder="Your brand" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
+          <div style="display:flex;gap:6px;align-items:stretch;min-width:0">
+            <input id="siQuery" placeholder="Prompt to track" style="flex:1;min-width:0;padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
+            <button id="siSuggestBtn" onclick="_siSuggestPrompt()" title="✨ Let AI suggest a prompt to track" style="padding:9px 11px;background:#EEF2FF;border:1.5px solid #C7D2FE;border-radius:7px;font-size:0.85rem;font-weight:700;color:#3730A3;cursor:pointer;white-space:nowrap">✨ Suggest</button>
+          </div>
+          <input id="siBrand" placeholder="Your brand" value="${_escapeHtml(_brandName())}" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
           <input id="siCompetitors" placeholder="Comp1, Comp2" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
-          <input id="siLocale" value="en-US" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
+          <select id="siLocale" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;background:#fff;color:#0F172A">
+            <option value="en-US" selected>🇺🇸 United States</option>
+            <option value="en-GB">🇬🇧 United Kingdom</option>
+            <option value="en-CA">🇨🇦 Canada</option>
+            <option value="en-AU">🇦🇺 Australia</option>
+            <option value="en-NZ">🇳🇿 New Zealand</option>
+            <option value="en-IE">🇮🇪 Ireland</option>
+            <option value="en-ZA">🇿🇦 South Africa</option>
+            <option value="en-IN">🇮🇳 India</option>
+            <option value="en-SG">🇸🇬 Singapore</option>
+            <option value="en-PH">🇵🇭 Philippines</option>
+            <option value="en-NG">🇳🇬 Nigeria</option>
+            <option value="en-KE">🇰🇪 Kenya</option>
+            <option value="de-DE">🇩🇪 Germany</option>
+            <option value="de-AT">🇦🇹 Austria</option>
+            <option value="de-CH">🇨🇭 Switzerland</option>
+            <option value="fr-FR">🇫🇷 France</option>
+            <option value="fr-BE">🇧🇪 Belgium</option>
+            <option value="fr-CA">🇨🇦 Canada (French)</option>
+            <option value="es-ES">🇪🇸 Spain</option>
+            <option value="es-MX">🇲🇽 Mexico</option>
+            <option value="es-AR">🇦🇷 Argentina</option>
+            <option value="es-CO">🇨🇴 Colombia</option>
+            <option value="es-CL">🇨🇱 Chile</option>
+            <option value="pt-BR">🇧🇷 Brazil</option>
+            <option value="pt-PT">🇵🇹 Portugal</option>
+            <option value="it-IT">🇮🇹 Italy</option>
+            <option value="nl-NL">🇳🇱 Netherlands</option>
+            <option value="sv-SE">🇸🇪 Sweden</option>
+            <option value="nb-NO">🇳🇴 Norway</option>
+            <option value="da-DK">🇩🇰 Denmark</option>
+            <option value="fi-FI">🇫🇮 Finland</option>
+            <option value="pl-PL">🇵🇱 Poland</option>
+            <option value="ja-JP">🇯🇵 Japan</option>
+            <option value="ko-KR">🇰🇷 South Korea</option>
+            <option value="zh-CN">🇨🇳 China</option>
+            <option value="zh-TW">🇹🇼 Taiwan</option>
+            <option value="zh-HK">🇭🇰 Hong Kong</option>
+            <option value="ar-AE">🇦🇪 UAE</option>
+            <option value="ar-SA">🇸🇦 Saudi Arabia</option>
+            <option value="tr-TR">🇹🇷 Turkey</option>
+            <option value="ru-RU">🇷🇺 Russia</option>
+            <option value="id-ID">🇮🇩 Indonesia</option>
+            <option value="th-TH">🇹🇭 Thailand</option>
+            <option value="vi-VN">🇻🇳 Vietnam</option>
+            <option value="ms-MY">🇲🇾 Malaysia</option>
+            <option value="he-IL">🇮🇱 Israel</option>
+            <option value="el-GR">🇬🇷 Greece</option>
+          </select>
           <button onclick="_siCreateQuery()" style="padding:9px 18px;background:#1E1B4B;border:2px solid #1E1B4B;border-radius:7px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5);white-space:nowrap">+ Add</button>
         </div>
       </div>
@@ -33583,6 +33634,48 @@ window._siCreateQuery = async function() {
     if (!r.ok) throw new Error(r.error || 'create failed');
     showToast('✅ Tracking added — click ▶ Run now to fire it across 4 AIs'); _siRenderAi();
   } catch (e) { showToast('❌ ' + e.message); }
+};
+// ✨ AI-suggest a prompt to track. Cycles through the suggestions on repeat clicks.
+window._siSuggestCache = { brand:null, competitors:'', locale:null, prompts:[], idx:0 };
+window._siSuggestPrompt = async function() {
+  const btn = document.getElementById('siSuggestBtn');
+  const qInput = document.getElementById('siQuery');
+  const brand = (document.getElementById('siBrand')?.value || '').trim();
+  const competitorsRaw = (document.getElementById('siCompetitors')?.value || '').trim();
+  const locale = (document.getElementById('siLocale')?.value || 'en-US').trim();
+  if (!brand) return showToast('❌ Add your brand first so suggestions match your space');
+
+  const cache = window._siSuggestCache;
+  const sameContext = cache.brand === brand && cache.competitors === competitorsRaw && cache.locale === locale && cache.prompts.length;
+  if (sameContext) {
+    cache.idx = (cache.idx + 1) % cache.prompts.length;
+    qInput.value = cache.prompts[cache.idx];
+    qInput.focus();
+    showToast('✨ Suggestion ' + (cache.idx + 1) + ' of ' + cache.prompts.length);
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Thinking…'; }
+  try {
+    const r = await fetch('/api/search-intel/suggest-prompts', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        brand,
+        locale,
+        competitors: competitorsRaw.split(',').map(s=>s.trim()).filter(Boolean),
+      })
+    }).then(x=>x.json());
+    const prompts = Array.isArray(r?.prompts) ? r.prompts.filter(p => typeof p === 'string' && p.trim()) : [];
+    if (!prompts.length) throw new Error(r?.error || 'no suggestions');
+    window._siSuggestCache = { brand, competitors: competitorsRaw, locale, prompts, idx: 0 };
+    qInput.value = prompts[0];
+    qInput.focus();
+    showToast('✨ ' + prompts.length + ' suggestions ready — click ✨ again to cycle');
+  } catch (e) {
+    showToast('❌ Suggest failed: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Suggest'; }
+  }
 };
 window._siDeleteQuery = async function(id) {
   if (!confirm('Stop tracking this prompt? History is preserved.')) return;

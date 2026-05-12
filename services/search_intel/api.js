@@ -39,6 +39,17 @@ router.post('/run-all', async (_req, res) => {
   try { res.json(await _ai.runAllEnabled()); }
   catch (e) { _err(res, 500, e.message); }
 });
+// AI-generated prompt suggestions for the "✨ Suggest" button.
+router.post('/suggest-prompts', async (req, res) => {
+  try {
+    const brand = String(req.body?.brand || '').trim();
+    const locale = String(req.body?.locale || 'en-US').trim();
+    const competitors = Array.isArray(req.body?.competitors)
+      ? req.body.competitors.filter(c => typeof c === 'string').map(c => c.trim()).filter(Boolean)
+      : [];
+    res.json(await _ai.suggestPrompts({ brand, competitors, locale }));
+  } catch (e) { _err(res, 500, e.message); }
+});
 
 // ─── Search Pulse (DataForSEO keyword expansion) ───────────────────────────
 router.post('/pulse', async (req, res) => {

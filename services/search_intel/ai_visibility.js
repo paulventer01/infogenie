@@ -217,4 +217,50 @@ function startCron(intervalHours = 24) {
   return true;
 }
 
-module.exports = { runQueryAcrossProviders, listQueries, createQuery, deleteQuery, getRunHistory, runAllEnabled, startCron };
+// ── Suggest 3 prompts to track, based on brand + competitors + locale ──
+// Used by the "✨ Suggest" button on the AI Visibility tracker UI.
+async function suggestPrompts({ brand = '', competitors = [], locale = 'en-US' } = {}) {
+  if (!OPENAI_KEY()) return { ok:false, error:'no-openai-key', prompts: _fallbackPrompts(brand) };
+  const compStr = Array.isArray(competitors) && competitors.length
+    ? competitors.filter(Boolean).join(', ')
+    : '(none provided)';
+  const sys = `You are an AI-visibility strategist. Given a brand, competitors, and locale, suggest 3 high-value PROMPTS this brand should track across LLMs (ChatGPT, Claude, Perplexity, Gemini). A good tracked prompt is something a real buyer would actually ask an AI — a category question, a comparison, or an alternatives query — where the brand's appearance (or absence) signals AI search visibility. Avoid prompts that name the brand directly. Locale: ${locale}.`;
+  const user = `Brand: "${brand || '(unspecified)'}". Competitors: ${compStr}.
+
+Return ONLY valid JSON (no markdown):
+{ "prompts": ["prompt 1", "prompt 2", "prompt 3"] }
+
+Examples for an email marketing SaaS:
+{ "prompts": ["best email marketing platforms for small businesses", "alternatives to Mailchimp for startups", "what is the best transactional email service in 2025"] }`;
+  try {
+    const r = await _httpJson({
+      hostname:'api.openai.com', path:'/v1/chat/completions', method:'POST',
+      headers:{ 'Authorization':'Bearer '+OPENAI_KEY(), 'Content-Type':'application/json' },
+    }, {
+      model:'gpt-4o-mini',
+      messages:[ { role:'system', content: sys }, { role:'user', content: user } ],
+      temperature:0.6, max_tokens:260,
+      response_format:{ type:'json_object' }
+    });
+    if (r.status !== 200) return { ok:false, error: r.json?.error?.message || ('openai '+r.status), prompts: _fallbackPrompts(brand) };
+    const raw = r.json?.choices?.[0]?.message?.content || '{}';
+    let parsed = {}; try { parsed = JSON.parse(raw); } catch {}
+    const prompts = Array.isArray(parsed.prompts)
+      ? parsed.prompts.filter(p => typeof p === 'string' && p.trim() && !/^_DUMMY/i.test(p)).map(p => p.trim()).slice(0, 3)
+      : [];
+    if (!prompts.length) return { ok:true, prompts: _fallbackPrompts(brand) };
+    return { ok:true, prompts };
+  } catch (e) {
+    return { ok:false, error: e.message, prompts: _fallbackPrompts(brand) };
+  }
+}
+function _fallbackPrompts(brand) {
+  const b = (brand || '').trim();
+  return [
+    'best tools in this category for small businesses',
+    b ? `alternatives to ${b}` : 'top alternatives in my category',
+    'what is the best platform in 2025 for my use case'
+  ];
+}
+
+module.exports = { runQueryAcrossProviders, listQueries, createQuery, deleteQuery, getRunHistory, runAllEnabled, startCron, suggestPrompts };
