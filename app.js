@@ -20829,8 +20829,14 @@ function buildAutomations() {
     </div>
   </div>
 
-  <!-- Filter bar -->
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">${filterBar}</div>
+  <!-- Filter bar + bulk action -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:center">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;flex:1;min-width:0">${filterBar}</div>
+    ${activeCount === total
+      ? `<button onclick="toggleAllAutomations(false)" style="padding:9px 18px;border:1.5px solid #D97706;border-radius:9px;background:#FFFBEB;color:#92400E;font-size:0.78rem;font-weight:800;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px"><span>⏸</span> Pause All (${total})</button>`
+      : `<button onclick="toggleAllAutomations(true)" style="padding:9px 18px;border:none;border-radius:9px;background:linear-gradient(135deg,#059669,#10B981);color:white;font-size:0.78rem;font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 2px 8px rgba(16,185,129,.35);display:inline-flex;align-items:center;gap:6px"><span>⚡</span> Automate All (${total - activeCount} off)</button>`
+    }
+  </div>
 
   <!-- Cards grid -->
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">
@@ -20854,6 +20860,28 @@ function buildAutomations() {
     </div>
   </div>` : ''}`;
 }
+
+window.toggleAllAutomations = function(turnOn) {
+  const targetState = !!turnOn;
+  const now = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  let changed = 0;
+  AUTOMATIONS.forEach(a => {
+    const wasOn = !!window._automationStates[a.id];
+    if (wasOn === targetState) return;
+    window._automationStates[a.id] = targetState;
+    if (a.realToggle) { try { a.realToggle(); } catch(e) { console.warn('[automate-all]', a.id, e.message); } }
+    window._automationLog.push({ id: a.id, time: now, result: targetState ? 'Activated (bulk)' : 'Deactivated (bulk)' });
+    changed++;
+  });
+  if (!changed) {
+    showToast(targetState ? '✓ All automations already running' : '✓ All automations already paused');
+  } else if (targetState) {
+    showToast(`⚡ Activated ${changed} automation${changed===1?'':'s'} — your marketing now runs itself`);
+  } else {
+    showToast(`⏸ Paused ${changed} automation${changed===1?'':'s'}`);
+  }
+  buildAutomations();
+};
 
 window.toggleAutomation = function(id) {
   const a = AUTOMATIONS.find(x=>x.id===id);
