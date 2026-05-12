@@ -381,8 +381,8 @@ app.post('/api/launch/google-ads', async (req, res) => {
     try {
       const dailyBud = (parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30;
       await _db.getPool().query(`
-        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status)
-        VALUES ('google', $1, $2, $3, 'paused')
+        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
+        VALUES ('google', $1, $2, $3, 'paused', TRUE)
         ON CONFLICT (platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
       `, [String(campaignId), campaignName, dailyBud]);
     } catch (_e) {}
@@ -432,8 +432,8 @@ app.post('/api/launch/meta', async (req, res) => {
     try {
       const dailyBud = (parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30;
       await _db.getPool().query(`
-        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status)
-        VALUES ('meta', $1, $2, $3, 'paused')
+        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
+        VALUES ('meta', $1, $2, $3, 'paused', TRUE)
         ON CONFLICT (platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
       `, [String(campData.id), campaignName, dailyBud]);
     } catch (_e) {}
@@ -479,8 +479,8 @@ app.post('/api/launch/tiktok', async (req, res) => {
     try {
       const dailyBud = Math.max((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30, 50);
       await _db.getPool().query(`
-        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status)
-        VALUES ('tiktok', $1, $2, $3, 'paused')
+        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
+        VALUES ('tiktok', $1, $2, $3, 'paused', TRUE)
         ON CONFLICT (platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
       `, [String(campaignId), campaignName, dailyBud]);
     } catch (_e) {}

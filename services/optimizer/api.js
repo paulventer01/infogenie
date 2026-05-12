@@ -93,9 +93,14 @@ router.post('/campaigns/upsert', express.json(), async (req, res) => {
   if (!platform || !platform_camp_id || !name) return res.status(400).json({ ok: false, error: 'platform, platform_camp_id, name are required' });
   if (!_ALLOWED_PLATFORMS.has(platform.toLowerCase())) return res.status(400).json({ ok: false, error: 'platform must be meta|google|tiktok' });
   if (daily_budget === undefined || target_roas === undefined) return res.status(400).json({ ok: false, error: 'daily_budget / target_roas out of range' });
+  // optimizer_enabled defaults TRUE on first insert so every newly-launched
+  // campaign is automatically monitored daily — underperformers get paused
+  // and budget reallocated to winners without the user having to flip a
+  // toggle. Existing rows keep whatever the user already set (we deliberately
+  // do NOT touch optimizer_enabled in the ON CONFLICT branch).
   const r = await _db.getPool().query(`
-    INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, owner_email, target_roas)
-    VALUES ($1,$2,$3,$4,$5,COALESCE($6,2.00))
+    INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, owner_email, target_roas, optimizer_enabled)
+    VALUES ($1,$2,$3,$4,$5,COALESCE($6,2.00), TRUE)
     ON CONFLICT (platform, platform_camp_id)
     DO UPDATE SET name=EXCLUDED.name, daily_budget=COALESCE(EXCLUDED.daily_budget, ad_campaigns.daily_budget),
                   owner_email=COALESCE(EXCLUDED.owner_email, ad_campaigns.owner_email),

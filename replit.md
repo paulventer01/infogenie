@@ -52,7 +52,7 @@ InfoGenie is an AI-powered marketing intelligence and campaign automation platfo
 ## User preferences
 
 *   Non-technical user — prefers plain language + execution over options.
-*   Every "Launch Campaign" auto-registers the campaign in the AI Optimizer dashboard. Without Meta/Google/TikTok creds, it lands as `platform_camp_id='local_<ts>'` so the user still sees it under Tracked Campaigns; once creds are connected the next launch uses the real platform id.
+*   Every "Launch Campaign" auto-registers the campaign in the AI Optimizer dashboard **and turns optimizer_enabled=TRUE on first insert** (preserved on conflict, so users can still manually disable). The optimizer then monitors performance every hour, evaluates pause/scale rules every 6 hours, and reallocates budget across ad sets every 12 hours — all without the user flipping any toggle. Default mode is dry-run for safety; flip to LIVE in Grow → AI Optimizer when ready to let it apply changes to Meta/Google/TikTok directly. Without ad-platform creds, campaigns land as `platform_camp_id='local_<ts>'` so the user still sees them under Tracked Campaigns; once creds are connected the next launch uses the real platform id.
 *   Counter-Message modal exposes 🚀 **Launch Now** (pre-fills Campaign Launch Brief + sets `window._counterTarget` so Campaigns view shows "Targeting: <competitor>" banner) and 📋 **Copy** / **Copy All** buttons for clipboard handoff.
 
 ## Gotchas
