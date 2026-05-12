@@ -289,6 +289,11 @@ function drawQuickStartInfographic(doc) {
 // ── Section divider page ───────────────────────────────────────────────────
 function drawSectionDivider(doc, section) {
   doc.addPage();
+  // Same trick as drawFeatureCard: zero the bottom margin so the section's
+  // feature-dot list can't auto-paginate into orphan one-line pages when a
+  // section has many features (Analyse alone has 16+).
+  const origBottom = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
   const w = pageW(doc), h = pageH(doc);
   // Side bar
   doc.rect(0, 0, 12, h).fill(section.color);
@@ -306,23 +311,42 @@ function drawSectionDivider(doc, section) {
   doc.save().strokeColor(section.color).lineWidth(1.5)
     .moveTo(56, 260).lineTo(w - 56, 260).stroke().restore();
 
-  // Mini infographic: feature dots
-  let cy = 290;
-  section.features.forEach((f, idx) => {
+  // Mini infographic: feature dots — adapt row spacing to fit all features
+  // on the single divider page. With many features (e.g. Analyse has 16+),
+  // a fixed 38px row exceeds the page; compute spacing from available height.
+  const listTop = 290;
+  const listBottom = h - 80;
+  const available = listBottom - listTop;
+  const rowH = Math.max(20, Math.min(38, Math.floor(available / Math.max(1, section.features.length))));
+  let cy = listTop;
+  section.features.forEach((f) => {
+    if (cy + rowH > listBottom) return; // safety: stop if we'd overflow
     doc.save().circle(72, cy + 8, 5).fill(section.color).restore();
-    doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(11)
-      .text(f.name, 90, cy, { width: w - 150 });
-    doc.fillColor(C.gray600).font('Helvetica').fontSize(9)
-      .text(f.what, 90, cy + 14, { width: w - 150 });
-    cy += 38;
-    if (cy > h - 100) return;
+    doc.fillColor(C.navy).font('Helvetica-Bold').fontSize(rowH >= 32 ? 11 : 10)
+      .text(f.name, 90, cy, { width: w - 150, height: 12, ellipsis: true, lineBreak: false });
+    if (rowH >= 28) {
+      doc.fillColor(C.gray600).font('Helvetica').fontSize(rowH >= 32 ? 9 : 8.5)
+        .text(f.what, 90, cy + 14, { width: w - 150, height: rowH - 14, ellipsis: true, lineBreak: false });
+    }
+    cy += rowH;
   });
+
+  // Restore the original bottom margin for downstream pages.
+  doc.page.margins.bottom = origBottom;
 }
 
 // ── Feature card (one feature per page, screenshot embedded) ────────────────
 function drawFeatureCard(doc, section, feature) {
   // Always start each feature on a fresh page so layout is consistent and aligned.
   doc.addPage();
+
+  // Disable auto-pagination for the entire card by zeroing the bottom margin.
+  // PDFKit auto-creates a new page (often containing 1 word/sentence of overflow)
+  // any time text() with an explicit y crosses page.margins.bottom — which happens
+  // on Analyse-section features that have long inputs/outputs or "how to use it"
+  // copy. Zeroing the bottom margin keeps everything on the single feature page.
+  const origBottom = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
 
   const x0 = doc.page.margins.left;
   const y0 = doc.page.margins.top;
@@ -437,6 +461,10 @@ function drawFeatureCard(doc, section, feature) {
     .text('HOW TO USE IT', x0 + padX, cursorY + padY, { characterSpacing: 1 });
   doc.fillColor(C.gray800).font('Helvetica').fontSize(10)
     .text(feature.how, x0 + padX, cursorY + padY + labelH + 4, { width: howTextW, lineGap: 2 });
+
+  // Restore the original bottom margin so subsequent pages (TOC, glossary,
+  // tips, etc.) get their normal footer-safe layout back.
+  doc.page.margins.bottom = origBottom;
 }
 
 // ── TOC ────────────────────────────────────────────────────────────────────

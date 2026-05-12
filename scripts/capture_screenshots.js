@@ -68,6 +68,75 @@ async function captureOne(browser, v) {
       () => typeof window.navigateTo === 'function',
       { timeout: 20000 }
     );
+    // Some views (Battle Plan, Dashboard, Competitors, Intelligence) render an
+    // empty "No Analysis Yet" state unless `analysisData` is populated. Seed a
+    // realistic skeleton up-front so the views render their full UI for the
+    // manual screenshots — this is the same shape `analyseDomain()` produces.
+    const NEEDS_ANALYSIS = new Set([
+      'battleplan', 'dashboard', 'competitors', 'intelligence',
+      'battle-cards', 'sov-tracker', 'crisis-radar',
+    ]);
+    if (NEEDS_ANALYSIS.has(v.id)) {
+      await page.evaluate(() => {
+        try {
+          const seed = {
+            url: 'yourdomain.com',
+            country: 'us',
+            industryKey: 'saas',
+            industry: { name: 'SaaS' },
+            sectorOnly: false,
+            websiteKPIs: { ctr: 2.4, roas: 3.8, traffic: 18400, conv: 3.1 },
+            competitors: [
+              {
+                name: 'Acme Rivals', logo: 'A', threatLevel: 'high',
+                topChannel: 'Google Ads', trafficMo: 245000,
+                topKeywords: ['acme alternative', 'best saas tool', 'vs acme', 'top rated saas', 'acme pricing', 'acme review'],
+                campaigns: [
+                  { name: 'Branded Search', budget: 4200, status: 'active' },
+                  { name: 'Competitor Conquest', budget: 2800, status: 'active' },
+                ],
+                audiences: [
+                  { label: 'High-Intent Buyers', pct: 38 },
+                  { label: 'Decision Makers', pct: 24 },
+                  { label: 'Mid-Market Segment', pct: 22 },
+                ],
+                suggestions: [
+                  'Weak personalisation in search ad copy',
+                  'Generic creative with low audience specificity',
+                  'No TikTok or Reels presence',
+                  'Over-indexed on branded keywords',
+                ],
+                adCopy: [
+                  'Switch to Acme — 30% off your first year',
+                  'The #1 SaaS for growing teams',
+                ],
+              },
+              {
+                name: 'BetaCorp', logo: 'B', threatLevel: 'medium',
+                topChannel: 'LinkedIn Ads', trafficMo: 128000,
+                topKeywords: ['betacorp pricing', 'betacorp review', 'enterprise saas'],
+                campaigns: [{ name: 'Webinar Funnel', budget: 1800, status: 'active' }],
+                audiences: [{ label: 'Enterprise IT', pct: 41 }],
+                suggestions: ['Slow page load on landing pages', 'No live chat after 5pm'],
+                adCopy: ['Enterprise-grade SaaS, built for scale'],
+              },
+              {
+                name: 'GammaSoft', logo: 'G', threatLevel: 'low',
+                topChannel: 'Meta Ads', trafficMo: 64000,
+                topKeywords: ['gammasoft alternative', 'cheap saas'],
+                campaigns: [{ name: 'Retargeting', budget: 900, status: 'active' }],
+                audiences: [{ label: 'Cost-Conscious SMB', pct: 33 }],
+                suggestions: ['Outdated brand visuals', 'Limited integrations'],
+                adCopy: ['SaaS that just works'],
+              },
+            ],
+          };
+          window.analysisData = seed;
+          try { /* mirror to module-scoped var if exposed */ if (typeof analysisData !== 'undefined') analysisData = seed; } catch (_) {}
+        } catch (_) {}
+      }).catch(() => {});
+    }
+
     // Trigger client-side navigation to the target view, unless it's home.
     if (v.id !== 'home') {
       await page.evaluate((id) => {
@@ -76,6 +145,14 @@ async function captureOne(browser, v) {
     }
     // Give the view time to render (build* functions, charts, async fetches).
     await new Promise(r => setTimeout(r, 900));
+    // For Battle Plan specifically, force a re-render after navigation in case
+    // the first render fired before the seed was readable in scope.
+    if (v.id === 'battleplan') {
+      await page.evaluate(() => {
+        try { if (typeof window.buildBattlePlan === 'function') window.buildBattlePlan(); } catch (_) {}
+      }).catch(() => {});
+      await new Promise(r => setTimeout(r, 600));
+    }
     await page.evaluate(() => {
       ['landingPageModal', 'wpCredentialsModal'].forEach(id => {
         const el = document.getElementById(id);
