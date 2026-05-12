@@ -15218,11 +15218,11 @@ function buildBattlePlan() {
   function btn(label, onclick, style) {
     return `<button onclick="${onclick}" style="padding:6px 14px;border:none;border-radius:8px;font-size:0.72rem;font-weight:700;cursor:pointer;${style}">${label}</button>`;
   }
-  const primaryBtn  = (label, fn) => btn(label, fn, 'background:linear-gradient(135deg,#0066FF,#00C9C8);color:white');
-  const dangerBtn   = (label, fn) => btn(label, fn, 'background:linear-gradient(135deg,#EF4444,#DC2626);color:white');
-  const purpleBtn   = (label, fn) => btn(label, fn, 'background:linear-gradient(135deg,#7C3AED,#4F46E5);color:white');
-  const greenBtn    = (label, fn) => btn(label, fn, 'background:linear-gradient(135deg,#10B981,#059669);color:white');
-  const ghostBtn    = (label, fn) => btn(label, fn, 'background:#F3F4F6;border:1px solid #E5E7EB;color:#374151');
+  const primaryBtn  = (label, fn) => btn(label, fn, 'background:linear-gradient(135deg,#0066FF,#00C9C8);color:#fff;-webkit-text-fill-color:#fff');
+  const dangerBtn   = (label, fn) => btn(label, fn, 'background:linear-gradient(135deg,#EF4444,#DC2626);color:#fff;-webkit-text-fill-color:#fff');
+  const purpleBtn   = (label, fn) => btn(label, fn, 'background:linear-gradient(135deg,#7C3AED,#4F46E5);color:#fff;-webkit-text-fill-color:#fff');
+  const greenBtn    = (label, fn) => btn(label, fn, 'background:linear-gradient(135deg,#10B981,#059669);color:#fff;-webkit-text-fill-color:#fff');
+  const ghostBtn    = (label, fn) => btn(label, fn, 'background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;-webkit-text-fill-color:#374151');
 
   // ── 1. Exploit Weaknesses ───────────────────────────────────────────────────
   const weakCards = (c.suggestions || ['Competitor has weak personalisation in search ads','Generic creative with low audience specificity','No TikTok or Reels presence','Over-indexed on branded keywords']).slice(0,4).map((s,i) => {
@@ -15334,7 +15334,7 @@ function buildBattlePlan() {
           <div style="color:#E0E7FF;opacity:.95;font-size:0.88rem;font-weight:500;text-shadow:0 1px 2px rgba(15,30,61,.18)">${domain} · ${industry} · ${comps.length} competitors · Click any action card to execute directly</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button onclick="bpLC(${idx},0)" style="padding:10px 20px;background:linear-gradient(135deg,#EF4444,#DC2626);border:none;border-radius:10px;font-size:0.8rem;font-weight:800;color:white;cursor:pointer;box-shadow:0 4px 12px rgba(239,68,68,.35)">⚡ Execute Top Priority</button>
+          <button onclick="bpLC(${idx},0)" style="padding:10px 20px;background:linear-gradient(135deg,#EF4444,#DC2626);border:none;border-radius:10px;font-size:0.8rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;box-shadow:0 4px 12px rgba(239,68,68,.35)">⚡ Execute Top Priority</button>
           <button onclick="navigateTo('campaigns')" style="padding:10px 20px;background:#FFFFFF;border:1px solid rgba(255,255,255,.6);border-radius:10px;font-size:0.8rem;font-weight:800;color:#1E3A8A;cursor:pointer;box-shadow:0 2px 6px rgba(15,30,61,.08)">📋 All Campaigns</button>
         </div>
       </div>
