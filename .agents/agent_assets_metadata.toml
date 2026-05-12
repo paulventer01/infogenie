@@ -54,3 +54,9 @@ id = "tkcLrP1uHvBZNNjV_4np3"
 uri = "file://backups/InfoGenie_Source_20260505_085511.zip"
 type = "unspecified"
 title = "InfoGenie Source Code Backup (ZIP, 973 KB)"
+
+[[outputs]]
+id = "JquzXjeZ0tHsoUVnniUhy"
+uri = "file://exports/InfoGenie_Business_Plan.pdf"
+type = "pdf"
+title = "InfoGenie Business Plan (PDF)"

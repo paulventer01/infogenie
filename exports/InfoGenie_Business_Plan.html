@@ -1,0 +1,338 @@
+<!doctype html><html><head><meta charset="utf-8"><title>InfoGenie Business Plan</title>
+<style>
+  @page { size: A4; margin: 22mm 18mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; color:#0f172a; line-height:1.55; font-size:10.5pt; margin:0; }
+  h1 { font-size: 26pt; margin: 0 0 4px; color:#0066FF; letter-spacing:-0.5px; }
+  h2 { font-size: 15pt; margin: 24px 0 8px; color:#0f172a; border-bottom:2px solid #0066FF; padding-bottom:4px; page-break-after:avoid; }
+  h3 { font-size: 11.5pt; margin: 14px 0 4px; color:#1e293b; page-break-after:avoid; }
+  h4 { font-size: 10.5pt; margin: 10px 0 2px; color:#334155; }
+  p, li { font-size: 10.5pt; }
+  ul, ol { margin: 4px 0 8px 18px; padding:0; }
+  li { margin-bottom: 3px; }
+  table { border-collapse: collapse; width:100%; margin:8px 0 14px; font-size: 9.5pt; }
+  th, td { border:1px solid #cbd5e1; padding:6px 8px; text-align:left; vertical-align:top; }
+  th { background:#f1f5f9; font-weight:700; color:#0f172a; }
+  .cover { text-align:center; padding-top:60mm; page-break-after:always; }
+  .cover h1 { font-size:42pt; margin-bottom:8px; }
+  .cover .tag { font-size:14pt; color:#475569; margin-bottom:40mm; }
+  .cover .meta { font-size:10pt; color:#64748b; }
+  .toc { page-break-after:always; }
+  .toc ol { font-size:11pt; line-height:2; }
+  .badge { display:inline-block; background:#0066FF; color:#fff; padding:2px 10px; border-radius:10px; font-size:9pt; font-weight:700; }
+  .pill-green { background:#10B981; color:#fff; padding:2px 8px; border-radius:8px; font-size:9pt; }
+  .pill-amber { background:#F59E0B; color:#fff; padding:2px 8px; border-radius:8px; font-size:9pt; }
+  .callout { background:#EFF6FF; border-left:4px solid #0066FF; padding:10px 14px; margin:10px 0; border-radius:4px; }
+  .grid2 { display:flex; gap:14px; }
+  .grid2 > div { flex:1; }
+  .footer-note { color:#64748b; font-size:9pt; font-style:italic; margin-top:6px; }
+  .section { page-break-inside: avoid; }
+  hr { border:none; border-top:1px solid #e2e8f0; margin:14px 0; }
+</style></head><body>
+
+<div class="cover">
+  <h1>InfoGenie</h1>
+  <div class="tag">AI Marketing Intelligence &amp; Campaign Automation Platform</div>
+  <div class="badge">Business Plan</div>
+  <div class="meta" style="margin-top:80mm">
+    Prepared by: Paul — SureTrade<br>
+    Date: May 2026 · Version 1.0<br>
+    Confidential
+  </div>
+</div>
+
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li>Executive Summary</li>
+    <li>Company &amp; Product Overview</li>
+    <li>Problem &amp; Opportunity</li>
+    <li>The InfoGenie Solution</li>
+    <li>Market &amp; Customer</li>
+    <li>Competitive Landscape</li>
+    <li>Business Model &amp; Pricing</li>
+    <li>Go-to-Market Strategy</li>
+    <li>Operations &amp; Technology</li>
+    <li>Team &amp; Org Plan</li>
+    <li>Financial Projections (3 Years)</li>
+    <li>Funding Ask &amp; Use of Funds</li>
+    <li>Risks &amp; Mitigations</li>
+    <li>Roadmap &amp; Milestones</li>
+    <li>Appendix — Feature Index</li>
+  </ol>
+</div>
+
+<h2>1. Executive Summary</h2>
+<div class="section">
+<p><strong>InfoGenie</strong> is an AI-powered marketing intelligence and campaign automation platform that compresses the work of an entire growth team — competitive analyst, copywriter, media buyer, SEO strategist, and CRM operator — into one operator-grade application.</p>
+<p>Built on a multi-LLM backbone (OpenAI GPT-4o, Anthropic Claude, Perplexity, Google Gemini, Cloudflare Workers AI) with 80+ feature tiers spanning competitive monitoring, ad generation, ad optimization, SEO, content, conversation inbox, and white-label reporting, InfoGenie is engineered as a "Brandwatch-killer + HubSpot Marketing-killer + Adcreative.ai-killer" suite at a fraction of the cost.</p>
+<h3>Highlights</h3>
+<ul>
+  <li><strong>Dual-AI Attack Plan:</strong> parallel GPT-4o + Claude analyses synthesised by a third LLM produce more reliable competitive intelligence than any single-vendor tool.</li>
+  <li><strong>Real Data Discipline:</strong> every analysis is sourced from live APIs (Meta Ad Library, DataForSEO, HubSpot, Firecrawl, GSC) — no synthetic placeholders.</li>
+  <li><strong>Full Closed Loop:</strong> Discover insight → generate counter-message (4 AIs in parallel) → schedule across 15 social platforms via Zernio → launch ads on Meta/Google/TikTok → optimize hourly via Multi-Armed Bandit → measure True ROAS.</li>
+  <li><strong>Agentic Command Bar:</strong> natural-language operation of the entire stack via GPT-4o function calling.</li>
+</ul>
+<h3>Ask</h3>
+<p><strong>Seed round: USD 750,000</strong> for 18 months of runway to reach 500 paying customers (USD 75K MRR / USD 900K ARR) and validate enterprise expansion.</p>
+</div>
+
+<h2>2. Company &amp; Product Overview</h2>
+<div class="section">
+<table>
+<tr><th style="width:30%">Item</th><th>Detail</th></tr>
+<tr><td>Legal entity</td><td>SureTrade (operating brand: InfoGenie)</td></tr>
+<tr><td>Founded</td><td>2025</td></tr>
+<tr><td>Headquarters</td><td>South Africa (remote-first)</td></tr>
+<tr><td>Stage</td><td>Pre-seed → Seed (product live, early customers)</td></tr>
+<tr><td>Stack</td><td>Node.js / Express · Vanilla JS SPA · PostgreSQL · 5 LLM providers · 15+ external APIs</td></tr>
+<tr><td>Hosting</td><td>Replit Deployments (auto-scale, TLS, custom domain)</td></tr>
+</table>
+<h3>Mission</h3>
+<p>Give every founder, marketer, and agency a 24/7 AI growth team that out-thinks, out-writes, and out-spends their competitors — at 1/10th the cost of hiring or stitching together five SaaS tools.</p>
+<h3>Vision</h3>
+<p>Become the operating system for performance marketing — the single pane of glass where insight, creative, distribution, and optimization happen autonomously.</p>
+</div>
+
+<h2>3. Problem &amp; Opportunity</h2>
+<div class="section">
+<h3>The pain</h3>
+<ul>
+  <li>The average growth team uses <strong>9–14 disconnected tools</strong> (SEMrush + Brandwatch + Hootsuite + AdCreative + HubSpot + Triple Whale + …) costing USD 3K–10K / month.</li>
+  <li>Insights live in one tool, creative in another, distribution in a third — handoffs lose 60%+ of intent.</li>
+  <li>SMBs can't afford the stack; enterprises can't move fast enough through it.</li>
+  <li>Most "AI marketing" tools are single-LLM wrappers with hallucination risk and no closed loop to action.</li>
+</ul>
+<h3>The opportunity</h3>
+<ul>
+  <li>Global martech spend: <strong>USD 215B</strong> (2025) growing 13% YoY.</li>
+  <li>AI in marketing TAM: <strong>USD 47B by 2028</strong> (CAGR 28%).</li>
+  <li>SMB &amp; agency segment underserved by enterprise tools — InfoGenie's sweet spot.</li>
+</ul>
+</div>
+
+<h2>4. The InfoGenie Solution</h2>
+<div class="section">
+<p>One platform. 80+ tiered features. Five AI brains in parallel. Real data only.</p>
+<h3>Core capability pillars</h3>
+<table>
+<tr><th>Pillar</th><th>What it does</th><th>Replaces</th></tr>
+<tr><td>Marketing Intelligence</td><td>Competitor analysis, keyword gap, share of voice, win/loss intel, predictive moves</td><td>SEMrush, Brandwatch, SimilarWeb</td></tr>
+<tr><td>Campaign Automation</td><td>AI creative generation, multi-channel ad hub, social calendar, drip engine, re-engagement agent</td><td>AdCreative.ai, Hootsuite, ActiveCampaign</td></tr>
+<tr><td>SEO &amp; Content</td><td>Content-gap, internal-link suggester, CRO Lab, on-page audit, multi-page crawler, GEO audit</td><td>Surfer SEO, Clearscope, Screaming Frog</td></tr>
+<tr><td>Analytics &amp; Reporting</td><td>Cross-channel reports, Attribution &amp; ROI, True ROAS, Goal-Based Autonomous Monitoring</td><td>Triple Whale, Northbeam, Looker Studio</td></tr>
+<tr><td>Lead &amp; Conversation</td><td>Lead Qualifier Agent, Lookalike Builder, Unified Conversation Inbox</td><td>Drift, HubSpot Conversations</td></tr>
+<tr><td>Real-time Monitoring</td><td>Mention tracking with sentiment, real-time alerts, webhook channels</td><td>Mention.com, Brand24</td></tr>
+</table>
+<h3>Architectural moats</h3>
+<ul>
+  <li><strong>Dual-AI synthesis</strong> — GPT-4o + Claude run in parallel; a third LLM blends → reduces hallucinations vs single-LLM peers.</li>
+  <li><strong>Atomic + mutex persistence</strong> — bank-grade data integrity for campaigns and audiences.</li>
+  <li><strong>Multi-Armed Bandit optimizer</strong> — autonomous budget reallocation on Meta &amp; Google.</li>
+  <li><strong>Dynamic Audiences</strong> — rule-based real-time segments, mirrored to HubSpot, with churn-risk auto-win-back drips.</li>
+  <li><strong>Agentic command bar</strong> — natural-language control of the entire stack.</li>
+</ul>
+</div>
+
+<h2>5. Market &amp; Customer</h2>
+<div class="section">
+<h3>Ideal Customer Profile</h3>
+<table>
+<tr><th>Segment</th><th>Profile</th><th>Annual willingness-to-pay</th></tr>
+<tr><td>Solo founder / Indie SaaS</td><td>1–5 employees, USD 0–500K ARR, DIY marketing</td><td>USD 600 – 1,200</td></tr>
+<tr><td>SMB &amp; eCom brand</td><td>5–50 employees, USD 1M–20M revenue, in-house marketer</td><td>USD 3,600 – 9,600</td></tr>
+<tr><td>Performance agency</td><td>5–50 staff, 10–80 client accounts, multi-tenant needs</td><td>USD 12,000 – 36,000</td></tr>
+<tr><td>Mid-market brand</td><td>USD 20M–250M revenue, 2–8 person growth team</td><td>USD 24,000 – 60,000</td></tr>
+</table>
+<h3>TAM / SAM / SOM</h3>
+<table>
+<tr><th></th><th>Definition</th><th>Size</th></tr>
+<tr><td>TAM</td><td>Global martech / SaaS marketing tools</td><td>USD 215B</td></tr>
+<tr><td>SAM</td><td>SMB + Agency segment, English-speaking, AI-curious</td><td>USD 18B</td></tr>
+<tr><td>SOM (3 yr)</td><td>Realistic capture given GTM plan</td><td>USD 18M ARR</td></tr>
+</table>
+</div>
+
+<h2>6. Competitive Landscape</h2>
+<div class="section">
+<table>
+<tr><th>Competitor</th><th>Strength</th><th>Weakness InfoGenie exploits</th></tr>
+<tr><td>HubSpot Marketing Hub</td><td>Brand, CRM tie-in</td><td>Expensive, no real competitive intel, single-LLM AI</td></tr>
+<tr><td>SEMrush / Ahrefs</td><td>Keyword data depth</td><td>Insight only — no creative, no ad launch, no closed loop</td></tr>
+<tr><td>Brandwatch</td><td>Social listening at enterprise scale</td><td>USD 800+/mo, no creative or campaign automation</td></tr>
+<tr><td>AdCreative.ai</td><td>Ad asset generation</td><td>Single-vendor AI, no intelligence layer, no optimization</td></tr>
+<tr><td>Triple Whale</td><td>eCom attribution</td><td>Reporting only, no creative or competitive intel</td></tr>
+<tr><td>Jasper / Copy.ai</td><td>Copy generation</td><td>No data sourcing, no campaign launch, no optimizer</td></tr>
+</table>
+<div class="callout"><strong>InfoGenie's wedge:</strong> the only platform that closes the loop from <em>competitive insight</em> → <em>multi-AI counter-creative</em> → <em>cross-platform launch</em> → <em>autonomous optimization</em> → <em>True ROAS</em>, all under one login.</div>
+</div>
+
+<h2>7. Business Model &amp; Pricing</h2>
+<div class="section">
+<h3>Subscription tiers (USD / month, billed annually)</h3>
+<table>
+<tr><th>Plan</th><th>Price</th><th>Target</th><th>Included</th></tr>
+<tr><td>Starter</td><td>$49</td><td>Solo founders</td><td>3 competitors · 500 AI runs · 1 brand · core SEO + ads</td></tr>
+<tr><td>Growth</td><td>$199</td><td>SMBs / in-house marketers</td><td>10 competitors · 5K AI runs · 3 brands · ad optimizer · drips</td></tr>
+<tr><td>Agency</td><td>$599</td><td>Performance agencies</td><td>Unlimited competitors · 25K AI runs · 25 client workspaces · white-label reports</td></tr>
+<tr><td>Enterprise</td><td>Custom (from $2,500)</td><td>Mid-market brands</td><td>SSO · custom integrations · dedicated CSM · SLA · on-prem LLM option</td></tr>
+</table>
+<h3>Revenue mix (Year 3 target)</h3>
+<ul>
+  <li>Subscription: 88% (annual prepay default = strong cash flow)</li>
+  <li>Usage overage (LLM credits beyond plan): 7%</li>
+  <li>Services / onboarding (Enterprise): 5%</li>
+</ul>
+<h3>Unit economics target (Year 2)</h3>
+<table>
+<tr><td>Average revenue / account / month (ARPA)</td><td>USD 165</td></tr>
+<tr><td>Gross margin</td><td>72% (after LLM &amp; API COGS)</td></tr>
+<tr><td>CAC (blended)</td><td>USD 220</td></tr>
+<tr><td>Payback period</td><td>1.9 months</td></tr>
+<tr><td>Net revenue retention</td><td>112%</td></tr>
+<tr><td>LTV / CAC</td><td>9.4×</td></tr>
+</table>
+</div>
+
+<h2>8. Go-to-Market Strategy</h2>
+<div class="section">
+<h3>Phase 1 (Months 0–6) — Founder-led, content-led</h3>
+<ul>
+  <li>Content engine: 4 SEO-optimized articles / week using InfoGenie's own Content Scorer (dogfood).</li>
+  <li>YouTube + LinkedIn: weekly "Competitor Teardown" videos featuring real brands.</li>
+  <li>Free competitor-analysis tool (lead magnet) → email drip into Starter trial.</li>
+  <li>Target: 100 paying customers by Month 6.</li>
+</ul>
+<h3>Phase 2 (Months 6–12) — Agency channel</h3>
+<ul>
+  <li>White-label launch (Agency tier) — agencies resell to their clients.</li>
+  <li>20% recurring revenue share for agency partners (lifetime).</li>
+  <li>Co-marketing with 3 mid-tier hosting / CRM partners.</li>
+  <li>Target: 350 paying customers by Month 12.</li>
+</ul>
+<h3>Phase 3 (Months 12–24) — Paid acquisition + Enterprise outbound</h3>
+<ul>
+  <li>Performance ads on Meta + Google (using InfoGenie's own optimizer).</li>
+  <li>Two-person SDR team for Enterprise outbound (Apollo + HubSpot integration already built).</li>
+  <li>Target: 1,500 paying customers + 25 Enterprise logos by Month 24.</li>
+</ul>
+</div>
+
+<h2>9. Operations &amp; Technology</h2>
+<div class="section">
+<h3>Stack</h3>
+<ul>
+  <li><strong>Backend:</strong> Node.js / Express on Replit Deployments (auto-scale)</li>
+  <li><strong>Database:</strong> PostgreSQL with atomic writes + mutex locking</li>
+  <li><strong>AI providers:</strong> OpenAI GPT-4o, Anthropic Claude, Perplexity, Gemini, Cloudflare Workers AI (Llama 3.1) — multi-vendor for redundancy &amp; cost optimization</li>
+  <li><strong>External APIs:</strong> DataForSEO, Firecrawl, Meta Marketing, Google Ads, TikTok Ads, HubSpot, Apollo, BuiltWith, Resend, Slack, Zernio (15-platform social), Google PageSpeed</li>
+</ul>
+<h3>Cost discipline</h3>
+<ul>
+  <li>Per-IP, per-provider, per-day LLM budget caps prevent runaway spend.</li>
+  <li>Automatic provider fallback (GPT-4o → GPT-4o-mini → Cloudflare Llama) for cost-sensitive operations.</li>
+  <li>Strict-JSON prompt pattern + template fallback prevents wasted retries.</li>
+</ul>
+<h3>Security &amp; compliance</h3>
+<ul>
+  <li>SSRF guards on all external URL fetches.</li>
+  <li>API key gating in production (<code>INFOGENIE_API_KEY</code>).</li>
+  <li>HMAC-validated inbound webhooks (Resend, HubSpot).</li>
+  <li>Roadmap: SOC 2 Type II by Month 18; GDPR-compliant by launch.</li>
+</ul>
+</div>
+
+<h2>10. Team &amp; Org Plan</h2>
+<div class="section">
+<h3>Today</h3>
+<ul>
+  <li>Founder / CEO — product, GTM, customer success</li>
+  <li>AI agent (Replit) — primary engineering counterpart</li>
+</ul>
+<h3>Year-1 hires (post-seed)</h3>
+<table>
+<tr><th>Role</th><th>Quarter</th><th>Why now</th></tr>
+<tr><td>Senior Full-Stack Engineer</td><td>Q1</td><td>Scale beyond agent-only development; SOC 2 prep</td></tr>
+<tr><td>Growth / Content Marketer</td><td>Q1</td><td>Operate the SEO + YouTube content engine</td></tr>
+<tr><td>Customer Success Lead</td><td>Q2</td><td>Reduce churn at 100+ customers; agency onboarding</td></tr>
+<tr><td>Performance Marketer</td><td>Q3</td><td>Run paid acquisition once content + organic plateau</td></tr>
+<tr><td>Enterprise SDR ×2</td><td>Q4</td><td>Outbound for mid-market &amp; agency tiers</td></tr>
+</table>
+</div>
+
+<h2>11. Financial Projections (3 Years)</h2>
+<div class="section">
+<table>
+<tr><th></th><th>Year 1</th><th>Year 2</th><th>Year 3</th></tr>
+<tr><td>Paying customers (EOY)</td><td>500</td><td>2,200</td><td>6,500</td></tr>
+<tr><td>Average ARPA / month</td><td>$135</td><td>$165</td><td>$195</td></tr>
+<tr><td>MRR (EOY)</td><td>$67,500</td><td>$363,000</td><td>$1,267,500</td></tr>
+<tr><td>ARR (EOY)</td><td>$810K</td><td>$4.36M</td><td>$15.21M</td></tr>
+<tr><td>Gross margin</td><td>62%</td><td>72%</td><td>76%</td></tr>
+<tr><td>Operating expenses</td><td>$680K</td><td>$2.4M</td><td>$6.8M</td></tr>
+<tr><td>EBITDA</td><td>−$180K</td><td>+$740K</td><td>+$4.7M</td></tr>
+<tr><td>Headcount (EOY)</td><td>5</td><td>14</td><td>32</td></tr>
+</table>
+<p class="footer-note">Projections assume USD 750K seed closing Q1, 8% monthly net new logo growth post Month 6, 112% NRR by Year 2.</p>
+</div>
+
+<h2>12. Funding Ask &amp; Use of Funds</h2>
+<div class="section">
+<p><strong>Raising: USD 750,000 Seed</strong> (SAFE or priced round at USD 6M post). 18-month runway to USD 4M ARR / cash-flow-positive.</p>
+<table>
+<tr><th>Bucket</th><th>%</th><th>USD</th><th>What it funds</th></tr>
+<tr><td>Engineering</td><td>40%</td><td>$300,000</td><td>2 senior engineers, SOC 2, infrastructure</td></tr>
+<tr><td>Growth &amp; Content</td><td>30%</td><td>$225,000</td><td>Marketer + content engine + paid pilots</td></tr>
+<tr><td>Customer Success &amp; Sales</td><td>15%</td><td>$112,500</td><td>CSM lead + 2 SDRs (Q3+)</td></tr>
+<tr><td>LLM &amp; API costs</td><td>10%</td><td>$75,000</td><td>OpenAI / Anthropic / DataForSEO at growth scale</td></tr>
+<tr><td>Legal / Compliance / Buffer</td><td>5%</td><td>$37,500</td><td>SOC 2, GDPR, contracts</td></tr>
+</table>
+</div>
+
+<h2>13. Risks &amp; Mitigations</h2>
+<div class="section">
+<table>
+<tr><th>Risk</th><th>Likelihood</th><th>Mitigation</th></tr>
+<tr><td>LLM provider price hike</td><td>Medium</td><td>5-vendor abstraction; fallback to Cloudflare Workers AI (Llama)</td></tr>
+<tr><td>Meta / Google Ad API restrictions</td><td>Medium</td><td>Multi-platform (TikTok, LinkedIn roadmap); manual fallback flows already shipped</td></tr>
+<tr><td>Hyperscaler launches similar AI suite</td><td>Medium</td><td>Speed of iteration + vertical depth (agency white-label moat)</td></tr>
+<tr><td>SMB churn / low willingness to pay</td><td>High</td><td>Annual prepay default; strong onboarding + ROI dashboard surfaced in week 1</td></tr>
+<tr><td>Regulatory (AI Act, data residency)</td><td>Medium</td><td>EU region option on roadmap; opt-out of model training across providers</td></tr>
+<tr><td>Founder bandwidth pre-hire</td><td>High</td><td>Replit agent-driven dev velocity; first eng hire in Q1 post-seed</td></tr>
+</table>
+</div>
+
+<h2>14. Roadmap &amp; Milestones</h2>
+<div class="section">
+<table>
+<tr><th>Quarter</th><th>Milestone</th></tr>
+<tr><td>Q2 2026</td><td>Public launch · 100 paying customers · Agency white-label GA</td></tr>
+<tr><td>Q3 2026</td><td>250 customers · Mobile companion app (iOS/Android)</td></tr>
+<tr><td>Q4 2026</td><td>500 customers · USD 67.5K MRR · SOC 2 Type I</td></tr>
+<tr><td>Q1 2027</td><td>First Enterprise deal closed · LinkedIn Ads integration</td></tr>
+<tr><td>Q2 2027</td><td>1,000 customers · EU region · German + Spanish UI</td></tr>
+<tr><td>Q4 2027</td><td>2,200 customers · USD 4.36M ARR · cash-flow positive · SOC 2 Type II</td></tr>
+<tr><td>Q4 2028</td><td>6,500 customers · USD 15.2M ARR · Series A optionality</td></tr>
+</table>
+</div>
+
+<h2>15. Appendix — Feature Index (high level)</h2>
+<div class="section">
+<p>InfoGenie ships 80+ feature tiers (T1–T38). Selected highlights:</p>
+<ul>
+  <li><strong>T1–T8 Intelligence:</strong> Competitor analysis, keyword gap, share of voice, win/loss intel, predictive moves, mention monitoring</li>
+  <li><strong>T9–T16 Creative &amp; Ads:</strong> AI ad creative, multi-channel ad hub, campaign launch brief, Meta Ad Library scrape, counter-message generator, Multi-Armed Bandit optimizer</li>
+  <li><strong>T17–T22 SEO:</strong> Content gap, internal-link suggester, on-page audit, GEO audit, multi-page crawler, CRO Lab, Content Scorer, Keyword-Page map</li>
+  <li><strong>T23–T28 Reporting:</strong> Cross-channel reporting, GSC/GA4 hub, Attribution &amp; ROI, True ROAS, Goal-Based Autonomous Monitoring, white-label PDFs</li>
+  <li><strong>T29–T34 Lead &amp; CRM:</strong> Lead Qualifier Agent, Lookalike Builder, Unified Conversation Inbox, drip execution engine, re-engagement agent, Dynamic Audiences with HubSpot mirror</li>
+  <li><strong>T35–T38 Platform:</strong> Agentic Command Bar, white-label reports, public embed widgets, webhook channels (Slack/Telegram/Teams)</li>
+</ul>
+<p class="footer-note">Full per-tier index available in <code>docs/tiers.md</code>.</p>
+</div>
+
+<hr>
+<p style="text-align:center;color:#64748b;font-size:9pt;margin-top:14px">
+  © 2026 SureTrade · InfoGenie · Confidential — for investor &amp; partner review
+</p>
+
+</body></html>
