@@ -35532,11 +35532,15 @@ window.buildTechStack = function() {
         </div>
       </div>
       <div style="border-top:1px solid #F1F5F9;padding-top:14px">
-        <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Compare 2-5 domains side-by-side</label>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <label style="font-size:0.7rem;font-weight:700;color:#6B7280">Compare 2-5 domains side-by-side</label>
+          <button onclick="_tsLoadAnalysed()" id="tsLoadBtn" style="padding:5px 11px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;font-size:0.72rem;font-weight:700;color:#1D4ED8;cursor:pointer">⚡ Use my analysed competitors</button>
+        </div>
         <div style="display:flex;gap:10px">
           <input id="tsMulti" placeholder="e.g. nike.com, adidas.com, puma.com" style="flex:1;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
           <button onclick="_tsCompare()" style="padding:10px 22px;background:#fff;border:2px solid #DC2626;border-radius:8px;font-size:0.84rem;font-weight:800;color:#DC2626;cursor:pointer">⚖️ Compare</button>
         </div>
+        <div id="tsLoadHint" style="margin-top:5px;font-size:0.7rem;color:#9CA3AF"></div>
       </div>
     </div>
     <div id="tsOut"></div>`;
@@ -35565,6 +35569,26 @@ window._tsOne = async function() {
       </div>`;
   } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
 };
+window._tsLoadAnalysed = function() {
+  const hint = document.getElementById('tsLoadHint');
+  const input = document.getElementById('tsMulti');
+  const comps = (window.analysisData && Array.isArray(window.analysisData.competitors)) ? window.analysisData.competitors : [];
+  const domains = comps.map(c => {
+    let d = c.domain || c.url || c.website || c.name || '';
+    return String(d).replace(/^https?:\/\//i,'').replace(/^www\./i,'').replace(/\/.*$/,'').trim().toLowerCase();
+  }).filter(d => d && /\./.test(d));
+  const own = window.analysisData && (window.analysisData.url || window.analysisData.domain);
+  const ownDom = own ? String(own).replace(/^https?:\/\//i,'').replace(/^www\./i,'').replace(/\/.*$/,'').trim().toLowerCase() : '';
+  const all = ownDom ? [ownDom, ...domains] : domains;
+  const unique = [...new Set(all)].slice(0, 5);
+  if (!unique.length) {
+    if (hint) { hint.style.color = '#B91C1C'; hint.textContent = '⚠ No analysed competitors found yet — run an analysis from the home page first, or type domains manually below.'; }
+    return;
+  }
+  input.value = unique.join(', ');
+  if (hint) { hint.style.color = '#15803D'; hint.textContent = `✓ Loaded ${unique.length} domain${unique.length>1?'s':''} from your latest analysis. Edit freely or click Compare.`; }
+};
+
 window._tsCompare = async function() {
   const raw = (document.getElementById('tsMulti')||{}).value || '';
   const domains = raw.split(/[, \n]+/).map(s=>s.trim()).filter(Boolean).slice(0,5);
