@@ -1,51 +1,41 @@
 /* eslint-disable */
 // Capture screenshots of every InfoGenie view using Puppeteer.
+// View list is sourced from scripts/manual_data.js so it stays in sync with
+// the user-manual builder.
 const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
+const { VIEWS } = require('./manual_data');
 
-const BASE = 'http://localhost:5000';
+const BASE = process.env.SCREENSHOT_BASE || 'http://localhost:5000';
 const OUT_DIR = path.join(__dirname, '..', 'attached_assets', 'manual_screenshots');
 
-const VIEWS = [
-  { id: 'home',             file: 'home.jpg' },
-  { id: 'dashboard',        file: 'dashboard.jpg' },
-  { id: 'competitors',      file: 'competitors.jpg' },
-  { id: 'intelligence',     file: 'intelligence.jpg' },
-  { id: 'battleplan',       file: 'battleplan.jpg' },
-  { id: 'reddit',           file: 'reddit.jpg' },
-  { id: 'icp-studio',       file: 'icp-studio.jpg' },
-  { id: 'intent-map',       file: 'intent-map.jpg' },
-  { id: 'keyword-map',      file: 'keyword-map.jpg' },
-  { id: 'serp',             file: 'serp.jpg' },
-  { id: 'brand-assets',     file: 'brand-assets.jpg' },
-  { id: 'creative',         file: 'creative.jpg' },
-  { id: 'campaigns',        file: 'campaigns.jpg' },
-  { id: 'content',          file: 'content.jpg' },
-  { id: 'social',           file: 'social.jpg' },
-  { id: 'audience',         file: 'audience.jpg' },
-  { id: 'advertise',        file: 'advertise.jpg' },
-  { id: 'autoseo',          file: 'autoseo.jpg' },
-  { id: 'aivisibility',     file: 'aivisibility.jpg' },
-  { id: 'ai-audit-suite',   file: 'ai-audit-suite.jpg' },
-  { id: 'action-center',    file: 'action-center.jpg' },
-  { id: 'kpi-tracker',      file: 'kpi-tracker.jpg' },
-  { id: 'master-calendar',  file: 'master-calendar.jpg' },
-  { id: 'results',          file: 'results.jpg' },
-  { id: 'reengage',         file: 'reengage.jpg' },
-  { id: 'automations',      file: 'automations.jpg' },
-  { id: 'agency',           file: 'agency.jpg' },
-  { id: 'csuite',           file: 'csuite.jpg' },
-  { id: 'technical-suite',  file: 'technical-suite.jpg' },
-  { id: 'settings',         file: 'settings.jpg' },
-];
+function findChromium() {
+  // Try a few likely locations; fall back to puppeteer's bundled binary.
+  const candidates = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    '/nix/store/khk7xpgsm5insk81azy9d560yq4npf77-chromium-131.0.6778.204/bin/chromium',
+  ].filter(Boolean);
+  for (const c of candidates) { try { if (fs.existsSync(c)) return c; } catch (_) {} }
+  // Try /nix/store/*chromium*
+  try {
+    const dirs = fs.readdirSync('/nix/store').filter(n => /chromium-\d/.test(n));
+    for (const d of dirs) {
+      const p = path.join('/nix/store', d, 'bin', 'chromium');
+      if (fs.existsSync(p)) return p;
+    }
+  } catch (_) {}
+  return null;
+}
 
 function launchBrowser() {
-  return puppeteer.launch({
+  const opts = {
     headless: 'new',
-    executablePath: '/nix/store/khk7xpgsm5insk81azy9d560yq4npf77-chromium-131.0.6778.204/bin/chromium',
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-  });
+  };
+  const exe = findChromium();
+  if (exe) opts.executablePath = exe;
+  return puppeteer.launch(opts);
 }
 
 async function captureOne(browser, v) {
@@ -54,7 +44,7 @@ async function captureOne(browser, v) {
     page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
     const url = v.id === 'home' ? BASE + '/' : `${BASE}/view/${v.id}`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
     await new Promise(r => setTimeout(r, 1800));
     await page.evaluate(() => {
       ['landingPageModal', 'wpCredentialsModal'].forEach(id => {
@@ -81,10 +71,15 @@ async function captureOne(browser, v) {
   if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
 
   const onlyArg = process.argv.find(a => a.startsWith('--only='));
+  const skipExistingArg = process.argv.includes('--skip-existing');
   let targets = VIEWS;
   if (onlyArg) {
     const ids = onlyArg.split('=')[1].split(',');
     targets = VIEWS.filter(v => ids.includes(v.id));
+  }
+  if (skipExistingArg) {
+    targets = targets.filter(v => !fs.existsSync(path.join(OUT_DIR, v.file)));
+    console.log(`Skipping existing — ${targets.length} remaining`);
   }
 
   let browser = await launchBrowser();
@@ -103,7 +98,6 @@ async function captureOne(browser, v) {
         success = true;
       } catch (err) {
         console.error('✗', v.id, `(attempt ${attempt})`, '—', err.message);
-        // If browser connection is broken, relaunch
         try {
           if (!browser.isConnected()) {
             console.log('  ↻ relaunching browser');

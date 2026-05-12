@@ -5,6 +5,7 @@
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
+const { SECTIONS: CATALOGUE_SECTIONS } = require('./manual_data');
 
 // ── Brand palette ──────────────────────────────────────────────────────────
 const C = {
@@ -33,207 +34,7 @@ function shotPath(file) {
   return fs.existsSync(full) ? full : null;
 }
 
-// ── Feature catalogue ──────────────────────────────────────────────────────
-const SECTIONS = [
-  {
-    nav: 'Getting Started',
-    icon: '🏁',
-    color: C.navy,
-    summary: 'The home screen — where every InfoGenie session begins.',
-    features: [
-      { name: 'Home / Welcome Screen', icon: '🏠', shot: 'home.jpg',
-        what: 'The starting point of the platform. Enter your website (or pick an industry), choose a target country, and trigger the full intelligence run from a single button.',
-        inputs: ['Website URL or industry/sector dropdown', 'Target country', '"Analyse Now" trigger'],
-        outputs: ['Triggers the full analysis pipeline (competitors, KPIs, Battle Plan, audiences)', 'Routes you straight to the Intelligence Report dashboard'],
-        how: 'Open the app — you land here automatically. Type your domain (or pick a sector if you don\'t have one yet), confirm the country, then click "Analyse Now". Within ~60 seconds the rest of the platform is populated with live data.' },
-    ],
-  },
-  {
-    nav: 'Analyse',
-    icon: '🔍',
-    color: C.teal,
-    summary: 'Understand the market through competitor intelligence and search data.',
-    features: [
-      { name: 'Intelligence Report (Dashboard)', icon: '📊', shot: 'dashboard.jpg',
-        what: 'High-level overview of the competitive landscape with AI-driven growth recommendations.',
-        inputs: ['Website URL or industry/sector', 'Target country'],
-        outputs: ['KPI grid (CTR, ROAS, traffic)', 'Side-by-side performance charts', '12-month traffic & spend trends', 'Competitor intelligence summary'],
-        how: 'Enter your website or pick an industry on the home screen, choose your target country, and click "Analyse Now". The dashboard populates within 60 seconds.' },
-      { name: 'Competitive Intelligence Engine', icon: '⚔️', shot: 'competitors.jpg',
-        what: 'Deep-dive analysis into specific competitors — traffic sources, threat levels, ad creative, and counter-attack plans.',
-        inputs: ['Manual competitor URLs (optional)'],
-        outputs: ['Competitor cards', 'Threat-level scoring', 'Ad creative insights', '"Attack Plan" per competitor'],
-        how: 'Open the Competitors view after running an analysis. Click any competitor card to drill into their channel mix and see the recommended counter-strategy.' },
-      { name: 'Intelligence Hub', icon: '📡', shot: 'intelligence.jpg',
-        what: 'Real-time monitoring of competitor signals and predictive market moves.',
-        inputs: ['Auto-derived from analysis'],
-        outputs: ['Predictive signals', 'Budget-shift alerts', '90-day domination roadmap', 'Exportable report'],
-        how: 'Open the Intelligence Hub from the Analyse menu. Use "Counter This Message" on any competitor message to launch a counter-campaign in one click.' },
-      { name: 'Battle Plan', icon: '🛡️', shot: 'battleplan.jpg',
-        what: 'Strategic execution roadmap tailored to the identified market gaps.',
-        inputs: ['Competitor analysis results'],
-        outputs: ['Implementation steps', '90-day strategic priorities', 'Tactical playbook'],
-        how: 'Generated automatically after an analysis run. Review priorities top-to-bottom and assign owners.' },
-      { name: 'Reddit & Community Intelligence', icon: '👽', shot: 'reddit.jpg',
-        what: 'Monitors brand and competitor mentions across Reddit to surface sentiment and engagement opportunities.',
-        inputs: ['Brand or query string', 'Scan Now trigger'],
-        outputs: ['Subreddit mentions with sentiment', 'AI-suggested replies in your brand voice'],
-        how: 'In the Reddit Intel view, click "Scan now" and wait ~10 seconds. Use the Reply Studio tab to draft on-brand responses.' },
-      { name: 'ICP Studio', icon: '🎯', shot: 'icp-studio.jpg',
-        what: 'Builds detailed Ideal Customer Profiles using voice-of-customer signals.',
-        inputs: ['Brand intelligence data', 'Optional manual prompts'],
-        outputs: ['Persona profiles (demographics, pains, motivations)', 'Tile-level activations: ads, social, email'],
-        how: 'Click any ICP tile to activate that channel. Use "Save ICP" to lock in the persona for future runs.' },
-      { name: 'Search Intent Map', icon: '🗺️', shot: 'intent-map.jpg',
-        what: 'Classifies keywords by user intent (Informational, Transactional, Commercial, Navigational).',
-        inputs: ['Generate Intent Map trigger'],
-        outputs: ['Keyword → intent mapping', 'Landing-page-type recommendations'],
-        how: 'Open the Intent Map view and click "Generate". Use the resulting clusters to plan content type per topic.' },
-      { name: 'Keyword–Page Map', icon: '🧭', shot: 'keyword-map.jpg',
-        what: 'Maps primary and supporting keywords to specific pages to avoid SEO cannibalisation.',
-        inputs: ['Generate Map trigger'],
-        outputs: ['Visual site architecture', 'Keyword → URL assignments'],
-        how: 'Click "Generate Map" to scan your site and assign each keyword cluster to the best-fit page.' },
-      { name: 'Google Search Intelligence', icon: '🔎', shot: 'serp.jpg',
-        what: 'Live Google SERP tracker for any query, country, and result type.',
-        inputs: ['Search query', 'Country', 'Type (Organic / News)'],
-        outputs: ['Live ranking positions', 'Competitor ad presence', 'Organic visibility'],
-        how: 'Type a query, choose a country, choose Organic or News, and hit Search.' },
-    ],
-  },
-  {
-    nav: 'Create',
-    icon: '✏️',
-    color: C.blue,
-    summary: 'Build and manage marketing assets and campaigns.',
-    features: [
-      { name: 'Brand Creative Library', icon: '🎨', shot: 'brand-assets.jpg',
-        what: 'Centralised repository for all brand-related files (logos, banners, social, video, PDFs).',
-        inputs: ['File uploads up to 50MB (JPG/PNG/GIF/WebP/MP4/MOV/PDF/SVG)', 'Category tags'],
-        outputs: ['Searchable asset grid', 'Filter by type'],
-        how: 'Drag and drop files into the Brand Assets uploader, then tag by category for fast retrieval.' },
-      { name: 'AI Creative Generation Engine', icon: '🤖', shot: 'creative.jpg',
-        what: 'Generates high-performing ad copy and headlines based on competitor data.',
-        inputs: ['Competitor intel', 'Generate More trigger'],
-        outputs: ['Ad copy variants', 'Headline options', 'Campaign briefs'],
-        how: 'Open AI Creative, select the competitor and channel, and click Generate. Iterate until you hit the angle you want.' },
-      { name: 'Campaign Intelligence', icon: '🚀', shot: 'campaigns.jpg',
-        what: 'AI-generated campaign improvements and structural recommendations with one-click launch.',
-        inputs: ['Launch modal: budget, platform, region'],
-        outputs: ['Automated deployment to Google, Meta, TikTok'],
-        how: 'Click Launch Campaign on any recommendation to push the campaign live to your connected ad accounts.' },
-      { name: 'Content Intelligence', icon: '📝', shot: 'content.jpg',
-        what: 'Identifies content gaps and audits existing pages for SEO performance.',
-        inputs: ['Analyse Content trigger', 'Page URLs'],
-        outputs: ['Topical cluster maps', 'Content-gap reports', 'AI page audits'],
-        how: 'Click "Analyse Content" to scan your site. Drill into each gap to see suggested article briefs.' },
-      { name: 'Social Calendar & Generator', icon: '📅', shot: 'social.jpg',
-        what: 'End-to-end social media management — generate posts, schedule, and visualise.',
-        inputs: ['Create Post trigger (text/images)'],
-        outputs: ['Visual calendar', 'Scheduled posts across platforms'],
-        how: 'Use Create Post to draft content, set a publish time, and approve. Posts appear in the Master Calendar.' },
-    ],
-  },
-  {
-    nav: 'Reach',
-    icon: '📡',
-    color: C.purple,
-    summary: 'Distribute content and ads to target audiences.',
-    features: [
-      { name: 'Audience Intelligence', icon: '👥', shot: 'audience.jpg',
-        what: 'Identifies and targets high-converting audience segments.',
-        inputs: ['Auto-Target trigger'],
-        outputs: ['Defined audience segments', 'Targeting parameters for ad platforms'],
-        how: 'Click Auto-Target to let InfoGenie build your top 5 segments automatically. Push them straight to Meta, Google, or TikTok.' },
-      { name: 'Multi-Channel Advertising Hub', icon: '📣', shot: 'advertise.jpg',
-        what: 'Management interface for lead-generation ads across 20+ channels.',
-        inputs: ['New Campaign trigger', 'Platform connections'],
-        outputs: ['Integrated campaign management', 'Cross-platform performance tracking'],
-        how: 'Connect your ad accounts in Settings, then use New Campaign to launch coordinated buys across selected platforms.' },
-    ],
-  },
-  {
-    nav: 'Grow',
-    icon: '📈',
-    color: C.green,
-    summary: 'Optimise visibility and measure long-term performance.',
-    features: [
-      { name: 'AutoSEO Pro', icon: '⚙️', shot: 'autoseo.jpg',
-        what: 'Automated SEO execution — article generation, on-page fixes, and backlink tracking.',
-        inputs: ['WordPress credentials (API)', 'Target keywords'],
-        outputs: ['Published articles', 'Backlink reports', 'Keyword research'],
-        how: 'Connect WordPress in Settings, choose target keywords, and let AutoSEO publish optimised articles on a schedule.' },
-      { name: 'AI Visibility Intelligence', icon: '✨', shot: 'aivisibility.jpg',
-        what: 'Tracks how your brand is cited by LLMs (ChatGPT, Claude, Gemini, Perplexity).',
-        inputs: ['Run AI Audit trigger'],
-        outputs: ['Citation tracking', 'Brand sentiment in AI responses', 'Optimisation recommendations'],
-        how: 'Click Run AI Audit. The dashboard shows where you appear (and where you don\'t) in AI answer engines.' },
-      { name: 'AI Audit Suite', icon: '🔬', shot: 'ai-audit-suite.jpg',
-        what: 'Independent deep-dive audits for various AI performance metrics.',
-        inputs: ['Audit selection (Prompt Coverage, Entity Mapping, etc.)'],
-        outputs: ['Reports on answer accuracy, AI Overviews, citation-to-traffic attribution'],
-        how: 'Pick the audit type and click Run. Reports save to the Action Center for follow-up.' },
-      { name: 'Action Center', icon: '🎮', shot: 'action-center.jpg',
-        what: 'Marketing-command view showing upcoming launches and system risks.',
-        inputs: ['Refresh trigger'],
-        outputs: ['Live status feed', 'Upcoming milestones', 'Optimisation opportunities'],
-        how: 'Visit daily as your single pane of glass. Click any item to jump to the relevant module.' },
-      { name: 'KPI Tracker', icon: '📐', shot: 'kpi-tracker.jpg',
-        what: 'Long-term performance tracking against business goals.',
-        inputs: ['Data from connected ad/analytics accounts'],
-        outputs: ['Growth trend visualisations', 'Goal-completion charts'],
-        how: 'Set your goals once, then check progress weekly. Anomalies are flagged automatically.' },
-    ],
-  },
-  {
-    nav: 'Manage',
-    icon: '⚙️',
-    color: C.amber,
-    summary: 'Operations, reporting, and platform configuration.',
-    features: [
-      { name: 'Master Calendar', icon: '🗓️', shot: 'master-calendar.jpg',
-        what: 'Unified view of all scheduled marketing activities — campaigns, content, social.',
-        inputs: ['Auto-sync from other modules'],
-        outputs: ['Global timeline of marketing operations'],
-        how: 'Open Master Calendar to see every scheduled action. Click any item to edit in its source module.' },
-      { name: 'Campaign Results & Action History', icon: '📋', shot: 'results.jpg',
-        what: 'Live tracking of all platform-initiated actions and their measurable impact.',
-        inputs: ['Export PDF trigger'],
-        outputs: ['PDF reports', 'Historical action logs', 'Performance lift summaries'],
-        how: 'Filter by date range and click Export PDF for a board-ready summary.' },
-      { name: 'Re-Engage', icon: '🔁', shot: 'reengage.jpg',
-        what: 'Tools for customer retention and win-back campaigns.',
-        inputs: ['Customer data segments'],
-        outputs: ['Re-engagement campaign automation'],
-        how: 'Upload or pull a customer list, choose a segment, and launch a re-engagement sequence.' },
-      { name: 'Automations', icon: '🪄', shot: 'automations.jpg',
-        what: 'Workflow builder for connecting different parts of the marketing stack.',
-        inputs: ['Trigger / Action definitions'],
-        outputs: ['Cross-platform automated workflows'],
-        how: 'Pick a trigger (e.g. competitor budget surge) and link it to an action (e.g. increase Meta bids).' },
-      { name: 'Agency Hub & Reports', icon: '🏢', shot: 'agency.jpg',
-        what: 'Multi-client management and white-label reporting interface.',
-        inputs: ['Client account configurations'],
-        outputs: ['Branded client reports', 'Multi-tenant dashboard'],
-        how: 'Add clients in Settings, then switch context using the client dropdown to manage their campaigns separately.' },
-      { name: 'C-Suite Executive Reports', icon: '💼', shot: 'csuite.jpg',
-        what: 'Role-specific board-ready dashboards (CEO, CMO, CFO, COO).',
-        inputs: ['Role selection'],
-        outputs: ['Executive PDF reports', 'High-level business impact summaries'],
-        how: 'Pick the role lens, click Generate, and download the board-ready PDF.' },
-      { name: 'Technical Suite', icon: '🛠️', shot: 'technical-suite.jpg',
-        what: 'Technical SEO and site health audits.',
-        inputs: ['Run All Audits trigger'],
-        outputs: ['Crawlability scores', 'Index-readiness report', 'Technical health grade'],
-        how: 'Click Run All Audits to execute the full technical sweep. Each finding includes a fix.' },
-      { name: 'Integrations & Settings', icon: '🔌', shot: 'settings.jpg',
-        what: 'Configuration panel for the entire platform.',
-        inputs: ['API keys, AI model selection, account permissions'],
-        outputs: ['Connected platform status', 'Global system configuration'],
-        how: 'Connect Google Ads, Meta, TikTok, RapidAPI, OpenAI/Anthropic, and other integrations from one screen.' },
-    ],
-  },
-];
+const SECTIONS = CATALOGUE_SECTIONS;
 
 // ── PDF helpers ────────────────────────────────────────────────────────────
 function newDoc() {
@@ -373,14 +174,14 @@ function drawCover(doc) {
 
   // Subtitle
   doc.fillColor('#CBD5E1').font('Helvetica').fontSize(13)
-    .text('A complete guide to the 30+ tools that turn competitor intel into autonomous growth.',
+    .text('A complete guide to every page, sub-page and tool — illustrated with live screenshots.',
       56, titleY + 192, { width: w - 112, lineGap: 3 });
 
   // Stats row
   const statY = h - 220;
   const stats = [
     { n: '5', l: 'Workflow stages' },
-    { n: '30+', l: 'Tools & modules' },
+    { n: '120+', l: 'Tools & modules' },
     { n: '20+', l: 'Ad channels' },
     { n: '60s', l: 'To first insight' },
   ];
@@ -393,7 +194,7 @@ function drawCover(doc) {
 
   // Footer band
   doc.fillColor(C.teal).font('Helvetica-Bold').fontSize(10)
-    .text('Version 2026.04 · April 2026', 56, h - 80, { lineBreak: false });
+    .text('Version 2026.05 · May 2026', 56, h - 80, { lineBreak: false });
   doc.fillColor('#64748B').font('Helvetica').fontSize(9)
     .text('Read this manual front-to-back, or jump to any module via the table of contents.',
       56, h - 60, { width: w - 112, lineBreak: false });
