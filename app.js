@@ -37314,9 +37314,20 @@ window.buildAdLibrary = function() {
   wrap.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
       <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">🔍 Search Ad Libraries</h3>
-      <div style="display:grid;grid-template-columns:2fr 100px;gap:10px;margin-bottom:12px">
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND / ADVERTISER</label><input id="alBrand" placeholder="e.g. Nike" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">COUNTRY</label><select id="alCountry" style="width:100%;padding:7px 28px 7px 10px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box;background:#fff url('data:image/svg+xml;utf8,&lt;svg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 12 8&quot;&gt;&lt;path fill=&quot;%236B7280&quot; d=&quot;M1 1.5l5 5 5-5&quot; stroke=&quot;%236B7280&quot; stroke-width=&quot;1.5&quot; fill=&quot;none&quot; stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot;/&gt;&lt;/svg&gt;') no-repeat right 10px center;background-size:10px;-webkit-appearance:none;-moz-appearance:none;appearance:none">${_alCountryOptions('US')}</select></div>
+      <div style="display:grid;grid-template-columns:1fr 240px;gap:10px;margin-bottom:12px">
+        <div><label style="display:block;font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:4px">BRAND / ADVERTISER</label><input id="alBrand" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem;box-sizing:border-box"></div>
+        <div style="position:relative">
+          <label style="display:block;font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:4px">COUNTRY</label>
+          <button type="button" id="alCountryBtn" onclick="_alToggleCountryMenu(event)" style="width:100%;padding:9px 32px 9px 12px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem;background:#fff;text-align:left;cursor:pointer;position:relative;font-weight:600;color:#0A1628">
+            <span id="alCountryLabel">United States (US)</span>
+            <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#6B7280;font-size:0.7rem;pointer-events:none">▼</span>
+          </button>
+          <input type="hidden" id="alCountry" value="US">
+          <div id="alCountryMenu" style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #D1D5DB;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:1000;max-height:280px;overflow:hidden">
+            <input id="alCountrySearch" type="text" placeholder="Search country…" oninput="_alFilterCountries(this.value)" style="width:100%;padding:8px 10px;border:none;border-bottom:1px solid #E5E7EB;font-size:0.82rem;outline:none;box-sizing:border-box">
+            <div id="alCountryList" style="max-height:230px;overflow-y:auto"></div>
+          </div>
+        </div>
       </div>
       <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:12px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -37347,6 +37358,36 @@ window.buildAdLibrary = function() {
     <div id="alOut"></div>
   `;
   document.getElementById('alRun').addEventListener('click', _alRunMulti);
+  _alRenderCountryList('');
+  document.addEventListener('click', _alOutsideCountryClose);
+};
+
+window._alRenderCountryList = function(filter) {
+  const f = (filter || '').toLowerCase().trim();
+  const list = document.getElementById('alCountryList'); if (!list) return;
+  const items = (window._AL_COUNTRIES || []).filter(([code, name]) => !f || name.toLowerCase().includes(f) || code.toLowerCase().includes(f));
+  list.innerHTML = items.map(([code, name]) => {
+    const display = code === 'ALL' ? name : `${name} (${code})`;
+    return `<div onclick="_alPickCountry('${code}', '${display.replace(/'/g,"&#39;")}')" style="padding:7px 12px;cursor:pointer;font-size:0.85rem;color:#0A1628" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background=''">${_escapeHtml(display)}</div>`;
+  }).join('') || '<div style="padding:14px;text-align:center;color:#9CA3AF;font-size:0.8rem">No matches</div>';
+};
+window._alFilterCountries = function(v) { _alRenderCountryList(v); };
+window._alPickCountry = function(value, label) {
+  document.getElementById('alCountry').value = value;
+  document.getElementById('alCountryLabel').innerHTML = label;
+  document.getElementById('alCountryMenu').style.display = 'none';
+};
+window._alToggleCountryMenu = function(e) {
+  if (e) { e.stopPropagation(); }
+  const m = document.getElementById('alCountryMenu'); if (!m) return;
+  const open = m.style.display === 'block';
+  m.style.display = open ? 'none' : 'block';
+  if (!open) { const s = document.getElementById('alCountrySearch'); if (s) { s.value=''; _alRenderCountryList(''); setTimeout(() => s.focus(), 50); } }
+};
+window._alOutsideCountryClose = function(e) {
+  const m = document.getElementById('alCountryMenu'); const b = document.getElementById('alCountryBtn');
+  if (!m || !b) return;
+  if (m.style.display === 'block' && !m.contains(e.target) && !b.contains(e.target)) m.style.display = 'none';
 };
 
 window._alToggleAll = function(checked) {
