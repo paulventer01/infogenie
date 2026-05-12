@@ -6,6 +6,12 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 const { SECTIONS: CATALOGUE_SECTIONS } = require('./manual_data');
+const WHY_LINES = (() => { try { return require('./manual_why'); } catch (_) { return {}; } })();
+// Inject the "why it matters" tagline into each feature record so
+// drawFeatureCard can render it without changing the data file.
+CATALOGUE_SECTIONS.forEach(s => (s.features || []).forEach(f => {
+  if (!f.why && WHY_LINES[f.id]) f.why = WHY_LINES[f.id];
+}));
 
 // ── Brand palette ──────────────────────────────────────────────────────────
 const C = {
@@ -371,7 +377,16 @@ function drawFeatureCard(doc, section, feature) {
   cursorY = doc.y + 4;
   doc.fillColor(C.gray800).font('Helvetica').fontSize(10.5)
     .text(feature.what, x0, cursorY, { width: w, lineGap: 2 });
-  cursorY = doc.y + 14;
+  cursorY = doc.y + 6;
+  // Optional "Why it matters" tagline — pulled from manual_why.js by id.
+  // Kept compact (italic, 9.5pt) so the page does not gain extra height.
+  if (feature.why) {
+    doc.fillColor(C.gray600).font('Helvetica-Oblique').fontSize(9.5)
+      .text('Why it matters: ' + feature.why, x0, cursorY, { width: w, lineGap: 1.5 });
+    cursorY = doc.y + 10;
+  } else {
+    cursorY += 8;
+  }
 
   // ── 3. Screenshot embed ─────────────────────────────────────────────────
   const shot = feature.shot ? shotPath(feature.shot) : null;

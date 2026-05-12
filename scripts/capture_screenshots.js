@@ -176,6 +176,68 @@ async function captureOne(browser, v) {
       ).catch(() => {});
     }
     await new Promise(r => setTimeout(r, 600));
+    // Compute the actual rendered content height so we can crop the screenshot
+    // and avoid the giant white empty area below the form (when a view's body
+    // is awaiting user input). Falls back to 900 when the SPA reports nothing.
+    // Hide floating widgets (chat bubble, command bar, toasts) before measuring
+    // so they don't anchor to the viewport bottom and inflate the clip height.
+    await page.evaluate(() => {
+      try {
+        const hideSel = [
+          '#commandBarToggle','#commandBar','#commandBarPanel','#agenticCommandBar',
+          '#chatWidget','#chatBubble','#chatToggle','#mobileChat','#chatLauncher',
+          '.command-bar','.floating-chat','.chat-launcher','[data-floating]',
+          '[id*="hat" i][id*="ubble" i]'
+        ];
+        document.querySelectorAll(hideSel.join(',')).forEach(el => { el.style.display = 'none'; });
+        document.querySelectorAll('body *').forEach(el => {
+          const cs = window.getComputedStyle(el);
+          if (cs.position === 'fixed') {
+            const r = el.getBoundingClientRect();
+            // Hide any small fixed widget anchored to the bottom edge.
+            if (r.top > window.innerHeight * 0.6 && r.width < 200 && r.height < 200) {
+              el.style.display = 'none';
+            }
+          }
+        });
+      } catch (_) {}
+    }).catch(() => {});
+    const measured = await page.evaluate((id) => {
+      try {
+        const view = id !== 'home' ? document.getElementById('view-' + id) : document.body;
+        if (!view) return { bottom: 700 };
+        const CONTENT_TAGS = new Set(['P','SPAN','A','BUTTON','INPUT','SELECT','TEXTAREA','IMG','SVG','CANVAS','VIDEO','H1','H2','H3','H4','H5','H6','LI','TD','TH','LABEL','STRONG','B','EM','I','CODE','PRE','SMALL','OPTION','TABLE']);
+        let bottom = 0;
+        view.querySelectorAll('*').forEach(el => {
+          const cs = window.getComputedStyle(el);
+          if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return;
+          if (cs.position === 'fixed' || cs.position === 'sticky') return;
+          // Exclude collapsed nav dropdowns / menus / popovers (they have measurable
+          // bounding boxes even when conceptually hidden).
+          const cls = (el.className || '').toString().toLowerCase();
+          if (/dropdown|menu|popover|tooltip|nav-link/.test(cls)) return;
+          let p = el.parentElement;
+          while (p) {
+            const pcls = (p.className || '').toString().toLowerCase();
+            if (/dropdown|menu|popover|tooltip|nav-(?:bar|menu|panel)/.test(pcls)) return;
+            if (p.classList && p.classList.contains('hidden')) return;
+            p = p.parentElement;
+          }
+          const isContent = CONTENT_TAGS.has(el.tagName) ||
+            (el.children.length === 0 && el.textContent && el.textContent.trim().length > 0);
+          if (!isContent) return;
+          const r = el.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0 && r.bottom > bottom) bottom = r.bottom;
+        });
+        if (!bottom) bottom = 700;
+        return { bottom: Math.min(2400, Math.max(560, Math.ceil(bottom + 36))) };
+      } catch (_) { return { bottom: 900 }; }
+    }, v.id).catch(() => ({ bottom: 900 }));
+    const contentHeight = measured.bottom;
+    if (contentHeight !== 900) {
+      await page.setViewport({ width: 1440, height: contentHeight, deviceScaleFactor: 1 });
+      await new Promise(r => setTimeout(r, 200));
+    }
     const out = path.join(OUT_DIR, v.file);
     await page.screenshot({ path: out, type: 'jpeg', quality: 80, fullPage: false });
     return true;
