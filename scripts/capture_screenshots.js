@@ -43,9 +43,39 @@ async function captureOne(browser, v) {
   try {
     page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
-    const url = v.id === 'home' ? BASE + '/' : `${BASE}/view/${v.id}`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-    await new Promise(r => setTimeout(r, 1800));
+    // Pre-seed an auth session in localStorage BEFORE any app script runs,
+    // so the auth wall is skipped entirely.
+    await page.evaluateOnNewDocument(() => {
+      try {
+        const email = 'manual@infogenie.local';
+        let h = 0; const pw = 'manual1234';
+        for (let i = 0; i < pw.length; i++) { h = ((h<<5)-h) + pw.charCodeAt(i); h |= 0; }
+        const users = [{ name: 'Manual', email, pw: h, createdAt: new Date().toISOString() }];
+        localStorage.setItem('ig-users', JSON.stringify(users));
+        localStorage.setItem('ig-current-user', email);
+      } catch (_) {}
+    });
+    // Always load the SPA shell at root — the server doesn't have /view/:id routes;
+    // navigation must happen client-side via navigateTo().
+    await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 25000 });
+    // Belt-and-braces: remove the auth wall if it managed to render.
+    await page.evaluate(() => {
+      const w = document.getElementById('igAuthWall');
+      if (w) w.remove();
+    }).catch(() => {});
+    // Wait for the SPA to boot (navigateTo must exist).
+    await page.waitForFunction(
+      () => typeof window.navigateTo === 'function',
+      { timeout: 20000 }
+    );
+    // Trigger client-side navigation to the target view, unless it's home.
+    if (v.id !== 'home') {
+      await page.evaluate((id) => {
+        try { window.navigateTo(id); } catch (_) {}
+      }, v.id);
+    }
+    // Give the view time to render (build* functions, charts, async fetches).
+    await new Promise(r => setTimeout(r, 900));
     await page.evaluate(() => {
       ['landingPageModal', 'wpCredentialsModal'].forEach(id => {
         const el = document.getElementById(id);
@@ -56,7 +86,19 @@ async function captureOne(browser, v) {
       document.body.style.overflow = 'auto';
       window.scrollTo(0, 0);
     }).catch(() => {});
-    await new Promise(r => setTimeout(r, 700));
+    // Confirm the target view container is actually visible before shooting.
+    if (v.id !== 'home') {
+      await page.waitForFunction(
+        (id) => {
+          const el = document.getElementById('view-' + id);
+          if (!el) return true; // some views may not have view-<id> wrapper
+          return el.classList.contains('active') || el.style.display === 'block';
+        },
+        { timeout: 6000 },
+        v.id
+      ).catch(() => {});
+    }
+    await new Promise(r => setTimeout(r, 600));
     const out = path.join(OUT_DIR, v.file);
     await page.screenshot({ path: out, type: 'jpeg', quality: 80, fullPage: false });
     return true;
