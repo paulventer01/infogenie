@@ -2921,7 +2921,7 @@ function navigateTo(viewId, updateActive = true) {
     try { buildResults(); } catch(e) { console.warn('buildResults error:', e); }
   }
   if (viewId === 'optimizer') {
-    try { renderOptimizerDashboard(); } catch(e) { console.warn('renderOptimizerDashboard error:', e); }
+    try { window.renderOptimizerDashboard && window.renderOptimizerDashboard(); } catch(e) { console.warn('renderOptimizerDashboard error:', e); }
   }
   if (viewId === 'advertise') {
     try { buildAdvertise(); } catch(e) { console.warn('buildAdvertise error:', e); }
@@ -2945,74 +2945,74 @@ function navigateTo(viewId, updateActive = true) {
     try { buildAiVisibility(); } catch(e) { console.warn('buildAiVisibility error:', e); }
   }
   if (viewId === 'search-intel') {
-    try { buildSearchIntel(); } catch(e) { console.warn('buildSearchIntel error:', e); }
+    try { window.buildSearchIntel && window.buildSearchIntel(); } catch(e) { console.warn('buildSearchIntel error:', e); }
   }
   if (viewId === 'influencers') {
-    try { buildInfluencers(); } catch(e) { console.warn('buildInfluencers error:', e); }
+    try { window.buildInfluencers && window.buildInfluencers(); } catch(e) { console.warn('buildInfluencers error:', e); }
   }
-  if (viewId === 'crisis-radar')    { try { buildCrisisRadar(); }   catch(e) { console.warn('buildCrisisRadar error:', e); } }
-  if (viewId === 'battle-cards')    { try { buildBattleCards(); }   catch(e) { console.warn('buildBattleCards error:', e); } }
-  if (viewId === 'trending-topics') { try { buildTrendingTopics(); } catch(e) { console.warn('buildTrendingTopics error:', e); } }
-  if (viewId === 'sov-tracker')     { try { buildSovTracker(); }    catch(e) { console.warn('buildSovTracker error:', e); } }
-  if (viewId === 'discovery')       { try { buildDiscovery(); }     catch(e) { console.warn('buildDiscovery error:', e); } }
-  if (viewId === 'digest')          { try { buildDigest(); }         catch(e) { console.warn('buildDigest error:', e); } }
-  if (viewId === 'reply-assistant') { try { buildReplyAssistant(); } catch(e) { console.warn('buildReplyAssistant error:', e); } }
-  if (viewId === 'press-release')   { try { buildPressRelease(); }   catch(e) { console.warn('buildPressRelease error:', e); } }
-  if (viewId === 'alert-routing')   { try { buildAlertRouting(); }   catch(e) { console.warn('buildAlertRouting error:', e); } }
-  if (viewId === 'backlinks')        { try { buildBacklinks(); }       catch(e) { console.warn('buildBacklinks error:', e); } }
-  if (viewId === 'content-calendar') { try { buildContentCalendar(); } catch(e) { console.warn('buildContentCalendar error:', e); } }
-  if (viewId === 'podcast-monitor')  { try { buildPodcastMonitor(); }  catch(e) { console.warn('buildPodcastMonitor error:', e); } }
-  if (viewId === 'ab-designer')      { try { buildAbDesigner(); }      catch(e) { console.warn('buildAbDesigner error:', e); } }
-  if (viewId === 'voc')              { try { buildVoc(); }              catch(e) { console.warn('buildVoc error:', e); } }
-  if (viewId === 'pricing-watch')    { try { buildPricingWatch(); }     catch(e) { console.warn('buildPricingWatch error:', e); } }
-  if (viewId === 'deliverability')   { try { buildDeliverability(); }   catch(e) { console.warn('buildDeliverability error:', e); } }
-  if (viewId === 'landing-pages')    { try { buildLandingPages(); }     catch(e) { console.warn('buildLandingPages error:', e); } }
-  if (viewId === 'tech-stack')       { try { buildTechStack(); }        catch(e) { console.warn('buildTechStack error:', e); } }
-  if (viewId === 'cold-email')       { try { buildColdEmail(); }        catch(e) { console.warn('buildColdEmail error:', e); } }
-  if (viewId === 'web-vitals')       { try { buildWebVitals(); }        catch(e) { console.warn('buildWebVitals error:', e); } }
-  if (viewId === 'lead-finder')      { try { buildLeadFinder(); }       catch(e) { console.warn('buildLeadFinder error:', e); } }
-  if (viewId === 'serp-tracker')     { try { buildSerpTracker(); }      catch(e) { console.warn('buildSerpTracker error:', e); } }
-  if (viewId === 'hubspot-sync')     { try { buildHubspotSync(); }      catch(e) { console.warn('buildHubspotSync error:', e); } }
-  if (viewId === 'meta-insights')        { try { buildMetaInsights(); }        catch(e) { console.warn('buildMetaInsights error:', e); } }
-  if (viewId === 'google-ads-insights')  { try { buildGoogleAdsInsights(); }   catch(e) { console.warn('buildGoogleAdsInsights error:', e); } }
-  if (viewId === 'tiktok-ads-insights')  { try { buildTiktokAdsInsights(); }   catch(e) { console.warn('buildTiktokAdsInsights error:', e); } }
-  if (viewId === 'social-publisher')     { try { buildSocialPublisher(); }      catch(e) { console.warn('buildSocialPublisher error:', e); } }
-  if (viewId === 'email-personalizer')   { try { buildEmailPersonalizer(); }    catch(e) { console.warn('buildEmailPersonalizer error:', e); } }
-  if (viewId === 'youtube-monitor')      { try { buildYoutubeMonitor(); }       catch(e) { console.warn('buildYoutubeMonitor error:', e); } }
-  if (viewId === 'weekly-report')        { try { buildWeeklyReport(); }         catch(e) { console.warn('buildWeeklyReport error:', e); } }
-  if (viewId === 'reddit-pulse')         { try { buildRedditPulse(); }          catch(e) { console.warn('buildRedditPulse error:', e); } }
-  if (viewId === 'ad-library')           { try { buildAdLibrary(); }            catch(e) { console.warn('buildAdLibrary error:', e); } }
-  if (viewId === 'newsletter-tracker')   { try { buildNewsletterTracker(); }    catch(e) { console.warn('buildNewsletterTracker error:', e); } }
-  if (viewId === 'meeting-notes')        { try { buildMeetingNotes(); }         catch(e) { console.warn('buildMeetingNotes error:', e); } }
-  if (viewId === 'headline-tester')      { try { buildHeadlineTester(); }       catch(e) { console.warn('buildHeadlineTester error:', e); } }
-  if (viewId === 'review-aggregator')    { try { buildReviewAggregator(); }     catch(e) { console.warn('buildReviewAggregator error:', e); } }
-  if (viewId === 'churn-scorer')         { try { buildChurnScorer(); }          catch(e) { console.warn('buildChurnScorer error:', e); } }
-  if (viewId === 'twitter-pulse')        { try { buildTwitterPulse(); }         catch(e) { console.warn('buildTwitterPulse error:', e); } }
-  if (viewId === 'job-board-spy')        { try { buildJobBoardSpy(); }          catch(e) { console.warn('buildJobBoardSpy error:', e); } }
-  if (viewId === 'video-script')         { try { buildVideoScript(); }          catch(e) { console.warn('buildVideoScript error:', e); } }
-  if (viewId === 'chatbot-builder')      { try { buildChatbotBuilder(); }       catch(e) { console.warn('buildChatbotBuilder error:', e); } }
-  if (viewId === 'glassdoor')            { try { buildGlassdoor(); }            catch(e) { console.warn('buildGlassdoor error:', e); } }
-  if (viewId === 'quora-mining')         { try { buildQuoraMining(); }          catch(e) { console.warn('buildQuoraMining error:', e); } }
-  if (viewId === 'tiktok-downloader')    { try { buildTiktokDownloader(); }     catch(e) { console.warn('buildTiktokDownloader error:', e); } }
-  if (viewId === 'voiceover')            { try { buildVoiceover(); }            catch(e) { console.warn('buildVoiceover error:', e); } }
-  if (viewId === 'seo-auditor')          { try { buildSeoAuditor(); }           catch(e) { console.warn('buildSeoAuditor error:', e); } }
-  if (viewId === 'seo-widget')           { try { buildSeoWidget(); }            catch(e) { console.warn('buildSeoWidget error:', e); } }
-  if (viewId === 'seo-tasks')            { try { buildSeoTasks(); }             catch(e) { console.warn('buildSeoTasks error:', e); } }
-  if (viewId === 'schema-generator')     { try { buildSchemaGenerator(); }      catch(e) { console.warn('buildSchemaGenerator error:', e); } }
-  if (viewId === 'unified-inbox')        { try { buildUnifiedInbox(); }         catch(e) { console.warn('buildUnifiedInbox error:', e); } }
-  if (viewId === 'conversion-boosters')  { try { buildConversionBoosters(); }   catch(e) { console.warn('buildConversionBoosters error:', e); } }
-  if (viewId === 'white-label')          { try { buildWhiteLabel(); }           catch(e) { console.warn('buildWhiteLabel error:', e); } }
-  if (viewId === 'bulk-reports')         { try { buildBulkReports(); }          catch(e) { console.warn('buildBulkReports error:', e); } }
-  if (viewId === 'backlink-monitor')     { try { buildBacklinkMonitor(); }      catch(e) { console.warn('buildBacklinkMonitor error:', e); } }
-  if (viewId === 'true-roas')            { try { buildTrueRoas(); }             catch(e) { console.warn('buildTrueRoas error:', e); } }
-  if (viewId === 'roadmap')              { try { buildRoadmap(); }              catch(e) { console.warn('buildRoadmap error:', e); } }
-  if (viewId === 'carousel')             { try { buildCarousel(); }             catch(e) { console.warn('buildCarousel error:', e); } }
-  if (viewId === 'seo-crawler')          { try { buildSeoCrawler(); }           catch(e) { console.warn('buildSeoCrawler error:', e); } }
-  if (viewId === 'geo-audit')            { try { buildGeoAudit(); }             catch(e) { console.warn('buildGeoAudit error:', e); } }
-  if (viewId === 'local-seo')            { try { buildLocalSeo(); }             catch(e) { console.warn('buildLocalSeo error:', e); } }
-  if (viewId === 'social-tags')          { try { buildSocialTags(); }           catch(e) { console.warn('buildSocialTags error:', e); } }
-  if (viewId === 'social-analytics')     { try { buildSocialAnalytics(); }      catch(e) { console.warn('buildSocialAnalytics error:', e); } }
-  if (viewId === 'keyword-explorer')     { try { buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
+  if (viewId === 'crisis-radar')    { try { window.buildCrisisRadar && window.buildCrisisRadar(); }   catch(e) { console.warn('buildCrisisRadar error:', e); } }
+  if (viewId === 'battle-cards')    { try { window.buildBattleCards && window.buildBattleCards(); }   catch(e) { console.warn('buildBattleCards error:', e); } }
+  if (viewId === 'trending-topics') { try { window.buildTrendingTopics && window.buildTrendingTopics(); } catch(e) { console.warn('buildTrendingTopics error:', e); } }
+  if (viewId === 'sov-tracker')     { try { window.buildSovTracker && window.buildSovTracker(); }    catch(e) { console.warn('buildSovTracker error:', e); } }
+  if (viewId === 'discovery')       { try { window.buildDiscovery && window.buildDiscovery(); }     catch(e) { console.warn('buildDiscovery error:', e); } }
+  if (viewId === 'digest')          { try { window.buildDigest && window.buildDigest(); }         catch(e) { console.warn('buildDigest error:', e); } }
+  if (viewId === 'reply-assistant') { try { window.buildReplyAssistant && window.buildReplyAssistant(); } catch(e) { console.warn('buildReplyAssistant error:', e); } }
+  if (viewId === 'press-release')   { try { window.buildPressRelease && window.buildPressRelease(); }   catch(e) { console.warn('buildPressRelease error:', e); } }
+  if (viewId === 'alert-routing')   { try { window.buildAlertRouting && window.buildAlertRouting(); }   catch(e) { console.warn('buildAlertRouting error:', e); } }
+  if (viewId === 'backlinks')        { try { window.buildBacklinks && window.buildBacklinks(); }       catch(e) { console.warn('buildBacklinks error:', e); } }
+  if (viewId === 'content-calendar') { try { window.buildContentCalendar && window.buildContentCalendar(); } catch(e) { console.warn('buildContentCalendar error:', e); } }
+  if (viewId === 'podcast-monitor')  { try { window.buildPodcastMonitor && window.buildPodcastMonitor(); }  catch(e) { console.warn('buildPodcastMonitor error:', e); } }
+  if (viewId === 'ab-designer')      { try { window.buildAbDesigner && window.buildAbDesigner(); }      catch(e) { console.warn('buildAbDesigner error:', e); } }
+  if (viewId === 'voc')              { try { window.buildVoc && window.buildVoc(); }              catch(e) { console.warn('buildVoc error:', e); } }
+  if (viewId === 'pricing-watch')    { try { window.buildPricingWatch && window.buildPricingWatch(); }     catch(e) { console.warn('buildPricingWatch error:', e); } }
+  if (viewId === 'deliverability')   { try { window.buildDeliverability && window.buildDeliverability(); }   catch(e) { console.warn('buildDeliverability error:', e); } }
+  if (viewId === 'landing-pages')    { try { window.buildLandingPages && window.buildLandingPages(); }     catch(e) { console.warn('buildLandingPages error:', e); } }
+  if (viewId === 'tech-stack')       { try { window.buildTechStack && window.buildTechStack(); }        catch(e) { console.warn('buildTechStack error:', e); } }
+  if (viewId === 'cold-email')       { try { window.buildColdEmail && window.buildColdEmail(); }        catch(e) { console.warn('buildColdEmail error:', e); } }
+  if (viewId === 'web-vitals')       { try { window.buildWebVitals && window.buildWebVitals(); }        catch(e) { console.warn('buildWebVitals error:', e); } }
+  if (viewId === 'lead-finder')      { try { window.buildLeadFinder && window.buildLeadFinder(); }       catch(e) { console.warn('buildLeadFinder error:', e); } }
+  if (viewId === 'serp-tracker')     { try { window.buildSerpTracker && window.buildSerpTracker(); }      catch(e) { console.warn('buildSerpTracker error:', e); } }
+  if (viewId === 'hubspot-sync')     { try { window.buildHubspotSync && window.buildHubspotSync(); }      catch(e) { console.warn('buildHubspotSync error:', e); } }
+  if (viewId === 'meta-insights')        { try { window.buildMetaInsights && window.buildMetaInsights(); }        catch(e) { console.warn('buildMetaInsights error:', e); } }
+  if (viewId === 'google-ads-insights')  { try { window.buildGoogleAdsInsights && window.buildGoogleAdsInsights(); }   catch(e) { console.warn('buildGoogleAdsInsights error:', e); } }
+  if (viewId === 'tiktok-ads-insights')  { try { window.buildTiktokAdsInsights && window.buildTiktokAdsInsights(); }   catch(e) { console.warn('buildTiktokAdsInsights error:', e); } }
+  if (viewId === 'social-publisher')     { try { window.buildSocialPublisher && window.buildSocialPublisher(); }      catch(e) { console.warn('buildSocialPublisher error:', e); } }
+  if (viewId === 'email-personalizer')   { try { window.buildEmailPersonalizer && window.buildEmailPersonalizer(); }    catch(e) { console.warn('buildEmailPersonalizer error:', e); } }
+  if (viewId === 'youtube-monitor')      { try { window.buildYoutubeMonitor && window.buildYoutubeMonitor(); }       catch(e) { console.warn('buildYoutubeMonitor error:', e); } }
+  if (viewId === 'weekly-report')        { try { window.buildWeeklyReport && window.buildWeeklyReport(); }         catch(e) { console.warn('buildWeeklyReport error:', e); } }
+  if (viewId === 'reddit-pulse')         { try { window.buildRedditPulse && window.buildRedditPulse(); }          catch(e) { console.warn('buildRedditPulse error:', e); } }
+  if (viewId === 'ad-library')           { try { window.buildAdLibrary && window.buildAdLibrary(); }            catch(e) { console.warn('buildAdLibrary error:', e); } }
+  if (viewId === 'newsletter-tracker')   { try { window.buildNewsletterTracker && window.buildNewsletterTracker(); }    catch(e) { console.warn('buildNewsletterTracker error:', e); } }
+  if (viewId === 'meeting-notes')        { try { window.buildMeetingNotes && window.buildMeetingNotes(); }         catch(e) { console.warn('buildMeetingNotes error:', e); } }
+  if (viewId === 'headline-tester')      { try { window.buildHeadlineTester && window.buildHeadlineTester(); }       catch(e) { console.warn('buildHeadlineTester error:', e); } }
+  if (viewId === 'review-aggregator')    { try { window.buildReviewAggregator && window.buildReviewAggregator(); }     catch(e) { console.warn('buildReviewAggregator error:', e); } }
+  if (viewId === 'churn-scorer')         { try { window.buildChurnScorer && window.buildChurnScorer(); }          catch(e) { console.warn('buildChurnScorer error:', e); } }
+  if (viewId === 'twitter-pulse')        { try { window.buildTwitterPulse && window.buildTwitterPulse(); }         catch(e) { console.warn('buildTwitterPulse error:', e); } }
+  if (viewId === 'job-board-spy')        { try { window.buildJobBoardSpy && window.buildJobBoardSpy(); }          catch(e) { console.warn('buildJobBoardSpy error:', e); } }
+  if (viewId === 'video-script')         { try { window.buildVideoScript && window.buildVideoScript(); }          catch(e) { console.warn('buildVideoScript error:', e); } }
+  if (viewId === 'chatbot-builder')      { try { window.buildChatbotBuilder && window.buildChatbotBuilder(); }       catch(e) { console.warn('buildChatbotBuilder error:', e); } }
+  if (viewId === 'glassdoor')            { try { window.buildGlassdoor && window.buildGlassdoor(); }            catch(e) { console.warn('buildGlassdoor error:', e); } }
+  if (viewId === 'quora-mining')         { try { window.buildQuoraMining && window.buildQuoraMining(); }          catch(e) { console.warn('buildQuoraMining error:', e); } }
+  if (viewId === 'tiktok-downloader')    { try { window.buildTiktokDownloader && window.buildTiktokDownloader(); }     catch(e) { console.warn('buildTiktokDownloader error:', e); } }
+  if (viewId === 'voiceover')            { try { window.buildVoiceover && window.buildVoiceover(); }            catch(e) { console.warn('buildVoiceover error:', e); } }
+  if (viewId === 'seo-auditor')          { try { window.buildSeoAuditor && window.buildSeoAuditor(); }           catch(e) { console.warn('buildSeoAuditor error:', e); } }
+  if (viewId === 'seo-widget')           { try { window.buildSeoWidget && window.buildSeoWidget(); }            catch(e) { console.warn('buildSeoWidget error:', e); } }
+  if (viewId === 'seo-tasks')            { try { window.buildSeoTasks && window.buildSeoTasks(); }             catch(e) { console.warn('buildSeoTasks error:', e); } }
+  if (viewId === 'schema-generator')     { try { window.buildSchemaGenerator && window.buildSchemaGenerator(); }      catch(e) { console.warn('buildSchemaGenerator error:', e); } }
+  if (viewId === 'unified-inbox')        { try { window.buildUnifiedInbox && window.buildUnifiedInbox(); }         catch(e) { console.warn('buildUnifiedInbox error:', e); } }
+  if (viewId === 'conversion-boosters')  { try { window.buildConversionBoosters && window.buildConversionBoosters(); }   catch(e) { console.warn('buildConversionBoosters error:', e); } }
+  if (viewId === 'white-label')          { try { window.buildWhiteLabel && window.buildWhiteLabel(); }           catch(e) { console.warn('buildWhiteLabel error:', e); } }
+  if (viewId === 'bulk-reports')         { try { window.buildBulkReports && window.buildBulkReports(); }          catch(e) { console.warn('buildBulkReports error:', e); } }
+  if (viewId === 'backlink-monitor')     { try { window.buildBacklinkMonitor && window.buildBacklinkMonitor(); }      catch(e) { console.warn('buildBacklinkMonitor error:', e); } }
+  if (viewId === 'true-roas')            { try { window.buildTrueRoas && window.buildTrueRoas(); }             catch(e) { console.warn('buildTrueRoas error:', e); } }
+  if (viewId === 'roadmap')              { try { window.buildRoadmap && window.buildRoadmap(); }              catch(e) { console.warn('buildRoadmap error:', e); } }
+  if (viewId === 'carousel')             { try { window.buildCarousel && window.buildCarousel(); }             catch(e) { console.warn('buildCarousel error:', e); } }
+  if (viewId === 'seo-crawler')          { try { window.buildSeoCrawler && window.buildSeoCrawler(); }           catch(e) { console.warn('buildSeoCrawler error:', e); } }
+  if (viewId === 'geo-audit')            { try { window.buildGeoAudit && window.buildGeoAudit(); }             catch(e) { console.warn('buildGeoAudit error:', e); } }
+  if (viewId === 'local-seo')            { try { window.buildLocalSeo && window.buildLocalSeo(); }             catch(e) { console.warn('buildLocalSeo error:', e); } }
+  if (viewId === 'social-tags')          { try { window.buildSocialTags && window.buildSocialTags(); }           catch(e) { console.warn('buildSocialTags error:', e); } }
+  if (viewId === 'social-analytics')     { try { window.buildSocialAnalytics && window.buildSocialAnalytics(); }      catch(e) { console.warn('buildSocialAnalytics error:', e); } }
+  if (viewId === 'keyword-explorer')     { try { window.buildKeywordExplorer && window.buildKeywordExplorer(); }     catch(e) { console.warn('buildKeywordExplorer error:', e); } }
   if (viewId === 'amplitude-agents') {
     try { buildAmplitudeAgents(); } catch(e) { console.warn('buildAmplitudeAgents error:', e); }
   }
@@ -3044,7 +3044,7 @@ function navigateTo(viewId, updateActive = true) {
     try { initActionCenter(); } catch(e) { console.warn('initActionCenter error:', e); }
   }
   if (viewId === 'reengage') {
-    try { buildReengage(); } catch(e) { console.warn('buildReengage error:', e); }
+    try { window.buildReengage && window.buildReengage(); } catch(e) { console.warn('buildReengage error:', e); }
   }
   if (viewId === 'automations') {
     try { buildAutomations(); } catch(e) { console.warn('buildAutomations error:', e); }
@@ -3093,10 +3093,10 @@ function navigateTo(viewId, updateActive = true) {
     try { buildTemplates(); } catch(e) { console.warn('buildTemplates error:', e); }
   }
   if (viewId === 'stakeholders') {
-    try { buildStakeholders(); } catch(e) { console.warn('buildStakeholders error:', e); }
+    try { window.buildStakeholders && window.buildStakeholders(); } catch(e) { console.warn('buildStakeholders error:', e); }
   }
   if (viewId === 'launches') {
-    try { buildLaunches(); } catch(e) { console.warn('buildLaunches error:', e); }
+    try { window.buildLaunches && window.buildLaunches(); } catch(e) { console.warn('buildLaunches error:', e); }
   }
   if (viewId === 'opt-folders') {
     try { buildOptFolders(); } catch(e) { console.warn('buildOptFolders error:', e); }
@@ -34619,7 +34619,7 @@ window._bcDelete = async function(id) {
 
 // ── TRENDING TOPICS ────────────────────────────────────────────────────────
 window.buildTrendingTopics = async function() {
-  const wrap = document.getElementById('trWrap'); if (!wrap) return;
+  const wrap = document.getElementById('trendingTopicsWrap'); if (!wrap) return;
   wrap.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
       <div style="font-family:Sora,sans-serif;font-weight:800;font-size:1rem;margin-bottom:12px">What's hot in your category?</div>
@@ -36236,7 +36236,7 @@ window._lfExportCsv = function() {
 
 // ── Tier 12 #1: SERP Position Tracker ────────────────────────────────────
 window.buildSerpTracker = async function() {
-  const el = document.getElementById('stWrap'); if (!el) return;
+  const el = document.getElementById('serpTrackerWrap'); if (!el) return;
   el.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:16px">
       <div style="display:grid;grid-template-columns:2fr 1fr 90px auto;gap:10px;align-items:end">
@@ -39028,7 +39028,7 @@ window.buildSeoWidget = function() {
 // SEO TASK MANAGER (Tier 24)
 // ============================================================================
 window.buildSeoTasks = function() {
-  const wrap = document.getElementById('stWrap'); if (!wrap) return;
+  const wrap = document.getElementById('seoTasksWrap'); if (!wrap) return;
   wrap.innerHTML = `
     <div id="stStats" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px"></div>
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px;margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:end">
@@ -40556,7 +40556,7 @@ window.buildLocalSeo = function() {
 
 // ── Tier 32 — Social Tags Audit ────────────────────────────────────────────
 window.buildSocialTags = function() {
-  const wrap = document.getElementById('stWrap');
+  const wrap = document.getElementById('socialTagsWrap');
   if (!wrap) return;
   const esc = (window._escapeHtml) || ((s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])));
   wrap.innerHTML = `
@@ -40655,7 +40655,7 @@ window.buildSocialTags = function() {
 window._trState = { tab: 'conversions', summary: null, conversions: [], lag: null, settings: null };
 
 async function buildTrueRoas() {
-  const wrap = document.getElementById('trWrap');
+  const wrap = document.getElementById('trueRoasWrap');
   if (!wrap) return;
   wrap.innerHTML = '<div style="padding:48px;text-align:center;color:#64748B">⏳ Loading True ROAS…</div>';
   try {
@@ -40677,7 +40677,7 @@ async function buildTrueRoas() {
 }
 
 function _trRender() {
-  const wrap = document.getElementById('trWrap');
+  const wrap = document.getElementById('trueRoasWrap');
   if (!wrap) return;
   const tab = window._trState.tab || 'conversions';
   const tabBtn = (id, label) => `<button class="cg-btn-tab ${tab===id?'is-active':''}" onclick="_trTab('${id}')" style="padding:10px 18px;border:none;background:${tab===id?'#0066FF':'#E2E8F0'};color:${tab===id?'white':'#0F172A'};font-weight:700;border-radius:10px;cursor:pointer;margin-right:8px">${label}</button>`;
