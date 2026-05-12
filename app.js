@@ -33534,9 +33534,10 @@ async function _siRenderAi() {
             <button id="siSuggestBtn" onclick="_siSuggestPrompt()" title="✨ Let AI suggest a prompt to track" style="padding:9px 11px;background:#EEF2FF;border:1.5px solid #C7D2FE;border-radius:7px;font-size:0.85rem;font-weight:700;color:#3730A3;cursor:pointer;white-space:nowrap">✨ Suggest</button>
           </div>
           <input id="siBrand" placeholder="Your brand" value="${_escapeHtml(_brandName())}" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
-          <input id="siCompetitors" placeholder="Comp1, Comp2" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
+          <input id="siCompetitors" placeholder="Comp1, Comp2" value="${_escapeHtml((window.analysisData && Array.isArray(analysisData.competitors)) ? analysisData.competitors.map(c => c && c.name).filter(Boolean).join(', ') : '')}" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem">
           <select id="siLocale" style="padding:9px 11px;border:1.5px solid #E5E7EB;border-radius:7px;font-size:0.85rem;background:#fff;color:#0F172A">
-            <option value="en-US" selected>🇺🇸 United States</option>
+            <option value="global" selected>🌍 Global / Worldwide</option>
+            <option value="en-US">🇺🇸 United States</option>
             <option value="en-GB">🇬🇧 United Kingdom</option>
             <option value="en-CA">🇨🇦 Canada</option>
             <option value="en-AU">🇦🇺 Australia</option>
