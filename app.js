@@ -4324,12 +4324,10 @@ function renderYourSwot(opts) {
 // so we get GPT-4o-grounded strengths/weaknesses scraped from their real homepage.
 async function runYourSwotAI() {
   const opts = window._yourSwotOpts || {};
-  const { yourDomain, industryName, competitorsCount = 0 } = opts;
+  const { yourDomain, industryName } = opts;
   const btn = document.getElementById('yourSwotAiBtn');
   const status = document.getElementById('yourSwotStatus');
-  const sList = document.getElementById('yourSwotStrengths');
-  const wList = document.getElementById('yourSwotWeaknesses');
-  if (!yourDomain || !btn || !sList || !wList) return;
+  if (!yourDomain || !btn) return;
 
   const orig = btn.innerHTML;
   btn.disabled = true;
@@ -4337,6 +4335,9 @@ async function runYourSwotAI() {
   btn.innerHTML = '⏳ Analysing…';
   if (status) {
     status.style.display = 'block';
+    status.style.background = '#EEF2FF';
+    status.style.borderColor = '#C7D2FE';
+    status.style.color = '#6366F1';
     status.innerHTML = `🔎 Scraping <strong>${yourDomain}</strong> and running GPT-4o analysis — usually 8-15 seconds…`;
   }
 
@@ -4354,24 +4355,17 @@ async function runYourSwotAI() {
     });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
+    window._yourSwotAiData = data;
 
-    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const renderItems = (arr, color, icon) => (Array.isArray(arr) && arr.length ? arr : []).map(t => `
-      <li style="display:flex;gap:10px;padding:10px 12px;background:${color}10;border:1px solid ${color}30;border-radius:8px;margin-bottom:8px;align-items:flex-start">
-        <span style="font-size:1.05rem;flex:0 0 auto;line-height:1.2">${icon}</span>
-        <div style="flex:1;min-width:0;font-size:.78rem;color:#334155;line-height:1.5">${esc(t)}</div>
-      </li>`).join('');
-
-    const sHtml = renderItems(data.strengths,  '#10B981', '✅');
-    const wHtml = renderItems(data.weaknesses, '#EF4444', '⚠️');
-    if (sHtml) sList.innerHTML = sHtml;
-    if (wHtml) wList.innerHTML = wHtml;
+    renderYourSwotFull(data);
 
     const fetched = data.htmlFetched ? `Scraped your homepage successfully` : `Couldn't reach ${yourDomain} directly — analysis based on AI knowledge of your site only`;
-    status.style.background = '#ECFDF5';
-    status.style.borderColor = '#A7F3D0';
-    status.style.color = '#047857';
-    status.innerHTML = `✅ AI SWOT complete — ${fetched}. ${data.positioning ? `<br><strong>Positioning:</strong> ${esc(data.positioning)}` : ''}`;
+    if (status) {
+      status.style.background = '#ECFDF5';
+      status.style.borderColor = '#A7F3D0';
+      status.style.color = '#047857';
+      status.innerHTML = `✅ AI SWOT complete — ${fetched}.`;
+    }
     btn.innerHTML = '🔄 Re-run AI SWOT';
     btn.disabled = false;
     btn.style.cursor = 'pointer';
@@ -4389,6 +4383,96 @@ async function runYourSwotAI() {
   }
 }
 window.runYourSwotAI = runYourSwotAI;
+
+// Render the full AI analysis (mirrors the per-competitor modal layout, but
+// reframed for the user's own site — "growth plays" instead of "counter plays",
+// "SEO opportunities" instead of "outrank-them angles", etc.).
+function renderYourSwotFull(data) {
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const opts = window._yourSwotOpts || {};
+  const yourDomain = opts.yourDomain || 'Your site';
+
+  const renderItems = (arr, color, icon) => (Array.isArray(arr) && arr.length ? arr : []).map(t => `
+    <li style="display:flex;gap:10px;padding:10px 12px;background:${color}10;border:1px solid ${color}30;border-radius:8px;margin-bottom:8px;align-items:flex-start">
+      <span style="font-size:1.05rem;flex:0 0 auto;line-height:1.2">${icon}</span>
+      <div style="flex:1;min-width:0;font-size:.78rem;color:#334155;line-height:1.5">${esc(t)}</div>
+    </li>`).join('') || `<li style="font-size:.78rem;color:#94A3B8;font-style:italic">No items returned</li>`;
+
+  const renderOl = (arr, color, icon) => (Array.isArray(arr) && arr.length ? arr : []).map((t, i) => `
+    <li style="display:flex;gap:10px;padding:10px 12px;background:${color}10;border:1px solid ${color}30;border-radius:8px;margin-bottom:8px;align-items:flex-start">
+      <span style="font-size:.75rem;font-weight:800;color:${color};flex:0 0 auto;line-height:1.4;min-width:22px">${icon}${i+1}</span>
+      <div style="flex:1;min-width:0;font-size:.78rem;color:#334155;line-height:1.5">${esc(t)}</div>
+    </li>`).join('') || `<li style="font-size:.78rem;color:#94A3B8;font-style:italic">No plays returned</li>`;
+
+  const sStrengths   = renderItems(data.strengths,    '#10B981', '✅');
+  const sWeaknesses  = renderItems(data.weaknesses,   '#EF4444', '⚠️');
+  const sValueProps  = renderItems(data.valueProps,   '#0EA5E9', '🔑');
+  const sKeywords    = renderItems(data.keywordAngles,'#F59E0B', '🎯');
+  const sChannels    = renderItems(data.adChannelGaps,'#8B5CF6', '📡');
+  const sHooks       = renderItems(data.messagingHooks,'#EC4899','✍️');
+  const sPlays       = renderOl(   data.counterPlays, '#0066FF', '🚀 ');
+
+  const positioningHTML = data.positioning ? `
+    <div style="padding:12px 16px;margin:0 0 14px;background:linear-gradient(90deg,#EEF2FF,#F0F9FF);border-left:4px solid #0066FF;border-radius:8px;font-size:.85rem;line-height:1.5;color:#0F172A">
+      <strong style="color:#0066FF">📍 Positioning:</strong> ${esc(data.positioning)}
+    </div>` : '';
+
+  const metaHTML = (data.primaryOffer || data.pricingSignal || data.targetCustomer || data.ctaStrategy) ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 16px;margin:0 0 16px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px">
+      <div><div style="font-size:.65rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748B;margin-bottom:4px">Primary Offer</div><div style="font-size:.82rem;color:#0F172A;line-height:1.5">${esc(data.primaryOffer || '—')}</div></div>
+      <div><div style="font-size:.65rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748B;margin-bottom:4px">Pricing Signal</div><div style="font-size:.82rem;color:#0F172A;line-height:1.5">${esc(data.pricingSignal || '—')}</div></div>
+      <div><div style="font-size:.65rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748B;margin-bottom:4px">Target Customer</div><div style="font-size:.82rem;color:#0F172A;line-height:1.5">${esc(data.targetCustomer || '—')}</div></div>
+      <div><div style="font-size:.65rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748B;margin-bottom:4px">CTA Strategy</div><div style="font-size:.82rem;color:#0F172A;line-height:1.5">${esc(data.ctaStrategy || '—')}</div></div>
+    </div>` : '';
+
+  const sectionH = (color, icon, label) =>
+    `<div style="font-size:.7rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:${color};margin-bottom:8px">${icon} ${label}</div>`;
+
+  const grid = document.getElementById('yourSwotGrid');
+  if (!grid) return;
+  // Replace the entire grid + insert positioning/meta above it
+  grid.outerHTML = `
+    ${positioningHTML}
+    ${metaHTML}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" id="yourSwotGrid">
+      <div>${sectionH('#10B981','✅','Your Strengths')}<ul style="list-style:none;padding:0;margin:0">${sStrengths}</ul></div>
+      <div>${sectionH('#EF4444','⚠️','Your Weaknesses')}<ul style="list-style:none;padding:0;margin:0">${sWeaknesses}</ul></div>
+      <div>${sectionH('#0EA5E9','🔑','Your Value Props')}<ul style="list-style:none;padding:0;margin:0">${sValueProps}</ul></div>
+      <div>${sectionH('#F59E0B','🎯','SEO Opportunities')}<ul style="list-style:none;padding:0;margin:0">${sKeywords}</ul></div>
+      <div>${sectionH('#8B5CF6','📡','Channels to Explore')}<ul style="list-style:none;padding:0;margin:0">${sChannels}</ul></div>
+      <div>${sectionH('#EC4899','✍️','Headline Hooks to Test')}<ul style="list-style:none;padding:0;margin:0">${sHooks}</ul></div>
+      <div style="grid-column:1/-1">${sectionH('#0066FF','🚀','Growth Plays for ' + esc(yourDomain) + ' This Week')}<ol style="list-style:none;padding:0;margin:0;counter-reset:none">${sPlays}</ol></div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">
+      <button type="button" id="yourSwotCopyBtn" onclick="copyYourSwot()" class="btn-secondary" style="font-size:.78rem;padding:8px 14px">📋 Copy SWOT</button>
+    </div>
+  `;
+}
+window.renderYourSwotFull = renderYourSwotFull;
+
+function copyYourSwot() {
+  const d = window._yourSwotAiData;
+  const opts = window._yourSwotOpts || {};
+  if (!d) { showToast && showToast('Run AI SWOT first'); return; }
+  const lines = [
+    `${opts.yourDomain || 'Your site'} — AI SWOT (${opts.industryName || ''})`,
+    d.positioning ? `\nPOSITIONING: ${d.positioning}` : '',
+    d.primaryOffer ? `PRIMARY OFFER: ${d.primaryOffer}` : '',
+    d.pricingSignal ? `PRICING: ${d.pricingSignal}` : '',
+    d.targetCustomer ? `TARGET CUSTOMER: ${d.targetCustomer}` : '',
+    d.ctaStrategy ? `CTA STRATEGY: ${d.ctaStrategy}` : '',
+    '\nSTRENGTHS:', ...(d.strengths||[]).map(s=>'- '+s),
+    '\nWEAKNESSES:', ...(d.weaknesses||[]).map(s=>'- '+s),
+    '\nVALUE PROPS:', ...(d.valueProps||[]).map(s=>'- '+s),
+    '\nSEO OPPORTUNITIES:', ...(d.keywordAngles||[]).map(s=>'- '+s),
+    '\nCHANNELS TO EXPLORE:', ...(d.adChannelGaps||[]).map(s=>'- '+s),
+    '\nHEADLINE HOOKS:', ...(d.messagingHooks||[]).map(s=>'- '+s),
+    '\nGROWTH PLAYS:', ...(d.counterPlays||[]).map((s,i)=>`${i+1}. ${s}`),
+  ].filter(Boolean).join('\n');
+  navigator.clipboard?.writeText(lines);
+  showToast && showToast('📋 AI SWOT copied to clipboard');
+}
+window.copyYourSwot = copyYourSwot;
 
 // ===== BUILD DASHBOARD =====
 function buildDashboard() {
