@@ -52,6 +52,34 @@ function _metaAdsArchive(searchTerm, country, limit) {
   });
 }
 
+// Generic Perplexity-powered scrape for any public ad library that lacks an official API.
+async function _adLibViaPerplexity({ brand, country, libraryName, libraryUrl, exampleUrlPath }) {
+  if (!_hasPerplexity()) return { error: `PERPLEXITY_API_KEY required for ${libraryName} scans` };
+  const prompt = `Search the public ${libraryName} (${libraryUrl}) for currently-running or recently-active ads from advertiser "${brand}" in country "${country}". Return strict JSON: {"ads":[{"advertiser":"...","ad_text":"...","first_seen":"YYYY-MM-DD","industry":"...","url":"${exampleUrlPath}..."}]}. Limit 8. Only include real ads you can verify in the public archive — never invent. If you can't find anything, return {"ads":[],"note":"No public ads found in ${libraryName}."}`;
+  return await new Promise(resolve => {
+    const body = JSON.stringify({ model:'sonar', temperature:0.1, max_tokens:1500, messages:[{ role:'user', content: prompt }] });
+    const req = _https.request({
+      hostname:'api.perplexity.ai', path:'/chat/completions', method:'POST',
+      headers:{ 'Authorization':`Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type':'application/json', 'Content-Length':Buffer.byteLength(body) }
+    }, r => {
+      let d=''; r.on('data', c => d+=c);
+      r.on('end', () => {
+        try {
+          const j = JSON.parse(d);
+          const txt = j?.choices?.[0]?.message?.content || '';
+          const m = txt.match(/\{[\s\S]*\}/);
+          if (!m) return resolve({ ads: [] });
+          const parsed = JSON.parse(m[0]);
+          resolve({ ads: parsed.ads || [], note: parsed.note });
+        } catch { resolve({ ads: [] }); }
+      });
+    });
+    req.on('error', e => resolve({ error: e.message }));
+    req.setTimeout(35000, () => { req.destroy(); resolve({ error: `${libraryName} scan timeout` }); });
+    req.write(body); req.end();
+  });
+}
+
 async function _tiktokAdsLibraryViaPerplexity(brand, country) {
   if (!_hasPerplexity()) return { error: 'PERPLEXITY_API_KEY required for TikTok Ad Library scans' };
   const prompt = `Search the public TikTok Ads Library (https://library.tiktok.com/ads) for currently-running ads from advertiser "${brand}" in country "${country}". Return strict JSON: {"ads":[{"advertiser":"...","ad_text":"...","first_seen":"YYYY-MM-DD","industry":"...","url":"https://library.tiktok.com/..."}]}. Limit 8. If you can't find anything, return {"ads":[],"note":"No public ads found in TikTok Ad Library."}`;
@@ -108,6 +136,51 @@ router.post('/tiktok', _safeAsync(async (req, res) => {
   const country = _normCountry(req.body?.country);
   if (!brand) return _err(res, 400, 'brand required');
   const r = await _tiktokAdsLibraryViaPerplexity(brand, country === 'ALL' ? 'worldwide (all countries)' : country);
+  if (r.error) return _err(res, 400, r.error);
+  res.json({ ok:true, brand, country, total: r.ads.length, ads: r.ads, note: r.note });
+}));
+
+// Google Ads Transparency Center — covers Google Search, Display, YouTube, and Shopping ads.
+router.post('/google', _safeAsync(async (req, res) => {
+  const brand = String(req.body?.brand || '').trim();
+  const country = _normCountry(req.body?.country);
+  if (!brand) return _err(res, 400, 'brand required');
+  const r = await _adLibViaPerplexity({
+    brand, country: country === 'ALL' ? 'worldwide (all countries)' : country,
+    libraryName: 'Google Ads Transparency Center',
+    libraryUrl: 'https://adstransparency.google.com',
+    exampleUrlPath: 'https://adstransparency.google.com/advertiser/',
+  });
+  if (r.error) return _err(res, 400, r.error);
+  res.json({ ok:true, brand, country, total: r.ads.length, ads: r.ads, note: r.note });
+}));
+
+// LinkedIn Ad Library — public archive of all LinkedIn ads (essential for B2B).
+router.post('/linkedin', _safeAsync(async (req, res) => {
+  const brand = String(req.body?.brand || '').trim();
+  const country = _normCountry(req.body?.country);
+  if (!brand) return _err(res, 400, 'brand required');
+  const r = await _adLibViaPerplexity({
+    brand, country: country === 'ALL' ? 'worldwide (all countries)' : country,
+    libraryName: 'LinkedIn Ad Library',
+    libraryUrl: 'https://www.linkedin.com/ad-library/home',
+    exampleUrlPath: 'https://www.linkedin.com/ad-library/',
+  });
+  if (r.error) return _err(res, 400, r.error);
+  res.json({ ok:true, brand, country, total: r.ads.length, ads: r.ads, note: r.note });
+}));
+
+// X (Twitter) Ads Transparency — public archive of promoted posts.
+router.post('/x', _safeAsync(async (req, res) => {
+  const brand = String(req.body?.brand || '').trim();
+  const country = _normCountry(req.body?.country);
+  if (!brand) return _err(res, 400, 'brand required');
+  const r = await _adLibViaPerplexity({
+    brand, country: country === 'ALL' ? 'worldwide (all countries)' : country,
+    libraryName: 'X (Twitter) Ads Transparency',
+    libraryUrl: 'https://ads.x.com/transparency',
+    exampleUrlPath: 'https://ads.x.com/transparency/',
+  });
   if (r.error) return _err(res, 400, r.error);
   res.json({ ok:true, brand, country, total: r.ads.length, ads: r.ads, note: r.note });
 }));

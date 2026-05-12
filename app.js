@@ -37318,15 +37318,24 @@ window.buildAdLibrary = function() {
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND / ADVERTISER</label><input id="alBrand" placeholder="e.g. Nike" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">COUNTRY</label><select id="alCountry" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box;background:#fff">${_alCountryOptions('US')}</select></div>
       </div>
-      <div style="display:flex;gap:8px">
-        <button id="alMeta" style="flex:1;background:linear-gradient(135deg,#1877F2,#42A5F5);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">📘 Meta Ad Library</button>
-        <button id="alTiktok" style="flex:1;background:linear-gradient(135deg,#000,#333);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">🎵 TikTok Ad Library</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button id="alMeta"     style="background:linear-gradient(135deg,#1877F2,#42A5F5);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">📘 Meta Ad Library</button>
+        <button id="alGoogle"   style="background:linear-gradient(135deg,#4285F4,#34A853);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">🔍 Google Ads (Search · Display · YouTube)</button>
+        <button id="alTiktok"   style="background:linear-gradient(135deg,#000,#333);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">🎵 TikTok Ad Library</button>
+        <button id="alLinkedin" style="background:linear-gradient(135deg,#0A66C2,#1E88E5);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">💼 LinkedIn Ad Library</button>
+        <button id="alX"        style="grid-column:1/-1;background:linear-gradient(135deg,#0F172A,#334155);color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.82rem;font-weight:800;cursor:pointer">𝕏 X (Twitter) Ads Transparency</button>
+      </div>
+      <div style="margin-top:8px;font-size:0.7rem;color:#6B7280;line-height:1.45">
+        📘 Meta = live Graph API · 🔍 Google · 💼 LinkedIn · 🎵 TikTok · 𝕏 X = scraped from each platform's public ad transparency archive (requires PERPLEXITY_API_KEY).
       </div>
     </div>
     <div id="alOut"></div>
   `;
-  document.getElementById('alMeta').addEventListener('click', () => _alScan('meta'));
-  document.getElementById('alTiktok').addEventListener('click', () => _alScan('tiktok'));
+  document.getElementById('alMeta')    .addEventListener('click', () => _alScan('meta'));
+  document.getElementById('alGoogle')  .addEventListener('click', () => _alScan('google'));
+  document.getElementById('alTiktok')  .addEventListener('click', () => _alScan('tiktok'));
+  document.getElementById('alLinkedin').addEventListener('click', () => _alScan('linkedin'));
+  document.getElementById('alX')       .addEventListener('click', () => _alScan('x'));
 };
 
 window._alScan = async function(platform) {
@@ -37334,13 +37343,15 @@ window._alScan = async function(platform) {
   const country = document.getElementById('alCountry').value.trim() || 'US';
   const out = document.getElementById('alOut');
   if (!brand) { out.innerHTML = '<div style="color:#991B1B">⚠ Brand required</div>'; return; }
-  out.innerHTML = `<div style="color:#9CA3AF">⏳ Searching ${platform === 'meta' ? 'Meta Ad Library' : 'TikTok Ad Library'}…</div>`;
+  const _platLabels = { meta:'Meta Ad Library', tiktok:'TikTok Ad Library', google:'Google Ads Transparency Center', linkedin:'LinkedIn Ad Library', x:'X (Twitter) Ads Transparency' };
+  const _platLabel = _platLabels[platform] || platform;
+  out.innerHTML = `<div style="color:#9CA3AF">⏳ Searching ${_platLabel}…</div>`;
   try {
     const r = await fetch(`/api/ad-library/${platform}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, country }) }).then(x => x.json());
     if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
     if (!r.ads.length) { out.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">${_escapeHtml(r.note || 'No active ads found.')}</div>`; return; }
     out.innerHTML = `
-      <div style="font-weight:700;color:#0A1628;margin-bottom:10px">✅ Found ${r.ads.length} ${platform} ad(s) for ${_escapeHtml(brand)} (${_escapeHtml(country)})</div>
+      <div style="font-weight:700;color:#0A1628;margin-bottom:10px">✅ Found ${r.ads.length} ${_escapeHtml(_platLabel)} ad(s) for ${_escapeHtml(brand)} (${_escapeHtml(country)})</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">
         ${r.ads.map(a => `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px">
           <div style="font-weight:700;color:#0A1628;font-size:0.86rem;margin-bottom:5px">${_escapeHtml(a.page_name || a.advertiser || brand)}</div>
