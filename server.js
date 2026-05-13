@@ -8,6 +8,17 @@ const net   = require('net');
 const OpenAI    = require('openai');
 const Anthropic  = require('@anthropic-ai/sdk');
 
+// ── Env-var name aliases ─────────────────────────────────────────────────────
+// Some Replit Secrets were stored under the historical names below. The rest
+// of the code reads the canonical names. Aliasing here keeps both working so
+// users don't have to rename and re-paste their existing secrets.
+if (!process.env.SLACK_WEBHOOK_URL && process.env.SLACK_WEBHOOK) {
+  process.env.SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK;
+}
+if (!process.env.RAPIDAPI_KEY && process.env.RAPIDAPI_EMAIL_KEY) {
+  process.env.RAPIDAPI_KEY = process.env.RAPIDAPI_EMAIL_KEY;
+}
+
 // ── Shared AI clients (used by all routes) ───────────────────────────────────
 const openai = new OpenAI({
   apiKey:   process.env.AI_INTEGRATIONS_OPENAI_API_KEY || 'dummy',
