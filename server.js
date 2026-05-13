@@ -9940,8 +9940,10 @@ async function _measureGoal(metric) {
     if (metric === 'drip.deliveryRate') return deliveryRate;
   }
   if (metric === 'amp.sessions') {
-    const auth = _amplitudeAuthHeader();
-    if (!auth) return null;
+    const apiKey = process.env.AMPLITUDE_API_KEY;
+    const secretKey = process.env.AMPLITUDE_SECRET_KEY;
+    if (!apiKey || !secretKey) return null;
+    const auth = 'Basic ' + Buffer.from(`${apiKey}:${secretKey}`).toString('base64');
     const end = new Date(); const start = new Date(); start.setDate(start.getDate() - 30);
     const fmt = _amplitudeFmtDate;
     const e = encodeURIComponent(JSON.stringify({ event_type:'_active' }));

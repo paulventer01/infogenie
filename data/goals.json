@@ -19,5 +19,12 @@
     "target": 60,
     "label": "Amplitude Sessions (30d)",
     "createdAt": "2026-05-12T19:46:02.138Z"
+  },
+  {
+    "id": "g_1778659903644_dtcfze",
+    "metric": "drip.bounceRate",
+    "target": 20,
+    "label": "Drip Bounce Rate: Next 90 Days",
+    "createdAt": "2026-05-13T08:11:43.644Z"
   }
 ]
