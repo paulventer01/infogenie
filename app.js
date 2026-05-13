@@ -28723,12 +28723,20 @@ function openAddGoalModal() {
           </select>
         </div>
         <div style="margin-bottom:14px">
-          <label style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">Target value</label>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <label style="font-size:0.78rem;font-weight:700;color:#0F172A">Target value</label>
+            <button type="button" id="aiSuggestTargetBtn" onclick="aiSuggestNewGoalField('target')" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.72rem;font-weight:700">✨ AI suggest</button>
+          </div>
           <input id="newGoalTarget" type="number" step="0.01" min="0" placeholder="e.g. 50" style="width:100%;padding:10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.88rem">
+          <div id="aiSuggestTargetReason" style="margin-top:6px;font-size:0.72rem;color:#7C3AED;font-style:italic;min-height:1px"></div>
         </div>
         <div style="margin-bottom:18px">
-          <label style="display:block;font-size:0.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">Label (optional)</label>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <label style="font-size:0.78rem;font-weight:700;color:#0F172A">Label (optional)</label>
+            <button type="button" id="aiSuggestLabelBtn" onclick="aiSuggestNewGoalField('label')" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.72rem;font-weight:700">✨ AI suggest</button>
+          </div>
           <input id="newGoalLabel" type="text" placeholder="e.g. Q2 customer acquisition target" style="width:100%;padding:10px;border:1px solid #CBD5E1;border-radius:8px;font-size:0.88rem">
+          <div id="aiSuggestLabelReason" style="margin-top:6px;font-size:0.72rem;color:#7C3AED;font-style:italic;min-height:1px"></div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button onclick="document.getElementById('addGoalModal').remove()" style="padding:10px 16px;background:white;border:1px solid #CBD5E1;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:600">Cancel</button>
@@ -28738,6 +28746,49 @@ function openAddGoalModal() {
     document.body.appendChild(m);
   }
 }
+// AI-suggest helper for the Add Goal modal — fills in either the Target value
+// or the Label based on the currently-selected metric. Calls the backend
+// /api/goals/suggest endpoint which measures the live metric value first then
+// asks GPT for a sensible suggestion grounded in that real number.
+async function aiSuggestNewGoalField(field) {
+  const metric = document.getElementById('newGoalMetric')?.value;
+  if (!metric) return;
+  const btnId    = field === 'target' ? 'aiSuggestTargetBtn'    : 'aiSuggestLabelBtn';
+  const reasonId = field === 'target' ? 'aiSuggestTargetReason' : 'aiSuggestLabelReason';
+  const inputId  = field === 'target' ? 'newGoalTarget'         : 'newGoalLabel';
+  const btn      = document.getElementById(btnId);
+  const reasonEl = document.getElementById(reasonId);
+  const inputEl  = document.getElementById(inputId);
+  if (!btn || !inputEl) return;
+  const originalLabel = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Thinking…';
+  if (reasonEl) reasonEl.textContent = '';
+  try {
+    const r = await fetch('/api/goals/suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metric, field }),
+    });
+    const j = await r.json();
+    if (!j || !j.ok) throw new Error(j?.error || 'suggest-failed');
+    if (field === 'target') {
+      inputEl.value = j.value;
+    } else {
+      inputEl.value = j.label;
+    }
+    if (reasonEl) {
+      const cur = (j.current != null) ? ` (current: ${j.current})` : '';
+      reasonEl.textContent = '✨ ' + (j.reason || 'AI suggestion applied') + cur;
+    }
+  } catch (e) {
+    if (reasonEl) reasonEl.textContent = '⚠️ Could not generate a suggestion — type one in.';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalLabel;
+  }
+}
+
 async function submitNewGoal() {
   const metric = document.getElementById('newGoalMetric').value;
   const target = parseFloat(document.getElementById('newGoalTarget').value);

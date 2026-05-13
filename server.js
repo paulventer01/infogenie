@@ -9987,6 +9987,78 @@ app.get('/api/goals', async (req, res) => {
     res.json({ ok:true, goals, metrics: GOAL_METRICS });
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
 });
+
+// ── AI-suggest helper for the Add Goal modal ─────────────────────────────────
+// Front-end calls this when the user clicks "✨ AI suggest" next to the
+// Target value or Label inputs. Body: { metric, field: 'target'|'label',
+// currentLabel? }. Returns { ok, value, reason } or { ok, label, reason }.
+// We measure the live current value of the metric so the suggested target is
+// grounded in reality (e.g. "current CAC is $42 → suggest $34, a realistic
+// 20% improvement"). Falls back to a sensible deterministic suggestion if
+// OpenAI is unavailable so the button never feels broken.
+app.post('/api/goals/suggest', async (req, res) => {
+  try {
+    const { metric, field } = req.body || {};
+    if (!metric || !GOAL_METRICS[metric]) return res.status(400).json({ ok:false, error:'invalid-metric' });
+    if (field !== 'target' && field !== 'label') return res.status(400).json({ ok:false, error:'invalid-field' });
+    const meta = GOAL_METRICS[metric];
+    let current = null;
+    try { current = await _measureGoal(metric); } catch (_) { current = null; }
+
+    // Deterministic fallback so the button always returns something useful
+    // even if the LLM is degraded or no API key is set.
+    const _fallbackTarget = () => {
+      if (current == null) {
+        if (meta.unit === '%' && meta.direction === 'lte') return 2.0;
+        if (meta.unit === '%' && meta.direction === 'gte') return 95.0;
+        if (meta.unit === '$' && meta.direction === 'lte') return 1000;
+        return 100;
+      }
+      const c = Number(current);
+      if (meta.direction === 'gte') return +(c * 1.20).toFixed(2);   // +20%
+      return +(c * 0.80).toFixed(2);                                  // -20%
+    };
+    const _fallbackLabel = () => {
+      const q = `Q${Math.floor(new Date().getMonth() / 3) + 1}`;
+      const yr = String(new Date().getFullYear()).slice(2);
+      return `${q}/${yr} ${meta.label} target`;
+    };
+
+    // Try OpenAI first — strict-JSON prompt, short max_tokens for speed.
+    try {
+      const sys = `You set realistic marketing KPI targets for a small-to-mid business owner. Always return strict JSON.`;
+      const userMsg = field === 'target'
+        ? `Suggest a realistic but ambitious TARGET VALUE for this metric. Return JSON: { "value": <number>, "reason": "<one short sentence>" }.\nMetric: ${meta.label}\nUnit: ${meta.unit || '(count)'}\nDirection: ${meta.direction === 'gte' ? 'higher is better' : 'lower is better'}\nCurrent value: ${current == null ? 'unknown' : current}\nGuidance: aim for a meaningful but achievable improvement over current (typically 15-30%); if current is unknown, propose a sensible industry benchmark.`
+        : `Suggest a short, human-friendly LABEL (max 6 words) for a goal tracking this metric. Return JSON: { "label": "<text>", "reason": "<one short sentence>" }.\nMetric: ${meta.label}\nUnit: ${meta.unit || '(count)'}\nCurrent value: ${current == null ? 'unknown' : current}\nGuidance: include the time horizon (e.g. Q-prefix or "next 90 days") and the business intent ("acquisition", "retention", "efficiency").`;
+      const completion = await openaiChatWithRetry({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: sys },
+          { role: 'user', content: userMsg },
+        ],
+        response_format: { type: 'json_object' },
+        max_tokens: 160,
+      });
+      const parsed = JSON.parse(completion.choices[0].message.content || '{}');
+      if (field === 'target') {
+        const v = Number(parsed.value);
+        if (!Number.isFinite(v) || v < 0) throw new Error('bad-value');
+        return res.json({ ok:true, value: +v.toFixed(2), reason: String(parsed.reason || '').slice(0, 200), current });
+      }
+      const lbl = String(parsed.label || '').trim().slice(0, 80);
+      if (!lbl) throw new Error('bad-label');
+      return res.json({ ok:true, label: lbl, reason: String(parsed.reason || '').slice(0, 200), current });
+    } catch (_llmErr) {
+      if (field === 'target') {
+        const v = _fallbackTarget();
+        return res.json({ ok:true, value: v, reason: 'Suggested ~20% improvement on your current value.', current, fallback: true });
+      }
+      return res.json({ ok:true, label: _fallbackLabel(), reason: 'Default time-stamped goal label.', current, fallback: true });
+    }
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e.message });
+  }
+});
 app.post('/api/goals', async (req, res) => {
   const { metric, target, label } = req.body || {};
   if (!metric || !GOAL_METRICS[metric]) return res.status(400).json({ ok:false, error:'invalid-metric' });
