@@ -8723,6 +8723,29 @@ app.use('/api/omnichannel', _omniRouter);
     }
   } catch (e) { console.error('[journey-builder] init failed:', e.message); }
 })();
+
+// ── Marketing Projects + Brand Calendar + Budget Board + Web Analytics ────
+const _projectsSchema  = require('./services/projects/schema');
+const _projectsRouter  = require('./services/projects/api');
+const _bcalSchema      = require('./services/brand_calendar/schema');
+const _bcalRouter      = require('./services/brand_calendar/api');
+const _budgetSchema    = require('./services/budget_board/schema');
+const _budgetRouter    = require('./services/budget_board/api');
+const _webAnalRouter   = require('./services/web_analytics/api');
+app.use('/api/projects',        _projectsRouter);
+app.use('/api/brand-calendar',  _bcalRouter);
+app.use('/api/budget',          _budgetRouter);
+app.use('/api/web-analytics',   _webAnalRouter);
+(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _projectsSchema.ensureProjectsSchema();
+      await _bcalSchema.ensureBrandCalendarSchema();
+      await _budgetSchema.ensureBudgetSchema();
+      console.log('[projects + brand-calendar + budget-board + web-analytics] ready');
+    }
+  } catch (e) { console.error('[projects-pack] init failed:', e.message); }
+})();
 console.log('[exports] mounted at /api/exports (formats: pptx, pdf, xlsx)');
 const _influencerSchema = require('./services/influencers/schema');
 const _influencerRouter = require('./services/influencers/api');

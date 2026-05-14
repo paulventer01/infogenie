@@ -2965,6 +2965,10 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'journey-builder')  { try { window.buildJourneyBuilder && window.buildJourneyBuilder(); }  catch(e) { console.warn('buildJourneyBuilder error:', e); } }
   if (viewId === 'signal-triggers')  { try { window.buildSignalTriggers && window.buildSignalTriggers(); }  catch(e) { console.warn('buildSignalTriggers error:', e); } }
   if (viewId === 'omnichannel')      { try { window.buildOmnichannel && window.buildOmnichannel(); }      catch(e) { console.warn('buildOmnichannel error:', e); } }
+  if (viewId === 'new-project')      { try { window.buildNewProject && window.buildNewProject(); }      catch(e) { console.warn('buildNewProject error:', e); } }
+  if (viewId === 'brand-calendar')   { try { window.buildBrandCalendar && window.buildBrandCalendar(); } catch(e) { console.warn('buildBrandCalendar error:', e); } }
+  if (viewId === 'budget-board')     { try { window.buildBudgetBoard && window.buildBudgetBoard(); }    catch(e) { console.warn('buildBudgetBoard error:', e); } }
+  if (viewId === 'web-analytics')    { try { window.buildWebAnalytics && window.buildWebAnalytics(); }   catch(e) { console.warn('buildWebAnalytics error:', e); } }
   if (viewId === 'intent-map') {
     try { buildIntentMap(); } catch(e) { console.warn('buildIntentMap error:', e); }
   }
@@ -42672,5 +42676,357 @@ function _rpToCarousel(title) {
         document.getElementById('oc_results').innerHTML = `<details style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px"><summary style="cursor:pointer;font-weight:600">View ${r.results.length} send results</summary><pre style="margin:10px 0 0;white-space:pre-wrap;font-size:0.78rem;color:#475569">${_esc(JSON.stringify(r.results,null,2))}</pre></details>`;
       }catch(e){ status.textContent = ''; _toast(e.message,'err'); }
     };
+  };
+})();
+
+/* ──────────────────────────────────────────────────────────────────────────
+   New Project · Brand Calendar · Budget Board · Web Analytics
+   ────────────────────────────────────────────────────────────────────────── */
+(function(){
+  function _esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  async function _f(url, opts){
+    const r = await fetch(url, Object.assign({headers:{'Content-Type':'application/json'}}, opts||{}, opts&&opts.body?{body:typeof opts.body==='string'?opts.body:JSON.stringify(opts.body)}:{}));
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(j.error||('HTTP '+r.status));
+    return j;
+  }
+  function _toast(msg, kind){ if (typeof showToast==='function') return showToast((kind==='err'?'⚠️ ':'✓ ')+msg); alert(msg); }
+  function _money(cents){ return '$'+((cents||0)/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function _ymToday(){ return new Date().toISOString().slice(0,7); }
+
+  /* ═══════════ NEW PROJECT ═══════════ */
+  window.buildNewProject = async function(){
+    const wrap = document.getElementById('newProjectWrap');
+    if (!wrap) return;
+    wrap.innerHTML = `
+      <div style="max-width:1100px;margin:0 auto">
+        <div style="margin-bottom:24px">
+          <h1 style="margin:0;font-size:1.6rem;color:#0F172A">✨ New Marketing Project</h1>
+          <p style="margin:6px 0 0;color:#64748B;font-size:0.92rem">Set up a project once — then launch campaigns, schedule posts, track budget, and measure results all under one roof.</p>
+        </div>
+        <div style="background:#fff;border:1px solid #FED7AA;border-radius:14px;padding:24px;margin-bottom:24px">
+          <h3 style="margin:0 0 16px;color:#9A3412;font-size:1.05rem">Project details</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+            <div><label style="display:block;font-size:0.78rem;font-weight:700;color:#475569;margin-bottom:4px">Project name *</label>
+              <input id="np_name" placeholder="e.g. Q1 2026 Product Launch" style="width:100%;padding:9px;border:1px solid #FED7AA;border-radius:8px"></div>
+            <div><label style="display:block;font-size:0.78rem;font-weight:700;color:#475569;margin-bottom:4px">Owner email</label>
+              <input id="np_owner" placeholder="you@company.com" style="width:100%;padding:9px;border:1px solid #FED7AA;border-radius:8px"></div>
+          </div>
+          <label style="display:block;font-size:0.78rem;font-weight:700;color:#475569;margin-bottom:4px">Primary goal *</label>
+          <textarea id="np_goal" rows="2" placeholder="e.g. Drive 500 demo bookings in Q1 from US enterprise market" style="width:100%;padding:9px;border:1px solid #FED7AA;border-radius:8px;font-family:inherit;margin-bottom:14px"></textarea>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px">
+            <div><label style="display:block;font-size:0.78rem;font-weight:700;color:#475569;margin-bottom:4px">Monthly budget (USD)</label>
+              <input id="np_budget" type="number" placeholder="5000" style="width:100%;padding:9px;border:1px solid #FED7AA;border-radius:8px"></div>
+            <div><label style="display:block;font-size:0.78rem;font-weight:700;color:#475569;margin-bottom:4px">Start date</label>
+              <input id="np_start" type="date" style="width:100%;padding:9px;border:1px solid #FED7AA;border-radius:8px"></div>
+            <div><label style="display:block;font-size:0.78rem;font-weight:700;color:#475569;margin-bottom:4px">End date</label>
+              <input id="np_end" type="date" style="width:100%;padding:9px;border:1px solid #FED7AA;border-radius:8px"></div>
+          </div>
+          <label style="display:block;font-size:0.78rem;font-weight:700;color:#475569;margin-bottom:6px">Channels</label>
+          <div id="np_channels" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">
+            ${['Email','SMS','WhatsApp','Voice','Web Push','Meta Ads','Google Ads','TikTok Ads','Social Organic','SEO','Influencer','Events'].map(c=>`<label style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:99px;padding:6px 12px;cursor:pointer;font-size:0.82rem;display:inline-flex;align-items:center;gap:6px"><input type="checkbox" value="${c}" style="margin:0">${c}</label>`).join('')}
+          </div>
+          <button id="np_save" style="padding:11px 22px;background:linear-gradient(135deg,#F97316,#EA580C);color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer">Create Project</button>
+        </div>
+        <h3 style="margin:0 0 12px;color:#0F172A;font-size:1.05rem">Your projects</h3>
+        <div id="np_list" style="display:grid;gap:10px"></div>
+      </div>`;
+    document.getElementById('np_save').onclick = async ()=>{
+      const name = document.getElementById('np_name').value.trim();
+      if (!name){ _toast('Project name required','err'); return; }
+      const channels = Array.from(document.querySelectorAll('#np_channels input:checked')).map(i=>i.value);
+      try{
+        const r = await _f('/api/projects',{method:'POST',body:{
+          name, goal: document.getElementById('np_goal').value,
+          monthly_budget: +document.getElementById('np_budget').value||0,
+          channels, owner_email: document.getElementById('np_owner').value.trim(),
+          start_date: document.getElementById('np_start').value || null,
+          end_date: document.getElementById('np_end').value || null
+        }});
+        try { localStorage.setItem('ig_active_project_id', r.id); localStorage.setItem('ig_active_project_name', name); } catch(_){}
+        _toast('Project created — set as active');
+        document.getElementById('np_name').value=''; document.getElementById('np_goal').value='';
+        document.getElementById('np_budget').value=''; document.querySelectorAll('#np_channels input:checked').forEach(i=>i.checked=false);
+        refresh();
+      }catch(e){_toast(e.message,'err');}
+    };
+    async function refresh(){
+      const list = document.getElementById('np_list');
+      try{
+        const {projects=[]} = await _f('/api/projects');
+        if (!projects.length){ list.innerHTML='<div style="background:#fff;border:1px dashed #FED7AA;border-radius:10px;padding:24px;text-align:center;color:#64748B">No projects yet.</div>'; return; }
+        const activeId = localStorage.getItem('ig_active_project_id') || '';
+        list.innerHTML = projects.map(p=>`
+          <div style="background:#fff;border:1px solid ${p.id===activeId?'#F97316':'#E2E8F0'};border-radius:12px;padding:16px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center">
+            <div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <strong style="color:#0F172A;font-size:1rem">${_esc(p.name)}</strong>
+                ${p.id===activeId?'<span style="background:#F97316;color:#fff;padding:2px 8px;border-radius:99px;font-size:0.65rem;font-weight:700">ACTIVE</span>':''}
+              </div>
+              <div style="color:#64748B;font-size:0.84rem;margin-top:4px">${_esc(p.goal||'No goal set')} · $${(p.monthly_budget||0).toLocaleString()}/mo · ${(p.channels||[]).length} channels</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button data-act="${p.id}" data-name="${_esc(p.name)}" style="padding:6px 12px;background:#FED7AA;border:1px solid #F97316;border-radius:7px;cursor:pointer;font-weight:600;font-size:0.82rem">Set Active</button>
+              <button data-del="${p.id}" style="padding:6px 11px;background:#FEE2E2;color:#B91C1C;border:1px solid #FCA5A5;border-radius:7px;cursor:pointer;font-weight:600;font-size:0.82rem">✕</button>
+            </div>
+          </div>`).join('');
+        list.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>{ try{ localStorage.setItem('ig_active_project_id',b.dataset.act); localStorage.setItem('ig_active_project_name',b.dataset.name);}catch(_){ } _toast('Active: '+b.dataset.name); refresh(); });
+        list.querySelectorAll('[data-del]').forEach(b=>b.onclick=async ()=>{ if (!confirm('Delete this project?')) return; try{ await _f('/api/projects/'+b.dataset.del,{method:'DELETE'}); refresh(); }catch(e){_toast(e.message,'err');} });
+      }catch(e){ list.innerHTML='<div style="color:#B91C1C">'+_esc(e.message)+'</div>'; }
+    }
+    refresh();
+  };
+
+  /* ═══════════ BRAND CALENDAR ═══════════ */
+  window.buildBrandCalendar = async function(){
+    const wrap = document.getElementById('brandCalendarWrap');
+    if (!wrap) return;
+    wrap.innerHTML = `
+      <div style="max-width:1300px;margin:0 auto">
+        <div style="margin-bottom:20px">
+          <h1 style="margin:0;font-size:1.6rem;color:#0F172A">📅 Brand Calendar</h1>
+          <p style="margin:6px 0 0;color:#64748B;font-size:0.92rem">Plan everything across 10 categories. Filter the sidebar, click a day to add an item.</p>
+        </div>
+        <div style="display:grid;grid-template-columns:240px 1fr;gap:20px">
+          <div style="background:#fff;border:1px solid #BAE6FD;border-radius:12px;padding:14px;height:fit-content">
+            <h3 style="margin:0 0 10px;color:#075985;font-size:0.95rem">Calendar</h3>
+            <div id="bc_cats"></div>
+          </div>
+          <div style="background:#fff;border:1px solid #BAE6FD;border-radius:12px;padding:18px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <button id="bc_prev" style="width:32px;height:32px;border:1px solid #BAE6FD;background:#F0F9FF;border-radius:8px;cursor:pointer;font-weight:700">‹</button>
+                <strong id="bc_month_label" style="font-size:1.1rem;color:#0F172A;min-width:170px;text-align:center"></strong>
+                <button id="bc_next" style="width:32px;height:32px;border:1px solid #BAE6FD;background:#F0F9FF;border-radius:8px;cursor:pointer;font-weight:700">›</button>
+              </div>
+              <button id="bc_add" style="padding:8px 16px;background:linear-gradient(135deg,#0EA5E9,#0284C7);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">+ Add item</button>
+            </div>
+            <div id="bc_grid"></div>
+          </div>
+        </div>
+      </div>`;
+    const {categories=[]} = await _f('/api/brand-calendar/categories');
+    let activeCat = '';
+    const cats = document.getElementById('bc_cats');
+    const renderCats = ()=>{
+      cats.innerHTML = `<a href="#" data-cat="" style="display:block;padding:8px 10px;border-radius:7px;text-decoration:none;font-weight:600;font-size:0.86rem;background:${activeCat===''?'#0EA5E9':'transparent'};color:${activeCat===''?'#fff':'#075985'};margin-bottom:4px">All categories</a>`+
+        categories.map(c=>`<a href="#" data-cat="${c.id}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;text-decoration:none;font-size:0.86rem;background:${activeCat===c.id?c.color:'transparent'};color:${activeCat===c.id?'#fff':'#0F172A'};font-weight:${activeCat===c.id?'700':'500'}"><span style="width:8px;height:8px;border-radius:99px;background:${c.color}"></span>${_esc(c.label)}</a>`).join('');
+      cats.querySelectorAll('[data-cat]').forEach(a=>a.onclick=(e)=>{e.preventDefault();activeCat=a.dataset.cat;renderCats();renderGrid();});
+    };
+    renderCats();
+
+    let viewYear = new Date().getFullYear(), viewMonth = new Date().getMonth();
+    document.getElementById('bc_prev').onclick = ()=>{ if (viewMonth===0){viewMonth=11;viewYear--;}else viewMonth--; renderGrid(); };
+    document.getElementById('bc_next').onclick = ()=>{ if (viewMonth===11){viewMonth=0;viewYear++;}else viewMonth++; renderGrid(); };
+    document.getElementById('bc_add').onclick = ()=> openAdd(null);
+
+    async function renderGrid(){
+      const monthName = new Date(viewYear, viewMonth, 1).toLocaleString('default',{month:'long',year:'numeric'});
+      document.getElementById('bc_month_label').textContent = monthName;
+      // Widen by ±12h so timezone-shifted edges are included; client groups by local date below
+      const from = new Date(viewYear, viewMonth, 1, -12, 0).toISOString();
+      const to   = new Date(viewYear, viewMonth+1, 1, 12, 0).toISOString();
+      const q = new URLSearchParams({from,to}); if (activeCat) q.set('category',activeCat);
+      const {items=[]} = await _f('/api/brand-calendar?'+q.toString());
+      const byDay = {};
+      items.forEach(i=>{ const d=new Date(i.scheduled_at).getDate(); (byDay[d]=byDay[d]||[]).push(i); });
+      const firstDow = new Date(viewYear,viewMonth,1).getDay();
+      const daysIn = new Date(viewYear,viewMonth+1,0).getDate();
+      const cells = [];
+      for (let i=0;i<firstDow;i++) cells.push('<div></div>');
+      for (let d=1; d<=daysIn; d++){
+        const list = byDay[d]||[];
+        cells.push(`<div data-day="${d}" style="border:1px solid #E0F2FE;border-radius:8px;min-height:90px;padding:6px;background:#fff;cursor:pointer">
+          <div style="font-weight:700;color:#075985;font-size:0.78rem;margin-bottom:4px">${d}</div>
+          ${list.slice(0,3).map(i=>{const c=categories.find(x=>x.id===i.category)||{color:'#64748B'};return `<div data-itm="${i.id}" style="background:${c.color};color:#fff;font-size:0.7rem;padding:2px 5px;border-radius:4px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${_esc(i.title)}">${_esc(i.title)}</div>`;}).join('')}
+          ${list.length>3?`<div style="font-size:0.65rem;color:#64748B">+${list.length-3} more</div>`:''}
+        </div>`);
+      }
+      document.getElementById('bc_grid').innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div style="text-align:center;font-size:0.72rem;font-weight:700;color:#64748B;padding:4px">${d}</div>`).join('')}</div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">${cells.join('')}</div>`;
+      document.getElementById('bc_grid').querySelectorAll('[data-day]').forEach(c=>c.onclick=(e)=>{ if (e.target.closest('[data-itm]')){ const id=e.target.closest('[data-itm]').dataset.itm; const it=items.find(x=>x.id===id); openAdd(it); return; } openAdd(null, +c.dataset.day); });
+    }
+
+    function openAdd(existing, day){
+      const m = document.createElement('div');
+      m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:9999';
+      const d = existing? new Date(existing.scheduled_at) : new Date(viewYear, viewMonth, day||new Date().getDate(), 9, 0);
+      const dtv = new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);
+      m.innerHTML = `<div style="background:#fff;border-radius:14px;padding:24px;width:480px;max-width:90vw">
+        <h3 style="margin:0 0 14px;color:#0F172A">${existing?'Edit':'New'} calendar item</h3>
+        <label style="display:block;font-size:0.78rem;font-weight:700;color:#475569;margin-bottom:4px">Category</label>
+        <select id="bcm_cat" style="width:100%;padding:9px;border:1px solid #E2E8F0;border-radius:8px;margin-bottom:10px">${categories.map(c=>`<option value="${c.id}" ${existing&&existing.category===c.id?'selected':''}>${_esc(c.label)}</option>`).join('')}</select>
+        <label style="display:block;font-size:0.78rem;font-weight:700;color:#475569;margin-bottom:4px">Title</label>
+        <input id="bcm_title" value="${_esc(existing?.title||'')}" placeholder="e.g. Send launch email" style="width:100%;padding:9px;border:1px solid #E2E8F0;border-radius:8px;margin-bottom:10px">
+        <label style="display:block;font-size:0.78rem;font-weight:700;color:#475569;margin-bottom:4px">When</label>
+        <input id="bcm_when" type="datetime-local" value="${dtv}" style="width:100%;padding:9px;border:1px solid #E2E8F0;border-radius:8px;margin-bottom:10px">
+        <label style="display:block;font-size:0.78rem;font-weight:700;color:#475569;margin-bottom:4px">Notes</label>
+        <textarea id="bcm_notes" rows="2" style="width:100%;padding:9px;border:1px solid #E2E8F0;border-radius:8px;font-family:inherit;margin-bottom:14px">${_esc(existing?.notes||'')}</textarea>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          ${existing?'<button id="bcm_del" style="margin-right:auto;padding:9px 16px;background:#FEE2E2;color:#B91C1C;border:1px solid #FCA5A5;border-radius:8px;cursor:pointer;font-weight:600">Delete</button>':''}
+          <button id="bcm_cx" style="padding:9px 16px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;cursor:pointer">Cancel</button>
+          <button id="bcm_sv" style="padding:9px 18px;background:#0EA5E9;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700">Save</button>
+        </div></div>`;
+      document.body.appendChild(m);
+      const close = ()=>m.remove();
+      m.querySelector('#bcm_cx').onclick = close;
+      m.querySelector('#bcm_sv').onclick = async ()=>{
+        try{ await _f('/api/brand-calendar',{method:'POST',body:{
+          id: existing?.id, category: m.querySelector('#bcm_cat').value, title: m.querySelector('#bcm_title').value.trim(),
+          scheduled_at: new Date(m.querySelector('#bcm_when').value).toISOString(), notes: m.querySelector('#bcm_notes').value
+        }}); close(); renderGrid(); }catch(e){_toast(e.message,'err');}
+      };
+      if (existing) m.querySelector('#bcm_del').onclick = async ()=>{ if (!confirm('Delete?')) return; try{ await _f('/api/brand-calendar/'+existing.id,{method:'DELETE'}); close(); renderGrid(); }catch(e){_toast(e.message,'err');} };
+    }
+    renderGrid();
+  };
+
+  /* ═══════════ BUDGET BOARD ═══════════ */
+  window.buildBudgetBoard = async function(){
+    const wrap = document.getElementById('budgetBoardWrap');
+    if (!wrap) return;
+    wrap.innerHTML = `
+      <div style="max-width:1200px;margin:0 auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <div>
+            <h1 style="margin:0;font-size:1.6rem;color:#0F172A">💰 Budget Board</h1>
+            <p style="margin:6px 0 0;color:#64748B;font-size:0.92rem">Set a monthly target, log every dollar spent, see where it's going.</p>
+          </div>
+          <input type="month" id="bb_month" value="${_ymToday()}" style="padding:8px 12px;border:1px solid #BBF7D0;border-radius:8px;font-weight:600">
+        </div>
+        <div id="bb_kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+          <div style="background:#fff;border:1px solid #BBF7D0;border-radius:12px;padding:18px">
+            <h3 style="margin:0 0 12px;color:#15803D;font-size:1rem">Set monthly budget</h3>
+            <label style="display:block;font-size:0.78rem;font-weight:700;color:#475569;margin-bottom:4px">Total target (USD)</label>
+            <input id="bb_target" type="number" placeholder="5000" style="width:100%;padding:9px;border:1px solid #BBF7D0;border-radius:8px;margin-bottom:10px">
+            <label style="display:block;font-size:0.78rem;font-weight:700;color:#475569;margin-bottom:4px">Allocations by channel (USD, optional)</label>
+            <div id="bb_alloc" style="display:grid;gap:6px;margin-bottom:12px"></div>
+            <button id="bb_save_budget" style="padding:9px 18px;background:#16A34A;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Save Budget</button>
+          </div>
+          <div style="background:#fff;border:1px solid #BBF7D0;border-radius:12px;padding:18px">
+            <h3 style="margin:0 0 12px;color:#15803D;font-size:1rem">Log a spend</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+              <select id="bb_sp_ch" style="padding:9px;border:1px solid #BBF7D0;border-radius:8px"><option>Meta Ads</option><option>Google Ads</option><option>TikTok Ads</option><option>Email</option><option>SMS</option><option>WhatsApp</option><option>Influencer</option><option>SEO</option><option>Events</option><option>Other</option></select>
+              <input id="bb_sp_amt" type="number" placeholder="Amount USD" step="0.01" style="padding:9px;border:1px solid #BBF7D0;border-radius:8px">
+            </div>
+            <input id="bb_sp_notes" placeholder="Notes (optional)" style="width:100%;padding:9px;border:1px solid #BBF7D0;border-radius:8px;margin-bottom:10px">
+            <button id="bb_log" style="padding:9px 18px;background:#0EA5E9;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Log Spend</button>
+          </div>
+        </div>
+        <div style="background:#fff;border:1px solid #BBF7D0;border-radius:12px;padding:18px;margin-bottom:20px">
+          <h3 style="margin:0 0 12px;color:#15803D;font-size:1rem">Spend analysis — by channel</h3>
+          <div id="bb_breakdown"></div>
+        </div>
+        <div style="background:#fff;border:1px solid #BBF7D0;border-radius:12px;padding:18px">
+          <h3 style="margin:0 0 12px;color:#15803D;font-size:1rem">Recent spend events</h3>
+          <div id="bb_recent"></div>
+        </div>
+      </div>`;
+    const channels = ['Meta Ads','Google Ads','TikTok Ads','Email','SMS','WhatsApp','Influencer','SEO','Events','Other'];
+    document.getElementById('bb_alloc').innerHTML = channels.map(c=>`<div style="display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:center"><label style="font-size:0.78rem;color:#475569">${c}</label><input data-alloc="${c}" type="number" placeholder="0" style="padding:6px;border:1px solid #BBF7D0;border-radius:6px"></div>`).join('');
+
+    async function refresh(){
+      const month = document.getElementById('bb_month').value;
+      const s = await _f('/api/budget/summary?month='+encodeURIComponent(month));
+      const remaining = s.remaining_cents;
+      const util = s.utilization_pct;
+      document.getElementById('bb_kpis').innerHTML = `
+        ${[
+          {label:'Target', val:_money(s.target_cents), color:'#0F172A'},
+          {label:'Spent', val:_money(s.spent_cents), color:'#0EA5E9'},
+          {label:'Remaining', val:_money(remaining), color: remaining<0?'#DC2626':'#16A34A'},
+          {label:'Utilization', val: util==null?'—':util+'%', color: util>100?'#DC2626':util>80?'#F59E0B':'#16A34A'}
+        ].map(k=>`<div style="background:#fff;border:1px solid #BBF7D0;border-radius:10px;padding:14px"><div style="font-size:0.74rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">${k.label}</div><div style="font-size:1.4rem;font-weight:800;color:${k.color}">${k.val}</div></div>`).join('')}
+      `;
+      document.getElementById('bb_breakdown').innerHTML = s.by_channel.length===0
+        ? '<div style="color:#94A3B8;text-align:center;padding:20px">No spend logged this month yet.</div>'
+        : `<table style="width:100%;border-collapse:collapse">
+          <thead><tr style="text-align:left;color:#64748B;font-size:0.78rem;border-bottom:1px solid #E2E8F0"><th style="padding:8px">Channel</th><th style="padding:8px">Allocated</th><th style="padding:8px">Spent</th><th style="padding:8px">Utilization</th><th style="padding:8px">Bar</th></tr></thead>
+          <tbody>${s.by_channel.map(b=>{
+            const u = b.utilization;
+            const barW = u==null?0:Math.min(100,u);
+            const barColor = u>100?'#DC2626':u>80?'#F59E0B':'#16A34A';
+            return `<tr style="border-bottom:1px solid #F1F5F9"><td style="padding:8px;font-weight:600">${_esc(b.channel)}</td><td style="padding:8px;color:#64748B">${_money(b.allocated_cents)}</td><td style="padding:8px;font-weight:700">${_money(b.spent_cents)}</td><td style="padding:8px">${u==null?'—':u+'%'}</td><td style="padding:8px;width:200px"><div style="background:#F1F5F9;border-radius:99px;height:8px;overflow:hidden"><div style="height:100%;width:${barW}%;background:${barColor}"></div></div></td></tr>`;
+          }).join('')}</tbody></table>`;
+      const er = await _f('/api/budget/spend/recent');
+      document.getElementById('bb_recent').innerHTML = er.events.length===0
+        ? '<div style="color:#94A3B8;text-align:center;padding:20px">Nothing logged yet.</div>'
+        : `<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748B;font-size:0.78rem;border-bottom:1px solid #E2E8F0"><th style="padding:8px">Date</th><th style="padding:8px">Channel</th><th style="padding:8px">Amount</th><th style="padding:8px">Source</th><th style="padding:8px">Notes</th></tr></thead><tbody>${er.events.slice(0,20).map(e=>`<tr style="border-bottom:1px solid #F1F5F9"><td style="padding:6px 8px;color:#64748B">${(e.occurred_at||'').slice(0,10)}</td><td style="padding:6px 8px;font-weight:600">${_esc(e.channel)}</td><td style="padding:6px 8px;font-weight:700">${_money(e.amount_cents)}</td><td style="padding:6px 8px;color:#94A3B8;font-size:0.84rem">${_esc(e.source||'')}</td><td style="padding:6px 8px;color:#64748B">${_esc(e.notes||'')}</td></tr>`).join('')}</tbody></table>`;
+    }
+
+    document.getElementById('bb_month').onchange = refresh;
+    document.getElementById('bb_save_budget').onclick = async ()=>{
+      const target = (+document.getElementById('bb_target').value||0)*100;
+      const by_channel = {};
+      document.querySelectorAll('#bb_alloc input[data-alloc]').forEach(i=>{ const v=+i.value; if (v>0) by_channel[i.dataset.alloc]=v*100; });
+      try{ await _f('/api/budget/budgets',{method:'POST',body:{period_month:document.getElementById('bb_month').value, target_cents:target, by_channel}}); _toast('Budget saved'); refresh(); }
+      catch(e){_toast(e.message,'err');}
+    };
+    document.getElementById('bb_log').onclick = async ()=>{
+      const amt = +document.getElementById('bb_sp_amt').value;
+      if (!amt){ _toast('Amount required','err'); return; }
+      try{ await _f('/api/budget/spend',{method:'POST',body:{channel:document.getElementById('bb_sp_ch').value, amount_cents:Math.round(amt*100), notes:document.getElementById('bb_sp_notes').value, source:'manual'}});
+        document.getElementById('bb_sp_amt').value=''; document.getElementById('bb_sp_notes').value=''; _toast('Logged'); refresh(); }
+      catch(e){_toast(e.message,'err');}
+    };
+    refresh();
+  };
+
+  /* ═══════════ WEB ANALYTICS ═══════════ */
+  window.buildWebAnalytics = async function(){
+    const wrap = document.getElementById('webAnalyticsWrap');
+    if (!wrap) return;
+    wrap.innerHTML = `
+      <div style="max-width:1200px;margin:0 auto">
+        <div style="margin-bottom:20px">
+          <h1 style="margin:0;font-size:1.6rem;color:#0F172A">📈 Web Analytics</h1>
+          <p style="margin:6px 0 0;color:#64748B;font-size:0.92rem">Acquisition · Behaviour · Mobile — derived from your tracked sites + ad-platform insights.</p>
+        </div>
+        <div id="wa_banner" style="margin-bottom:18px"></div>
+        <div id="wa_kpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+          <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
+            <h3 style="margin:0 0 12px;color:#0F172A;font-size:1rem">🤝 Acquisition — Channels (last 30d)</h3>
+            <div id="wa_chans"></div>
+          </div>
+          <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
+            <h3 style="margin:0 0 12px;color:#0F172A;font-size:1rem">📄 Behaviour — Top Landing Pages</h3>
+            <div id="wa_pages"></div>
+          </div>
+        </div>
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
+          <h3 style="margin:0 0 12px;color:#0F172A;font-size:1rem">📱 Mobile — Pages needing attention (PageSpeed)</h3>
+          <div id="wa_mobile"></div>
+        </div>
+      </div>`;
+    try{
+      const [sum, acq, beh, mob] = await Promise.all([
+        _f('/api/web-analytics/summary'),
+        _f('/api/web-analytics/acquisition'),
+        _f('/api/web-analytics/behaviour'),
+        _f('/api/web-analytics/mobile')
+      ]);
+      if (!sum.ga4_connected){
+        document.getElementById('wa_banner').innerHTML = `<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;padding:14px;color:#92400E;font-size:0.88rem">ℹ️ <strong>GA4 not connected</strong> — showing data derived from your ad-platform insights and tracked-site audits. To unlock full Source/Medium, Country, and real session/exit data, connect Google Analytics in <a href="#" onclick="navigateTo('settings');return false;" style="color:#92400E;font-weight:700">Settings → Integrations</a>.</div>`;
+      }
+      document.getElementById('wa_kpis').innerHTML = [
+        {label:'Sessions (30d)', val:(sum.sessions||0).toLocaleString(), color:'#0EA5E9'},
+        {label:'Impressions (30d)', val:(sum.impressions||0).toLocaleString(), color:'#8B5CF6'},
+        {label:'Ad Spend (30d)', val:_money(sum.spend_cents||0), color:'#16A34A'}
+      ].map(k=>`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px"><div style="font-size:0.74rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:4px">${k.label}</div><div style="font-size:1.4rem;font-weight:800;color:${k.color}">${k.val}</div></div>`).join('');
+      document.getElementById('wa_chans').innerHTML = acq.channels.length===0
+        ? '<div style="color:#94A3B8;text-align:center;padding:20px;font-size:0.88rem">No ad-platform data ingested yet.</div>'
+        : `<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748B;font-size:0.76rem;border-bottom:1px solid #E5E7EB"><th style="padding:6px">Channel</th><th style="padding:6px">Sessions</th><th style="padding:6px">Impressions</th></tr></thead><tbody>${acq.channels.map(c=>`<tr style="border-bottom:1px solid #F1F5F9"><td style="padding:6px;font-weight:600">${_esc(c.channel)}</td><td style="padding:6px;font-weight:700">${(c.sessions||0).toLocaleString()}</td><td style="padding:6px">${(c.impressions||0).toLocaleString()}</td></tr>`).join('')}</tbody></table>`;
+      document.getElementById('wa_pages').innerHTML = beh.landing_pages.length===0
+        ? '<div style="color:#94A3B8;text-align:center;padding:20px;font-size:0.88rem">No landing-page data yet. Run a Landing Pages audit to populate.</div>'
+        : `<ul style="margin:0;padding-left:18px">${beh.landing_pages.slice(0,12).map(p=>`<li style="margin-bottom:6px;font-size:0.86rem"><a href="${_esc(_safeUrl(p.url||''))}" target="_blank" rel="noopener" style="color:#0EA5E9;text-decoration:none">${_esc(p.title||p.url)}</a> ${p.score!=null?`<span style="color:#64748B;font-size:0.78rem">· score ${p.score}</span>`:''}</li>`).join('')}</ul>`;
+      document.getElementById('wa_mobile').innerHTML = (!mob.pages || mob.pages.length===0)
+        ? '<div style="color:#94A3B8;text-align:center;padding:20px;font-size:0.88rem">No mobile audits yet. Run Web Vitals to populate.</div>'
+        : `<table style="width:100%;border-collapse:collapse"><thead><tr style="text-align:left;color:#64748B;font-size:0.76rem;border-bottom:1px solid #E5E7EB"><th style="padding:6px">URL</th><th style="padding:6px">Mobile Score</th><th style="padding:6px">LCP (ms)</th><th style="padding:6px">CLS</th></tr></thead><tbody>${mob.pages.slice(0,12).map(p=>`<tr style="border-bottom:1px solid #F1F5F9"><td style="padding:6px;font-size:0.84rem"><a href="${_esc(_safeUrl(p.url||''))}" target="_blank" rel="noopener" style="color:#0EA5E9;text-decoration:none">${_esc(p.url||'')}</a></td><td style="padding:6px;font-weight:700;color:${p.mobile_score>=80?'#16A34A':p.mobile_score>=50?'#F59E0B':'#DC2626'}">${p.mobile_score!=null?p.mobile_score:'—'}</td><td style="padding:6px">${p.mobile_lcp_ms||'—'}</td><td style="padding:6px">${p.mobile_cls||'—'}</td></tr>`).join('')}</tbody></table>`;
+    }catch(e){
+      wrap.querySelector('#wa_banner').innerHTML = '<div style="background:#FEE2E2;border:1px solid #FCA5A5;color:#B91C1C;border-radius:10px;padding:14px">Failed to load analytics: '+_esc(e.message)+'</div>';
+    }
   };
 })();
