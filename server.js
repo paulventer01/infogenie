@@ -671,16 +671,20 @@ app.post('/api/ai-forecast', async (req, res) => {
   }
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o', response_format: { type: 'json_object' }, max_tokens: 1000,
-      messages: [
-        { role: 'system', content: 'You are a senior performance marketing analyst. Return ONLY valid JSON, no markdown.' },
-        { role: 'user', content: `Generate a realistic 90-day WEEKLY revenue forecast for a ${industry} company (${domain}). Current ROAS: ${currentROAS}×, weekly ad budget: ~$${Math.round((monthlyBudget||5000)/4.33)}, monthly traffic: ${trafficMo}.
+    if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) throw new Error('openai key not configured');
+    const completion = await Promise.race([
+      openai.chat.completions.create({
+        model: 'gpt-4o', response_format: { type: 'json_object' }, max_tokens: 1000,
+        messages: [
+          { role: 'system', content: 'You are a senior performance marketing analyst. Return ONLY valid JSON, no markdown.' },
+          { role: 'user', content: `Generate a realistic 90-day WEEKLY revenue forecast for a ${industry} company (${domain}). Current ROAS: ${currentROAS}×, weekly ad budget: ~$${Math.round((monthlyBudget||5000)/4.33)}, monthly traffic: ${trafficMo}.
 Rules: values must GROW week-over-week with natural variance (not flat lines). Week 1 starts slow (AI learning phase), accelerates mid-run, levels off slightly near week 13. The 3 scenarios must diverge meaningfully.
 Return ONLY this JSON with exactly 13 weekly values each:
 {"weeks":["Wk 1","Wk 2","Wk 3","Wk 4","Wk 5","Wk 6","Wk 7","Wk 8","Wk 9","Wk 10","Wk 11","Wk 12","Wk 13"],"projectedRevenue":[13 integers growing from ~${Math.round(weeklyBase*0.9)} to ~${Math.round(weeklyBase*1.55)}],"conservativeRevenue":[13 integers growing from ~${Math.round(weeklyBase*0.78)} to ~${Math.round(weeklyBase*1.28)}],"optimisticRevenue":[13 integers growing from ~${Math.round(weeklyBase*1.05)} to ~${Math.round(weeklyBase*2.1)}],"projectedROAS":[13 floats growing from ${(currentROAS*0.95).toFixed(1)} to ${(currentROAS*1.38).toFixed(1)}],"keyMilestones":[{"week":1,"milestone":"text"},{"week":4,"milestone":"text"},{"week":8,"milestone":"text"},{"week":13,"milestone":"text"}],"totalProjectedRevenue":integer,"confidenceLevel":"High","reasoning":"2 sentences"}` }
-      ]
-    });
+        ]
+      }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('openai_timeout_15s')), 15000))
+    ]);
     const parsed = JSON.parse(completion.choices[0].message.content);
     if (!Array.isArray(parsed.projectedRevenue) || parsed.projectedRevenue.length < 3) throw new Error('bad shape');
     res.json({ success: true, ...parsed });
