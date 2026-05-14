@@ -15,7 +15,9 @@ function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg });
 function _esc(s) { return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function _safeUrl(u) { return /^https?:\/\//i.test(u) ? u : '#'; }
 
-const BLOCK_TYPES = ['hero','features','stats','testimonial','cta','faq','image','richText'];
+const BLOCK_TYPES = ['hero','features','stats','testimonial','cta','faq','image','richText','search'];
+const _scrollTracker = require('../scroll_tracker/api');
+const _siteSearch    = require('../site_search/api');
 
 function _renderBlock(b, theme) {
   const c = theme.primary;
@@ -74,6 +76,21 @@ function _renderBlock(b, theme) {
       <section style="padding:48px 24px;text-align:center"><img src="${_safeUrl(b.url)}" alt="${_esc(b.alt||'')}" style="max-width:100%;height:auto;border-radius:14px"></section>`;
     case 'richText': return `
       <section style="padding:48px 24px"><div style="max-width:760px;margin:0 auto;color:${theme.text};line-height:1.7;font-size:16px">${_esc(b.html || '').replace(/\n/g,'<br>')}</div></section>`;
+    case 'search': {
+      const items = Array.isArray(b.items) ? b.items : [];
+      const cards = items.map(it => {
+        const text = `${it.title || ''} ${it.body || ''} ${(it.tags || []).join(' ')}`.trim();
+        return `<a href="${_safeUrl(it.url || '#')}" data-search-text="${_esc(text.toLowerCase())}" style="display:block;background:white;border:1px solid #E5E7EB;border-radius:12px;padding:18px;text-decoration:none;color:${theme.text}"><div style="font-weight:700;margin-bottom:6px">${_esc(it.title || '')}</div><div style="color:${theme.muted};font-size:14px;line-height:1.5">${_esc(it.body || '')}</div></a>`;
+      }).join('');
+      return `
+      <section style="padding:64px 24px"><div style="max-width:880px;margin:0 auto">
+        ${b.heading ? `<h2 style="font-size:32px;font-weight:800;margin:0 0 8px;text-align:center;color:${theme.text}">${_esc(b.heading)}</h2>` : ''}
+        ${b.subheading ? `<p style="text-align:center;color:${theme.muted};margin:0 0 24px">${_esc(b.subheading)}</p>` : ''}
+        <input id="site-search-input" type="search" placeholder="${_esc(b.placeholder || 'Search…')}" style="width:100%;padding:14px 18px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:16px;margin-bottom:18px;box-sizing:border-box">
+        <div id="site-search-results" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">${cards}</div>
+        <div id="site-search-empty" style="display:none;text-align:center;color:${theme.muted};padding:32px;font-size:15px">No results — try different keywords.</div>
+      </div></section>`;
+    }
     default: return '';
   }
 }
@@ -81,11 +98,13 @@ function _renderBlock(b, theme) {
 function _renderPage(page) {
   const theme = { primary:'#0066FF', accent:'#00C9C8', text:'#0F172A', muted:'#64748B', surface:'#F8FAFC', ...(page.theme || {}) };
   const blocks = (page.blocks || []).map(b => _renderBlock(b, theme)).join('\n');
+  const hasSearch = (page.blocks || []).some(b => b.type === 'search');
+  const tracking = `${_scrollTracker.snippet('lp', page.slug || '')}${hasSearch ? _siteSearch.snippet(page.slug || '') : ''}`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${_esc(page.title || 'Landing Page')}</title>
 <meta name="description" content="${_esc(page.description || '')}">
 <style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:white;color:${theme.text}}</style>
-</head><body>${blocks}</body></html>`;
+</head><body>${blocks}${tracking}</body></html>`;
 }
 
 router.get('/pages', async (_req, res) => {

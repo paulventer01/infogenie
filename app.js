@@ -41726,6 +41726,8 @@ function _rpToCarousel(title) {
     { id:'pres',      icon:'📑', title:'AI Presentation',   desc:'Pitch decks and slide decks generated from a topic.',             action:()=>openPresentationStudio() },
     { id:'sig',       icon:'✍️', title:'Email Signature',   desc:'Branded HTML signature with open + click tracking.',              action:()=>openSignatureStudio() },
     { id:'case',      icon:'📰', title:'Case Study Builder', desc:'Turn a customer story into a polished case study + share page.', action:()=>openCaseStudyStudio() },
+    { id:'insights',  icon:'📊', title:'Page Insights',     desc:'How far visitors scroll on your landing & bio pages — and what they search for.', action:()=>openPageInsightsStudio() },
+    { id:'annot',     icon:'📌', title:'SEO Change Log',    desc:'Log content / technical / on-page changes and overlay them on every chart.', action:()=>openSeoAnnotationsStudio() },
     { id:'whatsapp',  icon:'💬', title:'WhatsApp Channel',  desc:'Send WhatsApp messages and reply to inbound chats.',              action:()=>navigateTo('whatsapp') },
     { id:'voice',     icon:'📞', title:'AI Voice Caller',   desc:'Outbound voice agent that calls leads and books meetings.',       action:()=>navigateTo('voice-caller') },
     { id:'bookings',  icon:'📅', title:'Bookings',          desc:'Public booking page with email confirmation.',                    action:()=>navigateTo('bookings') },
@@ -41925,6 +41927,92 @@ function _rpToCarousel(title) {
           </div>
         </div>`;
       }catch(e){ out.innerHTML=`<div style="color:#DC2626">${_esc(e.message)}</div>`; }
+    });
+  }
+
+  // ── Page Insights modal (scroll depth + site search) ─────────────────────
+  function openPageInsightsStudio(){
+    _modal('📊 Page Insights', `
+      <p style="color:#64748B;margin:0 0 12px;font-size:13px">Every public Site Builder (<code>/lp/…</code>) and Link-in-Bio (<code>/bio/…</code>) page now silently tracks scroll depth + internal-search queries. Pages need a few visitors before numbers stabilise.</p>
+      <div id="pi_summary">Loading leaderboard…</div>
+      <hr style="border:0;border-top:1px solid #E5E7EB;margin:16px 0">
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;align-items:end">
+        <label style="font-size:13px">Drill into a specific page<select id="pi_pick" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;margin:4px 0"><option value="">— pick a page —</option></select></label>
+        <button id="pi_load" style="background:#0066FF;color:white;border:0;padding:10px 16px;border-radius:8px;font-weight:700;cursor:pointer">Load</button>
+      </div>
+      <div id="pi_detail" style="margin-top:12px"></div>`, { width: 720 });
+    (async()=>{
+      try{
+        const j=await _api('/api/scroll-tracker/summary');
+        const sel = document.getElementById('pi_pick');
+        document.getElementById('pi_summary').innerHTML = j.pages.length
+          ? `<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#F8FAFC;text-align:left"><th style="padding:8px">Page</th><th style="padding:8px">Sessions</th><th style="padding:8px">Read 50%</th><th style="padding:8px">Read 100%</th></tr></thead><tbody>${j.pages.map(p=>`<tr style="border-bottom:1px solid #F1F5F9"><td style="padding:8px"><code>/${_esc(p.type)}/${_esc(p.slug)}</code></td><td style="padding:8px">${p.sessions}</td><td style="padding:8px"><span style="color:${p.midReadPct>=50?'#059669':'#DC2626'};font-weight:600">${p.midReadPct}%</span></td><td style="padding:8px"><span style="color:${p.fullReadPct>=20?'#059669':'#DC2626'};font-weight:600">${p.fullReadPct}%</span></td></tr>`).join('')}</tbody></table>`
+          : '<p style="color:#94A3B8;font-size:13px">No tracked sessions yet — share one of your pages and the data will appear here within a few minutes.</p>';
+        j.pages.forEach(p=>{ const o=document.createElement('option'); o.value=p.type+'|'+p.slug; o.textContent=`${p.type}/${p.slug} (${p.sessions} sessions)`; sel.appendChild(o); });
+      }catch(e){ document.getElementById('pi_summary').innerHTML=`<div style="color:#DC2626">${_esc(e.message)}</div>`; }
+    })();
+    document.getElementById('pi_load').addEventListener('click', async ()=>{
+      const v=document.getElementById('pi_pick').value; if(!v) return;
+      const [type,slug]=v.split('|');
+      const out=document.getElementById('pi_detail'); out.innerHTML='⏳ Loading…';
+      try{
+        const sd=await _api(`/api/scroll-tracker/page/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`);
+        const ss=type==='lp' ? await _api(`/api/site-search/insights/${encodeURIComponent(slug)}`).catch(()=>({total:0,top:[],zeroResults:[]})) : null;
+        const bar=(label,pct)=>`<div style="margin:6px 0"><div style="display:flex;justify-content:space-between;font-size:12px"><span>${label}</span><span style="font-weight:700">${pct}%</span></div><div style="background:#F1F5F9;border-radius:4px;height:8px;overflow:hidden"><div style="background:linear-gradient(90deg,#0066FF,#7C3AED);height:100%;width:${pct}%"></div></div></div>`;
+        let html=`<div style="background:#F8FAFC;padding:14px;border-radius:10px"><h3 style="margin:0 0 8px;font-size:15px">📜 Scroll-depth funnel — ${sd.sessions} sessions</h3>${bar('25% read', sd.readRate.p25)}${bar('50% read', sd.readRate.p50)}${bar('75% read', sd.readRate.p75)}${bar('100% read', sd.readRate.p100)}${sd.hint?`<div style="color:#78350F;background:#FEF3C7;padding:8px 10px;border-radius:6px;font-size:12px;margin-top:10px">${_esc(sd.hint)}</div>`:''}</div>`;
+        if(ss){
+          html+=`<div style="background:white;border:1px solid #E5E7EB;padding:14px;border-radius:10px;margin-top:10px"><h3 style="margin:0 0 8px;font-size:15px">🔍 Site-search insights — ${ss.total} searches</h3>`;
+          if(ss.top.length){
+            html+=`<div style="font-size:12px;font-weight:700;color:#64748B;text-transform:uppercase;margin-top:8px">Top queries</div><div style="font-size:13px">${ss.top.slice(0,10).map(q=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #F1F5F9"><span>${_esc(q.query)}</span><span style="color:#64748B">${q.searches}× ${q.zeroHits?'· <span style="color:#DC2626">'+q.zeroHits+' zero-result</span>':''}</span></div>`).join('')}</div>`;
+          }
+          if(ss.zeroResults.length){
+            html+=`<div style="font-size:12px;font-weight:700;color:#DC2626;text-transform:uppercase;margin-top:12px">⚠ Content gaps (zero-result queries)</div><div style="font-size:13px;color:#475569">${ss.zeroResults.slice(0,10).map(q=>`<div style="padding:3px 0">"${_esc(q.query)}" (${q.searches}×)</div>`).join('')}</div><div style="font-size:11px;color:#64748B;margin-top:6px;font-style:italic">→ Each of these is a blog post or product you should consider creating.</div>`;
+          }
+          if(!ss.total) html+='<p style="color:#94A3B8;font-size:13px;margin:6px 0">No searches yet (page has no search block, or no one has searched).</p>';
+          html+='</div>';
+        }
+        out.innerHTML=html;
+      }catch(e){ out.innerHTML=`<div style="color:#DC2626">${_esc(e.message)}</div>`; }
+    });
+  }
+
+  // ── SEO Change Log modal ──────────────────────────────────────────────────
+  function openSeoAnnotationsStudio(){
+    _modal('📌 SEO Change Log', `
+      <p style="color:#64748B;margin:0 0 12px;font-size:13px">Log "what we did" so future-you can answer <em>"did our last edit help?"</em>. Annotations are available for overlay on any chart via <code>/api/seo-annotations/list</code>.</p>
+      <div style="background:#F8FAFC;padding:14px;border-radius:10px;margin-bottom:14px">
+        <h3 style="margin:0 0 8px;font-size:14px">+ Log a change</h3>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">
+          <label style="font-size:12px">Title<input id="an_t" placeholder="Rewrote homepage hero" style="width:100%;padding:8px;border:1.5px solid #E5E7EB;border-radius:6px;margin:3px 0"></label>
+          <label style="font-size:12px">Tag<select id="an_tag" style="width:100%;padding:8px;border:1.5px solid #E5E7EB;border-radius:6px;margin:3px 0"><option>content</option><option>technical</option><option>onpage</option><option>backlink</option><option>redesign</option><option>launch</option><option>outage</option><option>other</option></select></label>
+          <label style="font-size:12px">When<input id="an_when" type="date" style="width:100%;padding:8px;border:1.5px solid #E5E7EB;border-radius:6px;margin:3px 0"></label>
+        </div>
+        <label style="font-size:12px">Notes<textarea id="an_d" rows="2" placeholder="Replaced 'Marketing software' with 'AI marketing OS for SMBs'." style="width:100%;padding:8px;border:1.5px solid #E5E7EB;border-radius:6px;font-family:inherit;margin:3px 0"></textarea></label>
+        <label style="font-size:12px">Affected URLs (one per line, optional)<textarea id="an_u" rows="2" placeholder="https://example.com/&#10;https://example.com/pricing" style="width:100%;padding:8px;border:1.5px solid #E5E7EB;border-radius:6px;font-family:monospace;font-size:11px;margin:3px 0 8px"></textarea></label>
+        <button id="an_save" style="background:#0066FF;color:white;border:0;padding:9px 18px;border-radius:8px;font-weight:700;cursor:pointer">📌 Log change</button>
+      </div>
+      <h3 style="margin:0 0 8px;font-size:14px">Timeline</h3>
+      <div id="an_list">Loading…</div>`, { width: 700 });
+    document.getElementById('an_when').valueAsDate = new Date();
+    const TAG_COLOR = { content:'#0066FF', technical:'#7C3AED', onpage:'#0F766E', backlink:'#DB2777', redesign:'#F59E0B', launch:'#059669', outage:'#DC2626', other:'#64748B' };
+    async function reload(){
+      try{ const j=await _api('/api/seo-annotations/list');
+        document.getElementById('an_list').innerHTML = j.annotations.length
+          ? j.annotations.map(a=>{ const c=TAG_COLOR[a.tag]||'#64748B'; return `<div style="border-left:3px solid ${c};padding:8px 0 8px 12px;margin-bottom:6px"><div style="display:flex;justify-content:space-between;align-items:start;gap:8px"><div><span style="background:${c}15;color:${c};font-size:10px;padding:2px 8px;border-radius:99px;font-weight:700;text-transform:uppercase;margin-right:6px">${_esc(a.tag)}</span><strong>${_esc(a.title)}</strong> <span style="color:#94A3B8;font-size:12px">· ${new Date(a.occurredAt).toLocaleDateString()}</span></div><button data-del-an="${a.id}" style="background:#FEE2E2;color:#991B1B;border:0;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">Delete</button></div>${a.description?`<div style="font-size:13px;color:#475569;margin-top:4px">${_esc(a.description)}</div>`:''}${(a.urls||[]).length?`<div style="font-size:11px;color:#64748B;margin-top:4px">${a.urls.map(u=>`<code style="background:#F1F5F9;padding:1px 6px;border-radius:4px;margin-right:4px">${_esc(u)}</code>`).join('')}</div>`:''}</div>`; }).join('')
+          : '<p style="color:#94A3B8;font-size:13px">No changes logged yet.</p>';
+        document.querySelectorAll('[data-del-an]').forEach(b=>b.addEventListener('click', async ()=>{ if(!confirm('Delete this annotation?'))return; await _api('/api/seo-annotations/'+b.dataset.delAn,{method:'DELETE'}); reload(); }));
+      }catch(e){ document.getElementById('an_list').innerHTML=`<div style="color:#DC2626">${_esc(e.message)}</div>`; }
+    }
+    reload();
+    document.getElementById('an_save').addEventListener('click', async ()=>{
+      try{
+        const urls = an_u.value.split('\n').map(s=>s.trim()).filter(Boolean);
+        await _api('/api/seo-annotations/log',{method:'POST',body:{
+          title:an_t.value, description:an_d.value, tag:an_tag.value,
+          urls, occurredAt: an_when.value ? new Date(an_when.value).toISOString() : undefined
+        }});
+        _toast('Logged ✓'); an_t.value=an_d.value=an_u.value=''; reload();
+      }catch(e){ _toast(e.message,'err'); }
     });
   }
 
@@ -42189,8 +42277,30 @@ function _rpToCarousel(title) {
     async function reload(){
       const j=await _api('/api/site-builder/pages');
       document.getElementById('sb_list').innerHTML = j.pages.length
-        ? j.pages.map(p=>`<div style="border-bottom:1px solid #F1F5F9;padding:10px 0;display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:600">${_esc(p.title||p.slug)}</div><div style="font-size:12px;color:#64748B">${p.blockCount} blocks · /${p.slug}</div></div><a href="/lp/${_esc(p.slug)}" target="_blank" style="background:#0F172A;color:white;padding:6px 12px;border-radius:6px;text-decoration:none;font-size:13px">🔗 View</a></div>`).join('')
+        ? j.pages.map(p=>`<div style="border-bottom:1px solid #F1F5F9;padding:10px 0;display:flex;justify-content:space-between;align-items:center;gap:8px"><div><div style="font-weight:600">${_esc(p.title||p.slug)}</div><div style="font-size:12px;color:#64748B">${p.blockCount} blocks · /${p.slug}</div></div><div style="display:flex;gap:6px"><button data-add-search="${_esc(p.slug)}" style="background:#7C3AED;color:white;border:0;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px">+ Search block</button><a href="/lp/${_esc(p.slug)}" target="_blank" style="background:#0F172A;color:white;padding:6px 12px;border-radius:6px;text-decoration:none;font-size:13px">🔗 View</a></div></div>`).join('')
         : '<p style="color:#94A3B8;font-size:13px">No pages yet — generate one above.</p>';
+      document.querySelectorAll('[data-add-search]').forEach(b=>b.addEventListener('click', ()=>addSearchBlock(b.dataset.addSearch)));
+    }
+    async function addSearchBlock(slug){
+      _modal('+ Add searchable list block', `
+        <p style="font-size:13px;color:#64748B;margin:0 0 10px">Adds a search bar + filterable card grid to <code>/lp/${_esc(slug)}</code>. Internal-search queries (and zero-result ones) are captured under Page Insights.</p>
+        <label>Section heading<input id="sx_h" placeholder="Browse our resources" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;margin:4px 0"></label>
+        <label>Subheading<input id="sx_s" placeholder="Search by topic, keyword or product name" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;margin:4px 0"></label>
+        <label>Items (one per line — <code>title | body | url</code>)<textarea id="sx_i" rows="6" placeholder="Pricing | See plans starting at $29 | https://example.com/pricing&#10;Onboarding guide | 5-min walkthrough for new users | https://example.com/start" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:monospace;font-size:12px;margin:4px 0 10px"></textarea></label>
+        <button id="sx_save" style="background:#7C3AED;color:white;border:0;padding:10px 18px;border-radius:8px;font-weight:700;cursor:pointer">Add block</button>`, { width: 600 });
+      document.getElementById('sx_save').addEventListener('click', async ()=>{
+        try{
+          const items = sx_i.value.split('\n').map(l=>l.trim()).filter(Boolean).map(l=>{
+            const [title='', body='', url=''] = l.split('|').map(s=>s.trim());
+            return { title, body, url };
+          });
+          const page = (await _api('/api/site-builder/page/'+encodeURIComponent(slug))).page;
+          const blocks = (page.blocks || []).filter(b=>b.type!=='search');
+          blocks.push({ type:'search', heading:sx_h.value, subheading:sx_s.value, placeholder:'Search…', items });
+          await _api('/api/site-builder/page/'+encodeURIComponent(slug),{method:'POST',body:{...page,blocks}});
+          _toast('Search block added ✓'); document.getElementById('_studio_modal').remove(); reload();
+        }catch(e){ _toast(e.message,'err'); }
+      });
     }
     reload();
     document.getElementById('sb_go').addEventListener('click', async ()=>{

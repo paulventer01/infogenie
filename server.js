@@ -127,6 +127,8 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/linksell\/checkout\/[^\/]+$/,             // public Stripe checkout init (rate-limited)
   /^\/api\/linksell\/optin\/[^\/]+$/,                // public email opt-in  (rate-limited)
   /^\/api\/studio\/case-study\/[^\/]+\/page$/,       // public share page for case studies (HTML render)
+  /^\/api\/scroll-tracker\/event$/,                  // public scroll-depth ingest from rendered pages (rate-limited)
+  /^\/api\/site-search\/event$/,                     // public site-search ingest from rendered pages (rate-limited)
 ];
 
 // Lightweight in-memory per-IP rate limiter for public Studio Pack POSTs.
@@ -143,7 +145,7 @@ function _rateLimitPublic(req, res, next) {
   next();
 }
 // Apply to public POST surfaces (cheap; never blocks dashboard usage)
-const _RL_PATHS = [/^\/api\/bookings\/book\//, /^\/api\/linksell\/checkout\//, /^\/api\/linksell\/optin\//];
+const _RL_PATHS = [/^\/api\/bookings\/book\//, /^\/api\/linksell\/checkout\//, /^\/api\/linksell\/optin\//, /^\/api\/scroll-tracker\/event$/, /^\/api\/site-search\/event$/];
 app.use((req, res, next) => {
   if (req.method !== 'POST') return next();
   if (_RL_PATHS.some(rx => rx.test(req.path))) return _rateLimitPublic(req, res, next);
@@ -8858,6 +8860,9 @@ app.use('/api/voice-caller',   require('./services/voice_caller/api'));
 app.use('/api/bookings',       require('./services/bookings/api'));
 app.use('/api/site-builder',   require('./services/site_builder/api'));
 app.use('/api/linksell',       require('./services/linksell/api'));
+app.use('/api/scroll-tracker',  require('./services/scroll_tracker/api'));
+app.use('/api/seo-annotations', require('./services/seo_annotations/api'));
+app.use('/api/site-search',     require('./services/site_search/api'));
 // Public renderers (no /api prefix) — rewrite path & forward to mounted router
 app.get('/lp/:slug',  (req, res, next) => { req.url = '/render/' + req.params.slug; require('./services/site_builder/api')(req, res, next); });
 app.get('/bio/:slug', (req, res, next) => { req.url = '/render/' + req.params.slug; require('./services/linksell/api')(req, res, next);     });

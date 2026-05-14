@@ -7,6 +7,7 @@
 const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
+const _scrollTracker = require('../scroll_tracker/api');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _esc(s) { return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -205,6 +206,7 @@ async function optin(form) {
   if ((await r.json()).ok) { form.innerHTML = '<div style="color:#059669;font-weight:600;text-align:center;width:100%">✓ Subscribed!</div>'; }
 }
 </script>
+${_scrollTracker.snippet('bio', page.slug || '')}
 </body></html>`;
 }
 
