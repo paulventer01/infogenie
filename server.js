@@ -357,13 +357,17 @@ app.get('/api/ad-platforms/status', (req, res) => {
                   process.env.GOOGLE_ADS_CUSTOMER_ID && process.env.GOOGLE_ADS_CLIENT_ID &&
                   process.env.GOOGLE_ADS_CLIENT_SECRET),
     meta:      !!(process.env.META_AD_ACCOUNT_ID && process.env.META_ACCESS_TOKEN),
-    tiktok:    !!(process.env.TIKTOK_ADVERTISER_ID && process.env.TIKTOK_ACCESS_TOKEN)
+    tiktok:    !!(process.env.TIKTOK_ADVERTISER_ID && process.env.TIKTOK_ACCESS_TOKEN),
+    microsoft: !!(process.env.MICROSOFT_ADS_DEVELOPER_TOKEN && process.env.MICROSOFT_ADS_CLIENT_ID &&
+                  process.env.MICROSOFT_ADS_CLIENT_SECRET   && process.env.MICROSOFT_ADS_REFRESH_TOKEN &&
+                  process.env.MICROSOFT_ADS_CUSTOMER_ID     && process.env.MICROSOFT_ADS_ACCOUNT_ID)
   });
 });
 
 // ── Google Ads campaign launch ────────────────────────────────────────────────
 app.post('/api/launch/google-ads', async (req, res) => {
-  const { campaignName, budget, startDate } = req.body;
+  const { campaignName, budget, startDate, objective = 'performance' } = req.body;
+  const isAwareness = String(objective).toLowerCase().includes('awareness') || String(objective).toLowerCase().includes('brand');
   const devToken     = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
   const clientId     = process.env.GOOGLE_ADS_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
@@ -397,11 +401,16 @@ app.post('/api/launch/google-ads', async (req, res) => {
     const sd = startDate ? startDate.replace(/-/g, '') : new Date().toISOString().split('T')[0].replace(/-/g, '');
     const campRaw = await callHttpsGeneric('googleads.googleapis.com',
       `/v16/customers/${cleanId}/campaigns:mutate`, 'POST',
-      JSON.stringify({ operations: [{ create: {
-        name: campaignName, status: 'PAUSED', advertisingChannelType: 'SEARCH',
-        manualCpc: { enhancedCpcEnabled: false },
+      JSON.stringify({ operations: [{ create: Object.assign({
+        name: campaignName, status: 'PAUSED',
+        // Brand-awareness uses Display network with vCPM-style bidding for reach;
+        // performance default stays on Search with manualCpc.
+        advertisingChannelType: isAwareness ? 'DISPLAY' : 'SEARCH',
         campaignBudget: budgetData.results[0].resourceName, startDate: sd
-      }}] }), authHeaders);
+      }, isAwareness
+        ? { targetCpm: {} }                               // optimise for impressions/CPM
+        : { manualCpc: { enhancedCpcEnabled: false } }    // optimise for clicks/conversions
+      ) }] }), authHeaders);
     const campData = JSON.parse(campRaw);
     if (!campData.results) throw new Error('Campaign creation failed: ' + JSON.stringify(campData));
     const campaignId = campData.results[0].resourceName.split('/').pop();
@@ -437,7 +446,11 @@ app.post('/api/launch/google-ads', async (req, res) => {
 
 // ── Meta Marketing API campaign launch ───────────────────────────────────────
 app.post('/api/launch/meta', async (req, res) => {
-  const { campaignName, budget } = req.body;
+  const { campaignName, budget, objective: objectiveOpt = 'performance' } = req.body;
+  const metaObjective = (String(objectiveOpt).toLowerCase().includes('awareness') ||
+                         String(objectiveOpt).toLowerCase().includes('brand'))
+    ? 'OUTCOME_AWARENESS'   // optimised for reach + CPM + video-completion
+    : 'OUTCOME_TRAFFIC';    // default — clicks → conversions
   const adAccountId = process.env.META_AD_ACCOUNT_ID;
   const accessToken = process.env.META_ACCESS_TOKEN;
 
@@ -450,7 +463,7 @@ app.post('/api/launch/meta', async (req, res) => {
     const dailyCents  = String(Math.round((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) * 100 / 30));
     const accountId   = cleanAccId.startsWith('act_') ? cleanAccId : 'act_' + cleanAccId;
     const params      = new URLSearchParams({
-      name: campaignName, objective: 'OUTCOME_TRAFFIC', status: 'PAUSED',
+      name: campaignName, objective: metaObjective, status: 'PAUSED',
       daily_budget: dailyCents, special_ad_categories: '[]', access_token: cleanToken
     });
     const campRaw  = await callHttpsGeneric('graph.facebook.com', `/v19.0/${accountId}/campaigns`, 'POST', params.toString(), { 'Content-Type': 'application/x-www-form-urlencoded' });
@@ -479,6 +492,89 @@ app.post('/api/launch/meta', async (req, res) => {
     } else if (e.message.includes('permission') || e.message.includes('#200')) {
       friendlyError = 'Meta API permission denied — ensure your access token has ads_management permission.';
     }
+    res.json({ success: false, error: friendlyError });
+  }
+});
+
+// ── Microsoft Ads (Bing) campaign launch ─────────────────────────────────────
+// Mirrors the Google/Meta/TikTok launch shape. Accepts an optional `objective`
+// of 'performance' (default — sales/leads) or 'brand-awareness' (reach/CPM).
+app.post('/api/launch/microsoft-ads', async (req, res) => {
+  const { campaignName, budget, objective = 'performance' } = req.body || {};
+  const need = ['MICROSOFT_ADS_DEVELOPER_TOKEN','MICROSOFT_ADS_CLIENT_ID','MICROSOFT_ADS_CLIENT_SECRET',
+                'MICROSOFT_ADS_REFRESH_TOKEN','MICROSOFT_ADS_CUSTOMER_ID','MICROSOFT_ADS_ACCOUNT_ID'];
+  for (const k of need) if (!process.env[k]) return res.json({ success:false, error:`Microsoft Ads credentials not configured — set ${k} in Settings → Microsoft Ads.` });
+
+  try {
+    const tokRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+      method:'POST', headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.MICROSOFT_ADS_CLIENT_ID,
+        client_secret: process.env.MICROSOFT_ADS_CLIENT_SECRET,
+        refresh_token: process.env.MICROSOFT_ADS_REFRESH_TOKEN,
+        grant_type:'refresh_token',
+        scope:'https://ads.microsoft.com/msads.manage offline_access',
+      }).toString(),
+    });
+    const tj = await tokRes.json();
+    if (!tj.access_token) throw new Error('Microsoft Ads OAuth failed: ' + (tj.error_description || tj.error || 'unknown'));
+
+    // Bing's Campaign Management API is SOAP-only. We use the JSON endpoint
+    // exposed via the bingads-server bridge — same hostname, REST flavour.
+    const dailyBud = Math.max(5, Math.round((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30));
+    const headers = {
+      'Authorization':     `Bearer ${tj.access_token}`,
+      'DeveloperToken':    process.env.MICROSOFT_ADS_DEVELOPER_TOKEN,
+      'CustomerId':        process.env.MICROSOFT_ADS_CUSTOMER_ID,
+      'CustomerAccountId': process.env.MICROSOFT_ADS_ACCOUNT_ID,
+      'Content-Type':      'application/json',
+    };
+    const isAwareness = String(objective).toLowerCase().includes('awareness') || String(objective).toLowerCase().includes('brand');
+    const campPayload = {
+      Campaigns: [{
+        Name: campaignName,
+        DailyBudget: dailyBud,
+        BudgetType: 'DailyBudgetStandard',
+        Status: 'Paused',
+        TimeZone: 'PacificTimeUSCanadaTijuana',
+        CampaignType: 'Search',
+        // Brand awareness → TargetImpressionShare (Bing's reach-style scheme,
+        // bids for top-of-page placement). Performance → MaxConversions
+        // (Bing's standard Smart Bidding for sales/leads).
+        BiddingScheme: isAwareness
+          ? { Type: 'TargetImpressionShare', TargetImpressionShare: 65, TargetAdPosition: 'TopOfPage', MaxCpc: { Amount: 5 } }
+          : { Type: 'MaxConversions' },
+        Settings: [],
+      }],
+    };
+    const campRes = await fetch('https://campaign.api.bingads.microsoft.com/CampaignManagement/v13/Campaigns', {
+      method:'POST', headers, body: JSON.stringify(campPayload),
+    });
+    const cj = await campRes.json().catch(() => ({}));
+    const newId = cj?.CampaignIds?.[0] || cj?.Campaigns?.[0]?.Id;
+    if (!newId) {
+      const errMsg = cj?.PartialErrors?.[0]?.Message || cj?.error?.message || `Bing Ads error (${campRes.status})`;
+      throw new Error(errMsg);
+    }
+
+    try {
+      await _db.getPool().query(`
+        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
+        VALUES ('microsoft', $1, $2, $3, 'paused', TRUE)
+        ON CONFLICT (platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
+      `, [String(newId), campaignName, dailyBud]);
+    } catch (_e) {}
+
+    res.json({
+      success: true, platform: 'Microsoft Ads', campaignId: newId, status: 'PAUSED',
+      message: `Campaign "${campaignName}" created in Microsoft Advertising (ID: ${newId}). It's paused — open the dashboard to add ad groups, ads and keywords, then activate.`,
+      dashboardUrl: `https://ui.ads.microsoft.com/campaign/vnext/campaigns?customerId=${process.env.MICROSOFT_ADS_CUSTOMER_ID}&aid=${process.env.MICROSOFT_ADS_ACCOUNT_ID}`,
+    });
+  } catch (e) {
+    console.error('[Microsoft Ads launch]', e.message);
+    let friendlyError = e.message;
+    if (/oauth|invalid_grant|refresh/i.test(e.message)) friendlyError = 'Microsoft Ads OAuth failed — your refresh token has expired. Re-authorise in Settings → Microsoft Ads.';
+    else if (/developer\s*token|forbidden/i.test(e.message)) friendlyError = 'Microsoft Ads developer token missing or unapproved — apply at developers.ads.microsoft.com/Account.';
     res.json({ success: false, error: friendlyError });
   }
 });
@@ -8720,6 +8816,8 @@ const _googleAdsInsightsRouter = require('./services/google_ads_insights/api');
 const _tiktokAdsInsightsRouter = require('./services/tiktok_ads_insights/api');
 app.use('/api/google-ads-insights', _googleAdsInsightsRouter);
 app.use('/api/tiktok-ads-insights', _tiktokAdsInsightsRouter);
+const _microsoftAdsInsightsRouter = require('./services/microsoft_ads_insights/api');
+app.use('/api/microsoft-ads-insights', _microsoftAdsInsightsRouter);
 
 // ── Tier 15 ────────────────────────────────────────────────────────────────
 const _socialPublisherRouter = require('./services/social_publisher/api');
@@ -9780,6 +9878,114 @@ async function _fetchTikTokSpend(days = 30) {
       conversions: Number(row.conversion  || 0),
     };
   } catch (e) { return { ok:false, channel:'tiktok', error: e.message }; }
+}
+
+// ── Microsoft Advertising (Bing Ads) — submit/poll/download CSV report.
+//    Bing's reporting API is async, so this can take 8-14s. We cap polling
+//    at ~14s and degrade gracefully if the report is still building.
+async function _fetchMicrosoftSpend(days = 30) {
+  const need = ['MICROSOFT_ADS_DEVELOPER_TOKEN','MICROSOFT_ADS_CLIENT_ID','MICROSOFT_ADS_CLIENT_SECRET',
+                'MICROSOFT_ADS_REFRESH_TOKEN','MICROSOFT_ADS_CUSTOMER_ID','MICROSOFT_ADS_ACCOUNT_ID'];
+  for (const k of need) {
+    const v = _cleanSecret(process.env[k]);
+    if (!v) return { ok:false, channel:'microsoft', error:'not-configured' };
+  }
+  try {
+    // 1) OAuth — refresh access token
+    const tok = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id:     _cleanSecret(process.env.MICROSOFT_ADS_CLIENT_ID),
+        client_secret: _cleanSecret(process.env.MICROSOFT_ADS_CLIENT_SECRET),
+        refresh_token: _cleanSecret(process.env.MICROSOFT_ADS_REFRESH_TOKEN),
+        grant_type:    'refresh_token',
+        scope:         'https://ads.microsoft.com/msads.manage offline_access',
+      }).toString(),
+    });
+    const tj = await tok.json().catch(() => ({}));
+    if (!tj.access_token) return { ok:false, channel:'microsoft', error:'oauth-failed', detail: tj.error_description || tj.error };
+    const headers = {
+      'Authorization':     `Bearer ${tj.access_token}`,
+      'DeveloperToken':    _cleanSecret(process.env.MICROSOFT_ADS_DEVELOPER_TOKEN),
+      'CustomerId':        _cleanSecret(process.env.MICROSOFT_ADS_CUSTOMER_ID),
+      'CustomerAccountId': _cleanSecret(process.env.MICROSOFT_ADS_ACCOUNT_ID),
+      'Content-Type':      'application/json',
+    };
+    const REPORTING = 'https://reporting.api.bingads.microsoft.com/Reporting/v13';
+    // 2) Submit report
+    const submit = await fetch(`${REPORTING}/GenerateReport/Submit`, {
+      method:'POST', headers,
+      body: JSON.stringify({ ReportRequest: {
+        ExcludeColumnHeaders:false, ExcludeReportFooter:true, ExcludeReportHeader:true,
+        Format:'Csv', ReportName:`IG Account ${days}d`, ReturnOnlyCompleteData:false,
+        Type:'AccountPerformanceReport',
+        Aggregation: days <= 7 ? 'Daily' : days <= 31 ? 'Daily' : 'Weekly',
+        Columns:['AccountId','TimePeriod','Spend','Impressions','Clicks','Conversions','Revenue'],
+        Scope:{ AccountIds:[Number(process.env.MICROSOFT_ADS_ACCOUNT_ID)] },
+        Time:{ PredefinedTime: days <= 7 ? 'LastSevenDays' : days <= 30 ? 'LastMonth' : 'LastThreeMonths' },
+      } }),
+    });
+    const sj = await submit.json().catch(() => ({}));
+    if (!submit.ok || !sj.ReportRequestId) {
+      const msg = sj?.Errors?.[0]?.Message || sj?.error?.message || `submit-${submit.status}`;
+      return { ok:false, channel:'microsoft', error: msg };
+    }
+    // 3) Poll
+    const reqId = sj.ReportRequestId;
+    const deadline = Date.now() + 14000;
+    let downloadUrl = null, lastStatus = 'Pending';
+    const delays = [1500, 2000, 2500, 3000, 3500];
+    let i = 0;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, delays[Math.min(i++, delays.length-1)]));
+      const pr = await fetch(`${REPORTING}/GenerateReport/Poll`, {
+        method:'POST', headers, body: JSON.stringify({ ReportRequestId: reqId }),
+      });
+      const pj = await pr.json().catch(() => ({}));
+      lastStatus = pj?.ReportRequestStatus?.Status || lastStatus;
+      if (lastStatus === 'Success') { downloadUrl = pj.ReportRequestStatus.ReportDownloadUrl; break; }
+      if (lastStatus === 'Error')   return { ok:false, channel:'microsoft', error:'report-error' };
+    }
+    if (!downloadUrl) return { ok:false, channel:'microsoft', error:'report-pending', detail:'Bing report still building — refresh in ~1 min' };
+    // 4) Download
+    const dl = await fetch(downloadUrl);
+    if (!dl.ok) return { ok:false, channel:'microsoft', error:`download-${dl.status}` };
+    // Bing returns the report Csv directly; if the URL points to a .zip we
+    // fall back to extracting via decompression. node fetch handles gzip on
+    // the wire, so the raw download is the inner CSV in the common case.
+    let csv = await dl.text();
+    // If the response is a ZIP container (PK header), bail gracefully —
+    // upstream caller can retry next cycle. Avoids garbled parsing.
+    if (csv.charCodeAt(0) === 0x50 && csv.charCodeAt(1) === 0x4B) {
+      return { ok:false, channel:'microsoft', error:'zipped-report-unsupported', detail:'Bing returned a zipped report bundle — set ExcludeReportHeader/Footer in the request and retry.' };
+    }
+    // Robust CSV split — handles quoted fields with embedded commas and
+    // doubled-quote escaping ("" → ").
+    const splitCsv = (line) => {
+      const out = []; let cur = '', q = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') { if (q && line[i+1] === '"') { cur += '"'; i++; } else q = !q; }
+        else if (c === ',' && !q) { out.push(cur); cur = ''; }
+        else cur += c;
+      }
+      out.push(cur);
+      return out.map(s => s.replace(/^"|"$/g, ''));
+    };
+    const lines = csv.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) return { ok:true, channel:'microsoft', spend:0, impressions:0, clicks:0, conversions:0, revenue:0 };
+    const hdrs = splitCsv(lines[0]).map(h => h.trim());
+    const idx  = (n) => hdrs.indexOf(n);
+    let spend=0, imp=0, clk=0, conv=0, rev=0;
+    for (let r = 1; r < lines.length; r++) {
+      const cells = splitCsv(lines[r]);
+      const num = (i) => i >= 0 ? Number(String(cells[i]||'').replace(/[^0-9.\-]/g,'')) || 0 : 0;
+      spend += num(idx('Spend')); imp += num(idx('Impressions')); clk += num(idx('Clicks'));
+      conv  += num(idx('Conversions')); rev += num(idx('Revenue'));
+    }
+    return { ok:true, channel:'microsoft', spend:+spend.toFixed(2), impressions:imp, clicks:clk, conversions:conv, revenue:+rev.toFixed(2) };
+  } catch (e) { return { ok:false, channel:'microsoft', error: e.message }; }
 }
 
 // Look for conversion-pattern events in the user's Amplitude project. Used as
@@ -12307,15 +12513,17 @@ app.get('/api/cross-channel-report', async (req, res) => {
       .replace(/^https?:\/\//, '').replace(/\/$/, '').split('/')[0];
     const brand  = String(req.query.brand || '').trim().slice(0, 80);
 
-    const [meta, google, tiktok] = await Promise.all([
+    const [meta, google, tiktok, microsoft] = await Promise.all([
       _fetchMetaSpend(days),
       _fetchGoogleAdsSpend(days),
       _fetchTikTokSpend(days),
+      _fetchMicrosoftSpend(days),
     ]);
     const paidChannels = [
-      { name:'Meta Ads',   icon:'📘', ...meta   },
-      { name:'Google Ads', icon:'🟢', ...google },
-      { name:'TikTok Ads', icon:'⬛', ...tiktok },
+      { name:'Meta Ads',       icon:'📘', ...meta      },
+      { name:'Google Ads',     icon:'🟢', ...google    },
+      { name:'TikTok Ads',     icon:'⬛', ...tiktok    },
+      { name:'Microsoft Ads',  icon:'🅱️', ...microsoft },
     ];
     const totalSpend       = paidChannels.filter(c => c.ok).reduce((s, c) => s + (c.spend       || 0), 0);
     const totalImpressions = paidChannels.filter(c => c.ok).reduce((s, c) => s + (c.impressions || 0), 0);

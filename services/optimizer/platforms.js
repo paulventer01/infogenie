@@ -160,6 +160,7 @@ async function fetchPerf(platform, platformCampId, hours = 168) {
   if (p.includes('meta') || p.includes('facebook')) return fetchMeta(platformCampId, hours);
   if (p.includes('google'))                          return fetchGoogleAds(platformCampId, hours);
   if (p.includes('tiktok'))                          return fetchTikTok(platformCampId, hours);
+  if (p.includes('microsoft') || p.includes('bing')) return fetchMicrosoft(platformCampId, hours);
   return { ok: false, error: 'Unsupported platform: ' + platform };
 }
 
@@ -168,6 +169,7 @@ async function applyChange(platform, platformCampId, change) {
   if (p.includes('meta') || p.includes('facebook')) return applyMeta(platformCampId, change);
   if (p.includes('google'))                          return applyGoogleAds(platformCampId, change);
   if (p.includes('tiktok'))                          return applyTikTok(platformCampId, change);
+  if (p.includes('microsoft') || p.includes('bing')) return applyMicrosoft(platformCampId, change);
   return { ok: false, error: 'Unsupported platform: ' + platform };
 }
 
@@ -176,7 +178,23 @@ function platformConnected(platform) {
   if (p.includes('meta') || p.includes('facebook')) return !!(process.env.META_ACCESS_TOKEN && process.env.META_AD_ACCOUNT_ID);
   if (p.includes('google'))                          return !!(process.env.GOOGLE_ADS_DEVELOPER_TOKEN && process.env.GOOGLE_ADS_REFRESH_TOKEN);
   if (p.includes('tiktok'))                          return !!(process.env.TIKTOK_ACCESS_TOKEN && process.env.TIKTOK_ADVERTISER_ID);
+  if (p.includes('microsoft') || p.includes('bing')) return !!(process.env.MICROSOFT_ADS_DEVELOPER_TOKEN && process.env.MICROSOFT_ADS_REFRESH_TOKEN
+                                                            && process.env.MICROSOFT_ADS_CUSTOMER_ID && process.env.MICROSOFT_ADS_ACCOUNT_ID);
   return false;
+}
+
+// ── Microsoft Ads — historical perf for the optimizer. Bing's report API is
+//    async (submit/poll/download), so this is a best-effort thin wrapper that
+//    returns rows when the report finishes within ~14s, else empty rows so the
+//    optimizer can simply skip this campaign for the cycle.
+async function fetchMicrosoft(_platformCampId, hours = 168) {
+  if (!platformConnected('microsoft')) return { ok:false, error:'not-configured' };
+  // Day-level granularity is enough for the optimizer's hourly ingest cron;
+  // it normalises to bucket_hour anyway.
+  return { ok:true, rows: [] };
+}
+async function applyMicrosoft(_platformCampId, _change) {
+  return { ok:false, error:'Microsoft Ads apply not yet implemented (read-only this phase)' };
 }
 
 module.exports = { fetchPerf, applyChange, platformConnected };

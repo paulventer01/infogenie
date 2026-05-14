@@ -1540,7 +1540,8 @@ function buildLaunchModal(camp, idx) {
     'YouTube':         { icon:'🔴', ctr:'0.6%', cpa:'$52', bid:'Target CPA',                  aud:'In-market + custom intent audiences',       kpi:'View-through conversions',   creative:'15-sec unskippable + 30-sec skippable' },
     'AI Optimised':    { icon:'🤖', ctr:'3.9%', cpa:'$32', bid:'InfoGenie RL Engine (auto)',   aud:'Dynamic cross-platform targeting',          kpi:'Blended ROAS',               creative:'Auto-generated, refreshed every 72h' },
     'LinkedIn Ads':    { icon:'🔷', ctr:'0.8%', cpa:'$85', bid:'Maximum Delivery',            aud:'Job title + industry + seniority',          kpi:'MQL Rate & Pipeline Value',  creative:'Sponsored Content + InMail' },
-    'Display Network': { icon:'🟡', ctr:'0.35%',cpa:'$58', bid:'Target CPA',                  aud:'Intent-based display audiences',            kpi:'Brand lift & CPA',           creative:'Responsive display + HTML5 banners' }
+    'Display Network': { icon:'🟡', ctr:'0.35%',cpa:'$58', bid:'Target CPA',                  aud:'Intent-based display audiences',            kpi:'Brand lift & CPA',           creative:'Responsive display + HTML5 banners' },
+    'Microsoft Ads':   { icon:'🅱️', ctr:'2.9%', cpa:'$31', bid:'Target CPA',                  aud:'Bing search intent + LinkedIn audience extension', kpi:'Conversions & CPA',  creative:'Responsive Search Ads + Audience Ads' }
   };
   const pm = platformMeta[platform] || platformMeta['Google Ads'];
 
@@ -1629,7 +1630,7 @@ function buildLaunchModal(camp, idx) {
             <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Platform</label>
             <select id="lm-platform" onchange="lmSwitchPlatform(this.value)" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#0066FF'" onblur="this.style.borderColor='#E2E8F0'">
               <option value="All Platforms"${platform==='All Platforms'||!platform?' selected':''}>⊕ All Platforms (Select All)</option>
-              ${['Google Ads','Meta Ads','TikTok Ads','YouTube','LinkedIn Ads','Display Network','AI Optimised'].map(p=>`<option value="${p}"${p===platform?' selected':''}>${p}</option>`).join('')}
+              ${['Google Ads','Meta Ads','Microsoft Ads','TikTok Ads','YouTube','LinkedIn Ads','Display Network','AI Optimised'].map(p=>`<option value="${p}"${p===platform?' selected':''}>${p}</option>`).join('')}
             </select>
           </div>
           <div>
@@ -1643,6 +1644,14 @@ function buildLaunchModal(camp, idx) {
           <div>
             <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">End Date</label>
             <input id="lm-enddate" type="date" value="${new Date(Date.now()+30*24*60*60*1000).toISOString().split('T')[0]}" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#EF4444'" onblur="this.style.borderColor='#E2E8F0'">
+          </div>
+          <div style="grid-column:1/-1">
+            <label style="font-size:0.72rem;font-weight:600;color:#6B7280;display:block;margin-bottom:4px">Campaign Goal · This changes how the platform optimises your spend</label>
+            <select id="lm-objective" onchange="lmUpdateObjectiveHint(this.value)" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.82rem;color:#0A1628;outline:none;background:white;font-family:'Inter',sans-serif" onfocus="this.style.borderColor='#0066FF'" onblur="this.style.borderColor='#E2E8F0'">
+              <option value="performance" selected>🎯 Performance — drive sales / leads (CPA + ROAS optimised)</option>
+              <option value="brand-awareness">📣 Brand Awareness — maximise reach &amp; impressions (CPM + video-completion optimised)</option>
+            </select>
+            <div id="lm-objective-hint" style="font-size:0.72rem;color:#6B7280;margin-top:6px;line-height:1.45">Default. The platform bids for the lowest cost per conversion. KPIs tracked: CPA, ROAS, conversion rate.</div>
           </div>
         </div>
         <div style="margin-top:10px">
@@ -1767,6 +1776,17 @@ function buildLaunchModal(camp, idx) {
     if (el('lm-daily-val')) el('lm-daily-val').textContent = '$' + newDaily + '/day';
   };
 
+  window.lmUpdateObjectiveHint = function(val) {
+    const el = document.getElementById('lm-objective-hint');
+    if (!el) return;
+    if (String(val).includes('awareness') || String(val).includes('brand')) {
+      el.innerHTML = '<strong style="color:#7C3AED">Brand Awareness mode.</strong> The platform bids for the lowest <em>cost per 1,000 impressions</em>, prioritising reach, frequency and video-completion rate. KPIs tracked: CPM, reach, view-through rate. Use for top-funnel awareness, product launches and category education.';
+      el.style.color = '#5B21B6';
+    } else {
+      el.innerHTML = 'Default. The platform bids for the lowest cost per conversion. KPIs tracked: CPA, ROAS, conversion rate.';
+      el.style.color = '#6B7280';
+    }
+  };
   window.lmSwitchPlatform = function(sel) {
     const meta = platformMeta[sel] || platformMeta['Google Ads'];
     const el = id => document.getElementById(id);
@@ -1853,7 +1873,7 @@ function buildLaunchModal(camp, idx) {
     // ── Show success screen IMMEDIATELY (non-blocking) ────────────────────────
     const inner2 = document.getElementById('campLaunchRichModalInner');
     const platformKey = finalPlatform.toLowerCase();
-    const isPlatformConnected = platformKey.includes('google') || platformKey.includes('meta') || platformKey.includes('facebook') || platformKey.includes('tiktok');
+    const isPlatformConnected = platformKey.includes('google') || platformKey.includes('meta') || platformKey.includes('facebook') || platformKey.includes('tiktok') || platformKey.includes('microsoft') || platformKey.includes('bing');
     const apiStatusId = 'lm-api-status-' + Date.now();
 
     inner2.innerHTML = `
@@ -1894,6 +1914,7 @@ function buildLaunchModal(camp, idx) {
     const _trackedPlatform = platformKey.includes('google') ? 'google'
                            : (platformKey.includes('meta') || platformKey.includes('facebook')) ? 'meta'
                            : platformKey.includes('tiktok') ? 'tiktok'
+                           : (platformKey.includes('microsoft') || platformKey.includes('bing')) ? 'microsoft'
                            : null;
     const _registerTracked = (campId) => {
       if (!_trackedPlatform || !campId) return;
@@ -1924,9 +1945,12 @@ function buildLaunchModal(camp, idx) {
 
     // ── Call real ad platform API in the background ───────────────────────────
     if (isPlatformConnected) {
-      const apiBody = JSON.stringify({ campaignName: finalName, budget: finalBudgetNum, startDate: finalDate, endDate: finalEndDate });
+      const _objEl = document.getElementById('lm-objective');
+      const _finalObjective = _objEl ? _objEl.value : 'performance';
+      const apiBody = JSON.stringify({ campaignName: finalName, budget: finalBudgetNum, startDate: finalDate, endDate: finalEndDate, objective: _finalObjective });
       const apiUrl  = platformKey.includes('google') ? '/api/launch/google-ads'
                     : (platformKey.includes('meta') || platformKey.includes('facebook')) ? '/api/launch/meta'
+                    : (platformKey.includes('microsoft') || platformKey.includes('bing')) ? '/api/launch/microsoft-ads'
                     : '/api/launch/tiktok';
       fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: apiBody })
         .then(r => r.json())
@@ -28925,6 +28949,7 @@ function _blendedHtml(j) {
           fixSecrets = c.key === 'meta'   ? ['META_ACCESS_TOKEN', 'META_AD_ACCOUNT_ID']
                      : c.key === 'google' ? ['GOOGLE_ADS_REFRESH_TOKEN', 'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET', 'GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_ADS_CUSTOMER_ID']
                      : c.key === 'tiktok' ? ['TIKTOK_ACCESS_TOKEN', 'TIKTOK_ADVERTISER_ID']
+                     : c.key === 'microsoft' ? ['MICROSOFT_ADS_DEVELOPER_TOKEN','MICROSOFT_ADS_CLIENT_ID','MICROSOFT_ADS_CLIENT_SECRET','MICROSOFT_ADS_REFRESH_TOKEN','MICROSOFT_ADS_CUSTOMER_ID','MICROSOFT_ADS_ACCOUNT_ID']
                      : [];
           return `
             <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:20px">
@@ -32382,22 +32407,38 @@ window._adPlatformDefs = {
     ],
     timeline: 'Approx. 24 hours for app approval.',
   },
+  microsoft: {
+    name: 'Microsoft Ads (Bing)',
+    icon: '🅱️',
+    color: '#00A4EF',
+    envVars: ['MICROSOFT_ADS_DEVELOPER_TOKEN', 'MICROSOFT_ADS_CLIENT_ID', 'MICROSOFT_ADS_CLIENT_SECRET', 'MICROSOFT_ADS_REFRESH_TOKEN', 'MICROSOFT_ADS_CUSTOMER_ID', 'MICROSOFT_ADS_ACCOUNT_ID'],
+    steps: [
+      'Apply for a <strong>Microsoft Advertising Developer Token</strong> at <a href="https://developers.ads.microsoft.com/Account" target="_blank" rel="noopener" style="color:#0066FF">developers.ads.microsoft.com/Account</a>. Sandbox tokens are instant; production tokens take ~3 business days.',
+      'Register an Azure AD app at <a href="https://portal.azure.com" target="_blank" rel="noopener" style="color:#0066FF">portal.azure.com</a> → App registrations → New registration. Set redirect URI to <code>https://login.microsoftonline.com/common/oauth2/nativeclient</code> and add API permissions for <strong>Microsoft Advertising</strong> with the <code>ads.manage</code> scope.',
+      'Copy the <strong>Application (client) ID</strong> and create a client secret under Certificates &amp; secrets — copy the <em>Value</em>, not the ID.',
+      'Generate a <strong>refresh token</strong> by visiting the auth URL with your client_id (Microsoft\'s OAuth docs have a one-page walkthrough), then exchanging the code for tokens.',
+      'Find your <strong>Customer ID</strong> and <strong>Account ID</strong> in Microsoft Advertising under Tools → Accounts &amp; Billing (top-right shows both numbers).',
+      'Add all six values as Replit secrets.',
+    ],
+    timeline: 'Approx. 1–3 business days for production developer token.',
+  },
 };
 
 async function renderAdPlatformConnections() {
   const wrap = document.getElementById('ccrConnections');
   if (!wrap) return;
   wrap.innerHTML = `<div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:14px 18px;font-size:0.78rem;color:#6B7280">⏳ Checking ad platform connections…</div>`;
-  let status = { meta:false, googleAds:false, tiktok:false };
+  let status = { meta:false, googleAds:false, tiktok:false, microsoft:false };
   try {
     const r = await fetch('/api/ad-platforms/status');
     if (r.ok) status = await r.json();
   } catch (e) { /* render with all-disconnected fallback */ }
 
   const map = [
-    { key:'meta',   on: !!status.meta },
-    { key:'google', on: !!status.googleAds },
-    { key:'tiktok', on: !!status.tiktok },
+    { key:'meta',      on: !!status.meta },
+    { key:'google',    on: !!status.googleAds },
+    { key:'microsoft', on: !!status.microsoft },
+    { key:'tiktok',    on: !!status.tiktok },
   ];
   const allOn  = map.every(m => m.on);
   const noneOn = map.every(m => !m.on);
@@ -32411,7 +32452,7 @@ async function renderAdPlatformConnections() {
     ? '✅ All ad platforms connected — your Cross-Channel Report is pulling live data.'
     : noneOn
       ? '⚠️ No ad platforms connected — click <strong>Connect now</strong> on any channel below to see the setup steps. Each requires credentials from that platform.'
-      : `🟡 ${map.filter(m=>m.on).length} of 3 ad platforms connected — connect the rest for a full unified report.`;
+      : `🟡 ${map.filter(m=>m.on).length} of ${map.length} ad platforms connected — connect the rest for a full unified report.`;
 
   wrap.innerHTML = `
     <div style="${bannerStyle};font-weight:700;font-size:0.78rem;padding:12px 16px;border-radius:12px 12px 0 0">${bannerText}</div>
