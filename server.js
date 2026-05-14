@@ -9921,6 +9921,163 @@ app.get('/api/blended-roas', async (req, res) => {
 // atomic tmp+rename writes).
 // ─────────────────────────────────────────────────────────────────────────────
 const fsp = require('fs/promises');
+// ─────────────────────────────────────────────────────────────────────────────
+// AI TEAM — Officer brief endpoint. Takes a role (finance | ops) plus a packet
+// of real facts the frontend already collected from existing endpoints, and
+// returns an executive narrative + structured highlights/risks/actions.
+// Falls back to a deterministic template if OpenAI is unavailable so the UI
+// never shows an empty state.
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/officer/brief', async (req, res) => {
+  try {
+    const role  = String(req.body?.role  || '').trim().toLowerCase();
+    const facts = req.body?.facts && typeof req.body.facts === 'object' ? req.body.facts : {};
+    if (!['finance','ops'].includes(role)) {
+      return res.status(400).json({ ok:false, error:'role must be "finance" or "ops"' });
+    }
+    const roleSpec = role === 'finance'
+      ? {
+          title: 'AI Chief Financial Officer',
+          focus: 'marketing P&L, CAC, LTV/CAC ratio, ROAS, MER, runway, and cash-flow risk from ad spend.',
+          highlightHint: 'spend efficiency wins, healthy unit economics, cohorts pulling weight',
+          riskHint:      'over-spend, deteriorating CAC, LTV/CAC < 3, channels burning cash',
+          actionHint:    'budget reallocations, channel pauses, LTV improvement levers, payment-terms moves',
+        }
+      : {
+          title: 'AI Chief Operations Officer',
+          focus: 'campaign QA hygiene, asset library completeness, lead-routing health, goals on/off track, and weekly ops digest.',
+          highlightHint: 'campaigns running clean, assets up to date, leads being qualified fast',
+          riskHint:      'stale campaigns, missing brand assets, unqualified leads piling up, goals slipping',
+          actionHint:    'specific clean-up tasks with owners and deadlines',
+        };
+
+    const prompt = `You are the ${roleSpec.title} for a marketing operation. Focus areas: ${roleSpec.focus}
+
+Below is the latest factual snapshot from the user's actual platform data. Do NOT invent numbers — use only what's provided. If a value is null/missing, say so honestly ("not yet connected") rather than guessing.
+
+FACTS (JSON):
+${JSON.stringify(facts, null, 2)}
+
+Return ONLY valid JSON in this exact shape:
+{
+  "summary": "<2-3 sentence executive narrative in plain English (no jargon, no markdown)>",
+  "highlights": ["<concrete win, ${roleSpec.highlightHint}>", "..."],
+  "risks":      ["<concrete risk with the actual number from the facts, ${roleSpec.riskHint}>", "..."],
+  "actions":    [{ "title":"<short action verb-led title>", "detail":"<one sentence on what & why>", "priority":"high|med|low" }]
+}
+
+Rules:
+- 3-5 items in each of highlights / risks / actions.
+- Reference real numbers from the facts (e.g. "CAC of $${facts.cac || 'X'}", not "high CAC").
+- If facts are mostly empty (no ad accounts connected, no data ingested), the summary should say so and the actions should focus on what to connect first.
+- Every action MUST be something the user can do inside InfoGenie or in their connected accounts — no generic advice.
+- Plain English. No emojis in the JSON output.`;
+
+    let aiResult = null;
+    try {
+      const completion = await openaiChatWithRetry({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role:'system', content: `You are the ${roleSpec.title}. Output strict JSON only — no prose, no markdown. Be specific and quantitative.` },
+          { role:'user',   content: prompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 900,
+        response_format: { type: 'json_object' },
+      });
+      aiResult = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+    } catch (aiErr) {
+      console.warn(`[officer/brief:${role}] AI failed, using template:`, aiErr.message);
+    }
+
+    // Deterministic fallback if AI fails or returns garbage.
+    if (!aiResult || typeof aiResult !== 'object' || !aiResult.summary) {
+      const isEmpty = role === 'finance'
+        ? (!facts.totalSpend && !facts.totalRevenue && !facts.customers)
+        : (!facts.campaigns?.total && !facts.leads?.unqualified && !facts.assets?.missing);
+      aiResult = isEmpty
+        ? {
+            summary: `Your ${roleSpec.title} is online but doesn't have enough data yet to brief you. Connect your ad accounts and CRM to unlock real insights.`,
+            highlights: [],
+            risks: [{ title:'No data flowing yet', priority:'high' }],
+            actions: role === 'finance'
+              ? [
+                  { title:'Connect Meta / Google / TikTok ad accounts', detail:'So I can compute live spend, CAC and ROAS.', priority:'high' },
+                  { title:'Wire HubSpot or send orders to /api/orders',  detail:'So I can compute true blended ROAS and LTV.',  priority:'high' },
+                ]
+              : [
+                  { title:'Launch a campaign',           detail:'So I can start running QA on it.',                   priority:'high' },
+                  { title:'Upload your brand assets',    detail:'Logos, colours, voice — so creatives stay on-brand.', priority:'high' },
+                ],
+          }
+        : {
+            summary: role === 'finance'
+              ? `30-day spend ${facts.totalSpend != null ? '$'+facts.totalSpend : 'pending'}, revenue ${facts.totalRevenue != null ? '$'+facts.totalRevenue : 'pending'}. Review the dashboard for the full breakdown.`
+              : `Tracking ${facts.campaigns?.total||0} campaigns, ${facts.leads?.qualified||0} qualified leads, ${facts.assets?.uploaded||0} brand assets. See the checklist for cleanup tasks.`,
+            highlights: [], risks: [], actions: [],
+          };
+    }
+
+    res.json({ ok:true, role, brief: aiResult, generatedAt: new Date().toISOString() });
+  } catch (err) {
+    console.error('[officer/brief] error:', err);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
+// Ops Officer scan — aggregates campaign QA, asset library, and lead-routing
+// health from existing in-memory/DB state. Returns a structured snapshot the
+// frontend feeds into /api/officer/brief for the AI narrative.
+app.post('/api/ops-officer/scan', async (req, res) => {
+  try {
+    const out = { campaigns:{ total:0, stale:0, missingCreative:0, recent:0 }, assets:{ uploaded:0, missing:[] }, leads:{ qualified:0, unqualified:0 }, goals:{ total:0, offTrack:0 } };
+    const _pg = (typeof _db !== 'undefined' && _db.getPool) ? _db.getPool() : null;
+    // Campaigns (from optimizer kv_store)
+    try {
+      if (!_pg) throw new Error('no db');
+      const r = await _pg.query(`SELECT value FROM kv_store WHERE key='optimizer:campaigns' LIMIT 1`);
+      const camps = r.rows?.[0]?.value?.campaigns || r.rows?.[0]?.value || [];
+      const list = Array.isArray(camps) ? camps : [];
+      const now = Date.now();
+      out.campaigns.total = list.length;
+      list.forEach(c => {
+        const updated = c.lastUpdated || c.createdAt || c.created_at || 0;
+        const ageDays = updated ? (now - new Date(updated).getTime())/86400000 : 999;
+        if (ageDays > 14) out.campaigns.stale++;
+        if (ageDays <= 7) out.campaigns.recent++;
+        if (!c.creatives && !c.adCopy && !c.creative) out.campaigns.missingCreative++;
+      });
+    } catch(e) {}
+    // Brand assets
+    try {
+      const r = await _pg.query(`SELECT value FROM kv_store WHERE key='brand:assets' LIMIT 1`);
+      const a = r.rows?.[0]?.value || {};
+      const have = (k) => !!(a[k] && (Array.isArray(a[k]) ? a[k].length : true));
+      out.assets.uploaded = ['logo','logos','colors','colours','voice','tagline','fonts'].filter(have).length;
+      ['logo','colors','voice','tagline'].forEach(k => { if (!have(k) && !have(k+'s')) out.assets.missing.push(k); });
+    } catch(e) {}
+    // Leads
+    try {
+      const r = await _pg.query(`SELECT value FROM kv_store WHERE key LIKE 'leads:%'`);
+      (r.rows||[]).forEach(row => {
+        const arr = Array.isArray(row.value) ? row.value : (row.value?.leads || []);
+        arr.forEach(l => { if (l.qualified || l.score >= 70) out.leads.qualified++; else out.leads.unqualified++; });
+      });
+    } catch(e) {}
+    // Goals
+    try {
+      const r = await _pg.query(`SELECT value FROM kv_store WHERE key='goals:list' LIMIT 1`);
+      const goals = r.rows?.[0]?.value?.goals || r.rows?.[0]?.value || [];
+      const list = Array.isArray(goals) ? goals : [];
+      out.goals.total = list.length;
+      out.goals.offTrack = list.filter(g => g.status === 'off-track' || g.status === 'at-risk').length;
+    } catch(e) {}
+    res.json({ ok:true, snapshot: out, generatedAt: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
 const GOALS_FILE = path.join(__dirname, 'data', 'goals.json');
 let _goalsLockTail = Promise.resolve();
 function _goalsLock(fn) {

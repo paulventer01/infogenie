@@ -2973,6 +2973,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'lead-finder')      { try { window.buildLeadFinder && window.buildLeadFinder(); }       catch(e) { console.warn('buildLeadFinder error:', e); } }
   if (viewId === 'serp-tracker')     { try { window.buildSerpTracker && window.buildSerpTracker(); }      catch(e) { console.warn('buildSerpTracker error:', e); } }
   if (viewId === 'hubspot-sync')     { try { window.buildHubspotSync && window.buildHubspotSync(); }      catch(e) { console.warn('buildHubspotSync error:', e); } }
+  if (viewId === 'ai-team')          { try { window.buildAiTeam && window.buildAiTeam(); }           catch(e) { console.warn('buildAiTeam error:', e); } }
+  if (viewId === 'finance-officer')  { try { window.buildFinanceOfficer && window.buildFinanceOfficer(); }   catch(e) { console.warn('buildFinanceOfficer error:', e); } }
+  if (viewId === 'ops-officer')      { try { window.buildOpsOfficer && window.buildOpsOfficer(); }       catch(e) { console.warn('buildOpsOfficer error:', e); } }
   if (viewId === 'meta-insights')        { try { window.buildMetaInsights && window.buildMetaInsights(); }        catch(e) { console.warn('buildMetaInsights error:', e); } }
   if (viewId === 'google-ads-insights')  { try { window.buildGoogleAdsInsights && window.buildGoogleAdsInsights(); }   catch(e) { console.warn('buildGoogleAdsInsights error:', e); } }
   if (viewId === 'tiktok-ads-insights')  { try { window.buildTiktokAdsInsights && window.buildTiktokAdsInsights(); }   catch(e) { console.warn('buildTiktokAdsInsights error:', e); } }
@@ -41417,3 +41420,211 @@ function _rpToCarousel(title) {
     if (t) { t.value = title; t.focus(); }
   }, 300);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AI TEAM — Officer roster + Finance / Operations officer dashboards.
+// ═══════════════════════════════════════════════════════════════════════════
+(function(){
+  const _e = (s) => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const _fmt = (n, prefix='', dash='—') => (n==null||n==='' || (typeof n==='number' && !isFinite(n))) ? dash : (prefix + (typeof n==='number' ? n.toLocaleString() : n));
+  const _money = (n) => (n==null) ? '—' : '$' + Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
+  const _pillCSS = 'display:inline-block;padding:3px 9px;border-radius:999px;font-size:.68rem;font-weight:700;letter-spacing:.02em';
+  const _cardCSS = 'background:white;border:1px solid #E5E7EB;border-radius:14px;padding:18px;box-shadow:0 1px 2px rgba(0,0,0,.04)';
+  const _hdrCSS = 'max-width:1200px;margin:0 auto 22px;padding:24px 28px;background:linear-gradient(135deg,#0F172A 0%,#312E81 100%);color:white;border-radius:18px';
+
+  const OFFICERS = [
+    { id:'marketing', icon:'📣', title:'Marketing Officer',  role:'Runs your campaigns end-to-end',
+      links:[['optimizer','AI Optimizer'],['battleplan','Battle Plan'],['action-center','Action Center']] },
+    { id:'sales',     icon:'🎯', title:'Sales Officer',      role:'Finds, qualifies and re-engages leads',
+      links:[['lead-finder','B2B Lead Finder'],['lead-qualifier','Lead Qualifier'],['reengage','Re-Engage']] },
+    { id:'analyst',   icon:'📊', title:'Analyst Officer',    role:'Cross-channel reporting & attribution',
+      links:[['cross-channel','Cross-Channel Report'],['attribution','Attribution & ROI'],['analytics-hub','Analytics Hub']] },
+    { id:'content',   icon:'✍️', title:'Content Officer',    role:'Scores, plans and schedules content',
+      links:[['contentscorer','Content Scorer'],['content-calendar','Content Calendar'],['social','Social Calendar']] },
+    { id:'seo',       icon:'🔎', title:'SEO Officer',        role:'On-page, GEO and keyword strategy',
+      links:[['seo-auditor','On-Page Auditor'],['geo-audit','GEO Audit'],['keyword-map','Keyword Map']] },
+    { id:'cro',       icon:'🧪', title:'CRO Officer',        role:'A/B testing and conversion lift',
+      links:[['cro-lab','CRO Lab'],['conversion-boosters','Conversion Boosters'],['ab-designer','A/B Designer']] },
+    { id:'finance',   icon:'💼', title:'Finance Officer',    role:'P&L, CAC, LTV, runway alerts', isNew:true,
+      links:[['finance-officer','Open Finance Office']] },
+    { id:'ops',       icon:'🛠️', title:'Operations Officer', role:'Campaign QA, asset & lead hygiene', isNew:true,
+      links:[['ops-officer','Open Operations Office']] },
+  ];
+
+  function _officerCard(o) {
+    const links = o.links.map(([v,l]) => `<a href="#" class="nav-link" data-view="${_e(v)}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:8px;font-size:.74rem;font-weight:700;color:#1E293B;text-decoration:none;margin:3px 4px 0 0">→ ${_e(l)}</a>`).join('');
+    const newBadge = o.isNew ? `<span style="${_pillCSS};background:#DCFCE7;color:#166534;margin-left:6px">NEW</span>` : '';
+    return `<div style="${_cardCSS}">
+      <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:10px">
+        <div style="width:54px;height:54px;border-radius:14px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0">${o.icon}</div>
+        <div style="flex:1">
+          <div style="font-size:1.05rem;font-weight:800;color:#0F172A">${_e(o.title)}${newBadge}</div>
+          <div style="font-size:.78rem;color:#64748B;margin-top:2px">${_e(o.role)}</div>
+        </div>
+        <span style="${_pillCSS};background:#DCFCE7;color:#166534">● ON DUTY</span>
+      </div>
+      <div style="margin-top:10px">${links}</div>
+    </div>`;
+  }
+
+  window.buildAiTeam = function() {
+    const wrap = document.getElementById('view-ai-team');
+    if (!wrap) return;
+    wrap.innerHTML = `
+      <div style="${_hdrCSS}">
+        <div style="font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#A5B4FC;font-weight:700">YOUR AI TEAM</div>
+        <h1 style="margin:8px 0 6px;font-size:1.85rem;font-weight:800">Eight AI executives, one team</h1>
+        <p style="margin:0;font-size:.92rem;color:#CBD5E1;max-width:720px">Each officer handles a function full-time. Click any role to open their office. Marketing, Sales, Analyst, Content, SEO and CRO surface tools you already have. Finance and Operations are brand-new.</p>
+      </div>
+      <div style="max-width:1200px;margin:0 auto;padding:0 28px;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px">
+        ${OFFICERS.map(_officerCard).join('')}
+      </div>`;
+    wrap.querySelectorAll('.nav-link[data-view]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.dataset.view); }));
+  };
+
+  // ── Finance Officer ──────────────────────────────────────────────────────
+  window.buildFinanceOfficer = async function() {
+    const wrap = document.getElementById('view-finance-officer');
+    if (!wrap) return;
+    wrap.innerHTML = `
+      <div style="${_hdrCSS};background:linear-gradient(135deg,#064E3B 0%,#065F46 100%)">
+        <div style="font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#6EE7B7;font-weight:700">💼 FINANCE OFFICER</div>
+        <h1 style="margin:8px 0 6px;font-size:1.85rem;font-weight:800">Marketing P&amp;L, Live</h1>
+        <p style="margin:0;font-size:.92rem;color:#D1FAE5;max-width:720px">Spend, revenue, CAC, LTV/CAC and ROAS — pulled from your connected ad accounts and CRM in real time. Re-runs the AI brief on every load.</p>
+      </div>
+      <div style="max-width:1200px;margin:0 auto;padding:0 28px" id="finOffBody">
+        <div style="${_cardCSS};text-align:center;color:#64748B">⏳ Pulling 30-day finance snapshot…</div>
+      </div>`;
+    const body = document.getElementById('finOffBody');
+    let facts = {};
+    try {
+      const r = await fetch('/api/cross-channel-report?days=30');
+      if (r.ok) facts = await r.json();
+    } catch(e){ console.warn('cross-channel fetch failed:', e); }
+    // Compute runway-ish signal: how many days of spend would burn $10k? (transparency cue)
+    const dailyBurn = facts.totalSpend ? +(facts.totalSpend/30).toFixed(2) : null;
+    const factsForAI = {
+      window: '30 days',
+      totalSpend: facts.totalSpend ?? null,
+      totalRevenue: facts.totalRevenue ?? null,
+      netSales: facts.netSales ?? null,
+      customers: facts.customers ?? null,
+      cac: facts.cac ?? null,
+      ltvAssumed: facts.ltvAssumed ?? null,
+      ltvCac: facts.ltvCac ?? null,
+      mer: facts.mer ?? null,
+      roas: facts.roas ?? null,
+      dailyBurn,
+      channelsConnected: facts.channels ? Object.entries(facts.channels).filter(([,v])=>v?.connected).map(([k])=>k) : [],
+    };
+    let brief = null;
+    try {
+      const br = await fetch('/api/officer/brief', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ role:'finance', facts: factsForAI }) });
+      if (br.ok) { const j = await br.json(); brief = j.brief; }
+    } catch(e){ console.warn('finance brief failed:', e); }
+
+    const kpi = (label, val, sub='', tone='') => `<div style="${_cardCSS};padding:16px"><div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em">${_e(label)}</div><div style="font-size:1.5rem;font-weight:800;color:${tone==='good'?'#15803D':tone==='bad'?'#B91C1C':'#0F172A'};margin-top:6px">${_e(val)}</div>${sub?`<div style="font-size:.72rem;color:#64748B;margin-top:4px">${_e(sub)}</div>`:''}</div>`;
+    const ltvCacTone = factsForAI.ltvCac == null ? '' : (factsForAI.ltvCac >= 3 ? 'good' : factsForAI.ltvCac < 1 ? 'bad' : '');
+    const merTone    = factsForAI.mer    == null ? '' : (factsForAI.mer >= 200 ? 'good' : factsForAI.mer < 100 ? 'bad' : '');
+
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;margin-bottom:18px">
+        ${kpi('Spend (30d)', _money(factsForAI.totalSpend))}
+        ${kpi('Revenue (30d)', _money(factsForAI.totalRevenue))}
+        ${kpi('Net Sales', _money(factsForAI.netSales), 'Revenue − Spend')}
+        ${kpi('Customers', _fmt(factsForAI.customers))}
+        ${kpi('CAC', _money(factsForAI.cac))}
+        ${kpi('LTV / CAC', factsForAI.ltvCac != null ? factsForAI.ltvCac+'×' : '—', factsForAI.ltvAssumed?`LTV assumed $${factsForAI.ltvAssumed}`:'', ltvCacTone)}
+        ${kpi('MER', factsForAI.mer != null ? factsForAI.mer+'%' : '—', '', merTone)}
+        ${kpi('Daily Burn', _money(dailyBurn))}
+      </div>
+      ${brief ? `
+        <div style="${_cardCSS};margin-bottom:18px">
+          <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Executive Summary</div>
+          <p style="margin:0;font-size:.95rem;color:#0F172A;line-height:1.55">${_e(brief.summary||'')}</p>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin-bottom:18px">
+          ${_briefList('✅ Highlights', brief.highlights, '#15803D','#DCFCE7')}
+          ${_briefList('⚠️ Risks',     brief.risks,      '#B91C1C','#FEE2E2')}
+        </div>
+        ${_actionsCard(brief.actions)}
+      ` : `<div style="${_cardCSS};text-align:center;color:#64748B">AI brief unavailable. Showing live numbers above.</div>`}
+    `;
+  };
+
+  // ── Operations Officer ───────────────────────────────────────────────────
+  window.buildOpsOfficer = async function() {
+    const wrap = document.getElementById('view-ops-officer');
+    if (!wrap) return;
+    wrap.innerHTML = `
+      <div style="${_hdrCSS};background:linear-gradient(135deg,#7C2D12 0%,#9A3412 100%)">
+        <div style="font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#FED7AA;font-weight:700">🛠️ OPERATIONS OFFICER</div>
+        <h1 style="margin:8px 0 6px;font-size:1.85rem;font-weight:800">Campaign QA, Assets &amp; Lead Hygiene</h1>
+        <p style="margin:0;font-size:.92rem;color:#FFEDD5;max-width:720px">Scans your live campaigns, brand assets, leads and goals for stale or broken items. Returns a weekly digest with a prioritised checklist.</p>
+      </div>
+      <div style="max-width:1200px;margin:0 auto;padding:0 28px" id="opsOffBody">
+        <div style="${_cardCSS};text-align:center;color:#64748B">⏳ Scanning your operations…</div>
+      </div>`;
+    const body = document.getElementById('opsOffBody');
+    let snap = {};
+    try {
+      const r = await fetch('/api/ops-officer/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+      if (r.ok) { const j = await r.json(); snap = j.snapshot || {}; }
+    } catch(e){ console.warn('ops scan failed:', e); }
+    let brief = null;
+    try {
+      const br = await fetch('/api/officer/brief', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ role:'ops', facts: snap }) });
+      if (br.ok) { const j = await br.json(); brief = j.brief; }
+    } catch(e){ console.warn('ops brief failed:', e); }
+
+    const kpi = (label, val, sub='', tone='') => `<div style="${_cardCSS};padding:16px"><div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em">${_e(label)}</div><div style="font-size:1.5rem;font-weight:800;color:${tone==='good'?'#15803D':tone==='bad'?'#B91C1C':'#0F172A'};margin-top:6px">${_e(val)}</div>${sub?`<div style="font-size:.72rem;color:#64748B;margin-top:4px">${_e(sub)}</div>`:''}</div>`;
+    const c = snap.campaigns||{}, a = snap.assets||{}, l = snap.leads||{}, g = snap.goals||{};
+
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;margin-bottom:18px">
+        ${kpi('Campaigns', _fmt(c.total), `${c.recent||0} active in last 7d`)}
+        ${kpi('Stale Campaigns', _fmt(c.stale), '>14 days no update', c.stale>0?'bad':'')}
+        ${kpi('Missing Creative', _fmt(c.missingCreative), '', c.missingCreative>0?'bad':'')}
+        ${kpi('Brand Assets', _fmt(a.uploaded), `${(a.missing||[]).length} gaps`, (a.missing||[]).length>0?'bad':'good')}
+        ${kpi('Qualified Leads', _fmt(l.qualified), '', 'good')}
+        ${kpi('Unqualified', _fmt(l.unqualified), 'awaiting review', l.unqualified>20?'bad':'')}
+        ${kpi('Goals', _fmt(g.total), `${g.offTrack||0} off-track`, g.offTrack>0?'bad':'')}
+      </div>
+      ${(a.missing && a.missing.length) ? `<div style="${_cardCSS};background:#FEF3C7;border-color:#FDE68A;margin-bottom:18px"><strong style="color:#92400E">Brand asset gaps:</strong> <span style="color:#78350F">${a.missing.map(_e).join(', ')}</span> — <a href="#" data-view-link="brand-assets" style="color:#92400E;font-weight:700">Open Brand Assets →</a></div>` : ''}
+      ${brief ? `
+        <div style="${_cardCSS};margin-bottom:18px">
+          <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Weekly Ops Digest</div>
+          <p style="margin:0;font-size:.95rem;color:#0F172A;line-height:1.55">${_e(brief.summary||'')}</p>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin-bottom:18px">
+          ${_briefList('✅ Highlights', brief.highlights, '#15803D','#DCFCE7')}
+          ${_briefList('⚠️ Risks',     brief.risks,      '#B91C1C','#FEE2E2')}
+        </div>
+        ${_actionsCard(brief.actions)}
+      ` : `<div style="${_cardCSS};text-align:center;color:#64748B">AI digest unavailable. Showing scan results above.</div>`}
+    `;
+    body.querySelectorAll('[data-view-link]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.dataset.viewLink); }));
+  };
+
+  function _briefList(title, items, color, bg) {
+    const arr = Array.isArray(items) ? items.filter(Boolean) : [];
+    return `<div style="${_cardCSS}">
+      <div style="font-size:.78rem;font-weight:800;color:${color};margin-bottom:10px">${_e(title)}</div>
+      ${arr.length ? `<ul style="margin:0;padding-left:18px;color:#0F172A;font-size:.86rem;line-height:1.7">${arr.map(it => `<li>${_e(typeof it==='string'?it:(it.title||JSON.stringify(it)))}</li>`).join('')}</ul>` : `<div style="color:#64748B;font-size:.82rem">Nothing flagged.</div>`}
+    </div>`;
+  }
+  function _actionsCard(actions) {
+    const arr = Array.isArray(actions) ? actions.filter(a => a && (a.title || a.detail)) : [];
+    if (!arr.length) return '';
+    const tone = (p) => p==='high'?{bg:'#FEE2E2',c:'#B91C1C'}:p==='med'?{bg:'#FEF3C7',c:'#92400E'}:{bg:'#E0E7FF',c:'#3730A3'};
+    return `<div style="${_cardCSS}">
+      <div style="font-size:.78rem;font-weight:800;color:#0F172A;margin-bottom:12px">📋 Recommended Actions</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${arr.map(a => { const t = tone(a.priority); return `<div style="display:flex;gap:12px;align-items:flex-start;padding:12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px">
+          <span style="${_pillCSS};background:${t.bg};color:${t.c};flex-shrink:0">${_e((a.priority||'med').toUpperCase())}</span>
+          <div style="flex:1"><div style="font-weight:700;color:#0F172A;font-size:.88rem">${_e(a.title||'')}</div>${a.detail?`<div style="font-size:.78rem;color:#475569;margin-top:3px">${_e(a.detail)}</div>`:''}</div>
+        </div>`; }).join('')}
+      </div>
+    </div>`;
+  }
+})();
