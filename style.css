@@ -4677,6 +4677,25 @@ p, span, label, td, li {
   border-bottom: none !important;
   margin-bottom: 2px !important;
 }
+/* ── Cross-group "Next →" footer ── */
+.nav-drop-next {
+  margin-top: 10px !important;
+  padding: 10px 12px !important;
+  border-top: 1px dashed rgba(0,201,200,.25) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  color: #00C9C8 !important;
+  text-decoration: none !important;
+  border-radius: 0 0 12px 12px !important;
+  background: linear-gradient(180deg, transparent, rgba(0,201,200,.06)) !important;
+}
+.nav-drop-next:hover { background: linear-gradient(180deg, rgba(0,201,200,.06), rgba(0,201,200,.14)) !important; color: #00E5FF !important; }
+.nav-drop-next .ndn-arrow { margin-left: auto; font-size: 1rem; }
+[data-theme="light"] .nav-drop-next { color: #0066FF !important; border-top-color: rgba(0,102,255,.2) !important; }
+[data-theme="light"] .nav-drop-next:hover { color: #00C9C8 !important; }
 
 /* ── Dropdown link items ── */
 .nav-dropdown .nav-link {
