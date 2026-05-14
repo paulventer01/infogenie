@@ -1,0 +1,185 @@
+// WhatsApp Channel — Meta WhatsApp Cloud API integration.
+// Mirrors the Drip + Conversation Inbox pattern used elsewhere: /send (template
+// or text), /webhook (Meta posts here), /threads (list contacts), /thread/:wa
+// (full message log), /stats. All inbound + outbound messages are persisted to
+// the wa_messages table so they can also surface in the Unified Inbox view.
+//
+// Required Replit secrets:
+//   WHATSAPP_PHONE_NUMBER_ID   — from Meta Business → WhatsApp → API Setup
+//   WHATSAPP_ACCESS_TOKEN      — long-lived system user token w/ whatsapp_business_messaging
+//   WHATSAPP_VERIFY_TOKEN      — your own random string (also pasted into Meta webhook)
+//   WHATSAPP_BUSINESS_ACCT_ID  — optional, for template list
+
+const express = require('express');
+const router  = express.Router();
+const _db     = require('../../db');
+
+const GRAPH = 'https://graph.facebook.com/v19.0';
+function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
+
+async function ensureWhatsappSchema() {
+  if (!_db.hasDb()) return;
+  await _db.getPool().query(`
+    CREATE TABLE IF NOT EXISTS wa_messages (
+      id           SERIAL PRIMARY KEY,
+      direction    TEXT NOT NULL,                    -- 'in' | 'out'
+      wa_id        TEXT NOT NULL,                    -- the contact's WhatsApp number
+      message_id   TEXT,                             -- Meta's wamid
+      body         TEXT,
+      template     TEXT,                             -- if outbound template
+      status       TEXT DEFAULT 'sent',              -- sent|delivered|read|failed
+      raw          JSONB,
+      created_at   TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_wa_messages_wa ON wa_messages(wa_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS wa_contacts (
+      wa_id TEXT PRIMARY KEY, name TEXT, last_at TIMESTAMPTZ DEFAULT now(), unread_count INT DEFAULT 0
+    );
+  `);
+}
+ensureWhatsappSchema().catch(e => console.error('[whatsapp] schema:', e.message));
+
+function _hasCreds() {
+  return !!(process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN
+            && !/^_DUMMY/i.test(process.env.WHATSAPP_PHONE_NUMBER_ID)
+            && !/^_DUMMY/i.test(process.env.WHATSAPP_ACCESS_TOKEN));
+}
+
+router.get('/status', (_req, res) => {
+  res.json({
+    ok: true,
+    configured: _hasCreds(),
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ? '***' + String(process.env.WHATSAPP_PHONE_NUMBER_ID).slice(-4) : null,
+    webhookVerifyTokenSet: !!process.env.WHATSAPP_VERIFY_TOKEN,
+  });
+});
+
+// ── Send: text or template ───────────────────────────────────────────────────
+router.post('/send', async (req, res) => {
+  if (!_hasCreds()) return _err(res, 400, 'WhatsApp credentials missing — set WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_ACCESS_TOKEN.');
+  const { to, text, template, languageCode = 'en_US', components } = req.body || {};
+  if (!to) return _err(res, 400, 'to (recipient phone with country code, no +) required');
+  const cleanTo = String(to).replace(/[^0-9]/g, '');
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const body = template
+    ? { messaging_product:'whatsapp', to: cleanTo, type:'template',
+        template: { name: template, language:{ code: languageCode }, components: components || [] } }
+    : { messaging_product:'whatsapp', to: cleanTo, type:'text', text:{ body: String(text || '').slice(0, 4000), preview_url: true } };
+  try {
+    const r = await fetch(`${GRAPH}/${phoneId}/messages`, {
+      method:'POST',
+      headers:{ 'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`, 'Content-Type':'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (!r.ok || j.error) throw new Error(j.error?.message || `Meta returned ${r.status}`);
+    const wamid = j.messages?.[0]?.id || null;
+    if (_db.hasDb()) {
+      await _db.getPool().query(
+        `INSERT INTO wa_messages (direction, wa_id, message_id, body, template, raw) VALUES ('out', $1, $2, $3, $4, $5::jsonb)`,
+        [cleanTo, wamid, text || null, template || null, JSON.stringify(j)]
+      );
+      await _db.getPool().query(
+        `INSERT INTO wa_contacts (wa_id, last_at) VALUES ($1, now())
+         ON CONFLICT (wa_id) DO UPDATE SET last_at=EXCLUDED.last_at`, [cleanTo]
+      );
+    }
+    res.json({ ok:true, messageId: wamid });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+// ── Webhook: Meta verification handshake (GET) + message delivery (POST) ─────
+router.get('/webhook', (req, res) => {
+  const mode  = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const chal  = req.query['hub.challenge'];
+  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) return res.status(200).send(chal);
+  res.status(403).send('verify failed');
+});
+
+// Meta requires us to verify the X-Hub-Signature-256 header against the raw body
+// using the App Secret. We capture raw body via express.raw, verify, then JSON.parse.
+const _crypto = require('crypto');
+function _verifyMetaSignature(req) {
+  const appSecret = process.env.WHATSAPP_APP_SECRET;
+  if (!appSecret) return true; // Allow unverified ONLY when no app secret configured (dev mode)
+  const sig = String(req.headers['x-hub-signature-256'] || '');
+  if (!sig.startsWith('sha256=')) return false;
+  const expected = 'sha256=' + _crypto.createHmac('sha256', appSecret).update(req.body).digest('hex');
+  try { return _crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected)); } catch { return false; }
+}
+router.post('/webhook', express.raw({ type: '*/*', limit: '2mb' }), async (req, res) => {
+  if (!_verifyMetaSignature(req)) { console.warn('[whatsapp webhook] signature verify failed'); return res.status(401).end(); }
+  res.status(200).end(); // ack immediately per Meta requirement
+  let body;
+  try { body = JSON.parse(req.body.toString('utf8') || '{}'); } catch { return; }
+  try {
+    const entry = body?.entry || [];
+    for (const e of entry) for (const ch of (e.changes || [])) {
+      const v = ch.value || {};
+      // Inbound messages
+      for (const m of (v.messages || [])) {
+        const wa = m.from;
+        const text = m.text?.body || m.button?.text || m.interactive?.button_reply?.title || '[non-text]';
+        const name = (v.contacts || []).find(c => c.wa_id === wa)?.profile?.name || null;
+        if (_db.hasDb()) {
+          await _db.getPool().query(
+            `INSERT INTO wa_messages (direction, wa_id, message_id, body, raw) VALUES ('in', $1, $2, $3, $4::jsonb)`,
+            [wa, m.id, text, JSON.stringify(m)]
+          );
+          await _db.getPool().query(
+            `INSERT INTO wa_contacts (wa_id, name, last_at, unread_count) VALUES ($1, $2, now(), 1)
+             ON CONFLICT (wa_id) DO UPDATE SET name=COALESCE(EXCLUDED.name, wa_contacts.name), last_at=EXCLUDED.last_at, unread_count=wa_contacts.unread_count+1`,
+            [wa, name]
+          );
+        }
+      }
+      // Status callbacks (delivered/read/failed)
+      for (const s of (v.statuses || [])) {
+        if (_db.hasDb()) {
+          await _db.getPool().query(
+            `UPDATE wa_messages SET status=$1 WHERE message_id=$2`, [s.status, s.id]
+          );
+        }
+      }
+    }
+  } catch (e) { console.error('[whatsapp webhook]', e.message); }
+});
+
+// ── Threads ──────────────────────────────────────────────────────────────────
+router.get('/threads', async (_req, res) => {
+  if (!_db.hasDb()) return res.json({ ok:true, threads: [] });
+  try {
+    const r = await _db.getPool().query(`
+      SELECT c.wa_id, c.name, c.last_at, c.unread_count,
+             (SELECT body FROM wa_messages m WHERE m.wa_id=c.wa_id ORDER BY created_at DESC LIMIT 1) AS preview
+      FROM wa_contacts c ORDER BY c.last_at DESC LIMIT 100
+    `);
+    res.json({ ok:true, threads: r.rows });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+router.get('/thread/:wa', async (req, res) => {
+  if (!_db.hasDb()) return res.json({ ok:true, messages: [] });
+  try {
+    await _db.getPool().query(`UPDATE wa_contacts SET unread_count=0 WHERE wa_id=$1`, [req.params.wa]);
+    const r = await _db.getPool().query(
+      `SELECT direction, body, template, status, message_id, created_at FROM wa_messages WHERE wa_id=$1 ORDER BY created_at ASC LIMIT 500`,
+      [req.params.wa]
+    );
+    res.json({ ok:true, messages: r.rows });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+router.get('/stats', async (_req, res) => {
+  if (!_db.hasDb()) return res.json({ ok:true, totalIn:0, totalOut:0, contacts:0, last24h:0 });
+  try {
+    const out = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_messages WHERE direction='out'`);
+    const inn = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_messages WHERE direction='in'`);
+    const c   = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_contacts`);
+    const r24 = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_messages WHERE created_at > now() - interval '24 hours'`);
+    res.json({ ok:true, totalOut: out.rows[0].n, totalIn: inn.rows[0].n, contacts: c.rows[0].n, last24h: r24.rows[0].n });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+module.exports = router;

@@ -118,7 +118,36 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/conversion-boosters\/embed\/[^\/]+\.js$/, // public booster loader (T27)
   /^\/api\/conversion-boosters\/event\/[^\/]+$/,     // public event ping (T27, rate-limited)
   /^\/api\/conversion-boosters\/lead\/[^\/]+$/,      // public lead capture (T27, rate-limited)
+  // Studio Pack — provider webhooks (verified by signature/shared-secret) + public renderers
+  /^\/api\/whatsapp\/webhook$/,                      // Meta WhatsApp Cloud API (X-Hub-Signature-256 verified)
+  /^\/api\/voice-caller\/webhook$/,                  // Vapi (shared-secret verified)
+  /^\/api\/linksell\/stripe-webhook$/,               // Stripe (signature verified)
+  /^\/api\/bookings\/slots\/[^\/]+$/,                // public slot list for /book/:slug
+  /^\/api\/bookings\/book\/[^\/]+$/,                 // public booking submit (rate-limited)
+  /^\/api\/linksell\/checkout\/[^\/]+$/,             // public Stripe checkout init (rate-limited)
+  /^\/api\/linksell\/optin\/[^\/]+$/,                // public email opt-in  (rate-limited)
 ];
+
+// Lightweight in-memory per-IP rate limiter for public Studio Pack POSTs.
+// Sliding 60-second window, 20 requests/window/IP. Returns 429 if exceeded.
+const _RL_WINDOW_MS = 60_000, _RL_MAX = 20;
+const _rl = new Map();
+function _rateLimitPublic(req, res, next) {
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+  const key = ip + '|' + req.path;
+  const now = Date.now();
+  const arr = (_rl.get(key) || []).filter(t => now - t < _RL_WINDOW_MS);
+  if (arr.length >= _RL_MAX) return res.status(429).json({ ok:false, error:'rate_limited', retryAfterSec: Math.ceil(_RL_WINDOW_MS/1000) });
+  arr.push(now); _rl.set(key, arr);
+  next();
+}
+// Apply to public POST surfaces (cheap; never blocks dashboard usage)
+const _RL_PATHS = [/^\/api\/bookings\/book\//, /^\/api\/linksell\/checkout\//, /^\/api\/linksell\/optin\//];
+app.use((req, res, next) => {
+  if (req.method !== 'POST') return next();
+  if (_RL_PATHS.some(rx => rx.test(req.path))) return _rateLimitPublic(req, res, next);
+  next();
+});
 function _isApiPublic(p) { return _AUTH_PUBLIC_API_PATHS.some(rx => rx.test(p)); }
 function _isSameOrigin(req) {
   // Allow requests from the SPA itself.
@@ -6927,6 +6956,8 @@ app.post('/api/auth/verify-code', (req, res) => {
 // command bar added in the Apr 2026 update) need this exemption to be reached.
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
+  // Studio Pack public renderers must reach their handlers (mounted later in this file)
+  if (/^\/(book|lp|bio)\/[^\/]+$/.test(req.path)) return next();
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
@@ -8818,6 +8849,45 @@ app.use('/api/google-ads-insights', _googleAdsInsightsRouter);
 app.use('/api/tiktok-ads-insights', _tiktokAdsInsightsRouter);
 const _microsoftAdsInsightsRouter = require('./services/microsoft_ads_insights/api');
 app.use('/api/microsoft-ads-insights', _microsoftAdsInsightsRouter);
+
+// ── New Feature Pack: Studio + Engagement + Commerce ───────────────────────
+app.use('/api/studio',         require('./services/creator_studio/api'));
+app.use('/api/whatsapp',       require('./services/whatsapp_channel/api'));
+app.use('/api/voice-caller',   require('./services/voice_caller/api'));
+app.use('/api/bookings',       require('./services/bookings/api'));
+app.use('/api/site-builder',   require('./services/site_builder/api'));
+app.use('/api/linksell',       require('./services/linksell/api'));
+// Public renderers (no /api prefix) — rewrite path & forward to mounted router
+app.get('/lp/:slug',  (req, res, next) => { req.url = '/render/' + req.params.slug; require('./services/site_builder/api')(req, res, next); });
+app.get('/bio/:slug', (req, res, next) => { req.url = '/render/' + req.params.slug; require('./services/linksell/api')(req, res, next);     });
+app.get('/book/:slug', async (req, res) => {
+  // Slug is URL-safe by design (only [a-z0-9_-]), but defense-in-depth: validate strictly.
+  const slug = String(req.params.slug || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  if (!slug) return res.status(400).send('Invalid slug');
+  // JSON-encode for safe inline embedding inside JS string literal (prevents XSS via slug).
+  const slugJs = JSON.stringify(slug);
+  res.set('Content-Type','text/html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Book a time</title>
+<style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#F8FAFC;color:#0F172A;padding:40px 16px}.wrap{max-width:560px;margin:0 auto;background:white;border-radius:16px;padding:32px;box-shadow:0 4px 24px rgba(0,0,0,.06)}h1{margin:0 0 6px}p.sub{color:#64748B;margin:0 0 24px}.slot{display:inline-block;margin:4px;padding:10px 14px;background:#F0F9FF;border:1.5px solid #BAE6FD;border-radius:8px;cursor:pointer;font-size:14px}.slot:hover{background:#0066FF;color:white;border-color:#0066FF}.day{margin-bottom:16px}.day h3{font-size:14px;color:#64748B;margin:12px 0 8px;text-transform:uppercase;letter-spacing:.06em}input,textarea{width:100%;padding:10px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box;margin-bottom:10px}button{background:#0066FF;color:white;border:0;padding:12px 24px;border-radius:8px;font-weight:700;cursor:pointer;font-size:15px}</style>
+</head><body><div class="wrap" id="root">Loading…</div>
+<script>
+const slug=${slugJs};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+async function load(){
+  const r=await fetch('/api/bookings/slots/'+encodeURIComponent(slug));const j=await r.json();
+  const grouped={};(j.slots||[]).forEach(s=>{(grouped[s.date]=grouped[s.date]||[]).push(s);});
+  const days=Object.keys(grouped).sort().map(d=>'<div class="day"><h3>'+esc(new Date(d).toLocaleDateString('en-GB',{weekday:'long',month:'long',day:'numeric'}))+'</h3>'+grouped[d].map(s=>'<span class="slot" data-iso="'+esc(s.iso)+'">'+esc(s.time)+'</span>').join('')+'</div>').join('');
+  document.getElementById('root').innerHTML='<h1>'+esc(j.schedule?.title||'Book a time')+'</h1><p class="sub">'+esc(j.schedule?.description||'')+'</p>'+(days||'<p>No slots available.</p>');
+  document.querySelectorAll('.slot').forEach(el=>el.addEventListener('click',()=>pick(el.dataset.iso)));
+}
+function pick(iso){
+  document.getElementById('root').innerHTML='<h1>Confirm</h1><p class="sub">'+esc(new Date(iso).toLocaleString('en-GB',{dateStyle:'full',timeStyle:'short'}))+'</p>'+
+  '<form id="bf"><input name="name" placeholder="Your name" required><input name="email" type="email" placeholder="Email" required><input name="phone" placeholder="Phone (optional)"><textarea name="notes" placeholder="Notes (optional)" rows="3"></textarea><button type="submit">Confirm booking</button></form>';
+  document.getElementById('bf').addEventListener('submit',e=>book(e,iso));
+}
+async function book(e,iso){e.preventDefault();const f=e.target;const r=await fetch('/api/bookings/book/'+encodeURIComponent(slug),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({startsAt:iso,name:f.name.value,email:f.email.value,phone:f.phone.value,notes:f.notes.value})});const j=await r.json();if(j.ok)document.getElementById('root').innerHTML='<h1>✓ Booked!</h1><p class="sub">A confirmation will be emailed to you.</p>';else alert(j.error||'Failed');return false;}
+load();
+</script></body></html>`);
+});
 
 // ── Tier 15 ────────────────────────────────────────────────────────────────
 const _socialPublisherRouter = require('./services/social_publisher/api');
