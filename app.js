@@ -41505,6 +41505,10 @@ function _rpToCarousel(title) {
       links:[['ops-officer','Open Operations Office']] },
   ];
 
+  // Server-loaded avatar overrides per officer id (string emoji 1-8 chars)
+  let _officerAvatars = {};
+  const AVATAR_GALLERY = ['📣','🎯','📊','✍️','🔎','🧪','💼','🛠️','🤖','🦊','🐺','🐯','🦁','🐼','🦄','🦅','👨‍💼','👩‍💼','👨‍🚀','👩‍🚀','🧙','🥷','🎨','⚡','🔥','💎','🚀','🌟','🧠','💡'];
+
   function _officerCard(o) {
     const links = o.links.map(([v,l]) => `<a href="#" class="nav-link" data-view="${_e(v)}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:8px;font-size:.74rem;font-weight:700;color:#1E293B;text-decoration:none;margin:3px 4px 0 0">→ ${_e(l)}</a>`).join('');
     const newBadge = o.isNew ? `<span style="${_pillCSS};background:#DCFCE7;color:#166534;margin-left:6px">NEW</span>` : '';
@@ -41514,9 +41518,10 @@ function _rpToCarousel(title) {
       saved = Array.isArray(parsed) ? parsed.filter(s => typeof s === 'string').slice(0,200) : [];
     } catch(_){}
     const taskCount = saved.length | 0;
+    const avatar = (typeof _officerAvatars[o.id] === 'string' && _officerAvatars[o.id]) ? _officerAvatars[o.id] : o.icon;
     return `<div style="${_cardCSS}">
       <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:10px">
-        <div style="width:54px;height:54px;border-radius:14px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0">${o.icon}</div>
+        <button data-officer-avatar="${_e(o.id)}" title="Change avatar" style="width:54px;height:54px;border-radius:14px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;border:none;cursor:pointer;padding:0;position:relative">${_e(avatar)}<span style="position:absolute;bottom:-2px;right:-2px;background:#fff;border:1px solid #E2E8F0;border-radius:50%;width:18px;height:18px;font-size:10px;display:flex;align-items:center;justify-content:center;color:#64748B">✏️</span></button>
         <div style="flex:1">
           <div style="font-size:1.05rem;font-weight:800;color:#0F172A">${_e(o.title)}${newBadge}</div>
           <div style="font-size:.78rem;color:#64748B;margin-top:2px">${_e(o.role)}</div>
@@ -41524,11 +41529,285 @@ function _rpToCarousel(title) {
         <span style="${_pillCSS};background:#DCFCE7;color:#166534">● ON DUTY</span>
       </div>
       <div style="margin-top:10px">${links}</div>
-      <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #E2E8F0;display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #E2E8F0;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
         <div style="font-size:.72rem;color:#64748B"><strong style="color:#0F172A">${taskCount}</strong> ${taskCount===1?'task':'tasks'} assigned</div>
-        <button data-officer-tasks="${_e(o.id)}" data-officer-title="${_e(o.title)}" data-officer-role="${_e(o.id)}" style="padding:6px 12px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-size:.74rem;font-weight:700;cursor:pointer">📋 Tasks</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button data-officer-tasks="${_e(o.id)}" data-officer-title="${_e(o.title)}" style="padding:6px 11px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:700;cursor:pointer">📋 Tasks</button>
+          <button data-officer-report="${_e(o.id)}" data-officer-title="${_e(o.title)}" style="padding:6px 11px;background:#0F172A;color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:700;cursor:pointer">📊 Daily Report</button>
+        </div>
       </div>
     </div>`;
+  }
+
+  // ── Download helper ─────────────────────────────────────────────────────
+  function _downloadFile(filename, content, mime) {
+    const blob = new Blob([content], { type: mime || 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  // ── Avatar picker popover ───────────────────────────────────────────────
+  function _openAvatarPicker(officerId, anchorBtn) {
+    document.querySelectorAll('.ig-avatar-pop').forEach(p => p.remove());
+    const rect = anchorBtn.getBoundingClientRect();
+    const pop = document.createElement('div');
+    pop.className = 'ig-avatar-pop';
+    pop.style.cssText = `position:fixed;top:${rect.bottom+6}px;left:${rect.left}px;background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px;box-shadow:0 10px 30px rgba(0,0,0,0.15);z-index:99998;display:grid;grid-template-columns:repeat(6,1fr);gap:4px;width:240px`;
+    pop.innerHTML = AVATAR_GALLERY.map(em => `<button data-pick="${_e(em)}" style="width:34px;height:34px;border:1px solid #F1F5F9;background:#fff;border-radius:8px;font-size:18px;cursor:pointer;padding:0">${em}</button>`).join('');
+    document.body.appendChild(pop);
+    const closer = (e) => { if (!pop.contains(e.target) && e.target !== anchorBtn) { pop.remove(); document.removeEventListener('click', closer, true); } };
+    setTimeout(() => document.addEventListener('click', closer, true), 0);
+    pop.querySelectorAll('button[data-pick]').forEach(b => b.onclick = async () => {
+      const em = b.dataset.pick;
+      pop.remove(); document.removeEventListener('click', closer, true);
+      _officerAvatars[officerId] = em;
+      try {
+        await fetch('/api/officer/avatars', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ role: officerId, avatar: em }) });
+      } catch(_){}
+      window.buildAiTeam && window.buildAiTeam();
+    });
+  }
+
+  // ── Daily Report modal ─────────────────────────────────────────────────
+  async function _openDailyReport(officerId, officerTitle) {
+    let saved = [];
+    try {
+      const p = JSON.parse(localStorage.getItem('ig_officer_tasks_'+officerId)||'[]');
+      saved = Array.isArray(p) ? p.filter(s => typeof s==='string').slice(0,40) : [];
+    } catch(_){}
+    const overlay = document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
+    overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:760px;max-width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
+      <div style="padding:20px 24px;background:linear-gradient(135deg,#0F172A,#1E293B);color:#fff">
+        <div style="font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.8">📊 Daily Report</div>
+        <h3 style="margin:6px 0 4px;font-size:1.3rem;font-weight:800">${_e(officerTitle)}</h3>
+        <p style="margin:0;font-size:.85rem;opacity:.85" id="drDate">${new Date().toLocaleString()}</p>
+      </div>
+      <div id="drBody" style="flex:1;overflow-y:auto;padding:18px 24px"><div style="text-align:center;color:#64748B;padding:40px">⏳ Cross-checking your tasks against real platform data…</div></div>
+      <div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;gap:8px;background:#F8FAFC">
+        <button id="drClose" style="padding:10px 18px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-weight:700;cursor:pointer">Close</button>
+        <button id="drDl" disabled style="padding:10px 22px;background:#0F172A;color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer;opacity:.4">📥 Download Report</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#drClose').onclick = close;
+    overlay.addEventListener('click', e => { if (e.target===overlay) close(); });
+
+    let lastReport = null;
+    try {
+      const r = await fetch('/api/officer/daily-report', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ role: officerId, title: officerTitle, tasks: saved }) });
+      const j = await r.json();
+      lastReport = j;
+      const rep = j.report || {};
+      const statusPill = (s) => {
+        const map = { done:['#15803D','#DCFCE7','✓ Done'], in_progress:['#A16207','#FEF3C7','◐ In progress'], blocked:['#B91C1C','#FEE2E2','⚠ Blocked'], not_started:['#64748B','#F1F5F9','○ Not started'] };
+        const [c,bg,lab] = map[s] || map.not_started;
+        return `<span style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:.68rem;font-weight:700;color:${c};background:${bg}">${lab}</span>`;
+      };
+      const list = (arr, tone) => (arr||[]).length ? `<ul style="margin:6px 0 0 18px;padding:0;font-size:.86rem;color:${tone||'#0F172A'};line-height:1.6">${arr.map(x=>`<li>${_e(typeof x==='string'?x:(x.step||x.title||JSON.stringify(x)))}${typeof x==='object'&&x.priority?` <span style="font-size:.65rem;color:#64748B">(${_e(x.priority)})</span>`:''}</li>`).join('')}</ul>` : '<div style="font-size:.82rem;color:#94A3B8;font-style:italic">None</div>';
+      overlay.querySelector('#drBody').innerHTML = `
+        <div style="background:#F8FAFC;border-left:3px solid #7C3AED;padding:12px 14px;border-radius:6px;margin-bottom:18px">
+          <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Executive Summary</div>
+          <div style="font-size:.92rem;color:#0F172A;line-height:1.5">${_e(rep.summary||'No summary')}</div>
+        </div>
+        <div style="margin-bottom:18px">
+          <div style="font-size:.78rem;color:#0F172A;font-weight:800;margin-bottom:8px">Tasks reviewed (${(rep.tasksReviewed||[]).length})</div>
+          ${(rep.tasksReviewed||[]).map(tr => `<div style="border:1px solid #E2E8F0;border-radius:8px;padding:10px 12px;margin-bottom:6px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px"><div style="font-size:.86rem;color:#0F172A;font-weight:600;flex:1">${_e(tr.task||'')}</div>${statusPill(tr.status)}</div>
+            <div style="font-size:.74rem;color:#64748B">${_e(tr.evidence||'')}</div>
+          </div>`).join('') || '<div style="color:#94A3B8;font-style:italic">No tasks assigned yet.</div>'}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
+          <div><div style="font-size:.78rem;color:#15803D;font-weight:800;margin-bottom:4px">✓ Successes</div>${list(rep.successes,'#15803D')}</div>
+          <div><div style="font-size:.78rem;color:#B91C1C;font-weight:800;margin-bottom:4px">⚠ Issues</div>${list(rep.issues,'#B91C1C')}</div>
+        </div>
+        <div>
+          <div style="font-size:.78rem;color:#0F172A;font-weight:800;margin-bottom:4px">📋 Action Plan</div>
+          ${list(rep.actionPlan)}
+        </div>
+        <details style="margin-top:18px"><summary style="cursor:pointer;font-size:.74rem;color:#64748B">View raw platform snapshot</summary><pre style="font-size:.7rem;background:#F8FAFC;padding:10px;border-radius:6px;overflow:auto">${_e(JSON.stringify(j.snapshot||{}, null, 2))}</pre></details>`;
+      const dl = overlay.querySelector('#drDl');
+      dl.disabled = false; dl.style.opacity = '1';
+      dl.onclick = () => {
+        const md = _reportToMarkdown(officerTitle, j);
+        const fname = `${officerId}-daily-report-${new Date().toISOString().slice(0,10)}.md`;
+        _downloadFile(fname, md);
+      };
+    } catch(e) {
+      overlay.querySelector('#drBody').innerHTML = `<div style="color:#B91C1C;padding:30px;text-align:center">Failed to generate report: ${_e(e.message)}</div>`;
+    }
+  }
+
+  function _reportToMarkdown(title, j) {
+    const r = j.report || {};
+    const lines = [];
+    lines.push(`# Daily Report — ${title}`);
+    lines.push(`_Generated ${new Date(j.generatedAt||Date.now()).toLocaleString()}_\n`);
+    lines.push(`## Summary\n${r.summary||''}\n`);
+    lines.push(`## Tasks Reviewed`);
+    (r.tasksReviewed||[]).forEach(tr => lines.push(`- **[${tr.status||'—'}]** ${tr.task||''}\n  - _Evidence:_ ${tr.evidence||''}`));
+    lines.push(`\n## Successes`);
+    (r.successes||[]).forEach(s => lines.push(`- ${s}`));
+    if (!(r.successes||[]).length) lines.push(`_None recorded_`);
+    lines.push(`\n## Issues`);
+    (r.issues||[]).forEach(s => lines.push(`- ${s}`));
+    if (!(r.issues||[]).length) lines.push(`_None recorded_`);
+    lines.push(`\n## Action Plan`);
+    (r.actionPlan||[]).forEach(a => lines.push(`- **[${a.priority||'med'}]** ${a.step||a.action||''}`));
+    lines.push(`\n## Raw Platform Snapshot\n\`\`\`json\n${JSON.stringify(j.snapshot||{}, null, 2)}\n\`\`\``);
+    return lines.join('\n');
+  }
+
+  // ── Meetings panel ─────────────────────────────────────────────────────
+  async function _renderMeetingsPanel() {
+    const host = document.getElementById('aiTeamMeetings');
+    if (!host) return;
+    let meetings = [];
+    try { const r = await fetch('/api/officer/meetings'); const j = await r.json(); meetings = Array.isArray(j.meetings) ? j.meetings : []; } catch(_){}
+    host.innerHTML = `
+      <div style="${_cardCSS};margin-top:24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+          <div>
+            <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Cross-functional</div>
+            <div style="font-size:1.15rem;font-weight:800;color:#0F172A">🗓️ Officer Meetings</div>
+          </div>
+          <button id="mtgNew" style="padding:9px 16px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">+ Schedule Meeting</button>
+        </div>
+        ${meetings.length === 0
+          ? `<div style="color:#94A3B8;font-style:italic;padding:20px;text-align:center;background:#F8FAFC;border-radius:8px">No meetings yet. Schedule one to get cross-functional alignment + AI-drafted minutes.</div>`
+          : `<div style="display:grid;gap:10px">${meetings.map(m => `
+              <div style="border:1px solid #E2E8F0;border-radius:10px;padding:14px">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+                  <div style="flex:1;min-width:200px">
+                    <div style="font-size:.95rem;color:#0F172A;font-weight:700;margin-bottom:3px">${_e(m.topic||'')}</div>
+                    <div style="font-size:.72rem;color:#64748B">${new Date(m.scheduledAt||Date.now()).toLocaleString()} · ${(m.attendees||[]).map(a=>_e(a)).join(' · ')}</div>
+                  </div>
+                  <div style="display:flex;gap:6px">
+                    <button data-mtg-view="${_e(m.id)}" style="padding:6px 12px;background:#0F172A;color:#fff;border:none;border-radius:7px;font-size:.74rem;font-weight:700;cursor:pointer">View</button>
+                    <button data-mtg-dl="${_e(m.id)}" style="padding:6px 12px;background:#0EA5E9;color:#fff;border:none;border-radius:7px;font-size:.74rem;font-weight:700;cursor:pointer">📥 Minutes</button>
+                    <button data-mtg-del="${_e(m.id)}" title="Delete" style="padding:6px 10px;background:#FEE2E2;color:#B91C1C;border:none;border-radius:7px;font-size:.74rem;font-weight:700;cursor:pointer">✕</button>
+                  </div>
+                </div>
+              </div>`).join('')}</div>`}
+      </div>`;
+    host.querySelector('#mtgNew').onclick = () => _openScheduleMeetingModal();
+    host.querySelectorAll('button[data-mtg-view]').forEach(b => b.onclick = () => _openMeetingDetail(meetings.find(m=>m.id===b.dataset.mtgView)));
+    host.querySelectorAll('button[data-mtg-dl]').forEach(b => b.onclick = () => {
+      const m = meetings.find(x => x.id === b.dataset.mtgDl);
+      if (m) _downloadFile(`meeting-${m.id}.md`, _meetingToMarkdown(m));
+    });
+    host.querySelectorAll('button[data-mtg-del]').forEach(b => b.onclick = async () => {
+      if (!confirm('Delete this meeting?')) return;
+      try { await fetch('/api/officer/meetings/'+encodeURIComponent(b.dataset.mtgDel), { method:'DELETE' }); } catch(_){}
+      _renderMeetingsPanel();
+    });
+  }
+
+  function _meetingToMarkdown(m) {
+    const lines = [];
+    lines.push(`# Meeting Minutes — ${m.topic||''}`);
+    lines.push(`_${new Date(m.scheduledAt||Date.now()).toLocaleString()}_\n`);
+    lines.push(`**Attendees:** ${(m.attendees||[]).join(', ')}\n`);
+    lines.push(`## Discussion`);
+    (m.discussion||[]).forEach(p => lines.push(`\n${p}`));
+    lines.push(`\n## Decisions`);
+    (m.decisions||[]).forEach(d => lines.push(`- ${d}`));
+    if (!(m.decisions||[]).length) lines.push(`_None_`);
+    lines.push(`\n## Action Items / Plan of Action`);
+    (m.actionItems||[]).forEach(a => lines.push(`- **${a.owner||'?'}** — ${a.action||''} _(due: ${a.dueIn||'—'})_`));
+    if (!(m.actionItems||[]).length) lines.push(`_None_`);
+    return lines.join('\n');
+  }
+
+  function _openScheduleMeetingModal() {
+    const overlay = document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
+    overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:560px;max-width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
+      <div style="padding:20px 24px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff">
+        <div style="font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.9">🗓️ Schedule Meeting</div>
+        <h3 style="margin:6px 0 0;font-size:1.25rem;font-weight:800">Cross-functional alignment</h3>
+      </div>
+      <div style="padding:18px 24px;flex:1;overflow-y:auto">
+        <label style="display:block;font-size:.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">Topic</label>
+        <input id="mtgTopic" placeholder="e.g. Q4 launch readiness across Marketing, Sales and Content" style="width:100%;padding:10px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:.88rem;margin-bottom:14px;box-sizing:border-box">
+        <label style="display:block;font-size:.78rem;font-weight:700;color:#0F172A;margin-bottom:6px">Attendees (pick at least 2)</label>
+        <div id="mtgPick" style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          ${OFFICERS.map(o => `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #E2E8F0;border-radius:8px;cursor:pointer;font-size:.84rem"><input type="checkbox" value="${_e(o.title)}" data-id="${_e(o.id)}" style="margin:0">${_e((typeof _officerAvatars[o.id]==='string'&&_officerAvatars[o.id])||o.icon)} ${_e(o.title)}</label>`).join('')}
+        </div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;gap:8px;background:#F8FAFC">
+        <button id="mtgCancel" style="padding:10px 18px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-weight:700;cursor:pointer">Cancel</button>
+        <button id="mtgGo" style="padding:10px 22px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer">Schedule + Draft Minutes</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#mtgCancel').onclick = close;
+    overlay.addEventListener('click', e => { if (e.target===overlay) close(); });
+    overlay.querySelector('#mtgGo').onclick = async () => {
+      const topic = overlay.querySelector('#mtgTopic').value.trim();
+      const attendees = Array.from(overlay.querySelectorAll('#mtgPick input:checked')).map(i => i.value);
+      const tasksByRole = {};
+      Array.from(overlay.querySelectorAll('#mtgPick input:checked')).forEach(i => {
+        try {
+          const p = JSON.parse(localStorage.getItem('ig_officer_tasks_'+i.dataset.id)||'[]');
+          tasksByRole[i.value] = Array.isArray(p) ? p.filter(s=>typeof s==='string').slice(0,15) : [];
+        } catch(_) { tasksByRole[i.value] = []; }
+      });
+      if (!topic || attendees.length < 2) { alert('Pick at least 2 attendees and enter a topic.'); return; }
+      const btn = overlay.querySelector('#mtgGo');
+      btn.disabled = true; btn.textContent = '⏳ Drafting minutes…';
+      try {
+        const r = await fetch('/api/officer/meetings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ topic, attendees, tasksByRole }) });
+        const j = await r.json();
+        close();
+        await _renderMeetingsPanel();
+        if (j.meeting) _openMeetingDetail(j.meeting);
+      } catch(e) {
+        btn.disabled = false; btn.textContent = 'Schedule + Draft Minutes';
+        alert('Failed: '+e.message);
+      }
+    };
+  }
+
+  function _openMeetingDetail(m) {
+    if (!m) return;
+    const overlay = document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
+    overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:760px;max-width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
+      <div style="padding:20px 24px;background:linear-gradient(135deg,#0F172A,#312E81);color:#fff">
+        <div style="font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.8">📝 Meeting Minutes</div>
+        <h3 style="margin:6px 0 4px;font-size:1.3rem;font-weight:800">${_e(m.topic||'')}</h3>
+        <p style="margin:0;font-size:.8rem;opacity:.85">${new Date(m.scheduledAt||Date.now()).toLocaleString()} · ${(m.attendees||[]).map(a=>_e(a)).join(' · ')}</p>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:18px 24px">
+        <div style="margin-bottom:18px">
+          <div style="font-size:.78rem;font-weight:800;color:#0F172A;margin-bottom:6px">💬 Discussion</div>
+          ${(m.discussion||[]).map(p => `<p style="font-size:.88rem;color:#0F172A;line-height:1.6;margin:0 0 10px">${_e(p)}</p>`).join('') || '<div style="color:#94A3B8;font-style:italic">No discussion notes</div>'}
+        </div>
+        <div style="margin-bottom:18px">
+          <div style="font-size:.78rem;font-weight:800;color:#0F172A;margin-bottom:6px">✅ Decisions</div>
+          ${(m.decisions||[]).length ? `<ul style="margin:0 0 0 18px;padding:0;font-size:.88rem;line-height:1.7;color:#0F172A">${m.decisions.map(d=>`<li>${_e(d)}</li>`).join('')}</ul>` : '<div style="color:#94A3B8;font-style:italic">None</div>'}
+        </div>
+        <div>
+          <div style="font-size:.78rem;font-weight:800;color:#0F172A;margin-bottom:6px">📋 Plan of Action</div>
+          ${(m.actionItems||[]).length ? `<div style="display:grid;gap:6px">${m.actionItems.map(a=>`<div style="border:1px solid #E2E8F0;border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div style="flex:1"><div style="font-size:.86rem;color:#0F172A;font-weight:600">${_e(a.action||'')}</div><div style="font-size:.7rem;color:#64748B;margin-top:2px">Owner: ${_e(a.owner||'?')}</div></div><span style="${_pillCSS};background:#F1F5F9;color:#0F172A">due ${_e(a.dueIn||'—')}</span></div>`).join('')}</div>` : '<div style="color:#94A3B8;font-style:italic">None</div>'}
+        </div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;gap:8px;background:#F8FAFC">
+        <button id="mdClose" style="padding:10px 18px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-weight:700;cursor:pointer">Close</button>
+        <button id="mdDl" style="padding:10px 22px;background:#0EA5E9;color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer">📥 Download Minutes</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#mdClose').onclick = close;
+    overlay.addEventListener('click', e => { if (e.target===overlay) close(); });
+    overlay.querySelector('#mdDl').onclick = () => _downloadFile(`meeting-${m.id}.md`, _meetingToMarkdown(m));
   }
 
   // ── Tasks modal ─────────────────────────────────────────────────────────
@@ -41614,23 +41893,39 @@ function _rpToCarousel(title) {
   }
   window._openOfficerTasksModal = _openTasksModal;
 
-  window.buildAiTeam = function() {
+  window.buildAiTeam = async function() {
     const wrap = document.getElementById('view-ai-team');
     if (!wrap) return;
+    // Load avatars first (best-effort)
+    try {
+      const r = await fetch('/api/officer/avatars');
+      const j = await r.json();
+      _officerAvatars = (j && typeof j.avatars==='object' && !Array.isArray(j.avatars)) ? j.avatars : {};
+    } catch(_) { _officerAvatars = {}; }
     wrap.innerHTML = `
       <div style="${_hdrCSS}">
         <div style="font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#A5B4FC;font-weight:700">YOUR AI TEAM</div>
         <h1 style="margin:8px 0 6px;font-size:1.85rem;font-weight:800">Eight AI executives, one team</h1>
-        <p style="margin:0;font-size:.92rem;color:#CBD5E1;max-width:720px">Each officer handles a function full-time. Click any role to open their office. Marketing, Sales, Analyst, Content, SEO and CRO surface tools you already have. Finance and Operations are brand-new.</p>
+        <p style="margin:0;font-size:.92rem;color:#CBD5E1;max-width:720px">Each officer handles a function full-time. Click any role to open their office. Pick an avatar, assign tasks, run daily reports, and schedule cross-functional meetings — all minutes downloadable.</p>
       </div>
       <div style="max-width:1200px;margin:0 auto;padding:0 28px;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px">
         ${OFFICERS.map(_officerCard).join('')}
-      </div>`;
+      </div>
+      <div style="max-width:1200px;margin:0 auto;padding:0 28px" id="aiTeamMeetings"></div>`;
     wrap.querySelectorAll('.nav-link[data-view]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.dataset.view); }));
     wrap.querySelectorAll('button[data-officer-tasks]').forEach(b => b.addEventListener('click', e => {
       e.preventDefault();
       _openTasksModal(b.dataset.officerTasks, b.dataset.officerTitle);
     }));
+    wrap.querySelectorAll('button[data-officer-report]').forEach(b => b.addEventListener('click', e => {
+      e.preventDefault();
+      _openDailyReport(b.dataset.officerReport, b.dataset.officerTitle);
+    }));
+    wrap.querySelectorAll('button[data-officer-avatar]').forEach(b => b.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      _openAvatarPicker(b.dataset.officerAvatar, b);
+    }));
+    _renderMeetingsPanel();
   };
 
   // ── Finance Officer ──────────────────────────────────────────────────────

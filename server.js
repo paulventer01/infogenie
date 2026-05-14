@@ -10406,6 +10406,218 @@ app.post('/api/officer/tasks', async (req, res) => {
   }
 });
 
+// ── Officer avatars (kv_store) ────────────────────────────────────────────
+const _AVATAR_KEY = 'officer_avatars_v1';
+app.get('/api/officer/avatars', async (_req, res) => {
+  try {
+    const _db = require('./db');
+    if (!_db.hasDb()) return res.json({ avatars: {} });
+    const v = await _db.kvGet(_AVATAR_KEY, {});
+    res.json({ avatars: (v && typeof v==='object' && !Array.isArray(v)) ? v : {} });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/officer/avatars', async (req, res) => {
+  try {
+    const _db = require('./db');
+    const { role, avatar } = req.body || {};
+    if (!role || !avatar) return res.status(400).json({ error: 'role+avatar required' });
+    if (!_db.hasDb()) return res.status(503).json({ error: 'database not configured' });
+    const ALLOWED_ROLES = ['marketing','sales','analyst','content','seo','cro','finance','ops'];
+    const safeRole = String(role).toLowerCase();
+    if (!ALLOWED_ROLES.includes(safeRole)) return res.status(400).json({ error: 'unknown role' });
+    const cur = (await _db.kvGet(_AVATAR_KEY, {})) || {};
+    const safeCur = (cur && typeof cur==='object' && !Array.isArray(cur)) ? cur : {};
+    safeCur[safeRole] = String(avatar).slice(0, 8);
+    await _db.kvSet(_AVATAR_KEY, safeCur);
+    res.json({ ok: true, avatars: safeCur });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Daily report per officer ──────────────────────────────────────────────
+// Cross-references the officer's saved tasks against REAL platform data so
+// the report tells the truth instead of pretending. Each task gets one of:
+// done | in_progress | blocked | not_started, with evidence from the snapshot.
+app.post('/api/officer/daily-report', async (req, res) => {
+  try {
+    const role  = String(req.body?.role  || '').trim().toLowerCase();
+    const title = String(req.body?.title || 'Officer').trim();
+    const tasks = Array.isArray(req.body?.tasks) ? req.body.tasks.filter(t => typeof t==='string').slice(0,40) : [];
+    if (!role) return res.status(400).json({ ok:false, error: 'role required' });
+
+    const snap = {};
+    try {
+      const _db = require('./db');
+      if (_db.hasDb()) {
+        const pool = _db.getPool();
+        const safe = async (sql) => { try { const r = await pool.query(sql); return +r.rows?.[0]?.c || 0; } catch(_) { return null; } };
+        snap.adCampaigns_total    = await safe(`SELECT COUNT(*)::int c FROM ad_campaigns`);
+        snap.adInsights_last24h   = await safe(`SELECT COUNT(*)::int c FROM ad_insights WHERE inserted_at > now() - interval '24 hours'`);
+        snap.brandCalendar_next7d = await safe(`SELECT COUNT(*)::int c FROM brand_calendar_items WHERE event_date BETWEEN current_date AND current_date + 7`);
+        snap.landingPages_total   = await safe(`SELECT COUNT(*)::int c FROM landing_pages`);
+        snap.budgetSpend_last7d   = await safe(`SELECT COUNT(*)::int c FROM budget_spend WHERE spend_date > current_date - 7`);
+        snap.leadsLinksell_last7d = await safe(`SELECT COUNT(*)::int c FROM linksell_leads WHERE created_at > now() - interval '7 days'`);
+        snap.bookings_last7d      = await safe(`SELECT COUNT(*)::int c FROM bookings WHERE created_at > now() - interval '7 days'`);
+        snap.waCampaigns_total    = await safe(`SELECT COUNT(*)::int c FROM wa_campaigns`);
+        snap.activeProjects       = await safe(`SELECT COUNT(*)::int c FROM marketing_projects WHERE status='active'`);
+      }
+    } catch(_) {}
+
+    const FALLBACK = {
+      summary: tasks.length === 0
+        ? `${title}: no responsibilities assigned yet. Use the 📋 Tasks button to assign duties so I can start reporting.`
+        : `${title}: AI write-up unavailable right now. ${tasks.length} responsibilities on file. See snapshot below for raw activity.`,
+      tasksReviewed: tasks.map(t => ({ task:t, status:'not_started', evidence:'AI report offline — no automated check ran today.' })),
+      successes: [],
+      issues: tasks.length === 0 ? ['No tasks assigned'] : [],
+      actionPlan: tasks.length === 0 ? [{ step:'Open the 📋 Tasks button and assign your first responsibilities', priority:'high' }] : []
+    };
+
+    let report = null;
+    if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY && tasks.length) {
+      const tasksList = tasks.map((t,i)=>`${i+1}. ${t}`).join('\n');
+      const prompt = `You are the AI ${title} writing an HONEST end-of-day report to the CEO.
+
+ASSIGNED RESPONSIBILITIES:
+${tasksList}
+
+PLATFORM DATA SNAPSHOT (real counts — null means table not present):
+${JSON.stringify(snap, null, 2)}
+
+For each responsibility, decide HONESTLY based on the snapshot:
+- "done"        → clear evidence of activity in the snapshot today
+- "in_progress" → some activity but not complete
+- "blocked"     → blocked by missing data, missing integration, or external dep
+- "not_started" → no evidence of activity yet
+
+Do NOT fake completions. If the snapshot shows 0 or null, mark not_started or blocked and explain why.
+
+Return ONLY this JSON:
+{
+  "summary": "<2-3 sentence honest plain-English summary>",
+  "tasksReviewed": [{"task":"<exact task text>","status":"done|in_progress|blocked|not_started","evidence":"<what in the snapshot supports this — be specific or say no data>"}],
+  "successes": ["<concrete win today with a number>", "..."],
+  "issues":    ["<concrete blocker or risk with detail>", "..."],
+  "actionPlan":[{"step":"<verb-led step the user can take in InfoGenie>", "priority":"high|med|low"}]
+}`;
+      try {
+        const completion = await Promise.race([
+          openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            response_format: { type: 'json_object' },
+            max_tokens: 1800, temperature: 0.3,
+            messages: [
+              { role:'system', content:`You are the AI ${title}. Output strict JSON only. Be honest about what was and was not done.` },
+              { role:'user', content: prompt }
+            ]
+          }),
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('openai_timeout_18s')), 18000))
+        ]);
+        const parsed = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+        if (parsed && parsed.summary && Array.isArray(parsed.tasksReviewed)) report = parsed;
+      } catch(e) { console.warn('[daily-report] AI failed:', e.message); }
+    }
+    if (!report) report = FALLBACK;
+    res.json({ ok:true, role, title, generatedAt: new Date().toISOString(), snapshot: snap, report });
+  } catch (err) {
+    console.error('[daily-report] error:', err);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
+// ── Officer meetings ──────────────────────────────────────────────────────
+const _MEETINGS_KEY = 'officer_meetings_v1';
+app.get('/api/officer/meetings', async (_req, res) => {
+  try {
+    const _db = require('./db');
+    if (!_db.hasDb()) return res.json({ meetings: [] });
+    const v = (await _db.kvGet(_MEETINGS_KEY, [])) || [];
+    res.json({ meetings: Array.isArray(v) ? v : [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/officer/meetings', async (req, res) => {
+  try {
+    const attendees = Array.isArray(req.body?.attendees)
+      ? req.body.attendees.filter(s => typeof s==='string').slice(0,8)
+      : [];
+    const topic = String(req.body?.topic || '').trim().slice(0,300);
+    const tasksByRole = (req.body?.tasksByRole && typeof req.body.tasksByRole==='object' && !Array.isArray(req.body.tasksByRole))
+      ? req.body.tasksByRole : {};
+    if (attendees.length < 2 || !topic) return res.status(400).json({ ok:false, error: 'attendees (≥2) + topic required' });
+
+    const FALLBACK = {
+      discussion: [`${attendees.join(', ')} convened to discuss "${topic}".`, 'AI minute-taker is offline — please add notes manually or retry when AI is available.'],
+      decisions: [],
+      actionItems: attendees.map(a => ({ owner:a, action:`Follow up on "${topic}"`, dueIn:'7d' }))
+    };
+
+    let parsed = null;
+    if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      const prompt = `You are the meeting secretary. Draft minutes for an internal cross-functional meeting between these AI officers:
+
+ATTENDEES: ${attendees.join(', ')}
+TOPIC: ${topic}
+
+ASSIGNED RESPONSIBILITIES BY OFFICER:
+${JSON.stringify(tasksByRole, null, 2)}
+
+Generate realistic minutes that:
+- Reference each attendee by their role
+- Surface real cross-functional friction (e.g. Marketing needs Content for assets, Sales needs Analyst for attribution data)
+- Include 3-5 concrete decisions
+- Include action items with a clear owner role and due date
+
+Return ONLY this JSON:
+{
+  "discussion": ["<paragraph 1>", "<paragraph 2>", "..."],
+  "decisions":  ["<decision 1>", "..."],
+  "actionItems":[{"owner":"<attendee role>", "action":"<verb-led action>", "dueIn":"24h|3d|7d|14d"}]
+}`;
+      try {
+        const completion = await Promise.race([
+          openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            response_format: { type: 'json_object' },
+            max_tokens: 1600, temperature: 0.6,
+            messages: [
+              { role:'system', content:'You are a precise meeting secretary. Output strict JSON only.' },
+              { role:'user', content: prompt }
+            ]
+          }),
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('openai_timeout_18s')), 18000))
+        ]);
+        const j = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+        if (Array.isArray(j.discussion) && j.discussion.length) parsed = j;
+      } catch(e) { console.warn('[meeting] AI failed:', e.message); }
+    }
+    const _db = require('./db');
+    if (!_db.hasDb()) return res.status(503).json({ ok:false, error: 'database not configured — meetings cannot be persisted' });
+
+    const minutes = parsed || FALLBACK;
+    const id = 'mtg_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+    const record = { id, scheduledAt: new Date().toISOString(), attendees, topic, ...minutes };
+
+    const cur = (await _db.kvGet(_MEETINGS_KEY, [])) || [];
+    const safeCur = Array.isArray(cur) ? cur : [];
+    safeCur.unshift(record);
+    await _db.kvSet(_MEETINGS_KEY, safeCur.slice(0, 100));
+
+    res.json({ ok:true, meeting: record });
+  } catch (err) {
+    console.error('[meeting] error:', err);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+app.delete('/api/officer/meetings/:id', async (req, res) => {
+  try {
+    const _db = require('./db');
+    if (!_db.hasDb()) return res.json({ ok:true });
+    const cur = (await _db.kvGet(_MEETINGS_KEY, [])) || [];
+    const next = (Array.isArray(cur) ? cur : []).filter(m => m && m.id !== req.params.id);
+    await _db.kvSet(_MEETINGS_KEY, next);
+    res.json({ ok:true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Ops Officer scan — aggregates campaign QA, asset library, and lead-routing
 // health from existing in-memory/DB state. Returns a structured snapshot the
 // frontend feeds into /api/officer/brief for the AI narrative.
