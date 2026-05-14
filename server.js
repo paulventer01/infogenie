@@ -121,8 +121,12 @@ const _AUTH_PUBLIC_API_PATHS = [
 ];
 function _isApiPublic(p) { return _AUTH_PUBLIC_API_PATHS.some(rx => rx.test(p)); }
 function _isSameOrigin(req) {
-  // Allow requests from the SPA itself (browser sends Origin/Referer matching the server host).
-  // External API callers (curl, scripts, other servers) typically lack these or set a different host.
+  // Allow requests from the SPA itself.
+  // 1) Sec-Fetch-Site: browsers ALWAYS send this on fetch/XHR; "same-origin" / "same-site" = our SPA.
+  //    curl/scripts/external API callers never set it, so this is a reliable browser-only signal.
+  const sfs = String(req.headers['sec-fetch-site'] || '').toLowerCase();
+  if (sfs === 'same-origin' || sfs === 'same-site') return true;
+  // 2) Fallback: Host vs Origin/Referer match (works when Sec-Fetch-Site is missing, e.g. older browsers).
   const host = String(req.headers.host || '').toLowerCase();
   if (!host) return false;
   const origin = String(req.headers.origin || '').toLowerCase();
