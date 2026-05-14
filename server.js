@@ -120,11 +120,25 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/conversion-boosters\/lead\/[^\/]+$/,      // public lead capture (T27, rate-limited)
 ];
 function _isApiPublic(p) { return _AUTH_PUBLIC_API_PATHS.some(rx => rx.test(p)); }
+function _isSameOrigin(req) {
+  // Allow requests from the SPA itself (browser sends Origin/Referer matching the server host).
+  // External API callers (curl, scripts, other servers) typically lack these or set a different host.
+  const host = String(req.headers.host || '').toLowerCase();
+  if (!host) return false;
+  const origin = String(req.headers.origin || '').toLowerCase();
+  const referer = String(req.headers.referer || '').toLowerCase();
+  try {
+    if (origin)  { const h = new URL(origin).host.toLowerCase();  if (h === host) return true; }
+    if (referer) { const h = new URL(referer).host.toLowerCase(); if (h === host) return true; }
+  } catch {}
+  return false;
+}
 app.use((req, res, next) => {
   const expected = process.env.INFOGENIE_API_KEY;
   if (!expected) return next();                     // dev mode — no auth
   if (!req.path.startsWith('/api/')) return next(); // only gate API
   if (_isApiPublic(req.path)) return next();
+  if (_isSameOrigin(req)) return next();            // SPA same-origin requests
   const supplied =
        (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
     || (req.headers['x-infogenie-key'] || '').trim()
