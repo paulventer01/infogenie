@@ -41508,6 +41508,12 @@ function _rpToCarousel(title) {
   function _officerCard(o) {
     const links = o.links.map(([v,l]) => `<a href="#" class="nav-link" data-view="${_e(v)}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:8px;font-size:.74rem;font-weight:700;color:#1E293B;text-decoration:none;margin:3px 4px 0 0">→ ${_e(l)}</a>`).join('');
     const newBadge = o.isNew ? `<span style="${_pillCSS};background:#DCFCE7;color:#166534;margin-left:6px">NEW</span>` : '';
+    let saved = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem('ig_officer_tasks_'+o.id)||'[]');
+      saved = Array.isArray(parsed) ? parsed.filter(s => typeof s === 'string').slice(0,200) : [];
+    } catch(_){}
+    const taskCount = saved.length | 0;
     return `<div style="${_cardCSS}">
       <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:10px">
         <div style="width:54px;height:54px;border-radius:14px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0">${o.icon}</div>
@@ -41518,8 +41524,95 @@ function _rpToCarousel(title) {
         <span style="${_pillCSS};background:#DCFCE7;color:#166534">● ON DUTY</span>
       </div>
       <div style="margin-top:10px">${links}</div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #E2E8F0;display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="font-size:.72rem;color:#64748B"><strong style="color:#0F172A">${taskCount}</strong> ${taskCount===1?'task':'tasks'} assigned</div>
+        <button data-officer-tasks="${_e(o.id)}" data-officer-title="${_e(o.title)}" data-officer-role="${_e(o.id)}" style="padding:6px 12px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-size:.74rem;font-weight:700;cursor:pointer">📋 Tasks</button>
+      </div>
     </div>`;
   }
+
+  // ── Tasks modal ─────────────────────────────────────────────────────────
+  async function _openTasksModal(officerId, officerTitle) {
+    const storeKey = 'ig_officer_tasks_' + officerId;
+    let saved = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem(storeKey)||'[]');
+      saved = Array.isArray(parsed) ? parsed.filter(s => typeof s === 'string').slice(0,200) : [];
+    } catch(_){}
+    const overlay = document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
+    overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:640px;max-width:100%;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
+      <div style="padding:20px 24px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff">
+        <div style="font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.9">📋 Job Responsibilities</div>
+        <h3 style="margin:6px 0 4px;font-size:1.3rem;font-weight:800">${_e(officerTitle)}</h3>
+        <p style="margin:0;font-size:.85rem;opacity:.95">Pick the tasks you want this AI employee to own. You can add custom ones too.</p>
+      </div>
+      <div style="padding:18px 24px;border-bottom:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div style="font-size:.84rem;color:#64748B"><strong id="otCount" style="color:#0F172A">${saved.length}</strong> selected · <strong id="otTotal">—</strong> suggested</div>
+        <button id="otRegen" style="padding:7px 14px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer">🔄 Regenerate with AI</button>
+      </div>
+      <div id="otList" style="flex:1;overflow-y:auto;padding:14px 24px"><div style="text-align:center;color:#64748B;padding:30px">⏳ Asking AI for relevant tasks…</div></div>
+      <div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;gap:8px;align-items:center">
+        <input id="otCustom" placeholder="+ Add custom responsibility…" style="flex:1;padding:9px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:.86rem">
+        <button id="otAddCustom" style="padding:9px 14px;background:#0EA5E9;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Add</button>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;gap:8px;background:#F8FAFC">
+        <button id="otCancel" style="padding:10px 18px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-weight:700;cursor:pointer">Cancel</button>
+        <button id="otSave" style="padding:10px 22px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer">Save Responsibilities</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = () => { overlay.remove(); window.buildAiTeam && window.buildAiTeam(); };
+    overlay.querySelector('#otCancel').onclick = close;
+    overlay.addEventListener('click', e => { if (e.target===overlay) close(); });
+
+    let suggestions = [];
+    const renderList = () => {
+      const all = [...new Set([...suggestions, ...saved])];
+      overlay.querySelector('#otTotal').textContent = suggestions.length;
+      overlay.querySelector('#otCount').textContent = saved.length;
+      overlay.querySelector('#otList').innerHTML = all.length===0
+        ? '<div style="text-align:center;color:#94A3B8;padding:30px">No suggestions returned.</div>'
+        : all.map((t,i) => {
+            const checked = saved.includes(t) ? 'checked' : '';
+            const isCustom = !suggestions.includes(t);
+            return `<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid ${checked?'#7C3AED':'#E2E8F0'};border-radius:9px;margin-bottom:6px;cursor:pointer;background:${checked?'#FAF5FF':'#fff'}"><input type="checkbox" data-task-idx="${i}" ${checked} style="margin-top:3px"><div style="flex:1"><div style="font-size:.88rem;color:#0F172A;font-weight:600">${_e(t)}</div>${isCustom?'<div style="font-size:.66rem;color:#7C3AED;margin-top:2px;font-weight:700">CUSTOM</div>':''}</div></label>`;
+          }).join('');
+      overlay.querySelectorAll('input[data-task-idx]').forEach(cb => cb.onchange = e => {
+        const all2 = [...new Set([...suggestions, ...saved])];
+        const t = all2[+e.target.dataset.taskIdx];
+        if (e.target.checked) { if (!saved.includes(t)) saved.push(t); }
+        else saved = saved.filter(x => x !== t);
+        overlay.querySelector('#otCount').textContent = saved.length;
+        e.target.closest('label').style.borderColor = e.target.checked?'#7C3AED':'#E2E8F0';
+        e.target.closest('label').style.background  = e.target.checked?'#FAF5FF':'#fff';
+      });
+    };
+    const fetchTasks = async () => {
+      overlay.querySelector('#otList').innerHTML = '<div style="text-align:center;color:#64748B;padding:30px">⏳ Asking AI for relevant tasks…</div>';
+      try {
+        const r = await fetch('/api/officer/tasks', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ role: officerId, title: officerTitle }) });
+        const j = await r.json();
+        suggestions = Array.isArray(j.tasks) ? j.tasks : [];
+      } catch(e) { suggestions = []; }
+      renderList();
+    };
+    overlay.querySelector('#otRegen').onclick = fetchTasks;
+    overlay.querySelector('#otAddCustom').onclick = () => {
+      const inp = overlay.querySelector('#otCustom');
+      const v = inp.value.trim(); if (!v) return;
+      if (!saved.includes(v)) saved.push(v);
+      inp.value=''; renderList();
+    };
+    overlay.querySelector('#otCustom').onkeydown = e => { if (e.key==='Enter'){ e.preventDefault(); overlay.querySelector('#otAddCustom').click(); } };
+    overlay.querySelector('#otSave').onclick = () => {
+      try { localStorage.setItem(storeKey, JSON.stringify(saved)); } catch(_){}
+      if (typeof showToast==='function') showToast(`✓ Saved ${saved.length} ${saved.length===1?'task':'tasks'} for ${officerTitle}`);
+      close();
+    };
+    fetchTasks();
+  }
+  window._openOfficerTasksModal = _openTasksModal;
 
   window.buildAiTeam = function() {
     const wrap = document.getElementById('view-ai-team');
@@ -41534,6 +41627,10 @@ function _rpToCarousel(title) {
         ${OFFICERS.map(_officerCard).join('')}
       </div>`;
     wrap.querySelectorAll('.nav-link[data-view]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.dataset.view); }));
+    wrap.querySelectorAll('button[data-officer-tasks]').forEach(b => b.addEventListener('click', e => {
+      e.preventDefault();
+      _openTasksModal(b.dataset.officerTasks, b.dataset.officerTitle);
+    }));
   };
 
   // ── Finance Officer ──────────────────────────────────────────────────────

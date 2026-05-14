@@ -10359,6 +10359,53 @@ Rules:
   }
 });
 
+// ── AI-suggested job responsibilities per officer role ─────────────────────
+// Returns 12-15 concrete, role-appropriate tasks the user can pick from to
+// "hire" their AI employee. Falls back to a built-in template per role.
+app.post('/api/officer/tasks', async (req, res) => {
+  try {
+    const role  = String(req.body?.role  || '').trim();
+    const title = String(req.body?.title || role || 'Officer').trim();
+    if (!role) return res.status(400).json({ ok:false, error:'role required' });
+    const FALLBACK = {
+      marketing: ['Plan and launch monthly campaigns','Write ad copy and creative briefs','Monitor competitor campaigns weekly','Reallocate budget to top-performing channels','Run weekly performance retrospective','Brief content team on campaign themes','Manage email + SMS drip sequences','Refresh ad creative on fatigue','Review brand voice + tone consistency','Coordinate cross-channel launches','Set quarterly OKRs','Approve every paid creative before launch'],
+      sales:     ['Build weekly outbound prospect lists','Qualify inbound leads within 1 hour','Follow up on stalled deals every 3 days','Run weekly pipeline review','Re-engage cold leads monthly','Update CRM after every touch','Forecast monthly revenue','Negotiate pricing within guardrails','Hand off won deals to onboarding','Track conversion rate by source','Coach SDRs weekly','Maintain ICP definition'],
+      analyst:   ['Build weekly cross-channel performance report','Track attribution model accuracy','Flag KPI anomalies daily','Run cohort analysis monthly','Maintain dashboard data freshness','Validate tracking pixels weekly','A/B test methodology review','Surface "why did X change" answers','Audit data sources monthly','Maintain a single source of truth metric glossary','Forecast next-quarter pipeline','Calculate true blended ROAS'],
+      content:   ['Plan monthly content calendar','Score every piece before publishing','Brief writers + designers','Schedule social posts across platforms','Repurpose top content into 5 formats','Audit existing content quarterly for refresh','Track content engagement weekly','Maintain brand voice guide','Source UGC + customer stories','Run monthly content gap analysis vs competitors','Optimise headlines + thumbnails','Distribute content via newsletter'],
+      seo:       ['Run weekly on-page audit','Track keyword rankings daily','Build internal link plan monthly','Audit competitor backlinks','Submit fresh sitemaps','Monitor Core Web Vitals','Optimise meta titles + descriptions','Identify content gaps vs SERPs','Run GEO audit for AI search visibility','Schema markup review','Local SEO citations','Disavow toxic backlinks'],
+      cro:       ['Run weekly A/B tests on top pages','Analyse heatmaps + session recordings','Document every winning experiment','Build conversion playbook','Implement urgency + social proof boosters','Test pricing page variants','Optimise checkout flow','Reduce form-field friction','Run mobile-first usability audits','Personalise CTAs by traffic source','Test exit-intent overlays','Maintain experiment backlog'],
+      finance:   ['Track marketing P&L weekly','Compute CAC by channel monthly','Calculate LTV/CAC ratio','Flag overspending campaigns','Forecast 90-day cash flow','Approve budget reallocations','Audit invoices vs platform spend','Tax-prep marketing line items','Negotiate annual platform contracts','Report MER monthly','Set channel budget caps','Variance analysis vs plan'],
+      ops:       ['Run weekly campaign QA scan','Audit brand asset library completeness','Check lead routing health daily','Maintain SOPs for every workflow','Onboard new tools + integrations','Quarterly access review','Vendor relationship management','Backup critical data weekly','Track team capacity vs workload','Run incident postmortems','Maintain compliance + privacy register','Schedule team standups']
+    };
+    const key = role.toLowerCase();
+    let tasks = null;
+    if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+      try {
+        const completion = await Promise.race([
+          openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            response_format: { type: 'json_object' },
+            max_tokens: 700,
+            temperature: 0.4,
+            messages: [
+              { role:'system', content:'You output strict JSON only — no markdown.' },
+              { role:'user', content:`Suggest 12-15 concrete, day-to-day job responsibilities for an AI ${title} working inside a SaaS marketing platform. Keep each task to 4-10 words, action-verb led, specific (not generic). Mix daily, weekly, monthly cadences. Return ONLY: {"tasks":["...","..."]}` }
+            ]
+          }),
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('openai_timeout_12s')),12000))
+        ]);
+        const parsed = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+        if (Array.isArray(parsed.tasks) && parsed.tasks.length >= 6) tasks = parsed.tasks.slice(0,15);
+      } catch (e) { console.warn('[officer/tasks] AI failed:', e.message); }
+    }
+    if (!tasks) tasks = FALLBACK[key] || FALLBACK.marketing;
+    res.json({ ok:true, role, title, tasks, generatedAt: new Date().toISOString() });
+  } catch (err) {
+    console.error('[officer/tasks] error:', err);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
 // Ops Officer scan — aggregates campaign QA, asset library, and lead-routing
 // health from existing in-memory/DB state. Returns a structured snapshot the
 // frontend feeds into /api/officer/brief for the AI narrative.
