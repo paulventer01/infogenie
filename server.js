@@ -8698,6 +8698,31 @@ const _searchIntelRouter = require('./services/search_intel/api');
 app.use('/api/search-intel', _searchIntelRouter);
 const _exportsRouter = require('./services/exports/api');
 app.use('/api/exports', _exportsRouter);
+
+// ── Customer Journey Builder + Signal Triggers + Omni-Channel ─────────────
+const _journeySchema    = require('./services/journey_builder/schema');
+const _journeyRouter    = require('./services/journey_builder/api');
+const _journeyRunner    = require('./services/journey_builder/runner');
+const _signalSchema     = require('./services/signal_triggers/schema');
+const _signalRouter     = require('./services/signal_triggers/api');
+const _omniRouter       = require('./services/omnichannel/api');
+const _webpushSvc       = require('./services/omnichannel/webpush');
+app.use('/api/journeys', _journeyRouter);
+app.use('/api/signal-triggers', _signalRouter);
+app.use('/api/omnichannel', _omniRouter);
+(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _journeySchema.ensureJourneySchema();
+      await _signalSchema.ensureSignalTriggersSchema();
+      await _webpushSvc.ensureWebPushSchema();
+      _journeyRunner.startRunner();
+      console.log('[journey-builder + signal-triggers + omnichannel] ready');
+    } else {
+      console.log('[journey-builder] disabled — DATABASE_URL not set');
+    }
+  } catch (e) { console.error('[journey-builder] init failed:', e.message); }
+})();
 console.log('[exports] mounted at /api/exports (formats: pptx, pdf, xlsx)');
 const _influencerSchema = require('./services/influencers/schema');
 const _influencerRouter = require('./services/influencers/api');
