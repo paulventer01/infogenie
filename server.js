@@ -10913,11 +10913,13 @@ async function _autoReportTickGuarded() {
   catch (e) { console.warn('[autoreport tick]', e.message); }
   finally { _autoReportTickInFlight = false; }
 }
-setInterval(_autoReportTickGuarded, 60 * 1000);
+global._serverStartedAt = global._serverStartedAt || new Date().toISOString();
+const _autoReportTickGuardedInstrumented = async () => { global._lastAutoTickAt = Date.now(); return _autoReportTickGuarded(); };
+setInterval(_autoReportTickGuardedInstrumented, 60 * 1000);
 // Also run once shortly after boot so a server that was down across the
 // scheduled window catches up immediately on restart instead of waiting
 // up to a minute.
-setTimeout(_autoReportTickGuarded, 8000);
+setTimeout(_autoReportTickGuardedInstrumented, 8000);
 
 // ── Autonomous Officer Meetings ───────────────────────────────────────────
 // The AI Team self-schedules cross-functional meetings on a recurring cadence
@@ -10963,6 +10965,53 @@ app.post('/api/officer/auto-meetings', async (req, res) => {
     res.json({ ok: true, settings: next });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// ── AI Employees system health/status ─────────────────────────────────────
+// Single endpoint that tells the UI whether every part of the AI Team
+// system is wired up and live: database, AI provider, both schedulers,
+// and the most recent activity timestamps.
+app.get('/api/officer/system-status', async (_req, res) => {
+  try {
+    const _db = require('./db');
+    const dbOk = !!_db.hasDb();
+    const aiOk = !!process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    let autoreport = { enabled:false, frequency:'daily', hour:null, minute:null, timezone:'UTC', lastScheduledRunDate:'' };
+    let automtg    = { enabled:false, frequency:'weekly', dayOfWeek:1, hour:null, minute:null, timezone:'UTC', lastScheduledRunDate:'' };
+    let lastMeetingAt = null, totalMeetings = 0, lastReportAt = null, totalReports = 0;
+    if (dbOk) {
+      try { autoreport = { ...autoreport, ...((await _db.kvGet(_AUTOREPORT_KEY, _AUTOREPORT_DEFAULTS)) || {}) }; } catch(_){}
+      try { automtg    = { ...automtg,    ...((await _db.kvGet(_AUTOMTG_KEY, _AUTOMTG_DEFAULTS)) || {}) }; } catch(_){}
+      try {
+        const meetings = (await _db.kvGet(_MEETINGS_KEY, [])) || [];
+        if (Array.isArray(meetings)) { totalMeetings = meetings.length; if (meetings[0]?.scheduledAt) lastMeetingAt = meetings[0].scheduledAt; }
+      } catch(_){}
+      try {
+        const hist = (await _db.kvGet('officer_autoreport_history_v1', [])) || [];
+        if (Array.isArray(hist)) { totalReports = hist.length; if (hist[0]?.runAt) lastReportAt = hist[0].runAt; }
+      } catch(_){}
+    }
+    const tickAlive = (Date.now() - (global._lastAutoTickAt || 0)) < 90 * 1000;
+    res.json({
+      ok: dbOk && aiOk,
+      checks: {
+        server:        { ok: true,  label: 'Server reachable' },
+        database:      { ok: dbOk,  label: dbOk ? 'Postgres connected' : 'Postgres NOT configured' },
+        aiProvider:    { ok: aiOk,  label: aiOk ? 'OpenAI key configured' : 'OPENAI_API_KEY missing — minutes/reports will use fallback' },
+        scheduler:     { ok: tickAlive, label: tickAlive ? 'Background scheduler ticking' : 'Scheduler tick not seen in last 90s' },
+        autoReport:    { ok: !!autoreport.enabled, label: autoreport.enabled ? `Daily reports ON · ${String(autoreport.hour).padStart(2,'0')}:${String(autoreport.minute).padStart(2,'0')} ${autoreport.timezone}` : 'Daily reports OFF' },
+        autoMeetings:  { ok: !!automtg.enabled,    label: automtg.enabled    ? `Auto-meetings ON · ${automtg.frequency==='weekly'?['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][automtg.dayOfWeek|0]+' ':''}${String(automtg.hour).padStart(2,'0')}:${String(automtg.minute).padStart(2,'0')} ${automtg.timezone}` : 'Auto-meetings OFF' }
+      },
+      activity: {
+        lastReportAt, totalReports,
+        lastMeetingAt, totalMeetings,
+        lastTickAt: global._lastAutoTickAt || null,
+        serverStartedAt: global._serverStartedAt || null,
+        uptimeSec: Math.round(process.uptime())
+      },
+      schedules: { autoReport: autoreport, autoMeetings: automtg }
+    });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
 app.post('/api/officer/auto-meetings/run-now', async (_req, res) => {
   try {
     const meeting = await _runAutonomousMeeting({ manualTrigger: true });

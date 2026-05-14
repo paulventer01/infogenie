@@ -41940,15 +41940,28 @@ function _rpToCarousel(title) {
     } catch(_) { _officerAvatars = {}; }
     wrap.innerHTML = `
       <div style="${_hdrCSS}">
-        <div style="font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#A5B4FC;font-weight:700">YOUR AI TEAM</div>
-        <h1 style="margin:8px 0 6px;font-size:1.85rem;font-weight:800">Eight AI executives, one team</h1>
-        <p style="margin:0;font-size:.92rem;color:#CBD5E1;max-width:720px">Each officer handles a function full-time. Click any role to open their office. Pick an avatar, assign tasks, run daily reports, and schedule cross-functional meetings — all minutes downloadable.</p>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#A5B4FC;font-weight:700">YOUR AI TEAM</div>
+            <h1 style="margin:8px 0 6px;font-size:1.85rem;font-weight:800">Eight AI executives, one team</h1>
+            <p style="margin:0;font-size:.92rem;color:#CBD5E1;max-width:720px">Each officer handles a function full-time. Click any role to open their office. Pick an avatar, assign tasks, run daily reports, and schedule cross-functional meetings — all minutes downloadable.</p>
+          </div>
+          <button id="aiTeamStatusPill" title="Click for full system status" style="display:inline-flex;align-items:center;gap:8px;background:rgba(15,23,42,0.5);border:1px solid rgba(148,163,184,0.3);color:#fff;padding:8px 14px;border-radius:99px;font-size:.78rem;font-weight:700;cursor:pointer">
+            <span id="aiTeamStatusDot" style="width:9px;height:9px;border-radius:50%;background:#94A3B8;box-shadow:0 0 0 3px rgba(148,163,184,0.25);animation:pulse 2s infinite"></span>
+            <span id="aiTeamStatusText">Checking…</span>
+          </button>
+        </div>
       </div>
+      <style>@keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}</style>
       <div style="max-width:1200px;margin:0 auto;padding:0 28px;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px">
         ${OFFICERS.map(_officerCard).join('')}
       </div>
       <div style="max-width:1200px;margin:0 auto;padding:18px 28px 0" id="aiTeamAutoReport"></div>
       <div style="max-width:1200px;margin:0 auto;padding:0 28px" id="aiTeamMeetings"></div>`;
+    _refreshSystemStatusPill();
+    if (window._aiTeamStatusInt) clearInterval(window._aiTeamStatusInt);
+    window._aiTeamStatusInt = setInterval(_refreshSystemStatusPill, 30000);
+    wrap.querySelector('#aiTeamStatusPill').onclick = _openSystemStatusPanel;
     wrap.querySelectorAll('.nav-link[data-view]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.dataset.view); }));
     wrap.querySelectorAll('button[data-officer-tasks]').forEach(b => b.addEventListener('click', e => {
       e.preventDefault();
@@ -41966,6 +41979,87 @@ function _rpToCarousel(title) {
     _renderAutoReportPanel();
     _renderAutoMeetingsPanel();
   };
+
+  // ── System Status pill + detail panel ─────────────────────────────────
+  async function _refreshSystemStatusPill() {
+    const dot = document.getElementById('aiTeamStatusDot');
+    const txt = document.getElementById('aiTeamStatusText');
+    if (!dot || !txt) return;
+    try {
+      const r = await fetch('/api/officer/system-status');
+      const j = await r.json();
+      window._aiTeamLastStatus = j;
+      const checks = j.checks || {};
+      const blockers = ['server','database','aiProvider','scheduler'].filter(k => !checks[k]?.ok);
+      const off = ['autoReport','autoMeetings'].filter(k => !checks[k]?.ok);
+      let color, label;
+      if (blockers.length) { color = '#EF4444'; label = `OFFLINE — ${blockers.length} issue${blockers.length>1?'s':''}`; }
+      else if (off.length === 2) { color = '#F59E0B'; label = 'LIVE — schedulers paused'; }
+      else if (off.length === 1) { color = '#10B981'; label = 'LIVE — partial schedule'; }
+      else { color = '#10B981'; label = 'LIVE — fully autonomous'; }
+      dot.style.background = color;
+      dot.style.boxShadow = `0 0 0 3px ${color}33`;
+      txt.textContent = label;
+    } catch(_) {
+      dot.style.background = '#EF4444'; dot.style.boxShadow = '0 0 0 3px rgba(239,68,68,0.2)';
+      txt.textContent = 'OFFLINE — unreachable';
+    }
+  }
+  function _openSystemStatusPanel() {
+    const j = window._aiTeamLastStatus || { checks:{}, activity:{} };
+    const checks = j.checks || {};
+    const act = j.activity || {};
+    const fmt = (iso) => iso ? new Date(iso).toLocaleString() : '—';
+    const ago = (iso) => { if (!iso) return '—'; const s = Math.floor((Date.now()-new Date(iso).getTime())/1000); if (s<60) return s+'s ago'; if (s<3600) return Math.floor(s/60)+'m ago'; if (s<86400) return Math.floor(s/3600)+'h ago'; return Math.floor(s/86400)+'d ago'; };
+    const row = (k, c) => `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #E2E8F0;border-radius:8px;margin-bottom:6px;background:${c.ok?'#F0FDF4':'#FEF2F2'}">
+      <span style="font-size:1.1rem">${c.ok?'✅':'❌'}</span>
+      <span style="font-size:.84rem;font-weight:700;color:#0F172A;text-transform:capitalize;min-width:110px">${k.replace(/([A-Z])/g,' $1').toLowerCase()}</span>
+      <span style="font-size:.8rem;color:${c.ok?'#166534':'#991B1B'};flex:1">${_e(c.label||'')}</span>
+    </div>`;
+    const overlay = document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,0.65);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
+    overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:600px;max-width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
+      <div style="padding:18px 22px;background:linear-gradient(135deg,#0F172A,#312E81);color:#fff;display:flex;justify-content:space-between;align-items:center">
+        <div><div style="font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.85">AI Team Health</div>
+          <h3 style="margin:4px 0 0;font-size:1.2rem;font-weight:800">${j.ok ? '🟢 System Live' : '🔴 System Degraded'}</h3></div>
+        <button id="ssClose" style="background:rgba(255,255,255,0.15);border:none;color:#fff;width:34px;height:34px;border-radius:50%;font-size:1.1rem;cursor:pointer">×</button>
+      </div>
+      <div style="padding:18px 22px;overflow-y:auto;flex:1">
+        <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin-bottom:6px">Checks</div>
+        ${Object.entries(checks).map(([k,c])=>row(k,c)).join('')}
+        <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;margin:14px 0 8px">Recent Activity</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="padding:10px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px">
+            <div style="font-size:.7rem;color:#64748B;font-weight:700">LAST DAILY REPORT</div>
+            <div style="font-size:.86rem;font-weight:700;color:#0F172A;margin-top:2px">${ago(act.lastReportAt)}</div>
+            <div style="font-size:.7rem;color:#64748B;margin-top:2px">${fmt(act.lastReportAt)} · ${act.totalReports||0} total</div>
+          </div>
+          <div style="padding:10px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px">
+            <div style="font-size:.7rem;color:#64748B;font-weight:700">LAST MEETING</div>
+            <div style="font-size:.86rem;font-weight:700;color:#0F172A;margin-top:2px">${ago(act.lastMeetingAt)}</div>
+            <div style="font-size:.7rem;color:#64748B;margin-top:2px">${fmt(act.lastMeetingAt)} · ${act.totalMeetings||0} total</div>
+          </div>
+          <div style="padding:10px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px">
+            <div style="font-size:.7rem;color:#64748B;font-weight:700">LAST SCHEDULER TICK</div>
+            <div style="font-size:.86rem;font-weight:700;color:#0F172A;margin-top:2px">${ago(act.lastTickAt)}</div>
+            <div style="font-size:.7rem;color:#64748B;margin-top:2px">runs every 60s</div>
+          </div>
+          <div style="padding:10px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px">
+            <div style="font-size:.7rem;color:#64748B;font-weight:700">SERVER UPTIME</div>
+            <div style="font-size:.86rem;font-weight:700;color:#0F172A;margin-top:2px">${(() => { const s=act.uptimeSec||0; if (s<3600) return Math.floor(s/60)+'m'; if (s<86400) return Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m'; return Math.floor(s/86400)+'d '+Math.floor((s%86400)/3600)+'h'; })()}</div>
+            <div style="font-size:.7rem;color:#64748B;margin-top:2px">since ${fmt(act.serverStartedAt)}</div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:12px 22px;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;gap:8px;background:#F8FAFC">
+        <button id="ssRefresh" style="padding:9px 16px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:7px;font-weight:700;cursor:pointer">↻ Refresh</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#ssClose').onclick = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target===overlay) overlay.remove(); });
+    overlay.querySelector('#ssRefresh').onclick = async () => { await _refreshSystemStatusPill(); overlay.remove(); _openSystemStatusPanel(); };
+  }
 
   // ── Autonomous Meetings scheduler panel (on AI Team page) ─────────────
   async function _renderAutoMeetingsPanel() {
