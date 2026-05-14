@@ -3024,6 +3024,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'ad-library')           { try { window.buildAdLibrary && window.buildAdLibrary(); }            catch(e) { console.warn('buildAdLibrary error:', e); } }
   if (viewId === 'newsletter-tracker')   { try { window.buildNewsletterTracker && window.buildNewsletterTracker(); }    catch(e) { console.warn('buildNewsletterTracker error:', e); } }
   if (viewId === 'meeting-notes')        { try { window.buildMeetingNotes && window.buildMeetingNotes(); }         catch(e) { console.warn('buildMeetingNotes error:', e); } }
+  if (viewId === 'team-meetings')        { try { window.buildTeamMeetings && window.buildTeamMeetings(); }         catch(e) { console.warn('buildTeamMeetings error:', e); } }
   if (viewId === 'headline-tester')      { try { window.buildHeadlineTester && window.buildHeadlineTester(); }       catch(e) { console.warn('buildHeadlineTester error:', e); } }
   if (viewId === 'review-aggregator')    { try { window.buildReviewAggregator && window.buildReviewAggregator(); }     catch(e) { console.warn('buildReviewAggregator error:', e); } }
   if (viewId === 'churn-scorer')         { try { window.buildChurnScorer && window.buildChurnScorer(); }          catch(e) { console.warn('buildChurnScorer error:', e); } }
@@ -41519,9 +41520,13 @@ function _rpToCarousel(title) {
     } catch(_){}
     const taskCount = saved.length | 0;
     const avatar = (typeof _officerAvatars[o.id] === 'string' && _officerAvatars[o.id]) ? _officerAvatars[o.id] : o.icon;
+    const isImg = typeof avatar === 'string' && avatar.startsWith('/uploads/');
+    const avatarInner = isImg
+      ? `<img src="${_e(avatar)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:14px">`
+      : _e(avatar);
     return `<div style="${_cardCSS}">
       <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:10px">
-        <button data-officer-avatar="${_e(o.id)}" title="Change avatar" style="width:54px;height:54px;border-radius:14px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;border:none;cursor:pointer;padding:0;position:relative">${_e(avatar)}<span style="position:absolute;bottom:-2px;right:-2px;background:#fff;border:1px solid #E2E8F0;border-radius:50%;width:18px;height:18px;font-size:10px;display:flex;align-items:center;justify-content:center;color:#64748B">✏️</span></button>
+        <button data-officer-avatar="${_e(o.id)}" title="Change avatar" style="width:54px;height:54px;border-radius:14px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;border:none;cursor:pointer;padding:0;position:relative;overflow:hidden">${avatarInner}<span style="position:absolute;bottom:-2px;right:-2px;background:#fff;border:1px solid #E2E8F0;border-radius:50%;width:18px;height:18px;font-size:10px;display:flex;align-items:center;justify-content:center;color:#64748B">✏️</span></button>
         <div style="flex:1">
           <div style="font-size:1.05rem;font-weight:800;color:#0F172A">${_e(o.title)}${newBadge}</div>
           <div style="font-size:.78rem;color:#64748B;margin-top:2px">${_e(o.role)}</div>
@@ -41555,8 +41560,16 @@ function _rpToCarousel(title) {
     const rect = anchorBtn.getBoundingClientRect();
     const pop = document.createElement('div');
     pop.className = 'ig-avatar-pop';
-    pop.style.cssText = `position:fixed;top:${rect.bottom+6}px;left:${rect.left}px;background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:10px;box-shadow:0 10px 30px rgba(0,0,0,0.15);z-index:99998;display:grid;grid-template-columns:repeat(6,1fr);gap:4px;width:240px`;
-    pop.innerHTML = AVATAR_GALLERY.map(em => `<button data-pick="${_e(em)}" style="width:34px;height:34px;border:1px solid #F1F5F9;background:#fff;border-radius:8px;font-size:18px;cursor:pointer;padding:0">${em}</button>`).join('');
+    pop.style.cssText = `position:fixed;top:${rect.bottom+6}px;left:${Math.max(8, Math.min(window.innerWidth-280, rect.left))}px;background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,0.15);z-index:99998;width:268px`;
+    pop.innerHTML = `
+      <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Pick an emoji</div>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin-bottom:12px">
+        ${AVATAR_GALLERY.map(em => `<button data-pick="${_e(em)}" style="width:36px;height:36px;border:1px solid #F1F5F9;background:#fff;border-radius:8px;font-size:18px;cursor:pointer;padding:0">${em}</button>`).join('')}
+      </div>
+      <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Or upload an image</div>
+      <button id="apUploadBtn" style="width:100%;padding:9px 12px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-size:.8rem;font-weight:700;cursor:pointer">📷 Choose image…</button>
+      <div id="apStatus" style="font-size:.7rem;color:#64748B;margin-top:6px;text-align:center"></div>
+      <input id="apFile" type="file" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none">`;
     document.body.appendChild(pop);
     const closer = (e) => { if (!pop.contains(e.target) && e.target !== anchorBtn) { pop.remove(); document.removeEventListener('click', closer, true); } };
     setTimeout(() => document.addEventListener('click', closer, true), 0);
@@ -41564,11 +41577,25 @@ function _rpToCarousel(title) {
       const em = b.dataset.pick;
       pop.remove(); document.removeEventListener('click', closer, true);
       _officerAvatars[officerId] = em;
-      try {
-        await fetch('/api/officer/avatars', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ role: officerId, avatar: em }) });
-      } catch(_){}
+      try { await fetch('/api/officer/avatars', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ role: officerId, avatar: em }) }); } catch(_){}
       window.buildAiTeam && window.buildAiTeam();
     });
+    const fileInp = pop.querySelector('#apFile');
+    pop.querySelector('#apUploadBtn').onclick = () => fileInp.click();
+    fileInp.onchange = async () => {
+      const f = fileInp.files && fileInp.files[0]; if (!f) return;
+      if (f.size > 5 * 1024 * 1024) { pop.querySelector('#apStatus').textContent = '❌ Image must be under 5MB'; return; }
+      pop.querySelector('#apStatus').textContent = '⏳ Uploading…';
+      try {
+        const fd = new FormData(); fd.append('role', officerId); fd.append('image', f);
+        const r = await fetch('/api/officer/avatar-upload', { method:'POST', body: fd });
+        const j = await r.json();
+        if (!r.ok) { pop.querySelector('#apStatus').textContent = '❌ '+(j.error||'upload failed'); return; }
+        _officerAvatars[officerId] = j.url;
+        pop.remove(); document.removeEventListener('click', closer, true);
+        window.buildAiTeam && window.buildAiTeam();
+      } catch(e) { pop.querySelector('#apStatus').textContent = '❌ '+e.message; }
+    };
   }
 
   // ── Daily Report modal ─────────────────────────────────────────────────
@@ -41706,6 +41733,10 @@ function _rpToCarousel(title) {
       _renderMeetingsPanel();
     });
   }
+
+  window._teamMeetingToMarkdown = window._teamMeetingToMarkdown || function(m){ return _meetingToMarkdown(m); };
+  window._teamOpenMeetingDetail = window._teamOpenMeetingDetail || function(m){ return _openMeetingDetail(m); };
+  window._teamDownloadFile      = window._teamDownloadFile      || function(n,c){ return _downloadFile(n,c); };
 
   function _meetingToMarkdown(m) {
     const lines = [];
@@ -41933,6 +41964,219 @@ function _rpToCarousel(title) {
     }));
     _renderMeetingsPanel();
     _renderAutoReportPanel();
+    _renderAutoMeetingsPanel();
+  };
+
+  // ── Autonomous Meetings scheduler panel (on AI Team page) ─────────────
+  async function _renderAutoMeetingsPanel() {
+    let host = document.getElementById('aiTeamAutoMeetings');
+    if (!host) {
+      const meetingsHost = document.getElementById('aiTeamMeetings');
+      if (!meetingsHost) return;
+      host = document.createElement('div');
+      host.id = 'aiTeamAutoMeetings';
+      host.style.cssText = 'max-width:1200px;margin:0 auto;padding:0 28px';
+      meetingsHost.parentNode.insertBefore(host, meetingsHost);
+    }
+    let s = { enabled:false, frequency:'weekly', dayOfWeek:1, hour:9, minute:30, timezone:'UTC' };
+    try { const r = await fetch('/api/officer/auto-meetings'); const j = await r.json(); s = { ...s, ...(j.settings||{}) }; } catch(_){}
+    const detectedTz = (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC';
+    const dowName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][s.dayOfWeek|0] || 'Mon';
+    const status = s.enabled ? `<span style="${_pillCSS};background:#DCFCE7;color:#166534">● ON · ${s.frequency==='weekly'?dowName+' ':''}${String(s.hour).padStart(2,'0')}:${String(s.minute).padStart(2,'0')} ${_e(s.timezone)}</span>` : `<span style="${_pillCSS};background:#F1F5F9;color:#475569">○ OFF</span>`;
+    host.innerHTML = `<div style="${_cardCSS};margin-top:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:8px">
+        <div>
+          <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Autonomous</div>
+          <div style="font-size:1.15rem;font-weight:800;color:#0F172A">🗓️ Auto-Scheduled Team Meetings ${status}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="amSettings" style="padding:9px 16px;background:#0F172A;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">⚙️ Settings</button>
+          <button id="amRunNow" style="padding:9px 16px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">▶ Run Now</button>
+        </div>
+      </div>
+      <div style="font-size:.82rem;color:#475569;line-height:1.5">When ON, the AI Team auto-schedules a recurring cross-functional meeting and the AI minute-taker drafts notes (with a clear to-do list of action items per officer). All 8 officers attend by default. Browse all minutes anytime via <strong>Manage → Minutes of Meeting</strong>.</div>
+    </div>`;
+    host.querySelector('#amSettings').onclick = () => _openAutoMeetingSettings(s, detectedTz);
+    host.querySelector('#amRunNow').onclick = async (e) => {
+      const btn = e.currentTarget; btn.disabled = true; btn.textContent = '⏳ Drafting…';
+      try {
+        const r = await fetch('/api/officer/auto-meetings/run-now', { method:'POST' });
+        const j = await r.json();
+        if (typeof showToast==='function') showToast('✓ Meeting created with AI minutes');
+        if (j.meeting) _openMeetingDetail(j.meeting);
+        _renderMeetingsPanel();
+      } catch(err) { alert('Failed: '+err.message); }
+      _renderAutoMeetingsPanel();
+    };
+  }
+
+  function _openAutoMeetingSettings(cur, detectedTz) {
+    const TZS = ['UTC','America/Los_Angeles','America/Denver','America/Chicago','America/New_York','America/Toronto','America/Sao_Paulo','Europe/London','Europe/Paris','Europe/Berlin','Europe/Athens','Europe/Moscow','Africa/Cairo','Africa/Johannesburg','Asia/Dubai','Asia/Karachi','Asia/Kolkata','Asia/Bangkok','Asia/Singapore','Asia/Hong_Kong','Asia/Shanghai','Asia/Tokyo','Australia/Sydney','Pacific/Auckland'];
+    if (detectedTz && !TZS.includes(detectedTz)) TZS.unshift(detectedTz);
+    if (cur.timezone && !TZS.includes(cur.timezone)) TZS.unshift(cur.timezone);
+    const overlay = document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
+    const hours = Array.from({length:24},(_,i)=>i);
+    const mins  = [0,15,30,45];
+    const dows  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:560px;max-width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
+      <div style="padding:20px 24px;background:linear-gradient(135deg,#0F172A,#312E81);color:#fff">
+        <div style="font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.85">🗓️ Autonomous Meetings</div>
+        <h3 style="margin:6px 0 0;font-size:1.25rem;font-weight:800">Recurring AI Team Standup</h3>
+      </div>
+      <div style="padding:20px 24px;flex:1;overflow-y:auto">
+        <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;cursor:pointer;margin-bottom:16px">
+          <input id="amEn" type="checkbox" ${cur.enabled?'checked':''} style="width:18px;height:18px;cursor:pointer">
+          <div style="flex:1"><div style="font-weight:700;font-size:.92rem;color:#0F172A">Auto-schedule team meetings</div><div style="font-size:.76rem;color:#64748B">Server creates the meeting + drafts minutes on the schedule below.</div></div>
+        </label>
+        <div style="margin-bottom:14px">
+          <label style="display:block;font-size:.76rem;font-weight:700;color:#0F172A;margin-bottom:6px">Frequency</label>
+          <div style="display:flex;gap:8px">
+            <label style="flex:1;padding:10px;border:2px solid ${cur.frequency==='daily'?'#7C3AED':'#E2E8F0'};border-radius:8px;cursor:pointer;text-align:center;font-weight:700;font-size:.84rem"><input type="radio" name="amFreq" value="daily" ${cur.frequency==='daily'?'checked':''} style="display:none">Daily</label>
+            <label style="flex:1;padding:10px;border:2px solid ${cur.frequency==='weekly'?'#7C3AED':'#E2E8F0'};border-radius:8px;cursor:pointer;text-align:center;font-weight:700;font-size:.84rem"><input type="radio" name="amFreq" value="weekly" ${cur.frequency==='weekly'?'checked':''} style="display:none">Weekly</label>
+          </div>
+        </div>
+        <div id="amDowWrap" style="margin-bottom:14px;${cur.frequency==='daily'?'display:none':''}">
+          <label style="display:block;font-size:.76rem;font-weight:700;color:#0F172A;margin-bottom:6px">Day of week</label>
+          <select id="amDow" style="width:100%;padding:10px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:.88rem">${dows.map((d,i)=>`<option value="${i}" ${(cur.dayOfWeek|0)===i?'selected':''}>${d}</option>`).join('')}</select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+          <div><label style="display:block;font-size:.76rem;font-weight:700;color:#0F172A;margin-bottom:6px">Hour (24h)</label>
+            <select id="amH" style="width:100%;padding:10px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:.88rem">${hours.map(h=>`<option value="${h}" ${(cur.hour|0)===h?'selected':''}>${String(h).padStart(2,'0')}</option>`).join('')}</select></div>
+          <div><label style="display:block;font-size:.76rem;font-weight:700;color:#0F172A;margin-bottom:6px">Minute</label>
+            <select id="amM" style="width:100%;padding:10px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:.88rem">${mins.map(m=>`<option value="${m}" ${(cur.minute|0)===m?'selected':''}>${String(m).padStart(2,'0')}</option>`).join('')}</select></div>
+        </div>
+        <label style="display:block;font-size:.76rem;font-weight:700;color:#0F172A;margin-bottom:6px">Timezone</label>
+        <select id="amTz" style="width:100%;padding:10px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:.88rem;margin-bottom:4px">${TZS.map(t=>`<option value="${_e(t)}" ${(cur.timezone||'UTC')===t?'selected':''}>${_e(t)}</option>`).join('')}</select>
+        <div style="font-size:.7rem;color:#64748B">Detected: <strong>${_e(detectedTz||'UTC')}</strong></div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;gap:8px;background:#F8FAFC">
+        <button id="amCancel" style="padding:10px 18px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-weight:700;cursor:pointer">Cancel</button>
+        <button id="amSave" style="padding:10px 22px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer">Save</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#amCancel').onclick = close;
+    overlay.addEventListener('click', e => { if (e.target===overlay) close(); });
+    overlay.querySelectorAll('input[name="amFreq"]').forEach(r => r.onchange = () => {
+      overlay.querySelectorAll('label[for], label').forEach(()=>{});
+      overlay.querySelectorAll('input[name="amFreq"]').forEach(rr => rr.parentElement.style.borderColor = rr.checked?'#7C3AED':'#E2E8F0');
+      overlay.querySelector('#amDowWrap').style.display = (overlay.querySelector('input[name="amFreq"]:checked').value==='weekly') ? '' : 'none';
+    });
+    overlay.querySelector('#amSave').onclick = async () => {
+      const body = {
+        enabled: overlay.querySelector('#amEn').checked,
+        frequency: overlay.querySelector('input[name="amFreq"]:checked').value,
+        dayOfWeek: +overlay.querySelector('#amDow').value,
+        hour: +overlay.querySelector('#amH').value,
+        minute: +overlay.querySelector('#amM').value,
+        timezone: overlay.querySelector('#amTz').value
+      };
+      try {
+        const r = await fetch('/api/officer/auto-meetings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const j = await r.json();
+        if (!r.ok) { alert(j.error||'Save failed'); return; }
+        if (typeof showToast==='function') showToast('✓ Auto-meeting schedule saved');
+        close(); _renderAutoMeetingsPanel();
+      } catch(err) { alert('Save failed: '+err.message); }
+    };
+  }
+
+  // ── Manage → Minutes of Meeting (calendar + list) ─────────────────────
+  window.buildTeamMeetings = async function() {
+    const wrap = document.getElementById('teamMeetingsWrap');
+    if (!wrap) return;
+    wrap.innerHTML = '<div style="text-align:center;color:#64748B;padding:40px">⏳ Loading meetings…</div>';
+    let meetings = [];
+    try { const r = await fetch('/api/officer/meetings'); const j = await r.json(); meetings = Array.isArray(j.meetings) ? j.meetings : []; } catch(_){}
+
+    const view = { ym: (() => { const d=new Date(); return [d.getFullYear(), d.getMonth()]; })() };
+
+    function render() {
+      const [yr, mo] = view.ym;
+      const monthStart = new Date(yr, mo, 1);
+      const monthName = monthStart.toLocaleString(undefined, { month:'long', year:'numeric' });
+      const daysInMonth = new Date(yr, mo+1, 0).getDate();
+      const firstDow = monthStart.getDay();
+      const byDay = {};
+      meetings.forEach(m => {
+        const d = new Date(m.scheduledAt);
+        if (d.getFullYear()===yr && d.getMonth()===mo) {
+          const k = d.getDate();
+          (byDay[k] = byDay[k] || []).push(m);
+        }
+      });
+      const cells = [];
+      for (let i=0; i<firstDow; i++) cells.push('<div></div>');
+      for (let d=1; d<=daysInMonth; d++) {
+        const items = byDay[d] || [];
+        const isToday = (() => { const t = new Date(); return t.getFullYear()===yr && t.getMonth()===mo && t.getDate()===d; })();
+        const hasMeetings = items.length > 0;
+        cells.push(`<button data-day="${d}" ${hasMeetings?'':'disabled'} style="aspect-ratio:1;padding:6px;border:1px solid ${isToday?'#7C3AED':'#E2E8F0'};border-radius:8px;background:${hasMeetings?'#F5F3FF':'#fff'};cursor:${hasMeetings?'pointer':'default'};display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:2px">
+          <div style="font-size:.78rem;font-weight:${isToday?800:600};color:${hasMeetings?'#7C3AED':'#64748B'}">${d}</div>
+          ${hasMeetings ? `<div style="font-size:.6rem;background:#7C3AED;color:#fff;padding:2px 6px;border-radius:99px;font-weight:700">${items.length}</div>` : ''}
+        </button>`);
+      }
+      const sorted = [...meetings].sort((a,b)=> new Date(b.scheduledAt) - new Date(a.scheduledAt));
+      wrap.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px">
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:14px">
+            <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase">Total meetings</div>
+            <div style="font-size:1.6rem;font-weight:800;color:#0F172A">${meetings.length}</div>
+          </div>
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:14px">
+            <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase">Autonomous</div>
+            <div style="font-size:1.6rem;font-weight:800;color:#0F172A">${meetings.filter(m=>m.autonomous).length}</div>
+          </div>
+        </div>
+        <div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:18px;margin-bottom:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <button id="tmPrev" style="padding:7px 12px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-weight:700;cursor:pointer">‹ Prev</button>
+            <div style="font-size:1.05rem;font-weight:800;color:#0F172A">${monthName}</div>
+            <button id="tmNext" style="padding:7px 12px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-weight:700;cursor:pointer">Next ›</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div style="text-align:center;font-size:.65rem;color:#64748B;font-weight:700;padding:4px">${d}</div>`).join('')}</div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">${cells.join('')}</div>
+        </div>
+        <div style="background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:18px">
+          <div style="font-size:1rem;font-weight:800;color:#0F172A;margin-bottom:12px">All meetings (newest first)</div>
+          ${sorted.length === 0
+            ? `<div style="color:#94A3B8;font-style:italic;padding:20px;text-align:center">No meetings yet. Enable autonomous meetings on the AI Team page or schedule one manually.</div>`
+            : `<div style="display:grid;gap:8px">${sorted.map(m => `
+              <div style="border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+                <div style="flex:1;min-width:200px">
+                  <div style="font-size:.92rem;color:#0F172A;font-weight:700">${_e(m.topic||'')} ${m.autonomous?`<span style="${_pillCSS};background:#EDE9FE;color:#5B21B6;margin-left:6px">AUTO</span>`:''}</div>
+                  <div style="font-size:.72rem;color:#64748B;margin-top:3px">${new Date(m.scheduledAt).toLocaleString()} · ${(m.attendees||[]).length} attendees · ${(m.actionItems||[]).length} action items</div>
+                </div>
+                <div style="display:flex;gap:6px">
+                  <button data-tm-view="${_e(m.id)}" style="padding:6px 12px;background:#0F172A;color:#fff;border:none;border-radius:7px;font-size:.74rem;font-weight:700;cursor:pointer">View Minutes</button>
+                  <button data-tm-dl="${_e(m.id)}" style="padding:6px 12px;background:#0EA5E9;color:#fff;border:none;border-radius:7px;font-size:.74rem;font-weight:700;cursor:pointer">📥 Download</button>
+                </div>
+              </div>`).join('')}</div>`}
+        </div>`;
+      wrap.querySelector('#tmPrev').onclick = () => { view.ym = [view.ym[1]===0?view.ym[0]-1:view.ym[0], view.ym[1]===0?11:view.ym[1]-1]; render(); };
+      wrap.querySelector('#tmNext').onclick = () => { view.ym = [view.ym[1]===11?view.ym[0]+1:view.ym[0], view.ym[1]===11?0:view.ym[1]+1]; render(); };
+      wrap.querySelectorAll('button[data-day]').forEach(b => b.onclick = () => {
+        const items = byDay[+b.dataset.day] || [];
+        if (items.length === 1) window._teamOpenMeetingDetail(items[0]);
+        else if (items.length > 1) {
+          const dlg = document.createElement('div');
+          dlg.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
+          dlg.innerHTML = `<div style="background:#fff;border-radius:14px;width:480px;max-width:100%;padding:18px"><div style="font-weight:800;color:#0F172A;margin-bottom:10px">${items.length} meetings on ${monthName.split(' ')[0]} ${b.dataset.day}</div>${items.map(m=>`<button data-mid="${_e(m.id)}" style="display:block;width:100%;text-align:left;padding:10px 12px;border:1px solid #E2E8F0;border-radius:8px;background:#fff;cursor:pointer;margin-bottom:6px"><div style="font-weight:700;font-size:.86rem;color:#0F172A">${_e(m.topic)}</div><div style="font-size:.72rem;color:#64748B">${new Date(m.scheduledAt).toLocaleTimeString()}</div></button>`).join('')}<button id="dlgCx" style="margin-top:8px;padding:8px 16px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:7px;font-weight:700;cursor:pointer;float:right">Close</button></div>`;
+          document.body.appendChild(dlg);
+          dlg.querySelector('#dlgCx').onclick = () => dlg.remove();
+          dlg.addEventListener('click', e => { if (e.target===dlg) dlg.remove(); });
+          dlg.querySelectorAll('button[data-mid]').forEach(bb => bb.onclick = () => { dlg.remove(); window._teamOpenMeetingDetail(items.find(m=>m.id===bb.dataset.mid)); });
+        }
+      });
+      wrap.querySelectorAll('button[data-tm-view]').forEach(b => b.onclick = () => window._teamOpenMeetingDetail(meetings.find(m=>m.id===b.dataset.tmView)));
+      wrap.querySelectorAll('button[data-tm-dl]').forEach(b => b.onclick = () => {
+        const m = meetings.find(x=>x.id===b.dataset.tmDl);
+        if (m) window._teamDownloadFile(`meeting-${m.id}.md`, window._teamMeetingToMarkdown(m));
+      });
+    }
+    render();
   };
 
   // ── Autonomous Daily Report scheduler panel ───────────────────────────

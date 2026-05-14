@@ -10441,6 +10441,60 @@ app.post('/api/officer/tasks-store', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Officer avatar image upload (multer) ──────────────────────────────────
+// SVG is intentionally rejected (active-content / stored-XSS risk on a
+// same-origin /uploads/* path). MIME type is derived server-side from the
+// browser-reported MIME (cross-checked against extension) and the on-disk
+// filename uses our own ext so we never trust client-supplied filenames.
+const _OFFICER_AVATAR_DIR = path.join(__dirname, 'uploads', 'officer-avatars');
+try { if (!fs.existsSync(_OFFICER_AVATAR_DIR)) fs.mkdirSync(_OFFICER_AVATAR_DIR, { recursive: true }); } catch(_){}
+const _OFFICER_ROLES_WL = ['marketing','sales','analyst','content','seo','cro','finance','ops'];
+const _AVATAR_MIME_EXT = { 'image/jpeg':'.jpg', 'image/png':'.png', 'image/gif':'.gif', 'image/webp':'.webp' };
+const _officerAvatarUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, _OFFICER_AVATAR_DIR),
+    filename:    (req, file, cb) => {
+      const ext  = _AVATAR_MIME_EXT[file.mimetype] || '.bin';
+      const role = String(req.body?.role || 'unknown').toLowerCase().replace(/[^a-z]/g, '').slice(0,20);
+      cb(null, `${role}_${Date.now()}${ext}`);
+    }
+  }),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    // Pre-write role gate so invalid-role requests never write to disk.
+    const role = String(req.body?.role || '').toLowerCase();
+    if (!_OFFICER_ROLES_WL.includes(role)) return cb(new Error('unknown role'));
+    if (!_AVATAR_MIME_EXT[file.mimetype]) return cb(new Error('Image must be JPG, PNG, GIF or WebP'));
+    if (!/\.(jpg|jpeg|png|gif|webp)$/i.test(path.extname(file.originalname || ''))) return cb(new Error('Image must be JPG, PNG, GIF or WebP'));
+    cb(null, true);
+  }
+});
+app.post('/api/officer/avatar-upload', (req, res, next) => {
+  _officerAvatarUpload.single('image')(req, res, (err) => {
+    if (err) {
+      // Best-effort: if a file landed despite a later validation error, remove it.
+      try { if (req.file && req.file.path) fs.unlinkSync(req.file.path); } catch(_){}
+      return res.status(400).json({ error: err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
+  const cleanup = () => { try { if (req.file && req.file.path) fs.unlinkSync(req.file.path); } catch(_){} };
+  try {
+    const _db = require('./db');
+    if (!_db.hasDb()) { cleanup(); return res.status(503).json({ error: 'database not configured' }); }
+    const role = String(req.body?.role || '').toLowerCase();
+    if (!_OFFICER_ROLES_WL.includes(role)) { cleanup(); return res.status(400).json({ error: 'unknown role' }); }
+    if (!req.file) return res.status(400).json({ error: 'no image uploaded' });
+    const url = `/uploads/officer-avatars/${req.file.filename}`;
+    const cur = (await _db.kvGet(_AVATAR_KEY, {})) || {};
+    const safeCur = (cur && typeof cur==='object' && !Array.isArray(cur)) ? cur : {};
+    safeCur[role] = url;
+    await _db.kvSet(_AVATAR_KEY, safeCur);
+    res.json({ ok: true, role, url, avatars: safeCur });
+  } catch (e) { cleanup(); res.status(500).json({ error: e.message }); }
+});
+
 // ── Officer avatars (kv_store) ────────────────────────────────────────────
 const _AVATAR_KEY = 'officer_avatars_v1';
 app.get('/api/officer/avatars', async (_req, res) => {
@@ -10462,6 +10516,7 @@ app.post('/api/officer/avatars', async (req, res) => {
     if (!ALLOWED_ROLES.includes(safeRole)) return res.status(400).json({ error: 'unknown role' });
     const cur = (await _db.kvGet(_AVATAR_KEY, {})) || {};
     const safeCur = (cur && typeof cur==='object' && !Array.isArray(cur)) ? cur : {};
+    // Emoji is short (≤8 chars). For uploaded image URLs use /api/officer/avatar-upload.
     safeCur[safeRole] = String(avatar).slice(0, 8);
     await _db.kvSet(_AVATAR_KEY, safeCur);
     res.json({ ok: true, avatars: safeCur });
@@ -10634,7 +10689,7 @@ Return ONLY this JSON:
     const cur = (await _db.kvGet(_MEETINGS_KEY, [])) || [];
     const safeCur = Array.isArray(cur) ? cur : [];
     safeCur.unshift(record);
-    await _db.kvSet(_MEETINGS_KEY, safeCur.slice(0, 100));
+    await _db.kvSet(_MEETINGS_KEY, safeCur.slice(0, 200));
 
     res.json({ ok:true, meeting: record });
   } catch (err) {
@@ -10863,6 +10918,148 @@ setInterval(_autoReportTickGuarded, 60 * 1000);
 // scheduled window catches up immediately on restart instead of waiting
 // up to a minute.
 setTimeout(_autoReportTickGuarded, 8000);
+
+// ── Autonomous Officer Meetings ───────────────────────────────────────────
+// The AI Team self-schedules cross-functional meetings on a recurring cadence
+// (daily or weekly on a chosen weekday). Topics rotate through a curated set
+// so meetings stay relevant. All 8 officers attend by default. Minutes use
+// the same AI minute-taker as manual meetings, then are saved into the
+// existing officer_meetings_v1 store so they appear in both the AI Team
+// meetings panel and the new Manage → Team Meetings calendar.
+const _AUTOMTG_KEY = 'officer_automtg_settings_v1';
+const _AUTOMTG_DEFAULTS = { enabled:false, frequency:'weekly', dayOfWeek:1, hour:9, minute:30, timezone:'UTC', topics:[
+  'Weekly cross-functional sync — what shipped, what slipped, what is blocked',
+  'Pipeline + funnel health review across acquisition, activation, retention',
+  'Brand + content calendar alignment for the next 14 days',
+  'Budget pacing + reallocation across paid channels',
+  'Customer feedback loop — wins, complaints, churn signals',
+  'Competitive intel briefing — moves observed in the last 7 days',
+  'Quarterly OKR check-in and risk register'
+], lastScheduledRunDate:'' };
+
+app.get('/api/officer/auto-meetings', async (_req, res) => {
+  try {
+    const _db = require('./db');
+    if (!_db.hasDb()) return res.json({ settings: _AUTOMTG_DEFAULTS });
+    const s = (await _db.kvGet(_AUTOMTG_KEY, _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
+    res.json({ settings: { ..._AUTOMTG_DEFAULTS, ...s } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/officer/auto-meetings', async (req, res) => {
+  try {
+    const _db = require('./db');
+    if (!_db.hasDb()) return res.status(503).json({ error: 'database not configured' });
+    const { enabled, frequency, dayOfWeek, hour, minute, timezone } = req.body || {};
+    const freq = ['daily','weekly'].includes(frequency) ? frequency : 'weekly';
+    const dow = Math.max(0, Math.min(6, parseInt(dayOfWeek, 10) || 0));
+    const h = Math.max(0, Math.min(23, parseInt(hour, 10) || 0));
+    const m = Math.max(0, Math.min(59, parseInt(minute, 10) || 0));
+    let tz = String(timezone || 'UTC').slice(0, 64);
+    try { new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date()); }
+    catch { return res.status(400).json({ error: 'invalid timezone' }); }
+    const cur = (await _db.kvGet(_AUTOMTG_KEY, _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
+    const next = { ...cur, enabled: !!enabled, frequency: freq, dayOfWeek: dow, hour: h, minute: m, timezone: tz };
+    await _db.kvSet(_AUTOMTG_KEY, next);
+    res.json({ ok: true, settings: next });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/officer/auto-meetings/run-now', async (_req, res) => {
+  try {
+    const meeting = await _runAutonomousMeeting({ manualTrigger: true });
+    res.json({ ok: true, meeting });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+async function _runAutonomousMeeting({ manualTrigger = false } = {}) {
+  const _db = require('./db');
+  if (!_db.hasDb()) throw new Error('database not configured');
+  const settings = (await _db.kvGet(_AUTOMTG_KEY, _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
+  const tasksStore = (await _db.kvGet(_TASKS_KEY, {})) || {};
+  const attendees = _OFFICER_ROLES.map(r => _OFFICER_TITLES[r]);
+  const tasksByRole = {};
+  attendees.forEach((t, i) => { tasksByRole[t] = Array.isArray(tasksStore[_OFFICER_ROLES[i]]) ? tasksStore[_OFFICER_ROLES[i]].slice(0,8) : []; });
+  // Rotate topic by week-of-year so consecutive meetings differ
+  const topics = Array.isArray(settings.topics) && settings.topics.length ? settings.topics : _AUTOMTG_DEFAULTS.topics;
+  const wk = Math.floor(Date.now() / (7 * 86400000));
+  const topic = topics[wk % topics.length];
+
+  const FALLBACK = {
+    discussion: [`Auto-scheduled cross-functional meeting on "${topic}". AI minute-taker is offline — please regenerate manually.`],
+    decisions: [],
+    actionItems: attendees.map(a => ({ owner:a, action:`Follow up on "${topic}"`, dueIn:'7d' }))
+  };
+
+  let parsed = null;
+  if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    const prompt = `You are the meeting secretary. Draft minutes for an AUTONOMOUSLY-SCHEDULED recurring cross-functional meeting attended by all 8 AI officers.\n\nATTENDEES: ${attendees.join(', ')}\nTOPIC: ${topic}\n\nASSIGNED RESPONSIBILITIES BY OFFICER:\n${JSON.stringify(tasksByRole, null, 2)}\n\nGenerate realistic minutes. The ACTION ITEMS section is the to-do list — every item must have an owner role and a due date.\n\nReturn ONLY this JSON: {"discussion":["<paragraph>",...], "decisions":["<decision>",...], "actionItems":[{"owner":"<role>","action":"<verb-led>","dueIn":"24h|3d|7d|14d"}]}`;
+    try {
+      const completion = await Promise.race([
+        openai.chat.completions.create({
+          model: 'gpt-4o-mini', response_format: { type: 'json_object' },
+          max_tokens: 1800, temperature: 0.6,
+          messages: [
+            { role:'system', content:'You are a precise meeting secretary. Output strict JSON only.' },
+            { role:'user', content: prompt }
+          ]
+        }),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('openai_timeout_18s')), 18000))
+      ]);
+      const j = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+      if (Array.isArray(j.discussion) && j.discussion.length) parsed = j;
+    } catch (e) { console.warn('[auto-meeting] AI failed:', e.message); }
+  }
+  const minutes = parsed || FALLBACK;
+  const id = 'mtg_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+  const record = { id, scheduledAt: new Date().toISOString(), attendees, topic, autonomous: true, manualTrigger, ...minutes };
+
+  const cur = (await _db.kvGet(_MEETINGS_KEY, [])) || [];
+  const safeCur = Array.isArray(cur) ? cur : [];
+  safeCur.unshift(record);
+  await _db.kvSet(_MEETINGS_KEY, safeCur.slice(0, 200));
+
+  // Mark scheduled day as fired (manual triggers do not advance this)
+  if (!manualTrigger) {
+    let tz = settings.timezone || 'UTC';
+    try { new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date()); } catch { tz = 'UTC'; }
+    const today = new Intl.DateTimeFormat('en-CA', { year:'numeric', month:'2-digit', day:'2-digit', timeZone: tz }).format(new Date());
+    await _db.kvSet(_AUTOMTG_KEY, { ...settings, lastScheduledRunDate: today });
+  }
+  return record;
+}
+
+async function _autoMeetingTickOnce() {
+  const _db = require('./db');
+  if (!_db.hasDb()) return;
+  const s = (await _db.kvGet(_AUTOMTG_KEY, _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
+  if (!s.enabled) return;
+  let tz = s.timezone || 'UTC';
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date()); } catch { tz = 'UTC'; }
+  const parts = new Intl.DateTimeFormat('en-CA', { hour12:false, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', weekday:'short', timeZone: tz }).formatToParts(new Date());
+  const get = (t) => parts.find(p=>p.type===t)?.value;
+  const hour = parseInt(get('hour'), 10);
+  const minute = parseInt(get('minute'), 10);
+  const today = `${get('year')}-${get('month')}-${get('day')}`;
+  const wkMap = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+  const dow = wkMap[get('weekday')] ?? 0;
+  if (s.frequency === 'weekly' && dow !== (s.dayOfWeek|0)) return;
+  const scheduledMins = (s.hour|0)*60 + (s.minute|0);
+  const nowMins = hour*60 + minute;
+  if (nowMins >= scheduledMins && s.lastScheduledRunDate !== today) {
+    console.log('[auto-meeting] firing', { tz, today, scheduled:`${s.hour}:${s.minute}`, freq: s.frequency });
+    try { await _runAutonomousMeeting({ manualTrigger:false }); }
+    catch (e) { console.warn('[auto-meeting] run failed:', e.message); }
+  }
+}
+let _autoMeetingTickInFlight = false;
+async function _autoMeetingTickGuarded() {
+  if (_autoMeetingTickInFlight) return;
+  _autoMeetingTickInFlight = true;
+  try { await _autoMeetingTickOnce(); }
+  catch (e) { console.warn('[auto-meeting tick]', e.message); }
+  finally { _autoMeetingTickInFlight = false; }
+}
+setInterval(_autoMeetingTickGuarded, 60 * 1000);
+setTimeout(_autoMeetingTickGuarded, 12000);
 
 app.delete('/api/officer/meetings/:id', async (req, res) => {
   try {
