@@ -316,4 +316,71 @@ router.get('/signature/list', async (_req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 6) AI CASE STUDY BUILDER — turn a customer story into a polished case study
+// Outputs the standard Challenge → Solution → Result structure plus a hero
+// headline, pull quote, metrics table and CTA. Persisted so the user can drop
+// it straight into a landing page (Site Builder) or sales deck (Presentation).
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post('/case-study/generate', async (req, res) => {
+  const { customerName, industry = '', challenge, solution, result, brandName = '', tone = 'confident, plain-spoken' } = req.body || {};
+  if (!customerName || !challenge || !solution) return _err(res, 400, 'customerName, challenge and solution required');
+  try {
+    const data = await _ai(`Write a polished customer case study for ${brandName ? `"${brandName}"` : 'our brand'} about how we helped "${customerName}"${industry ? ` (${industry})` : ''}. Tone: ${tone}.
+
+Inputs:
+- Challenge they faced: ${challenge}
+- Solution we delivered: ${solution}
+- Result/outcome: ${result || '(not provided — infer a plausible specific outcome)'}
+
+Return JSON:
+{
+  "headline": "Hero headline, max 12 words, leads with the result",
+  "subheadline": "1-sentence supporting line",
+  "pullQuote": { "text": "A believable 1-2 sentence quote in the customer's voice", "attribution": "Name, Title at ${customerName}" },
+  "challenge": { "title": "The Challenge", "body": "2-3 paragraphs in plain language" },
+  "solution":  { "title": "The Solution",  "body": "2-3 paragraphs explaining what we did, step by step" },
+  "result":    { "title": "The Result",    "body": "1-2 paragraphs summarising the outcome" },
+  "metrics": [ { "label": "Conversion lift", "value": "+42%", "context": "vs. previous quarter" } ],
+  "cta": { "headline": "Ready for results like these?", "buttonText": "Talk to us", "buttonUrl": "#contact" },
+  "tags": ["industry tag", "use-case tag", "result tag"],
+  "estimatedReadMin": 3
+}
+Generate at least 3 metrics with concrete numbers (use the inputs to ground them; invent specific but realistic numbers when not provided). Keep all body copy benefit-led, free of jargon and corporate-speak.`, { system: 'You are a senior B2B content strategist who writes case studies that sales teams love. Return strict JSON only.', max_tokens: 2200 });
+    const id = 'case_' + Date.now().toString(36);
+    await _db.kvSet(`studio_case:${id}`, { ...data, customerName, industry, brandName, createdAt: new Date().toISOString() });
+    res.json({ ok: true, id, study: data });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+router.get('/case-study/list', async (_req, res) => {
+  if (!_db.hasDb()) return res.json({ ok:true, items: [] });
+  try {
+    const r = await _db.getPool().query(`SELECT key, value FROM kv_store WHERE key LIKE 'studio_case:%' ORDER BY key DESC LIMIT 50`);
+    res.json({ ok:true, items: r.rows.map(row => ({
+      id: row.key.replace('studio_case:',''),
+      headline: row.value?.headline,
+      customerName: row.value?.customerName,
+      createdAt: row.value?.createdAt,
+    })) });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+router.get('/case-study/:id', async (req, res) => {
+  const data = await _db.kvGet(`studio_case:${req.params.id}`, null);
+  if (!data) return _err(res, 404, 'Not found');
+  res.json({ ok:true, study: data });
+});
+
+// Render a standalone, share-ready HTML page from a stored case study so the
+// user can grab a public URL or copy/paste it into their site.
+router.get('/case-study/:id/page', async (req, res) => {
+  const s = await _db.kvGet(`studio_case:${req.params.id}`, null);
+  if (!s) return res.status(404).send('Not found');
+  const esc = v => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const metrics = (s.metrics || []).map(m => `<div style="background:#F8FAFC;padding:20px;border-radius:12px;text-align:center"><div style="font-size:32px;font-weight:800;color:#0066FF">${esc(m.value)}</div><div style="font-weight:600;margin-top:4px">${esc(m.label)}</div><div style="color:#64748B;font-size:13px">${esc(m.context)}</div></div>`).join('');
+  res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(s.headline)}</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#0F172A;max-width:780px;margin:0 auto;padding:48px 20px;line-height:1.65}h1{font-size:42px;line-height:1.15;margin:0 0 12px}h2{font-size:24px;margin-top:36px}.sub{color:#64748B;font-size:18px;margin-bottom:32px}.quote{background:linear-gradient(135deg,#0066FF,#7C3AED);color:white;padding:28px;border-radius:16px;font-size:18px;margin:28px 0}.attr{margin-top:12px;font-size:14px;opacity:.9}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:24px 0}.cta{background:#0F172A;color:white;padding:32px;border-radius:16px;text-align:center;margin-top:40px}.cta a{display:inline-block;background:#0066FF;color:white;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:700;margin-top:12px}.tags{margin-top:24px}.tag{display:inline-block;background:#EEF2FF;color:#4338CA;padding:4px 12px;border-radius:99px;font-size:12px;margin-right:6px}</style></head><body><div style="color:#64748B;font-size:13px;font-weight:600;letter-spacing:.5px;text-transform:uppercase">Case Study · ${esc(s.customerName)}</div><h1>${esc(s.headline)}</h1><p class="sub">${esc(s.subheadline)}</p>${metrics?`<div class="metrics">${metrics}</div>`:''}${s.pullQuote?.text?`<div class="quote">"${esc(s.pullQuote.text)}"<div class="attr">— ${esc(s.pullQuote.attribution)}</div></div>`:''}<h2>${esc(s.challenge?.title || 'The Challenge')}</h2><p>${esc(s.challenge?.body || '').replace(/\n+/g,'</p><p>')}</p><h2>${esc(s.solution?.title || 'The Solution')}</h2><p>${esc(s.solution?.body || '').replace(/\n+/g,'</p><p>')}</p><h2>${esc(s.result?.title || 'The Result')}</h2><p>${esc(s.result?.body || '').replace(/\n+/g,'</p><p>')}</p>${s.tags?.length?`<div class="tags">${s.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}${s.cta?`<div class="cta"><h2 style="color:white;margin:0">${esc(s.cta.headline)}</h2><a href="${esc(s.cta.buttonUrl)}">${esc(s.cta.buttonText)}</a></div>`:''}</body></html>`);
+});
+
 module.exports = router;

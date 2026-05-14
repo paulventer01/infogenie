@@ -34,8 +34,13 @@ async function ensureVoiceSchema() {
       structured_data JSONB,
       recording_url   TEXT,
       created_at      TIMESTAMPTZ DEFAULT now(),
-      ended_at        TIMESTAMPTZ
+      ended_at        TIMESTAMPTZ,
+      direction       TEXT DEFAULT 'out'           -- 'out' (we called them) | 'in' (they called us)
     );
+    -- Add column for existing installs that were created before direction was introduced
+    DO $$ BEGIN
+      ALTER TABLE voice_calls ADD COLUMN IF NOT EXISTS direction TEXT DEFAULT 'out';
+    EXCEPTION WHEN others THEN NULL; END $$;
   `);
 }
 ensureVoiceSchema().catch(e => console.error('[voice-caller] schema:', e.message));
@@ -110,18 +115,85 @@ Rules:
 // ── Webhook: end-of-call report ──────────────────────────────────────────────
 // Vapi sends a shared secret in `x-vapi-secret` header (configurable in dashboard).
 // We verify it matches VAPI_WEBHOOK_SECRET when set; otherwise allow (dev mode).
+// ── Inbound assistant config — served to Vapi on incoming-call assistant-request
+// Vapi posts {type:'assistant-request', call:{...}} when an inbound call rings
+// the configured phone number. We respond with a JSON `{assistant: {...}}` body
+// and Vapi loads that assistant for the call. Persist with kvSet so non-tech
+// users can edit greeting/system-prompt/voice from the UI.
+async function _getInboundConfig() {
+  const cfg = await _db.kvGet('voice_inbound_config:default', null);
+  return cfg || {
+    enabled: false,
+    greeting: 'Hi, thanks for calling. How can I help you today?',
+    systemPrompt: 'You are a friendly receptionist. Answer questions about the business, take messages, and try to book a callback if the caller has a sales enquiry. Keep responses to one or two sentences.',
+    voice: 'jennifer',
+    knowledge: '',     // free-text FAQ / about page paste — included in system prompt
+    forwardTo: '',     // optional E.164 number to bridge to a human
+    notifyEmail: '',   // who gets the inbound-call summary email
+  };
+}
+
+function _buildInboundAssistant(cfg) {
+  const sys = `${cfg.systemPrompt}\n\nKnown information about the business (use this to answer factual questions):\n${cfg.knowledge || '(none provided)'}\n\nRules:\n• Keep responses under 2 sentences.\n• If the caller asks "is this a robot?" be honest: "I'm an AI assistant."\n• If you cannot help, take the caller's name + phone + reason for calling and tell them a human will follow up.\n• End the call when the request is resolved.`;
+  return {
+    name: 'IG inbound receptionist',
+    firstMessage: cfg.greeting,
+    model: { provider: 'openai', model: 'gpt-4o-mini', messages: [{ role: 'system', content: sys }] },
+    voice: { provider: '11labs', voiceId: cfg.voice || 'jennifer' },
+    transcriber: { provider: 'deepgram', model: 'nova-2', language: 'en' },
+    serverUrl: `${process.env.PUBLIC_URL || `https://${process.env.REPL_SLUG || 'app'}.replit.app`}/api/voice-caller/webhook`,
+    endCallFunctionEnabled: true,
+    silenceTimeoutSeconds: 30,
+    maxDurationSeconds: 600,
+  };
+}
+
+router.get('/inbound-config', async (_req, res) => {
+  try { res.json({ ok: true, config: await _getInboundConfig() }); }
+  catch (e) { _err(res, 500, e.message); }
+});
+
+router.post('/inbound-config', async (req, res) => {
+  const cur = await _getInboundConfig();
+  const next = { ...cur, ...(req.body || {}), updatedAt: new Date().toISOString() };
+  await _db.kvSet('voice_inbound_config:default', next);
+  res.json({ ok: true, config: next });
+});
+
 router.post('/webhook', express.json({ limit:'2mb' }), async (req, res) => {
   const expected = process.env.VAPI_WEBHOOK_SECRET;
   if (expected) {
     const supplied = String(req.headers['x-vapi-secret'] || req.headers['x-vapi-signature'] || '');
     if (supplied !== expected) { console.warn('[voice webhook] secret mismatch'); return res.status(401).end(); }
   }
-  res.status(200).end();
   try {
     const msg = req.body?.message || req.body || {};
-    if (msg.type !== 'end-of-call-report' && msg.type !== 'status-update') return;
     const call = msg.call || {};
     const id = call.id;
+
+    // ── INBOUND: Vapi asks us which assistant to use for an incoming call ───
+    if (msg.type === 'assistant-request') {
+      const cfg = await _getInboundConfig();
+      if (!cfg.enabled) {
+        // Politely refuse the call so Vapi can play a fallback / hang up
+        return res.status(200).json({ error: 'Inbound calling is not enabled for this number.' });
+      }
+      // Pre-create a call record so the inbound shows up immediately in /calls
+      if (id && _db.hasDb()) {
+        const fromNumber = call.customer?.number || msg.phoneNumber?.number || 'unknown';
+        await _db.getPool().query(
+          `INSERT INTO voice_calls (vapi_call_id, to_number, lead_name, goal, status, direction)
+           VALUES ($1, $2, $3, 'inbound-receptionist', 'in-progress', 'in')
+           ON CONFLICT (vapi_call_id) DO NOTHING`,
+          [id, fromNumber, '']
+        );
+      }
+      return res.status(200).json({ assistant: _buildInboundAssistant(cfg) });
+    }
+
+    // All other event types: 200 ack and process async
+    res.status(200).end();
+    if (msg.type !== 'end-of-call-report' && msg.type !== 'status-update') return;
     if (!id) return;
     if (msg.type === 'status-update') {
       if (_db.hasDb()) await _db.getPool().query(`UPDATE voice_calls SET status=$1 WHERE vapi_call_id=$2`, [msg.status || 'in-progress', id]);
@@ -133,19 +205,30 @@ router.post('/webhook', express.json({ limit:'2mb' }), async (req, res) => {
                   : (call.endedReason === 'customer-did-not-give-microphone-permission' ? 'no-answer'
                   : (call.endedReason || 'ended'));
     if (_db.hasDb()) {
+      // For inbound calls the row may already exist from assistant-request; if
+      // not (older webhook only) UPSERT so nothing is dropped.
+      await _db.getPool().query(
+        `INSERT INTO voice_calls (vapi_call_id, to_number, status, direction)
+         VALUES ($1, $2, 'ended', $3)
+         ON CONFLICT (vapi_call_id) DO NOTHING`,
+        [id, call.customer?.number || 'unknown', call.type === 'inboundPhoneCall' ? 'in' : 'out']
+      );
       await _db.getPool().query(
         `UPDATE voice_calls SET status='ended', outcome=$1, duration_sec=$2, transcript=$3, summary=$4, structured_data=$5::jsonb, recording_url=$6, ended_at=now() WHERE vapi_call_id=$7`,
         [outcome, dur, msg.transcript || call.transcript || null, msg.summary || msg.analysis?.summary || null,
          JSON.stringify(msg.analysis?.structuredData || {}), msg.recordingUrl || call.recordingUrl || null, id]
       );
     }
-  } catch (e) { console.error('[voice webhook]', e.message); }
+  } catch (e) {
+    console.error('[voice webhook]', e.message);
+    if (!res.headersSent) res.status(200).end();
+  }
 });
 
 router.get('/calls', async (_req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, calls: [] });
   try {
-    const r = await _db.getPool().query(`SELECT id, vapi_call_id, to_number, lead_name, goal, status, outcome, duration_sec, summary, recording_url, created_at, ended_at FROM voice_calls ORDER BY created_at DESC LIMIT 100`);
+    const r = await _db.getPool().query(`SELECT id, vapi_call_id, to_number, lead_name, goal, status, outcome, duration_sec, summary, recording_url, created_at, ended_at, direction FROM voice_calls ORDER BY created_at DESC LIMIT 100`);
     res.json({ ok:true, calls: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });

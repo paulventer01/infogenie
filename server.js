@@ -126,6 +126,7 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/bookings\/book\/[^\/]+$/,                 // public booking submit (rate-limited)
   /^\/api\/linksell\/checkout\/[^\/]+$/,             // public Stripe checkout init (rate-limited)
   /^\/api\/linksell\/optin\/[^\/]+$/,                // public email opt-in  (rate-limited)
+  /^\/api\/studio\/case-study\/[^\/]+\/page$/,       // public share page for case studies (HTML render)
 ];
 
 // Lightweight in-memory per-IP rate limiter for public Studio Pack POSTs.

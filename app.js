@@ -41725,6 +41725,7 @@ function _rpToCarousel(title) {
     { id:'video',     icon:'🎬', title:'AI Video',          desc:'Storyboard a 15-second ad video for Meta / TikTok / YouTube.',    action:()=>openVideoStudio() },
     { id:'pres',      icon:'📑', title:'AI Presentation',   desc:'Pitch decks and slide decks generated from a topic.',             action:()=>openPresentationStudio() },
     { id:'sig',       icon:'✍️', title:'Email Signature',   desc:'Branded HTML signature with open + click tracking.',              action:()=>openSignatureStudio() },
+    { id:'case',      icon:'📰', title:'Case Study Builder', desc:'Turn a customer story into a polished case study + share page.', action:()=>openCaseStudyStudio() },
     { id:'whatsapp',  icon:'💬', title:'WhatsApp Channel',  desc:'Send WhatsApp messages and reply to inbound chats.',              action:()=>navigateTo('whatsapp') },
     { id:'voice',     icon:'📞', title:'AI Voice Caller',   desc:'Outbound voice agent that calls leads and books meetings.',       action:()=>navigateTo('voice-caller') },
     { id:'bookings',  icon:'📅', title:'Bookings',          desc:'Public booking page with email confirmation.',                    action:()=>navigateTo('bookings') },
@@ -41886,13 +41887,54 @@ function _rpToCarousel(title) {
     });
   }
 
+  // ── Case Study Builder modal ──────────────────────────────────────────────
+  function openCaseStudyStudio(){
+    _modal('📰 AI Case Study Builder', `
+      <p style="color:#64748B;margin:0 0 16px">Describe a customer story in 3 lines. We'll write the headline, pull quote, challenge → solution → result, metrics and a share-ready landing page.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <label>Customer name<input id="cs_cn" placeholder="Acme Logistics" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
+        <label>Industry<input id="cs_in" placeholder="Logistics" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
+      </div>
+      <label>Your brand (optional)<input id="cs_bn" placeholder="InfoGenie" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px"></label>
+      <label>Challenge they faced<textarea id="cs_ch" rows="2" placeholder="Their conversion rate was stuck at 1.1%, ad spend was ballooning…" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:inherit;margin:6px 0"></textarea></label>
+      <label>Solution you delivered<textarea id="cs_so" rows="2" placeholder="We rebuilt the funnel with our X tool, ran a 30-day creative test…" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:inherit;margin:6px 0"></textarea></label>
+      <label>Result / outcome (optional — we'll infer if blank)<textarea id="cs_re" rows="2" placeholder="3.2% conversion in 60 days, CAC down 40%…" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:inherit;margin:6px 0 16px"></textarea></label>
+      <button id="cs_go" style="background:#0066FF;color:white;border:0;padding:12px 24px;border-radius:8px;font-weight:700;cursor:pointer">✨ Generate case study</button>
+      <div id="cs_out" style="margin-top:18px"></div>`, { width: 760 });
+    document.getElementById('cs_go').addEventListener('click', async ()=>{
+      const out=document.getElementById('cs_out'); out.innerHTML='⏳ Generating (15-25 sec)…';
+      try{
+        const j=await _api('/api/studio/case-study/generate',{method:'POST',body:{
+          customerName:cs_cn.value, industry:cs_in.value, brandName:cs_bn.value,
+          challenge:cs_ch.value, solution:cs_so.value, result:cs_re.value
+        }});
+        const s=j.study||{};
+        const metricsHtml = (s.metrics||[]).map(m=>`<div style="background:white;padding:12px;border-radius:8px;text-align:center;border:1px solid #E5E7EB"><div style="font-size:22px;font-weight:800;color:#0066FF">${_esc(m.value)}</div><div style="font-size:12px;font-weight:600">${_esc(m.label)}</div><div style="font-size:11px;color:#64748B">${_esc(m.context)}</div></div>`).join('');
+        out.innerHTML=`<div style="background:#F8FAFC;padding:18px;border-radius:12px">
+          <div style="color:#64748B;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase">Headline</div>
+          <h2 style="margin:4px 0 6px;font-size:22px;line-height:1.25">${_esc(s.headline||'')}</h2>
+          <p style="color:#475569;margin:0 0 14px">${_esc(s.subheadline||'')}</p>
+          ${metricsHtml?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px">${metricsHtml}</div>`:''}
+          ${s.pullQuote?.text?`<div style="background:linear-gradient(135deg,#0066FF,#7C3AED);color:white;padding:18px;border-radius:10px;margin-bottom:14px"><div style="font-size:15px;line-height:1.5">"${_esc(s.pullQuote.text)}"</div><div style="font-size:12px;opacity:.85;margin-top:8px">— ${_esc(s.pullQuote.attribution||'')}</div></div>`:''}
+          <details open style="margin-bottom:8px"><summary style="font-weight:700;cursor:pointer;padding:6px 0">${_esc(s.challenge?.title||'The Challenge')}</summary><div style="font-size:13px;color:#475569;white-space:pre-line;padding:6px 0">${_esc(s.challenge?.body||'')}</div></details>
+          <details style="margin-bottom:8px"><summary style="font-weight:700;cursor:pointer;padding:6px 0">${_esc(s.solution?.title||'The Solution')}</summary><div style="font-size:13px;color:#475569;white-space:pre-line;padding:6px 0">${_esc(s.solution?.body||'')}</div></details>
+          <details><summary style="font-weight:700;cursor:pointer;padding:6px 0">${_esc(s.result?.title||'The Result')}</summary><div style="font-size:13px;color:#475569;white-space:pre-line;padding:6px 0">${_esc(s.result?.body||'')}</div></details>
+          <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+            <a href="/api/studio/case-study/${_esc(j.id)}/page" target="_blank" style="background:#0F172A;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px">🔗 Open share page</a>
+            <button onclick="navigator.clipboard.writeText('${location.origin}/api/studio/case-study/${_esc(j.id)}/page');this.textContent='✓ Copied'" style="background:#0F766E;color:white;border:0;padding:10px 16px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px">📋 Copy share URL</button>
+          </div>
+        </div>`;
+      }catch(e){ out.innerHTML=`<div style="color:#DC2626">${_esc(e.message)}</div>`; }
+    });
+  }
+
   // ── 6. WHATSAPP CHANNEL view ──────────────────────────────────────────────
   window.buildWhatsApp = async function(){
     const v=_shell('whatsapp','💬 WhatsApp Channel','Send and receive WhatsApp messages via Meta Cloud API.',`
       <div id="wa-status" style="margin-bottom:16px"></div>
       <div style="display:grid;grid-template-columns:300px 1fr;gap:16px;min-height:500px">
         <div style="background:white;border:1px solid #E5E7EB;border-radius:12px;padding:14px;overflow-y:auto">
-          <div style="display:flex;justify-content:space-between;margin-bottom:10px"><strong>Threads</strong><button id="wa-new" style="background:#25D366;color:white;border:0;padding:6px 12px;border-radius:6px;font-size:13px;cursor:pointer">+ New</button></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:10px;gap:6px;flex-wrap:wrap"><strong style="align-self:center">Threads</strong><div style="display:flex;gap:4px"><button id="wa-tpls" style="background:#0066FF;color:white;border:0;padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer">📋 Templates</button><button id="wa-bulk" style="background:#7C3AED;color:white;border:0;padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer">🚀 Bulk Send</button><button id="wa-new" style="background:#25D366;color:white;border:0;padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer">+ New</button></div></div>
           <div id="wa-threads">Loading…</div>
         </div>
         <div id="wa-thread" style="background:white;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
@@ -41910,6 +41952,77 @@ function _rpToCarousel(title) {
         : '<p style="color:#94A3B8;font-size:13px">No threads yet.</p>';
       document.querySelectorAll('.wa-thread-row').forEach(r=>r.addEventListener('click',()=>openThread(r.dataset.wa)));
     }catch(e){ _toast(e.message,'err'); }
+
+    // ── Templates manager ───────────────────────────────────────────────────
+    document.getElementById('wa-tpls').addEventListener('click', async ()=>{
+      _modal('📋 WhatsApp Templates', `<div id="tpl_list">Loading…</div>
+        <hr style="border:0;border-top:1px solid #E5E7EB;margin:16px 0">
+        <h3 style="margin:0 0 10px;font-size:15px">Save / update template</h3>
+        <p style="font-size:12px;color:#64748B;margin:0 0 10px">Use <code>{{1}}</code>, <code>{{2}}</code> for variables. Tick "Meta-approved" only after Meta has approved this exact template name in your WhatsApp Business Manager — otherwise sends use plain text (24-hour window only).</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label>Name (lowercase, no spaces)<input id="tpl_n" placeholder="welcome_offer" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;margin:4px 0"></label>
+          <label>Language<input id="tpl_l" value="en_US" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;margin:4px 0"></label>
+        </div>
+        <label>Body<textarea id="tpl_b" rows="3" placeholder="Hi {{1}}, your order {{2}} is on its way!" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:inherit;margin:4px 0 8px"></textarea></label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:10px"><input type="checkbox" id="tpl_a"> Already approved by Meta</label>
+        <button id="tpl_save" style="background:#0066FF;color:white;border:0;padding:10px 18px;border-radius:8px;font-weight:700;cursor:pointer">Save template</button>`, { width: 640 });
+      async function reloadTpls(){
+        try{ const j=await _api('/api/whatsapp/templates');
+          document.getElementById('tpl_list').innerHTML = j.templates.length
+            ? j.templates.map(t=>`<div style="border:1px solid #E5E7EB;border-radius:8px;padding:10px;margin-bottom:6px"><div style="display:flex;justify-content:space-between;align-items:start"><div><div style="font-weight:700">${_esc(t.name)} ${t.is_meta_approved?'<span style="background:#ECFDF5;color:#065F46;font-size:10px;padding:2px 6px;border-radius:99px;margin-left:4px">META ✓</span>':'<span style="background:#FEF3C7;color:#78350F;font-size:10px;padding:2px 6px;border-radius:99px;margin-left:4px">TEXT</span>'}</div><div style="font-size:12px;color:#64748B">${_esc(t.language)} · ${t.var_count} vars</div></div><button data-del="${t.id}" style="background:#FEE2E2;color:#991B1B;border:0;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px">Delete</button></div><div style="font-size:13px;color:#475569;margin-top:6px;white-space:pre-wrap">${_esc(t.body)}</div></div>`).join('')
+            : '<p style="color:#94A3B8;font-size:13px">No templates yet — save one below.</p>';
+          document.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click', async ()=>{ if(!confirm('Delete this template?')) return; await _api('/api/whatsapp/templates/'+b.dataset.del,{method:'DELETE'}); reloadTpls(); }));
+        }catch(e){ document.getElementById('tpl_list').innerHTML=`<div style="color:#DC2626">${_esc(e.message)}</div>`; }
+      }
+      reloadTpls();
+      document.getElementById('tpl_save').addEventListener('click', async ()=>{
+        try{ await _api('/api/whatsapp/templates',{method:'POST',body:{name:tpl_n.value,language:tpl_l.value,body:tpl_b.value,isMetaApproved:tpl_a.checked}}); _toast('Saved ✓'); tpl_n.value=tpl_b.value=''; tpl_a.checked=false; reloadTpls(); }
+        catch(e){ _toast(e.message,'err'); }
+      });
+    });
+
+    // ── Bulk sender ─────────────────────────────────────────────────────────
+    document.getElementById('wa-bulk').addEventListener('click', async ()=>{
+      const tplsResp = await _api('/api/whatsapp/templates').catch(()=>({templates:[]}));
+      const tplOpts = tplsResp.templates.map(t=>`<option value="${t.id}" data-vc="${t.var_count}">${_esc(t.name)} (${t.var_count} vars${t.is_meta_approved?' · META':' · TEXT'})</option>`).join('');
+      _modal('🚀 Bulk Send WhatsApp', `
+        <p style="font-size:13px;color:#64748B;margin:0 0 14px">Pick a template, then paste recipients — one per line. Format: <code>phone, var1, var2, …</code> (phone with country code, no <code>+</code>).</p>
+        <label>Campaign name<input id="bk_name" value="Campaign ${new Date().toLocaleDateString()}" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;margin:4px 0 10px"></label>
+        <label>Template<select id="bk_tpl" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;margin:4px 0 10px">${tplOpts || '<option value="">— No templates yet — create one first —</option>'}</select></label>
+        <label>Recipients (one per line)<textarea id="bk_rec" rows="8" placeholder="27821234567, Alice, ORDER-123&#10;27827654321, Bob, ORDER-124" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:monospace;font-size:12px;margin:4px 0 12px"></textarea></label>
+        <button id="bk_go" style="background:#7C3AED;color:white;border:0;padding:11px 22px;border-radius:8px;font-weight:700;cursor:pointer">🚀 Launch send</button>
+        <div id="bk_out" style="margin-top:12px"></div>
+        <hr style="border:0;border-top:1px solid #E5E7EB;margin:18px 0 12px">
+        <h3 style="margin:0 0 8px;font-size:14px">Recent campaigns</h3>
+        <div id="bk_camps">Loading…</div>`, { width: 640 });
+      async function reloadCamps(){
+        const j=await _api('/api/whatsapp/campaigns').catch(()=>({campaigns:[]}));
+        document.getElementById('bk_camps').innerHTML = j.campaigns.length
+          ? j.campaigns.map(c=>`<div style="border-bottom:1px solid #F1F5F9;padding:8px 0;font-size:13px;display:flex;justify-content:space-between"><div><div style="font-weight:600">${_esc(c.name)}</div><div style="color:#64748B;font-size:12px">${_esc(c.template_name||'')} · ${c.sent}/${c.total} sent ${c.failed?'· '+c.failed+' failed':''}</div></div><span style="background:${c.status==='done'?'#ECFDF5':'#FEF3C7'};color:${c.status==='done'?'#065F46':'#78350F'};padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600;align-self:center">${_esc(c.status)}</span></div>`).join('')
+          : '<p style="color:#94A3B8;font-size:13px">No campaigns yet.</p>';
+      }
+      reloadCamps();
+      document.getElementById('bk_go').addEventListener('click', async ()=>{
+        const sel = document.getElementById('bk_tpl');
+        const tplId = sel.value;
+        if(!tplId){ _toast('Create a template first','err'); return; }
+        const lines = bk_rec.value.split('\n').map(l=>l.trim()).filter(Boolean);
+        const recipients = lines.map(line=>{
+          const parts = line.split(',').map(s=>s.trim());
+          const to = parts.shift();
+          const vars = {};
+          parts.forEach((v,i)=>{ vars[i+1] = v; });
+          return { to, vars };
+        });
+        if(!recipients.length){ _toast('Add at least one recipient','err'); return; }
+        document.getElementById('bk_out').innerHTML='⏳ Launching…';
+        try{
+          const j=await _api('/api/whatsapp/send-bulk',{method:'POST',body:{templateId:Number(tplId), name:bk_name.value, recipients}});
+          document.getElementById('bk_out').innerHTML=`<div style="background:#ECFDF5;color:#065F46;padding:10px 14px;border-radius:8px;font-size:13px">✓ Campaign #${j.campaignId} queued — ${j.total} recipients. It runs in the background; refresh this list in a moment.</div>`;
+          setTimeout(reloadCamps, 1500);
+        }catch(e){ document.getElementById('bk_out').innerHTML=`<div style="color:#DC2626">${_esc(e.message)}</div>`; }
+      });
+    });
 
     document.getElementById('wa-new').addEventListener('click',()=>{
       _modal('Send WhatsApp', `
@@ -41939,11 +42052,26 @@ function _rpToCarousel(title) {
 
   // ── 7. AI VOICE CALLER view ───────────────────────────────────────────────
   window.buildVoiceCaller = async function(){
-    _shell('voice-caller','📞 AI Voice Caller','Outbound voice agent powered by Vapi.ai.',`
+    _shell('voice-caller','📞 AI Voice Caller','Outbound voice agent + inbound AI receptionist, powered by Vapi.ai.',`
       <div id="vc-status" style="margin-bottom:16px"></div>
+      <div style="background:white;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 style="margin:0">📥 Inbound Receptionist</h3><button id="vc_in_save" style="background:#0F766E;color:white;border:0;padding:8px 16px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">💾 Save inbound config</button></div>
+        <p style="font-size:12px;color:#64748B;margin:0 0 12px">When enabled, calls to your Vapi number are answered by an AI receptionist. In Vapi → Phone Numbers, set <strong>Server URL</strong> to <code>${location.origin}/api/voice-caller/webhook</code> so Vapi asks us for the assistant on each inbound call.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600"><input type="checkbox" id="vc_in_en"> Enabled (answer inbound calls)</label>
+          <label>Voice<select id="vc_in_voice" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;margin:4px 0"><option>jennifer</option><option>cole</option><option>mark</option><option>sarah</option><option>elliot</option></select></label>
+        </div>
+        <label>Greeting (first thing the AI says)<input id="vc_in_greet" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 8px"></label>
+        <label>System prompt (how the AI should behave)<textarea id="vc_in_sys" rows="3" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:inherit;margin:4px 0 8px"></textarea></label>
+        <label>Knowledge / FAQ (paste your "About" page or any facts the AI should know)<textarea id="vc_in_kn" rows="4" placeholder="Hours: Mon-Fri 9-5. Pricing: Starter $29/mo… etc." style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:inherit;margin:4px 0 8px"></textarea></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <label>Notify on call (email)<input id="vc_in_em" placeholder="ops@yourdomain.com" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;margin:4px 0"></label>
+          <label>Forward-to number (optional, E.164)<input id="vc_in_fw" placeholder="+27821234567" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;margin:4px 0"></label>
+        </div>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div style="background:white;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
-          <h3 style="margin:0 0 12px">Place a call</h3>
+          <h3 style="margin:0 0 12px">📤 Place an outbound call</h3>
           <label>To (E.164, e.g. +27821234567)<input id="vc_to" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 10px"></label>
           <label>Lead name (optional)<input id="vc_name" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 10px"></label>
           <label>Goal
@@ -41967,6 +42095,28 @@ function _rpToCarousel(title) {
         ? `<div style="background:#ECFDF5;color:#065F46;padding:10px 14px;border-radius:8px;font-size:13px">✓ Vapi configured. Webhook URL: <code>${location.origin}/api/voice-caller/webhook</code></div>`
         : `<div style="background:#FEF3C7;color:#78350F;padding:12px 14px;border-radius:8px;font-size:13px">⚠ Vapi not configured. Add <code>VAPI_API_KEY</code> and <code>VAPI_PHONE_NUMBER_ID</code> in Secrets, then set Vapi server URL to <code>${location.origin}/api/voice-caller/webhook</code>.</div>`;
     }catch(e){}
+    // Load existing inbound config
+    try{
+      const ic = await _api('/api/voice-caller/inbound-config');
+      const c = ic.config || {};
+      vc_in_en.checked = !!c.enabled;
+      vc_in_voice.value = c.voice || 'jennifer';
+      vc_in_greet.value = c.greeting || 'Hi, thanks for calling. How can I help you today?';
+      vc_in_sys.value = c.systemPrompt || 'You are a friendly receptionist. Keep replies under 2 sentences. If the caller wants to book a meeting, take their name, email and preferred time, then confirm.';
+      vc_in_kn.value = c.knowledge || '';
+      vc_in_em.value = c.notifyEmail || '';
+      vc_in_fw.value = c.forwardTo || '';
+    }catch(e){}
+    document.getElementById('vc_in_save').addEventListener('click', async ()=>{
+      try{
+        await _api('/api/voice-caller/inbound-config',{method:'POST',body:{
+          enabled: vc_in_en.checked, voice: vc_in_voice.value, greeting: vc_in_greet.value,
+          systemPrompt: vc_in_sys.value, knowledge: vc_in_kn.value,
+          notifyEmail: vc_in_em.value, forwardTo: vc_in_fw.value
+        }});
+        _toast('Inbound config saved ✓');
+      }catch(e){ _toast(e.message,'err'); }
+    });
     async function reload(){
       try{ const j=await _api('/api/voice-caller/calls');
         document.getElementById('vc_list').innerHTML = j.calls.length

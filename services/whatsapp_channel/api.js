@@ -35,6 +35,28 @@ async function ensureWhatsappSchema() {
     CREATE TABLE IF NOT EXISTS wa_contacts (
       wa_id TEXT PRIMARY KEY, name TEXT, last_at TIMESTAMPTZ DEFAULT now(), unread_count INT DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS wa_templates (
+      id           SERIAL PRIMARY KEY,
+      name         TEXT UNIQUE NOT NULL,
+      category     TEXT DEFAULT 'MARKETING',         -- MARKETING|UTILITY|AUTHENTICATION
+      language     TEXT DEFAULT 'en_US',
+      body         TEXT NOT NULL,                    -- with {{1}} {{2}} placeholders
+      var_count    INT DEFAULT 0,
+      is_meta_approved BOOLEAN DEFAULT FALSE,        -- TRUE once registered with Meta
+      created_at   TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS wa_campaigns (
+      id           SERIAL PRIMARY KEY,
+      name         TEXT NOT NULL,
+      template_id  INT REFERENCES wa_templates(id) ON DELETE SET NULL,
+      template_name TEXT,
+      total        INT DEFAULT 0,
+      sent         INT DEFAULT 0,
+      failed       INT DEFAULT 0,
+      status       TEXT DEFAULT 'queued',            -- queued|running|done|failed
+      created_at   TIMESTAMPTZ DEFAULT now(),
+      finished_at  TIMESTAMPTZ
+    );
   `);
 }
 ensureWhatsappSchema().catch(e => console.error('[whatsapp] schema:', e.message));
@@ -179,6 +201,126 @@ router.get('/stats', async (_req, res) => {
     const c   = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_contacts`);
     const r24 = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_messages WHERE created_at > now() - interval '24 hours'`);
     res.json({ ok:true, totalOut: out.rows[0].n, totalIn: inn.rows[0].n, contacts: c.rows[0].n, last24h: r24.rows[0].n });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+// ── Templates: list / save / delete ──────────────────────────────────────────
+router.get('/templates', async (_req, res) => {
+  if (!_db.hasDb()) return res.json({ ok:true, templates: [] });
+  try {
+    const r = await _db.getPool().query(`SELECT id, name, category, language, body, var_count, is_meta_approved, created_at FROM wa_templates ORDER BY created_at DESC LIMIT 200`);
+    res.json({ ok:true, templates: r.rows });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+router.post('/templates', async (req, res) => {
+  const { name, category = 'MARKETING', language = 'en_US', body, isMetaApproved = false } = req.body || {};
+  if (!name || !body) return _err(res, 400, 'name and body required');
+  if (!/^[a-z0-9_]+$/.test(String(name))) return _err(res, 400, 'name must be lowercase letters, numbers, underscores only');
+  if (!_db.hasDb()) return _err(res, 500, 'No DB');
+  // Detect {{1}} {{2}} ... placeholders so the sender knows how many vars to bind
+  const matches = String(body).match(/\{\{(\d+)\}\}/g) || [];
+  const varCount = matches.length ? Math.max(...matches.map(m => parseInt(m.replace(/[^0-9]/g,''), 10))) : 0;
+  try {
+    const r = await _db.getPool().query(
+      `INSERT INTO wa_templates (name, category, language, body, var_count, is_meta_approved)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (name) DO UPDATE SET category=EXCLUDED.category, language=EXCLUDED.language, body=EXCLUDED.body, var_count=EXCLUDED.var_count, is_meta_approved=EXCLUDED.is_meta_approved
+       RETURNING id, name, var_count`,
+      [name, category, language, body, varCount, !!isMetaApproved]
+    );
+    res.json({ ok:true, template: r.rows[0] });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+router.delete('/templates/:id', async (req, res) => {
+  if (!_db.hasDb()) return _err(res, 500, 'No DB');
+  try { await _db.getPool().query(`DELETE FROM wa_templates WHERE id=$1`, [req.params.id]); res.json({ ok:true }); }
+  catch (e) { _err(res, 500, e.message); }
+});
+
+// ── Bulk send: render template body with vars and send to many recipients ────
+// Body: { templateId | templateName, name, recipients:[{ to:'27821234567', vars:{1:'Alice',2:'#123'} }, ...] }
+// If the template is registered with Meta (is_meta_approved=true) we send via
+// the WhatsApp template channel (cold-window safe). Otherwise we fall back to
+// a free-form text send (only valid inside the 24h customer-service window).
+router.post('/send-bulk', async (req, res) => {
+  if (!_hasCreds()) return _err(res, 400, 'WhatsApp credentials missing.');
+  if (!_db.hasDb()) return _err(res, 500, 'No DB');
+  const { templateId, templateName, name = `Campaign ${new Date().toISOString().slice(0,16)}`, recipients = [] } = req.body || {};
+  if (!Array.isArray(recipients) || !recipients.length) return _err(res, 400, 'recipients[] required');
+  if (recipients.length > 1000) return _err(res, 400, 'Max 1000 recipients per bulk send');
+
+  // Resolve template
+  let tpl = null;
+  try {
+    const q = templateId
+      ? await _db.getPool().query(`SELECT * FROM wa_templates WHERE id=$1`, [templateId])
+      : await _db.getPool().query(`SELECT * FROM wa_templates WHERE name=$1`, [templateName]);
+    tpl = q.rows[0];
+  } catch (e) { return _err(res, 500, e.message); }
+  if (!tpl) return _err(res, 404, 'Template not found');
+
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const cmp = await _db.getPool().query(
+    `INSERT INTO wa_campaigns (name, template_id, template_name, total, status) VALUES ($1,$2,$3,$4,'running') RETURNING id`,
+    [name, tpl.id, tpl.name, recipients.length]
+  );
+  const campaignId = cmp.rows[0].id;
+  res.json({ ok:true, campaignId, total: recipients.length });
+
+  // Fire & forget — process serially with small delay (Meta tier: 80 msg/sec hard cap)
+  (async () => {
+    let sent = 0, failed = 0;
+    for (const rec of recipients) {
+      const to = String(rec.to || '').replace(/[^0-9]/g, '');
+      if (!to) { failed++; continue; }
+      const vars = rec.vars || {};
+      // Render body for the local log
+      const renderedBody = String(tpl.body).replace(/\{\{(\d+)\}\}/g, (_,n)=> String(vars[n] ?? ''));
+      const components = tpl.var_count > 0
+        ? [{ type:'body', parameters: Array.from({length: tpl.var_count}, (_,i)=>({ type:'text', text: String(vars[i+1] ?? '') })) }]
+        : [];
+      const body = tpl.is_meta_approved
+        ? { messaging_product:'whatsapp', to, type:'template',
+            template: { name: tpl.name, language:{ code: tpl.language }, components } }
+        : { messaging_product:'whatsapp', to, type:'text', text:{ body: renderedBody.slice(0,4000), preview_url:true } };
+      try {
+        const r = await fetch(`${GRAPH}/${phoneId}/messages`, {
+          method:'POST',
+          headers:{ 'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`, 'Content-Type':'application/json' },
+          body: JSON.stringify(body),
+        });
+        const j = await r.json();
+        if (!r.ok || j.error) throw new Error(j.error?.message || `Meta ${r.status}`);
+        const wamid = j.messages?.[0]?.id || null;
+        await _db.getPool().query(
+          `INSERT INTO wa_messages (direction, wa_id, message_id, body, template, raw) VALUES ('out',$1,$2,$3,$4,$5::jsonb)`,
+          [to, wamid, renderedBody, tpl.name, JSON.stringify({ campaignId })]
+        );
+        await _db.getPool().query(
+          `INSERT INTO wa_contacts (wa_id, last_at) VALUES ($1, now()) ON CONFLICT (wa_id) DO UPDATE SET last_at=EXCLUDED.last_at`, [to]
+        );
+        sent++;
+      } catch (e) {
+        failed++;
+        await _db.getPool().query(
+          `INSERT INTO wa_messages (direction, wa_id, body, template, status, raw) VALUES ('out',$1,$2,$3,'failed',$4::jsonb)`,
+          [to, renderedBody, tpl.name, JSON.stringify({ campaignId, error: e.message })]
+        ).catch(()=>{});
+      }
+      await _db.getPool().query(`UPDATE wa_campaigns SET sent=$1, failed=$2 WHERE id=$3`, [sent, failed, campaignId]).catch(()=>{});
+      await new Promise(r => setTimeout(r, 80)); // ~12 msg/sec — well under Meta limits
+    }
+    await _db.getPool().query(`UPDATE wa_campaigns SET status='done', finished_at=now(), sent=$1, failed=$2 WHERE id=$3`, [sent, failed, campaignId]).catch(()=>{});
+  })().catch(e => console.error('[whatsapp bulk]', e.message));
+});
+
+router.get('/campaigns', async (_req, res) => {
+  if (!_db.hasDb()) return res.json({ ok:true, campaigns: [] });
+  try {
+    const r = await _db.getPool().query(`SELECT id, name, template_name, total, sent, failed, status, created_at, finished_at FROM wa_campaigns ORDER BY created_at DESC LIMIT 50`);
+    res.json({ ok:true, campaigns: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
 
