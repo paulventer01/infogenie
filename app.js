@@ -41884,8 +41884,13 @@ function _rpToCarousel(title) {
       inp.value=''; renderList();
     };
     overlay.querySelector('#otCustom').onkeydown = e => { if (e.key==='Enter'){ e.preventDefault(); overlay.querySelector('#otAddCustom').click(); } };
-    overlay.querySelector('#otSave').onclick = () => {
+    overlay.querySelector('#otSave').onclick = async () => {
       try { localStorage.setItem(storeKey, JSON.stringify(saved)); } catch(_){}
+      // Mirror to server so the autonomous scheduler can use these tasks
+      // when the user's browser is closed.
+      try {
+        await fetch('/api/officer/tasks-store', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ role: officerId, tasks: saved }) });
+      } catch(_){}
       if (typeof showToast==='function') showToast(`✓ Saved ${saved.length} ${saved.length===1?'task':'tasks'} for ${officerTitle}`);
       close();
     };
@@ -41911,6 +41916,7 @@ function _rpToCarousel(title) {
       <div style="max-width:1200px;margin:0 auto;padding:0 28px;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px">
         ${OFFICERS.map(_officerCard).join('')}
       </div>
+      <div style="max-width:1200px;margin:0 auto;padding:18px 28px 0" id="aiTeamAutoReport"></div>
       <div style="max-width:1200px;margin:0 auto;padding:0 28px" id="aiTeamMeetings"></div>`;
     wrap.querySelectorAll('.nav-link[data-view]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); navigateTo(a.dataset.view); }));
     wrap.querySelectorAll('button[data-officer-tasks]').forEach(b => b.addEventListener('click', e => {
@@ -41926,7 +41932,107 @@ function _rpToCarousel(title) {
       _openAvatarPicker(b.dataset.officerAvatar, b);
     }));
     _renderMeetingsPanel();
+    _renderAutoReportPanel();
   };
+
+  // ── Autonomous Daily Report scheduler panel ───────────────────────────
+  async function _renderAutoReportPanel() {
+    const host = document.getElementById('aiTeamAutoReport');
+    if (!host) return;
+    let s = { enabled:false, hour:8, minute:0, timezone:'UTC', email:'', lastRunAt:null, lastRunStatus:null };
+    let history = [];
+    try { const r = await fetch('/api/officer/autoreport'); const j = await r.json(); s = { ...s, ...(j.settings||{}) }; history = Array.isArray(j.history) ? j.history : []; } catch(_){}
+    const detectedTz = (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC';
+    const status = s.enabled ? `<span style="${_pillCSS};background:#DCFCE7;color:#166534">● ON · ${String(s.hour).padStart(2,'0')}:${String(s.minute).padStart(2,'0')} ${_e(s.timezone)}</span>`
+                             : `<span style="${_pillCSS};background:#F1F5F9;color:#475569">○ OFF</span>`;
+    const last = s.lastRunAt ? `Last run: ${new Date(s.lastRunAt).toLocaleString()}` : 'No autonomous runs yet';
+    host.innerHTML = `<div style="${_cardCSS}">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:8px">
+        <div>
+          <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Autonomous</div>
+          <div style="font-size:1.15rem;font-weight:800;color:#0F172A">⏰ Daily Report Scheduler ${status}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="arSettings" style="padding:9px 16px;background:#0F172A;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">⚙️ Settings</button>
+          <button id="arRunNow" style="padding:9px 16px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">▶ Run Now</button>
+        </div>
+      </div>
+      <div style="font-size:.82rem;color:#475569;line-height:1.5">When ON, the AI Team auto-generates a report for every officer at <strong>${String(s.hour).padStart(2,'0')}:${String(s.minute).padStart(2,'0')}</strong> in <strong>${_e(s.timezone||'UTC')}</strong> and sends a digest to <strong>${_e(s.email||'(no email set)')}</strong> + Slack. ${_e(last)}.</div>
+      ${s.lastRunStatus ? `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;font-size:.74rem">
+        <span style="${_pillCSS};background:${s.lastRunStatus.slackOk?'#DCFCE7':'#FEE2E2'};color:${s.lastRunStatus.slackOk?'#166534':'#991B1B'}">Slack: ${s.lastRunStatus.slackOk?'✓ sent':'✕ '+_e(s.lastRunStatus.slackError||'failed')}</span>
+        <span style="${_pillCSS};background:${s.lastRunStatus.emailOk?'#DCFCE7':'#FEE2E2'};color:${s.lastRunStatus.emailOk?'#166534':'#991B1B'}">Email: ${s.lastRunStatus.emailOk?'✓ sent':'✕ '+_e(s.lastRunStatus.emailError||'failed')}</span>
+      </div>` : ''}
+      ${history.length ? `<details style="margin-top:10px"><summary style="cursor:pointer;font-size:.74rem;color:#64748B">Run history (${history.length})</summary><div style="margin-top:8px;max-height:160px;overflow-y:auto">${history.map(h=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #F1F5F9;font-size:.74rem"><span style="color:#0F172A">${new Date(h.at).toLocaleString()}</span><span style="color:#64748B">${h.manualTrigger?'manual':'scheduled'} · Slack ${h.slackOk?'✓':'✕'} · Email ${h.emailOk?'✓':'✕'}</span></div>`).join('')}</div></details>` : ''}
+    </div>`;
+    host.querySelector('#arSettings').onclick = () => _openAutoReportSettings(s, detectedTz);
+    host.querySelector('#arRunNow').onclick = async (e) => {
+      const btn = e.currentTarget; btn.disabled = true; btn.textContent = '⏳ Running…';
+      try {
+        const r = await fetch('/api/officer/autoreport/run-now', { method:'POST' });
+        const j = await r.json();
+        if (typeof showToast==='function') showToast(`Sent to ${j.officerCount||8} officers · Slack ${j.slackOk?'✓':'✕'} · Email ${j.emailOk?'✓':'✕'}`);
+      } catch(err) { alert('Run failed: '+err.message); }
+      _renderAutoReportPanel();
+    };
+  }
+
+  function _openAutoReportSettings(cur, detectedTz) {
+    const TZS = ['UTC','America/Los_Angeles','America/Denver','America/Chicago','America/New_York','America/Toronto','America/Mexico_City','America/Sao_Paulo','Europe/London','Europe/Dublin','Europe/Paris','Europe/Berlin','Europe/Madrid','Europe/Rome','Europe/Athens','Europe/Moscow','Africa/Cairo','Africa/Johannesburg','Africa/Lagos','Asia/Dubai','Asia/Karachi','Asia/Kolkata','Asia/Bangkok','Asia/Singapore','Asia/Hong_Kong','Asia/Shanghai','Asia/Tokyo','Asia/Seoul','Australia/Perth','Australia/Sydney','Pacific/Auckland'];
+    if (detectedTz && !TZS.includes(detectedTz)) TZS.unshift(detectedTz);
+    if (cur.timezone && !TZS.includes(cur.timezone)) TZS.unshift(cur.timezone);
+    const overlay = document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
+    const hours = Array.from({length:24},(_,i)=>i);
+    const mins  = [0,5,10,15,20,25,30,35,40,45,50,55];
+    overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:560px;max-width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
+      <div style="padding:20px 24px;background:linear-gradient(135deg,#0F172A,#312E81);color:#fff">
+        <div style="font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.85">⏰ Autonomous Reporting</div>
+        <h3 style="margin:6px 0 0;font-size:1.25rem;font-weight:800">Daily Stand-up Schedule</h3>
+      </div>
+      <div style="padding:20px 24px;flex:1;overflow-y:auto">
+        <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;cursor:pointer;margin-bottom:16px">
+          <input id="arEn" type="checkbox" ${cur.enabled?'checked':''} style="width:18px;height:18px;cursor:pointer">
+          <div style="flex:1"><div style="font-weight:700;font-size:.92rem;color:#0F172A">Enable autonomous daily reports</div><div style="font-size:.76rem;color:#64748B">When ON, the server fires reports automatically — your browser doesn't need to be open.</div></div>
+        </label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+          <div><label style="display:block;font-size:.76rem;font-weight:700;color:#0F172A;margin-bottom:6px">Hour (24h)</label>
+            <select id="arH" style="width:100%;padding:10px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:.88rem">${hours.map(h=>`<option value="${h}" ${(cur.hour|0)===h?'selected':''}>${String(h).padStart(2,'0')}</option>`).join('')}</select></div>
+          <div><label style="display:block;font-size:.76rem;font-weight:700;color:#0F172A;margin-bottom:6px">Minute</label>
+            <select id="arM" style="width:100%;padding:10px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:.88rem">${mins.map(m=>`<option value="${m}" ${(cur.minute|0)===m?'selected':''}>${String(m).padStart(2,'0')}</option>`).join('')}</select></div>
+        </div>
+        <label style="display:block;font-size:.76rem;font-weight:700;color:#0F172A;margin-bottom:6px">Timezone</label>
+        <select id="arTz" style="width:100%;padding:10px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:.88rem;margin-bottom:4px">${TZS.map(t=>`<option value="${_e(t)}" ${(cur.timezone||'UTC')===t?'selected':''}>${_e(t)}</option>`).join('')}</select>
+        <div style="font-size:.7rem;color:#64748B;margin-bottom:14px">Detected: <strong>${_e(detectedTz||'UTC')}</strong></div>
+        <label style="display:block;font-size:.76rem;font-weight:700;color:#0F172A;margin-bottom:6px">Recipient email</label>
+        <input id="arEmail" type="email" placeholder="you@company.com" value="${_e(cur.email||'')}" style="width:100%;padding:10px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:.88rem;margin-bottom:6px;box-sizing:border-box">
+        <div style="font-size:.72rem;color:#64748B;line-height:1.4">Reports also go to Slack via the configured webhook. Email needs Resend configured.</div>
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;gap:8px;background:#F8FAFC">
+        <button id="arCancel" style="padding:10px 18px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-weight:700;cursor:pointer">Cancel</button>
+        <button id="arSave" style="padding:10px 22px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:800;cursor:pointer">Save</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#arCancel').onclick = close;
+    overlay.addEventListener('click', e => { if (e.target===overlay) close(); });
+    overlay.querySelector('#arSave').onclick = async () => {
+      const body = {
+        enabled: overlay.querySelector('#arEn').checked,
+        hour: +overlay.querySelector('#arH').value,
+        minute: +overlay.querySelector('#arM').value,
+        timezone: overlay.querySelector('#arTz').value,
+        email: overlay.querySelector('#arEmail').value.trim()
+      };
+      try {
+        const r = await fetch('/api/officer/autoreport', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const j = await r.json();
+        if (!r.ok) { alert(j.error||'Save failed'); return; }
+        if (typeof showToast==='function') showToast('✓ Schedule saved');
+        close(); _renderAutoReportPanel();
+      } catch(err) { alert('Save failed: '+err.message); }
+    };
+  }
 
   // ── Finance Officer ──────────────────────────────────────────────────────
   window.buildFinanceOfficer = async function() {

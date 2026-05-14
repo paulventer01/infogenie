@@ -10406,6 +10406,41 @@ app.post('/api/officer/tasks', async (req, res) => {
   }
 });
 
+// ── Officer tasks server-side mirror (so the autonomous scheduler can
+// generate reports without the user's browser being open). The frontend
+// localStorage remains the source of truth for the modal UI; this kv mirror
+// is updated whenever the user clicks Save in the tasks modal.
+const _TASKS_KEY = 'officer_tasks_v1';
+const _OFFICER_ROLES = ['marketing','sales','analyst','content','seo','cro','finance','ops'];
+const _OFFICER_TITLES = {
+  marketing:'Marketing Officer', sales:'Sales Officer', analyst:'Analyst Officer',
+  content:'Content Officer', seo:'SEO Officer', cro:'CRO Officer',
+  finance:'Finance Officer', ops:'Operations Officer'
+};
+app.get('/api/officer/tasks-store', async (_req, res) => {
+  try {
+    const _db = require('./db');
+    if (!_db.hasDb()) return res.json({ tasks: {} });
+    const v = (await _db.kvGet(_TASKS_KEY, {})) || {};
+    res.json({ tasks: (v && typeof v==='object' && !Array.isArray(v)) ? v : {} });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/officer/tasks-store', async (req, res) => {
+  try {
+    const _db = require('./db');
+    if (!_db.hasDb()) return res.status(503).json({ error: 'database not configured' });
+    const { role, tasks } = req.body || {};
+    const safeRole = String(role||'').toLowerCase();
+    if (!_OFFICER_ROLES.includes(safeRole)) return res.status(400).json({ error: 'unknown role' });
+    const safeTasks = Array.isArray(tasks) ? tasks.filter(t => typeof t==='string').slice(0,40).map(t=>String(t).slice(0,200)) : [];
+    const cur = (await _db.kvGet(_TASKS_KEY, {})) || {};
+    const safeCur = (cur && typeof cur==='object' && !Array.isArray(cur)) ? cur : {};
+    safeCur[safeRole] = safeTasks;
+    await _db.kvSet(_TASKS_KEY, safeCur);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Officer avatars (kv_store) ────────────────────────────────────────────
 const _AVATAR_KEY = 'officer_avatars_v1';
 app.get('/api/officer/avatars', async (_req, res) => {
@@ -10607,6 +10642,228 @@ Return ONLY this JSON:
     res.status(500).json({ ok:false, error: err.message });
   }
 });
+// ── Autonomous Daily Report Scheduler ─────────────────────────────────────
+// Settings stored in kv_store under `officer_autoreport_settings_v1`:
+// { enabled, hour, minute, timezone, email, lastRunDate }
+// A 60-second tick checks the current time in the user's timezone and fires
+// once per day when HH:MM matches and lastRunDate != today (in that tz).
+const _AUTOREPORT_KEY = 'officer_autoreport_settings_v1';
+const _AUTOREPORT_DEFAULTS = { enabled:false, hour:8, minute:0, timezone:'UTC', email:'', lastRunDate:'', lastScheduledRunDate:'', lastRunAt:null, lastRunStatus:null };
+const _AUTOREPORT_HISTORY_KEY = 'officer_autoreport_history_v1';
+
+app.get('/api/officer/autoreport', async (_req, res) => {
+  try {
+    const _db = require('./db');
+    if (!_db.hasDb()) return res.json({ settings: _AUTOREPORT_DEFAULTS, history: [] });
+    const s = (await _db.kvGet(_AUTOREPORT_KEY, _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
+    const h = (await _db.kvGet(_AUTOREPORT_HISTORY_KEY, [])) || [];
+    res.json({ settings: { ..._AUTOREPORT_DEFAULTS, ...s }, history: Array.isArray(h) ? h.slice(0,30) : [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/officer/autoreport', async (req, res) => {
+  try {
+    const _db = require('./db');
+    if (!_db.hasDb()) return res.status(503).json({ error: 'database not configured' });
+    const { enabled, hour, minute, timezone, email } = req.body || {};
+    const h = Math.max(0, Math.min(23, parseInt(hour, 10) || 0));
+    const m = Math.max(0, Math.min(59, parseInt(minute, 10) || 0));
+    let tz = String(timezone || 'UTC').slice(0, 64);
+    try { new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date()); }
+    catch { return res.status(400).json({ error: 'invalid timezone — use e.g. America/New_York' }); }
+    const em = String(email || '').trim().slice(0, 200);
+    if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return res.status(400).json({ error: 'invalid email' });
+    const cur = (await _db.kvGet(_AUTOREPORT_KEY, _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
+    const next = { ...cur, enabled: !!enabled, hour: h, minute: m, timezone: tz, email: em };
+    await _db.kvSet(_AUTOREPORT_KEY, next);
+    res.json({ ok: true, settings: next });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/officer/autoreport/run-now', async (_req, res) => {
+  try {
+    const result = await _runAutonomousDailyReports({ manualTrigger: true });
+    res.json({ ok: true, ...result });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Internal: generate a single officer's daily report by reusing the same
+// snapshot + AI logic as the on-demand endpoint. Returns the same shape.
+async function _generateOfficerReportInternal(role, title, tasks) {
+  const snap = {};
+  try {
+    const _db = require('./db');
+    if (_db.hasDb()) {
+      const pool = _db.getPool();
+      const safe = async (sql) => { try { const r = await pool.query(sql); return +r.rows?.[0]?.c || 0; } catch(_) { return null; } };
+      snap.adCampaigns_total    = await safe(`SELECT COUNT(*)::int c FROM ad_campaigns`);
+      snap.adInsights_last24h   = await safe(`SELECT COUNT(*)::int c FROM ad_insights WHERE inserted_at > now() - interval '24 hours'`);
+      snap.brandCalendar_next7d = await safe(`SELECT COUNT(*)::int c FROM brand_calendar_items WHERE event_date BETWEEN current_date AND current_date + 7`);
+      snap.landingPages_total   = await safe(`SELECT COUNT(*)::int c FROM landing_pages`);
+      snap.budgetSpend_last7d   = await safe(`SELECT COUNT(*)::int c FROM budget_spend WHERE spend_date > current_date - 7`);
+      snap.leadsLinksell_last7d = await safe(`SELECT COUNT(*)::int c FROM linksell_leads WHERE created_at > now() - interval '7 days'`);
+      snap.bookings_last7d      = await safe(`SELECT COUNT(*)::int c FROM bookings WHERE created_at > now() - interval '7 days'`);
+      snap.waCampaigns_total    = await safe(`SELECT COUNT(*)::int c FROM wa_campaigns`);
+      snap.activeProjects       = await safe(`SELECT COUNT(*)::int c FROM marketing_projects WHERE status='active'`);
+    }
+  } catch(_) {}
+  const FALLBACK = {
+    summary: tasks.length === 0
+      ? `${title}: no responsibilities assigned yet. Open the AI Team page → 📋 Tasks to assign duties.`
+      : `${title}: AI write-up unavailable. ${tasks.length} responsibilities on file. See snapshot below for raw activity.`,
+    tasksReviewed: tasks.map(t => ({ task:t, status:'not_started', evidence:'AI report offline.' })),
+    successes: [], issues: [], actionPlan: []
+  };
+  let report = null;
+  if (process.env.AI_INTEGRATIONS_OPENAI_API_KEY && tasks.length) {
+    const tasksList = tasks.map((t,i)=>`${i+1}. ${t}`).join('\n');
+    const prompt = `You are the AI ${title} writing an HONEST end-of-day report to the CEO.\n\nASSIGNED RESPONSIBILITIES:\n${tasksList}\n\nPLATFORM DATA SNAPSHOT (real counts — null means table not present):\n${JSON.stringify(snap, null, 2)}\n\nFor each responsibility, decide HONESTLY based on the snapshot:\n- "done"        → clear evidence of activity in the snapshot today\n- "in_progress" → some activity but not complete\n- "blocked"     → blocked by missing data, missing integration, or external dep\n- "not_started" → no evidence of activity yet\n\nDo NOT fake completions. If the snapshot shows 0 or null, mark not_started or blocked.\n\nReturn ONLY this JSON: {"summary":"<2-3 sentence honest summary>","tasksReviewed":[{"task":"<exact text>","status":"done|in_progress|blocked|not_started","evidence":"<specific or no data>"}],"successes":["<concrete win with number>"],"issues":["<concrete blocker>"],"actionPlan":[{"step":"<verb-led step>","priority":"high|med|low"}]}`;
+    try {
+      const completion = await Promise.race([
+        openai.chat.completions.create({
+          model: 'gpt-4o-mini', response_format: { type: 'json_object' },
+          max_tokens: 1800, temperature: 0.3,
+          messages: [
+            { role:'system', content:`You are the AI ${title}. Output strict JSON only. Be honest about what was and was not done.` },
+            { role:'user', content: prompt }
+          ]
+        }),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('openai_timeout_18s')), 18000))
+      ]);
+      const parsed = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+      if (parsed && parsed.summary && Array.isArray(parsed.tasksReviewed)) report = parsed;
+    } catch(e) { console.warn('[autoreport] AI failed for', role, e.message); }
+  }
+  if (!report) report = FALLBACK;
+  return { role, title, generatedAt: new Date().toISOString(), snapshot: snap, report };
+}
+
+async function _runAutonomousDailyReports({ manualTrigger = false } = {}) {
+  const _db = require('./db');
+  if (!_db.hasDb()) return { ok:false, reason:'no-db' };
+  const settings = (await _db.kvGet(_AUTOREPORT_KEY, _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
+  // Defensive: validate stored timezone, fall back to UTC if corrupt.
+  let _tz = settings.timezone || 'UTC';
+  try { new Intl.DateTimeFormat('en-US', { timeZone: _tz }).format(new Date()); }
+  catch { console.warn('[autoreport] stored timezone invalid, falling back to UTC:', _tz); _tz = 'UTC'; settings.timezone = 'UTC'; }
+  const tasksStore = (await _db.kvGet(_TASKS_KEY, {})) || {};
+
+  // Generate all 8 reports in parallel
+  const reports = await Promise.all(_OFFICER_ROLES.map(role => {
+    const tasks = Array.isArray(tasksStore[role]) ? tasksStore[role] : [];
+    return _generateOfficerReportInternal(role, _OFFICER_TITLES[role], tasks)
+      .catch(e => ({ role, title:_OFFICER_TITLES[role], error: e.message, report:{ summary:`Error generating report: ${e.message}`, tasksReviewed:[], successes:[], issues:[], actionPlan:[] }, snapshot:{} }));
+  }));
+
+  const fmtDate = new Intl.DateTimeFormat('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric', timeZone: settings.timezone || 'UTC' }).format(new Date());
+
+  // Build Slack text digest
+  const slackLines = [`*🤖 InfoGenie AI Team — Daily Stand-up*`, `_${fmtDate}_`, ''];
+  reports.forEach(r => {
+    const rep = r.report || {};
+    const tr = rep.tasksReviewed || [];
+    const done = tr.filter(t=>t.status==='done').length;
+    const ip   = tr.filter(t=>t.status==='in_progress').length;
+    const blk  = tr.filter(t=>t.status==='blocked').length;
+    const ns   = tr.filter(t=>t.status==='not_started').length;
+    slackLines.push(`*${r.title}*`);
+    slackLines.push(`${rep.summary || '(no summary)'}`);
+    slackLines.push(`✓ ${done} done · ◐ ${ip} in progress · ⚠ ${blk} blocked · ○ ${ns} not started`);
+    if ((rep.actionPlan||[]).length) slackLines.push(`Top action: ${rep.actionPlan[0].step || rep.actionPlan[0].action || ''}`);
+    slackLines.push('');
+  });
+  const slackText = slackLines.join('\n').slice(0, 38000);
+
+  // Build email HTML digest
+  const _esc = (s) => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const emailRows = reports.map(r => {
+    const rep = r.report || {};
+    const tr  = rep.tasksReviewed || [];
+    const stat = (s,l,c)=>`<span style="background:${c};color:#fff;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;margin-right:4px">${s} ${l}</span>`;
+    const done=tr.filter(t=>t.status==='done').length, ip=tr.filter(t=>t.status==='in_progress').length, blk=tr.filter(t=>t.status==='blocked').length, ns=tr.filter(t=>t.status==='not_started').length;
+    return `<tr><td style="padding:18px;border-top:1px solid #E2E8F0;vertical-align:top">
+      <div style="font-weight:800;font-size:16px;color:#0F172A;margin-bottom:6px">${_esc(r.title)}</div>
+      <div style="font-size:14px;color:#334155;line-height:1.5;margin-bottom:10px">${_esc(rep.summary||'')}</div>
+      <div style="margin-bottom:10px">${stat(done,'done','#15803D')}${stat(ip,'in progress','#A16207')}${stat(blk,'blocked','#B91C1C')}${stat(ns,'not started','#64748B')}</div>
+      ${(rep.successes||[]).length?`<div style="font-size:12px;color:#15803D;font-weight:700;margin-bottom:2px">Wins:</div><ul style="margin:0 0 8px 18px;padding:0;font-size:13px;color:#0F172A">${rep.successes.map(s=>`<li>${_esc(s)}</li>`).join('')}</ul>`:''}
+      ${(rep.issues||[]).length?`<div style="font-size:12px;color:#B91C1C;font-weight:700;margin-bottom:2px">Issues:</div><ul style="margin:0 0 8px 18px;padding:0;font-size:13px;color:#0F172A">${rep.issues.map(s=>`<li>${_esc(s)}</li>`).join('')}</ul>`:''}
+      ${(rep.actionPlan||[]).length?`<div style="font-size:12px;color:#0F172A;font-weight:700;margin-bottom:2px">Action plan:</div><ul style="margin:0;padding:0 0 0 18px;font-size:13px;color:#0F172A">${rep.actionPlan.map(a=>`<li><strong>[${_esc(a.priority||'med')}]</strong> ${_esc(a.step||a.action||'')}</li>`).join('')}</ul>`:''}
+    </td></tr>`;
+  }).join('');
+  const emailHtml = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F1F5F9;padding:24px"><table style="max-width:680px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border-collapse:collapse;width:100%"><tr><td style="background:linear-gradient(135deg,#0F172A,#312E81);color:#fff;padding:24px"><div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;opacity:.85;font-weight:700">InfoGenie · AI Team Stand-up</div><div style="font-size:22px;font-weight:800;margin-top:6px">Daily Report — ${_esc(fmtDate)}</div><div style="font-size:13px;opacity:.85;margin-top:4px">${reports.length} officers reporting · ${manualTrigger?'manual run':'scheduled'}</div></td></tr>${emailRows}<tr><td style="padding:16px 18px;background:#F8FAFC;font-size:11px;color:#64748B;text-align:center">Generated by InfoGenie. Reports cross-reference real platform data — figures are honest, not aspirational.</td></tr></table></div>`;
+
+  const result = { sentAt: new Date().toISOString(), slackOk:false, emailOk:false, slackError:null, emailError:null, recipientEmail: settings.email || null };
+
+  // Slack
+  if (process.env.SLACK_WEBHOOK_URL) {
+    try { await _sendChatWebhook(slackText, { username:'InfoGenie AI Team', icon:':robot_face:' }); result.slackOk = true; }
+    catch (e) { result.slackError = e.message; console.warn('[autoreport] slack failed:', e.message); }
+  } else { result.slackError = 'SLACK_WEBHOOK_URL not configured'; }
+
+  // Email
+  if (settings.email && process.env.RESEND_API_KEY) {
+    try {
+      await _sendEmailViaResend({ to: settings.email, subject:`🤖 AI Team Daily Stand-up — ${fmtDate}`, html: emailHtml, text: slackText });
+      result.emailOk = true;
+    } catch (e) { result.emailError = e.message; console.warn('[autoreport] email failed:', e.message); }
+  } else if (!settings.email) { result.emailError = 'no recipient email configured'; }
+    else { result.emailError = 'RESEND_API_KEY not configured'; }
+
+  // Update lastRun + history. Manual triggers update lastRunAt/Status but
+  // do NOT update lastScheduledRunDate, so the same day's scheduled run
+  // still fires on time. Only scheduled runs advance lastScheduledRunDate.
+  try {
+    const todayInTz = new Intl.DateTimeFormat('en-CA', { year:'numeric', month:'2-digit', day:'2-digit', timeZone: _tz }).format(new Date());
+    const cur = (await _db.kvGet(_AUTOREPORT_KEY, _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
+    const update = { ...cur, lastRunDate: todayInTz, lastRunAt: result.sentAt, lastRunStatus: result };
+    if (!manualTrigger) update.lastScheduledRunDate = todayInTz;
+    await _db.kvSet(_AUTOREPORT_KEY, update);
+    const hist = (await _db.kvGet(_AUTOREPORT_HISTORY_KEY, [])) || [];
+    const safeHist = Array.isArray(hist) ? hist : [];
+    safeHist.unshift({ at: result.sentAt, manualTrigger, slackOk: result.slackOk, emailOk: result.emailOk, recipientEmail: result.recipientEmail, officerCount: reports.length });
+    await _db.kvSet(_AUTOREPORT_HISTORY_KEY, safeHist.slice(0, 60));
+  } catch(_) {}
+
+  return { ...result, officerCount: reports.length };
+}
+
+// Tick every 60s. Fires once per day when:
+//   (a) the user's local time has reached HH:MM (now-minutes >= scheduled-minutes), AND
+//   (b) we haven't already fired a scheduled run today (in user's tz).
+// Using a "now >= scheduled" check (not exact equality) means a server
+// that was down at HH:MM will catch up on the next tick after restart,
+// instead of skipping the whole day.
+async function _autoReportTickOnce() {
+  const _db = require('./db');
+  if (!_db.hasDb()) return;
+  const s = (await _db.kvGet(_AUTOREPORT_KEY, _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
+  if (!s.enabled) return;
+  let tz = s.timezone || 'UTC';
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date()); } catch { tz = 'UTC'; }
+  const parts = new Intl.DateTimeFormat('en-CA', { hour12:false, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', timeZone: tz }).formatToParts(new Date());
+  const get = (t) => parts.find(p=>p.type===t)?.value;
+  const hour = parseInt(get('hour'), 10);
+  const minute = parseInt(get('minute'), 10);
+  const today = `${get('year')}-${get('month')}-${get('day')}`;
+  const scheduledMinsOfDay = (s.hour|0) * 60 + (s.minute|0);
+  const nowMinsOfDay = hour * 60 + minute;
+  if (nowMinsOfDay >= scheduledMinsOfDay && s.lastScheduledRunDate !== today) {
+    console.log('[autoreport] firing scheduled run', { tz, nowTime: `${hour}:${minute}`, scheduled: `${s.hour}:${s.minute}`, today, catchup: nowMinsOfDay > scheduledMinsOfDay });
+    await _runAutonomousDailyReports({ manualTrigger:false });
+  }
+}
+let _autoReportTickInFlight = false;
+async function _autoReportTickGuarded() {
+  if (_autoReportTickInFlight) return;
+  _autoReportTickInFlight = true;
+  try { await _autoReportTickOnce(); }
+  catch (e) { console.warn('[autoreport tick]', e.message); }
+  finally { _autoReportTickInFlight = false; }
+}
+setInterval(_autoReportTickGuarded, 60 * 1000);
+// Also run once shortly after boot so a server that was down across the
+// scheduled window catches up immediately on restart instead of waiting
+// up to a minute.
+setTimeout(_autoReportTickGuarded, 8000);
+
 app.delete('/api/officer/meetings/:id', async (req, res) => {
   try {
     const _db = require('./db');
