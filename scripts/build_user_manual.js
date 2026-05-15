@@ -391,16 +391,24 @@ function drawFeatureCard(doc, section, feature) {
   // ── 3. Screenshot embed ─────────────────────────────────────────────────
   const shot = feature.shot ? shotPath(feature.shot) : null;
   if (shot) {
-    // Source images are 1440x900 (1.6 aspect). Cap height so we leave room
-    // for the columns + how-to box below.
+    // Screenshots are captured at 1440px wide but variable height (the
+    // capture script crops to measured content height — 560 to 2400px).
+    // We must preserve the actual aspect ratio so the image is not stretched.
+    // Strategy: read the image dimensions, then scale to fit a max box.
     const maxImgH = 270;
     const maxImgW = w;
     let imgW = maxImgW;
-    let imgH = imgW / 1.6;
-    if (imgH > maxImgH) {
-      imgH = maxImgH;
-      imgW = imgH * 1.6;
-    }
+    let imgH = maxImgH;
+    try {
+      // Open the image once to discover its real width/height (PDFKit
+      // supports this via `doc.openImage(path)`).
+      const img = doc.openImage(shot);
+      const ratio = img.width / img.height; // wider-than-tall when > 1
+      // Scale to fit maxImgW x maxImgH while preserving aspect ratio.
+      imgW = maxImgW;
+      imgH = imgW / ratio;
+      if (imgH > maxImgH) { imgH = maxImgH; imgW = imgH * ratio; }
+    } catch (_) { /* fall back to defaults */ }
     const imgX = x0 + (w - imgW) / 2;
     // Border + soft shadow
     doc.save();
@@ -408,9 +416,10 @@ function drawFeatureCard(doc, section, feature) {
       .lineWidth(1).strokeColor(C.gray200).stroke();
     doc.restore();
     try {
-      doc.image(shot, imgX, cursorY, { width: imgW, height: imgH });
+      // `fit` preserves the image's native aspect ratio inside the
+      // bounding box — guaranteed not to stretch even if dims are off.
+      doc.image(shot, imgX, cursorY, { fit: [imgW, imgH], align: 'center', valign: 'top' });
     } catch (err) {
-      // Fallback: leave a placeholder rectangle
       doc.save().rect(imgX, cursorY, imgW, imgH).fill(C.gray100).restore();
       doc.fillColor(C.gray400).font('Helvetica').fontSize(10)
         .text('[ screenshot unavailable ]', imgX, cursorY + imgH / 2 - 5, { width: imgW, align: 'center' });
