@@ -1,0 +1,302 @@
+83:          <div class="nav-drop-header">1 · Start here</div>
+84:          <a href="#" class="nav-link" data-view="dashboard"><span class="ndl-icon">📊</span><span class="ndl-text">Dashboard</span></a>
+85:          <a href="#" class="nav-link" data-view="roadmap"><span class="ndl-icon">🗺️</span><span class="ndl-text">Get Started Roadmap</span></a>
+86:          <div class="nav-drop-header">2 · Know your competition</div>
+87:          <a href="#" class="nav-link" data-view="competitors"><span class="ndl-icon">🏆</span><span class="ndl-text">Competitor Profiles</span></a>
+88:          <a href="#" class="nav-link" data-view="battle-cards"><span class="ndl-icon">🛡️</span><span class="ndl-text">Battle Cards</span></a>
+89:          <a href="#" class="nav-link" data-view="battleplan"><span class="ndl-icon">⚔️</span><span class="ndl-text">Battle Plan</span></a>
+90:          <a href="#" class="nav-link nav-link-intel" data-view="intelligence"><span class="ndl-icon">🧠</span><span class="ndl-text">Intelligence Hub</span></a>
+91:          <div class="nav-drop-header">3 · Spy on what they're doing</div>
+92:          <a href="#" class="nav-link" data-view="ad-library"><span class="ndl-icon">🕵️</span><span class="ndl-text">Ad Library Spy</span></a>
+93:          <a href="#" class="nav-link" data-view="tech-stack"><span class="ndl-icon">🧱</span><span class="ndl-text">Tech Stack Detector</span></a>
+94:          <a href="#" class="nav-link" data-view="pricing-watch"><span class="ndl-icon">💰</span><span class="ndl-text">Pricing Watcher</span></a>
+95:          <a href="#" class="nav-link" data-view="job-board-spy"><span class="ndl-icon">💼</span><span class="ndl-text">Hiring Spy (Job Boards)</span></a>
+96:          <div class="nav-drop-header">4 · Read the market</div>
+97:          <a href="#" class="nav-link" data-view="sov-tracker"><span class="ndl-icon">📈</span><span class="ndl-text">Share of Voice</span></a>
+98:          <a href="#" class="nav-link" data-view="trending-topics"><span class="ndl-icon">🔥</span><span class="ndl-text">Trending Topics</span></a>
+99:          <a href="#" class="nav-link" data-view="crisis-radar"><span class="ndl-icon">🚨</span><span class="ndl-text">Crisis Radar</span></a>
+100:          <div class="nav-drop-header">5 · Understand your customers</div>
+101:          <a href="#" class="nav-link" data-view="icp-studio"><span class="ndl-icon">🎯</span><span class="ndl-text">ICP Studio (your buyer)</span></a>
+102:          <a href="#" class="nav-link" data-view="voc"><span class="ndl-icon">🗣️</span><span class="ndl-text">Voice of Customer</span></a>
+103:          <a href="#" class="nav-link" data-view="review-aggregator"><span class="ndl-icon">⭐</span><span class="ndl-text">Review Aggregator</span></a>
+104:          <a href="#" class="nav-link" data-view="glassdoor"><span class="ndl-icon">🏢</span><span class="ndl-text">Glassdoor Sentiment</span></a>
+105:          <div class="nav-drop-header">6 · Listen for mentions</div>
+106:          <a href="#" class="nav-link" data-view="mentions"><span class="ndl-icon">📰</span><span class="ndl-text">Web &amp; News Mentions</span></a>
+107:          <a href="#" class="nav-link" data-view="reddit"><span class="ndl-icon">🔴</span><span class="ndl-text">Reddit Research</span></a>
+108:          <a href="#" class="nav-link" data-view="reddit-pulse"><span class="ndl-icon">👽</span><span class="ndl-text">Reddit Live Pulse</span></a>
+109:          <a href="#" class="nav-link" data-view="twitter-pulse"><span class="ndl-icon">🐦</span><span class="ndl-text">X / Twitter Pulse</span></a>
+110:          <a href="#" class="nav-link" data-view="youtube-monitor"><span class="ndl-icon">▶️</span><span class="ndl-text">YouTube Monitor</span></a>
+111:          <a href="#" class="nav-link" data-view="podcast-monitor"><span class="ndl-icon">🎙️</span><span class="ndl-text">Podcast Monitor</span></a>
+112:          <a href="#" class="nav-link" data-view="quora-mining"><span class="ndl-icon">❓</span><span class="ndl-text">Quora Q&amp;A Mining</span></a>
+113:          <a href="#" class="nav-link" data-view="newsletter-tracker"><span class="ndl-icon">📧</span><span class="ndl-text">Newsletter Tracker</span></a>
+114:          <div class="nav-drop-header">7 · Find search opportunity</div>
+115:          <a href="#" class="nav-link" data-view="keyword-explorer"><span class="ndl-icon">🔬</span><span class="ndl-text">Keyword Explorer</span></a>
+116:          <a href="#" class="nav-link" data-view="keyword-map"><span class="ndl-icon">🗺️</span><span class="ndl-text">Keyword Map</span></a>
+117:          <a href="#" class="nav-link" data-view="intent-map"><span class="ndl-icon">🧭</span><span class="ndl-text">Search Intent Map</span></a>
+118:          <a href="#" class="nav-link" data-view="content-gaps"><span class="ndl-icon">🧩</span><span class="ndl-text">Content Gaps vs Rivals</span></a>
+119:          <a href="#" class="nav-link" data-view="serp"><span class="ndl-icon">🔎</span><span class="ndl-text">Live Google SERP</span></a>
+120:          <a href="#" class="nav-link" data-view="serp-tracker"><span class="ndl-icon">📍</span><span class="ndl-text">SERP Rank Tracker</span></a>
+121:          <div class="nav-drop-header">8 · Backlinks</div>
+122:          <a href="#" class="nav-link" data-view="backlinks"><span class="ndl-icon">🔗</span><span class="ndl-text">Backlink Explorer</span></a>
+123:          <a href="#" class="nav-link" data-view="backlink-monitor"><span class="ndl-icon">🛰️</span><span class="ndl-text">Backlink Health Monitor</span></a>
+138:          <div class="nav-drop-header">1 · Brand foundations</div>
+139:          <a href="#" class="nav-link" data-view="brand-assets"><span class="ndl-icon">🖼️</span><span class="ndl-text">Brand Assets (logo · colours)</span></a>
+140:          <a href="#" class="nav-link" data-view="templates"><span class="ndl-icon">📐</span><span class="ndl-text">Templates Library</span></a>
+141:          <a href="#" class="nav-link" data-view="studio"><span class="ndl-icon">🎭</span><span class="ndl-text">Creator Studio (all-in-one)</span></a>
+142:          <div class="nav-drop-header">2 · Write the message</div>
+143:          <a href="#" class="nav-link" data-view="content"><span class="ndl-icon">🧠</span><span class="ndl-text">Content AI (blogs · long-form)</span></a>
+144:          <a href="#" class="nav-link" data-view="headline-tester"><span class="ndl-icon">🎯</span><span class="ndl-text">Headline Tester</span></a>
+145:          <a href="#" class="nav-link" data-view="press-release"><span class="ndl-icon">📰</span><span class="ndl-text">Press Release Writer</span></a>
+146:          <a href="#" class="nav-link" data-view="cold-email"><span class="ndl-icon">✉️</span><span class="ndl-text">Cold Email Writer</span></a>
+147:          <a href="#" class="nav-link" data-view="email-personalizer"><span class="ndl-icon">📨</span><span class="ndl-text">Email Personalizer (1-to-1)</span></a>
+148:          <a href="#" class="nav-link" data-view="reply-assistant"><span class="ndl-icon">💬</span><span class="ndl-text">Reply Assistant (inbound)</span></a>
+149:          <a href="#" class="nav-link" data-view="localization"><span class="ndl-icon">🌍</span><span class="ndl-text">Localization (40+ langs)</span></a>
+150:          <div class="nav-drop-header">3 · Design the visuals</div>
+151:          <a href="#" class="nav-link" data-view="creative"><span class="ndl-icon">🖌️</span><span class="ndl-text">AI Creative (single ad)</span></a>
+152:          <a href="#" class="nav-link" data-view="smart-creative"><span class="ndl-icon">✨</span><span class="ndl-text">Smart Creative Builder (multi)</span></a>
+153:          <a href="#" class="nav-link" data-view="carousel"><span class="ndl-icon">🎠</span><span class="ndl-text">Carousel Generator</span></a>
+154:          <a href="#" class="nav-link" data-view="ugc-avatars"><span class="ndl-icon">🧑‍🎤</span><span class="ndl-text">UGC Avatar Videos</span></a>
+155:          <a href="#" class="nav-link" data-view="video-script"><span class="ndl-icon">🎬</span><span class="ndl-text">Video Script Generator</span></a>
+156:          <a href="#" class="nav-link" data-view="voiceover"><span class="ndl-icon">🔊</span><span class="ndl-text">AI Voiceovers</span></a>
+157:          <div class="nav-drop-header">4 · Build pages &amp; bots</div>
+158:          <a href="#" class="nav-link" data-view="landing-builder"><span class="ndl-icon">🌐</span><span class="ndl-text">Landing Page Builder</span></a>
+159:          <a href="#" class="nav-link" data-view="schema-generator"><span class="ndl-icon">🏷️</span><span class="ndl-text">SEO Schema Generator</span></a>
+160:          <a href="#" class="nav-link" data-view="chatbot-builder"><span class="ndl-icon">🤖</span><span class="ndl-text">Chatbot Builder</span></a>
+161:          <div class="nav-drop-header">5 · Plan the campaign</div>
+162:          <a href="#" class="nav-link" data-view="campaigns"><span class="ndl-icon">🚀</span><span class="ndl-text">Campaign Strategy</span></a>
+163:          <a href="#" class="nav-link" data-view="content-calendar"><span class="ndl-icon">🗓️</span><span class="ndl-text">Content Calendar</span></a>
+164:          <a href="#" class="nav-link" data-view="social"><span class="ndl-icon">📅</span><span class="ndl-text">Social Calendar</span></a>
+179:          <div class="nav-drop-header">1 · Build the audience</div>
+180:          <a href="#" class="nav-link" data-view="audience"><span class="ndl-icon">🎯</span><span class="ndl-text">Audience Builder (start)</span></a>
+181:          <a href="#" class="nav-link" data-view="lookalike"><span class="ndl-icon">👥</span><span class="ndl-text">Lookalike Audiences</span></a>
+182:          <a href="#" class="nav-link" data-view="audiences-dynamic"><span class="ndl-icon">🔄</span><span class="ndl-text">Dynamic Audiences (live)</span></a>
+183:          <a href="#" class="nav-link" data-view="journey-builder"><span class="ndl-icon">🛤️</span><span class="ndl-text">Customer Journey Builder</span></a>
+184:          <a href="#" class="nav-link" data-view="omnichannel"><span class="ndl-icon">📡</span><span class="ndl-text">Omnichannel Composer (Email · SMS · WhatsApp · Voice · Push)</span></a>
+185:          <div class="nav-drop-header">2 · Find &amp; qualify leads</div>
+186:          <a href="#" class="nav-link" data-view="lead-finder"><span class="ndl-icon">🧲</span><span class="ndl-text">B2B Lead Finder</span></a>
+187:          <a href="#" class="nav-link" data-view="lead-qualifier"><span class="ndl-icon">✅</span><span class="ndl-text">Lead Qualifier (AI score)</span></a>
+188:          <a href="#" class="nav-link" data-view="hubspot-sync"><span class="ndl-icon">🔁</span><span class="ndl-text">HubSpot CRM Sync</span></a>
+189:          <div class="nav-drop-header">3 · Launch paid ads</div>
+190:          <a href="#" class="nav-link" data-view="advertise"><span class="ndl-icon">📣</span><span class="ndl-text">Advertise Hub (Meta · Google · TikTok)</span></a>
+191:          <a href="#" class="nav-link" data-view="import-campaigns"><span class="ndl-icon">📥</span><span class="ndl-text">Import Existing Campaigns</span></a>
+192:          <a href="#" class="nav-link" data-view="opt-folders"><span class="ndl-icon">📁</span><span class="ndl-text">Campaign Folders</span></a>
+193:          <a href="#" class="nav-link" data-view="ab-designer"><span class="ndl-icon">🧪</span><span class="ndl-text">A/B Test Designer</span></a>
+194:          <a href="#" class="nav-link" data-view="conversion-boosters"><span class="ndl-icon">⚡</span><span class="ndl-text">Conversion Boosters (popups)</span></a>
+195:          <div class="nav-drop-header">4 · Publish organically</div>
+196:          <a href="#" class="nav-link" data-view="social-publisher"><span class="ndl-icon">📤</span><span class="ndl-text">Social Publisher (15 platforms)</span></a>
+197:          <a href="#" class="nav-link" data-view="discovery"><span class="ndl-icon">🔭</span><span class="ndl-text">Influencer Discovery</span></a>
+198:          <a href="#" class="nav-link" data-view="influencers"><span class="ndl-icon">🌟</span><span class="ndl-text">Influencer CRM</span></a>
+199:          <a href="#" class="nav-link" data-view="tiktok-downloader"><span class="ndl-icon">⬇️</span><span class="ndl-text">TikTok Asset Downloader</span></a>
+200:          <div class="nav-drop-header">5 · Get found in search &amp; AI</div>
+201:          <a href="#" class="nav-link" data-view="search-intel"><span class="ndl-icon">🔮</span><span class="ndl-text">AI Visibility &amp; Search Pulse</span></a>
+202:          <a href="#" class="nav-link" data-view="geo-audit"><span class="ndl-icon">🛸</span><span class="ndl-text">GEO Audit (ChatGPT · Perplexity)</span></a>
+203:          <a href="#" class="nav-link" data-view="local-seo"><span class="ndl-icon">📍</span><span class="ndl-text">Local SEO (Google Maps)</span></a>
+204:          <a href="#" class="nav-link" data-view="seo-auditor"><span class="ndl-icon">🧭</span><span class="ndl-text">On-Page SEO Audit</span></a>
+205:          <a href="#" class="nav-link" data-view="seo-crawler"><span class="ndl-icon">🕸️</span><span class="ndl-text">Full-Site SEO Crawler</span></a>
+206:          <a href="#" class="nav-link" data-view="web-vitals"><span class="ndl-icon">⏱️</span><span class="ndl-text">Web Vitals (page speed)</span></a>
+207:          <a href="#" class="nav-link" data-view="social-tags"><span class="ndl-icon">🔖</span><span class="ndl-text">Social Tags Audit</span></a>
+208:          <a href="#" class="nav-link" data-view="deliverability"><span class="ndl-icon">✉️</span><span class="ndl-text">Email Deliverability Audit</span></a>
+209:          <a href="#" class="nav-link" data-view="seo-tasks"><span class="ndl-icon">📋</span><span class="ndl-text">SEO Task Manager</span></a>
+210:          <a href="#" class="nav-link" data-view="seo-widget"><span class="ndl-icon">🧩</span><span class="ndl-text">Embeddable Lead-Gen Widget</span></a>
+211:          <div class="nav-drop-header">6 · Handle replies &amp; alerts</div>
+212:          <a href="#" class="nav-link" data-view="unified-inbox"><span class="ndl-icon">📬</span><span class="ndl-text">Unified Inbox</span></a>
+213:          <a href="#" class="nav-link" data-view="alert-routing"><span class="ndl-icon">🔔</span><span class="ndl-text">Alert Routing</span></a>
+214:          <a href="#" class="nav-link" data-view="digest"><span class="ndl-icon">🌅</span><span class="ndl-text">Daily Digest Email</span></a>
+229:          <div class="nav-drop-header">1 · Set the targets</div>
+230:          <a href="#" class="nav-link" data-view="goals"><span class="ndl-icon">🎯</span><span class="ndl-text">Goals &amp; Targets</span></a>
+231:          <a href="#" class="nav-link" data-view="kpi-tracker"><span class="ndl-icon">📈</span><span class="ndl-text">KPI Tracker (live)</span></a>
+232:          <a href="#" class="nav-link" data-view="action-center"><span class="ndl-icon">🎬</span><span class="ndl-text">Action Center (do this next)</span></a>
+233:          <div class="nav-drop-header">2 · See ad performance</div>
+234:          <a href="#" class="nav-link" data-view="meta-insights"><span class="ndl-icon">📘</span><span class="ndl-text">Meta Ads Insights</span></a>
+235:          <a href="#" class="nav-link" data-view="google-ads-insights"><span class="ndl-icon">🅖</span><span class="ndl-text">Google Ads Insights</span></a>
+236:          <a href="#" class="nav-link" data-view="tiktok-ads-insights"><span class="ndl-icon">🎵</span><span class="ndl-text">TikTok Ads Insights</span></a>
+237:          <a href="#" class="nav-link" data-view="social-analytics"><span class="ndl-icon">📊</span><span class="ndl-text">Organic Social Analytics</span></a>
+238:          <a href="#" class="nav-link" data-view="optimizer"><span class="ndl-icon">🤖</span><span class="ndl-text">AI Campaign Optimizer (auto)</span></a>
+239:          <div class="nav-drop-header">3 · Track full-funnel ROI</div>
+240:          <a href="#" class="nav-link" data-view="analytics-hub"><span class="ndl-icon">📡</span><span class="ndl-text">GSC &amp; GA4 Hub</span></a>
+241:          <a href="#" class="nav-link" data-view="amplitude-agents"><span class="ndl-icon">📶</span><span class="ndl-text">Amplitude AI Agents</span></a>
+242:          <a href="#" class="nav-link" data-view="blended-perf"><span class="ndl-icon">💎</span><span class="ndl-text">Blended Performance (CAC)</span></a>
+243:          <a href="#" class="nav-link" data-view="attribution"><span class="ndl-icon">🧮</span><span class="ndl-text">Attribution Modeling</span></a>
+244:          <a href="#" class="nav-link" data-view="true-roas"><span class="ndl-icon">💰</span><span class="ndl-text">True ROAS (margin-aware)</span></a>
+245:          <a href="#" class="nav-link" data-view="churn-scorer"><span class="ndl-icon">⚠️</span><span class="ndl-text">Churn-Risk Scorer</span></a>
+246:          <div class="nav-drop-header">4 · Improve SEO &amp; content</div>
+247:          <a href="#" class="nav-link" data-view="autoseo"><span class="ndl-icon">🚀</span><span class="ndl-text">AutoSEO Pro (autonomous)</span></a>
+248:          <a href="#" class="nav-link" data-view="contentscorer"><span class="ndl-icon">📝</span><span class="ndl-text">Content Scorer</span></a>
+249:          <a href="#" class="nav-link" data-view="link-suggester"><span class="ndl-icon">🔗</span><span class="ndl-text">Internal Link Suggester</span></a>
+250:          <a href="#" class="nav-link" data-view="cro-lab"><span class="ndl-icon">🧪</span><span class="ndl-text">CRO Lab (page tests)</span></a>
+251:          <a href="#" class="nav-link" data-view="ai-audit-suite"><span class="ndl-icon">🔬</span><span class="ndl-text">AI Audit Suite (deep)</span></a>
+252:          <a href="#" class="nav-link" onclick="event.preventDefault();openWpCredentialsModal()"><span class="ndl-icon">🟦</span><span class="ndl-text">Connect to WordPress</span></a>
+265:          <div class="nav-drop-header">1 · Plan your week</div>
+266:          <a href="#" class="nav-link" data-view="new-project"><span class="ndl-icon">✨</span><span class="ndl-text">+ New Marketing Project</span></a>
+267:          <a href="#" class="nav-link" data-view="master-calendar"><span class="ndl-icon">🗓️</span><span class="ndl-text">Master Calendar (everything)</span></a>
+268:          <a href="#" class="nav-link" data-view="brand-calendar"><span class="ndl-icon">📅</span><span class="ndl-text">Brand Calendar (10 categories)</span></a>
+269:          <a href="#" class="nav-link" data-view="budget-board"><span class="ndl-icon">💰</span><span class="ndl-text">Budget Board (monitor + spend)</span></a>
+270:          <a href="#" class="nav-link" data-view="web-analytics"><span class="ndl-icon">📈</span><span class="ndl-text">Web Analytics (acquisition + behaviour)</span></a>
+271:          <a href="#" class="nav-link" data-view="launches"><span class="ndl-icon">🚀</span><span class="ndl-text">Product Launch Calendar</span></a>
+272:          <a href="#" class="nav-link" data-view="meeting-notes"><span class="ndl-icon">📝</span><span class="ndl-text">Meeting Notes</span></a>
+273:          <a href="#" class="nav-link" data-view="team-meetings"><span class="ndl-icon">📋</span><span class="ndl-text">Minutes of Meeting (AI Team)</span></a>
+274:          <a href="#" class="nav-link" data-view="playbook-7day"><span class="ndl-icon">📅</span><span class="ndl-text">7-Day Marketing Playbook</span></a>
+275:          <a href="#" class="nav-link" data-view="growth-methodology"><span class="ndl-icon">🎯</span><span class="ndl-text">Growth Methodology (5-stage)</span></a>
+276:          <div class="nav-drop-header">2 · Run the customer ops</div>
+277:          <a href="#" class="nav-link" data-view="reengage"><span class="ndl-icon">🔁</span><span class="ndl-text">Re-Engage Customers (drip)</span></a>
+278:          <a href="#" class="nav-link" data-view="automations"><span class="ndl-icon">⚙️</span><span class="ndl-text">Automations</span></a>
+279:          <a href="#" class="nav-link" data-view="signal-triggers"><span class="ndl-icon">⚡</span><span class="ndl-text">Real-time Signal Triggers</span></a>
+280:          <a href="#" class="nav-link" data-view="stakeholders"><span class="ndl-icon">👤</span><span class="ndl-text">Stakeholders</span></a>
+281:          <div class="nav-drop-header">3 · Send reports</div>
+282:          <a href="#" class="nav-link" data-view="results"><span class="ndl-icon">📊</span><span class="ndl-text">Results Snapshot</span></a>
+283:          <a href="#" class="nav-link" data-view="weekly-report"><span class="ndl-icon">📑</span><span class="ndl-text">Weekly Report</span></a>
+284:          <a href="#" class="nav-link" data-view="cross-channel"><span class="ndl-icon">🌐</span><span class="ndl-text">Cross-Channel Report</span></a>
+285:          <a href="#" class="nav-link" data-view="csuite"><span class="ndl-icon">👔</span><span class="ndl-text">C-Suite Reports (CEO · CMO · CFO)</span></a>
+286:          <a href="#" class="nav-link" data-view="white-label"><span class="ndl-icon">🎨</span><span class="ndl-text">White-Label Reports</span></a>
+287:          <a href="#" class="nav-link" data-view="bulk-reports"><span class="ndl-icon">📦</span><span class="ndl-text">Bulk Reporting (multi-client)</span></a>
+288:          <div class="nav-drop-header">4 · Account &amp; admin</div>
+289:          <a href="#" class="nav-link" data-view="agency"><span class="ndl-icon">🏢</span><span class="ndl-text">Agency Workspace</span></a>
+290:          <a href="#" class="nav-link" data-view="workspaces"><span class="ndl-icon">👥</span><span class="ndl-text">Workspaces &amp; Team</span></a>
+291:          <a href="#" class="nav-link" data-view="technical-suite"><span class="ndl-icon">🛠️</span><span class="ndl-text">Technical Suite</span></a>
+292:          <a href="#" class="nav-link" data-view="settings"><span class="ndl-icon">⚙️</span><span class="ndl-text">Settings &amp; Integrations</span></a>
+307:          <div class="nav-drop-header">Your AI executive team</div>
+308:          <a href="#" class="nav-link" data-view="ai-team"><span class="ndl-icon">👥</span><span class="ndl-text">Team Roster</span></a>
+309:          <div class="nav-drop-header">Officers</div>
+310:          <a href="#" class="nav-link" data-view="finance-officer"><span class="ndl-icon">💼</span><span class="ndl-text">Finance Officer</span></a>
+311:          <a href="#" class="nav-link" data-view="ops-officer"><span class="ndl-icon">🛠️</span><span class="ndl-text">Operations Officer</span></a>
+345:<div class="view active" id="view-home">
+739:<div class="view hidden" id="view-studio"></div>
+740:<div class="view hidden" id="view-whatsapp"></div>
+741:<div class="view hidden" id="view-voice-caller"></div>
+742:<div class="view hidden" id="view-bookings"></div>
+743:<div class="view hidden" id="view-site-builder"></div>
+744:<div class="view hidden" id="view-linksell"></div>
+746:<div class="view hidden" id="view-dashboard">
+816:<div class="view hidden" id="view-competitors">
+859:<div class="view hidden" id="view-campaigns">
+878:<div class="view hidden" id="view-audiences-dynamic">
+897:<div class="view hidden" id="view-search-intel">
+913:<div class="view hidden" id="view-influencers">
+932:<div class="view hidden" id="view-crisis-radar">
+947:<div class="view hidden" id="view-battle-cards">
+962:<div class="view hidden" id="view-trending-topics">
+974:<div class="view hidden" id="view-sov-tracker">
+986:<div class="view hidden" id="view-discovery">
+998:<div class="view hidden" id="view-digest">
+1010:<div class="view hidden" id="view-reply-assistant">
+1022:<div class="view hidden" id="view-press-release">
+1034:<div class="view hidden" id="view-alert-routing">
+1046:<div class="view hidden" id="view-backlinks">
+1058:<div class="view hidden" id="view-content-calendar">
+1070:<div class="view hidden" id="view-podcast-monitor">
+1082:<div class="view hidden" id="view-ab-designer">
+1094:<div class="view hidden" id="view-voc">
+1106:<div class="view hidden" id="view-pricing-watch">
+1118:<div class="view hidden" id="view-deliverability">
+1130:<div class="view hidden" id="view-landing-pages">
+1142:<div class="view hidden" id="view-tech-stack">
+1154:<div class="view hidden" id="view-cold-email">
+1166:<div class="view hidden" id="view-web-vitals">
+1178:<div class="view hidden" id="view-lead-finder">
+1190:<div class="view hidden" id="view-serp-tracker">
+1202:<div class="view hidden" id="view-hubspot-sync">
+1214:<div class="view hidden" id="view-meta-insights">
+1226:<div class="view hidden" id="view-google-ads-insights">
+1238:<div class="view hidden" id="view-tiktok-ads-insights">
+1250:<div class="view hidden" id="view-email-personalizer">
+1259:<div class="view hidden" id="view-youtube-monitor">
+1268:<div class="view hidden" id="view-weekly-report">
+1278:<div class="view hidden" id="view-reddit-pulse">
+1287:<div class="view hidden" id="view-ad-library">
+1296:<div class="view hidden" id="view-newsletter-tracker">
+1305:<div class="view hidden" id="view-team-meetings">
+1314:<div class="view hidden" id="view-playbook-7day">
+1323:<div class="view hidden" id="view-growth-methodology">
+1332:<div class="view hidden" id="view-meeting-notes">
+1341:<div class="view hidden" id="view-headline-tester">
+1351:<div class="view hidden" id="view-review-aggregator">
+1360:<div class="view hidden" id="view-churn-scorer">
+1369:<div class="view hidden" id="view-twitter-pulse">
+1378:<div class="view hidden" id="view-job-board-spy">
+1387:<div class="view hidden" id="view-video-script">
+1396:<div class="view hidden" id="view-chatbot-builder">
+1405:<div class="view hidden" id="view-glassdoor">
+1414:<div class="view hidden" id="view-voiceover">
+1423:<div class="view hidden" id="view-seo-auditor">
+1432:<div class="view hidden" id="view-seo-widget">
+1441:<div class="view hidden" id="view-seo-tasks">
+1450:<div class="view hidden" id="view-schema-generator">
+1459:<div class="view hidden" id="view-conversion-boosters">
+1468:<div class="view hidden" id="view-white-label">
+1477:<div class="view hidden" id="view-bulk-reports">
+1486:<div class="view hidden" id="view-backlink-monitor">
+1495:<div class="view hidden" id="view-carousel">
+1504:<div class="view hidden" id="view-roadmap">
+1513:<div class="view hidden" id="view-true-roas">
+1522:<div class="view hidden" id="view-seo-crawler">
+1531:<div class="view hidden" id="view-geo-audit">
+1540:<div class="view hidden" id="view-local-seo">
+1549:<div class="view hidden" id="view-social-tags">
+1558:<div class="view hidden" id="view-unified-inbox">
+1567:<div class="view hidden" id="view-tiktok-downloader">
+1576:<div class="view hidden" id="view-quora-mining">
+1585:<div class="view hidden" id="view-social-analytics">
+1595:<div class="view hidden" id="view-social-publisher">
+1607:<div class="view hidden" id="view-keyword-explorer">
+1619:<div class="view hidden" id="view-audience">
+1638:<div class="view hidden" id="view-creative">
+1657:<div class="view hidden" id="view-intelligence">
+1677:<div class="view hidden" id="view-serp">
+1735:<div class="view hidden" id="view-plan">
+1761:<div class="view hidden" id="view-results">
+1781:<div class="view hidden" id="view-advertise">
+1800:<div class="view hidden" id="view-reddit">
+1819:<div class="view hidden" id="view-intent-map">
+1838:<div class="view hidden" id="view-keyword-map">
+1857:<div class="view hidden" id="view-icp-studio">
+1876:<div class="view hidden" id="view-social">
+1895:<div class="view hidden" id="view-content">
+1915:<div class="view hidden" id="view-amplitude-agents">
+1937:<div class="view hidden" id="view-goals">
+1959:<div class="view hidden" id="view-blended-perf">
+1985:<div class="view hidden" id="view-lead-qualifier">
+2006:<div class="view hidden" id="view-reengage">
+2032:<div class="view hidden" id="view-aivisibility">
+2051:<div class="view hidden" id="view-ai-audit-suite">
+2070:<div class="view hidden" id="view-technical-suite">
+2089:<div class="view hidden" id="view-link-suggester">
+2108:<div class="view hidden" id="view-cro-lab">
+2127:<div class="view hidden" id="view-analytics-hub">
+2150:<div class="view hidden" id="view-landing-builder">
+2169:<div class="view hidden" id="view-smart-creative">
+2189:<div class="view hidden" id="view-ugc-avatars">
+2208:<div class="view hidden" id="view-voiceovers">
+2227:<div class="view hidden" id="view-templates">
+2246:<div class="view hidden" id="view-opt-folders">
+2265:<div class="view hidden" id="view-import-campaigns">
+2284:<div class="view hidden" id="view-localization">
+2303:<div class="view hidden" id="view-workspaces">
+2322:<div class="view hidden" id="view-settings">
+2338:<div class="view hidden" id="view-agency">
+2343:<div class="view hidden" id="view-automations">
+2348:<div class="view hidden" id="view-journey-builder">
+2353:<div class="view hidden" id="view-signal-triggers">
+2358:<div class="view hidden" id="view-omnichannel">
+2363:<div class="view hidden" id="view-new-project">
+2368:<div class="view hidden" id="view-brand-calendar">
+2373:<div class="view hidden" id="view-budget-board">
+2378:<div class="view hidden" id="view-web-analytics">
+2383:<div class="view hidden" id="view-battleplan">
+2559:<div class="view hidden" id="view-brand-assets">
+2623:<div class="view hidden" id="view-csuite">
+2648:<div class="view hidden" id="view-autoseo">
+2670:<div class="view hidden" id="view-action-center">
+2774:<div class="view hidden" id="view-master-calendar">
+2783:<div class="view hidden" id="view-optimizer">
+2792:<div class="view hidden" id="view-launches">
+2801:<div class="view hidden" id="view-stakeholders">
+2810:<div class="view hidden" id="view-kpi-tracker">
+2855:<div class="view hidden" id="view-attribution">
+2893:<div class="view hidden" id="view-lookalike">
+2909:<div class="view hidden" id="view-contentscorer">
+2925:<div class="view hidden" id="view-mentions">
+2941:<div class="view hidden" id="view-content-gaps">
+2957:<div class="view hidden" id="view-cross-channel">
+3012:<div class="view hidden" id="view-ai-team"></div>
+3013:<div class="view hidden" id="view-finance-officer"></div>
+3014:<div class="view hidden" id="view-ops-officer"></div>
