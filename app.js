@@ -3025,6 +3025,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'newsletter-tracker')   { try { window.buildNewsletterTracker && window.buildNewsletterTracker(); }    catch(e) { console.warn('buildNewsletterTracker error:', e); } }
   if (viewId === 'meeting-notes')        { try { window.buildMeetingNotes && window.buildMeetingNotes(); }         catch(e) { console.warn('buildMeetingNotes error:', e); } }
   if (viewId === 'team-meetings')        { try { window.buildTeamMeetings && window.buildTeamMeetings(); }         catch(e) { console.warn('buildTeamMeetings error:', e); } }
+  if (viewId === 'playbook-7day')        { try { window.buildPlaybook7Day && window.buildPlaybook7Day(); }         catch(e) { console.warn('buildPlaybook7Day error:', e); } }
   if (viewId === 'headline-tester')      { try { window.buildHeadlineTester && window.buildHeadlineTester(); }       catch(e) { console.warn('buildHeadlineTester error:', e); } }
   if (viewId === 'review-aggregator')    { try { window.buildReviewAggregator && window.buildReviewAggregator(); }     catch(e) { console.warn('buildReviewAggregator error:', e); } }
   if (viewId === 'churn-scorer')         { try { window.buildChurnScorer && window.buildChurnScorer(); }          catch(e) { console.warn('buildChurnScorer error:', e); } }
@@ -42270,6 +42271,152 @@ function _rpToCarousel(title) {
         if (m) window._teamDownloadFile(`meeting-${m.id}.md`, window._teamMeetingToMarkdown(m));
       });
     }
+    render();
+  };
+
+  // ── Manage → 7-Day Marketing Playbook ─────────────────────────────────
+  window.buildPlaybook7Day = async function() {
+    const wrap = document.getElementById('playbook7DayWrap');
+    if (!wrap) return;
+    wrap.innerHTML = '<div style="text-align:center;color:#64748B;padding:40px">⏳ Loading playbook…</div>';
+    let data = { playbook: [], state: {}, suggestions: {}, runs: [] };
+    try { const r = await fetch('/api/playbook'); data = await r.json(); } catch(e) { wrap.innerHTML = '<div style="color:#B91C1C;padding:20px">Failed to load: '+e.message+'</div>'; return; }
+
+    const dayColors = ['#0EA5E9','#8B5CF6','#10B981','#F59E0B','#EF4444','#EC4899','#6366F1'];
+    const officerEmoji = { marketing:'📣', sales:'💼', analyst:'📊', content:'✍️', seo:'🔍', cro:'🎯', finance:'💰', ops:'⚙️' };
+
+    function totalDone() {
+      const all = data.playbook.flatMap(d => d.steps.map(s => s.id));
+      const done = all.filter(id => data.state[id]==='done').length;
+      return { done, total: all.length };
+    }
+
+    function render() {
+      const { done, total } = totalDone();
+      const pct = total ? Math.round((done/total)*100) : 0;
+      const recentRun = (data.runs||[])[0];
+      wrap.innerHTML = `
+        <div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 4px 14px rgba(15,23,42,0.05)">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px">
+            <div>
+              <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Strategic Plan</div>
+              <div style="font-size:1.3rem;font-weight:800;color:#0F172A">7-Day Marketing Playbook</div>
+              <div style="font-size:.82rem;color:#475569;margin-top:4px">${done} / ${total} steps marked done · ${pct}% complete${recentRun ? ` · last autonomous run ${new Date(recentRun.at).toLocaleString()} (${recentRun.totalAdded} tasks)` : ''}</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button id="pbRunAll" title="Assign every step to an AI officer as a tracked task" style="padding:11px 18px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer;font-size:.92rem">▶ Run Autonomously (all 7 days)</button>
+            </div>
+          </div>
+          <div style="height:8px;background:#F1F5F9;border-radius:99px;overflow:hidden"><div style="width:${pct}%;height:100%;background:linear-gradient(135deg,#10B981,#0EA5E9);transition:width .3s"></div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px">
+          ${data.playbook.map((d,idx) => {
+            const dayDone = d.steps.filter(s => data.state[s.id]==='done').length;
+            const c = dayColors[idx % dayColors.length];
+            return `<div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;overflow:hidden;box-shadow:0 4px 14px rgba(15,23,42,0.05)">
+              <div style="padding:16px 18px;background:linear-gradient(135deg,${c},#0F172A);color:#fff">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+                  <div>
+                    <div style="font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.85">Day ${d.day} · Lead: ${officerEmoji[d.officer]||''} ${_e(d.officer)}</div>
+                    <div style="font-size:1.05rem;font-weight:800;margin-top:4px">${_e(d.title)}</div>
+                  </div>
+                  <button data-pb-runday="${d.day}" title="Assign just this day's steps to officers" style="padding:7px 11px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:7px;font-weight:700;cursor:pointer;font-size:.72rem;white-space:nowrap">▶ Run Day ${d.day}</button>
+                </div>
+                <div style="font-size:.78rem;opacity:.9;margin-top:6px;line-height:1.4">${_e(d.objective)}</div>
+                <div style="font-size:.7rem;opacity:.85;margin-top:6px">${dayDone}/${d.steps.length} steps done</div>
+              </div>
+              <div style="padding:6px 10px">
+                ${d.steps.map(s => {
+                  const isDone = data.state[s.id]==='done';
+                  const sug = data.suggestions[s.id];
+                  return `<div style="padding:11px 8px;border-top:1px solid #F1F5F9">
+                    <div style="display:flex;align-items:flex-start;gap:10px">
+                      <button data-pb-toggle="${s.id}" title="Mark done / undo" style="margin-top:2px;width:22px;height:22px;border-radius:5px;border:1.5px solid ${isDone?'#10B981':'#CBD5E1'};background:${isDone?'#10B981':'#fff'};color:#fff;cursor:pointer;font-size:.78rem;font-weight:700;flex-shrink:0">${isDone?'✓':''}</button>
+                      <div style="flex:1;min-width:0">
+                        <div style="font-weight:700;color:#0F172A;font-size:.86rem;${isDone?'text-decoration:line-through;opacity:.6':''}">${_e(s.label)} <span style="font-weight:600;color:#64748B;font-size:.72rem">· ${officerEmoji[s.officer]||''} ${_e(s.officer)}</span></div>
+                        <div style="font-size:.74rem;color:#475569;margin-top:3px;line-height:1.45">${_e(s.detail)}</div>
+                        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+                          <button data-pb-suggest="${s.id}" style="padding:5px 10px;background:#0EA5E9;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:.7rem">🤖 AI Suggest</button>
+                          ${sug ? `<button data-pb-viewsug="${s.id}" style="padding:5px 10px;background:#F1F5F9;color:#0F172A;border:1px solid #CBD5E1;border-radius:6px;font-weight:700;cursor:pointer;font-size:.7rem">👁️ View suggestion</button>` : ''}
+                        </div>
+                        ${sug ? `<div style="margin-top:8px;padding:8px 10px;background:#F0F9FF;border-left:3px solid #0EA5E9;border-radius:0 6px 6px 0;font-size:.74rem;color:#0F172A"><strong>${_e(sug.headline||'')}</strong> <span style="color:#64748B">· ${new Date(sug.generatedAt).toLocaleDateString()}</span></div>` : ''}
+                      </div>
+                    </div>
+                  </div>`;
+                }).join('')}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        ${(data.runs||[]).length ? `<details style="margin-top:18px;background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:14px 16px"><summary style="cursor:pointer;font-weight:700;color:#0F172A;font-size:.86rem">▸ Autonomous run history (${data.runs.length})</summary><div style="margin-top:10px">${data.runs.map(r => `<div style="padding:8px 0;border-top:1px solid #F1F5F9;font-size:.78rem;color:#0F172A;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px"><span>${new Date(r.at).toLocaleString()} · ${r.dayFilter ? `Day ${r.dayFilter}` : 'All 7 days'}</span><span style="color:#64748B">${r.totalAdded} tasks across ${Object.keys(r.added||{}).length} officers</span></div>`).join('')}</div></details>` : ''}
+      `;
+
+      wrap.querySelectorAll('button[data-pb-toggle]').forEach(b => b.onclick = async () => {
+        const r = await fetch(`/api/playbook/step/${b.dataset.pbToggle}/toggle`, { method:'POST' });
+        const j = await r.json();
+        if (j.state) { data.state = j.state; render(); }
+      });
+      wrap.querySelectorAll('button[data-pb-suggest]').forEach(b => b.onclick = async () => {
+        const stepId = b.dataset.pbSuggest;
+        const ctx = prompt('Optional: any business context for the AI? (industry, current pain, target market — or leave blank)','');
+        if (ctx === null) return;
+        const orig = b.innerHTML; b.disabled = true; b.textContent = '⏳ …';
+        try {
+          const r = await fetch('/api/playbook/suggest', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ stepId, context: ctx || '' }) });
+          const j = await r.json();
+          if (!j.ok) throw new Error(j.error||'failed');
+          data.suggestions[stepId] = j.suggestion;
+          _showPlaybookSuggestion(stepId, j.suggestion);
+          render();
+        } catch(err) { alert('AI Suggest failed: '+err.message); b.disabled = false; b.innerHTML = orig; }
+      });
+      wrap.querySelectorAll('button[data-pb-viewsug]').forEach(b => b.onclick = () => {
+        _showPlaybookSuggestion(b.dataset.pbViewsug, data.suggestions[b.dataset.pbViewsug]);
+      });
+      wrap.querySelectorAll('button[data-pb-runday]').forEach(b => b.onclick = () => _runPlaybookAutonomous(+b.dataset.pbRunday));
+      const runAll = wrap.querySelector('#pbRunAll');
+      if (runAll) runAll.onclick = () => _runPlaybookAutonomous(null);
+    }
+
+    async function _runPlaybookAutonomous(dayFilter) {
+      const label = dayFilter ? `Day ${dayFilter}` : 'all 7 days';
+      if (!confirm(`Assign every step in ${label} to its AI officer as a tracked task?\n\nThe Daily Report Scheduler will then start cross-referencing them against real platform activity. This is safe — it only adds tasks; nothing is deleted.`)) return;
+      try {
+        const r = await fetch('/api/playbook/run-autonomous', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ day: dayFilter }) });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error||'failed');
+        if (typeof showToast==='function') showToast(j.message); else alert(j.message);
+        // Refresh runs
+        const r2 = await fetch('/api/playbook'); const j2 = await r2.json();
+        data.runs = j2.runs || data.runs;
+        render();
+      } catch(err) { alert('Run failed: '+err.message); }
+    }
+
+    function _showPlaybookSuggestion(stepId, sug) {
+      if (!sug) return;
+      const overlay = document.createElement('div');
+      overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,0.7);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
+      const acts = (sug.actions||[]).map(a => `<li style="margin-bottom:8px"><strong>${_e(a.step||'')}</strong>${a.tool?` <span style="color:#0EA5E9;font-size:.78rem">· ${_e(a.tool)}</span>`:''}${a.owner?` <span style="background:#F1F5F9;color:#475569;padding:2px 7px;border-radius:99px;font-size:.7rem;margin-left:4px">${officerEmoji[a.owner]||''} ${_e(a.owner)}</span>`:''}</li>`).join('');
+      overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:640px;max-width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
+        <div style="padding:18px 22px;background:linear-gradient(135deg,#0EA5E9,#312E81);color:#fff;display:flex;justify-content:space-between;align-items:center">
+          <div><div style="font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.85">🤖 AI Suggestion</div><div style="font-size:1.05rem;font-weight:800;margin-top:4px">${_e(sug.headline||stepId)}</div></div>
+          <button id="pbsCx" style="background:rgba(255,255,255,0.18);border:none;color:#fff;width:34px;height:34px;border-radius:50%;font-size:1.1rem;cursor:pointer">×</button>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:20px 22px">
+          <div style="font-size:.86rem;color:#0F172A;line-height:1.55;margin-bottom:14px">${_e(sug.rationale||'')}</div>
+          ${acts ? `<div style="font-weight:800;color:#0F172A;font-size:.82rem;margin-bottom:6px">Recommended actions</div><ul style="margin:0 0 14px 18px;padding:0;color:#0F172A;font-size:.84rem;line-height:1.5">${acts}</ul>` : ''}
+          ${sug.kpi ? `<div style="background:#F0FDF4;border-left:3px solid #10B981;padding:8px 12px;border-radius:0 8px 8px 0;margin-bottom:8px;font-size:.8rem"><strong style="color:#15803D">KPI to watch:</strong> ${_e(sug.kpi)}</div>` : ''}
+          ${sug.risk ? `<div style="background:#FEF2F2;border-left:3px solid #B91C1C;padding:8px 12px;border-radius:0 8px 8px 0;font-size:.8rem"><strong style="color:#991B1B">Watch out:</strong> ${_e(sug.risk)}</div>` : ''}
+          <div style="margin-top:14px;font-size:.7rem;color:#64748B">Generated ${new Date(sug.generatedAt).toLocaleString()}${sug.snapshot ? ' · grounded in live platform snapshot' : ''}</div>
+        </div>
+      </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#pbsCx').onclick = () => overlay.remove();
+      overlay.addEventListener('click', e => { if (e.target===overlay) overlay.remove(); });
+    }
+
+    function _e(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
     render();
   };
 

@@ -8740,6 +8740,7 @@ app.use('/api/projects',        _projectsRouter);
 app.use('/api/brand-calendar',  _bcalRouter);
 app.use('/api/budget',          _budgetRouter);
 app.use('/api/web-analytics',   _webAnalRouter);
+app.use('/api/playbook',        require('./services/playbook_7day/api'));
 (async () => {
   try {
     if (_db.hasDb()) {
