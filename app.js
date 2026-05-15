@@ -34835,7 +34835,7 @@ window._sovLoad = async function() {
         fill: true, tension: 0.3, borderWidth: 2,
       };
     });
-    w.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-family:Sora,sans-serif;font-weight:800">${_escapeHtml(target)} vs competitors · ${r.snapshots} snapshots</div></div><canvas id="sovCanvas" height="120"></canvas>`;
+    w.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-family:Sora,sans-serif;font-weight:800">${_escapeHtml(target)} vs competitors · ${r.snapshots} snapshots</div></div><div style="position:relative;height:360px;width:100%"><canvas id="sovCanvas"></canvas></div>`;
     if (_sovChart) { try { _sovChart.destroy(); } catch{} }
     _sovChart = new Chart(document.getElementById('sovCanvas').getContext('2d'), {
       type: 'line',
