@@ -3026,6 +3026,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'meeting-notes')        { try { window.buildMeetingNotes && window.buildMeetingNotes(); }         catch(e) { console.warn('buildMeetingNotes error:', e); } }
   if (viewId === 'team-meetings')        { try { window.buildTeamMeetings && window.buildTeamMeetings(); }         catch(e) { console.warn('buildTeamMeetings error:', e); } }
   if (viewId === 'playbook-7day')        { try { window.buildPlaybook7Day && window.buildPlaybook7Day(); }         catch(e) { console.warn('buildPlaybook7Day error:', e); } }
+  if (viewId === 'growth-methodology')   { try { window.buildGrowthMethodology && window.buildGrowthMethodology(); } catch(e) { console.warn('buildGrowthMethodology error:', e); } }
   if (viewId === 'headline-tester')      { try { window.buildHeadlineTester && window.buildHeadlineTester(); }       catch(e) { console.warn('buildHeadlineTester error:', e); } }
   if (viewId === 'review-aggregator')    { try { window.buildReviewAggregator && window.buildReviewAggregator(); }     catch(e) { console.warn('buildReviewAggregator error:', e); } }
   if (viewId === 'churn-scorer')         { try { window.buildChurnScorer && window.buildChurnScorer(); }          catch(e) { console.warn('buildChurnScorer error:', e); } }
@@ -42417,6 +42418,160 @@ function _rpToCarousel(title) {
     }
 
     function _e(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    render();
+  };
+
+  // ── Manage → Growth Methodology (5-stage visual) ──────────────────────
+  window.buildGrowthMethodology = function() {
+    const wrap = document.getElementById('growthMethodWrap');
+    if (!wrap) return;
+
+    const STAGES = [
+      { n: 1, title: 'Diagnose & Align',     color: '#10B981', summary: 'Understand the business, audience, and competitive landscape — and align everyone on a single goal.',
+        features: [
+          { label: 'New Marketing Project',    view: 'new-project',       why: 'Lock in goal, budget, channels, owner, and dates.' },
+          { label: 'Competitor Analysis',      view: 'competitors',       why: 'Map competitor ads, landing pages, offers, keywords.' },
+          { label: 'Battle Cards',             view: 'battle-cards',      why: 'One-page summary of how to beat each competitor.' },
+          { label: 'Stakeholders',             view: 'stakeholders',      why: 'Capture decision-makers + buying-committee context.' },
+          { label: 'Brand Calendar',           view: 'brand-calendar',    why: 'Plan brand, content, social, ads in one view.' },
+          { label: '7-Day Marketing Playbook', view: 'playbook-7day',     why: 'Strategic plan with AI Suggest grounded in real data.' }
+        ]},
+      { n: 2, title: 'Analyse & Forecast',   color: '#0EA5E9', summary: 'Run dual-AI analyses, find opportunity gaps, and forecast outcomes before you spend a dollar.',
+        features: [
+          { label: 'AI Attack Plan',           view: 'battleplan',        why: 'GPT-4o + Claude in parallel + GPT-4o synthesis.' },
+          { label: 'Keyword Gap',              view: 'content-gaps',      why: 'See which keywords competitors rank for and you don\'t.' },
+          { label: 'Share of Voice',           view: 'sov-tracker',       why: 'Quantify your slice vs. competitors over time.' },
+          { label: 'Predictive Moves',         view: 'intelligence',      why: 'AI-forecasted competitor next moves.' },
+          { label: 'Cross-Channel Report',     view: 'cross-channel',     why: 'Unified view of Meta + Google + TikTok + email.' },
+          { label: 'True ROAS',                view: 'true-roas',         why: 'Blended attribution + budget recommendations.' }
+        ]},
+      { n: 3, title: 'Implement & Automate', color: '#F59E0B', summary: 'Launch campaigns, journeys, landing pages, and outbound — wired to autopilot from day one.',
+        features: [
+          { label: 'Campaigns',                view: 'campaigns',         why: 'Auto-registers in the Optimizer, optimizer ON by default.' },
+          { label: 'Customer Journey Builder', view: 'journey-builder',   why: 'Multi-step flows: trigger → wait → condition → action.' },
+          { label: 'Omnichannel Composer',     view: 'omnichannel',       why: 'Write once → fan out across email, SMS, WhatsApp, Voice, Push.' },
+          { label: 'Site Builder',             view: 'landing-builder',   why: 'Block-based public landing pages.' },
+          { label: 'Link-in-Bio + Stripe',     view: 'linksell',          why: 'Sell direct from a public bio page.' },
+          { label: 'Automations',              view: 'automations',       why: 'Hourly + 6h + 12h optimizer cycles, all hands-off.' }
+        ]},
+      { n: 4, title: 'Prove & Improve',      color: '#EF4444', summary: 'Honest measurement, automatic optimisation, and instant reaction to real-world signals.',
+        features: [
+          { label: 'AI Optimizer',             view: 'optimizer',         why: 'Hourly insights + 6h pause/scale + 12h budget reallocation.' },
+          { label: 'Goal-Based Monitoring',    view: 'goals',             why: 'Per-goal autonomous watch with alerts on drift.' },
+          { label: 'Real-time Signal Triggers',view: 'signal-triggers',   why: 'Mention spike / sentiment drop / price change → instant journey.' },
+          { label: 'Daily Report Scheduler',   view: 'ai-team',           why: 'AI officers report honestly against real DB activity.' },
+          { label: 'Web Analytics',            view: 'web-analytics',     why: 'Channel + landing-page + PageSpeed in one view.' },
+          { label: 'Budget Board',             view: 'budget-board',      why: 'Target vs actual + per-channel utilisation + spend log.' }
+        ]},
+      { n: 5, title: 'Compound & Innovate',  color: '#8B5CF6', summary: 'Re-engage past customers, build look-alike scale, and let the AI Team learn from every cycle.',
+        features: [
+          { label: 'Re-Engage Customers',      view: 'reengage',          why: 'Win-back drips for cold + churn-risk segments.' },
+          { label: 'Dynamic Audiences',        view: 'audiences-dynamic', why: 'Live rule-based contact segments → drip + HubSpot list.' },
+          { label: 'Lookalike Builder',        view: 'lookalike',         why: 'Spin up look-alikes off your best converters.' },
+          { label: 'Weekly Report',            view: 'weekly-report',     why: 'Trended weekly performance digest.' },
+          { label: 'AI Team',                  view: 'ai-team',           why: '8 autonomous officers — tasks, meetings, daily reports.' },
+          { label: 'White-Label Reports',      view: 'white-label',       why: 'Branded client deliverables for agencies.' }
+        ]}
+    ];
+
+    function _e(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    // SVG diagram: 5 nodes positioned around a circle, with the orbits
+    // (rings) and a central "rocket" hub. Stage numbers are tappable.
+    const cx = 360, cy = 320, r = 220;
+    const angles = [-90, -18, 54, 126, 198]; // start at top, then clockwise (12, 5, 7, 8, 10 o'clock-ish)
+    const nodes = STAGES.map((s, i) => {
+      const a = angles[i] * Math.PI / 180;
+      return { ...s, x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+    });
+
+    function diagramSvg() {
+      return `<svg viewBox="0 0 720 660" style="width:100%;max-width:720px;height:auto;display:block;margin:0 auto">
+        <defs>
+          <radialGradient id="ghub" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#FB923C"/><stop offset="100%" stop-color="#EA580C"/>
+          </radialGradient>
+          <filter id="gshadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0F172A" flood-opacity="0.15"/>
+          </filter>
+        </defs>
+        ${[r, r*0.72, r*0.44].map(rr => `<circle cx="${cx}" cy="${cy}" r="${rr}" fill="none" stroke="#10B981" stroke-opacity="0.25" stroke-width="1.5" stroke-dasharray="4 6"/>`).join('')}
+        ${nodes.map((n,i) => {
+          const next = nodes[(i+1)%nodes.length];
+          return `<line x1="${n.x}" y1="${n.y}" x2="${next.x}" y2="${next.y}" stroke="#CBD5E1" stroke-width="1" stroke-dasharray="3 5" opacity="0.5"/>`;
+        }).join('')}
+        <circle cx="${cx}" cy="${cy}" r="50" fill="url(#ghub)" filter="url(#gshadow)"/>
+        <text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="36" font-weight="800">🚀</text>
+        ${nodes.map(n => `
+          <g class="gm-node" data-stage="${n.n}" style="cursor:pointer">
+            <circle cx="${n.x}" cy="${n.y}" r="32" fill="${n.color}" filter="url(#gshadow)"/>
+            <text x="${n.x}" y="${n.y+8}" text-anchor="middle" fill="#fff" font-size="22" font-weight="800">${n.n}</text>
+            <text x="${n.x}" y="${n.y - 50}" text-anchor="middle" fill="#0F172A" font-size="14" font-weight="700">${_e(n.title.split(' & ')[0])}</text>
+            <text x="${n.x}" y="${n.y - 34}" text-anchor="middle" fill="#475569" font-size="12">${_e('& ' + (n.title.split(' & ')[1]||''))}</text>
+          </g>
+        `).join('')}
+      </svg>`;
+    }
+
+    function detailPanel(stage) {
+      return `<div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:22px;box-shadow:0 4px 14px rgba(15,23,42,0.05);height:100%">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+          <div style="width:42px;height:42px;border-radius:50%;background:${stage.color};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.2rem">${stage.n}</div>
+          <div>
+            <div style="font-size:.7rem;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Stage ${stage.n}</div>
+            <div style="font-size:1.15rem;font-weight:800;color:#0F172A">${_e(stage.title)}</div>
+          </div>
+        </div>
+        <div style="font-size:.88rem;color:#334155;line-height:1.55;margin-bottom:14px">${_e(stage.summary)}</div>
+        <div style="font-weight:700;color:#0F172A;font-size:.78rem;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;color:#64748B">Powered by</div>
+        <div style="display:grid;gap:8px">
+          ${stage.features.map(f => `<button data-gm-go="${_e(f.view)}" style="text-align:left;padding:10px 12px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;cursor:pointer;transition:all .15s" onmouseover="this.style.background='#F1F5F9';this.style.borderColor='${stage.color}'" onmouseout="this.style.background='#F8FAFC';this.style.borderColor='#E2E8F0'">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+              <div style="font-weight:700;color:#0F172A;font-size:.86rem">${_e(f.label)}</div>
+              <div style="color:${stage.color};font-weight:700;font-size:.78rem;flex-shrink:0">Open →</div>
+            </div>
+            <div style="font-size:.74rem;color:#64748B;margin-top:3px;line-height:1.4">${_e(f.why)}</div>
+          </button>`).join('')}
+        </div>
+      </div>`;
+    }
+
+    let activeStage = 1;
+    function render() {
+      const stage = STAGES.find(s => s.n === activeStage);
+      wrap.innerHTML = `
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,440px);gap:20px;align-items:start">
+          <div style="background:#fff;border:1px solid #E2E8F0;border-radius:14px;padding:18px;box-shadow:0 4px 14px rgba(15,23,42,0.05)">
+            <div style="text-align:center;font-weight:800;color:#0F172A;font-size:1.05rem;margin-bottom:6px">Discover Our Growth Methodology</div>
+            <div style="text-align:center;font-size:.78rem;color:#64748B;margin-bottom:8px">Click any number to see what powers that stage in InfoGenie</div>
+            ${diagramSvg()}
+            <div style="margin-top:12px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap">
+              ${STAGES.map(s => `<button data-gm-pick="${s.n}" style="padding:6px 12px;border-radius:99px;border:1.5px solid ${s.n===activeStage?s.color:'#E2E8F0'};background:${s.n===activeStage?s.color:'#fff'};color:${s.n===activeStage?'#fff':'#475569'};font-weight:700;cursor:pointer;font-size:.78rem">${s.n} · ${_e(s.title.split(' & ')[0])}</button>`).join('')}
+            </div>
+          </div>
+          <div id="gmDetail">${detailPanel(stage)}</div>
+        </div>
+        <div style="margin-top:18px;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:12px;padding:14px 18px;font-size:.84rem;color:#0F172A;line-height:1.55">
+          <strong style="color:#0369A1">How InfoGenie differs from a textbook 5-stage loop:</strong> all five stages run <em>simultaneously</em>, owned by 8 autonomous AI officers, with honest cross-referencing against real database activity. Real-time Signal Triggers can jump straight from Diagnose to Implement in under a minute, and the AI Optimizer keeps Prove and Compound running on autopilot 24/7.
+        </div>`;
+
+      wrap.querySelectorAll('[data-stage]').forEach(g => {
+        g.addEventListener('click', () => { activeStage = +g.dataset.stage; render(); });
+        g.addEventListener('mouseenter', () => g.style.opacity = '0.85');
+        g.addEventListener('mouseleave', () => g.style.opacity = '1');
+      });
+      wrap.querySelectorAll('button[data-gm-pick]').forEach(b => b.onclick = () => { activeStage = +b.dataset.gmPick; render(); });
+      wrap.querySelectorAll('button[data-gm-go]').forEach(b => b.onclick = () => {
+        const v = b.dataset.gmGo;
+        const link = document.querySelector(`.nav-link[data-view="${v}"]`);
+        if (link) { link.click(); return; }
+        // Fallback: not all views have a sidebar entry (e.g. linksell). Drive
+        // routing directly so the user still lands on the right surface.
+        if (typeof navigateTo === 'function') { try { navigateTo(v); return; } catch(_){} }
+        if (typeof window.navigateTo === 'function') { try { window.navigateTo(v); return; } catch(_){} }
+        if (typeof showToast === 'function') showToast(`Could not open ${v}`);
+      });
+    }
     render();
   };
 
