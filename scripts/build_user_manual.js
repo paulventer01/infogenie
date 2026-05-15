@@ -400,8 +400,12 @@ function drawFeatureCard(doc, section, feature) {
     // the page we addPage() before drawing them — this guarantees the
     // screenshot is always large enough to read, never squeezed into a
     // narrow strip.
+    // Reserve room for inputs/outputs (~110pt) + how-to box (~90pt)
+    // + caption (~24pt) so the whole feature stays on a single page.
+    // Available = pageHeight - cursorY - reservedForLowerSections.
     const PAGE_H = pageH(doc);
-    const maxImgH = Math.min(620, PAGE_H - cursorY - 40); // huge box: ~3x what we had before
+    const RESERVED_BELOW = 230;
+    const maxImgH = Math.max(180, PAGE_H - cursorY - RESERVED_BELOW);
     const maxImgW = w;
     let imgW = maxImgW;
     let imgH = maxImgH;
@@ -427,20 +431,6 @@ function drawFeatureCard(doc, section, feature) {
     doc.fillColor(C.gray400).font('Helvetica-Oblique').fontSize(8.5)
       .text(`Live view: ${feature.name}`, x0, cursorY + imgH + 6, { width: w, align: 'center' });
     cursorY = cursorY + imgH + 24;
-    // If the image left less than ~180pt of room, push the inputs/outputs +
-    // how-to-use box onto a fresh page (with a "(continued)" header) so the
-    // screenshot never gets clipped or shrunk on its behalf.
-    if (PAGE_H - cursorY < 180) {
-      doc.addPage();
-      doc.page.margins.bottom = 0; // same anti-pagination trick
-      const contY = doc.page.margins.top;
-      doc.save();
-      doc.roundedRect(x0, contY, w, 28, 6).fill(section.color);
-      doc.fillColor(C.white).font('Helvetica-Bold').fontSize(11)
-        .text(feature.name + '  (continued)', x0 + 14, contY + 8, { width: w - 28, ellipsis: true });
-      doc.restore();
-      cursorY = contY + 42;
-    }
   }
 
   // ── 4. Two-column Inputs / Outputs ──────────────────────────────────────
