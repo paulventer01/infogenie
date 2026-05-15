@@ -13,7 +13,10 @@ async function _fetchMentions(brand, competitors, country) {
   // L107-119) lets the request through.
   const _http = require('http');
   const port = process.env.PORT || 5000;
-  const body = JSON.stringify({ brand, competitors: competitors || [], country: country || 'US', days: 1 });
+  // 7-day rolling window per snapshot — gives smaller competitors enough surface
+  // to register without flattening spike detection (each scan compares against
+  // its 7-snapshot baseline, so relative deltas still surface volume changes).
+  const body = JSON.stringify({ brand, competitors: competitors || [], country: country || 'US', days: 7 });
   const headers = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) };
   if (process.env.INFOGENIE_API_KEY) headers['X-InfoGenie-Key'] = process.env.INFOGENIE_API_KEY;
   return await new Promise((resolve, reject) => {

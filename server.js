@@ -12052,7 +12052,7 @@ app.post('/api/mentions', async (req, res) => {
     const competitors = (Array.isArray(body.competitors) ? body.competitors : [])
       .map(c => String(c || '').trim().slice(0, 80))
       .filter(Boolean)
-      .slice(0, 4);
+      .slice(0, 10);
 
     const country = String(body.country || 'US').toUpperCase();
     // GLOBAL = no location filter → DataForSEO returns worldwide Google News
