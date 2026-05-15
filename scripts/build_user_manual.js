@@ -393,41 +393,54 @@ function drawFeatureCard(doc, section, feature) {
   if (shot) {
     // Screenshots are captured at 1440px wide but variable height (the
     // capture script crops to measured content height — 560 to 2400px).
-    // We must preserve the actual aspect ratio so the image is not stretched.
-    // Strategy: read the image dimensions, then scale to fit a max box.
-    const maxImgH = 270;
+    // Preserve native aspect ratio AND give the image a generous bounding
+    // box so the actual UI is readable. We measure the real image dims, scale
+    // to full content width, and let it grow as tall as it wants up to
+    // ~70% of the page. If that pushes the inputs/outputs/how-to box off
+    // the page we addPage() before drawing them — this guarantees the
+    // screenshot is always large enough to read, never squeezed into a
+    // narrow strip.
+    const PAGE_H = pageH(doc);
+    const maxImgH = Math.min(620, PAGE_H - cursorY - 40); // huge box: ~3x what we had before
     const maxImgW = w;
     let imgW = maxImgW;
     let imgH = maxImgH;
     try {
-      // Open the image once to discover its real width/height (PDFKit
-      // supports this via `doc.openImage(path)`).
       const img = doc.openImage(shot);
-      const ratio = img.width / img.height; // wider-than-tall when > 1
-      // Scale to fit maxImgW x maxImgH while preserving aspect ratio.
+      const ratio = img.width / img.height;
       imgW = maxImgW;
       imgH = imgW / ratio;
       if (imgH > maxImgH) { imgH = maxImgH; imgW = imgH * ratio; }
-    } catch (_) { /* fall back to defaults */ }
+    } catch (_) { /* defaults */ }
     const imgX = x0 + (w - imgW) / 2;
-    // Border + soft shadow
     doc.save();
     doc.roundedRect(imgX - 1, cursorY - 1, imgW + 2, imgH + 2, 6)
       .lineWidth(1).strokeColor(C.gray200).stroke();
     doc.restore();
     try {
-      // `fit` preserves the image's native aspect ratio inside the
-      // bounding box — guaranteed not to stretch even if dims are off.
       doc.image(shot, imgX, cursorY, { fit: [imgW, imgH], align: 'center', valign: 'top' });
     } catch (err) {
       doc.save().rect(imgX, cursorY, imgW, imgH).fill(C.gray100).restore();
       doc.fillColor(C.gray400).font('Helvetica').fontSize(10)
         .text('[ screenshot unavailable ]', imgX, cursorY + imgH / 2 - 5, { width: imgW, align: 'center' });
     }
-    // Caption
     doc.fillColor(C.gray400).font('Helvetica-Oblique').fontSize(8.5)
       .text(`Live view: ${feature.name}`, x0, cursorY + imgH + 6, { width: w, align: 'center' });
     cursorY = cursorY + imgH + 24;
+    // If the image left less than ~180pt of room, push the inputs/outputs +
+    // how-to-use box onto a fresh page (with a "(continued)" header) so the
+    // screenshot never gets clipped or shrunk on its behalf.
+    if (PAGE_H - cursorY < 180) {
+      doc.addPage();
+      doc.page.margins.bottom = 0; // same anti-pagination trick
+      const contY = doc.page.margins.top;
+      doc.save();
+      doc.roundedRect(x0, contY, w, 28, 6).fill(section.color);
+      doc.fillColor(C.white).font('Helvetica-Bold').fontSize(11)
+        .text(feature.name + '  (continued)', x0 + 14, contY + 8, { width: w - 28, ellipsis: true });
+      doc.restore();
+      cursorY = contY + 42;
+    }
   }
 
   // ── 4. Two-column Inputs / Outputs ──────────────────────────────────────
