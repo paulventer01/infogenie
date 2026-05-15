@@ -2992,7 +2992,7 @@
   </div>
 </div>
 
-<script src="/app.js?v=20260512SW8"></script>
+<script src="/app.js?v=20260515ONB1"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');
@@ -3017,6 +3017,82 @@
 <div class="view hidden" id="view-ai-team"></div>
 <div class="view hidden" id="view-finance-officer"></div>
 <div class="view hidden" id="view-ops-officer"></div>
+
+<!-- ─── Onboarding Wizard (first-run) + Global Tour Button ─── -->
+<style>
+  #ig-onb-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.78);backdrop-filter:blur(6px);z-index:99998;display:none;align-items:center;justify-content:center;padding:20px;font-family:inherit}
+  #ig-onb-overlay.show{display:flex}
+  #ig-onb-card{background:#fff;border-radius:18px;max-width:640px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.35);animation:igOnbIn .28s ease-out}
+  @keyframes igOnbIn{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}
+  #ig-onb-card .igh{background:linear-gradient(135deg,#0066FF,#14B8A6);color:#fff;padding:28px 32px 22px;border-radius:18px 18px 0 0}
+  #ig-onb-card .igh h2{margin:0;font-size:1.45rem;font-weight:800}
+  #ig-onb-card .igh p{margin:6px 0 0;opacity:.92;font-size:.92rem}
+  #ig-onb-card .igb{padding:24px 32px 28px}
+  #ig-onb-card .igsteps{display:flex;gap:6px;margin-bottom:18px}
+  #ig-onb-card .igsteps span{flex:1;height:5px;border-radius:99px;background:#E2E8F0;transition:background .25s}
+  #ig-onb-card .igsteps span.done{background:#14B8A6}
+  #ig-onb-card .igsteps span.cur{background:#0066FF}
+  #ig-onb-card label{display:block;font-weight:700;color:#0F172A;font-size:.86rem;margin:14px 0 6px}
+  #ig-onb-card input[type=text],#ig-onb-card input[type=url],#ig-onb-card select{width:100%;padding:10px 12px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:.92rem;font-family:inherit;box-sizing:border-box}
+  #ig-onb-card input:focus,#ig-onb-card select:focus{outline:none;border-color:#0066FF}
+  #ig-onb-card .igchoice{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+  #ig-onb-card .igchoice button{padding:14px 12px;background:#F8FAFC;border:1.5px solid #E2E8F0;border-radius:11px;cursor:pointer;font-family:inherit;text-align:left;transition:all .15s}
+  #ig-onb-card .igchoice button:hover{border-color:#0066FF;background:#EFF6FF}
+  #ig-onb-card .igchoice button.sel{border-color:#0066FF;background:#EFF6FF;box-shadow:0 0 0 3px rgba(0,102,255,.12)}
+  #ig-onb-card .igchoice .e{font-size:1.5rem;margin-bottom:4px;display:block}
+  #ig-onb-card .igchoice .t{font-weight:700;color:#0F172A;font-size:.92rem}
+  #ig-onb-card .igchoice .d{color:#64748B;font-size:.78rem;margin-top:2px}
+  #ig-onb-card .igchk{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#F8FAFC;border:1.5px solid #E2E8F0;border-radius:9px;margin-bottom:6px;cursor:pointer;font-size:.9rem}
+  #ig-onb-card .igchk input{margin:0}
+  #ig-onb-card .igchk.sel{border-color:#14B8A6;background:#F0FDF4}
+  #ig-onb-card .igfoot{display:flex;justify-content:space-between;align-items:center;margin-top:22px;padding-top:18px;border-top:1px solid #F1F5F9}
+  #ig-onb-card .igfoot button{padding:10px 18px;border-radius:9px;font-weight:700;cursor:pointer;font-family:inherit;font-size:.9rem;border:0}
+  #ig-onb-card .igfoot .skip{background:transparent;color:#64748B;border:1.5px solid #E2E8F0}
+  #ig-onb-card .igfoot .next{background:linear-gradient(135deg,#0066FF,#14B8A6);color:#fff}
+  #ig-onb-card .igfoot .back{background:#F1F5F9;color:#475569;margin-right:8px}
+
+  #ig-tour-btn{position:fixed;bottom:24px;right:24px;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#0066FF,#14B8A6);color:#fff;border:0;font-size:1.4rem;font-weight:800;cursor:pointer;box-shadow:0 8px 22px rgba(0,102,255,.32);z-index:9990;display:none;align-items:center;justify-content:center;transition:transform .18s}
+  #ig-tour-btn:hover{transform:scale(1.08)}
+  #ig-tour-btn.show{display:flex}
+  #ig-tour-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.62);backdrop-filter:blur(4px);z-index:99997;display:none;align-items:flex-end;justify-content:flex-end;padding:0 24px 90px}
+  #ig-tour-overlay.show{display:flex}
+  #ig-tour-card{background:#fff;border-radius:14px;max-width:380px;width:100%;box-shadow:0 18px 44px rgba(0,0,0,0.28);animation:igOnbIn .22s ease-out}
+  #ig-tour-card .h{background:linear-gradient(135deg,#0066FF,#14B8A6);color:#fff;padding:14px 18px;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:center}
+  #ig-tour-card .h strong{font-size:.95rem}
+  #ig-tour-card .h button{background:rgba(255,255,255,.22);border:0;color:#fff;width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:1.05rem;line-height:1;font-weight:700}
+  #ig-tour-card .b{padding:16px 18px;font-size:.88rem;color:#334155;line-height:1.55;max-height:50vh;overflow-y:auto}
+  #ig-tour-card .b ul{margin:8px 0 0;padding-left:18px}
+  #ig-tour-card .b li{margin-bottom:4px}
+  #ig-tour-card .f{padding:12px 18px 14px;border-top:1px solid #F1F5F9;display:flex;gap:8px;flex-wrap:wrap}
+  #ig-tour-card .f button{flex:1;padding:9px 12px;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;font-size:.82rem;border:1.5px solid #E2E8F0;background:#F8FAFC;color:#0F172A;min-width:120px}
+  #ig-tour-card .f button.primary{border-color:#0066FF;background:#0066FF;color:#fff}
+</style>
+
+<div id="ig-onb-overlay">
+  <div id="ig-onb-card">
+    <div class="igh"><h2 id="ig-onb-title">Welcome to InfoGenie 👋</h2><p id="ig-onb-sub">Let's get you set up in under 2 minutes.</p></div>
+    <div class="igb">
+      <div class="igsteps"><span></span><span></span><span></span><span></span><span></span></div>
+      <div id="ig-onb-body"></div>
+      <div class="igfoot">
+        <button class="skip" id="ig-onb-skip">Skip for now</button>
+        <div><button class="back" id="ig-onb-back" style="display:none">← Back</button><button class="next" id="ig-onb-next">Continue →</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button id="ig-tour-btn" title="Help / Page tour" aria-label="Help">?</button>
+<div id="ig-tour-overlay">
+  <div id="ig-tour-card">
+    <div class="h"><strong id="ig-tour-title">Help</strong><button id="ig-tour-x" aria-label="Close">×</button></div>
+    <div class="b" id="ig-tour-body"></div>
+    <div class="f">
+      <button id="ig-tour-restart">🧭 Restart onboarding</button>
+      <button id="ig-tour-manual" class="primary">📖 Open user manual</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
