@@ -34502,16 +34502,41 @@ window.buildCrisisRadar = async function() {
         <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px"><div style="font-size:0.62rem;font-weight:800;color:#6B7280;text-transform:uppercase">Total incidents (90d)</div><div style="font-family:Sora,sans-serif;font-size:2rem;font-weight:800;color:#0A1628">${incidents.length}</div></div>
         <div style="background:linear-gradient(135deg,#FEF3C7,#FDE68A);border:1px solid #F59E0B;border-radius:12px;padding:16px"><div style="font-size:0.62rem;font-weight:800;color:#92400E;text-transform:uppercase">Slack alerts</div><div style="font-family:Sora,sans-serif;font-size:1.05rem;font-weight:800;color:#78350F;padding-top:6px">${incidents.filter(i=>i.slack_sent).length} sent</div></div>
       </div>
+      ${(()=>{
+        const _brand = (window._brandKit && window._brandKit.name) || (window.analysisData && window.analysisData.url ? window.analysisData.url.replace(/^https?:\/\//,'').replace(/\/.*$/,'').replace(/^www\./,'') : '');
+        const _comps = (window.analysisData && Array.isArray(window.analysisData.competitors)) ? window.analysisData.competitors.map(c=>c.name).filter(Boolean) : [];
+        const _countries = ['US','GB','AU','CA','DE','FR','ES','IT','NL','SE','NO','DK','CH','PL','IN','SG','JP','KR','AE','ZA','BR','MX','AR','CO','NZ','IE','BE','AT','PT','FI','GR','CZ','HU','RO','TR','IL','SA','EG','NG','KE','MY','TH','VN','PH','ID','HK','TW','CN','RU','UA'];
+        const _emptyHint = (!_brand || _comps.length===0) ? `<div style="background:#FEF3C7;border:1px solid #F59E0B;color:#92400E;padding:8px 12px;border-radius:6px;font-size:0.78rem;margin-bottom:12px">⚠ Run an analysis on the <strong>+ Analyse</strong> tab first — your brand and competitors will auto-fill here.</div>` : '';
+        return `
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
         <div style="font-family:Sora,sans-serif;font-weight:800;font-size:1rem;margin-bottom:12px">Watchlist</div>
-        <div style="display:grid;grid-template-columns:1.2fr 1.5fr 80px 100px 100px auto;gap:8px;align-items:end;margin-bottom:14px">
-          <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Brand *</div><input id="crBrand" placeholder="Your brand" style="width:100%;padding:7px 9px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.8rem"></label>
-          <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Competitors (comma)</div><input id="crComp" placeholder="brand1, brand2" style="width:100%;padding:7px 9px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.8rem"></label>
-          <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Country</div><input id="crCountry" value="US" style="width:100%;padding:7px 9px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.8rem"></label>
-          <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Spike ×</div><input id="crSpike" type="number" step="0.1" min="1" value="1.8" style="width:100%;padding:7px 9px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.8rem"></label>
-          <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Neg %</div><input id="crNeg" type="number" step="0.05" min="0" max="1" value="0.35" style="width:100%;padding:7px 9px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.8rem"></label>
-          <button onclick="_crAddWatch()" style="padding:8px 14px;background:#B91C1C;border:2px solid #B91C1C;border-radius:6px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">+ Track</button>
+        ${_emptyHint}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+          <label style="display:block"><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Brand * <span style="color:#15803D;font-weight:600">(auto-filled from your analysis)</span></div><input id="crBrand" value="${_escapeHtml(_brand)}" placeholder="Run an analysis first" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.85rem;background:${_brand?'#F0FDF4':'#fff'}"></label>
+          <div>
+            <div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center">
+              <span>Competitors <span style="color:#15803D;font-weight:600">(from your analysis)</span></span>
+              ${_comps.length>0?`<label style="font-size:0.68rem;color:#374151;cursor:pointer"><input type="checkbox" id="crCompAll" onchange="document.querySelectorAll('.crCompChk').forEach(c=>c.checked=this.checked)" checked> Select all</label>`:''}
+            </div>
+            <div style="border:1.5px solid #E5E7EB;border-radius:6px;padding:8px 10px;max-height:90px;overflow-y:auto;background:#fff;font-size:0.82rem">
+              ${_comps.length===0?`<div style="color:#9CA3AF;font-size:0.76rem">No competitors found yet — run an analysis to auto-populate this list.</div>`:_comps.map((c,i)=>`<label style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;padding:3px 0;cursor:pointer"><input type="checkbox" class="crCompChk" value="${_escapeHtml(c)}" checked> ${_escapeHtml(c)}</label>`).join('')}
+            </div>
+          </div>
         </div>
+        <div style="display:grid;grid-template-columns:1.4fr 100px 100px auto;gap:14px;align-items:end;margin-bottom:6px">
+          <div>
+            <div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center">
+              <span>Country / Region (select one or many)</span>
+              <label style="font-size:0.68rem;color:#374151;cursor:pointer"><input type="checkbox" id="crCountryAll" onchange="document.querySelectorAll('.crCountryChk').forEach(c=>c.checked=this.checked)"> Select all</label>
+            </div>
+            <div style="border:1.5px solid #E5E7EB;border-radius:6px;padding:8px 10px;max-height:90px;overflow-y:auto;background:#fff;font-size:0.78rem;column-count:4;column-gap:14px">
+              ${_countries.map(c=>`<label style="display:block;padding:2px 0;cursor:pointer;break-inside:avoid"><input type="checkbox" class="crCountryChk" value="${c}" ${c==='US'?'checked':''}> ${c}</label>`).join('')}
+            </div>
+          </div>
+          <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Spike ×</div><input id="crSpike" type="number" step="0.1" min="1" value="1.8" style="width:100%;padding:8px 9px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.8rem"></label>
+          <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Neg %</div><input id="crNeg" type="number" step="0.05" min="0" max="1" value="0.35" style="width:100%;padding:8px 9px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.8rem"></label>
+          <button onclick="_crAddWatch()" style="padding:9px 16px;background:#B91C1C;border:2px solid #B91C1C;border-radius:6px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5);white-space:nowrap">+ Track</button>
+        </div>`;})()}
         ${(wl.watchlist||[]).length===0 ? `<div style="color:#9CA3AF;text-align:center;padding:14px;font-size:0.82rem">No brands tracked yet — add one above.</div>` : `
           <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
             <thead style="background:#F9FAFB;color:#6B7280;text-transform:uppercase;font-size:0.6rem"><tr><th style="padding:8px 10px;text-align:left">Brand</th><th style="padding:8px;text-align:left">Competitors</th><th style="padding:8px;text-align:left">Country</th><th style="padding:8px;text-align:right">Snapshots</th><th style="padding:8px;text-align:right">Open incidents</th><th></th></tr></thead>
@@ -34553,16 +34578,22 @@ window.buildCrisisRadar = async function() {
 };
 window._crAddWatch = async function() {
   const brand = document.getElementById('crBrand').value.trim();
-  if (!brand) return showToast('❌ Brand required');
-  const competitors = document.getElementById('crComp').value.split(',').map(s=>s.trim()).filter(Boolean);
-  const country = document.getElementById('crCountry').value.trim() || 'US';
+  if (!brand) return showToast('❌ Brand required — run an analysis first to auto-fill it');
+  const competitors = Array.from(document.querySelectorAll('.crCompChk:checked')).map(c=>c.value);
+  const countries = Array.from(document.querySelectorAll('.crCountryChk:checked')).map(c=>c.value);
+  if (countries.length===0) return showToast('❌ Pick at least one country (or tick Select all)');
   const spike_multiplier = Number(document.getElementById('crSpike').value);
   const neg_pct_threshold = Number(document.getElementById('crNeg').value);
-  try {
-    const r = await fetch('/api/crisis-radar/watchlist', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, competitors, country, spike_multiplier, neg_pct_threshold }) }).then(x=>x.json());
-    if (!r.ok) throw new Error(r.error);
-    showToast('✅ Tracking ' + brand); buildCrisisRadar();
-  } catch (e) { showToast('❌ ' + e.message); }
+  let okCount = 0, errCount = 0, lastErr = '';
+  for (const country of countries) {
+    try {
+      const r = await fetch('/api/crisis-radar/watchlist', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, competitors, country, spike_multiplier, neg_pct_threshold }) }).then(x=>x.json());
+      if (!r.ok) { errCount++; lastErr = r.error; } else okCount++;
+    } catch (e) { errCount++; lastErr = e.message; }
+  }
+  if (okCount > 0) showToast(`✅ Tracking ${brand} in ${okCount} ${okCount===1?'country':'countries'}${errCount?` · ${errCount} failed`:''}`);
+  else showToast('❌ ' + (lastErr || 'Failed to track'));
+  buildCrisisRadar();
 };
 window._crDeleteWatch = async function(id, brand) {
   if (!confirm(`Stop tracking ${brand}? Incidents and snapshots will be removed.`)) return;
