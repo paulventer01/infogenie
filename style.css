@@ -7904,8 +7904,16 @@ body:has(#counterTargetBanner) #launchCampaignBtn{display:none !important}
 .nav-drop-header.nav-drop-header-toggle { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; transition: background 0.12s; }
 .nav-drop-header.nav-drop-header-toggle:hover { background: rgba(99,102,241,0.06); }
 .nav-drop-header-toggle .ndh-chev { display: inline-block; transition: transform 0.15s ease; font-size: 0.7rem; opacity: 0.55; width: 10px; }
-.nav-drop-header-toggle .ndh-text { flex: 1; color: #2563eb; font-weight: 600; }
-[data-theme="dark"] .nav-drop-header-toggle .ndh-text { color: #60a5fa; }
+.nav-drop-header-toggle .ndh-text { flex: 1; color: #2563eb !important; font-weight: 700 !important; }
+[data-theme="dark"] .nav-drop-header-toggle .ndh-text { color: #60a5fa !important; }
+/* Make ALL sub-section headers (Analyse / Create / Reach / Grow / Manage / AI Team)
+ * blue so users instantly recognize them as filter dividers. Wins over the
+ * earlier !important gray rules at lines 4670 + 5926. */
+.nav-dropdown .nav-drop-header,
+.nav-dropdown .nav-drop-header.nav-drop-header-toggle,
+[data-theme="light"] .nav-dropdown .nav-drop-header,
+[data-theme="dark"] .nav-dropdown .nav-drop-header { color: #2563eb !important; font-weight: 700 !important; opacity: 1 !important; }
+[data-theme="dark"] .nav-dropdown .nav-drop-header { color: #60a5fa !important; }
 .nav-drop-header-toggle .ndh-count { font-size: 0.68rem; opacity: 0.55; background: rgba(0,0,0,0.06); padding: 1px 7px; border-radius: 8px; font-weight: 500; }
 .nav-drop-section:not(.collapsed) .nav-drop-header-toggle .ndh-chev { transform: rotate(90deg); }
 .nav-drop-section.collapsed .nav-drop-section-body { display: none; }
