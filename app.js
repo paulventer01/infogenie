@@ -42292,7 +42292,9 @@ function _rpToCarousel(title) {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button id="arSettings" style="padding:9px 16px;background:#0F172A;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">⚙️ Settings</button>
-          <button id="arRunNow" style="padding:9px 16px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">▶ Run Now</button>
+          <button id="arView" title="Generate now and view in browser — no email, no Slack" style="padding:9px 16px;background:#0EA5E9;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">👁️ View Report</button>
+          <button id="arDownload" title="Generate now and download as Markdown — no email, no Slack" style="padding:9px 16px;background:#10B981;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">📥 Download Report</button>
+          <button id="arRunNow" title="Generate now and send via email + Slack" style="padding:9px 16px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">▶ Run + Send</button>
         </div>
       </div>
       <div style="font-size:.82rem;color:#475569;line-height:1.5">When ON, the AI Team auto-generates a report for every officer at <strong>${String(s.hour).padStart(2,'0')}:${String(s.minute).padStart(2,'0')}</strong> in <strong>${_e(s.timezone||'UTC')}</strong> and sends a digest to <strong>${_e(s.email||'(no email set)')}</strong> + Slack. ${_e(last)}.</div>
@@ -42304,13 +42306,76 @@ function _rpToCarousel(title) {
     </div>`;
     host.querySelector('#arSettings').onclick = () => _openAutoReportSettings(s, detectedTz);
     host.querySelector('#arRunNow').onclick = async (e) => {
-      const btn = e.currentTarget; btn.disabled = true; btn.textContent = '⏳ Running…';
+      const btn = e.currentTarget; const orig = btn.innerHTML; btn.disabled = true; btn.textContent = '⏳ Running…';
       try {
         const r = await fetch('/api/officer/autoreport/run-now', { method:'POST' });
         const j = await r.json();
         if (typeof showToast==='function') showToast(`Sent to ${j.officerCount||8} officers · Slack ${j.slackOk?'✓':'✕'} · Email ${j.emailOk?'✓':'✕'}`);
       } catch(err) { alert('Run failed: '+err.message); }
+      btn.disabled = false; btn.innerHTML = orig;
       _renderAutoReportPanel();
+    };
+    host.querySelector('#arView').onclick = async (e) => {
+      const btn = e.currentTarget; const orig = btn.innerHTML; btn.disabled = true; btn.textContent = '⏳ Drafting…';
+      try {
+        const r = await fetch('/api/officer/autoreport/run-now?skipDelivery=1', { method:'POST' });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error||'failed');
+        _openAutoReportViewer(j);
+      } catch(err) { alert('Failed: '+err.message); }
+      btn.disabled = false; btn.innerHTML = orig;
+    };
+    host.querySelector('#arDownload').onclick = async (e) => {
+      const btn = e.currentTarget; const orig = btn.innerHTML; btn.disabled = true; btn.textContent = '⏳ Drafting…';
+      try {
+        const r = await fetch('/api/officer/autoreport/run-now?skipDelivery=1', { method:'POST' });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error||'failed');
+        const md = _autoReportToMarkdown(j);
+        _downloadFile(`ai-team-daily-report-${new Date().toISOString().slice(0,10)}.md`, md);
+        if (typeof showToast==='function') showToast('✓ Report downloaded');
+      } catch(err) { alert('Failed: '+err.message); }
+      btn.disabled = false; btn.innerHTML = orig;
+    };
+  }
+
+  function _autoReportToMarkdown(j) {
+    const lines = [`# AI Team — Daily Stand-up`, `_${j.fmtDate||new Date().toLocaleDateString()}_`, '', `**Officers reporting:** ${(j.reports||[]).length}`, ''];
+    (j.reports||[]).forEach(r => {
+      const rep = r.report || {};
+      const tr = rep.tasksReviewed || [];
+      const done=tr.filter(t=>t.status==='done').length, ip=tr.filter(t=>t.status==='in_progress').length, blk=tr.filter(t=>t.status==='blocked').length, ns=tr.filter(t=>t.status==='not_started').length;
+      lines.push(`## ${r.title}`, '', rep.summary||'(no summary)', '', `**Status:** ✓ ${done} done · ◐ ${ip} in progress · ⚠ ${blk} blocked · ○ ${ns} not started`, '');
+      if ((rep.successes||[]).length) { lines.push('### Wins'); rep.successes.forEach(s => lines.push(`- ${s}`)); lines.push(''); }
+      if ((rep.issues||[]).length)    { lines.push('### Issues'); rep.issues.forEach(s => lines.push(`- ${s}`)); lines.push(''); }
+      if ((rep.actionPlan||[]).length){ lines.push('### Action Plan'); rep.actionPlan.forEach(a => lines.push(`- **[${a.priority||'med'}]** ${a.step||a.action||''}`)); lines.push(''); }
+      if (tr.length) { lines.push('### Responsibilities reviewed'); tr.forEach(t => lines.push(`- [${t.status}] ${t.task} — _${t.evidence||''}_`)); lines.push(''); }
+      lines.push('---', '');
+    });
+    return lines.join('\n');
+  }
+
+  function _openAutoReportViewer(j) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,0.7);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px';
+    overlay.innerHTML = `<div style="background:#fff;border-radius:16px;width:760px;max-width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
+      <div style="padding:18px 22px;background:linear-gradient(135deg,#0F172A,#312E81);color:#fff;display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div><div style="font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.85">AI Team Daily Stand-up</div>
+          <h3 style="margin:4px 0 0;font-size:1.2rem;font-weight:800">${_e(j.fmtDate||'')}</h3>
+          <div style="font-size:.72rem;opacity:.85;margin-top:2px">${(j.reports||[]).length} officers · view-only · not sent</div></div>
+        <div style="display:flex;gap:6px">
+          <button id="arvDl" style="padding:8px 14px;background:#10B981;color:#fff;border:none;border-radius:7px;font-weight:700;cursor:pointer;font-size:.78rem">📥 Download</button>
+          <button id="arvCx" style="background:rgba(255,255,255,0.15);border:none;color:#fff;width:34px;height:34px;border-radius:50%;font-size:1.1rem;cursor:pointer">×</button>
+        </div>
+      </div>
+      <div style="flex:1;overflow-y:auto;background:#F1F5F9">${j.html || '<div style="padding:30px;text-align:center;color:#64748B">No report HTML returned.</div>'}</div>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#arvCx').onclick = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target===overlay) overlay.remove(); });
+    overlay.querySelector('#arvDl').onclick = () => {
+      _downloadFile(`ai-team-daily-report-${new Date().toISOString().slice(0,10)}.md`, _autoReportToMarkdown(j));
+      if (typeof showToast==='function') showToast('✓ Report downloaded');
     };
   }
 

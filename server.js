@@ -10733,9 +10733,10 @@ app.post('/api/officer/autoreport', async (req, res) => {
     res.json({ ok: true, settings: next });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/officer/autoreport/run-now', async (_req, res) => {
+app.post('/api/officer/autoreport/run-now', async (req, res) => {
   try {
-    const result = await _runAutonomousDailyReports({ manualTrigger: true });
+    const skipDelivery = req.query.skipDelivery === '1' || req.body?.skipDelivery === true;
+    const result = await _runAutonomousDailyReports({ manualTrigger: true, skipDelivery });
     res.json({ ok: true, ...result });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -10791,7 +10792,7 @@ async function _generateOfficerReportInternal(role, title, tasks) {
   return { role, title, generatedAt: new Date().toISOString(), snapshot: snap, report };
 }
 
-async function _runAutonomousDailyReports({ manualTrigger = false } = {}) {
+async function _runAutonomousDailyReports({ manualTrigger = false, skipDelivery = false } = {}) {
   const _db = require('./db');
   if (!_db.hasDb()) return { ok:false, reason:'no-db' };
   const settings = (await _db.kvGet(_AUTOREPORT_KEY, _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
@@ -10847,20 +10848,29 @@ async function _runAutonomousDailyReports({ manualTrigger = false } = {}) {
 
   const result = { sentAt: new Date().toISOString(), slackOk:false, emailOk:false, slackError:null, emailError:null, recipientEmail: settings.email || null };
 
-  // Slack
-  if (process.env.SLACK_WEBHOOK_URL) {
-    try { await _sendChatWebhook(slackText, { username:'InfoGenie AI Team', icon:':robot_face:' }); result.slackOk = true; }
-    catch (e) { result.slackError = e.message; console.warn('[autoreport] slack failed:', e.message); }
-  } else { result.slackError = 'SLACK_WEBHOOK_URL not configured'; }
+  // Slack + Email (skipped when caller asked for view-only mode)
+  if (skipDelivery) {
+    result.slackError = 'skipped — view-only run';
+    result.emailError = 'skipped — view-only run';
+  } else {
+    if (process.env.SLACK_WEBHOOK_URL) {
+      try { await _sendChatWebhook(slackText, { username:'InfoGenie AI Team', icon:':robot_face:' }); result.slackOk = true; }
+      catch (e) { result.slackError = e.message; console.warn('[autoreport] slack failed:', e.message); }
+    } else { result.slackError = 'SLACK_WEBHOOK_URL not configured'; }
 
-  // Email
-  if (settings.email && process.env.RESEND_API_KEY) {
-    try {
-      await _sendEmailViaResend({ to: settings.email, subject:`🤖 AI Team Daily Stand-up — ${fmtDate}`, html: emailHtml, text: slackText });
-      result.emailOk = true;
-    } catch (e) { result.emailError = e.message; console.warn('[autoreport] email failed:', e.message); }
-  } else if (!settings.email) { result.emailError = 'no recipient email configured'; }
-    else { result.emailError = 'RESEND_API_KEY not configured'; }
+    if (settings.email && process.env.RESEND_API_KEY) {
+      try {
+        await _sendEmailViaResend({ to: settings.email, subject:`🤖 AI Team Daily Stand-up — ${fmtDate}`, html: emailHtml, text: slackText });
+        result.emailOk = true;
+      } catch (e) { result.emailError = e.message; console.warn('[autoreport] email failed:', e.message); }
+    } else if (!settings.email) { result.emailError = 'no recipient email configured'; }
+      else { result.emailError = 'RESEND_API_KEY not configured'; }
+  }
+  // Always include the rendered content for the UI's View/Download buttons
+  result.html = emailHtml;
+  result.text = slackText;
+  result.reports = reports;
+  result.fmtDate = fmtDate;
 
   // Update lastRun + history. Manual triggers update lastRunAt/Status but
   // do NOT update lastScheduledRunDate, so the same day's scheduled run
