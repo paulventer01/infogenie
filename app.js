@@ -46671,3 +46671,239 @@ window._aivLoadHistory = async function() {
     out.innerHTML = `<div style="padding:14px;background:#FEF2F2;color:#991B1B;border-radius:8px">Network error: ${e(err.message)}</div>`;
   }
 };
+
+// ============================================================================
+// GLOBAL FIELD AUTO-ENHANCER (Brand · Keywords · Country)
+// ----------------------------------------------------------------------------
+// Runs at boot + on every DOM mutation. Detects inputs whose label / id /
+// name / placeholder mentions "brand|company|keyword|country|region" and
+// upgrades them in-place:
+//   • BRAND  → adds a picker dropdown above the input listing your own brand
+//              + every analysed competitor; auto-fills value with your brand;
+//              manual typing still works.
+//   • KEYWORD → adds a 🤖 AI Suggest button on the label that fills the input
+//              with keywords pulled from window.analysisData.keywords (or AI
+//              fallback via /api/ai-quick).
+//   • COUNTRY → if the field is a free-text input, replaces it with a
+//              <select> containing 🌍 Global + 20 flagged countries; if it's
+//              already a <select> with fewer than 5 options, augments it.
+//
+// Idempotent: marks each enhanced input with `data-fae="1"`. Skips fields
+// that already have a sibling <select> picker (the hand-built ones) or any
+// element tagged `data-no-autofill`.
+// ============================================================================
+(function _initFieldAutoEnhancer() {
+  if (window._faeBooted) return;
+  window._faeBooted = true;
+
+  const COUNTRIES = [
+    ['ALL','🌍 Global / All countries'],['US','🇺🇸 United States'],['GB','🇬🇧 United Kingdom'],
+    ['ZA','🇿🇦 South Africa'],['AU','🇦🇺 Australia'],['CA','🇨🇦 Canada'],
+    ['DE','🇩🇪 Germany'],['FR','🇫🇷 France'],['ES','🇪🇸 Spain'],['IT','🇮🇹 Italy'],
+    ['NL','🇳🇱 Netherlands'],['IN','🇮🇳 India'],['JP','🇯🇵 Japan'],['BR','🇧🇷 Brazil'],
+    ['MX','🇲🇽 Mexico'],['AE','🇦🇪 UAE'],['SG','🇸🇬 Singapore'],['NG','🇳🇬 Nigeria'],
+    ['KE','🇰🇪 Kenya'],['IE','🇮🇪 Ireland'],['SE','🇸🇪 Sweden']
+  ];
+
+  const _esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  function getBrand() {
+    const d = window.analysisData || {};
+    if (d.brandName) return d.brandName;
+    if (d.url) return d.url.replace(/^https?:\/\//,'').replace(/\/.*$/,'').replace(/^www\./,'');
+    return '';
+  }
+  function getCompetitors() {
+    const d = window.analysisData || {};
+    return Array.isArray(d.competitors)
+      ? d.competitors.map(c => c && (c.name || c.domain)).filter(Boolean).slice(0, 15)
+      : [];
+  }
+  function getKeywords() {
+    const d = window.analysisData || {};
+    return Array.isArray(d.keywords)
+      ? d.keywords.map(k => typeof k === 'string' ? k : (k && (k.keyword || k.term))).filter(Boolean).slice(0, 12)
+      : [];
+  }
+
+  function labelOf(el) {
+    if (!el) return '';
+    if (el.id) {
+      const l = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + '"]');
+      if (l) return (l.textContent || '').trim();
+    }
+    const lbl = el.closest && el.closest('label');
+    if (lbl) return (lbl.textContent || '').trim();
+    let p = el.previousElementSibling;
+    let hops = 0;
+    while (p && hops < 2) {
+      const t = (p.textContent || '').trim();
+      if (t && t.length < 80) return t;
+      p = p.previousElementSibling; hops++;
+    }
+    return '';
+  }
+
+  // Conservative — must be a recognisable label-like token, not embedded in unrelated phrasing.
+  const RE_BRAND   = /(^|[\s>_-])(brand|company|advertiser|target brand|business name|client name|competitor name)([\s<_:-]|$)/i;
+  const RE_COUNTRY = /(^|[\s>_-])(country|countries|region|geo(graphy)?|market(s)?)([\s<_:-]|$)/i;
+  const RE_KW      = /(^|[\s>_-])(keyword(s)?|search term(s)?|seed term(s)?|tracking term(s)?|monitoring term(s)?|topics? to|terms? to)([\s<_:-]|$)/i;
+  // Hard skips — even if matched above, ignore these contexts.
+  const RE_SKIP    = /(password|api.?key|token|secret|webhook|email\b|phone|address|message|note|comment|description|prompt|caption|body|subject|reply|content|copy|headline|cta|tag|category|industry|filename|file|upload|date|time|hour|amount|price|budget|spend|count|limit|days|weeks|months|years|spike|neg|ratio|score|threshold|seed value|version|model|tone|persona|slug|path|url\b|domain to (?:search|crawl|audit))/i;
+
+  function classify(input) {
+    if (!input) return null;
+    if (input.dataset && input.dataset.fae) return null;
+    if (input.dataset && input.dataset.noAutofill) return null;
+    if (input.closest && input.closest('[data-no-autofill]')) return null;
+    const tag = (input.tagName || '').toLowerCase();
+    const type = (input.type || '').toLowerCase();
+    if (tag !== 'input' && tag !== 'select' && tag !== 'textarea') return null;
+    if (type === 'hidden' || type === 'checkbox' || type === 'radio' || type === 'file' ||
+        type === 'password' || type === 'submit' || type === 'button' || type === 'number' ||
+        type === 'date' || type === 'time' || type === 'color' || type === 'range') return null;
+    if (!input.parentElement) return null;
+    // Skip if parent likely already has a hand-rolled picker
+    const sibSel = input.parentElement.querySelector('select');
+    if (sibSel && sibSel !== input) return null;
+    const ctx = (input.id || '') + ' ' + (input.name || '') + ' ' + (input.placeholder || '') + ' ' + labelOf(input);
+    if (RE_SKIP.test(ctx) && !RE_COUNTRY.test(ctx)) return null;
+    if (RE_BRAND.test(ctx))   return 'brand';
+    if (RE_KW.test(ctx))      return 'keyword';
+    if (RE_COUNTRY.test(ctx)) return 'country';
+    return null;
+  }
+
+  function makeBrandPicker(input) {
+    const brand = getBrand();
+    const comps = getCompetitors();
+    if (!brand && comps.length === 0) return; // nothing to offer
+    if (!input.value && brand) input.value = brand;
+    const sel = document.createElement('select');
+    sel.style.cssText = 'width:100%;padding:6px 9px;border:1.5px solid #D1D5DB;border-radius:6px;font-size:0.76rem;background:#F0FDF4;margin-bottom:5px;box-sizing:border-box;color:#065F46;font-weight:600';
+    sel.innerHTML =
+      '<option value="">— Pick from your analysis (or type manually below) —</option>' +
+      (brand ? '<option value="' + _esc(brand) + '">' + _esc(brand) + ' (your brand)</option>' : '') +
+      comps.map(n => '<option value="' + _esc(n) + '">' + _esc(n) + '</option>').join('');
+    sel.addEventListener('change', () => { if (sel.value) { input.value = sel.value; input.dispatchEvent(new Event('change', {bubbles:true})); input.dispatchEvent(new Event('input', {bubbles:true})); } });
+    input.parentElement.insertBefore(sel, input);
+  }
+
+  function makeKeywordSuggest(input) {
+    if (!input.parentElement) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = '🤖 AI Suggest';
+    btn.title = 'Pull keywords from your last analysis (or generate with AI)';
+    btn.style.cssText = 'display:inline-block;margin:0 0 4px 6px;padding:3px 9px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);border:none;border-radius:5px;color:#fff;-webkit-text-fill-color:#fff;font-size:0.62rem;font-weight:700;cursor:pointer;vertical-align:middle';
+    btn.addEventListener('click', async (ev) => {
+      ev.preventDefault();
+      const kws = getKeywords();
+      if (kws.length) {
+        input.value = kws.join(', ');
+        input.dispatchEvent(new Event('input', {bubbles:true}));
+        (window.showToast || console.log)('✨ ' + kws.length + ' keywords pulled from your analysis');
+        return;
+      }
+      const brand = getBrand();
+      const industry = (window.analysisData && window.analysisData.industry && window.analysisData.industry.name) || '';
+      if (!brand) { (window.showToast || alert)('⚠️ Run an analysis first to unlock keyword suggestions'); return; }
+      const orig = btn.textContent; btn.textContent = '⏳ Generating…'; btn.disabled = true;
+      try {
+        const txt = await fetch('/api/ai-quick', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: 'Return ONLY a comma-separated list of 6 short keywords (1-3 words each) for the brand "' + brand + '"' + (industry ? ' in the ' + industry + ' industry' : '') + '. No numbering, no explanations.', max_tokens: 120 })
+        }).then(x => x.text());
+        let data; try { data = JSON.parse(txt); } catch { data = null; }
+        if (data && data.ok && data.text) {
+          input.value = data.text.replace(/\n/g, ', ').replace(/^[-•\d.\s]+/gm, '').replace(/\s*,\s*/g, ', ').replace(/^,\s*|,\s*$/g, '').trim();
+          input.dispatchEvent(new Event('input', {bubbles:true}));
+          (window.showToast || console.log)('✨ AI keywords generated');
+        } else {
+          (window.showToast || alert)('⚠️ AI keyword suggestion unavailable — type manually');
+        }
+      } catch (e) { (window.showToast || console.warn)('❌ ' + (e.message || 'Failed')); }
+      finally { btn.textContent = orig; btn.disabled = false; }
+    });
+    // Try to attach the button to the label; otherwise insert before input.
+    let host = null;
+    if (input.id) host = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(input.id) : input.id) + '"]');
+    if (!host) host = input.closest('label');
+    if (host) host.appendChild(btn); else input.parentElement.insertBefore(btn, input);
+  }
+
+  function makeCountryDropdown(input) {
+    // Only upgrade free-text inputs. Selects are left alone (likely intentional).
+    if (!input.parentElement || input.tagName.toLowerCase() !== 'input') return;
+    const sel = document.createElement('select');
+    // Mirror styling
+    sel.className = input.className || '';
+    const cs = input.getAttribute('style') || '';
+    sel.setAttribute('style', cs + ';background:#fff');
+    sel.id = input.id || '';
+    sel.name = input.name || '';
+    if (input.id) input.removeAttribute('id'); // avoid duplicate id
+    sel.innerHTML = COUNTRIES.map(([c, n]) => '<option value="' + c + '"' + (c === 'ALL' ? ' selected' : '') + '>' + n + '</option>').join('');
+    // Preserve existing value if it matches a known code
+    const v = (input.value || '').trim().toUpperCase();
+    if (v && COUNTRIES.some(([c]) => c === v)) sel.value = v;
+    sel.dataset.fae = '1';
+    input.parentElement.replaceChild(sel, input);
+  }
+
+  function enhance(input) {
+    try {
+      const kind = classify(input);
+      if (!kind) return;
+      input.dataset.fae = '1';
+      if (kind === 'brand')   makeBrandPicker(input);
+      if (kind === 'keyword') makeKeywordSuggest(input);
+      if (kind === 'country') makeCountryDropdown(input);
+    } catch (e) { /* never break a render over an enhancement */ }
+  }
+
+  function scan(root) {
+    const scope = (root && root.querySelectorAll) ? root : document.body;
+    if (!scope) return;
+    const inputs = scope.querySelectorAll('input, select, textarea');
+    for (let i = 0; i < inputs.length; i++) enhance(inputs[i]);
+  }
+
+  function boot() {
+    scan(document.body);
+    if (window.MutationObserver) {
+      const obs = new MutationObserver((muts) => {
+        for (const m of muts) {
+          if (!m.addedNodes) continue;
+          for (const n of m.addedNodes) {
+            if (n.nodeType === 1) {
+              if (n.tagName === 'INPUT' || n.tagName === 'SELECT' || n.tagName === 'TEXTAREA') enhance(n);
+              else scan(n);
+            }
+          }
+        }
+      });
+      obs.observe(document.body, { childList: true, subtree: true });
+    }
+    // Re-scan after each tab navigation in case render is debounced
+    if (typeof window.navigateTo === 'function' && !window.navigateTo._faePatched) {
+      const orig = window.navigateTo;
+      window.navigateTo = function() {
+        const r = orig.apply(this, arguments);
+        setTimeout(() => scan(document.body), 50);
+        setTimeout(() => scan(document.body), 400);
+        return r;
+      };
+      window.navigateTo._faePatched = true;
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
+
+  // Public helper for explicit re-scans
+  window._faeScan = scan;
+})();
