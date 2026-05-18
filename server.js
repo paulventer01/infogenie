@@ -8887,8 +8887,11 @@ app.use('/api/pricing-watch',  _pwRouter);
 const _delivRouter = require('./services/deliverability/api');
 const _lpSchema    = require('./services/landing_pages/schema');
 const _lpRouter    = require('./services/landing_pages/api');
+const _bfSchema    = require('./services/brand_foundation/schema');
+const _bfRouter    = require('./services/brand_foundation/api');
 app.use('/api/deliverability', _delivRouter);
 app.use('/api/landing-pages',  _lpRouter);
+app.use('/api/brand-foundation', _bfRouter);
 
 // ── Tier 10 ────────────────────────────────────────────────────────────────
 const _techStackRouter = require('./services/tech_stack/api');
@@ -9150,6 +9153,7 @@ app.use('/api/headline-tester', _headlineRouter);
     await _vocSchema.ensureVocSchema();
     await _pwSchema.ensurePricingWatchSchema();
     await _lpSchema.ensureLandingPagesSchema();
+    await _bfSchema.ensureBrandFoundationSchema();
     await _coldEmailSchema.ensureColdEmailSchema();
     await _leadFinderSchema.ensureLeadFinderSchema();
     await _serpTrackerSchema.ensureSerpTrackerSchema();

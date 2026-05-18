@@ -2967,6 +2967,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'omnichannel')      { try { window.buildOmnichannel && window.buildOmnichannel(); }      catch(e) { console.warn('buildOmnichannel error:', e); } }
   if (viewId === 'new-project')      { try { window.buildNewProject && window.buildNewProject(); }      catch(e) { console.warn('buildNewProject error:', e); } }
   if (viewId === 'brand-calendar')   { try { window.buildBrandCalendar && window.buildBrandCalendar(); } catch(e) { console.warn('buildBrandCalendar error:', e); } }
+  if (viewId === 'brand-foundation') { try { window.buildBrandFoundation && window.buildBrandFoundation(); } catch(e) { console.warn('buildBrandFoundation error:', e); } }
   if (viewId === 'budget-board')     { try { window.buildBudgetBoard && window.buildBudgetBoard(); }    catch(e) { console.warn('buildBudgetBoard error:', e); } }
   if (viewId === 'web-analytics')    { try { window.buildWebAnalytics && window.buildWebAnalytics(); }   catch(e) { console.warn('buildWebAnalytics error:', e); } }
   if (viewId === 'intent-map') {
@@ -42467,6 +42468,7 @@ function _rpToCarousel(title) {
           { label: 'Competitor Analysis',      view: 'competitors',       why: 'Map competitor ads, landing pages, offers, keywords.' },
           { label: 'Battle Cards',             view: 'battle-cards',      why: 'One-page summary of how to beat each competitor.' },
           { label: 'Stakeholders',             view: 'stakeholders',      why: 'Capture decision-makers + buying-committee context.' },
+          { label: 'Brand Foundation',         view: 'brand-foundation',  why: 'Purpose, ICP, Voice, Positioning — the layer every other tool reads from.' },
           { label: 'Brand Calendar',           view: 'brand-calendar',    why: 'Plan brand, content, social, ads in one view.' },
           { label: '7-Day Marketing Playbook', view: 'playbook-7day',     why: 'Strategic plan with AI Suggest grounded in real data.' }
         ]},
@@ -44119,6 +44121,149 @@ function _rpToCarousel(title) {
     renderGrid();
   };
 
+  /* ═══════════ BRAND FOUNDATION ═══════════ */
+  window.buildBrandFoundation = async function(){
+    const wrap = document.getElementById('brandFoundationWrap');
+    if (!wrap) return;
+    const esc = s => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const hdrs = (window.apiHeaders ? window.apiHeaders() : { 'Content-Type':'application/json' });
+    let f = {};
+    try {
+      const r = await fetch('/api/brand-foundation', { headers: hdrs });
+      const j = await r.json();
+      f = j.foundation || {};
+    } catch(e) { f = {}; }
+
+    const card = (title, body) => `<div style="background:#fff;border:1px solid #FCD34D;border-radius:14px;padding:22px;margin-bottom:18px;box-shadow:0 1px 2px rgba(0,0,0,.04)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><h3 style="margin:0;font-size:1.05rem;color:#92400E;font-weight:800;letter-spacing:-.01em">${title}</h3></div>${body}</div>`;
+    const inp = (id, val, ph, rows=2) => `<textarea id="bf-${id}" rows="${rows}" placeholder="${esc(ph)}" style="width:100%;padding:10px 12px;border:1px solid #E5E7EB;border-radius:8px;font-family:inherit;font-size:0.95rem;resize:vertical">${esc(val||'')}</textarea>`;
+    const lbl = t => `<div style="font-size:0.8rem;font-weight:700;color:#475569;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.04em">${t}</div>`;
+    const slider = (id, val, t) => `<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;font-size:0.85rem;color:#475569;margin-bottom:2px"><span>${t}</span><span id="bf-${id}-v">${val||5}</span></div><input id="bf-${id}" type="range" min="0" max="10" value="${val||5}" style="width:100%" oninput="document.getElementById('bf-${id}-v').textContent=this.value"></div>`;
+    const btn = (label, onclick, bg='#92400E') => `<button onclick="${onclick}" style="background:${bg};color:#fff;border:none;padding:8px 14px;border-radius:7px;font-weight:700;cursor:pointer;font-size:0.85rem">${label}</button>`;
+
+    wrap.innerHTML = `
+      <div style="max-width:980px;margin:0 auto">
+        <div style="background:linear-gradient(135deg,#FCD34D 0%,#F59E0B 100%);border-radius:16px;padding:28px;margin-bottom:24px;color:#1E293B">
+          <h1 style="margin:0 0 8px;font-size:1.8rem;font-weight:900;letter-spacing:-.02em">🏛️ Brand Foundation</h1>
+          <p style="margin:0;font-size:1rem;line-height:1.5;opacity:.9">The 5 pillars every other AI tool reads from. Fill this in once — your ads, emails, landing pages, social posts, and voice scripts will all stay on-brand. <strong>Visual identity is intentionally last.</strong></p>
+        </div>
+
+        ${card('Pillar 1 — Purpose <span style="font-weight:400;color:#94A3B8;font-size:0.85rem">· Why does your business exist beyond making money?</span>', `
+          ${lbl('Why we exist (2 sentences, customer-centred)')}
+          ${inp('purpose_why', f.purpose_why, 'We help small e-commerce brands compete with Amazon\\'s ad budget by automating the strategic thinking, not just the clicks...', 3)}
+          ${lbl('Beyond profit (1 sentence — concrete, not "change the world")')}
+          ${inp('purpose_beyond_money', f.purpose_beyond_money, 'Every retired ad budget that goes to a small brand instead of a giant is one less monopoly day...', 2)}
+          <div style="margin-top:10px">${btn('🤖 AI Suggest Purpose', 'window._bfSuggest("purpose")')}</div>
+        `)}
+
+        ${card('Pillar 2 — Audience Clarity <span style="font-weight:400;color:#94A3B8;font-size:0.85rem">· A specific PERSON, not a demographic</span>', `
+          ${lbl('Persona name')}
+          ${inp('icp_name', f.icp_name, 'Maya', 1)}
+          ${lbl('Role + context')}
+          ${inp('icp_role', f.icp_role, 'Solo founder, DTC skincare brand, 2 years in, $30k/mo revenue', 1)}
+          ${lbl('Their pain (in their words)')}
+          ${inp('icp_pain', f.icp_pain, 'I throw money at Meta ads and the dashboards lie to me. I can\\'t tell what\\'s working.', 2)}
+          ${lbl('Cheap solution they already tried and why it failed')}
+          ${inp('icp_tried_cheap', f.icp_tried_cheap, 'Hired a $500/mo "AI ad manager" that just paused campaigns at random and called it optimisation', 2)}
+          ${lbl('Specific outcome they want')}
+          ${inp('icp_dream_outcome', f.icp_dream_outcome, 'A 2.5x ROAS within 60 days with a system I actually understand', 2)}
+          <div style="margin-top:10px">${btn('🤖 AI Suggest ICP', 'window._bfSuggest("icp")')}</div>
+        `)}
+
+        ${card('Pillar 3 — Brand Voice <span style="font-weight:400;color:#94A3B8;font-size:0.85rem">· If your brand could speak, what would it sound like?</span>', `
+          ${slider('voice_tone_warm', f.voice_tone_warm, 'Warm  ←→  Cool')}
+          ${slider('voice_tone_witty', f.voice_tone_witty, 'Witty  ←→  Serious')}
+          ${slider('voice_tone_bold', f.voice_tone_bold, 'Bold/Direct  ←→  Soft')}
+          ${lbl('Things we DO say (one per line)')}
+          ${inp('voice_we_say', f.voice_we_say, 'Honest numbers · Plain English · We\\'ll tell you when it isn\\'t working', 3)}
+          ${lbl('Things we DON\\'T say (one per line)')}
+          ${inp('voice_we_dont_say', f.voice_we_dont_say, 'Synergy · Game-changer · Revolutionary · 10x · Disrupt', 3)}
+          ${lbl('Banned words (comma-separated — voice check will flag these)')}
+          ${inp('voice_banned_words', f.voice_banned_words, 'synergy, leverage, ninja, rockstar, disrupt, game-changer, revolutionary', 1)}
+        `)}
+
+        ${card('Pillar 4 — Messaging <span style="font-weight:400;color:#94A3B8;font-size:0.85rem">· Can a stranger repeat what you do in one sentence?</span>', `
+          ${lbl('One-sentence positioning (~20 words max)')}
+          ${inp('positioning_statement', f.positioning_statement, 'We help DTC founders hit 2.5x ROAS in 60 days without hiring an agency or learning Google Ads.', 2)}
+          ${lbl('Why it works (1 sentence — the proof / mechanism)')}
+          ${inp('positioning_proof', f.positioning_proof, 'Our AI runs the same 6-hourly pause/scale rules the top 1% of agencies use — without the $5k/mo retainer.', 2)}
+          <div style="margin-top:10px">${btn('🤖 AI Suggest Positioning', 'window._bfSuggest("positioning")')}</div>
+        `)}
+
+        ${card('Pillar 5 — Visual Identity <span style="font-weight:400;color:#94A3B8;font-size:0.85rem">· Last on purpose</span>', `
+          <p style="margin:0;color:#475569;font-size:0.95rem;line-height:1.55">Your logo, palette, fonts, and templates live in <strong>Creator Studio → Brand Kit</strong>. Build the four invisible pillars above first, then your visuals will finally mean something.</p>
+          <div style="margin-top:14px">${btn('Open Creator Studio →', "window.showView && window.showView('studio')", '#0EA5E9')}</div>
+        `)}
+
+        ${card('🧪 Voice Check', `
+          <p style="margin:0 0 10px;color:#475569;font-size:0.9rem">Paste any ad copy, email, or post — get a 0-100 voice score, banned-word flags, and a rewrite in your voice.</p>
+          <textarea id="bf-voice-check" rows="4" placeholder="Paste copy here..." style="width:100%;padding:10px 12px;border:1px solid #E5E7EB;border-radius:8px;font-family:inherit;font-size:0.95rem;resize:vertical"></textarea>
+          <div style="margin-top:10px">${btn('🔍 Audit Voice', 'window._bfVoiceCheck()')}</div>
+          <div id="bf-voice-result" style="margin-top:14px"></div>
+        `)}
+
+        <div style="position:sticky;bottom:18px;background:#fff;border:2px solid #F59E0B;border-radius:14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 8px 24px rgba(0,0,0,.12);margin-top:24px">
+          <div style="font-size:0.9rem;color:#475569"><strong style="color:#92400E">Last saved:</strong> <span id="bf-saved">${f.updated_at ? new Date(f.updated_at).toLocaleString() : 'never'}</span></div>
+          <button onclick="window._bfSaveAll()" style="background:#92400E;color:#fff;border:none;padding:12px 22px;border-radius:8px;font-weight:800;cursor:pointer;font-size:0.95rem">💾 Save Foundation</button>
+        </div>
+      </div>
+    `;
+
+    const fields = ['purpose_why','purpose_beyond_money','icp_name','icp_role','icp_pain','icp_tried_cheap','icp_dream_outcome','voice_tone_warm','voice_tone_witty','voice_tone_bold','voice_we_say','voice_we_dont_say','voice_banned_words','positioning_statement','positioning_proof'];
+    const getVal = id => { const el = document.getElementById('bf-'+id); return el ? el.value : ''; };
+
+    window._bfSaveAll = async function(){
+      const payload = {};
+      fields.forEach(f => { payload[f] = getVal(f); });
+      try {
+        const r = await fetch('/api/brand-foundation/save', { method:'POST', headers:hdrs, body: JSON.stringify(payload) });
+        const j = await r.json();
+        if (j.ok) {
+          document.getElementById('bf-saved').textContent = new Date(j.foundation.updated_at).toLocaleString();
+          if (window.showToast) window.showToast('Brand Foundation saved — every AI tool will now use it', 'success');
+          else alert('Saved.');
+        } else { alert('Save failed: '+(j.error||'unknown')); }
+      } catch(e) { alert('Save failed: '+e.message); }
+    };
+
+    window._bfSuggest = async function(kind){
+      const ep = kind==='purpose' ? '/api/brand-foundation/suggest-purpose'
+              : kind==='icp'     ? '/api/brand-foundation/suggest-icp'
+              :                    '/api/brand-foundation/suggest-positioning';
+      const body = kind==='positioning' ? {} : { brand: getVal('icp_name')||'', offer: getVal('positioning_statement')||'', industry:'', hint: getVal('purpose_why')||'' };
+      try {
+        const r = await fetch(ep, { method:'POST', headers:hdrs, body: JSON.stringify(body) });
+        const j = await r.json();
+        if (!j.ok) return alert(j.error || 'AI unavailable');
+        Object.keys(j.suggestion).forEach(k => { const el = document.getElementById('bf-'+k); if (el) el.value = j.suggestion[k]; });
+        if (window.showToast) window.showToast('AI draft inserted — review and edit before saving', 'success');
+      } catch(e) { alert('Suggest failed: '+e.message); }
+    };
+
+    window._bfVoiceCheck = async function(){
+      const text = document.getElementById('bf-voice-check').value.trim();
+      if (!text) return alert('Paste some copy first');
+      const out = document.getElementById('bf-voice-result');
+      out.innerHTML = '<div style="color:#64748b;font-style:italic">Auditing...</div>';
+      try {
+        const r = await fetch('/api/brand-foundation/voice-check', { method:'POST', headers:hdrs, body: JSON.stringify({ text }) });
+        const j = await r.json();
+        if (!j.ok) { out.innerHTML = '<div style="color:#DC2626">'+(j.error||'failed')+'</div>'; return; }
+        const a = j.audit;
+        const scoreColor = a.score>=80 ? '#10B981' : a.score>=60 ? '#F59E0B' : '#DC2626';
+        out.innerHTML = `
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">
+            <div style="background:${scoreColor};color:#fff;font-size:1.6rem;font-weight:900;padding:10px 18px;border-radius:10px;min-width:80px;text-align:center">${a.score}/100</div>
+            <div style="flex:1">
+              ${(a.issues||[]).map(i => `<div style="font-size:0.88rem;color:#475569;margin-bottom:2px">• ${esc(i)}</div>`).join('')}
+              ${(a.banned_word_hits||[]).length ? `<div style="font-size:0.85rem;color:#DC2626;margin-top:4px"><strong>Banned words:</strong> ${a.banned_word_hits.map(esc).join(', ')}</div>` : ''}
+            </div>
+          </div>
+          <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:12px"><div style="font-size:0.8rem;font-weight:700;color:#15803D;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">Rewrite in your voice</div><div style="white-space:pre-wrap;font-size:0.95rem;line-height:1.5">${esc(a.rewrite||'')}</div></div>
+        `;
+      } catch(e) { out.innerHTML = '<div style="color:#DC2626">Audit failed: '+esc(e.message)+'</div>'; }
+    };
+  };
+
   /* ═══════════ BUDGET BOARD ═══════════ */
   window.buildBudgetBoard = async function(){
     const wrap = document.getElementById('budgetBoardWrap');
@@ -44437,6 +44582,7 @@ function _rpToCarousel(title) {
     'web-analytics': { title:'Web Analytics', body:'Read-only acquisition + behaviour summary: channel sessions, top landing pages, mobile PageSpeed scores. Last 30 days.', tips:['Connect GA4 in Settings for full Source/Medium + Country','Banner shows when GA4 is missing'] },
     'budget-board': { title:'Budget Board', body:'Per-month target + per-channel allocations + spend log. Shows target vs actual, utilisation, and 30-day trend.', tips:['Other services (e.g. the optimizer) can mirror outflows here','Log manual spend for offline channels'] },
     'brand-calendar': { title:'Brand Calendar', body:'Unified planner across 10 categories: Brand · Email · SMS+WhatsApp · Social · Content · Ads · Event · Surveys · Website · My Activities.', tips:['Sidebar filter narrows the month grid','Click any day to add an item'] },
+    'brand-foundation': { title:'Brand Foundation', body:'The five pillars every other AI tool reads from: Purpose · Audience Clarity (ICP) · Voice · Messaging · Visual Identity. Fill it once, and your ads, emails, landing pages, social posts and voice scripts all stay on-brand.', tips:['Use the AI Suggest buttons to draft each section','Paste any copy into the Voice Check tool to score it 0-100','Visual identity is intentionally last — get the invisible layers right first'] },
     'competitors': { title:'Competitor Profiles', body:'Add competitors to auto-pull their ads, landing pages, keywords, and pricing.', tips:['Start with 3–5 direct competitors','Use 🤖 Discovery if you don\'t know who they are yet'] },
     'campaigns': { title:'Campaign Strategy', body:'Build a campaign brief that auto-launches across Meta, Google, and TikTok — and registers itself in the AI Optimizer.', tips:['The optimizer turns ON by default for safety','Without ad-platform creds, campaigns save locally so you can still review them'] },
     'ai-team': { title:'Your AI Executive Team', body:'8 AI officers (marketing/sales/analyst/content/seo/cro/finance/ops) work autonomously on tasks you assign.', tips:['Open Daily Report Scheduler to see honest done/blocked status','Officers cross-reference real DB activity, not self-reports'] },
