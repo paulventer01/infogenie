@@ -3481,7 +3481,7 @@ async function runAnalysis(url, country, industryOverride) {
           p = document.createElement('div');
           p.id = 'igDbgPanel';
           p.style.cssText = 'position:fixed;bottom:8px;right:8px;width:380px;max-height:280px;overflow:auto;background:rgba(10,22,40,.95);color:#7FFFD4;font:11px/1.4 monospace;padding:8px 10px;border-radius:8px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid #00C9C8';
-          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL11</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
+          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL12</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
           document.body.appendChild(p);
         }
         const log = document.getElementById('igDbgLog');
@@ -3693,8 +3693,10 @@ async function runAnalysis(url, country, industryOverride) {
           body:    JSON.stringify({ competitors: aiPayload, industry: aiDetected.industryName || industryKey })
         }, 12000);
         try { window._igDbg && window._igDbg('✓ /api/ai-validate-metrics done · status=' + (ar ? ar.status : 'aborted')); } catch(_){}
-        if (ar.ok) {
+        if (ar && ar.ok) {
+          try { window._igDbg && window._igDbg('▸ parsing ai-validate JSON'); } catch(_){}
           const aj = await ar.json();
+          try { window._igDbg && window._igDbg('▸ ai-validate JSON parsed · ' + ((aj.results||[]).length) + ' rows'); } catch(_){}
           const byName = {};
           (aj.results || []).forEach(r => { if (r && r.name) byName[r.name.toLowerCase().trim()] = r; });
           let refined = 0;
@@ -3777,6 +3779,9 @@ async function runAnalysis(url, country, industryOverride) {
         }
       } catch(e) { console.warn('AI validation pass failed:', e); try { window._igDbg && window._igDbg('✕ ai-validate-metrics failed/timeout: ' + (e && e.message || e).toString().slice(0,80)); } catch(_){} }
 
+      try { window._igDbg && window._igDbg('▸ deriving campaign rows'); } catch(_){}
+      // Yield to browser so the page stays responsive
+      await new Promise(r => setTimeout(r, 0));
       // Derive per-campaign breakdown rows from the now-real top-level metrics.
       // No more random fakery — the two campaign rows are weighted splits
       // (60/40) of the competitor's actual ad-spend, with CTR = top-level CTR
