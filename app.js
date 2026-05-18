@@ -3626,6 +3626,7 @@ async function runAnalysis(url, country, industryOverride) {
         statusText.textContent = 'Pulling live competitor traffic & ad-spend data...';
         const domainList = aiCompetitorPool.map(c => c.domain).filter(Boolean);
         if (domainList.length) {
+          try { window._igDbg && window._igDbg('⏳ /api/competitor-metrics'); } catch(_){}
           const mr = await fetch('/api/competitor-metrics', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3677,6 +3678,7 @@ async function runAnalysis(url, country, industryOverride) {
           currentCTR:     c.ctr,
           dataSource:     c.dataSource || null
         }));
+        try { window._igDbg && window._igDbg('⏳ /api/ai-validate-metrics'); } catch(_){}
         const ar = await fetch('/api/ai-validate-metrics', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3829,6 +3831,7 @@ async function runAnalysis(url, country, industryOverride) {
   // 1. Split pool into "not seen last run" vs "seen last run"
   // 2. Shuffle each group independently
   // 3. Take fresh competitors first, then fill from seen ones if needed
+  try { window._igDbg && window._igDbg('✓ post-AI-validate, building selectedComps'); } catch(_){}
   const _prevNames = window._lastCompetitorNames || [];
   const fresh = industry.competitors.filter(c => !_prevNames.includes(c.name));
   const seen  = industry.competitors.filter(c =>  _prevNames.includes(c.name));
@@ -3873,6 +3876,7 @@ async function runAnalysis(url, country, industryOverride) {
   creativeRound = 0;
 
   // Store analysis data
+  try { window._igDbg && window._igDbg('✓ analysisData assigned · '+(selectedComps||[]).length+' competitors'); } catch(_){}
   analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps, sectorOnly };
   window.analysisData = analysisData;  // Mirror to window so external modules (Link Suggester, CRO Lab, Analytics Hub, etc.) can read it
   // Notify the global field enhancer (ig_field_enhancer.js) so any Brand /
@@ -19344,12 +19348,15 @@ document.addEventListener('DOMContentLoaded', () => {
     Promise.resolve().then(() => runAnalysis(url, country, industry))
       .catch(err => {
         console.error('[runAnalysis] failed:', err);
+        const msg = (err && (err.message || err.toString())) || 'Unknown error';
+        const stack = (err && err.stack) ? String(err.stack).split('\n').slice(0,3).join(' | ') : '';
+        try { window._igDbg && window._igDbg('✕ runAnalysis THREW: ' + msg.slice(0,120)); } catch(_){}
+        try { window._igDbg && stack && window._igDbg('   at ' + stack.slice(0,200)); } catch(_){}
         try {
           const ov = document.getElementById('loadingOverlay');
           if (ov) { ov.style.display = 'none'; ov.classList.add('hidden'); }
           if (window._elapsedTimer) { clearInterval(window._elapsedTimer); window._elapsedTimer = null; }
         } catch(_) {}
-        const msg = (err && (err.message || err.toString())) || 'Unknown error';
         try { showToast('⚠ Analysis failed: ' + msg.slice(0, 160)); } catch(_) { alert('Analysis failed: ' + msg); }
       });
   };
