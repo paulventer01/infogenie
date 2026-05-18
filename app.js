@@ -3471,10 +3471,36 @@ async function runAnalysis(url, country, industryOverride) {
   ]);
   let aiDetected = null;
   let sectorDetected = null;
+  // Visible on-page debug banner — survives even when DevTools isn't open.
+  // Lives at the bottom-right of the screen, shows the last 10 analyse steps.
+  if (!window._igDbg) {
+    window._igDbg = (msg) => {
+      try {
+        let p = document.getElementById('igDbgPanel');
+        if (!p) {
+          p = document.createElement('div');
+          p.id = 'igDbgPanel';
+          p.style.cssText = 'position:fixed;bottom:8px;right:8px;width:380px;max-height:280px;overflow:auto;background:rgba(10,22,40,.95);color:#7FFFD4;font:11px/1.4 monospace;padding:8px 10px;border-radius:8px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid #00C9C8';
+          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
+          document.body.appendChild(p);
+        }
+        const log = document.getElementById('igDbgLog');
+        const t = new Date().toISOString().substr(11, 8);
+        log.innerHTML += '<div>['+t+'] '+String(msg).replace(/[<>]/g,'')+'</div>';
+        if (log.children.length > 20) log.firstChild.remove();
+        log.parentNode.scrollTop = log.parentNode.scrollHeight;
+      } catch(_){}
+    };
+  }
+  window._igDbg('🚀 runAnalysis started');
   console.log('[runAnalysis] awaiting AI promises (8s deadline) …');
   const _t0 = performance.now();
+  window._igDbg('⏳ awaiting smart-detect (8s deadline)');
   try { aiDetected    = await _withDeadline(smartDetectPromise, 8000); } catch(e) { aiDetected    = null; }
+  window._igDbg('✓ smart-detect: ' + (aiDetected ? 'OK' : 'NULL/timeout'));
+  window._igDbg('⏳ awaiting sector-competitors (8s deadline)');
   try { sectorDetected = await _withDeadline(sectorPromise,     8000); } catch(e) { sectorDetected = null; }
+  window._igDbg('✓ sector: ' + (sectorDetected ? 'OK' : 'NULL/timeout') + ' · total=' + Math.round(performance.now()-_t0) + 'ms');
   console.log('[runAnalysis] AI promises settled in', Math.round(performance.now()-_t0), 'ms', { aiDetected: !!aiDetected, sectorDetected: !!sectorDetected });
 
   bar.style.width = '100%';
@@ -3874,18 +3900,32 @@ async function runAnalysis(url, country, industryOverride) {
   }).catch(() => {});
 
   // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
+  try { window._igDbg && window._igDbg('🧭 navigateTo(dashboard)'); } catch(_){}
   navigateTo('dashboard');
   showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
 
-  // Build all views — each wrapped so one failure never blocks the rest
-  try { buildDashboard();    } catch(e) { console.warn('buildDashboard error:', e); }
-  try { buildCompetitors();  } catch(e) { console.warn('buildCompetitors error:', e); }
-  try { buildCampaigns();    } catch(e) { console.warn('buildCampaigns error:', e); }
-  try { buildAudience();     } catch(e) { console.warn('buildAudience error:', e); }
-  try { buildCreative();     } catch(e) { console.warn('buildCreative error:', e); }
-  try { buildIntelligence(); } catch(e) { console.warn('buildIntelligence error:', e); }
+  // Build all views — each wrapped so one failure never blocks the rest.
+  // Each step logs to the on-page debug banner so we can see exactly which
+  // builder is throwing or hanging when the user reports "dashboard didn't load".
+  const _buildStep = (name, fn) => {
+    const t0 = performance.now();
+    try { window._igDbg && window._igDbg('⏳ ' + name + '…'); } catch(_){}
+    try {
+      fn();
+      try { window._igDbg && window._igDbg('✓ ' + name + ' ' + Math.round(performance.now()-t0) + 'ms'); } catch(_){}
+    } catch(e) {
+      console.warn(name + ' error:', e);
+      try { window._igDbg && window._igDbg('✕ ' + name + ' threw: ' + (e && e.message || e)); } catch(_){}
+    }
+  };
+  _buildStep('buildDashboard',    buildDashboard);
+  _buildStep('buildCompetitors',  buildCompetitors);
+  _buildStep('buildCampaigns',    buildCampaigns);
+  _buildStep('buildAudience',     buildAudience);
+  _buildStep('buildCreative',     buildCreative);
+  _buildStep('buildIntelligence', buildIntelligence);
   window._bpIdx = 0;
-  try { buildBattlePlan();   } catch(e) { console.warn('buildBattlePlan error:', e); }
+  _buildStep('buildBattlePlan',   buildBattlePlan);
 
   // Log analysis actions to results tracker
   if (!window._infoGenieActions) window._infoGenieActions = [];
