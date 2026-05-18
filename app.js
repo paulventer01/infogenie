@@ -38037,17 +38037,29 @@ window.buildAdLibrary = function() {
   wrap.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
       <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">🔍 Search Ad Libraries</h3>
-      <div style="display:grid;grid-template-columns:1fr 240px;gap:10px;margin-bottom:12px">
-        <div><label style="display:block;font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:4px">BRAND / ADVERTISER</label><input id="alBrand" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem;box-sizing:border-box"></div>
+      <div style="display:grid;grid-template-columns:1fr 280px;gap:10px;margin-bottom:12px">
+        <div>
+          <label style="display:block;font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:4px">BRAND / ADVERTISER</label>
+          <div style="display:flex;gap:8px">
+            <select id="alBrandPick" onchange="_alBrandPickChange()" style="padding:9px 12px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.84rem;min-width:200px;background:#fff"></select>
+            <input id="alBrand" placeholder="…or type any brand" style="flex:1;min-width:140px;padding:9px 12px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem;box-sizing:border-box">
+          </div>
+          <div id="alBrandHint" style="margin-top:4px;font-size:0.68rem;color:#9CA3AF"></div>
+        </div>
         <div style="position:relative">
-          <label style="display:block;font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:4px">COUNTRY</label>
+          <label style="display:block;font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:4px">COUNTRY <span style="font-weight:600;color:#9CA3AF;font-size:0.66rem">(multi-select)</span></label>
           <button type="button" id="alCountryBtn" onclick="_alToggleCountryMenu(event)" style="width:100%;padding:9px 32px 9px 12px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem;background:#fff;text-align:left;cursor:pointer;position:relative;font-weight:600;color:#0A1628">
             <span id="alCountryLabel">United States (US)</span>
             <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#6B7280;font-size:0.7rem;pointer-events:none">▼</span>
           </button>
           <input type="hidden" id="alCountry" value="US">
-          <div id="alCountryMenu" style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #D1D5DB;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:1000;max-height:280px;overflow:hidden">
+          <div id="alCountryMenu" style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #D1D5DB;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:1000;max-height:340px;overflow:hidden">
             <input id="alCountrySearch" type="text" placeholder="Search country…" oninput="_alFilterCountries(this.value)" style="width:100%;padding:8px 10px;border:none;border-bottom:1px solid #E5E7EB;font-size:0.82rem;outline:none;box-sizing:border-box">
+            <div style="display:flex;gap:6px;padding:6px 8px;border-bottom:1px solid #E5E7EB;background:#F9FAFB">
+              <button type="button" onclick="_alSelectAllCountries(true)" style="flex:1;padding:5px;background:#0066FF;color:#fff;border:0;border-radius:4px;font-size:0.7rem;font-weight:800;cursor:pointer">✓ All countries</button>
+              <button type="button" onclick="_alSelectAllCountries(false)" style="flex:1;padding:5px;background:#fff;color:#0066FF;border:1px solid #0066FF;border-radius:4px;font-size:0.7rem;font-weight:800;cursor:pointer">Clear</button>
+              <button type="button" onclick="_alToggleCountryMenu(event)" style="padding:5px 10px;background:#0F172A;color:#fff;border:0;border-radius:4px;font-size:0.7rem;font-weight:800;cursor:pointer">Done</button>
+            </div>
             <div id="alCountryList" style="max-height:230px;overflow-y:auto"></div>
           </div>
         </div>
@@ -38081,24 +38093,101 @@ window.buildAdLibrary = function() {
     <div id="alOut"></div>
   `;
   document.getElementById('alRun').addEventListener('click', _alRunMulti);
+  // Default selection: United States
+  window._alSelectedCountries = new Set(['US']);
   _alRenderCountryList('');
+  _alUpdateCountryLabel();
+  _alPopulateBrandPicker();
   document.addEventListener('click', _alOutsideCountryClose);
+};
+
+window._alPopulateBrandPicker = function() {
+  const sel = document.getElementById('alBrandPick'); if (!sel) return;
+  const ad = window.analysisData || {};
+  const norm = u => String(u||'').replace(/^https?:\/\//i,'').replace(/^www\./i,'').replace(/\/.*$/,'').trim().toLowerCase();
+  const domToBrand = d => { const core = (d||'').split('.')[0]; return core ? core.charAt(0).toUpperCase()+core.slice(1) : ''; };
+  const ownDom = norm(ad.url || ad.domain || '');
+  const ownBrand = ad.brandName || ad.companyName || domToBrand(ownDom);
+  const comps = Array.isArray(ad.competitors) ? ad.competitors : [];
+  const opts = [];
+  if (ownBrand) opts.push(`<option value="${_escapeHtml(ownBrand)}" selected>🏠 Your brand — ${_escapeHtml(ownBrand)}</option>`);
+  const compRows = comps.map(c => {
+    const d = norm(c.domain || c.url || c.website || '');
+    const name = c.name || domToBrand(d);
+    return name ? { name } : null;
+  }).filter(Boolean);
+  if (compRows.length) {
+    opts.push(`<optgroup label="Your analysed competitors">`);
+    compRows.forEach(r => opts.push(`<option value="${_escapeHtml(r.name)}">${_escapeHtml(r.name)}</option>`));
+    opts.push(`</optgroup>`);
+  }
+  opts.push(`<option value="__manual__">✏️ Type manually…</option>`);
+  if (!ownBrand && !compRows.length) {
+    sel.innerHTML = `<option value="__manual__" selected>✏️ Type a brand manually…</option>`;
+  } else {
+    sel.innerHTML = opts.join('');
+  }
+  const inp = document.getElementById('alBrand');
+  if (inp && ownBrand && !inp.value) inp.value = ownBrand;
+  const hint = document.getElementById('alBrandHint');
+  if (hint) {
+    if (ownBrand || compRows.length) {
+      hint.style.color = '#15803D';
+      hint.textContent = `✓ Pre-filled from your latest analysis. Pick another brand or type your own.`;
+    } else {
+      hint.style.color = '#9CA3AF';
+      hint.textContent = `Run a competitor analysis from the home page to pre-fill brands here.`;
+    }
+  }
+};
+window._alBrandPickChange = function() {
+  const sel = document.getElementById('alBrandPick');
+  const inp = document.getElementById('alBrand');
+  if (!sel || !inp) return;
+  const v = sel.value || '';
+  if (v && v !== '__manual__') inp.value = v;
+  else if (v === '__manual__') { inp.value = ''; inp.focus(); }
 };
 
 window._alRenderCountryList = function(filter) {
   const f = (filter || '').toLowerCase().trim();
   const list = document.getElementById('alCountryList'); if (!list) return;
-  const items = (window._AL_COUNTRIES || []).filter(([code, name]) => !f || name.toLowerCase().includes(f) || code.toLowerCase().includes(f));
+  const sel = window._alSelectedCountries || (window._alSelectedCountries = new Set(['US']));
+  const items = (window._AL_COUNTRIES || []).filter(([code, name]) => code !== 'ALL' && (!f || name.toLowerCase().includes(f) || code.toLowerCase().includes(f)));
   list.innerHTML = items.map(([code, name]) => {
-    const display = code === 'ALL' ? name : `${name} (${code})`;
-    return `<div onclick="_alPickCountry('${code}', '${display.replace(/'/g,"&#39;")}')" style="padding:7px 12px;cursor:pointer;font-size:0.85rem;color:#0A1628" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background=''">${_escapeHtml(display)}</div>`;
+    const display = `${name} (${code})`;
+    const checked = sel.has(code) ? 'checked' : '';
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:0.85rem;color:#0A1628" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background=''"><input type="checkbox" value="${code}" ${checked} onchange="_alPickCountry('${code}', this.checked)" style="width:14px;height:14px;accent-color:#0066FF;cursor:pointer"> ${_escapeHtml(display)}</label>`;
   }).join('') || '<div style="padding:14px;text-align:center;color:#9CA3AF;font-size:0.8rem">No matches</div>';
 };
 window._alFilterCountries = function(v) { _alRenderCountryList(v); };
-window._alPickCountry = function(value, label) {
-  document.getElementById('alCountry').value = value;
-  document.getElementById('alCountryLabel').innerHTML = label;
-  document.getElementById('alCountryMenu').style.display = 'none';
+window._alPickCountry = function(value, checked) {
+  const sel = window._alSelectedCountries || (window._alSelectedCountries = new Set());
+  if (checked) sel.add(value); else sel.delete(value);
+  _alUpdateCountryLabel();
+};
+window._alSelectAllCountries = function(all) {
+  const sel = window._alSelectedCountries = new Set();
+  if (all) {
+    (window._AL_COUNTRIES || []).forEach(([code]) => { if (code !== 'ALL') sel.add(code); });
+  }
+  _alRenderCountryList(document.getElementById('alCountrySearch')?.value || '');
+  _alUpdateCountryLabel();
+};
+window._alUpdateCountryLabel = function() {
+  const sel = window._alSelectedCountries || new Set(['US']);
+  const lbl = document.getElementById('alCountryLabel');
+  const hidden = document.getElementById('alCountry');
+  if (!lbl || !hidden) return;
+  const total = (window._AL_COUNTRIES || []).filter(([c]) => c !== 'ALL').length;
+  hidden.value = Array.from(sel).join(',');
+  if (sel.size === 0) lbl.textContent = '— pick at least one —';
+  else if (sel.size === total) lbl.textContent = `🌍 All countries (${total})`;
+  else if (sel.size === 1) {
+    const code = Array.from(sel)[0];
+    const found = (window._AL_COUNTRIES || []).find(([c]) => c === code);
+    lbl.textContent = found ? `${found[1]} (${code})` : code;
+  } else lbl.textContent = `${sel.size} countries selected`;
 };
 window._alToggleCountryMenu = function(e) {
   if (e) { e.stopPropagation(); }
@@ -38119,25 +38208,47 @@ window._alToggleAll = function(checked) {
 
 window._alRunMulti = async function() {
   const brand = document.getElementById('alBrand').value.trim();
-  const country = document.getElementById('alCountry').value.trim() || 'US';
+  const countriesRaw = document.getElementById('alCountry').value.trim();
+  const countries = countriesRaw ? countriesRaw.split(',').filter(Boolean) : ['US'];
   const out = document.getElementById('alOut');
   if (!brand) { out.innerHTML = '<div style="background:#FEE2E2;color:#991B1B;padding:12px;border-radius:8px">⚠ Brand required</div>'; return; }
+  if (!countries.length) { out.innerHTML = '<div style="background:#FEE2E2;color:#991B1B;padding:12px;border-radius:8px">⚠ Select at least one country</div>'; return; }
   const selected = Array.from(document.querySelectorAll('.al-plat:checked')).map(cb => cb.value);
   if (!selected.length) { out.innerHTML = '<div style="background:#FEF3C7;color:#92400E;padding:12px;border-radius:8px">⚠ Select at least one platform</div>'; return; }
   const labels = { meta:'Meta Ad Library', google:'Google Ads Transparency Center', tiktok:'TikTok Ad Library', linkedin:'LinkedIn Ad Library', x:'X (Twitter) Ads Transparency' };
   const btn = document.getElementById('alRun');
   const origBtn = btn.innerHTML;
-  btn.disabled = true; btn.innerHTML = `⏳ Searching ${selected.length} platform${selected.length>1?'s':''}…`; btn.style.opacity = '0.7'; btn.style.cursor = 'wait';
-  out.innerHTML = `<div id="alProgress" style="display:grid;gap:8px;margin-bottom:14px">${selected.map(p => `<div id="alProg_${p}" style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;font-size:0.82rem"><span style="display:inline-block;width:14px;height:14px;border:2px solid #E5E7EB;border-top-color:#0066FF;border-radius:50%;animation:alSpin 0.8s linear infinite"></span><span style="font-weight:700;color:#0A1628">${_escapeHtml(labels[p] || p)}</span><span style="color:#6B7280;font-size:0.74rem">searching…</span></div>`).join('')}<style>@keyframes alSpin{to{transform:rotate(360deg)}}</style></div><div id="alResults" style="display:grid;gap:18px"></div>`;
+  const countryLbl = countries.length === 1 ? countries[0] : `${countries.length} countries`;
+  btn.disabled = true; btn.innerHTML = `⏳ Searching ${selected.length} platform${selected.length>1?'s':''} × ${countryLbl}…`; btn.style.opacity = '0.7'; btn.style.cursor = 'wait';
+  out.innerHTML = `<div id="alProgress" style="display:grid;gap:8px;margin-bottom:14px">${selected.map(p => `<div id="alProg_${p}" style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;font-size:0.82rem"><span style="display:inline-block;width:14px;height:14px;border:2px solid #E5E7EB;border-top-color:#0066FF;border-radius:50%;animation:alSpin 0.8s linear infinite"></span><span style="font-weight:700;color:#0A1628">${_escapeHtml(labels[p] || p)}</span><span style="color:#6B7280;font-size:0.74rem">searching ${_escapeHtml(countryLbl)}…</span></div>`).join('')}<style>@keyframes alSpin{to{transform:rotate(360deg)}}</style></div><div id="alResults" style="display:grid;gap:18px"></div>`;
   await Promise.all(selected.map(async (platform) => {
     const progEl = document.getElementById('alProg_' + platform);
     try {
-      const r = await fetch(`/api/ad-library/${platform}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, country }) }).then(x => x.json());
+      // Fan out per country, then merge + dedupe by ad id.
+      const perCountry = await Promise.all(countries.map(async (cc) => {
+        try {
+          const r = await fetch(`/api/ad-library/${platform}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, country: cc }) }).then(x => x.json());
+          return { cc, r };
+        } catch (e) { return { cc, r: { ok:false, error:e.message } }; }
+      }));
+      const ok = perCountry.filter(x => x.r && x.r.ok);
+      const errs = perCountry.filter(x => !x.r || !x.r.ok);
+      const seen = new Set(); const merged = [];
+      ok.forEach(({ cc, r }) => {
+        (r.ads || []).forEach(a => {
+          const id = a.id || `${a.page_name||a.advertiser||''}::${a.title||''}::${(a.body||a.ad_text||'').slice(0,80)}`;
+          if (seen.has(id)) return; seen.add(id);
+          merged.push(Object.assign({ _country: cc }, a));
+        });
+      });
+      const finalRes = ok.length
+        ? { ok:true, ads: merged, note: errs.length ? `${errs.length} of ${countries.length} country lookup(s) failed.` : null }
+        : { ok:false, error: (errs[0] && errs[0].r && errs[0].r.error) || 'All country lookups failed' };
       if (progEl) progEl.remove();
-      _alAppendResult(platform, labels[platform] || platform, brand, country, r);
+      _alAppendResult(platform, labels[platform] || platform, brand, countryLbl, finalRes);
     } catch (e) {
       if (progEl) progEl.remove();
-      _alAppendResult(platform, labels[platform] || platform, brand, country, { ok:false, error: 'Network error: ' + e.message });
+      _alAppendResult(platform, labels[platform] || platform, brand, countryLbl, { ok:false, error: 'Network error: ' + e.message });
     }
   }));
   btn.disabled = false; btn.innerHTML = origBtn; btn.style.opacity = ''; btn.style.cursor = 'pointer';
