@@ -3481,7 +3481,7 @@ async function runAnalysis(url, country, industryOverride) {
           p = document.createElement('div');
           p.id = 'igDbgPanel';
           p.style.cssText = 'position:fixed;bottom:8px;right:8px;width:380px;max-height:280px;overflow:auto;background:rgba(10,22,40,.95);color:#7FFFD4;font:11px/1.4 monospace;padding:8px 10px;border-radius:8px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid #00C9C8';
-          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL9</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
+          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL10</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
           document.body.appendChild(p);
         }
         const log = document.getElementById('igDbgLog');
@@ -3503,19 +3503,24 @@ async function runAnalysis(url, country, industryOverride) {
   window._igDbg('✓ sector: ' + (sectorDetected ? 'OK' : 'NULL/timeout') + ' · total=' + Math.round(performance.now()-_t0) + 'ms');
   console.log('[runAnalysis] AI promises settled in', Math.round(performance.now()-_t0), 'ms', { aiDetected: !!aiDetected, sectorDetected: !!sectorDetected });
 
-  bar.style.width = '100%';
-  pct.textContent = '100%';
-  // Stop the elapsed-time ticker and show the final duration
+  // Null-guard every DOM element access — these were unguarded and would
+  // throw silently into _safeRunAnalysis if the overlay/progress markup
+  // changed or hadn't been injected yet.
+  window._igDbg('▸ post-sector DOM check · bar='+!!bar+' pct='+!!pct+' status='+!!statusText+' overlay='+!!overlay);
+  try { if (bar) bar.style.width = '100%'; } catch(e) { window._igDbg('✕ bar.style.width threw: '+e.message); }
+  try { if (pct) pct.textContent = '100%'; } catch(e) { window._igDbg('✕ pct.textContent threw: '+e.message); }
   if (window._elapsedTimer) { clearInterval(window._elapsedTimer); window._elapsedTimer = null; }
   const _runSec = ((performance.now() - _runStart) / 1000).toFixed(1);
-  if (_elapsedEl) _elapsedEl.textContent = _runSec + 's';
+  try { if (_elapsedEl) _elapsedEl.textContent = _runSec + 's'; } catch(_){}
   window._lastRunDuration = parseFloat(_runSec);
   window._analysisStartedAt = null;
-  statusText.textContent = `✅ Intelligence report ready in ${_runSec}s!`;
+  try { if (statusText) statusText.textContent = `✅ Intelligence report ready in ${_runSec}s!`; } catch(_){}
+  window._igDbg('▸ awaiting wait(450)');
   await wait(450);
-  overlay.style.display = 'none';
-  overlay.classList.add('hidden');
-  showToast(`✅ Dashboard ready in ${_runSec}s`);
+  window._igDbg('▸ wait(450) done, hiding overlay');
+  try { if (overlay) { overlay.style.display = 'none'; overlay.classList.add('hidden'); } } catch(e) { window._igDbg('✕ overlay hide threw: '+e.message); }
+  try { showToast(`✅ Dashboard ready in ${_runSec}s`); } catch(_){}
+  window._igDbg('▸ entering post-detect/build pipeline');
 
   // ── If URL was given but user didn't type an industry, take the sub-niche
   //    that smart-detect inferred from the website and use it to fetch a
