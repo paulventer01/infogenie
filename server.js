@@ -3422,6 +3422,79 @@ app.post('/api/ai-visibility-multi', async (req, res) => {
   }
 });
 
+// ── POST /api/dfs-ai-optimization ─────────────────────────────────────────────
+// DataForSEO AI Optimization API — fires a single user prompt across ChatGPT,
+// Claude, Gemini, Perplexity in parallel via DataForSEO (one billing, one
+// trial). Returns each model's answer + token counts + per-call cost + brand
+// citation analysis. Use this when DataForSEO AI Optimization add-on is active
+// (14-day trial available at app.dataforseo.com).
+app.post('/api/dfs-ai-optimization', async (req, res) => {
+  try {
+    const { prompt, domain = '', brand = '', engines: reqEngines = ['chat_gpt','claude','gemini','perplexity'], webSearch = false } = req.body || {};
+    if (!prompt || !String(prompt).trim()) return res.status(400).json({ ok:false, error:'prompt required' });
+    const ALLOWED_ENGINES = ['chat_gpt','claude','gemini','perplexity'];
+    const engines = (Array.isArray(reqEngines) ? reqEngines : []).filter(e => ALLOWED_ENGINES.includes(e));
+    if (!engines.length) return res.status(400).json({ ok:false, error:`engines must include one of: ${ALLOWED_ENGINES.join(', ')}` });
+    if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) {
+      return res.status(400).json({ ok:false, error:'DataForSEO credentials not configured' });
+    }
+    const DEFAULT_MODELS = {
+      chat_gpt:   'gpt-4o-mini',
+      claude:     'claude-sonnet-4-5',
+      gemini:     'gemini-2.5-flash',
+      perplexity: 'sonar',
+    };
+    const cleanDomain = String(domain).replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].toLowerCase();
+    const brandStem = (brand || cleanDomain.split('.')[0] || '').toLowerCase();
+    const auth = 'Basic ' + Buffer.from(`${process.env.DATAFORSEO_LOGIN}:${process.env.DATAFORSEO_PASSWORD}`).toString('base64');
+
+    async function callEngine(engine) {
+      const model = DEFAULT_MODELS[engine] || DEFAULT_MODELS.chat_gpt;
+      try {
+        const r = await fetch(`https://api.dataforseo.com/v3/ai_optimization/${engine}/llm_responses/live`, {
+          method: 'POST',
+          headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+          body: JSON.stringify([Object.assign(
+            { user_prompt: prompt, model_name: model },
+            (webSearch && engine !== 'perplexity') ? { web_search: true } : {}
+          )]),
+        });
+        const j = await r.json();
+        const task = j?.tasks?.[0] || {};
+        if (task.status_code !== 20000) {
+          return { engine, model, ok:false, error: task.status_message || `status ${task.status_code}` };
+        }
+        const result = task.result?.[0] || {};
+        const sections = (result.items || []).flatMap(it => Array.isArray(it.sections) ? it.sections : []);
+        const text = sections.filter(s => s.type === 'text' || s.text).map(s => s.text || '').join('\n\n').trim();
+        const mentioned = brandStem ? (text.toLowerCase().includes(brandStem) || (cleanDomain && text.toLowerCase().includes(cleanDomain))) : false;
+        return {
+          engine, model: result.model_name || model, ok:true,
+          answer: text,
+          mentioned,
+          input_tokens: result.input_tokens || 0,
+          output_tokens: result.output_tokens || 0,
+          cost_usd: result.money_spent || task.cost || 0,
+          web_search: !!result.web_search,
+          duration_sec: parseFloat(task.time) || 0,
+        };
+      } catch (e) {
+        return { engine, model, ok:false, error: e.message };
+      }
+    }
+
+    const results = await Promise.all(engines.map(callEngine));
+    const totalCost = results.reduce((s, r) => s + (r.cost_usd || 0), 0);
+    const liveCount = results.filter(r => r.ok).length;
+    const citedCount = results.filter(r => r.ok && r.mentioned).length;
+    res.json({ ok:true, prompt, brand: brandStem, domain: cleanDomain, webSearch: !!webSearch, results,
+      summary: { engines: engines.length, live: liveCount, cited: citedCount, totalCostUsd: totalCost } });
+  } catch (err) {
+    console.error('/api/dfs-ai-optimization error:', err);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
 // ── POST /api/ai-visibility-coverage ──────────────────────────────────────────
 // PROMPT COVERAGE — fires every prompt in the user's industry across every
 // connected AI model in parallel and reports a real coverage matrix:

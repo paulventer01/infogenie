@@ -10135,6 +10135,9 @@ function buildAiVisibility() {
       <div style="font-size:0.92rem;font-weight:700;color:#0A1628;margin-bottom:5px">Run Your AI Visibility Audit</div>
       <div style="font-size:0.78rem;color:#64748B;margin-bottom:18px;max-width:380px;margin-left:auto;margin-right:auto">GPT-4 analyses your brand's presence across all major LLMs and produces a prioritised action plan</div>
       <button onclick="generateAiVisibilityAudit()" style="padding:12px 32px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:11px;font-size:0.87rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 14px rgba(99,102,241,0.35)">✨ Run AI Visibility Audit</button>
+      <div style="margin-top:14px;font-size:0.72rem;color:#64748B">— or —</div>
+      <button onclick="runDfsAiOptimization()" style="margin-top:10px;padding:10px 24px;background:linear-gradient(135deg,#0EA5E9,#0369A1);border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer;box-shadow:0 3px 10px rgba(14,165,233,.35)">🚀 Probe All 4 LLMs via DataForSEO (live answers)</button>
+      <div style="margin-top:6px;font-size:0.7rem;color:#94A3B8;max-width:460px;margin-left:auto;margin-right:auto">Fires the same prompt at ChatGPT · Claude · Gemini · Perplexity in parallel through DataForSEO's AI Optimization API. Returns each model's real answer + brand-citation analysis + per-call cost. Uses your active 14-day trial.</div>
     </div>`;
 
   // ── Brand Monitor computed values ─────────────────────────────────────────
@@ -11198,6 +11201,78 @@ window.runSingleAiVis = async function(kind) {
     // Pass no label so each button restores to its OWN original innerHTML
     // (per-module buttons say "Run This Module", master button says "Run Full Audit").
     stopTimer();
+  }
+};
+
+window.runDfsAiOptimization = async function() {
+  const domain = (window.analysisData && window.analysisData.url && window.analysisData.url.replace(/^https?:\/\//,'').split('/')[0]) || 'yourdomain.com';
+  const industry = (window.analysisData && window.analysisData.industry && window.analysisData.industry.name) || 'your industry';
+  const brand = (window.analysisData && window.analysisData.brandName) || domain.split('.')[0];
+  const defaultPrompt = `What are the best companies in ${industry}? List the top 5 with a one-sentence reason for each.`;
+  const userPrompt = prompt('Prompt to send to all 4 LLMs:', defaultPrompt);
+  if (!userPrompt || !userPrompt.trim()) return;
+
+  let overlay = document.getElementById('dfsAioOverlay');
+  if (overlay) overlay.remove();
+  overlay = document.createElement('div');
+  overlay.id = 'dfsAioOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  const startedAt = Date.now();
+  overlay.innerHTML = `<div style="background:#fff;border-radius:14px;padding:30px;max-width:520px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="font-size:2.4rem;margin-bottom:10px">🚀</div>
+    <div style="font-size:1rem;font-weight:800;color:#0F172A;margin-bottom:8px">Probing all 4 LLMs via DataForSEO…</div>
+    <div id="dfsAioTimer" style="font-size:0.85rem;color:#64748B;font-family:monospace">⏳ 00:00</div>
+    <div style="font-size:0.74rem;color:#94A3B8;margin-top:10px">ChatGPT · Claude · Gemini · Perplexity — running in parallel</div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const ti = setInterval(() => { const t = document.getElementById('dfsAioTimer'); if (t) { const s = Math.floor((Date.now()-startedAt)/1000); t.textContent = '⏳ '+String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); } }, 1000);
+
+  try {
+    const r = await fetch('/api/dfs-ai-optimization', {
+      method: 'POST', headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ prompt: userPrompt, domain, brand, engines: ['chat_gpt','claude','gemini','perplexity'], webSearch: false })
+    }).then(x => x.json());
+    clearInterval(ti);
+    const elapsed = Math.floor((Date.now()-startedAt)/1000);
+    if (!r.ok) { overlay.remove(); showToast('❌ ' + (r.error || 'DataForSEO AI Optimization failed')); return; }
+    const esc = (s) => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const engineMeta = { chat_gpt:{name:'ChatGPT',color:'#10A37F',bg:'#ECFDF5'}, claude:{name:'Claude',color:'#C96A28',bg:'#FEF3E2'}, gemini:{name:'Gemini',color:'#4285F4',bg:'#E8F0FE'}, perplexity:{name:'Perplexity',color:'#20808D',bg:'#E0F4F2'} };
+    const cards = r.results.map(res => {
+      const m = engineMeta[res.engine] || { name: res.engine, color:'#64748B', bg:'#F1F5F9' };
+      if (!res.ok) return `<div style="border:1.5px solid ${m.color};border-radius:12px;padding:14px;background:#fff"><div style="font-weight:800;color:${m.color};margin-bottom:6px">${m.name}</div><div style="font-size:0.78rem;color:#DC2626">❌ ${esc(res.error)}</div></div>`;
+      const cited = res.mentioned ? `<span style="background:#DCFCE7;color:#15803D;padding:2px 8px;border-radius:6px;font-size:0.66rem;font-weight:700">✓ CITED</span>` : `<span style="background:#FEE2E2;color:#991B1B;padding:2px 8px;border-radius:6px;font-size:0.66rem;font-weight:700">✗ NOT CITED</span>`;
+      return `<div style="border:1.5px solid ${m.color};border-radius:12px;padding:14px;background:${m.bg}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-weight:800;color:${m.color}">${m.name}</div>${cited}
+        </div>
+        <div style="font-size:0.74rem;color:#0F172A;background:#fff;border-radius:8px;padding:10px;max-height:240px;overflow:auto;white-space:pre-wrap;line-height:1.55">${esc(res.answer)}</div>
+        <div style="margin-top:8px;font-size:0.66rem;color:#64748B;display:flex;gap:10px;flex-wrap:wrap">
+          <span>📝 ${res.model}</span><span>🔢 ${res.input_tokens}→${res.output_tokens} tokens</span><span>💵 $${(res.cost_usd||0).toFixed(5)}</span><span>⏱ ${(res.duration_sec||0).toFixed(1)}s</span>
+        </div>
+      </div>`;
+    }).join('');
+    overlay.innerHTML = `<div style="background:#fff;border-radius:14px;padding:24px;max-width:1100px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+        <div>
+          <div style="font-size:1.05rem;font-weight:800;color:#0F172A">🚀 DataForSEO AI Optimization — Multi-LLM Results</div>
+          <div style="font-size:0.75rem;color:#64748B;margin-top:3px">Prompt: <em>"${esc(userPrompt)}"</em></div>
+        </div>
+        <button onclick="document.getElementById('dfsAioOverlay').remove()" style="background:#F1F5F9;border:none;border-radius:8px;padding:6px 12px;font-weight:700;cursor:pointer">✕ Close</button>
+      </div>
+      <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:10px 14px;font-size:0.78rem;color:#0F172A;margin-bottom:14px;display:flex;gap:18px;flex-wrap:wrap">
+        <span><strong>${r.summary.live}</strong>/${r.summary.engines} engines responded</span>
+        <span><strong style="color:${r.summary.cited>=2?'#15803D':'#DC2626'}">${r.summary.cited}</strong> cited ${esc(brand)}</span>
+        <span>💵 Total cost: <strong>$${(r.summary.totalCostUsd||0).toFixed(5)}</strong></span>
+        <span>⏱ Elapsed: ${elapsed}s</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">${cards}</div>
+      <div style="margin-top:12px;font-size:0.7rem;color:#94A3B8;text-align:center">Powered by DataForSEO AI Optimization API · ${brand} citation detection via case-insensitive domain + brand-stem match</div>
+    </div>`;
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  } catch (e) {
+    clearInterval(ti);
+    overlay.remove();
+    showToast('❌ ' + (e.message || 'Failed'));
   }
 };
 
