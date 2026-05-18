@@ -43085,12 +43085,63 @@ function _rpToCarousel(title) {
 
   // ── Video Storyboard modal ────────────────────────────────────────────────
   function openVideoStudio(){
+    const ad = window.analysisData || {};
+    const _domainToBrand = u => { try { const h = String(u||'').replace(/^https?:\/\//,'').split('/')[0].split('.'); const core = (h.length>=2?h[h.length-2]:h[0])||''; return core.charAt(0).toUpperCase()+core.slice(1); } catch { return ''; } };
+    const mainBrand = _domainToBrand(ad.url);
+    const competitors = Array.isArray(ad.competitors) ? ad.competitors.filter(c=>c&&(c.name||c.domain)) : [];
+    const compOpts = competitors.map(c=>{ const lbl=_esc(c.name||_domainToBrand(c.domain)); return `<option value="${lbl}">${lbl}</option>`;}).join('');
+    const industry = _esc(ad.industry || '');
     _modal('🎬 AI Video Storyboard', `
-      <label>Brand name<input id="vb" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px"></label>
-      <label>Value prop<input id="vv" placeholder="What you want viewers to take away in 15 seconds" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px"></label>
-      <label>Duration (seconds)<input id="vd" type="number" value="15" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 16px"></label>
+      <label style="display:flex;justify-content:space-between;align-items:center">
+        <span>Brand name</span>
+        <span style="display:flex;gap:6px">
+          ${mainBrand ? `<button id="vbAnalysed" type="button" style="background:#EEF2FF;color:#4F46E5;border:1px solid #C7D2FE;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">📊 Use "${_esc(mainBrand)}"</button>` : ''}
+          <button id="vbSuggest" type="button" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
+        </span>
+      </label>
+      <input id="vb" placeholder="e.g. ${_esc(mainBrand||'Acme')}" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 6px;box-sizing:border-box">
+      ${compOpts ? `<div style="margin:0 0 12px"><label style="display:block;font-size:11px;color:#6B7280;margin-bottom:4px">…or pick an analysed competitor</label><select id="vbComp" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;background:#fff"><option value="">— select competitor —</option>${compOpts}</select></div>` : `<div style="font-size:11px;color:#9CA3AF;margin:0 0 12px">Run an analysis first to pull competitors here.</div>`}
+
+      <label style="display:flex;justify-content:space-between;align-items:center">
+        <span>Value prop</span>
+        <button id="vvSuggest" type="button" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
+      </label>
+      <input id="vv" placeholder="What you want viewers to take away in 15 seconds" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px;box-sizing:border-box">
+
+      <label>Duration (seconds)<input id="vd" type="number" value="15" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 16px;box-sizing:border-box"></label>
       <button id="vgo" style="background:#0066FF;color:white;border:0;padding:12px 24px;border-radius:8px;font-weight:700;cursor:pointer">Generate storyboard</button>
       <div id="vout" style="margin-top:18px"></div>`, { width: 720 });
+
+    const vbEl = document.getElementById('vb');
+    const vvEl = document.getElementById('vv');
+    const vbAnalysed = document.getElementById('vbAnalysed');
+    const vbComp = document.getElementById('vbComp');
+    if (vbAnalysed && mainBrand) vbAnalysed.addEventListener('click', () => { vbEl.value = mainBrand; vbEl.focus(); });
+    if (vbComp) vbComp.addEventListener('change', () => { if (vbComp.value) { vbEl.value = vbComp.value; vbEl.focus(); } });
+    document.getElementById('vbSuggest').addEventListener('click', async () => {
+      const prev = vbEl.value;
+      vbEl.value = '⏳ Thinking…'; vbEl.disabled = true;
+      try {
+        const seed = mainBrand || prev || 'a modern brand';
+        const j = await _api('/api/studio/brand/names', { method:'POST', body:{ description: `A brand similar to ${seed} in the ${industry||'consumer'} space — short, memorable, web-friendly`, style:'modern' } });
+        const pick = (j.names||[])[0];
+        vbEl.value = pick?.name || mainBrand || prev || '';
+      } catch { vbEl.value = mainBrand || prev || ''; }
+      finally { vbEl.disabled = false; vbEl.focus(); }
+    });
+    document.getElementById('vvSuggest').addEventListener('click', async () => {
+      const brand = vbEl.value.trim() || mainBrand;
+      if (!brand) { vvEl.placeholder = '⚠️ Fill in Brand name first'; return; }
+      const prev = vvEl.value;
+      vvEl.value = '⏳ Thinking…'; vvEl.disabled = true;
+      try {
+        const j = await _api('/api/studio/brand/slogans', { method:'POST', body:{ brandName: brand, valueProp: industry ? `A ${industry} brand` : 'A modern brand for forward-thinking customers' } });
+        const pick = (j.slogans||[])[0];
+        vvEl.value = pick?.text || `${brand} — built for people who actually use it.`;
+      } catch { vvEl.value = prev || `${brand} — built for people who actually use it.`; }
+      finally { vvEl.disabled = false; vvEl.focus(); }
+    });
+
     vgo.addEventListener('click', async ()=>{
       vout.innerHTML='⏳ Storyboarding…';
       try{ const j=await _api('/api/studio/video/storyboard',{method:'POST',body:{brandName:vb.value,valueProp:vv.value,duration:Number(vd.value)||15}});
