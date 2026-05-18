@@ -45103,13 +45103,98 @@ function _rpToCarousel(title) {
     }
 
     wrap.innerHTML = `
-      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px;margin-bottom:18px;display:flex;gap:10px;align-items:end;flex-wrap:wrap">
-        <div style="flex:1;min-width:180px"><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">FILTER BY ADVERTISER</label><input id="asAdv" placeholder="any" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.85rem;box-sizing:border-box"></div>
-        <div style="flex:1;min-width:180px"><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">FILTER BY TAG</label><input id="asTag" placeholder="any" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.85rem;box-sizing:border-box"></div>
-        <button onclick="window._asReload()" style="background:#0066FF;color:#fff;border:0;padding:9px 18px;border-radius:6px;font-weight:800;cursor:pointer;font-size:0.84rem">🔍 Filter</button>
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px;margin-bottom:18px">
+        <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+          <div style="flex:1;min-width:220px">
+            <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">FILTER BY ADVERTISER</label>
+            <div style="display:flex;gap:6px">
+              <select id="asAdvPick" onchange="window._asAdvPickChange()" style="padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.82rem;min-width:170px;background:#fff">
+                <option value="">— pick from your brands —</option>
+              </select>
+              <input id="asAdv" list="asAdvList" placeholder="any (or type)" style="flex:1;min-width:120px;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.85rem;box-sizing:border-box">
+              <datalist id="asAdvList"></datalist>
+            </div>
+          </div>
+          <div style="flex:1;min-width:220px">
+            <label style="display:flex;align-items:center;justify-content:space-between;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">
+              <span>FILTER BY TAG</span>
+              <button type="button" onclick="window._asSuggestTags()" style="background:linear-gradient(135deg,#7C3AED,#0066FF);color:#fff;border:0;padding:3px 10px;border-radius:12px;font-size:0.68rem;font-weight:800;cursor:pointer">🤖 AI Suggest</button>
+            </label>
+            <input id="asTag" list="asTagList" placeholder="any (or type)" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.85rem;box-sizing:border-box">
+            <datalist id="asTagList"></datalist>
+          </div>
+          <button onclick="window._asReload()" style="background:#0066FF;color:#fff;border:0;padding:9px 18px;border-radius:6px;font-weight:800;cursor:pointer;font-size:0.84rem">🔍 Filter</button>
+          <button onclick="window._asClearFilters()" style="background:#F3F4F6;color:#374151;border:1px solid #D1D5DB;padding:9px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-size:0.82rem">Clear</button>
+        </div>
+        <div id="asTagSuggest" style="display:none;margin-top:10px;padding:10px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:8px"></div>
       </div>
       <div id="asList"><div style="color:#9CA3AF">Loading swipe file…</div></div>
     `;
+
+    // ── Populate advertiser dropdown: own brand + analysed competitors + advertisers already in the swipe file
+    (async function _asPopulateAdv(){
+      const ad = window.analysisData || {};
+      const norm = u => String(u||'').replace(/^https?:\/\//i,'').replace(/^www\./i,'').replace(/\/.*$/,'').trim().toLowerCase();
+      const domToBrand = d => { const c = (d||'').split('.')[0]; return c ? c.charAt(0).toUpperCase()+c.slice(1) : ''; };
+      const own = ad.brandName || ad.companyName || domToBrand(norm(ad.url || ad.domain || ''));
+      const comps = (Array.isArray(ad.competitors) ? ad.competitors : []).map(c => c.name || domToBrand(norm(c.domain||c.url||c.website||''))).filter(Boolean);
+      let saved = [];
+      try { const j = await fetch('/api/ad-swipe/advertisers', { headers: hdrs }).then(x => x.json()); saved = (j.advertisers || []).map(x => x.advertiser).filter(Boolean); } catch {}
+      const sel = document.getElementById('asAdvPick'); const dl = document.getElementById('asAdvList');
+      if (!sel || !dl) return;
+      const opts = ['<option value="">— pick from your brands —</option>'];
+      if (own) opts.push(`<option value="${esc(own)}">🏠 Your brand — ${esc(own)}</option>`);
+      if (comps.length) {
+        opts.push('<optgroup label="Your analysed competitors">');
+        comps.forEach(n => opts.push(`<option value="${esc(n)}">${esc(n)}</option>`));
+        opts.push('</optgroup>');
+      }
+      const inSwipeOnly = saved.filter(s => s !== own && !comps.includes(s));
+      if (inSwipeOnly.length) {
+        opts.push('<optgroup label="Already in your swipe file">');
+        inSwipeOnly.forEach(n => opts.push(`<option value="${esc(n)}">${esc(n)}</option>`));
+        opts.push('</optgroup>');
+      }
+      sel.innerHTML = opts.join('');
+      const dlSet = new Set([own, ...comps, ...saved].filter(Boolean));
+      dl.innerHTML = Array.from(dlSet).map(n => `<option value="${esc(n)}">`).join('');
+    })();
+
+    // ── Populate existing-tag datalist
+    (async function _asPopulateTags(){
+      try {
+        const j = await fetch('/api/ad-swipe/tags', { headers: hdrs }).then(x => x.json());
+        const dl = document.getElementById('asTagList'); if (dl) dl.innerHTML = (j.tags||[]).map(t => `<option value="${esc(t)}">`).join('');
+      } catch {}
+    })();
+
+    window._asAdvPickChange = function(){
+      const sel = document.getElementById('asAdvPick'); const inp = document.getElementById('asAdv');
+      if (sel && inp && sel.value) inp.value = sel.value;
+    };
+    window._asClearFilters = function(){
+      const a = document.getElementById('asAdv'); if (a) a.value = '';
+      const t = document.getElementById('asTag'); if (t) t.value = '';
+      const s = document.getElementById('asAdvPick'); if (s) s.value = '';
+      const box = document.getElementById('asTagSuggest'); if (box) box.style.display = 'none';
+      load();
+    };
+    window._asSuggestTags = async function(){
+      const box = document.getElementById('asTagSuggest'); if (!box) return;
+      box.style.display = 'block';
+      box.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:#6B21A8;font-size:0.82rem;font-weight:700"><span style="display:inline-block;width:14px;height:14px;border:2px solid #DDD6FE;border-top-color:#7C3AED;border-radius:50%;animation:asSpin 0.8s linear infinite"></span> Reading your saved ads and proposing useful filter tags…<style>@keyframes asSpin{to{transform:rotate(360deg)}}</style></div>';
+      try {
+        const r = await fetch('/api/ad-swipe/suggest-tags', { method:'POST', headers: hdrs, body: '{}' });
+        const j = await r.json();
+        if (!j.ok) { box.innerHTML = `<div style="color:#991B1B;font-size:0.82rem">${esc(j.error||'AI suggest failed')}</div>`; return; }
+        if (!j.suggestions || !j.suggestions.length) { box.innerHTML = '<div style="color:#6B21A8;font-size:0.82rem">No tag suggestions returned — try saving a few more ads first.</div>'; return; }
+        box.innerHTML = `<div style="font-size:0.74rem;font-weight:800;color:#6B21A8;margin-bottom:8px">🤖 Click a tag to filter — InfoGenie grouped your saved ads by these angles:</div><div style="display:flex;flex-wrap:wrap;gap:6px">${j.suggestions.map(s => `<button type="button" onclick="window._asApplyTag('${esc(s.tag).replace(/'/g,'&#39;')}')" title="${esc(s.why||'')}" style="background:#fff;border:1px solid #C4B5FD;color:#5B21B6;padding:5px 12px;border-radius:14px;font-size:0.78rem;font-weight:700;cursor:pointer">${esc(s.tag)}</button>`).join('')}</div>`;
+      } catch(e) { box.innerHTML = `<div style="color:#991B1B;font-size:0.82rem">${esc(e.message)}</div>`; }
+    };
+    window._asApplyTag = function(t){
+      const inp = document.getElementById('asTag'); if (inp) inp.value = t;
+      load();
+    };
 
     window._asReload = load;
     window._asUpdate = async function(id, btn){

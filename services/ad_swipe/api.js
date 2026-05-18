@@ -1,9 +1,27 @@
 const express = require('express');
+const _https = require('https');
 const router = express.Router();
 const _db = require('../../db');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safe(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[ad-swipe]', e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
+
+async function _openaiJson(messages, maxTokens=600) {
+  const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  if (!key || /^_DUMMY/i.test(key)) return null;
+  const body = JSON.stringify({ model:'gpt-4o-mini', messages, response_format:{type:'json_object'}, temperature:0.4, max_tokens:maxTokens });
+  return await new Promise(resolve => {
+    const req = _https.request({
+      hostname:'api.openai.com', path:'/v1/chat/completions', method:'POST',
+      headers:{ 'Authorization':'Bearer '+key, 'Content-Type':'application/json', 'Content-Length':Buffer.byteLength(body) },
+    }, r => { let d=''; r.on('data', c => d += c); r.on('end', () => {
+      try { if (r.statusCode !== 200) return resolve(null); const j = JSON.parse(d); resolve(JSON.parse(j.choices[0].message.content)); } catch { resolve(null); }
+    }); });
+    req.on('error', () => resolve(null));
+    req.setTimeout(30000, () => req.destroy());
+    req.write(body); req.end();
+  });
+}
 
 // POST /save — persist an ad from the Ad Library into the swipe file
 router.post('/save', _safe(async (req, res) => {
@@ -86,6 +104,39 @@ router.get('/tags', _safe(async (_req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, tags: [] });
   const r = await _db.getPool().query(`SELECT DISTINCT jsonb_array_elements_text(tags) AS tag FROM ad_swipe ORDER BY tag`);
   res.json({ ok:true, tags: r.rows.map(x => x.tag) });
+}));
+
+// GET /advertisers — distinct advertiser list (for filter UI)
+router.get('/advertisers', _safe(async (_req, res) => {
+  if (!_db.hasDb()) return res.json({ ok:true, advertisers: [] });
+  const r = await _db.getPool().query(`SELECT advertiser, COUNT(*)::int AS n FROM ad_swipe GROUP BY advertiser ORDER BY n DESC, advertiser ASC LIMIT 100`);
+  res.json({ ok:true, advertisers: r.rows });
+}));
+
+// POST /suggest-tags — AI suggests filter tags based on the user's saved swipe library
+router.post('/suggest-tags', _safe(async (req, res) => {
+  if (!_db.hasDb()) return _err(res, 503, 'database unavailable');
+  const r = await _db.getPool().query(
+    `SELECT advertiser, headline, body, tags FROM ad_swipe ORDER BY saved_at DESC LIMIT 60`
+  );
+  const items = r.rows || [];
+  if (!items.length) return _err(res, 400, 'Your swipe file is empty — save some ads first, then ask for tag suggestions.');
+  const tagsRow = await _db.getPool().query(`SELECT DISTINCT jsonb_array_elements_text(tags) AS tag FROM ad_swipe`);
+  const existing = tagsRow.rows.map(x => x.tag).filter(Boolean);
+  const snippet = items.slice(0, 30).map((a, i) =>
+    `${i+1}. ${a.advertiser} | ${a.headline||''} | ${(a.body||'').slice(0,160)}`
+  ).join('\n');
+  const out = await _openaiJson([
+    { role:'system', content:
+      'You are a marketing strategist. Look at the user\'s saved competitor ads and propose 8-12 SHORT filter tags (1-3 words each, lowercase, no punctuation) that group these ads by useful axes: angle (e.g. "social proof", "scarcity"), format (e.g. "ugc video", "carousel"), offer (e.g. "free trial", "discount"), audience (e.g. "smb", "creators"), funnel stage. Re-use any tag from EXISTING_TAGS when it fits. Return strict JSON: {"suggestions":[{"tag":"social proof","why":"<one short reason this groups several saved ads>"}, …]}'
+    },
+    { role:'user', content: `EXISTING_TAGS: ${existing.join(', ') || '(none yet)'}\n\nSAVED_ADS (${items.length}):\n${snippet}` },
+  ], 600);
+  if (!out || !Array.isArray(out.suggestions)) return _err(res, 502, 'AI tag suggestions unavailable — set OPENAI key or add tags manually.');
+  const clean = out.suggestions
+    .map(s => ({ tag: String(s.tag||'').toLowerCase().replace(/[^a-z0-9 \-]/g,'').trim().slice(0,40), why: String(s.why||'').slice(0,140) }))
+    .filter(s => s.tag && s.tag.length >= 2);
+  res.json({ ok:true, suggestions: clean, existing });
 }));
 
 module.exports = router;
