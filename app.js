@@ -8066,7 +8066,8 @@ function buildICPStudio() {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
         ${fld('icp-budget','Budget Band', icp.budget, 'e.g. £500–£2,000/mo')}
-        <div style="display:flex;align-items:flex-end">
+        <div style="display:flex;flex-direction:column;justify-content:flex-end;gap:8px">
+          <button id="icpScanRedditBtn" ${redditCount>0?'disabled':''} style="width:100%;padding:10px;background:${redditCount>0?'#E5E7EB':'#FF4500'};border:none;border-radius:10px;font-size:0.78rem;font-weight:700;color:${redditCount>0?'#6B7280':'white'};cursor:${redditCount>0?'default':'pointer'}">${redditCount>0?`✅ Reddit scanned (${redditCount})`:'🔍 Scan Reddit now'}</button>
           <button id="icpSaveBtn" style="width:100%;padding:11px;background:#0A1628;border:none;border-radius:10px;font-size:0.82rem;font-weight:700;color:white;cursor:pointer">💾 Save ICP</button>
         </div>
       </div>
@@ -8161,7 +8162,7 @@ function buildICPStudio() {
   // ── Top context bar ───────────────────────────────────────────────────────
   const redditCell = redditCount > 0
     ? `<strong>Reddit threads available:</strong> ${redditCount}`
-    : `<strong>Reddit threads available:</strong> 0 <button id="icpScanRedditBtn" style="margin-left:6px;padding:3px 10px;background:#FF4500;color:white;border:none;border-radius:6px;font-size:0.7rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">🔍 Scan now</button>`;
+    : `<strong>Reddit threads available:</strong> 0`;
   const ctxBar = `
     <div style="background:linear-gradient(135deg,#F5F3FF,#FDF2F8);border:1px solid #E9D5FF;border-radius:14px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div style="font-size:0.8rem;color:#6B21A8"><strong>Brand:</strong> ${domain} · <strong>Industry:</strong> ${industry} · ${redditCell} · <strong>Competitors:</strong> ${compCount}</div>
