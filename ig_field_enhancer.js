@@ -17,6 +17,16 @@
   if (window.__IG_FIELD_ENHANCER__) return;
   window.__IG_FIELD_ENHANCER__ = true;
 
+  // Emergency kill-switch — append ?noenhancer=1 to the URL to disable this
+  // module entirely. Useful for diagnosing whether a freeze comes from here
+  // or from elsewhere in the app.
+  try {
+    if (/[?&]noenhancer=1\b/.test(window.location.search)) {
+      console.warn('[ig-field-enhancer] disabled via ?noenhancer=1');
+      return;
+    }
+  } catch(_){}
+
   // Skip technical / structured input types entirely — these aren't free-text
   // suggestions and trying to "AI guess" them would be wrong. `search` is in
   // here because users type live queries, not AI-suggested values.
@@ -281,40 +291,52 @@
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Visible-only scan — skip inputs that aren't on-screen so the decorator
-  // never spends time walking dashboards the user isn't looking at. Cheap
-  // `offsetParent === null` check filters display:none and detached nodes
-  // without forcing a layout recalc.
-  function scan(root){
-    const sel = 'input[type="text"],input[type="email"],' +
-                'input[type="url"],input[type="tel"],input:not([type]),textarea';
-    const list = (root || document).querySelectorAll(sel);
-    for (let i = 0; i < list.length; i++) {
-      const el = list[i];
-      if (el.offsetParent === null) continue;
-      decorate(el);
-    }
-  }
-
   // Yield control to the browser between scans so the analyse-now flow's
   // many innerHTML writes can render without competing with us.
   const idle = (cb) => (window.requestIdleCallback
-    ? window.requestIdleCallback(cb, { timeout: 500 })
+    ? window.requestIdleCallback(cb, { timeout: 1000 })
     : setTimeout(cb, 100));
+
+  // Chunked scan — process at most CHUNK_SIZE inputs per idle slot, then
+  // re-yield. Guarantees we never block the main thread for more than a
+  // few ms at a time even if the user is on a 500-input dashboard.
+  const CHUNK_SIZE = 20;
+  function chunkedScan(){
+    const sel = 'input[type="text"],input[type="email"],' +
+                'input[type="url"],input[type="tel"],input:not([type]),textarea';
+    const list = document.querySelectorAll(sel);
+    let i = 0;
+    function step(deadline){
+      let processed = 0;
+      while (i < list.length && processed < CHUNK_SIZE) {
+        const el = list[i++];
+        // offsetParent===null skips display:none / detached nodes cheaply.
+        if (!el || el.offsetParent === null) { processed++; continue; }
+        try { decorate(el); } catch(_) {}
+        processed++;
+        // Bail out early if the idle deadline is almost up — keeps us
+        // responsive even when a chunk decorates expensive inputs.
+        if (deadline && typeof deadline.timeRemaining === 'function'
+            && deadline.timeRemaining() < 2) break;
+      }
+      if (i < list.length) idle(step);
+    }
+    idle(step);
+  }
 
   let pending = false;
   function schedule(){
     if (pending) return;
     pending = true;
-    // 350ms debounce + idle callback — long enough to coalesce the giant
-    // innerHTML bursts the analyse-now flow emits when rendering all
-    // dashboards back-to-back, and we only do the work when the browser
-    // is idle so we never block user interactions or renders.
+    // 400ms debounce — long enough to coalesce the giant innerHTML bursts
+    // the analyse-now flow emits when rendering all dashboards back-to-back.
     setTimeout(() => {
       pending = false;
-      idle(() => { try { scan(document); } catch(_) {} });
-    }, 350);
+      try { chunkedScan(); } catch(_) {}
+    }, 400);
   }
+  // Back-compat alias kept for any caller below.
+  function scan(){ chunkedScan(); }
 
   // Cheap test — does this added node (or any of its descendants) contain a
   // form input we'd actually decorate? Avoids scanning the whole document on
