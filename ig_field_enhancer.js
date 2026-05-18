@@ -105,10 +105,23 @@
     return false;
   }
 
+  // Specific fields that should never get an AI Suggest button — the landing
+  // hero analyser (the user types their own real URL / sector there) and the
+  // login/signup form (name + email are personal account data, not something
+  // AI should invent).
+  const SKIP_IDS = new Set(['websiteInput','industryInput','igName','igEmail']);
+  // Whole containers whose descendants should be skipped (auth wall covers
+  // both Log In and Create Account tabs).
+  const SKIP_CONTAINER_IDS = ['igAuthWall'];
+
   function isEligible(el){
     if (el.disabled || el.readOnly) return false;
     if (el.tagName === 'INPUT' && SKIP_TYPES.has((el.type || 'text').toLowerCase())) return false;
     if (el.tagName === 'SELECT') return false; // selects get skipped globally
+    if (el.id && SKIP_IDS.has(el.id)) return false;
+    for (const cid of SKIP_CONTAINER_IDS) {
+      if (el.closest('#' + cid)) return false;
+    }
     return true;
   }
 
