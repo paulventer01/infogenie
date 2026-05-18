@@ -11,7 +11,9 @@ const TONES = ['energetic','educational','funny','dramatic','authoritative','con
 
 async function _generate({ topic, platform, tone, duration, count }) {
   if (!_hasOpenAI()) return null;
-  const sys = 'You are a top-tier short-form video scriptwriter. Generate scripts optimized for the platform. Strict JSON only.';
+  let brandCtx = '';
+  try { const bf = require('../brand_foundation/api'); if (bf.getBrandContextBlock) brandCtx = await bf.getBrandContextBlock(); } catch {}
+  const sys = `${brandCtx ? brandCtx + '\n\n' : ''}You are a top-tier short-form video scriptwriter. Generate scripts optimized for the platform. Stay strictly on-brand (respect the brand voice + banned words above). Strict JSON only.`;
   const user = `Topic: ${topic}
 Platform: ${platform} (${platform === 'shorts' ? 'YouTube Shorts' : platform === 'reels' ? 'Instagram Reels' : platform === 'tiktok' ? 'TikTok' : 'LinkedIn video'})
 Tone: ${tone}

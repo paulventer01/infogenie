@@ -23,10 +23,13 @@ const HAS_CF   = !!(CF_ID && CF_TOKEN);
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 async function _ai(prompt, opts = {}) {
   if (!HAS_OPENAI) throw new Error('OpenAI key not configured');
+  let brandCtx = '';
+  try { const bf = require('../brand_foundation/api'); if (bf.getBrandContextBlock) brandCtx = await bf.getBrandContextBlock(); } catch {}
+  const sys = (brandCtx ? brandCtx + '\n\n' : '') + (opts.system || 'You are a senior brand strategist. Respond with strict JSON only.');
   const r = await openai.chat.completions.create({
     model: opts.model || 'gpt-4o-mini',
     messages: [
-      { role: 'system', content: opts.system || 'You are a senior brand strategist. Respond with strict JSON only.' },
+      { role: 'system', content: sys },
       { role: 'user',   content: prompt }
     ],
     response_format: { type: 'json_object' },
@@ -197,6 +200,33 @@ Return JSON:
     const id = 'video_' + Date.now();
     await _db.kvSet(`studio_video:${id}`, { ...data, brandName, createdAt: new Date().toISOString() });
     res.json({ ok:true, id, storyboard: data });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+// Render one image-frame per scene of a saved storyboard, using Cloudflare
+// SDXL. Closes the AI-Video gap for users without Runway/Veo/Kling — they get
+// scene-by-scene key frames they can stitch in CapCut/Premiere or feed to an
+// external img-to-video tool.
+router.post('/video/render-frames', async (req, res) => {
+  const { id, style = 'cinematic, high contrast, 8k commercial photography' } = req.body || {};
+  if (!id) return _err(res, 400, 'id required');
+  if (!HAS_CF) return _err(res, 400, 'CLOUDFLARE_AI_TOKEN + CLOUDFLARE_ACCOUNT_ID required for frame rendering');
+  try {
+    const sb = await _db.kvGet(`studio_video:${id}`, null);
+    if (!sb || !Array.isArray(sb.scenes)) return _err(res, 404, 'storyboard not found');
+    const scenes = sb.scenes.slice(0, 8);
+    const frames = [];
+    for (const sc of scenes) {
+      const prompt = `${style}. Scene: ${sc.visual}. ${sc.textOverlay ? 'On-screen text: "'+sc.textOverlay+'".' : ''} No watermark, no logos.`;
+      try {
+        const dataUrl = await _cfImage('@cf/stabilityai/stable-diffusion-xl-base-1.0', { prompt: prompt.slice(0, 500), num_steps: 20, guidance: 7.5 });
+        frames.push({ tStart: sc.tStart, tEnd: sc.tEnd, prompt, image: dataUrl });
+      } catch (e) {
+        frames.push({ tStart: sc.tStart, tEnd: sc.tEnd, prompt, error: e.message });
+      }
+    }
+    await _db.kvSet(`studio_video:${id}`, { ...sb, frames, framesRenderedAt: new Date().toISOString() });
+    res.json({ ok:true, id, frames, note:'Frames generated as scene key-images. Stitch them externally (CapCut, Premiere, Runway img2vid) for full motion video.' });
   } catch (e) { _err(res, 500, e.message); }
 });
 

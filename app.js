@@ -2968,6 +2968,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'new-project')      { try { window.buildNewProject && window.buildNewProject(); }      catch(e) { console.warn('buildNewProject error:', e); } }
   if (viewId === 'brand-calendar')   { try { window.buildBrandCalendar && window.buildBrandCalendar(); } catch(e) { console.warn('buildBrandCalendar error:', e); } }
   if (viewId === 'brand-foundation') { try { window.buildBrandFoundation && window.buildBrandFoundation(); } catch(e) { console.warn('buildBrandFoundation error:', e); } }
+  if (viewId === 'ad-swipe')         { try { window.buildAdSwipe && window.buildAdSwipe(); }         catch(e) { console.warn('buildAdSwipe error:', e); } }
   if (viewId === 'budget-board')     { try { window.buildBudgetBoard && window.buildBudgetBoard(); }    catch(e) { console.warn('buildBudgetBoard error:', e); } }
   if (viewId === 'web-analytics')    { try { window.buildWebAnalytics && window.buildWebAnalytics(); }   catch(e) { console.warn('buildWebAnalytics error:', e); } }
   if (viewId === 'intent-map') {
@@ -38005,9 +38006,19 @@ window._alAppendResult = function(platform, label, brand, country, r) {
   } else if (!r.ads || !r.ads.length) {
     block.innerHTML = `<div style="font-weight:800;color:#0A1628;margin-bottom:8px">${_escapeHtml(label)}</div><div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:6px;padding:14px;text-align:center;color:#6B7280;font-size:0.8rem">${_escapeHtml(r.note || 'No active ads found.')}</div>`;
   } else {
-    block.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-weight:800;color:#0A1628">${_escapeHtml(label)}</div><div style="font-size:0.74rem;color:#6B7280">✅ ${r.ads.length} ad(s) for ${_escapeHtml(brand)} (${_escapeHtml(country)})</div></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">${r.ads.map(a => `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:11px"><div style="font-weight:700;color:#0A1628;font-size:0.82rem;margin-bottom:4px">${_escapeHtml(a.page_name || a.advertiser || brand)}</div>${a.title ? `<div style="font-weight:600;color:#1E1B4B;font-size:0.8rem;margin-bottom:3px">${_escapeHtml(a.title)}</div>` : ''}<div style="color:#374151;font-size:0.76rem;line-height:1.4;white-space:pre-wrap">${_escapeHtml((a.body || a.ad_text || '').slice(0, 240))}</div>${a.description ? `<div style="color:#6B7280;font-size:0.72rem;margin-top:4px;font-style:italic">${_escapeHtml(a.description.slice(0,140))}</div>` : ''}<div style="font-size:0.68rem;color:#9CA3AF;margin-top:7px;border-top:1px solid #E5E7EB;padding-top:6px">${a.created ? '📅 ' + new Date(a.created).toLocaleDateString() + ' · ' : ''}${a.first_seen ? '👁 ' + _escapeHtml(a.first_seen) + ' · ' : ''}${Array.isArray(a.platforms) ? a.platforms.map(p => _escapeHtml(String(p))).join(', ') : ''}${a.industry ? ' · ' + _escapeHtml(a.industry) : ''}${(a.snapshot_url || a.url) && _safeUrl(a.snapshot_url || a.url) ? ` · <a href="${_safeUrl(a.snapshot_url || a.url)}" target="_blank" rel="noopener" style="color:#0066FF;font-weight:700">View →</a>` : ''}</div></div>`).join('')}</div>`;
+    block.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-weight:800;color:#0A1628">${_escapeHtml(label)}</div><div style="font-size:0.74rem;color:#6B7280">✅ ${r.ads.length} ad(s) for ${_escapeHtml(brand)} (${_escapeHtml(country)})</div></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">${r.ads.map(a => `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:11px"><div style="font-weight:700;color:#0A1628;font-size:0.82rem;margin-bottom:4px">${_escapeHtml(a.page_name || a.advertiser || brand)}</div>${a.title ? `<div style="font-weight:600;color:#1E1B4B;font-size:0.8rem;margin-bottom:3px">${_escapeHtml(a.title)}</div>` : ''}<div style="color:#374151;font-size:0.76rem;line-height:1.4;white-space:pre-wrap">${_escapeHtml((a.body || a.ad_text || '').slice(0, 240))}</div>${a.description ? `<div style="color:#6B7280;font-size:0.72rem;margin-top:4px;font-style:italic">${_escapeHtml(a.description.slice(0,140))}</div>` : ''}<div style="font-size:0.68rem;color:#9CA3AF;margin-top:7px;border-top:1px solid #E5E7EB;padding-top:6px">${a.created ? '📅 ' + new Date(a.created).toLocaleDateString() + ' · ' : ''}${a.first_seen ? '👁 ' + _escapeHtml(a.first_seen) + ' · ' : ''}${Array.isArray(a.platforms) ? a.platforms.map(p => _escapeHtml(String(p))).join(', ') : ''}${a.industry ? ' · ' + _escapeHtml(a.industry) : ''}${(a.snapshot_url || a.url) && _safeUrl(a.snapshot_url || a.url) ? ` · <a href="${_safeUrl(a.snapshot_url || a.url)}" target="_blank" rel="noopener" style="color:#0066FF;font-weight:700">View →</a>` : ''}</div><button onclick='window._alSaveSwipe(${JSON.stringify({source:platform, external_id:a.id||null, advertiser:a.page_name||a.advertiser||brand, headline:a.title||"", body:a.body||a.ad_text||"", cta:a.description||"", snapshot_url:a.snapshot_url||a.url||"", platforms:a.platforms||[]}).replace(/'/g,"&#39;")}, this)' style="margin-top:8px;width:100%;background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;padding:6px;border-radius:6px;font-size:0.72rem;font-weight:800;cursor:pointer">💾 Save to Swipe File</button></div>`).join('')}</div>`;
   }
   container.appendChild(block);
+};
+
+window._alSaveSwipe = async function(payload, btn) {
+  const hdrs = (window.apiHeaders ? window.apiHeaders() : { 'Content-Type':'application/json' });
+  try {
+    const r = await fetch('/api/ad-swipe/save', { method:'POST', headers: hdrs, body: JSON.stringify(payload) });
+    const j = await r.json();
+    if (j.ok) { btn.textContent = '✅ Saved'; btn.style.background = '#D1FAE5'; btn.style.borderColor = '#34D399'; btn.style.color = '#065F46'; btn.disabled = true; }
+    else { btn.textContent = '⚠ ' + (j.error||'failed'); }
+  } catch (e) { btn.textContent = '⚠ ' + e.message; }
 };
 
 window._alScan = async function(platform) {
@@ -43082,7 +43093,18 @@ function _rpToCarousel(title) {
         vout.innerHTML=`<div style="background:#F8FAFC;padding:16px;border-radius:10px"><h3 style="margin:0 0 4px">${_esc(s.title||'')}</h3><p style="font-style:italic;color:#475569;margin:0 0 16px">"${_esc(s.voiceoverScript||'')}"</p>
           <strong>Scenes:</strong>${(s.scenes||[]).map(sc=>`<div style="background:white;padding:10px;border-radius:8px;margin:8px 0;border-left:3px solid #0066FF"><div style="font-weight:700;font-size:13px">${sc.tStart}s → ${sc.tEnd}s</div><div style="font-size:13px;color:#475569">${_esc(sc.visual)}</div>${sc.textOverlay?`<div style="font-size:12px;color:#0066FF;margin-top:4px">📝 "${_esc(sc.textOverlay)}"</div>`:''}</div>`).join('')}
           <p style="margin:12px 0 4px"><strong>🎵 Music:</strong> ${_esc(s.music||'')}</p>
-          <p style="margin:4px 0"><strong>🎬 End frame:</strong> ${_esc(s.endFrame||'')}</p></div>`;
+          <p style="margin:4px 0"><strong>🎬 End frame:</strong> ${_esc(s.endFrame||'')}</p>
+          <button id="vrf" data-id="${_esc(j.id||'')}" style="margin-top:12px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:10px 18px;border-radius:7px;font-weight:800;cursor:pointer">🖼️ Render Key Frames (1 per scene)</button>
+          <div id="vframes" style="margin-top:14px"></div></div>`;
+        const rfBtn = document.getElementById('vrf');
+        if (rfBtn) rfBtn.addEventListener('click', async () => {
+          const fout = document.getElementById('vframes');
+          fout.innerHTML = '⏳ Rendering frames via Cloudflare SDXL (may take 30-60s)…';
+          try {
+            const fj = await _api('/api/studio/video/render-frames', { method:'POST', body:{ id: rfBtn.dataset.id } });
+            fout.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">${(fj.frames||[]).map(f => f.image ? `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;overflow:hidden"><img src="${f.image}" style="width:100%;display:block"><div style="padding:6px;font-size:0.72rem;color:#64748B">${f.tStart}s–${f.tEnd}s</div></div>` : `<div style="background:#FEE2E2;color:#B91C1C;padding:8px;font-size:0.72rem;border-radius:6px">${f.tStart}s: ${_esc(f.error||'failed')}</div>`).join('')}</div><div style="margin-top:10px;font-size:0.78rem;color:#64748B">${_esc(fj.note||'')}</div>`;
+          } catch(e) { fout.innerHTML = `<div style="color:#DC2626">${_esc(e.message)}</div>`; }
+        });
       }catch(e){ vout.innerHTML=`<div style="color:#DC2626">${_esc(e.message)}</div>`; }
     });
   }
@@ -44119,6 +44141,85 @@ function _rpToCarousel(title) {
       if (existing) m.querySelector('#bcm_del').onclick = async ()=>{ if (!confirm('Delete?')) return; try{ await _f('/api/brand-calendar/'+existing.id,{method:'DELETE'}); close(); renderGrid(); }catch(e){_toast(e.message,'err');} };
     }
     renderGrid();
+  };
+
+  /* ═══════════ AD SWIPE FILE ═══════════ */
+  window.buildAdSwipe = async function(){
+    const wrap = document.getElementById('adSwipeWrap');
+    if (!wrap) return;
+    const esc = s => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const hdrs = (window.apiHeaders ? window.apiHeaders() : { 'Content-Type':'application/json' });
+
+    async function load(){
+      const tag = document.getElementById('asTag')?.value || '';
+      const adv = document.getElementById('asAdv')?.value || '';
+      const qs = new URLSearchParams();
+      if (tag) qs.set('tag', tag);
+      if (adv) qs.set('advertiser', adv);
+      try {
+        const r = await fetch('/api/ad-swipe/list?' + qs.toString(), { headers: hdrs });
+        const j = await r.json();
+        renderList(j.items || []);
+      } catch(e) { document.getElementById('asList').innerHTML = '<div style="color:#DC2626">'+esc(e.message)+'</div>'; }
+    }
+
+    function renderList(items){
+      const out = document.getElementById('asList');
+      if (!items.length) { out.innerHTML = '<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:32px;text-align:center;color:#6B7280">Your swipe file is empty. Open <strong>Compete → Ad Library Spy</strong>, search a competitor, and click <strong>💾 Save to Swipe File</strong> on any winning ad.</div>'; return; }
+      out.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">${items.map(it => `
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+            <div style="font-weight:800;color:#0A1628;font-size:0.92rem">${esc(it.advertiser)}</div>
+            <div style="background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:800">${esc(it.source.toUpperCase())}</div>
+          </div>
+          ${it.headline ? `<div style="font-weight:700;color:#1E1B4B;font-size:0.86rem">${esc(it.headline)}</div>` : ''}
+          ${it.body ? `<div style="color:#374151;font-size:0.8rem;line-height:1.45;white-space:pre-wrap;max-height:120px;overflow-y:auto">${esc(it.body.slice(0,400))}</div>` : ''}
+          <div style="display:flex;gap:8px;align-items:center">
+            <label style="font-size:0.7rem;color:#6B7280;font-weight:700">SCORE</label>
+            <input type="number" min="0" max="10" value="${it.score||0}" data-id="${it.id}" class="as-score" style="width:60px;padding:4px 6px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem">
+            <span style="font-size:0.68rem;color:#9CA3AF">/10</span>
+          </div>
+          <input class="as-tags" data-id="${it.id}" placeholder="tags (comma-separated)" value="${esc((it.tags||[]).join(', '))}" style="width:100%;padding:6px 8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.78rem;box-sizing:border-box">
+          <textarea class="as-notes" data-id="${it.id}" rows="2" placeholder="What makes this work?" style="width:100%;padding:6px 8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.78rem;font-family:inherit;box-sizing:border-box;resize:vertical">${esc(it.notes||'')}</textarea>
+          <div style="display:flex;gap:6px;margin-top:4px">
+            <button onclick="window._asUpdate(${it.id}, this)" style="flex:1;background:#0066FF;color:#fff;border:0;padding:7px;border-radius:6px;font-size:0.74rem;font-weight:800;cursor:pointer">💾 Save</button>
+            ${it.snapshot_url && /^https?:\/\//i.test(it.snapshot_url) ? `<a href="${esc(it.snapshot_url)}" target="_blank" rel="noopener" style="background:#F3F4F6;color:#374151;padding:7px 10px;border-radius:6px;font-size:0.74rem;font-weight:700;text-decoration:none">View →</a>` : ''}
+            <button onclick="window._asDelete(${it.id})" style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:7px 10px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">🗑</button>
+          </div>
+          <div style="font-size:0.66rem;color:#9CA3AF">Saved ${new Date(it.saved_at).toLocaleDateString()}</div>
+        </div>`).join('')}</div>`;
+    }
+
+    wrap.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px;margin-bottom:18px;display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+        <div style="flex:1;min-width:180px"><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">FILTER BY ADVERTISER</label><input id="asAdv" placeholder="any" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.85rem;box-sizing:border-box"></div>
+        <div style="flex:1;min-width:180px"><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">FILTER BY TAG</label><input id="asTag" placeholder="any" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.85rem;box-sizing:border-box"></div>
+        <button onclick="window._asReload()" style="background:#0066FF;color:#fff;border:0;padding:9px 18px;border-radius:6px;font-weight:800;cursor:pointer;font-size:0.84rem">🔍 Filter</button>
+      </div>
+      <div id="asList"><div style="color:#9CA3AF">Loading swipe file…</div></div>
+    `;
+
+    window._asReload = load;
+    window._asUpdate = async function(id, btn){
+      const tagEl = document.querySelector('.as-tags[data-id="'+id+'"]');
+      const notesEl = document.querySelector('.as-notes[data-id="'+id+'"]');
+      const scoreEl = document.querySelector('.as-score[data-id="'+id+'"]');
+      const tags = tagEl.value.split(',').map(t => t.trim()).filter(Boolean);
+      try {
+        const r = await fetch('/api/ad-swipe/'+id+'/update', { method:'POST', headers: hdrs, body: JSON.stringify({ tags, notes: notesEl.value, score: parseInt(scoreEl.value,10)||0 }) });
+        const j = await r.json();
+        if (j.ok) { btn.textContent = '✅ Saved'; setTimeout(() => btn.textContent = '💾 Save', 1500); }
+        else { btn.textContent = '⚠ ' + (j.error||'fail'); }
+      } catch(e) { btn.textContent = '⚠ ' + e.message; }
+    };
+    window._asDelete = async function(id){
+      if (!confirm('Delete this saved ad?')) return;
+      try {
+        await fetch('/api/ad-swipe/'+id, { method:'DELETE', headers: hdrs });
+        load();
+      } catch(e) { alert(e.message); }
+    };
+    await load();
   };
 
   /* ═══════════ BRAND FOUNDATION ═══════════ */

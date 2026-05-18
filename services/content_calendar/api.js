@@ -10,7 +10,9 @@ const VALID_CHANNELS = ['instagram','tiktok','linkedin','x','facebook','youtube'
 async function _aiCalendar({ brand, goal, channels, days, audience, tone }) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return null;
-  const sys = `You are a senior content strategist drafting a ${days}-day social content calendar for ${brand}. Return strict JSON:
+  let brandCtx = '';
+  try { const bf = require('../brand_foundation/api'); if (bf.getBrandContextBlock) brandCtx = await bf.getBrandContextBlock(); } catch {}
+  const sys = `${brandCtx ? brandCtx + '\n\n' : ''}You are a senior content strategist drafting a ${days}-day social content calendar for ${brand}. Stay on-brand: respect the brand voice, banned words, and ICP above. Return strict JSON:
 {"posts":[{"day":1,"date":"YYYY-MM-DD","channel":"instagram|tiktok|linkedin|x|facebook|youtube|blog|email","format":"reel|carousel|short|post|thread|article|video|email","hook":"<8-word scroll-stopper>","copy":"<the full caption / body>","hashtags":["#tag1","#tag2"],"cta":"<single call to action>","best_time":"HH:MM"}]}
 Rules:
 - Cover exactly ${days} days, dates starting today.

@@ -9,7 +9,9 @@ function _esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&
 async function _aiPage({ brand, title, goal, audience, brief, palette, adHeadline, adOffer }) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return null;
-  const sys = `You are a senior conversion copywriter and landing-page designer. Draft a complete landing page in strict JSON ONLY:
+  let brandCtx = '';
+  try { const bf = require('../brand_foundation/api'); if (bf.getBrandContextBlock) brandCtx = await bf.getBrandContextBlock(); } catch {}
+  const sys = `${brandCtx ? brandCtx + '\n\n' : ''}You are a senior conversion copywriter and landing-page designer. Draft a complete landing page in strict JSON ONLY:
 {"headline":"<H1, 6-10 words, benefit-led — MUST mirror the ad headline/offer when provided>","subhead":"<1 sentence, who it's for + outcome>","hero_cta":"<2-4 word CTA button — this exact text is repeated at every section>","social_proof":"<1 line specific social proof: include a real-sounding name, number, or outcome>","features":[{"title":"<3-5 word title>","body":"<1-2 sentence benefit>","icon":"<single emoji>"}],"how_it_works":[{"step":"<1-3 word step name>","body":"<1 sentence>"}],"testimonials":[{"quote":"<short customer quote with a specific metric or outcome>","name":"<first last>","role":"<role, company>"}],"faqs":[{"q":"<question>","a":"<plain-language answer>"}],"final_cta_headline":"<1 sentence>"}
 Rules:
 - 4-6 features, 3-4 steps, 2-3 testimonials, 4-6 FAQs.

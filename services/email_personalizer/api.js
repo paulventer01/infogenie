@@ -25,7 +25,9 @@ async function _firecrawlScrape(url) {
 
 async function _gptPersonalize({ template, lead, scrapedContent, tone }) {
   if (!_hasOpenAI()) return null;
-  const system = 'You are a senior B2B sales copywriter. Personalize cold emails based on real research. Reply with strict JSON only: {"subject":"...","body":"...","reasoning":"one-line note on what you used to personalize"}. Never invent facts.';
+  let brandCtx = '';
+  try { const bf = require('../brand_foundation/api'); if (bf.getBrandContextBlock) brandCtx = await bf.getBrandContextBlock(); } catch {}
+  const system = `${brandCtx ? brandCtx + '\n\n' : ''}You are a senior B2B sales copywriter. Personalize cold emails based on real research. Stay on-brand (respect the brand voice + banned words above). Reply with strict JSON only: {"subject":"...","body":"...","reasoning":"one-line note on what you used to personalize"}. Never invent facts.`;
   const userMsg = `Base email template:
 """
 ${String(template).slice(0, 2000)}
