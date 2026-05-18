@@ -3497,7 +3497,7 @@ async function runAnalysis(url, country, industryOverride) {
           p = document.createElement('div');
           p.id = 'igDbgPanel';
           p.style.cssText = 'position:fixed;bottom:8px;right:8px;width:420px;max-height:80vh;overflow:auto;background:rgba(10,22,40,.95);color:#7FFFD4;font:11px/1.4 monospace;padding:8px 10px;border-radius:8px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid #00C9C8';
-          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL17 (navigate-pinpoint)</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
+          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL18 (defer buildSettings)</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
           document.body.appendChild(p);
         }
         const log = document.getElementById('igDbgLog');
@@ -3986,13 +3986,20 @@ async function runAnalysis(url, country, industryOverride) {
     { time: now.toLocaleTimeString(), date: now.toLocaleDateString(), action: `Analysed ${cleanUrl} — industry: ${industry.name}`, type: 'analysis', impact: `${selectedComps.length} competitors identified` }
   );
   
-  // Build settings after navigation (non-critical)
-  try { buildSettings(); } catch(e) { console.warn('Settings build error:', e); }
-
-  // ── Enrich with real live competitor data from DataForSEO (async, non-blocking) ──
-  enrichWithRealCompetitorData(cleanUrl, industryKey, country);
-  // ── Upgrade KPI cards to live DataForSEO data (async, non-blocking) ──
-  enrichKPIsWithLiveData(cleanUrl, industryKey, country);
+  // Build settings after navigation (non-critical) — DEFERRED so it can't block
+  // the builder IIFE's setTimeout(0). REL18 freeze-fix: buildSettings renders
+  // the entire Settings view with 70+ integration cards and was running
+  // synchronously here, jamming the event loop so buildDashboard's setTimeout
+  // never fired. Defer to 1500ms so dashboard + competitors + campaigns get a
+  // clear window first.
+  try { window._igDbg && window._igDbg('▸ deferring buildSettings + enrich to 1500ms'); } catch(_){}
+  setTimeout(() => {
+    try { window._igDbg && window._igDbg('▸ deferred: buildSettings start'); } catch(_){}
+    try { buildSettings(); } catch(e) { console.warn('Settings build error:', e); }
+    try { window._igDbg && window._igDbg('✓ deferred: buildSettings done'); } catch(_){}
+    try { enrichWithRealCompetitorData(cleanUrl, industryKey, country); } catch(_){}
+    try { enrichKPIsWithLiveData(cleanUrl, industryKey, country); } catch(_){}
+  }, 1500);
 }
 
 // ── Real Competitor Data Enrichment ──────────────────────────────────────────
