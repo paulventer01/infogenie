@@ -34900,13 +34900,45 @@ window._bcDelete = async function(id) {
 // ── TRENDING TOPICS ────────────────────────────────────────────────────────
 window.buildTrendingTopics = async function() {
   const wrap = document.getElementById('trendingTopicsWrap'); if (!wrap) return;
+  // ── Auto-populate from last analysis (brand + competitors) ──
+  const brand = (window.analysisData && window.analysisData.brandName) || '';
+  const compNames = (window.analysisData && Array.isArray(window.analysisData.competitors))
+    ? window.analysisData.competitors.map(c => c.name || c.domain).filter(Boolean).slice(0, 10)
+    : [];
+  const pickerOpts = [
+    brand ? `<option value="${_escapeHtml(brand)}">${_escapeHtml(brand)} (your brand)</option>` : '',
+    ...compNames.map(n => `<option value="${_escapeHtml(n)}">${_escapeHtml(n)}</option>`)
+  ].filter(Boolean).join('');
+  const COUNTRIES = [
+    ['ALL','🌍 Global / All countries'],['US','🇺🇸 United States'],['GB','🇬🇧 United Kingdom'],['ZA','🇿🇦 South Africa'],
+    ['AU','🇦🇺 Australia'],['CA','🇨🇦 Canada'],['DE','🇩🇪 Germany'],['FR','🇫🇷 France'],['IN','🇮🇳 India'],
+    ['JP','🇯🇵 Japan'],['BR','🇧🇷 Brazil'],['MX','🇲🇽 Mexico'],['NL','🇳🇱 Netherlands'],['ES','🇪🇸 Spain'],
+    ['IT','🇮🇹 Italy'],['AE','🇦🇪 UAE'],['SG','🇸🇬 Singapore'],['NG','🇳🇬 Nigeria'],['KE','🇰🇪 Kenya']
+  ];
   wrap.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
       <div style="font-family:Sora,sans-serif;font-weight:800;font-size:1rem;margin-bottom:12px">What's hot in your category?</div>
-      <div style="display:grid;grid-template-columns:1.5fr 2fr 100px auto;gap:10px;align-items:end">
-        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Category *</div><input id="trCat" placeholder="e.g. AI marketing, fintech, fitness apparel" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem"></label>
-        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Keywords (comma, optional)</div><input id="trKw" placeholder="growth, automation" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem"></label>
-        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Country</div><input id="trCountry" value="US" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem"></label>
+      <div style="display:grid;grid-template-columns:1.5fr 2fr 170px auto;gap:10px;align-items:end">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <div style="font-size:0.66rem;font-weight:700;color:#6B7280">Category *</div>
+            <button type="button" onclick="window._trSuggestCat()" id="trCatSuggestBtn" title="Let AI infer your category from your last analysis" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:2px 8px;border-radius:8px;font-size:0.6rem;font-weight:800;cursor:pointer">🤖 AI Suggest</button>
+          </div>
+          ${pickerOpts ? `<select id="trCatPick" onchange="window._trCatPickChange()" style="width:100%;padding:6px 8px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.74rem;margin-bottom:4px;background:#F9FAFB"><option value="">— Pick a brand/competitor as category seed —</option>${pickerOpts}</select>` : ''}
+          <input id="trCat" placeholder="e.g. AI marketing, fintech, fitness apparel" value="${_escapeHtml(brand)}" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem">
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <div style="font-size:0.66rem;font-weight:700;color:#6B7280">Keywords (comma, optional)</div>
+            <button type="button" onclick="window._trSuggestKw()" id="trKwSuggestBtn" title="Let AI suggest keywords for the chosen category" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:2px 8px;border-radius:8px;font-size:0.6rem;font-weight:800;cursor:pointer">🤖 AI Suggest</button>
+          </div>
+          <input id="trKw" placeholder="growth, automation" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem">
+        </div>
+        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Country</div>
+          <select id="trCountry" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem">
+            ${COUNTRIES.map(([c,l]) => `<option value="${c}" ${c==='ALL'?'selected':''}>${l}</option>`).join('')}
+          </select>
+        </label>
         <button onclick="_trDetect()" style="padding:9px 18px;background:#B91C1C;border:2px solid #B91C1C;border-radius:6px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">🔥 Detect</button>
       </div>
     </div>
@@ -34917,11 +34949,54 @@ window.buildTrendingTopics = async function() {
     if (last) _trRender(last.topics, last.source, last.category);
   } catch {}
 };
+// ── Picker → input mirror
+window._trCatPickChange = function() {
+  const s = document.getElementById('trCatPick'); const i = document.getElementById('trCat');
+  if (s && i && s.value) i.value = s.value;
+};
+// ── 🤖 AI Suggest: category (uses last analysis snapshot)
+window._trSuggestCat = async function() {
+  const btn = document.getElementById('trCatSuggestBtn'); if (!btn) return;
+  const orig = btn.innerHTML; btn.innerHTML = '⏳…'; btn.disabled = true;
+  const brand = (window.analysisData && window.analysisData.brandName) || '';
+  const comps = (window.analysisData && Array.isArray(window.analysisData.competitors))
+    ? window.analysisData.competitors.map(c => c.name || c.domain).filter(Boolean).slice(0,5) : [];
+  const industry = (window.analysisData && window.analysisData.industry) || '';
+  try {
+    const r = await fetch('/api/ai-quick', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt: `Brand: ${brand}\nKnown competitors: ${comps.join(', ')||'(none)'}\nIndustry hint: ${industry}\n\nReturn ONE concise category label (2-4 words, no punctuation) that best describes the market this brand sells into. Only output the label, nothing else.` })
+    });
+    const txt = await r.text();
+    let j = null; try { j = txt ? JSON.parse(txt) : null; } catch {}
+    const cat = (j && (j.text || j.answer || j.result) || '').toString().trim().replace(/^["']|["']$/g,'').split('\n')[0].slice(0,50);
+    if (cat) { const inp = document.getElementById('trCat'); if (inp) inp.value = cat; showToast('✅ Category suggested'); }
+    else showToast('⚠ Couldn\'t infer a category — type one manually');
+  } catch (e) { showToast('❌ '+e.message); }
+  btn.innerHTML = orig; btn.disabled = false;
+};
+// ── 🤖 AI Suggest: keywords for the chosen category
+window._trSuggestKw = async function() {
+  const btn = document.getElementById('trKwSuggestBtn'); if (!btn) return;
+  const cat = document.getElementById('trCat').value.trim();
+  if (!cat) return showToast('❌ Type or suggest a category first');
+  const orig = btn.innerHTML; btn.innerHTML = '⏳…'; btn.disabled = true;
+  try {
+    const r = await fetch('/api/ai-quick', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt: `Category: ${cat}\n\nReturn 5 short trend-tracking keywords (1-2 words each, lowercase, comma-separated, no numbering, no punctuation other than commas). Focus on terms that indicate emerging trends in this category right now.` })
+    });
+    const txt = await r.text();
+    let j = null; try { j = txt ? JSON.parse(txt) : null; } catch {}
+    const kws = (j && (j.text || j.answer || j.result) || '').toString().trim().replace(/^["']|["']$/g,'').split('\n')[0].slice(0,200);
+    if (kws) { const inp = document.getElementById('trKw'); if (inp) inp.value = kws; showToast('✅ Keywords suggested'); }
+    else showToast('⚠ No keyword suggestions returned');
+  } catch (e) { showToast('❌ '+e.message); }
+  btn.innerHTML = orig; btn.disabled = false;
+};
 window._trDetect = async function() {
   const category = document.getElementById('trCat').value.trim();
   if (!category) return showToast('❌ Category required');
   const keywords = document.getElementById('trKw').value.split(',').map(s=>s.trim()).filter(Boolean);
-  const country = document.getElementById('trCountry').value.trim() || 'US';
+  const country = document.getElementById('trCountry').value.trim() || 'ALL';
   document.getElementById('trResults').innerHTML = `<div style="text-align:center;padding:40px;color:#6B7280">⏳ Searching live web…</div>`;
   try {
     const r = await fetch('/api/trends/detect', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ category, keywords, country }) }).then(x=>x.json());
@@ -38862,14 +38937,34 @@ window.buildTwitterPulse = function() {
 // ============================================================================
 window.buildJobBoardSpy = function() {
   const wrap = document.getElementById('jbWrap'); if (!wrap) return;
+  // ── Build picker from last analysis (own brand + competitors) ──
+  const ownBrand = (window.analysisData && window.analysisData.brandName) || '';
+  const compNames = (window.analysisData && Array.isArray(window.analysisData.competitors))
+    ? window.analysisData.competitors.map(c => c.name || c.domain).filter(Boolean).slice(0, 15)
+    : [];
+  const pickerOpts = [
+    ownBrand ? `<option value="${_escapeHtml(ownBrand)}">${_escapeHtml(ownBrand)} (your brand)</option>` : '',
+    ...compNames.map(n => `<option value="${_escapeHtml(n)}">${_escapeHtml(n)}</option>`)
+  ].filter(Boolean).join('');
   wrap.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
       <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">COMPETITOR / COMPANY</label>
-      <input id="jbCo" placeholder="e.g. Stripe" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem;box-sizing:border-box">
+      ${pickerOpts
+        ? `<select id="jbPick" onchange="window._jbPickChange()" style="width:100%;padding:8px 10px;border:1.5px solid #D1D5DB;border-radius:6px;font-size:0.82rem;background:#F9FAFB;margin-bottom:6px">
+             <option value="">— Pick a competitor you've analysed (or type manually below) —</option>
+             ${pickerOpts}
+           </select>`
+        : `<div style="font-size:0.72rem;color:#9CA3AF;margin-bottom:6px">💡 Run an analysis from the top-right <strong>+ Analyse</strong> button to unlock competitor pickers here.</div>`}
+      <input id="jbCo" placeholder="e.g. Stripe — or pick from list above" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem;box-sizing:border-box">
       <button id="jbGo" style="margin-top:10px;background:linear-gradient(135deg,#0F172A,#1E293B);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">💼 Scan Open Roles</button>
     </div>
     <div id="jbOut"></div>
   `;
+  // Mirror picker → free-text input
+  window._jbPickChange = function() {
+    const s = document.getElementById('jbPick'); const i = document.getElementById('jbCo');
+    if (s && i && s.value) i.value = s.value;
+  };
   document.getElementById('jbGo').addEventListener('click', async () => {
     const company = document.getElementById('jbCo').value.trim();
     const out = document.getElementById('jbOut');
@@ -45278,12 +45373,23 @@ function _rpToCarousel(title) {
       const box = document.getElementById('asTagSuggest'); if (!box) return;
       box.style.display = 'block';
       box.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:#6B21A8;font-size:0.82rem;font-weight:700"><span style="display:inline-block;width:14px;height:14px;border:2px solid #DDD6FE;border-top-color:#7C3AED;border-radius:50%;animation:asSpin 0.8s linear infinite"></span> Reading your saved ads and proposing useful filter tags…<style>@keyframes asSpin{to{transform:rotate(360deg)}}</style></div>';
+      // ── Pass brand + competitors so the endpoint can give tailored starter tags when the swipe file is still empty
+      const brand = (window.analysisData && window.analysisData.brandName) || '';
+      const competitors = (window.analysisData && Array.isArray(window.analysisData.competitors))
+        ? window.analysisData.competitors.map(c => c.name || c.domain).filter(Boolean).slice(0, 8)
+        : [];
       try {
-        const r = await fetch('/api/ad-swipe/suggest-tags', { method:'POST', headers: hdrs, body: '{}' });
-        const j = await r.json();
-        if (!j.ok) { box.innerHTML = `<div style="color:#991B1B;font-size:0.82rem">${esc(j.error||'AI suggest failed')}</div>`; return; }
-        if (!j.suggestions || !j.suggestions.length) { box.innerHTML = '<div style="color:#6B21A8;font-size:0.82rem">No tag suggestions returned — try saving a few more ads first.</div>'; return; }
-        box.innerHTML = `<div style="font-size:0.74rem;font-weight:800;color:#6B21A8;margin-bottom:8px">🤖 Click a tag to filter — InfoGenie grouped your saved ads by these angles:</div><div style="display:flex;flex-wrap:wrap;gap:6px">${j.suggestions.map(s => `<button type="button" onclick="window._asApplyTag('${esc(s.tag).replace(/'/g,'&#39;')}')" title="${esc(s.why||'')}" style="background:#fff;border:1px solid #C4B5FD;color:#5B21B6;padding:5px 12px;border-radius:14px;font-size:0.78rem;font-weight:700;cursor:pointer">${esc(s.tag)}</button>`).join('')}</div>`;
+        const r = await fetch('/api/ad-swipe/suggest-tags', { method:'POST', headers: hdrs, body: JSON.stringify({ brand, competitors }) });
+        // ── Robust parse: read as text first so we never throw "Unexpected end of JSON input"
+        const txt = await r.text();
+        let j = null;
+        try { j = txt ? JSON.parse(txt) : null; } catch { j = null; }
+        if (!j) { box.innerHTML = `<div style="color:#991B1B;font-size:0.82rem">Server returned an empty / non-JSON response (HTTP ${r.status}). Try again in a moment.</div>`; return; }
+        if (!j.ok && (!j.suggestions || !j.suggestions.length)) { box.innerHTML = `<div style="color:#991B1B;font-size:0.82rem">${esc(j.error||'AI suggest failed')}</div>`; return; }
+        const sugs = j.suggestions || [];
+        if (!sugs.length) { box.innerHTML = '<div style="color:#6B21A8;font-size:0.82rem">No tag suggestions returned — try saving a few more ads first.</div>'; return; }
+        const noteLine = j.note ? `<div style="font-size:0.7rem;color:#7C3AED;margin-bottom:6px;font-style:italic">${esc(j.note)}</div>` : '';
+        box.innerHTML = `<div style="font-size:0.74rem;font-weight:800;color:#6B21A8;margin-bottom:8px">🤖 Click a tag to filter${j.source==='saved_ads'?' — InfoGenie grouped your saved ads by these angles':' (starter tags — save ads for tailored ones)'}:</div>${noteLine}<div style="display:flex;flex-wrap:wrap;gap:6px">${sugs.map(s => `<button type="button" onclick="window._asApplyTag('${esc(s.tag).replace(/'/g,'&#39;')}')" title="${esc(s.why||'')}" style="background:#fff;border:1px solid #C4B5FD;color:#5B21B6;padding:5px 12px;border-radius:14px;font-size:0.78rem;font-weight:700;cursor:pointer">${esc(s.tag)}</button>`).join('')}</div>`;
       } catch(e) { box.innerHTML = `<div style="color:#991B1B;font-size:0.82rem">${esc(e.message)}</div>`; }
     };
     window._asApplyTag = function(t){

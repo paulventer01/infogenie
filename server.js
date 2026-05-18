@@ -677,6 +677,24 @@ app.post('/api/launch/tiktok', async (req, res) => {
 });
 
 // ── AI 90-Day Revenue Forecast ────────────────────────────────────────────────
+// ── /api/ai-quick — tiny single-shot prompt → text (used by AI Suggest buttons across the UI)
+// Returns { ok:true, text: "..." }. Never fabricates: if no real OpenAI key, returns ok:false with reason.
+app.post('/api/ai-quick', async (req, res) => {
+  try {
+    const prompt = String((req.body && req.body.prompt) || '').slice(0, 4000);
+    if (!prompt) return res.status(400).json({ ok:false, error:'prompt required', text:'' });
+    const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+    if (!key || /^_DUMMY/i.test(key)) return res.status(503).json({ ok:false, error:'OpenAI key not configured', text:'' });
+    const c = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{ role:'user', content: prompt }],
+      max_tokens: 200, temperature: 0.6,
+    });
+    const text = (c.choices && c.choices[0] && c.choices[0].message && c.choices[0].message.content || '').trim();
+    res.json({ ok:true, text });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message, text:'' }); }
+});
+
 app.post('/api/ai-forecast', async (req, res) => {
   const { domain = 'yourdomain.com', industry = 'marketing', competitors = [], currentROAS = 3.2, monthlyBudget = 5000, trafficMo = 10000 } = req.body;
   const weeklyBase = Math.round((monthlyBudget || 5000) * (currentROAS || 3.2) / 4.33);

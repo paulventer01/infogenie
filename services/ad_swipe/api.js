@@ -114,15 +114,56 @@ router.get('/advertisers', _safe(async (_req, res) => {
 }));
 
 // POST /suggest-tags — AI suggests filter tags based on the user's saved swipe library
+// Falls back to brand-context suggestions when the swipe file is empty so the
+// 🤖 AI Suggest button is useful even on first visit.
 router.post('/suggest-tags', _safe(async (req, res) => {
-  if (!_db.hasDb()) return _err(res, 503, 'database unavailable');
-  const r = await _db.getPool().query(
-    `SELECT advertiser, headline, body, tags FROM ad_swipe ORDER BY saved_at DESC LIMIT 60`
-  );
-  const items = r.rows || [];
-  if (!items.length) return _err(res, 400, 'Your swipe file is empty — save some ads first, then ask for tag suggestions.');
-  const tagsRow = await _db.getPool().query(`SELECT DISTINCT jsonb_array_elements_text(tags) AS tag FROM ad_swipe`);
-  const existing = tagsRow.rows.map(x => x.tag).filter(Boolean);
+  if (!_db.hasDb()) return res.status(503).json({ ok:false, error:'database unavailable', suggestions: [], existing: [] });
+  const body = req.body || {};
+  let items = [];
+  let existing = [];
+  try {
+    const r = await _db.getPool().query(
+      `SELECT advertiser, headline, body, tags FROM ad_swipe ORDER BY saved_at DESC LIMIT 60`
+    );
+    items = r.rows || [];
+    const tagsRow = await _db.getPool().query(`SELECT DISTINCT jsonb_array_elements_text(tags) AS tag FROM ad_swipe`);
+    existing = tagsRow.rows.map(x => x.tag).filter(Boolean);
+  } catch (e) {
+    return res.status(500).json({ ok:false, error:'DB query failed: '+e.message, suggestions: [], existing: [] });
+  }
+
+  // ── EMPTY SWIPE FILE — propose generic-but-grounded tags from brand context ──
+  if (!items.length) {
+    const brand = String(body.brand || '').slice(0, 80);
+    const competitors = Array.isArray(body.competitors) ? body.competitors.slice(0, 8).map(s=>String(s).slice(0,60)) : [];
+    const fallbackOut = await _openaiJson([
+      { role:'system', content:
+        'You are a marketing strategist. The user just opened their Ad Swipe File for the first time and has NOT saved any competitor ads yet. Propose 10 useful SHORT filter tags (1-3 words each, lowercase, no punctuation) they will likely need once they start saving ads: cover angle (social proof, scarcity, fomo, problem-solution), format (ugc video, carousel, static, motion graphic), offer (free trial, discount, lead magnet), audience (smb, creators, enterprise), funnel stage (awareness, consideration, conversion). Return strict JSON: {"suggestions":[{"tag":"social proof","why":"<one short reason this matters for the user\'s brand>"}, …]}' },
+      { role:'user', content: `BRAND: ${brand || '(unknown)'}\nKNOWN_COMPETITORS: ${competitors.join(', ') || '(none yet)'}` },
+    ], 600);
+    if (fallbackOut && Array.isArray(fallbackOut.suggestions) && fallbackOut.suggestions.length) {
+      const clean = fallbackOut.suggestions
+        .map(s => ({ tag: String(s.tag||'').toLowerCase().replace(/[^a-z0-9 \-]/g,'').trim().slice(0,40), why: String(s.why||'').slice(0,140) }))
+        .filter(s => s.tag && s.tag.length >= 2);
+      return res.json({ ok:true, suggestions: clean, existing: [], source:'brand_context', note:'Swipe file is empty — these are starter tags. Save some ads and click 🤖 AI Suggest again for tags tailored to your library.' });
+    }
+    // ── No LLM key — return curated starter tags so the button is never silent ──
+    const starter = [
+      { tag:'social proof',   why:'Testimonials, reviews, customer counts.' },
+      { tag:'scarcity',       why:'Limited time / limited stock urgency.' },
+      { tag:'ugc video',      why:'User-generated short videos perform on Meta/TikTok.' },
+      { tag:'carousel',       why:'Multi-image swipe format.' },
+      { tag:'free trial',     why:'Frictionless trial offers.' },
+      { tag:'discount',       why:'Price-led promos.' },
+      { tag:'awareness',      why:'Top-of-funnel education.' },
+      { tag:'conversion',     why:'Bottom-of-funnel direct response.' },
+      { tag:'problem solution', why:'Pain-point led copy.' },
+      { tag:'fomo',           why:'Fear-of-missing-out angles.' },
+    ];
+    return res.json({ ok:true, suggestions: starter, existing: [], source:'starter', note:'Swipe file is empty + no AI key — starter tags shown. Save some ads and connect an LLM for tailored suggestions.' });
+  }
+
+  // ── HAS SAVED ADS — use them as the prompt grounding ──
   const snippet = items.slice(0, 30).map((a, i) =>
     `${i+1}. ${a.advertiser} | ${a.headline||''} | ${(a.body||'').slice(0,160)}`
   ).join('\n');
@@ -132,11 +173,11 @@ router.post('/suggest-tags', _safe(async (req, res) => {
     },
     { role:'user', content: `EXISTING_TAGS: ${existing.join(', ') || '(none yet)'}\n\nSAVED_ADS (${items.length}):\n${snippet}` },
   ], 600);
-  if (!out || !Array.isArray(out.suggestions)) return _err(res, 502, 'AI tag suggestions unavailable — set OPENAI key or add tags manually.');
+  if (!out || !Array.isArray(out.suggestions)) return res.status(502).json({ ok:false, error:'AI tag suggestions unavailable — set OPENAI key or add tags manually.', suggestions: [], existing });
   const clean = out.suggestions
     .map(s => ({ tag: String(s.tag||'').toLowerCase().replace(/[^a-z0-9 \-]/g,'').trim().slice(0,40), why: String(s.why||'').slice(0,140) }))
     .filter(s => s.tag && s.tag.length >= 2);
-  res.json({ ok:true, suggestions: clean, existing });
+  res.json({ ok:true, suggestions: clean, existing, source:'saved_ads' });
 }));
 
 module.exports = router;
