@@ -3345,7 +3345,7 @@ async function runAnalysis(url, country, industryOverride) {
   // the backend) leaves the loading overlay stuck at 95% forever and the
   // dashboard never renders. Timing out means we just fall back to the DB
   // competitors — the user still sees a complete report.
-  const _fetchWithTimeout = (url, opts, ms = 20000) => {
+  const _fetchWithTimeout = (url, opts, ms = 8000) => {
     const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     const timer = setTimeout(() => { try { ctrl && ctrl.abort(); } catch(_){} }, ms);
     const merged = Object.assign({}, opts, ctrl ? { signal: ctrl.signal } : {});
@@ -3360,7 +3360,7 @@ async function runAnalysis(url, country, industryOverride) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: cleanUrl })
-      }, 20000).then(r => r.ok ? r.json() : null).catch(err => { console.warn('smart-detect failed/timed-out:', err && err.name || err); return null; });
+      }, 8000).then(r => r.ok ? r.json() : null).catch(err => { console.warn('smart-detect failed/timed-out:', err && err.name || err); return null; });
 
   // ── If user typed an industry (sector-only OR refining a URL), call the
   //    AI sector-competitors endpoint to get REAL same-niche competitors.
@@ -3374,7 +3374,7 @@ async function runAnalysis(url, country, industryOverride) {
           country: country || '',
           urlHint: hasUrl ? cleanUrl : ''
         })
-      }, 20000).then(r => r.ok ? r.json() : null).catch(err => { console.warn('sector-competitors failed/timed-out:', err && err.name || err); return null; })
+      }, 8000).then(r => r.ok ? r.json() : null).catch(err => { console.warn('sector-competitors failed/timed-out:', err && err.name || err); return null; })
     : Promise.resolve(null);
 
   const industry = INDUSTRY_DB[industryKey];
@@ -3471,8 +3471,11 @@ async function runAnalysis(url, country, industryOverride) {
   ]);
   let aiDetected = null;
   let sectorDetected = null;
-  try { aiDetected    = await _withDeadline(smartDetectPromise, 22000); } catch(e) { aiDetected    = null; }
-  try { sectorDetected = await _withDeadline(sectorPromise,     22000); } catch(e) { sectorDetected = null; }
+  console.log('[runAnalysis] awaiting AI promises (8s deadline) …');
+  const _t0 = performance.now();
+  try { aiDetected    = await _withDeadline(smartDetectPromise, 8000); } catch(e) { aiDetected    = null; }
+  try { sectorDetected = await _withDeadline(sectorPromise,     8000); } catch(e) { sectorDetected = null; }
+  console.log('[runAnalysis] AI promises settled in', Math.round(performance.now()-_t0), 'ms', { aiDetected: !!aiDetected, sectorDetected: !!sectorDetected });
 
   bar.style.width = '100%';
   pct.textContent = '100%';
