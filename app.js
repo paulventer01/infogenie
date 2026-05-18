@@ -3824,6 +3824,11 @@ async function runAnalysis(url, country, industryOverride) {
   // Store analysis data
   analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps, sectorOnly };
   window.analysisData = analysisData;  // Mirror to window so external modules (Link Suggester, CRO Lab, Analytics Hub, etc.) can read it
+  // Notify the global field enhancer (ig_field_enhancer.js) so any Brand /
+  // Competitor pickers already rendered refresh their option lists with the
+  // freshly-analysed brand + competitor names. New fields rendered after this
+  // point pick the data up live via the read-on-demand helpers.
+  try { window.dispatchEvent(new CustomEvent('ig:analysis-updated', { detail: { brand: analysisData.brandName, competitors: (analysisData.competitors||[]).length } })); } catch(_) {}
   try { localStorage.setItem('ig-last-analysed-url', cleanUrl); } catch(e){}
   igTrack('Analysis Completed', { domain: cleanUrl, industry: industry.name, competitorCount: selectedComps.length, country });
 
