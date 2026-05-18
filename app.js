@@ -3650,26 +3650,20 @@ async function runAnalysis(url, country, industryOverride) {
             // for any high-SEO domain (eToro/IG/Plus500 land at $20M-60M/mo
             // when the real figure is $1M-5M/mo). Traffic is closer to right
             // so we only overwrite at HIGH confidence.
-            const fillIfMissing = (key, val) => {
-              if (val === null || val === undefined || val === '' || val === '—') return;
-              if (c[key] === null || c[key] === undefined || c[key] === '' || c[key] === '—') {
-                c[key] = val;
-                return;
-              }
-              if (key === 'adSpend' && (conf === 'high' || conf === 'medium')) {
-                c[key] = val;
-              } else if (conf === 'high' && c.dataSource !== 'DataForSEO') {
-                c[key] = val;
-              }
-            };
-            fillIfMissing('traffic', v.traffic);
-            fillIfMissing('adSpend', v.adSpend);
-            fillIfMissing('ctr',     v.ctr);
-            if (typeof v.roas === 'number' && v.roas > 0) {
-              if (c.roas === null || c.roas === undefined || (conf === 'high' && c.dataSource !== 'DataForSEO')) {
-                c.roas = parseFloat(v.roas.toFixed(1));
-              }
-            }
+            // INTEGRITY GUARDRAIL — DO NOT fill numeric metrics (traffic,
+            // ad spend, CTR, ROAS) from the LLM. The model has no real way
+            // to know any private company's actual ad spend; it hallucinates
+            // round numbers (e.g. eToro=$4M/mo, AvaTrade=$1.2M/mo) that look
+            // authoritative but are not grounded in any public source.
+            // We ONLY accept numeric values that came back from DataForSEO
+            // (a live SERP/keyword API). Everything else stays as "—" with
+            // the "Limited public data" tooltip — the user explicitly asked
+            // for zero fake/placeholder numbers.
+            //
+            // We DO still accept the qualitative `topChannel` consensus from
+            // the dual-LLM pass below, because that maps to publicly
+            // observable behaviour (which platforms the brand advertises on)
+            // rather than a fabricated dollar figure.
             // Primary channel comes straight from the dual-LLM consensus —
             // no random pick. Validator returns the brand's actual main paid
             // channel (Google Search / Meta Ads / TikTok / LinkedIn / etc.).
@@ -36155,10 +36149,12 @@ window.buildTechStack = function() {
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
       <div style="margin-bottom:14px">
         <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Single domain — full stack breakdown</label>
-        <div style="display:flex;gap:10px">
-          <input id="tsOne" placeholder="e.g. nike.com" value="nike.com" style="flex:1;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <select id="tsPick" onchange="_tsPickChange()" style="padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.84rem;min-width:200px;background:#fff"></select>
+          <input id="tsOne" placeholder="…or type any domain (e.g. shopify.com)" style="flex:1;min-width:180px;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
           <button onclick="_tsOne()" style="padding:10px 22px;background:#DC2626;border:2px solid #DC2626;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🔍 Detect</button>
         </div>
+        <div id="tsOneHint" style="margin-top:5px;font-size:0.7rem;color:#9CA3AF"></div>
       </div>
       <div style="border-top:1px solid #F1F5F9;padding-top:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -36166,13 +36162,59 @@ window.buildTechStack = function() {
           <button onclick="_tsLoadAnalysed()" id="tsLoadBtn" style="padding:5px 11px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;font-size:0.72rem;font-weight:700;color:#1D4ED8;cursor:pointer">⚡ Use my analysed competitors</button>
         </div>
         <div style="display:flex;gap:10px">
-          <input id="tsMulti" placeholder="e.g. nike.com, adidas.com, puma.com" style="flex:1;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+          <input id="tsMulti" placeholder="Type domains separated by commas" style="flex:1;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
           <button onclick="_tsCompare()" style="padding:10px 22px;background:#fff;border:2px solid #DC2626;border-radius:8px;font-size:0.84rem;font-weight:800;color:#DC2626;cursor:pointer">⚖️ Compare</button>
         </div>
         <div id="tsLoadHint" style="margin-top:5px;font-size:0.7rem;color:#9CA3AF"></div>
       </div>
     </div>
     <div id="tsOut"></div>`;
+  try { window._tsPopulatePicker && window._tsPopulatePicker(); } catch(e) {}
+};
+window._tsPickChange = function() {
+  const sel = document.getElementById('tsPick');
+  const inp = document.getElementById('tsOne');
+  if (!sel || !inp) return;
+  const v = sel.value || '';
+  if (v && v !== '__manual__') { inp.value = v; }
+  else if (v === '__manual__') { inp.value = ''; inp.focus(); }
+};
+window._tsPopulatePicker = function() {
+  const sel = document.getElementById('tsPick'); if (!sel) return;
+  const ad = window.analysisData || {};
+  const norm = u => String(u||'').replace(/^https?:\/\//i,'').replace(/^www\./i,'').replace(/\/.*$/,'').trim().toLowerCase();
+  const ownDom = norm(ad.url || ad.domain || '');
+  const comps = Array.isArray(ad.competitors) ? ad.competitors : [];
+  const compRows = comps.map(c => {
+    const d = norm(c.domain || c.url || c.website || '');
+    const name = c.name || d;
+    return d && /\./.test(d) ? { name, d } : null;
+  }).filter(Boolean);
+  const opts = [];
+  if (ownDom) opts.push(`<option value="${_escapeHtml(ownDom)}" selected>🏠 Your site — ${_escapeHtml(ownDom)}</option>`);
+  if (compRows.length) {
+    opts.push(`<optgroup label="Your analysed competitors">`);
+    compRows.forEach(r => opts.push(`<option value="${_escapeHtml(r.d)}">${_escapeHtml(r.name)} — ${_escapeHtml(r.d)}</option>`));
+    opts.push(`</optgroup>`);
+  }
+  opts.push(`<option value="__manual__">✏️ Type manually…</option>`);
+  if (!ownDom && !compRows.length) {
+    sel.innerHTML = `<option value="__manual__" selected>✏️ Type a domain manually…</option>`;
+  } else {
+    sel.innerHTML = opts.join('');
+  }
+  const inp = document.getElementById('tsOne');
+  if (inp && ownDom && !inp.value) inp.value = ownDom;
+  const hint = document.getElementById('tsOneHint');
+  if (hint) {
+    if (ownDom || compRows.length) {
+      hint.style.color = '#15803D';
+      hint.textContent = `✓ Pre-filled from your latest analysis. Pick another or type your own.`;
+    } else {
+      hint.style.color = '#9CA3AF';
+      hint.textContent = `Run a competitor analysis from the home page to pre-fill your site + competitors here.`;
+    }
+  }
 };
 window._tsOne = async function() {
   const domain = (document.getElementById('tsOne')||{}).value || '';
