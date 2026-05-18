@@ -291,14 +291,33 @@
   function schedule(){
     if (pending) return;
     pending = true;
-    setTimeout(() => { pending = false; scan(document); }, 60);
+    // 250ms debounce — long enough to coalesce the giant innerHTML bursts the
+    // analyse-now flow emits when it renders all the dashboards back-to-back.
+    setTimeout(() => { pending = false; scan(document); }, 250);
+  }
+
+  // Cheap test — does this added node (or any of its descendants) contain a
+  // form input we'd actually decorate? Avoids scanning the whole document on
+  // every DOM tweak (chart canvases, tooltips, our own toolbar inserts, etc).
+  function hasInput(node){
+    if (!node || node.nodeType !== 1) return false;
+    const t = node.tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA') return true;
+    if (node.dataset && node.dataset.igBar) return false; // our own toolbar — ignore
+    if (typeof node.querySelector === 'function') {
+      return !!node.querySelector('input,textarea');
+    }
+    return false;
   }
 
   function start(){
     scan(document);
     const mo = new MutationObserver(muts => {
       for (const m of muts) {
-        if (m.addedNodes && m.addedNodes.length) { schedule(); return; }
+        if (!m.addedNodes || !m.addedNodes.length) continue;
+        for (const n of m.addedNodes) {
+          if (hasInput(n)) { schedule(); return; }
+        }
       }
     });
     mo.observe(document.body, { childList:true, subtree:true });
