@@ -1,12 +1,12 @@
 {
   "alerts": [
     {
-      "id": "credit-missing-openai_api_key-1779131852764",
+      "id": "credit-missing-openai_api_key-1779132118118",
       "type": "service_missing",
       "severity": "high",
       "title": "🔑 OpenAI not connected — subscription / API key required",
       "body": "AI Attack Plan, AI Visibility audit, content scoring, and most LLM features depend on this. Add OPENAI_API_KEY in Replit Secrets to enable.",
-      "timestamp": 1779131852764,
+      "timestamp": 1779132118118,
       "read": false
     }
   ]
