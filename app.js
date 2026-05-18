@@ -2973,6 +2973,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'infographics')     { try { window.buildInfographics && window.buildInfographics(); } catch(e) { console.warn('buildInfographics error:', e); } }
   if (viewId === 'heatmaps')         { try { window.buildHeatmaps && window.buildHeatmaps(); }         catch(e) { console.warn('buildHeatmaps error:', e); } }
   if (viewId === 'question-miner')   { try { window.buildQuestionMiner && window.buildQuestionMiner(); } catch(e) { console.warn('buildQuestionMiner error:', e); } }
+  if (viewId === 'ai-providers')     { try { window.buildAiProviders && window.buildAiProviders(); }   catch(e) { console.warn('buildAiProviders error:', e); } }
   if (viewId === 'budget-board')     { try { window.buildBudgetBoard && window.buildBudgetBoard(); }    catch(e) { console.warn('buildBudgetBoard error:', e); } }
   if (viewId === 'web-analytics')    { try { window.buildWebAnalytics && window.buildWebAnalytics(); }   catch(e) { console.warn('buildWebAnalytics error:', e); } }
   if (viewId === 'intent-map') {
@@ -44386,6 +44387,132 @@ function _rpToCarousel(title) {
         else { btn.textContent = '⚠'; }
       } catch(e) { btn.textContent = '⚠'; }
     };
+  };
+
+  /* ═══════════ AI PROVIDERS (BYO LLM) ═══════════ */
+  window.buildAiProviders = async function(){
+    const wrap = document.getElementById('aiProvidersWrap'); if (!wrap) return;
+    const esc = s => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const hdrs = (window.apiHeaders ? window.apiHeaders() : { 'Content-Type':'application/json' });
+    const CATS = [
+      { key:'writing',  label:'✍️ Writing',  hint:'Copy, ad creative, content calendar, cold emails' },
+      { key:'analysis', label:'🧮 Analysis', hint:'Attack plans, scoring, classification, Q&A over your data' },
+      { key:'vision',   label:'👁️ Vision',   hint:'Image understanding, brand audits, screenshot reviews' },
+      { key:'audio',    label:'🎙️ Audio',    hint:'Voice-over / TTS for storyboards' }
+    ];
+    const PRESETS = [
+      { name:'Groq Llama 3.1 70B', base_url:'https://api.groq.com/openai/v1', model:'llama-3.1-70b-versatile' },
+      { name:'DeepSeek Chat',      base_url:'https://api.deepseek.com',       model:'deepseek-chat' },
+      { name:'Mistral Large',      base_url:'https://api.mistral.ai/v1',      model:'mistral-large-latest' },
+      { name:'OpenRouter',         base_url:'https://openrouter.ai/api/v1',   model:'meta-llama/llama-3.1-70b-instruct' },
+      { name:'Together AI',        base_url:'https://api.together.xyz/v1',    model:'meta-llama/Llama-3-70b-chat-hf' },
+      { name:'Ollama (local)',     base_url:'http://localhost:11434/v1',      model:'llama3.1' },
+      { name:'Azure OpenAI',       base_url:'https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT',  model:'gpt-4o' }
+    ];
+
+    async function load(){
+      try {
+        const [list, active] = await Promise.all([
+          fetch('/api/ai-providers/list',   { headers: hdrs }).then(r=>r.json()),
+          fetch('/api/ai-providers/active', { headers: hdrs }).then(r=>r.json())
+        ]);
+        render(list.items || [], active.active || {});
+      } catch(e) { wrap.innerHTML = '<div style="color:#DC2626">'+esc(e.message)+'</div>'; }
+    }
+
+    function render(items, active){
+      wrap.innerHTML = `
+        <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:14px;margin-bottom:18px;font-size:0.86rem;color:#075985">
+          <strong>How this works:</strong> InfoGenie ships with OpenAI, Claude, Perplexity, Gemini and Cloudflare AI built in. Add your own OpenAI-compatible endpoint here, mark it as <em>default</em> for a category, and the matching features will route through it first. Empty = fall back to built-ins.
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:18px">
+          ${CATS.map(c => { const a = active[c.key]; return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:12px"><div style="font-weight:800;color:#0A1628">${c.label}</div><div style="font-size:0.72rem;color:#6B7280;margin:4px 0 8px">${c.hint}</div><div style="font-size:0.82rem;color:${a?'#065F46':'#9CA3AF'};font-weight:700">${a ? esc(a.name) + ' · ' + esc(a.model) : '— (using built-in)'}</div></div>`; }).join('')}
+        </div>
+
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+          <h3 style="margin:0 0 12px;font-family:Sora,sans-serif">➕ Add Provider</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">DISPLAY NAME</label><input id="apName" placeholder="e.g. Groq Llama 3.1" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box"></div>
+            <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">CATEGORY</label><select id="apCat" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box">${CATS.map(c=>'<option value="'+c.key+'">'+c.label+'</option>').join('')}</select></div>
+            <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BASE URL (OpenAI-compatible)</label><input id="apUrl" placeholder="https://api.groq.com/openai/v1" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box"></div>
+            <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">MODEL</label><input id="apModel" placeholder="llama-3.1-70b-versatile" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box"></div>
+            <div style="grid-column:span 2"><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">API KEY</label><input id="apKey" type="password" placeholder="sk-…" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box"></div>
+            <div style="grid-column:span 2"><label style="display:flex;align-items:center;gap:6px;font-size:0.84rem;color:#374151"><input type="checkbox" id="apDef" checked> Set as default for this category</label></div>
+          </div>
+          <div style="margin-bottom:10px">
+            <div style="font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:4px">PRESETS (click to pre-fill)</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">${PRESETS.map((p,i)=>`<button class="apPre" data-idx="${i}" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:5px 10px;border-radius:14px;font-size:0.74rem;cursor:pointer">${esc(p.name)}</button>`).join('')}</div>
+          </div>
+          <button id="apAdd" style="background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:0;padding:10px 22px;border-radius:7px;font-weight:800;cursor:pointer">💾 Add Provider</button>
+        </div>
+
+        <h3 style="margin:0 0 10px;font-family:Sora,sans-serif">📚 Configured Providers (${items.length})</h3>
+        ${items.length ? `<div style="display:flex;flex-direction:column;gap:8px">${items.map(it => `
+          <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center">
+            <div>
+              <div style="font-weight:800;color:#0A1628">${esc(it.name)} ${it.is_default?'<span style="background:#D1FAE5;color:#065F46;font-size:0.68rem;padding:2px 6px;border-radius:10px;margin-left:6px">DEFAULT</span>':''} ${it.enabled?'':'<span style="background:#FEE2E2;color:#991B1B;font-size:0.68rem;padding:2px 6px;border-radius:10px;margin-left:6px">DISABLED</span>'}</div>
+              <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">${esc(it.category)} · <code style="background:#F3F4F6;padding:1px 5px;border-radius:3px">${esc(it.model)}</code> · ${esc(it.base_url)} · key ${esc(it.api_key_preview||'(not set)')}</div>
+              <div id="apTest_${it.id}" style="margin-top:6px;font-size:0.78rem"></div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="apTest" data-id="${it.id}" style="background:#F0F9FF;border:1px solid #BAE6FD;color:#075985;padding:6px 12px;border-radius:6px;font-size:0.78rem;font-weight:700;cursor:pointer">🧪 Test</button>
+              <button class="apDef2" data-id="${it.id}" data-cat="${esc(it.category)}" style="background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;padding:6px 12px;border-radius:6px;font-size:0.78rem;font-weight:700;cursor:pointer">⭐ Default</button>
+              <button class="apTog" data-id="${it.id}" data-en="${it.enabled?0:1}" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:6px 12px;border-radius:6px;font-size:0.78rem;font-weight:700;cursor:pointer">${it.enabled?'⏸ Disable':'▶ Enable'}</button>
+              <button class="apDel" data-id="${it.id}" style="background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;padding:6px 12px;border-radius:6px;font-size:0.78rem;font-weight:700;cursor:pointer">🗑</button>
+            </div>
+          </div>`).join('')}</div>` : '<div style="color:#9CA3AF;font-size:0.85rem">No providers configured yet — add one above.</div>'}
+      `;
+
+      document.querySelectorAll('.apPre').forEach(b => b.addEventListener('click', () => {
+        const p = PRESETS[parseInt(b.dataset.idx,10)];
+        document.getElementById('apName').value  = p.name;
+        document.getElementById('apUrl').value   = p.base_url;
+        document.getElementById('apModel').value = p.model;
+      }));
+      document.getElementById('apAdd').addEventListener('click', async () => {
+        const body = {
+          name:       document.getElementById('apName').value.trim(),
+          category:   document.getElementById('apCat').value,
+          base_url:   document.getElementById('apUrl').value.trim(),
+          model:      document.getElementById('apModel').value.trim(),
+          api_key:    document.getElementById('apKey').value.trim(),
+          is_default: document.getElementById('apDef').checked
+        };
+        if (!body.name || !body.base_url || !body.model || !body.api_key) { alert('Name, base URL, model and API key are required.'); return; }
+        try {
+          const r = await fetch('/api/ai-providers/create', { method:'POST', headers: hdrs, body: JSON.stringify(body) });
+          const j = await r.json();
+          if (!j.ok) { alert(j.error || 'failed'); return; }
+          load();
+        } catch(e) { alert(e.message); }
+      });
+      document.querySelectorAll('.apTest').forEach(b => b.addEventListener('click', async () => {
+        const id = b.dataset.id; const out = document.getElementById('apTest_'+id);
+        out.innerHTML = '<span style="color:#9CA3AF">⏳ Testing…</span>';
+        try {
+          const j = await fetch('/api/ai-providers/test/'+id, { method:'POST', headers: hdrs }).then(r=>r.json());
+          if (j.ok) out.innerHTML = `<span style="color:#065F46;font-weight:700">✅ ${j.latency_ms}ms · "${esc(String(j.sample||'').slice(0,80))}"</span>`;
+          else      out.innerHTML = `<span style="color:#991B1B;font-weight:700">❌ ${esc(j.error || ('HTTP ' + (j.status||'?')))}</span>`;
+        } catch(e) { out.innerHTML = '<span style="color:#991B1B">❌ '+esc(e.message)+'</span>'; }
+      }));
+      document.querySelectorAll('.apDef2').forEach(b => b.addEventListener('click', async () => {
+        try { await fetch('/api/ai-providers/update/'+b.dataset.id, { method:'POST', headers: hdrs, body: JSON.stringify({ is_default: true }) }); load(); }
+        catch(e) { alert(e.message); }
+      }));
+      document.querySelectorAll('.apTog').forEach(b => b.addEventListener('click', async () => {
+        try { await fetch('/api/ai-providers/update/'+b.dataset.id, { method:'POST', headers: hdrs, body: JSON.stringify({ enabled: b.dataset.en === '1' }) }); load(); }
+        catch(e) { alert(e.message); }
+      }));
+      document.querySelectorAll('.apDel').forEach(b => b.addEventListener('click', async () => {
+        if (!confirm('Delete this provider? Routes using it will fall back to built-in.')) return;
+        try { await fetch('/api/ai-providers/'+b.dataset.id, { method:'DELETE', headers: hdrs }); load(); }
+        catch(e) { alert(e.message); }
+      }));
+    }
+
+    wrap.innerHTML = '<div style="color:#9CA3AF">Loading…</div>';
+    load();
   };
 
   /* ═══════════ AD SWIPE FILE ═══════════ */
