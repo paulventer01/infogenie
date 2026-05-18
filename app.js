@@ -12837,19 +12837,44 @@ async function generateRedditReply() {
 // ===== BUILD AUDIENCE =====
 function buildAudience() {
   const { competitors, industry } = analysisData;
-  
-  // Aggregate all audiences across competitors
+
+  // Aggregate all audiences across competitors. We start with whatever the
+  // *selected* competitors carry, but manually-added competitors and
+  // AI-detected ones don't include an `audiences` array — data.js only has
+  // it on the curated industry roster. When the selected set is thin on
+  // audience data, top up from the industry's canonical competitor list so
+  // the chart and cards have something real (drawn from the same data.js
+  // industry profile) to render instead of going blank.
   const audienceMap = {};
-  competitors.forEach(c => {
-    (c.audiences || []).forEach(a => {
-      if (!audienceMap[a.label]) {
-        audienceMap[a.label] = { total: 0, count: 0, competitors: [] };
-      }
+  const _addAudiences = (compName, list) => {
+    (list || []).forEach(a => {
+      if (!a || !a.label || !Number.isFinite(a.pct)) return;
+      if (!audienceMap[a.label]) audienceMap[a.label] = { total: 0, count: 0, competitors: [] };
       audienceMap[a.label].total += a.pct;
       audienceMap[a.label].count += 1;
-      audienceMap[a.label].competitors.push(c.name);
+      if (!audienceMap[a.label].competitors.includes(compName)) {
+        audienceMap[a.label].competitors.push(compName);
+      }
     });
-  });
+  };
+  competitors.forEach(c => _addAudiences(c.name, c.audiences));
+  if (Object.keys(audienceMap).length === 0 && industry && Array.isArray(industry.competitors)) {
+    // Use the canonical industry roster as the audience source. Match each
+    // selected competitor against the roster by name when possible so the
+    // "competitors who target this segment" attribution stays accurate;
+    // otherwise fall back to the top 3 roster brands as the representative
+    // industry-level signal.
+    const lookup = {};
+    industry.competitors.forEach(c => { lookup[(c.name || '').toLowerCase()] = c; });
+    let matched = 0;
+    competitors.forEach(c => {
+      const ref = lookup[(c.name || '').toLowerCase()];
+      if (ref && ref.audiences) { _addAudiences(c.name, ref.audiences); matched++; }
+    });
+    if (matched === 0) {
+      industry.competitors.slice(0, 3).forEach(c => _addAudiences(c.name, c.audiences));
+    }
+  }
   
   const audienceSegments = Object.entries(audienceMap)
     .map(([label, d]) => ({ label, avgPct: Math.round(d.total / d.count), competitors: d.competitors, count: d.count }))
