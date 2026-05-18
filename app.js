@@ -614,6 +614,79 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
   else render();
 })();
 
+// ── Global ⏳ thinking-timer ──────────────────────────────────────────────────
+// Auto-appends a live "[N.Ns]" elapsed-time counter to ANY element whose
+// textContent starts with the ⏳ hourglass emoji (loading / thinking / generating
+// states). Runs across the entire app via a single MutationObserver — no caller
+// changes required. Input fields use _wireAI's own timer because .value changes
+// don't fire MutationObserver events.
+(function _globalThinkingTimer(){
+  if (!('MutationObserver' in window)) return;
+  const RX_HOURGLASS = /^\s*⏳/;
+  const RX_TIMER_SUFFIX = /\s*\[\d+\.\d+s\]\s*$/;
+  const tracked = new WeakMap();   // el → { t0, iv, base }
+  const selfWrites = new WeakSet();
+  function stripTimer(s){ return String(s||'').replace(RX_TIMER_SUFFIX, ''); }
+  function start(el){
+    if (tracked.has(el)) return;
+    const base = stripTimer(el.textContent);
+    const rec = { t0: performance.now(), base, iv: null };
+    rec.iv = setInterval(() => {
+      if (!el.isConnected) { stop(el); return; }
+      // If the element has since gained HTML children, BAIL OUT — writing
+      // textContent would flatten/remove those children (DOM corruption).
+      if (el.children && el.children.length > 0) { stop(el); return; }
+      const cur = stripTimer(el.textContent);
+      if (!RX_HOURGLASS.test(cur)) { stop(el); return; }
+      const elapsed = ((performance.now() - rec.t0) / 1000).toFixed(1);
+      selfWrites.add(el);
+      try { el.textContent = cur + ' [' + elapsed + 's]'; } catch {}
+      setTimeout(() => selfWrites.delete(el), 0);
+    }, 100);
+    tracked.set(el, rec);
+  }
+  function stop(el){
+    const rec = tracked.get(el); if (!rec) return;
+    clearInterval(rec.iv);
+    tracked.delete(el);
+  }
+  function scan(node){
+    if (!(node instanceof Element)) return;
+    const tag = node.tagName;
+    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (node.children.length === 0) {
+      const t = node.textContent || '';
+      if (RX_HOURGLASS.test(t)) start(node);
+      else if (tracked.has(node)) stop(node);
+    } else {
+      // Node now has element children — if we were tracking it as a leaf,
+      // stop now to avoid clobbering its children on the next tick.
+      if (tracked.has(node)) stop(node);
+    }
+    for (let i = 0; i < node.children.length; i++) scan(node.children[i]);
+  }
+  const obs = new MutationObserver(muts => {
+    for (const m of muts) {
+      if (selfWrites.has(m.target)) continue;
+      if (m.type === 'childList') {
+        if (m.addedNodes && m.addedNodes.length) m.addedNodes.forEach(n => scan(n));
+        if (m.target instanceof Element) scan(m.target);
+      } else if (m.type === 'characterData') {
+        const p = m.target.parentElement;
+        if (p && !selfWrites.has(p)) scan(p);
+      }
+    }
+  });
+  function init(){
+    try {
+      obs.observe(document.body, { childList: true, subtree: true, characterData: true });
+      scan(document.body);
+    } catch(e) { /* never break the app over a timer */ }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+
 // ── Wire up nav user menu (avatar pill + dropdown + logout) ───────────────────
 (function wireUserMenu(){
   function init(){
@@ -43019,6 +43092,24 @@ function _rpToCarousel(title) {
     const competitors = (Array.isArray(ad.competitors)?ad.competitors:[]).filter(c=>c&&(c.name||c.domain)).map(c=>({ name:c.name||_domainToBrand(c.domain), domain:c.domain||'' }));
     return { ad, mainBrand, industry: ad.industry||'', competitors, _domainToBrand };
   }
+  // Real, grounded AI suggester for any input field. NEVER returns a
+  // hardcoded / placeholder / random string. Throws when the backend can't
+  // reach any working LLM — the UI must surface that error verbatim.
+  async function _aiSuggestField(field, opts = {}){
+    const ctx = _studioCtx();
+    const body = {
+      field,
+      brand: opts.brand ?? ctx.mainBrand ?? '',
+      industry: opts.industry ?? ctx.industry ?? '',
+      competitors: opts.competitors ?? ctx.competitors ?? [],
+      currentValue: opts.currentValue ?? '',
+      context: opts.context ?? ''
+    };
+    const j = await _api('/api/studio/ai-suggest', { method:'POST', body });
+    const v = String(j?.value || '').trim();
+    if (!v) throw new Error('AI returned an empty suggestion');
+    return v;
+  }
   function _aiBtn(id, label){
     return `<button type="button" id="${id}" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">🧠 ${label||'AI Suggest'}</button>`;
   }
@@ -43028,14 +43119,44 @@ function _rpToCarousel(title) {
   function _labelRow(text, ...btns){
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:8px"><span style="font-weight:600;font-size:13px">${text}</span><span style="display:flex;gap:6px">${btns.filter(Boolean).join('')}</span></div>`;
   }
+  // _wireAI(buttonId, inputEl, suggesterFn) — runs the suggester, shows
+  // "⏳ Thinking… [N.Ns]" live timer in the input while it runs, and on
+  // failure restores the previous text + shows a red inline error AND a
+  // toast. We NEVER fill the input with hardcoded fallback content.
   async function _wireAI(btnId, inputEl, suggester){
     const b = document.getElementById(btnId); if (!b) return;
     b.addEventListener('click', async () => {
       const prev = inputEl.value;
-      inputEl.value = '⏳ Thinking…'; inputEl.disabled = true;
-      try { const v = await suggester(); inputEl.value = v || prev || ''; }
-      catch { inputEl.value = prev || ''; }
-      finally { inputEl.disabled = false; inputEl.focus(); }
+      const t0 = performance.now();
+      inputEl.value = '⏳ Thinking… [0.0s]';
+      inputEl.disabled = true;
+      const iv = setInterval(() => {
+        if (!inputEl.disabled) return;
+        inputEl.value = '⏳ Thinking… [' + ((performance.now()-t0)/1000).toFixed(1) + 's]';
+      }, 100);
+      try {
+        const v = await suggester();
+        clearInterval(iv);
+        if (!v || !String(v).trim()) throw new Error('AI returned empty value');
+        inputEl.value = String(v).trim();
+      } catch (e) {
+        clearInterval(iv);
+        inputEl.value = prev;
+        try { if (typeof window.showToast === 'function') window.showToast('AI unavailable: ' + (e && e.message || e), 'error'); } catch {}
+        // Inline visible error next to the button so the user immediately
+        // sees WHY no value was filled — no silent dummy fallback.
+        try {
+          let warn = b.nextElementSibling;
+          if (!warn || !warn.classList || !warn.classList.contains('_ai_err')){
+            warn = document.createElement('div');
+            warn.className = '_ai_err';
+            warn.style.cssText = 'color:#DC2626;font-size:11px;margin-top:4px;flex-basis:100%';
+            b.parentNode.appendChild(warn);
+          }
+          warn.textContent = '⚠ ' + (e && e.message || 'AI unavailable. Connect an API key in Settings.');
+          setTimeout(() => { try { warn.remove(); } catch {} }, 8000);
+        } catch {}
+      } finally { inputEl.disabled = false; inputEl.focus(); }
     });
   }
 
@@ -43072,13 +43193,32 @@ function _rpToCarousel(title) {
       document.querySelectorAll('.brand-tab').forEach((b,bi)=>{ b.style.borderBottomColor=bi===i?'#0066FF':'transparent'; b.style.color=bi===i?'#0066FF':'#64748B'; });
       document.getElementById('brand-pane').innerHTML = PANES[i];
       // Wire AI Suggest buttons per pane
-      const aiName = async (seedEl) => { const j = await _api('/api/studio/brand/names',{method:'POST',body:{description:`A brand like ${seedEl.value||ctx.mainBrand||'a modern company'} in the ${ctx.industry||'consumer'} space`, style:'modern'}}); return (j.names||[])[0]?.name || ctx.mainBrand || seedEl.value; };
-      const aiIndustry = async () => { return ctx.industry || 'Direct-to-consumer SaaS'; };
-      const aiVibe = async () => { const opts=['modern minimalist','bold contemporary','warm premium','playful approachable','sleek tech-forward','editorial elegant']; return opts[Math.floor(Math.random()*opts.length)]; };
-      const aiMood = async () => { const opts=['energetic professional','calm trustworthy','vibrant friendly','luxurious confident','fresh youthful','grounded reliable']; return opts[Math.floor(Math.random()*opts.length)]; };
-      const aiDescription = async () => { const b=ctx.mainBrand||'A brand'; return `${b} is a ${ctx.industry||'modern consumer'} brand helping customers achieve more with less friction. We blend craft and technology to deliver outcomes our competitors can't.`; };
-      const aiStyle = async () => { const opts=['modern','playful','premium','minimalist','bold','editorial']; return opts[Math.floor(Math.random()*opts.length)]; };
-      const aiSlogan = async (brandEl) => { const brand = brandEl.value || ctx.mainBrand || 'Brand'; const j = await _api('/api/studio/brand/slogans',{method:'POST',body:{brandName:brand, valueProp:ctx.industry?`A ${ctx.industry} brand`:'A modern brand'}}); return (j.slogans||[])[0]?.text || `${brand} — built for the people who actually use it.`; };
+      const aiName        = async (seedEl) => {
+        const j = await _api('/api/studio/brand/names',{method:'POST',body:{
+          description: `A brand like ${seedEl.value||ctx.mainBrand||'this business'} operating in the ${ctx.industry||'consumer'} space`,
+          style: 'modern', count: 6,
+          industry: ctx.industry, competitors: ctx.competitors
+        }});
+        const pick = (j.names||[])[0]?.name;
+        if (!pick) throw new Error('AI did not return any brand name candidates');
+        return pick;
+      };
+      const aiIndustry    = async () => _aiSuggestField('Industry / vertical', { currentValue: bi && bi.value });
+      const aiVibe        = async () => _aiSuggestField('Brand visual vibe (3-5 words, e.g. "warm editorial premium")', { currentValue: bv && bv.value });
+      const aiMood        = async () => _aiSuggestField('Brand mood for a colour palette (2-4 words)', { currentValue: pm && pm.value });
+      const aiDescription = async () => _aiSuggestField('One-paragraph description of this business for a naming brief', { currentValue: nd && nd.value, context: 'Write 2-3 sentences. Mention the real audience and the real category — no clichés.' });
+      const aiStyle       = async () => _aiSuggestField('Naming style (single word, e.g. "modern", "editorial", "playful")', { currentValue: ns && ns.value });
+      const aiSlogan      = async (brandEl) => {
+        const brand = (brandEl && brandEl.value) || ctx.mainBrand;
+        if (!brand) throw new Error('Fill in Brand name first');
+        const j = await _api('/api/studio/brand/slogans',{method:'POST',body:{
+          brandName: brand, valueProp: (sv && sv.value) || '',
+          industry: ctx.industry, competitors: ctx.competitors, count: 6
+        }});
+        const pick = (j.slogans||[])[0]?.text;
+        if (!pick) throw new Error('AI did not return any slogan candidates');
+        return pick;
+      };
       if (i===0) {
         const bnUse=document.getElementById('bnUse'); if(bnUse) bnUse.addEventListener('click',()=>{bn.value=ctx.mainBrand;});
         _wireAI('bnAI', bn, ()=>aiName(bn));
@@ -43137,17 +43277,10 @@ function _rpToCarousel(title) {
     b1.addEventListener('click',()=>gen('/api/studio/image/sketch-to-image',{prompt: imp.value || 'a clean modern design concept'}));
     b2.addEventListener('click',()=>gen('/api/studio/image/product-shot',   {product: imp.value || 'product'}));
     b3.addEventListener('click',()=>gen('/api/studio/image/upscale-prompt', {prompt: imp.value || 'a high resolution detailed image'}));
-    _wireAI('impAI', imp, async () => {
-      const brand = ctx.mainBrand || 'a modern brand';
-      const ind = ctx.industry || 'consumer products';
-      const ideas = [
-        `Hero product shot of ${brand} packaging on a soft marble surface, natural window light, photo-realistic, shallow depth of field, premium ${ind} aesthetic`,
-        `Lifestyle scene featuring ${brand} in everyday use, warm cinematic lighting, candid, editorial ${ind} mood, 35mm look`,
-        `Minimalist flat-lay of ${brand} essentials on pastel background, top-down view, soft shadows, magazine ${ind} feature`,
-        `Bold, high-contrast studio shot of ${brand} hero product, dramatic rim lighting, jet-black backdrop, luxury ${ind} feel`
-      ];
-      return ideas[Math.floor(Math.random()*ideas.length)];
-    });
+    _wireAI('impAI', imp, async () => _aiSuggestField(
+      'Image generation prompt — one cinematic sentence describing a real, on-brand product or lifestyle scene',
+      { currentValue: imp.value, context: 'The prompt will be sent to an image model. Include subject, setting, lighting, camera/lens cue, mood. No clichés. Match the brand + industry exactly.' }
+    ));
   }
 
   // ── Video Storyboard modal ────────────────────────────────────────────────
@@ -43187,26 +43320,46 @@ function _rpToCarousel(title) {
     if (vbComp) vbComp.addEventListener('change', () => { if (vbComp.value) { vbEl.value = vbComp.value; vbEl.focus(); } });
     document.getElementById('vbSuggest').addEventListener('click', async () => {
       const prev = vbEl.value;
-      vbEl.value = '⏳ Thinking…'; vbEl.disabled = true;
+      const t0 = performance.now();
+      vbEl.value = '⏳ Thinking… [0.0s]'; vbEl.disabled = true;
+      const iv = setInterval(() => { if (vbEl.disabled) vbEl.value = '⏳ Thinking… [' + ((performance.now()-t0)/1000).toFixed(1) + 's]'; }, 100);
       try {
-        const seed = mainBrand || prev || 'a modern brand';
-        const j = await _api('/api/studio/brand/names', { method:'POST', body:{ description: `A brand similar to ${seed} in the ${industry||'consumer'} space — short, memorable, web-friendly`, style:'modern' } });
+        const seed = mainBrand || prev;
+        if (!seed) throw new Error('Run an analysis or type something first so AI has context');
+        const j = await _api('/api/studio/brand/names', { method:'POST', body:{
+          description: `A brand similar to ${seed} in the ${industry||'consumer'} space — short, memorable, web-friendly`,
+          style:'modern', count: 6,
+          industry, competitors
+        }});
         const pick = (j.names||[])[0];
-        vbEl.value = pick?.name || mainBrand || prev || '';
-      } catch { vbEl.value = mainBrand || prev || ''; }
-      finally { vbEl.disabled = false; vbEl.focus(); }
+        clearInterval(iv);
+        if (!pick || !pick.name) throw new Error('AI did not return any brand name candidates');
+        vbEl.value = pick.name;
+      } catch (e) {
+        clearInterval(iv);
+        vbEl.value = prev;
+        try { if (typeof window.showToast === 'function') window.showToast('AI unavailable: ' + (e && e.message || e), 'error'); } catch {}
+      } finally { vbEl.disabled = false; vbEl.focus(); }
     });
     document.getElementById('vvSuggest').addEventListener('click', async () => {
       const brand = vbEl.value.trim() || mainBrand;
       if (!brand) { vvEl.placeholder = '⚠️ Fill in Brand name first'; return; }
       const prev = vvEl.value;
-      vvEl.value = '⏳ Thinking…'; vvEl.disabled = true;
+      const t0 = performance.now();
+      vvEl.value = '⏳ Thinking… [0.0s]'; vvEl.disabled = true;
+      const iv = setInterval(() => { if (vvEl.disabled) vvEl.value = '⏳ Thinking… [' + ((performance.now()-t0)/1000).toFixed(1) + 's]'; }, 100);
       try {
-        const j = await _api('/api/studio/brand/slogans', { method:'POST', body:{ brandName: brand, valueProp: industry ? `A ${industry} brand` : 'A modern brand for forward-thinking customers' } });
+        const competitors = (Array.isArray((window.analysisData||{}).competitors)?window.analysisData.competitors:[]).filter(c=>c&&(c.name||c.domain));
+        const j = await _api('/api/studio/brand/slogans', { method:'POST', body:{ brandName: brand, valueProp: '', industry, competitors, count: 6 } });
         const pick = (j.slogans||[])[0];
-        vvEl.value = pick?.text || `${brand} — built for people who actually use it.`;
-      } catch { vvEl.value = prev || `${brand} — built for people who actually use it.`; }
-      finally { vvEl.disabled = false; vvEl.focus(); }
+        clearInterval(iv);
+        if (!pick || !pick.text) throw new Error('AI did not return any slogan candidates');
+        vvEl.value = pick.text;
+      } catch (e) {
+        clearInterval(iv);
+        vvEl.value = prev;
+        try { if (typeof window.showToast === 'function') window.showToast('AI unavailable: ' + (e && e.message || e), 'error'); } catch {}
+      } finally { vvEl.disabled = false; vvEl.focus(); }
     });
 
     vgo.addEventListener('click', async ()=>{
@@ -43267,21 +43420,14 @@ function _rpToCarousel(title) {
       <label>Slide count<input id="pc" type="number" value="10" min="5" max="20" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 16px;box-sizing:border-box"></label>
       <button id="pgo" style="background:#0066FF;color:white;border:0;padding:12px 24px;border-radius:8px;font-weight:700;cursor:pointer">Generate deck</button>
       <div id="pout" style="margin-top:18px"></div>`, { width: 760 });
-    _wireAI('ptAI', pt, async () => {
-      const brand = ctx.mainBrand || 'our company';
-      const ind = ctx.industry || 'the market';
-      const ideas = [
-        `Why ${brand} will win ${ind} in the next 24 months`,
-        `${brand}: a category-defining playbook for ${ind}`,
-        `From zero to category leader — the ${brand} ${ind} strategy`,
-        `${brand} vs. the incumbents: how we redefine ${ind}`
-      ];
-      return ideas[Math.floor(Math.random()*ideas.length)];
-    });
-    _wireAI('paAI', pa, async () => {
-      const opts = ['investors','prospects','executive buyers','marketing leaders','board members','potential partners','our sales team','enterprise CIOs'];
-      return opts[Math.floor(Math.random()*opts.length)];
-    });
+    _wireAI('ptAI', pt, async () => _aiSuggestField(
+      'Presentation topic / title — one concrete sentence specific to this brand and industry',
+      { currentValue: pt.value, context: 'No buzzwords like "redefine" or "category-defining". Reference a real angle a real exec would actually pitch.' }
+    ));
+    _wireAI('paAI', pa, async () => _aiSuggestField(
+      'Target audience for this presentation (e.g. "Series-B SaaS CFOs", "regional Shopify store owners")',
+      { currentValue: pa.value }
+    ));
     pgo.addEventListener('click', async ()=>{
       pout.innerHTML='⏳ Generating ('+pc.value+' slides)…';
       try{ const j=await _api('/api/studio/presentation/generate',{method:'POST',body:{topic:pt.value,audience:pa.value,slideCount:Number(pc.value)||10}});
@@ -43320,14 +43466,19 @@ function _rpToCarousel(title) {
     });
     const cUse = document.getElementById('sgn_cUse');
     if (cUse) cUse.addEventListener('click', () => { sgn_c.value = ctx.mainBrand; });
-    _wireAI('sgn_tAI', sgn_t, async () => {
-      const titles = ['Head of Growth','Founder & CEO','VP Marketing','Director of Brand','Chief Marketing Officer','Head of Performance','Growth Lead','Marketing Manager'];
-      return titles[Math.floor(Math.random()*titles.length)];
-    });
+    _wireAI('sgn_tAI', sgn_t, async () => _aiSuggestField(
+      'Job title for an email signature — a realistic title for someone at this company in this industry',
+      { brand: sgn_c.value || ctx.mainBrand, currentValue: sgn_t.value }
+    ));
     _wireAI('sgn_tagAI', sgn_tag, async () => {
-      const brand = sgn_c.value || ctx.mainBrand || 'Brand';
-      try { const j = await _api('/api/studio/brand/slogans',{method:'POST',body:{brandName:brand, valueProp:ctx.industry?`A ${ctx.industry} brand`:'A modern brand'}}); return (j.slogans||[])[0]?.text || `${brand} — building what's next.`; }
-      catch { return `${brand} — building what's next.`; }
+      const brand = sgn_c.value || ctx.mainBrand;
+      if (!brand) throw new Error('Fill in Company first');
+      const j = await _api('/api/studio/brand/slogans',{method:'POST',body:{
+        brandName: brand, valueProp: '', industry: ctx.industry, competitors: ctx.competitors, count: 6
+      }});
+      const pick = (j.slogans||[])[0]?.text;
+      if (!pick) throw new Error('AI did not return any slogan candidates');
+      return pick;
     });
     sgo.addEventListener('click', async ()=>{
       sout.innerHTML='⏳ Generating…';
@@ -43362,23 +43513,26 @@ function _rpToCarousel(title) {
     if (pickComp) pickComp.addEventListener('change', () => { if (pickComp.value) cs_cn.value = pickComp.value; });
     const bnUse = document.getElementById('cs_bnUse');
     if (bnUse) bnUse.addEventListener('click', () => { cs_bn.value = ctx.mainBrand; });
-    _wireAI('cs_cnAI', cs_cn, async () => {
-      const names = ['Acme Logistics','Brightline Retail','Northwind SaaS','Pioneer Foods','Lumen Health','Apex Realty','Vega Robotics','Harbor & Co.'];
-      return names[Math.floor(Math.random()*names.length)];
-    });
-    _wireAI('cs_inAI', cs_in, async () => ctx.industry || 'Direct-to-consumer SaaS');
-    _wireAI('cs_chAI', cs_ch, async () => {
-      const cust = cs_cn.value || 'The customer';
-      const ind = cs_in.value || ctx.industry || 'their industry';
-      return `${cust} was stuck. Their conversion rate had stalled at ~1.1%, customer-acquisition costs in ${ind} were climbing every quarter, and their team couldn't tell which ad creative was actually driving revenue versus burning budget.`;
-    });
-    _wireAI('cs_soAI', cs_so, async () => {
-      const brand = cs_bn.value || ctx.mainBrand || 'We';
-      return `${brand} rebuilt their funnel end-to-end: a sharper hero message, a multi-armed-bandit creative test across 12 ad variants, and a re-engagement drip for warm-but-cold contacts. We instrumented every step so the team could see attribution in real-time and reallocate spend weekly.`;
-    });
-    _wireAI('cs_reAI', cs_re, async () => {
-      return `Conversion rate climbed from 1.1% to 3.2% in 60 days. Customer-acquisition cost dropped 40%. Revenue per visitor up 2.4×. The team now ships a new creative every 5 days instead of every 5 weeks.`;
-    });
+    _wireAI('cs_cnAI', cs_cn, async () => _aiSuggestField(
+      'Realistic customer name for a case study — a plausible real-world company in this industry (NOT Acme/Nexus/Apex/Vega)',
+      { industry: cs_in.value || ctx.industry, currentValue: cs_cn.value }
+    ));
+    _wireAI('cs_inAI', cs_in, async () => _aiSuggestField(
+      'Industry / vertical the customer operates in',
+      { currentValue: cs_in.value || ctx.industry }
+    ));
+    _wireAI('cs_chAI', cs_ch, async () => _aiSuggestField(
+      'The challenge the customer faced before working with us — 2-3 sentences, concrete numbers, industry-specific pain',
+      { brand: cs_bn.value || ctx.mainBrand, industry: cs_in.value || ctx.industry, currentValue: cs_ch.value, context: `Customer: ${cs_cn.value || 'unspecified'}. Real, plausible metrics only — never the same 1.1% conversion / 40% CAC template.` }
+    ));
+    _wireAI('cs_soAI', cs_so, async () => _aiSuggestField(
+      'The solution we delivered — 2-3 sentences, specific tactics that map to the stated challenge',
+      { brand: cs_bn.value || ctx.mainBrand, industry: cs_in.value || ctx.industry, currentValue: cs_so.value, context: `Customer: ${cs_cn.value || 'unspecified'}. Challenge: ${cs_ch.value || 'unspecified'}.` }
+    ));
+    _wireAI('cs_reAI', cs_re, async () => _aiSuggestField(
+      'The result / outcome — 2-3 sentences, plausible metrics directly tied to the solution and industry',
+      { brand: cs_bn.value || ctx.mainBrand, industry: cs_in.value || ctx.industry, currentValue: cs_re.value, context: `Customer: ${cs_cn.value || 'unspecified'}. Solution: ${cs_so.value || 'unspecified'}.` }
+    ));
     document.getElementById('cs_go').addEventListener('click', async ()=>{
       const out=document.getElementById('cs_out'); out.innerHTML='⏳ Generating (15-25 sec)…';
       try{

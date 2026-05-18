@@ -11,32 +11,113 @@
 
 const express = require('express');
 const OpenAI  = require('openai');
+const Anthropic = require('@anthropic-ai/sdk');
 const router  = express.Router();
 const _db     = require('../../db');
 
-const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || 'dummy' });
-const HAS_OPENAI = !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
+const _openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
+const _anthropicKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || '';
+const HAS_OPENAI    = !!_openaiKey    && !/^_?DUMMY/i.test(_openaiKey);
+const HAS_ANTHROPIC = !!_anthropicKey && !/^_?DUMMY/i.test(_anthropicKey);
+const HAS_GEMINI    = !!process.env.GEMINI_API_KEY     && !/^_?DUMMY/i.test(process.env.GEMINI_API_KEY);
+const HAS_PERPLEX   = !!process.env.PERPLEXITY_API_KEY && !/^_?DUMMY/i.test(process.env.PERPLEXITY_API_KEY);
 const CF_ID    = process.env.CLOUDFLARE_ACCOUNT_ID;
 const CF_TOKEN = process.env.CLOUDFLARE_AI_TOKEN;
-const HAS_CF   = !!(CF_ID && CF_TOKEN);
+const HAS_CF   = !!(CF_ID && CF_TOKEN) && !/^_?DUMMY/i.test(CF_TOKEN);
+
+const openai    = new OpenAI({ apiKey: _openaiKey || 'dummy' });
+const anthropic = HAS_ANTHROPIC ? new (Anthropic.default || Anthropic)({ apiKey: _anthropicKey }) : null;
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
+
+// Strip code fences / prose around a JSON payload and parse.
+function _extractJSON(text){
+  if (!text) throw new Error('empty AI response');
+  let s = String(text).trim();
+  // Strip ```json fences
+  s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/,'').trim();
+  // Find outermost {...}
+  const first = s.indexOf('{'); const last = s.lastIndexOf('}');
+  if (first !== -1 && last !== -1 && last > first) s = s.slice(first, last+1);
+  return JSON.parse(s);
+}
+
+// Real multi-provider JSON LLM. Tries OpenAI → Anthropic → Gemini → Perplexity →
+// Cloudflare Llama in order. Throws ONLY when every configured provider fails or
+// when no provider key is configured. No dummy/placeholder fallback ever.
 async function _ai(prompt, opts = {}) {
-  if (!HAS_OPENAI) throw new Error('OpenAI key not configured');
   let brandCtx = '';
   try { const bf = require('../brand_foundation/api'); if (bf.getBrandContextBlock) brandCtx = await bf.getBrandContextBlock(); } catch {}
-  const sys = (brandCtx ? brandCtx + '\n\n' : '') + (opts.system || 'You are a senior brand strategist. Respond with strict JSON only.');
-  const r = await openai.chat.completions.create({
-    model: opts.model || 'gpt-4o-mini',
-    messages: [
-      { role: 'system', content: sys },
-      { role: 'user',   content: prompt }
-    ],
-    response_format: { type: 'json_object' },
-    temperature: opts.temperature ?? 0.8,
-    max_tokens: opts.max_tokens || 800,
-  });
-  try { return JSON.parse(r.choices[0].message.content); } catch (e) { throw new Error('AI returned invalid JSON'); }
+  const sys = (brandCtx ? brandCtx + '\n\n' : '') + (opts.system || 'You are a senior brand strategist. Respond with strict JSON only — no prose, no markdown, no code fences.');
+  const temperature = opts.temperature ?? 0.8;
+  const max_tokens = opts.max_tokens || 900;
+  const errors = [];
+
+  if (HAS_OPENAI) {
+    try {
+      const r = await openai.chat.completions.create({
+        model: opts.model || 'gpt-4o-mini',
+        messages: [{ role:'system', content: sys }, { role:'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        temperature, max_tokens,
+      });
+      return _extractJSON(r.choices[0].message.content);
+    } catch (e) { errors.push('openai: ' + (e.message||e).toString().slice(0,140)); }
+  }
+  if (HAS_ANTHROPIC) {
+    try {
+      const r = await anthropic.messages.create({
+        model: 'claude-3-5-haiku-20241022',
+        max_tokens, temperature,
+        system: sys,
+        messages: [{ role:'user', content: prompt + '\n\nRespond with strict JSON only — no prose, no fences.' }]
+      });
+      const txt = (r.content || []).map(c => c.text || '').join('');
+      return _extractJSON(txt);
+    } catch (e) { errors.push('anthropic: ' + (e.message||e).toString().slice(0,140)); }
+  }
+  if (HAS_GEMINI) {
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          systemInstruction:{ parts:[{ text: sys }] },
+          contents:[{ parts:[{ text: prompt + '\n\nRespond with strict JSON only.' }] }],
+          generationConfig:{ temperature, maxOutputTokens: max_tokens, responseMimeType: 'application/json' }
+        })
+      });
+      if (!r.ok) throw new Error('gemini ' + r.status);
+      const d = await r.json();
+      const txt = d?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      return _extractJSON(txt);
+    } catch (e) { errors.push('gemini: ' + (e.message||e).toString().slice(0,140)); }
+  }
+  if (HAS_PERPLEX) {
+    try {
+      const r = await fetch('https://api.perplexity.ai/chat/completions', {
+        method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${process.env.PERPLEXITY_API_KEY}`},
+        body: JSON.stringify({ model:'sonar', temperature, max_tokens, messages:[{role:'system',content:sys},{role:'user',content: prompt + '\n\nRespond with strict JSON only.'}] })
+      });
+      if (!r.ok) throw new Error('perplexity ' + r.status);
+      const d = await r.json();
+      const txt = d?.choices?.[0]?.message?.content || '';
+      return _extractJSON(txt);
+    } catch (e) { errors.push('perplexity: ' + (e.message||e).toString().slice(0,140)); }
+  }
+  if (HAS_CF) {
+    try {
+      const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ID}/ai/run/@cf/meta/llama-3.1-8b-instruct`, {
+        method:'POST', headers:{'Authorization':`Bearer ${CF_TOKEN}`,'Content-Type':'application/json'},
+        body: JSON.stringify({ messages:[{role:'system',content:sys},{role:'user',content:prompt + '\n\nRespond with strict JSON only — no prose, no fences.'}], temperature, max_tokens })
+      });
+      if (!r.ok) throw new Error('cloudflare ' + r.status);
+      const d = await r.json();
+      const txt = d?.result?.response || '';
+      return _extractJSON(txt);
+    } catch (e) { errors.push('cloudflare: ' + (e.message||e).toString().slice(0,140)); }
+  }
+  if (!errors.length) throw new Error('No AI provider configured — add at least one of OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, PERPLEXITY_API_KEY or CLOUDFLARE_ACCOUNT_ID+CLOUDFLARE_AI_TOKEN in Secrets.');
+  throw new Error('All AI providers failed — ' + errors.join(' · '));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,27 +166,32 @@ Return JSON:
 });
 
 router.post('/brand/names', async (req, res) => {
-  const { description, count = 12, style = 'modern' } = req.body || {};
+  const { description, count = 12, style = 'modern', industry = '', competitors = [] } = req.body || {};
   if (!description) return _err(res, 400, 'description required');
+  const compLine = (Array.isArray(competitors) && competitors.length) ? `\nActive competitors in this space (avoid copying their names): ${competitors.slice(0,8).map(c=>typeof c==='string'?c:(c.name||c.domain||'')).filter(Boolean).join(', ')}.` : '';
+  const indLine = industry ? `\nIndustry: ${industry}. The names must feel native to this industry.` : '';
   try {
-    const data = await _ai(`Generate ${count} business name candidates for: "${description}". Style: ${style}.
+    const data = await _ai(`Generate ${count} business name candidates for: "${description}". Style: ${style}.${indLine}${compLine}
 
 Return JSON:
 {
   "names": [
-    { "name": "Brandname", "rationale": "1 sentence why", "domain": "brandname.com", "score": 8 }
+    { "name": "Brandname", "rationale": "1 sentence why it fits the industry + audience", "domain": "brandname.com", "score": 8 }
   ]
 }
-Mix invented words, real-word combos, and modified words. Prefer .com-available, 2-3 syllables, easy to spell. Score 1-10 on memorability+uniqueness.`);
+Mix invented words, real-word combos, and modified words. Prefer .com-available, 2-3 syllables, easy to spell. Score 1-10 on memorability+uniqueness. NEVER use generic filler like "Apex", "Nexus", "Vega" — every name must clearly reference the industry context.`);
     res.json({ ok:true, ...data });
   } catch (e) { _err(res, 500, e.message); }
 });
 
 router.post('/brand/slogans', async (req, res) => {
-  const { brandName, valueProp, count = 10 } = req.body || {};
-  if (!brandName || !valueProp) return _err(res, 400, 'brandName and valueProp required');
+  const { brandName, valueProp, count = 10, industry = '', competitors = [] } = req.body || {};
+  if (!brandName) return _err(res, 400, 'brandName required');
+  const compLine = (Array.isArray(competitors) && competitors.length) ? `\nCompetitors in the same space (do NOT echo their generic positioning): ${competitors.slice(0,8).map(c=>typeof c==='string'?c:(c.name||c.domain||'')).filter(Boolean).join(', ')}.` : '';
+  const indLine = industry ? `\nIndustry: ${industry}. Every slogan must reference the real value a ${industry} customer actually cares about (speed, spreads, leverage, regulation, support, education, platform reliability — whichever applies).` : '';
+  const vpLine = valueProp ? `Their stated value prop is: "${valueProp}".` : '';
   try {
-    const data = await _ai(`Generate ${count} taglines/slogans for "${brandName}" whose value prop is: "${valueProp}".
+    const data = await _ai(`Generate ${count} taglines/slogans for "${brandName}". ${vpLine}${indLine}${compLine}
 
 Return JSON:
 {
@@ -113,9 +199,40 @@ Return JSON:
     { "text": "The slogan", "style": "punchy|emotional|descriptive|witty", "wordCount": 5 }
   ]
 }
-Mix styles. Keep most under 8 words. No clichés like "your trusted partner".`);
+Mix styles. Keep most under 8 words. NEVER use clichés like "your trusted partner", "built for people who actually use it", "the future of X", or "X — reimagined". Every slogan must be specific enough that a competitor couldn't drop it on their own homepage.`);
     res.json({ ok:true, ...data });
   } catch (e) { _err(res, 500, e.message); }
+});
+
+// ── Generic field-level AI suggester for any Create-section input ─────────
+// Body: { field, brand, industry, competitors[], currentValue, context }
+// Returns: { ok:true, value: "<concise suggestion>" } or 5xx with explicit error.
+// NEVER returns a hardcoded/placeholder string — every value comes from a real
+// LLM grounded in the analysed industry + competitor list.
+router.post('/ai-suggest', async (req, res) => {
+  const { field = '', brand = '', industry = '', competitors = [], currentValue = '', context = '' } = req.body || {};
+  if (!field) return _err(res, 400, 'field required');
+  const compList = (Array.isArray(competitors)?competitors:[]).slice(0,8).map(c=>typeof c==='string'?c:(c.name||c.domain||'')).filter(Boolean).join(', ');
+  const ctxBlock = [
+    brand     ? `Brand: ${brand}`            : '',
+    industry  ? `Industry: ${industry}`      : '',
+    compList  ? `Active competitors: ${compList}` : '',
+    currentValue ? `Current draft value (improve, don't echo): "${currentValue}"` : '',
+    context   ? `Extra context: ${context}`  : '',
+  ].filter(Boolean).join('\n');
+  const prompt = `You are filling out the "${field}" field for a marketing tool. Use the brand + industry + competitor context below to write ONE concise, real, industry-specific answer. Do NOT use placeholders, generic clichés, lorem ipsum, or names like "Acme", "Apex", "Nexus", "Vega". The value must be something a real ${industry||'brand'} practitioner would actually write.
+
+${ctxBlock}
+
+Return strict JSON: { "value": "<the suggestion as plain text — no quotes, no markdown>" }`;
+  try {
+    const data = await _ai(prompt, { temperature: 0.85, max_tokens: 400 });
+    let value = String(data?.value || '').trim();
+    if (!value) throw new Error('AI returned empty value');
+    // Defensive: strip wrapping quotes some models add.
+    value = value.replace(/^["'""'']+|["'""'']+$/g, '').trim();
+    res.json({ ok:true, value });
+  } catch (e) { _err(res, 502, e.message); }
 });
 
 router.get('/brand/kit', async (req, res) => {
