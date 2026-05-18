@@ -8525,8 +8525,8 @@ function _icpShowEmailSequenceModal(trigger, seq) {
     <div style="background:white;border-radius:18px;width:100%;max-width:680px;max-height:92vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.3)">
       <div style="background:linear-gradient(135deg,#0891B2,#7C3AED);border-radius:18px 18px 0 0;padding:20px 24px;display:flex;align-items:center;justify-content:space-between">
         <div>
-          <div style="font-size:0.65rem;font-weight:700;color:#A5F3FC;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">3-Email Warm-Up Sequence</div>
-          <div style="font-family:Sora,sans-serif;font-size:1.05rem;font-weight:800;color:white;line-height:1.3">⚡ Trigger: ${_icpEsc(trigger.text)}</div>
+          <div style="font-size:0.65rem;font-weight:700;color:#A5F3FC;-webkit-text-fill-color:#A5F3FC;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">3-Email Warm-Up Sequence</div>
+          <div style="font-family:Sora,sans-serif;font-size:1.05rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;line-height:1.3;text-shadow:0 1px 2px rgba(0,0,0,.35)">⚡ Trigger: ${_icpEsc(trigger.text)}</div>
         </div>
         <button id="icp-email-close" style="background:rgba(255,255,255,.18);border:none;border-radius:50%;width:32px;height:32px;font-size:1.1rem;color:white;cursor:pointer">✕</button>
       </div>
@@ -34743,13 +34743,35 @@ window._crSetStatus = async function(id, status) {
   catch (e) { showToast('❌ ' + e.message); }
 };
 window._crRunNow = async function() {
+  const btn = document.getElementById('crRunNowBtn');
+  const original = btn ? btn.innerHTML : '';
+  const started = Date.now();
+  let timerId = null;
+  if (btn) {
+    btn.disabled = true;
+    btn.style.opacity = '0.85';
+    btn.style.cursor = 'wait';
+    const tick = () => {
+      const s = Math.floor((Date.now() - started) / 1000);
+      const mm = String(Math.floor(s/60)).padStart(2,'0');
+      const ss = String(s%60).padStart(2,'0');
+      btn.innerHTML = `⏳ Scanning… ${mm}:${ss}`;
+    };
+    tick();
+    timerId = setInterval(tick, 1000);
+  }
   showToast('⏳ Running scan — this may take 30-60s…');
   try {
     const r = await fetch('/api/crisis-radar/run-now', { method:'POST' }).then(x=>x.json());
     if (!r.ok && !r.skipped) throw new Error(r.error || 'failed');
+    const elapsed = ((Date.now() - started) / 1000).toFixed(1);
     if (r.skipped) showToast('⏳ Already running — please wait');
-    else { const newInc = (r.results||[]).reduce((s,x)=>s+(x.incidents?.length||0),0); showToast(`✅ Scanned ${r.ran} brands · ${newInc} new incident(s)`); buildCrisisRadar(); }
+    else { const newInc = (r.results||[]).reduce((s,x)=>s+(x.incidents?.length||0),0); showToast(`✅ Scanned ${r.ran} brands · ${newInc} new incident(s) · ${elapsed}s`); buildCrisisRadar(); }
   } catch (e) { showToast('❌ ' + e.message); }
+  finally {
+    if (timerId) clearInterval(timerId);
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = ''; btn.innerHTML = original; }
+  }
 };
 
 // ── BATTLE CARDS ───────────────────────────────────────────────────────────
