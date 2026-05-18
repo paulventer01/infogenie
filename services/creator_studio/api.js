@@ -230,6 +230,102 @@ router.post('/video/render-frames', async (req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
+// Generate an MP3 voice-over track for the storyboard's voiceoverScript using
+// OpenAI TTS, persist it onto the storyboard kv row, and return the URL.
+router.post('/video/voiceover', async (req, res) => {
+  const { id, voice = 'alloy' } = req.body || {};
+  if (!id) return _err(res, 400, 'id required');
+  if (!HAS_OPENAI) return _err(res, 400, 'OpenAI key required for voice-over');
+  try {
+    const sb = await _db.kvGet(`studio_video:${id}`, null);
+    if (!sb) return _err(res, 404, 'storyboard not found');
+    const text = String(sb.voiceoverScript || '').trim().slice(0, 4000);
+    if (!text) return _err(res, 400, 'storyboard has no voiceoverScript');
+    const allowedVoices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
+    const v = allowedVoices.includes(voice) ? voice : 'alloy';
+    const resp = await openai.audio.speech.create({ model: 'tts-1', voice: v, input: text, response_format: 'mp3' });
+    const buf = Buffer.from(await resp.arrayBuffer());
+    const fs = require('fs'); const path = require('path');
+    const dir = path.join(__dirname, '..', '..', 'uploads', 'video_audio');
+    fs.mkdirSync(dir, { recursive: true });
+    const filename = `${id}_${Date.now()}.mp3`;
+    fs.writeFileSync(path.join(dir, filename), buf);
+    const mp3Url = `/uploads/video_audio/${filename}`;
+    await _db.kvSet(`studio_video:${id}`, { ...sb, voiceoverMp3Url: mp3Url, voiceoverVoice: v, voiceoverRenderedAt: new Date().toISOString() });
+    res.json({ ok: true, id, mp3Url, voice: v, chars: text.length });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+// Stitch the storyboard's rendered key frames + (optional) voice-over MP3 into
+// a single MP4 using ffmpeg. Each scene gets shown for tEnd-tStart seconds.
+router.post('/video/render-mp4', async (req, res) => {
+  const { id } = req.body || {};
+  if (!id) return _err(res, 400, 'id required');
+  try {
+    const sb = await _db.kvGet(`studio_video:${id}`, null);
+    if (!sb) return _err(res, 404, 'storyboard not found');
+    const frames = (sb.frames || []).filter(f => f.image && f.image.startsWith('data:image'));
+    if (!frames.length) return _err(res, 400, 'no frames found — run Render Key Frames first');
+
+    const fs = require('fs'); const path = require('path'); const { spawn } = require('child_process'); const crypto = require('crypto');
+    const tmpDir = path.join(__dirname, '..', '..', 'uploads', 'video_tmp', id + '_' + Date.now());
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const outDir = path.join(__dirname, '..', '..', 'uploads', 'video_mp4');
+    fs.mkdirSync(outDir, { recursive: true });
+
+    // Write frames to disk and build ffconcat list with per-frame durations.
+    const listLines = ['ffconcat version 1.0'];
+    frames.forEach((f, i) => {
+      const m = f.image.match(/^data:image\/(\w+);base64,(.+)$/);
+      const ext = (m && m[1]) || 'png';
+      const data = Buffer.from((m && m[2]) || '', 'base64');
+      const fp = path.join(tmpDir, `f${String(i).padStart(3, '0')}.${ext}`);
+      fs.writeFileSync(fp, data);
+      const dur = Math.max(0.5, Math.min(15, (parseFloat(f.tEnd) || (i + 1) * 3) - (parseFloat(f.tStart) || i * 3)));
+      listLines.push(`file '${fp.replace(/'/g, "'\\''")}'`);
+      listLines.push(`duration ${dur.toFixed(2)}`);
+    });
+    // ffconcat requires the last file repeated without duration for closing
+    listLines.push(`file '${listLines[listLines.length - 2].slice(6, -1)}'`);
+    const listPath = path.join(tmpDir, 'list.txt');
+    fs.writeFileSync(listPath, listLines.join('\n'));
+
+    const outFile = path.join(outDir, `${id}_${crypto.randomBytes(4).toString('hex')}.mp4`);
+    // Path-safety: only accept voice-over files that live under uploads/video_audio
+    // and reject any traversal / absolute paths poisoned into the stored kv row.
+    let audioPath = null;
+    if (sb.voiceoverMp3Url && typeof sb.voiceoverMp3Url === 'string') {
+      const audioDir = path.resolve(__dirname, '..', '..', 'uploads', 'video_audio');
+      const rel = sb.voiceoverMp3Url.replace(/^\/+/, '');
+      if (rel.startsWith('uploads/video_audio/')) {
+        const candidate = path.resolve(__dirname, '..', '..', rel);
+        if (candidate.startsWith(audioDir + path.sep) && fs.existsSync(candidate)) audioPath = candidate;
+      }
+    }
+
+    const args = ['-y', '-f', 'concat', '-safe', '0', '-i', listPath];
+    if (audioPath) args.push('-i', audioPath);
+    args.push('-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p', '-r', '30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p');
+    if (audioPath) args.push('-c:a', 'aac', '-shortest');
+    args.push(outFile);
+
+    await new Promise((resolve, reject) => {
+      const ff = spawn('ffmpeg', args);
+      let err = '';
+      ff.stderr.on('data', d => err += d.toString());
+      ff.on('error', reject);
+      ff.on('close', code => code === 0 ? resolve() : reject(new Error('ffmpeg exit ' + code + ': ' + err.slice(-400))));
+    });
+
+    // Cleanup temp frames
+    try { fs.readdirSync(tmpDir).forEach(f => fs.unlinkSync(path.join(tmpDir, f))); fs.rmdirSync(tmpDir); } catch {}
+
+    const mp4Url = '/uploads/video_mp4/' + path.basename(outFile);
+    await _db.kvSet(`studio_video:${id}`, { ...sb, mp4Url, mp4RenderedAt: new Date().toISOString() });
+    res.json({ ok: true, id, mp4Url, hasAudio: !!audioPath, scenes: frames.length });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
 router.get('/video/list', async (_req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, items: [] });
   try {

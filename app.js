@@ -2969,6 +2969,10 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'brand-calendar')   { try { window.buildBrandCalendar && window.buildBrandCalendar(); } catch(e) { console.warn('buildBrandCalendar error:', e); } }
   if (viewId === 'brand-foundation') { try { window.buildBrandFoundation && window.buildBrandFoundation(); } catch(e) { console.warn('buildBrandFoundation error:', e); } }
   if (viewId === 'ad-swipe')         { try { window.buildAdSwipe && window.buildAdSwipe(); }         catch(e) { console.warn('buildAdSwipe error:', e); } }
+  if (viewId === 'ask-infogenie')    { try { window.buildAskInfogenie && window.buildAskInfogenie(); } catch(e) { console.warn('buildAskInfogenie error:', e); } }
+  if (viewId === 'infographics')     { try { window.buildInfographics && window.buildInfographics(); } catch(e) { console.warn('buildInfographics error:', e); } }
+  if (viewId === 'heatmaps')         { try { window.buildHeatmaps && window.buildHeatmaps(); }         catch(e) { console.warn('buildHeatmaps error:', e); } }
+  if (viewId === 'question-miner')   { try { window.buildQuestionMiner && window.buildQuestionMiner(); } catch(e) { console.warn('buildQuestionMiner error:', e); } }
   if (viewId === 'budget-board')     { try { window.buildBudgetBoard && window.buildBudgetBoard(); }    catch(e) { console.warn('buildBudgetBoard error:', e); } }
   if (viewId === 'web-analytics')    { try { window.buildWebAnalytics && window.buildWebAnalytics(); }   catch(e) { console.warn('buildWebAnalytics error:', e); } }
   if (viewId === 'intent-map') {
@@ -43094,8 +43098,32 @@ function _rpToCarousel(title) {
           <strong>Scenes:</strong>${(s.scenes||[]).map(sc=>`<div style="background:white;padding:10px;border-radius:8px;margin:8px 0;border-left:3px solid #0066FF"><div style="font-weight:700;font-size:13px">${sc.tStart}s → ${sc.tEnd}s</div><div style="font-size:13px;color:#475569">${_esc(sc.visual)}</div>${sc.textOverlay?`<div style="font-size:12px;color:#0066FF;margin-top:4px">📝 "${_esc(sc.textOverlay)}"</div>`:''}</div>`).join('')}
           <p style="margin:12px 0 4px"><strong>🎵 Music:</strong> ${_esc(s.music||'')}</p>
           <p style="margin:4px 0"><strong>🎬 End frame:</strong> ${_esc(s.endFrame||'')}</p>
-          <button id="vrf" data-id="${_esc(j.id||'')}" style="margin-top:12px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:10px 18px;border-radius:7px;font-weight:800;cursor:pointer">🖼️ Render Key Frames (1 per scene)</button>
-          <div id="vframes" style="margin-top:14px"></div></div>`;
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+            <button id="vrf"  data-id="${_esc(j.id||'')}" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:10px 18px;border-radius:7px;font-weight:800;cursor:pointer">🖼️ Render Key Frames</button>
+            <button id="vrvo" data-id="${_esc(j.id||'')}" style="background:linear-gradient(135deg,#0EA5E9,#06B6D4);color:#fff;border:0;padding:10px 18px;border-radius:7px;font-weight:800;cursor:pointer">🎙️ Generate Voice-Over</button>
+            <button id="vrmp" data-id="${_esc(j.id||'')}" style="background:linear-gradient(135deg,#16A34A,#10B981);color:#fff;border:0;padding:10px 18px;border-radius:7px;font-weight:800;cursor:pointer">🎬 Stitch to MP4</button>
+          </div>
+          <div id="vframes" style="margin-top:14px"></div>
+          <div id="vaudio"  style="margin-top:14px"></div>
+          <div id="vmp4"    style="margin-top:14px"></div></div>`;
+        const vrvo = document.getElementById('vrvo');
+        if (vrvo) vrvo.addEventListener('click', async () => {
+          const aout = document.getElementById('vaudio');
+          aout.innerHTML = '⏳ Generating voice-over via OpenAI TTS…';
+          try {
+            const aj = await _api('/api/studio/video/voiceover', { method:'POST', body:{ id: vrvo.dataset.id, voice: 'alloy' } });
+            aout.innerHTML = `<div style="background:#F0F9FF;border:1px solid #BAE6FD;padding:12px;border-radius:8px"><div style="font-weight:800;color:#075985;margin-bottom:6px">🎙️ Voice-over ready (${aj.chars} chars)</div><audio controls src="${aj.mp3Url}" style="width:100%"></audio></div>`;
+          } catch(e) { aout.innerHTML = `<div style="color:#DC2626">${_esc(e.message)}</div>`; }
+        });
+        const vrmp = document.getElementById('vrmp');
+        if (vrmp) vrmp.addEventListener('click', async () => {
+          const mout = document.getElementById('vmp4');
+          mout.innerHTML = '⏳ Stitching MP4 (needs Render Key Frames first — voice-over auto-attached if generated)…';
+          try {
+            const mj = await _api('/api/studio/video/render-mp4', { method:'POST', body:{ id: vrmp.dataset.id } });
+            mout.innerHTML = `<div style="background:#ECFDF5;border:1px solid #6EE7B7;padding:12px;border-radius:8px"><div style="font-weight:800;color:#065F46;margin-bottom:6px">🎬 MP4 ready — ${mj.scenes} scene(s), ${mj.hasAudio ? 'with voice-over' : 'video-only'}</div><video controls src="${mj.mp4Url}" style="width:100%;border-radius:6px;background:#000"></video><div style="margin-top:6px"><a href="${mj.mp4Url}" download style="color:#065F46;font-weight:700;text-decoration:underline">⬇ Download MP4</a></div></div>`;
+          } catch(e) { mout.innerHTML = `<div style="color:#DC2626">${_esc(e.message)}</div>`; }
+        });
         const rfBtn = document.getElementById('vrf');
         if (rfBtn) rfBtn.addEventListener('click', async () => {
           const fout = document.getElementById('vframes');
@@ -44141,6 +44169,223 @@ function _rpToCarousel(title) {
       if (existing) m.querySelector('#bcm_del').onclick = async ()=>{ if (!confirm('Delete?')) return; try{ await _f('/api/brand-calendar/'+existing.id,{method:'DELETE'}); close(); renderGrid(); }catch(e){_toast(e.message,'err');} };
     }
     renderGrid();
+  };
+
+  /* ═══════════ ASK INFOGENIE (Onyx-style) ═══════════ */
+  window.buildAskInfogenie = async function(){
+    const wrap = document.getElementById('askInfogenieWrap'); if (!wrap) return;
+    const esc = s => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const hdrs = (window.apiHeaders ? window.apiHeaders() : { 'Content-Type':'application/json' });
+    wrap.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+        <div style="display:flex;gap:8px">
+          <input id="aiQ" placeholder="e.g. Which campaign has the worst CPC this month? · Which leads are highest-scoring? · Are any mentions negative?" style="flex:1;padding:11px 14px;border:1px solid #D1D5DB;border-radius:7px;font-size:0.92rem">
+          <button id="aiGo" style="background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:0;padding:11px 22px;border-radius:7px;font-weight:800;cursor:pointer">Ask →</button>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+          ${['What changed in the last 7 days?','Which landing page is converting best?','Are any campaigns over budget?','Which leads should I call first?','What\'s scheduled this week?'].map(q => `<button class="aiSugg" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:5px 10px;border-radius:14px;font-size:0.74rem;cursor:pointer">${esc(q)}</button>`).join('')}
+        </div>
+      </div>
+      <div id="aiOut"></div>`;
+    document.querySelectorAll('.aiSugg').forEach(b => b.addEventListener('click', () => { document.getElementById('aiQ').value = b.textContent; document.getElementById('aiGo').click(); }));
+    document.getElementById('aiGo').addEventListener('click', async () => {
+      const q = document.getElementById('aiQ').value.trim();
+      if (!q) return;
+      const out = document.getElementById('aiOut');
+      out.innerHTML = '<div style="color:#9CA3AF">⏳ Reading your platform data…</div>';
+      try {
+        const r = await fetch('/api/platform-search/ask', { method:'POST', headers: hdrs, body: JSON.stringify({ question: q }) });
+        const j = await r.json();
+        if (!j.ok) { out.innerHTML = '<div style="color:#DC2626">'+esc(j.error||'failed')+'</div>'; return; }
+        const ansHtml = esc(j.answer).replace(/\n/g,'<br>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/^[-•]\s/gm,'• ');
+        out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
+          <div style="font-size:0.74rem;color:#6B7280;margin-bottom:8px">💬 Answer · source: <strong>${esc(j.source||'')}</strong></div>
+          <div style="font-size:0.95rem;line-height:1.55;color:#0A1628">${ansHtml}</div>
+          ${j.snapshotSizes ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid #F3F4F6;font-size:0.7rem;color:#9CA3AF">Snapshot scanned: ${Object.entries(j.snapshotSizes).map(([k,v])=>esc(k)+'='+v).join(' · ')}</div>` : ''}
+        </div>`;
+      } catch(e) { out.innerHTML = '<div style="color:#DC2626">'+esc(e.message)+'</div>'; }
+    });
+  };
+
+  /* ═══════════ INFOGRAPHIC GENERATOR (Napkin-style) ═══════════ */
+  window.buildInfographics = async function(){
+    const wrap = document.getElementById('infographicsWrap'); if (!wrap) return;
+    const esc = s => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const hdrs = (window.apiHeaders ? window.apiHeaders() : { 'Content-Type':'application/json' });
+    wrap.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px;display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end">
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">TOPIC</label><input id="igTopic" placeholder="e.g. The 5 stages of a B2B sales funnel" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box"></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">LAYOUT</label><select id="igLayout" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box">${['funnel','list','comparison','journey','quadrant','pyramid','cycle'].map(l=>'<option value="'+l+'">'+l+'</option>').join('')}</select></div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">ITEMS</label><input id="igCount" type="number" min="3" max="7" value="5" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box"></div>
+        <button id="igGo" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:10px 22px;border-radius:7px;font-weight:800;cursor:pointer">✨ Generate</button>
+      </div>
+      <div id="igOut"></div>
+      <h3 style="margin:24px 0 10px;color:#0A1628;font-family:Sora,sans-serif">📚 Recent</h3>
+      <div id="igHistory"></div>`;
+
+    function renderSVG(d){
+      const w=800,h=500,pal=d.palette||{primary:'#0066FF',accent:'#7C3AED',text:'#0A1628'};
+      const items=d.items||[];
+      let body='';
+      if (d.layout==='funnel') {
+        const max=items.length, step=(h-160)/max;
+        body = items.map((it,i)=>{const top=120+i*step; const ww=w-160-i*((w-160)/max*0.6); const x=(w-ww)/2; return `<polygon points="${x},${top} ${x+ww},${top} ${x+ww-((w-160)/max*0.6)/2},${top+step-10} ${x+((w-160)/max*0.6)/2},${top+step-10}" fill="${i%2?pal.accent:pal.primary}" opacity="${0.5+i*0.08}"/><text x="${w/2}" y="${top+step/2}" text-anchor="middle" fill="#fff" font-weight="800" font-size="16">${esc(it.label)}</text><text x="${w/2}" y="${top+step/2+18}" text-anchor="middle" fill="#fff" font-size="11" opacity="0.9">${esc(it.value||'')}</text>`;}).join('');
+      } else if (d.layout==='comparison') {
+        const cw=(w-100)/2;
+        body = items.slice(0,2).map((it,i)=>`<rect x="${50+i*cw}" y="120" width="${cw-10}" height="${h-160}" fill="${i?pal.accent:pal.primary}" rx="12"/><text x="${50+i*cw+cw/2}" y="160" text-anchor="middle" fill="#fff" font-weight="800" font-size="22">${esc(it.label)}</text><text x="${50+i*cw+cw/2}" y="200" text-anchor="middle" fill="#fff" font-size="14" opacity="0.9">${esc(it.value||'')}</text><foreignObject x="${60+i*cw}" y="220" width="${cw-30}" height="${h-260}"><div xmlns="http://www.w3.org/1999/xhtml" style="color:#fff;font-size:13px;line-height:1.5">${esc(it.detail||'')}</div></foreignObject>`).join('');
+      } else if (d.layout==='quadrant') {
+        body=`<line x1="${w/2}" y1="100" x2="${w/2}" y2="${h-40}" stroke="#E5E7EB" stroke-width="2"/><line x1="60" y1="${(h+60)/2}" x2="${w-60}" y2="${(h+60)/2}" stroke="#E5E7EB" stroke-width="2"/>`+items.slice(0,4).map((it,i)=>{const cx=(i%2?3*w/4:w/4); const cy=(i<2?(h+60)/4+60:(h+60)*3/4+30); return `<circle cx="${cx}" cy="${cy}" r="60" fill="${i%2?pal.accent:pal.primary}" opacity="0.85"/><text x="${cx}" y="${cy}" text-anchor="middle" fill="#fff" font-weight="800" font-size="14">${esc(it.label)}</text><text x="${cx}" y="${cy+18}" text-anchor="middle" fill="#fff" font-size="11">${esc(it.value||'')}</text>`;}).join('');
+      } else if (d.layout==='pyramid') {
+        const max=items.length, step=(h-160)/max;
+        body=items.map((it,i)=>{const top=120+i*step; const lvl=i+1; const ww=200+lvl*((w-300)/max); const x=(w-ww)/2; return `<rect x="${x}" y="${top}" width="${ww}" height="${step-8}" fill="${i%2?pal.accent:pal.primary}" rx="6" opacity="${1-i*0.1}"/><text x="${w/2}" y="${top+step/2}" text-anchor="middle" fill="#fff" font-weight="800" font-size="15">${esc(it.label)}</text>`;}).join('');
+      } else if (d.layout==='cycle') {
+        const cx=w/2, cy=h/2+20, r=160;
+        body=items.map((it,i)=>{const a=(i/items.length)*2*Math.PI-Math.PI/2; const x=cx+r*Math.cos(a), y=cy+r*Math.sin(a); return `<circle cx="${x}" cy="${y}" r="55" fill="${i%2?pal.accent:pal.primary}"/><text x="${x}" y="${y}" text-anchor="middle" fill="#fff" font-weight="800" font-size="13">${esc(it.label)}</text><text x="${x}" y="${y+16}" text-anchor="middle" fill="#fff" font-size="10">${esc(it.value||'')}</text>`;}).join('')+`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${pal.primary}" stroke-width="2" stroke-dasharray="6 6" opacity="0.4"/>`;
+      } else if (d.layout==='journey') {
+        const step=(w-120)/items.length;
+        body=`<line x1="60" y1="${h/2}" x2="${w-60}" y2="${h/2}" stroke="${pal.primary}" stroke-width="3"/>`+items.map((it,i)=>{const x=60+step*i+step/2; return `<circle cx="${x}" cy="${h/2}" r="38" fill="${i%2?pal.accent:pal.primary}"/><text x="${x}" y="${h/2+5}" text-anchor="middle" fill="#fff" font-weight="800" font-size="14">${i+1}</text><text x="${x}" y="${h/2-55}" text-anchor="middle" fill="${pal.text}" font-weight="700" font-size="13">${esc(it.label)}</text><text x="${x}" y="${h/2+75}" text-anchor="middle" fill="#6B7280" font-size="11">${esc(it.value||'')}</text>`;}).join('');
+      } else {
+        body=items.map((it,i)=>`<rect x="60" y="${120+i*65}" width="${w-120}" height="55" fill="${i%2?pal.accent:pal.primary}" rx="8" opacity="0.92"/><text x="80" y="${152+i*65}" fill="#fff" font-weight="800" font-size="16">${i+1}. ${esc(it.label)}</text><text x="${w-80}" y="${152+i*65}" text-anchor="end" fill="#fff" font-size="13" opacity="0.9">${esc(it.value||'')}</text>`).join('');
+      }
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" style="width:100%;max-width:900px;height:auto;background:#fff;border-radius:12px;border:1px solid #E5E7EB">
+        <text x="${w/2}" y="50" text-anchor="middle" fill="${pal.text}" font-weight="900" font-size="26" font-family="Sora,sans-serif">${esc(d.title||'')}</text>
+        ${d.subtitle?`<text x="${w/2}" y="78" text-anchor="middle" fill="#6B7280" font-size="14">${esc(d.subtitle)}</text>`:''}
+        ${body}
+        <text x="${w/2}" y="${h-15}" text-anchor="middle" fill="${pal.accent}" font-size="12" font-style="italic">${esc(d.takeaway||'')}</text>
+      </svg>`;
+    }
+
+    // Sanitize id to filename-safe chars before using anywhere
+    const safeId = s => String(s||'infographic').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,40) || 'infographic';
+    function show(d, id){
+      const svg = renderSVG(d);
+      const sid = safeId(id);
+      const out = document.getElementById('igOut');
+      out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+        ${svg}
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button id="igDlSvg" style="background:#0066FF;color:#fff;border:0;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer">⬇ SVG</button>
+          <button id="igDlPng" style="background:#7C3AED;color:#fff;border:0;padding:8px 16px;border-radius:6px;font-weight:700;cursor:pointer">⬇ PNG</button>
+        </div>
+      </div>`;
+      window._igLastSvg = svg;
+      document.getElementById('igDlSvg').addEventListener('click', () => doDownload(sid, 'svg'));
+      document.getElementById('igDlPng').addEventListener('click', () => doDownload(sid, 'png'));
+    }
+    function doDownload(id, kind){
+      const svg = window._igLastSvg; if (!svg) return;
+      const sid = safeId(id);
+      if (kind==='svg') { const blob=new Blob([svg],{type:'image/svg+xml'}); const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=sid+'.svg'; a.click(); URL.revokeObjectURL(u); return; }
+      const img=new Image(); const blob=new Blob([svg],{type:'image/svg+xml'}); const u=URL.createObjectURL(blob);
+      img.onload=()=>{const c=document.createElement('canvas');c.width=1600;c.height=1000;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,1600,1000);x.drawImage(img,0,0,1600,1000);const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download=sid+'.png';a.click();URL.revokeObjectURL(u);};
+      img.src=u;
+    }
+
+    async function loadHistory(){
+      try {
+        const r = await fetch('/api/infographics/list', { headers: hdrs });
+        const j = await r.json();
+        const h = document.getElementById('igHistory');
+        if (!j.items?.length) { h.innerHTML = '<div style="color:#9CA3AF;font-size:0.85rem">No infographics yet.</div>'; return; }
+        h.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">${j.items.map((it,i)=>`<div class="igHistItem" data-idx="${i}" style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:12px;cursor:pointer"><div style="font-weight:700;font-size:0.85rem;color:#0A1628">${esc(it.title||it.topic||'Untitled')}</div><div style="font-size:0.7rem;color:#6B7280;margin-top:4px">${esc(it.layout)} · ${(it.items||[]).length} items</div></div>`).join('')}</div>`;
+        window._igHistItems = j.items;
+        h.querySelectorAll('.igHistItem').forEach(el => el.addEventListener('click', () => {
+          const it = window._igHistItems[parseInt(el.dataset.idx,10)];
+          if (it) { show(it, it.id||'infographic'); window.scrollTo({top:0,behavior:'smooth'}); }
+        }));
+      } catch(e) {}
+    }
+
+    document.getElementById('igGo').addEventListener('click', async () => {
+      const topic = document.getElementById('igTopic').value.trim();
+      const layout = document.getElementById('igLayout').value;
+      const itemCount = parseInt(document.getElementById('igCount').value, 10) || 5;
+      if (!topic) { alert('Topic required'); return; }
+      document.getElementById('igOut').innerHTML = '<div style="color:#9CA3AF">⏳ Designing…</div>';
+      try {
+        const r = await fetch('/api/infographics/generate', { method:'POST', headers: hdrs, body: JSON.stringify({ topic, layout, itemCount }) });
+        const j = await r.json();
+        if (!j.ok) { document.getElementById('igOut').innerHTML = '<div style="color:#DC2626">'+esc(j.error||'failed')+'</div>'; return; }
+        show(j.infographic, j.id);
+        loadHistory();
+      } catch(e) { document.getElementById('igOut').innerHTML = '<div style="color:#DC2626">'+esc(e.message)+'</div>'; }
+    });
+    loadHistory();
+  };
+
+  /* ═══════════ HEATMAPS (Microsoft Clarity) ═══════════ */
+  window.buildHeatmaps = async function(){
+    const wrap = document.getElementById('heatmapsWrap'); if (!wrap) return;
+    const esc = s => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const hdrs = (window.apiHeaders ? window.apiHeaders() : { 'Content-Type':'application/json' });
+    wrap.innerHTML = '<div style="color:#9CA3AF">Loading…</div>';
+    try {
+      const c = await fetch('/api/heatmaps/config', { headers: hdrs }).then(r=>r.json());
+      const ins = await fetch('/api/heatmaps/insights', { headers: hdrs }).then(r=>r.json());
+      wrap.innerHTML = `
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+          <h3 style="margin:0 0 10px;font-family:Sora,sans-serif">🔌 Connect Microsoft Clarity (free)</h3>
+          <p style="color:#6B7280;font-size:0.85rem;margin:0 0 12px">1. Sign up at <a href="https://clarity.microsoft.com" target="_blank" rel="noopener" style="color:#0066FF">clarity.microsoft.com</a> (free, no card). 2. Create a project, copy the <strong>Project ID</strong>. 3. (Optional) Generate an API token in Settings → Data Export.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end">
+            <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">PROJECT ID</label><input id="hmPid" value="${esc(c.project_id||'')}" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box"></div>
+            <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">API TOKEN (optional)</label><input id="hmTok" type="password" placeholder="${c.has_token?'(set — replace to update)':'paste token'}" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box"></div>
+            <button id="hmSave" style="background:#0066FF;color:#fff;border:0;padding:10px 22px;border-radius:7px;font-weight:800;cursor:pointer">💾 Save</button>
+          </div>
+        </div>
+        ${c.snippet ? `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;padding:14px;margin-bottom:18px"><div style="font-weight:800;color:#92400E;margin-bottom:6px">📋 Paste this snippet on your site (before &lt;/head&gt;) to start collecting data</div><pre style="background:#fff;padding:10px;border-radius:6px;font-size:0.74rem;overflow-x:auto;margin:0">${esc(c.snippet)}</pre></div>` : ''}
+        ${c.dashboard_url ? `<a href="${esc(c.dashboard_url)}" target="_blank" rel="noopener" style="display:inline-block;margin-bottom:18px;background:linear-gradient(135deg,#FF6B35,#F97316);color:#fff;padding:10px 22px;border-radius:7px;font-weight:800;text-decoration:none">🔗 Open Clarity Dashboard →</a>` : ''}
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
+          <h3 style="margin:0 0 12px;font-family:Sora,sans-serif">📊 Insights (last ${ins.days||3} day${ins.days===1?'':'s'})</h3>
+          ${ins.note ? `<div style="background:#F0F9FF;border:1px solid #BAE6FD;color:#075985;padding:10px;border-radius:6px;margin-bottom:14px;font-size:0.84rem">${esc(ins.note)}</div>` : ''}
+          ${ins.byUrl?.length ? `<div style="margin-bottom:16px"><div style="font-weight:800;margin-bottom:6px">Top URLs (Clarity)</div><pre style="background:#F9FAFB;padding:10px;border-radius:6px;font-size:0.78rem;overflow-x:auto">${esc(JSON.stringify(ins.byUrl.slice(0,8),null,2))}</pre></div>` : ''}
+          ${ins.byDevice?.length ? `<div style="margin-bottom:16px"><div style="font-weight:800;margin-bottom:6px">By Device</div><pre style="background:#F9FAFB;padding:10px;border-radius:6px;font-size:0.78rem;overflow-x:auto">${esc(JSON.stringify(ins.byDevice,null,2))}</pre></div>` : ''}
+          <div><div style="font-weight:800;margin-bottom:6px">Your tracked landing pages</div>${ins.landingPages?.length ? `<table style="width:100%;border-collapse:collapse;font-size:0.85rem"><thead><tr style="background:#F9FAFB;text-align:left"><th style="padding:8px">Page</th><th style="padding:8px">Traffic</th><th style="padding:8px">Conversions</th></tr></thead><tbody>${ins.landingPages.map(p=>`<tr style="border-top:1px solid #F3F4F6"><td style="padding:8px">${esc(p.title||p.slug)}</td><td style="padding:8px">${p.traffic_total||0}</td><td style="padding:8px">${p.conv_total||0}</td></tr>`).join('')}</tbody></table>` : '<div style="color:#9CA3AF;font-size:0.85rem">No landing pages yet — build some in Reach → Landing Pages.</div>'}</div>
+          ${(ins.notes||[]).length ? `<div style="margin-top:14px;padding:10px;background:#FEF2F2;color:#991B1B;border-radius:6px;font-size:0.78rem">${ins.notes.map(esc).join('<br>')}</div>` : ''}
+        </div>`;
+      document.getElementById('hmSave').addEventListener('click', async () => {
+        const project_id = document.getElementById('hmPid').value.trim();
+        const api_token = document.getElementById('hmTok').value.trim();
+        try {
+          await fetch('/api/heatmaps/config', { method:'POST', headers: hdrs, body: JSON.stringify({ project_id, api_token }) });
+          window.buildHeatmaps();
+        } catch(e) { alert(e.message); }
+      });
+    } catch(e) { wrap.innerHTML = '<div style="color:#DC2626">'+esc(e.message)+'</div>'; }
+  };
+
+  /* ═══════════ QUESTION MINING (AnswerThePublic) ═══════════ */
+  window.buildQuestionMiner = async function(){
+    const wrap = document.getElementById('questionMinerWrap'); if (!wrap) return;
+    const esc = s => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const hdrs = (window.apiHeaders ? window.apiHeaders() : { 'Content-Type':'application/json' });
+    wrap.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px;display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px"><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">SEED KEYWORD / TOPIC</label><input id="qmSeed" placeholder="e.g. solar panel installation" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box"></div>
+        <button id="qmGo" style="background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:0;padding:10px 22px;border-radius:7px;font-weight:800;cursor:pointer">🔎 Mine Questions</button>
+      </div>
+      <div id="qmOut"></div>`;
+    document.getElementById('qmGo').addEventListener('click', async () => {
+      const seed = document.getElementById('qmSeed').value.trim();
+      if (!seed) return;
+      const out = document.getElementById('qmOut');
+      out.innerHTML = '<div style="color:#9CA3AF">⏳ Asking Google what people ask…</div>';
+      try {
+        const r = await fetch('/api/question-miner/mine', { method:'POST', headers: hdrs, body: JSON.stringify({ seed }) });
+        const j = await r.json();
+        if (!j.ok) { out.innerHTML = '<div style="color:#DC2626">'+esc(j.error||'failed')+'</div>'; return; }
+        const buckets = Object.keys(j.grouped||{}).sort();
+        out.innerHTML = `<div style="margin-bottom:12px;font-size:0.85rem;color:#6B7280">${j.total} question(s) for <strong>${esc(j.seed)}</strong> · source: ${esc(j.source)}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">${buckets.map(b => `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px"><div style="font-weight:800;color:#0A1628;text-transform:uppercase;font-size:0.78rem;margin-bottom:8px">${esc(b)} (${j.grouped[b].length})</div>${j.grouped[b].map(q => `<div style="padding:8px 0;border-top:1px solid #F3F4F6;display:flex;justify-content:space-between;gap:8px;align-items:start"><div style="font-size:0.84rem;color:#374151;line-height:1.4">${esc(q.question)}</div><button onclick="window._qmAdd(this, ${JSON.stringify(q.question).replace(/"/g,'&quot;')})" style="background:#F0FDF4;border:1px solid #86EFAC;color:#065F46;padding:4px 8px;border-radius:5px;font-size:0.7rem;font-weight:700;cursor:pointer;flex-shrink:0">+ Calendar</button></div>`).join('')}</div>`).join('')}</div>`;
+      } catch(e) { out.innerHTML = '<div style="color:#DC2626">'+esc(e.message)+'</div>'; }
+    });
+    window._qmAdd = async function(btn, question){
+      try {
+        const r = await fetch('/api/question-miner/to-calendar', { method:'POST', headers: hdrs, body: JSON.stringify({ question, channel:'blog' }) });
+        const j = await r.json();
+        if (j.ok) { btn.textContent = '✅ Added'; btn.style.background='#D1FAE5'; btn.disabled=true; }
+        else { btn.textContent = '⚠'; }
+      } catch(e) { btn.textContent = '⚠'; }
+    };
   };
 
   /* ═══════════ AD SWIPE FILE ═══════════ */
