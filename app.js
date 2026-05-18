@@ -24858,6 +24858,7 @@ async function runArticleFactCheck(idx) {
         <div style="text-align:right"><div style="font-size:1.6rem;font-weight:800;color:${scoreColor}">${score}<span style="font-size:0.8rem">/100</span></div><div style="font-size:0.7rem;font-weight:700;color:${scoreColor}">${verdict}</div></div>
       </div>
       ${d.summary ? `<div style="font-size:0.76rem;color:#374151;background:#F8FAFC;padding:8px 11px;border-radius:7px;margin-bottom:6px"><strong>Verdict:</strong> ${esc(d.summary)}</div>` : ''}
+      ${((d.contradicting&&d.contradicting.length) || (d.unverifiable&&d.unverifiable.length)) ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px"><button id="art-auto-correct-btn" onclick="runArticleAutoCorrect(${idx})" style="padding:8px 14px;background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:8px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;box-shadow:0 2px 6px rgba(16,185,129,.35)">🪄 Auto-Correct (${(d.contradicting||[]).length + (d.unverifiable||[]).length} issues)</button><span style="font-size:0.7rem;color:#6B7280;align-self:center">Rewrites flagged claims to match ${esc(ctx.domain)} — preserves your HTML structure</span></div>` : ''}
       ${renderList(d.contradicting||[], '#DC2626', '#FEF2F2', '🛑', { label:'Contradicting Claims', detail:'correction' })}
       ${renderList(d.unverifiable||[],  '#F59E0B', '#FFFBEB', '⚠️', { label:'Unverifiable Claims', detail:'reason' })}
       ${renderList(d.aligned||[],       '#10B981', '#F0FDF4', '✅', { label:'Aligned Claims', detail:'evidence' })}
@@ -24874,6 +24875,57 @@ async function runArticleFactCheck(idx) {
     if (out) out.innerHTML = `<div style="padding:12px;background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;font-size:0.78rem;color:#991B1B;margin:10px 0">❌ ${e.message}</div>`;
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🔄 Re-check Facts'; }
+  }
+}
+
+async function runArticleAutoCorrect(idx) {
+  const art = window._autoSeoArticles && window._autoSeoArticles[idx];
+  if (!art || !art.factCheck) { showToast('⚠️ Run a fact-check first'); return; }
+  const ctx = _autoSeoContext();
+  const btn = document.getElementById('art-auto-correct-btn');
+  const out = document.getElementById('art-fact-check-results');
+  const startedAt = Date.now();
+  let timerInt = null;
+  if (btn) {
+    btn.disabled = true;
+    const fmt = () => { const s = Math.floor((Date.now()-startedAt)/1000); return `⏳ Auto-correcting… ${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; };
+    btn.textContent = fmt();
+    timerInt = setInterval(() => { if (btn) btn.textContent = fmt(); }, 1000);
+  }
+  try {
+    const r = await fetch('/api/content-fact-check/auto-correct', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        content: art.generatedHtml,
+        contradictions: art.factCheck.contradicting || [],
+        unverifiable: art.factCheck.unverifiable || [],
+        domain: ctx.domain || 'yourdomain.com'
+      })
+    }).then(x => x.json());
+    if (!r.ok) { showToast('❌ ' + (r.error || 'Auto-correct failed')); return; }
+    art.generatedHtml = r.correctedHtml || art.generatedHtml;
+    const body = document.getElementById('art-preview-body');
+    if (body) body.innerHTML = art.generatedHtml;
+    const editsHtml = (r.edits || []).slice(0, 12).map(e => `
+      <div style="background:#F0FDF4;border-left:3px solid #10B981;padding:8px 11px;border-radius:6px;margin-bottom:6px;font-size:0.74rem;line-height:1.5">
+        <div style="color:#991B1B;text-decoration:line-through">${(e.before||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>
+        <div style="color:#065F46;font-weight:700;margin-top:3px">→ ${(e.after||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>
+        <div style="color:#475569;font-style:italic;margin-top:2px">${(e.reason||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>
+      </div>`).join('');
+    const elapsed = Math.floor((Date.now()-startedAt)/1000);
+    if (out) out.innerHTML = `<div style="background:white;border:2px solid #10B981;border-radius:12px;padding:14px 16px;margin:12px 0">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div><div style="font-size:0.85rem;font-weight:800;color:#0A1628">🪄 Auto-Correct Complete</div><div style="font-size:0.7rem;color:#6B7280;margin-top:2px">${(r.edits||[]).length} passages rewritten in ${elapsed}s · article HTML updated above</div></div>
+        <button onclick="runArticleFactCheck(${idx})" style="padding:8px 14px;background:linear-gradient(135deg,#7C3AED,#4338CA);border:none;border-radius:8px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer">🔄 Re-check Facts</button>
+      </div>
+      ${editsHtml ? `<div style="margin-top:8px"><div style="font-size:0.74rem;font-weight:800;color:#065F46;margin-bottom:6px">✅ Edits applied</div>${editsHtml}</div>` : '<div style="font-size:0.74rem;color:#6B7280">No edits returned by the model.</div>'}
+    </div>`;
+    showToast(`✨ Auto-corrected ${(r.edits||[]).length} passages in ${elapsed}s`);
+  } catch (e) {
+    showToast('❌ ' + (e.message || 'Auto-correct failed'));
+  } finally {
+    if (timerInt) clearInterval(timerInt);
+    if (btn) { btn.disabled = false; btn.textContent = '🪄 Auto-Correct'; }
   }
 }
 

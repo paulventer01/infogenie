@@ -4532,6 +4532,60 @@ AUTHORITATIVE SOURCE (${cleanDomain}):
   }
 });
 
+// ── POST /api/content-fact-check/auto-correct ─────────────────────────────────
+// Takes the article HTML + the contradictions list returned by the prior
+// fact-check and rewrites just the contradicting passages so they match the
+// authoritative brand source. Returns the corrected HTML + a list of edits.
+app.post('/api/content-fact-check/auto-correct', async (req, res) => {
+  try {
+    const { content = '', contradictions = [], unverifiable = [], domain = 'yourdomain.com' } = req.body || {};
+    const html = String(content);
+    if (!html.trim()) return res.status(400).json({ ok:false, error:'No content provided' });
+    const fixList = [...(Array.isArray(contradictions)?contradictions:[]), ...(Array.isArray(unverifiable)?unverifiable:[])];
+    if (!fixList.length) return res.json({ ok:true, correctedHtml: html, edits: [], note:'No contradictions to fix' });
+    const cleanDomain = String(domain).replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase();
+
+    const prompt = `You are a careful technical editor. Rewrite the HTML article below so every contradicting or unverifiable claim is replaced with wording that matches the authoritative source for brand "${cleanDomain}".
+
+Rules:
+- Keep ALL existing HTML tags, links, headings, lists, and paragraph structure intact.
+- Only edit the sentences that contain a flagged claim. Do not rewrite the whole article.
+- For each contradiction, use the supplied "correction" as the truth.
+- For each unverifiable claim, soften the language (e.g. "may include", "typically", "according to industry sources") or remove the unsupported specific.
+- Never invent new facts. If you cannot verify a claim from the corrections, generalise it.
+
+Return ONLY strict JSON:
+{
+ "correctedHtml": "<full corrected HTML>",
+ "edits": [{"before":"original sentence","after":"corrected sentence","reason":"why it was changed"}]
+}
+
+CONTRADICTIONS TO FIX:
+${JSON.stringify(contradictions, null, 2)}
+
+UNVERIFIABLE CLAIMS TO SOFTEN:
+${JSON.stringify(unverifiable, null, 2)}
+
+ORIGINAL ARTICLE HTML:
+"""${html}"""`;
+
+    const c = await openai.chat.completions.create({
+      model: 'gpt-4o', max_tokens: 4000,
+      messages: [{ role:'user', content: prompt }],
+      response_format: { type:'json_object' },
+    });
+    const j = JSON.parse(c.choices?.[0]?.message?.content || '{}');
+    res.json({
+      ok: true,
+      correctedHtml: typeof j.correctedHtml === 'string' && j.correctedHtml.trim() ? j.correctedHtml : html,
+      edits: Array.isArray(j.edits) ? j.edits : [],
+    });
+  } catch (err) {
+    console.error('/api/content-fact-check/auto-correct error:', err);
+    res.status(500).json({ ok:false, error: err.message });
+  }
+});
+
 // ── AI Visibility Trend persistence ──────────────────────────────────────────
 // Stores every coverage-matrix run to data/aivis-history.json (keyed by domain)
 // so users can see citation deltas over time per model and per prompt.
