@@ -44149,13 +44149,69 @@ function _rpToCarousel(title) {
       'Target audience for this presentation (e.g. "Series-B SaaS CFOs", "regional Shopify store owners")',
       { currentValue: pa.value }
     ));
+    // Render the deck preview + action toolbar. Extracted so we can re-render
+    // after Add images finishes without re-calling /generate.
+    function _renderDeck(deckId, d){
+      const hasImages = (d.slides||[]).some(s => s.image);
+      pout.innerHTML = `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
+          <button id="pAddImg" style="background:${hasImages?'#E2E8F0':'#7C3AED'};color:${hasImages?'#475569':'white'};border:0;padding:10px 16px;border-radius:8px;font-weight:700;cursor:pointer">🎨 ${hasImages?'Regenerate images':'Add images to slides'}</button>
+          <button id="pPptx" style="background:#0F172A;color:white;border:0;padding:10px 16px;border-radius:8px;font-weight:700;cursor:pointer">⬇ PowerPoint</button>
+          <span id="pStatus" style="align-self:center;color:#64748B;font-size:12px"></span>
+        </div>
+        <div style="background:#F8FAFC;padding:16px;border-radius:10px">
+          <h2 style="margin:0">${_esc(d.title)}</h2>
+          <p style="color:#475569;margin:4px 0 14px">${_esc(d.subtitle||'')}</p>
+          ${(d.slides||[]).map(s=>`
+            <div style="background:white;padding:14px;border-radius:8px;margin:8px 0;border-left:3px solid #0066FF;display:grid;grid-template-columns:${s.image?'1fr 180px':'1fr'};gap:14px;align-items:start">
+              <div>
+                <div style="font-size:11px;color:#94A3B8;text-transform:uppercase;font-weight:700">Slide ${s.n} · ${_esc(s.type)}</div>
+                <div style="font-weight:700;margin-top:4px">${_esc(s.heading||'')}</div>
+                ${s.subheading?`<div style="color:#64748B;font-size:13px">${_esc(s.subheading)}</div>`:''}
+                ${(s.bullets||[]).length?`<ul style="margin:8px 0 0;font-size:13px;color:#0F172A">${s.bullets.map(b=>`<li>${_esc(b)}</li>`).join('')}</ul>`:''}
+                ${s.speakerNotes?`<div style="margin-top:8px;padding:8px;background:#FEF3C7;border-radius:6px;font-size:12px;color:#78350F">📝 ${_esc(s.speakerNotes)}</div>`:''}
+                ${s.imageError?`<div style="margin-top:8px;padding:6px 8px;background:#FEE2E2;border-radius:6px;font-size:11px;color:#991B1B">Image failed: ${_esc(s.imageError)}</div>`:''}
+              </div>
+              ${s.image?`<img src="${s.image}" alt="" style="width:180px;height:135px;object-fit:cover;border-radius:6px;background:#F1F5F9">`:''}
+            </div>`).join('')}
+        </div>`;
+      const status = document.getElementById('pStatus');
+      document.getElementById('pPptx').addEventListener('click', ()=>{
+        status.textContent = 'Building .pptx…';
+        // Use a hidden anchor so the browser handles the download with the
+        // server-supplied filename; this also dodges popup-blockers.
+        const a = document.createElement('a');
+        a.href = '/api/studio/presentation/' + encodeURIComponent(deckId) + '/pptx';
+        a.download = (d.title || 'presentation') + '.pptx';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(()=>{ status.textContent = 'Download started.'; }, 800);
+      });
+      document.getElementById('pAddImg').addEventListener('click', async ()=>{
+        const btn = document.getElementById('pAddImg');
+        btn.disabled = true;
+        const t0 = Date.now();
+        const tick = setInterval(()=>{ status.textContent = '⏳ Generating images… ' + Math.floor((Date.now()-t0)/1000) + 's (≈10s per slide)'; }, 500);
+        try {
+          const j = await _api('/api/studio/presentation/' + encodeURIComponent(deckId) + '/images', { method:'POST', body:{} });
+          clearInterval(tick);
+          _renderDeck(deckId, j.deck || d);
+        } catch (e) {
+          clearInterval(tick);
+          status.textContent = '';
+          status.innerHTML = `<span style="color:#DC2626">${_esc(e.message)}</span>`;
+          btn.disabled = false;
+        }
+      });
+    }
+
     pgo.addEventListener('click', async ()=>{
-      pout.innerHTML='⏳ Generating ('+pc.value+' slides)…';
+      const t0 = Date.now();
+      const tick = setInterval(()=>{ pout.innerHTML = '⏳ Generating ('+pc.value+' slides)… ' + Math.floor((Date.now()-t0)/1000) + 's'; }, 500);
+      pout.innerHTML='⏳ Generating ('+pc.value+' slides)… 0s';
       try{ const j=await _api('/api/studio/presentation/generate',{method:'POST',body:{topic:pt.value,audience:pa.value,slideCount:Number(pc.value)||10}});
-        const d=j.deck||{};
-        pout.innerHTML=`<div style="background:#F8FAFC;padding:16px;border-radius:10px"><h2 style="margin:0">${_esc(d.title)}</h2><p style="color:#475569;margin:4px 0 14px">${_esc(d.subtitle||'')}</p>
-          ${(d.slides||[]).map(s=>`<div style="background:white;padding:14px;border-radius:8px;margin:8px 0;border-left:3px solid #0066FF"><div style="font-size:11px;color:#94A3B8;text-transform:uppercase;font-weight:700">Slide ${s.n} · ${_esc(s.type)}</div><div style="font-weight:700;margin-top:4px">${_esc(s.heading||'')}</div>${s.subheading?`<div style="color:#64748B;font-size:13px">${_esc(s.subheading)}</div>`:''}${(s.bullets||[]).length?`<ul style="margin:8px 0 0;font-size:13px;color:#0F172A">${s.bullets.map(b=>`<li>${_esc(b)}</li>`).join('')}</ul>`:''}${s.speakerNotes?`<div style="margin-top:8px;padding:8px;background:#FEF3C7;border-radius:6px;font-size:12px;color:#78350F">📝 ${_esc(s.speakerNotes)}</div>`:''}</div>`).join('')}</div>`;
-      }catch(e){ pout.innerHTML=`<div style="color:#DC2626">${_esc(e.message)}</div>`; }
+        clearInterval(tick);
+        _renderDeck(j.id, j.deck || {});
+      }catch(e){ clearInterval(tick); pout.innerHTML=`<div style="color:#DC2626">${_esc(e.message)}</div>`; }
     });
   }
 

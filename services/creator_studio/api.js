@@ -499,6 +499,110 @@ router.get('/presentation/:id', async (req, res) => {
   res.json({ ok:true, deck: data });
 });
 
+// Generate one SDXL image per slide using the slide's visualSuggestion as the
+// prompt. Persists the image data URLs back onto each slide as `image` and
+// returns the updated deck. Requires Cloudflare Workers AI to be configured.
+router.post('/presentation/:id/images', async (req, res) => {
+  if (!HAS_CF) return _err(res, 400, 'Cloudflare Workers AI not configured — set CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN');
+  const deck = await _db.kvGet(`studio_pres:${req.params.id}`, null);
+  if (!deck) return _err(res, 404, 'deck not found');
+  const slides = Array.isArray(deck.slides) ? deck.slides : [];
+  if (!slides.length) return _err(res, 400, 'deck has no slides');
+  // SDXL is heavy (~10-15s each) so run sequentially to avoid hammering the
+  // Cloudflare account. Failures on individual slides are recorded but do not
+  // abort the whole batch — the user still gets partial coverage.
+  for (const s of slides) {
+    const visual = String(s.visualSuggestion || s.heading || deck.title || 'professional presentation illustration').slice(0, 400);
+    const prompt = `Editorial presentation illustration: ${visual}. Clean modern composition, soft natural lighting, no text, no watermark, no logos.`;
+    try {
+      s.image = await _cfImage('@cf/stabilityai/stable-diffusion-xl-base-1.0', {
+        prompt, num_steps: 20, guidance: 7.5,
+      });
+    } catch (e) {
+      s.imageError = e.message;
+    }
+  }
+  deck.imagesGeneratedAt = new Date().toISOString();
+  await _db.kvSet(`studio_pres:${req.params.id}`, deck);
+  res.json({ ok:true, deck });
+});
+
+// Download the deck as a real PowerPoint (.pptx). Reuses pptxgenjs the same
+// way services/exports/pptx_report.js does. Embeds slide images when present.
+router.get('/presentation/:id/pptx', async (req, res) => {
+  const deck = await _db.kvGet(`studio_pres:${req.params.id}`, null);
+  if (!deck) return _err(res, 404, 'deck not found');
+  try {
+    const PptxGenJS = require('pptxgenjs');
+    const pres = new PptxGenJS();
+    pres.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5
+    pres.title = String(deck.title || 'Presentation');
+
+    const PRIMARY = '1E1B4B';
+    const ACCENT  = '7C3AED';
+    const TEXT    = '0F172A';
+    const MUTED   = '64748B';
+
+    // Cover
+    const cover = pres.addSlide();
+    cover.background = { color: PRIMARY };
+    cover.addText(String(deck.title || 'Presentation'), {
+      x: 0.6, y: 2.6, w: 12, h: 1.6, fontSize: 44, bold: true, color: 'FFFFFF', fontFace: 'Calibri',
+    });
+    if (deck.subtitle) {
+      cover.addText(String(deck.subtitle), {
+        x: 0.6, y: 4.2, w: 12, h: 0.8, fontSize: 20, color: 'C4B5FD', fontFace: 'Calibri',
+      });
+    }
+    cover.addText('Generated ' + new Date(deck.createdAt || Date.now()).toLocaleDateString(), {
+      x: 0.6, y: 6.6, w: 12, h: 0.4, fontSize: 12, color: ACCENT, italic: true,
+    });
+
+    for (const s of (deck.slides || [])) {
+      const slide = pres.addSlide();
+      const hasImg = !!(s.image && /^data:image\//.test(s.image));
+      const contentW = hasImg ? 7.3 : 12.3;
+
+      slide.addText(`SLIDE ${s.n || ''} · ${String(s.type || 'content').toUpperCase()}`, {
+        x: 0.5, y: 0.3, w: contentW, h: 0.4, fontSize: 10, bold: true, color: ACCENT, fontFace: 'Calibri',
+      });
+      slide.addText(String(s.heading || ''), {
+        x: 0.5, y: 0.75, w: contentW, h: 0.9, fontSize: 28, bold: true, color: PRIMARY, fontFace: 'Calibri',
+      });
+      if (s.subheading) {
+        slide.addText(String(s.subheading), {
+          x: 0.5, y: 1.7, w: contentW, h: 0.6, fontSize: 16, color: MUTED, fontFace: 'Calibri',
+        });
+      }
+      if (Array.isArray(s.bullets) && s.bullets.length) {
+        slide.addText(
+          s.bullets.map(b => ({ text: String(b), options: { bullet: true } })),
+          { x: 0.7, y: 2.4, w: contentW - 0.2, h: 4.0, fontSize: 16, color: TEXT, fontFace: 'Calibri', paraSpaceAfter: 8 }
+        );
+      }
+      if (hasImg) {
+        try {
+          slide.addImage({
+            data: s.image,
+            x: 8.1, y: 0.75, w: 4.8, h: 5.4, sizing: { type: 'cover', w: 4.8, h: 5.4 },
+          });
+        } catch {}
+      }
+      if (s.speakerNotes) {
+        slide.addNotes(String(s.speakerNotes));
+      }
+    }
+
+    const buf = await pres.write({ outputType: 'nodebuffer' });
+    const safe = String(deck.title || 'presentation').replace(/[^a-z0-9-_ ]+/gi, '').trim().replace(/\s+/g, '_').slice(0, 60) || 'presentation';
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    res.setHeader('Content-Disposition', `attachment; filename="${safe}.pptx"`);
+    res.send(Buffer.isBuffer(buf) ? buf : Buffer.from(buf));
+  } catch (e) {
+    _err(res, 500, 'PPTX build failed: ' + e.message);
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 5) EMAIL SIGNATURE DESIGNER (with optional tracking pixel + click tracking)
 // ─────────────────────────────────────────────────────────────────────────────
