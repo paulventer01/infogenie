@@ -3481,7 +3481,7 @@ async function runAnalysis(url, country, industryOverride) {
           p = document.createElement('div');
           p.id = 'igDbgPanel';
           p.style.cssText = 'position:fixed;bottom:8px;right:8px;width:380px;max-height:280px;overflow:auto;background:rgba(10,22,40,.95);color:#7FFFD4;font:11px/1.4 monospace;padding:8px 10px;border-radius:8px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid #00C9C8';
-          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL8</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
+          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL9</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
           document.body.appendChild(p);
         }
         const log = document.getElementById('igDbgLog');
@@ -3525,7 +3525,8 @@ async function runAnalysis(url, country, industryOverride) {
     const inferredNiche = aiDetected.subNiche || aiDetected.industryName;
     if (inferredNiche) {
       try {
-        const r = await fetch('/api/sector-competitors', {
+        try { window._igDbg && window._igDbg('⏳ post-detect sector-competitors (10s deadline)'); } catch(_){}
+        const r = await _fetchWithTimeout('/api/sector-competitors', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -3533,9 +3534,10 @@ async function runAnalysis(url, country, industryOverride) {
             country: country || aiDetected.country || '',
             urlHint: cleanUrl,
           }),
-        });
-        if (r.ok) sectorDetected = await r.json();
-      } catch (e) { console.warn('post-detect sector-competitors failed:', e); }
+        }, 10000);
+        if (r && r.ok) sectorDetected = await r.json();
+        try { window._igDbg && window._igDbg('✓ post-detect sector done'); } catch(_){}
+      } catch (e) { console.warn('post-detect sector-competitors failed:', e); try { window._igDbg && window._igDbg('✕ post-detect sector failed/timeout'); } catch(_){} }
     }
   }
 
@@ -3626,12 +3628,13 @@ async function runAnalysis(url, country, industryOverride) {
         statusText.textContent = 'Pulling live competitor traffic & ad-spend data...';
         const domainList = aiCompetitorPool.map(c => c.domain).filter(Boolean);
         if (domainList.length) {
-          try { window._igDbg && window._igDbg('⏳ /api/competitor-metrics'); } catch(_){}
-          const mr = await fetch('/api/competitor-metrics', {
+          try { window._igDbg && window._igDbg('⏳ /api/competitor-metrics (10s deadline)'); } catch(_){}
+          const mr = await _fetchWithTimeout('/api/competitor-metrics', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ domains: domainList, industryKey, location: country || 'United States' })
-          });
+          }, 10000);
+          try { window._igDbg && window._igDbg('✓ /api/competitor-metrics done · status=' + (mr ? mr.status : 'aborted')); } catch(_){}
           if (mr.ok) {
             const mj = await mr.json();
             const byDomain = {};
@@ -3678,12 +3681,13 @@ async function runAnalysis(url, country, industryOverride) {
           currentCTR:     c.ctr,
           dataSource:     c.dataSource || null
         }));
-        try { window._igDbg && window._igDbg('⏳ /api/ai-validate-metrics'); } catch(_){}
-        const ar = await fetch('/api/ai-validate-metrics', {
+        try { window._igDbg && window._igDbg('⏳ /api/ai-validate-metrics (12s deadline)'); } catch(_){}
+        const ar = await _fetchWithTimeout('/api/ai-validate-metrics', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ competitors: aiPayload, industry: aiDetected.industryName || industryKey })
-        });
+        }, 12000);
+        try { window._igDbg && window._igDbg('✓ /api/ai-validate-metrics done · status=' + (ar ? ar.status : 'aborted')); } catch(_){}
         if (ar.ok) {
           const aj = await ar.json();
           const byName = {};
