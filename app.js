@@ -38235,18 +38235,72 @@ async function _wrLoadRuns() {
 // ============================================================================
 window.buildRedditPulse = function() {
   const wrap = document.getElementById('rpWrap'); if (!wrap) return;
+  const ownBrand = (window.analysisData && window.analysisData.brandName) || '';
+  const compNames = (window.analysisData && Array.isArray(window.analysisData.competitors))
+    ? window.analysisData.competitors.map(c => c.name || c.domain).filter(Boolean).slice(0, 15)
+    : [];
+  const pickerOpts = [
+    ownBrand ? `<option value="${_escapeHtml(ownBrand)}">${_escapeHtml(ownBrand)} (your brand)</option>` : '',
+    ...compNames.map(n => `<option value="${_escapeHtml(n)}">${_escapeHtml(n)}</option>`)
+  ].filter(Boolean).join('');
   wrap.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
       <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">🔍 Scan Reddit</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND</label><input id="rpBrand" placeholder="e.g. Nike" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND <span style="color:#15803D;font-weight:600">(auto-filled from your analysis)</span></label>
+          ${pickerOpts
+            ? `<select id="rpPick" onchange="window._rpPickChange()" style="width:100%;padding:6px 9px;border:1.5px solid #D1D5DB;border-radius:5px;font-size:0.76rem;background:#F9FAFB;margin-bottom:4px;box-sizing:border-box">
+                 <option value="">— Pick from your analysis (or type below) —</option>
+                 ${pickerOpts}
+               </select>`
+            : `<div style="font-size:0.68rem;color:#9CA3AF;margin-bottom:4px">💡 Run an analysis to unlock pickers.</div>`}
+          <input id="rpBrand" value="${_escapeHtml(ownBrand)}" placeholder="e.g. Nike" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box;background:${ownBrand?'#F0FDF4':'#fff'}">
+        </div>
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">SUBREDDITS (comma-sep, no r/)</label><input id="rpSubs" placeholder="all, marketing, sneakers" value="all" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
       </div>
-      <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">EXTRA KEYWORDS (optional, comma-sep)</label><input id="rpKw" placeholder="defaults to brand name" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+      <div>
+        <label style="display:flex;align-items:center;justify-content:space-between;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">
+          <span>EXTRA KEYWORDS (optional, comma-sep)</span>
+          <button type="button" onclick="window._rpKwSuggest()" title="Pull keywords from your last analysis" style="padding:3px 8px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);border:none;border-radius:5px;color:#fff;-webkit-text-fill-color:#fff;font-size:0.6rem;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:0">🤖 AI Suggest</button>
+        </label>
+        <input id="rpKw" placeholder="defaults to brand name" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">
+      </div>
       <button id="rpGo" style="margin-top:12px;background:linear-gradient(135deg,#FF4500,#FF8C42);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">🔍 Scan now</button>
     </div>
     <div id="rpOut"></div>
   `;
+  window._rpPickChange = function() {
+    const s = document.getElementById('rpPick'), i = document.getElementById('rpBrand');
+    if (s && i && s.value) i.value = s.value;
+  };
+  window._rpKwSuggest = async function() {
+    const input = document.getElementById('rpKw'); if (!input) return;
+    const fromAnalysis = (window.analysisData && Array.isArray(window.analysisData.keywords))
+      ? window.analysisData.keywords.map(k => typeof k === 'string' ? k : (k.keyword || k.term || '')).filter(Boolean).slice(0, 10)
+      : [];
+    if (fromAnalysis.length) {
+      input.value = fromAnalysis.join(', ');
+      showToast(`✨ ${fromAnalysis.length} keywords pulled from your analysis`);
+      return;
+    }
+    const brand = (document.getElementById('rpBrand')?.value || '').trim();
+    const industry = (window.analysisData && window.analysisData.industry && window.analysisData.industry.name) || '';
+    if (!brand) { showToast('⚠️ Enter a brand first or run an analysis'); return; }
+    const orig = input.placeholder; input.placeholder = '⏳ Generating…';
+    try {
+      const r = await fetch('/api/ai-quick', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: `Return ONLY a comma-separated list of 6 short Reddit-search keywords (1-3 words each) for the brand "${brand}"${industry?` in the ${industry} industry`:''}. No numbering.`, max_tokens: 120 })
+      }).then(x => x.text());
+      let data; try { data = JSON.parse(r); } catch { data = null; }
+      if (data && data.ok && data.text) {
+        input.value = data.text.replace(/\n/g,', ').replace(/^[-•\d.\s]+/gm,'').replace(/\s*,\s*/g,', ').replace(/^,\s*|,\s*$/g,'').trim();
+        showToast('✨ AI keywords generated');
+      } else { showToast('⚠️ AI suggestion unavailable — type manually'); }
+    } catch (e) { showToast('❌ ' + (e.message || 'Failed')); }
+    finally { input.placeholder = orig; }
+  };
   document.getElementById('rpGo').addEventListener('click', async () => {
     const brand = document.getElementById('rpBrand').value.trim();
     const subs = document.getElementById('rpSubs').value.split(',').map(s => s.trim()).filter(Boolean);
@@ -42063,10 +42117,10 @@ function _rpInjectDiscover() {
   if (!wrap || document.getElementById('rpDiscoverPanel')) return;
   const panel = document.createElement('div');
   panel.id = 'rpDiscoverPanel';
-  panel.style.cssText = 'background:linear-gradient(135deg,#7C3AED 0%,#5B21B6 100%);color:white;border-radius:12px;padding:18px;margin-bottom:18px';
+  panel.style.cssText = 'background:linear-gradient(135deg,#7C3AED 0%,#5B21B6 100%);color:#fff;-webkit-text-fill-color:#fff;border-radius:12px;padding:18px;margin-bottom:18px';
   panel.innerHTML = `
-    <div style="font-weight:800;margin-bottom:6px">💡 Discover Questions Customers Ask</div>
-    <div style="font-size:0.82rem;opacity:.85;margin-bottom:12px">Enter what you sell — get the real questions strangers ask about it on Reddit right now. Perfect for blog topics, FAQ pages, and your next carousel.</div>
+    <div style="font-weight:800;margin-bottom:6px;color:#fff;-webkit-text-fill-color:#fff;font-size:1rem;text-shadow:0 1px 2px rgba(0,0,0,.25)">💡 Discover Questions Customers Ask</div>
+    <div style="font-size:0.82rem;color:#fff;-webkit-text-fill-color:#fff;margin-bottom:12px;text-shadow:0 1px 2px rgba(0,0,0,.2)">Enter what you sell — get the real questions strangers ask about it on Reddit right now. Perfect for blog topics, FAQ pages, and your next carousel.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <input id="rpDqInput" placeholder='What do you sell? e.g. "roof repair", "wedding photography"' style="flex:1;min-width:240px;padding:10px;border:none;border-radius:8px;font-size:0.88rem;color:#0F172A">
       <button onclick="_rpDiscover()" id="rpDqBtn" style="background:white;color:#7C3AED;border:none;padding:10px 18px;border-radius:8px;font-weight:800;cursor:pointer">🔍 Find Questions</button>
