@@ -4856,12 +4856,15 @@ function buildDashboard() {
         <td>${c.traffic && c.traffic !== '—' ? c.traffic : '<span style="color:#94a3b8" title="No public data available">—</span>'}</td>
         <td><strong>${c.ctr && c.ctr !== '—' ? c.ctr : '<span style="color:#94a3b8" title="No public data available">—</span>'}</strong></td>
         <td><strong>${(typeof c.roas === 'number' && c.roas > 0) ? c.roas.toFixed(1) + '×' : (c.roas && c.roas !== '—' ? c.roas + '×' : '<span style="color:#94a3b8" title="No public data available">—</span>')}</strong></td>
-        <td>${c.adSpend && c.adSpend !== '—' ? c.adSpend : '<span style="color:#94a3b8" title="No public data available">—</span>'}</td>
+        <td id="adSpendCell-${i}"><span style="color:#94a3b8;font-size:0.78rem" title="Checking Meta Ad Library…">⏳ checking…</span></td>
         <td>${channel}</td>
         <td><span class="threat-badge threat-${lvl} threat-badge-clickable" onclick="openThreatModal(${i})" title="Click for threat details">${safeCap(lvl)} Threat ↗</span></td>
       </tr>
     `;
   }).join('');
+
+  // ── Async populate "Est. Ad Spend" column with real Meta Ad Library counts + transparent $ range estimate
+  try { window._populateAdSpendColumn && window._populateAdSpendColumn(competitors); } catch (e) { console.warn('populateAdSpend error:', e); }
 
   // ── Marketing Journey stages panel (Express → Tailor → Amplify → Evolve) ──
   try { window._renderJourneyStages && window._renderJourneyStages(); } catch (e) { console.warn('renderJourneyStages error:', e); }
@@ -30295,6 +30298,49 @@ function _forecastHtml(j) {
    MARKETING JOURNEY STAGES — dashboard panel mapping existing features into
    a 4-stage Express → Tailor → Amplify → Evolve narrative arc.
    ============================================================================= */
+// ── Populate "Est. Ad Spend / Mo" column with real Meta Ad Library counts + transparent $ range estimate
+window._adSpendCache = window._adSpendCache || {};
+window._populateAdSpendColumn = async function(competitors) {
+  const fmtMoney = n => n >= 1000 ? `$${Math.round(n/1000)}k` : `$${Math.round(n/100)*100}`;
+  // Heuristic per-ad cost band (small business → mid-market). Disclosed to user as "est."
+  const PER_AD_LOW = 200, PER_AD_HIGH = 1000;
+  const tasks = (competitors || []).map((c, i) => async () => {
+    const cell = document.getElementById('adSpendCell-' + i);
+    if (!cell) return;
+    const brand = (c.name || c.brand || c.domain || '').toString().trim();
+    if (!brand) { cell.innerHTML = '<span style="color:#94a3b8" title="No brand name">—</span>'; return; }
+    const cached = window._adSpendCache[brand.toLowerCase()];
+    if (cached) { cell.innerHTML = cached; return; }
+    try {
+      const r = await fetch('/api/ad-library/meta', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ brand, country:'ALL' })
+      });
+      const j = await r.json().catch(() => null);
+      if (!j || !j.ok) {
+        const html = `<span style="color:#94a3b8;font-size:0.78rem" title="${_escapeHtml(j && j.error ? j.error : 'Meta Ad Library unavailable')}">— <span style="font-size:0.66rem">no data</span></span>`;
+        cell.innerHTML = html; window._adSpendCache[brand.toLowerCase()] = html; return;
+      }
+      const count = Array.isArray(j.ads) ? j.ads.length : 0;
+      if (!count) {
+        const html = `<div style="color:#475569;font-weight:700;font-size:0.82rem">0 ads live</div><div style="font-size:0.66rem;color:#94a3b8">Not running Meta ads</div>`;
+        cell.innerHTML = html; window._adSpendCache[brand.toLowerCase()] = html; return;
+      }
+      const low = count * PER_AD_LOW, high = count * PER_AD_HIGH;
+      const html = `<div style="font-weight:800;color:#0A1628;font-size:0.86rem">${count} ad${count===1?'':'s'} live</div><div style="font-size:0.66rem;color:#6B7280" title="Heuristic: ${count} active ads × $${PER_AD_LOW}-${PER_AD_HIGH}/ad/mo. Real $ figures are not publicly disclosed.">~${fmtMoney(low)}–${fmtMoney(high)}/mo <span style="color:#94a3b8">est.</span></div>`;
+      cell.innerHTML = html; window._adSpendCache[brand.toLowerCase()] = html;
+    } catch (e) {
+      cell.innerHTML = `<span style="color:#94a3b8;font-size:0.78rem" title="${_escapeHtml(e.message)}">—</span>`;
+    }
+  });
+  // Run with concurrency = 3 to be gentle on the Meta API
+  const queue = tasks.slice();
+  const workers = Array(Math.min(3, queue.length)).fill(0).map(async () => {
+    while (queue.length) { const t = queue.shift(); if (t) await t(); }
+  });
+  await Promise.all(workers);
+};
+
 window._renderJourneyStages = function() {
   const host = document.getElementById('dashLivePanels');
   if (!host) return;
@@ -35957,24 +36003,74 @@ window._pwAdd = async function() {
     showToast('✅ Target added'); await _pwLoad();
   } catch (e) { showToast('❌ '+e.message); }
 };
-window._pwLoad = async function() {
-  const el = document.getElementById('pwTargets'); if (!el) return;
-  el.innerHTML = `<div style="color:#6B7280;font-size:0.85rem">Loading…</div>`;
-  try {
-    const r = await fetch('/api/pricing-watch/targets').then(x=>x.json());
-    if (!r.ok) throw new Error(r.error||'failed');
-    if (!r.targets.length) { el.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280;font-size:0.88rem">No targets yet. Add a product URL above to start tracking.</div>`; return; }
-    el.innerHTML = `<div style="font-weight:800;color:#0A1628;font-size:0.95rem;margin-bottom:10px">📊 Tracked products (${r.targets.length})</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${r.targets.map(t=>{
-          const lat = t.latest;
-          const priceTxt = lat && lat.price!=null ? `${_escapeHtml(lat.currency||'')}${lat.price}` : '—';
-          const orig = lat && lat.original_price ? `<span style="text-decoration:line-through;color:#9CA3AF;font-size:0.78rem;margin-left:6px">${_escapeHtml(lat.currency||'')}${lat.original_price}</span>` : '';
-          return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px 18px">
-            <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start">
-              <div style="flex:1;min-width:0">
-                <div style="font-weight:800;color:#0A1628;font-size:0.95rem">${_escapeHtml(t.label)}</div>
-                <div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${t.competitor?_escapeHtml(t.competitor)+' · ':''}<a href="${_escapeHtml(_safeUrl(t.url))}" target="_blank" rel="noopener noreferrer" style="color:#0EA5E9">${_escapeHtml(t.url.slice(0,80))}${t.url.length>80?'…':''}</a></div>
+window._pwLoad = async function(_isRetry) {
+  const el = document.getElementById('pwTargets');
+  if (!el) {
+    // DOM race — view container not mounted yet. Retry once on next tick.
+    if (!_isRetry) return setTimeout(() => window._pwLoad(true), 120);
+    return;
+  }
+  // Show cached snapshot first (if any) so the user never sees an empty screen on revisit
+  if (window._pwTargetsCache && Array.isArray(window._pwTargetsCache.targets)) {
+    _renderPwTargets(el, window._pwTargetsCache.targets, true);
+  } else {
+    el.innerHTML = `<div style="color:#6B7280;font-size:0.85rem"><span style="display:inline-block;width:10px;height:10px;border:2px solid #E5E7EB;border-top-color:#0066FF;border-radius:50%;animation:pwSpin .8s linear infinite;margin-right:6px;vertical-align:middle"></span>Loading tracked products…<style>@keyframes pwSpin{to{transform:rotate(360deg)}}</style></div>`;
+  }
+  let lastErr = null;
+  // Two attempts with a short backoff — guards against early-boot DB races and transient 5xx
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const r = await fetch('/api/pricing-watch/targets').then(x=>x.json());
+      if (!r.ok) throw new Error(r.error||'failed');
+      window._pwTargetsCache = { targets: r.targets || [], ts: Date.now() };
+      _renderPwTargets(el, r.targets || [], false);
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 2) await new Promise(res => setTimeout(res, 800));
+    }
+  }
+  // Both attempts failed — keep the cached render visible if we have one, otherwise show error with retry
+  if (!(window._pwTargetsCache && window._pwTargetsCache.targets.length)) {
+    el.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">⚠ Couldn't load tracked products: ${_escapeHtml(lastErr ? lastErr.message : 'unknown')} <button onclick="window._pwLoad()" style="margin-left:10px;padding:4px 12px;background:#fff;border:1px solid #B91C1C;color:#B91C1C;border-radius:5px;font-weight:700;cursor:pointer">↻ Retry</button></div>`;
+  }
+};
+
+// ── Format a brand-ready title from a competitor/domain string (strip TLD, capitalize)
+window._pwBrandName = function(raw) {
+  if (!raw) return '';
+  let s = String(raw).trim();
+  // Strip protocol + path + www + TLD if it looks like a domain
+  s = s.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/.*$/, '');
+  if (/\./.test(s)) s = s.split('.')[0]; // domain → core
+  s = s.replace(/[-_]+/g, ' ').trim();
+  if (!s) return '';
+  // Keep all-caps brands (IG, XM, OANDA) as-is, otherwise Title Case
+  if (s === s.toUpperCase() && s.length <= 6) return s;
+  return s.split(' ').map(w => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '').join(' ');
+};
+
+// ── Render the tracked-products list (extracted so we can reuse for cached + fresh renders)
+function _renderPwTargets(el, targets, isStale) {
+  if (!targets.length) { el.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280;font-size:0.88rem">No targets yet. Add a product URL above to start tracking.</div>`; return; }
+  const staleHint = isStale ? `<span style="font-size:0.66rem;color:#9CA3AF;font-weight:600;margin-left:8px">↻ refreshing…</span>` : '';
+  el.innerHTML = `<div style="font-weight:800;color:#0A1628;font-size:0.95rem;margin-bottom:10px">📊 Tracked products (${targets.length})${staleHint}</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${targets.map(t=>{
+        const lat = t.latest;
+        const priceTxt = lat && lat.price!=null ? `${_escapeHtml(lat.currency||'')}${lat.price}` : '—';
+        const orig = lat && lat.original_price ? `<span style="text-decoration:line-through;color:#9CA3AF;font-size:0.78rem;margin-left:6px">${_escapeHtml(lat.currency||'')}${lat.original_price}</span>` : '';
+        // ── Title = BRAND name (formatted from competitor field, else label); Subtitle = competitor NAME (cleaned)
+        const brandTitle = window._pwBrandName(t.competitor) || (t.label || '').trim() || window._pwBrandName(t.url) || 'Untitled';
+        const subtitleName = window._pwBrandName(t.competitor) || window._pwBrandName(t.url) || '—';
+        const labelLine = (t.label && t.label.trim() && t.label.trim() !== brandTitle) ? `<div style="font-size:0.72rem;color:#6B7280;margin-top:2px">${_escapeHtml(t.label)}</div>` : '';
+        return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px 18px">
+          <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:800;color:#0A1628;font-size:1rem">${_escapeHtml(brandTitle)}</div>
+              <div style="font-size:0.78rem;color:#475569;font-weight:600;margin-top:2px">${_escapeHtml(subtitleName)}</div>
+              ${labelLine}
+              <div style="font-size:0.7rem;color:#9CA3AF;margin-top:4px"><a href="${_escapeHtml(_safeUrl(t.url))}" target="_blank" rel="noopener noreferrer" style="color:#0EA5E9">${_escapeHtml(t.url.slice(0,80))}${t.url.length>80?'…':''}</a></div>
                 <div style="margin-top:8px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
                   <div style="font-size:1.4rem;font-weight:800;color:#0A1628">${priceTxt}${orig}</div>
                   ${lat&&lat.promo?`<span style="background:#FEF3C7;color:#92400E;padding:3px 8px;border-radius:5px;font-size:0.7rem;font-weight:700">${_escapeHtml(lat.promo)}</span>`:''}
@@ -35990,10 +36086,9 @@ window._pwLoad = async function() {
             </div>
             <div id="pwHist-${t.id}"></div>
           </div>`;
-        }).join('')}
-      </div>`;
-  } catch (e) { el.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
-};
+      }).join('')}
+    </div>`;
+}
 window._pwScan = async function(id) {
   showToast('⏳ Scanning…');
   try {
