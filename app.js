@@ -12166,9 +12166,11 @@ function buildRedditIntel() {
             style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
         </div>
         <div>
-          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:5px" title="Keywords InfoGenie will search for across Reddit threads and AI-synthesised community signals.">
-            Keywords to Monitor
-            <span id="rdt-kw-loader" style="display:none;margin-left:6px;font-size:0.6rem;color:#00C9C8;font-weight:600">✦ auto-filling…</span>
+          <label style="font-size:0.64rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;display:flex;align-items:center;justify-content:space-between;margin-bottom:5px" title="Keywords InfoGenie will search for across Reddit threads and AI-synthesised community signals.">
+            <span>Keywords to Monitor
+              <span id="rdt-kw-loader" style="display:none;margin-left:6px;font-size:0.6rem;color:#00C9C8;font-weight:600">✦ auto-filling…</span>
+            </span>
+            <button type="button" onclick="window._rdtKwSuggest()" title="Pull keywords from your last analysis" style="padding:3px 8px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);border:none;border-radius:5px;color:#fff;font-size:0.6rem;font-weight:700;cursor:pointer;text-transform:none;letter-spacing:0">🤖 AI Suggest</button>
           </label>
           <input id="rdt-keywords" value="${kwList}" placeholder="e.g. email marketing, CRM, automation" title="Comma-separated list of keywords to scan for — InfoGenie will surface threads where these terms appear in discussions." style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:white;font-size:0.8rem;box-sizing:border-box">
         </div>
@@ -12319,7 +12321,50 @@ function buildRedditIntel() {
   if (brand && (!kwList || !competitors)) {
     setTimeout(() => autoFillRedditFields(brand), 200);
   }
+  // Auto-scan on first load when analysis data is available (once per session)
+  if (brand && (kwList || competitors) && !window._rdtAutoScanned) {
+    window._rdtAutoScanned = true;
+    setTimeout(() => { try { scanRedditMonitor(); } catch(e) { console.warn('auto-scan failed:', e); } }, 600);
+  }
 }
+
+// 🤖 AI Suggest for "Keywords to Monitor" — pulls keywords from last analysis,
+// falls back to AI synthesis when analysis has none.
+window._rdtKwSuggest = async function() {
+  const input = document.getElementById('rdt-keywords');
+  if (!input) return;
+  const fromAnalysis = (window.analysisData && Array.isArray(window.analysisData.keywords))
+    ? window.analysisData.keywords.map(k => typeof k === 'string' ? k : (k.keyword || k.term || '')).filter(Boolean).slice(0, 10)
+    : [];
+  if (fromAnalysis.length) {
+    input.value = fromAnalysis.join(', ');
+    showToast(`✨ ${fromAnalysis.length} keywords pulled from your analysis`);
+    return;
+  }
+  // Fallback: ask AI for 5 monitoring keywords based on brand + industry
+  const brand = (document.getElementById('rdt-brand')?.value || '').trim();
+  const industry = (window.analysisData && window.analysisData.industry && window.analysisData.industry.name) || '';
+  if (!brand) { showToast('⚠️ Enter a brand first or run an analysis'); return; }
+  const orig = input.placeholder; input.placeholder = '⏳ Generating keywords…';
+  try {
+    const r = await fetch('/api/ai-quick', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: `Return ONLY a comma-separated list of 6 short monitoring keywords (1-3 words each) for the brand "${brand}"${industry?` in the ${industry} industry`:''}. No numbering, no explanations.`,
+        max_tokens: 120
+      })
+    }).then(x => x.text());
+    let data; try { data = JSON.parse(r); } catch { data = null; }
+    if (data && data.ok && data.text) {
+      input.value = data.text.replace(/\n/g,', ').replace(/^[-•\d.\s]+/gm,'').replace(/\s*,\s*/g,', ').replace(/^,\s*|,\s*$/g,'').trim();
+      showToast('✨ AI keywords generated');
+    } else {
+      showToast('⚠️ AI suggestion unavailable — type keywords manually');
+    }
+  } catch (e) {
+    showToast('❌ ' + (e.message || 'Failed'));
+  } finally { input.placeholder = orig; }
+};
 
 let _rdtAutoFillTimer = null;
 async function autoFillRedditFields(domain) {
@@ -39225,15 +39270,36 @@ window.buildChatbotBuilder = function() {
 // ============================================================================
 window.buildGlassdoor = function() {
   const wrap = document.getElementById('gdWrap'); if (!wrap) return;
+  const ownBrand = (window.analysisData && window.analysisData.brandName) || '';
+  const compNames = (window.analysisData && Array.isArray(window.analysisData.competitors))
+    ? window.analysisData.competitors.map(c => c.name || c.domain).filter(Boolean).slice(0, 15)
+    : [];
+  const pickerOpts = [
+    ownBrand ? `<option value="${_escapeHtml(ownBrand)}">${_escapeHtml(ownBrand)} (your brand)</option>` : '',
+    ...compNames.map(n => `<option value="${_escapeHtml(n)}">${_escapeHtml(n)}</option>`)
+  ].filter(Boolean).join('');
   wrap.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
       <div style="display:grid;grid-template-columns:3fr 1fr;gap:10px;margin-bottom:10px">
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">COMPANY *</label><input id="gdCo" placeholder="e.g. Salesforce" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">COMPANY * <span style="color:#15803D;font-weight:600">(auto-filled from your analysis)</span></label>
+          ${pickerOpts
+            ? `<select id="gdPick" onchange="window._gdPickChange()" style="width:100%;padding:7px 10px;border:1.5px solid #D1D5DB;border-radius:5px;font-size:0.78rem;background:#F9FAFB;margin-bottom:5px;box-sizing:border-box">
+                 <option value="">— Pick from your analysis (or type manually below) —</option>
+                 ${pickerOpts}
+               </select>`
+            : `<div style="font-size:0.7rem;color:#9CA3AF;margin-bottom:5px">💡 Run an analysis to unlock brand/competitor pickers.</div>`}
+          <input id="gdCo" value="${_escapeHtml(ownBrand)}" placeholder="e.g. Salesforce — or pick from list above" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box;background:${ownBrand?'#F0FDF4':'#fff'}">
+        </div>
         <div style="display:flex;align-items:flex-end"><button id="gdGo" style="width:100%;background:linear-gradient(135deg,#0E9F6E,#14B8A6);color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">🏢 Scan Glassdoor</button></div>
       </div>
     </div>
     <div id="gdOut"></div>
   `;
+  window._gdPickChange = function() {
+    const s = document.getElementById('gdPick'), i = document.getElementById('gdCo');
+    if (s && i && s.value) i.value = s.value;
+  };
   document.getElementById('gdGo').addEventListener('click', async () => {
     const company = document.getElementById('gdCo').value.trim();
     const out = document.getElementById('gdOut');
