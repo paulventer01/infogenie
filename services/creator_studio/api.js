@@ -275,7 +275,7 @@ router.post('/image/product-shot', async (req, res) => {
   const { product = 'product', scene = 'minimalist studio with soft shadows on a white seamless background', style = 'photorealistic' } = req.body || {};
   const prompt = `${style} product photograph of ${product}, ${scene}, professional commercial photography, 4k, sharp focus, soft natural lighting`;
   try {
-    const dataUrl = await _cfImage('@cf/stabilityai/stable-diffusion-xl-base-1.0', { prompt, num_steps: 24, guidance: 8 });
+    const dataUrl = await _cfImage('@cf/stabilityai/stable-diffusion-xl-base-1.0', { prompt, num_steps: 20, guidance: 8 });
     res.json({ ok:true, image: dataUrl, promptUsed: prompt });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -285,7 +285,11 @@ router.post('/image/upscale-prompt', async (req, res) => {
   // re-generation by re-running SDXL at higher steps with the original prompt.
   const { prompt = 'high resolution detailed image' } = req.body || {};
   try {
-    const dataUrl = await _cfImage('@cf/stabilityai/stable-diffusion-xl-base-1.0', { prompt: prompt + ', ultra-detailed, 8k, sharp focus', num_steps: 30, guidance: 8 });
+    // Cloudflare Workers AI caps num_steps at 20 on SDXL — values above that
+    // return a 400 ("'/num_steps' must be <= 20"). We keep the prompt-level
+    // quality cues (ultra-detailed / 8k / sharp focus) which do most of the
+    // visible work on this model anyway.
+    const dataUrl = await _cfImage('@cf/stabilityai/stable-diffusion-xl-base-1.0', { prompt: prompt + ', ultra-detailed, 8k, sharp focus', num_steps: 20, guidance: 8 });
     res.json({ ok:true, image: dataUrl, note:'Re-rendered at higher fidelity. For true pixel upscaling, use a dedicated upscaler API.' });
   } catch (e) { _err(res, 500, e.message); }
 });
