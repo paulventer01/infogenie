@@ -3497,7 +3497,7 @@ async function runAnalysis(url, country, industryOverride) {
           p = document.createElement('div');
           p.id = 'igDbgPanel';
           p.style.cssText = 'display:none;position:fixed;bottom:8px;right:8px;width:420px;max-height:80vh;overflow:auto;background:rgba(10,22,40,.95);color:#7FFFD4;font:11px/1.4 monospace;padding:8px 10px;border-radius:8px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid #00C9C8';
-          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL18 (defer buildSettings)</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
+          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL20 (stagger enrich re-renders + fix buildCreative roas)</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
           document.body.appendChild(p);
         }
         const log = document.getElementById('igDbgLog');
@@ -4044,9 +4044,12 @@ async function enrichWithRealCompetitorData(domain, industryKey, country) {
 
     if (enriched > 0) {
       console.log(`Enriched ${enriched} competitors with real DataForSEO data`);
-      // Re-render competitors view with real data badges
-      buildCompetitors();
-      buildDashboard();
+      // Re-render competitors + dashboard with real data badges — deferred and
+      // staggered with setTimeout(0) so the heavy synchronous DOM rebuild
+      // doesn't jam the event loop after the user has already started
+      // interacting with the dashboard (REL20 freeze-fix).
+      setTimeout(() => { try { buildCompetitors(); } catch(e) { console.warn('re-render buildCompetitors:', e); } }, 0);
+      setTimeout(() => { try { buildDashboard();   } catch(e) { console.warn('re-render buildDashboard:',   e); } }, 80);
     }
 
     // Update your own domain metrics in dashboard if available
@@ -13401,7 +13404,7 @@ function buildCompetitorVsCards(industry, competitors, domainName) {
     const campaign = comp.campaigns[0];
     const imp = improvements[i] || improvements[0];
     const ourCTR = (parseFloat(campaign.ctr) + parseFloat(imp.ctrBoost)).toFixed(1) + '%';
-    const ourROAS = (campaign.roas + parseFloat(imp.roasBoost)).toFixed(1) + '×';
+    const ourROAS = ((parseFloat(campaign.roas) || 0) + (parseFloat(imp.roasBoost) || 0)).toFixed(1) + '×';
     const panelId = `vs-panel-${i}`;
     const vsAudiences = comp.audiences || [];
 
