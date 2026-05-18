@@ -3072,7 +3072,19 @@
   </div>
 </div>
 
-<script src="/app.js?v=20260518REL2"></script>
+<script>
+// Surface any silent unhandled promise rejection as a visible toast/alert so
+// async failures in runAnalysis (and friends) never disappear into the void.
+window.addEventListener('unhandledrejection', function(ev){
+  try {
+    var r = ev && ev.reason;
+    var msg = (r && (r.message || (typeof r === 'string' ? r : JSON.stringify(r)))) || 'Unknown error';
+    console.error('[unhandledrejection]', r);
+    if (typeof window.showToast === 'function') { window.showToast('⚠ ' + msg.slice(0, 200)); }
+  } catch(_){}
+});
+</script>
+<script src="/app.js?v=20260518REL3"></script>
 <script src="/ig_field_enhancer.js?v=20260518REL5"></script>
 <script>
 (function(){

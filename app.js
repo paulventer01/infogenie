@@ -19271,11 +19271,29 @@ document.addEventListener('DOMContentLoaded', () => {
     industry: (document.getElementById('industryInput')?.value || '').trim(),
   });
 
+  // Wrap runAnalysis so any error surfaces as a visible toast + console log
+  // instead of vanishing into an unhandled promise rejection. The actual
+  // overlay/loader cleanup is handled inside runAnalysis; we only need to
+  // make sure the user sees what went wrong.
+  const _safeRunAnalysis = (url, country, industry) => {
+    Promise.resolve().then(() => runAnalysis(url, country, industry))
+      .catch(err => {
+        console.error('[runAnalysis] failed:', err);
+        try {
+          const ov = document.getElementById('loadingOverlay');
+          if (ov) { ov.style.display = 'none'; ov.classList.add('hidden'); }
+          if (window._elapsedTimer) { clearInterval(window._elapsedTimer); window._elapsedTimer = null; }
+        } catch(_) {}
+        const msg = (err && (err.message || err.toString())) || 'Unknown error';
+        try { showToast('⚠ Analysis failed: ' + msg.slice(0, 160)); } catch(_) { alert('Analysis failed: ' + msg); }
+      });
+  };
+
   document.getElementById('analyseBtn').addEventListener('click', () => {
     const { url, country, industry } = _getAnalyseInputs();
-    runAnalysis(url, country, industry);
+    _safeRunAnalysis(url, country, industry);
   });
-  
+
   // Enter key on input — trigger from both inputs
   ['websiteInput','industryInput'].forEach(id => {
     const el = document.getElementById(id);
@@ -19283,7 +19301,7 @@ document.addEventListener('DOMContentLoaded', () => {
     el.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
         const { url, country, industry } = _getAnalyseInputs();
-        runAnalysis(url, country, industry);
+        _safeRunAnalysis(url, country, industry);
       }
     });
   });
@@ -19326,7 +19344,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const hintEl = document.getElementById('industryHint');
       if (hintEl) { hintEl.textContent = 'Leave blank for auto-detection'; hintEl.style.color = ''; }
       const { country, industry } = _getAnalyseInputs();
-      runAnalysis(url, country, industry);
+      try { _safeRunAnalysis(url, country, industry); }
+      catch(_) { runAnalysis(url, country, industry); }
     });
   });
   
