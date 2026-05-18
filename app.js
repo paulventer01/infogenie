@@ -3481,7 +3481,7 @@ async function runAnalysis(url, country, industryOverride) {
           p = document.createElement('div');
           p.id = 'igDbgPanel';
           p.style.cssText = 'position:fixed;bottom:8px;right:8px;width:380px;max-height:280px;overflow:auto;background:rgba(10,22,40,.95);color:#7FFFD4;font:11px/1.4 monospace;padding:8px 10px;border-radius:8px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid #00C9C8';
-          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL10</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
+          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL11</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
           document.body.appendChild(p);
         }
         const log = document.getElementById('igDbgLog');
@@ -3667,7 +3667,7 @@ async function runAnalysis(url, country, industryOverride) {
             console.log(`✓ Real metrics overlaid on ${Object.keys(byDomain).length}/${domainList.length} competitors`);
           }
         }
-      } catch(e) { console.warn('competitor-metrics overlay failed:', e); }
+      } catch(e) { console.warn('competitor-metrics overlay failed:', e); try { window._igDbg && window._igDbg('✕ competitor-metrics failed/timeout: ' + (e && e.message || e).toString().slice(0,80)); } catch(_){} }
 
       // ── AI VALIDATION PASS ────────────────────────────────────────────────
       // Cross-check + refine traffic / ad-spend / ROAS / CTR using OpenAI.
@@ -3775,7 +3775,7 @@ async function runAnalysis(url, country, industryOverride) {
         } else {
           console.warn('ai-validate-metrics returned', ar.status);
         }
-      } catch(e) { console.warn('AI validation pass failed:', e); }
+      } catch(e) { console.warn('AI validation pass failed:', e); try { window._igDbg && window._igDbg('✕ ai-validate-metrics failed/timeout: ' + (e && e.message || e).toString().slice(0,80)); } catch(_){} }
 
       // Derive per-campaign breakdown rows from the now-real top-level metrics.
       // No more random fakery — the two campaign rows are weighted splits
