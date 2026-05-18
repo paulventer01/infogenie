@@ -281,19 +281,39 @@
   }
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Visible-only scan — skip inputs that aren't on-screen so the decorator
+  // never spends time walking dashboards the user isn't looking at. Cheap
+  // `offsetParent === null` check filters display:none and detached nodes
+  // without forcing a layout recalc.
   function scan(root){
-    const sel = 'input[type="text"],input[type="search"],input[type="email"],' +
+    const sel = 'input[type="text"],input[type="email"],' +
                 'input[type="url"],input[type="tel"],input:not([type]),textarea';
-    (root || document).querySelectorAll(sel).forEach(decorate);
+    const list = (root || document).querySelectorAll(sel);
+    for (let i = 0; i < list.length; i++) {
+      const el = list[i];
+      if (el.offsetParent === null) continue;
+      decorate(el);
+    }
   }
+
+  // Yield control to the browser between scans so the analyse-now flow's
+  // many innerHTML writes can render without competing with us.
+  const idle = (cb) => (window.requestIdleCallback
+    ? window.requestIdleCallback(cb, { timeout: 500 })
+    : setTimeout(cb, 100));
 
   let pending = false;
   function schedule(){
     if (pending) return;
     pending = true;
-    // 250ms debounce — long enough to coalesce the giant innerHTML bursts the
-    // analyse-now flow emits when it renders all the dashboards back-to-back.
-    setTimeout(() => { pending = false; scan(document); }, 250);
+    // 350ms debounce + idle callback — long enough to coalesce the giant
+    // innerHTML bursts the analyse-now flow emits when rendering all
+    // dashboards back-to-back, and we only do the work when the browser
+    // is idle so we never block user interactions or renders.
+    setTimeout(() => {
+      pending = false;
+      idle(() => { try { scan(document); } catch(_) {} });
+    }, 350);
   }
 
   // Cheap test — does this added node (or any of its descendants) contain a
