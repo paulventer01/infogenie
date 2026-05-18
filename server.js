@@ -9062,17 +9062,21 @@ app.use('/api/conversion-boosters', _cbRouter);
 const _wlRouter = require('./services/white_label/api');
 const _scrRouter = require('./services/seo_crawler/api');
 const _geoRouter = require('./services/geo_audit/api');
+const _aiVisRouter = require('./services/ai_visibility/api');
 const _lsRouter  = require('./services/local_seo/api');
 const _stRouter  = require('./services/social_tags/api');
 app.use('/api/white-label', _wlRouter);
 app.use('/api/seo-crawler', _scrRouter);
 app.use('/api/geo-audit', _geoRouter);
+app.use('/api/ai-visibility', _aiVisRouter);
 app.use('/api/local-seo', _lsRouter);
 app.use('/api/social-tags', _stRouter);
 (async () => { try {
   if (process.env.DATABASE_URL) {
     const { ensureSeoCrawlerSchema } = require('./services/seo_crawler/schema');
     const { ensureGeoAuditSchema } = require('./services/geo_audit/schema');
+    const { ensureAiVisibilitySchema } = require('./services/ai_visibility/schema');
+    await ensureAiVisibilitySchema();
     const { ensureLocalSeoSchema }  = require('./services/local_seo/schema');
     const { ensureSocialTagsSchema } = require('./services/social_tags/schema');
     await ensureSeoCrawlerSchema();
