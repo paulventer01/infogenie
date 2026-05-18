@@ -44622,7 +44622,7 @@ function _rpToCarousel(title) {
 
         ${card('Pillar 1 — Purpose <span style="font-weight:400;color:#94A3B8;font-size:0.85rem">· Why does your business exist beyond making money?</span>', `
           ${lbl('Why we exist (2 sentences, customer-centred)')}
-          ${inp('purpose_why', f.purpose_why, 'We help small e-commerce brands compete with Amazon\\'s ad budget by automating the strategic thinking, not just the clicks...', 3)}
+          ${inp('purpose_why', f.purpose_why, "We help small e-commerce brands compete with Amazon's ad budget by automating the strategic thinking, not just the clicks...", 3)}
           ${lbl('Beyond profit (1 sentence — concrete, not "change the world")')}
           ${inp('purpose_beyond_money', f.purpose_beyond_money, 'Every retired ad budget that goes to a small brand instead of a giant is one less monopoly day...', 2)}
           <div style="margin-top:10px">${btn('🤖 AI Suggest Purpose', 'window._bfSuggest("purpose")')}</div>
@@ -44634,7 +44634,7 @@ function _rpToCarousel(title) {
           ${lbl('Role + context')}
           ${inp('icp_role', f.icp_role, 'Solo founder, DTC skincare brand, 2 years in, $30k/mo revenue', 1)}
           ${lbl('Their pain (in their words)')}
-          ${inp('icp_pain', f.icp_pain, 'I throw money at Meta ads and the dashboards lie to me. I can\\'t tell what\\'s working.', 2)}
+          ${inp('icp_pain', f.icp_pain, "I throw money at Meta ads and the dashboards lie to me. I can't tell what's working.", 2)}
           ${lbl('Cheap solution they already tried and why it failed')}
           ${inp('icp_tried_cheap', f.icp_tried_cheap, 'Hired a $500/mo "AI ad manager" that just paused campaigns at random and called it optimisation', 2)}
           ${lbl('Specific outcome they want')}
@@ -44647,8 +44647,8 @@ function _rpToCarousel(title) {
           ${slider('voice_tone_witty', f.voice_tone_witty, 'Witty  ←→  Serious')}
           ${slider('voice_tone_bold', f.voice_tone_bold, 'Bold/Direct  ←→  Soft')}
           ${lbl('Things we DO say (one per line)')}
-          ${inp('voice_we_say', f.voice_we_say, 'Honest numbers · Plain English · We\\'ll tell you when it isn\\'t working', 3)}
-          ${lbl('Things we DON\\'T say (one per line)')}
+          ${inp('voice_we_say', f.voice_we_say, "Honest numbers · Plain English · We'll tell you when it isn't working", 3)}
+          ${lbl("Things we DON'T say (one per line)")}
           ${inp('voice_we_dont_say', f.voice_we_dont_say, 'Synergy · Game-changer · Revolutionary · 10x · Disrupt', 3)}
           ${lbl('Banned words (comma-separated — voice check will flag these)')}
           ${inp('voice_banned_words', f.voice_banned_words, 'synergy, leverage, ninja, rockstar, disrupt, game-changer, revolutionary', 1)}
