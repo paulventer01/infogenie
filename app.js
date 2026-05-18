@@ -3497,7 +3497,7 @@ async function runAnalysis(url, country, industryOverride) {
           p = document.createElement('div');
           p.id = 'igDbgPanel';
           p.style.cssText = 'position:fixed;bottom:8px;right:8px;width:420px;max-height:80vh;overflow:auto;background:rgba(10,22,40,.95);color:#7FFFD4;font:11px/1.4 monospace;padding:8px 10px;border-radius:8px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid #00C9C8';
-          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL16 (server-beacon)</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
+          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL17 (navigate-pinpoint)</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
           document.body.appendChild(p);
         }
         const log = document.getElementById('igDbgLog');
@@ -3936,9 +3936,12 @@ async function runAnalysis(url, country, industryOverride) {
   }).catch(() => {});
 
   // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
-  try { window._igDbg && window._igDbg('🧭 navigateTo(dashboard)'); } catch(_){}
-  navigateTo('dashboard');
-  showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
+  try { window._igDbg && window._igDbg('🧭 about to call navigateTo(dashboard)'); } catch(_){}
+  const _navT0 = performance.now();
+  try { navigateTo('dashboard'); } catch(e){ try{ window._igDbg && window._igDbg('✕ navigateTo THREW: '+(e&&e.message||e)); }catch(_){} }
+  try { window._igDbg && window._igDbg('✓ navigateTo returned in '+Math.round(performance.now()-_navT0)+'ms'); } catch(_){}
+  try { showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`); } catch(e){ try{ window._igDbg && window._igDbg('✕ showToast THREW: '+(e&&e.message||e)); }catch(_){} }
+  try { window._igDbg && window._igDbg('✓ showToast returned'); } catch(_){}
 
   // Build all views — each wrapped so one failure never blocks the rest.
   // Each step logs to the on-page debug banner so we can see exactly which
@@ -3959,7 +3962,9 @@ async function runAnalysis(url, country, industryOverride) {
   });
   // Run builders sequentially with a yield between each so the browser repaints
   // and the page stays responsive even if one builder is slow.
+  try { window._igDbg && window._igDbg('▸ about to start builder IIFE'); } catch(_){}
   (async () => {
+    try { window._igDbg && window._igDbg('▸ builder IIFE entered'); } catch(_){}
     await _buildStep('buildDashboard',    buildDashboard);
     await _buildStep('buildCompetitors',  buildCompetitors);
     await _buildStep('buildCampaigns',    buildCampaigns);
