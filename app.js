@@ -3474,20 +3474,25 @@ async function runAnalysis(url, country, industryOverride) {
   // Visible on-page debug banner — survives even when DevTools isn't open.
   // Lives at the bottom-right of the screen, shows the last 10 analyse steps.
   if (!window._igDbg) {
+    window.__igDbgBuffer = window.__igDbgBuffer || [];
     window._igDbg = (msg) => {
       try {
+        const t = new Date().toISOString().substr(11, 12);
+        const line = '['+t+'] '+String(msg);
+        // Always console + buffer first so we never lose a log even if DOM is jammed
+        try { console.log('[IG]', line); } catch(_){}
+        try { window.__igDbgBuffer.push(line); if (window.__igDbgBuffer.length > 200) window.__igDbgBuffer.shift(); } catch(_){}
         let p = document.getElementById('igDbgPanel');
         if (!p) {
           p = document.createElement('div');
           p.id = 'igDbgPanel';
           p.style.cssText = 'position:fixed;bottom:8px;right:8px;width:420px;max-height:80vh;overflow:auto;background:rgba(10,22,40,.95);color:#7FFFD4;font:11px/1.4 monospace;padding:8px 10px;border-radius:8px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid #00C9C8';
-          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL14</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
+          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL15</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
           document.body.appendChild(p);
         }
         const log = document.getElementById('igDbgLog');
-        const t = new Date().toISOString().substr(11, 8);
-        log.innerHTML += '<div>['+t+'] '+String(msg).replace(/[<>]/g,'')+'</div>';
-        if (log.children.length > 20) log.firstChild.remove();
+        log.innerHTML += '<div>'+line.replace(/[<>]/g,'')+'</div>';
+        if (log.children.length > 40) log.firstChild.remove();
         log.parentNode.scrollTop = log.parentNode.scrollHeight;
       } catch(_){}
     };
@@ -3515,12 +3520,13 @@ async function runAnalysis(url, country, industryOverride) {
   window._lastRunDuration = parseFloat(_runSec);
   window._analysisStartedAt = null;
   try { if (statusText) statusText.textContent = `✅ Intelligence report ready in ${_runSec}s!`; } catch(_){}
-  window._igDbg('▸ awaiting wait(450)');
-  await wait(450);
-  window._igDbg('▸ wait(450) done, hiding overlay');
+  // Drop the cosmetic wait(450) — it was the last logged step before the page froze
+  // in REL10-14. Hide overlay synchronously and continue.
+  window._igDbg('▸ pt1 hiding overlay');
   try { if (overlay) { overlay.style.display = 'none'; overlay.classList.add('hidden'); } } catch(e) { window._igDbg('✕ overlay hide threw: '+e.message); }
-  try { showToast(`✅ Dashboard ready in ${_runSec}s`); } catch(_){}
-  window._igDbg('▸ entering post-detect/build pipeline');
+  window._igDbg('▸ pt2 overlay hidden');
+  try { showToast(`✅ Dashboard ready in ${_runSec}s`); } catch(e) { window._igDbg('✕ showToast threw: '+e.message); }
+  window._igDbg('▸ pt3 entering post-detect/build pipeline');
 
   // ── If URL was given but user didn't type an industry, take the sub-niche
   //    that smart-detect inferred from the website and use it to fetch a
