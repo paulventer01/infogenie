@@ -31888,10 +31888,31 @@ async function markAllAlertsRead() {
   } catch (e) { console.warn('mark read failed:', e.message); }
 }
 
+async function checkCreditsNow() {
+  const body = document.getElementById('alertsPanelBody');
+  if (body) body.innerHTML = `<div style="padding:32px;text-align:center;color:#64748b;font-size:.85rem">⏳ Checking API credits &amp; subscriptions…</div>`;
+  try {
+    const r = await fetch('/api/alerts/check-credits').then(x => x.json());
+    if (!r.ok) throw new Error(r.error || 'check failed');
+    if ((r.emitted || []).length) showToast(`🔔 ${r.emitted.length} new credit alert${r.emitted.length>1?'s':''}`);
+    else showToast('✓ All credits & subscriptions healthy');
+    await loadAlertsList();
+  } catch (e) {
+    if (body) body.innerHTML = `<div style="padding:32px;text-align:center;color:#EF4444;font-size:.85rem">⚠️ ${_esc(e.message)}</div>`;
+  }
+}
+window.checkCreditsNow = checkCreditsNow;
+
 // Auto-load alert count on app boot
 setTimeout(loadAlertsList, 1500);
+// Run a credit-check sweep on boot (server also runs it, but this ensures the
+// badge reflects current balance state without waiting for the next 5-min poll).
+setTimeout(() => { fetch('/api/alerts/check-credits').then(() => loadAlertsList()).catch(()=>{}); }, 3000);
 // Refresh every 5 minutes when tab is visible
 setInterval(() => { if (document.visibilityState === 'visible') loadAlertsList(); }, 5 * 60 * 1000);
+// Re-check credits every 30 minutes (server caps to 6h itself; this just
+// surfaces server-side cron emissions faster)
+setInterval(() => { if (document.visibilityState === 'visible') fetch('/api/alerts/check-credits').then(() => loadAlertsList()).catch(()=>{}); }, 30 * 60 * 1000);
 
 /* =============================================================================
    FEATURE 3: AI CONTENT-GAP IDEATION

@@ -12620,6 +12620,132 @@ app.post('/api/alerts/check', async (req, res) => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+// CREDIT / BILLING / SUBSCRIPTION MONITOR
+// ────────────────────────────────────────────────────────────────────────────
+// Pushes "low balance", "missing key", and "subscription required" alerts into
+// the same alerts.json store so the bell badge surfaces them automatically.
+// Idempotent: each kind+resource emits at most one unread alert at a time.
+
+async function _emitCreditAlert(alert) {
+  await _alertsMutate(async (data) => {
+    // De-dup: drop any prior unread alert with the same id-stem so the bell
+    // never shows duplicates of the same warning.
+    const stem = alert.id.replace(/-\d+$/, '');
+    data.alerts = data.alerts.filter(a => !(a.id.startsWith(stem) && !a.read));
+    data.alerts.unshift({ ...alert, timestamp: Date.now(), read: false });
+    data.alerts = data.alerts.slice(0, 100);
+    return data;
+  });
+}
+
+// Probe DataForSEO `/v3/appendix/user_data` → balance + currency + daily limits.
+async function _dfsBalance() {
+  if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) {
+    return { ok: false, error: 'no_creds' };
+  }
+  try {
+    const auth = 'Basic ' + Buffer.from(`${process.env.DATAFORSEO_LOGIN}:${process.env.DATAFORSEO_PASSWORD}`).toString('base64');
+    const r = await fetch('https://api.dataforseo.com/v3/appendix/user_data', {
+      headers: { Authorization: auth }, signal: AbortSignal.timeout(8000),
+    });
+    const j = await r.json();
+    const t = j?.tasks?.[0]?.result?.[0];
+    if (!t || !t.money) return { ok: false, error: 'no_data' };
+    return {
+      ok: true,
+      balance: Number(t.money.balance || 0),
+      total: Number(t.money.total || 0),
+      currency: t.money.currency || 'USD',
+    };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+// Runs the full credit-check sweep. Returns { emitted: [...] }.
+async function _runCreditCheck() {
+  const emitted = [];
+
+  // ── 1. DataForSEO balance ────────────────────────────────────────────────
+  const dfs = await _dfsBalance();
+  if (dfs.ok) {
+    let severity = null, title = '', body = '';
+    if (dfs.balance < 5) {
+      severity = 'high';
+      title = `⚠️ DataForSEO balance critical — $${dfs.balance.toFixed(2)} left`;
+      body = `Your DataForSEO account has less than $5 remaining. SERP, backlinks, AI-optimization and rank tracking will stop working soon. Top up at app.dataforseo.com → Billing.`;
+    } else if (dfs.balance < 20) {
+      severity = 'medium';
+      title = `💳 DataForSEO balance low — $${dfs.balance.toFixed(2)} left`;
+      body = `Your DataForSEO balance is below $20 (of $${dfs.total.toFixed(0)} total). Consider topping up before SERP/backlinks/AI Optimization throttle.`;
+    }
+    if (severity) {
+      const a = { id:`credit-dfs-balance-${Date.now()}`, type:'credit_low', severity, title, body };
+      await _emitCreditAlert(a); emitted.push(a);
+    }
+  } else if (dfs.error !== 'no_creds') {
+    const a = { id:`credit-dfs-error-${Date.now()}`, type:'credit_error', severity:'medium',
+      title:'⚠️ DataForSEO balance check failed',
+      body:`Could not read DataForSEO balance (${dfs.error}). The login/password may be wrong, or the account may be suspended for non-payment.` };
+    await _emitCreditAlert(a); emitted.push(a);
+  }
+
+  // ── 2. Missing / unconfigured paid services that the app expects ─────────
+  const PAID_SERVICES = [
+    { key:'OPENAI_API_KEY',         name:'OpenAI',          why:'AI Attack Plan, AI Visibility audit, content scoring, and most LLM features depend on this.' },
+    { key:'ANTHROPIC_API_KEY',      name:'Claude (Anthropic)', why:'Used as the second-opinion LLM in Dual-AI Attack Plan and several creator-studio tools.' },
+    { key:'PERPLEXITY_API_KEY',     name:'Perplexity',      why:'Powers real-time web-grounded answers in AI Visibility tracking.' },
+    { key:'GEMINI_API_KEY',         name:'Gemini',          why:'Powers Google AI surfaces tracking and several vision tools.' },
+    { key:'DATAFORSEO_LOGIN',       name:'DataForSEO',      why:'Powers SERP, backlinks, rank tracking, AI Optimization API, and Question Mining.' },
+    { key:'FIRECRAWL_API_KEY',      name:'Firecrawl',       why:'Required for competitor site scraping and content extraction.' },
+    { key:'RESEND_API_KEY',         name:'Resend',          why:'Required to send booking, drip, and stakeholder alert emails.' },
+    { key:'HUBSPOT_PRIVATE_APP_TOKEN', name:'HubSpot',      why:'Required for CRM sync, contact upsert, and Dynamic Audiences HubSpot mirror.' },
+  ];
+  // Only warn for OpenAI/DFS at boot — the rest are opt-in. Users can still
+  // manually trigger a full sweep with ?all=1.
+  const CRITICAL = ['OPENAI_API_KEY','DATAFORSEO_LOGIN'];
+  for (const svc of PAID_SERVICES) {
+    if (process.env[svc.key]) continue;
+    if (!CRITICAL.includes(svc.key)) continue;
+    const a = {
+      id: `credit-missing-${svc.key.toLowerCase()}-${Date.now()}`,
+      type: 'service_missing', severity: 'high',
+      title: `🔑 ${svc.name} not connected — subscription / API key required`,
+      body: `${svc.why} Add ${svc.key} in Replit Secrets to enable.`,
+    };
+    await _emitCreditAlert(a); emitted.push(a);
+  }
+
+  // ── 3. Detect placeholder/dummy keys (silent failures otherwise) ────────
+  for (const svc of PAID_SERVICES) {
+    const v = process.env[svc.key];
+    if (v && /^_DUMMY/i.test(v)) {
+      const a = {
+        id: `credit-dummy-${svc.key.toLowerCase()}-${Date.now()}`,
+        type: 'key_placeholder', severity: 'high',
+        title: `🚧 ${svc.name} key is a placeholder`,
+        body: `${svc.key} starts with "_DUMMY". ${svc.name} calls are skipped and template fallbacks are used. Replace with a real key in Replit Secrets to unlock live ${svc.name} responses.`,
+      };
+      await _emitCreditAlert(a); emitted.push(a);
+    }
+  }
+
+  return { emitted, dfs };
+}
+
+// GET /api/alerts/check-credits  — manual + cron entrypoint
+app.get('/api/alerts/check-credits', async (req, res) => {
+  try {
+    const r = await _runCreditCheck();
+    res.json({ ok:true, emitted: r.emitted, dfs: r.dfs, lastChecked: Date.now() });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e.message });
+  }
+});
+
+// Auto-run on boot (after 8 s grace) + every 6 h thereafter.
+setTimeout(() => { _runCreditCheck().catch(e => console.warn('credit check failed:', e.message)); }, 8000);
+setInterval(() => { _runCreditCheck().catch(e => console.warn('credit check failed:', e.message)); }, 6 * 60 * 60 * 1000);
+
+// ────────────────────────────────────────────────────────────────────────────
 // STAKEHOLDER DISTRIBUTION (Feature 5 — auto-emails on critical alerts)
 // ────────────────────────────────────────────────────────────────────────────
 const _STAKE_FILE = path.join(_ALERTS_DIR, 'stakeholders.json');
