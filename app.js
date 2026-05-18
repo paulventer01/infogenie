@@ -43011,6 +43011,34 @@ function _rpToCarousel(title) {
     }));
   };
 
+  // ── Shared AI Suggest helpers (uses last analysed brand + competitors) ────
+  function _studioCtx(){
+    const ad = window.analysisData || {};
+    const _domainToBrand = u => { try { const h = String(u||'').replace(/^https?:\/\//,'').split('/')[0].split('.'); const core = (h.length>=2?h[h.length-2]:h[0])||''; return core.charAt(0).toUpperCase()+core.slice(1); } catch { return ''; } };
+    const mainBrand = _domainToBrand(ad.url);
+    const competitors = (Array.isArray(ad.competitors)?ad.competitors:[]).filter(c=>c&&(c.name||c.domain)).map(c=>({ name:c.name||_domainToBrand(c.domain), domain:c.domain||'' }));
+    return { ad, mainBrand, industry: ad.industry||'', competitors, _domainToBrand };
+  }
+  function _aiBtn(id, label){
+    return `<button type="button" id="${id}" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">🧠 ${label||'AI Suggest'}</button>`;
+  }
+  function _useBrandBtn(id, label){
+    return label ? `<button type="button" id="${id}" style="background:#EEF2FF;color:#4F46E5;border:1px solid #C7D2FE;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📊 Use "${_esc(label)}"</button>` : '';
+  }
+  function _labelRow(text, ...btns){
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:8px"><span style="font-weight:600;font-size:13px">${text}</span><span style="display:flex;gap:6px">${btns.filter(Boolean).join('')}</span></div>`;
+  }
+  async function _wireAI(btnId, inputEl, suggester){
+    const b = document.getElementById(btnId); if (!b) return;
+    b.addEventListener('click', async () => {
+      const prev = inputEl.value;
+      inputEl.value = '⏳ Thinking…'; inputEl.disabled = true;
+      try { const v = await suggester(); inputEl.value = v || prev || ''; }
+      catch { inputEl.value = prev || ''; }
+      finally { inputEl.disabled = false; inputEl.focus(); }
+    });
+  }
+
   // ── Brand Identity modal ──────────────────────────────────────────────────
   function openBrandStudio(){
     const body = `
@@ -43019,28 +43047,55 @@ function _rpToCarousel(title) {
       </div>
       <div id="brand-pane"></div>`;
     _modal('🎨 Brand Identity Studio', body, { width: 720 });
+    const ctx = _studioCtx();
+    const fld = (id, val='', ph='') => `<input id="${id}" value="${_esc(val)}" placeholder="${_esc(ph)}" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px;box-sizing:border-box">`;
     const PANES = [
-      `<label>Brand name<input id="bn" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px"></label>
-       <label>Industry<input id="bi" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px"></label>
-       <label>Vibe<input id="bv" value="modern minimalist" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 16px"></label>
+      `${_labelRow('Brand name', _useBrandBtn('bnUse', ctx.mainBrand), _aiBtn('bnAI'))}${fld('bn', ctx.mainBrand, 'e.g. Acme')}
+       ${_labelRow('Industry', _aiBtn('biAI'))}${fld('bi', ctx.industry, 'e.g. SaaS for SMBs')}
+       ${_labelRow('Vibe', _aiBtn('bvAI'))}${fld('bv', 'modern minimalist')}
        <button id="go" style="background:#0066FF;color:white;border:0;padding:12px 24px;border-radius:8px;font-weight:700;cursor:pointer">Generate logo brief</button>
        <div id="out" style="margin-top:18px"></div>`,
-      `<label>Brand name<input id="pn" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px"></label>
-       <label>Mood<input id="pm" value="energetic professional" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 16px"></label>
+      `${_labelRow('Brand name', _useBrandBtn('pnUse', ctx.mainBrand), _aiBtn('pnAI'))}${fld('pn', ctx.mainBrand)}
+       ${_labelRow('Mood', _aiBtn('pmAI'))}${fld('pm', 'energetic professional')}
        <button id="go" style="background:#0066FF;color:white;border:0;padding:12px 24px;border-radius:8px;font-weight:700;cursor:pointer">Generate palette</button>
        <div id="out" style="margin-top:18px"></div>`,
-      `<label>Describe the business (1 paragraph)<textarea id="nd" rows="3" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px;font-family:inherit"></textarea></label>
-       <label>Style<input id="ns" value="modern" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 16px"></label>
+      `${_labelRow('Describe the business (1 paragraph)', _aiBtn('ndAI'))}<textarea id="nd" rows="3" placeholder="${_esc(ctx.industry?('A '+ctx.industry+' brand that…'):'A brand that…')}" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px;font-family:inherit;box-sizing:border-box"></textarea>
+       ${_labelRow('Style', _aiBtn('nsAI'))}${fld('ns', 'modern')}
        <button id="go" style="background:#0066FF;color:white;border:0;padding:12px 24px;border-radius:8px;font-weight:700;cursor:pointer">Generate names</button>
        <div id="out" style="margin-top:18px"></div>`,
-      `<label>Brand name<input id="sn" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px"></label>
-       <label>Value prop<textarea id="sv" rows="2" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 16px;font-family:inherit"></textarea></label>
+      `${_labelRow('Brand name', _useBrandBtn('snUse', ctx.mainBrand), _aiBtn('snAI'))}${fld('sn', ctx.mainBrand)}
+       ${_labelRow('Value prop', _aiBtn('svAI'))}<textarea id="sv" rows="2" placeholder="${_esc(ctx.industry?('What '+(ctx.mainBrand||'we')+' delivers in '+ctx.industry+'…'):'What you deliver…')}" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 16px;font-family:inherit;box-sizing:border-box"></textarea>
        <button id="go" style="background:#0066FF;color:white;border:0;padding:12px 24px;border-radius:8px;font-weight:700;cursor:pointer">Generate slogans</button>
        <div id="out" style="margin-top:18px"></div>`,
     ];
     function showPane(i){
       document.querySelectorAll('.brand-tab').forEach((b,bi)=>{ b.style.borderBottomColor=bi===i?'#0066FF':'transparent'; b.style.color=bi===i?'#0066FF':'#64748B'; });
       document.getElementById('brand-pane').innerHTML = PANES[i];
+      // Wire AI Suggest buttons per pane
+      const aiName = async (seedEl) => { const j = await _api('/api/studio/brand/names',{method:'POST',body:{description:`A brand like ${seedEl.value||ctx.mainBrand||'a modern company'} in the ${ctx.industry||'consumer'} space`, style:'modern'}}); return (j.names||[])[0]?.name || ctx.mainBrand || seedEl.value; };
+      const aiIndustry = async () => { return ctx.industry || 'Direct-to-consumer SaaS'; };
+      const aiVibe = async () => { const opts=['modern minimalist','bold contemporary','warm premium','playful approachable','sleek tech-forward','editorial elegant']; return opts[Math.floor(Math.random()*opts.length)]; };
+      const aiMood = async () => { const opts=['energetic professional','calm trustworthy','vibrant friendly','luxurious confident','fresh youthful','grounded reliable']; return opts[Math.floor(Math.random()*opts.length)]; };
+      const aiDescription = async () => { const b=ctx.mainBrand||'A brand'; return `${b} is a ${ctx.industry||'modern consumer'} brand helping customers achieve more with less friction. We blend craft and technology to deliver outcomes our competitors can't.`; };
+      const aiStyle = async () => { const opts=['modern','playful','premium','minimalist','bold','editorial']; return opts[Math.floor(Math.random()*opts.length)]; };
+      const aiSlogan = async (brandEl) => { const brand = brandEl.value || ctx.mainBrand || 'Brand'; const j = await _api('/api/studio/brand/slogans',{method:'POST',body:{brandName:brand, valueProp:ctx.industry?`A ${ctx.industry} brand`:'A modern brand'}}); return (j.slogans||[])[0]?.text || `${brand} — built for the people who actually use it.`; };
+      if (i===0) {
+        const bnUse=document.getElementById('bnUse'); if(bnUse) bnUse.addEventListener('click',()=>{bn.value=ctx.mainBrand;});
+        _wireAI('bnAI', bn, ()=>aiName(bn));
+        _wireAI('biAI', bi, aiIndustry);
+        _wireAI('bvAI', bv, aiVibe);
+      } else if (i===1) {
+        const pnUse=document.getElementById('pnUse'); if(pnUse) pnUse.addEventListener('click',()=>{pn.value=ctx.mainBrand;});
+        _wireAI('pnAI', pn, ()=>aiName(pn));
+        _wireAI('pmAI', pm, aiMood);
+      } else if (i===2) {
+        _wireAI('ndAI', nd, aiDescription);
+        _wireAI('nsAI', ns, aiStyle);
+      } else {
+        const snUse=document.getElementById('snUse'); if(snUse) snUse.addEventListener('click',()=>{sn.value=ctx.mainBrand;});
+        _wireAI('snAI', sn, ()=>aiName(sn));
+        _wireAI('svAI', sv, ()=>aiSlogan(sn));
+      }
       document.getElementById('go').addEventListener('click', async ()=>{
         const out=document.getElementById('out'); out.innerHTML='⏳ Generating…';
         try{
@@ -43062,10 +43117,11 @@ function _rpToCarousel(title) {
 
   // ── Image Toolkit modal ───────────────────────────────────────────────────
   function openImageStudio(){
+    const ctx = _studioCtx();
     _modal('🖼️ Image Toolkit', `
       <p style="color:#64748B;margin:0 0 18px">Generate product shots, sketches and concept images via Cloudflare Workers AI.</p>
-      <label>What do you want?</label>
-      <textarea id="imp" rows="3" placeholder="e.g. A luxury skincare bottle on marble, soft window light, photo-real" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px;font-family:inherit"></textarea>
+      ${_labelRow('What do you want?', _aiBtn('impAI'))}
+      <textarea id="imp" rows="3" placeholder="e.g. A luxury skincare bottle on marble, soft window light, photo-real" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px;font-family:inherit;box-sizing:border-box"></textarea>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <button id="b1" style="background:#0066FF;color:white;border:0;padding:10px 16px;border-radius:8px;font-weight:600;cursor:pointer">Generate concept</button>
         <button id="b2" style="background:#0F766E;color:white;border:0;padding:10px 16px;border-radius:8px;font-weight:600;cursor:pointer">Product photo</button>
@@ -43081,6 +43137,17 @@ function _rpToCarousel(title) {
     b1.addEventListener('click',()=>gen('/api/studio/image/sketch-to-image',{prompt: imp.value || 'a clean modern design concept'}));
     b2.addEventListener('click',()=>gen('/api/studio/image/product-shot',   {product: imp.value || 'product'}));
     b3.addEventListener('click',()=>gen('/api/studio/image/upscale-prompt', {prompt: imp.value || 'a high resolution detailed image'}));
+    _wireAI('impAI', imp, async () => {
+      const brand = ctx.mainBrand || 'a modern brand';
+      const ind = ctx.industry || 'consumer products';
+      const ideas = [
+        `Hero product shot of ${brand} packaging on a soft marble surface, natural window light, photo-realistic, shallow depth of field, premium ${ind} aesthetic`,
+        `Lifestyle scene featuring ${brand} in everyday use, warm cinematic lighting, candid, editorial ${ind} mood, 35mm look`,
+        `Minimalist flat-lay of ${brand} essentials on pastel background, top-down view, soft shadows, magazine ${ind} feature`,
+        `Bold, high-contrast studio shot of ${brand} hero product, dramatic rim lighting, jet-black backdrop, luxury ${ind} feel`
+      ];
+      return ideas[Math.floor(Math.random()*ideas.length)];
+    });
   }
 
   // ── Video Storyboard modal ────────────────────────────────────────────────
@@ -43191,12 +43258,30 @@ function _rpToCarousel(title) {
 
   // ── Presentation modal ────────────────────────────────────────────────────
   function openPresentationStudio(){
+    const ctx = _studioCtx();
     _modal('📑 AI Presentation Generator', `
-      <label>Topic<input id="pt" placeholder="e.g. Why our SaaS will win the SMB market" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px"></label>
-      <label>Audience<input id="pa" value="investors" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px"></label>
-      <label>Slide count<input id="pc" type="number" value="10" min="5" max="20" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 16px"></label>
+      ${_labelRow('Topic', _aiBtn('ptAI'))}
+      <input id="pt" placeholder="e.g. Why ${_esc(ctx.mainBrand||'our SaaS')} will win the ${_esc(ctx.industry||'SMB')} market" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px;box-sizing:border-box">
+      ${_labelRow('Audience', _aiBtn('paAI'))}
+      <input id="pa" value="investors" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px;box-sizing:border-box">
+      <label>Slide count<input id="pc" type="number" value="10" min="5" max="20" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 16px;box-sizing:border-box"></label>
       <button id="pgo" style="background:#0066FF;color:white;border:0;padding:12px 24px;border-radius:8px;font-weight:700;cursor:pointer">Generate deck</button>
       <div id="pout" style="margin-top:18px"></div>`, { width: 760 });
+    _wireAI('ptAI', pt, async () => {
+      const brand = ctx.mainBrand || 'our company';
+      const ind = ctx.industry || 'the market';
+      const ideas = [
+        `Why ${brand} will win ${ind} in the next 24 months`,
+        `${brand}: a category-defining playbook for ${ind}`,
+        `From zero to category leader — the ${brand} ${ind} strategy`,
+        `${brand} vs. the incumbents: how we redefine ${ind}`
+      ];
+      return ideas[Math.floor(Math.random()*ideas.length)];
+    });
+    _wireAI('paAI', pa, async () => {
+      const opts = ['investors','prospects','executive buyers','marketing leaders','board members','potential partners','our sales team','enterprise CIOs'];
+      return opts[Math.floor(Math.random()*opts.length)];
+    });
     pgo.addEventListener('click', async ()=>{
       pout.innerHTML='⏳ Generating ('+pc.value+' slides)…';
       try{ const j=await _api('/api/studio/presentation/generate',{method:'POST',body:{topic:pt.value,audience:pa.value,slideCount:Number(pc.value)||10}});
@@ -43209,22 +43294,41 @@ function _rpToCarousel(title) {
 
   // ── Email Signature modal ─────────────────────────────────────────────────
   function openSignatureStudio(){
+    const ctx = _studioCtx();
+    const websiteDefault = (ctx.ad && ctx.ad.url) ? String(ctx.ad.url).replace(/^https?:\/\//,'').replace(/\/$/,'') : '';
     _modal('✍️ Email Signature Designer', `
+      ${ctx.mainBrand ? `<div style="background:#EEF2FF;border:1px solid #C7D2FE;color:#3730A3;padding:8px 12px;border-radius:8px;margin-bottom:12px;font-size:13px;display:flex;justify-content:space-between;align-items:center"><span>📊 Auto-fill Company + Website from <strong>${_esc(ctx.mainBrand)}</strong>?</span><button id="sgn_autofill" type="button" style="background:#4F46E5;color:#fff;border:0;padding:5px 12px;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px">Fill</button></div>` : ''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <label>Name<input id="sgn_n" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
-        <label>Title<input id="sgn_t" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
-        <label>Company<input id="sgn_c" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
+        <label>${_labelRow('Title', _aiBtn('sgn_tAI'))}<input id="sgn_t" placeholder="e.g. Head of Growth" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
+        <label>${_labelRow('Company', _useBrandBtn('sgn_cUse', ctx.mainBrand))}<input id="sgn_c" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
         <label>Email<input id="sgn_e" type="email" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
         <label>Phone<input id="sgn_p" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
         <label>Website<input id="sgn_w" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
         <label>LinkedIn URL<input id="sgn_l" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
         <label>Logo URL<input id="sgn_lo" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
-        <label>Tagline<input id="sgn_tag" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
+        <label style="grid-column:1/-1">${_labelRow('Tagline', _aiBtn('sgn_tagAI'))}<input id="sgn_tag" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
         <label>Primary color<input id="sgn_co" type="color" value="#0066FF" style="width:100%;padding:6px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0;height:40px"></label>
       </div>
       <label style="margin-top:8px;display:block"><input id="sgn_tr" type="checkbox" checked> Enable open + click tracking</label>
       <button id="sgo" style="margin-top:12px;background:#0066FF;color:white;border:0;padding:12px 24px;border-radius:8px;font-weight:700;cursor:pointer">Generate signature</button>
       <div id="sout" style="margin-top:18px"></div>`, { width: 720 });
+    const autofillBtn = document.getElementById('sgn_autofill');
+    if (autofillBtn) autofillBtn.addEventListener('click', () => {
+      if (!sgn_c.value) sgn_c.value = ctx.mainBrand;
+      if (!sgn_w.value && websiteDefault) sgn_w.value = 'https://'+websiteDefault;
+    });
+    const cUse = document.getElementById('sgn_cUse');
+    if (cUse) cUse.addEventListener('click', () => { sgn_c.value = ctx.mainBrand; });
+    _wireAI('sgn_tAI', sgn_t, async () => {
+      const titles = ['Head of Growth','Founder & CEO','VP Marketing','Director of Brand','Chief Marketing Officer','Head of Performance','Growth Lead','Marketing Manager'];
+      return titles[Math.floor(Math.random()*titles.length)];
+    });
+    _wireAI('sgn_tagAI', sgn_tag, async () => {
+      const brand = sgn_c.value || ctx.mainBrand || 'Brand';
+      try { const j = await _api('/api/studio/brand/slogans',{method:'POST',body:{brandName:brand, valueProp:ctx.industry?`A ${ctx.industry} brand`:'A modern brand'}}); return (j.slogans||[])[0]?.text || `${brand} — building what's next.`; }
+      catch { return `${brand} — building what's next.`; }
+    });
     sgo.addEventListener('click', async ()=>{
       sout.innerHTML='⏳ Generating…';
       try{ const j=await _api('/api/studio/signature/generate',{method:'POST',body:{
@@ -43239,18 +43343,42 @@ function _rpToCarousel(title) {
 
   // ── Case Study Builder modal ──────────────────────────────────────────────
   function openCaseStudyStudio(){
+    const ctx = _studioCtx();
+    const compOpts = ctx.competitors.map(c=>`<option value="${_esc(c.name)}">${_esc(c.name)}</option>`).join('');
     _modal('📰 AI Case Study Builder', `
       <p style="color:#64748B;margin:0 0 16px">Describe a customer story in 3 lines. We'll write the headline, pull quote, challenge → solution → result, metrics and a share-ready landing page.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <label>Customer name<input id="cs_cn" placeholder="Acme Logistics" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
-        <label>Industry<input id="cs_in" placeholder="Logistics" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
+        <label style="grid-column:1/2">${_labelRow('Customer name', _aiBtn('cs_cnAI'))}<input id="cs_cn" placeholder="Acme Logistics" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
+        <label style="grid-column:2/3">${_labelRow('Industry', _aiBtn('cs_inAI'))}<input id="cs_in" value="${_esc(ctx.industry||'')}" placeholder="Logistics" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0"></label>
       </div>
-      <label>Your brand (optional)<input id="cs_bn" placeholder="InfoGenie" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px"></label>
-      <label>Challenge they faced<textarea id="cs_ch" rows="2" placeholder="Their conversion rate was stuck at 1.1%, ad spend was ballooning…" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:inherit;margin:6px 0"></textarea></label>
-      <label>Solution you delivered<textarea id="cs_so" rows="2" placeholder="We rebuilt the funnel with our X tool, ran a 30-day creative test…" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:inherit;margin:6px 0"></textarea></label>
-      <label>Result / outcome (optional — we'll infer if blank)<textarea id="cs_re" rows="2" placeholder="3.2% conversion in 60 days, CAC down 40%…" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:inherit;margin:6px 0 16px"></textarea></label>
+      ${compOpts ? `<label style="display:block;font-size:12px;color:#6B7280;margin:6px 0">…or pick an analysed competitor as the customer<select id="cs_pickComp" style="width:100%;padding:9px;border:1.5px solid #E5E7EB;border-radius:8px;background:#fff;margin-top:4px"><option value="">— select competitor —</option>${compOpts}</select></label>` : ''}
+      <label>${_labelRow('Your brand (optional)', _useBrandBtn('cs_bnUse', ctx.mainBrand))}<input id="cs_bn" value="${_esc(ctx.mainBrand||'')}" placeholder="InfoGenie" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;margin:6px 0 12px"></label>
+      <label>${_labelRow('Challenge they faced', _aiBtn('cs_chAI'))}<textarea id="cs_ch" rows="2" placeholder="Their conversion rate was stuck at 1.1%, ad spend was ballooning…" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:inherit;margin:6px 0"></textarea></label>
+      <label>${_labelRow('Solution you delivered', _aiBtn('cs_soAI'))}<textarea id="cs_so" rows="2" placeholder="We rebuilt the funnel with our X tool, ran a 30-day creative test…" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:inherit;margin:6px 0"></textarea></label>
+      <label>${_labelRow("Result / outcome (optional — we'll infer if blank)", _aiBtn('cs_reAI'))}<textarea id="cs_re" rows="2" placeholder="3.2% conversion in 60 days, CAC down 40%…" style="width:100%;padding:10px;border:1.5px solid #E5E7EB;border-radius:8px;font-family:inherit;margin:6px 0 16px"></textarea></label>
       <button id="cs_go" style="background:#0066FF;color:white;border:0;padding:12px 24px;border-radius:8px;font-weight:700;cursor:pointer">✨ Generate case study</button>
       <div id="cs_out" style="margin-top:18px"></div>`, { width: 760 });
+    const pickComp = document.getElementById('cs_pickComp');
+    if (pickComp) pickComp.addEventListener('change', () => { if (pickComp.value) cs_cn.value = pickComp.value; });
+    const bnUse = document.getElementById('cs_bnUse');
+    if (bnUse) bnUse.addEventListener('click', () => { cs_bn.value = ctx.mainBrand; });
+    _wireAI('cs_cnAI', cs_cn, async () => {
+      const names = ['Acme Logistics','Brightline Retail','Northwind SaaS','Pioneer Foods','Lumen Health','Apex Realty','Vega Robotics','Harbor & Co.'];
+      return names[Math.floor(Math.random()*names.length)];
+    });
+    _wireAI('cs_inAI', cs_in, async () => ctx.industry || 'Direct-to-consumer SaaS');
+    _wireAI('cs_chAI', cs_ch, async () => {
+      const cust = cs_cn.value || 'The customer';
+      const ind = cs_in.value || ctx.industry || 'their industry';
+      return `${cust} was stuck. Their conversion rate had stalled at ~1.1%, customer-acquisition costs in ${ind} were climbing every quarter, and their team couldn't tell which ad creative was actually driving revenue versus burning budget.`;
+    });
+    _wireAI('cs_soAI', cs_so, async () => {
+      const brand = cs_bn.value || ctx.mainBrand || 'We';
+      return `${brand} rebuilt their funnel end-to-end: a sharper hero message, a multi-armed-bandit creative test across 12 ad variants, and a re-engagement drip for warm-but-cold contacts. We instrumented every step so the team could see attribution in real-time and reallocate spend weekly.`;
+    });
+    _wireAI('cs_reAI', cs_re, async () => {
+      return `Conversion rate climbed from 1.1% to 3.2% in 60 days. Customer-acquisition cost dropped 40%. Revenue per visitor up 2.4×. The team now ships a new creative every 5 days instead of every 5 weeks.`;
+    });
     document.getElementById('cs_go').addEventListener('click', async ()=>{
       const out=document.getElementById('cs_out'); out.innerHTML='⏳ Generating (15-25 sec)…';
       try{
