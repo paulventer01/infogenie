@@ -27742,7 +27742,7 @@ function buildTemplates() {
             <img src="${t.img}" alt="${t.title}" loading="lazy" decoding="async" fetchpriority="low" onerror="this.onerror=null;this.src='${t.imgFallback}'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">
             <div style="position:absolute;inset:0;background:linear-gradient(180deg,${t.bg1}33 0%,${t.bg1}11 35%,rgba(15,23,42,.78) 100%)"></div>
             <div style="position:absolute;inset:0;padding:14px;color:white;display:flex;flex-direction:column;justify-content:space-between">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="background:rgba(255,255,255,.92);color:#0F172A;font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px;letter-spacing:.05em">${t.type.toUpperCase()}</div>${t.hot?`<div style="background:#EF4444;color:white;font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px">🔥 HOT</div>`:''}</div>
+              <div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="background:rgba(15,23,42,.78);color:white;font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px;letter-spacing:.05em;backdrop-filter:blur(4px)">${t.type.toUpperCase()}</div>${t.hot?`<div style="background:#EF4444;color:white;font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px">🔥 HOT</div>`:''}</div>
               <div><div style="font-size:14px;font-weight:800;margin-bottom:4px;line-height:1.25;text-shadow:0 1px 4px rgba(0,0,0,.45)">${t.title}</div><div style="font-size:11px;opacity:.92;text-shadow:0 1px 3px rgba(0,0,0,.45)">${t.tagline}</div></div>
             </div>
           </div>

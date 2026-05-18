@@ -2564,10 +2564,15 @@ function _resolveGoogleCloudKey() {
 async function _imageViaDataForSEO(query) {
   if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) return null;
   try {
+    // DataForSEO image SERP routinely takes 10-14s end-to-end (measured: 13.2s
+    // for a typical query). The previous 5000ms cap silently aborted nearly
+    // every call, leaving template tiles permanently on their SVG placeholders.
+    // 20s gives the lookup room to finish; the 8-way worker pool keeps the
+    // overall /api/template-images request under ~25s even at full batch size.
     const raw = await callDataForSEO(
       '/v3/serp/google/images/live/advanced',
       [{ language_code: 'en', location_code: 2840, keyword: query, depth: 10 }],
-      5000
+      20000
     );
     const items = raw?.tasks?.[0]?.result?.[0]?.items;
     if (!Array.isArray(items)) return null;
