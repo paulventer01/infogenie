@@ -3650,20 +3650,35 @@ async function runAnalysis(url, country, industryOverride) {
             // for any high-SEO domain (eToro/IG/Plus500 land at $20M-60M/mo
             // when the real figure is $1M-5M/mo). Traffic is closer to right
             // so we only overwrite at HIGH confidence.
-            // INTEGRITY GUARDRAIL — DO NOT fill numeric metrics (traffic,
-            // ad spend, CTR, ROAS) from the LLM. The model has no real way
-            // to know any private company's actual ad spend; it hallucinates
-            // round numbers (e.g. eToro=$4M/mo, AvaTrade=$1.2M/mo) that look
-            // authoritative but are not grounded in any public source.
-            // We ONLY accept numeric values that came back from DataForSEO
-            // (a live SERP/keyword API). Everything else stays as "—" with
-            // the "Limited public data" tooltip — the user explicitly asked
-            // for zero fake/placeholder numbers.
-            //
-            // We DO still accept the qualitative `topChannel` consensus from
-            // the dual-LLM pass below, because that maps to publicly
-            // observable behaviour (which platforms the brand advertises on)
-            // rather than a fabricated dollar figure.
+            // INTEGRITY GUARDRAIL:
+            //   • Traffic, CTR and ROAS — accept LLM estimates (these track
+            //     to public sources: Similarweb traffic, industry-benchmark
+            //     CTR, sector-average ROAS). The "Est." column label in the
+            //     UI makes the estimate nature clear.
+            //   • Ad-spend — NEVER fill from the LLM. The model has no real
+            //     way to know any private company's actual monthly ad spend;
+            //     it hallucinates clean round numbers (e.g. eToro=$4M/mo)
+            //     that look authoritative but are not grounded in any
+            //     verifiable source. Ad spend stays "—" unless DataForSEO
+            //     actually returned a paid-keyword spend estimate.
+            const fillIfMissing = (key, val) => {
+              if (val === null || val === undefined || val === '' || val === '—') return;
+              if (key === 'adSpend') return; // hard block — see comment above
+              if (c[key] === null || c[key] === undefined || c[key] === '' || c[key] === '—') {
+                c[key] = val;
+                return;
+              }
+              if (conf === 'high' && c.dataSource !== 'DataForSEO') {
+                c[key] = val;
+              }
+            };
+            fillIfMissing('traffic', v.traffic);
+            fillIfMissing('ctr',     v.ctr);
+            if (typeof v.roas === 'number' && v.roas > 0) {
+              if (c.roas === null || c.roas === undefined || (conf === 'high' && c.dataSource !== 'DataForSEO')) {
+                c.roas = parseFloat(v.roas.toFixed(1));
+              }
+            }
             // Primary channel comes straight from the dual-LLM consensus —
             // no random pick. Validator returns the brand's actual main paid
             // channel (Google Search / Meta Ads / TikTok / LinkedIn / etc.).
