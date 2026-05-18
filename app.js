@@ -3339,19 +3339,34 @@ async function runAnalysis(url, country, industryOverride) {
   // ── Kick off live AI-powered industry + competitor detection (non-blocking) ─
   // Scrapes the website and uses GPT-4o to identify the precise sub-niche and
   // suggest 6-10 real direct competitors. Awaited later before building views.
+  //
+  // CRITICAL: each fetch has a hard 20s client-side timeout via AbortController.
+  // Without it, a slow/hung OpenAI call (we've seen 15-30s OpenAI timeouts in
+  // the backend) leaves the loading overlay stuck at 95% forever and the
+  // dashboard never renders. Timing out means we just fall back to the DB
+  // competitors — the user still sees a complete report.
+  const _fetchWithTimeout = (url, opts, ms = 20000) => {
+    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timer = setTimeout(() => { try { ctrl && ctrl.abort(); } catch(_){} }, ms);
+    const merged = Object.assign({}, opts, ctrl ? { signal: ctrl.signal } : {});
+    return fetch(url, merged)
+      .then(r => { clearTimeout(timer); return r; })
+      .catch(err => { clearTimeout(timer); throw err; });
+  };
+
   const smartDetectPromise = (industrySource === 'user-specified' || sectorOnly)
     ? Promise.resolve(null) // user override / sector-only mode → skip live scrape
-    : fetch('/api/smart-detect', {
+    : _fetchWithTimeout('/api/smart-detect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: cleanUrl })
-      }).then(r => r.ok ? r.json() : null).catch(err => { console.warn('smart-detect failed:', err); return null; });
+      }, 20000).then(r => r.ok ? r.json() : null).catch(err => { console.warn('smart-detect failed/timed-out:', err && err.name || err); return null; });
 
   // ── If user typed an industry (sector-only OR refining a URL), call the
   //    AI sector-competitors endpoint to get REAL same-niche competitors.
   //    This solves the "search by industry returns wrong companies" problem.
   const sectorPromise = hasIndustry
-    ? fetch('/api/sector-competitors', {
+    ? _fetchWithTimeout('/api/sector-competitors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3359,7 +3374,7 @@ async function runAnalysis(url, country, industryOverride) {
           country: country || '',
           urlHint: hasUrl ? cleanUrl : ''
         })
-      }).then(r => r.ok ? r.json() : null).catch(err => { console.warn('sector-competitors failed:', err); return null; })
+      }, 20000).then(r => r.ok ? r.json() : null).catch(err => { console.warn('sector-competitors failed/timed-out:', err && err.name || err); return null; })
     : Promise.resolve(null);
 
   const industry = INDUSTRY_DB[industryKey];
@@ -3447,10 +3462,17 @@ async function runAnalysis(url, country, industryOverride) {
   // If it returned real competitors + a sharper industry name, override the DB.
   // Keep the loading overlay visible during these network calls so users get
   // continuous feedback instead of staring at a blank screen.
+  // Belt-and-braces second timeout in case the promises above somehow never
+  // settle (e.g. fetch polyfill ignoring AbortController). Promise.race with a
+  // 22s null guarantees the flow always moves past this step.
+  const _withDeadline = (p, ms) => Promise.race([
+    p,
+    new Promise(resolve => setTimeout(() => resolve(null), ms))
+  ]);
   let aiDetected = null;
   let sectorDetected = null;
-  try { aiDetected = await smartDetectPromise; } catch(e) { aiDetected = null; }
-  try { sectorDetected = await sectorPromise; } catch(e) { sectorDetected = null; }
+  try { aiDetected    = await _withDeadline(smartDetectPromise, 22000); } catch(e) { aiDetected    = null; }
+  try { sectorDetected = await _withDeadline(sectorPromise,     22000); } catch(e) { sectorDetected = null; }
 
   bar.style.width = '100%';
   pct.textContent = '100%';
