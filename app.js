@@ -35941,21 +35941,53 @@ window._abCopy = async function(s) {
 // ── Tier 8 #1: Voice of Customer Mining ───────────────────────────────────
 window.buildVoc = function() {
   const el = document.getElementById('vocWrap'); if (!el) return;
+  const ownBrand = (window.analysisData && window.analysisData.brandName) || '';
+  const compNames = (window.analysisData && Array.isArray(window.analysisData.competitors))
+    ? window.analysisData.competitors.map(c => c.name || c.domain).filter(Boolean).slice(0, 15)
+    : [];
+  const pickerOpts = [
+    ownBrand ? `<option value="${_escapeHtml(ownBrand)}">${_escapeHtml(ownBrand)} (your brand)</option>` : '',
+    ...compNames.map(n => `<option value="${_escapeHtml(n)}">${_escapeHtml(n)}</option>`)
+  ].filter(Boolean).join('');
   el.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
-      <div style="display:grid;grid-template-columns:1fr 110px auto;gap:12px;align-items:end">
+      <div style="display:grid;grid-template-columns:1fr 160px auto;gap:12px;align-items:end">
         <div>
-          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brand</label>
-          <input id="vocBrand" value="Nike" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brand <span style="color:#15803D;font-weight:600">(auto-filled from your analysis)</span></label>
+          ${pickerOpts
+            ? `<select id="vocPick" onchange="window._vocPickChange()" style="width:100%;padding:8px 10px;border:1.5px solid #D1D5DB;border-radius:8px;font-size:0.82rem;background:#F9FAFB;margin-bottom:6px">
+                 <option value="">— Pick from your analysis (or type manually below) —</option>
+                 ${pickerOpts}
+               </select>`
+            : `<div style="font-size:0.72rem;color:#9CA3AF;margin-bottom:6px">💡 Run an analysis from the top-right <strong>+ Analyse</strong> button to unlock brand/competitor pickers.</div>`}
+          <input id="vocBrand" value="${_escapeHtml(ownBrand)}" placeholder="e.g. Nike — or pick from list above" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem;box-sizing:border-box;background:${ownBrand?'#F0FDF4':'#fff'}">
         </div>
         <div>
           <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Days back</label>
-          <input id="vocDays" type="number" min="1" max="60" value="14" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem">
+          <select id="vocDaysSel" onchange="window._vocDaysChange()" style="width:100%;padding:9px 10px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.85rem;background:#fff;margin-bottom:5px">
+            <option value="7">Last 7 days</option>
+            <option value="14" selected>Last 14 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="60">Last 60 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="custom">Custom…</option>
+          </select>
+          <input id="vocDays" type="number" min="1" max="365" value="14" style="width:100%;padding:7px 10px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.8rem;box-sizing:border-box;display:none" placeholder="Days (1-365)">
         </div>
         <button onclick="_vocGo()" style="padding:10px 22px;background:#0EA5E9;border:2px solid #0EA5E9;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🔍 Mine Themes</button>
       </div>
     </div>
     <div id="vocOut"></div>`;
+  window._vocPickChange = function() {
+    const s = document.getElementById('vocPick'), i = document.getElementById('vocBrand');
+    if (s && i && s.value) i.value = s.value;
+  };
+  window._vocDaysChange = function() {
+    const s = document.getElementById('vocDaysSel'), i = document.getElementById('vocDays');
+    if (!s || !i) return;
+    if (s.value === 'custom') { i.style.display = 'block'; i.focus(); }
+    else { i.style.display = 'none'; i.value = s.value; }
+  };
 };
 window._vocGo = async function() {
   const brand = (document.getElementById('vocBrand')||{}).value || '';
@@ -38769,13 +38801,36 @@ window.buildReviewAggregator = function() {
         <button class="ra-tab" data-tab="compare" style="padding:8px 16px;border-radius:6px;border:1px solid #E5E7EB;background:#fff;color:#374151;font-size:0.78rem;font-weight:700;cursor:pointer">Compare 2-4 Brands</button>
       </div>
       <div id="raSingle">
-        <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px">
-          <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND</label><input id="raBrand" placeholder="e.g. Stripe" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
-          <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">PLATFORM</label><select id="raPlatform" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
-            <option value="trustpilot">Trustpilot</option><option value="g2">G2</option><option value="google">Google</option><option value="capterra">Capterra</option><option value="tripadvisor">TripAdvisor</option>
-          </select></div>
-        </div>
-        <button id="raGo" style="background:linear-gradient(135deg,#F59E0B,#FBBF24);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">⭐ Scan Reviews</button>
+        ${(() => {
+          const ownBrand = (window.analysisData && window.analysisData.brandName) || '';
+          const compNames = (window.analysisData && Array.isArray(window.analysisData.competitors))
+            ? window.analysisData.competitors.map(c => c.name || c.domain).filter(Boolean).slice(0, 15)
+            : [];
+          const pickerOpts = [
+            ownBrand ? `<option value="${_escapeHtml(ownBrand)}">${_escapeHtml(ownBrand)} (your brand)</option>` : '',
+            ...compNames.map(n => `<option value="${_escapeHtml(n)}">${_escapeHtml(n)}</option>`)
+          ].filter(Boolean).join('');
+          return `
+            <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px">
+              <div>
+                <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND <span style="color:#15803D;font-weight:600">(auto-filled from your analysis)</span></label>
+                ${pickerOpts
+                  ? `<select id="raPick" onchange="window._raPickChange()" style="width:100%;padding:7px 10px;border:1.5px solid #D1D5DB;border-radius:5px;font-size:0.78rem;background:#F9FAFB;margin-bottom:5px;box-sizing:border-box">
+                       <option value="">— Pick from your analysis (or type manually below) —</option>
+                       ${pickerOpts}
+                     </select>`
+                  : `<div style="font-size:0.7rem;color:#9CA3AF;margin-bottom:5px">💡 Run an analysis to unlock brand/competitor pickers.</div>`}
+                <input id="raBrand" value="${_escapeHtml(ownBrand)}" placeholder="e.g. Stripe — or pick from list above" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box;background:${ownBrand?'#F0FDF4':'#fff'}">
+              </div>
+              <div>
+                <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">PLATFORM</label>
+                <select id="raPlatform" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+                  <option value="trustpilot">Trustpilot</option><option value="g2">G2</option><option value="google">Google</option><option value="capterra">Capterra</option><option value="tripadvisor">TripAdvisor</option>
+                </select>
+              </div>
+            </div>
+            <button id="raGo" style="background:linear-gradient(135deg,#F59E0B,#FBBF24);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">⭐ Scan Reviews</button>`;
+        })()}
       </div>
       <div id="raCompare" style="display:none">
         <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRANDS (comma-sep, 2-4)</label>
@@ -38789,6 +38844,10 @@ window.buildReviewAggregator = function() {
     </div>
     <div id="raOut"></div>
   `;
+  window._raPickChange = function() {
+    const s = document.getElementById('raPick'), i = document.getElementById('raBrand');
+    if (s && i && s.value) i.value = s.value;
+  };
   wrap.querySelectorAll('.ra-tab').forEach(b => b.addEventListener('click', () => {
     wrap.querySelectorAll('.ra-tab').forEach(x => { x.classList.remove('active'); x.style.background='#fff'; x.style.color='#374151'; x.style.borderColor='#E5E7EB'; });
     b.classList.add('active'); b.style.background='#1E1B4B'; b.style.color='#fff'; b.style.borderColor='#1E1B4B';
