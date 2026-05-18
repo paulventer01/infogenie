@@ -44199,9 +44199,35 @@ function _rpToCarousel(title) {
         const j = await r.json();
         if (!j.ok) { out.innerHTML = '<div style="color:#DC2626">'+esc(j.error||'failed')+'</div>'; return; }
         const ansHtml = esc(j.answer).replace(/\n/g,'<br>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/^[-•]\s/gm,'• ');
+        let fallbackHtml = '';
+        if (j.source === 'fallback' && j.context) {
+          const t = j.context.totals || {};
+          const r = j.context.recent || {};
+          const sectionRows = (arr, cols) => (arr && arr.length)
+            ? `<table style="width:100%;border-collapse:collapse;font-size:0.8rem;margin-top:6px"><thead><tr>${cols.map(c=>'<th style="text-align:left;padding:6px 8px;background:#F9FAFB;color:#6B7280;font-weight:700;font-size:0.7rem;text-transform:uppercase">'+esc(c)+'</th>').join('')}</tr></thead><tbody>${arr.slice(0,8).map(row=>'<tr>'+cols.map(c=>'<td style="padding:6px 8px;border-top:1px solid #F3F4F6;color:#0A1628">'+esc(row[c]??'—')+'</td>').join('')+'</tr>').join('')}</tbody></table>`
+            : '<div style="color:#9CA3AF;font-size:0.8rem;padding:8px 0">No records yet.</div>';
+          const block = (title, arr, cols) => `<div style="margin-top:14px"><div style="font-weight:800;font-size:0.85rem;color:#0A1628;margin-bottom:4px">${esc(title)} <span style="color:#9CA3AF;font-weight:500">(${arr?arr.length:0})</span></div>${sectionRows(arr, cols)}</div>`;
+          fallbackHtml = `
+            <div style="background:#FEF3C7;border:1px solid #FBBF24;color:#92400E;padding:10px 14px;border-radius:8px;font-size:0.8rem;margin-bottom:14px">
+              💡 Add a real OpenAI key in Manage → AI Providers (or set <code>OPENAI_API_KEY</code>) to unlock natural-language answers. Showing your raw platform snapshot below.
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:8px">
+              ${[['Campaigns',t.campaigns],['Leads',t.leads],['Mentions',t.mentions],['Landing Pages',t.landingPages],['Bookings',t.bookings]].map(([k,v])=>`<div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px"><div style="font-size:0.7rem;color:#6B7280;text-transform:uppercase;font-weight:700">${esc(k)}</div><div style="font-size:1.6rem;font-weight:800;color:#0A1628">${v||0}</div></div>`).join('')}
+            </div>
+            ${block('Recent Campaigns', r.campaigns, ['name','platform','status','daily_budget'])}
+            ${block('Recent Leads', r.leads, ['name','email','source','score','status'])}
+            ${block('Recent Ad Insights', r.insights, ['campaign_name','platform','impressions','clicks','spend','conversions'])}
+            ${block('Recent Mentions', r.mentions, ['brand','source','sentiment','snippet'])}
+            ${block('Landing Pages', r.landingPages, ['slug','title','traffic_total','conv_total'])}
+            ${block('Bookings', r.bookings, ['customer_name','customer_email','slot_at','status'])}
+            ${block('Content Calendar', r.contentCalendar, ['title','channel','scheduled_for','status'])}
+            ${block('Budget Spend', r.budgetSpend, ['month','channel','amount'])}
+            ${block('Officer Tasks', r.officerTasks, ['officer','title','status'])}`;
+        }
         out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
           <div style="font-size:0.74rem;color:#6B7280;margin-bottom:8px">💬 Answer · source: <strong>${esc(j.source||'')}</strong></div>
           <div style="font-size:0.95rem;line-height:1.55;color:#0A1628">${ansHtml}</div>
+          ${fallbackHtml}
           ${j.snapshotSizes ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid #F3F4F6;font-size:0.7rem;color:#9CA3AF">Snapshot scanned: ${Object.entries(j.snapshotSizes).map(([k,v])=>esc(k)+'='+v).join(' · ')}</div>` : ''}
         </div>`;
       } catch(e) { out.innerHTML = '<div style="color:#DC2626">'+esc(e.message)+'</div>'; }
