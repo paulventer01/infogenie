@@ -129,7 +129,21 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/studio\/case-study\/[^\/]+\/page$/,       // public share page for case studies (HTML render)
   /^\/api\/scroll-tracker\/event$/,                  // public scroll-depth ingest from rendered pages (rate-limited)
   /^\/api\/site-search\/event$/,                     // public site-search ingest from rendered pages (rate-limited)
+  /^\/api\/_dbg$/,                                   // client-side debug breadcrumb beacon (REL16)
 ];
+
+// ── Client-side debug breadcrumb receiver (REL16) ────────────────────────────
+// The frontend beacons every _igDbg() line here via navigator.sendBeacon so we
+// have a server-side record of the last checkpoint reached even when the page
+// is frozen. No auth, no rate-limit, no persistence — pure stderr trace.
+app.post('/api/_dbg', (req, res) => {
+  try {
+    const msg = (req.body && (req.body.msg || req.body.message)) || '';
+    const tag = (req.body && req.body.tag) || 'IG';
+    console.log('[' + tag + '-client]', String(msg).slice(0, 400));
+  } catch(_){}
+  res.status(204).end();
+});
 
 // Lightweight in-memory per-IP rate limiter for public Studio Pack POSTs.
 // Sliding 60-second window, 20 requests/window/IP. Returns 429 if exceeded.

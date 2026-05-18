@@ -3479,15 +3479,25 @@ async function runAnalysis(url, country, industryOverride) {
       try {
         const t = new Date().toISOString().substr(11, 12);
         const line = '['+t+'] '+String(msg);
-        // Always console + buffer first so we never lose a log even if DOM is jammed
+        // Always console + buffer + server-beacon first so we never lose a log
+        // even if DOM is jammed (REL16: server beacon survives page freeze).
         try { console.log('[IG]', line); } catch(_){}
         try { window.__igDbgBuffer.push(line); if (window.__igDbgBuffer.length > 200) window.__igDbgBuffer.shift(); } catch(_){}
+        try {
+          const body = JSON.stringify({ tag: 'IG', msg: line });
+          if (navigator.sendBeacon) {
+            const blob = new Blob([body], { type: 'application/json' });
+            navigator.sendBeacon('/api/_dbg', blob);
+          } else {
+            fetch('/api/_dbg', { method:'POST', headers:{'Content-Type':'application/json'}, body, keepalive:true }).catch(()=>{});
+          }
+        } catch(_){}
         let p = document.getElementById('igDbgPanel');
         if (!p) {
           p = document.createElement('div');
           p.id = 'igDbgPanel';
           p.style.cssText = 'position:fixed;bottom:8px;right:8px;width:420px;max-height:80vh;overflow:auto;background:rgba(10,22,40,.95);color:#7FFFD4;font:11px/1.4 monospace;padding:8px 10px;border-radius:8px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid #00C9C8';
-          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL15</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
+          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL16 (server-beacon)</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
           document.body.appendChild(p);
         }
         const log = document.getElementById('igDbgLog');
