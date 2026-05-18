@@ -388,6 +388,7 @@ app.get('/api/ad-platforms/status', (req, res) => {
     googleAds: !!(process.env.GOOGLE_ADS_DEVELOPER_TOKEN && process.env.GOOGLE_ADS_REFRESH_TOKEN &&
                   process.env.GOOGLE_ADS_CUSTOMER_ID && process.env.GOOGLE_ADS_CLIENT_ID &&
                   process.env.GOOGLE_ADS_CLIENT_SECRET),
+    merchantCenter: !!process.env.GOOGLE_MERCHANT_CENTER_ID,
     meta:      !!(process.env.META_AD_ACCOUNT_ID && process.env.META_ACCESS_TOKEN),
     tiktok:    !!(process.env.TIKTOK_ADVERTISER_ID && process.env.TIKTOK_ACCESS_TOKEN),
     microsoft: !!(process.env.MICROSOFT_ADS_DEVELOPER_TOKEN && process.env.MICROSOFT_ADS_CLIENT_ID &&
@@ -398,8 +399,31 @@ app.get('/api/ad-platforms/status', (req, res) => {
 
 // ── Google Ads campaign launch ────────────────────────────────────────────────
 app.post('/api/launch/google-ads', async (req, res) => {
-  const { campaignName, budget, startDate, objective = 'performance' } = req.body;
+  const { campaignName, budget, startDate, objective = 'performance', campaignType: campaignTypeRaw } = req.body;
   const isAwareness = String(objective).toLowerCase().includes('awareness') || String(objective).toLowerCase().includes('brand');
+
+  // Map UI campaignType → Google Ads advertisingChannelType + bidding strategy.
+  // Accepts: 'search' | 'display' | 'video' | 'shopping' | 'pmax' | 'demand_gen'.
+  // Falls back to awareness-driven SEARCH/DISPLAY split for older callers that
+  // only sent `objective`.
+  const ctRaw = String(campaignTypeRaw || '').toLowerCase().replace(/[\s_-]/g, '');
+  const CT_MAP = {
+    search:       { channel: 'SEARCH',          bid: { manualCpc: { enhancedCpcEnabled: false } } },
+    display:      { channel: 'DISPLAY',         bid: { targetCpm: {} } },
+    video:        { channel: 'VIDEO',           bid: { targetCpm: {} } },
+    youtube:      { channel: 'VIDEO',           bid: { targetCpm: {} } },
+    shopping:     { channel: 'SHOPPING',        bid: { manualCpc: { enhancedCpcEnabled: true } }, needsMerchant: true },
+    pmax:         { channel: 'PERFORMANCE_MAX', bid: { maximizeConversions: {} } },
+    performancemax:{ channel: 'PERFORMANCE_MAX', bid: { maximizeConversions: {} } },
+    demandgen:    { channel: 'DEMAND_GEN',      bid: { maximizeConversions: {} } },
+  };
+  const ct = CT_MAP[ctRaw] || (isAwareness
+    ? { channel: 'DISPLAY', bid: { targetCpm: {} } }
+    : { channel: 'SEARCH',  bid: { manualCpc: { enhancedCpcEnabled: false } } });
+  const merchantId = process.env.GOOGLE_MERCHANT_CENTER_ID;
+  if (ct.needsMerchant && !merchantId) {
+    return res.json({ success: false, error: 'Shopping campaigns require a Google Merchant Center account. Add GOOGLE_MERCHANT_CENTER_ID in Settings and verify your product feed at merchants.google.com.' });
+  }
   const devToken     = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
   const clientId     = process.env.GOOGLE_ADS_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
@@ -435,13 +459,9 @@ app.post('/api/launch/google-ads', async (req, res) => {
       `/v16/customers/${cleanId}/campaigns:mutate`, 'POST',
       JSON.stringify({ operations: [{ create: Object.assign({
         name: campaignName, status: 'PAUSED',
-        // Brand-awareness uses Display network with vCPM-style bidding for reach;
-        // performance default stays on Search with manualCpc.
-        advertisingChannelType: isAwareness ? 'DISPLAY' : 'SEARCH',
-        campaignBudget: budgetData.results[0].resourceName, startDate: sd
-      }, isAwareness
-        ? { targetCpm: {} }                               // optimise for impressions/CPM
-        : { manualCpc: { enhancedCpcEnabled: false } }    // optimise for clicks/conversions
+        advertisingChannelType: ct.channel,
+        campaignBudget: budgetData.results[0].resourceName, startDate: sd,
+      }, ct.bid, ct.needsMerchant ? { shoppingSetting: { merchantId: String(merchantId), salesCountry: 'US' } } : {}
       ) }] }), authHeaders);
     const campData = JSON.parse(campRaw);
     if (!campData.results) throw new Error('Campaign creation failed: ' + JSON.stringify(campData));

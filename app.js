@@ -6610,6 +6610,8 @@ const ADV_PLATFORMS = [
   { name:'Google Pmax',         icon:'🎯', color:'#0F9D58', bg:'#F0FDF4', cat:'google', formats:['Performance Max Asset Group','Smart Shopping','Full-Funnel Pmax'] },
   { name:'YouTube',             icon:'🎬', color:'#FF0000', bg:'#FFF5F5', cat:'google', formats:['Skippable In-Stream','Non-Skippable 15s','Bumper 6s','Video Discovery'] },
   { name:'Google Display',      icon:'🖼️', color:'#4285F4', bg:'#EFF6FF', cat:'google', formats:['Responsive Display Ad','Smart Display Campaign','Gmail Ad'] },
+  { name:'Google Shopping',     icon:'🛒', color:'#FBBC04', bg:'#FFFBEB', cat:'google', formats:['Standard Shopping','Smart Shopping','Local Inventory Ad'] },
+  { name:'Google Demand Gen',   icon:'✨', color:'#A142F4', bg:'#F5F0FF', cat:'google', formats:['Demand Gen Image','Demand Gen Video','Demand Gen Carousel'] },
   { name:'Google Calls',        icon:'📱', color:'#34A853', bg:'#F0FDF4', cat:'google', formats:['Call-Only Ad','Call Extension Ad'] },
   { name:'LinkedIn',            icon:'💼', color:'#0A66C2', bg:'#F0F7FF', cat:'social', formats:['Sponsored Content','Single Image Ad','Video Ad','Carousel Ad'] },
   { name:'LinkedIn Message',    icon:'📨', color:'#0A66C2', bg:'#F0F7FF', cat:'social', formats:['Message Ad','Conversation Ad','Lead Gen Form'] },
@@ -6715,7 +6717,7 @@ window.openNewCampaignPicker = function() {
   ov.id = 'new-camp-picker-overlay';
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,22,40,0.78);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
 
-  const googleNames = ['Google Search','Google Pmax','Google Display','Google Calls','YouTube'];
+  const googleNames = ['Google Search','Google Pmax','Google Display','Google Shopping','Google Demand Gen','Google Calls','YouTube'];
   const metaNames   = ['Meta','Instagram','Messenger & WhatsApp','Meta Calls','Catalog Ads','Meta Boost'];
 
   const cardsHtml = connected.length ? connected.map((p, i) => {
