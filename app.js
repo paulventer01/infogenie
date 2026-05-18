@@ -3052,7 +3052,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'carousel')             { try { window.buildCarousel && window.buildCarousel(); }             catch(e) { console.warn('buildCarousel error:', e); } }
   if (viewId === 'seo-crawler')          { try { window.buildSeoCrawler && window.buildSeoCrawler(); }           catch(e) { console.warn('buildSeoCrawler error:', e); } }
   if (viewId === 'geo-audit')            { try { window.buildGeoAudit && window.buildGeoAudit(); }             catch(e) { console.warn('buildGeoAudit error:', e); } }
-  if (viewId === 'ai-visibility')        { try { window.buildAiVisibility && window.buildAiVisibility(); }     catch(e) { console.warn('buildAiVisibility error:', e); } }
+  if (viewId === 'llm-scan')             { try { window.buildLlmScan && window.buildLlmScan(); }              catch(e) { console.warn('buildLlmScan error:', e); } }
   if (viewId === 'local-seo')            { try { window.buildLocalSeo && window.buildLocalSeo(); }             catch(e) { console.warn('buildLocalSeo error:', e); } }
   if (viewId === 'social-tags')          { try { window.buildSocialTags && window.buildSocialTags(); }           catch(e) { console.warn('buildSocialTags error:', e); } }
   if (viewId === 'social-analytics')     { try { window.buildSocialAnalytics && window.buildSocialAnalytics(); }      catch(e) { console.warn('buildSocialAnalytics error:', e); } }
@@ -41531,7 +41531,7 @@ function _rpToCarousel(title) {
     { id:'content',   icon:'✍️', title:'Content Officer',    role:'Scores, plans and schedules content',
       links:[['contentscorer','Content Scorer'],['content-calendar','Content Calendar'],['social','Social Calendar']] },
     { id:'seo',       icon:'🔎', title:'SEO Officer',        role:'On-page, GEO and keyword strategy',
-      links:[['seo-auditor','On-Page Auditor'],['geo-audit','GEO Audit'],['ai-visibility','AI Search Visibility'],['keyword-map','Keyword Map']] },
+      links:[['seo-auditor','On-Page Auditor'],['geo-audit','GEO Audit'],['llm-scan','AI Search Visibility (Live LLM Scan)'],['keyword-map','Keyword Map']] },
     { id:'cro',       icon:'🧪', title:'CRO Officer',        role:'A/B testing and conversion lift',
       links:[['cro-lab','CRO Lab'],['conversion-boosters','Conversion Boosters'],['ab-designer','A/B Designer']] },
     { id:'finance',   icon:'💼', title:'Finance Officer',    role:'P&L, CAC, LTV, runway alerts', isNew:true,
@@ -44804,11 +44804,13 @@ function _rpToCarousel(title) {
   else init();
 })();
 
-// ── AI Search Visibility (DataForSEO AI Optimization) ─────────────────────
+// ── AI Search Visibility — Live LLM Scan (DataForSEO AI Optimization) ────
+// Uses viewId 'llm-scan' and writes into #llmScanWrap (separate from the older
+// buildAiVisibility/aiVisWrap tracker which uses simulated platform scores).
 window._aivState = { lastResult: null, history: [] };
 
-window.buildAiVisibility = function() {
-  const main = document.getElementById('mainContent');
+window.buildLlmScan = function() {
+  const main = document.getElementById('llmScanWrap');
   if (!main) return;
   const e = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -44826,17 +44828,7 @@ window.buildAiVisibility = function() {
   ];
 
   main.innerHTML = `
-    <div style="max-width:1180px;margin:0 auto;padding:24px">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
-        <div style="font-size:1.8rem">🤖</div>
-        <h1 style="margin:0;font-size:1.55rem;color:#0F172A">AI Search Visibility</h1>
-        <span style="background:#EEF2FF;color:#4338CA;padding:3px 10px;border-radius:999px;font-size:.72rem;font-weight:700">DataForSEO AI Optimization</span>
-      </div>
-      <p style="color:#64748B;margin:6px 0 18px;font-size:.93rem">
-        Ask real LLMs (ChatGPT, Perplexity, Gemini, Claude) buyer-intent questions and see how often
-        <strong>${e(brand || 'your brand')}</strong> is cited vs your competitors. Each run uses your DataForSEO account.
-      </p>
-
+    <div>
       <div style="background:#FFF;border:1px solid #E2E8F0;border-radius:14px;padding:18px;margin-bottom:18px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:12px">
           <div>
