@@ -38970,18 +38970,146 @@ window.buildHeadlineTester = function() {
   wrap.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
       <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">🎯 Test a Headline</h3>
-      <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">HEADLINE</label><input id="htHeadline" placeholder='e.g. "Stop wasting ad budget — automate it"' style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem;box-sizing:border-box"></div>
-      <div style="display:grid;grid-template-columns:1.5fr 1fr 100px;gap:10px;margin-top:10px">
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">AUDIENCE</label><input id="htAudience" placeholder="e.g. SaaS founders, Series A-B" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">CHANNEL</label><select id="htChannel" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">
-          <option value="landing_page">Landing page</option><option value="email">Email subject</option><option value="ad">Paid ad</option><option value="social">Social post</option><option value="blog">Blog post</option>
-        </select></div>
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">VARIANTS</label><input id="htCount" type="number" min="3" max="10" value="8" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box"></div>
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+          <label style="font-size:0.7rem;font-weight:700;color:#6B7280">HEADLINE</label>
+          <button type="button" id="htHeadlineAI" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:3px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
+        </div>
+        <input id="htHeadline" placeholder='e.g. "Stop wasting ad budget — automate it"' style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem;box-sizing:border-box">
+      </div>
+      <div style="display:grid;grid-template-columns:1.5fr 1fr 140px;gap:10px;margin-top:10px">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <label style="font-size:0.7rem;font-weight:700;color:#6B7280">AUDIENCE</label>
+            <button type="button" id="htAudienceAI" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:3px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
+          </div>
+          <input id="htAudience" placeholder="e.g. SaaS founders, Series A-B" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <label style="font-size:0.7rem;font-weight:700;color:#6B7280">CHANNEL</label>
+            <button type="button" id="htChannelAI" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:3px 9px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
+          </div>
+          <select id="htChannel" style="width:100%;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">
+            <option value="landing_page">Landing page</option><option value="email">Email subject</option><option value="ad">Paid ad</option><option value="social">Social post</option><option value="blog">Blog post</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">VARIANTS</label>
+          <div style="display:flex;gap:4px">
+            <select id="htCountPick" style="flex:1;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box">
+              <option value="3">3</option><option value="5">5</option><option value="8" selected>8</option><option value="10">10</option><option value="custom">Custom…</option>
+            </select>
+            <input id="htCount" type="number" min="1" max="20" value="8" style="width:54px;padding:7px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.82rem;box-sizing:border-box;display:none">
+          </div>
+        </div>
       </div>
       <button id="htGo" style="margin-top:12px;background:linear-gradient(135deg,#DC2626,#EF4444);color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:0.86rem;font-weight:800;cursor:pointer">🎯 Score + Generate Variants</button>
     </div>
     <div id="htOut"></div>
   `;
+  // ── Variants picker: presets 3/5/8/10 or Custom → reveal the manual input.
+  // We keep htCount as the canonical source of truth so the submit handler
+  // does not need to know which mode the user is in.
+  const htCountPick = document.getElementById('htCountPick');
+  const htCount = document.getElementById('htCount');
+  htCountPick.addEventListener('change', () => {
+    if (htCountPick.value === 'custom') {
+      htCount.style.display = 'inline-block';
+      htCount.focus();
+    } else {
+      htCount.style.display = 'none';
+      htCount.value = htCountPick.value;
+    }
+  });
+
+  // ── AI Suggest wiring. Shows "⏳ Thinking… [N.Ns]" live timer in the
+  // target input, restores the previous value if the call fails. CHANNEL is
+  // a <select> so we map the suggestion onto the closest valid option.
+  const CHANNEL_KEYS = ['landing_page','email','ad','social','blog'];
+  async function _htAISuggest(field, targetEl, ctxExtra) {
+    const prev = targetEl.value;
+    const isSelect = targetEl.tagName === 'SELECT';
+    const t0 = performance.now();
+    let placeholder;
+    if (isSelect) {
+      // Inject a temporary option so the user can see we are thinking.
+      placeholder = document.createElement('option');
+      placeholder.text = '⏳ Thinking… [0.0s]';
+      placeholder.value = '__thinking__';
+      placeholder.selected = true;
+      targetEl.appendChild(placeholder);
+    } else {
+      targetEl.value = '⏳ Thinking… [0.0s]';
+    }
+    targetEl.disabled = true;
+    const iv = setInterval(() => {
+      const t = ((performance.now() - t0) / 1000).toFixed(1);
+      if (isSelect) placeholder.text = '⏳ Thinking… [' + t + 's]';
+      else targetEl.value = '⏳ Thinking… [' + t + 's]';
+    }, 100);
+    try {
+      const ad = window.analysisData || {};
+      const body = {
+        field,
+        // This codebase stores the analysed brand under `brandName`; some
+        // older code paths used `brand`. Read both so the AI gets real
+        // grounding regardless of which path populated analysisData.
+        brand: ad.brandName || ad.brand || '',
+        // Industry can be either an object ({ name: '…' }) or a plain string
+        // depending on which analyser produced it — normalise both shapes.
+        industry: (ad.industry && (ad.industry.name || ad.industry)) || '',
+        currentValue: isSelect ? '' : prev,
+        context: ctxExtra || ''
+      };
+      const r = await fetch('/api/studio/ai-suggest', {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      const v = String(j?.value || '').trim();
+      if (!v) throw new Error('AI returned an empty suggestion');
+      if (isSelect) {
+        // Map the suggestion onto the closest known channel key.
+        const low = v.toLowerCase();
+        const match = CHANNEL_KEYS.find(k => low.includes(k.replace('_',' ')) || low.includes(k))
+          || (low.includes('landing') ? 'landing_page' : null)
+          || (low.includes('email') || low.includes('subject') ? 'email' : null)
+          || (low.includes('paid') || low.includes('ads') || low === 'ad' ? 'ad' : null)
+          || (low.includes('social') || low.includes('linkedin') || low.includes('twitter') || low.includes('tweet') || low.includes('instagram') ? 'social' : null)
+          || (low.includes('blog') || low.includes('article') ? 'blog' : null)
+          || 'landing_page';
+        placeholder.remove();
+        targetEl.value = match;
+      } else {
+        targetEl.value = v;
+      }
+    } catch (e) {
+      if (isSelect) { placeholder.remove(); targetEl.value = prev; }
+      else { targetEl.value = prev; }
+      (window.showToast || alert)('⚠ AI Suggest failed: ' + e.message);
+    } finally {
+      clearInterval(iv);
+      targetEl.disabled = false;
+    }
+  }
+  const htHeadlineEl = document.getElementById('htHeadline');
+  const htAudienceEl = document.getElementById('htAudience');
+  const htChannelEl  = document.getElementById('htChannel');
+  document.getElementById('htHeadlineAI').addEventListener('click', () => _htAISuggest(
+    'A high-converting marketing headline (one sentence, specific, no buzzwords)',
+    htHeadlineEl,
+    'Audience: ' + (htAudienceEl.value || 'unspecified') + '. Channel: ' + htChannelEl.value
+  ));
+  document.getElementById('htAudienceAI').addEventListener('click', () => _htAISuggest(
+    'A specific target audience segment for this brand (job title + company stage or region — one short phrase)',
+    htAudienceEl
+  ));
+  document.getElementById('htChannelAI').addEventListener('click', () => _htAISuggest(
+    'The single best distribution channel for this headline. Reply with one of: landing_page, email, ad, social, blog',
+    htChannelEl,
+    'Headline: "' + (htHeadlineEl.value || '(none yet)') + '". Audience: ' + (htAudienceEl.value || 'unspecified')
+  ));
+
   document.getElementById('htGo').addEventListener('click', async () => {
     const headline = document.getElementById('htHeadline').value.trim();
     const audience = document.getElementById('htAudience').value.trim();
