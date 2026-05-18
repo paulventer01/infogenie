@@ -156,4 +156,17 @@ module.exports = {
   'ai-team': 'Use weekly to confirm the autonomous side of the platform is healthy — if an officer is paused or quiet, you are leaving leverage on the table.',
   'finance-officer': 'Best for founders who hate watching budgets — the officer flags overruns the morning they happen, not at month-end review.',
   'ops-officer': 'Use as your platform-health canary — when a number looks off, this officer usually already knows which integration is broken.',
+
+  // ── Newly documented (current release) ──────────────────────────────────
+  'ad-swipe': 'Best for brief days — open your swipe file and you start from proven hooks instead of a blank page; teams that swipe before they brief ship better creative faster.',
+  'question-miner': 'Use to build a year of content from one keyword — the real questions buyers type are the highest-intent topic prompts you will ever get for free.',
+  'brand-foundation': 'Set this once on day one — every AI generator across the platform inherits your voice automatically, so nothing ever lands sounding generic again.',
+  'ai-video-mp4': 'Best for social and ads where you need 5 videos a week — three clicks produce a broadcast-ready MP4 without booking a shoot, an editor or an animator.',
+  'dfs-ai-optimization': 'Use whenever you launch a positioning change — see in 30 seconds whether all four AI engines now describe you correctly or are still citing your old story.',
+  'new-project': 'Use as the wrapper for every initiative — when each campaign, audience and report is tagged to a project, attribution and ROI conversations finally get clean.',
+  'ask-infogenie': 'Best for the 10-second question you would normally have to dig 5 dashboards to answer — typed in plain English, answered from your real data only.',
+  'infographics': 'Use whenever a slide deserves a visual instead of more bullets — a 30-second infographic lands a point in any board pack faster than a paragraph ever will.',
+  'heatmaps': 'Best free upgrade you can give a marketing site — actual click and scroll behaviour reveals which buttons are dead and which sections never get reached.',
+  'ai-providers': 'Use to cut AI cost or unlock specialist models — routing writing to Groq and vision to GPT-4o (etc.) can drop your monthly LLM bill by 70% without quality loss.',
+  'credit-monitor': 'Use to never wake up to a dead campaign — a quiet API balance is the silent killer; this catches it before any feature stops working.',
 };
