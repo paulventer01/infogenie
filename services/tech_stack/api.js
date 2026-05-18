@@ -57,10 +57,23 @@ router.post('/compare', async (req, res) => {
   if (!domains.length) return _err(res, 400, 'domains[] (1-5) required');
   const results = [];
   for (const d of domains) {
-    const raw = await _builtwithFree(d);
-    if (!raw) { results.push({ domain:d, total:0, groups:[], source:'placeholder' }); }
-    else { const n = _normalizeBuiltwith(raw); results.push({ domain:d, total:n.total, groups:n.groups, source:'builtwith' }); }
-    await new Promise(r => setTimeout(r, 2200));
+    // One retry with longer backoff — BuiltWith Free frequently throttles
+    // the FIRST request in a batch, and a 4-second second-attempt usually
+    // succeeds. Without this, the user's own analysed domain (always first
+    // in the list) systematically came back empty while competitors loaded
+    // fine.
+    let raw = await _builtwithFree(d);
+    if (!raw) {
+      await new Promise(r => setTimeout(r, 4000));
+      raw = await _builtwithFree(d);
+    }
+    if (!raw) {
+      results.push({ domain:d, total:0, groups:[], source:'placeholder', note:'BuiltWith Free returned no data for this domain (rate-limit or not in their index).' });
+    } else {
+      const n = _normalizeBuiltwith(raw);
+      results.push({ domain:d, total:n.total, groups:n.groups, source:'builtwith' });
+    }
+    await new Promise(r => setTimeout(r, 2500));
   }
   // Build a category-presence matrix (Free tier doesn't expose tech names, so compare at category level)
   const catIndex = {};

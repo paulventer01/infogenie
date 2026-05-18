@@ -36285,9 +36285,16 @@ window._tsCompare = async function() {
     const r = await fetch('/api/tech-stack/compare', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domains }) }).then(x=>x.json());
     if (!r.ok) throw new Error(r.error||'failed');
     const cols = r.domains;
+    const results = Array.isArray(r.results) ? r.results : [];
+    const byDom = {}; results.forEach(x => { byDom[x.domain] = x; });
     const matrix = (r.matrix||[]).slice(0, 100);
-    if (!matrix.length) { out.innerHTML = `<div style="background:#FEF3C7;color:#92400E;padding:14px;border-radius:10px">No comparable tech detected. Set BUILTWITH_API_KEY for real data.</div>`; return; }
+    const missing = cols.filter(c => !(byDom[c] && byDom[c].total > 0));
+    const banner = missing.length
+      ? `<div style="background:#FEF3C7;color:#92400E;padding:10px 14px;border-radius:8px;font-size:0.78rem;margin-bottom:10px">⚠ BuiltWith Free returned no data for: <strong>${missing.map(_escapeHtml).join(', ')}</strong>. This usually means the domain is not in BuiltWith's free-tier index or the lookup was rate-limited. Click <strong>Compare</strong> again in 30 seconds, or upgrade to BuiltWith Pro for guaranteed coverage.</div>`
+      : '';
+    if (!matrix.length) { out.innerHTML = `${banner}<div style="background:#FEF3C7;color:#92400E;padding:14px;border-radius:10px">No comparable tech detected across these domains. Set BUILTWITH_API_KEY for real data, or upgrade to BuiltWith Pro.</div>`; return; }
     out.innerHTML = `
+      ${banner}
       <div style="background:#FEF3C7;color:#92400E;padding:10px 14px;border-radius:8px;font-size:0.78rem;margin-bottom:10px">BuiltWith Free tier compares at the category level (not individual technology names). Upgrade to BuiltWith Pro for tech-level comparisons.</div>
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
         <div style="padding:14px 18px;border-bottom:1px solid #E5E7EB;font-weight:800;color:#0A1628">⚖️ Category Comparison Matrix (${matrix.length} categories — counts = live tech in category)</div>
@@ -36295,7 +36302,13 @@ window._tsCompare = async function() {
           <thead><tr style="background:#F9FAFB">
             <th style="padding:10px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">CATEGORY</th>
             <th style="padding:10px 14px;text-align:left;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">GROUP</th>
-            ${cols.map(c=>`<th style="padding:10px 14px;text-align:center;color:#6B7280;font-size:0.7rem;font-weight:800;letter-spacing:.06em">${_escapeHtml(c)}</th>`).join('')}
+            ${cols.map(c=>{
+              const row = byDom[c]; const total = row && row.total ? row.total : 0;
+              const badge = total > 0
+                ? `<div style="display:inline-block;margin-top:3px;background:#DCFCE7;color:#15803D;padding:1px 7px;border-radius:4px;font-size:0.62rem;font-weight:800">${total} live</div>`
+                : `<div style="display:inline-block;margin-top:3px;background:#FEE2E2;color:#B91C1C;padding:1px 7px;border-radius:4px;font-size:0.62rem;font-weight:800" title="${_escapeHtml((row && row.note) || 'No data returned by BuiltWith Free for this domain')}">no data</div>`;
+              return `<th style="padding:10px 14px;text-align:center;color:#0A1628;font-size:0.74rem;font-weight:800"><div>${_escapeHtml(c)}</div>${badge}</th>`;
+            }).join('')}
           </tr></thead>
           <tbody>${matrix.map(t=>`<tr style="border-top:1px solid #F3F4F6">
             <td style="padding:8px 14px;color:#0A1628;font-weight:600">${_escapeHtml(t.name)}</td>
