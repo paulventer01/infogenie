@@ -6312,9 +6312,11 @@ function _genCode() { return String(Math.floor(100000 + Math.random() * 900000))
 async function _sendVerificationEmail({ to, name, code }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error('Email provider not configured (RESEND_API_KEY missing)');
-  // Default to Resend's free shared sender (works without domain verification).
-  // Override with RESEND_FROM_EMAIL once you've verified your own domain in Resend.
-  const fromAddr = process.env.RESEND_FROM_EMAIL || 'InfoGenie <onboarding@resend.dev>';
+  // Signup verification ALWAYS sends from Resend's free shared sender so it
+  // works even when RESEND_FROM_EMAIL points at an unverified custom domain
+  // (e.g. suretrade.co.za). Other transactional mail still honors
+  // RESEND_FROM_EMAIL — only this onboarding code path is locked.
+  const fromAddr = 'InfoGenie <onboarding@resend.dev>';
   const safeName = (name || to.split('@')[0]).replace(/[<>&"]/g, '').slice(0, 60);
   const subject = `Your InfoGenie verification code: ${code}`;
   const text = `Hi ${safeName},\n\nYour InfoGenie verification code is: ${code}\n\nThis code expires in 10 minutes.\nIf you didn't request this, you can safely ignore this email — no account will be created without entering this code.\n\n— InfoGenie`;
