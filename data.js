@@ -323,76 +323,76 @@ const INDUSTRY_DB = {
         estimatedROI: '+34% business account acquisition vs. Wise\'s consumer-only messaging'
       },
       {
-        name: 'Robinhood', url: 'robinhood.com', logo: 'RH',
-        traffic: '62M', ctr: '3.2%', roas: 4.4, adSpend: '$28M/mo',
-        topChannel: 'Meta Ads', threatLevel: 'medium',
-        trafficMo: 62000000,
+        name: 'Pepperstone', url: 'pepperstone.com', logo: 'PP',
+        traffic: '8M', ctr: '3.4%', roas: 4.6, adSpend: '$9M/mo',
+        topChannel: 'Google Search', threatLevel: 'high',
+        trafficMo: 8000000,
         campaigns: [
-          { name: 'Commission-Free Stocks', channel: 'Meta', ctr: '3.6%', roas: 4.8, budget: '$10M', status: 'Active' },
-          { name: 'Get a Free Stock', channel: 'Google', ctr: '4.1%', roas: 3.9, budget: '$8M', status: 'Active' }
+          { name: 'Razor Spreads', channel: 'Google', ctr: '3.9%', roas: 5.1, budget: '$3.6M', status: 'Active' },
+          { name: 'cTrader & MT5', channel: 'Display', ctr: '2.1%', roas: 3.4, budget: '$1.8M', status: 'Active' }
         ],
         suggestions: [
-          'Robinhood\'s 2021 trading halt caused major trust damage — lead with platform stability and fund protection messaging',
-          'Robinhood focuses on retail equity — crypto and options expansion creates counter-campaign opportunities',
-          'Robinhood lacks research tools — attract serious investors with professional-grade analysis differentiator'
+          'Pepperstone leans hard on razor-thin spreads — counter with all-in execution-quality messaging (slippage + fill-rate stats)',
+          'Pepperstone underuses educational video for beginners — leverage TikTok/YouTube tutorials to win first-time CFD traders',
+          'Pepperstone is APAC/UK strong but MENA weak — Arabic-localised + Islamic-swap-free creative captures conquest demand'
         ],
-        audiences: [{ label: 'First-Time Investors 18–30', pct: 48 }, { label: 'Crypto Beginners 20–32', pct: 26 }, { label: 'Active Retail Traders', pct: 16 }, { label: 'Options Traders 25–40', pct: 10 }],
-        topKeywords: ['free stock trading app', 'no commission stocks', 'invest in stocks', 'free stock'],
-        estimatedROI: '+41% investor retention by targeting Robinhood trust and education gaps'
+        audiences: [{ label: 'Active Forex Traders 28–45', pct: 44 }, { label: 'Algo/Copy Traders', pct: 24 }, { label: 'APAC Retail CFD', pct: 20 }, { label: 'Pro Day-Traders', pct: 12 }],
+        topKeywords: ['low spread forex broker', 'razor account', 'ctrader broker', 'mt5 forex broker'],
+        estimatedROI: '+34% lower CPA vs Pepperstone using execution-quality (not just spread) positioning'
       },
       {
-        name: 'Interactive Brokers', url: 'interactivebrokers.com', logo: 'IB',
-        traffic: '18M', ctr: '2.6%', roas: 4.8, adSpend: '$14M/mo',
+        name: 'AvaTrade', url: 'avatrade.com', logo: 'AV',
+        traffic: '6M', ctr: '3.1%', roas: 4.2, adSpend: '$7M/mo',
+        topChannel: 'Google Search', threatLevel: 'high',
+        trafficMo: 6000000,
+        campaigns: [
+          { name: 'Regulated in 9 Jurisdictions', channel: 'Google', ctr: '3.6%', roas: 4.6, budget: '$3M', status: 'Active' },
+          { name: 'AvaProtect Risk Hedge', channel: 'Meta', ctr: '2.4%', roas: 3.2, budget: '$1.6M', status: 'Active' }
+        ],
+        suggestions: [
+          'AvaTrade leads with regulation — counter with execution speed + tighter spreads as the differentiator that actually saves money per trade',
+          'AvaProtect (risk-hedge insurance) confuses new traders — clearer "no surprise losses" messaging beats their feature-name approach',
+          'AvaTrade\'s desktop platform is dated — modern mobile-first creative wins against their legacy MT4-first positioning'
+        ],
+        audiences: [{ label: 'Regulated-Market Traders 30–50', pct: 38 }, { label: 'Islamic-Swap-Free MENA', pct: 26 }, { label: 'EU Retail CFD', pct: 22 }, { label: 'Crypto-Curious Traders', pct: 14 }],
+        topKeywords: ['regulated cfd broker', 'avaprotect', 'islamic forex account', 'avatrade login'],
+        estimatedROI: '+28% sign-up lift vs AvaTrade using "execution > paperwork" positioning'
+      },
+      {
+        name: 'OANDA', url: 'oanda.com', logo: 'OA',
+        traffic: '12M', ctr: '2.9%', roas: 4.4, adSpend: '$11M/mo',
+        topChannel: 'Google Search', threatLevel: 'high',
+        trafficMo: 12000000,
+        campaigns: [
+          { name: 'Trusted FX Data Since 1996', channel: 'Google', ctr: '3.2%', roas: 4.8, budget: '$4.4M', status: 'Active' },
+          { name: 'TradingView Integration', channel: 'YouTube', ctr: '2.6%', roas: 3.8, budget: '$2.2M', status: 'Active' }
+        ],
+        suggestions: [
+          'OANDA leans on heritage ("since 1996") — counter with "modern interface, modern execution" to win 25-35 year-old traders',
+          'OANDA\'s research feed is paywalled — give equivalent insight free in onboarding to flip undecided prospects',
+          'OANDA US-only product gaps (no crypto CFDs) leave a clear conquest lane — target their dissatisfied US users with broader instrument coverage'
+        ],
+        audiences: [{ label: 'US Forex Traders 30–55', pct: 40 }, { label: 'TradingView Power-Users', pct: 24 }, { label: 'FX-Data Researchers', pct: 20 }, { label: 'EMEA Pro Traders', pct: 16 }],
+        topKeywords: ['oanda forex', 'currency converter api', 'tradingview broker', 'us forex broker'],
+        estimatedROI: '+31% account openings via "modern OANDA alternative" messaging'
+      },
+      {
+        name: 'CMC Markets', url: 'cmcmarkets.com', logo: 'CM',
+        traffic: '5M', ctr: '3.0%', roas: 4.5, adSpend: '$8M/mo',
         topChannel: 'Google Search', threatLevel: 'medium',
-        trafficMo: 18000000,
+        trafficMo: 5000000,
         campaigns: [
-          { name: 'Low Margin Rates', channel: 'Google', ctr: '2.9%', roas: 5.2, budget: '$5M', status: 'Active' },
-          { name: 'Global Markets Access', channel: 'LinkedIn', ctr: '2.2%', roas: 4.4, budget: '$3M', status: 'Active' }
+          { name: 'Next Generation Platform', channel: 'Google', ctr: '3.4%', roas: 5.0, budget: '$3.2M', status: 'Active' },
+          { name: '12k+ Markets', channel: 'Display', ctr: '1.9%', roas: 2.9, budget: '$1.4M', status: 'Active' }
         ],
         suggestions: [
-          'IBKR\'s UI is notoriously complex — simplicity messaging immediately differentiates for 65% of their churned users',
-          'Interactive Brokers ignores mass-market creative — they cater only to professionals, leaving retail traders underserved',
-          'IBKR\'s onboarding is slow and bureaucratic — "trade in 10 minutes" messaging wins against their 3-day approval process'
+          'CMC Markets pushes platform feature-count — counter with curated "top 50 markets that actually matter" simplicity messaging',
+          'CMC\'s spread-betting product is UK-specific — international users get confused; lead with "your country, your tax treatment" clarity',
+          'CMC\'s charting is excellent but underexposed — TikTok/Reels demos of advanced charts convert traders looking to upgrade'
         ],
-        audiences: [{ label: 'Professional Traders 35–60', pct: 44 }, { label: 'Institutional Clients', pct: 28 }, { label: 'Active Day Traders', pct: 18 }, { label: 'International Investors', pct: 10 }],
-        topKeywords: ['professional trading platform', 'global stock access', 'low margin rate broker', 'options trading'],
-        estimatedROI: '+29% retail acquisition vs. IBKR\'s professional-only positioning'
-      },
-      {
-        name: 'Monzo', url: 'monzo.com', logo: 'MZ',
-        traffic: '22M', ctr: '4.6%', roas: 5.2, adSpend: '$18M/mo',
-        topChannel: 'Meta Ads', threatLevel: 'medium',
-        trafficMo: 22000000,
-        campaigns: [
-          { name: 'No Hidden Fees', channel: 'Meta', ctr: '5.1%', roas: 5.8, budget: '$8M', status: 'Active' },
-          { name: 'Travel Money Made Easy', channel: 'Google', ctr: '3.8%', roas: 4.6, budget: '$6M', status: 'Active' }
-        ],
-        suggestions: [
-          'Monzo targets UK millennials heavily — US and EU expansion messaging is a direct whitespace opportunity',
-          'Monzo\'s business account has lower awareness than personal — B2B fintech positioning converts 3.2× higher',
-          'Monzo\'s customer service is rated poorly in app stores — "real human support" messaging directly counters'
-        ],
-        audiences: [{ label: 'UK Millennials 22–35', pct: 48 }, { label: 'Frequent Travellers', pct: 26 }, { label: 'Freelancers 24–40', pct: 16 }, { label: 'Students 18–24', pct: 10 }],
-        topKeywords: ['digital bank uk', 'monzo alternative', 'no fee bank account', 'challenger bank'],
-        estimatedROI: '+31% new account acquisition targeting Monzo\'s UK-only positioning gap'
-      },
-      {
-        name: 'N26', url: 'n26.com', logo: 'N6',
-        traffic: '18M', ctr: '3.9%', roas: 4.8, adSpend: '$14M/mo',
-        topChannel: 'Google Search', threatLevel: 'low',
-        trafficMo: 18000000,
-        campaigns: [
-          { name: 'Bank Like a Pro', channel: 'Google', ctr: '4.1%', roas: 5.0, budget: '$6M', status: 'Active' },
-          { name: 'Zero Fees Europe', channel: 'Meta', ctr: '3.6%', roas: 4.2, budget: '$5M', status: 'Active' }
-        ],
-        suggestions: [
-          'N26 exited the US market — ex-N26 users in the US are actively searching for alternatives right now',
-          'N26\'s premium tiers have weak differentiation — clear ROI-based tier messaging outperforms their features-list approach',
-          'N26 has low brand recall vs Revolut — "N26 alternative" conquest keywords have very low competition'
-        ],
-        audiences: [{ label: 'European Professionals 25–40', pct: 46 }, { label: 'Digital Nomads', pct: 24 }, { label: 'Expats in Europe', pct: 20 }, { label: 'Students Abroad', pct: 10 }],
-        topKeywords: ['n26 alternative', 'digital bank europe', 'online bank no fees', 'bank account abroad'],
-        estimatedROI: '+38% conquest from N26 US exit — high-intent search terms with minimal competition'
+        audiences: [{ label: 'UK CFD/Spread-Bet Traders 35–55', pct: 42 }, { label: 'APAC Pro Traders', pct: 26 }, { label: 'Multi-Asset Investors', pct: 20 }, { label: 'Advanced Charting Users', pct: 12 }],
+        topKeywords: ['cfd platform uk', 'spread betting', 'cmc markets review', 'next generation trading'],
+        estimatedROI: '+27% retention via "curated markets, less noise" messaging vs CMC\'s breadth-first approach'
       }
     ]
   },

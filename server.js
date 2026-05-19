@@ -9749,10 +9749,55 @@ CRITICAL RULES for "competitors" — accuracy matters more than completeness:
       aiResult = JSON.parse(raw);
     } catch (aiErr) {
       console.error('smart-detect OpenAI error (after retry+fallback):', aiErr.message);
+
+      // ── Perplexity fallback — live web-grounded competitor lookup ──────
+      // Perplexity Sonar searches the live web at query time, so it returns
+      // real, currently-operating, sub-niche-accurate competitors even when
+      // OpenAI is slow/unreachable. We grade the response by JSON validity.
+      if (process.env.PERPLEXITY_API_KEY) {
+        try {
+          const niche = (ogSiteName || title || cleanInput).slice(0, 120);
+          const pxPrompt = `You are a market-research analyst. Identify the business at "${cleanInput}" (signals: title="${title}", description="${metaDesc}") and return the 8 most DIRECT same-sub-niche competitors as strict JSON. EXCLUDE news, review/comparison sites, marketplaces, and any brand from a different sub-niche. Return ONLY:\n{"industryName":"<specific sub-niche>","industryKey":"${allowedKeys.join('|')}","subNiche":"<2-4 word niche>","competitors":[{"name":"<real brand>","url":"<primary-domain.com>","why":"<one sentence>"}]}`;
+          const pxResp = await fetch('https://api.perplexity.ai/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}` },
+            body: JSON.stringify({
+              model: 'sonar',
+              messages: [
+                { role: 'system', content: 'You are a precise market-research analyst. Output strict JSON only — no markdown, no prose, no citations inside the JSON.' },
+                { role: 'user', content: pxPrompt }
+              ],
+              temperature: 0.1,
+            }),
+          });
+          if (pxResp.ok) {
+            const pxJson = await pxResp.json();
+            let raw = pxJson?.choices?.[0]?.message?.content || '';
+            // Perplexity sometimes wraps JSON in ```json fences — strip them.
+            raw = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+            const firstBrace = raw.indexOf('{');
+            const lastBrace = raw.lastIndexOf('}');
+            if (firstBrace >= 0 && lastBrace > firstBrace) raw = raw.slice(firstBrace, lastBrace + 1);
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed.competitors) && parsed.competitors.length >= 3) {
+                aiResult = parsed;
+                console.log(`[smart-detect] Perplexity fallback succeeded for ${cleanInput} — ${parsed.competitors.length} competitors`);
+              }
+            } catch (parseErr) {
+              console.warn('[smart-detect] Perplexity returned non-JSON, skipping:', parseErr.message);
+            }
+          }
+        } catch (pxErr) {
+          console.warn('[smart-detect] Perplexity fallback failed:', pxErr.message);
+        }
+      }
+
+      // ── DataForSEO-only fallback (last resort) ─────────────────────────
       // Deterministic fallback: if we have ANY DataForSEO competitor data,
       // return that with a generic industry label rather than a hard failure.
       // The client can still proceed with real same-niche domains.
-      if (dfsCompetitors.length >= 3) {
+      if (!aiResult && dfsCompetitors.length >= 3) {
         return res.json({
           ok: true,
           domain: cleanInput,
@@ -9771,7 +9816,7 @@ CRITICAL RULES for "competitors" — accuracy matters more than completeness:
           _fallback: 'serp-only',
         });
       }
-      return res.status(502).json({ error: 'AI detection failed', detail: aiErr.message, signals });
+      if (!aiResult) return res.status(502).json({ error: 'AI detection failed', detail: aiErr.message, signals });
     }
 
     // ── 4) Sanitise + return ─────────────────────────────────────────────────
