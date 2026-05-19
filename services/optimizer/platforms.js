@@ -6,6 +6,7 @@
 // All HTTP calls have timeouts and never throw out of the function.
 
 const https = require('https');
+const { resolveGoogleAdsCredentials } = require('../credentials/vault');
 
 function _httpsJson(host, path, method, body, headers = {}, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
@@ -78,27 +79,28 @@ async function applyMeta(platformCampId, change) {
 }
 
 // ── Google Ads (stub-but-real shape) ─────────────────────────────────────────
-async function fetchGoogleAds(platformCampId, hours = 168) {
-  const need = ['GOOGLE_ADS_DEVELOPER_TOKEN','GOOGLE_ADS_CLIENT_ID','GOOGLE_ADS_CLIENT_SECRET','GOOGLE_ADS_REFRESH_TOKEN','GOOGLE_ADS_CUSTOMER_ID'];
-  const missing = need.filter(k => !process.env[k]);
-  if (missing.length) return { ok: false, error: 'Google Ads not connected: ' + missing.join(', ') };
+async function fetchGoogleAds(platformCampId, hours = 168, userId = null) {
+  const c = await resolveGoogleAdsCredentials(userId);
+  if (!c.ok) return { ok: false, error: c.error };
+  const creds = c.creds;
   // Token refresh
   try {
     const tok = await _httpsJson('oauth2.googleapis.com', '/token', 'POST',
-      `client_id=${encodeURIComponent(process.env.GOOGLE_ADS_CLIENT_ID)}&client_secret=${encodeURIComponent(process.env.GOOGLE_ADS_CLIENT_SECRET)}&refresh_token=${encodeURIComponent(process.env.GOOGLE_ADS_REFRESH_TOKEN)}&grant_type=refresh_token`,
+      `client_id=${encodeURIComponent(creds.clientId)}&client_secret=${encodeURIComponent(creds.clientSecret)}&refresh_token=${encodeURIComponent(creds.refreshToken)}&grant_type=refresh_token`,
       { 'Content-Type':'application/x-www-form-urlencoded' });
     const access = tok.body.access_token;
     if (!access) return { ok: false, error: 'OAuth refresh failed' };
-    const cust = String(process.env.GOOGLE_ADS_CUSTOMER_ID).replace(/-/g,'');
+    const cust = String(creds.customerId).replace(/-/g,'');
     const days = Math.ceil(hours / 24);
     // Sanitize: campaign IDs are numeric in Google Ads. Hard-cast to int to
     // prevent any GAQL injection through a tampered platform_camp_id.
     const safeCampId = parseInt(String(platformCampId).replace(/[^0-9]/g,''), 10);
     if (!Number.isFinite(safeCampId) || safeCampId <= 0) return { ok: false, error: 'Invalid Google Ads campaign id' };
     const gaql = `SELECT segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM campaign WHERE campaign.id = ${safeCampId} AND segments.date DURING LAST_${days <= 7 ? '7' : days <= 14 ? '14' : '30'}_DAYS`;
+    const headers = { 'Content-Type':'application/json', 'Authorization':`Bearer ${access}`, 'developer-token': creds.devToken };
+    if (creds.loginCustomerId) headers['login-customer-id'] = String(creds.loginCustomerId).replace(/-/g,'');
     const r = await _httpsJson('googleads.googleapis.com', `/v16/customers/${cust}/googleAds:search`, 'POST',
-      JSON.stringify({ query: gaql }),
-      { 'Content-Type':'application/json', 'Authorization':`Bearer ${access}`, 'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN });
+      JSON.stringify({ query: gaql }), headers);
     if (r.body.error) return { ok: false, error: r.body.error.message };
     const rows = (r.body.results || []).map(x => ({
       bucket_hour: new Date(x.segments.date + 'T00:00:00Z').toISOString(),
@@ -173,10 +175,18 @@ async function applyChange(platform, platformCampId, change) {
   return { ok: false, error: 'Unsupported platform: ' + platform };
 }
 
-function platformConnected(platform) {
+// Async: Google routes through the credential vault (per-user when userId is
+// provided, owner/env fallback when userId is null — matches the resolver
+// policy). Other platforms still env-gated until their vault adapters land.
+async function platformConnected(platform, userId = null) {
   const p = String(platform || '').toLowerCase();
   if (p.includes('meta') || p.includes('facebook')) return !!(process.env.META_ACCESS_TOKEN && process.env.META_AD_ACCOUNT_ID);
-  if (p.includes('google'))                          return !!(process.env.GOOGLE_ADS_DEVELOPER_TOKEN && process.env.GOOGLE_ADS_REFRESH_TOKEN);
+  if (p.includes('google')) {
+    try {
+      const r = await resolveGoogleAdsCredentials(userId);
+      return !!(r && r.ok);
+    } catch { return false; }
+  }
   if (p.includes('tiktok'))                          return !!(process.env.TIKTOK_ACCESS_TOKEN && process.env.TIKTOK_ADVERTISER_ID);
   if (p.includes('microsoft') || p.includes('bing')) return !!(process.env.MICROSOFT_ADS_DEVELOPER_TOKEN && process.env.MICROSOFT_ADS_REFRESH_TOKEN
                                                             && process.env.MICROSOFT_ADS_CUSTOMER_ID && process.env.MICROSOFT_ADS_ACCOUNT_ID);
@@ -188,7 +198,7 @@ function platformConnected(platform) {
 //    returns rows when the report finishes within ~14s, else empty rows so the
 //    optimizer can simply skip this campaign for the cycle.
 async function fetchMicrosoft(_platformCampId, hours = 168) {
-  if (!platformConnected('microsoft')) return { ok:false, error:'not-configured' };
+  if (!(await platformConnected('microsoft'))) return { ok:false, error:'not-configured' };
   // Day-level granularity is enough for the optimizer's hourly ingest cron;
   // it normalises to bucket_hour anyway.
   return { ok:true, rows: [] };

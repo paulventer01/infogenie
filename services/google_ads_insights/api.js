@@ -1,31 +1,24 @@
 const express = require('express');
 const _https = require('https');
+const { resolveGoogleAdsCredentials } = require('../credentials/vault');
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 
-function _hasCreds() {
-  const t = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
-  const cid = process.env.GOOGLE_ADS_CLIENT_ID;
-  const cs = process.env.GOOGLE_ADS_CLIENT_SECRET;
-  const rt = process.env.GOOGLE_ADS_REFRESH_TOKEN;
-  const cu = process.env.GOOGLE_ADS_CUSTOMER_ID;
-  const all = [t, cid, cs, rt, cu];
-  return all.every(v => v && !/^_DUMMY/i.test(v));
+async function _getCreds(req) {
+  const uid = req.user && req.user.id ? req.user.id : null;
+  return await resolveGoogleAdsCredentials(uid);
 }
 
-function _customerId() {
-  return String(process.env.GOOGLE_ADS_CUSTOMER_ID || '').replace(/[^0-9]/g, '');
-}
+const _accessTokenCache = new Map(); // refreshToken → { token, expiresAt }
 
-let _accessTokenCache = { token: null, expiresAt: 0 };
-
-async function _refreshAccessToken() {
-  if (_accessTokenCache.token && Date.now() < _accessTokenCache.expiresAt - 60000) {
-    return { ok: true, token: _accessTokenCache.token };
+async function _refreshAccessToken(creds) {
+  const cached = _accessTokenCache.get(creds.refreshToken);
+  if (cached && Date.now() < cached.expiresAt - 60000) {
+    return { ok: true, token: cached.token };
   }
-  const body = `client_id=${encodeURIComponent(process.env.GOOGLE_ADS_CLIENT_ID)}` +
-               `&client_secret=${encodeURIComponent(process.env.GOOGLE_ADS_CLIENT_SECRET)}` +
-               `&refresh_token=${encodeURIComponent(process.env.GOOGLE_ADS_REFRESH_TOKEN)}` +
+  const body = `client_id=${encodeURIComponent(creds.clientId)}` +
+               `&client_secret=${encodeURIComponent(creds.clientSecret)}` +
+               `&refresh_token=${encodeURIComponent(creds.refreshToken)}` +
                `&grant_type=refresh_token`;
   return await new Promise(resolve => {
     const req = _https.request({
@@ -36,7 +29,7 @@ async function _refreshAccessToken() {
         try {
           const j = JSON.parse(d);
           if (r.statusCode >= 200 && r.statusCode < 300 && j.access_token) {
-            _accessTokenCache = { token: j.access_token, expiresAt: Date.now() + (j.expires_in || 3600) * 1000 };
+            _accessTokenCache.set(creds.refreshToken, { token: j.access_token, expiresAt: Date.now() + (j.expires_in || 3600) * 1000 });
             resolve({ ok: true, token: j.access_token });
           } else {
             resolve({ ok: false, error: j.error_description || j.error || `oauth ${r.statusCode}` });
@@ -50,18 +43,18 @@ async function _refreshAccessToken() {
   });
 }
 
-async function _gaQuery(query) {
-  const tok = await _refreshAccessToken();
+async function _gaQuery(creds, query) {
+  const tok = await _refreshAccessToken(creds);
   if (!tok.ok) return { ok: false, error: tok.error };
-  const cid = _customerId();
+  const cid = String(creds.customerId || '').replace(/[^0-9]/g, '');
   const body = JSON.stringify({ query });
   const headers = {
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(body),
     'Authorization': `Bearer ${tok.token}`,
-    'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+    'developer-token': creds.devToken,
   };
-  const lc = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+  const lc = creds.loginCustomerId;
   if (lc && !/^_DUMMY/i.test(lc)) headers['login-customer-id'] = String(lc).replace(/[^0-9]/g, '');
   return await new Promise(resolve => {
     const req = _https.request({
@@ -89,10 +82,10 @@ async function _gaQuery(query) {
 
 function _friendly(err) {
   if (!err) return err;
-  if (/developer-token|developer token/i.test(err)) return `${err} → Your GOOGLE_ADS_DEVELOPER_TOKEN is missing or not approved. Get it from your Google Ads MCC under Tools → API Center.`;
-  if (/PERMISSION_DENIED|not authorized|customer/i.test(err)) return `${err} → Make sure GOOGLE_ADS_CUSTOMER_ID is the 10-digit account number (no dashes). If using an MCC, also set GOOGLE_ADS_LOGIN_CUSTOMER_ID.`;
+  if (/developer-token|developer token/i.test(err)) return `${err} → Your Google Ads developer token is missing or not approved. Get it from your Google Ads MCC under Tools → API Center.`;
+  if (/PERMISSION_DENIED|not authorized|customer/i.test(err)) return `${err} → Make sure your Google Ads customer ID is the 10-digit account number (no dashes). If using an MCC, also set a login customer ID.`;
   if (/invalid_grant|refresh|token/i.test(err)) return `${err} → Refresh token is invalid or revoked. Re-authorize via OAuth Playground with the AdWords scope.`;
-  if (/OAuth client was not found|client.*not found|invalid_client/i.test(err)) return `${err} → GOOGLE_ADS_CLIENT_ID and/or GOOGLE_ADS_CLIENT_SECRET are wrong. Create OAuth credentials in Google Cloud Console (APIs & Services → Credentials → OAuth 2.0 Client ID).`;
+  if (/OAuth client was not found|client.*not found|invalid_client/i.test(err)) return `${err} → Google Ads client ID and/or secret are wrong. Create OAuth credentials in Google Cloud Console (APIs & Services → Credentials → OAuth 2.0 Client ID).`;
   return err;
 }
 
@@ -112,18 +105,20 @@ function _flat(rows, picker) {
 }
 
 router.post('/test', async (req, res) => {
-  if (!_hasCreds()) return _err(res, 400, 'GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_REFRESH_TOKEN, GOOGLE_ADS_CUSTOMER_ID required');
-  const r = await _gaQuery('SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone FROM customer LIMIT 1');
+  const c = await _getCreds(req);
+  if (!c.ok) return _err(res, 400, c.error);
+  const r = await _gaQuery(c.creds, 'SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone FROM customer LIMIT 1');
   if (!r.ok) return _err(res, 400, _friendly(r.error));
   const row = (r.data?.[0]?.results?.[0]?.customer) || {};
   res.json({ ok: true, account: { id: row.id, name: row.descriptiveName, currency: row.currencyCode, timezone: row.timeZone } });
 });
 
 router.get('/account-summary', async (req, res) => {
-  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', note:'Set GOOGLE_ADS_* credentials to see live insights.' });
+  const c = await _getCreds(req);
+  if (!c.ok) return res.json({ ok:true, source:'placeholder', note: c.error });
   const dp = _preset(req);
   const q = `SELECT metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.ctr, metrics.average_cpc, metrics.average_cpm, metrics.conversions, metrics.conversions_value FROM customer WHERE segments.date DURING ${dp}`;
-  const r = await _gaQuery(q);
+  const r = await _gaQuery(c.creds, q);
   if (!r.ok) return _err(res, 400, _friendly(r.error));
   let spend = 0, impressions = 0, clicks = 0, conversions = 0, revenue = 0;
   _flat(r.data || [], x => x.metrics || {}).forEach(m => {
@@ -144,17 +139,18 @@ router.get('/account-summary', async (req, res) => {
 });
 
 router.get('/campaigns', async (req, res) => {
-  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', campaigns:[], note:'Set GOOGLE_ADS_* credentials for live campaigns.' });
+  const c = await _getCreds(req);
+  if (!c.ok) return res.json({ ok:true, source:'placeholder', campaigns:[], note: c.error });
   const dp = _preset(req);
   const q = `SELECT campaign.id, campaign.name, campaign.status, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.ctr, metrics.average_cpc, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date DURING ${dp} ORDER BY metrics.cost_micros DESC LIMIT 50`;
-  const r = await _gaQuery(q);
+  const r = await _gaQuery(c.creds, q);
   if (!r.ok) return _err(res, 400, _friendly(r.error));
   const camps = _flat(r.data || [], x => {
-    const m = x.metrics || {}, c = x.campaign || {};
+    const m = x.metrics || {}, cc = x.campaign || {};
     const spend = parseInt(m.costMicros || 0, 10) / 1e6;
     const rev = parseFloat(m.conversionsValue || 0);
     return {
-      id: c.id, name: c.name, status: c.status,
+      id: cc.id, name: cc.name, status: cc.status,
       spend: +spend.toFixed(2), impressions: parseInt(m.impressions || 0, 10),
       clicks: parseInt(m.clicks || 0, 10), ctr: parseFloat(m.ctr || 0) * 100,
       cpc: parseInt(m.averageCpc || 0, 10) / 1e6,
@@ -167,10 +163,11 @@ router.get('/campaigns', async (req, res) => {
 });
 
 router.get('/top-ads', async (req, res) => {
-  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', ads:[], note:'Set GOOGLE_ADS_* credentials for top ads.' });
+  const c = await _getCreds(req);
+  if (!c.ok) return res.json({ ok:true, source:'placeholder', ads:[], note: c.error });
   const dp = _preset(req);
   const q = `SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group.name, campaign.name, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.ctr, metrics.conversions FROM ad_group_ad WHERE segments.date DURING ${dp} ORDER BY metrics.ctr DESC LIMIT 25`;
-  const r = await _gaQuery(q);
+  const r = await _gaQuery(c.creds, q);
   if (!r.ok) return _err(res, 400, _friendly(r.error));
   const ads = _flat(r.data || [], x => {
     const m = x.metrics || {};
@@ -189,3 +186,6 @@ router.get('/top-ads', async (req, res) => {
 });
 
 module.exports = router;
+// Exported for the per-user smoke test endpoint mounted in server.js
+module.exports._gaQuery = _gaQuery;
+module.exports._refreshAccessToken = _refreshAccessToken;

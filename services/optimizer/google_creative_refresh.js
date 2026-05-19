@@ -12,6 +12,7 @@
 const https = require('https');
 const _db = require('../../db');
 const { getSetting } = require('./schema');
+const { resolveGoogleAdsCredentials } = require('../credentials/vault');
 
 const STALE_AGE_HOURS = 72;
 const CTR_FLOOR       = 0.005;
@@ -47,32 +48,36 @@ function _httpsJson(host, path, method, body, headers = {}, timeoutMs = 30000) {
 }
 
 // ── OAuth refresh ───────────────────────────────────────────────────────────
-async function _refreshAccessToken() {
-  const need = ['GOOGLE_ADS_CLIENT_ID','GOOGLE_ADS_CLIENT_SECRET','GOOGLE_ADS_REFRESH_TOKEN','GOOGLE_ADS_DEVELOPER_TOKEN','GOOGLE_ADS_CUSTOMER_ID'];
-  const missing = need.filter(k => !process.env[k]);
-  if (missing.length) return { ok: false, error: 'Google Ads not connected: ' + missing.join(', ') };
+async function _refreshAccessToken(userId = null) {
+  const c = await resolveGoogleAdsCredentials(userId);
+  if (!c.ok) return { ok: false, error: c.error };
+  const creds = c.creds;
   const r = await _httpsJson('oauth2.googleapis.com', '/token', 'POST',
-    `client_id=${encodeURIComponent(process.env.GOOGLE_ADS_CLIENT_ID)}&client_secret=${encodeURIComponent(process.env.GOOGLE_ADS_CLIENT_SECRET)}&refresh_token=${encodeURIComponent(process.env.GOOGLE_ADS_REFRESH_TOKEN)}&grant_type=refresh_token`,
+    `client_id=${encodeURIComponent(creds.clientId)}&client_secret=${encodeURIComponent(creds.clientSecret)}&refresh_token=${encodeURIComponent(creds.refreshToken)}&grant_type=refresh_token`,
     { 'Content-Type':'application/x-www-form-urlencoded' });
   const access = r.body.access_token;
   if (!access) return { ok: false, error: 'OAuth refresh failed: ' + (r.body.error_description || r.body.error || 'unknown') };
-  return { ok: true, accessToken: access, customerId: String(process.env.GOOGLE_ADS_CUSTOMER_ID).replace(/-/g,'') };
-}
-
-function _googleAdsHeaders(accessToken) {
   return {
-    'Content-Type':'application/json',
-    'Authorization':`Bearer ${accessToken}`,
-    'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
-    ...(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID
-      ? { 'login-customer-id': String(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID).replace(/-/g,'') }
-      : {}),
+    ok: true,
+    accessToken: access,
+    customerId: String(creds.customerId).replace(/-/g,''),
+    devToken: creds.devToken,
+    loginCustomerId: creds.loginCustomerId ? String(creds.loginCustomerId).replace(/-/g,'') : '',
   };
 }
 
-async function _gaqlSearch(accessToken, customerId, gaql) {
-  const r = await _httpsJson('googleads.googleapis.com', `/v16/customers/${customerId}/googleAds:search`, 'POST',
-    JSON.stringify({ query: gaql }), _googleAdsHeaders(accessToken));
+function _googleAdsHeaders(auth) {
+  return {
+    'Content-Type':'application/json',
+    'Authorization':`Bearer ${auth.accessToken}`,
+    'developer-token': auth.devToken,
+    ...(auth.loginCustomerId ? { 'login-customer-id': auth.loginCustomerId } : {}),
+  };
+}
+
+async function _gaqlSearch(auth, gaql) {
+  const r = await _httpsJson('googleads.googleapis.com', `/v16/customers/${auth.customerId}/googleAds:search`, 'POST',
+    JSON.stringify({ query: gaql }), _googleAdsHeaders(auth));
   if (r.body.error) return { ok: false, error: r.body.error.message || JSON.stringify(r.body.error) };
   return { ok: true, results: r.body.results || [] };
 }
@@ -86,7 +91,7 @@ async function fetchActiveRSAsGoogle(platformCampId) {
 
   // 1. Ad metadata + bidding strategy of the campaign (we still want metadata
   //    but NOT the segments — Google forbids combining segments with assets).
-  const adsR = await _gaqlSearch(auth.accessToken, auth.customerId,
+  const adsR = await _gaqlSearch(auth,
     `SELECT ad_group_ad.ad.id, ad_group_ad.ad.responsive_search_ad.headlines, ad_group_ad.ad.responsive_search_ad.descriptions, ad_group_ad.ad.final_urls, ad_group_ad.ad.name, ad_group_ad.status, ad_group.id FROM ad_group_ad WHERE campaign.id = ${safeCampId} AND ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD' AND ad_group_ad.status = 'ENABLED'`);
   if (!adsR.ok) return { ok: false, error: adsR.error };
   const ads = adsR.results.map(r => ({
@@ -102,7 +107,7 @@ async function fetchActiveRSAsGoogle(platformCampId) {
   // 2. 72h aggregated metrics per ad
   const since = new Date(Date.now() - STALE_AGE_HOURS * 3600 * 1000).toISOString().slice(0,10);
   const until = new Date().toISOString().slice(0,10);
-  const perfR = await _gaqlSearch(auth.accessToken, auth.customerId,
+  const perfR = await _gaqlSearch(auth,
     `SELECT ad_group_ad.ad.id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM ad_group_ad WHERE campaign.id = ${safeCampId} AND ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD' AND segments.date BETWEEN '${since}' AND '${until}'`);
   if (!perfR.ok) return { ok: false, error: perfR.error };
   const perfMap = new Map();
@@ -125,7 +130,7 @@ async function fetchActiveRSAsGoogle(platformCampId) {
   //    the staleness gate still depends on perf, not age alone.
   const ageMap = new Map();
   try {
-    const csR = await _gaqlSearch(auth.accessToken, auth.customerId,
+    const csR = await _gaqlSearch(auth,
       `SELECT change_status.ad_group_ad, change_status.last_change_date_time FROM change_status WHERE change_status.resource_type = 'AD_GROUP_AD' AND change_status.last_change_date_time DURING LAST_30_DAYS`);
     if (csR.ok) {
       for (const row of csR.results) {
@@ -169,11 +174,11 @@ async function _generateRSACopy({ campaignName, oldHeadlines, oldDescriptions, b
 }
 
 // ── Mutate: create new PAUSED RSA in the same ad group ──────────────────────
-async function _createRSA(accessToken, customerId, adGroupId, { headlines, descriptions, finalUrl }) {
+async function _createRSA(auth, adGroupId, { headlines, descriptions, finalUrl }) {
   const body = {
     operations: [{
       create: {
-        adGroup: `customers/${customerId}/adGroups/${adGroupId}`,
+        adGroup: `customers/${auth.customerId}/adGroups/${adGroupId}`,
         status: 'PAUSED',
         ad: {
           finalUrls: [finalUrl],
@@ -185,8 +190,8 @@ async function _createRSA(accessToken, customerId, adGroupId, { headlines, descr
       },
     }],
   };
-  const r = await _httpsJson('googleads.googleapis.com', `/v16/customers/${customerId}/adGroupAds:mutate`, 'POST',
-    JSON.stringify(body), _googleAdsHeaders(accessToken), 30000);
+  const r = await _httpsJson('googleads.googleapis.com', `/v16/customers/${auth.customerId}/adGroupAds:mutate`, 'POST',
+    JSON.stringify(body), _googleAdsHeaders(auth), 30000);
   if (r.body.error) return { ok: false, error: r.body.error.message || JSON.stringify(r.body.error) };
   // Result name: customers/X/adGroupAds/AG~AD
   const rn = r.body.results?.[0]?.resourceName || '';
@@ -196,18 +201,18 @@ async function _createRSA(accessToken, customerId, adGroupId, { headlines, descr
 }
 
 // ── Mutate: pause the old RSA ───────────────────────────────────────────────
-async function _pauseRSA(accessToken, customerId, adGroupId, adId) {
+async function _pauseRSA(auth, adGroupId, adId) {
   const body = {
     operations: [{
       update: {
-        resourceName: `customers/${customerId}/adGroupAds/${adGroupId}~${adId}`,
+        resourceName: `customers/${auth.customerId}/adGroupAds/${adGroupId}~${adId}`,
         status: 'PAUSED',
       },
       updateMask: 'status',
     }],
   };
-  const r = await _httpsJson('googleads.googleapis.com', `/v16/customers/${customerId}/adGroupAds:mutate`, 'POST',
-    JSON.stringify(body), _googleAdsHeaders(accessToken), 15000);
+  const r = await _httpsJson('googleads.googleapis.com', `/v16/customers/${auth.customerId}/adGroupAds:mutate`, 'POST',
+    JSON.stringify(body), _googleAdsHeaders(auth), 15000);
   if (r.body.error) return { ok: false, error: r.body.error.message || JSON.stringify(r.body.error) };
   return { ok: true };
 }
@@ -270,12 +275,12 @@ async function _refreshOneAd({ camp, ad, reason, dryRun, runId, auth }) {
     await _logRefresh({ camp, oldAd: ad, newCopy: { ...copy, reason }, newAdId: null, applied: false, error: 'no final_url on source ad — cannot rebuild', runId });
     return { ok: false, step: 'config', error: 'final_url missing' };
   }
-  const created = await _createRSA(auth.accessToken, auth.customerId, ad.adgroup_id, { headlines: copy.headlines, descriptions: copy.descriptions, finalUrl });
+  const created = await _createRSA(auth, ad.adgroup_id, { headlines: copy.headlines, descriptions: copy.descriptions, finalUrl });
   if (!created.ok) {
     await _logRefresh({ camp, oldAd: ad, newCopy: { ...copy, reason }, newAdId: null, applied: false, error: 'create: ' + created.error, runId });
     return { ok: false, step: 'create', error: created.error };
   }
-  const pauseR = await _pauseRSA(auth.accessToken, auth.customerId, ad.adgroup_id, ad.id).catch(e => ({ ok: false, error: e.message }));
+  const pauseR = await _pauseRSA(auth, ad.adgroup_id, ad.id).catch(e => ({ ok: false, error: e.message }));
   // Register new ad in our DB
   try {
     await _db.getPool().query(`

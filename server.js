@@ -12,6 +12,7 @@ const OpenAI    = require('openai');
 const Anthropic  = require('@anthropic-ai/sdk');
 const _authService = require('./services/auth/api');
 const _authSchema  = require('./services/auth/schema');
+const _credentialsVault = require('./services/credentials/vault');
 
 // ── Env-var name aliases ─────────────────────────────────────────────────────
 // Some Replit Secrets were stored under the historical names below. The rest
@@ -260,6 +261,8 @@ const _OWNER_GATE_ALLOW = [
   /^\/api\/auth\//,                  // own profile + logout etc.
   /^\/api\/status$/,                 // health
   /^\/api\/[^\/]+\/status$/,         // per-integration health pings
+  /^\/api\/ad-platforms\/status$/,   // per-user ad-platform connection status
+  /^\/api\/credentials\//,           // per-user credential vault + smoke tests
 ];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
@@ -471,18 +474,77 @@ function callHttpsGeneric(hostname, path, method, body, headers, timeoutMs = 150
 }
 
 // ── Ad platform connection status ─────────────────────────────────────────────
-app.get('/api/ad-platforms/status', (req, res) => {
+// Per-user (vault) for the calling user; owners additionally see env-var fallback.
+app.get('/api/ad-platforms/status', async (req, res) => {
+  const uid = req.user && req.user.id ? req.user.id : null;
+  const isOwner = !!(req.user && req.user.isOwner);
+  const envGoogle = !!(process.env.GOOGLE_ADS_DEVELOPER_TOKEN && process.env.GOOGLE_ADS_REFRESH_TOKEN &&
+                       process.env.GOOGLE_ADS_CUSTOMER_ID && process.env.GOOGLE_ADS_CLIENT_ID &&
+                       process.env.GOOGLE_ADS_CLIENT_SECRET);
+  let vaultGoogle = false;        // exists + active (status='connected')
+  let vaultGoogleStatus = null;   // 'connected' | 'error' | 'disconnected' | null
+  try {
+    if (uid) {
+      const s = await _credentialsVault.getStatus(uid, 'google_ads');
+      vaultGoogleStatus = s.status || null;
+      vaultGoogle = s.status === 'connected';
+    }
+  } catch (_e) {}
   res.json({
-    googleAds: !!(process.env.GOOGLE_ADS_DEVELOPER_TOKEN && process.env.GOOGLE_ADS_REFRESH_TOKEN &&
-                  process.env.GOOGLE_ADS_CUSTOMER_ID && process.env.GOOGLE_ADS_CLIENT_ID &&
-                  process.env.GOOGLE_ADS_CLIENT_SECRET),
+    googleAds: vaultGoogle || (isOwner && envGoogle),
+    googleAdsSource: vaultGoogle ? 'vault' : (isOwner && envGoogle ? 'env' : 'none'),
+    googleAdsStatus: vaultGoogleStatus || (isOwner && envGoogle ? 'connected' : 'disconnected'),
     merchantCenter: !!process.env.GOOGLE_MERCHANT_CENTER_ID,
+    // Other platforms still env-only until their vault adapters land.
     meta:      !!(process.env.META_AD_ACCOUNT_ID && process.env.META_ACCESS_TOKEN),
     tiktok:    !!(process.env.TIKTOK_ADVERTISER_ID && process.env.TIKTOK_ACCESS_TOKEN),
     microsoft: !!(process.env.MICROSOFT_ADS_DEVELOPER_TOKEN && process.env.MICROSOFT_ADS_CLIENT_ID &&
                   process.env.MICROSOFT_ADS_CLIENT_SECRET   && process.env.MICROSOFT_ADS_REFRESH_TOKEN &&
                   process.env.MICROSOFT_ADS_CUSTOMER_ID     && process.env.MICROSOFT_ADS_ACCOUNT_ID)
   });
+});
+
+// ── Google Ads credential smoke test ──────────────────────────────────────────
+// Resolves credentials from vault (or env-fallback for owners) and tries an
+// OAuth refresh + a trivial GAQL call. Returns connection status without
+// leaking any secret material.
+app.get('/api/credentials/google-ads/test', async (req, res) => {
+  const uid = req.user && req.user.id ? req.user.id : null;
+  const t0 = Date.now();
+  const resolved = await _credentialsVault.resolveGoogleAdsCredentials(uid);
+  if (!resolved.ok) return res.json({ ok: false, source: 'none', error: resolved.error, latencyMs: Date.now() - t0 });
+  const { devToken, clientId, clientSecret, refreshToken, customerId, loginCustomerId } = resolved.creds;
+  try {
+    const tokenBody = `client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&refresh_token=${encodeURIComponent(refreshToken)}&grant_type=refresh_token`;
+    const tokenRaw  = await callHttpsGeneric('oauth2.googleapis.com', '/token', 'POST', tokenBody, { 'Content-Type': 'application/x-www-form-urlencoded' });
+    const tokenData = JSON.parse(tokenRaw);
+    if (!tokenData.access_token) {
+      const msg = tokenData.error_description || tokenData.error || 'oauth_refresh_failed';
+      if (uid) await _credentialsVault.setStatus(uid, 'google_ads', 'error').catch(()=>{});
+      return res.json({ ok: false, source: resolved.source, step: 'oauth', error: msg, latencyMs: Date.now() - t0 });
+    }
+    const cleanId = String(customerId).replace(/-/g, '');
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenData.access_token}`, 'developer-token': devToken };
+    if (loginCustomerId) headers['login-customer-id'] = String(loginCustomerId).replace(/-/g, '');
+    const probe = await callHttpsGeneric('googleads.googleapis.com', `/v16/customers/${cleanId}/googleAds:search`, 'POST',
+      JSON.stringify({ query: 'SELECT customer.id, customer.descriptive_name FROM customer LIMIT 1' }), headers);
+    let body; try { body = JSON.parse(probe); } catch { body = {}; }
+    if (body.error) {
+      if (uid) await _credentialsVault.setStatus(uid, 'google_ads', 'error').catch(()=>{});
+      return res.json({ ok: false, source: resolved.source, step: 'gaql', error: body.error.message || 'gaql_failed', latencyMs: Date.now() - t0 });
+    }
+    const row = (body.results || [])[0] || {};
+    if (uid) await _credentialsVault.setStatus(uid, 'google_ads', 'connected').catch(()=>{});
+    return res.json({
+      ok: true, source: resolved.source,
+      customerId: cleanId,
+      descriptiveName: row.customer && row.customer.descriptiveName || null,
+      latencyMs: Date.now() - t0,
+    });
+  } catch (e) {
+    if (uid) await _credentialsVault.setStatus(uid, 'google_ads', 'error').catch(()=>{});
+    return res.json({ ok: false, source: resolved.source, step: 'exception', error: e.message, latencyMs: Date.now() - t0 });
+  }
 });
 
 // ── Google Ads campaign launch ────────────────────────────────────────────────
@@ -512,14 +574,10 @@ app.post('/api/launch/google-ads', async (req, res) => {
   if (ct.needsMerchant && !merchantId) {
     return res.json({ success: false, error: 'Shopping campaigns require a Google Merchant Center account. Add GOOGLE_MERCHANT_CENTER_ID in Settings and verify your product feed at merchants.google.com.' });
   }
-  const devToken     = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
-  const clientId     = process.env.GOOGLE_ADS_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
-  const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
-  const customerId   = process.env.GOOGLE_ADS_CUSTOMER_ID;
-
-  if (!devToken || !clientId || !clientSecret || !refreshToken || !customerId)
-    return res.json({ success: false, error: 'Google Ads credentials not configured — connect them in Settings → Google Ads.' });
+  const _gaResolved = await _credentialsVault.resolveGoogleAdsCredentials(req.user && req.user.id ? req.user.id : null);
+  if (!_gaResolved.ok)
+    return res.json({ success: false, error: _gaResolved.error });
+  const { devToken, clientId, clientSecret, refreshToken, customerId, loginCustomerId } = _gaResolved.creds;
 
   try {
     // 1. Exchange refresh token for access token
@@ -531,6 +589,7 @@ app.post('/api/launch/google-ads', async (req, res) => {
 
     const cleanId = String(customerId).replace(/-/g, '');
     const authHeaders = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}`, 'developer-token': devToken };
+    if (loginCustomerId) authHeaders['login-customer-id'] = String(loginCustomerId).replace(/-/g, '');
 
     // 2. Create campaign budget
     const dailyMicros = String(Math.round((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) * 1e6 / 30));
@@ -1180,6 +1239,7 @@ Return ONLY the JSON object, no prose.` }
 app.get('/api/integrations/status', (req, res) => {
   const configured = [];
   if (process.env.GOOGLE_ADS_DEVELOPER_TOKEN && process.env.GOOGLE_ADS_REFRESH_TOKEN) configured.push('google-ads');
+  // NOTE: per-user vault connections surface through /api/ad-platforms/status.
   if (process.env.META_ACCESS_TOKEN && process.env.META_AD_ACCOUNT_ID) {
     configured.push('meta-ads');
     configured.push('meta-ad-library');
@@ -7680,12 +7740,15 @@ async function _fetchMetaSpendDaily(days = 90) {
   } catch (e) { return { ok:false, channel:'meta', error: e.message, daily:[] }; }
 }
 
-async function _fetchGoogleAdsSpendDaily(days = 90) {
-  const devToken     = _cleanSecret(process.env.GOOGLE_ADS_DEVELOPER_TOKEN);
-  const clientId     = _cleanSecret(process.env.GOOGLE_ADS_CLIENT_ID);
-  const clientSecret = _cleanSecret(process.env.GOOGLE_ADS_CLIENT_SECRET);
-  const refreshToken = _cleanSecret(process.env.GOOGLE_ADS_REFRESH_TOKEN);
-  const customerId   = _digitsOnly(_cleanSecret(process.env.GOOGLE_ADS_CUSTOMER_ID));
+async function _fetchGoogleAdsSpendDaily(days = 90, userId = null) {
+  const _r = await _credentialsVault.resolveGoogleAdsCredentials(userId);
+  if (!_r.ok) return { ok:false, channel:'google', error:'not-configured', daily:[] };
+  const devToken     = _cleanSecret(_r.creds.devToken);
+  const clientId     = _cleanSecret(_r.creds.clientId);
+  const clientSecret = _cleanSecret(_r.creds.clientSecret);
+  const refreshToken = _cleanSecret(_r.creds.refreshToken);
+  const customerId   = _digitsOnly(_cleanSecret(_r.creds.customerId));
+  const loginCustomerId = _r.creds.loginCustomerId ? _digitsOnly(_cleanSecret(_r.creds.loginCustomerId)) : '';
   if (!devToken || !refreshToken || !customerId || !clientId || !clientSecret) {
     return { ok:false, channel:'google', error:'not-configured', daily:[] };
   }
@@ -7703,11 +7766,11 @@ async function _fetchGoogleAdsSpendDaily(days = 90) {
     const since = _isoDate(Date.now() - days*86400000);
     const until = _isoDate(Date.now());
     const query = `SELECT segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM customer WHERE segments.date BETWEEN '${since}' AND '${until}'`;
+    const _hdrs = { 'Authorization':`Bearer ${tok.access_token}`, 'developer-token':devToken, 'Content-Type':'application/json' };
+    if (loginCustomerId) _hdrs['login-customer-id'] = loginCustomerId;
     const r = await fetch(
       `https://googleads.googleapis.com/v17/customers/${customerId}/googleAds:searchStream`,
-      { method:'POST',
-        headers:{ 'Authorization':`Bearer ${tok.access_token}`, 'developer-token':devToken, 'Content-Type':'application/json' },
-        body: JSON.stringify({ query }) }
+      { method:'POST', headers: _hdrs, body: JSON.stringify({ query }) }
     );
     const txt = await r.text();
     let j; try { j = JSON.parse(txt); } catch { j = { _raw: txt.slice(0,200) }; }
@@ -8840,11 +8903,31 @@ const _db = require('./db');
   } catch (e) { console.error('[db] init failed:', e.message); }
 })();
 
+// ── Credential vault — production secure-by-default: refuse to start without
+//    a valid CREDENTIAL_ENCRYPTION_KEY. This MUST run synchronously at top
+//    level (not inside a swallow-catching async IIFE) so a missing/malformed
+//    key crashes the process with a non-zero exit code.
+try {
+  _credentialsVault.assertBootRequirements();
+} catch (e) {
+  console.error('[credentials-vault] FATAL —', e.message);
+  process.exit(1);
+}
+
 // ── Platform Auth (users / sessions / social login) ──────────────────────────
 (async () => {
   try {
     if (_db.hasDb()) {
       await _authSchema.ensureAuthSchema();
+      try {
+        await _credentialsVault.ensureCredentialsSchema();
+      } catch (e) {
+        console.error('[credentials-vault] schema init failed:', e.message);
+        if (process.env.NODE_ENV === 'production') {
+          // Hard-fail in production — a broken vault schema is a data-integrity risk.
+          process.exit(1);
+        }
+      }
     } else {
       console.warn('[auth] disabled — DATABASE_URL not set. Sessions will be in-memory and lost on restart.');
     }
@@ -10130,12 +10213,15 @@ async function _fetchMetaSpend(days = 30) {
   } catch (e) { return { ok:false, channel:'meta', error: e.message }; }
 }
 
-async function _fetchGoogleAdsSpend(days = 30) {
-  const devToken     = _cleanSecret(process.env.GOOGLE_ADS_DEVELOPER_TOKEN);
-  const clientId     = _cleanSecret(process.env.GOOGLE_ADS_CLIENT_ID);
-  const clientSecret = _cleanSecret(process.env.GOOGLE_ADS_CLIENT_SECRET);
-  const refreshToken = _cleanSecret(process.env.GOOGLE_ADS_REFRESH_TOKEN);
-  const customerId   = _digitsOnly(_cleanSecret(process.env.GOOGLE_ADS_CUSTOMER_ID));
+async function _fetchGoogleAdsSpend(days = 30, userId = null) {
+  const _r = await _credentialsVault.resolveGoogleAdsCredentials(userId);
+  if (!_r.ok) return { ok:false, channel:'google', error:'not-configured' };
+  const devToken     = _cleanSecret(_r.creds.devToken);
+  const clientId     = _cleanSecret(_r.creds.clientId);
+  const clientSecret = _cleanSecret(_r.creds.clientSecret);
+  const refreshToken = _cleanSecret(_r.creds.refreshToken);
+  const customerId   = _digitsOnly(_cleanSecret(_r.creds.customerId));
+  const loginCustomerId = _r.creds.loginCustomerId ? _digitsOnly(_cleanSecret(_r.creds.loginCustomerId)) : '';
   if (!devToken || !refreshToken || !customerId || !clientId || !clientSecret) {
     return { ok:false, channel:'google', error:'not-configured' };
   }
@@ -10157,11 +10243,11 @@ async function _fetchGoogleAdsSpend(days = 30) {
       `https://googleads.googleapis.com/v17/customers/${customerId}/googleAds:searchStream`,
       {
         method:'POST',
-        headers:{
+        headers: Object.assign({
           'Authorization':  `Bearer ${tok.access_token}`,
           'developer-token': devToken,
           'Content-Type':    'application/json',
-        },
+        }, loginCustomerId ? { 'login-customer-id': loginCustomerId } : {}),
         body: JSON.stringify({ query }),
       }
     );

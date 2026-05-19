@@ -19,6 +19,7 @@ const https = require('https');
 const _db = require('../../db');
 const { getSetting } = require('./schema');
 const { _betaSample } = require('./bandit');  // reuse Marsaglia-Tsang sampler
+const { resolveGoogleAdsCredentials } = require('../credentials/vault');
 
 const MIN_EXPLORE_SHARE = 0.10;
 const MAX_ARM_SHARE     = 0.60;
@@ -50,29 +51,33 @@ function _httpsJson(host, path, method, body, headers = {}, timeoutMs = 20000) {
 }
 
 // ── OAuth refresh ───────────────────────────────────────────────────────────
-async function _refreshAccessToken() {
-  const need = ['GOOGLE_ADS_CLIENT_ID','GOOGLE_ADS_CLIENT_SECRET','GOOGLE_ADS_REFRESH_TOKEN','GOOGLE_ADS_DEVELOPER_TOKEN','GOOGLE_ADS_CUSTOMER_ID'];
-  const missing = need.filter(k => !process.env[k]);
-  if (missing.length) return { ok: false, error: 'Google Ads not connected: ' + missing.join(', ') };
+async function _refreshAccessToken(userId = null) {
+  const c = await resolveGoogleAdsCredentials(userId);
+  if (!c.ok) return { ok: false, error: c.error };
+  const creds = c.creds;
   const r = await _httpsJson('oauth2.googleapis.com', '/token', 'POST',
-    `client_id=${encodeURIComponent(process.env.GOOGLE_ADS_CLIENT_ID)}&client_secret=${encodeURIComponent(process.env.GOOGLE_ADS_CLIENT_SECRET)}&refresh_token=${encodeURIComponent(process.env.GOOGLE_ADS_REFRESH_TOKEN)}&grant_type=refresh_token`,
+    `client_id=${encodeURIComponent(creds.clientId)}&client_secret=${encodeURIComponent(creds.clientSecret)}&refresh_token=${encodeURIComponent(creds.refreshToken)}&grant_type=refresh_token`,
     { 'Content-Type':'application/x-www-form-urlencoded' });
   const access = r.body.access_token;
   if (!access) return { ok: false, error: 'OAuth refresh failed: ' + (r.body.error_description || r.body.error || 'unknown') };
-  return { ok: true, accessToken: access, customerId: String(process.env.GOOGLE_ADS_CUSTOMER_ID).replace(/-/g,'') };
+  return {
+    ok: true,
+    accessToken: access,
+    customerId: String(creds.customerId).replace(/-/g,''),
+    devToken: creds.devToken,
+    loginCustomerId: creds.loginCustomerId ? String(creds.loginCustomerId).replace(/-/g,'') : '',
+  };
 }
 
 // ── GAQL search helper ──────────────────────────────────────────────────────
-async function _gaqlSearch(accessToken, customerId, gaql) {
-  const r = await _httpsJson('googleads.googleapis.com', `/v16/customers/${customerId}/googleAds:search`, 'POST',
+async function _gaqlSearch(auth, gaql) {
+  const r = await _httpsJson('googleads.googleapis.com', `/v16/customers/${auth.customerId}/googleAds:search`, 'POST',
     JSON.stringify({ query: gaql }),
     {
       'Content-Type':'application/json',
-      'Authorization':`Bearer ${accessToken}`,
-      'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
-      ...(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID
-        ? { 'login-customer-id': String(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID).replace(/-/g,'') }
-        : {}),
+      'Authorization':`Bearer ${auth.accessToken}`,
+      'developer-token': auth.devToken,
+      ...(auth.loginCustomerId ? { 'login-customer-id': auth.loginCustomerId } : {}),
     });
   if (r.body.error) return { ok: false, error: r.body.error.message || JSON.stringify(r.body.error) };
   return { ok: true, results: r.body.results || [] };
@@ -86,7 +91,7 @@ async function fetchAdGroupsGoogle(platformCampId, days = 7) {
   if (!Number.isFinite(safeCampId) || safeCampId <= 0) return { ok: false, error: 'Invalid Google Ads campaign id' };
 
   // 1. Bidding strategy on the campaign
-  const stratR = await _gaqlSearch(auth.accessToken, auth.customerId,
+  const stratR = await _gaqlSearch(auth,
     `SELECT campaign.id, campaign.bidding_strategy_type FROM campaign WHERE campaign.id = ${safeCampId}`);
   if (!stratR.ok) return { ok: false, error: stratR.error };
   const stratRow = stratR.results[0];
@@ -96,7 +101,7 @@ async function fetchAdGroupsGoogle(platformCampId, days = 7) {
   }
 
   // 2. Ad groups + their bids (no date segment)
-  const agsR = await _gaqlSearch(auth.accessToken, auth.customerId,
+  const agsR = await _gaqlSearch(auth,
     `SELECT ad_group.id, ad_group.name, ad_group.status, ad_group.cpc_bid_micros FROM ad_group WHERE campaign.id = ${safeCampId} AND ad_group.status = 'ENABLED'`);
   if (!agsR.ok) return { ok: false, error: agsR.error };
   const ags = agsR.results.map(r => ({
@@ -108,7 +113,7 @@ async function fetchAdGroupsGoogle(platformCampId, days = 7) {
 
   // 3. Aggregated metrics over the window per ad group
   const days7 = days <= 7 ? '7' : days <= 14 ? '14' : '30';
-  const perfR = await _gaqlSearch(auth.accessToken, auth.customerId,
+  const perfR = await _gaqlSearch(auth,
     `SELECT ad_group.id, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM ad_group WHERE campaign.id = ${safeCampId} AND segments.date DURING LAST_${days7}_DAYS`);
   if (!perfR.ok) return { ok: false, error: perfR.error };
   const perfMap = new Map();
@@ -130,26 +135,24 @@ async function fetchAdGroupsGoogle(platformCampId, days = 7) {
 }
 
 // ── Apply CPC bid change to an ad group ─────────────────────────────────────
-async function _applyAdGroupBid(accessToken, customerId, adGroupId, newBidUsd) {
+async function _applyAdGroupBid(auth, adGroupId, newBidUsd) {
   const micros = Math.max(Math.round(newBidUsd * 1e6), Math.round(MIN_BID_USD * 1e6));
   const body = {
     operations: [{
       update: {
-        resourceName: `customers/${customerId}/adGroups/${adGroupId}`,
+        resourceName: `customers/${auth.customerId}/adGroups/${adGroupId}`,
         cpcBidMicros: String(micros),
       },
       updateMask: 'cpcBidMicros',
     }],
   };
-  const r = await _httpsJson('googleads.googleapis.com', `/v16/customers/${customerId}/adGroups:mutate`, 'POST',
+  const r = await _httpsJson('googleads.googleapis.com', `/v16/customers/${auth.customerId}/adGroups:mutate`, 'POST',
     JSON.stringify(body),
     {
       'Content-Type':'application/json',
-      'Authorization':`Bearer ${accessToken}`,
-      'developer-token': process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
-      ...(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID
-        ? { 'login-customer-id': String(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID).replace(/-/g,'') }
-        : {}),
+      'Authorization':`Bearer ${auth.accessToken}`,
+      'developer-token': auth.devToken,
+      ...(auth.loginCustomerId ? { 'login-customer-id': auth.loginCustomerId } : {}),
     }, 8000);
   if (r.body.error) return { ok: false, error: r.body.error.message || JSON.stringify(r.body.error) };
   return { ok: true };
@@ -271,7 +274,7 @@ async function _runOneCampaign({ camp, dryRun, runId, perRunLeft }) {
       await _logAlloc({ campaignId: camp.id, adSetId, runId, arm, oldBid, newBid: oldBid, applied: false, error: null, reason: reason + ' (no change — within ±$0.01 / 10%)' });
       continue;
     }
-    const r = await _applyAdGroupBid(auth.accessToken, auth.customerId, arm.platform_adset_id, newBid);
+    const r = await _applyAdGroupBid(auth, arm.platform_adset_id, newBid);
     if (r.ok) {
       applied++;
       await _logAlloc({ campaignId: camp.id, adSetId, runId, arm, oldBid, newBid, applied: true, error: null, reason });

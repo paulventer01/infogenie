@@ -49,7 +49,7 @@ async function evaluateCampaign(camp, runId, dryRun) {
   if (stats.roas !== null && stats.roas < target * 0.5) {
     const change = { action: 'pause' };
     let applied = false, err = null;
-    if (!dryRun && platformConnected(camp.platform)) {
+    if (!dryRun && await platformConnected(camp.platform)) {
       const r = await applyChange(camp.platform, camp.platform_camp_id, change);
       applied = !!r.ok; err = r.ok ? null : r.error;
     }
@@ -65,7 +65,7 @@ async function evaluateCampaign(camp, runId, dryRun) {
     const newBud = Math.min(Math.round(dailyBud * 1.20 * 100) / 100, maxBud);
     const change = { action: 'budget', dailyBudget: newBud };
     let applied = false, err = null;
-    if (!dryRun && platformConnected(camp.platform)) {
+    if (!dryRun && await platformConnected(camp.platform)) {
       const r = await applyChange(camp.platform, camp.platform_camp_id, change);
       applied = !!r.ok; err = r.ok ? null : r.error;
     }

@@ -14,7 +14,7 @@ const { runFatigueForecastOnce } = require('./fatigue_forecast');
 
 const router = express.Router();
 
-router.get('/status', async (_req, res) => {
+router.get('/status', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, error: 'database not configured' });
   const pool = _db.getPool();
   const camps   = await pool.query(`SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE optimizer_enabled)::int enabled FROM ad_campaigns`);
@@ -29,9 +29,9 @@ router.get('/status', async (_req, res) => {
     lastRunAt: lastRun.rows[0].t,
     dryRun: !!dryRun.v,
     platforms: {
-      meta:   platformConnected('meta'),
-      google: platformConnected('google'),
-      tiktok: platformConnected('tiktok'),
+      meta:   await platformConnected('meta'),
+      google: await platformConnected('google', req.user && req.user.id ? req.user.id : null),
+      tiktok: await platformConnected('tiktok'),
     },
   });
 });
