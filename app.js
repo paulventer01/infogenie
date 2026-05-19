@@ -393,42 +393,84 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
   localStorage.getItem    = function(k){ return orig.get(ns(k)); };
   localStorage.setItem    = function(k,v){ return orig.set(ns(k), v); };
   localStorage.removeItem = function(k){ return orig.rem(ns(k)); };
-  // Expose helpers on window for the auth wall + nav widgets.
+  // window._auth — now backed by the real server-side auth surface in
+  // services/auth/api.js. The client keeps `ig-current-user` in raw
+  // localStorage as a local "logged-in" marker so the per-account namespacing
+  // above keeps working without code changes elsewhere; the source of truth
+  // is the HttpOnly session cookie owned by the server.
+  async function _authFetch(path, opts){
+    const r = await fetch(path, Object.assign({ credentials:'same-origin', headers:{'Content-Type':'application/json'} }, opts || {}));
+    const ct = r.headers.get('content-type') || '';
+    const body = ct.includes('application/json') ? await r.json().catch(()=>({})) : {};
+    if (!r.ok) return { error: body.error || (`Request failed (${r.status})`), status:r.status };
+    return body;
+  }
   window._auth = {
-    getUsers(){ try { return JSON.parse(orig.get('ig-users') || '[]'); } catch(e){ return []; } },
-    saveUsers(u){ orig.set('ig-users', JSON.stringify(u||[])); },
     current(){ return curUser(); },
-    currentProfile(){ const e = curUser(); return this.getUsers().find(u => u.email === e) || null; },
-    signup({name, email, password}){
-      email = (email||'').trim().toLowerCase();
-      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error:'Please enter a valid email address.' };
-      if (!password || password.length < 4) return { error:'Password must be at least 4 characters.' };
-      const users = this.getUsers();
-      if (users.some(u => u.email === email)) return { error:'An account with this email already exists. Try logging in instead.' };
-      // Light hash (NOT cryptographic — this is client-only state, not real auth)
-      let h = 0; for (let i=0;i<password.length;i++){ h = ((h<<5)-h) + password.charCodeAt(i); h |= 0; }
-      users.push({ name:(name||email.split('@')[0]).trim(), email, pw:h, createdAt: new Date().toISOString() });
-      this.saveUsers(users);
-      orig.set('ig-current-user', email);
-      return { ok:true };
+    currentProfile(){
+      try { return JSON.parse(orig.get('ig-current-profile') || 'null'); } catch(e){ return null; }
     },
-    login({email, password}){
-      email = (email||'').trim().toLowerCase();
-      const u = this.getUsers().find(x => x.email === email);
-      if (!u) return { error:'No account found for that email. Sign up first.' };
-      let h = 0; for (let i=0;i<(password||'').length;i++){ h = ((h<<5)-h) + (password||'').charCodeAt(i); h |= 0; }
-      if (h !== u.pw) return { error:'Incorrect password.' };
-      orig.set('ig-current-user', email);
-      return { ok:true };
+    _setSession(user){
+      if (!user || !user.email) return;
+      orig.set('ig-current-user', user.email);
+      orig.set('ig-current-profile', JSON.stringify({ id:user.id, email:user.email, name:user.name||'', isOwner:!!user.isOwner, emailVerified:!!user.emailVerified }));
     },
-    logout(){ orig.rem('ig-current-user'); location.reload(); }
+    _clearSession(){
+      orig.rem('ig-current-user');
+      orig.rem('ig-current-profile');
+    },
+    async refresh(){
+      const r = await _authFetch('/api/auth/me');
+      if (r && r.authenticated && r.user) { this._setSession(r.user); return r.user; }
+      this._clearSession();
+      return null;
+    },
+    async signup({name, email, password}){
+      const r = await _authFetch('/api/auth/signup', { method:'POST', body: JSON.stringify({ name, email, password }) });
+      if (r.error) return r;
+      this._setSession(r.user);
+      return { ok:true, user:r.user, verificationEmailSent: !!r.verificationEmailSent };
+    },
+    async login({email, password}){
+      const r = await _authFetch('/api/auth/login', { method:'POST', body: JSON.stringify({ email, password }) });
+      if (r.error) return r;
+      this._setSession(r.user);
+      return { ok:true, user:r.user };
+    },
+    async requestReset(email){
+      return _authFetch('/api/auth/request-reset', { method:'POST', body: JSON.stringify({ email }) });
+    },
+    async resendVerification(){
+      return _authFetch('/api/auth/resend-verification', { method:'POST', body: '{}' });
+    },
+    async listProviders(){
+      const r = await _authFetch('/api/auth/providers');
+      return (r && r.providers) || {};
+    },
+    socialStart(provider){
+      window.location.href = '/api/auth/oauth/' + encodeURIComponent(provider) + '/start';
+    },
+    async logout(){
+      try { await _authFetch('/api/auth/logout', { method:'POST', body:'{}' }); } catch(e){}
+      this._clearSession();
+      location.reload();
+    },
   };
 })();
 
 // ── Auth wall — block app until user signs up / logs in ───────────────────────
 (function authWall(){
-  function render(){
-    if (window._auth.current()) return;       // already signed in
+  async function render(){
+    // Source of truth = server session. Reconcile the local marker with /me
+    // before deciding whether to show the wall (catches expired sessions and
+    // cross-device sign-ins).
+    try {
+      const me = await window._auth.refresh();
+      if (me) return;  // authenticated, no wall
+    } catch(e) {
+      // Network failure on /me — show the wall rather than trusting a stale
+      // local marker. A signed-out session must never see the app shell.
+    }
     if (document.getElementById('igAuthWall')) return;
     const wall = document.createElement('div');
     wall.id = 'igAuthWall';
@@ -448,6 +490,12 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
             <button data-tab="signup" class="igAuthTab" style="flex:1;padding:9px 0;border:none;border-radius:7px;font-size:.83rem;font-weight:700;cursor:pointer;background:transparent;color:#6B7280">Create Account</button>
           </div>
 
+          <div id="igSocialRow" style="display:none;margin-bottom:14px"></div>
+          <div id="igSocialDivider" style="display:none;align-items:center;gap:8px;margin:0 0 14px;color:#9CA3AF;font-size:.7rem;font-weight:600">
+            <div style="flex:1;height:1px;background:#E5E7EB"></div>
+            <span>or use email</span>
+            <div style="flex:1;height:1px;background:#E5E7EB"></div>
+          </div>
           <form id="igAuthForm" autocomplete="on" onsubmit="return false">
             <div id="igNameRow" style="display:none;margin-bottom:12px">
               <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;margin-bottom:5px">Your name</label>
@@ -460,10 +508,14 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
             <div style="margin-bottom:14px">
               <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;margin-bottom:5px">Password</label>
               <input id="igPass" type="password" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding:11px 13px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:.88rem;outline:none;box-sizing:border-box" />
-              <div id="igPassHint" style="display:none;font-size:.66rem;color:#6B7280;margin-top:4px">Min 4 characters. Stored locally on your browser.</div>
+              <div id="igPassHint" style="display:none;font-size:.66rem;color:#6B7280;margin-top:4px">Min 8 characters. Hashed server-side with bcrypt.</div>
             </div>
             <div id="igAuthError" style="display:none;background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;padding:9px 12px;border-radius:8px;font-size:.74rem;font-weight:600;margin-bottom:12px"></div>
+            <div id="igAuthNotice" style="display:none;background:#ECFDF5;border:1px solid #6EE7B7;color:#065F46;padding:9px 12px;border-radius:8px;font-size:.74rem;font-weight:600;margin-bottom:12px"></div>
             <button id="igAuthSubmit" type="submit" style="width:100%;padding:13px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:.92rem;font-weight:800;color:white;cursor:pointer;box-shadow:0 6px 18px rgba(0,102,255,.32)">Log In →</button>
+            <div style="margin-top:12px;text-align:center">
+              <button id="igForgotBtn" type="button" style="background:none;border:none;color:#0066FF;font-size:.74rem;font-weight:700;cursor:pointer;padding:4px 6px">Forgot your password?</button>
+            </div>
           </form>
           <div style="margin-top:14px;text-align:center;font-size:.68rem;color:#9CA3AF">By continuing you agree that your settings & campaigns will be saved to this account.</div>
         </div>
@@ -471,7 +523,6 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
     document.body.appendChild(wall);
 
     let mode = 'login';
-    let pendingSignup = null;  // { name, email, password } stored while verification code is in-flight
     function setMode(m){
       mode = m;
       wall.querySelectorAll('.igAuthTab').forEach(b => {
@@ -482,15 +533,22 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
       });
       document.getElementById('igNameRow').style.display = m === 'signup' ? 'block' : 'none';
       document.getElementById('igPassHint').style.display = m === 'signup' ? 'block' : 'none';
-      document.getElementById('igAuthSubmit').textContent = m === 'signup' ? 'Send verification code →' : 'Log In →';
+      document.getElementById('igAuthSubmit').textContent = m === 'signup' ? 'Create account →' : 'Log In →';
       document.getElementById('igPass').setAttribute('autocomplete', m === 'signup' ? 'new-password' : 'current-password');
       document.getElementById('igAuthError').style.display = 'none';
+      document.getElementById('igAuthNotice').style.display = 'none';
     }
     wall.querySelectorAll('.igAuthTab').forEach(b => b.addEventListener('click', () => setMode(b.dataset.tab)));
 
     function showErr(msg){
       const e = document.getElementById('igAuthError');
       e.textContent = msg; e.style.display = 'block';
+      const n = document.getElementById('igAuthNotice'); if (n) n.style.display = 'none';
+    }
+    function showNotice(msg){
+      const n = document.getElementById('igAuthNotice');
+      n.textContent = msg; n.style.display = 'block';
+      const e = document.getElementById('igAuthError'); if (e) e.style.display = 'none';
     }
     function setBusy(b, label){
       const btn = document.getElementById('igAuthSubmit');
@@ -500,115 +558,89 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
       if (label) btn.textContent = label;
     }
 
-    // ── Step 2 UI: show 6-digit code entry screen after a successful send ─────
-    function renderVerifyStep(email){
-      const form = document.getElementById('igAuthForm');
-      const tabs = document.getElementById('igAuthTabs');
-      tabs.style.display = 'none';
-      form.innerHTML = `
-        <div style="text-align:center;margin-bottom:18px">
-          <div style="display:inline-flex;align-items:center;justify-content:center;width:54px;height:54px;background:linear-gradient(135deg,#0066FF22,#00C9C822);border-radius:50%;font-size:1.6rem;margin-bottom:10px">📧</div>
-          <div style="font-size:1.05rem;font-weight:800;color:#111827;margin-bottom:4px">Check your inbox</div>
-          <div style="font-size:.78rem;color:#6B7280;line-height:1.5">We sent a 6-digit code to<br/><strong style="color:#0066FF">${email}</strong></div>
-        </div>
-        <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;margin-bottom:5px;text-align:center">Enter verification code</label>
-        <input id="igCode" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" style="width:100%;padding:14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:1.6rem;font-weight:800;text-align:center;letter-spacing:.5em;font-family:'SF Mono',Menlo,monospace;outline:none;box-sizing:border-box;color:#0066FF" />
-        <div id="igAuthError" style="display:none;background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;padding:9px 12px;border-radius:8px;font-size:.74rem;font-weight:600;margin-top:12px"></div>
-        <button id="igAuthSubmit" type="submit" style="margin-top:14px;width:100%;padding:13px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:.92rem;font-weight:800;color:white;cursor:pointer;box-shadow:0 6px 18px rgba(0,102,255,.32)">Verify & create account →</button>
-        <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;font-size:.72rem">
-          <button id="igBack" type="button" style="background:none;border:none;color:#6B7280;cursor:pointer;padding:4px 6px;font-weight:600">‹ Back</button>
-          <button id="igResend" type="button" style="background:none;border:none;color:#0066FF;cursor:pointer;padding:4px 6px;font-weight:700">Resend code</button>
-        </div>`;
-      const codeInp = document.getElementById('igCode');
-      const submitBtn = document.getElementById('igAuthSubmit');
-      codeInp.focus();
-      codeInp.addEventListener('input', () => { codeInp.value = codeInp.value.replace(/\D/g, '').slice(0, 6); });
-      submitBtn.addEventListener('click', verifyAndCreate);
-      form.addEventListener('submit', e => { e.preventDefault(); verifyAndCreate(); });
-      document.getElementById('igBack').addEventListener('click', () => location.reload());
-      document.getElementById('igResend').addEventListener('click', resendCode);
-    }
+    // ── Social login buttons ──────────────────────────────────────────────────
+    (async () => {
+      try {
+        const providers = await window._auth.listProviders();
+        const row = document.getElementById('igSocialRow');
+        const divider = document.getElementById('igSocialDivider');
+        const enabled = Object.entries(providers).filter(([_,v]) => v).map(([k]) => k);
+        if (!enabled.length || !row) return;
+        const PRETTY = { google:'Google', facebook:'Facebook', microsoft:'Microsoft' };
+        const ICONS = {
+          google:    '<svg width="16" height="16" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.49h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.63z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.8.54-1.84.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.96 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.46 3.44 1.35l2.58-2.58A9 9 0 0 0 9 0 9 9 0 0 0 .96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58z"/></svg>',
+          facebook:  '<svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12a12 12 0 1 0-13.88 11.85v-8.38h-3.04V12h3.04V9.36c0-3 1.79-4.67 4.53-4.67 1.31 0 2.68.24 2.68.24v2.95h-1.51c-1.49 0-1.95.93-1.95 1.87V12h3.32l-.53 3.47h-2.79v8.38A12 12 0 0 0 24 12z"/></svg>',
+          microsoft: '<svg width="16" height="16" viewBox="0 0 23 23"><path fill="#F25022" d="M1 1h10v10H1z"/><path fill="#7FBA00" d="M12 1h10v10H12z"/><path fill="#00A4EF" d="M1 12h10v10H1z"/><path fill="#FFB900" d="M12 12h10v10H12z"/></svg>',
+        };
+        row.style.display = 'flex';
+        row.style.flexDirection = 'column';
+        row.style.gap = '8px';
+        row.innerHTML = enabled.map(p => `
+          <button type="button" data-provider="${p}" class="igSocialBtn" style="display:flex;align-items:center;justify-content:center;gap:9px;padding:10px 14px;background:white;border:1.5px solid #E5E7EB;border-radius:10px;font-size:.84rem;font-weight:700;color:#1F2937;cursor:pointer;transition:background .12s">
+            ${ICONS[p]||''}<span>Continue with ${PRETTY[p]||p}</span>
+          </button>`).join('');
+        divider.style.display = 'flex';
+        row.querySelectorAll('.igSocialBtn').forEach(b => {
+          b.addEventListener('mouseenter', () => b.style.background = '#F9FAFB');
+          b.addEventListener('mouseleave', () => b.style.background = 'white');
+          b.addEventListener('click', () => window._auth.socialStart(b.dataset.provider));
+        });
+      } catch(e) { /* social row optional */ }
+    })();
 
-    async function resendCode(){
-      const btn = document.getElementById('igResend');
-      if (!btn || !pendingSignup) return;
+    // ── Forgot password mini-flow ────────────────────────────────────────────
+    document.getElementById('igForgotBtn').addEventListener('click', async () => {
+      const email = (document.getElementById('igEmail').value || '').trim().toLowerCase();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return showErr('Type your email in the field above first, then click Forgot your password.');
+      }
+      const btn = document.getElementById('igForgotBtn');
       const orig = btn.textContent;
-      btn.disabled = true; btn.style.opacity = '0.55'; btn.textContent = 'Sending…';
+      btn.disabled = true; btn.textContent = 'Sending…';
       try {
-        const r = await fetch('/api/auth/send-verification', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ email: pendingSignup.email, name: pendingSignup.name })
-        }).then(r => r.json());
-        if (r.ok) { btn.textContent = '✓ Sent!'; setTimeout(() => { btn.textContent = orig; btn.disabled = false; btn.style.opacity = '1'; }, 2000); }
-        else     { showErr(r.error || 'Could not resend code.'); btn.textContent = orig; btn.disabled = false; btn.style.opacity = '1'; }
-      } catch(e) {
-        showErr('Network error — could not resend.'); btn.textContent = orig; btn.disabled = false; btn.style.opacity = '1';
-      }
-    }
-
-    async function verifyAndCreate(){
-      const code = (document.getElementById('igCode').value || '').trim();
-      if (code.length !== 6) return showErr('Please enter the 6-digit code from your email.');
-      if (!pendingSignup) return showErr('Session expired — please sign up again.');
-      const btn = document.getElementById('igAuthSubmit');
-      btn.disabled = true; btn.style.opacity = '0.65'; btn.textContent = 'Verifying…';
-      try {
-        const r = await fetch('/api/auth/verify-code', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ email: pendingSignup.email, code })
-        }).then(r => r.json());
-        if (!r.ok) {
-          showErr(r.error || 'Code did not verify.');
-          btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Verify & create account →';
-          return;
-        }
-        // ✓ Verified — create the account locally and reload into the app
-        const sr = window._auth.signup({ name: pendingSignup.name, email: pendingSignup.email, password: pendingSignup.password });
-        if (sr.error) { showErr(sr.error); btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Verify & create account →'; return; }
-        btn.textContent = '✓ Account created — loading…';
-        setTimeout(() => location.reload(), 400);
-      } catch(e) {
-        showErr('Network error — please try again.');
-        btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Verify & create account →';
-      }
-    }
+        const r = await window._auth.requestReset(email);
+        if (r && r.error) showErr(r.error);
+        else showNotice('If that email is registered, a password-reset link is on its way. Check your inbox.');
+      } catch(e) { showErr('Network error — could not request reset.'); }
+      btn.disabled = false; btn.textContent = orig;
+    });
 
     async function submit(){
       const name  = (document.getElementById('igName') ? document.getElementById('igName').value : '').trim();
       const email = (document.getElementById('igEmail').value || '').trim().toLowerCase();
       const pass  = document.getElementById('igPass').value || '';
 
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showErr('Please enter a valid email address.');
+      if (!pass) return showErr('Please enter your password.');
+
       if (mode === 'login') {
-        const r = window._auth.login({ email, password: pass });
-        if (r.error) return showErr(r.error);
+        setBusy(true, 'Signing in…');
+        const r = await window._auth.login({ email, password: pass });
+        if (r.error) { setBusy(false, 'Log In →'); return showErr(r.error); }
         location.reload();
         return;
       }
-      // Signup → run client validation, then send verification code
-      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showErr('Please enter a valid email address.');
-      if (!pass || pass.length < 4) return showErr('Password must be at least 4 characters.');
-      if (window._auth.getUsers().some(u => u.email === email)) return showErr('An account with this email already exists. Try logging in instead.');
-
-      setBusy(true, 'Sending code…');
-      try {
-        const r = await fetch('/api/auth/send-verification', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ email, name })
-        }).then(r => r.json());
-        if (!r.ok) { setBusy(false, 'Send verification code →'); return showErr(r.error || 'Could not send verification email.'); }
-        pendingSignup = { name, email, password: pass };
-        renderVerifyStep(email);
-      } catch(e) {
-        setBusy(false, 'Send verification code →');
-        showErr('Network error — could not send verification email.');
-      }
+      if (pass.length < 8) return showErr('Password must be at least 8 characters.');
+      setBusy(true, 'Creating account…');
+      const r = await window._auth.signup({ name, email, password: pass });
+      if (r.error) { setBusy(false, 'Create account →'); return showErr(r.error); }
+      // Auto-logged-in after signup; verification email goes out in background.
+      location.reload();
     }
     document.getElementById('igAuthSubmit').addEventListener('click', submit);
     document.getElementById('igAuthForm').addEventListener('submit', e => { e.preventDefault(); submit(); });
 
-    // Default tab: signup if zero accounts, otherwise login
-    setMode(window._auth.getUsers().length === 0 ? 'signup' : 'login');
+    // Default tab: signup-friendly when totally fresh, otherwise login
+    setMode(localStorage.getItem('ig-saw-login') ? 'login' : 'signup');
+    try { localStorage.setItem('ig-saw-login', '1'); } catch(e){}
     setTimeout(() => { try { document.getElementById('igEmail').focus(); } catch(e){} }, 100);
+
+    // Friendly toasts when returning from the verification or OAuth flows
+    try {
+      const q = new URLSearchParams(location.search);
+      if (q.get('verified') === '1') showNotice('Email verified — you can log in now.');
+      if (q.get('social'))           showNotice('Signed in with ' + q.get('social') + ' — loading…');
+    } catch(e){}
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render);
   else render();
@@ -701,11 +733,35 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
     const logout   = document.getElementById('navLogoutBtn');
     if (!menu || !btn) return;
     const p = window._auth.currentProfile() || { name:'User', email: window._auth.current() };
+    if (!p.email) p.email = window._auth.current();
     const initial = (p.name || p.email || 'U').trim().charAt(0).toUpperCase();
     avatar.textContent = initial;
     nameEl.textContent = (p.name || p.email.split('@')[0]).slice(0, 18);
     fullEl.textContent = p.name || '—';
     emailEl.textContent = p.email;
+    // Surface a "Resend verification email" link in the dropdown when the
+    // current account is still unverified (uses /api/auth/resend-verification).
+    if (p && p.emailVerified === false) {
+      const drop = document.getElementById('navUserDropdown');
+      if (drop && !document.getElementById('navResendVerifyBtn')) {
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'margin:6px 0 10px;padding:8px 10px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;font-size:.72rem;color:#92400E;line-height:1.45';
+        wrap.innerHTML = `<div style="font-weight:700;margin-bottom:4px">Email not verified yet</div>
+          <div style="margin-bottom:6px">We sent a link to <strong>${p.email}</strong>. Didn't get it?</div>
+          <button id="navResendVerifyBtn" type="button" style="background:#0066FF;color:white;border:none;border-radius:6px;padding:6px 10px;font-size:.7rem;font-weight:700;cursor:pointer">Resend verification email</button>`;
+        const logoutBtn = document.getElementById('navLogoutBtn');
+        drop.insertBefore(wrap, logoutBtn);
+        document.getElementById('navResendVerifyBtn').addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          const b = ev.currentTarget; b.disabled = true; b.textContent = 'Sending…';
+          try {
+            const r = await window._auth.resendVerification();
+            b.textContent = (r && (r.sent || r.alreadyVerified)) ? '✓ Sent!' : (r.error || 'Failed — try again');
+          } catch(e){ b.textContent = 'Network error'; }
+          setTimeout(() => { b.disabled = false; b.textContent = 'Resend verification email'; }, 2500);
+        });
+      }
+    }
     menu.style.display = 'inline-flex';
     btn.addEventListener('click', e => {
       e.stopPropagation();

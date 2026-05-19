@@ -5,8 +5,13 @@ const fs    = require('fs');
 const multer = require('multer');
 const dns   = require('dns').promises;
 const net   = require('net');
+const crypto = require('crypto');
+const expressSession = require('express-session');
+const PgSession = require('connect-pg-simple')(expressSession);
 const OpenAI    = require('openai');
 const Anthropic  = require('@anthropic-ai/sdk');
+const _authService = require('./services/auth/api');
+const _authSchema  = require('./services/auth/schema');
 
 // ── Env-var name aliases ─────────────────────────────────────────────────────
 // Some Replit Secrets were stored under the historical names below. The rest
@@ -95,10 +100,48 @@ app.use((req, res, next) => {
 // webhooks (Resend / Svix) can verify against the exact bytes that were
 // signed by the sender. Body parser still hands the parsed object to routes.
 app.use(express.json({ limit: '5mb', verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); } }));
-app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
 
 // Trust the Replit proxy so req.ip returns the real client IP for budget caps.
 app.set('trust proxy', true);
+
+// ── Session store (Postgres-backed, falls back to in-memory if no DB) ────────
+// Required for the real per-user auth flow (signup / login / social OAuth).
+// Cookie: HttpOnly, SameSite=Lax, Secure in production, 30-day rolling expiry.
+const _sessionSecret = process.env.SESSION_SECRET
+  || process.env.INFOGENIE_API_KEY
+  || crypto.randomBytes(32).toString('hex');
+if (!process.env.SESSION_SECRET) {
+  console.warn('[auth] SESSION_SECRET not set — using ephemeral secret (sessions will not survive restart unless DATABASE_URL is configured to back the session store)');
+}
+const _sessionStore = (process.env.DATABASE_URL)
+  ? new PgSession({
+      conObject: { connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } },
+      tableName: 'user_sessions',
+      createTableIfMissing: true,
+    })
+  : undefined; // falls back to MemoryStore (dev only)
+app.use(expressSession({
+  store: _sessionStore,
+  name: 'infogenie.sid',
+  secret: _sessionSecret,
+  resave: false,
+  saveUninitialized: false,
+  rolling: true,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days inactivity
+  },
+}));
+// Populate req.user from req.session (if any). Runs before the static-file
+// + API-key gate so every downstream route can read req.user.
+app.use(_authService.loadUserFromSession);
+// Mount /api/auth/* routes BEFORE the static-file handler + API-key gate so
+// they remain reachable to unauthenticated visitors.
+app.use('/api/auth', _authService.router);
+
+app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
 
 // ── Auth gate for /api/* (production hardening) ──────────────────────────────
 // When INFOGENIE_API_KEY is set, all /api/* requests must include it via:
@@ -107,7 +150,7 @@ app.set('trust proxy', true);
 // existing workflows keep working unchanged. Public routes (auth flow, signed
 // webhooks, status pings) are allowlisted and stay open even when auth is on.
 const _AUTH_PUBLIC_API_PATHS = [
-  /^\/api\/auth\//,                  // verification-code login flow
+  /^\/api\/auth\//,                  // session/token auth + OAuth callbacks
   /^\/api\/drips\/webhook\/resend$/, // Svix-signed inbound webhook
   /^\/api\/notify\/send$/,           // already gated by INFOGENIE_NOTIFY_SECRET
   /^\/api\/status$/,                 // global status
@@ -152,36 +195,81 @@ app.use((req, res, next) => {
   next();
 });
 function _isApiPublic(p) { return _AUTH_PUBLIC_API_PATHS.some(rx => rx.test(p)); }
-function _isSameOrigin(req) {
-  // Allow requests from the SPA itself.
-  // 1) Sec-Fetch-Site: browsers ALWAYS send this on fetch/XHR; "same-origin" / "same-site" = our SPA.
-  //    curl/scripts/external API callers never set it, so this is a reliable browser-only signal.
-  const sfs = String(req.headers['sec-fetch-site'] || '').toLowerCase();
-  if (sfs === 'same-origin' || sfs === 'same-site') return true;
-  // 2) Fallback: Host vs Origin/Referer match (works when Sec-Fetch-Site is missing, e.g. older browsers).
-  const host = String(req.headers.host || '').toLowerCase();
-  if (!host) return false;
-  const origin = String(req.headers.origin || '').toLowerCase();
-  const referer = String(req.headers.referer || '').toLowerCase();
-  try {
-    if (origin)  { const h = new URL(origin).host.toLowerCase();  if (h === host) return true; }
-    if (referer) { const h = new URL(referer).host.toLowerCase(); if (h === host) return true; }
-  } catch {}
-  return false;
-}
-app.use((req, res, next) => {
-  const expected = process.env.INFOGENIE_API_KEY;
-  if (!expected) return next();                     // dev mode — no auth
+// API-gate: a request is allowed if EITHER
+//   1. The path is in the public allowlist (auth endpoints, signed webhooks,
+//      public embeds), OR
+//   2. The request has a valid session cookie (req.user populated upstream), OR
+//   3. The request carries the legacy INFOGENIE_API_KEY (kept as a fallback
+//      for non-browser/programmatic clients).
+// The historical "same-origin SPA bypass" is intentionally removed — the SPA
+// must now authenticate like any other client.
+app.use(async (req, res, next) => {
   if (!req.path.startsWith('/api/')) return next(); // only gate API
   if (_isApiPublic(req.path)) return next();
-  if (_isSameOrigin(req)) return next();            // SPA same-origin requests
+  if (req.user) return next();                      // valid session
+  const expected = process.env.INFOGENIE_API_KEY;
   const supplied =
        (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
     || (req.headers['x-infogenie-key'] || '').trim()
     || (req.method === 'GET' ? String(req.query.key || '').trim() : '');
-  if (supplied && supplied === expected) return next();
+  if (expected && supplied && supplied === expected) {
+    // Map API-key auth to a deterministic system/owner principal so any
+    // downstream code that reads req.user gets a consistent identity rather
+    // than `undefined`. We resolve the owner row lazily and cache it for the
+    // lifetime of the process; falls back to a synthetic system principal if
+    // no owner exists yet (e.g. fresh DB before first signup).
+    if (!req.user) {
+      try {
+        if (!global.__apiKeyPrincipal) {
+          const _db = require('./db');
+          if (_db.hasDb()) {
+            const r = await _db.getPool().query(
+              'SELECT id, email, name, is_owner FROM users WHERE is_owner = TRUE ORDER BY id ASC LIMIT 1');
+            if (r.rows[0]) {
+              const u = r.rows[0];
+              global.__apiKeyPrincipal = {
+                id: u.id, email: u.email, name: u.name,
+                isOwner: true, viaApiKey: true,
+              };
+            }
+          }
+          if (!global.__apiKeyPrincipal) {
+            global.__apiKeyPrincipal = {
+              id: 0, email: 'system@infogenie.local', name: 'API Key',
+              isOwner: true, viaApiKey: true,
+            };
+          }
+        }
+        req.user = global.__apiKeyPrincipal;
+      } catch (_) { /* non-fatal — proceed without req.user */ }
+    }
+    return next();
+  }
   res.status(401).json({ ok:false, error:'auth_required',
-    hint:'Include INFOGENIE_API_KEY via Authorization: Bearer, X-InfoGenie-Key header, or ?key= (GET only).' });
+    hint:'Log in via POST /api/auth/login, or include INFOGENIE_API_KEY via Authorization: Bearer / X-InfoGenie-Key / ?key= (GET only).' });
+});
+
+// ── Owner-only gate for legacy global data ──────────────────────────────────
+// Until per-row user_id migration ships, all existing global tables/files are
+// treated as belonging to the deployment owner (the first signup). Any
+// additional accounts that sign up authenticate fine but get a 403 on legacy
+// data routes — effectively an "empty workspace" until multi-tenant data
+// scoping is implemented. The owner principal synthesized for API-key auth
+// (above) carries isOwner=true, so programmatic clients are unaffected.
+const _OWNER_GATE_ALLOW = [
+  /^\/api\/auth\//,                  // own profile + logout etc.
+  /^\/api\/status$/,                 // health
+  /^\/api\/[^\/]+\/status$/,         // per-integration health pings
+];
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+  if (_OWNER_GATE_ALLOW.some(rx => rx.test(req.path))) return next();
+  if (!req.user) return next();              // API-key path already mapped to owner
+  if (req.user.isOwner === true) return next();
+  return res.status(403).json({
+    ok: false, error: 'owner_only',
+    hint: 'This workspace data belongs to the deployment owner. Multi-user data scoping is not yet enabled.',
+  });
 });
 
 // ── Per-provider budget caps (cost-abuse protection) ────────────────────────
@@ -6288,52 +6376,9 @@ app.post('/api/publish-to-wordpress', async (req, res) => {
   }
 });
 
-// ── Signup email verification (SendGrid) ─────────────────────────────────────
-// In-memory code store: { email -> { code, expires, attempts } }
-const _verifCodes = new Map();
-const _verifRateLimit = new Map();   // email -> last-send-timestamp (anti-spam)
-
-function _genCode() { return String(Math.floor(100000 + Math.random() * 900000)); }
-
-async function _sendVerificationEmail({ to, name, code }) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) throw new Error('Email provider not configured (RESEND_API_KEY missing)');
-  // Default to Resend's free shared sender (works without domain verification).
-  // Override with RESEND_FROM_EMAIL once you've verified your own domain in Resend.
-  const fromAddr = process.env.RESEND_FROM_EMAIL || 'InfoGenie <onboarding@resend.dev>';
-  const safeName = (name || to.split('@')[0]).replace(/[<>&"]/g, '').slice(0, 60);
-  const subject = `Your InfoGenie verification code: ${code}`;
-  const text = `Hi ${safeName},\n\nYour InfoGenie verification code is: ${code}\n\nThis code expires in 10 minutes.\nIf you didn't request this, you can safely ignore this email — no account will be created without entering this code.\n\n— InfoGenie`;
-  const html = `<!doctype html><html><body style="margin:0;background:#F3F4F6;padding:30px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
-    <div style="max-width:480px;margin:0 auto;background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.06)">
-      <div style="background:linear-gradient(135deg,#0066FF,#00C9C8);padding:26px 30px;color:#FFFFFF;text-align:center">
-        <div style="font-size:1.5rem;font-weight:800;letter-spacing:-.02em;margin-bottom:4px">InfoGenie</div>
-        <div style="font-size:.85rem;opacity:.92">AI Marketing Intelligence</div>
-      </div>
-      <div style="padding:30px 32px">
-        <p style="margin:0 0 14px;font-size:1rem;color:#111827">Hi ${safeName},</p>
-        <p style="margin:0 0 22px;font-size:.92rem;color:#374151;line-height:1.55">Welcome aboard! Use the verification code below to finish creating your InfoGenie account.</p>
-        <div style="background:#F0F9FF;border:1.5px dashed #38BDF8;border-radius:12px;padding:22px;text-align:center;margin-bottom:22px">
-          <div style="font-size:.7rem;font-weight:700;color:#0369A1;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Verification code</div>
-          <div style="font-family:'SF Mono',Menlo,Consolas,monospace;font-size:2.2rem;font-weight:800;color:#0066FF;letter-spacing:.4em">${code}</div>
-          <div style="font-size:.72rem;color:#6B7280;margin-top:8px">Valid for 10 minutes</div>
-        </div>
-        <p style="margin:0 0 6px;font-size:.78rem;color:#6B7280;line-height:1.55">If you didn't request this, you can safely ignore the email — no account will be created without entering this code.</p>
-      </div>
-      <div style="padding:14px 32px;background:#F9FAFB;border-top:1px solid #F3F4F6;font-size:.7rem;color:#9CA3AF;text-align:center">© InfoGenie · Sent because someone tried to create an account using ${to}</div>
-    </div></body></html>`;
-
-  const resp = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: fromAddr, to: [to], subject, text, html })
-  });
-  if (!resp.ok) {
-    const txt = await resp.text().catch(() => '');
-    throw new Error(`Resend ${resp.status}: ${txt.slice(0, 240)}`);
-  }
-  return true;
-}
+// Legacy 6-digit code signup verification was fully removed; real per-user
+// auth lives in services/auth/{schema,api}.js (token-link verification +
+// password reset + OAuth). See /api/auth/* routes.
 
 // ════════════════════════════════════════════════════════════════════════════
 // ── DRIP-CAMPAIGN EXECUTION ENGINE ─────────────────────────────────────────
@@ -7078,53 +7123,10 @@ Model identity: you are ${modelName}. Output strict JSON only.`;
   }
 });
 
-app.post('/api/auth/send-verification', async (req, res) => {
-  try {
-    const { email, name } = req.body || {};
-    const e = (email || '').trim().toLowerCase();
-    if (!e || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
-      return res.status(400).json({ ok: false, error: 'Please enter a valid email address.' });
-    }
-    // Anti-spam: at most one send per email every 60 seconds
-    const last = _verifRateLimit.get(e) || 0;
-    const wait = 60_000 - (Date.now() - last);
-    if (wait > 0) return res.status(429).json({ ok: false, error: `Please wait ${Math.ceil(wait/1000)}s before requesting another code.` });
-
-    const code = _genCode();
-    _verifCodes.set(e, { code, expires: Date.now() + 10 * 60_000, attempts: 0 });
-    _verifRateLimit.set(e, Date.now());
-
-    try {
-      await _sendVerificationEmail({ to: e, name: name || '', code });
-      return res.json({ ok: true, sent: true, message: `Verification code sent to ${e}.` });
-    } catch (mailErr) {
-      console.error('[auth/send-verification] mail provider error:', mailErr.message);
-      return res.status(502).json({ ok: false, error: 'Could not send the verification email. ' + (mailErr.message || 'Mail provider request failed.') });
-    }
-  } catch (err) {
-    console.error('[auth/send-verification] error:', err);
-    return res.status(500).json({ ok: false, error: 'Server error sending verification email.' });
-  }
-});
-
-app.post('/api/auth/verify-code', (req, res) => {
-  try {
-    const { email, code } = req.body || {};
-    const e = (email || '').trim().toLowerCase();
-    const c = (code || '').toString().trim();
-    const rec = _verifCodes.get(e);
-    if (!rec)                       return res.status(400).json({ ok: false, error: 'No verification code on file. Click "Resend code".' });
-    if (Date.now() > rec.expires)   { _verifCodes.delete(e); return res.status(400).json({ ok: false, error: 'Code expired — request a new one.' }); }
-    if (rec.attempts >= 5)          { _verifCodes.delete(e); return res.status(429).json({ ok: false, error: 'Too many incorrect attempts — request a new code.' }); }
-    if (c !== rec.code)             { rec.attempts++; return res.status(400).json({ ok: false, error: `Incorrect code (${5 - rec.attempts} attempts left).` }); }
-    _verifCodes.delete(e);
-    _verifRateLimit.delete(e);
-    return res.json({ ok: true, verified: true });
-  } catch (err) {
-    console.error('[auth/verify-code] error:', err);
-    return res.status(500).json({ ok: false, error: 'Server error verifying code.' });
-  }
-});
+// (Legacy /api/auth/send-verification + /api/auth/verify-code REMOVED.)
+// The real auth surface now lives in services/auth/api.js, mounted at the
+// top of this file as /api/auth/{signup,login,logout,verify-email/:token,
+// resend-verification,request-reset,reset-password/:token,oauth/:provider/{start,callback},me,providers}.
 
 // ── Catch-all → SPA ──────────────────────────────────────────────────────────
 // Critical: skip /api/* so unmatched API routes return a proper JSON 404
@@ -8836,6 +8838,17 @@ const _db = require('./db');
       console.log('[db] DATABASE_URL not set — file persistence only');
     }
   } catch (e) { console.error('[db] init failed:', e.message); }
+})();
+
+// ── Platform Auth (users / sessions / social login) ──────────────────────────
+(async () => {
+  try {
+    if (_db.hasDb()) {
+      await _authSchema.ensureAuthSchema();
+    } else {
+      console.warn('[auth] disabled — DATABASE_URL not set. Sessions will be in-memory and lost on restart.');
+    }
+  } catch (e) { console.error('[auth] schema init failed:', e.message); }
 })();
 
 // ── Autonomous Campaign Optimizer (Phase 1: ingest + rule-based) ──────────────
