@@ -1,12 +1,21 @@
 {
   "alerts": [
     {
-      "id": "credit-missing-openai_api_key-1779178238472",
+      "id": "credit-missing-openai_api_key-1779178804169",
       "type": "service_missing",
       "severity": "high",
       "title": "🔑 OpenAI not connected — subscription / API key required",
       "body": "AI Attack Plan, AI Visibility audit, content scoring, and most LLM features depend on this. Add OPENAI_API_KEY in Replit Secrets to enable.",
-      "timestamp": 1779178238472,
+      "timestamp": 1779178804170,
+      "read": false
+    },
+    {
+      "id": "credit-dfs-error-1779178465866",
+      "type": "credit_error",
+      "severity": "medium",
+      "title": "⚠️ DataForSEO balance check failed",
+      "body": "Could not read DataForSEO balance (The operation was aborted due to timeout). The login/password may be wrong, or the account may be suspended for non-payment.",
+      "timestamp": 1779178465867,
       "read": false
     }
   ]

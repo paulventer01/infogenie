@@ -501,16 +501,23 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
     }
 
     // ── Step 2 UI: show 6-digit code entry screen after a successful send ─────
-    function renderVerifyStep(email){
+    function renderVerifyStep(email, fallbackCode){
       const form = document.getElementById('igAuthForm');
       const tabs = document.getElementById('igAuthTabs');
       tabs.style.display = 'none';
+      const fallbackBlock = fallbackCode ? `
+        <div style="margin-bottom:14px;background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:10px;padding:12px 14px;text-align:center">
+          <div style="font-size:.7rem;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Email delivery unavailable — use this code</div>
+          <div style="font-family:'SF Mono',Menlo,monospace;font-size:1.6rem;font-weight:800;color:#92400E;letter-spacing:.35em">${fallbackCode}</div>
+          <div style="font-size:.68rem;color:#78350F;margin-top:6px;line-height:1.4">Custom domain not verified in the email provider. Code is valid for 10 min.</div>
+        </div>` : '';
       form.innerHTML = `
         <div style="text-align:center;margin-bottom:18px">
           <div style="display:inline-flex;align-items:center;justify-content:center;width:54px;height:54px;background:linear-gradient(135deg,#0066FF22,#00C9C822);border-radius:50%;font-size:1.6rem;margin-bottom:10px">📧</div>
-          <div style="font-size:1.05rem;font-weight:800;color:#111827;margin-bottom:4px">Check your inbox</div>
-          <div style="font-size:.78rem;color:#6B7280;line-height:1.5">We sent a 6-digit code to<br/><strong style="color:#0066FF">${email}</strong></div>
+          <div style="font-size:1.05rem;font-weight:800;color:#111827;margin-bottom:4px">${fallbackCode ? 'Verification code ready' : 'Check your inbox'}</div>
+          <div style="font-size:.78rem;color:#6B7280;line-height:1.5">${fallbackCode ? 'For' : 'We sent a 6-digit code to'}<br/><strong style="color:#0066FF">${email}</strong></div>
         </div>
+        ${fallbackBlock}
         <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;margin-bottom:5px;text-align:center">Enter verification code</label>
         <input id="igCode" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" style="width:100%;padding:14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:1.6rem;font-weight:800;text-align:center;letter-spacing:.5em;font-family:'SF Mono',Menlo,monospace;outline:none;box-sizing:border-box;color:#0066FF" />
         <div id="igAuthError" style="display:none;background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;padding:9px 12px;border-radius:8px;font-size:.74rem;font-weight:600;margin-top:12px"></div>
@@ -597,7 +604,7 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
         }).then(r => r.json());
         if (!r.ok) { setBusy(false, 'Send verification code →'); return showErr(r.error || 'Could not send verification email.'); }
         pendingSignup = { name, email, password: pass };
-        renderVerifyStep(email);
+        renderVerifyStep(email, r.sent === false ? r.code : null);
       } catch(e) {
         setBusy(false, 'Send verification code →');
         showErr('Network error — could not send verification email.');
@@ -3497,7 +3504,7 @@ async function runAnalysis(url, country, industryOverride) {
           p = document.createElement('div');
           p.id = 'igDbgPanel';
           p.style.cssText = 'display:none;position:fixed;bottom:8px;right:8px;width:420px;max-height:80vh;overflow:auto;background:rgba(10,22,40,.95);color:#7FFFD4;font:11px/1.4 monospace;padding:8px 10px;border-radius:8px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid #00C9C8';
-          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL20 (stagger enrich re-renders + fix buildCreative roas)</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
+          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL21 (signup verify code shown on-screen when email delivery fails)</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
           document.body.appendChild(p);
         }
         const log = document.getElementById('igDbgLog');
