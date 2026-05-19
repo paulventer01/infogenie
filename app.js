@@ -16627,6 +16627,11 @@ function buildSettings() {
   autoDetectServerIntegrations();
   // Check real API health asynchronously
   setTimeout(() => checkAPIHealth(), 300);
+  // Hydrate the Google Ads card with real per-user vault state + handle any
+  // ?ga_connected / ?ga_error / ?ga_pick query params bounced back from the
+  // OAuth callback.
+  setTimeout(() => { try { hydrateGoogleAdsCard(); } catch(e) { console.warn('hydrateGoogleAdsCard', e); } }, 200);
+  setTimeout(() => { try { _handleGoogleAdsReturnParams(); } catch(e) {} }, 250);
 }
 
 async function checkAPIHealth() {
@@ -47299,4 +47304,241 @@ window._aivLoadHistory = async function() {
 
   // Public helper for explicit re-scans
   window._faeScan = scan;
+})();
+
+// ===================================================
+// GOOGLE ADS — Settings card hydration + OAuth wiring
+// ===================================================
+
+async function hydrateGoogleAdsCard() {
+  const card = document.getElementById('card-google-ads');
+  if (!card) return;
+  const body = card.querySelector('.integ-card-body');
+  const status = document.getElementById('status-google-ads');
+  let summary = null;
+  try {
+    const r = await fetch('/api/integrations/google-ads/summary', { credentials: 'same-origin' });
+    summary = await r.json();
+  } catch (e) { return; }
+  if (!summary || summary.ok === false) return;
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const operatorBlock = !summary.operatorReady
+    ? `<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:0.78rem;color:#92400E">
+         ⚠️ <strong>Setup incomplete</strong> — the deployment owner must set
+         <code>GOOGLE_ADS_OAUTH_CLIENT_ID</code>, <code>GOOGLE_ADS_OAUTH_CLIENT_SECRET</code>,
+         and <code>GOOGLE_ADS_DEVELOPER_TOKEN</code> before any user can connect Google Ads.
+       </div>` : '';
+
+  const operatorNote = `<div style="font-size:0.7rem;color:rgba(255,255,255,.45);margin-top:8px;line-height:1.5">
+    <strong>Note:</strong> Google issues Developer Tokens to applications (not users),
+    so the deployment owner provides one platform-wide token via
+    <code>GOOGLE_ADS_DEVELOPER_TOKEN</code>. Your refresh token + Customer ID are
+    stored per-user in the encrypted vault.
+  </div>`;
+
+  if (summary.connected) {
+    const badge = summary.status === 'error'
+      ? `<span style="background:rgba(239,68,68,.15);color:#FCA5A5;padding:3px 9px;border-radius:6px;font-size:0.7rem;font-weight:700">⚠️ Token error</span>`
+      : `<span style="background:rgba(16,185,129,.18);color:#34D399;padding:3px 9px;border-radius:6px;font-size:0.7rem;font-weight:700">✅ Connected</span>`;
+    const newHtml = `
+      <div class="unlocks-title">✦ Connected Google Ads account</div>
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 14px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:0.85rem;font-weight:700;color:white">${esc(summary.email || 'Connected via OAuth')}</div>
+          ${badge}
+        </div>
+        <div style="font-size:0.74rem;color:rgba(255,255,255,.55)">
+          Customer ID: <code style="color:#93C5FD">${esc(summary.customerId || '—')}</code>
+        </div>
+        <div id="ga-test-result" style="margin-top:8px;font-size:0.72rem;color:rgba(255,255,255,.5);display:none"></div>
+      </div>
+      <div class="integ-card-actions" style="flex-direction:column;gap:8px">
+        <button class="btn-test" style="width:100%" onclick="testGoogleAdsConnection()">🧪 Test connection</button>
+        <button class="btn-docs-card" style="width:100%;background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.35);color:#FCA5A5" onclick="disconnectGoogleAds()">🔌 Disconnect</button>
+      </div>
+    `;
+    if (body) body.innerHTML = newHtml;
+    if (status) { status.className = 'integ-conn-status ics-live'; status.innerHTML = '<span>●</span> Connected'; }
+    card.classList.add('connected');
+    try { localStorage.setItem('ig_integ_google-ads', 'oauth'); } catch (_) {}
+  } else {
+    const disableAttr = summary.operatorReady ? '' : 'disabled style="opacity:.5;cursor:not-allowed"';
+    const newHtml = `
+      ${operatorBlock}
+      <div class="unlocks-title">✦ What InfoGenie will be allowed to do</div>
+      <ul class="unlocks-list">
+        <li><span class="ul-check">✓</span><span>Read your Google Ads campaign performance (cost, clicks, conversions)</span></li>
+        <li><span class="ul-check">✓</span><span>Create + manage campaigns you launch from inside InfoGenie</span></li>
+        <li><span class="ul-check">✓</span><span>Apply budget + bidding optimisations on your behalf (when you flip Optimizer to LIVE)</span></li>
+        <li><span class="ul-check">✓</span><span>List the Google Ads customer accounts you have access to (so you can pick one)</span></li>
+      </ul>
+      <div style="font-size:0.72rem;color:rgba(255,255,255,.45);margin:8px 0 12px">
+        Scope requested: <code>https://www.googleapis.com/auth/adwords</code>. You will be sent to Google's consent screen and bounced back here.
+      </div>
+      <div class="integ-card-actions" style="flex-direction:column;gap:8px">
+        <button class="oauth-btn" ${disableAttr} onclick="connectGoogleAds()">🔗 Connect Google Ads</button>
+        <button class="btn-docs-card" style="width:100%;text-align:center" onclick="showIntegrationDoc('google-ads')">📖 View Integration Docs</button>
+      </div>
+      ${operatorNote}
+    `;
+    if (body) body.innerHTML = newHtml;
+    if (status) { status.className = 'integ-conn-status ics-off'; status.innerHTML = '<span>○</span> Not connected'; }
+    card.classList.remove('connected');
+    try { localStorage.removeItem('ig_integ_google-ads'); } catch (_) {}
+  }
+}
+
+function connectGoogleAds() {
+  window.location.href = '/api/integrations/google-ads/oauth/start';
+}
+
+async function disconnectGoogleAds() {
+  if (!confirm('Disconnect Google Ads? InfoGenie will lose access to your account and you will need to re-authorize to push campaigns again.')) return;
+  try {
+    const r = await fetch('/api/integrations/google-ads/disconnect', { method: 'POST', credentials: 'same-origin' });
+    const j = await r.json();
+    if (j.ok) {
+      if (window.showToast) showToast('🔌 Google Ads disconnected');
+      hydrateGoogleAdsCard();
+    } else {
+      alert('Disconnect failed: ' + (j.error || 'unknown'));
+    }
+  } catch (e) { alert('Disconnect failed: ' + e.message); }
+}
+
+async function testGoogleAdsConnection() {
+  const out = document.getElementById('ga-test-result');
+  if (out) { out.style.display = 'block'; out.style.color = 'rgba(255,255,255,.55)'; out.textContent = 'Testing…'; }
+  try {
+    const r = await fetch('/api/credentials/google-ads/test', { credentials: 'same-origin' });
+    const j = await r.json();
+    if (j.ok) {
+      if (out) { out.style.color = '#34D399'; out.textContent = `✅ Live — ${j.descriptiveName || 'Customer ' + j.customerId} (${j.latencyMs}ms)`; }
+    } else {
+      if (out) { out.style.color = '#FCA5A5'; out.textContent = `❌ ${j.step || 'error'}: ${j.error || 'unknown'}`; }
+      hydrateGoogleAdsCard();
+    }
+  } catch (e) {
+    if (out) { out.style.color = '#FCA5A5'; out.textContent = '❌ ' + e.message; }
+  }
+}
+
+const _GA_ERROR_MESSAGES = {
+  access_denied: 'You denied permission to Google Ads — nothing was saved.',
+  not_signed_in: 'You need to be signed in to connect Google Ads.',
+  operator_oauth_client_missing: 'The deployment owner has not configured GOOGLE_ADS_OAUTH_CLIENT_ID/SECRET yet.',
+  operator_developer_token_missing: 'The deployment owner has not configured GOOGLE_ADS_DEVELOPER_TOKEN yet — Google requires this for any Google Ads API access.',
+  state_mismatch: 'OAuth state mismatch — please try the Connect button again from this browser.',
+  token_exchange_failed: 'Google rejected the authorization code — please try again.',
+  no_refresh_token: 'Google did not return a refresh token — try Connect again and approve all prompts.',
+  list_customers_failed: 'Could not list your Google Ads accounts. Check that the Developer Token is approved for the linked Google account.',
+  no_accessible_customers: 'This Google account has no accessible Google Ads customer accounts. Make sure you are signed in to the right Google login.',
+};
+
+function _handleGoogleAdsReturnParams() {
+  const url = new URL(window.location.href);
+  const qs = url.searchParams;
+  const connected = qs.get('ga_connected');
+  const err       = qs.get('ga_error');
+  const detail    = qs.get('ga_detail');
+  const pick      = qs.get('ga_pick');
+  const wantsSettings = qs.get('settings') === 'integrations';
+  if (!connected && !err && !pick && !wantsSettings) return;
+
+  // Strip params so they don't fire again on re-render
+  ['ga_connected','ga_error','ga_detail','ga_pick','settings'].forEach(k => qs.delete(k));
+  const cleaned = url.pathname + (qs.toString() ? '?' + qs.toString() : '') + url.hash;
+  try { window.history.replaceState({}, '', cleaned); } catch (_) {}
+
+  if (wantsSettings && (typeof navigateTo === 'function')) {
+    try { navigateTo('settings'); } catch (_) {}
+  }
+  if (connected) {
+    if (window.showToast) showToast('✅ Google Ads connected!');
+    setTimeout(() => hydrateGoogleAdsCard(), 150);
+    return;
+  }
+  if (err) {
+    const msg = _GA_ERROR_MESSAGES[err] || err;
+    alert('Google Ads connection failed:\n\n' + msg + (detail ? '\n\nDetail: ' + detail : ''));
+    return;
+  }
+  if (pick) {
+    setTimeout(() => _openGoogleAdsPicker(), 200);
+  }
+}
+
+async function _openGoogleAdsPicker() {
+  let payload;
+  try {
+    const r = await fetch('/api/integrations/google-ads/pick-list', { credentials: 'same-origin' });
+    payload = await r.json();
+  } catch (_) { payload = null; }
+  if (!payload || !payload.ok) {
+    alert('Could not load your Google Ads account list — please reconnect.');
+    return;
+  }
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const ids = payload.customerIds || [];
+  const modal = document.createElement('div');
+  modal.id = 'gaPickerModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+    <div style="background:#0F172A;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;max-width:480px;width:100%;color:white">
+      <div style="font-size:1.1rem;font-weight:700;margin-bottom:8px">Pick a Google Ads account</div>
+      <div style="font-size:0.8rem;color:rgba(255,255,255,.6);margin-bottom:18px">
+        ${esc(payload.email || 'Your Google login')} has access to ${ids.length} Google Ads customer accounts.
+        Pick the one you want InfoGenie to manage. You can disconnect and reconnect to switch later.
+      </div>
+      <div id="gaPickList" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;margin-bottom:18px">
+        ${ids.map(id => `
+          <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;cursor:pointer">
+            <input type="radio" name="gaCustomer" value="${esc(id)}" style="margin:0">
+            <code style="color:#93C5FD;font-size:0.85rem">${esc(id)}</code>
+          </label>`).join('')}
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="document.getElementById('gaPickerModal').remove()" style="padding:8px 14px;background:rgba(255,255,255,.08);border:none;border-radius:8px;color:white;font-weight:600;cursor:pointer">Cancel</button>
+        <button id="gaBindBtn" style="padding:8px 14px;background:#2563EB;border:none;border-radius:8px;color:white;font-weight:700;cursor:pointer">Bind selected</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  document.getElementById('gaBindBtn').onclick = async () => {
+    const sel = modal.querySelector('input[name="gaCustomer"]:checked');
+    if (!sel) { alert('Pick one account to continue.'); return; }
+    try {
+      const r = await fetch('/api/integrations/google-ads/bind-customer', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: sel.value }),
+      });
+      const j = await r.json();
+      if (j.ok) {
+        if (window.showToast) showToast('✅ Google Ads connected!');
+        modal.remove();
+        hydrateGoogleAdsCard();
+      } else {
+        alert('Bind failed: ' + (j.error || 'unknown'));
+      }
+    } catch (e) { alert('Bind failed: ' + e.message); }
+  };
+}
+
+// Process return params at first page load too (in case the user lands on
+// "/" with ?ga_* params but never navigates to settings).
+(function _bootGoogleAdsReturn() {
+  const run = () => {
+    const qs = new URLSearchParams(window.location.search);
+    if (!qs.get('ga_connected') && !qs.get('ga_error') && !qs.get('ga_pick') && qs.get('settings') !== 'integrations') return;
+    if (typeof navigateTo === 'function') {
+      try { navigateTo('settings'); } catch (_) {}
+    }
+    // buildSettings (called via navigateTo) will trigger _handleGoogleAdsReturnParams.
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    setTimeout(run, 300);
+  }
 })();

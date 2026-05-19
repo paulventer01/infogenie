@@ -263,6 +263,7 @@ const _OWNER_GATE_ALLOW = [
   /^\/api\/[^\/]+\/status$/,         // per-integration health pings
   /^\/api\/ad-platforms\/status$/,   // per-user ad-platform connection status
   /^\/api\/credentials\//,           // per-user credential vault + smoke tests
+  /^\/api\/integrations\/google-ads\//, // per-user Google Ads Connect OAuth flow
 ];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
@@ -9171,6 +9172,7 @@ app.use('/api/keyword-explorer',  _kwExplorerRouter);
 const _googleAdsInsightsRouter = require('./services/google_ads_insights/api');
 const _tiktokAdsInsightsRouter = require('./services/tiktok_ads_insights/api');
 app.use('/api/google-ads-insights', _googleAdsInsightsRouter);
+app.use('/api/integrations/google-ads', require('./services/google_ads_oauth/api'));
 app.use('/api/tiktok-ads-insights', _tiktokAdsInsightsRouter);
 const _microsoftAdsInsightsRouter = require('./services/microsoft_ads_insights/api');
 app.use('/api/microsoft-ads-insights', _microsoftAdsInsightsRouter);
