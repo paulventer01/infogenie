@@ -17,16 +17,6 @@
   if (window.__IG_FIELD_ENHANCER__) return;
   window.__IG_FIELD_ENHANCER__ = true;
 
-  // Emergency kill-switch — append ?noenhancer=1 to the URL to disable this
-  // module entirely. Useful for diagnosing whether a freeze comes from here
-  // or from elsewhere in the app.
-  try {
-    if (/[?&]noenhancer=1\b/.test(window.location.search)) {
-      console.warn('[ig-field-enhancer] disabled via ?noenhancer=1');
-      return;
-    }
-  } catch(_){}
-
   // Skip technical / structured input types entirely — these aren't free-text
   // suggestions and trying to "AI guess" them would be wrong. `search` is in
   // here because users type live queries, not AI-suggested values.
@@ -115,23 +105,10 @@
     return false;
   }
 
-  // Specific fields that should never get an AI Suggest button — the landing
-  // hero analyser (the user types their own real URL / sector there) and the
-  // login/signup form (name + email are personal account data, not something
-  // AI should invent).
-  const SKIP_IDS = new Set(['websiteInput','industryInput','igName','igEmail']);
-  // Whole containers whose descendants should be skipped (auth wall covers
-  // both Log In and Create Account tabs).
-  const SKIP_CONTAINER_IDS = ['igAuthWall'];
-
   function isEligible(el){
     if (el.disabled || el.readOnly) return false;
     if (el.tagName === 'INPUT' && SKIP_TYPES.has((el.type || 'text').toLowerCase())) return false;
     if (el.tagName === 'SELECT') return false; // selects get skipped globally
-    if (el.id && SKIP_IDS.has(el.id)) return false;
-    for (const cid of SKIP_CONTAINER_IDS) {
-      if (el.closest('#' + cid)) return false;
-    }
     return true;
   }
 
@@ -291,75 +268,24 @@
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Yield control to the browser between scans so the analyse-now flow's
-  // many innerHTML writes can render without competing with us.
-  const idle = (cb) => (window.requestIdleCallback
-    ? window.requestIdleCallback(cb, { timeout: 1000 })
-    : setTimeout(cb, 100));
-
-  // Chunked scan — process at most CHUNK_SIZE inputs per idle slot, then
-  // re-yield. Guarantees we never block the main thread for more than a
-  // few ms at a time even if the user is on a 500-input dashboard.
-  const CHUNK_SIZE = 20;
-  function chunkedScan(){
-    const sel = 'input[type="text"],input[type="email"],' +
+  function scan(root){
+    const sel = 'input[type="text"],input[type="search"],input[type="email"],' +
                 'input[type="url"],input[type="tel"],input:not([type]),textarea';
-    const list = document.querySelectorAll(sel);
-    let i = 0;
-    function step(deadline){
-      let processed = 0;
-      while (i < list.length && processed < CHUNK_SIZE) {
-        const el = list[i++];
-        // offsetParent===null skips display:none / detached nodes cheaply.
-        if (!el || el.offsetParent === null) { processed++; continue; }
-        try { decorate(el); } catch(_) {}
-        processed++;
-        // Bail out early if the idle deadline is almost up — keeps us
-        // responsive even when a chunk decorates expensive inputs.
-        if (deadline && typeof deadline.timeRemaining === 'function'
-            && deadline.timeRemaining() < 2) break;
-      }
-      if (i < list.length) idle(step);
-    }
-    idle(step);
+    (root || document).querySelectorAll(sel).forEach(decorate);
   }
 
   let pending = false;
   function schedule(){
     if (pending) return;
     pending = true;
-    // 400ms debounce — long enough to coalesce the giant innerHTML bursts
-    // the analyse-now flow emits when rendering all dashboards back-to-back.
-    setTimeout(() => {
-      pending = false;
-      try { chunkedScan(); } catch(_) {}
-    }, 400);
-  }
-  // Back-compat alias kept for any caller below.
-  function scan(){ chunkedScan(); }
-
-  // Cheap test — does this added node (or any of its descendants) contain a
-  // form input we'd actually decorate? Avoids scanning the whole document on
-  // every DOM tweak (chart canvases, tooltips, our own toolbar inserts, etc).
-  function hasInput(node){
-    if (!node || node.nodeType !== 1) return false;
-    const t = node.tagName;
-    if (t === 'INPUT' || t === 'TEXTAREA') return true;
-    if (node.dataset && node.dataset.igBar) return false; // our own toolbar — ignore
-    if (typeof node.querySelector === 'function') {
-      return !!node.querySelector('input,textarea');
-    }
-    return false;
+    setTimeout(() => { pending = false; scan(document); }, 60);
   }
 
   function start(){
     scan(document);
     const mo = new MutationObserver(muts => {
       for (const m of muts) {
-        if (!m.addedNodes || !m.addedNodes.length) continue;
-        for (const n of m.addedNodes) {
-          if (hasInput(n)) { schedule(); return; }
-        }
+        if (m.addedNodes && m.addedNodes.length) { schedule(); return; }
       }
     });
     mo.observe(document.body, { childList:true, subtree:true });

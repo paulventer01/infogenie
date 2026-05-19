@@ -501,23 +501,16 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
     }
 
     // ── Step 2 UI: show 6-digit code entry screen after a successful send ─────
-    function renderVerifyStep(email, fallbackCode){
+    function renderVerifyStep(email){
       const form = document.getElementById('igAuthForm');
       const tabs = document.getElementById('igAuthTabs');
       tabs.style.display = 'none';
-      const fallbackBlock = fallbackCode ? `
-        <div style="margin-bottom:14px;background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:10px;padding:12px 14px;text-align:center">
-          <div style="font-size:.7rem;font-weight:800;color:#92400E;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Email delivery unavailable — use this code</div>
-          <div style="font-family:'SF Mono',Menlo,monospace;font-size:1.6rem;font-weight:800;color:#92400E;letter-spacing:.35em">${fallbackCode}</div>
-          <div style="font-size:.68rem;color:#78350F;margin-top:6px;line-height:1.4">Custom domain not verified in the email provider. Code is valid for 10 min.</div>
-        </div>` : '';
       form.innerHTML = `
         <div style="text-align:center;margin-bottom:18px">
           <div style="display:inline-flex;align-items:center;justify-content:center;width:54px;height:54px;background:linear-gradient(135deg,#0066FF22,#00C9C822);border-radius:50%;font-size:1.6rem;margin-bottom:10px">📧</div>
-          <div style="font-size:1.05rem;font-weight:800;color:#111827;margin-bottom:4px">${fallbackCode ? 'Verification code ready' : 'Check your inbox'}</div>
-          <div style="font-size:.78rem;color:#6B7280;line-height:1.5">${fallbackCode ? 'For' : 'We sent a 6-digit code to'}<br/><strong style="color:#0066FF">${email}</strong></div>
+          <div style="font-size:1.05rem;font-weight:800;color:#111827;margin-bottom:4px">Check your inbox</div>
+          <div style="font-size:.78rem;color:#6B7280;line-height:1.5">We sent a 6-digit code to<br/><strong style="color:#0066FF">${email}</strong></div>
         </div>
-        ${fallbackBlock}
         <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;margin-bottom:5px;text-align:center">Enter verification code</label>
         <input id="igCode" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" style="width:100%;padding:14px;border:1.5px solid #E5E7EB;border-radius:10px;font-size:1.6rem;font-weight:800;text-align:center;letter-spacing:.5em;font-family:'SF Mono',Menlo,monospace;outline:none;box-sizing:border-box;color:#0066FF" />
         <div id="igAuthError" style="display:none;background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;padding:9px 12px;border-radius:8px;font-size:.74rem;font-weight:600;margin-top:12px"></div>
@@ -604,7 +597,7 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
         }).then(r => r.json());
         if (!r.ok) { setBusy(false, 'Send verification code →'); return showErr(r.error || 'Could not send verification email.'); }
         pendingSignup = { name, email, password: pass };
-        renderVerifyStep(email, r.sent === false ? r.code : null);
+        renderVerifyStep(email);
       } catch(e) {
         setBusy(false, 'Send verification code →');
         showErr('Network error — could not send verification email.');
@@ -3346,34 +3339,19 @@ async function runAnalysis(url, country, industryOverride) {
   // ── Kick off live AI-powered industry + competitor detection (non-blocking) ─
   // Scrapes the website and uses GPT-4o to identify the precise sub-niche and
   // suggest 6-10 real direct competitors. Awaited later before building views.
-  //
-  // CRITICAL: each fetch has a hard 20s client-side timeout via AbortController.
-  // Without it, a slow/hung OpenAI call (we've seen 15-30s OpenAI timeouts in
-  // the backend) leaves the loading overlay stuck at 95% forever and the
-  // dashboard never renders. Timing out means we just fall back to the DB
-  // competitors — the user still sees a complete report.
-  const _fetchWithTimeout = (url, opts, ms = 8000) => {
-    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    const timer = setTimeout(() => { try { ctrl && ctrl.abort(); } catch(_){} }, ms);
-    const merged = Object.assign({}, opts, ctrl ? { signal: ctrl.signal } : {});
-    return fetch(url, merged)
-      .then(r => { clearTimeout(timer); return r; })
-      .catch(err => { clearTimeout(timer); throw err; });
-  };
-
   const smartDetectPromise = (industrySource === 'user-specified' || sectorOnly)
     ? Promise.resolve(null) // user override / sector-only mode → skip live scrape
-    : _fetchWithTimeout('/api/smart-detect', {
+    : fetch('/api/smart-detect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: cleanUrl })
-      }, 8000).then(r => r.ok ? r.json() : null).catch(err => { console.warn('smart-detect failed/timed-out:', err && err.name || err); return null; });
+      }).then(r => r.ok ? r.json() : null).catch(err => { console.warn('smart-detect failed:', err); return null; });
 
   // ── If user typed an industry (sector-only OR refining a URL), call the
   //    AI sector-competitors endpoint to get REAL same-niche competitors.
   //    This solves the "search by industry returns wrong companies" problem.
   const sectorPromise = hasIndustry
-    ? _fetchWithTimeout('/api/sector-competitors', {
+    ? fetch('/api/sector-competitors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3381,7 +3359,7 @@ async function runAnalysis(url, country, industryOverride) {
           country: country || '',
           urlHint: hasUrl ? cleanUrl : ''
         })
-      }, 8000).then(r => r.ok ? r.json() : null).catch(err => { console.warn('sector-competitors failed/timed-out:', err && err.name || err); return null; })
+      }).then(r => r.ok ? r.json() : null).catch(err => { console.warn('sector-competitors failed:', err); return null; })
     : Promise.resolve(null);
 
   const industry = INDUSTRY_DB[industryKey];
@@ -3469,81 +3447,24 @@ async function runAnalysis(url, country, industryOverride) {
   // If it returned real competitors + a sharper industry name, override the DB.
   // Keep the loading overlay visible during these network calls so users get
   // continuous feedback instead of staring at a blank screen.
-  // Belt-and-braces second timeout in case the promises above somehow never
-  // settle (e.g. fetch polyfill ignoring AbortController). Promise.race with a
-  // 22s null guarantees the flow always moves past this step.
-  const _withDeadline = (p, ms) => Promise.race([
-    p,
-    new Promise(resolve => setTimeout(() => resolve(null), ms))
-  ]);
   let aiDetected = null;
   let sectorDetected = null;
-  // Visible on-page debug banner — survives even when DevTools isn't open.
-  // Lives at the bottom-right of the screen, shows the last 10 analyse steps.
-  if (!window._igDbg) {
-    window.__igDbgBuffer = window.__igDbgBuffer || [];
-    window._igDbg = (msg) => {
-      try {
-        const t = new Date().toISOString().substr(11, 12);
-        const line = '['+t+'] '+String(msg);
-        // Always console + buffer + server-beacon first so we never lose a log
-        // even if DOM is jammed (REL16: server beacon survives page freeze).
-        try { console.log('[IG]', line); } catch(_){}
-        try { window.__igDbgBuffer.push(line); if (window.__igDbgBuffer.length > 200) window.__igDbgBuffer.shift(); } catch(_){}
-        try {
-          const body = JSON.stringify({ tag: 'IG', msg: line });
-          if (navigator.sendBeacon) {
-            const blob = new Blob([body], { type: 'application/json' });
-            navigator.sendBeacon('/api/_dbg', blob);
-          } else {
-            fetch('/api/_dbg', { method:'POST', headers:{'Content-Type':'application/json'}, body, keepalive:true }).catch(()=>{});
-          }
-        } catch(_){}
-        let p = document.getElementById('igDbgPanel');
-        if (!p) {
-          p = document.createElement('div');
-          p.id = 'igDbgPanel';
-          p.style.cssText = 'display:none;position:fixed;bottom:8px;right:8px;width:420px;max-height:80vh;overflow:auto;background:rgba(10,22,40,.95);color:#7FFFD4;font:11px/1.4 monospace;padding:8px 10px;border-radius:8px;z-index:999999;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid #00C9C8';
-          p.innerHTML = '<div style="color:#00C9C8;font-weight:bold;margin-bottom:4px;display:flex;justify-content:space-between"><span>🛠 InfoGenie debug · build REL24 (gzip compression + defer scripts — fixes "page not responding" dialog)</span><span style="cursor:pointer;color:#888" onclick="this.parentNode.parentNode.remove()">✕</span></div><div id="igDbgLog"></div>';
-          document.body.appendChild(p);
-        }
-        const log = document.getElementById('igDbgLog');
-        log.innerHTML += '<div>'+line.replace(/[<>]/g,'')+'</div>';
-        if (log.children.length > 40) log.firstChild.remove();
-        log.parentNode.scrollTop = log.parentNode.scrollHeight;
-      } catch(_){}
-    };
-  }
-  window._igDbg('🚀 runAnalysis started');
-  console.log('[runAnalysis] awaiting AI promises (8s deadline) …');
-  const _t0 = performance.now();
-  window._igDbg('⏳ awaiting smart-detect (8s deadline)');
-  try { aiDetected    = await _withDeadline(smartDetectPromise, 8000); } catch(e) { aiDetected    = null; }
-  window._igDbg('✓ smart-detect: ' + (aiDetected ? 'OK' : 'NULL/timeout'));
-  window._igDbg('⏳ awaiting sector-competitors (8s deadline)');
-  try { sectorDetected = await _withDeadline(sectorPromise,     8000); } catch(e) { sectorDetected = null; }
-  window._igDbg('✓ sector: ' + (sectorDetected ? 'OK' : 'NULL/timeout') + ' · total=' + Math.round(performance.now()-_t0) + 'ms');
-  console.log('[runAnalysis] AI promises settled in', Math.round(performance.now()-_t0), 'ms', { aiDetected: !!aiDetected, sectorDetected: !!sectorDetected });
+  try { aiDetected = await smartDetectPromise; } catch(e) { aiDetected = null; }
+  try { sectorDetected = await sectorPromise; } catch(e) { sectorDetected = null; }
 
-  // Null-guard every DOM element access — these were unguarded and would
-  // throw silently into _safeRunAnalysis if the overlay/progress markup
-  // changed or hadn't been injected yet.
-  window._igDbg('▸ post-sector DOM check · bar='+!!bar+' pct='+!!pct+' status='+!!statusText+' overlay='+!!overlay);
-  try { if (bar) bar.style.width = '100%'; } catch(e) { window._igDbg('✕ bar.style.width threw: '+e.message); }
-  try { if (pct) pct.textContent = '100%'; } catch(e) { window._igDbg('✕ pct.textContent threw: '+e.message); }
+  bar.style.width = '100%';
+  pct.textContent = '100%';
+  // Stop the elapsed-time ticker and show the final duration
   if (window._elapsedTimer) { clearInterval(window._elapsedTimer); window._elapsedTimer = null; }
   const _runSec = ((performance.now() - _runStart) / 1000).toFixed(1);
-  try { if (_elapsedEl) _elapsedEl.textContent = _runSec + 's'; } catch(_){}
+  if (_elapsedEl) _elapsedEl.textContent = _runSec + 's';
   window._lastRunDuration = parseFloat(_runSec);
   window._analysisStartedAt = null;
-  try { if (statusText) statusText.textContent = `✅ Intelligence report ready in ${_runSec}s!`; } catch(_){}
-  // Drop the cosmetic wait(450) — it was the last logged step before the page froze
-  // in REL10-14. Hide overlay synchronously and continue.
-  window._igDbg('▸ pt1 hiding overlay');
-  try { if (overlay) { overlay.style.display = 'none'; overlay.classList.add('hidden'); } } catch(e) { window._igDbg('✕ overlay hide threw: '+e.message); }
-  window._igDbg('▸ pt2 overlay hidden');
-  try { showToast(`✅ Dashboard ready in ${_runSec}s`); } catch(e) { window._igDbg('✕ showToast threw: '+e.message); }
-  window._igDbg('▸ pt3 entering post-detect/build pipeline');
+  statusText.textContent = `✅ Intelligence report ready in ${_runSec}s!`;
+  await wait(450);
+  overlay.style.display = 'none';
+  overlay.classList.add('hidden');
+  showToast(`✅ Dashboard ready in ${_runSec}s`);
 
   // ── If URL was given but user didn't type an industry, take the sub-niche
   //    that smart-detect inferred from the website and use it to fetch a
@@ -3553,8 +3474,7 @@ async function runAnalysis(url, country, industryOverride) {
     const inferredNiche = aiDetected.subNiche || aiDetected.industryName;
     if (inferredNiche) {
       try {
-        try { window._igDbg && window._igDbg('⏳ post-detect sector-competitors (10s deadline)'); } catch(_){}
-        const r = await _fetchWithTimeout('/api/sector-competitors', {
+        const r = await fetch('/api/sector-competitors', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -3562,10 +3482,9 @@ async function runAnalysis(url, country, industryOverride) {
             country: country || aiDetected.country || '',
             urlHint: cleanUrl,
           }),
-        }, 10000);
-        if (r && r.ok) sectorDetected = await r.json();
-        try { window._igDbg && window._igDbg('✓ post-detect sector done'); } catch(_){}
-      } catch (e) { console.warn('post-detect sector-competitors failed:', e); try { window._igDbg && window._igDbg('✕ post-detect sector failed/timeout'); } catch(_){} }
+        });
+        if (r.ok) sectorDetected = await r.json();
+      } catch (e) { console.warn('post-detect sector-competitors failed:', e); }
     }
   }
 
@@ -3656,13 +3575,11 @@ async function runAnalysis(url, country, industryOverride) {
         statusText.textContent = 'Pulling live competitor traffic & ad-spend data...';
         const domainList = aiCompetitorPool.map(c => c.domain).filter(Boolean);
         if (domainList.length) {
-          try { window._igDbg && window._igDbg('⏳ /api/competitor-metrics (10s deadline)'); } catch(_){}
-          const mr = await _fetchWithTimeout('/api/competitor-metrics', {
+          const mr = await fetch('/api/competitor-metrics', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ domains: domainList, industryKey, location: country || 'United States' })
-          }, 10000);
-          try { window._igDbg && window._igDbg('✓ /api/competitor-metrics done · status=' + (mr ? mr.status : 'aborted')); } catch(_){}
+          });
           if (mr.ok) {
             const mj = await mr.json();
             const byDomain = {};
@@ -3690,17 +3607,16 @@ async function runAnalysis(url, country, industryOverride) {
             console.log(`✓ Real metrics overlaid on ${Object.keys(byDomain).length}/${domainList.length} competitors`);
           }
         }
-      } catch(e) { console.warn('competitor-metrics overlay failed:', e); try { window._igDbg && window._igDbg('✕ competitor-metrics failed/timeout: ' + (e && e.message || e).toString().slice(0,80)); } catch(_){} }
+      } catch(e) { console.warn('competitor-metrics overlay failed:', e); }
 
-      // ── AI VALIDATION PASS (BACKGROUND, fire-and-forget) ─────────────────
-      // Was previously blocking the main flow and could hang the page when
-      // OpenAI/Anthropic responses were slow or chunked. Now runs entirely in
-      // the background — the dashboard renders immediately with DataForSEO
-      // values, and any AI-refined numbers are merged silently when they
-      // eventually arrive (next view re-render picks them up).
-      try { window._igDbg && window._igDbg('▸ ai-validate scheduled in background — continuing'); } catch(_){}
-      (async () => {
+      // ── AI VALIDATION PASS ────────────────────────────────────────────────
+      // Cross-check + refine traffic / ad-spend / ROAS / CTR using OpenAI.
+      // The model uses its training-data knowledge of well-known brands
+      // (Similarweb estimates, earnings reports, industry benchmarks) to
+      // either CONFIRM the DataForSEO values or FILL IN the gaps where
+      // DataForSEO returned nothing.
       try {
+        statusText.textContent = 'AI is validating competitor data accuracy...';
         const aiPayload = aiCompetitorPool.map(c => ({
           name: c.name,
           domain: c.domain,
@@ -3710,17 +3626,13 @@ async function runAnalysis(url, country, industryOverride) {
           currentCTR:     c.ctr,
           dataSource:     c.dataSource || null
         }));
-        try { window._igDbg && window._igDbg('⏳ /api/ai-validate-metrics (12s deadline)'); } catch(_){}
-        const ar = await _fetchWithTimeout('/api/ai-validate-metrics', {
+        const ar = await fetch('/api/ai-validate-metrics', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ competitors: aiPayload, industry: aiDetected.industryName || industryKey })
-        }, 12000);
-        try { window._igDbg && window._igDbg('✓ /api/ai-validate-metrics done · status=' + (ar ? ar.status : 'aborted')); } catch(_){}
-        if (ar && ar.ok) {
-          try { window._igDbg && window._igDbg('▸ parsing ai-validate JSON'); } catch(_){}
+        });
+        if (ar.ok) {
           const aj = await ar.json();
-          try { window._igDbg && window._igDbg('▸ ai-validate JSON parsed · ' + ((aj.results||[]).length) + ' rows'); } catch(_){}
           const byName = {};
           (aj.results || []).forEach(r => { if (r && r.name) byName[r.name.toLowerCase().trim()] = r; });
           let refined = 0;
@@ -3801,12 +3713,8 @@ async function runAnalysis(url, country, industryOverride) {
         } else {
           console.warn('ai-validate-metrics returned', ar.status);
         }
-      } catch(e) { console.warn('AI validation pass failed:', e); try { window._igDbg && window._igDbg('✕ bg ai-validate failed: ' + (e && e.message || e).toString().slice(0,80)); } catch(_){} }
-      })();
+      } catch(e) { console.warn('AI validation pass failed:', e); }
 
-      try { window._igDbg && window._igDbg('▸ deriving campaign rows'); } catch(_){}
-      // Yield to browser so the page stays responsive
-      await new Promise(r => setTimeout(r, 0));
       // Derive per-campaign breakdown rows from the now-real top-level metrics.
       // No more random fakery — the two campaign rows are weighted splits
       // (60/40) of the competitor's actual ad-spend, with CTR = top-level CTR
@@ -3870,7 +3778,6 @@ async function runAnalysis(url, country, industryOverride) {
   // 1. Split pool into "not seen last run" vs "seen last run"
   // 2. Shuffle each group independently
   // 3. Take fresh competitors first, then fill from seen ones if needed
-  try { window._igDbg && window._igDbg('✓ post-AI-validate, building selectedComps'); } catch(_){}
   const _prevNames = window._lastCompetitorNames || [];
   const fresh = industry.competitors.filter(c => !_prevNames.includes(c.name));
   const seen  = industry.competitors.filter(c =>  _prevNames.includes(c.name));
@@ -3915,7 +3822,6 @@ async function runAnalysis(url, country, industryOverride) {
   creativeRound = 0;
 
   // Store analysis data
-  try { window._igDbg && window._igDbg('✓ analysisData assigned · '+(selectedComps||[]).length+' competitors'); } catch(_){}
   analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: selectedComps, sectorOnly };
   window.analysisData = analysisData;  // Mirror to window so external modules (Link Suggester, CRO Lab, Analytics Hub, etc.) can read it
   // Notify the global field enhancer (ig_field_enhancer.js) so any Brand /
@@ -3943,45 +3849,18 @@ async function runAnalysis(url, country, industryOverride) {
   }).catch(() => {});
 
   // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
-  try { window._igDbg && window._igDbg('🧭 about to call navigateTo(dashboard)'); } catch(_){}
-  const _navT0 = performance.now();
-  try { navigateTo('dashboard'); } catch(e){ try{ window._igDbg && window._igDbg('✕ navigateTo THREW: '+(e&&e.message||e)); }catch(_){} }
-  try { window._igDbg && window._igDbg('✓ navigateTo returned in '+Math.round(performance.now()-_navT0)+'ms'); } catch(_){}
-  try { showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`); } catch(e){ try{ window._igDbg && window._igDbg('✕ showToast THREW: '+(e&&e.message||e)); }catch(_){} }
-  try { window._igDbg && window._igDbg('✓ showToast returned'); } catch(_){}
+  navigateTo('dashboard');
+  showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
 
-  // Build all views — each wrapped so one failure never blocks the rest.
-  // Each step logs to the on-page debug banner so we can see exactly which
-  // builder is throwing or hanging when the user reports "dashboard didn't load".
-  const _buildStep = (name, fn) => new Promise(resolve => {
-    setTimeout(() => {
-      const t0 = performance.now();
-      try { window._igDbg && window._igDbg('⏳ ' + name + '…'); } catch(_){}
-      try {
-        fn();
-        try { window._igDbg && window._igDbg('✓ ' + name + ' ' + Math.round(performance.now()-t0) + 'ms'); } catch(_){}
-      } catch(e) {
-        console.warn(name + ' error:', e);
-        try { window._igDbg && window._igDbg('✕ ' + name + ' threw: ' + (e && e.message || (e+'')).toString().slice(0,120)); } catch(_){}
-      }
-      resolve();
-    }, 0);
-  });
-  // Run builders sequentially with a yield between each so the browser repaints
-  // and the page stays responsive even if one builder is slow.
-  try { window._igDbg && window._igDbg('▸ about to start builder IIFE'); } catch(_){}
-  (async () => {
-    try { window._igDbg && window._igDbg('▸ builder IIFE entered'); } catch(_){}
-    await _buildStep('buildDashboard',    buildDashboard);
-    await _buildStep('buildCompetitors',  buildCompetitors);
-    await _buildStep('buildCampaigns',    buildCampaigns);
-    await _buildStep('buildAudience',     buildAudience);
-    await _buildStep('buildCreative',     buildCreative);
-    await _buildStep('buildIntelligence', buildIntelligence);
-    window._bpIdx = 0;
-    await _buildStep('buildBattlePlan',   buildBattlePlan);
-    try { window._igDbg && window._igDbg('🎉 all builders done'); } catch(_){}
-  })();
+  // Build all views — each wrapped so one failure never blocks the rest
+  try { buildDashboard();    } catch(e) { console.warn('buildDashboard error:', e); }
+  try { buildCompetitors();  } catch(e) { console.warn('buildCompetitors error:', e); }
+  try { buildCampaigns();    } catch(e) { console.warn('buildCampaigns error:', e); }
+  try { buildAudience();     } catch(e) { console.warn('buildAudience error:', e); }
+  try { buildCreative();     } catch(e) { console.warn('buildCreative error:', e); }
+  try { buildIntelligence(); } catch(e) { console.warn('buildIntelligence error:', e); }
+  window._bpIdx = 0;
+  try { buildBattlePlan();   } catch(e) { console.warn('buildBattlePlan error:', e); }
 
   // Log analysis actions to results tracker
   if (!window._infoGenieActions) window._infoGenieActions = [];
@@ -3993,20 +3872,13 @@ async function runAnalysis(url, country, industryOverride) {
     { time: now.toLocaleTimeString(), date: now.toLocaleDateString(), action: `Analysed ${cleanUrl} — industry: ${industry.name}`, type: 'analysis', impact: `${selectedComps.length} competitors identified` }
   );
   
-  // Build settings after navigation (non-critical) — DEFERRED so it can't block
-  // the builder IIFE's setTimeout(0). REL18 freeze-fix: buildSettings renders
-  // the entire Settings view with 70+ integration cards and was running
-  // synchronously here, jamming the event loop so buildDashboard's setTimeout
-  // never fired. Defer to 1500ms so dashboard + competitors + campaigns get a
-  // clear window first.
-  try { window._igDbg && window._igDbg('▸ deferring buildSettings + enrich to 1500ms'); } catch(_){}
-  setTimeout(() => {
-    try { window._igDbg && window._igDbg('▸ deferred: buildSettings start'); } catch(_){}
-    try { buildSettings(); } catch(e) { console.warn('Settings build error:', e); }
-    try { window._igDbg && window._igDbg('✓ deferred: buildSettings done'); } catch(_){}
-    try { enrichWithRealCompetitorData(cleanUrl, industryKey, country); } catch(_){}
-    try { enrichKPIsWithLiveData(cleanUrl, industryKey, country); } catch(_){}
-  }, 1500);
+  // Build settings after navigation (non-critical)
+  try { buildSettings(); } catch(e) { console.warn('Settings build error:', e); }
+
+  // ── Enrich with real live competitor data from DataForSEO (async, non-blocking) ──
+  enrichWithRealCompetitorData(cleanUrl, industryKey, country);
+  // ── Upgrade KPI cards to live DataForSEO data (async, non-blocking) ──
+  enrichKPIsWithLiveData(cleanUrl, industryKey, country);
 }
 
 // ── Real Competitor Data Enrichment ──────────────────────────────────────────
@@ -4051,12 +3923,9 @@ async function enrichWithRealCompetitorData(domain, industryKey, country) {
 
     if (enriched > 0) {
       console.log(`Enriched ${enriched} competitors with real DataForSEO data`);
-      // Re-render competitors + dashboard with real data badges — deferred and
-      // staggered with setTimeout(0) so the heavy synchronous DOM rebuild
-      // doesn't jam the event loop after the user has already started
-      // interacting with the dashboard (REL20 freeze-fix).
-      setTimeout(() => { try { buildCompetitors(); } catch(e) { console.warn('re-render buildCompetitors:', e); } }, 0);
-      setTimeout(() => { try { buildDashboard();   } catch(e) { console.warn('re-render buildDashboard:',   e); } }, 80);
+      // Re-render competitors view with real data badges
+      buildCompetitors();
+      buildDashboard();
     }
 
     // Update your own domain metrics in dashboard if available
@@ -12968,44 +12837,19 @@ async function generateRedditReply() {
 // ===== BUILD AUDIENCE =====
 function buildAudience() {
   const { competitors, industry } = analysisData;
-
-  // Aggregate all audiences across competitors. We start with whatever the
-  // *selected* competitors carry, but manually-added competitors and
-  // AI-detected ones don't include an `audiences` array — data.js only has
-  // it on the curated industry roster. When the selected set is thin on
-  // audience data, top up from the industry's canonical competitor list so
-  // the chart and cards have something real (drawn from the same data.js
-  // industry profile) to render instead of going blank.
+  
+  // Aggregate all audiences across competitors
   const audienceMap = {};
-  const _addAudiences = (compName, list) => {
-    (list || []).forEach(a => {
-      if (!a || !a.label || !Number.isFinite(a.pct)) return;
-      if (!audienceMap[a.label]) audienceMap[a.label] = { total: 0, count: 0, competitors: [] };
+  competitors.forEach(c => {
+    (c.audiences || []).forEach(a => {
+      if (!audienceMap[a.label]) {
+        audienceMap[a.label] = { total: 0, count: 0, competitors: [] };
+      }
       audienceMap[a.label].total += a.pct;
       audienceMap[a.label].count += 1;
-      if (!audienceMap[a.label].competitors.includes(compName)) {
-        audienceMap[a.label].competitors.push(compName);
-      }
+      audienceMap[a.label].competitors.push(c.name);
     });
-  };
-  competitors.forEach(c => _addAudiences(c.name, c.audiences));
-  if (Object.keys(audienceMap).length === 0 && industry && Array.isArray(industry.competitors)) {
-    // Use the canonical industry roster as the audience source. Match each
-    // selected competitor against the roster by name when possible so the
-    // "competitors who target this segment" attribution stays accurate;
-    // otherwise fall back to the top 3 roster brands as the representative
-    // industry-level signal.
-    const lookup = {};
-    industry.competitors.forEach(c => { lookup[(c.name || '').toLowerCase()] = c; });
-    let matched = 0;
-    competitors.forEach(c => {
-      const ref = lookup[(c.name || '').toLowerCase()];
-      if (ref && ref.audiences) { _addAudiences(c.name, ref.audiences); matched++; }
-    });
-    if (matched === 0) {
-      industry.competitors.slice(0, 3).forEach(c => _addAudiences(c.name, c.audiences));
-    }
-  }
+  });
   
   const audienceSegments = Object.entries(audienceMap)
     .map(([label, d]) => ({ label, avgPct: Math.round(d.total / d.count), competitors: d.competitors, count: d.count }))
@@ -13411,7 +13255,7 @@ function buildCompetitorVsCards(industry, competitors, domainName) {
     const campaign = comp.campaigns[0];
     const imp = improvements[i] || improvements[0];
     const ourCTR = (parseFloat(campaign.ctr) + parseFloat(imp.ctrBoost)).toFixed(1) + '%';
-    const ourROAS = ((parseFloat(campaign.roas) || 0) + (parseFloat(imp.roasBoost) || 0)).toFixed(1) + '×';
+    const ourROAS = (campaign.roas + parseFloat(imp.roasBoost)).toFixed(1) + '×';
     const panelId = `vs-panel-${i}`;
     const vsAudiences = comp.audiences || [];
 
@@ -17689,14 +17533,6 @@ window.openCompPlan = async function(compName) {
 };
 
 function buildPlanView(compName) {
-  // Guard: the plan-view competitor dropdown can fire onchange before any
-  // analysis has been run (e.g. when navigating to /plan directly or after
-  // a hard refresh). Fail soft instead of throwing.
-  if (!window.analysisData || !Array.isArray(window.analysisData.competitors) || window.analysisData.competitors.length === 0) {
-    try { showToast('Run an analysis first to populate the battle plan.'); } catch(_){}
-    try { navigateTo('analyse', false); } catch(_){}
-    return;
-  }
   const needle = (compName || '').trim().toLowerCase();
   const comp = analysisData.competitors.find(x => x.name === compName) ||
                analysisData.competitors.find(x => (x.name||'').trim().toLowerCase() === needle) ||
@@ -19410,32 +19246,11 @@ document.addEventListener('DOMContentLoaded', () => {
     industry: (document.getElementById('industryInput')?.value || '').trim(),
   });
 
-  // Wrap runAnalysis so any error surfaces as a visible toast + console log
-  // instead of vanishing into an unhandled promise rejection. The actual
-  // overlay/loader cleanup is handled inside runAnalysis; we only need to
-  // make sure the user sees what went wrong.
-  const _safeRunAnalysis = (url, country, industry) => {
-    Promise.resolve().then(() => runAnalysis(url, country, industry))
-      .catch(err => {
-        console.error('[runAnalysis] failed:', err);
-        const msg = (err && (err.message || err.toString())) || 'Unknown error';
-        const stack = (err && err.stack) ? String(err.stack).split('\n').slice(0,3).join(' | ') : '';
-        try { window._igDbg && window._igDbg('✕ runAnalysis THREW: ' + msg.slice(0,120)); } catch(_){}
-        try { window._igDbg && stack && window._igDbg('   at ' + stack.slice(0,200)); } catch(_){}
-        try {
-          const ov = document.getElementById('loadingOverlay');
-          if (ov) { ov.style.display = 'none'; ov.classList.add('hidden'); }
-          if (window._elapsedTimer) { clearInterval(window._elapsedTimer); window._elapsedTimer = null; }
-        } catch(_) {}
-        try { showToast('⚠ Analysis failed: ' + msg.slice(0, 160)); } catch(_) { alert('Analysis failed: ' + msg); }
-      });
-  };
-
   document.getElementById('analyseBtn').addEventListener('click', () => {
     const { url, country, industry } = _getAnalyseInputs();
-    _safeRunAnalysis(url, country, industry);
+    runAnalysis(url, country, industry);
   });
-
+  
   // Enter key on input — trigger from both inputs
   ['websiteInput','industryInput'].forEach(id => {
     const el = document.getElementById(id);
@@ -19443,7 +19258,7 @@ document.addEventListener('DOMContentLoaded', () => {
     el.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
         const { url, country, industry } = _getAnalyseInputs();
-        _safeRunAnalysis(url, country, industry);
+        runAnalysis(url, country, industry);
       }
     });
   });
@@ -19486,8 +19301,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const hintEl = document.getElementById('industryHint');
       if (hintEl) { hintEl.textContent = 'Leave blank for auto-detection'; hintEl.style.color = ''; }
       const { country, industry } = _getAnalyseInputs();
-      try { _safeRunAnalysis(url, country, industry); }
-      catch(_) { runAnalysis(url, country, industry); }
+      runAnalysis(url, country, industry);
     });
   });
   

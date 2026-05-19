@@ -1,5 +1,4 @@
 const express = require('express');
-const compression = require('compression');
 const path = require('path');
 const https = require('https');
 const fs    = require('fs');
@@ -95,10 +94,6 @@ app.use((req, res, next) => {
 // Capture the raw request body alongside the parsed JSON so HMAC-signed
 // webhooks (Resend / Svix) can verify against the exact bytes that were
 // signed by the sender. Body parser still hands the parsed object to routes.
-// ── gzip/brotli compression — shrinks app.js (~3.4MB) to ~500KB over wire ──
-// Cuts initial page-load main-thread blocking that was triggering Chrome's
-// "Pages aren't responding" dialog after each REL bump.
-app.use(compression({ level: 6, threshold: 1024 }));
 app.use(express.json({ limit: '5mb', verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); } }));
 app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
 
@@ -134,21 +129,7 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/studio\/case-study\/[^\/]+\/page$/,       // public share page for case studies (HTML render)
   /^\/api\/scroll-tracker\/event$/,                  // public scroll-depth ingest from rendered pages (rate-limited)
   /^\/api\/site-search\/event$/,                     // public site-search ingest from rendered pages (rate-limited)
-  /^\/api\/_dbg$/,                                   // client-side debug breadcrumb beacon (REL16)
 ];
-
-// ── Client-side debug breadcrumb receiver (REL16) ────────────────────────────
-// The frontend beacons every _igDbg() line here via navigator.sendBeacon so we
-// have a server-side record of the last checkpoint reached even when the page
-// is frozen. No auth, no rate-limit, no persistence — pure stderr trace.
-app.post('/api/_dbg', (req, res) => {
-  try {
-    const msg = (req.body && (req.body.msg || req.body.message)) || '';
-    const tag = (req.body && req.body.tag) || 'IG';
-    console.log('[' + tag + '-client]', String(msg).slice(0, 400));
-  } catch(_){}
-  res.status(204).end();
-});
 
 // Lightweight in-memory per-IP rate limiter for public Studio Pack POSTs.
 // Sliding 60-second window, 20 requests/window/IP. Returns 429 if exceeded.
@@ -6317,11 +6298,9 @@ function _genCode() { return String(Math.floor(100000 + Math.random() * 900000))
 async function _sendVerificationEmail({ to, name, code }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error('Email provider not configured (RESEND_API_KEY missing)');
-  // Signup verification ALWAYS sends from Resend's free shared sender so it
-  // works even when RESEND_FROM_EMAIL points at an unverified custom domain
-  // (e.g. suretrade.co.za). Other transactional mail still honors
-  // RESEND_FROM_EMAIL — only this onboarding code path is locked.
-  const fromAddr = 'InfoGenie <onboarding@resend.dev>';
+  // Default to Resend's free shared sender (works without domain verification).
+  // Override with RESEND_FROM_EMAIL once you've verified your own domain in Resend.
+  const fromAddr = process.env.RESEND_FROM_EMAIL || 'InfoGenie <onboarding@resend.dev>';
   const safeName = (name || to.split('@')[0]).replace(/[<>&"]/g, '').slice(0, 60);
   const subject = `Your InfoGenie verification code: ${code}`;
   const text = `Hi ${safeName},\n\nYour InfoGenie verification code is: ${code}\n\nThis code expires in 10 minutes.\nIf you didn't request this, you can safely ignore this email — no account will be created without entering this code.\n\n— InfoGenie`;
@@ -7117,22 +7096,10 @@ app.post('/api/auth/send-verification', async (req, res) => {
 
     try {
       await _sendVerificationEmail({ to: e, name: name || '', code });
-      console.log(`[auth/send-verification] sent code to ${e} (code=${code} kept in server log as on-screen fallback)`);
-      return res.json({ ok: true, sent: true, code, message: `Verification code sent to ${e}.` });
+      return res.json({ ok: true, sent: true, message: `Verification code sent to ${e}.` });
     } catch (mailErr) {
-      // Resend's shared `onboarding@resend.dev` sender only delivers to the
-      // Resend account owner's email, and custom domains require verification.
-      // Rather than block signup we surface the code directly so the
-      // (non-technical) user can always complete onboarding. The code is also
-      // echoed to the server log for audit.
-      console.warn(`[auth/send-verification] email send failed (${mailErr.message}) — returning code ${code} to client as on-screen fallback for ${e}`);
-      return res.json({
-        ok: true,
-        sent: false,
-        code,
-        message: `Email delivery is not configured for this address. Your verification code is shown below.`,
-        deliveryError: mailErr.message || 'Mail provider request failed.'
-      });
+      console.error('[auth/send-verification] mail provider error:', mailErr.message);
+      return res.status(502).json({ ok: false, error: 'Could not send the verification email. ' + (mailErr.message || 'Mail provider request failed.') });
     }
   } catch (err) {
     console.error('[auth/send-verification] error:', err);
@@ -9754,55 +9721,10 @@ CRITICAL RULES for "competitors" — accuracy matters more than completeness:
       aiResult = JSON.parse(raw);
     } catch (aiErr) {
       console.error('smart-detect OpenAI error (after retry+fallback):', aiErr.message);
-
-      // ── Perplexity fallback — live web-grounded competitor lookup ──────
-      // Perplexity Sonar searches the live web at query time, so it returns
-      // real, currently-operating, sub-niche-accurate competitors even when
-      // OpenAI is slow/unreachable. We grade the response by JSON validity.
-      if (process.env.PERPLEXITY_API_KEY) {
-        try {
-          const niche = (ogSiteName || title || cleanInput).slice(0, 120);
-          const pxPrompt = `You are a market-research analyst. Identify the business at "${cleanInput}" (signals: title="${title}", description="${metaDesc}") and return the 8 most DIRECT same-sub-niche competitors as strict JSON. EXCLUDE news, review/comparison sites, marketplaces, and any brand from a different sub-niche. Return ONLY:\n{"industryName":"<specific sub-niche>","industryKey":"${allowedKeys.join('|')}","subNiche":"<2-4 word niche>","competitors":[{"name":"<real brand>","url":"<primary-domain.com>","why":"<one sentence>"}]}`;
-          const pxResp = await fetch('https://api.perplexity.ai/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}` },
-            body: JSON.stringify({
-              model: 'sonar',
-              messages: [
-                { role: 'system', content: 'You are a precise market-research analyst. Output strict JSON only — no markdown, no prose, no citations inside the JSON.' },
-                { role: 'user', content: pxPrompt }
-              ],
-              temperature: 0.1,
-            }),
-          });
-          if (pxResp.ok) {
-            const pxJson = await pxResp.json();
-            let raw = pxJson?.choices?.[0]?.message?.content || '';
-            // Perplexity sometimes wraps JSON in ```json fences — strip them.
-            raw = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
-            const firstBrace = raw.indexOf('{');
-            const lastBrace = raw.lastIndexOf('}');
-            if (firstBrace >= 0 && lastBrace > firstBrace) raw = raw.slice(firstBrace, lastBrace + 1);
-            try {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed.competitors) && parsed.competitors.length >= 3) {
-                aiResult = parsed;
-                console.log(`[smart-detect] Perplexity fallback succeeded for ${cleanInput} — ${parsed.competitors.length} competitors`);
-              }
-            } catch (parseErr) {
-              console.warn('[smart-detect] Perplexity returned non-JSON, skipping:', parseErr.message);
-            }
-          }
-        } catch (pxErr) {
-          console.warn('[smart-detect] Perplexity fallback failed:', pxErr.message);
-        }
-      }
-
-      // ── DataForSEO-only fallback (last resort) ─────────────────────────
       // Deterministic fallback: if we have ANY DataForSEO competitor data,
       // return that with a generic industry label rather than a hard failure.
       // The client can still proceed with real same-niche domains.
-      if (!aiResult && dfsCompetitors.length >= 3) {
+      if (dfsCompetitors.length >= 3) {
         return res.json({
           ok: true,
           domain: cleanInput,
@@ -9821,7 +9743,7 @@ CRITICAL RULES for "competitors" — accuracy matters more than completeness:
           _fallback: 'serp-only',
         });
       }
-      if (!aiResult) return res.status(502).json({ error: 'AI detection failed', detail: aiErr.message, signals });
+      return res.status(502).json({ error: 'AI detection failed', detail: aiErr.message, signals });
     }
 
     // ── 4) Sanitise + return ─────────────────────────────────────────────────
