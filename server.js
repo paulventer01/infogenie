@@ -1,4 +1,5 @@
 const express = require('express');
+const compression = require('compression');
 const path = require('path');
 const https = require('https');
 const fs    = require('fs');
@@ -94,6 +95,10 @@ app.use((req, res, next) => {
 // Capture the raw request body alongside the parsed JSON so HMAC-signed
 // webhooks (Resend / Svix) can verify against the exact bytes that were
 // signed by the sender. Body parser still hands the parsed object to routes.
+// ── gzip/brotli compression — shrinks app.js (~3.4MB) to ~500KB over wire ──
+// Cuts initial page-load main-thread blocking that was triggering Chrome's
+// "Pages aren't responding" dialog after each REL bump.
+app.use(compression({ level: 6, threshold: 1024 }));
 app.use(express.json({ limit: '5mb', verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); } }));
 app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
 
