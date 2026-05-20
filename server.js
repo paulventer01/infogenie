@@ -170,6 +170,7 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/bookings\/book\/[^\/]+$/,                 // public booking submit (rate-limited)
   /^\/api\/linksell\/checkout\/[^\/]+$/,             // public Stripe checkout init (rate-limited)
   /^\/api\/linksell\/optin\/[^\/]+$/,                // public email opt-in  (rate-limited)
+  /^\/api\/email-broadcast\/webhook$/,               // Resend Svix-signed broadcast events
   /^\/api\/studio\/case-study\/[^\/]+\/page$/,       // public share page for case studies (HTML render)
   /^\/api\/scroll-tracker\/event$/,                  // public scroll-depth ingest from rendered pages (rate-limited)
   /^\/api\/site-search\/event$/,                     // public site-search ingest from rendered pages (rate-limited)
@@ -9158,6 +9159,17 @@ app.use('/api/carousel', _carouselRouter);
     console.log('[t38] carousel schema ready');
   }
 } catch (e) { console.warn('[t38] init failed:', e.message); }})();
+
+// ── T40 — Post Performance · Email Broadcast + Tracking ─────────────────────
+const _ebRouter = require('./services/email_broadcast/api');
+const _ebSchema = require('./services/email_broadcast/schema');
+app.use('/api/email-broadcast', _ebRouter);
+(async () => { try {
+  if (_db.hasDb()) {
+    await _ebSchema.ensureEmailBroadcastSchema();
+    console.log('[t40] email-broadcast schema ready');
+  }
+} catch (e) { console.warn('[t40] init failed:', e.message); }})();
 
 // ── T39 — Content Score Auto-Optimize · AI Traffic Monitor ──────────────────
 const _csRouter    = require('./services/content_score/api');

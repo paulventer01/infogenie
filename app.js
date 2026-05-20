@@ -3202,6 +3202,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'content-score')     { try { window.buildContentScore && window.buildContentScore(); }     catch(e) { console.warn('buildContentScore error:', e); } }
   if (viewId === 'ai-traffic')        { try { window.buildAiTrafficMonitor && window.buildAiTrafficMonitor(); } catch(e) { console.warn('buildAiTrafficMonitor error:', e); } }
   if (viewId === 'vis-leaderboard')   { try { window.buildVisLeaderboard && window.buildVisLeaderboard(); }  catch(e) { console.warn('buildVisLeaderboard error:', e); } }
+  if (viewId === 'post-performance')  { try { window.buildPostPerformance && window.buildPostPerformance(); } catch(e) { console.warn('buildPostPerformance error:', e); } }
+  if (viewId === 'email-broadcast')   { try { window.buildEmailBroadcast && window.buildEmailBroadcast(); }  catch(e) { console.warn('buildEmailBroadcast error:', e); } }
   if (viewId === 'technical-suite') {
     try { buildTechnicalSuite(); } catch(e) { console.warn('buildTechnicalSuite error:', e); }
   }
@@ -48136,6 +48138,394 @@ window.buildVisLeaderboard = function() {
 
   document.getElementById('vlLoad').addEventListener('click', _vlLoad);
   _vlLoad();
+};
+
+// ============================================================================
+// T40-A — Post Performance (all posts ranked by engagement across all accounts)
+// ============================================================================
+window.buildPostPerformance = function() {
+  const wrap = document.getElementById('ppWrap'); if (!wrap) return;
+  const profileId = (window._socialProfileId || '').trim();
+
+  const PLATFORM_EMOJI = { instagram:'📸', facebook:'📘', twitter:'🐦', linkedin:'💼', tiktok:'🎵', youtube:'▶️', pinterest:'📌', reddit:'🔴', bluesky:'🟦', threads:'🧵', googlebusiness:'🏢', telegram:'✈️', discord:'💬', snapchat:'👻', whatsapp:'💬' };
+  const platEmoji = p => PLATFORM_EMOJI[String(p||'').toLowerCase()] || '🌐';
+  const fmtNum  = n => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : String(n);
+  const fmtDate = s => { if (!s) return ''; try { return new Date(s).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'2-digit'}); } catch { return ''; } };
+
+  let _currentSort = 'engagement';
+  let _currentRange = '30d';
+  let _posts = [];
+
+  function _metaStat(label, val, color) {
+    return `<div style="background:#F9FAFB;border-radius:10px;padding:14px 18px;text-align:center;min-width:100px">
+      <div style="font-size:1.4rem;font-weight:900;color:${color||'#0A1628'}">${fmtNum(val)}</div>
+      <div style="font-size:0.68rem;color:#6B7280;font-weight:700;text-transform:uppercase;margin-top:2px">${label}</div>
+    </div>`;
+  }
+
+  function _renderPosts(posts) {
+    if (!posts.length) return `<div style="text-align:center;padding:48px;color:#6B7280;font-size:0.9rem">No posts found for this period.</div>`;
+    return posts.map((p, i) => {
+      const engRate = p.engRate > 0 ? `<span style="background:#EDE9FE;color:#7C3AED;font-size:0.7rem;font-weight:700;padding:2px 7px;border-radius:99px">${p.engRate}% ER</span>` : '';
+      const postUrl = p.url ? `<a href="${_safeUrl(p.url)}" target="_blank" rel="noopener" style="color:#6B7280;font-size:0.75rem;text-decoration:none">↗ View post</a>` : '';
+      return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;gap:14px;align-items:flex-start">
+        <div style="font-size:1.4rem;line-height:1;padding-top:2px">${platEmoji(p.platform)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+            <span style="font-size:0.72rem;font-weight:700;color:#374151;text-transform:capitalize">${_escapeHtml(p.platform)}</span>
+            ${p.username ? `<span style="font-size:0.72rem;color:#9CA3AF">@${_escapeHtml(p.username)}</span>` : ''}
+            <span style="font-size:0.7rem;color:#9CA3AF">${fmtDate(p.publishedAt)}</span>
+            ${engRate}
+            ${postUrl}
+          </div>
+          <div style="font-size:0.83rem;color:#374151;line-height:1.4;margin-bottom:8px;word-break:break-word">${p.text ? _escapeHtml(p.text.slice(0,200))+(p.text.length>200?'…':'') : '<em style="color:#9CA3AF">No text preview</em>'}</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            ${p.impressions ? `<span style="font-size:0.72rem;color:#6B7280">👁 ${fmtNum(p.impressions)}</span>` : ''}
+            <span style="font-size:0.72rem;color:#6B7280">❤️ ${fmtNum(p.likes)}</span>
+            <span style="font-size:0.72rem;color:#6B7280">💬 ${fmtNum(p.comments)}</span>
+            <span style="font-size:0.72rem;color:#6B7280">🔁 ${fmtNum(p.shares)}</span>
+            ${p.clicks ? `<span style="font-size:0.72rem;color:#6B7280">🖱 ${fmtNum(p.clicks)}</span>` : ''}
+            <span style="font-size:0.75rem;font-weight:700;color:#0A1628">Total: ${fmtNum(p.engTotal)}</span>
+          </div>
+        </div>
+        <div style="font-size:1.1rem;font-weight:900;color:#D1D5DB;min-width:28px;text-align:right">#${i+1}</div>
+      </div>`;
+    }).join('');
+  }
+
+  async function _load() {
+    if (!profileId) {
+      wrap.innerHTML = `<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:20px;font-size:0.88rem;color:#92400E">
+        Connect a social account in <strong>Social Publisher</strong> first — your profile ID is needed to load post analytics.</div>`;
+      return;
+    }
+    wrap.innerHTML = `<div style="text-align:center;padding:40px;color:#6B7280">Loading post analytics…</div>`;
+    try {
+      const r = await fetch(`/api/social-publisher/posts-performance?profileId=${encodeURIComponent(profileId)}&range=${_currentRange}&sort=${_currentSort}`).then(x=>x.json());
+      if (r.note) { wrap.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:20px;text-align:center;color:#6B7280;font-size:0.88rem">${_escapeHtml(r.note)}</div>`; return; }
+      if (!r.ok) throw new Error(r.error || 'API error');
+      _posts = r.posts || [];
+      const t = r.totals || {};
+
+      wrap.innerHTML = `
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+          ${_metaStat('Total Posts', _posts.length, '#0A1628')}
+          ${_metaStat('Impressions', t.impressions||0, '#0066FF')}
+          ${_metaStat('Likes', t.likes||0, '#EF4444')}
+          ${_metaStat('Comments', t.comments||0, '#F59E0B')}
+          ${_metaStat('Shares', t.shares||0, '#10B981')}
+          ${_metaStat('Clicks', t.clicks||0, '#7C3AED')}
+          ${_metaStat('Total Eng.', t.engTotal||0, '#0A1628')}
+        </div>
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:16px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <span style="font-size:0.8rem;font-weight:700;color:#374151;margin-right:4px">Sort by:</span>
+            ${['engagement','impressions','clicks','likes','date'].map(s=>`<button id="ppSort_${s}" onclick="window._ppSetSort('${s}')" style="padding:5px 12px;border-radius:6px;font-size:0.76rem;font-weight:700;border:1px solid ${_currentSort===s?'#7C3AED':'#E5E7EB'};background:${_currentSort===s?'#EDE9FE':'#fff'};color:${_currentSort===s?'#7C3AED':'#374151'};cursor:pointer">${s.charAt(0).toUpperCase()+s.slice(1)}</button>`).join('')}
+            <span style="margin-left:auto;font-size:0.8rem;font-weight:700;color:#374151">Range:</span>
+            ${['7d','30d','90d'].map(r=>`<button id="ppRange_${r}" onclick="window._ppSetRange('${r}')" style="padding:5px 10px;border-radius:6px;font-size:0.76rem;font-weight:700;border:1px solid ${_currentRange===r?'#0066FF':'#E5E7EB'};background:${_currentRange===r?'#EFF6FF':'#fff'};color:${_currentRange===r?'#0066FF':'#374151'};cursor:pointer">${r}</button>`).join('')}
+          </div>
+        </div>
+        <div id="ppList">${_renderPosts(_posts)}</div>
+      `;
+    } catch(e) {
+      wrap.innerHTML = `<div style="color:#991B1B;padding:16px">Error: ${_escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  window._ppSetSort = async function(s) {
+    _currentSort = s;
+    await _load();
+  };
+  window._ppSetRange = async function(r) {
+    _currentRange = r;
+    await _load();
+  };
+
+  _load();
+};
+
+// ============================================================================
+// T40-B — Email Broadcast + Tracking Dashboard
+// ============================================================================
+window.buildEmailBroadcast = function() {
+  const wrap = document.getElementById('ebWrap'); if (!wrap) return;
+  let _view = 'list';    // list | create | detail
+  let _selectedId = null;
+  let _detailTab = 'stats'; // stats | recipients
+
+  const fmtPct  = n => (n || 0).toFixed(1) + '%';
+  const fmtNum  = n => Number(n||0).toLocaleString();
+  const fmtDate = s => { if (!s) return '—'; try { return new Date(s).toLocaleString(undefined,{month:'short',day:'numeric',year:'2-digit',hour:'2-digit',minute:'2-digit'}); } catch { return s; } };
+  const statusBadge = s => {
+    const cfg = { draft:'#6B7280:#F3F4F6', sending:'#D97706:#FEF3C7', sent:'#059669:#D1FAE5', paused:'#7C3AED:#EDE9FE' }[s] || '#6B7280:#F3F4F6';
+    const [fg,bg] = cfg.split(':');
+    return `<span style="background:${bg};color:${fg};font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:99px;text-transform:capitalize">${s}</span>`;
+  };
+  const recipBadge = s => {
+    const colors = { queued:'#6B7280', sent:'#374151', opened:'#0066FF', clicked:'#7C3AED', bounced:'#EF4444', complained:'#D97706', unsubscribed:'#9CA3AF' };
+    const bg = { queued:'#F3F4F6', sent:'#F9FAFB', opened:'#EFF6FF', clicked:'#EDE9FE', bounced:'#FEE2E2', complained:'#FEF3C7', unsubscribed:'#F3F4F6' };
+    return `<span style="background:${bg[s]||'#F3F4F6'};color:${colors[s]||'#6B7280'};font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:99px;text-transform:capitalize">${s}</span>`;
+  };
+
+  function _statCard(label, val, sub, color) {
+    return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:16px 20px;text-align:center;min-width:110px;flex:1">
+      <div style="font-size:1.6rem;font-weight:900;color:${color||'#0A1628'}">${val}</div>
+      <div style="font-size:0.7rem;font-weight:700;color:#374151;margin-top:2px">${label}</div>
+      ${sub ? `<div style="font-size:0.68rem;color:#9CA3AF;margin-top:1px">${sub}</div>` : ''}
+    </div>`;
+  }
+
+  async function _renderList() {
+    wrap.innerHTML = `<div style="text-align:center;padding:32px;color:#6B7280">Loading broadcasts…</div>`;
+    try {
+      const r = await fetch('/api/email-broadcast/broadcasts').then(x=>x.json());
+      if (!r.ok) throw new Error(r.error);
+      const bcs = r.broadcasts || [];
+      wrap.innerHTML = `
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+          <button onclick="window._ebCreate()" style="padding:9px 20px;background:linear-gradient(135deg,#0066FF,#7C3AED);border:none;border-radius:8px;color:#fff;font-size:0.84rem;font-weight:700;cursor:pointer">+ New Broadcast</button>
+        </div>
+        ${!bcs.length ? `
+          <div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:12px;padding:48px;text-align:center;color:#6B7280">
+            <div style="font-size:2rem;margin-bottom:10px">📧</div>
+            <div style="font-weight:700;color:#374151;margin-bottom:6px">No broadcasts yet</div>
+            <div style="font-size:0.85rem">Create your first broadcast to send bulk emails with open &amp; click tracking.</div>
+          </div>` :
+          `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
+            <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+              <thead><tr style="background:#F9FAFB">
+                <th style="padding:10px 14px;text-align:left;font-size:0.7rem;font-weight:700;color:#6B7280;border-bottom:1px solid #E5E7EB">NAME</th>
+                <th style="padding:10px 14px;text-align:left;font-size:0.7rem;font-weight:700;color:#6B7280;border-bottom:1px solid #E5E7EB">SUBJECT</th>
+                <th style="padding:10px 14px;text-align:center;font-size:0.7rem;font-weight:700;color:#6B7280;border-bottom:1px solid #E5E7EB">STATUS</th>
+                <th style="padding:10px 14px;text-align:right;font-size:0.7rem;font-weight:700;color:#6B7280;border-bottom:1px solid #E5E7EB">RECIPIENTS</th>
+                <th style="padding:10px 14px;text-align:right;font-size:0.7rem;font-weight:700;color:#6B7280;border-bottom:1px solid #E5E7EB">OPEN RATE</th>
+                <th style="padding:10px 14px;text-align:right;font-size:0.7rem;font-weight:700;color:#6B7280;border-bottom:1px solid #E5E7EB">CLICK RATE</th>
+                <th style="padding:10px 14px;text-align:right;font-size:0.7rem;font-weight:700;color:#6B7280;border-bottom:1px solid #E5E7EB">BOUNCES</th>
+                <th style="padding:10px 14px;text-align:right;font-size:0.7rem;font-weight:700;color:#6B7280;border-bottom:1px solid #E5E7EB">SENT</th>
+                <th style="padding:10px 14px;border-bottom:1px solid #E5E7EB"></th>
+              </tr></thead>
+              <tbody>
+                ${bcs.map(b => {
+                  const s = b.sent_count || 0;
+                  const openRate  = s > 0 ? fmtPct((b.open_count/s)*100) : '—';
+                  const clickRate = s > 0 ? fmtPct((b.click_count/s)*100) : '—';
+                  const bounceRate = s > 0 ? fmtPct((b.bounce_count/s)*100) : '—';
+                  return `<tr style="border-bottom:1px solid #F3F4F6;cursor:pointer" onclick="window._ebDetail(${b.id})">
+                    <td style="padding:10px 14px;font-weight:700;color:#0A1628">${_escapeHtml(b.name)}</td>
+                    <td style="padding:10px 14px;color:#374151;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_escapeHtml(b.subject)}</td>
+                    <td style="padding:10px 14px;text-align:center">${statusBadge(b.status)}</td>
+                    <td style="padding:10px 14px;text-align:right;color:#374151">${fmtNum(b.recipient_count)}</td>
+                    <td style="padding:10px 14px;text-align:right;font-weight:700;color:${s>0?'#059669':'#9CA3AF'}">${openRate}</td>
+                    <td style="padding:10px 14px;text-align:right;font-weight:700;color:${s>0?'#7C3AED':'#9CA3AF'}">${clickRate}</td>
+                    <td style="padding:10px 14px;text-align:right;color:${b.bounce_count>0?'#EF4444':'#9CA3AF'}">${bounceRate}</td>
+                    <td style="padding:10px 14px;text-align:right;color:#6B7280">${fmtDate(b.sent_at)}</td>
+                    <td style="padding:10px 14px;text-align:right">
+                      <button onclick="event.stopPropagation();window._ebDelete(${b.id})" style="padding:3px 8px;background:transparent;border:1px solid #E5E7EB;border-radius:5px;font-size:0.72rem;color:#6B7280;cursor:pointer">🗑</button>
+                    </td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>`
+        }
+      `;
+    } catch(e) { wrap.innerHTML = `<div style="color:#991B1B;padding:16px">Error: ${_escapeHtml(e.message)}</div>`; }
+  }
+
+  window._ebCreate = function() {
+    wrap.innerHTML = `
+      <div style="max-width:680px">
+        <button onclick="window.buildEmailBroadcast()" style="background:transparent;border:none;color:#6B7280;font-size:0.82rem;cursor:pointer;margin-bottom:16px">← Back to broadcasts</button>
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:24px">
+          <h3 style="margin:0 0 18px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">📧 Create New Broadcast</h3>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div><label style="font-size:0.78rem;font-weight:700;color:#374151;display:block;margin-bottom:4px">Campaign Name</label>
+              <input id="eb_name" type="text" placeholder="e.g. May Newsletter 2025" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #D1D5DB;border-radius:7px;font-size:0.85rem;color:#0A1628"></div>
+            <div><label style="font-size:0.78rem;font-weight:700;color:#374151;display:block;margin-bottom:4px">Subject Line</label>
+              <input id="eb_subject" type="text" placeholder="e.g. Here's what we've been working on…" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #D1D5DB;border-radius:7px;font-size:0.85rem;color:#0A1628"></div>
+            <div style="display:flex;gap:12px">
+              <div style="flex:1"><label style="font-size:0.78rem;font-weight:700;color:#374151;display:block;margin-bottom:4px">From Name</label>
+                <input id="eb_from_name" type="text" placeholder="InfoGenie" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #D1D5DB;border-radius:7px;font-size:0.85rem;color:#0A1628"></div>
+              <div style="flex:1"><label style="font-size:0.78rem;font-weight:700;color:#374151;display:block;margin-bottom:4px">From Email <span style="font-weight:400;color:#9CA3AF">(must be verified in Resend)</span></label>
+                <input id="eb_from_email" type="email" placeholder="hello@yourcompany.com" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #D1D5DB;border-radius:7px;font-size:0.85rem;color:#0A1628"></div>
+            </div>
+            <div><label style="font-size:0.78rem;font-weight:700;color:#374151;display:block;margin-bottom:4px">Email Body (HTML)</label>
+              <textarea id="eb_html" rows="8" placeholder="<h1>Hello!</h1><p>Your email body here…</p>" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #D1D5DB;border-radius:7px;font-size:0.82rem;font-family:monospace;color:#0A1628;resize:vertical"></textarea></div>
+            <div><label style="font-size:0.78rem;font-weight:700;color:#374151;display:block;margin-bottom:4px">Plain-text fallback <span style="font-weight:400;color:#9CA3AF">(optional)</span></label>
+              <textarea id="eb_text" rows="3" placeholder="Plain text version for email clients that don't render HTML" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #D1D5DB;border-radius:7px;font-size:0.82rem;color:#0A1628;resize:vertical"></textarea></div>
+          </div>
+          <div style="margin-top:18px;display:flex;gap:10px">
+            <button onclick="window._ebSaveDraft()" style="padding:10px 22px;background:linear-gradient(135deg,#0066FF,#7C3AED);border:none;border-radius:8px;color:#fff;font-size:0.84rem;font-weight:700;cursor:pointer">Save Draft →</button>
+            <button onclick="window.buildEmailBroadcast()" style="padding:10px 16px;background:#F3F4F6;border:none;border-radius:8px;color:#374151;font-size:0.84rem;font-weight:600;cursor:pointer">Cancel</button>
+          </div>
+          <div id="eb_createMsg" style="margin-top:12px;font-size:0.82rem"></div>
+        </div>
+      </div>`;
+  };
+
+  window._ebSaveDraft = async function() {
+    const name       = document.getElementById('eb_name')?.value.trim();
+    const subject    = document.getElementById('eb_subject')?.value.trim();
+    const from_name  = document.getElementById('eb_from_name')?.value.trim();
+    const from_email = document.getElementById('eb_from_email')?.value.trim();
+    const body_html  = document.getElementById('eb_html')?.value.trim();
+    const body_text  = document.getElementById('eb_text')?.value.trim();
+    const msg = document.getElementById('eb_createMsg');
+    if (!name || !subject || (!body_html && !body_text)) { if(msg) msg.innerHTML = '<span style="color:#EF4444">Name, subject and body are required.</span>'; return; }
+    if(msg) msg.innerHTML = '<span style="color:#6B7280">Saving…</span>';
+    try {
+      const r = await fetch('/api/email-broadcast/broadcasts', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ name, subject, from_name, from_email, body_html, body_text })
+      }).then(x=>x.json());
+      if (!r.ok) throw new Error(r.error);
+      window._ebDetail(r.broadcast.id);
+    } catch(e) { if(msg) msg.innerHTML = `<span style="color:#EF4444">${_escapeHtml(e.message)}</span>`; }
+  };
+
+  window._ebDetail = async function(id) {
+    _selectedId = id;
+    wrap.innerHTML = `<div style="text-align:center;padding:32px;color:#6B7280">Loading…</div>`;
+    try {
+      const [bcR, statsR] = await Promise.all([
+        fetch(`/api/email-broadcast/broadcasts/${id}`).then(x=>x.json()),
+        fetch(`/api/email-broadcast/broadcasts/${id}/stats`).then(x=>x.json())
+      ]);
+      if (!bcR.ok) throw new Error(bcR.error);
+      const bc = bcR.broadcast;
+      const st = statsR.ok ? statsR : { sent_count:0, open_rate:0, click_rate:0, bounce_rate:0, delivery_rate:0, by_status:{} };
+      const canSend = ['draft','paused'].includes(bc.status);
+
+      wrap.innerHTML = `
+        <button onclick="window.buildEmailBroadcast()" style="background:transparent;border:none;color:#6B7280;font-size:0.82rem;cursor:pointer;margin-bottom:16px">← Back to broadcasts</button>
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px">
+            <div>
+              <div style="font-size:1.05rem;font-weight:800;color:#0A1628">${_escapeHtml(bc.name)}</div>
+              <div style="font-size:0.8rem;color:#6B7280;margin-top:2px">Subject: <em>${_escapeHtml(bc.subject)}</em></div>
+              <div style="font-size:0.78rem;color:#9CA3AF;margin-top:2px">From: ${_escapeHtml(bc.from_name)} &lt;${_escapeHtml(bc.from_email||'—')}&gt; · ${fmtDate(bc.sent_at||bc.created_at)}</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              ${statusBadge(bc.status)}
+              ${canSend ? `<button onclick="window._ebSend(${id})" style="padding:8px 18px;background:linear-gradient(135deg,#059669,#0066FF);border:none;border-radius:7px;color:#fff;font-size:0.82rem;font-weight:700;cursor:pointer">🚀 Send Now</button>` : ''}
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+            ${_statCard('Recipients', fmtNum(bc.recipient_count), 'in list', '#374151')}
+            ${_statCard('Delivered', fmtNum(st.sent_count), fmtPct(st.delivery_rate||0)+' delivery', '#0066FF')}
+            ${_statCard('Opened', fmtNum(st.open_count||0), fmtPct(st.open_rate||0)+' rate', '#059669')}
+            ${_statCard('Clicked', fmtNum(st.click_count||0), fmtPct(st.click_rate||0)+' rate', '#7C3AED')}
+            ${_statCard('Bounced', fmtNum(st.bounce_count||0), fmtPct(st.bounce_rate||0)+' rate', '#EF4444')}
+            ${_statCard('Complained', fmtNum(st.complaint_count||0), '', '#D97706')}
+          </div>
+          <div id="eb_detailMsg" style="font-size:0.82rem;margin-bottom:10px"></div>
+          <div style="display:flex;gap:8px;border-bottom:1px solid #E5E7EB;margin-bottom:14px">
+            ${['stats','recipients','add-recipients'].map(t=>`<button onclick="window._ebTab('${t}',${id})" style="padding:7px 14px;background:transparent;border:none;border-bottom:${_detailTab===t?'2px solid #7C3AED':'2px solid transparent'};font-size:0.8rem;font-weight:700;color:${_detailTab===t?'#7C3AED':'#6B7280'};cursor:pointer">${t==='stats'?'📊 Stats':t==='recipients'?'👥 Recipients':'➕ Add Recipients'}</button>`).join('')}
+          </div>
+          <div id="eb_tabContent">Loading…</div>
+        </div>`;
+      window._ebTab(_detailTab, id);
+    } catch(e) { wrap.innerHTML = `<div style="color:#991B1B;padding:16px">Error: ${_escapeHtml(e.message)}</div>`; }
+  };
+
+  window._ebTab = async function(tab, id) {
+    _detailTab = tab;
+    const tc = document.getElementById('eb_tabContent'); if (!tc) return;
+    // Refresh tab button styles
+    document.querySelectorAll('#ebWrap button').forEach(b => {
+      const t = b.getAttribute('onclick');
+      if (t && t.includes("_ebTab(")) {
+        const active = t.includes(`'${tab}'`);
+        b.style.borderBottom = active ? '2px solid #7C3AED' : '2px solid transparent';
+        b.style.color = active ? '#7C3AED' : '#6B7280';
+      }
+    });
+    if (tab === 'stats') {
+      tc.innerHTML = `<div style="font-size:0.82rem;color:#6B7280">Stats are shown in the cards above. Send rate, open rate, click rate and bounce rate update in real time as Resend delivers and recipients engage.</div>
+        <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:12px 16px;margin-top:12px;font-size:0.8rem;color:#92400E">
+          <strong>Webhook setup:</strong> To get live open/click/bounce tracking, add <code>POST ${window.location.origin}/api/email-broadcast/webhook</code> as an endpoint in your <a href="https://resend.com/webhooks" target="_blank" style="color:#0066FF">Resend Webhooks dashboard</a> and select the <em>email.opened, email.clicked, email.bounced, email.complained</em> events.
+        </div>`;
+    } else if (tab === 'recipients') {
+      tc.innerHTML = `<div style="color:#6B7280;font-size:0.82rem">Loading recipients…</div>`;
+      try {
+        const r = await fetch(`/api/email-broadcast/broadcasts/${id}/recipients?limit=200`).then(x=>x.json());
+        if (!r.ok) throw new Error(r.error);
+        const recips = r.recipients || [];
+        if (!recips.length) { tc.innerHTML = `<div style="color:#6B7280;font-size:0.82rem;padding:12px">No recipients yet — use the "Add Recipients" tab to upload contacts.</div>`; return; }
+        tc.innerHTML = `
+          <div style="font-size:0.76rem;color:#6B7280;margin-bottom:8px">${fmtNum(r.total)} total recipients</div>
+          <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+            <thead><tr style="background:#F9FAFB">
+              <th style="padding:7px 10px;text-align:left;font-size:0.68rem;font-weight:700;color:#6B7280;border-bottom:1px solid #E5E7EB">EMAIL</th>
+              <th style="padding:7px 10px;text-align:left;font-size:0.68rem;font-weight:700;color:#6B7280;border-bottom:1px solid #E5E7EB">NAME</th>
+              <th style="padding:7px 10px;text-align:center;font-size:0.68rem;font-weight:700;color:#6B7280;border-bottom:1px solid #E5E7EB">STATUS</th>
+              <th style="padding:7px 10px;text-align:right;font-size:0.68rem;font-weight:700;color:#6B7280;border-bottom:1px solid #E5E7EB">SENT</th>
+              <th style="padding:7px 10px;text-align:right;font-size:0.68rem;font-weight:700;color:#6B7280;border-bottom:1px solid #E5E7EB">OPENED</th>
+            </tr></thead>
+            <tbody>
+              ${recips.map(r => `<tr style="border-bottom:1px solid #F3F4F6">
+                <td style="padding:7px 10px;color:#374151">${_escapeHtml(r.email)}</td>
+                <td style="padding:7px 10px;color:#6B7280">${_escapeHtml(r.name||'—')}</td>
+                <td style="padding:7px 10px;text-align:center">${recipBadge(r.status)}</td>
+                <td style="padding:7px 10px;text-align:right;color:#9CA3AF;font-size:0.72rem">${fmtDate(r.sent_at)}</td>
+                <td style="padding:7px 10px;text-align:right;color:#9CA3AF;font-size:0.72rem">${fmtDate(r.opened_at)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table></div>`;
+      } catch(e) { tc.innerHTML = `<div style="color:#EF4444;font-size:0.82rem">${_escapeHtml(e.message)}</div>`; }
+    } else if (tab === 'add-recipients') {
+      tc.innerHTML = `
+        <div style="max-width:500px">
+          <div style="font-size:0.82rem;color:#374151;margin-bottom:10px">Paste one email per line, or use CSV format: <code>email,name</code></div>
+          <textarea id="eb_recipInput" rows="8" placeholder="alice@example.com, Alice Smith&#10;bob@example.com&#10;carol@example.com, Carol" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #D1D5DB;border-radius:7px;font-size:0.82rem;font-family:monospace;color:#0A1628;resize:vertical;margin-bottom:10px"></textarea>
+          <button onclick="window._ebAddRecipients(${id})" style="padding:9px 20px;background:#0066FF;border:none;border-radius:7px;color:#fff;font-size:0.82rem;font-weight:700;cursor:pointer">Add Recipients</button>
+          <div id="eb_recipMsg" style="margin-top:8px;font-size:0.8rem"></div>
+        </div>`;
+    }
+  };
+
+  window._ebAddRecipients = async function(id) {
+    const raw = document.getElementById('eb_recipInput')?.value || '';
+    const msg = document.getElementById('eb_recipMsg');
+    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+    const emails = lines.map(l => {
+      const parts = l.split(',');
+      return { email: parts[0].trim().toLowerCase(), name: (parts[1]||'').trim().replace(/^["']|["']$/g,'') };
+    }).filter(r => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email));
+    if (!emails.length) { if(msg) msg.innerHTML = '<span style="color:#EF4444">No valid email addresses found.</span>'; return; }
+    if(msg) msg.innerHTML = `<span style="color:#6B7280">Adding ${emails.length} recipients…</span>`;
+    try {
+      const r = await fetch(`/api/email-broadcast/broadcasts/${id}/recipients`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ emails })
+      }).then(x=>x.json());
+      if (!r.ok) throw new Error(r.error);
+      if(msg) msg.innerHTML = `<span style="color:#059669">Added ${r.added} new recipients (${r.total - r.added} duplicates skipped).</span>`;
+      setTimeout(() => window._ebDetail(id), 1200);
+    } catch(e) { if(msg) msg.innerHTML = `<span style="color:#EF4444">${_escapeHtml(e.message)}</span>`; }
+  };
+
+  window._ebSend = async function(id) {
+    const msg = document.getElementById('eb_detailMsg');
+    if (!confirm('Send this broadcast to all queued recipients? This cannot be undone.')) return;
+    if(msg) msg.innerHTML = '<span style="color:#6B7280">Sending…</span>';
+    try {
+      const r = await fetch(`/api/email-broadcast/broadcasts/${id}/send`, { method:'POST' }).then(x=>x.json());
+      if (!r.ok) throw new Error(r.error);
+      if(msg) msg.innerHTML = `<span style="color:#059669">${_escapeHtml(r.message)}</span>`;
+      setTimeout(() => window._ebDetail(id), 2000);
+    } catch(e) { if(msg) msg.innerHTML = `<span style="color:#EF4444">${_escapeHtml(e.message)}</span>`; }
+  };
+
+  window._ebDelete = async function(id) {
+    if (!confirm('Delete this broadcast? This cannot be undone.')) return;
+    try {
+      await fetch(`/api/email-broadcast/broadcasts/${id}`, { method:'DELETE' });
+      window.buildEmailBroadcast();
+    } catch(e) { alert('Error: ' + e.message); }
+  };
+
+  _renderList();
 };
 
 // Process return params at first page load too (in case the user lands on

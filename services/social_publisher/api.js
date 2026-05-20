@@ -292,4 +292,98 @@ router.get('/analytics', async (req, res) => {
   res.json({ ok:true, profileId, range: dateRange, accounts: out, totals });
 });
 
+// ── Post Performance: all posts across all accounts, with per-post metrics ────
+// Returns each post with its full engagement breakdown, sortable by the client.
+router.get('/posts-performance', async (req, res) => {
+  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', posts:[], note:'Add ZERNIO_API_KEY to see post analytics.' });
+  const profileId = String(req.query.profileId || '').trim();
+  const dateRange = String(req.query.range || '30d').trim();
+  const sort      = ['engagement','impressions','clicks','likes','date'].includes(req.query.sort) ? req.query.sort : 'engagement';
+  if (!profileId) return _err(res, 400, 'profileId required');
+
+  // 1. Get all connected accounts
+  const acctR = await _zernio('GET', `/accounts?profileId=${encodeURIComponent(profileId)}`);
+  if (!acctR.ok) return _err(res, 400, _friendlyError(acctR.error, acctR.status));
+  const accounts = acctR.data?.accounts || acctR.data?.data || (Array.isArray(acctR.data) ? acctR.data : []);
+  const acctMap = {};
+  for (const a of accounts) {
+    const aid = a._id || a.id;
+    if (aid) acctMap[aid] = { platform: a.platform || a.network || 'unknown', username: a.username || a.handle || a.name || '' };
+  }
+
+  // 2. Pull posts
+  const path = `/posts?profileId=${encodeURIComponent(profileId)}`;
+  const postsR = await _zernio('GET', path);
+  if (!postsR.ok) return _err(res, 400, _friendlyError(postsR.error, postsR.status));
+  const rawPosts = postsR.data?.posts || postsR.data?.data || (Array.isArray(postsR.data) ? postsR.data : []);
+
+  // 3. Try to get per-post analytics if Zernio supports it
+  const enriched = [];
+  for (const p of rawPosts) {
+    const pid = p._id || p.id;
+    let dedicated = null;
+    if (pid) {
+      const pr = await _zernio('GET', `/posts/${encodeURIComponent(pid)}/analytics`);
+      if (pr.ok) dedicated = pr.data?.analytics || pr.data?.data || pr.data || null;
+    }
+
+    const e = dedicated || p?.analytics || p?.engagement || p?.stats || {};
+    const impressions = Number(e.impressions || e.views || e.reach || 0);
+    const likes       = Number(e.likes || e.favorites || 0);
+    const comments    = Number(e.comments || e.replies || 0);
+    const shares      = Number(e.shares || e.retweets || e.reposts || 0);
+    const clicks      = Number(e.clicks || e.linkClicks || 0);
+    const engTotal    = likes + comments + shares + clicks;
+    const engRate     = impressions > 0 ? Number(((engTotal / impressions) * 100).toFixed(2)) : 0;
+
+    // Resolve account info
+    const postAccts = p.accounts || p.accountIds || [];
+    let platform = 'unknown', username = '';
+    if (Array.isArray(postAccts) && postAccts.length) {
+      const firstAcct = postAccts[0];
+      const aid = firstAcct?._id || firstAcct?.id || firstAcct;
+      if (acctMap[aid]) { platform = acctMap[aid].platform; username = acctMap[aid].username; }
+    } else if (Array.isArray(p.platforms) && p.platforms.length) {
+      platform = p.platforms[0];
+    }
+
+    enriched.push({
+      id:          pid,
+      platform,
+      username,
+      text:        String(p.text || p.content || p.caption || '').slice(0, 280),
+      mediaUrl:    p.mediaUrls?.[0] || p.mediaUrl || p.image || null,
+      url:         p.url || p.permalink || null,
+      publishedAt: p.publishedAt || p.scheduledFor || p.createdAt || null,
+      impressions,
+      likes,
+      comments,
+      shares,
+      clicks,
+      engTotal,
+      engRate
+    });
+  }
+
+  // 4. Sort
+  enriched.sort((a, b) => {
+    if (sort === 'engagement')   return b.engTotal - a.engTotal;
+    if (sort === 'impressions')  return b.impressions - a.impressions;
+    if (sort === 'clicks')       return b.clicks - a.clicks;
+    if (sort === 'likes')        return b.likes - a.likes;
+    // date — newest first
+    return new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0);
+  });
+
+  const totals = enriched.reduce((t, p) => {
+    t.impressions += p.impressions;
+    t.likes += p.likes; t.comments += p.comments;
+    t.shares += p.shares; t.clicks += p.clicks;
+    t.engTotal += p.engTotal;
+    return t;
+  }, { impressions:0, likes:0, comments:0, shares:0, clicks:0, engTotal:0 });
+
+  res.json({ ok:true, profileId, range: dateRange, sort, posts: enriched, totals, accountCount: accounts.length });
+});
+
 module.exports = router;
