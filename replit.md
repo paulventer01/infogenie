@@ -1,91 +1,134 @@
 # InfoGenie
 
-InfoGenie is an AI-powered marketing intelligence and campaign automation platform for analyzing competitors, generating ad campaigns, optimizing results, and re-engaging customers.
+AI-powered marketing intelligence and campaign automation platform — competitor analysis, ad campaigns, SEO/content, lead management, omnichannel outreach.
 
-## Run & Operate
+## Run
 
-*   **Run**: `node server.js`
-*   **Env Vars**: `CREDENTIAL_ENCRYPTION_KEY` (REQUIRED in production — 32-byte AES-256-GCM key for the per-user credential vault; accepts hex(64) or base64 that decodes to 32 bytes; generate with `openssl rand -base64 32`), `SESSION_SECRET` (REQUIRED in production — signs the `infogenie.sid` session cookie; falls back to INFOGENIE_API_KEY then a random per-boot string in dev), `AUTH_GOOGLE_CLIENT_ID` + `AUTH_GOOGLE_CLIENT_SECRET` (optional — enables Continue-with-Google on the login wall), `AUTH_FACEBOOK_CLIENT_ID` + `AUTH_FACEBOOK_CLIENT_SECRET` (optional — Facebook login), `AUTH_MICROSOFT_CLIENT_ID` + `AUTH_MICROSOFT_CLIENT_SECRET` (optional — Microsoft login), `AI_INTEGRATIONS_OPENAI_API_KEY`, `AI_INTEGRATIONS_ANTHROPIC_API_KEY`, `RESEND_API_KEY` (booking + Linksell confirmations + auth verification/reset emails), `RESEND_WEBHOOK_SECRET`, `HUBSPOT_PRIVATE_APP_TOKEN`, `FIRECRAWL_API_KEY`, `PERPLEXITY_API_KEY`, `GEMINI_API_KEY`, `INFOGENIE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_TOKEN`, `DATABASE_URL`, `SLACK_WEBHOOK_URL`, `APOLLO_API_KEY`, `BUILTWITH_API_KEY`, `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID`, `GOOGLE_ADS_DEVELOPER_TOKEN` (REQUIRED to enable per-user Google Ads OAuth Connect — Google issues developer tokens to applications, not users, so this is a platform-wide credential set once by the deployment owner), `GOOGLE_ADS_OAUTH_CLIENT_ID` + `GOOGLE_ADS_OAUTH_CLIENT_SECRET` (REQUIRED to enable per-user Google Ads OAuth Connect — register a Web-application OAuth client in Google Cloud Console under APIs & Services → Credentials, and whitelist `${PUBLIC_URL}/api/integrations/google-ads/oauth/callback` as an Authorized redirect URI; the legacy `GOOGLE_ADS_CLIENT_ID` / `GOOGLE_ADS_CLIENT_SECRET` env vars are accepted as a fallback for backward compatibility), `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_CUSTOMER_ID` (optional — operator-only env-var fallback for the deployment owner; non-owner users must connect via the OAuth UI), `GOOGLE_MERCHANT_CENTER_ID` (optional, required only for Shopping campaign launches via /api/launch/google-ads with campaignType=shopping), `TIKTOK_ACCESS_TOKEN`, `TIKTOK_ADVERTISER_ID`, `TIKTOK_RAPIDAPI_KEY` (optional paid fallback for T20 TikTok Downloader, ~$10/mo), `ZERNIO_API_KEY`, `MICROSOFT_ADS_DEVELOPER_TOKEN`, `MICROSOFT_ADS_CLIENT_ID`, `MICROSOFT_ADS_CLIENT_SECRET`, `MICROSOFT_ADS_REFRESH_TOKEN`, `MICROSOFT_ADS_CUSTOMER_ID`, `MICROSOFT_ADS_ACCOUNT_ID`, `WHATSAPP_PHONE_NUMBER_ID` + `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_VERIFY_TOKEN` + `WHATSAPP_APP_SECRET` (Meta WhatsApp Cloud API for the WhatsApp Channel feature; the App Secret is required in production for X-Hub-Signature-256 webhook verification), `VAPI_API_KEY` + `VAPI_PHONE_NUMBER_ID` + `VAPI_WEBHOOK_SECRET` (AI Voice Caller via Vapi.ai; webhook secret is required in production), `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` (optional, enables checkout in Link-in-Bio; webhook secret is required in production for Stripe-Signature verification), `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` + `TWILIO_FROM_NUMBER` (optional, enables real SMS in Omnichannel Composer + Journey Builder; otherwise SMS sends are stubbed/logged), `VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` + `VAPID_SUBJECT` (optional, enables Web Push notifications — generate with `npx web-push generate-vapid-keys`), `RESEND_FROM_EMAIL` (optional, sender address used by Journey Builder + Omnichannel Composer email sends; defaults to `noreply@infogenie.app`), `PUBLIC_URL` (used to build webhook + tracking-pixel + checkout URLs; defaults to https://$REPL_SLUG.replit.app).
+```
+node server.js
+```
+
+Listens on port 5000 (preview) and 80 (external). PostgreSQL via `DATABASE_URL`. JSON files in `data/` auto-migrate to `kv_store` at boot.
 
 ## Stack
 
-*   **Backend**: Node.js, Express.js
-*   **Frontend**: HTML5, CSS3, Vanilla JavaScript (SPA), Chart.js v4.4.0
-*   **ORM/DB**: PostgreSQL (via `kv_store` table + per-tier tables)
-*   **AI/LLM**: OpenAI GPT-4o/GPT-4o-mini, Anthropic Claude, Perplexity, Gemini, Cloudflare Workers AI (Llama 3.1)
-*   **External APIs**: DataForSEO, RapidAPI, Resend, Amplitude, HubSpot, Firecrawl, Google PageSpeed Insights
+| Layer | Tech |
+|---|---|
+| Backend | Node.js + Express.js |
+| Frontend | Vanilla JS SPA · HTML5 · CSS3 · Chart.js v4.4.0 |
+| Database | PostgreSQL (`kv_store` + per-tier tables) |
+| AI/LLM | GPT-4o/mini · Claude · Gemini · Perplexity · Cloudflare Workers AI (Llama 3.1) |
+| External | DataForSEO · Firecrawl · HubSpot · Resend · Amplitude · Google PageSpeed · RapidAPI · Zernio |
 
-## Where things live
+## File Map
 
-*   `/index.html` — Main SPA entry point.
-*   `/style.css` — All application styling.
-*   `/data.js` — Industry intelligence database, competitor data.
-*   `/app.js` — Frontend application logic.
-*   `/server.js` — Backend Express server, API integrations.
-*   `/services/` — Per-tier backend modules (`<name>/{schema,api}.js` pattern).
-*   `/uploads/` — User-uploaded brand assets.
-*   `/data/` — Flat-file persistence (migrated to Postgres `kv_store` at server boot).
-*   `/scripts/` — Build/utility scripts (user manual generation, screenshot capture).
-*   `attached_assets/InfoGenie_User_Manual.pdf` — User manual.
-*   `docs/tiers.md` — **Full per-feature index for T1-T38** (route · endpoint · storage · pairs-with). Read this before adding new tiers.
+| Path | Purpose |
+|---|---|
+| `index.html` | SPA entry point |
+| `style.css` | All styling |
+| `app.js` | Frontend logic (~47k lines) |
+| `data.js` | Industry intelligence + competitor data |
+| `server.js` | Express server + API wiring |
+| `ig_field_enhancer.js` | Global AI-Suggest field decorator (MutationObserver) |
+| `services/<name>/{schema,api}.js` | Per-tier backend modules |
+| `docs/tiers.md` | **Full T1-T38 index** — read before adding tiers |
+| `services/auth/` | Platform auth (users, sessions, OAuth) |
+| `services/credentials/vault.js` | AES-256-GCM per-user credential vault |
+| `services/google_ads_oauth/` | Per-user Google Ads OAuth Connect |
+| `services/meta_ads_oauth/` | Per-user Meta Ads OAuth Connect |
+| `scripts/` | Build utilities (manual gen, screenshots) |
+| `uploads/` | User-uploaded brand assets |
 
-## Architecture decisions
+## Environment Variables
 
-*   **Per-User Credential Vault (`services/credentials/vault.js`)**: AES-256-GCM encrypted per-`(user_id, platform)` credential store backed by `user_integrations(user_id, platform, ciphertext, iv, tag, status, connected_at, updated_at)` PK(user_id, platform). Key from `CREDENTIAL_ENCRYPTION_KEY` (hex(64) or base64→32 bytes; production boot fails fast if missing). Public API: `getCredentials(uid, platform)`, `saveCredentials(uid, platform, blob)`, `deleteCredentials`, `hasKey`, `getStatus`/`setStatus`, plus `resolveGoogleAdsCredentials(uid)` → returns vault creds for that user OR env-var fallback ONLY for owners + cron (uid=null). Google Ads code paths (launch endpoint, insights service, optimizer bandit + creative-refresh + platforms.js, daily/spend aggregators) all flow through the vault. Smoke test: `GET /api/credentials/google-ads/test` resolves → OAuth refresh → tiny GAQL probe → reports `{ok, source: vault|env, error?}` without leaking secrets and sets per-user status to `connected`/`error`. Per-user `/api/ad-platforms/status` returns `googleAds` true when the calling user has a vault row (or is the owner with env-vars set), plus `googleAdsSource: vault|env|none`. Both routes are allow-listed past the owner-only gate so non-owner connections work end-to-end.
-*   **Google Ads Connect — OAuth UI (`services/google_ads_oauth/api.js`, mounted at `/api/integrations/google-ads/*`)**: Per-user "Connect Google Ads" flow that populates the vault end-to-end. `GET /oauth/start` stashes a CSRF `state` + caller `user_id` on the session and redirects to Google's consent screen with the `https://www.googleapis.com/auth/adwords` scope (and `access_type=offline`, `prompt=consent` so a refresh token is always issued). `GET /oauth/callback` validates state, exchanges the auth code, fetches the user's email via OpenID Connect, then calls `listAccessibleCustomers` — auto-binds when exactly one customer is returned, otherwise stashes the list on the session and bounces back to Settings with `?ga_pick=1` so the SPA can render the picker (`/pick-list` + `POST /bind-customer`). `POST /disconnect` wipes the vault row. `GET /summary` returns the non-secret fields (`{operatorReady, connected, email, customerId, status}`) that the Integrations card uses to render its connected vs disconnected state. The operator-level OAuth client is read from `GOOGLE_ADS_OAUTH_CLIENT_ID` / `GOOGLE_ADS_OAUTH_CLIENT_SECRET` (falling back to the existing `GOOGLE_ADS_CLIENT_ID` / `_SECRET` env vars for backward compatibility), and Google's Developer Token (`GOOGLE_ADS_DEVELOPER_TOKEN`) is a single platform-wide credential — Google issues developer tokens to applications, not users. The redirect URI Google must whitelist is `${PUBLIC_URL}/api/integrations/google-ads/oauth/callback`. The frontend (Settings → Integrations → Google Ads card) hydrates from `/summary`, surfaces a "🔗 Connect Google Ads" button when disconnected and a connected-state card (email + Customer ID + 🧪 Test + 🔌 Disconnect) when connected, and renders a clear error dialog for every failure mode (denied consent, missing developer token, state mismatch, no accessible customers, etc.).
-*   **Platform Authentication Foundation (`/api/auth/*`)**: Real per-user accounts backed by Postgres (`users`, `user_identities`, `email_tokens`, `user_sessions`). Email+password signup with bcrypt (cost 12) and an email-verification link sent via Resend; `forgot-password` issues a 1-hour reset token. Social login (`/api/auth/oauth/:provider/{start,callback}`) for Google / Facebook / Microsoft using only `email + profile` scopes — wires into `AUTH_<PROVIDER>_CLIENT_ID` / `_SECRET` env vars; missing creds simply hide the social button. Sessions use `express-session` + `connect-pg-simple`, 30-day rolling cookie (`infogenie.sid`, HttpOnly, SameSite=Lax, Secure in production). `loadUserFromSession` middleware populates `req.user` for every request. The first signup automatically becomes `is_owner=TRUE`. The API gate accepts EITHER a valid session OR the legacy `INFOGENIE_API_KEY` (kept for programmatic clients); the historical "same-origin SPA bypass" is removed. Frontend auth wall surfaces email/password tabs, social buttons (auto-shown when configured via `/api/auth/providers`), and forgot-password flow; top-bar user menu calls `/api/auth/logout`.
-*   **Dual-AI Attack Plan**: Key analyses (`/api/ai-attack-plan`) run GPT-4o and Claude in parallel, with a third GPT-4o synthesizing blended intelligence.
-*   **Atomic + Mutex Persistence**: Critical data uses single-writer mutexes and atomic temp-file-and-rename, mirrored to Postgres for transactional safety.
-*   **LLM Redundancy & Cost Optimization**: Multiple providers integrated for redundancy and per-task cost-fit. All AI tiers use the **same pattern**: strict-JSON LLM prompt + `/^_DUMMY/i` key gate + template fallback + Postgres persistence + `_escapeHtml`/`_safeUrl` frontend builder.
-*   **Agentic Command Bar**: Floating command bar uses GPT-4o function calling for natural language commands, with confirmation for destructive ops.
-*   **AI Campaign Optimizer**: Hourly insights from ad platforms, rule-based optimization (PAUSE / SCALE BUDGET / HOLD) every 6 hours. Dry-run by default, live mode applies via platform APIs. Includes Creative Auto-Refresh and Multi-Armed Bandit (Meta + Google Ads).
-*   **Brandwatch-Killer Suite (T1-T38)**: 80+ feature tiers covering monitoring, competitive intelligence, content, ads, SEO, conversation inbox, white-label reports, and more. **See `docs/tiers.md` for the full per-tier index** including routes, endpoints, storage, and which tiers pair together.
-*   **Dynamic Audiences (Reach → Dynamic Audiences)**: Real-time rule-based contact segments. Phase 1 builder UI + live preview · Phase 2 15-min sweep cron + HMAC-validated HubSpot webhook · Phase 3 bind to Drip email sequence (only `audienceBindingId`-tagged enrollments touched, mutations under `global._dripStore.lock`) · Phase 4A mirror to HubSpot Static List · Phase 4B churn-risk audience → single-touch AI win-back drip. All bridges run after membership write commits, fanned out per-contact in parallel with per-target try/catch.
-*   **Customer Journey Builder (Reach → Customer Journey Builder)**: Multi-step automated flows with `trigger`/`wait`/`condition`/`action` nodes. Actions fan out to email (Resend), SMS (Twilio), WhatsApp (Meta Cloud), AI voice (Vapi), Web Push (VAPID), or contact tagging. Backend runner ticks every 60s, advances `journey_runs` whose `next_run_at` has elapsed. Pause/Activate per journey · per-run log of every step.
-*   **Real-time Signal Triggers (Manage → Real-time Signal Triggers)**: Bridge between observable signals (`mention_spike`, `sentiment_drop`, `competitor_price`, `trending_keyword`, `review_negative`, `crisis_alert`, `manual`) and journey enrolment. `fireSignal(type,payload)` is exported by `services/signal_triggers/api.js` for other services to call when they detect an event; matching enabled triggers spawn a `journey_runs` row for the contact in the payload. Manual fire UI for testing.
-*   **Marketing Projects (Manage → + New Marketing Project)**: Lightweight project wrapper — name, goal, monthly budget, channels, owner, dates. Active project id stored in localStorage as `ig_active_project_id` so other features can scope themselves to it.
-*   **Brand Calendar (Manage → Brand Calendar)**: Unified planner across 10 categories (Brand · Email · SMS+WhatsApp · Social · Content · Ads · Event · Surveys · Website · My Activities). Sidebar filter + month grid + click-to-add modal. Items persisted in `brand_calendar_items` table.
-*   **Budget Board (Manage → Budget Board)**: Per-month target + per-channel allocations + spend log. `/api/budget/summary?month=YYYY-MM` returns target vs actual, per-channel utilization, and 30-day daily trend. Spend logged manually or by other services via `/api/budget/spend` (e.g., the optimizer can mirror its outflows here).
-*   **Web Analytics (Manage → Web Analytics)**: Read-only aggregator that surfaces what's available without GA4 — channel sessions/impressions from `ad_insights` (last 30d), top landing pages from `landing_pages`, mobile PageSpeed scores from `web_vitals`. Banner prompts user to connect GA4 in Settings for full Source/Medium and Country data.
-*   **7-Day Marketing Playbook (Manage → 7-Day Marketing Playbook)**: Strategic-plan checklist (Day 1 Research → Day 7 Reporting/Automation) sourced from the user's strategy doc. Each step has a 🤖 **AI Suggest** button that calls `/api/playbook/suggest` (GPT-4o-mini, grounded in a live snapshot of `ad_campaigns`/`ad_insights`/`landing_pages`/`budget_spend`/`linksell_leads`/`bookings`/`marketing_projects`) and returns headline + rationale + 3-5 actions + KPI + risk. **▶ Run Autonomously** (per-day or all-7) appends every step as an `officer_tasks_v1` task on the matching AI officer (marketing/sales/analyst/content/seo/cro/finance/ops), so the existing Daily Report Scheduler immediately starts cross-referencing them against real platform activity. Run history kept in `playbook_7day_runs_v1`.
-*   **Omnichannel Composer (Reach → Omnichannel Composer)**: One form, write once → fan out across Email + SMS + WhatsApp + AI Voice + Web Push. Per-channel `configured` status surfaced from `/api/omnichannel/channels` so the UI shows which providers are wired. Each contact gets one send per selected channel; per-target try/catch so a single failure doesn't abort the batch.
-*   **Brand Foundation (Manage → Brand Foundation)**: Singleton brand identity (Purpose · ICP · Voice · Messaging · Visual) backed by `brand_foundation` table (id=1 CHECK constraint). Exports `getBrandContextBlock()` helper which is auto-injected as a system-prompt prefix into the top 5 AI generators — landing pages (`services/landing_pages/api.js`), content calendar social posts (`services/content_calendar/api.js`), cold email personalizer (`services/email_personalizer/api.js`), short-form video scripts (`services/video_script/api.js`), and Creator Studio (`services/creator_studio/api.js`). Save once, every downstream AI tool stays on-brand. Includes a Voice Check tool (0-100 score + banned-word flags + rewrite).
-*   **Ad Swipe File (Compete → Ad Swipe File)**: Private library of saved competitor ads. Every result card in Ad Library Spy gets a 💾 Save to Swipe File button → persists to `ad_swipe` table (UNIQUE on source+external_id to prevent dupes). Each saved ad can be scored 0-10, tagged, and annotated. Filter by tag or advertiser. Closes the Foreplay/Motion gap from the AI-Stack pyramid.
-*   **AI Video — Storyboard + Frames + Voice-Over + MP4 (Creator Studio → AI Video Storyboard)**: Three-button workflow on every storyboard — `/api/studio/video/render-frames` (Cloudflare SDXL key frames), `/api/studio/video/voiceover` (OpenAI TTS MP3), `/api/studio/video/render-mp4` (ffmpeg stitches frames + optional voice-over into a single 1280×720 MP4). Replaces Pictory/RunwayML for short-form ad/social use.
-*   **Ask InfoGenie (Manage → Ask InfoGenie, Onyx-style)**: Natural-language Q&A over the user's own platform data. `/api/platform-search/ask` builds a live JSON snapshot (campaigns, leads, audiences, mentions, ad insights, landing pages, content/brand calendar, budget, bookings, link-in-bio, officer tasks) and feeds it to GPT-4o-mini with strict trust-boundary system prompt. Suggested-question chips on first load. Falls back to raw snapshot when OpenAI key missing.
-*   **Infographic Generator (Manage → Infographic Generator, Napkin-style)**: Topic + layout in, structured JSON out via GPT-4o-mini, rendered to SVG client-side across 7 layouts (funnel · list · comparison · journey · quadrant · pyramid · cycle). Brand Foundation auto-injected. Each saved infographic persists to `kv_store` (`infographic:` prefix); download as SVG or PNG.
-*   **Heatmaps + Session Replay (Manage → Heatmaps)**: Microsoft Clarity wrapper. Singleton `heatmap_config` table stores Clarity Project ID + optional Data Export API token. UI surfaces the install snippet for the user to paste into their site, a deep-link to the Clarity dashboard, and (when token configured) live top-URL / device / browser splits from the Clarity Data Export API alongside their landing-page list. Free alternative to Hotjar/VWO.
-*   **AI Providers — Bring Your Own LLM (Manage → AI Providers)**: Lets users plug any OpenAI-compatible endpoint (Groq, DeepSeek, Mistral, OpenRouter, Together, Azure OpenAI, Ollama, etc.) into InfoGenie. Stored in `ai_providers` table keyed by category (writing · analysis · vision · audio); one row per category can be `is_default`. Exports `getDefaultProvider(category)` and `chatViaProvider(category, messages, opts)` helpers from `services/ai_providers/api.js` for other tiers to opt into user-defined routing before falling back to built-in OpenAI/Claude/Gemini/Perplexity/Cloudflare clients. Includes a per-row 🧪 Test button that fires a tiny `/chat/completions` call and reports latency + sample output.
-*   **Question Mining (Compete → Question Mining, AnswerThePublic-style)**: DataForSEO SERP advanced endpoint pulls `people_also_ask` + `related_searches` for a seed keyword. Auto-grouped by wh-prefix (What/Why/How/etc) and one-click promoted into `content_calendar_items` as draft blog topics. Falls back to template questions when DataForSEO creds missing.
+**Required in production:**
 
-## Product
+| Var | Purpose |
+|---|---|
+| `CREDENTIAL_ENCRYPTION_KEY` | 32-byte AES-256-GCM key for vault (`openssl rand -base64 32`) |
+| `SESSION_SECRET` | Signs `infogenie.sid` cookie (falls back to `INFOGENIE_API_KEY` in dev) |
+| `DATABASE_URL` | Postgres connection string |
+| `INFOGENIE_API_KEY` | API gate + LLM quota enforcement |
 
-*   **AI Marketing Intelligence**: Competitor analysis, keyword gap analysis, share of voice, predictive moves, win/loss intelligence.
-*   **Campaign Automation**: AI creative generation, multi-channel ad hub, social content calendar, drip execution engine, re-engagement agent.
-*   **SEO & Content**: Content-gap ideation, internal link suggester, CRO Lab, Content Scorer, Keyword-Page Map, on-page audit, GEO audit, multi-page crawler.
-*   **Analytics & Reporting**: Cross-channel reporting, GSC/GA4 hub, Attribution & ROI, Blended Performance/CAC, True ROAS, Goal-Based Autonomous Monitoring.
-*   **Lead Management**: Lead Qualifier Agent, Lookalike Audience Builder, Unified Conversation Inbox.
-*   **Real-time Monitoring**: Mention tracking with sentiment, real-time alerts, webhook channels.
-*   **Platform Integrations**: DataForSEO, OpenAI, Anthropic, Resend, Amplitude, HubSpot, Firecrawl, Google PageSpeed, RapidAPI, Gemini, Perplexity, Cloudflare Workers AI, Zernio (15-platform social).
+**Auth / Social Login (optional — missing = button hidden):**
 
-## User preferences
+`AUTH_GOOGLE_CLIENT_ID` · `AUTH_GOOGLE_CLIENT_SECRET` · `AUTH_FACEBOOK_CLIENT_ID` · `AUTH_FACEBOOK_CLIENT_SECRET` · `AUTH_MICROSOFT_CLIENT_ID` · `AUTH_MICROSOFT_CLIENT_SECRET`
 
-*   Non-technical user — prefers plain language + execution over options.
-*   Every "Launch Campaign" auto-registers the campaign in the AI Optimizer dashboard **and turns optimizer_enabled=TRUE on first insert** (preserved on conflict, so users can still manually disable). The optimizer then monitors performance every hour, evaluates pause/scale rules every 6 hours, and reallocates budget across ad sets every 12 hours — all without the user flipping any toggle. Default mode is dry-run for safety; flip to LIVE in Grow → AI Optimizer when ready to let it apply changes to Meta/Google/TikTok directly. Without ad-platform creds, campaigns land as `platform_camp_id='local_<ts>'` so the user still sees them under Tracked Campaigns; once creds are connected the next launch uses the real platform id.
-*   Counter-Message modal exposes 🚀 **Launch Now** (pre-fills Campaign Launch Brief + sets `window._counterTarget` so Campaigns view shows "Targeting: <competitor>" banner) and 📋 **Copy** / **Copy All** buttons for clipboard handoff.
+**AI providers:**
+
+`AI_INTEGRATIONS_OPENAI_API_KEY` · `AI_INTEGRATIONS_ANTHROPIC_API_KEY` · `GEMINI_API_KEY` · `PERPLEXITY_API_KEY` · `CLOUDFLARE_ACCOUNT_ID` · `CLOUDFLARE_AI_TOKEN`
+
+**Ad platforms:**
+
+| Var | Notes |
+|---|---|
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | Platform-wide (Google issues to apps, not users) |
+| `GOOGLE_ADS_OAUTH_CLIENT_ID` / `_SECRET` | Required for per-user Google Ads OAuth Connect |
+| `GOOGLE_ADS_CLIENT_ID` / `_SECRET` / `_REFRESH_TOKEN` / `_CUSTOMER_ID` | Owner env-var fallback only |
+| `GOOGLE_MERCHANT_CENTER_ID` | Shopping campaign launches |
+| `META_ACCESS_TOKEN` · `META_AD_ACCOUNT_ID` | Meta Ads |
+| `TIKTOK_ACCESS_TOKEN` · `TIKTOK_ADVERTISER_ID` · `TIKTOK_RAPIDAPI_KEY` | TikTok |
+| `MICROSOFT_ADS_*` (5 vars) | Microsoft Ads |
+
+**Other integrations:**
+
+`RESEND_API_KEY` · `RESEND_WEBHOOK_SECRET` · `RESEND_FROM_EMAIL` (sender; must be a verified Resend domain) · `HUBSPOT_PRIVATE_APP_TOKEN` · `FIRECRAWL_API_KEY` · `APOLLO_API_KEY` · `BUILTWITH_API_KEY` · `GOOGLE_PAGESPEED_API_KEY` · `GOOGLE_SEARCH_API_KEY` · `SLACK_WEBHOOK_URL` · `AMPLITUDE_API_KEY` · `ZERNIO_API_KEY`
+
+**Messaging / push channels (optional):**
+
+`TWILIO_ACCOUNT_SID` · `TWILIO_AUTH_TOKEN` · `TWILIO_FROM_NUMBER` · `WHATSAPP_PHONE_NUMBER_ID` · `WHATSAPP_ACCESS_TOKEN` · `WHATSAPP_VERIFY_TOKEN` · `WHATSAPP_APP_SECRET` · `VAPI_API_KEY` · `VAPI_PHONE_NUMBER_ID` · `VAPI_WEBHOOK_SECRET` · `VAPID_PUBLIC_KEY` · `VAPID_PRIVATE_KEY` · `VAPID_SUBJECT`
+
+**Payments / misc:**
+
+`STRIPE_SECRET_KEY` · `STRIPE_WEBHOOK_SECRET` · `PUBLIC_URL` (defaults to `https://$REPL_SLUG.replit.app`)
+
+## Architecture — Key Decisions
+
+**Auth** (`services/auth/`): Real per-user accounts in Postgres (`users`, `user_identities`, `email_tokens`, `user_sessions`). bcrypt (cost 12), email-verify via Resend, 1-hour password-reset tokens. Social login via OAuth for Google/Facebook/Microsoft. 30-day rolling session cookie (`infogenie.sid`, HttpOnly, SameSite=Lax). First signup auto-becomes `is_owner=TRUE`. API gate accepts session OR `INFOGENIE_API_KEY` for programmatic clients.
+
+**Credential Vault** (`services/credentials/vault.js`): AES-256-GCM per-`(user_id, platform)` store. `resolveGoogleAdsCredentials(uid)` returns vault creds for that user or env-var fallback only for owners/cron. Smoke test: `GET /api/credentials/google-ads/test`.
+
+**Google Ads OAuth** (`services/google_ads_oauth/`): Per-user OAuth connect → vault. Redirect URI to whitelist: `${PUBLIC_URL}/api/integrations/google-ads/oauth/callback`.
+
+**AI Pattern** (all tiers): strict-JSON LLM prompt → `/^_DUMMY/i` key gate → template fallback → Postgres persist → `_escapeHtml`/`_safeUrl` frontend builder.
+
+**Optimizer**: Hourly ad-insight ingest · 6-hour pause/scale rules · 12-hour bandit reallocation · 24-hour creative refresh. Dry-run by default; flip LIVE in Grow → AI Optimizer.
+
+**Campaign Launch**: Auto-registers in Optimizer with `optimizer_enabled=TRUE`. Without platform creds, lands as `platform_camp_id='local_<ts>'` — visible immediately, real ID used once creds connected.
+
+**Dynamic Audiences**: 4-phase pipeline — rule builder → 15-min sweep cron → Drip email bind → HubSpot Static List mirror. Mutations gated by `global._dripStore.lock`.
+
+**Journey Builder**: `trigger/wait/condition/action` nodes. Runner ticks every 60s. Signal triggers (`fireSignal()`) bridge real events into journey enrolment.
+
+**Brand Foundation**: Singleton (`brand_foundation` table, id=1). `getBrandContextBlock()` auto-injected into landing pages, content calendar, cold email, video scripts, Creator Studio.
+
+**Field Enhancer** (`ig_field_enhancer.js`): MutationObserver adds AI Suggest + brand pill to every eligible input. Scans only newly-added nodes via `requestAnimationFrame` (never full-document re-scan). Skips auth forms, password/file/search inputs, already-decorated fields. Cache-busted as `?v=20260520REL3`.
+
+## Feature Surface (T1-T38)
+
+See `docs/tiers.md` for the full index. High-level areas:
+
+- **Compete**: Competitor profiles · Battle Cards/Plan · AI Attack Plan · SOV · Ad Library Spy · Ad Swipe File · Question Mining · Win/Loss Intel
+- **Grow**: Campaign Launch · AI Optimizer (MAB + creative refresh) · CRO Lab · Landing Pages · Link-in-Bio · Booking Pages
+- **Reach**: Dynamic Audiences · Journey Builder · Omnichannel Composer · Drip Engine · Re-engagement Agent · Conversation Inbox
+- **Manage**: Brand Foundation · Brand Calendar · Budget Board · Marketing Projects · 7-Day Playbook · Ask InfoGenie · Infographic Generator · Heatmaps · AI Providers · Web Analytics · Signal Triggers
+- **Creator Studio**: AI Video (storyboard → frames → MP4) · Social Content · Short-form Video Scripts
+- **SEO**: GEO Audit · Content Scorer · Keyword-Page Map · Internal Link Suggester · On-Page Audit · Multi-page Crawler · SERP Tracker
+
+## User Preferences
+
+- Non-technical — plain language, execute over options.
+- Counter-Message modal: 🚀 Launch Now pre-fills Campaign Brief + sets `window._counterTarget`.
 
 ## Gotchas
 
-*   **API Authentication**: In production, `INFOGENIE_API_KEY` is required for most `/api/*` routes.
-*   **LLM Quota Management**: Per-provider, per-IP, per-day budget caps enforced when `INFOGENIE_API_KEY` is set.
-*   **Resend Webhook URL**: Update after deployment for deliverability metrics.
-*   **Google Analytics/Search Console**: Currently parked due to Google Workspace org policy issues.
-*   **SSRF Guards**: Strict SSRF guards on all external URL fetches.
-*   **Postgres Migration**: Existing `data/*.json` files are migrated to Postgres `kv_store` at server boot.
-*   **Ad Platform Connections**: Cross-Channel Report UI + backend fetchers are live but require real Meta/Google/TikTok credentials for full data.
-*   **Rate-limit IPs**: Public embed routes (T23, T27) use `req.socket.remoteAddress` — NOT `req.ip` (which is XFF-spoofable when `trust proxy` is on).
+- **Resend domain**: `RESEND_FROM_EMAIL` must be a verified Resend domain — unverified domains silently fail. Use `onboarding@resend.dev` for testing.
+- **SSRF guards**: All external URL fetches are strictly guarded.
+- **Rate-limit IPs**: Public embed routes (T23, T27) use `req.socket.remoteAddress` — NOT `req.ip` (XFF-spoofable).
+- **GA/GSC**: Parked — Google Workspace org policy blocks OAuth.
+- **Ad platform creds**: Cross-Channel Report requires real Meta/Google/TikTok credentials.
+- **T35 index error**: `[t35] init failed: functions in index expression must be marked IMMUTABLE` — known, non-blocking.
 
-## Pointers
+## Docs
 
-*   [Amplitude](https://amplitude.com/) · [DataForSEO](https://dataforseo.com/apis) · [OpenAI](https://platform.openai.com/docs/api-reference) · [Anthropic](https://docs.anthropic.com/en/api/) · [Resend](https://resend.com/docs/api-reference) · [Chart.js](https://www.chartjs.org/docs/latest/) · [Express.js](https://expressjs.com/)
-*   [Google PageSpeed](https://developers.google.com/speed/docs/insights/v5/get-started) · [HubSpot](https://developers.hubspot.com/docs/api/overview) · [Firecrawl](https://firecrawl.dev/docs/api-reference) · [Perplexity](https://docs.perplexity.ai/docs/getting-started) · [Gemini](https://cloud.google.com/vertex-ai/generative-ai/docs/start/quickstarts/quickstart-gemini) · [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
+[DataForSEO](https://dataforseo.com/apis) · [OpenAI](https://platform.openai.com/docs/api-reference) · [Anthropic](https://docs.anthropic.com/en/api/) · [Resend](https://resend.com/docs/api-reference) · [HubSpot](https://developers.hubspot.com/docs/api/overview) · [Firecrawl](https://firecrawl.dev/docs/api-reference) · [Perplexity](https://docs.perplexity.ai/docs/getting-started) · [Gemini](https://cloud.google.com/vertex-ai/generative-ai/docs/start/quickstarts/quickstart-gemini) · [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/) · [Chart.js](https://www.chartjs.org/docs/latest/) · [Amplitude](https://amplitude.com/)
