@@ -16,6 +16,7 @@
 const https = require('https');
 const _db = require('../../db');
 const { getSetting } = require('./schema');
+const { resolveMetaAdsCredentials } = require('../credentials/vault');
 
 const STALE_AGE_HOURS = 72;
 const CTR_FLOOR       = 0.005;   // 0.5% — below this an ad with spend > floor is stale
@@ -51,9 +52,10 @@ function _httpsJson(host, path, method, body, headers = {}, timeoutMs = 30000) {
 }
 
 // ── Fetch active ads under a Meta campaign + their 72h performance ─────────
-async function fetchActiveAdsMeta(metaCampId) {
-  const token = process.env.META_ACCESS_TOKEN;
-  if (!token) return { ok: false, error: 'META_ACCESS_TOKEN not set' };
+async function fetchActiveAdsMeta(metaCampId, userId = null) {
+  const _r = await resolveMetaAdsCredentials(userId);
+  if (!_r.ok) return { ok: false, error: _r.error };
+  const token = _r.creds.accessToken;
   // Step 1: list ads under the campaign with their creative + adset
   const adsParams = new URLSearchParams({
     fields: 'id,name,adset_id,status,created_time,creative{id,object_story_spec,image_url,thumbnail_url,body,title}',
@@ -124,8 +126,10 @@ async function _generateImage({ headline, body }) {
 }
 
 // ── Upload base64 image to Meta /adimages, return image_hash ───────────────
-async function _uploadImageToMeta(adAccountId, b64) {
-  const token = process.env.META_ACCESS_TOKEN;
+async function _uploadImageToMeta(adAccountId, b64, userId = null) {
+  const _r = await resolveMetaAdsCredentials(userId);
+  if (!_r.ok) return { ok: false, error: _r.error };
+  const token = _r.creds.accessToken;
   const acct  = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
   const params = new URLSearchParams({ access_token: token, bytes: b64 });
   const r = await _httpsJson('graph.facebook.com', `/v19.0/${acct}/adimages`, 'POST',
@@ -139,8 +143,10 @@ async function _uploadImageToMeta(adAccountId, b64) {
 }
 
 // ── Create ad creative on Meta, return creative_id ─────────────────────────
-async function _createMetaCreative(adAccountId, pageId, { headline, body, cta, link_url, image_hash }) {
-  const token = process.env.META_ACCESS_TOKEN;
+async function _createMetaCreative(adAccountId, pageId, { headline, body, cta, link_url, image_hash }, userId = null) {
+  const _r = await resolveMetaAdsCredentials(userId);
+  if (!_r.ok) return { ok: false, error: _r.error };
+  const token = _r.creds.accessToken;
   const acct  = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
   const story = {
     page_id: pageId,
@@ -165,8 +171,10 @@ async function _createMetaCreative(adAccountId, pageId, { headline, body, cta, l
 }
 
 // ── Create the new (PAUSED) ad on Meta ─────────────────────────────────────
-async function _createMetaAd(adAccountId, adsetId, creativeId, name) {
-  const token = process.env.META_ACCESS_TOKEN;
+async function _createMetaAd(adAccountId, adsetId, creativeId, name, userId = null) {
+  const _r = await resolveMetaAdsCredentials(userId);
+  if (!_r.ok) return { ok: false, error: _r.error };
+  const token = _r.creds.accessToken;
   const acct  = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
   const params = new URLSearchParams({
     access_token: token,
@@ -182,8 +190,10 @@ async function _createMetaAd(adAccountId, adsetId, creativeId, name) {
 }
 
 // ── Pause the old underperforming Meta ad ──────────────────────────────────
-async function _pauseMetaAd(adId) {
-  const token = process.env.META_ACCESS_TOKEN;
+async function _pauseMetaAd(adId, userId = null) {
+  const _r = await resolveMetaAdsCredentials(userId);
+  if (!_r.ok) return { ok: false, error: _r.error };
+  const token = _r.creds.accessToken;
   const params = new URLSearchParams({ access_token: token, status: 'PAUSED' });
   const r = await _httpsJson('graph.facebook.com', `/v19.0/${adId}`, 'POST',
     params.toString(), { 'Content-Type':'application/x-www-form-urlencoded' }, 15000);
@@ -258,10 +268,11 @@ async function _refreshOneAd({ camp, ad, reason, dryRun, runId }) {
     return { ok: true, dryRun: true };
   }
   // 4. LIVE: upload image → creative → ad (paused) → pause old ad
-  const adAccountId = process.env.META_AD_ACCOUNT_ID;
+  const _metaResolved = await resolveMetaAdsCredentials(null);
+  const adAccountId = _metaResolved.ok ? _metaResolved.creds.adAccountId : null;
   if (!adAccountId) {
-    await _logRefresh({ camp, oldAd: ad, newCreative: { ...copy, reason }, newAdId: null, applied: false, error: 'META_AD_ACCOUNT_ID not set', runId });
-    return { ok: false, step: 'config', error: 'META_AD_ACCOUNT_ID not set' };
+    await _logRefresh({ camp, oldAd: ad, newCreative: { ...copy, reason }, newAdId: null, applied: false, error: 'Meta Ads not connected — link an account in Settings', runId });
+    return { ok: false, step: 'config', error: 'Meta Ads not connected' };
   }
   const pageId = ad.creative?.object_story_spec?.page_id;
   if (!pageId) {

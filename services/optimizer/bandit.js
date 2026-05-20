@@ -19,6 +19,7 @@
 const https = require('https');
 const _db = require('../../db');
 const { getSetting } = require('./schema');
+const { resolveMetaAdsCredentials } = require('../credentials/vault');
 
 const MIN_EXPLORE_SHARE = 0.10;   // each arm gets at least 10% of budget
 const MAX_ARM_SHARE     = 0.60;   // no single arm gets more than 60%
@@ -88,9 +89,10 @@ function _betaSample(alpha, beta) {
 }
 
 // ── Fetch ad sets + 7-day performance from Meta ─────────────────────────────
-async function fetchAdSetsMeta(metaCampId, days = 7) {
-  const token = process.env.META_ACCESS_TOKEN;
-  if (!token) return { ok: false, error: 'META_ACCESS_TOKEN not set' };
+async function fetchAdSetsMeta(metaCampId, days = 7, userId = null) {
+  const _r = await resolveMetaAdsCredentials(userId);
+  if (!_r.ok) return { ok: false, error: _r.error };
+  const token = _r.creds.accessToken;
   const params = new URLSearchParams({
     fields: 'id,name,status,daily_budget,lifetime_budget',
     limit: '50',
@@ -125,9 +127,10 @@ async function fetchAdSetsMeta(metaCampId, days = 7) {
 }
 
 // ── Apply daily-budget change to a single Meta ad set ───────────────────────
-async function _applyAdSetBudget(adsetId, newBudgetUsd) {
-  const token = process.env.META_ACCESS_TOKEN;
-  if (!token) return { ok: false, error: 'META_ACCESS_TOKEN not set' };
+async function _applyAdSetBudget(adsetId, newBudgetUsd, userId = null) {
+  const _r = await resolveMetaAdsCredentials(userId);
+  if (!_r.ok) return { ok: false, error: _r.error };
+  const token = _r.creds.accessToken;
   const cents = Math.max(Math.round(newBudgetUsd * 100), 100);  // floor $1
   const params = new URLSearchParams({ access_token: token, daily_budget: String(cents) });
   // Tighter timeout than reads (8s) — a slow budget POST should fail fast so

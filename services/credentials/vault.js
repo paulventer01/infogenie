@@ -281,6 +281,46 @@ function _gaCredsLooksValid(c) {
     .every(k => c[k] && !/^_DUMMY/i.test(String(c[k])));
 }
 
+// ── Meta Ads — vault-first, env-fallback (owner only) resolver ─────────────
+// Vault blob shape: { accessToken, adAccountId, businessName?, email?, expiresAt? }
+function _metaCredsFromEnv() {
+  const accessToken = process.env.META_ACCESS_TOKEN;
+  const adAccountId = process.env.META_AD_ACCOUNT_ID;
+  if (!accessToken || !adAccountId) return null;
+  if (/^_DUMMY/i.test(accessToken) || /^_DUMMY/i.test(adAccountId)) return null;
+  return { accessToken, adAccountId, businessName: null, email: null };
+}
+
+function _metaCredsLooksValid(c) {
+  if (!c || typeof c !== 'object') return false;
+  return ['accessToken','adAccountId']
+    .every(k => c[k] && !/^_DUMMY/i.test(String(c[k])));
+}
+
+async function resolveMetaAdsCredentials(userId) {
+  const uid = _normUserId(userId);
+  if (uid) {
+    try {
+      const blob = await getCredentials(uid, 'meta_ads');
+      if (_metaCredsLooksValid(blob)) {
+        return { ok: true, source: 'vault', creds: blob };
+      }
+    } catch (e) { /* fall through to env */ }
+  }
+  const isCron = !uid;
+  const ownerOk = isCron || await _isOwner(uid);
+  if (ownerOk) {
+    const env = _metaCredsFromEnv();
+    if (env) return { ok: true, source: 'env', creds: env };
+  }
+  return {
+    ok: false,
+    error: uid
+      ? "You haven't connected Meta Ads yet — connect it from Settings → Meta Ads Manager."
+      : 'Meta Ads not connected for the deployment owner.',
+  };
+}
+
 async function resolveGoogleAdsCredentials(userId) {
   const uid = _normUserId(userId);
   // Per-user vault first
@@ -318,6 +358,7 @@ module.exports = {
   deleteCredentials,
   getStatus,
   setStatus,
-  // Platform-specific resolver
+  // Platform-specific resolvers
   resolveGoogleAdsCredentials,
+  resolveMetaAdsCredentials,
 };

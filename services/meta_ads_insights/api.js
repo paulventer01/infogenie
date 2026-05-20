@@ -1,20 +1,19 @@
 const express = require('express');
 const _https = require('https');
+const _vault = require('../credentials/vault');
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 
-function _hasCreds() {
-  const t = process.env.META_ACCESS_TOKEN, a = process.env.META_AD_ACCOUNT_ID;
-  return t && a && !/^_DUMMY/i.test(t) && !/^_DUMMY/i.test(a);
+async function _resolve(req) {
+  const uid = req.user && req.user.id ? req.user.id : null;
+  const r = await _vault.resolveMetaAdsCredentials(uid);
+  if (!r.ok) return null;
+  const a = String(r.creds.adAccountId || '').trim();
+  const acct = a.startsWith('act_') ? a : `act_${a.replace(/\D+/g,'')}`;
+  return { token: r.creds.accessToken, acct, source: r.source };
 }
 
-function _accountId() {
-  const a = String(process.env.META_AD_ACCOUNT_ID || '').trim();
-  return a.startsWith('act_') ? a : 'act_' + a;
-}
-
-async function _metaGet(path) {
-  const token = process.env.META_ACCESS_TOKEN;
+async function _metaGet(token, path) {
   const sep = path.includes('?') ? '&' : '?';
   const fullPath = `/v19.0${path}${sep}access_token=${encodeURIComponent(token)}`;
   return await new Promise((resolve) => {
@@ -34,25 +33,29 @@ async function _metaGet(path) {
 
 function _friendlyError(err) {
   if (!err) return err;
-  if (/ads_management|ads_read/i.test(err)) return `${err} → Generate a new Meta access token with the 'ads_read' permission (or 'ads_management') from a System User in Business Settings.`;
-  if (/Invalid OAuth|expired|access token/i.test(err)) return `${err} → Your META_ACCESS_TOKEN is invalid or expired. Generate a new long-lived System User token.`;
+  if (/ads_management|ads_read/i.test(err)) return `${err} → Reconnect Meta Ads in Settings and re-approve the ads_read permission.`;
+  if (/Invalid OAuth|expired|access token/i.test(err)) return `${err} → Your Meta Ads connection has expired. Disconnect and reconnect in Settings → Integrations.`;
   return err;
 }
 
+const NOT_CONNECTED = 'Meta Ads not connected — link your account in Settings → Integrations → Meta Ads.';
+
 router.post('/test', async (req, res) => {
-  if (!_hasCreds()) return _err(res, 400, 'META_ACCESS_TOKEN + META_AD_ACCOUNT_ID required');
-  const r = await _metaGet(`/${_accountId()}?fields=name,currency,account_status,timezone_name,amount_spent`);
+  const c = await _resolve(req);
+  if (!c) return _err(res, 400, NOT_CONNECTED);
+  const r = await _metaGet(c.token, `/${c.acct}?fields=name,currency,account_status,timezone_name,amount_spent`);
   if (!r.ok) return _err(res, 400, _friendlyError(r.error));
   res.json({ ok:true, account: r.data });
 });
 
 router.get('/account-summary', async (req, res) => {
-  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', note:'Set META_ACCESS_TOKEN + META_AD_ACCOUNT_ID to see live insights.' });
+  const c = await _resolve(req);
+  if (!c) return res.json({ ok:true, source:'placeholder', note:'Connect Meta Ads in Settings → Integrations to see live insights.' });
   const datePreset = String(req.query.date_preset || 'last_30d');
   const allowed = ['today','yesterday','last_7d','last_14d','last_30d','last_90d','this_month','last_month'];
   const dp = allowed.includes(datePreset) ? datePreset : 'last_30d';
   const fields = 'spend,impressions,reach,clicks,ctr,cpm,cpc,actions,action_values,frequency';
-  const r = await _metaGet(`/${_accountId()}/insights?fields=${fields}&date_preset=${dp}&level=account`);
+  const r = await _metaGet(c.token, `/${c.acct}/insights?fields=${fields}&date_preset=${dp}&level=account`);
   if (!r.ok) return _err(res, 400, _friendlyError(r.error));
   const row = r.data?.data?.[0] || {};
   const purchases = (row.actions || []).find(a => a.action_type === 'purchase' || a.action_type === 'omni_purchase');
@@ -69,20 +72,21 @@ router.get('/account-summary', async (req, res) => {
 });
 
 router.get('/campaigns', async (req, res) => {
-  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', campaigns:[], note:'Set META_ACCESS_TOKEN + META_AD_ACCOUNT_ID for live campaigns.' });
+  const c = await _resolve(req);
+  if (!c) return res.json({ ok:true, source:'placeholder', campaigns:[], note:'Connect Meta Ads in Settings → Integrations for live campaigns.' });
   const dp = String(req.query.date_preset || 'last_30d');
   const allowed = ['today','yesterday','last_7d','last_14d','last_30d','last_90d','this_month','last_month'];
   const datePreset = allowed.includes(dp) ? dp : 'last_30d';
   const fields = 'campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,cpm,actions,action_values';
-  const r = await _metaGet(`/${_accountId()}/insights?fields=${fields}&date_preset=${datePreset}&level=campaign&limit=50`);
+  const r = await _metaGet(c.token, `/${c.acct}/insights?fields=${fields}&date_preset=${datePreset}&level=campaign&limit=50`);
   if (!r.ok) return _err(res, 400, _friendlyError(r.error));
-  const camps = (r.data?.data || []).map(c => {
-    const purch = (c.actions||[]).find(a => a.action_type==='purchase' || a.action_type==='omni_purchase');
-    const pv = (c.action_values||[]).find(a => a.action_type==='purchase' || a.action_type==='omni_purchase');
-    const spend = parseFloat(c.spend||0); const rev = parseFloat(pv?.value||0);
+  const camps = (r.data?.data || []).map(cc => {
+    const purch = (cc.actions||[]).find(a => a.action_type==='purchase' || a.action_type==='omni_purchase');
+    const pv = (cc.action_values||[]).find(a => a.action_type==='purchase' || a.action_type==='omni_purchase');
+    const spend = parseFloat(cc.spend||0); const rev = parseFloat(pv?.value||0);
     return {
-      id: c.campaign_id, name: c.campaign_name, spend, impressions: parseInt(c.impressions||0,10),
-      clicks: parseInt(c.clicks||0,10), ctr: parseFloat(c.ctr||0), cpc: parseFloat(c.cpc||0), cpm: parseFloat(c.cpm||0),
+      id: cc.campaign_id, name: cc.campaign_name, spend, impressions: parseInt(cc.impressions||0,10),
+      clicks: parseInt(cc.clicks||0,10), ctr: parseFloat(cc.ctr||0), cpc: parseFloat(cc.cpc||0), cpm: parseFloat(cc.cpm||0),
       purchases: parseInt(purch?.value||0,10), revenue: rev,
       roas: spend > 0 ? +(rev/spend).toFixed(2) : 0,
     };
@@ -91,12 +95,13 @@ router.get('/campaigns', async (req, res) => {
 });
 
 router.get('/top-ads', async (req, res) => {
-  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', ads:[], note:'Set META_ACCESS_TOKEN + META_AD_ACCOUNT_ID for top-performing creatives.' });
+  const c = await _resolve(req);
+  if (!c) return res.json({ ok:true, source:'placeholder', ads:[], note:'Connect Meta Ads in Settings → Integrations for top-performing creatives.' });
   const dp = String(req.query.date_preset || 'last_30d');
   const allowed = ['last_7d','last_14d','last_30d','last_90d'];
   const datePreset = allowed.includes(dp) ? dp : 'last_30d';
   const fields = 'ad_id,ad_name,campaign_name,spend,impressions,clicks,ctr,cpc,actions';
-  const r = await _metaGet(`/${_accountId()}/insights?fields=${fields}&date_preset=${datePreset}&level=ad&limit=25`);
+  const r = await _metaGet(c.token, `/${c.acct}/insights?fields=${fields}&date_preset=${datePreset}&level=ad&limit=25`);
   if (!r.ok) return _err(res, 400, _friendlyError(r.error));
   const ads = (r.data?.data || []).map(a => {
     const purch = (a.actions||[]).find(x => x.action_type==='purchase' || x.action_type==='omni_purchase');

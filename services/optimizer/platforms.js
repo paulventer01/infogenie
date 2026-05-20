@@ -6,7 +6,7 @@
 // All HTTP calls have timeouts and never throw out of the function.
 
 const https = require('https');
-const { resolveGoogleAdsCredentials } = require('../credentials/vault');
+const { resolveGoogleAdsCredentials, resolveMetaAdsCredentials } = require('../credentials/vault');
 
 function _httpsJson(host, path, method, body, headers = {}, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
@@ -27,9 +27,10 @@ function _httpsJson(host, path, method, body, headers = {}, timeoutMs = 15000) {
 }
 
 // ── Meta Marketing API ───────────────────────────────────────────────────────
-async function fetchMeta(platformCampId, hours = 168) {
-  const token = process.env.META_ACCESS_TOKEN;
-  if (!token) return { ok: false, error: 'META_ACCESS_TOKEN not set' };
+async function fetchMeta(platformCampId, hours = 168, userId = null) {
+  const _r = await resolveMetaAdsCredentials(userId);
+  if (!_r.ok) return { ok: false, error: _r.error };
+  const token = _r.creds.accessToken;
   const since = new Date(Date.now() - hours * 3600 * 1000).toISOString().slice(0,10);
   const until = new Date().toISOString().slice(0,10);
   const params = new URLSearchParams({
@@ -63,9 +64,10 @@ async function fetchMeta(platformCampId, hours = 168) {
 }
 
 // ── Meta: apply update (pause / set daily budget) ────────────────────────────
-async function applyMeta(platformCampId, change) {
-  const token = process.env.META_ACCESS_TOKEN;
-  if (!token) return { ok: false, error: 'META_ACCESS_TOKEN not set' };
+async function applyMeta(platformCampId, change, userId = null) {
+  const _r = await resolveMetaAdsCredentials(userId);
+  if (!_r.ok) return { ok: false, error: _r.error };
+  const token = _r.creds.accessToken;
   const params = new URLSearchParams({ access_token: token });
   if (change.action === 'pause')   params.set('status', 'PAUSED');
   if (change.action === 'resume')  params.set('status', 'ACTIVE');
@@ -180,7 +182,12 @@ async function applyChange(platform, platformCampId, change) {
 // policy). Other platforms still env-gated until their vault adapters land.
 async function platformConnected(platform, userId = null) {
   const p = String(platform || '').toLowerCase();
-  if (p.includes('meta') || p.includes('facebook')) return !!(process.env.META_ACCESS_TOKEN && process.env.META_AD_ACCOUNT_ID);
+  if (p.includes('meta') || p.includes('facebook')) {
+    try {
+      const r = await resolveMetaAdsCredentials(userId);
+      return !!(r && r.ok);
+    } catch { return false; }
+  }
   if (p.includes('google')) {
     try {
       const r = await resolveGoogleAdsCredentials(userId);

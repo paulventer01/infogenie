@@ -1,10 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const _https = require('https');
+const _vault = require('../credentials/vault');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safeAsync(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[ad-library]', e.stack || e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
-function _hasMeta() { const k = process.env.META_ACCESS_TOKEN; return k && !/^_DUMMY/i.test(k); }
+async function _resolveMetaToken(req) {
+  const uid = req && req.user && req.user.id ? req.user.id : null;
+  const r = await _vault.resolveMetaAdsCredentials(uid);
+  return r.ok ? r.creds.accessToken : null;
+}
 function _hasPerplexity() { const k = process.env.PERPLEXITY_API_KEY; return k && !/^_DUMMY/i.test(k); }
 
 // Wide country set used when the user picks "ALL". Meta's Ad Library requires
@@ -12,12 +17,12 @@ function _hasPerplexity() { const k = process.env.PERPLEXITY_API_KEY; return k &
 // the world's largest ad markets.
 const _ALL_COUNTRIES = ['US','GB','CA','AU','NZ','IE','ZA','NG','KE','EG','MA','DE','FR','ES','IT','NL','BE','PT','CH','AT','SE','NO','DK','FI','PL','CZ','GR','RO','HU','TR','RU','UA','IL','AE','SA','IN','PK','BD','CN','HK','TW','JP','KR','SG','MY','TH','VN','ID','PH','MX','BR','AR','CL','CO','PE'];
 
-function _metaAdsArchive(searchTerm, country, limit) {
+function _metaAdsArchive(searchTerm, country, limit, accessToken) {
   const countries = country === 'ALL' ? _ALL_COUNTRIES : [country];
   const reachedJson = JSON.stringify(countries);
   return new Promise(resolve => {
     const params = new URLSearchParams({
-      access_token: process.env.META_ACCESS_TOKEN,
+      access_token: accessToken,
       search_terms: searchTerm,
       ad_reached_countries: reachedJson,
       ad_active_status: 'ACTIVE',
@@ -107,7 +112,10 @@ async function _tiktokAdsLibraryViaPerplexity(brand, country) {
   });
 }
 
-router.get('/test', (req, res) => res.json({ ok:true, meta: _hasMeta(), perplexity: _hasPerplexity() }));
+router.get('/test', _safeAsync(async (req, res) => {
+  const t = await _resolveMetaToken(req);
+  res.json({ ok:true, meta: !!t, perplexity: _hasPerplexity() });
+}));
 
 function _normCountry(raw) {
   const c = String(raw || 'US').toUpperCase().trim();
@@ -116,12 +124,13 @@ function _normCountry(raw) {
 }
 
 router.post('/meta', _safeAsync(async (req, res) => {
-  if (!_hasMeta()) return _err(res, 400, 'META_ACCESS_TOKEN required (token needs ads_read scope for Meta Ad Library access)');
+  const token = await _resolveMetaToken(req);
+  if (!token) return _err(res, 400, 'Meta Ads not connected — link your account in Settings → Integrations → Meta Ads (the token needs ads_read scope for Meta Ad Library access).');
   const brand = String(req.body?.brand || '').trim();
   const country = _normCountry(req.body?.country);
   const limit = Math.max(5, Math.min(50, parseInt(req.body?.limit || 20, 10)));
   if (!brand) return _err(res, 400, 'brand required');
-  const r = await _metaAdsArchive(brand, country, limit);
+  const r = await _metaAdsArchive(brand, country, limit, token);
   if (r.error) {
     let hint = r.error;
     if (r.code === 100 || /scope|permission|ads_read/i.test(r.error)) hint = 'Meta token missing ads_read scope. Re-authenticate at developers.facebook.com with Ad Library API permission.';

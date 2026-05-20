@@ -264,6 +264,7 @@ const _OWNER_GATE_ALLOW = [
   /^\/api\/ad-platforms\/status$/,   // per-user ad-platform connection status
   /^\/api\/credentials\//,           // per-user credential vault + smoke tests
   /^\/api\/integrations\/google-ads\//, // per-user Google Ads Connect OAuth flow
+  /^\/api\/integrations\/meta-ads\//,   // per-user Meta Ads Connect OAuth flow
 ];
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
@@ -482,13 +483,19 @@ app.get('/api/ad-platforms/status', async (req, res) => {
   const envGoogle = !!(process.env.GOOGLE_ADS_DEVELOPER_TOKEN && process.env.GOOGLE_ADS_REFRESH_TOKEN &&
                        process.env.GOOGLE_ADS_CUSTOMER_ID && process.env.GOOGLE_ADS_CLIENT_ID &&
                        process.env.GOOGLE_ADS_CLIENT_SECRET);
+  const envMeta = !!(process.env.META_AD_ACCOUNT_ID && process.env.META_ACCESS_TOKEN);
   let vaultGoogle = false;        // exists + active (status='connected')
   let vaultGoogleStatus = null;   // 'connected' | 'error' | 'disconnected' | null
+  let vaultMeta = false;
+  let vaultMetaStatus = null;
   try {
     if (uid) {
       const s = await _credentialsVault.getStatus(uid, 'google_ads');
       vaultGoogleStatus = s.status || null;
       vaultGoogle = s.status === 'connected';
+      const sm = await _credentialsVault.getStatus(uid, 'meta_ads');
+      vaultMetaStatus = sm.status || null;
+      vaultMeta = sm.status === 'connected';
     }
   } catch (_e) {}
   res.json({
@@ -496,8 +503,10 @@ app.get('/api/ad-platforms/status', async (req, res) => {
     googleAdsSource: vaultGoogle ? 'vault' : (isOwner && envGoogle ? 'env' : 'none'),
     googleAdsStatus: vaultGoogleStatus || (isOwner && envGoogle ? 'connected' : 'disconnected'),
     merchantCenter: !!process.env.GOOGLE_MERCHANT_CENTER_ID,
+    meta:       vaultMeta || (isOwner && envMeta),
+    metaSource: vaultMeta ? 'vault' : (isOwner && envMeta ? 'env' : 'none'),
+    metaStatus: vaultMetaStatus || (isOwner && envMeta ? 'connected' : 'disconnected'),
     // Other platforms still env-only until their vault adapters land.
-    meta:      !!(process.env.META_AD_ACCOUNT_ID && process.env.META_ACCESS_TOKEN),
     tiktok:    !!(process.env.TIKTOK_ADVERTISER_ID && process.env.TIKTOK_ACCESS_TOKEN),
     microsoft: !!(process.env.MICROSOFT_ADS_DEVELOPER_TOKEN && process.env.MICROSOFT_ADS_CLIENT_ID &&
                   process.env.MICROSOFT_ADS_CLIENT_SECRET   && process.env.MICROSOFT_ADS_REFRESH_TOKEN &&
@@ -544,6 +553,39 @@ app.get('/api/credentials/google-ads/test', async (req, res) => {
     });
   } catch (e) {
     if (uid) await _credentialsVault.setStatus(uid, 'google_ads', 'error').catch(()=>{});
+    return res.json({ ok: false, source: resolved.source, step: 'exception', error: e.message, latencyMs: Date.now() - t0 });
+  }
+});
+
+// ── Meta Ads — credential smoke test (mirrors Google Ads `/test`) ─────────
+app.get('/api/credentials/meta-ads/test', async (req, res) => {
+  const uid = req.user && req.user.id ? req.user.id : null;
+  const t0 = Date.now();
+  const resolved = await _credentialsVault.resolveMetaAdsCredentials(uid);
+  if (!resolved.ok) return res.json({ ok: false, source: 'none', error: resolved.error, latencyMs: Date.now() - t0 });
+  const { accessToken, adAccountId } = resolved.creds;
+  try {
+    const acctRaw = String(adAccountId).trim();
+    const acct = acctRaw.startsWith('act_') ? acctRaw : `act_${acctRaw.replace(/\D+/g,'')}`;
+    const probe = await callHttpsGeneric('graph.facebook.com',
+      `/v19.0/${acct}?fields=name,currency,account_status&access_token=${encodeURIComponent(accessToken)}`,
+      'GET', null, {});
+    let body; try { body = JSON.parse(probe); } catch { body = {}; }
+    if (body.error) {
+      if (uid) await _credentialsVault.setStatus(uid, 'meta_ads', 'error').catch(()=>{});
+      return res.json({ ok: false, source: resolved.source, step: 'graph', error: body.error.message || 'graph_failed', latencyMs: Date.now() - t0 });
+    }
+    if (uid) await _credentialsVault.setStatus(uid, 'meta_ads', 'connected').catch(()=>{});
+    return res.json({
+      ok: true, source: resolved.source,
+      adAccountId: acct,
+      name: body.name || null,
+      currency: body.currency || null,
+      status: body.account_status,
+      latencyMs: Date.now() - t0,
+    });
+  } catch (e) {
+    if (uid) await _credentialsVault.setStatus(uid, 'meta_ads', 'error').catch(()=>{});
     return res.json({ ok: false, source: resolved.source, step: 'exception', error: e.message, latencyMs: Date.now() - t0 });
   }
 });
@@ -651,11 +693,10 @@ app.post('/api/launch/meta', async (req, res) => {
                          String(objectiveOpt).toLowerCase().includes('brand'))
     ? 'OUTCOME_AWARENESS'   // optimised for reach + CPM + video-completion
     : 'OUTCOME_TRAFFIC';    // default — clicks → conversions
-  const adAccountId = process.env.META_AD_ACCOUNT_ID;
-  const accessToken = process.env.META_ACCESS_TOKEN;
-
-  if (!adAccountId || !accessToken)
-    return res.json({ success: false, error: 'Meta credentials not configured — connect them in Settings → Meta Ads Manager.' });
+  const _metaResolved = await _credentialsVault.resolveMetaAdsCredentials(req.user && req.user.id ? req.user.id : null);
+  if (!_metaResolved.ok)
+    return res.json({ success: false, error: _metaResolved.error });
+  const { accessToken, adAccountId } = _metaResolved.creds;
 
   try {
     const cleanToken  = String(accessToken).trim();
@@ -7482,9 +7523,11 @@ app.post('/api/tech-index-signals', async (req, res) => {
 // and computes per-channel ROAS / CAC / ROI under a chosen attribution model.
 // Revenue is derived from Meta action_values when available, else AOV * conv.
 // ─────────────────────────────────────────────────────────────────────────────
-async function _fetchMetaSpendRich(days = 30) {
-  const rawAccountId = _cleanSecret(process.env.META_AD_ACCOUNT_ID);
-  const accessToken  = _cleanSecret(process.env.META_ACCESS_TOKEN);
+async function _fetchMetaSpendRich(days = 30, userId = null) {
+  const _r = await _credentialsVault.resolveMetaAdsCredentials(userId);
+  if (!_r.ok) return { ok:false, channel:'meta', error:'not-configured' };
+  const rawAccountId = _cleanSecret(_r.creds.adAccountId);
+  const accessToken  = _cleanSecret(_r.creds.accessToken);
   if (!rawAccountId || !accessToken) return { ok:false, channel:'meta', error:'not-configured' };
   const numericId = _digitsOnly(rawAccountId) || rawAccountId;
   const acct = numericId.startsWith('act_') ? numericId : `act_${numericId}`;
@@ -7706,9 +7749,11 @@ function _isoWeekStart(dateStr) {
   return _isoDate(d);
 }
 
-async function _fetchMetaSpendDaily(days = 90) {
-  const rawAccountId = _cleanSecret(process.env.META_AD_ACCOUNT_ID);
-  const accessToken  = _cleanSecret(process.env.META_ACCESS_TOKEN);
+async function _fetchMetaSpendDaily(days = 90, userId = null) {
+  const _r = await _credentialsVault.resolveMetaAdsCredentials(userId);
+  if (!_r.ok) return { ok:false, channel:'meta', error:'not-configured', daily:[] };
+  const rawAccountId = _cleanSecret(_r.creds.adAccountId);
+  const accessToken  = _cleanSecret(_r.creds.accessToken);
   if (!rawAccountId || !accessToken) return { ok:false, channel:'meta', error:'not-configured', daily:[] };
   const numericId = _digitsOnly(rawAccountId) || rawAccountId;
   const acct = numericId.startsWith('act_') ? numericId : `act_${numericId}`;
@@ -9173,6 +9218,7 @@ const _googleAdsInsightsRouter = require('./services/google_ads_insights/api');
 const _tiktokAdsInsightsRouter = require('./services/tiktok_ads_insights/api');
 app.use('/api/google-ads-insights', _googleAdsInsightsRouter);
 app.use('/api/integrations/google-ads', require('./services/google_ads_oauth/api'));
+app.use('/api/integrations/meta-ads',   require('./services/meta_ads_oauth/api'));
 app.use('/api/tiktok-ads-insights', _tiktokAdsInsightsRouter);
 const _microsoftAdsInsightsRouter = require('./services/microsoft_ads_insights/api');
 app.use('/api/microsoft-ads-insights', _microsoftAdsInsightsRouter);
@@ -10185,9 +10231,11 @@ function _cleanSecret(v) {
 }
 function _digitsOnly(v) { return String(v == null ? '' : v).replace(/\D+/g, ''); }
 
-async function _fetchMetaSpend(days = 30) {
-  const rawAccountId = _cleanSecret(process.env.META_AD_ACCOUNT_ID);
-  const accessToken  = _cleanSecret(process.env.META_ACCESS_TOKEN);
+async function _fetchMetaSpend(days = 30, userId = null) {
+  const _r = await _credentialsVault.resolveMetaAdsCredentials(userId);
+  if (!_r.ok) return { ok:false, channel:'meta', error:'not-configured' };
+  const rawAccountId = _cleanSecret(_r.creds.adAccountId);
+  const accessToken  = _cleanSecret(_r.creds.accessToken);
   if (!rawAccountId || !accessToken) return { ok:false, channel:'meta', error:'not-configured' };
   // Account IDs are numeric; allow optional act_ prefix and strip stray chars
   const numericId = _digitsOnly(rawAccountId);
@@ -13965,7 +14013,8 @@ app.post('/api/meta-ad-library/search', async (req, res) => {
   const term = (query || domain || '').toString().trim();
   if (!term) return res.status(400).json({ ok:false, error:'query or domain required' });
 
-  const token = process.env.META_ACCESS_TOKEN;
+  const _maRes = await _credentialsVault.resolveMetaAdsCredentials(req.user && req.user.id ? req.user.id : null);
+  const token = _maRes.ok ? _maRes.creds.accessToken : null;
   let metaErr = null;
 
   // Attempt 1: official Meta Graph API
@@ -14007,7 +14056,7 @@ app.post('/api/meta-ad-library/search', async (req, res) => {
       console.log(`[meta-ad-library] Graph API failed: ${err.message} — falling back to Firecrawl scrape`);
     }
   } else {
-    metaErr = 'no META_ACCESS_TOKEN configured';
+    metaErr = "Meta Ads not connected — link your account in Settings → Meta Ads Manager.";
   }
 
   // No Firecrawl fallback: Meta's Ad Library renders ad cards via JS that

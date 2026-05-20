@@ -16632,6 +16632,8 @@ function buildSettings() {
   // OAuth callback.
   setTimeout(() => { try { hydrateGoogleAdsCard(); } catch(e) { console.warn('hydrateGoogleAdsCard', e); } }, 200);
   setTimeout(() => { try { _handleGoogleAdsReturnParams(); } catch(e) {} }, 250);
+  setTimeout(() => { try { hydrateMetaAdsCard(); } catch(e) { console.warn('hydrateMetaAdsCard', e); } }, 200);
+  setTimeout(() => { try { _handleMetaAdsReturnParams(); } catch(e) {} }, 250);
 }
 
 async function checkAPIHealth() {
@@ -47535,6 +47537,231 @@ async function _openGoogleAdsPicker() {
       try { navigateTo('settings'); } catch (_) {}
     }
     // buildSettings (called via navigateTo) will trigger _handleGoogleAdsReturnParams.
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    setTimeout(run, 300);
+  }
+})();
+
+// ─── Meta Ads OAuth Connect (mirrors Google Ads) ────────────────────────────
+async function hydrateMetaAdsCard() {
+  const card = document.getElementById('card-meta-ads');
+  if (!card) return;
+  const body = card.querySelector('.integ-card-body');
+  const status = document.getElementById('status-meta-ads');
+  let summary = null;
+  try {
+    const r = await fetch('/api/integrations/meta-ads/summary', { credentials: 'same-origin' });
+    summary = await r.json();
+  } catch (e) { return; }
+  if (!summary || summary.ok === false) return;
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const operatorBlock = !summary.operatorReady
+    ? `<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:0.78rem;color:#92400E">
+         ⚠️ <strong>Setup incomplete</strong> — the deployment owner must set
+         <code>META_OAUTH_CLIENT_ID</code> + <code>META_OAUTH_CLIENT_SECRET</code>
+         (or the legacy <code>META_APP_ID</code> / <code>META_APP_SECRET</code>)
+         before any user can connect Meta Ads.
+       </div>` : '';
+
+  if (summary.connected) {
+    const badge = summary.status === 'error'
+      ? `<span style="background:rgba(239,68,68,.15);color:#FCA5A5;padding:3px 9px;border-radius:6px;font-size:0.7rem;font-weight:700">⚠️ Token error</span>`
+      : `<span style="background:rgba(16,185,129,.18);color:#34D399;padding:3px 9px;border-radius:6px;font-size:0.7rem;font-weight:700">✅ Connected</span>`;
+    const newHtml = `
+      <div class="unlocks-title">✦ Connected Meta Ad Account</div>
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 14px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:0.85rem;font-weight:700;color:white">${esc(summary.email || summary.name || 'Connected via Facebook OAuth')}</div>
+          ${badge}
+        </div>
+        <div style="font-size:0.74rem;color:rgba(255,255,255,.55)">
+          Ad Account: <code style="color:#93C5FD">${esc(summary.adAccountId || '—')}</code>
+          ${summary.accountName ? ` · ${esc(summary.accountName)}` : ''}
+          ${summary.currency ? ` · ${esc(summary.currency)}` : ''}
+        </div>
+        <div id="ma-test-result" style="margin-top:8px;font-size:0.72rem;color:rgba(255,255,255,.5);display:none"></div>
+      </div>
+      <div class="integ-card-actions" style="flex-direction:column;gap:8px">
+        <button class="btn-test" style="width:100%" onclick="testMetaAdsConnection()">🧪 Test connection</button>
+        <button class="btn-docs-card" style="width:100%;background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.35);color:#FCA5A5" onclick="disconnectMetaAds()">🔌 Disconnect</button>
+      </div>
+    `;
+    if (body) body.innerHTML = newHtml;
+    if (status) { status.className = 'integ-conn-status ics-live'; status.innerHTML = '<span>●</span> Connected'; }
+    card.classList.add('connected');
+    try { localStorage.setItem('ig_integ_meta-ads', 'oauth'); } catch (_) {}
+  } else {
+    const disableAttr = summary.operatorReady ? '' : 'disabled style="opacity:.5;cursor:not-allowed"';
+    const newHtml = `
+      ${operatorBlock}
+      <div class="unlocks-title">✦ What InfoGenie will be allowed to do</div>
+      <ul class="unlocks-list">
+        <li><span class="ul-check">✓</span><span>Read your Facebook + Instagram ad performance (spend, clicks, conversions)</span></li>
+        <li><span class="ul-check">✓</span><span>Create + manage campaigns you launch from inside InfoGenie</span></li>
+        <li><span class="ul-check">✓</span><span>Apply budget + creative optimisations on your behalf (when you flip Optimizer to LIVE)</span></li>
+        <li><span class="ul-check">✓</span><span>List the Meta Ad Accounts you have access to (so you can pick one)</span></li>
+      </ul>
+      <div style="font-size:0.72rem;color:rgba(255,255,255,.45);margin:8px 0 12px">
+        Scopes requested: <code>ads_management, ads_read, read_insights, business_management</code>. You will be sent to Facebook's consent screen and bounced back here.
+      </div>
+      <div class="integ-card-actions" style="flex-direction:column;gap:8px">
+        <button class="oauth-btn" ${disableAttr} onclick="connectMetaAds()">🔗 Connect Meta Ads</button>
+        <button class="btn-docs-card" style="width:100%;text-align:center" onclick="showIntegrationDoc('meta-ads')">📖 View Integration Docs</button>
+      </div>
+    `;
+    if (body) body.innerHTML = newHtml;
+    if (status) { status.className = 'integ-conn-status ics-off'; status.innerHTML = '<span>○</span> Not connected'; }
+    card.classList.remove('connected');
+    try { localStorage.removeItem('ig_integ_meta-ads'); } catch (_) {}
+  }
+}
+
+function connectMetaAds() {
+  window.location.href = '/api/integrations/meta-ads/oauth/start';
+}
+
+async function disconnectMetaAds() {
+  if (!confirm('Disconnect Meta Ads? InfoGenie will lose access to your account and you will need to re-authorize to push campaigns again.')) return;
+  try {
+    const r = await fetch('/api/integrations/meta-ads/disconnect', { method: 'POST', credentials: 'same-origin' });
+    const j = await r.json();
+    if (j.ok) {
+      if (window.showToast) showToast('🔌 Meta Ads disconnected');
+      hydrateMetaAdsCard();
+    } else {
+      alert('Disconnect failed: ' + (j.error || 'unknown'));
+    }
+  } catch (e) { alert('Disconnect failed: ' + e.message); }
+}
+
+async function testMetaAdsConnection() {
+  const out = document.getElementById('ma-test-result');
+  if (out) { out.style.display = 'block'; out.style.color = 'rgba(255,255,255,.55)'; out.textContent = 'Testing…'; }
+  try {
+    const r = await fetch('/api/credentials/meta-ads/test', { credentials: 'same-origin' });
+    const j = await r.json();
+    if (j.ok) {
+      if (out) { out.style.color = '#34D399'; out.textContent = `✅ Live — ${j.name || j.adAccountId} (${j.latencyMs}ms)`; }
+    } else {
+      if (out) { out.style.color = '#FCA5A5'; out.textContent = `❌ ${j.step || 'error'}: ${j.error || 'unknown'}`; }
+      hydrateMetaAdsCard();
+    }
+  } catch (e) {
+    if (out) { out.style.color = '#FCA5A5'; out.textContent = '❌ ' + e.message; }
+  }
+}
+
+const _MA_ERROR_MESSAGES = {
+  access_denied: 'You denied permission to Meta Ads — nothing was saved.',
+  not_signed_in: 'You need to be signed in to connect Meta Ads.',
+  operator_oauth_client_missing: 'The deployment owner has not configured META_OAUTH_CLIENT_ID/SECRET yet.',
+  state_mismatch: 'OAuth state mismatch — please try the Connect button again from this browser.',
+  token_exchange_failed: 'Facebook rejected the authorization code — please try again.',
+  long_lived_token_failed: 'Could not exchange for a long-lived Meta access token — please try again.',
+  list_accounts_failed: 'Could not list your Meta Ad Accounts. Check your Business Manager access and try reconnecting.',
+  no_accessible_accounts: 'This Facebook login has no accessible Meta Ad Accounts. Make sure you are signed in with an account that has Ads access in Meta Business Manager.',
+};
+
+function _handleMetaAdsReturnParams() {
+  const url = new URL(window.location.href);
+  const qs = url.searchParams;
+  const connected = qs.get('ma_connected');
+  const err       = qs.get('ma_error');
+  const detail    = qs.get('ma_detail');
+  const pick      = qs.get('ma_pick');
+  if (!connected && !err && !pick) return;
+
+  ['ma_connected','ma_error','ma_detail','ma_pick'].forEach(k => qs.delete(k));
+  const cleaned = url.pathname + (qs.toString() ? '?' + qs.toString() : '') + url.hash;
+  try { window.history.replaceState({}, '', cleaned); } catch (_) {}
+
+  if (connected) {
+    if (window.showToast) showToast('✅ Meta Ads connected!');
+    setTimeout(() => hydrateMetaAdsCard(), 150);
+    return;
+  }
+  if (err) {
+    const msg = _MA_ERROR_MESSAGES[err] || err;
+    alert('Meta Ads connection failed:\n\n' + msg + (detail ? '\n\nDetail: ' + detail : ''));
+    return;
+  }
+  if (pick) {
+    setTimeout(() => _openMetaAdsPicker(), 200);
+  }
+}
+
+async function _openMetaAdsPicker() {
+  let payload;
+  try {
+    const r = await fetch('/api/integrations/meta-ads/pick-list', { credentials: 'same-origin' });
+    payload = await r.json();
+  } catch (_) { payload = null; }
+  if (!payload || !payload.ok) {
+    alert('Could not load your Meta Ad Account list — please reconnect.');
+    return;
+  }
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const accts = payload.accounts || [];
+  const modal = document.createElement('div');
+  modal.id = 'maPickerModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+    <div style="background:#0F172A;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:24px;max-width:520px;width:100%;color:white">
+      <div style="font-size:1.1rem;font-weight:700;margin-bottom:8px">Pick a Meta Ad Account</div>
+      <div style="font-size:0.8rem;color:rgba(255,255,255,.6);margin-bottom:18px">
+        ${esc(payload.email || payload.name || 'Your Facebook login')} has access to ${accts.length} ad accounts.
+        Pick the one you want InfoGenie to manage. You can disconnect and reconnect to switch later.
+      </div>
+      <div id="maPickList" style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;margin-bottom:18px">
+        ${accts.map(a => `
+          <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;cursor:pointer">
+            <input type="radio" name="maAccount" value="${esc(a.id)}" style="margin:0">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <code style="color:#93C5FD;font-size:0.85rem">${esc(a.id)}</code>
+              <div style="font-size:0.75rem;color:rgba(255,255,255,.7)">${esc(a.name || '(unnamed)')}${a.business ? ` · ${esc(a.business)}` : ''}${a.currency ? ` · ${esc(a.currency)}` : ''}</div>
+            </div>
+          </label>`).join('')}
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="document.getElementById('maPickerModal').remove()" style="padding:8px 14px;background:rgba(255,255,255,.08);border:none;border-radius:8px;color:white;font-weight:600;cursor:pointer">Cancel</button>
+        <button id="maBindBtn" style="padding:8px 14px;background:#2563EB;border:none;border-radius:8px;color:white;font-weight:700;cursor:pointer">Bind selected</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  document.getElementById('maBindBtn').onclick = async () => {
+    const sel = modal.querySelector('input[name="maAccount"]:checked');
+    if (!sel) { alert('Pick one account to continue.'); return; }
+    try {
+      const r = await fetch('/api/integrations/meta-ads/bind-account', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adAccountId: sel.value }),
+      });
+      const j = await r.json();
+      if (j.ok) {
+        if (window.showToast) showToast('✅ Meta Ads connected!');
+        modal.remove();
+        hydrateMetaAdsCard();
+      } else {
+        alert('Bind failed: ' + (j.error || 'unknown'));
+      }
+    } catch (e) { alert('Bind failed: ' + e.message); }
+  };
+}
+
+// Process return params at first page load too (in case the user lands on
+// "/" with ?ma_* params but never navigates to settings).
+(function _bootMetaAdsReturn() {
+  const run = () => {
+    const qs = new URLSearchParams(window.location.search);
+    if (!qs.get('ma_connected') && !qs.get('ma_error') && !qs.get('ma_pick')) return;
+    if (typeof navigateTo === 'function') {
+      try { navigateTo('settings'); } catch (_) {}
+    }
   };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', run);
