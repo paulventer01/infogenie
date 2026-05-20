@@ -209,6 +209,7 @@
           <a href="#" class="nav-link" data-view="geo-audit"><span class="ndl-icon">🛸</span><span class="ndl-text">GEO Audit (ChatGPT · Perplexity)</span></a>
           <a href="#" class="nav-link" data-view="local-seo"><span class="ndl-icon">📍</span><span class="ndl-text">Local SEO (Google Maps)</span></a>
           <a href="#" class="nav-link" data-view="seo-auditor"><span class="ndl-icon">🧭</span><span class="ndl-text">On-Page SEO Audit</span></a>
+          <a href="#" class="nav-link" data-view="content-score"><span class="ndl-icon">📊</span><span class="ndl-text">Content Score Auto-Optimize</span></a>
           <a href="#" class="nav-link" data-view="seo-crawler"><span class="ndl-icon">🕸️</span><span class="ndl-text">Full-Site SEO Crawler</span></a>
           <a href="#" class="nav-link" data-view="web-vitals"><span class="ndl-icon">⏱️</span><span class="ndl-text">Web Vitals (page speed)</span></a>
           <a href="#" class="nav-link" data-view="social-tags"><span class="ndl-icon">🔖</span><span class="ndl-text">Social Tags Audit</span></a>
@@ -256,6 +257,7 @@
           <a href="#" class="nav-link" data-view="link-suggester"><span class="ndl-icon">🔗</span><span class="ndl-text">Internal Link Suggester</span></a>
           <a href="#" class="nav-link" data-view="cro-lab"><span class="ndl-icon">🧪</span><span class="ndl-text">CRO Lab (page tests)</span></a>
           <a href="#" class="nav-link" data-view="ai-audit-suite"><span class="ndl-icon">🔬</span><span class="ndl-text">AI Audit Suite (deep)</span></a>
+          <a href="#" class="nav-link" data-view="vis-leaderboard"><span class="ndl-icon">🏆</span><span class="ndl-text">Visibility Rank Table (Δ)</span></a>
           <a href="#" class="nav-link" onclick="event.preventDefault();openWpCredentialsModal()"><span class="ndl-icon">🟦</span><span class="ndl-text">Connect to WordPress</span></a>
           <a href="#" class="nav-drop-next" data-open-group="manage">Time to schedule, report &amp; <strong>Manage</strong> the team<span class="ndn-arrow">→</span></a>
         </div>
@@ -275,6 +277,7 @@
           <a href="#" class="nav-link" data-view="brand-calendar"><span class="ndl-icon">📅</span><span class="ndl-text">Brand Calendar (10 categories)</span></a>
           <a href="#" class="nav-link" data-view="budget-board"><span class="ndl-icon">💰</span><span class="ndl-text">Budget Board (monitor + spend)</span></a>
           <a href="#" class="nav-link" data-view="web-analytics"><span class="ndl-icon">📈</span><span class="ndl-text">Web Analytics (acquisition + behaviour)</span></a>
+          <a href="#" class="nav-link" data-view="ai-traffic"><span class="ndl-icon">🤖</span><span class="ndl-text">AI Traffic Monitor</span></a>
           <a href="#" class="nav-link" data-view="heatmaps"><span class="ndl-icon">🔥</span><span class="ndl-text">Heatmaps + Session Replay</span></a>
           <a href="#" class="nav-link" data-view="ask-infogenie"><span class="ndl-icon">💬</span><span class="ndl-text">Ask InfoGenie (your data)</span></a>
           <a href="#" class="nav-link" data-view="infographics"><span class="ndl-icon">📊</span><span class="ndl-text">Infographic Generator</span></a>
@@ -1537,6 +1540,33 @@
     <p class="view-sub">Pull closed-deal revenue from HubSpot or upload a CSV from your data warehouse so InfoGenie sees the money your ad platforms can't. Get your real ROAS (online + offline ÷ spend), watch how long leads actually take to close, and let the optimizer recommend budget cuts on campaigns where the true picture is unprofitable — even when Meta says they're winning.</p>
   </div></div></div></div>
   <div class="container" id="trueRoasWrap" style="padding-top:24px;padding-bottom:56px"></div>
+</div>
+
+<div class="view hidden" id="view-content-score">
+  <div class="view-header"><div class="container"><div class="vh-inner"><div>
+    <div class="breadcrumb"><span class="bc-group">SEO</span> <span class="bc-sep">›</span> Content Score</div>
+    <h2 class="view-title">📊 Content Score Auto-Optimize</h2>
+    <p class="view-sub">Score any page across 8 on-page signals — keyword usage, meta tags, content depth, headings, featured-snippet eligibility, schema, links and images — then let AI generate a precise fix for every failing subscore in one click.</p>
+  </div></div></div></div>
+  <div class="container" id="contentScoreWrap" style="padding-top:24px;padding-bottom:56px"></div>
+</div>
+
+<div class="view hidden" id="view-ai-traffic">
+  <div class="view-header"><div class="container"><div class="vh-inner"><div>
+    <div class="breadcrumb"><span class="bc-group">Manage</span> <span class="bc-sep">›</span> AI Traffic Monitor</div>
+    <h2 class="view-title">🤖 AI Traffic Monitor</h2>
+    <p class="view-sub">Track referrals from ChatGPT, Perplexity, Claude, Gemini, Copilot and 10+ other AI engines. Paste a one-line script on your site and see real-time AI referral trends with source breakdown and period-over-period growth.</p>
+  </div></div></div></div>
+  <div class="container" id="atWrap" style="padding-top:24px;padding-bottom:56px"></div>
+</div>
+
+<div class="view hidden" id="view-vis-leaderboard">
+  <div class="view-header"><div class="container"><div class="vh-inner"><div>
+    <div class="breadcrumb"><span class="bc-group">Compete</span> <span class="bc-sep">›</span> Visibility Rank</div>
+    <h2 class="view-title">🏆 Visibility Rank Table</h2>
+    <p class="view-sub">See how you and your competitors rank by AI Share of Voice — with Δ vs your previous run so you can track momentum across ChatGPT, Perplexity, Gemini and Claude.</p>
+  </div></div></div></div>
+  <div class="container" id="vlWrap" style="padding-top:24px;padding-bottom:56px"></div>
 </div>
 
 <div class="view hidden" id="view-seo-crawler">

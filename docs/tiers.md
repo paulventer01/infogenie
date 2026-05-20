@@ -306,3 +306,33 @@ Closes the offline-revenue blind spot. Recommendation-only — never auto-applie
 - **Routes**: `/structures`, `/generate`, `/list`, `/:id`, `DELETE /:id`.
 - **UI**: `/#carousel` under Create nav with structure picker, brand-voice/audience inputs, 10 colour-graded slide cards, "📋 Copy all" + "📤 Open Social Publisher" + "📅 Add to Calendar" handoffs, recent-history list.
 - **Pairs with**: Reddit Pulse "💡 Discover Questions Customers Ask" panel which calls `POST /api/reddit-pulse/discover-questions` (pure Reddit search across 4 query variants `?` / `how to` / `best` / `help`, question-title filter, scored by upvotes+comments×2). "→ Make Carousel" button pre-fills the topic field.
+
+## T39-A — Content Score Auto-Optimize
+
+- **Service**: `services/content_score/{schema,api}.js`
+- **Storage**: `content_score_runs` + `content_score_fixes` tables.
+- **Scoring**: 8 subscore dimensions — keyword density, meta tags, content depth, heading structure, featured-snippet eligibility, schema markup, internal/external links, image alt coverage. Each 0–100; weighted average = overall score.
+- **AI Auto-Fix**: `POST /api/content-score/fix` sends failing subscore context to GPT-4o-mini → returns JSON `{subscore, issue, fix_text, priority}` for each. `POST /api/content-score/auto-optimize` bundles all fixes in one prompt.
+- **Routes**: `POST /score`, `POST /fix`, `POST /auto-optimize`, `GET /runs`.
+- **UI**: `/#content-score` under Reach → "Get found in search & AI" nav group. URL input → score card with 8 gauge bars → "🤖 Auto-Optimize All" button → fix panel with copy buttons per subscore.
+
+## T39-B — AI Traffic Monitor
+
+- **Service**: `services/ai_traffic/{schema,api}.js`
+- **Storage**: `ai_traffic_sites` + `ai_traffic_events` tables.
+- **Detection**: 15 AI referrer domains (chatgpt.com, perplexity.ai, claude.ai, gemini.google.com, copilot.microsoft.com, you.com, phind.com, etc.). `POST /api/ai-traffic/beacon` ingests referrer+path from the 1-line pixel; normalises to source label.
+- **Routes**: `/pixel.js` (embed snippet), `/beacon`, `/stats`, `/sites` CRUD.
+- **UI**: `/#ai-traffic` under Manage → "1 · Plan the work" nav group. Site list → stats cards (total hits, top source, 30d trend) → chart of AI referrals by source → pixel embed code copy button.
+
+## T39-C — Visibility Rank Table with Deltas
+
+- **Extension of T26** (`services/ai_visibility/api.js`).
+- **New route**: `GET /api/ai-visibility/leaderboard` — reads last 2 SOV runs from `ai_visibility_results`, ranks competitors by latest SOV score, computes Δ vs previous run, returns `{rank, name, sov, delta, trend}` array.
+- **UI**: `/#vis-leaderboard` under Grow nav group. Sortable table with rank badge, brand name, SOV % bar, Δ chip (▲green / ▼red / —), trend sparkline. Refreshes on load.
+
+## T39-D — Reddit Reply Generator (Tone Presets)
+
+- **Extension of T29** (`services/reddit_pulse/api.js`).
+- **New route**: `POST /api/reddit-pulse/generate-reply` — accepts `{postTitle, postBody, tone: engaging|direct|balanced}` → GPT-4o-mini generates a contextual, non-spammy Reddit reply matching the tone preset.
+- **UI enhancement**: Each post card in Reddit Live Pulse gains tone pills (Engaging / Direct / Balanced) + "✍️ Generate Reply" button → reply modal with copy button. Tone state persisted in `window._rpTones`.
+

@@ -307,6 +307,67 @@ router.post('/probe', _safe(async (req, res) => {
   res.json({ ok: true, provider, prompt, text: r.text, error: r.error || null, mentions, cost_usd: r.cost || 0 });
 }));
 
+// ── GET /api/ai-visibility/leaderboard ──────────────────────────────────────
+// Returns the latest run's SOV ranking plus Δ vs the previous run for the
+// same brand, so the frontend can render a rank table with trend arrows.
+router.get('/leaderboard', _safe(async (req, res) => {
+  if (!_db.hasDb()) return res.json({ ok: true, leaderboard: [], run: null, prevRun: null });
+  const pool = _db.getPool();
+
+  // Latest run (optionally filter by brand query param)
+  const brand = String(req.query.brand || '').trim();
+  const latest = brand
+    ? await pool.query(`SELECT * FROM ai_visibility_runs WHERE brand=$1 ORDER BY created_at DESC LIMIT 1`, [brand])
+    : await pool.query(`SELECT * FROM ai_visibility_runs ORDER BY created_at DESC LIMIT 1`);
+
+  if (!latest.rowCount) return res.json({ ok: true, leaderboard: [], run: null, prevRun: null });
+  const run = latest.rows[0];
+  const summary = typeof run.summary === 'string' ? JSON.parse(run.summary) : run.summary;
+  const sov = Array.isArray(summary.sov) ? summary.sov : [];
+
+  // Previous run for same brand (to compute deltas)
+  const prev = await pool.query(
+    `SELECT summary FROM ai_visibility_runs WHERE brand=$1 AND created_at < $2 ORDER BY created_at DESC LIMIT 1`,
+    [run.brand, run.created_at]
+  );
+  let prevSov = [];
+  let prevRun = null;
+  if (prev.rowCount) {
+    const ps = typeof prev.rows[0].summary === 'string' ? JSON.parse(prev.rows[0].summary) : prev.rows[0].summary;
+    prevSov = Array.isArray(ps.sov) ? ps.sov : [];
+    prevRun = prev.rows[0];
+  }
+
+  // Build leaderboard rows with rank + delta
+  const leaderboard = sov.map((entry, i) => {
+    const prevEntry = prevSov.find(p => p.brand === entry.brand);
+    const prevShare = prevEntry ? prevEntry.share : null;
+    const deltaShare = prevShare !== null ? Math.round((entry.share - prevShare) * 1000) / 10 : null; // Δ in pp
+    const prevRank = prevEntry ? prevSov.findIndex(p => p.brand === entry.brand) : null;
+    const rankDelta = prevRank !== null ? (prevRank - i) : null; // positive = climbed
+    return {
+      rank: i + 1,
+      brand: entry.brand,
+      mentions: entry.mentions,
+      share: Math.round(entry.share * 1000) / 10, // as %
+      firstCites: entry.firstCites || 0,
+      presentIn: entry.presentIn || 0,
+      deltaShare,
+      rankDelta,
+      isYou: entry.brand === run.brand,
+    };
+  });
+
+  res.json({
+    ok: true,
+    brand: run.brand,
+    run: { id: run.id, created_at: run.created_at, providers: run.providers, prompts: run.prompts },
+    prevRun: prevRun ? { created_at: prevRun.created_at } : null,
+    leaderboard,
+    summary: { answeredRuns: summary.answeredRuns, totalRuns: summary.totalRuns, youShare: Math.round((summary.youShare || 0) * 1000) / 10, youMentions: summary.youMentions || 0 },
+  });
+}));
+
 module.exports = router;
 module.exports.askLlm = _askLlm;
 module.exports.countMentions = _countMentions;

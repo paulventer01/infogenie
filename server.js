@@ -9159,6 +9159,21 @@ app.use('/api/carousel', _carouselRouter);
   }
 } catch (e) { console.warn('[t38] init failed:', e.message); }})();
 
+// ── T39 — Content Score Auto-Optimize · AI Traffic Monitor ──────────────────
+const _csRouter    = require('./services/content_score/api');
+const _csSchema    = require('./services/content_score/schema');
+const _atRouter    = require('./services/ai_traffic/api');
+const _atSchema    = require('./services/ai_traffic/schema');
+app.use('/api/content-score', _csRouter);
+app.use('/api/ai-traffic', _atRouter);
+(async () => { try {
+  if (_db.hasDb()) {
+    await _csSchema.ensureContentScoreSchema();
+    await _atSchema.ensureAiTrafficSchema();
+    console.log('[t39] content-score + ai-traffic schemas ready');
+  }
+} catch (e) { console.warn('[t39] init failed:', e.message); }})();
+
 // ── Tier 7 ─────────────────────────────────────────────────────────────────
 const _podcastSchema = require('./services/podcast_monitor/schema');
 const _podcastRouter = require('./services/podcast_monitor/api');

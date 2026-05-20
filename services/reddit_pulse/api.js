@@ -186,4 +186,63 @@ function _pplxQuestions(businessType) {
   });
 }
 
+// ── POST /api/reddit-pulse/generate-reply ────────────────────────────────────
+// body: { postTitle, postText, brand, tone:'engaging'|'direct'|'balanced', brandContext? }
+// Returns a brand-aware reply in the chosen tone.
+router.post('/generate-reply', _safeAsync(async (req, res) => {
+  const { postTitle, postText, brand, tone, brandContext } = req.body || {};
+  if (!postTitle) return _err(res, 400, 'postTitle is required');
+  if (!brand)     return _err(res, 400, 'brand is required');
+  if (!_hasOpenAI()) return _err(res, 503, 'OpenAI not configured');
+
+  const safePost  = String(postTitle).trim().slice(0, 300);
+  const safeBody  = String(postText  || '').trim().slice(0, 500);
+  const safeBrand = String(brand).trim().slice(0, 80);
+  const safeTone  = ['engaging', 'direct', 'balanced'].includes(tone) ? tone : 'balanced';
+  const safeCtx   = String(brandContext || '').trim().slice(0, 400);
+
+  const toneGuide = {
+    engaging:  'Conversational and warm — use questions to invite dialogue, show genuine curiosity, humanise the brand, add one relatable anecdote or insight. Do NOT be salesy.',
+    direct:    'Brief, confident, and to the point — answer the core question in the first sentence, use short paragraphs, no fluff. Mention the brand only if directly relevant.',
+    balanced:  'Helpful and professional — give real value first, acknowledge the original poster\'s situation, then naturally weave in the brand\'s perspective once at most.',
+  };
+
+  const systemPrompt = `You are a community manager for the brand "${safeBrand}". Write Reddit replies that feel authentic, helpful, and human — never like advertising. Obey the tone instruction strictly. Return ONLY valid JSON: {"reply":"..."}`;
+  const userPrompt = [
+    `Reddit post title: "${safePost}"`,
+    safeBody ? `Post content: "${safeBody}"` : '',
+    safeTone ? `Tone: ${safeTone} — ${toneGuide[safeTone]}` : '',
+    safeCtx  ? `Brand context: ${safeCtx}` : '',
+    '',
+    'Write a Reddit reply (3-6 sentences) that is genuinely helpful to the poster. Mention the brand at most once, only if natural.',
+  ].filter(Boolean).join('\n');
+
+  const bodyStr = JSON.stringify({
+    model: 'gpt-4o-mini', temperature: 0.7, max_tokens: 400,
+    response_format: { type: 'json_object' },
+    messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+  });
+
+  await new Promise(resolve => {
+    const apiReq = _https.request({
+      hostname: 'api.openai.com', path: '/v1/chat/completions', method: 'POST',
+      headers: { 'Authorization': `Bearer ${process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) },
+    }, r => {
+      let d = ''; r.on('data', c => d += c);
+      r.on('end', () => {
+        try {
+          const j = JSON.parse(d);
+          const txt = j?.choices?.[0]?.message?.content;
+          const parsed = JSON.parse(txt);
+          res.json({ ok: true, reply: parsed.reply || '', tone: safeTone });
+        } catch { _err(res, 500, 'Failed to parse AI response'); }
+        resolve();
+      });
+    });
+    apiReq.on('error', e => { _err(res, 500, e.message); resolve(); });
+    apiReq.setTimeout(30000, () => { apiReq.destroy(); _err(res, 504, 'OpenAI timeout'); resolve(); });
+    apiReq.write(bodyStr); apiReq.end();
+  });
+}));
+
 module.exports = router;
