@@ -530,7 +530,7 @@ app.get('/api/credentials/google-ads/test', async (req, res) => {
     const tokenData = JSON.parse(tokenRaw);
     if (!tokenData.access_token) {
       const msg = tokenData.error_description || tokenData.error || 'oauth_refresh_failed';
-      if (uid) await _credentialsVault.setStatus(uid, 'google_ads', 'error').catch(()=>{});
+      if (uid) await _credentialsVault.setStatus(uid, 'google_ads', 'error', { lastError: `OAuth refresh: ${msg}` }).catch(()=>{});
       return res.json({ ok: false, source: resolved.source, step: 'oauth', error: msg, latencyMs: Date.now() - t0 });
     }
     const cleanId = String(customerId).replace(/-/g, '');
@@ -540,8 +540,9 @@ app.get('/api/credentials/google-ads/test', async (req, res) => {
       JSON.stringify({ query: 'SELECT customer.id, customer.descriptive_name FROM customer LIMIT 1' }), headers);
     let body; try { body = JSON.parse(probe); } catch { body = {}; }
     if (body.error) {
-      if (uid) await _credentialsVault.setStatus(uid, 'google_ads', 'error').catch(()=>{});
-      return res.json({ ok: false, source: resolved.source, step: 'gaql', error: body.error.message || 'gaql_failed', latencyMs: Date.now() - t0 });
+      const msg = body.error.message || 'gaql_failed';
+      if (uid) await _credentialsVault.setStatus(uid, 'google_ads', 'error', { lastError: `GAQL probe: ${msg}` }).catch(()=>{});
+      return res.json({ ok: false, source: resolved.source, step: 'gaql', error: msg, latencyMs: Date.now() - t0 });
     }
     const row = (body.results || [])[0] || {};
     if (uid) await _credentialsVault.setStatus(uid, 'google_ads', 'connected').catch(()=>{});
@@ -552,7 +553,7 @@ app.get('/api/credentials/google-ads/test', async (req, res) => {
       latencyMs: Date.now() - t0,
     });
   } catch (e) {
-    if (uid) await _credentialsVault.setStatus(uid, 'google_ads', 'error').catch(()=>{});
+    if (uid) await _credentialsVault.setStatus(uid, 'google_ads', 'error', { lastError: `Exception: ${e.message}` }).catch(()=>{});
     return res.json({ ok: false, source: resolved.source, step: 'exception', error: e.message, latencyMs: Date.now() - t0 });
   }
 });
@@ -9488,6 +9489,60 @@ app.use('/api/headline-tester', _headlineRouter);
   } catch (e) { console.error('[search-intel] init failed:', e.message); }
 })();
 let _googleCronsStarted = false;
+let _gaTokenRefresherStarted = false;
+
+// Weekly Google Ads token refresher. For every user with a non-disconnected
+// google_ads vault row, run the same OAuth refresh + tiny GAQL probe that
+// `/api/credentials/google-ads/test` does — bumping last_verified_at on
+// success and flipping status to 'error' with the specific Google error
+// message on failure. Runs serially with a small delay between users so we
+// stay well under Google's quota for the listAccessibleCustomers/search
+// endpoints.
+async function _runGoogleAdsTokenRefresher() {
+  if (!_db.hasDb()) return;
+  let users = [];
+  try { users = await _credentialsVault.listConnectedUserIds('google_ads'); }
+  catch (e) { console.warn('[ga-token-refresher] listConnectedUserIds:', e.message); return; }
+  if (!users.length) return;
+  console.log(`[ga-token-refresher] pinging ${users.length} connected user(s)…`);
+  let ok = 0, err = 0;
+  for (const uid of users) {
+    try {
+      const resolved = await _credentialsVault.resolveGoogleAdsCredentials(uid);
+      if (!resolved.ok) { err++; continue; }
+      const { devToken, clientId, clientSecret, refreshToken, customerId, loginCustomerId } = resolved.creds;
+      const tokenBody = `client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&refresh_token=${encodeURIComponent(refreshToken)}&grant_type=refresh_token`;
+      const tokenRaw  = await callHttpsGeneric('oauth2.googleapis.com', '/token', 'POST', tokenBody, { 'Content-Type': 'application/x-www-form-urlencoded' });
+      let tokenData = {}; try { tokenData = JSON.parse(tokenRaw); } catch (_) {}
+      if (!tokenData.access_token) {
+        const msg = tokenData.error_description || tokenData.error || 'oauth_refresh_failed';
+        await _credentialsVault.setStatus(uid, 'google_ads', 'error', { lastError: `OAuth refresh: ${msg}` }).catch(()=>{});
+        err++;
+        continue;
+      }
+      const cleanId = String(customerId).replace(/-/g, '');
+      const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenData.access_token}`, 'developer-token': devToken };
+      if (loginCustomerId) headers['login-customer-id'] = String(loginCustomerId).replace(/-/g, '');
+      const probe = await callHttpsGeneric('googleads.googleapis.com', `/v16/customers/${cleanId}/googleAds:search`, 'POST',
+        JSON.stringify({ query: 'SELECT customer.id FROM customer LIMIT 1' }), headers);
+      let body = {}; try { body = JSON.parse(probe); } catch (_) {}
+      if (body.error) {
+        const msg = body.error.message || 'gaql_failed';
+        await _credentialsVault.setStatus(uid, 'google_ads', 'error', { lastError: `GAQL probe: ${msg}` }).catch(()=>{});
+        err++;
+        continue;
+      }
+      await _credentialsVault.setStatus(uid, 'google_ads', 'connected').catch(()=>{});
+      ok++;
+    } catch (e) {
+      await _credentialsVault.setStatus(uid, 'google_ads', 'error', { lastError: `Exception: ${e.message}` }).catch(()=>{});
+      err++;
+    }
+    // Small pacing delay between users to be polite to Google.
+    await new Promise(r => setTimeout(r, 500));
+  }
+  console.log(`[ga-token-refresher] done — ok=${ok} err=${err}`);
+}
 (async () => {
   try {
     if (_db.hasDb()) {
@@ -9520,7 +9575,20 @@ let _googleCronsStarted = false;
           setInterval(() => _gCreative.runGoogleCreativeRefreshOnce().catch(e => console.error('[google-creative-refresh]', e.message)), 24 * 3600 * 1000);
         }
       } catch (e) { console.error('[google-optimizer] init failed:', e.message); }
-      console.log('[optimizer] schema ready, ingest=60m, rules=6h, creative-refresh=24h, bandit=12h, google-bandit=12h, google-creative-refresh=24h, dry-run=default');
+      // Weekly Google Ads token refresher — proactively pings each connected
+      // user's refresh token so the Settings UI can show genuine freshness
+      // ("Last verified: 2h ago") and flip status to 'error' with the specific
+      // Google error message *before* the user tries to launch a campaign.
+      try {
+        if (!_gaTokenRefresherStarted) {
+          _gaTokenRefresherStarted = true;
+          // First run 5 min after boot so connected users get a fresh
+          // last_verified_at right away, then weekly thereafter.
+          setTimeout(() => _runGoogleAdsTokenRefresher().catch(e => console.error('[ga-token-refresher]', e.message)), 5 * 60 * 1000);
+          setInterval(() => _runGoogleAdsTokenRefresher().catch(e => console.error('[ga-token-refresher]', e.message)), 7 * 24 * 3600 * 1000);
+        }
+      } catch (e) { console.error('[ga-token-refresher] init failed:', e.message); }
+      console.log('[optimizer] schema ready, ingest=60m, rules=6h, creative-refresh=24h, bandit=12h, google-bandit=12h, google-creative-refresh=24h, ga-token-refresher=7d, dry-run=default');
     } else {
       console.log('[optimizer] disabled — DATABASE_URL not set');
     }
