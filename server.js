@@ -9171,6 +9171,27 @@ app.use('/api/email-broadcast', _ebRouter);
   }
 } catch (e) { console.warn('[t40] init failed:', e.message); }})();
 
+// ── T41 — Hunter · LinkedIn Ads · Canva Bridge · CRM Sync ───────────────────
+const _hunterRouter   = require('./services/hunter/api');
+const _hunterSchema   = require('./services/hunter/schema');
+const _linkedinRouter = require('./services/linkedin_ads/api');
+const _linkedinSchema = require('./services/linkedin_ads/schema');
+const _canvaRouter    = require('./services/canva_bridge/api');
+const _crmRouter      = require('./services/crm_sync/api');
+const _crmSchema      = require('./services/crm_sync/schema');
+app.use('/api/hunter',       _hunterRouter);
+app.use('/api/linkedin-ads', _linkedinRouter);
+app.use('/api/canva',        _canvaRouter);
+app.use('/api/crm-sync',     _crmRouter);
+(async () => { try {
+  if (_db.hasDb()) {
+    await _hunterSchema.ensureHunterSchema();
+    await _linkedinSchema.ensureLinkedinAdsSchema();
+    await _crmSchema.ensureCrmSyncSchema();
+    console.log('[t41] hunter + linkedin-ads + crm-sync schemas ready');
+  }
+} catch (e) { console.warn('[t41] init failed:', e.message); }})();
+
 // ── T39 — Content Score Auto-Optimize · AI Traffic Monitor ──────────────────
 const _csRouter    = require('./services/content_score/api');
 const _csSchema    = require('./services/content_score/schema');

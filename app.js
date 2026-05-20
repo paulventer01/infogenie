@@ -3204,6 +3204,10 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'vis-leaderboard')   { try { window.buildVisLeaderboard && window.buildVisLeaderboard(); }  catch(e) { console.warn('buildVisLeaderboard error:', e); } }
   if (viewId === 'post-performance')  { try { window.buildPostPerformance && window.buildPostPerformance(); } catch(e) { console.warn('buildPostPerformance error:', e); } }
   if (viewId === 'email-broadcast')   { try { window.buildEmailBroadcast && window.buildEmailBroadcast(); }  catch(e) { console.warn('buildEmailBroadcast error:', e); } }
+  if (viewId === 'hunter')            { try { window.buildHunter && window.buildHunter(); }                  catch(e) { console.warn('buildHunter error:', e); } }
+  if (viewId === 'linkedin-ads')      { try { window.buildLinkedinAds && window.buildLinkedinAds(); }        catch(e) { console.warn('buildLinkedinAds error:', e); } }
+  if (viewId === 'canva')             { try { window.buildCanvaLauncher && window.buildCanvaLauncher(); }    catch(e) { console.warn('buildCanvaLauncher error:', e); } }
+  if (viewId === 'crm-sync')         { try { window.buildCrmSync && window.buildCrmSync(); }                catch(e) { console.warn('buildCrmSync error:', e); } }
   if (viewId === 'technical-suite') {
     try { buildTechnicalSuite(); } catch(e) { console.warn('buildTechnicalSuite error:', e); }
   }
@@ -48530,6 +48534,511 @@ window.buildEmailBroadcast = function() {
 
 // Process return params at first page load too (in case the user lands on
 // "/" with ?ma_* params but never navigates to settings).
+// ── T41-A Hunter.io Email Finder ──────────────────────────────────────────────
+window.buildHunter = function() {
+  const wrap = document.getElementById('hunterWrap');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+
+  const tabs = [
+    { id: 'domain',   label: '🔍 Domain Search',   title: 'Find all emails at a domain' },
+    { id: 'finder',   label: '🎯 Email Finder',     title: 'Find a specific person\'s email' },
+    { id: 'verifier', label: '✅ Email Verifier',   title: 'Verify any email address' },
+    { id: 'history',  label: '🕘 Search History',   title: 'Past searches' }
+  ];
+  let activeTab = 'domain';
+
+  function render() {
+    wrap.innerHTML = `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px">
+        ${tabs.map(t => `<button onclick="window._hunterTab('${t.id}')" style="padding:8px 18px;border-radius:20px;border:2px solid ${activeTab===t.id?'#6C63FF':'#E5E7EB'};background:${activeTab===t.id?'#6C63FF':'#fff'};color:${activeTab===t.id?'#fff':'#374151'};font-size:0.84rem;font-weight:600;cursor:pointer">${t.label}</button>`).join('')}
+      </div>
+      <div id="hunterTabBody"></div>`;
+    const body = document.getElementById('hunterTabBody');
+    if (activeTab === 'domain')   renderDomain(body);
+    else if (activeTab === 'finder')   renderFinder(body);
+    else if (activeTab === 'verifier') renderVerifier(body);
+    else renderHistory(body);
+  }
+
+  window._hunterTab = function(t) { activeTab = t; render(); };
+
+  function _confidenceColor(n) { return n >= 80 ? '#16A34A' : n >= 50 ? '#D97706' : '#DC2626'; }
+  function _verifyColor(s) { return {deliverable:'#16A34A', risky:'#D97706', undeliverable:'#DC2626', unknown:'#6B7280'}[s] || '#6B7280'; }
+
+  function renderDomain(body) {
+    body.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:24px;max-width:640px;margin-bottom:24px">
+        <h3 style="margin:0 0 4px;font-size:1rem;font-weight:700;color:#111">Domain Search</h3>
+        <p style="margin:0 0 18px;font-size:0.84rem;color:#6B7280">Find all email addresses associated with a company domain.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <input id="hDomain" placeholder="acme.com" style="flex:1;min-width:200px;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem">
+          <select id="hType" style="padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.84rem;background:#fff">
+            <option value="">All types</option><option value="personal">Personal only</option><option value="generic">Generic only</option>
+          </select>
+          <button onclick="window._hunterDomainSearch()" style="padding:10px 20px;background:#6C63FF;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Search</button>
+        </div>
+        <p style="margin:10px 0 0;font-size:0.78rem;color:#9CA3AF">No API key yet? <strong>Add HUNTER_API_KEY</strong> to environment secrets — <a href="https://hunter.io/api-keys" target="_blank" style="color:#6C63FF">get your free key at hunter.io</a> (25 searches/month free).</p>
+      </div>
+      <div id="hunterDomainResult"></div>`;
+
+    window._hunterDomainSearch = async function() {
+      const domain = document.getElementById('hDomain')?.value.trim();
+      const type   = document.getElementById('hType')?.value;
+      if (!domain) return;
+      const res = document.getElementById('hunterDomainResult');
+      res.innerHTML = '<div style="color:#6B7280;font-size:0.9rem;padding:12px">Searching...</div>';
+      try {
+        const r = await fetch('/api/hunter/domain-search', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ domain, type }) });
+        const d = await r.json();
+        if (!d.ok) { res.innerHTML = `<div style="color:#DC2626;padding:12px;background:#FEF2F2;border-radius:8px">${_escapeHtml(d.error || 'Search failed')}</div>`; return; }
+        const { result } = d;
+        res.innerHTML = `
+          <div style="margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap">
+            <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:16px 24px;text-align:center"><div style="font-size:1.6rem;font-weight:800;color:#16A34A">${result.emails.length}</div><div style="font-size:0.78rem;color:#6B7280">Emails found</div></div>
+            <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:16px 24px;text-align:center"><div style="font-size:1.1rem;font-weight:700;color:#1D4ED8">${_escapeHtml(result.organization || result.domain)}</div><div style="font-size:0.78rem;color:#6B7280">${_escapeHtml(result.pattern ? 'Pattern: ' + result.pattern : result.country || '')}</div></div>
+          </div>
+          ${result.emails.length === 0 ? '<div style="color:#6B7280;padding:16px;background:#F9FAFB;border-radius:8px;text-align:center">No emails found for this domain.</div>' :
+          `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:0.84rem">
+            <thead><tr style="background:#F9FAFB">${['Email','Confidence','Name','Position','Type','Sources'].map(h=>`<th style="padding:10px 14px;text-align:left;border-bottom:2px solid #E5E7EB;font-weight:700;color:#374151">${h}</th>`).join('')}</tr></thead>
+            <tbody>${result.emails.map(e=>`<tr style="border-bottom:1px solid #F3F4F6">
+              <td style="padding:10px 14px;font-family:monospace;font-size:0.83rem">${_escapeHtml(e.value)}</td>
+              <td style="padding:10px 14px"><span style="color:${_confidenceColor(e.confidence)};font-weight:700">${e.confidence}%</span></td>
+              <td style="padding:10px 14px">${_escapeHtml((e.first_name+' '+e.last_name).trim() || '—')}</td>
+              <td style="padding:10px 14px;color:#6B7280">${_escapeHtml(e.position || '—')}</td>
+              <td style="padding:10px 14px;text-transform:capitalize">${_escapeHtml(e.type || '—')}</td>
+              <td style="padding:10px 14px;color:#6B7280">${e.sources}</td>
+            </tr>`).join('')}</tbody>
+          </table></div>`}`;
+      } catch(err) { res.innerHTML = `<div style="color:#DC2626;padding:12px">Error: ${_escapeHtml(err.message)}</div>`; }
+    };
+  }
+
+  function renderFinder(body) {
+    body.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:24px;max-width:640px;margin-bottom:24px">
+        <h3 style="margin:0 0 4px;font-size:1rem;font-weight:700;color:#111">Email Finder</h3>
+        <p style="margin:0 0 18px;font-size:0.84rem;color:#6B7280">Know the name? Hunter will find their most likely email address.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <input id="hFFirst" placeholder="First name" style="padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem">
+          <input id="hFLast"  placeholder="Last name"  style="padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem">
+        </div>
+        <div style="display:flex;gap:10px">
+          <input id="hFDomain" placeholder="company.com" style="flex:1;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem">
+          <button onclick="window._hunterFinder()" style="padding:10px 20px;background:#6C63FF;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Find Email</button>
+        </div>
+      </div>
+      <div id="hunterFinderResult"></div>`;
+
+    window._hunterFinder = async function() {
+      const fn = document.getElementById('hFFirst')?.value.trim();
+      const ln = document.getElementById('hFLast')?.value.trim();
+      const dm = document.getElementById('hFDomain')?.value.trim();
+      if (!fn || !ln || !dm) { alert('Please fill in first name, last name and domain.'); return; }
+      const res = document.getElementById('hunterFinderResult');
+      res.innerHTML = '<div style="color:#6B7280;padding:12px">Finding email...</div>';
+      try {
+        const r = await fetch('/api/hunter/email-finder', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ first_name:fn, last_name:ln, domain:dm }) });
+        const d = await r.json();
+        if (!d.ok) { res.innerHTML = `<div style="color:#DC2626;padding:12px;background:#FEF2F2;border-radius:8px">${_escapeHtml(d.error)}</div>`; return; }
+        const e = d.result;
+        res.innerHTML = e.email ? `
+          <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:20px 24px;max-width:500px">
+            <div style="font-size:1.1rem;font-weight:800;color:#16A34A;font-family:monospace;margin-bottom:8px">${_escapeHtml(e.email)}</div>
+            <div style="display:flex;gap:24px;font-size:0.84rem;color:#374151">
+              <span>Score: <strong style="color:${_confidenceColor(e.score)}">${e.score}%</strong></span>
+              ${e.position ? `<span>Role: <strong>${_escapeHtml(e.position)}</strong></span>` : ''}
+              ${e.company ? `<span>Company: <strong>${_escapeHtml(e.company)}</strong></span>` : ''}
+              <span>Sources: <strong>${e.sources}</strong></span>
+            </div>
+            <button onclick="navigator.clipboard.writeText('${_escapeHtml(e.email).replace(/'/g,"\\'")}');this.textContent='✅ Copied!';setTimeout(()=>this.textContent='📋 Copy Email',1500)" style="margin-top:12px;padding:8px 16px;background:#6C63FF;color:#fff;border:none;border-radius:7px;font-size:0.84rem;font-weight:600;cursor:pointer">📋 Copy Email</button>
+          </div>` : '<div style="color:#6B7280;padding:16px;background:#F9FAFB;border-radius:8px">No email found for this person. Try a domain search to see all emails on record.</div>';
+      } catch(err) { res.innerHTML = `<div style="color:#DC2626;padding:12px">Error: ${_escapeHtml(err.message)}</div>`; }
+    };
+  }
+
+  function renderVerifier(body) {
+    body.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:24px;max-width:560px;margin-bottom:24px">
+        <h3 style="margin:0 0 4px;font-size:1rem;font-weight:700;color:#111">Email Verifier</h3>
+        <p style="margin:0 0 18px;font-size:0.84rem;color:#6B7280">Check deliverability before you send — avoid bounces and protect your sender reputation.</p>
+        <div style="display:flex;gap:10px">
+          <input id="hVerEmail" placeholder="name@company.com" style="flex:1;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem">
+          <button onclick="window._hunterVerify()" style="padding:10px 20px;background:#6C63FF;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Verify</button>
+        </div>
+      </div>
+      <div id="hunterVerifyResult"></div>`;
+
+    window._hunterVerify = async function() {
+      const email = document.getElementById('hVerEmail')?.value.trim();
+      if (!email) return;
+      const res = document.getElementById('hunterVerifyResult');
+      res.innerHTML = '<div style="color:#6B7280;padding:12px">Verifying...</div>';
+      try {
+        const r = await fetch('/api/hunter/email-verifier', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email }) });
+        const d = await r.json();
+        if (!d.ok) { res.innerHTML = `<div style="color:#DC2626;padding:12px;background:#FEF2F2;border-radius:8px">${_escapeHtml(d.error)}</div>`; return; }
+        const v = d.result;
+        const statusColor = _verifyColor(v.status);
+        const checks = [
+          { label:'Format valid',   val: v.regexp },
+          { label:'MX records',     val: v.mx_records },
+          { label:'SMTP check',     val: v.smtp_check },
+          { label:'Not disposable', val: v.disposable === false },
+          { label:'Not catch-all',  val: v.accept_all === false },
+          { label:'Not blocked',    val: v.block === false }
+        ];
+        res.innerHTML = `
+          <div style="background:#fff;border:2px solid ${statusColor};border-radius:12px;padding:20px 24px;max-width:500px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+              <div style="width:14px;height:14px;border-radius:50%;background:${statusColor}"></div>
+              <span style="font-size:1rem;font-weight:800;color:${statusColor};text-transform:capitalize">${_escapeHtml(v.status)}</span>
+              <span style="font-size:0.84rem;color:#6B7280;margin-left:auto">Score: <strong style="color:${_confidenceColor(v.score)}">${v.score}%</strong></span>
+            </div>
+            <div style="font-family:monospace;font-size:0.9rem;color:#374151;margin-bottom:16px">${_escapeHtml(v.email)}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              ${checks.map(c=>`<div style="display:flex;align-items:center;gap:8px;font-size:0.83rem;color:#374151">
+                <span style="color:${c.val?'#16A34A':'#DC2626'}">${c.val?'✓':'✗'}</span>${_escapeHtml(c.label)}
+              </div>`).join('')}
+            </div>
+          </div>`;
+      } catch(err) { res.innerHTML = `<div style="color:#DC2626;padding:12px">Error: ${_escapeHtml(err.message)}</div>`; }
+    };
+  }
+
+  function renderHistory(body) {
+    body.innerHTML = '<div style="color:#6B7280;padding:12px">Loading history...</div>';
+    fetch('/api/hunter/history').then(r=>r.json()).then(d=>{
+      if (!d.ok || !d.history.length) { body.innerHTML = '<div style="color:#6B7280;padding:16px;background:#F9FAFB;border-radius:8px;text-align:center">No searches yet.</div>'; return; }
+      const typeColors = { domain:'#6C63FF', finder:'#059669', verifier:'#D97706' };
+      body.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:0.84rem">
+        <thead><tr style="background:#F9FAFB">${['Type','Query','Result','Date'].map(h=>`<th style="padding:10px 14px;text-align:left;border-bottom:2px solid #E5E7EB;font-weight:700;color:#374151">${h}</th>`).join('')}</tr></thead>
+        <tbody>${d.history.map(h=>{
+          let resultText = '';
+          if (h.type==='domain') resultText = `${h.total_emails||0} emails found`;
+          else if (h.type==='finder') resultText = h.found_email || 'Not found';
+          else resultText = h.verify_status || '—';
+          return `<tr style="border-bottom:1px solid #F3F4F6">
+            <td style="padding:10px 14px"><span style="padding:3px 10px;border-radius:12px;background:${typeColors[h.type]||'#6B7280'}20;color:${typeColors[h.type]||'#6B7280'};font-size:0.78rem;font-weight:700;text-transform:capitalize">${_escapeHtml(h.type)}</span></td>
+            <td style="padding:10px 14px;font-family:monospace;font-size:0.83rem">${_escapeHtml(h.query)}</td>
+            <td style="padding:10px 14px;color:#374151">${_escapeHtml(resultText)}</td>
+            <td style="padding:10px 14px;color:#9CA3AF;font-size:0.8rem">${new Date(h.created_at).toLocaleDateString()}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+    }).catch(()=>{ body.innerHTML = '<div style="color:#DC2626;padding:12px">Failed to load history.</div>'; });
+  }
+
+  render();
+};
+
+// ── T41-B LinkedIn Ad Spy ─────────────────────────────────────────────────────
+window.buildLinkedinAds = function() {
+  const wrap = document.getElementById('linkedinAdsWrap');
+  if (!wrap) return;
+
+  let history = [];
+
+  async function loadHistory() {
+    try { const r = await fetch('/api/linkedin-ads/history'); const d = await r.json(); history = d.history || []; } catch { history = []; }
+  }
+
+  async function render() {
+    await loadHistory();
+    wrap.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:900px;margin-bottom:24px">
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:24px">
+          <h3 style="margin:0 0 4px;font-size:1rem;font-weight:700;color:#111">Research Competitor LinkedIn Ads</h3>
+          <p style="margin:0 0 16px;font-size:0.83rem;color:#6B7280">AI-powered research against the LinkedIn Ad Library — ad formats, copy themes, targeting signals, budget tier and gaps to exploit.</p>
+          <input id="ladCompany"  placeholder="Company name (e.g. HubSpot)" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem;margin-bottom:10px">
+          <input id="ladIndustry" placeholder="Industry (optional)" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem;margin-bottom:14px">
+          <div style="display:flex;gap:10px">
+            <button onclick="window._ladSearch()" style="flex:1;padding:11px;background:#0077B5;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">🔍 Research Ads</button>
+            <button onclick="window.open('https://www.linkedin.com/ad-library/','_blank')" style="padding:11px 14px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;font-size:0.84rem;cursor:pointer">Open Library ↗</button>
+          </div>
+        </div>
+        <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:20px">
+          <h4 style="margin:0 0 10px;font-size:0.9rem;font-weight:700;color:#1D4ED8">Recent Searches</h4>
+          ${history.length === 0 ? '<p style="font-size:0.83rem;color:#6B7280;margin:0">No searches yet.</p>' :
+          history.slice(0,5).map(h=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer" onclick="document.getElementById('ladCompany').value='${_escapeHtml(h.company.replace(/'/g,"\\'")))}'">
+            <span style="font-size:0.84rem;font-weight:600;color:#1D4ED8">💼 ${_escapeHtml(h.company)}</span>
+            <span style="font-size:0.75rem;color:#9CA3AF;margin-left:auto">${new Date(h.created_at).toLocaleDateString()}</span>
+          </div>`).join('')}
+        </div>
+      </div>
+      <div id="ladResult"></div>`;
+
+    window._ladSearch = async function() {
+      const company  = document.getElementById('ladCompany')?.value.trim();
+      const industry = document.getElementById('ladIndustry')?.value.trim();
+      if (!company) { alert('Enter a company name.'); return; }
+      const res = document.getElementById('ladResult');
+      res.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:32px;text-align:center;color:#6B7280">
+        <div style="font-size:1.4rem;margin-bottom:8px">🔍</div>
+        Researching ${_escapeHtml(company)} LinkedIn ads — this takes 10–20 seconds...
+      </div>`;
+      try {
+        const r = await fetch('/api/linkedin-ads/search', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ company, industry }) });
+        const d = await r.json();
+        if (!d.ok) { res.innerHTML = `<div style="color:#DC2626;padding:16px;background:#FEF2F2;border-radius:10px">${_escapeHtml(d.error)}</div>`; return; }
+        const x = d.result;
+
+        const fmtTable = (arr, cols) => arr && arr.length ? `<table style="width:100%;border-collapse:collapse;font-size:0.83rem;margin-top:8px">
+          <thead><tr>${cols.map(c=>`<th style="padding:8px 12px;text-align:left;background:#F9FAFB;border-bottom:2px solid #E5E7EB;font-weight:700;color:#374151">${c}</th>`).join('')}</tr></thead>
+          <tbody>${arr.map(row=>`<tr style="border-bottom:1px solid #F3F4F6">${Object.values(row).map(v=>`<td style="padding:8px 12px;color:#374151">${_escapeHtml(String(v||''))}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>` : '<p style="color:#9CA3AF;font-size:0.83rem;margin:8px 0">No data available.</p>';
+
+        const section = (title, content) => `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:18px 20px;margin-bottom:14px">
+          <h4 style="margin:0 0 10px;font-size:0.9rem;font-weight:700;color:#111">${title}</h4>${content}</div>`;
+
+        const chipList = (arr) => arr && arr.length ? arr.map(s=>`<span style="display:inline-block;padding:4px 12px;margin:3px;border-radius:12px;background:#F0F7FF;border:1px solid #BFDBFE;color:#1D4ED8;font-size:0.8rem">${_escapeHtml(String(s))}</span>`).join('') : '<span style="color:#9CA3AF;font-size:0.83rem">Not available</span>';
+
+        res.innerHTML = `
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;background:#0077B5;color:#fff;padding:16px 20px;border-radius:12px">
+            <span style="font-size:1.5rem">💼</span>
+            <div><div style="font-size:1.1rem;font-weight:800">${_escapeHtml(x.company || company)} — LinkedIn Ad Intelligence</div>
+            <div style="font-size:0.84rem;opacity:0.85;margin-top:2px">${_escapeHtml(x.posting_cadence ? 'Cadence: ' + x.posting_cadence : '')} ${_escapeHtml(x.budget_signal ? '· Budget: ' + x.budget_signal : '')}</div></div>
+            <a href="https://www.linkedin.com/ad-library/search?q=${encodeURIComponent(company)}" target="_blank" style="margin-left:auto;padding:8px 14px;background:rgba(255,255,255,0.2);border-radius:8px;color:#fff;text-decoration:none;font-size:0.83rem;font-weight:600">View Library ↗</a>
+          </div>
+
+          ${section('Overview', `<p style="margin:0;font-size:0.88rem;color:#374151;line-height:1.6">${_escapeHtml(x.overview || 'No overview available.')}</p>`)}
+
+          ${section('Ad Formats Used', fmtTable(x.ad_formats, ['Format','Usage','Frequency']))}
+
+          ${section('Copy Themes & CTAs', fmtTable(x.copy_themes, ['Theme','Example Headline','Example CTA']))}
+
+          ${section('Targeting Signals', `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div><div style="font-size:0.78rem;font-weight:700;color:#6B7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Likely Audiences</div>${chipList(x.targeting?.likely_audiences)}</div>
+              <div><div style="font-size:0.78rem;font-weight:700;color:#6B7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Job Titles</div>${chipList(x.targeting?.job_titles)}</div>
+              <div><div style="font-size:0.78rem;font-weight:700;color:#6B7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Industries</div>${chipList(x.targeting?.industries)}</div>
+              <div><div style="font-size:0.78rem;font-weight:700;color:#6B7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Seniority</div>${chipList(x.targeting?.seniority)}</div>
+            </div>`)}
+
+          ${section('Gaps to Exploit', `<ol style="margin:0;padding-left:20px">${(x.gaps_to_exploit||[]).map(g=>`<li style="font-size:0.85rem;color:#374151;margin-bottom:6px;line-height:1.5">${_escapeHtml(g)}</li>`).join('') || '<li style="color:#9CA3AF">No gaps identified.</li>'}</ol>`)}
+
+          ${x.top_performing_angles && x.top_performing_angles.length ? section('Top Performing Angles', chipList(x.top_performing_angles)) : ''}`;
+
+        await loadHistory();
+      } catch(err) { res.innerHTML = `<div style="color:#DC2626;padding:16px">Error: ${_escapeHtml(err.message)}</div>`; }
+    };
+  }
+
+  render();
+};
+
+// ── T41-C Canva Template Launcher ────────────────────────────────────────────
+window.buildCanvaLauncher = function() {
+  const wrap = document.getElementById('canvaWrap');
+  if (!wrap) return;
+
+  let activeCategory = 'social-post';
+  let templates = [];
+
+  async function load() {
+    try { const r = await fetch('/api/canva/templates'); const d = await r.json(); templates = d.templates || []; } catch { templates = []; }
+    render();
+  }
+
+  function render() {
+    const cat = templates.find(t => t.category === activeCategory) || templates[0];
+    wrap.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1100px">
+        <div>
+          <h3 style="margin:0 0 14px;font-size:1rem;font-weight:700;color:#111">Browse by Content Type</h3>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:24px">
+            ${templates.map(t=>`<button onclick="window._canvaCategory('${t.category}')" style="text-align:left;padding:10px 16px;border-radius:10px;border:2px solid ${activeCategory===t.category?'#7B68EE':'#E5E7EB'};background:${activeCategory===t.category?'#F5F3FF':'#fff'};cursor:pointer;font-size:0.88rem;display:flex;align-items:center;gap:10px">
+              <span style="font-size:1.2rem">${t.icon}</span>
+              <div>
+                <div style="font-weight:700;color:${activeCategory===t.category?'#7B68EE':'#111'}">${_escapeHtml(t.label)}</div>
+                <div style="font-size:0.77rem;color:#6B7280;margin-top:1px">${_escapeHtml(t.description)}</div>
+              </div>
+            </button>`).join('')}
+          </div>
+        </div>
+
+        <div>
+          <h3 style="margin:0 0 14px;font-size:1rem;font-weight:700;color:#111">${cat ? _escapeHtml(cat.icon + ' ' + cat.label) : 'Templates'}</h3>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px">
+            ${cat ? cat.templates.map(t=>`
+              <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:14px">
+                <div style="flex:1">
+                  <div style="font-weight:700;font-size:0.9rem;color:#111">${_escapeHtml(t.name)}</div>
+                  <div style="font-size:0.78rem;color:#6B7280;margin-top:2px">Platform: ${_escapeHtml(t.platform)}</div>
+                </div>
+                <a href="${_safeUrl(t.url)}" target="_blank" style="padding:8px 16px;background:#7B68EE;color:#fff;border-radius:8px;text-decoration:none;font-size:0.83rem;font-weight:700;white-space:nowrap">Open in Canva ↗</a>
+              </div>`).join('') : ''}
+          </div>
+
+          <div style="background:#FFF8F0;border:1px solid #FDE68A;border-radius:12px;padding:20px">
+            <h4 style="margin:0 0 10px;font-size:0.9rem;font-weight:700;color:#92400E">📋 Format Copy for Canva</h4>
+            <p style="margin:0 0 12px;font-size:0.82rem;color:#78350F">Paste your InfoGenie content below and get it formatted for easy copy-paste into any Canva text field.</p>
+            <select id="canvaFormatType" style="width:100%;padding:9px 12px;border:1px solid #FCA5A5;border-radius:8px;font-size:0.84rem;background:#fff;margin-bottom:10px">
+              <option value="social-post">Social Post</option>
+              <option value="carousel">Carousel (slides)</option>
+              <option value="email">Email</option>
+              <option value="ad-creative">Ad Creative</option>
+              <option value="blog">Blog / Article</option>
+            </select>
+            <input id="canvaTitle" placeholder="Headline / Title" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:0.84rem;margin-bottom:8px">
+            <textarea id="canvaBody" placeholder="Body copy..." rows="4" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:0.84rem;resize:vertical;margin-bottom:8px"></textarea>
+            <input id="canvaCta" placeholder="CTA text (e.g. Learn More)" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #E5E7EB;border-radius:8px;font-size:0.84rem;margin-bottom:10px">
+            <button onclick="window._canvaFormat()" style="width:100%;padding:10px;background:#7B68EE;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Format for Canva</button>
+            <div id="canvaFormatResult" style="margin-top:12px"></div>
+          </div>
+        </div>
+      </div>`;
+
+    window._canvaCategory = function(c) { activeCategory = c; render(); };
+
+    window._canvaFormat = async function() {
+      const type  = document.getElementById('canvaFormatType')?.value;
+      const title = document.getElementById('canvaTitle')?.value.trim();
+      const body  = document.getElementById('canvaBody')?.value.trim();
+      const cta   = document.getElementById('canvaCta')?.value.trim();
+      if (!title && !body) { alert('Add at least a title or body copy.'); return; }
+      const res = document.getElementById('canvaFormatResult');
+      try {
+        const r = await fetch('/api/canva/format', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type, title, body, cta }) });
+        const d = await r.json();
+        if (!d.ok) { res.innerHTML = `<div style="color:#DC2626;padding:10px">${_escapeHtml(d.error)}</div>`; return; }
+        res.innerHTML = `
+          <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:14px">
+            <pre style="margin:0;font-size:0.82rem;color:#374151;white-space:pre-wrap;word-break:break-word;font-family:inherit">${_escapeHtml(d.formatted)}</pre>
+          </div>
+          <button onclick="navigator.clipboard.writeText(${JSON.stringify(d.formatted)});this.textContent='✅ Copied!';setTimeout(()=>this.textContent='📋 Copy to Clipboard',1500)" style="width:100%;margin-top:8px;padding:9px;background:#6C63FF;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer">📋 Copy to Clipboard</button>`;
+      } catch(err) { res.innerHTML = `<div style="color:#DC2626;padding:10px">Error: ${_escapeHtml(err.message)}</div>`; }
+    };
+  }
+
+  load();
+};
+
+// ── T41-D CRM Sync ────────────────────────────────────────────────────────────
+window.buildCrmSync = function() {
+  const wrap = document.getElementById('crmSyncWrap');
+  if (!wrap) return;
+
+  let providers = [];
+  let selectedProvider = null;
+  let history = [];
+  let activeTab = 'push';
+
+  async function load() {
+    try {
+      const [pr, hr] = await Promise.all([fetch('/api/crm-sync/providers').then(r=>r.json()), fetch('/api/crm-sync/history').then(r=>r.json())]);
+      providers = pr.providers || [];
+      history   = hr.history  || [];
+      if (!selectedProvider && providers.length) selectedProvider = providers[0].id;
+    } catch { providers = []; history = []; }
+    render();
+  }
+
+  function render() {
+    const prov = providers.find(p => p.id === selectedProvider);
+    const statusBadge = (p) => p.configured
+      ? `<span style="padding:3px 10px;background:#D1FAE5;color:#065F46;border-radius:12px;font-size:0.75rem;font-weight:700">CONFIGURED</span>`
+      : `<span style="padding:3px 10px;background:#FEE2E2;color:#991B1B;border-radius:12px;font-size:0.75rem;font-weight:700">NOT SET</span>`;
+
+    wrap.innerHTML = `
+      <div style="display:grid;grid-template-columns:260px 1fr;gap:20px;max-width:1000px">
+        <div>
+          <h3 style="margin:0 0 14px;font-size:1rem;font-weight:700;color:#111">Select Platform</h3>
+          ${providers.map(p=>`<div onclick="window._crmSelectProvider('${p.id}')" style="background:${selectedProvider===p.id?'#F0F4FF':'#fff'};border:2px solid ${selectedProvider===p.id?p.color:'#E5E7EB'};border-radius:10px;padding:14px 16px;margin-bottom:8px;cursor:pointer">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+              <span style="font-size:1.4rem">${p.icon}</span>
+              <span style="font-weight:700;color:${selectedProvider===p.id?p.color:'#111'}">${_escapeHtml(p.label)}</span>
+            </div>
+            ${statusBadge(p)}
+            ${!p.configured ? `<div style="font-size:0.75rem;color:#9CA3AF;margin-top:6px">Required: ${p.fields.join(', ')}</div>` : ''}
+          </div>`).join('')}
+
+          <h4 style="margin:18px 0 10px;font-size:0.88rem;font-weight:700;color:#374151">Sync History</h4>
+          ${history.length === 0 ? '<p style="font-size:0.82rem;color:#9CA3AF">No syncs yet.</p>' :
+          history.slice(0,5).map(h=>`<div style="font-size:0.8rem;padding:8px 0;border-bottom:1px solid #F3F4F6">
+            <div style="display:flex;justify-content:space-between">
+              <span style="font-weight:700;color:#374151">${_escapeHtml(h.provider)}</span>
+              <span style="color:${h.status==='ok'?'#16A34A':h.status==='partial'?'#D97706':'#DC2626'};font-weight:700">${_escapeHtml(h.status)}</span>
+            </div>
+            <div style="color:#6B7280">${h.contacts_ok}/${h.contacts_total} pushed · ${new Date(h.created_at).toLocaleDateString()}</div>
+          </div>`).join('')}
+        </div>
+
+        <div>
+          ${prov ? `
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;padding:14px 18px;background:${prov.color}18;border:1px solid ${prov.color}44;border-radius:10px">
+              <span style="font-size:1.8rem">${prov.icon}</span>
+              <div style="flex:1">
+                <div style="font-weight:800;font-size:1rem;color:#111">${_escapeHtml(prov.label)}</div>
+                <div style="font-size:0.82rem;color:#6B7280">${prov.configured ? 'Ready to sync' : 'API key not yet configured'}</div>
+              </div>
+              <button onclick="window._crmTest('${prov.id}')" style="padding:8px 16px;background:${prov.color};color:${prov.textColor||'#fff'};border:none;border-radius:8px;font-size:0.83rem;font-weight:700;cursor:pointer">Test Connection</button>
+            </div>
+            <div id="crmTestResult" style="margin-bottom:14px"></div>
+
+            <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px">
+              <h4 style="margin:0 0 14px;font-size:0.9rem;font-weight:700;color:#111">Push Contacts</h4>
+              ${prov.id === 'convertkit' ? `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:10px 14px;font-size:0.82rem;color:#92400E;margin-bottom:12px">ConvertKit requires a <strong>Form ID</strong>. Find it in ConvertKit → Forms → click your form → look at the URL: .../forms/<strong>XXXXXX</strong>/edit</div>` : ''}
+              ${prov.id === 'mailchimp' ? `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;padding:10px 14px;font-size:0.82rem;color:#92400E;margin-bottom:12px">Mailchimp requires your <strong>Audience/List ID</strong>. Find it in Mailchimp → Audience → Manage Audience → Settings → Audience ID.</div>` : ''}
+              <input id="crmListId" placeholder="${prov.id==='convertkit'?'Form ID (e.g. 1234567)':prov.id==='mailchimp'?'Audience ID (e.g. abc123def)':'List ID (optional — leave blank to add without list)'}" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.88rem;margin-bottom:10px">
+              <textarea id="crmContacts" placeholder="Paste contacts — one per line.&#10;Accepts: email only, OR email,first_name,last_name&#10;&#10;Examples:&#10;jane@acme.com&#10;john@corp.com,John,Smith" rows="8" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.84rem;resize:vertical;margin-bottom:14px;font-family:monospace"></textarea>
+              <button onclick="window._crmPush('${prov.id}')" style="width:100%;padding:12px;background:${prov.color};color:${prov.textColor||'#fff'};border:none;border-radius:8px;font-weight:700;font-size:0.95rem;cursor:pointer">Push to ${_escapeHtml(prov.label)} →</button>
+              <div id="crmPushResult" style="margin-top:14px"></div>
+            </div>
+          ` : '<div style="color:#6B7280;padding:16px">Select a platform to continue.</div>'}
+        </div>
+      </div>`;
+
+    window._crmSelectProvider = function(id) { selectedProvider = id; render(); };
+
+    window._crmTest = async function(pid) {
+      const res = document.getElementById('crmTestResult');
+      res.innerHTML = '<div style="color:#6B7280;font-size:0.84rem;padding:10px">Testing connection...</div>';
+      try {
+        const r = await fetch('/api/crm-sync/test', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ provider: pid }) });
+        const d = await r.json();
+        res.innerHTML = d.ok
+          ? `<div style="background:#D1FAE5;border:1px solid #6EE7B7;border-radius:8px;padding:10px 14px;color:#065F46;font-size:0.84rem;font-weight:600">✓ ${_escapeHtml(d.message || 'Connected successfully.')}</div>`
+          : `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:8px;padding:10px 14px;color:#991B1B;font-size:0.84rem">${_escapeHtml(d.error || 'Connection failed — check your API key.')}</div>`;
+      } catch(e) { res.innerHTML = `<div style="color:#DC2626;font-size:0.84rem;padding:10px">Error: ${_escapeHtml(e.message)}</div>`; }
+    };
+
+    window._crmPush = async function(pid) {
+      const raw    = (document.getElementById('crmContacts')?.value || '').trim();
+      const listId = (document.getElementById('crmListId')?.value || '').trim();
+      if (!raw) { alert('Paste at least one contact email.'); return; }
+      const contacts = raw.split('\n').map(line => {
+        const parts = line.trim().split(',');
+        return { email: (parts[0]||'').trim(), first_name: (parts[1]||'').trim(), last_name: (parts[2]||'').trim() };
+      }).filter(c => c.email);
+      if (!contacts.length) { alert('No valid email addresses found. Make sure each line starts with an email address.'); return; }
+      const res = document.getElementById('crmPushResult');
+      const provLabel = providers.find(p=>p.id===pid)?.label || pid;
+      res.innerHTML = `<div style="color:#6B7280;font-size:0.84rem;padding:10px">Pushing ${contacts.length} contact${contacts.length!==1?'s':''} to ${_escapeHtml(provLabel)}...</div>`;
+      try {
+        const r = await fetch('/api/crm-sync/push', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ provider: pid, contacts, list_id: listId, form_id: listId }) });
+        const d = await r.json();
+        if (!d.ok) { res.innerHTML = `<div style="background:#FEE2E2;border:1px solid #FCA5A5;border-radius:8px;padding:14px;color:#991B1B;font-size:0.84rem">${_escapeHtml(d.error)}</div>`; return; }
+        const statusColor = d.status==='ok'?'#D1FAE5':d.status==='partial'?'#FEF3C7':'#FEE2E2';
+        const statusText  = d.status==='ok'?'#065F46':d.status==='partial'?'#92400E':'#991B1B';
+        res.innerHTML = `
+          <div style="background:${statusColor};border-radius:10px;padding:16px 20px">
+            <div style="font-size:1rem;font-weight:800;color:${statusText};margin-bottom:8px">${d.status==='ok'?'✓ All contacts pushed!':d.status==='partial'?'⚠️ Partially pushed':'✗ Push failed'}</div>
+            <div style="display:flex;gap:20px;font-size:0.84rem;color:${statusText}">
+              <span>Pushed: <strong>${d.pushed}</strong></span>
+              <span>Failed: <strong>${d.failed}</strong></span>
+              <span>Total: <strong>${d.total}</strong></span>
+            </div>
+            ${d.errors && d.errors.length ? `<div style="margin-top:10px;font-size:0.78rem;color:#DC2626">${d.errors.map(e=>_escapeHtml(e)).join('<br>')}</div>` : ''}
+          </div>`;
+        await load();
+      } catch(e) { res.innerHTML = `<div style="color:#DC2626;font-size:0.84rem;padding:10px">Error: ${_escapeHtml(e.message)}</div>`; }
+    };
+  }
+
+  load();
+};
+
 (function _bootMetaAdsReturn() {
   const run = () => {
     const qs = new URLSearchParams(window.location.search);
