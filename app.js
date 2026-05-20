@@ -15401,6 +15401,7 @@ function buildIntelligence() {
       window._kwgapAutoFetched = ydomain;
       // Defer so the table is in the DOM before we replace its rows
       setTimeout(() => { try { fetchLiveKeywordGap(); } catch(e) { console.warn('auto kwgap fetch:', e); } }, 400);
+      setTimeout(() => { try { _applyKwgapOutliers(); } catch(e) {} }, 200);
     }
   } catch(e) { console.warn('kwgap auto-prefill:', e); }
 }
@@ -20396,6 +20397,186 @@ function closeCampCreativeModal() {
   modal.removeAttribute('style');
 }
 
+// ── Keyword outlier highlighting (shared by kwgap + keyword explorer) ─────────
+function _parseKwNum(text) {
+  const s = String(text || '').replace(/[$,%\s]/g, '').replace(/,/g, '').trim();
+  if (!s || s === '—' || s === '-' || s === 'N/A' || s === 'Not ranked') return null;
+  if (s.startsWith('#')) return null;
+  if (s.toUpperCase().endsWith('K')) return parseFloat(s) * 1000;
+  if (s.toUpperCase().endsWith('M')) return parseFloat(s) * 1000000;
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+function _kwPercentile(vals, pct) {
+  const nums = vals.filter(v => v !== null && !isNaN(v) && v > 0).sort((a, b) => a - b);
+  if (!nums.length) return Infinity;
+  return nums[Math.max(0, Math.ceil(nums.length * pct) - 1)];
+}
+
+function _applyKwgapOutliers() {
+  const tbody = document.getElementById('kwgap-tbody');
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  if (rows.length < 2) return;
+
+  // Clear previous pass
+  rows.forEach(r => {
+    r.style.borderLeft = '';
+    r.style.borderLeftColor = '';
+    Array.from(r.cells).forEach(c => {
+      c.style.background = '';
+      c.style.fontWeight = '';
+      c.style.color = '';
+      c.style.borderRadius = '';
+    });
+    r.querySelectorAll('.kw-outlier-badge').forEach(b => b.remove());
+  });
+
+  // Column indices: 0=keyword, 1=volume, 2=topComp, 3=CTR, 4=yourRank, 5=difficulty, 6=score, 7=CPC, 8=action
+  const volVals   = rows.map(r => _parseKwNum(r.cells[1]?.textContent));
+  const scoreVals = rows.map(r => {
+    const el = r.cells[6]?.querySelector('.kwgap-score-num');
+    return el ? (parseInt(el.textContent, 10) || null) : _parseKwNum(r.cells[6]?.textContent);
+  });
+  const cpcVals = rows.map(r => _parseKwNum(r.cells[7]?.textContent));
+
+  const volThresh   = _kwPercentile(volVals,   0.75);
+  const scoreThresh = Math.max(_kwPercentile(scoreVals, 0.65), 65);
+  const cpcThresh   = _kwPercentile(cpcVals,   0.75);
+
+  rows.forEach((row, i) => {
+    const vol   = volVals[i];
+    const score = scoreVals[i];
+    const cpc   = cpcVals[i];
+    const isTopVol   = vol   !== null && vol   >= volThresh;
+    const isTopScore = score !== null && score >= scoreThresh;
+    const isTopCpc   = cpc   !== null && cpc   >= cpcThresh;
+
+    // Volume cell — green
+    if (isTopVol && row.cells[1]) {
+      row.cells[1].style.cssText += ';background:#D1FAE5;font-weight:800;color:#065F46;border-radius:6px';
+    }
+
+    // Score cell — green gradient based on value
+    if (score !== null && row.cells[6]) {
+      if (score >= 80)      row.cells[6].style.background = '#D1FAE5';
+      else if (score >= 65) row.cells[6].style.background = '#ECFDF5';
+    }
+
+    // CPC cell — amber
+    if (isTopCpc && row.cells[7]) {
+      row.cells[7].style.cssText += ';background:#FEF3C7;font-weight:700;color:#92400E;border-radius:6px';
+    }
+
+    // Left-border accent + badge
+    if (isTopVol && isTopScore) {
+      row.style.cssText += ';border-left:3px solid #F59E0B';
+      const kwDiv = row.cells[0]?.querySelector('.kwgap-keyword') || row.cells[0];
+      if (kwDiv) {
+        const badge = document.createElement('span');
+        badge.className = 'kw-outlier-badge';
+        badge.style.cssText = 'display:inline-block;margin-left:6px;padding:1px 7px;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;border-radius:10px;font-size:0.68rem;font-weight:800;vertical-align:middle;white-space:nowrap';
+        badge.textContent = '🔥 Top Pick';
+        kwDiv.appendChild(badge);
+      }
+    } else if (isTopScore) {
+      row.style.cssText += ';border-left:3px solid #10B981';
+    } else if (isTopVol) {
+      row.style.cssText += ';border-left:3px solid #3B82F6';
+    }
+  });
+
+  // Legend (only once)
+  const tableWrap = document.getElementById('kwgap-table-wrap');
+  if (tableWrap && !document.getElementById('kwgap-outlier-legend')) {
+    const legend = document.createElement('div');
+    legend.id = 'kwgap-outlier-legend';
+    legend.style.cssText = 'display:flex;gap:14px;flex-wrap:wrap;padding:10px 2px 2px;font-size:0.73rem;color:#6B7280;align-items:center';
+    legend.innerHTML = [
+      `<span style="font-weight:700;color:#374151">Outliers:</span>`,
+      `<span><span style="display:inline-block;width:10px;height:10px;background:#D1FAE5;border-radius:2px;margin-right:3px;vertical-align:middle"></span>High volume</span>`,
+      `<span><span style="display:inline-block;width:10px;height:10px;background:#FEF3C7;border-radius:2px;margin-right:3px;vertical-align:middle"></span>High CPC</span>`,
+      `<span><span style="display:inline-block;width:3px;height:12px;background:#F59E0B;border-radius:2px;margin-right:5px;vertical-align:middle"></span>🔥 Top Pick = high volume + high score</span>`,
+      `<span><span style="display:inline-block;width:3px;height:12px;background:#10B981;border-radius:2px;margin-right:5px;vertical-align:middle"></span>High opportunity score</span>`,
+      `<span><span style="display:inline-block;width:3px;height:12px;background:#3B82F6;border-radius:2px;margin-right:5px;vertical-align:middle"></span>High search volume</span>`
+    ].join('');
+    tableWrap.appendChild(legend);
+  }
+}
+
+function _applyKeOutliers() {
+  const out = document.getElementById('keOut');
+  if (!out) return;
+  const tbody = out.querySelector('table tbody');
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  if (rows.length < 2) return;
+
+  // Column indices: 0=keyword, 1=volume, 2=KD (span), 3=CPC, 4=comp, 5=intent
+  const volVals = rows.map(r => {
+    const t = (r.cells[1]?.textContent || '').replace(/,/g, '').trim();
+    const n = parseFloat(t);
+    return isNaN(n) ? null : n;
+  });
+  const cpcVals = rows.map(r => _parseKwNum(r.cells[3]?.textContent));
+  const kdVals  = rows.map(r => {
+    const span = r.cells[2]?.querySelector('span');
+    if (!span) return null;
+    const n = parseInt(span.textContent, 10);
+    return isNaN(n) ? null : n;
+  });
+
+  const volThresh = _kwPercentile(volVals, 0.75);
+  const cpcThresh = _kwPercentile(cpcVals, 0.75);
+  // Easy KD = bottom 25% (low number = easy)
+  const kdNums = kdVals.filter(v => v !== null && v > 0).sort((a, b) => a - b);
+  const kdEasyThresh = kdNums.length ? kdNums[Math.floor(kdNums.length * 0.25)] : 0;
+
+  rows.forEach((row, i) => {
+    const vol   = volVals[i];
+    const cpc   = cpcVals[i];
+    const kd    = kdVals[i];
+    const isTopVol  = vol !== null && vol >= volThresh;
+    const isTopCpc  = cpc !== null && cpc >= cpcThresh;
+    const isEasyKd  = kd  !== null && kd  <= kdEasyThresh;
+
+    if (isTopVol && row.cells[1]) {
+      row.cells[1].style.cssText += ';background:#D1FAE5;font-weight:800;color:#065F46;border-radius:4px';
+    }
+    if (isTopCpc && row.cells[3]) {
+      row.cells[3].style.cssText += ';background:#FEF3C7;font-weight:700;color:#92400E;border-radius:4px';
+    }
+
+    if (isTopVol && isEasyKd) {
+      row.style.cssText += ';border-left:3px solid #10B981';
+      const badge = document.createElement('span');
+      badge.style.cssText = 'display:inline-block;margin-left:6px;padding:1px 7px;background:#D1FAE5;color:#065F46;border:1px solid #6EE7B7;border-radius:10px;font-size:0.68rem;font-weight:800;vertical-align:middle;white-space:nowrap';
+      badge.textContent = '🎯 Easy Win';
+      row.cells[0]?.appendChild(badge);
+    } else if (isTopVol) {
+      row.style.cssText += ';border-left:3px solid #3B82F6';
+    } else if (isEasyKd) {
+      row.style.cssText += ';border-left:3px solid #10B981';
+    }
+  });
+
+  // Legend
+  const tableBox = tbody.closest('div[style*="border"]') || out.querySelector('div[style*="border"]');
+  if (tableBox && !document.getElementById('ke-outlier-legend')) {
+    const legend = document.createElement('div');
+    legend.id = 'ke-outlier-legend';
+    legend.style.cssText = 'display:flex;gap:14px;flex-wrap:wrap;padding:10px 4px 2px;font-size:0.73rem;color:#6B7280;align-items:center';
+    legend.innerHTML = [
+      `<span style="font-weight:700;color:#374151">Outliers:</span>`,
+      `<span><span style="display:inline-block;width:10px;height:10px;background:#D1FAE5;border-radius:2px;margin-right:3px;vertical-align:middle"></span>High volume (top 25%)</span>`,
+      `<span><span style="display:inline-block;width:10px;height:10px;background:#FEF3C7;border-radius:2px;margin-right:3px;vertical-align:middle"></span>High CPC (top 25%)</span>`,
+      `<span><span style="display:inline-block;width:3px;height:12px;background:#10B981;border-radius:2px;margin-right:5px;vertical-align:middle"></span>🎯 Easy Win = high volume + low difficulty</span>`
+    ].join('');
+    tableBox.parentNode?.insertBefore(legend, tableBox.nextSibling);
+  }
+}
+
 // ── Live Keyword Gap Fetch (DataForSEO via backend) ──────────────────────────
 
 async function fetchLiveKeywordGap() {
@@ -20544,6 +20725,7 @@ async function fetchLiveKeywordGap() {
     }).join('');
 
     if (tbody) tbody.innerHTML = rows;
+    try { _applyKwgapOutliers(); } catch(e) {}
     if (badge) badge.textContent = `${keywords.length} Live Opportunities`;
 
     const compList = (data.competitors || []).slice(0, 4).join(', ');
@@ -37367,6 +37549,7 @@ window._keGo = async function() {
         </tr>`;}).join('')}</tbody></table></div>
     <div style="margin-top:12px;text-align:right"><button id="keCsvBtn" style="padding:8px 14px;background:#fff;border:1.5px solid #8B5CF6;color:#8B5CF6;border-radius:6px;font-size:0.8rem;font-weight:700;cursor:pointer">📥 Export CSV</button></div>`;
   window._keLastResult = { ideas: r.ideas, seed: sm.keyword };
+  try { _applyKeOutliers(); } catch(e) {}
   const btn = document.getElementById('keCsvBtn');
   if (btn) btn.addEventListener('click', () => _keCsv(window._keLastResult.ideas, window._keLastResult.seed));
 };
