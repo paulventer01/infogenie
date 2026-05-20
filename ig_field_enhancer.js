@@ -113,6 +113,10 @@
     // personal credentials with no brand context yet — AI Suggest would be
     // both useless and confusing. Covers password reset page too.
     if (el.closest('#igAuthWall, #igForgotForm, #ig-reset-form, [data-auth-form]')) return false;
+    // Skip the home-page hero "Analyse Now" form — the website + industry
+    // fields there are entry points, not brand-context fields, and the user
+    // explicitly asked for a clean hero.
+    if (el.id === 'websiteInput' || el.id === 'industryInput') return false;
     return true;
   }
 
