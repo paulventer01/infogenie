@@ -387,13 +387,20 @@ router.post('/request-reset', async (req, res) => {
     if (!EMAIL_RX.test(e)) return _err(res, 400, 'Please enter a valid email address.');
     const user = await findUserByEmail(e);
     if (user && user.password_hash) {
+      const token = await createToken(user.id, 'reset', RESET_TTL_MIN);
+      const link = `${_publicBaseUrl(req)}/reset-password.html?token=${token}`;
       try {
-        const token = await createToken(user.id, 'reset', RESET_TTL_MIN);
-        const link = `${_publicBaseUrl(req)}/reset-password.html?token=${token}`;
         const tpl = _resetEmailTemplate(user.name, link);
         await _sendMail({ to: user.email, ...tpl });
+        console.log(`[auth/request-reset] reset email sent to ${user.email}`);
       } catch (e2) {
+        // Email delivery failed (most often: RESEND_API_KEY missing, or
+        // RESEND_FROM_EMAIL points to an unverified domain → Resend 403).
+        // Fall back to logging the link to the server console so the account
+        // owner can always recover via the workflow log.
         console.warn('[auth/request-reset] mail failed:', e2.message);
+        console.warn('[auth/request-reset] FALLBACK reset link for ' + user.email + ' (valid 1h):');
+        console.warn('  ' + link);
       }
     }
     // Always identical response — anti-enumeration.
