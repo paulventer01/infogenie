@@ -9183,7 +9183,10 @@ app.use('/api/hunter',       _hunterRouter);
 app.use('/api/linkedin-ads',    _linkedinRouter);
 app.use('/api/canva',          _canvaRouter);
 app.use('/api/crm-sync',       _crmRouter);
-app.use('/api/tools/remove-bg', require('./services/remove_bg/api'));
+app.use('/api/tools/remove-bg',  require('./services/remove_bg/api'));
+app.use('/api/advocacy',         require('./services/employee_advocacy/api'));
+app.use('/api/social-listening', require('./services/social_listening/api'));
+app.use('/api/media-intel',      require('./services/media_intel/api'));
 (async () => { try {
   if (_db.hasDb()) {
     await _hunterSchema.ensureHunterSchema();
@@ -9192,6 +9195,17 @@ app.use('/api/tools/remove-bg', require('./services/remove_bg/api'));
     console.log('[t41] hunter + linkedin-ads + crm-sync schemas ready');
   }
 } catch (e) { console.warn('[t41] init failed:', e.message); }})();
+
+// ── T42 — Employee Advocacy · Social Listening · Media Intelligence ──────────
+const _advocacySchema  = require('./services/employee_advocacy/schema');
+const _mediaIntelSchema = require('./services/media_intel/schema');
+(async () => { try {
+  if (_db.hasDb()) {
+    await _advocacySchema.ensureAdvocacySchema();
+    await _mediaIntelSchema.ensureMediaIntelSchema();
+    console.log('[t42] advocacy + media-intel schemas ready');
+  }
+} catch (e) { console.warn('[t42] init failed:', e.message); }})();
 
 // ── T39 — Content Score Auto-Optimize · AI Traffic Monitor ──────────────────
 const _csRouter    = require('./services/content_score/api');

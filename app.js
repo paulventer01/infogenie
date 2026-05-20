@@ -3207,7 +3207,10 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'hunter')            { try { window.buildHunter && window.buildHunter(); }                  catch(e) { console.warn('buildHunter error:', e); } }
   if (viewId === 'linkedin-ads')      { try { window.buildLinkedinAds && window.buildLinkedinAds(); }        catch(e) { console.warn('buildLinkedinAds error:', e); } }
   if (viewId === 'canva')             { try { window.buildCanvaLauncher && window.buildCanvaLauncher(); }    catch(e) { console.warn('buildCanvaLauncher error:', e); } }
-  if (viewId === 'crm-sync')         { try { window.buildCrmSync && window.buildCrmSync(); }                catch(e) { console.warn('buildCrmSync error:', e); } }
+  if (viewId === 'crm-sync')          { try { window.buildCrmSync && window.buildCrmSync(); }                catch(e) { console.warn('buildCrmSync error:', e); } }
+  if (viewId === 'employee-advocacy') { try { window.buildEmployeeAdvocacy && window.buildEmployeeAdvocacy(); } catch(e) { console.warn('buildEmployeeAdvocacy error:', e); } }
+  if (viewId === 'social-listening')  { try { window.buildSocialListening && window.buildSocialListening(); }  catch(e) { console.warn('buildSocialListening error:', e); } }
+  if (viewId === 'media-intel')       { try { window.buildMediaIntel && window.buildMediaIntel(); }            catch(e) { console.warn('buildMediaIntel error:', e); } }
   if (viewId === 'technical-suite') {
     try { buildTechnicalSuite(); } catch(e) { console.warn('buildTechnicalSuite error:', e); }
   }
@@ -49358,3 +49361,380 @@ window.buildCrmSync = function() {
     setTimeout(run, 300);
   }
 })();
+
+// ── T42-A Employee Advocacy ───────────────────────────────────────────────────
+window.buildEmployeeAdvocacy = async function() {
+  const wrap = document.getElementById('advocacyWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `<div style="text-align:center;padding:40px;color:#6B7280">⏳ Loading…</div>`;
+
+  let posts = [], shareKeys = [], stats = [], activeTab = 'queue';
+
+  async function load() {
+    try {
+      const [pr, kr, sr] = await Promise.all([
+        fetch('/api/advocacy/posts').then(r=>r.json()),
+        fetch('/api/advocacy/share-keys').then(r=>r.json()),
+        fetch('/api/advocacy/stats').then(r=>r.json())
+      ]);
+      posts     = pr.posts  || [];
+      shareKeys = kr.keys   || [];
+      stats     = sr.stats  || [];
+    } catch { posts=[]; shareKeys=[]; stats=[]; }
+    render();
+  }
+
+  function getShareCount(postId) {
+    return stats.filter(s=>String(s.post_id)===String(postId)).reduce((a,s)=>a+Number(s.shares),0);
+  }
+  function platformIcon(p) { return {linkedin:'💼',twitter:'🐦',facebook:'📘',instagram:'📸'}[p]||'🌐'; }
+
+  function render() {
+    const shareBase = window.location.origin + '/advocacy/share/';
+    wrap.innerHTML = `
+      <div style="display:flex;gap:10px;margin-bottom:24px">
+        ${['queue','share','analytics'].map(t=>`<button onclick="window._advTab('${t}')" style="padding:9px 20px;border-radius:8px;border:2px solid ${activeTab===t?'#3B82F6':'#E5E7EB'};background:${activeTab===t?'#EFF6FF':'#fff'};color:${activeTab===t?'#1D4ED8':'#374151'};font-weight:700;cursor:pointer;font-size:0.86rem">${t==='queue'?'📋 Content Queue':t==='share'?'🔗 Share Links':'📊 Analytics'}</button>`).join('')}
+      </div>
+
+      ${activeTab==='queue' ? `
+        <div style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:12px;padding:18px;margin-bottom:20px">
+          <h3 style="margin:0 0 14px;font-size:0.95rem;font-weight:800;color:#1E40AF">✏️ Create Approved Post</h3>
+          <input id="advTitle" placeholder="Post title (internal reference)" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #BFDBFE;border-radius:8px;font-size:0.85rem;margin-bottom:8px">
+          <textarea id="advBody" placeholder="Post copy — what employees will copy and share…" rows="4" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #BFDBFE;border-radius:8px;font-size:0.85rem;resize:vertical;margin-bottom:8px"></textarea>
+          <div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap">
+            <label style="font-size:0.8rem;font-weight:700;color:#1E40AF;display:flex;align-items:center;gap:5px"><input type="checkbox" id="advLI" checked> 💼 LinkedIn</label>
+            <label style="font-size:0.8rem;font-weight:700;color:#1E40AF;display:flex;align-items:center;gap:5px"><input type="checkbox" id="advTW" checked> 🐦 Twitter/X</label>
+            <label style="font-size:0.8rem;font-weight:700;color:#1E40AF;display:flex;align-items:center;gap:5px"><input type="checkbox" id="advFB"> 📘 Facebook</label>
+          </div>
+          <input id="advCta" placeholder="Optional CTA URL (e.g. blog post link)" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #BFDBFE;border-radius:8px;font-size:0.85rem;margin-bottom:10px">
+          <button onclick="window._advCreate()" style="padding:10px 24px;background:#3B82F6;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Add to Queue</button>
+        </div>
+        ${!posts.length ? `<div style="text-align:center;padding:40px;color:#9CA3AF;background:#F9FAFB;border-radius:12px;border:2px dashed #E5E7EB">No posts yet — create your first approved post above</div>` :
+        posts.map(p=>`
+          <div style="background:#fff;border:1.5px solid #E5E7EB;border-left:4px solid ${p.status==='active'?'#3B82F6':'#9CA3AF'};border-radius:10px;padding:16px 18px;margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+              <div style="flex:1;min-width:200px">
+                <div style="font-weight:700;font-size:0.9rem;color:#111;margin-bottom:4px">${_escapeHtml(p.title)}</div>
+                <div style="font-size:0.82rem;color:#374151;line-height:1.5;margin-bottom:8px">${_escapeHtml(p.body)}</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  ${(p.platforms||[]).map(pl=>`<span style="background:#EFF6FF;color:#1D4ED8;padding:2px 8px;border-radius:4px;font-size:0.72rem;font-weight:700">${platformIcon(pl)} ${pl}</span>`).join('')}
+                  ${p.cta_url?`<span style="background:#F0FDF4;color:#166534;padding:2px 8px;border-radius:4px;font-size:0.72rem;font-weight:700">🔗 CTA</span>`:''}
+                </div>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap">
+                <span style="background:${p.status==='active'?'#DCFCE7':'#F3F4F6'};color:${p.status==='active'?'#166534':'#6B7280'};padding:3px 10px;border-radius:10px;font-size:0.72rem;font-weight:700">${p.status}</span>
+                <span style="background:#FEF3C7;color:#92400E;padding:3px 10px;border-radius:10px;font-size:0.72rem;font-weight:700">📤 ${getShareCount(p.id)} shares</span>
+                <button onclick="window._advCopyPost('${encodeURIComponent(p.body)}')" style="padding:5px 10px;background:#F5F3FF;color:#7B68EE;border:1px solid #DDD6FE;border-radius:6px;font-size:0.75rem;font-weight:700;cursor:pointer">📋 Copy</button>
+                <button onclick="window._advToggle('${p.id}','${p.status==='active'?'archived':'active'}')" style="padding:5px 10px;background:#F9FAFB;color:#6B7280;border:1px solid #E5E7EB;border-radius:6px;font-size:0.75rem;font-weight:700;cursor:pointer">${p.status==='active'?'Archive':'Restore'}</button>
+                <button onclick="window._advDelete('${p.id}')" style="padding:5px 10px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:6px;font-size:0.75rem;font-weight:700;cursor:pointer">🗑</button>
+              </div>
+            </div>
+          </div>`).join('')}
+
+      ` : activeTab==='share' ? `
+        <div style="background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:12px;padding:18px;margin-bottom:20px">
+          <h3 style="margin:0 0 8px;font-size:0.95rem;font-weight:800;color:#166534">🔗 Generate Employee Share Link</h3>
+          <p style="margin:0 0 12px;font-size:0.82rem;color:#15803D">Each link gives employees read-only access to your active posts. No login required — just copy and share.</p>
+          <div style="display:flex;gap:8px">
+            <input id="advKeyLabel" placeholder="Label (e.g. Sales Team, Marketing)" style="flex:1;padding:9px 12px;border:1.5px solid #BBF7D0;border-radius:8px;font-size:0.84rem">
+            <button onclick="window._advGenKey()" style="padding:9px 20px;background:#10B981;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Generate</button>
+          </div>
+        </div>
+        ${!shareKeys.length ? `<div style="text-align:center;padding:30px;color:#9CA3AF;background:#F9FAFB;border-radius:12px;border:2px dashed #E5E7EB">No share links yet — generate your first above</div>` :
+        shareKeys.map(k=>{
+          const url = shareBase + k.share_key;
+          return `<div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:10px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:200px">
+              <div style="font-weight:700;font-size:0.88rem;color:#111">${_escapeHtml(k.label)}</div>
+              <div style="font-size:0.75rem;color:#6B7280;margin-top:2px;word-break:break-all">${url}</div>
+            </div>
+            <button onclick="navigator.clipboard.writeText('${url}');this.textContent='✅ Copied!';setTimeout(()=>this.textContent='📋 Copy Link',1500)" style="padding:7px 14px;background:#EFF6FF;color:#1D4ED8;border:1.5px solid #BFDBFE;border-radius:7px;font-size:0.8rem;font-weight:700;cursor:pointer;white-space:nowrap">📋 Copy Link</button>
+            <a href="${url}" target="_blank" style="padding:7px 14px;background:#F5F3FF;color:#7B68EE;border:1.5px solid #DDD6FE;border-radius:7px;font-size:0.8rem;font-weight:700;text-decoration:none;white-space:nowrap">🔍 Preview</a>
+            <button onclick="window._advDeleteKey('${k.share_key}')" style="padding:7px 12px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:7px;font-size:0.8rem;font-weight:700;cursor:pointer">🗑</button>
+          </div>`;
+        }).join('')}
+
+      ` : `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px">
+          <div style="background:#EFF6FF;border-radius:12px;padding:18px;text-align:center">
+            <div style="font-size:2rem;font-weight:800;color:#1D4ED8">${posts.filter(p=>p.status==='active').length}</div>
+            <div style="font-size:0.78rem;color:#1D4ED8;font-weight:700;margin-top:4px">Active Posts</div>
+          </div>
+          <div style="background:#F0FDF4;border-radius:12px;padding:18px;text-align:center">
+            <div style="font-size:2rem;font-weight:800;color:#166534">${stats.reduce((a,s)=>a+Number(s.shares),0)}</div>
+            <div style="font-size:0.78rem;color:#166534;font-weight:700;margin-top:4px">Total Shares</div>
+          </div>
+          <div style="background:#FEF3C7;border-radius:12px;padding:18px;text-align:center">
+            <div style="font-size:2rem;font-weight:800;color:#92400E">${shareKeys.length}</div>
+            <div style="font-size:0.78rem;color:#92400E;font-weight:700;margin-top:4px">Active Links</div>
+          </div>
+        </div>
+        ${!stats.length ? `<div style="text-align:center;padding:30px;color:#9CA3AF">No share activity yet. Send your share links to the team to start tracking.</div>` :
+        `<table style="width:100%;border-collapse:collapse;font-size:0.84rem">
+          <thead><tr style="background:#F9FAFB">${['Post ID','Platform','Shares'].map(h=>`<th style="padding:10px 12px;text-align:left;font-weight:700;color:#374151;border-bottom:1px solid #E5E7EB">${h}</th>`).join('')}</tr></thead>
+          <tbody>${stats.map(s=>`<tr style="border-bottom:1px solid #F3F4F6"><td style="padding:9px 12px">#${s.post_id}</td><td style="padding:9px 12px">${platformIcon(s.platform)} ${s.platform}</td><td style="padding:9px 12px;font-weight:700">${s.shares}</td></tr>`).join('')}</tbody>
+        </table>`}
+      `}`;
+
+    window._advTab = t => { activeTab = t; render(); };
+    window._advCopyPost = e => { navigator.clipboard.writeText(decodeURIComponent(e)); showToast('✅ Copied!'); };
+
+    window._advCreate = async function() {
+      const title = document.getElementById('advTitle')?.value.trim();
+      const body  = document.getElementById('advBody')?.value.trim();
+      if (!title || !body) { alert('Title and post copy are required.'); return; }
+      const platforms = ['linkedin','twitter','facebook'].filter((_,i)=>document.getElementById(['advLI','advTW','advFB'][i])?.checked);
+      const cta_url   = document.getElementById('advCta')?.value.trim() || null;
+      const r = await fetch('/api/advocacy/posts', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title, body, platforms, cta_url }) }).then(x=>x.json());
+      if (!r.ok) { showToast('⚠ ' + r.error); return; }
+      await load(); showToast('✅ Post added to advocacy queue');
+    };
+
+    window._advToggle = async (id, status) => {
+      await fetch(`/api/advocacy/posts/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ status }) });
+      await load();
+    };
+    window._advDelete = async id => {
+      if (!confirm('Delete this post?')) return;
+      await fetch(`/api/advocacy/posts/${id}`, { method:'DELETE' }); await load();
+    };
+    window._advGenKey = async function() {
+      const label = document.getElementById('advKeyLabel')?.value.trim() || 'Team Share Link';
+      const r = await fetch('/api/advocacy/share-keys', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ label }) }).then(x=>x.json());
+      if (!r.ok) { showToast('⚠ ' + r.error); return; }
+      await load(); showToast('✅ Share link generated');
+    };
+    window._advDeleteKey = async key => {
+      if (!confirm('Delete this share link? Employees using it will lose access.')) return;
+      await fetch(`/api/advocacy/share-keys/${key}`, { method:'DELETE' }); await load();
+    };
+  }
+
+  await load();
+};
+
+// ── T42-B Social Listening ────────────────────────────────────────────────────
+window.buildSocialListening = async function() {
+  const wrap = document.getElementById('socialListeningWrap');
+  if (!wrap) return;
+
+  const savedBrand = window._slLastBrand || analysisData?.name || '';
+  wrap.innerHTML = `
+    <div style="background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%);border-radius:14px;padding:22px 24px;margin-bottom:24px;color:#fff">
+      <h3 style="margin:0 0 4px;font-size:1.05rem;font-weight:800">👂 What's being said right now</h3>
+      <p style="margin:0 0 16px;font-size:0.82rem;opacity:.75">Live sentiment monitoring across Twitter, Reddit, LinkedIn, news and forums</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end">
+        <div>
+          <label style="font-size:0.75rem;font-weight:700;opacity:.75;display:block;margin-bottom:5px">YOUR BRAND</label>
+          <input id="slBrand" value="${_escapeHtml(savedBrand)}" placeholder="e.g. Acme Corp" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:0.85rem;background:rgba(255,255,255,.1);color:#fff">
+        </div>
+        <div>
+          <label style="font-size:0.75rem;font-weight:700;opacity:.75;display:block;margin-bottom:5px">KEYWORDS / COMPETITORS</label>
+          <input id="slKeywords" placeholder="e.g. competitor, product name" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:0.85rem;background:rgba(255,255,255,.1);color:#fff">
+        </div>
+        <button onclick="window._slFetch()" style="padding:10px 22px;background:#3B82F6;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;white-space:nowrap">🔍 Scan</button>
+      </div>
+    </div>
+    <div id="slResults"></div>`;
+
+  window._slFetch = async function() {
+    const brand    = document.getElementById('slBrand')?.value.trim();
+    const kwRaw    = document.getElementById('slKeywords')?.value.trim();
+    if (!brand) { alert('Enter your brand name.'); return; }
+    window._slLastBrand = brand;
+    const keywords = kwRaw ? kwRaw.split(',').map(k=>k.trim()).filter(Boolean) : [];
+    const res = document.getElementById('slResults');
+    res.innerHTML = `<div style="display:flex;align-items:center;gap:12px;padding:24px;background:#F8FAFC;border-radius:12px;color:#64748B"><span style="font-size:1.5rem">⏳</span><span>Scanning social channels… (10–20s)</span></div>`;
+    try {
+      const d = await fetch('/api/social-listening/feed', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, keywords }) }).then(r=>r.json());
+      if (!d.ok) { res.innerHTML = `<div style="padding:18px;background:#FEE2E2;color:#B91C1C;border-radius:10px">${_escapeHtml(d.error)}</div>`; return; }
+
+      const sentTotal = ((d.sentiment_summary?.positive||0)+(d.sentiment_summary?.neutral||0)+(d.sentiment_summary?.negative||0)) || 1;
+      const sentPct   = s => Math.round(((d.sentiment_summary?.[s]||0)/sentTotal)*100);
+      const sentColor = { positive:'#10B981', neutral:'#6B7280', negative:'#EF4444' };
+      const srcColor  = { twitter:'#1DA1F2', reddit:'#FF4500', news:'#F59E0B', blog:'#8B5CF6', linkedin:'#0A66C2', forum:'#10B981' };
+      const sentBadge = s => `<span style="background:${s==='positive'?'#D1FAE5':s==='negative'?'#FEE2E2':'#F3F4F6'};color:${s==='positive'?'#065F46':s==='negative'?'#991B1B':'#374151'};padding:2px 7px;border-radius:4px;font-size:0.68rem;font-weight:700;text-transform:uppercase">${s}</span>`;
+
+      res.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+          <div style="background:#fff;border:1px solid #E5E7EB;border-top:3px solid #3B82F6;border-radius:10px;padding:14px">
+            <div style="font-size:0.7rem;font-weight:700;color:#6B7280;text-transform:uppercase">Mentions</div>
+            <div style="font-size:1.6rem;font-weight:800;color:#111;margin-top:3px">${(d.mentions||[]).length}</div>
+          </div>
+          <div style="background:#fff;border:1px solid #E5E7EB;border-top:3px solid #10B981;border-radius:10px;padding:14px">
+            <div style="font-size:0.7rem;font-weight:700;color:#6B7280;text-transform:uppercase">Positive</div>
+            <div style="font-size:1.6rem;font-weight:800;color:#10B981;margin-top:3px">${sentPct('positive')}%</div>
+          </div>
+          <div style="background:#fff;border:1px solid #E5E7EB;border-top:3px solid #EF4444;border-radius:10px;padding:14px">
+            <div style="font-size:0.7rem;font-weight:700;color:#6B7280;text-transform:uppercase">Negative</div>
+            <div style="font-size:1.6rem;font-weight:800;color:#EF4444;margin-top:3px">${sentPct('negative')}%</div>
+          </div>
+          <div style="background:#fff;border:1px solid #E5E7EB;border-top:3px solid #F59E0B;border-radius:10px;padding:14px">
+            <div style="font-size:0.7rem;font-weight:700;color:#6B7280;text-transform:uppercase">Trending</div>
+            <div style="font-size:0.78rem;font-weight:700;color:#92400E;margin-top:5px;line-height:1.5">${(d.trending_keywords||[]).slice(0,3).join(' · ')}</div>
+          </div>
+        </div>
+        ${(d.alerts||[]).length?`<div style="margin-bottom:16px;display:flex;flex-direction:column;gap:8px">${d.alerts.map(a=>`<div style="background:${a.type==='crisis'?'#FEF2F2':'#FEF3C7'};border-left:4px solid ${a.type==='crisis'?'#EF4444':'#F59E0B'};border-radius:8px;padding:10px 14px;font-size:0.83rem;font-weight:600;color:${a.type==='crisis'?'#991B1B':'#92400E'}">⚡ ${_escapeHtml(a.message)}</div>`).join('')}</div>`:''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">
+          <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px">
+            <div style="font-size:0.75rem;font-weight:700;color:#6B7280;text-transform:uppercase;margin-bottom:10px">Top Topics</div>
+            ${(d.top_topics||[]).map(t=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="width:8px;height:8px;background:#3B82F6;border-radius:50%;flex-shrink:0"></span><span style="font-size:0.82rem;color:#374151">${_escapeHtml(t)}</span></div>`).join('')}
+          </div>
+          <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px">
+            <div style="font-size:0.75rem;font-weight:700;color:#6B7280;text-transform:uppercase;margin-bottom:10px">Trending Keywords</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">${(d.trending_keywords||[]).map(k=>`<span style="background:#EFF6FF;color:#1D4ED8;padding:3px 10px;border-radius:10px;font-size:0.78rem;font-weight:600">${_escapeHtml(k)}</span>`).join('')}</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${(d.mentions||[]).map(m=>`
+            <div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid ${sentColor[m.sentiment]||'#E5E7EB'};border-radius:10px;padding:14px 16px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="background:${srcColor[m.source]||'#6B7280'};color:#fff;padding:2px 8px;border-radius:4px;font-size:0.68rem;font-weight:700;text-transform:uppercase">${m.source}</span>
+                  <span style="font-size:0.78rem;font-weight:700;color:#374151">${_escapeHtml(m.author||'—')}</span>
+                  <span style="font-size:0.72rem;color:#9CA3AF">${_escapeHtml(m.time_ago||'')}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  ${sentBadge(m.sentiment)}
+                  ${m.reach==='high'?`<span style="background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px;font-size:0.68rem;font-weight:700">HIGH REACH</span>`:''}
+                </div>
+              </div>
+              <div style="font-size:0.84rem;color:#374151;line-height:1.5">${_escapeHtml(m.content||'')}</div>
+              ${m.url?`<a href="${_safeUrl(m.url)}" target="_blank" style="font-size:0.75rem;color:#3B82F6;text-decoration:none;margin-top:4px;display:inline-block">View post ↗</a>`:''}
+            </div>`).join('')}
+        </div>`;
+    } catch(e) {
+      res.innerHTML = `<div style="padding:18px;background:#FEE2E2;color:#B91C1C;border-radius:10px">Error: ${_escapeHtml(e.message)}</div>`;
+    }
+  };
+
+  if (savedBrand) setTimeout(() => { try { window._slFetch(); } catch(_) {} }, 300);
+};
+
+// ── T42-C Media Intelligence ──────────────────────────────────────────────────
+window.buildMediaIntel = async function() {
+  const wrap = document.getElementById('mediaIntelWrap');
+  if (!wrap) return;
+
+  const savedBrand = window._miLastBrand || analysisData?.name || '';
+  let history = [];
+  try { const hr = await fetch('/api/media-intel/history').then(r=>r.json()); history = hr.history||[]; } catch(_) {}
+
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:320px 1fr;gap:20px;max-width:1100px">
+      <div>
+        <div style="background:linear-gradient(135deg,#1E1B4B 0%,#312E81 100%);border-radius:14px;padding:22px;color:#fff;margin-bottom:16px">
+          <h3 style="margin:0 0 4px;font-size:1.05rem;font-weight:800">📰 Media Intel Scan</h3>
+          <p style="margin:0 0 14px;font-size:0.8rem;opacity:.75">Journalists, rising stories &amp; PR opportunities</p>
+          <label style="font-size:0.72rem;font-weight:700;opacity:.75;display:block;margin-bottom:4px">YOUR BRAND</label>
+          <input id="miBrand" value="${_escapeHtml(savedBrand)}" placeholder="e.g. Acme Corp" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:0.84rem;background:rgba(255,255,255,.1);color:#fff;margin-bottom:8px">
+          <label style="font-size:0.72rem;font-weight:700;opacity:.75;display:block;margin-bottom:4px">COMPETITORS (comma-separated)</label>
+          <input id="miComps" placeholder="Competitor A, Competitor B" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:0.84rem;background:rgba(255,255,255,.1);color:#fff;margin-bottom:8px">
+          <label style="font-size:0.72rem;font-weight:700;opacity:.75;display:block;margin-bottom:4px">INDUSTRY</label>
+          <input id="miIndustry" placeholder="e.g. SaaS, Fintech, eCommerce" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:0.84rem;background:rgba(255,255,255,.1);color:#fff;margin-bottom:14px">
+          <button onclick="window._miFetch()" style="width:100%;padding:11px;background:#6D28D9;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">🔎 Run Media Scan</button>
+        </div>
+        <div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:12px;padding:16px">
+          <div style="font-size:0.8rem;font-weight:700;color:#374151;margin-bottom:10px">📋 Recent Scans</div>
+          ${!history.length?`<div style="font-size:0.8rem;color:#9CA3AF">No scans yet</div>`:
+          history.slice(0,6).map(h=>`<div onclick="window._miLoadScan('${h.id}')" style="padding:9px;border-radius:8px;cursor:pointer;border-bottom:1px solid #F3F4F6" onmouseenter="this.style.background='#F9FAFB'" onmouseleave="this.style.background='transparent'">
+            <div style="font-size:0.82rem;font-weight:700;color:#111">${_escapeHtml(h.brand)}</div>
+            <div style="font-size:0.73rem;color:#9CA3AF">${new Date(h.created_at).toLocaleDateString()} · ${_escapeHtml(h.summary||'')}</div>
+          </div>`).join('')}
+        </div>
+      </div>
+      <div id="miResults">
+        <div style="text-align:center;padding:60px 20px;color:#9CA3AF;background:#F9FAFB;border-radius:14px;border:2px dashed #E5E7EB">
+          <div style="font-size:2.5rem;margin-bottom:12px">📰</div>
+          <div style="font-weight:700;color:#374151;margin-bottom:6px">Run a media scan</div>
+          <div style="font-size:0.82rem">Enter your brand name and hit scan to see press coverage,<br>journalist targets, and PR opportunities in real time</div>
+        </div>
+      </div>
+    </div>`;
+
+  function renderResults(d) {
+    const res = document.getElementById('miResults');
+    if (!res) return;
+    const catColor  = { product_launch:'#3B82F6',funding:'#10B981',controversy:'#EF4444',partnership:'#F59E0B',hiring:'#8B5CF6',award:'#F59E0B',regulation:'#6B7280',market_trend:'#0EA5E9' };
+    const urgColor  = { now:'#EF4444', this_week:'#F59E0B', this_month:'#6B7280' };
+    const momBar    = m => `<div style="height:4px;background:#E5E7EB;border-radius:2px;margin-top:6px"><div style="height:4px;background:${m>70?'#EF4444':m>40?'#F59E0B':'#10B981'};width:${m}%;border-radius:2px;transition:width .4s"></div></div>`;
+
+    res.innerHTML = `<div style="display:flex;flex-direction:column;gap:14px">
+      ${(d.rising_narratives||[]).length?`<div style="background:#FEF3C7;border:1.5px solid #FDE68A;border-radius:10px;padding:14px">
+        <div style="font-size:0.75rem;font-weight:700;color:#92400E;text-transform:uppercase;margin-bottom:8px">🔥 Rising Narratives</div>
+        ${d.rising_narratives.map(n=>`<div style="margin-bottom:10px"><div style="font-size:0.85rem;font-weight:700;color:#78350F">${_escapeHtml(n.narrative)}</div><div style="font-size:0.78rem;color:#92400E;margin-top:2px">→ ${_escapeHtml(n.opportunity)}</div>${momBar(n.momentum||50)}</div>`).join('')}
+      </div>`:''}
+
+      <div style="background:#fff;border:1.5px solid #E5E7EB;border-radius:10px;padding:14px">
+        <div style="font-size:0.75rem;font-weight:700;color:#6B7280;text-transform:uppercase;margin-bottom:10px">📰 Recent Coverage (${(d.stories||[]).length} stories)</div>
+        ${(d.stories||[]).map(s=>`<div style="padding:10px 0;border-bottom:1px solid #F3F4F6">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+            <div style="flex:1;min-width:0">
+              <span style="background:${catColor[s.category]||'#6B7280'};color:#fff;padding:1px 7px;border-radius:3px;font-size:0.64rem;font-weight:700;text-transform:uppercase;margin-right:6px">${(s.category||'').replace(/_/g,' ')}</span>
+              <span style="font-size:0.83rem;font-weight:700;color:#111">${_escapeHtml(s.headline||'')}</span>
+            </div>
+            <div style="font-size:0.7rem;color:#9CA3AF;white-space:nowrap;flex-shrink:0">${_escapeHtml(s.published||'')}</div>
+          </div>
+          <div style="font-size:0.78rem;color:#6B7280;margin-bottom:4px"><strong>${_escapeHtml(s.publication||'')}</strong>${s.journalist?` · ${_escapeHtml(s.journalist)}`:''}</div>
+          <div style="font-size:0.8rem;color:#374151;line-height:1.5">${_escapeHtml(s.summary||'')}</div>
+          ${momBar(s.momentum||30)}
+        </div>`).join('')}
+      </div>
+
+      ${(d.journalist_watchlist||[]).length?`<div style="background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:10px;padding:14px">
+        <div style="font-size:0.75rem;font-weight:700;color:#6D28D9;text-transform:uppercase;margin-bottom:10px">📋 Journalist Watchlist</div>
+        ${d.journalist_watchlist.map(j=>`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid #EDE9FE;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px">
+            <div style="font-size:0.85rem;font-weight:700;color:#4C1D95">${_escapeHtml(j.name)} <span style="font-weight:400;color:#7C3AED">@ ${_escapeHtml(j.publication)}</span></div>
+            <div style="font-size:0.77rem;color:#6D28D9;margin-top:2px">Beat: ${_escapeHtml(j.beat||'')}${j.recent_angle?` · ${_escapeHtml(j.recent_angle)}`:''}</div>
+          </div>
+          ${j.twitter?`<button onclick="navigator.clipboard.writeText(${JSON.stringify(j.twitter)});this.textContent='✅ Copied!';setTimeout(()=>this.textContent=${JSON.stringify('📋 '+j.twitter)},1500)" style="padding:5px 10px;background:#EDE9FE;color:#6D28D9;border:1px solid #DDD6FE;border-radius:6px;font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap">📋 ${_escapeHtml(j.twitter)}</button>`:''}
+        </div>`).join('')}
+      </div>`:''}
+
+      ${(d.media_opportunities||[]).length?`<div style="background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:10px;padding:14px">
+        <div style="font-size:0.75rem;font-weight:700;color:#166534;text-transform:uppercase;margin-bottom:10px">🎯 Media Opportunities</div>
+        ${d.media_opportunities.map(o=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #DCFCE7;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px">
+            <span style="background:#DCFCE7;color:#166534;padding:1px 7px;border-radius:3px;font-size:0.64rem;font-weight:700;text-transform:uppercase;margin-right:6px">${_escapeHtml(o.type||'')}</span>
+            <span style="font-size:0.83rem;font-weight:700;color:#111">${_escapeHtml(o.headline||'')}</span>
+            <div style="font-size:0.75rem;color:#6B7280;margin-top:2px">${_escapeHtml(o.outlet||'')}</div>
+          </div>
+          <span style="background:${urgColor[o.urgency]||'#6B7280'};color:#fff;padding:3px 10px;border-radius:6px;font-size:0.72rem;font-weight:700;white-space:nowrap;flex-shrink:0">${(o.urgency||'').replace(/_/g,' ')}</span>
+        </div>`).join('')}
+      </div>`:''}
+    </div>`;
+  }
+
+  window._miFetch = async function() {
+    const brand    = document.getElementById('miBrand')?.value.trim();
+    const compsRaw = document.getElementById('miComps')?.value.trim();
+    const industry = document.getElementById('miIndustry')?.value.trim();
+    if (!brand) { alert('Enter your brand name.'); return; }
+    window._miLastBrand = brand;
+    const competitors = compsRaw ? compsRaw.split(',').map(c=>c.trim()).filter(Boolean) : [];
+    const res = document.getElementById('miResults');
+    res.innerHTML = `<div style="text-align:center;padding:40px;background:#F8FAFC;border-radius:12px;color:#64748B"><div style="font-size:1.8rem;margin-bottom:10px">⏳</div><div style="font-size:0.85rem">Scanning news, publications and press mentions…<br><span style="opacity:.7">Powered by Perplexity Sonar · 15–25s</span></div></div>`;
+    try {
+      const d = await fetch('/api/media-intel/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, competitors, industry }) }).then(r=>r.json());
+      if (!d.ok) { res.innerHTML = `<div style="padding:18px;background:#FEE2E2;color:#B91C1C;border-radius:10px">${_escapeHtml(d.error)}</div>`; return; }
+      renderResults(d);
+    } catch(e) {
+      res.innerHTML = `<div style="padding:18px;background:#FEE2E2;color:#B91C1C;border-radius:10px">Error: ${_escapeHtml(e.message)}</div>`;
+    }
+  };
+
+  window._miLoadScan = async function(id) {
+    const res = document.getElementById('miResults');
+    res.innerHTML = `<div style="text-align:center;padding:24px;color:#6B7280">⏳ Loading scan…</div>`;
+    try {
+      const d = await fetch(`/api/media-intel/scan/${id}`).then(r=>r.json());
+      if (!d.ok) { res.innerHTML = `<div style="padding:18px;background:#FEE2E2;color:#B91C1C;border-radius:10px">${_escapeHtml(d.error)}</div>`; return; }
+      renderResults(d);
+    } catch(e) {
+      res.innerHTML = `<div style="padding:18px;background:#FEE2E2;color:#B91C1C;border-radius:10px">Error: ${_escapeHtml(e.message)}</div>`;
+    }
+  };
+
+  if (savedBrand) setTimeout(() => { try { window._miFetch(); } catch(_) {} }, 300);
+};
