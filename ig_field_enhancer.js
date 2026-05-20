@@ -272,24 +272,48 @@
   }
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Selector for every input/textarea worth considering. `input[type="search"]`
+  // is intentionally omitted — those are live-query fields the user types into
+  // (handled separately in isEligible).
+  const SCAN_SEL = 'input[type="text"],input[type="email"],input[type="url"],' +
+                   'input[type="tel"],input:not([type]),textarea';
+
   function scan(root){
-    const sel = 'input[type="text"],input[type="search"],input[type="email"],' +
-                'input[type="url"],input[type="tel"],input:not([type]),textarea';
-    (root || document).querySelectorAll(sel).forEach(decorate);
+    (root || document).querySelectorAll(SCAN_SEL).forEach(decorate);
   }
 
-  let pending = false;
-  function schedule(){
-    if (pending) return;
-    pending = true;
-    setTimeout(() => { pending = false; scan(document); }, 60);
+  // Only the nodes that were freshly inserted get scanned — never the whole
+  // document. The earlier implementation re-walked the full DOM on every
+  // batched mutation, which jammed the main thread when the analyse-now flow
+  // injected thousands of dashboard nodes at once (browser would surface
+  // "This page isn't responding"). We now queue added subtrees, dedupe
+  // descendants, and process them in one rAF.
+  const pendingRoots = new Set();
+  let rafScheduled = false;
+  function flushPending(){
+    rafScheduled = false;
+    const roots = Array.from(pendingRoots);
+    pendingRoots.clear();
+    for (const node of roots) {
+      if (!node || !node.isConnected) continue;
+      if (node.matches && node.matches(SCAN_SEL)) decorate(node);
+      if (node.querySelectorAll) scan(node);
+    }
+  }
+  function queueRoot(node){
+    if (!node || node.nodeType !== 1) return;
+    pendingRoots.add(node);
+    if (rafScheduled) return;
+    rafScheduled = true;
+    (window.requestAnimationFrame || setTimeout)(flushPending, 16);
   }
 
   function start(){
     scan(document);
     const mo = new MutationObserver(muts => {
       for (const m of muts) {
-        if (m.addedNodes && m.addedNodes.length) { schedule(); return; }
+        if (!m.addedNodes) continue;
+        for (let i = 0; i < m.addedNodes.length; i++) queueRoot(m.addedNodes[i]);
       }
     });
     mo.observe(document.body, { childList:true, subtree:true });
