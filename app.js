@@ -22871,6 +22871,7 @@ function baRender() {
       </div>
       <div class="ba-card-actions">
         <button class="ba-card-btn ba-card-btn-view" onclick="baPreview('${a.id}')">Preview</button>
+        ${a.type === 'image' ? `<button class="ba-card-btn" style="background:#F5F3FF;color:#7B68EE;border-color:#DDD6FE" onclick="baRemoveBg('${a.id}','${a.url}')">🪄 Remove BG</button>` : ''}
         <button class="ba-card-btn ba-card-btn-del" onclick="baDelete('${a.id}')">Delete</button>
       </div>
     </div>`;
@@ -22945,6 +22946,39 @@ async function baDelete(id) {
     baRender();
     showToast('Asset deleted');
   } catch { showToast('Delete failed'); }
+}
+
+// Remove background — calls remove.bg API, uploads result as new asset
+async function baRemoveBg(id, imgUrl) {
+  const card = document.getElementById('ba-card-' + id);
+  const btn  = card ? card.querySelector('button[onclick*="baRemoveBg"]') : null;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Processing…'; }
+  try {
+    const r = await fetch('/api/tools/remove-bg', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_url: imgUrl })
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'remove.bg failed');
+
+    // Convert base64 PNG to a File and upload to brand assets
+    const byteArr = Uint8Array.from(atob(d.result_b64), c => c.charCodeAt(0));
+    const blob    = new Blob([byteArr], { type: 'image/png' });
+    const origAsset = window._brandAssets.find(a => a.id === id);
+    const newName = (origAsset ? origAsset.name.replace(/\.[^.]+$/, '') : 'image') + '_no_bg.png';
+    const file    = new File([blob], newName, { type: 'image/png' });
+
+    const form = new FormData();
+    form.append('files', file);
+    form.append('tag', origAsset?.tag || 'No BG');
+    const up = await fetch('/api/creatives/upload', { method: 'POST', body: form }).then(x => x.json());
+    await baLoadAssets();
+    showToast(`✅ Background removed — saved as "${newName}"`);
+  } catch(err) {
+    showToast('⚠ ' + (err.message || 'Remove BG failed'));
+    if (btn) { btn.disabled = false; btn.textContent = '🪄 Remove BG'; }
+  }
 }
 
 /* ══════════════════════════════════════════════
@@ -49070,6 +49104,31 @@ window.buildCanvaLauncher = function() {
             <div id="canvaFormatResult" style="margin-top:12px"></div>
           </div>
         </div>
+      </div>
+
+      <div style="margin-top:24px;background:linear-gradient(135deg,#F5F3FF 0%,#EDE9FE 100%);border:1.5px solid #DDD6FE;border-radius:14px;padding:22px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <span style="font-size:1.4rem">🪄</span>
+          <div>
+            <h3 style="margin:0;font-size:1rem;font-weight:800;color:#4C1D95">Image Background Remover</h3>
+            <p style="margin:2px 0 0;font-size:0.78rem;color:#6D28D9">Powered by remove.bg · Perfect for ad creatives, product shots &amp; Canva templates</p>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px">
+          <div>
+            <label style="font-size:0.8rem;font-weight:700;color:#4C1D95;display:block;margin-bottom:6px">Upload an image</label>
+            <input type="file" id="rbgFileInput" accept="image/*" style="display:none" onchange="window._rbgHandleFile(this)">
+            <button onclick="document.getElementById('rbgFileInput').click()" style="width:100%;padding:10px 14px;background:#fff;border:2px dashed #A78BFA;border-radius:10px;color:#6D28D9;font-weight:700;cursor:pointer;font-size:0.84rem">📁 Choose file (JPG, PNG, WebP)</button>
+          </div>
+          <div>
+            <label style="font-size:0.8rem;font-weight:700;color:#4C1D95;display:block;margin-bottom:6px">Or paste an image URL</label>
+            <div style="display:flex;gap:8px">
+              <input id="rbgUrlInput" placeholder="https://example.com/product.jpg" style="flex:1;padding:9px 12px;border:1.5px solid #C4B5FD;border-radius:8px;font-size:0.82rem">
+              <button onclick="window._rbgHandleUrl()" style="padding:9px 16px;background:#7B68EE;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;white-space:nowrap">Remove BG</button>
+            </div>
+          </div>
+        </div>
+        <div id="rbgResult" style="margin-top:14px"></div>
       </div>`;
 
     window._canvaCategory = function(c) { activeCategory = c; render(); };
@@ -49091,6 +49150,69 @@ window.buildCanvaLauncher = function() {
           </div>
           <button onclick="navigator.clipboard.writeText(${JSON.stringify(d.formatted)});this.textContent='✅ Copied!';setTimeout(()=>this.textContent='📋 Copy to Clipboard',1500)" style="width:100%;margin-top:8px;padding:9px;background:#6C63FF;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer">📋 Copy to Clipboard</button>`;
       } catch(err) { res.innerHTML = `<div style="color:#DC2626;padding:10px">Error: ${_escapeHtml(err.message)}</div>`; }
+    };
+
+    // ── Background Remover helpers ──────────────────────────────────────────
+    async function _rbgProcess(payload, resultEl) {
+      resultEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:14px;background:#F5F3FF;border-radius:10px;color:#6D28D9;font-size:0.85rem"><span style="font-size:1.3rem">⏳</span> Removing background… (this can take a few seconds)</div>`;
+      try {
+        const r = await fetch('/api/tools/remove-bg', {
+          method: 'POST',
+          headers: payload.json ? { 'Content-Type': 'application/json' } : {},
+          body:    payload.json ? JSON.stringify(payload.json) : payload.form
+        });
+        const d = await r.json();
+        if (!d.ok) { resultEl.innerHTML = `<div style="padding:14px;background:#FEE2E2;color:#B91C1C;border-radius:10px;font-size:0.85rem">⚠ ${_escapeHtml(d.error)}</div>`; return; }
+        const src = 'data:image/png;base64,' + d.result_b64;
+        resultEl.innerHTML = `
+          <div style="background:#fff;border:1.5px solid #DDD6FE;border-radius:12px;padding:16px">
+            <div style="display:flex;gap:14px;align-items:flex-start">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:0.78rem;font-weight:700;color:#4C1D95;margin-bottom:8px">✅ Background removed (${d.credits_charged} credit used)</div>
+                <img src="${src}" alt="Result" style="max-width:100%;max-height:260px;border-radius:8px;border:1px solid #E5E7EB;background:repeating-conic-gradient(#E5E7EB 0% 25%, #fff 0% 50%) 0 0/20px 20px">
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <a href="${src}" download="no_bg.png" style="flex:1;text-align:center;padding:9px;background:#7B68EE;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:0.83rem">⬇ Download PNG</a>
+              <button onclick="window._rbgSaveToAssets('${encodeURIComponent(d.result_b64)}')" style="flex:1;padding:9px;background:#10B981;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.83rem">💾 Save to Brand Assets</button>
+            </div>
+          </div>`;
+      } catch(err) {
+        resultEl.innerHTML = `<div style="padding:14px;background:#FEE2E2;color:#B91C1C;border-radius:10px;font-size:0.85rem">Error: ${_escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    window._rbgHandleUrl = async function() {
+      const url = document.getElementById('rbgUrlInput')?.value.trim();
+      if (!url) { alert('Paste an image URL first.'); return; }
+      const res = document.getElementById('rbgResult');
+      if (!res) return;
+      await _rbgProcess({ json: { image_url: url } }, res);
+    };
+
+    window._rbgHandleFile = async function(input) {
+      const file = input.files[0];
+      if (!file) return;
+      const res = document.getElementById('rbgResult');
+      if (!res) return;
+      const form = new FormData();
+      form.append('image', file);
+      await _rbgProcess({ form }, res);
+    };
+
+    window._rbgSaveToAssets = async function(encodedB64) {
+      try {
+        const b64 = decodeURIComponent(encodedB64);
+        const byteArr = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        const blob = new Blob([byteArr], { type: 'image/png' });
+        const fname = 'no_bg_' + Date.now() + '.png';
+        const file = new File([blob], fname, { type: 'image/png' });
+        const form = new FormData();
+        form.append('files', file);
+        form.append('tag', 'No BG');
+        await fetch('/api/creatives/upload', { method: 'POST', body: form });
+        showToast('✅ Saved to Brand Assets as "' + fname + '"');
+      } catch(e) { showToast('⚠ Save failed: ' + e.message); }
     };
   }
 
