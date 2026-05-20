@@ -127,17 +127,15 @@ async function ensureCredentialsSchema() {
     const p = _db.getPool();
     await p.query(`
       CREATE TABLE IF NOT EXISTS user_integrations (
-        user_id          INTEGER NOT NULL,
-        platform         TEXT    NOT NULL,
-        ciphertext       BYTEA   NOT NULL,
-        iv               BYTEA   NOT NULL,
-        tag              BYTEA   NOT NULL,
-        status           TEXT    NOT NULL DEFAULT 'connected'
-                           CHECK (status IN ('connected','disconnected','error')),
-        connected_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-        updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-        last_verified_at TIMESTAMPTZ,
-        last_error       TEXT,
+        user_id      INTEGER NOT NULL,
+        platform     TEXT    NOT NULL,
+        ciphertext   BYTEA   NOT NULL,
+        iv           BYTEA   NOT NULL,
+        tag          BYTEA   NOT NULL,
+        status       TEXT    NOT NULL DEFAULT 'connected'
+                       CHECK (status IN ('connected','disconnected','error')),
+        connected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
         PRIMARY KEY (user_id, platform)
       );
     `);
@@ -151,14 +149,6 @@ async function ensureCredentialsSchema() {
           CHECK (status IN ('connected','disconnected','error'));
       `);
     } catch (_e) { /* ignore — table will be created with constraint on fresh installs */ }
-    // Backfill new observability columns on existing deployments (idempotent).
-    try {
-      await p.query(`
-        ALTER TABLE user_integrations
-          ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMPTZ,
-          ADD COLUMN IF NOT EXISTS last_error       TEXT;
-      `);
-    } catch (_e) { /* ignore */ }
     console.log('[credentials] schema ready (user_integrations)');
   })();
   return _schemaReady;
@@ -222,34 +212,16 @@ async function deleteCredentials(userId, platform) {
 }
 
 const _ALLOWED_STATUS = new Set(['connected','disconnected','error']);
-// setStatus(userId, platform, status, opts?)
-//   opts.lastError  — string saved to last_error column (truncated to 500 chars)
-//                     when status='error'; cleared automatically when status='connected'
-//   opts.verified   — when true (or status='connected'), bumps last_verified_at=now()
-async function setStatus(userId, platform, status, opts) {
+async function setStatus(userId, platform, status) {
   const uid = _normUserId(userId);
   if (!uid || !_db.hasDb()) return { ok: false };
   const s = String(status || 'connected');
   if (!_ALLOWED_STATUS.has(s)) throw new Error(`setStatus: invalid status ${s}`);
   await ensureCredentialsSchema();
-  const o = opts || {};
-  const verified = o.verified === true || s === 'connected';
-  let lastError = null;
-  if (s === 'error' && o.lastError != null) lastError = String(o.lastError).slice(0, 500);
-  // status='connected' clears last_error; status='error' sets it (or leaves prior value
-  // if no message provided); status='disconnected' leaves last_error untouched.
-  await _db.getPool().query(`
-    UPDATE user_integrations
-       SET status            = $3,
-           updated_at        = now(),
-           last_verified_at  = CASE WHEN $4::boolean THEN now() ELSE last_verified_at END,
-           last_error        = CASE
-                                 WHEN $3 = 'connected'           THEN NULL
-                                 WHEN $3 = 'error' AND $5::text IS NOT NULL THEN $5::text
-                                 ELSE last_error
-                               END
-     WHERE user_id=$1 AND platform=$2
-  `, [uid, platform, s, verified, lastError]);
+  await _db.getPool().query(
+    'UPDATE user_integrations SET status=$3, updated_at=now() WHERE user_id=$1 AND platform=$2',
+    [uid, platform, s]
+  );
   return { ok: true };
 }
 
@@ -258,8 +230,7 @@ async function getStatus(userId, platform) {
   if (!uid || !_db.hasDb()) return { connected: false, status: 'disconnected', source: null };
   await ensureCredentialsSchema();
   const r = await _db.getPool().query(
-    `SELECT status, connected_at, updated_at, last_verified_at, last_error
-       FROM user_integrations WHERE user_id=$1 AND platform=$2`,
+    'SELECT status, connected_at, updated_at FROM user_integrations WHERE user_id=$1 AND platform=$2',
     [uid, platform]
   );
   if (!r.rows.length) return { connected: false, status: 'disconnected', source: null };
@@ -269,25 +240,8 @@ async function getStatus(userId, platform) {
     status: row.status,
     connected_at: row.connected_at,
     updated_at: row.updated_at,
-    last_verified_at: row.last_verified_at,
-    last_error: row.last_error,
     source: 'vault',
   };
-}
-
-// List user_ids that currently have a non-disconnected credential row for the
-// given platform. Used by background refresher cron jobs.
-async function listConnectedUserIds(platform) {
-  if (!_db.hasDb()) return [];
-  try {
-    await ensureCredentialsSchema();
-    const r = await _db.getPool().query(
-      `SELECT user_id FROM user_integrations
-        WHERE platform=$1 AND status <> 'disconnected'`,
-      [platform]
-    );
-    return r.rows.map(x => x.user_id);
-  } catch { return []; }
 }
 
 // ── Owner check (deployment owner = first signup, is_owner=TRUE) ─────────────
@@ -404,7 +358,6 @@ module.exports = {
   deleteCredentials,
   getStatus,
   setStatus,
-  listConnectedUserIds,
   // Platform-specific resolvers
   resolveGoogleAdsCredentials,
   resolveMetaAdsCredentials,

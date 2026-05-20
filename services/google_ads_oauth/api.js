@@ -256,7 +256,6 @@ router.get('/summary', async (req, res) => {
   const { clientId, clientSecret, devToken } = _clientCreds();
   const operatorReady = !!(clientId && clientSecret && devToken);
   let connected = false, email = null, customerId = null, status = 'disconnected';
-  let connectedAt = null, lastVerifiedAt = null, lastError = null;
   try {
     const blob = await vault.getCredentials(req.user.id, 'google_ads');
     if (blob) {
@@ -265,15 +264,9 @@ router.get('/summary', async (req, res) => {
       customerId = blob.customerId || null;
     }
     const s = await vault.getStatus(req.user.id, 'google_ads');
-    status         = s.status || 'disconnected';
-    connectedAt    = s.connected_at || null;
-    lastVerifiedAt = s.last_verified_at || null;
-    lastError      = s.last_error || null;
+    status = s.status || 'disconnected';
   } catch (_) {}
-  res.json({
-    ok: true, operatorReady, connected, email, customerId, status,
-    connectedAt, lastVerifiedAt, lastError,
-  });
+  res.json({ ok: true, operatorReady, connected, email, customerId, status });
 });
 
 module.exports = router;

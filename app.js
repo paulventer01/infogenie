@@ -3522,27 +3522,6 @@ async function runAnalysis(url, country, industryOverride) {
   overlay.classList.add('hidden');
   showToast(`✅ Dashboard ready in ${_runSec}s`);
 
-  // ── Safety net ───────────────────────────────────────────────────────────
-  // If anything in the intelligence-build path below throws synchronously or
-  // in an awaited call, we still want the dashboard to open. Schedule a
-  // fallback navigate; the success path at the bottom of this function will
-  // cancel it. Without this, an exception in any downstream call leaves the
-  // user staring at the hero with no feedback that anything went wrong.
-  const _dashboardSafetyNav = setTimeout(() => {
-    try {
-      if (currentView !== 'dashboard') {
-        if (!window.analysisData) {
-          analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: [], sectorOnly };
-          window.analysisData = analysisData;
-        }
-        navigateTo('dashboard');
-        try { buildDashboard(); } catch(_) {}
-        showToast('⚠️ Dashboard opened with partial data — some intelligence sections may be empty.');
-        console.warn('[runAnalysis] safety-net navigation fired — intelligence build likely threw');
-      }
-    } catch (e) { console.warn('[runAnalysis] safety-net error:', e); }
-  }, 1500);
-
   // ── If URL was given but user didn't type an industry, take the sub-niche
   //    that smart-detect inferred from the website and use it to fetch a
   //    canonical, real-world same-niche competitor list. This cures the
@@ -3926,7 +3905,6 @@ async function runAnalysis(url, country, industryOverride) {
   }).catch(() => {});
 
   // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
-  clearTimeout(_dashboardSafetyNav);
   navigateTo('dashboard');
   showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
 
@@ -47334,19 +47312,6 @@ window._aivLoadHistory = async function() {
 // GOOGLE ADS — Settings card hydration + OAuth wiring
 // ===================================================
 
-// Human-friendly "X ago" formatter for ISO timestamps from the vault.
-function _gaTimeAgo(iso) {
-  if (!iso) return 'never';
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return 'never';
-  const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
-  if (s < 60)        return `${s}s ago`;
-  if (s < 3600)      return `${Math.floor(s/60)}m ago`;
-  if (s < 86400)     return `${Math.floor(s/3600)}h ago`;
-  if (s < 86400*30)  return `${Math.floor(s/86400)}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
-
 async function hydrateGoogleAdsCard() {
   const card = document.getElementById('card-google-ads');
   if (!card) return;
@@ -47375,41 +47340,23 @@ async function hydrateGoogleAdsCard() {
   </div>`;
 
   if (summary.connected) {
-    const isError = summary.status === 'error';
-    const badge = isError
-      ? `<span style="background:rgba(239,68,68,.15);color:#FCA5A5;padding:3px 9px;border-radius:6px;font-size:0.7rem;font-weight:700">⚠️ Needs attention</span>`
-      : `<span style="background:rgba(16,185,129,.18);color:#34D399;padding:3px 9px;border-radius:6px;font-size:0.7rem;font-weight:700">✅ Healthy</span>`;
-    const verifiedLine = summary.lastVerifiedAt
-      ? `Last verified: ${esc(_gaTimeAgo(summary.lastVerifiedAt))}`
-      : (summary.connectedAt
-          ? `Connected: ${esc(_gaTimeAgo(summary.connectedAt))} · awaiting first verification`
-          : 'Awaiting first verification');
-    const errorBanner = (isError && summary.lastError) ? `
-      <div style="background:rgba(239,68,68,.10);border:1px solid rgba(239,68,68,.35);border-radius:8px;padding:10px 12px;margin-bottom:12px">
-        <div style="font-size:0.78rem;color:#FCA5A5;font-weight:700;margin-bottom:4px">⚠️ Google rejected the last token check</div>
-        <div style="font-size:0.72rem;color:rgba(255,255,255,.65);line-height:1.5;margin-bottom:8px">
-          <code style="color:#FCA5A5;background:rgba(0,0,0,.25);padding:2px 6px;border-radius:4px">${esc(summary.lastError)}</code>
-        </div>
-        <button onclick="connectGoogleAds()" style="background:#EF4444;border:none;color:white;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.75rem">🔄 Reconnect Google Ads</button>
-      </div>` : '';
+    const badge = summary.status === 'error'
+      ? `<span style="background:rgba(239,68,68,.15);color:#FCA5A5;padding:3px 9px;border-radius:6px;font-size:0.7rem;font-weight:700">⚠️ Token error</span>`
+      : `<span style="background:rgba(16,185,129,.18);color:#34D399;padding:3px 9px;border-radius:6px;font-size:0.7rem;font-weight:700">✅ Connected</span>`;
     const newHtml = `
       <div class="unlocks-title">✦ Connected Google Ads account</div>
-      ${errorBanner}
       <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 14px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <div style="font-size:0.85rem;font-weight:700;color:white">${esc(summary.email || 'Connected via OAuth')}</div>
           ${badge}
         </div>
-        <div style="font-size:0.74rem;color:rgba(255,255,255,.55);margin-bottom:4px">
+        <div style="font-size:0.74rem;color:rgba(255,255,255,.55)">
           Customer ID: <code style="color:#93C5FD">${esc(summary.customerId || '—')}</code>
-        </div>
-        <div style="font-size:0.72rem;color:rgba(255,255,255,.5)">
-          🕒 ${verifiedLine}
         </div>
         <div id="ga-test-result" style="margin-top:8px;font-size:0.72rem;color:rgba(255,255,255,.5);display:none"></div>
       </div>
       <div class="integ-card-actions" style="flex-direction:column;gap:8px">
-        <button class="btn-test" style="width:100%" onclick="testGoogleAdsConnection()">🧪 Test connection now</button>
+        <button class="btn-test" style="width:100%" onclick="testGoogleAdsConnection()">🧪 Test connection</button>
         <button class="btn-docs-card" style="width:100%;background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.35);color:#FCA5A5" onclick="disconnectGoogleAds()">🔌 Disconnect</button>
       </div>
     `;
