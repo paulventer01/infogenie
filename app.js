@@ -48760,7 +48760,7 @@ window.buildLinkedinAds = function() {
         <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:20px">
           <h4 style="margin:0 0 10px;font-size:0.9rem;font-weight:700;color:#1D4ED8">Recent Searches</h4>
           ${history.length === 0 ? '<p style="font-size:0.83rem;color:#6B7280;margin:0">No searches yet.</p>' :
-          history.slice(0,5).map(h=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer" onclick="document.getElementById('ladCompany').value='${_escapeHtml(h.company.replace(/'/g,"\\'")))}'">
+          history.slice(0,5).map(h=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer" data-company="${_escapeHtml(h.company)}" onclick="document.getElementById('ladCompany').value=this.dataset.company">
             <span style="font-size:0.84rem;font-weight:600;color:#1D4ED8">💼 ${_escapeHtml(h.company)}</span>
             <span style="font-size:0.75rem;color:#9CA3AF;margin-left:auto">${new Date(h.created_at).toLocaleDateString()}</span>
           </div>`).join('')}
