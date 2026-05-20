@@ -3522,6 +3522,27 @@ async function runAnalysis(url, country, industryOverride) {
   overlay.classList.add('hidden');
   showToast(`✅ Dashboard ready in ${_runSec}s`);
 
+  // ── Safety net ───────────────────────────────────────────────────────────
+  // If anything in the intelligence-build path below throws synchronously or
+  // in an awaited call, we still want the dashboard to open. Schedule a
+  // fallback navigate; the success path at the bottom of this function will
+  // cancel it. Without this, an exception in any downstream call leaves the
+  // user staring at the hero with no feedback that anything went wrong.
+  const _dashboardSafetyNav = setTimeout(() => {
+    try {
+      if (currentView !== 'dashboard') {
+        if (!window.analysisData) {
+          analysisData = { url: cleanUrl, country, industryKey, industry, websiteKPIs, competitors: [], sectorOnly };
+          window.analysisData = analysisData;
+        }
+        navigateTo('dashboard');
+        try { buildDashboard(); } catch(_) {}
+        showToast('⚠️ Dashboard opened with partial data — some intelligence sections may be empty.');
+        console.warn('[runAnalysis] safety-net navigation fired — intelligence build likely threw');
+      }
+    } catch (e) { console.warn('[runAnalysis] safety-net error:', e); }
+  }, 1500);
+
   // ── If URL was given but user didn't type an industry, take the sub-niche
   //    that smart-detect inferred from the website and use it to fetch a
   //    canonical, real-world same-niche competitor list. This cures the
@@ -3905,6 +3926,7 @@ async function runAnalysis(url, country, industryOverride) {
   }).catch(() => {});
 
   // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
+  clearTimeout(_dashboardSafetyNav);
   navigateTo('dashboard');
   showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
 
