@@ -109,6 +109,10 @@
     if (el.disabled || el.readOnly) return false;
     if (el.tagName === 'INPUT' && SKIP_TYPES.has((el.type || 'text').toLowerCase())) return false;
     if (el.tagName === 'SELECT') return false; // selects get skipped globally
+    // Skip the auth wall (login / signup / forgot-password): those fields are
+    // personal credentials with no brand context yet — AI Suggest would be
+    // both useless and confusing. Covers password reset page too.
+    if (el.closest('#igAuthWall, #igForgotForm, #ig-reset-form, [data-auth-form]')) return false;
     return true;
   }
 
