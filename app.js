@@ -3685,6 +3685,7 @@ async function runAnalysis(url, country, industryOverride) {
       // DataForSEO returned nothing.
       try {
         statusText.textContent = 'AI is validating competitor data accuracy...';
+        window.IGDiag && IGDiag.mark('ai-validate-metrics: start', `n=${aiCompetitorPool.length}`);
         const aiPayload = aiCompetitorPool.map(c => ({
           name: c.name,
           domain: c.domain,
@@ -3694,12 +3695,22 @@ async function runAnalysis(url, country, industryOverride) {
           currentCTR:     c.ctr,
           dataSource:     c.dataSource || null
         }));
+        // 20s client-side timeout so a slow LLM never freezes the analyse flow
+        const _aiCtl = new AbortController();
+        const _aiTo  = setTimeout(() => _aiCtl.abort(), 20000);
+        const _aiT0  = performance.now();
         const ar = await fetch('/api/ai-validate-metrics', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ competitors: aiPayload, industry: aiDetected.industryName || industryKey })
+          body:    JSON.stringify({ competitors: aiPayload, industry: aiDetected.industryName || industryKey }),
+          signal:  _aiCtl.signal
+        }).catch(e => {
+          window.IGDiag && IGDiag.err('ai-validate-metrics: aborted/failed', e.name + ' after ' + ((performance.now()-_aiT0)/1000).toFixed(1) + 's — continuing without AI validation');
+          return null;
         });
-        if (ar.ok) {
+        clearTimeout(_aiTo);
+        window.IGDiag && IGDiag.mark('ai-validate-metrics: response', ar ? `${ar.status} in ${((performance.now()-_aiT0)/1000).toFixed(1)}s` : 'no response');
+        if (ar && ar.ok) {
           const aj = await ar.json();
           const byName = {};
           (aj.results || []).forEach(r => { if (r && r.name) byName[r.name.toLowerCase().trim()] = r; });
@@ -3778,7 +3789,7 @@ async function runAnalysis(url, country, industryOverride) {
             refined++;
           });
           console.log(`✓ AI validated/refined ${refined}/${aiCompetitorPool.length} competitors`);
-        } else {
+        } else if (ar) {
           console.warn('ai-validate-metrics returned', ar.status);
         }
       } catch(e) { console.warn('AI validation pass failed:', e); }
@@ -3920,15 +3931,30 @@ async function runAnalysis(url, country, industryOverride) {
   navigateTo('dashboard');
   showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
 
-  // Build all views — each wrapped so one failure never blocks the rest
-  try { buildDashboard();    } catch(e) { console.warn('buildDashboard error:', e); }
-  try { buildCompetitors();  } catch(e) { console.warn('buildCompetitors error:', e); }
-  try { buildCampaigns();    } catch(e) { console.warn('buildCampaigns error:', e); }
-  try { buildAudience();     } catch(e) { console.warn('buildAudience error:', e); }
-  try { buildCreative();     } catch(e) { console.warn('buildCreative error:', e); }
-  try { buildIntelligence(); } catch(e) { console.warn('buildIntelligence error:', e); }
+  // Build all views — each wrapped so one failure never blocks the rest.
+  // Yield to the browser between heavy builders so the page never goes
+  // unresponsive while we render thousands of DOM nodes back-to-back.
+  const _yield = () => new Promise(r => setTimeout(r, 0));
+  const _runBuilder = async (name, fn) => {
+    const t0 = performance.now();
+    try {
+      window.IGDiag && IGDiag.log(name + ': start');
+      fn();
+      window.IGDiag && IGDiag.log(name + ': done', ((performance.now()-t0)).toFixed(0) + 'ms');
+    } catch(e) {
+      console.warn(name + ' error:', e);
+      window.IGDiag && IGDiag.err(name + ' error', e && e.message || String(e));
+    }
+    await _yield();
+  };
+  await _runBuilder('buildDashboard',    buildDashboard);
+  await _runBuilder('buildCompetitors',  buildCompetitors);
+  await _runBuilder('buildCampaigns',    buildCampaigns);
+  await _runBuilder('buildAudience',     buildAudience);
+  await _runBuilder('buildCreative',     buildCreative);
+  await _runBuilder('buildIntelligence', buildIntelligence);
   window._bpIdx = 0;
-  try { buildBattlePlan();   } catch(e) { console.warn('buildBattlePlan error:', e); }
+  await _runBuilder('buildBattlePlan',   buildBattlePlan);
 
   // Log analysis actions to results tracker
   if (!window._infoGenieActions) window._infoGenieActions = [];
