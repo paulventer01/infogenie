@@ -109,10 +109,15 @@
     if (el.disabled || el.readOnly) return false;
     if (el.tagName === 'INPUT' && SKIP_TYPES.has((el.type || 'text').toLowerCase())) return false;
     if (el.tagName === 'SELECT') return false; // selects get skipped globally
+    // Skip fields explicitly opted out via data-ig-skip attribute
+    if (el.dataset.igSkip !== undefined) return false;
     // Skip the auth wall (login / signup / forgot-password): those fields are
     // personal credentials with no brand context yet — AI Suggest would be
     // both useless and confusing. Covers password reset page too.
     if (el.closest('#igAuthWall, #igForgotForm, #ig-reset-form, [data-auth-form]')) return false;
+    // Skip the Analyse Now hero inputs — URL/industry/competitor fields are
+    // user-typed structured values, not AI-fillable free-text.
+    if (el.closest('.url-card')) return false;
     return true;
   }
 

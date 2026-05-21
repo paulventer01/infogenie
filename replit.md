@@ -102,7 +102,7 @@ Listens on port 5000 (preview) and 80 (external). PostgreSQL via `DATABASE_URL`.
 
 **Brand Foundation**: Singleton (`brand_foundation` table, id=1). `getBrandContextBlock()` auto-injected into landing pages, content calendar, cold email, video scripts, Creator Studio.
 
-**Field Enhancer** (`ig_field_enhancer.js`): MutationObserver adds AI Suggest + brand pill to every eligible input. Scans only newly-added nodes via `requestAnimationFrame` (never full-document re-scan). Skips auth forms, password/file/search inputs, already-decorated fields. Cache-busted as `?v=20260520REL3`.
+**Field Enhancer** (`ig_field_enhancer.js`): MutationObserver adds AI Suggest + brand pill to every eligible input. Scans only newly-added nodes via `requestAnimationFrame` (never full-document re-scan). Skips auth forms, password/file/search inputs, already-decorated fields. Cache-busted as `?v=20260521REL1`.
 
 ## Feature Surface (T1-T38)
 
