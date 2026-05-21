@@ -287,22 +287,49 @@
     (root || document).querySelectorAll(SCAN_SEL).forEach(decorate);
   }
 
-  // Only the nodes that were freshly inserted get scanned — never the whole
-  // document. The earlier implementation re-walked the full DOM on every
-  // batched mutation, which jammed the main thread when the analyse-now flow
-  // injected thousands of dashboard nodes at once (browser would surface
-  // "This page isn't responding"). We now queue added subtrees, dedupe
-  // descendants, and process them in one rAF.
-  const pendingRoots = new Set();
+  // Only freshly-inserted subtrees are scanned — never the whole document.
+  // Hard cap on how many input/textarea elements we decorate per animation
+  // frame. When buildIntelligence (or any other heavy builder) dumps a big
+  // subtree containing 100+ inputs at once, decorating them all in a single
+  // rAF would block the main thread for seconds and trigger the browser's
+  // "page unresponsive" warning. We process up to MAX_PER_FRAME, then yield
+  // and resume in the next frame.
+  const MAX_PER_FRAME = 25;
+  const pendingRoots  = new Set();
+  const pendingInputs = []; // expanded queue of individual elements
   let rafScheduled = false;
-  function flushPending(){
-    rafScheduled = false;
+
+  function expandRoots(){
     const roots = Array.from(pendingRoots);
     pendingRoots.clear();
     for (const node of roots) {
       if (!node || !node.isConnected) continue;
-      if (node.matches && node.matches(SCAN_SEL)) decorate(node);
-      if (node.querySelectorAll) scan(node);
+      if (node.matches && node.matches(SCAN_SEL)) pendingInputs.push(node);
+      if (node.querySelectorAll) {
+        node.querySelectorAll(SCAN_SEL).forEach(el => pendingInputs.push(el));
+      }
+    }
+  }
+
+  function flushPending(){
+    rafScheduled = false;
+    const t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+    expandRoots();
+    const total = pendingInputs.length;
+    let processed = 0;
+    while (pendingInputs.length && processed < MAX_PER_FRAME) {
+      const el = pendingInputs.shift();
+      if (el && el.isConnected) decorate(el);
+      processed++;
+    }
+    if (window.IGDiag && total > MAX_PER_FRAME) {
+      const dt = ((window.performance && performance.now) ? performance.now() : Date.now()) - t0;
+      window.IGDiag.log('field-enhancer: chunked', processed + '/' + total + ' inputs in ' + dt.toFixed(0) + 'ms — ' + pendingInputs.length + ' deferred');
+    }
+    // More to do — schedule next chunk in the next frame
+    if (pendingInputs.length || pendingRoots.size) {
+      rafScheduled = true;
+      (window.requestAnimationFrame || setTimeout)(flushPending, 16);
     }
   }
   function queueRoot(node){

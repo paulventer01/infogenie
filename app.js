@@ -3063,7 +3063,30 @@ function navigateTo(viewId, updateActive = true) {
       wrap.classList.toggle('group-active', !!hasActive);
     });
   }
-  // Rebuild views on demand so they're always populated when navigated to
+  // Rebuild views on demand so they're always populated when navigated to.
+  // Top-level analyse-flow views: build lazily if the background pre-build
+  // queue hasn't reached them yet. Idempotent — marker prevents double work.
+  window._igViewBuilt = window._igViewBuilt || {};
+  const _lazyBuild = (id, fn) => {
+    if (window._igViewBuilt[id]) return;
+    try {
+      window.IGDiag && IGDiag.log('build' + id + ': start (lazy)');
+      const t0 = performance.now();
+      fn();
+      window.IGDiag && IGDiag.log('build' + id + ': done (lazy)', ((performance.now()-t0)).toFixed(0) + 'ms');
+      window._igViewBuilt[id] = true; // success → mark built
+    } catch(e) {
+      console.warn('build' + id + ' lazy error:', e);
+      window.IGDiag && IGDiag.err('build' + id + ' lazy error', e && e.message || String(e));
+      // Leave marker false so a future navigation can retry
+    }
+  };
+  if (viewId === 'competitors')  _lazyBuild('competitors',  buildCompetitors);
+  if (viewId === 'audience')     _lazyBuild('audience',     buildAudience);
+  if (viewId === 'creative')     _lazyBuild('creative',     buildCreative);
+  if (viewId === 'intelligence') _lazyBuild('intelligence', buildIntelligence);
+  if (viewId === 'battleplan')   _lazyBuild('battleplan',   buildBattlePlan);
+
   if (viewId === 'settings') {
     try { buildSettings(); } catch(e) { console.warn('buildSettings error:', e); }
   }
@@ -3214,9 +3237,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'technical-suite') {
     try { buildTechnicalSuite(); } catch(e) { console.warn('buildTechnicalSuite error:', e); }
   }
-  if (viewId === 'battleplan') {
-    try { buildBattlePlan(); } catch(e) { console.warn('buildBattlePlan error:', e); }
-  }
+  // (battleplan now handled by _lazyBuild above)
   if (viewId === 'reddit') {
     try { buildRedditIntel(); } catch(e) { console.warn('buildRedditIntel error:', e); }
   }
@@ -3931,30 +3952,62 @@ async function runAnalysis(url, country, industryOverride) {
   navigateTo('dashboard');
   showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
 
-  // Build all views — each wrapped so one failure never blocks the rest.
-  // Yield to the browser between heavy builders so the page never goes
-  // unresponsive while we render thousands of DOM nodes back-to-back.
-  const _yield = () => new Promise(r => setTimeout(r, 0));
-  const _runBuilder = async (name, fn) => {
+  // Build the landing view (dashboard) immediately and defer all other views
+  // to a background queue with generous gaps. This prevents the main thread
+  // from being saturated while the global field enhancer's MutationObserver
+  // decorates the freshly-rendered inputs. Each non-dashboard view is ALSO
+  // wired into navigateTo as a safety net — if the user clicks a tab before
+  // the background queue reaches it, it builds on demand instead.
+  const _runBuilder = (name, fn, tag) => {
     const t0 = performance.now();
     try {
-      window.IGDiag && IGDiag.log(name + ': start');
+      window.IGDiag && IGDiag.log(name + ': start' + (tag ? ' (' + tag + ')' : ''));
       fn();
-      window.IGDiag && IGDiag.log(name + ': done', ((performance.now()-t0)).toFixed(0) + 'ms');
+      window.IGDiag && IGDiag.log(name + ': done' + (tag ? ' (' + tag + ')' : ''), ((performance.now()-t0)).toFixed(0) + 'ms');
+      return true;
     } catch(e) {
       console.warn(name + ' error:', e);
       window.IGDiag && IGDiag.err(name + ' error', e && e.message || String(e));
+      return false;
     }
-    await _yield();
   };
-  await _runBuilder('buildDashboard',    buildDashboard);
-  await _runBuilder('buildCompetitors',  buildCompetitors);
-  await _runBuilder('buildCampaigns',    buildCampaigns);
-  await _runBuilder('buildAudience',     buildAudience);
-  await _runBuilder('buildCreative',     buildCreative);
-  await _runBuilder('buildIntelligence', buildIntelligence);
+  // 1. Render the dashboard NOW so the user sees results immediately.
+  _runBuilder('buildDashboard', buildDashboard);
+
+  // 2. Mark all other top-level views as "needs build" so navigateTo will
+  //    build them on first click if the background queue hasn't reached them.
+  window._igViewBuilt = window._igViewBuilt || {};
+  window._igViewBuilt.dashboard = true;
+  ['competitors','audience','creative','intelligence','battleplan'].forEach(v => { window._igViewBuilt[v] = false; });
   window._bpIdx = 0;
-  await _runBuilder('buildBattlePlan',   buildBattlePlan);
+
+  // 3. Kick off background pre-build with breathing room between each. The
+  //    150ms gap lets the browser paint + lets the field enhancer's rAF +
+  //    MutationObserver callbacks fully drain before we drop the next view's
+  //    DOM in. This is what fixes the "page unresponsive" freeze we were
+  //    seeing right after buildIntelligence completed.
+  const _bgBuild = async () => {
+    const queue = [
+      ['buildCompetitors',  buildCompetitors,  'competitors'],
+      ['buildAudience',     buildAudience,     'audience'],
+      ['buildCreative',     buildCreative,     'creative'],
+      ['buildIntelligence', buildIntelligence, 'intelligence'],
+      ['buildBattlePlan',   buildBattlePlan,   'battleplan'],
+    ];
+    for (const [name, fn, viewId] of queue) {
+      if (window._igViewBuilt[viewId]) continue; // user already triggered it
+      await new Promise(r => setTimeout(r, 150));
+      // Re-check AFTER the sleep — the user may have navigated to the tab
+      // during the delay, in which case _lazyBuild already handled it.
+      if (window._igViewBuilt[viewId]) continue;
+      const ok = _runBuilder(name, fn, 'bg');
+      // Only mark built on success — keep false on failure so a subsequent
+      // navigateTo() can lazy-rebuild and recover.
+      if (ok) window._igViewBuilt[viewId] = true;
+    }
+    window.IGDiag && IGDiag.mark('All views built');
+  };
+  _bgBuild();
 
   // Log analysis actions to results tracker
   if (!window._infoGenieActions) window._infoGenieActions = [];
