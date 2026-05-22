@@ -3425,22 +3425,42 @@ async function runAnalysis(url, country, industryOverride) {
     industryKey = detectIndustry(cleanUrl);
   }
 
+  // Wrap fetch with a hard timeout — protects every network call in the
+  // analyse flow so a single slow/hung endpoint cannot freeze the whole UI.
+  const _fetchWithTimeout = (label, url, opts, ms) => {
+    const ctl = new AbortController();
+    const t0 = performance.now();
+    const to = setTimeout(() => ctl.abort(), ms || 20000);
+    window.IGDiag && IGDiag.mark(label + ': fetch start');
+    return fetch(url, Object.assign({}, opts, { signal: ctl.signal }))
+      .then(r => {
+        clearTimeout(to);
+        window.IGDiag && IGDiag.mark(label + ': response', r.status + ' in ' + ((performance.now()-t0)/1000).toFixed(1) + 's');
+        return r.ok ? r.json() : null;
+      })
+      .catch(err => {
+        clearTimeout(to);
+        window.IGDiag && IGDiag.err(label + ': failed', (err && err.name || 'err') + ' after ' + ((performance.now()-t0)/1000).toFixed(1) + 's');
+        return null;
+      });
+  };
+
   // ── Kick off live AI-powered industry + competitor detection (non-blocking) ─
   // Scrapes the website and uses GPT-4o to identify the precise sub-niche and
   // suggest 6-10 real direct competitors. Awaited later before building views.
   const smartDetectPromise = (industrySource === 'user-specified' || sectorOnly)
     ? Promise.resolve(null) // user override / sector-only mode → skip live scrape
-    : fetch('/api/smart-detect', {
+    : _fetchWithTimeout('smart-detect', '/api/smart-detect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: cleanUrl })
-      }).then(r => r.ok ? r.json() : null).catch(err => { console.warn('smart-detect failed:', err); return null; });
+      }, 25000);
 
   // ── If user typed an industry (sector-only OR refining a URL), call the
   //    AI sector-competitors endpoint to get REAL same-niche competitors.
   //    This solves the "search by industry returns wrong companies" problem.
   const sectorPromise = hasIndustry
-    ? fetch('/api/sector-competitors', {
+    ? _fetchWithTimeout('sector-competitors', '/api/sector-competitors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3448,7 +3468,7 @@ async function runAnalysis(url, country, industryOverride) {
           country: country || '',
           urlHint: hasUrl ? cleanUrl : ''
         })
-      }).then(r => r.ok ? r.json() : null).catch(err => { console.warn('sector-competitors failed:', err); return null; })
+      }, 25000)
     : Promise.resolve(null);
 
   const industry = INDUSTRY_DB[industryKey];
@@ -3664,12 +3684,23 @@ async function runAnalysis(url, country, industryOverride) {
         statusText.textContent = 'Pulling live competitor traffic & ad-spend data...';
         const domainList = aiCompetitorPool.map(c => c.domain).filter(Boolean);
         if (domainList.length) {
+          // 25s hard timeout — DataForSEO can be slow but should never hang the UI.
+          const _cmCtl = new AbortController();
+          const _cmT0  = performance.now();
+          const _cmTo  = setTimeout(() => _cmCtl.abort(), 25000);
+          window.IGDiag && IGDiag.mark('competitor-metrics: fetch start', `n=${domainList.length}`);
           const mr = await fetch('/api/competitor-metrics', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ domains: domainList, industryKey, location: country || 'United States' })
+            body: JSON.stringify({ domains: domainList, industryKey, location: country || 'United States' }),
+            signal: _cmCtl.signal
+          }).catch(e => {
+            window.IGDiag && IGDiag.err('competitor-metrics: aborted/failed', e.name + ' after ' + ((performance.now()-_cmT0)/1000).toFixed(1) + 's');
+            return null;
           });
-          if (mr.ok) {
+          clearTimeout(_cmTo);
+          window.IGDiag && IGDiag.mark('competitor-metrics: response', mr ? `${mr.status} in ${((performance.now()-_cmT0)/1000).toFixed(1)}s` : 'no response');
+          if (mr && mr.ok) {
             const mj = await mr.json();
             const byDomain = {};
             (mj.results || []).forEach(r => {
@@ -3949,6 +3980,7 @@ async function runAnalysis(url, country, industryOverride) {
   }).catch(() => {});
 
   // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
+  window.IGDiag && IGDiag.mark('runAnalysis: navigating to dashboard', 'comps=' + selectedComps.length);
   navigateTo('dashboard');
   showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
 

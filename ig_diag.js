@@ -25,7 +25,12 @@
     if (events.length > MAX) events.shift();
     if (list && panel && !panel.classList.contains('hidden')) appendRow(e);
     updateCount();
-    if (kind === 'error') console.error('[IGDiag]', label, detail);
+    // Mirror to console so server-side log fetchers can see the breadcrumb
+    // trail too (the in-page panel needs the user to look at it).
+    const prefix = '[IGDiag ' + e.rel + ']';
+    if (kind === 'error')      console.error(prefix, label, detail || '');
+    else if (kind === 'mark')  console.log(prefix + ' ★', label, detail || '');
+    else                       console.log(prefix, label, detail || '');
     return e;
   }
   function reset(label) {
