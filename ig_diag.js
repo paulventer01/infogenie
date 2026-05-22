@@ -31,6 +31,17 @@
     if (kind === 'error')      console.error(prefix, label, detail || '');
     else if (kind === 'mark')  console.log(prefix + ' ★', label, detail || '');
     else                       console.log(prefix, label, detail || '');
+    // Persist to server log via sendBeacon — survives page freezes & refreshes
+    // so we can reconstruct the trail of any analyse-flow hang from the
+    // workflow log. Fire-and-forget, never throws, never blocks.
+    try {
+      const payload = JSON.stringify({ rel: e.rel, kind: e.kind, label: e.label, detail: e.detail });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/diag-beacon', new Blob([payload], { type: 'application/json' }));
+      } else {
+        fetch('/api/diag-beacon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(()=>{});
+      }
+    } catch(_) {}
     return e;
   }
   function reset(label) {

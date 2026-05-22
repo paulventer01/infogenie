@@ -142,6 +142,23 @@ app.use(_authService.loadUserFromSession);
 // they remain reachable to unauthenticated visitors.
 app.use('/api/auth', _authService.router);
 
+// ── Client diagnostic beacon ─────────────────────────────────────────────────
+// IGDiag mirrors every breadcrumb here so freezes / crashes that wipe the
+// browser console still leave a server-side audit trail. Fire-and-forget,
+// no auth, no body validation beyond truncation. Tiny payloads only.
+app.post('/api/diag-beacon', express.json({ limit: '8kb' }), (req, res) => {
+  try {
+    const b = req.body || {};
+    const rel   = String(b.rel || '').slice(0, 16);
+    const kind  = String(b.kind || 'info').slice(0, 8);
+    const label = String(b.label || '').slice(0, 200);
+    const detail= b.detail == null ? '' : String(b.detail).slice(0, 400);
+    const tag = kind === 'error' ? '✖' : kind === 'mark' ? '★' : '·';
+    console.log(`[client-diag ${rel}] ${tag} ${label}${detail ? ' · ' + detail : ''}`);
+  } catch (_) {}
+  res.status(204).end();
+});
+
 app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
 
 // ── Auth gate for /api/* (production hardening) ──────────────────────────────
