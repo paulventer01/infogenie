@@ -3425,6 +3425,28 @@ function _injectNextStep(viewId) {
 
 // ===== ANALYSIS FLOW =====
 async function runAnalysis(url, country, industryOverride) {
+  // ── Pause field enhancer during the analyse-flow render burst ──────────────
+  // The dashboard + competitor + settings builders dump enormous subtrees in
+  // <500ms. The enhancer's MutationObserver reacts to every added node and
+  // floods the rAF queue with decoration work, which can saturate the main
+  // thread and freeze the page. Resume + full-doc rescan ~3s later when the
+  // builders + deferred enrichments have settled.
+  try { window.IGFields && window.IGFields.pause && window.IGFields.pause(); } catch(_) {}
+  setTimeout(() => { try { window.IGFields && window.IGFields.resume && window.IGFields.resume(); } catch(_) {} }, 3500);
+
+  // Heartbeat — fires every 500ms while runAnalysis is in flight. If the
+  // server log shows a long gap between heartbeats we know the main thread
+  // was blocked during that window. Cleared after 10s total.
+  if (window._igHeartbeat) clearInterval(window._igHeartbeat);
+  const _hbStart = performance.now();
+  let _hbN = 0;
+  window._igHeartbeat = setInterval(() => {
+    _hbN++;
+    const sec = ((performance.now() - _hbStart) / 1000).toFixed(1);
+    window.IGDiag && IGDiag.log('heartbeat #' + _hbN, sec + 's');
+    if (_hbN >= 20) { clearInterval(window._igHeartbeat); window._igHeartbeat = null; }
+  }, 500);
+
   const hasUrl       = !!(url && url.trim().length >= 3);
   const hasIndustry  = !!(industryOverride && industryOverride.trim().length >= 2);
 

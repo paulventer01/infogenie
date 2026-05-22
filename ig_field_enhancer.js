@@ -334,6 +334,10 @@
   }
   function queueRoot(node){
     if (!node || node.nodeType !== 1) return;
+    // PAUSE switch — set window.__IG_FIELDS_PAUSED__ = true to suppress all
+    // decoration work (e.g. during analyse-flow renders that dump huge
+    // subtrees). Drained automatically when the flag is cleared.
+    if (window.__IG_FIELDS_PAUSED__) return;
     pendingRoots.add(node);
     if (rafScheduled) return;
     rafScheduled = true;
@@ -343,6 +347,7 @@
   function start(){
     scan(document);
     const mo = new MutationObserver(muts => {
+      if (window.__IG_FIELDS_PAUSED__) return; // hard short-circuit
       for (const m of muts) {
         if (!m.addedNodes) continue;
         for (let i = 0; i < m.addedNodes.length; i++) queueRoot(m.addedNodes[i]);
@@ -350,7 +355,17 @@
     });
     mo.observe(document.body, { childList:true, subtree:true });
     // Public hook so any view that swaps innerHTML can request a re-scan.
-    window.IGFields = { rescan: () => scan(document), refresh: () => scan(document) };
+    window.IGFields = {
+      rescan: () => scan(document),
+      refresh: () => scan(document),
+      pause:  () => { window.__IG_FIELDS_PAUSED__ = true; window.IGDiag && IGDiag.mark('field-enhancer: paused'); },
+      resume: () => {
+        window.__IG_FIELDS_PAUSED__ = false;
+        window.IGDiag && IGDiag.mark('field-enhancer: resumed — scanning whole doc');
+        // Drain whatever was missed during the pause.
+        setTimeout(() => { try { scan(document); } catch(_) {} }, 0);
+      }
+    };
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
