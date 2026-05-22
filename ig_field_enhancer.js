@@ -344,26 +344,52 @@
     (window.requestAnimationFrame || setTimeout)(flushPending, 16);
   }
 
+  let _mo = null;
+  let _moConnected = false;
+  function _connect(){
+    if (_moConnected || !_mo) return;
+    try { _mo.observe(document.body, { childList:true, subtree:true }); _moConnected = true; } catch(_) {}
+  }
+  function _disconnect(){
+    if (!_moConnected || !_mo) return;
+    try { _mo.disconnect(); } catch(_) {}
+    _moConnected = false;
+  }
+
   function start(){
     scan(document);
-    const mo = new MutationObserver(muts => {
+    _mo = new MutationObserver(muts => {
       if (window.__IG_FIELDS_PAUSED__) return; // hard short-circuit
       for (const m of muts) {
         if (!m.addedNodes) continue;
         for (let i = 0; i < m.addedNodes.length; i++) queueRoot(m.addedNodes[i]);
       }
     });
-    mo.observe(document.body, { childList:true, subtree:true });
+    _connect();
     // Public hook so any view that swaps innerHTML can request a re-scan.
+    // pause() fully DISCONNECTS the observer so large innerHTML inserts don't
+    // accumulate thousands of mutation records that the browser has to deliver.
+    // resume() reconnects it. Callers that have just inserted a known subtree
+    // can call scanRoot(node) to decorate only that subtree (cheap), instead of
+    // re-scanning the whole document.
     window.IGFields = {
       rescan: () => scan(document),
       refresh: () => scan(document),
-      pause:  () => { window.__IG_FIELDS_PAUSED__ = true; window.IGDiag && IGDiag.mark('field-enhancer: paused'); },
-      resume: () => {
+      scanRoot: (root) => { try { if (root) scan(root); } catch(_) {} },
+      pause:  () => {
+        window.__IG_FIELDS_PAUSED__ = true;
+        _disconnect();
+        window.IGDiag && IGDiag.mark('field-enhancer: paused (observer disconnected)');
+      },
+      resume: (opts) => {
         window.__IG_FIELDS_PAUSED__ = false;
-        window.IGDiag && IGDiag.mark('field-enhancer: resumed — scanning whole doc');
-        // Drain whatever was missed during the pause.
-        setTimeout(() => { try { scan(document); } catch(_) {} }, 0);
+        _connect();
+        const skipDocScan = opts && opts.scan === false;
+        window.IGDiag && IGDiag.mark('field-enhancer: resumed' + (skipDocScan ? ' (no doc scan)' : ' — scanning whole doc'));
+        if (!skipDocScan) {
+          // Drain whatever was missed during the pause.
+          setTimeout(() => { try { scan(document); } catch(_) {} }, 0);
+        }
       }
     };
   }

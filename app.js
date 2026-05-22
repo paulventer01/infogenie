@@ -4890,6 +4890,29 @@ window.copyYourSwot = copyYourSwot;
 
 // ===== BUILD DASHBOARD =====
 function buildDashboard() {
+  // ── Tear-down between Analyse runs ────────────────────────────────────────
+  // Destroy every chart instance this build will recreate so old chart
+  // objects, resize listeners and animation frames don't accumulate across
+  // re-runs. Also pause the global field enhancer's MutationObserver for the
+  // duration of the build so the multiple large innerHTML inserts below
+  // (kpiGrid, roiBanner, table body, dashLivePanels) don't flood the main
+  // thread with mutation records mid-build.
+  try { performance.mark && performance.mark('ig:buildDashboard:start'); } catch(_) {}
+  const _dashT0 = (window.performance && performance.now) ? performance.now() : Date.now();
+  try { window.IGFields && window.IGFields.pause && window.IGFields.pause(); } catch(_) {}
+  const _dashCharts = [
+    ['sov', sovChartInstance], ['forecast', forecastChartInstance],
+    ['spend', spendChartInstance], ['efficiency', efficiencyChartInstance],
+    ['ctr', ctrChartInstance], ['roas', roasChartInstance], ['trend', trendChartInstance]
+  ];
+  _dashCharts.forEach(([_n, c]) => { try { c && c.destroy && c.destroy(); } catch(_) {} });
+  sovChartInstance = null; forecastChartInstance = null;
+  spendChartInstance = null; efficiencyChartInstance = null;
+  ctrChartInstance = null; roasChartInstance = null; trendChartInstance = null;
+  // Clear container DOM that this build owns so re-runs don't compound size
+  ['dashLivePanels','kpiGrid','compSummaryBody','analysisTags','competitorChips','roiBanner']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+
   const { url, country, industry, websiteKPIs, competitors } = analysisData;
   
   // Title — adapt for sector-only mode (no real website was analysed)
@@ -4900,46 +4923,56 @@ function buildDashboard() {
     document.getElementById('dashTitle').textContent = `Intelligence Report: ${url}`;
     document.getElementById('dashSub').textContent = `${industry.name} · ${competitors.length} competitors analysed · AI recommendations generated`;
   }
-  
+
+  // ── Staged-pipeline runner ─────────────────────────────────────────────────
+  // Every heavy DOM write or chart construction below is pushed into _dashStages
+  // and run one stage per animation frame at the end of this function. This
+  // means the main thread is never blocked long enough to freeze the diagnostic
+  // button (or any other UI) — regardless of which stage would have been the
+  // slow one on a given run. Cheap computation continues to run inline.
+  const _dashStages = [];
+  const _dashEnq = (name, fn) => _dashStages.push([name, fn]);
+
   // Analysis tags
   const tagsEl = document.getElementById('analysisTags');
   const countryLabel = getCountryLabel(analysisData.country);
-  tagsEl.innerHTML = `
-    <span class="atag" title="Your industry category — all benchmarks and AI recommendations are calibrated to this vertical.">${industry.name}</span>
-    <span class="atag" title="Geographic scope of the analysis — traffic, ad spend and benchmarks are filtered to this market.">${countryLabel}</span>
-    <span class="atag" title="${competitors.length} rival domains are being tracked and benchmarked in this report.">${competitors.length} Competitors</span>
-    <span class="atag live-tag" title="Data is refreshed in real time — competitor signals, traffic estimates and alerts are always current."><span class="live-dot-inline"></span>Live Intel</span>
-  `;
-  
+  _dashEnq('tags', () => {
+    if (!tagsEl || !tagsEl.isConnected) return;
+    tagsEl.innerHTML = `
+      <span class="atag" title="Your industry category — all benchmarks and AI recommendations are calibrated to this vertical.">${industry.name}</span>
+      <span class="atag" title="Geographic scope of the analysis — traffic, ad spend and benchmarks are filtered to this market.">${countryLabel}</span>
+      <span class="atag" title="${competitors.length} rival domains are being tracked and benchmarked in this report.">${competitors.length} Competitors</span>
+      <span class="atag live-tag" title="Data is refreshed in real time — competitor signals, traffic estimates and alerts are always current."><span class="live-dot-inline"></span>Live Intel</span>
+    `;
+  });
+
   // ── Competitor name chips (clickable → opens analysis modal) ───────────────
   const chipsEl = document.getElementById('competitorChips');
-  if (chipsEl) {
-    if (!competitors || !competitors.length) {
-      chipsEl.innerHTML = '';
-    } else {
-      const aiAny = competitors.some(c => c.aiDetected);
-      chipsEl.innerHTML = `
-        <div class="cchips-label">
-          <span>${aiAny ? '🤖 AI-detected competitors' : '🎯 Tracked competitors'} · click any name for full analysis</span>
-        </div>
-        <div class="cchips-row">
-          ${competitors.map((c, i) => `
-            <button class="cchip" data-comp-idx="${i}" title="${(c.why || ('Click to analyse ' + c.name)).replace(/"/g,'&quot;')}">
-              <span class="cchip-dot" style="background:${['#0066FF','#10B981','#F59E0B','#8B5CF6','#EF4444','#06B6D4','#EC4899','#84CC16'][i % 8]}"></span>
-              <span class="cchip-name">${c.name}</span>
-              ${c.aiDetected ? '<span class="cchip-ai">AI</span>' : ''}
-            </button>
-          `).join('')}
-        </div>
-      `;
-      chipsEl.querySelectorAll('.cchip').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const idx = parseInt(btn.getAttribute('data-comp-idx'), 10);
-          openCompetitorAnalysis(competitors[idx]);
-        });
+  _dashEnq('chips', () => {
+    if (!chipsEl || !chipsEl.isConnected) return;
+    if (!competitors || !competitors.length) { chipsEl.innerHTML = ''; return; }
+    const aiAny = competitors.some(c => c.aiDetected);
+    chipsEl.innerHTML = `
+      <div class="cchips-label">
+        <span>${aiAny ? '🤖 AI-detected competitors' : '🎯 Tracked competitors'} · click any name for full analysis</span>
+      </div>
+      <div class="cchips-row">
+        ${competitors.map((c, i) => `
+          <button class="cchip" data-comp-idx="${i}" title="${(c.why || ('Click to analyse ' + c.name)).replace(/"/g,'&quot;')}">
+            <span class="cchip-dot" style="background:${['#0066FF','#10B981','#F59E0B','#8B5CF6','#EF4444','#06B6D4','#EC4899','#84CC16'][i % 8]}"></span>
+            <span class="cchip-name">${c.name}</span>
+            ${c.aiDetected ? '<span class="cchip-ai">AI</span>' : ''}
+          </button>
+        `).join('')}
+      </div>
+    `;
+    chipsEl.querySelectorAll('.cchip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.getAttribute('data-comp-idx'), 10);
+        openCompetitorAnalysis(competitors[idx]);
       });
-    }
-  }
+    });
+  });
 
   // KPIs — only count competitors that actually have numeric values, otherwise
   // missing/'—' entries would poison the averages with NaN.
@@ -4980,7 +5013,7 @@ function buildDashboard() {
   const srcAiScore  = `<div class="kpi-source kpi-source-ai"   title="Composite score calculated for your site (${yourDomain}) using your KPIs vs the ${competitors.length} tracked competitors.">🤖 AI score for <strong>${yourDomain}</strong> vs ${competitors.length} rivals</div>`;
 
   const kpiGrid = document.getElementById('kpiGrid');
-  kpiGrid.innerHTML = `
+  const _kpiHtml = `
     <div class="kpi-card kpi-blue" title="Click-Through Rate: the % of people who click your ad after seeing it. Industry avg for ${industry.name} competitors is ${avgCTR.toFixed(2)}%.">
       ${ribbonYou}
       ${aiBadge}
@@ -5042,10 +5075,14 @@ function buildDashboard() {
       ${srcAiScore}
     </div>
   `;
+  _dashEnq('kpiGrid', () => {
+    if (kpiGrid && kpiGrid.isConnected) kpiGrid.innerHTML = _kpiHtml;
+  });
 
   // Data source notice below KPI grid
   const noticeEl = document.getElementById('kpiDataNotice');
-  if (noticeEl) {
+  _dashEnq('kpiNotice', () => {
+    if (!noticeEl || !noticeEl.isConnected) return;
     noticeEl.innerHTML = `
       <span style="color:#64748B;font-size:0.75rem">
         ⚠️ <strong>AI Estimated benchmarks</strong> — CTR, ROAS, CPA and Conversion Rate are industry benchmark ranges for <strong>${industry.name}</strong>, not pulled from your ad accounts.
@@ -5053,26 +5090,30 @@ function buildDashboard() {
         Hover any card for a full explanation.
       </span>
     `;
-  }
+  });
 
   // ── Your Company — Strengths & Weaknesses ────────────────────────────────
   // Mirrors the SWOT layout used in the per-competitor modal so the user can
   // see their own position next to rivals at a glance. Pulled from real KPIs
   // vs the competitor averages already computed above.
-  renderYourSwot({
-    yourDomain, industryName: industry.name,
-    yourCTR, yourROAS, yourConv: parseFloat(websiteKPIs.convRate),
-    yourTraffic: trafficVal, isLiveTraffic: !!realTraffic,
-    avgCTR, avgROAS,
-    competitorsCount: competitors.length,
-    sectorOnly: !!analysisData.sectorOnly
+  _dashEnq('swot', () => {
+    try {
+      renderYourSwot({
+        yourDomain, industryName: industry.name,
+        yourCTR, yourROAS, yourConv: parseFloat(websiteKPIs.convRate),
+        yourTraffic: trafficVal, isLiveTraffic: !!realTraffic,
+        avgCTR, avgROAS,
+        competitorsCount: competitors.length,
+        sectorOnly: !!analysisData.sectorOnly
+      });
+    } catch (e) { console.warn('renderYourSwot error:', e); }
   });
 
   // ROI Banner
   const improvedROAS = (avgROAS * 1.28).toFixed(1);
   const cpaReduction = 35;
   const convLift = 25;
-  document.getElementById('roiBanner').innerHTML = `
+  const _roiHtml = `
     <div class="roi-content">
       <div class="roi-label">🤖 InfoGenie ROI Projection</div>
       <div class="roi-title">Implementing InfoGenie's AI recommendations could deliver:</div>
@@ -5097,17 +5138,22 @@ function buildDashboard() {
       </div>
     </div>
   `;
-  
-  // Charts
-  renderCTRChart(competitors, yourCTR);
-  renderROASChart(competitors, yourROAS);
-  renderTrendChart(competitors);
-  
-  // Summary table
+  _dashEnq('roiBanner', () => {
+    const el = document.getElementById('roiBanner');
+    if (el && el.isConnected) el.innerHTML = _roiHtml;
+  });
+
+  // Charts — one chart per stage so no single frame builds two canvases back-to-back
+  _dashEnq('ctrChart',  () => renderCTRChart(competitors, yourCTR));
+  _dashEnq('roasChart', () => renderROASChart(competitors, yourROAS));
+  _dashEnq('trendChart',() => renderTrendChart(competitors));
+
+  // Summary table — pre-build the row HTML synchronously (cheap), commit in its
+  // own stage so it can't pile up with charts in the same frame.
   window._threatCompetitors = competitors;
   const tbody = document.getElementById('compSummaryBody');
   const safeCap = s => { const x = String(s || 'medium'); return x.charAt(0).toUpperCase() + x.slice(1); };
-  tbody.innerHTML = competitors.map((c, i) => {
+  const _tbodyHtml = competitors.map((c, i) => {
     const lvl = (c.threatLevel || 'medium').toLowerCase();
     const initials = c.logo || (c.name || '?').split(/\s+/).slice(0,2).map(s=>s.charAt(0).toUpperCase()).join('');
     const channel = c.topChannel || (c.topChannels && c.topChannels[0]) || '—';
@@ -5128,16 +5174,44 @@ function buildDashboard() {
       </tr>
     `;
   }).join('');
+  _dashEnq('summaryTable', () => {
+    if (tbody && tbody.isConnected) tbody.innerHTML = _tbodyHtml;
+  });
 
-  // ── Async populate "Est. Ad Spend" column with real Meta Ad Library counts + transparent $ range estimate
-  try { window._populateAdSpendColumn && window._populateAdSpendColumn(competitors); } catch (e) { console.warn('populateAdSpend error:', e); }
-
-  // ── Marketing Journey stages panel (Express → Tailor → Amplify → Evolve) ──
-  try { window._renderJourneyStages && window._renderJourneyStages(); } catch (e) { console.warn('renderJourneyStages error:', e); }
+  // ── Async populate "Est. Ad Spend" column + Marketing Journey stages ──────
+  _dashEnq('adSpendCol', () => {
+    try { window._populateAdSpendColumn && window._populateAdSpendColumn(competitors); } catch (e) { console.warn('populateAdSpend error:', e); }
+  });
+  _dashEnq('journeyStages', () => {
+    try { window._renderJourneyStages && window._renderJourneyStages(); } catch (e) { console.warn('renderJourneyStages error:', e); }
+  });
 
   // ── Live Data Panels ──────────────────────────────────────────────────────
   const liveWrap = document.getElementById('dashLivePanels');
-  if (!liveWrap) return;
+  if (!liveWrap) {
+    // No live-panels container — kick off the stage runner with everything
+    // queued so far (tags/chips/kpi/charts/table). All live-panel stages
+    // simply won't be appended below. The runner handles field-enhancer
+    // resume + scoped scan on its drain path, so we don't leak the paused
+    // state.
+    const _earlyDrain = () => {
+      try { window.IGFields && window.IGFields.resume && window.IGFields.resume({ scan: false }); } catch(_) {}
+      try {
+        const root = document.getElementById('view-dashboard')
+                  || document.querySelector('.view.active')
+                  || document.body;
+        window.IGFields && window.IGFields.scanRoot && window.IGFields.scanRoot(root);
+      } catch(_) {}
+    };
+    let _i = 0;
+    const _tick = () => {
+      if (_i >= _dashStages.length) { _earlyDrain(); return; }
+      try { _dashStages[_i++][1](); } catch(e) { console.warn('stage err', e); }
+      (window.requestAnimationFrame || setTimeout)(_tick, 0);
+    };
+    _tick();
+    return;
+  }
 
   function parseTrafficNum(c) {
     if (c.trafficMo) return c.trafficMo;
@@ -5205,7 +5279,18 @@ function buildDashboard() {
     </div>`;
   }).join('');
 
-  liveWrap.innerHTML = `
+  // ── Helper: defer work to the next animation frame so the main thread
+  // can paint and the diagnostic button (plus the rest of the UI) stays
+  // responsive while the dashboard is being built. Chunking the build
+  // across several frames prevents any single long task from triggering
+  // the browser's "page unresponsive" warning, regardless of which stage
+  // would have been the slow one.
+  const _yieldFrame = (fn) => (window.requestAnimationFrame || setTimeout)(fn, 16);
+
+  // Pre-build the live-panels HTML synchronously (cheap string concat). The
+  // actual DOM commit + chart construction + async fetches all run as their
+  // own stages below.
+  const _liveHtml = `
     <!-- Row 1: SOV + 90-Day Forecast -->
     <div class="two-charts" style="margin-top:24px">
       <div class="chart-box">
@@ -5270,25 +5355,36 @@ function buildDashboard() {
     </div>
   `;
 
-  // ── Render SOV donut immediately ──────────────────────────────────────────
-  if (sovChartInstance) sovChartInstance.destroy();
-  const sovCtx = document.getElementById('sovChart');
-  if (sovCtx) {
+  // Stage: commit the live-panels HTML in its own frame.
+  _dashEnq('livePanels', () => {
+    if (!liveWrap.isConnected) return;
+    liveWrap.innerHTML = _liveHtml;
+  });
+
+  // ── Render SOV donut on its own stage so the browser paints the freshly
+  // inserted DOM first and never builds two canvases back-to-back.
+  _dashEnq('sovChart', () => {
+    if (sovChartInstance) { try { sovChartInstance.destroy(); } catch(_) {} sovChartInstance = null; }
+    const sovCtx = document.getElementById('sovChart');
+    if (!sovCtx || !sovCtx.isConnected) return;
     sovChartInstance = new Chart(sovCtx.getContext('2d'), {
       type: 'doughnut',
       data: { labels: sovData.map(d => d.name), datasets: [{ data: sovData.map(d => d.share), backgroundColor: sovData.map(d => d.color), borderWidth: 0 }] },
       options: { responsive: true, cutout: '68%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw}%` } } } }
     });
-  }
+  });
 
   // ── Render competitor ad spend chart — async DataForSEO ────────────────────
-  const spendCtx = document.getElementById('spendChart');
   const spendStatusEl = document.getElementById('spendChartStatus');
   if (spendStatusEl) spendStatusEl.textContent = '⏳ Fetching live data…';
 
+  // Re-fetch the canvas every render so we always draw into the LIVE node —
+  // a previous Analyse run's canvas may be detached if the user re-ran the
+  // analyse flow while a fetch was still in flight.
   const _renderSpendChart = (labels, vals, source) => {
-    if (spendChartInstance) spendChartInstance.destroy();
-    if (!spendCtx) return;
+    if (spendChartInstance) { try { spendChartInstance.destroy(); } catch(_) {} spendChartInstance = null; }
+    const spendCtx = document.getElementById('spendChart');
+    if (!spendCtx || !spendCtx.isConnected) return;
     const colors = labels.map((l, i) => l === 'You' ? 'rgba(0,229,255,0.9)' : (sovPalette[i-1] || '#6B7280') + 'BB');
     spendChartInstance = new Chart(spendCtx.getContext('2d'), {
       type: 'bar',
@@ -5327,11 +5423,16 @@ function buildDashboard() {
       return _staticTrafficFloor(c);
     })
   ];
-  _renderSpendChart(staticLabels, staticVals, 'static');
+  // Stage: render the static spend chart in its own frame (the SOV chart got
+  // the previous stage — no two canvases in the same frame).
+  _dashEnq('spendStatic', () => {
+    _renderSpendChart(staticLabels, staticVals, 'static');
+  });
 
-  // Fetch live DataForSEO data and upgrade the chart
+  // Stage: kick off live DataForSEO fetch (network happens off-thread; the
+  // .then handler does its own destroy + isConnected re-check).
   const compDomains = competitors.slice(0,6).map(c => c.domain || c.url || c.name.toLowerCase().replace(/\s+/g,'')+'.com');
-  fetch('/api/competitor-spend', {
+  _dashEnq('spendFetch', () => { fetch('/api/competitor-spend', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ domains: compDomains, yourDomain: url, yourBudget: yourEstSpend })
@@ -5372,12 +5473,12 @@ function buildDashboard() {
     // null for every competitor.
     const hasAnyData = liveVals.some(v => v > 0);
     if (hasAnyData) _renderSpendChart(liveLabels, liveVals, 'DataForSEO');
-  }).catch(() => {});  // Keep static chart on error
+  }).catch(() => {}); });  // Keep static chart on error
 
   // ── Async: 90-day forecast ────────────────────────────────────────────────
   const compNames = competitors.map(c => c.name);
   const campaignBudget = (window._launchedCampaigns || []).reduce((s, c) => s + c.budget, 0) || 5000;
-  fetch('/api/ai-forecast', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  _dashEnq('forecastFetch', () => { fetch('/api/ai-forecast', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ domain: url, industry: industry.name, competitors: compNames, currentROAS: yourROAS, monthlyBudget: campaignBudget, trafficMo: trafficVal })
   }).then(r => r.json()).then(data => {
     const fsEl = document.getElementById('forecastStatus');
@@ -5385,10 +5486,10 @@ function buildDashboard() {
     const projTotal = projArr.reduce((s, v) => s + (v || 0), 0);
     const projTotalK = Math.round(projTotal / 1000);
     if (fsEl) fsEl.textContent = `Confidence: ${data.confidenceLevel || 'Medium'} · $${projTotalK}K projected over 90 days`;
-    if (forecastChartInstance) forecastChartInstance.destroy();
+    if (forecastChartInstance) { try { forecastChartInstance.destroy(); } catch(_) {} forecastChartInstance = null; }
     const fCtx = document.getElementById('forecastChart');
     const labels = data.weeks || data.months || ['Wk 1','Wk 2','Wk 3','Wk 4','Wk 5','Wk 6','Wk 7','Wk 8','Wk 9','Wk 10','Wk 11','Wk 12','Wk 13'];
-    if (fCtx) {
+    if (fCtx && fCtx.isConnected) {
       forecastChartInstance = new Chart(fCtx.getContext('2d'), {
         type: 'line',
         data: {
@@ -5441,25 +5542,29 @@ function buildDashboard() {
         }
       });
     }
-    const msEl = document.getElementById('forecastMilestones');
-    if (msEl && data.keyMilestones) {
-      msEl.innerHTML = data.keyMilestones.map(m => `
-        <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:7px 10px;font-size:0.7rem;color:#374151;flex:1;min-width:130px">
-          <div style="font-weight:700;color:#0066FF;margin-bottom:2px">Week ${m.week}</div>
-          <div style="line-height:1.4">${m.milestone}</div>
-        </div>`).join('');
-    }
-  }).catch(() => { const el = document.getElementById('forecastStatus'); if (el) el.textContent = 'Forecast temporarily unavailable'; });
+    // Render the milestone strip on the next frame so we don't do a large
+    // innerHTML write in the same frame we just constructed the forecast chart.
+    _yieldFrame(() => {
+      const msEl = document.getElementById('forecastMilestones');
+      if (msEl && msEl.isConnected && data.keyMilestones) {
+        msEl.innerHTML = data.keyMilestones.map(m => `
+          <div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:7px 10px;font-size:0.7rem;color:#374151;flex:1;min-width:130px">
+            <div style="font-weight:700;color:#0066FF;margin-bottom:2px">Week ${m.week}</div>
+            <div style="line-height:1.4">${m.milestone}</div>
+          </div>`).join('');
+      }
+    });
+  }).catch(() => { const el = document.getElementById('forecastStatus'); if (el) el.textContent = 'Forecast temporarily unavailable'; }); });
 
   // ── Async: budget efficiency ──────────────────────────────────────────────
-  fetch('/api/budget-efficiency', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  _dashEnq('efficiencyFetch', () => { fetch('/api/budget-efficiency', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ industry: industry.name, competitors: compNames, monthlyBudget: campaignBudget })
   }).then(r => r.json()).then(data => {
     const esEl = document.getElementById('efficiencyStatus');
     if (esEl) esEl.textContent = `Top channel: ${data.topChannel || '—'}`;
-    if (efficiencyChartInstance) efficiencyChartInstance.destroy();
+    if (efficiencyChartInstance) { try { efficiencyChartInstance.destroy(); } catch(_) {} efficiencyChartInstance = null; }
     const eCtx = document.getElementById('efficiencyChart');
-    if (eCtx && data.channels) {
+    if (eCtx && eCtx.isConnected && data.channels) {
       const effColors = data.channels.map(c => c.score >= 80 ? 'rgba(16,185,129,0.82)' : c.score >= 65 ? 'rgba(0,102,255,0.75)' : 'rgba(245,158,11,0.75)');
       efficiencyChartInstance = new Chart(eCtx.getContext('2d'), {
         type: 'bar',
@@ -5473,12 +5578,65 @@ function buildDashboard() {
     }
     const recEl = document.getElementById('efficiencyRec');
     if (recEl && data.insight) recEl.innerHTML = `💡 <strong>AI Recommendation:</strong> ${data.insight}`;
-  }).catch(() => { const el = document.getElementById('efficiencyStatus'); if (el) el.textContent = 'Scoring temporarily unavailable'; });
+  }).catch(() => { const el = document.getElementById('efficiencyStatus'); if (el) el.textContent = 'Scoring temporarily unavailable'; }); });
+
+  // ── Staged-pipeline runner ─────────────────────────────────────────────────
+  // Process each queued stage on its own animation frame. Per-stage timing is
+  // recorded with performance.measure and any stage exceeding 50ms is logged
+  // to the diagnostic panel so we can spot regressions. After the queue
+  // drains, resume the field enhancer and run a single scoped scan of the
+  // whole dashboard root — much cheaper than letting the MutationObserver
+  // fire for every node the stages inserted.
+  const _dashDebug = !!(window.IGDiag || window._IG_DASH_DEBUG);
+  let _dashIdx = 0;
+  const _runDashStage = () => {
+    if (_dashIdx >= _dashStages.length) {
+      try {
+        if (window.IGFields) {
+          window.IGFields.resume && window.IGFields.resume({ scan: false });
+          const root = document.getElementById('view-dashboard')
+                    || document.querySelector('.view.active')
+                    || document.getElementById('dashboard')
+                    || document.body;
+          window.IGFields.scanRoot && window.IGFields.scanRoot(root);
+        }
+      } catch(_) {}
+      try {
+        performance.mark && performance.mark('ig:buildDashboard:end');
+        performance.measure && performance.measure('ig:buildDashboard:total',
+          'ig:buildDashboard:start', 'ig:buildDashboard:end');
+      } catch(_) {}
+      if (_dashDebug && window.performance && performance.now) {
+        const total = performance.now() - _dashT0;
+        try { window.IGDiag && IGDiag.log && IGDiag.log(`buildDashboard total = ${total.toFixed(0)}ms`); } catch(_) {}
+        if (total > 1500) console.warn('[buildDashboard] slow total:', total.toFixed(0)+'ms');
+      }
+      return;
+    }
+    const [name, fn] = _dashStages[_dashIdx++];
+    const t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+    try { fn(); } catch (e) { console.warn('[buildDashboard] stage', name, 'error:', e); }
+    const dt = ((window.performance && performance.now) ? performance.now() : Date.now()) - t0;
+    try {
+      performance.mark && performance.mark('ig:dashStage:' + name);
+      performance.measure && performance.measure('ig:dashStage:' + name + ':dur',
+        { start: t0, duration: dt });
+    } catch(_) {}
+    if (dt > 50) {
+      const msg = `[buildDashboard] stage "${name}" took ${dt.toFixed(0)}ms (>50ms budget)`;
+      console.warn(msg);
+      try { _dashDebug && window.IGDiag && IGDiag.log && IGDiag.log(msg); } catch(_) {}
+    }
+    (window.requestAnimationFrame || ((cb) => setTimeout(cb, 16)))(_runDashStage);
+  };
+  _runDashStage();
 }
 
 function renderCTRChart(competitors, yourCTR) {
-  if (ctrChartInstance) ctrChartInstance.destroy();
-  const ctx = document.getElementById('ctrChart').getContext('2d');
+  if (ctrChartInstance) { try { ctrChartInstance.destroy(); } catch(_) {} ctrChartInstance = null; }
+  const _ctrEl = document.getElementById('ctrChart');
+  if (!_ctrEl || !_ctrEl.isConnected) return;
+  const ctx = _ctrEl.getContext('2d');
   // Skip competitors with no CTR data — don't fabricate bars
   const _withCtr = competitors.filter(c => {
     const n = parseFloat(c.ctr);
@@ -5525,8 +5683,10 @@ function renderCTRChart(competitors, yourCTR) {
 }
 
 function renderROASChart(competitors, yourROAS) {
-  if (roasChartInstance) roasChartInstance.destroy();
-  const ctx = document.getElementById('roasChart').getContext('2d');
+  if (roasChartInstance) { try { roasChartInstance.destroy(); } catch(_) {} roasChartInstance = null; }
+  const _roasEl = document.getElementById('roasChart');
+  if (!_roasEl || !_roasEl.isConnected) return;
+  const ctx = _roasEl.getContext('2d');
   const labels = ['Your Site', ...competitors.map(c => c.name)];
   const data = [yourROAS, ...competitors.map(c => c.roas)];
   
@@ -5562,8 +5722,10 @@ function renderROASChart(competitors, yourROAS) {
 }
 
 function renderTrendChart(competitors) {
-  if (trendChartInstance) trendChartInstance.destroy();
-  const ctx = document.getElementById('trendChart').getContext('2d');
+  if (trendChartInstance) { try { trendChartInstance.destroy(); } catch(_) {} trendChartInstance = null; }
+  const _trendEl = document.getElementById('trendChart');
+  if (!_trendEl || !_trendEl.isConnected) return;
+  const ctx = _trendEl.getContext('2d');
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   
   const palette = [
