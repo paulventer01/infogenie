@@ -2,6 +2,41 @@
 // InfoGenie — Main Application Controller
 // ============================================================
 
+// ── Chart.js global defaults ─────────────────────────────────────────────────
+// Disable animations + responsive resize observer overhead. The dashboard
+// creates 7+ Chart.js instances simultaneously; their default 1000ms
+// animation loop saturates the main thread with requestAnimationFrame work,
+// which (a) triggers the browser's "page not responding" warning right after
+// the analyse flow, and (b) starves the background view-build queue's
+// setTimeouts so deferred builders never fire. Static charts render instantly
+// and free the main thread.
+(function disableChartAnimations(){
+  function apply(){
+    try {
+      if (typeof window !== 'undefined' && window.Chart && Chart.defaults) {
+        // Narrow change: disable the DEFAULT animation only. Charts that
+        // pass their own `options.animation` (e.g. duration: 800) still
+        // animate normally. Also zero out hover-transition duration to
+        // remove tiny rAF ticks on mouse-over.
+        Chart.defaults.animation = false;
+        if (Chart.defaults.transitions && Chart.defaults.transitions.active) {
+          Chart.defaults.transitions.active.animation = { duration: 0 };
+        }
+        return true;
+      }
+    } catch(_) {}
+    return false;
+  }
+  if (!apply()) {
+    // Chart hasn't loaded yet — retry on DOMContentLoaded
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', apply, { once: true });
+    } else {
+      setTimeout(apply, 0);
+    }
+  }
+})();
+
 // ── EARLY-LOAD: Counter This Message click handler ────────────────────────────
 // Defined at the very top of app.js so it is GUARANTEED to be defined even if
 // any later runtime error halts the rest of the script. The actual modal
