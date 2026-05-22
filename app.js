@@ -3582,6 +3582,12 @@ async function runAnalysis(url, country, industryOverride) {
   if (!sectorDetected && hasUrl && !hasIndustry && aiDetected && aiDetected.ok) {
     const inferredNiche = aiDetected.subNiche || aiDetected.industryName;
     if (inferredNiche) {
+      // 25s hard timeout — this fallback path was previously unbounded and
+      // could stall the entire analysis if the endpoint hung.
+      const _sfCtl = new AbortController();
+      const _sfT0  = performance.now();
+      const _sfTo  = setTimeout(() => _sfCtl.abort(), 25000);
+      window.IGDiag && IGDiag.mark('sector-competitors-fallback: fetch start', `niche=${inferredNiche}`);
       try {
         const r = await fetch('/api/sector-competitors', {
           method: 'POST',
@@ -3591,9 +3597,15 @@ async function runAnalysis(url, country, industryOverride) {
             country: country || aiDetected.country || '',
             urlHint: cleanUrl,
           }),
+          signal: _sfCtl.signal,
         });
+        clearTimeout(_sfTo);
+        window.IGDiag && IGDiag.mark('sector-competitors-fallback: response', `${r.status} in ${((performance.now()-_sfT0)/1000).toFixed(1)}s`);
         if (r.ok) sectorDetected = await r.json();
-      } catch (e) { console.warn('post-detect sector-competitors failed:', e); }
+      } catch (e) {
+        clearTimeout(_sfTo);
+        window.IGDiag && IGDiag.err('sector-competitors-fallback: aborted/failed', (e && e.name || 'err') + ' after ' + ((performance.now()-_sfT0)/1000).toFixed(1) + 's');
+      }
     }
   }
 
@@ -4050,14 +4062,27 @@ async function runAnalysis(url, country, industryOverride) {
     { time: now.toLocaleTimeString(), date: now.toLocaleDateString(), action: `Generated AI campaign recommendations for ${cleanUrl}`, type: 'campaigns', impact: `${(window._lastCampRecs || []).length} campaigns ranked by projected ROI` },
     { time: now.toLocaleTimeString(), date: now.toLocaleDateString(), action: `Analysed ${cleanUrl} — industry: ${industry.name}`, type: 'analysis', impact: `${selectedComps.length} competitors identified` }
   );
-  
-  // Build settings after navigation (non-critical)
-  try { buildSettings(); } catch(e) { console.warn('Settings build error:', e); }
 
-  // ── Enrich with real live competitor data from DataForSEO (async, non-blocking) ──
-  enrichWithRealCompetitorData(cleanUrl, industryKey, country);
-  // ── Upgrade KPI cards to live DataForSEO data (async, non-blocking) ──
-  enrichKPIsWithLiveData(cleanUrl, industryKey, country);
+  // Defer buildSettings + enrichment passes — these are non-critical and
+  // were blocking the main thread right after buildDashboard, preventing the
+  // background view-build queue from getting a tick to schedule its 150ms
+  // setTimeout. Pushing them to the macrotask queue (setTimeout 0) lets the
+  // browser paint the dashboard + lets _bgBuild start its work first.
+  setTimeout(() => {
+    _runBuilder('buildSettings', buildSettings, 'deferred');
+  }, 300);
+  setTimeout(() => {
+    try {
+      window.IGDiag && IGDiag.mark('enrichWithRealCompetitorData: start');
+      enrichWithRealCompetitorData(cleanUrl, industryKey, country);
+    } catch(e) { window.IGDiag && IGDiag.err('enrichWithRealCompetitorData error', e && e.message); }
+  }, 600);
+  setTimeout(() => {
+    try {
+      window.IGDiag && IGDiag.mark('enrichKPIsWithLiveData: start');
+      enrichKPIsWithLiveData(cleanUrl, industryKey, country);
+    } catch(e) { window.IGDiag && IGDiag.err('enrichKPIsWithLiveData error', e && e.message); }
+  }, 900);
 }
 
 // ── Real Competitor Data Enrichment ──────────────────────────────────────────
