@@ -3544,6 +3544,24 @@ async function runAnalysis(url, country, industryOverride) {
   overlay.classList.remove('hidden');
   overlay.style.display = 'flex';
 
+  // ── Safety net ─────────────────────────────────────────────────────────────
+  // The overlay is now hidden late in the flow (after competitor-metrics +
+  // ai-validate-metrics). If an unhandled exception fires anywhere between
+  // here and the normal hide point, the user would be stuck on the loading
+  // modal forever. This 90s watchdog guarantees teardown either way.
+  if (window._runAnalysisSafetyTimer) clearTimeout(window._runAnalysisSafetyTimer);
+  window._runAnalysisSafetyTimer = setTimeout(() => {
+    try {
+      if (overlay && overlay.style.display !== 'none') {
+        overlay.style.display = 'none';
+        overlay.classList.add('hidden');
+        if (window._elapsedTimer) { clearInterval(window._elapsedTimer); window._elapsedTimer = null; }
+        showToast('⚠ Analyse took longer than expected — opening dashboard with available data');
+        window.IGDiag && IGDiag.err && IGDiag.err('runAnalysis: safety watchdog fired (90s)', 'overlay was still visible');
+      }
+    } catch(_) {}
+  }, 90000);
+
   // ── Live elapsed-time ticker (resets each run) ───────────────────────────
   const _runStart = performance.now();
   window._lastRunStart = _runStart;
@@ -3626,11 +3644,11 @@ async function runAnalysis(url, country, industryOverride) {
   if (_elapsedEl) _elapsedEl.textContent = _runSec + 's';
   window._lastRunDuration = parseFloat(_runSec);
   window._analysisStartedAt = null;
-  statusText.textContent = `✅ Intelligence report ready in ${_runSec}s!`;
-  await wait(450);
-  overlay.style.display = 'none';
-  overlay.classList.add('hidden');
-  showToast(`✅ Dashboard ready in ${_runSec}s`);
+  statusText.textContent = `✅ Industry & competitors locked in — fetching live metrics…`;
+  // NOTE: overlay stays visible. The two slowest API calls
+  // (competitor-metrics ~12s + ai-validate-metrics ~13s) still run below,
+  // and we don't want the user staring at a blank home page for ~25s.
+  // The overlay is hidden right before navigateTo('dashboard') further down.
 
   // ── If URL was given but user didn't type an industry, take the sub-niche
   //    that smart-detect inferred from the website and use it to fetch a
@@ -4069,6 +4087,22 @@ async function runAnalysis(url, country, industryOverride) {
       window.IGDiag && IGDiag.mark('diag-capture saved', j.domain + ' · ' + (j.bytes/1024).toFixed(1) + 'kb');
     }).catch(e => window.IGDiag && IGDiag.err && IGDiag.err('diag-capture failed', String(e)));
   } catch(e) { window.IGDiag && IGDiag.err && IGDiag.err('diag-capture serialise failed', String(e)); }
+
+  // ── Hide the loading overlay NOW that every API call (smart-detect,
+  // sector-competitors, competitor-metrics, ai-validate-metrics) has
+  // finished. Previously the overlay closed right after the 5-step
+  // animation, leaving the user on a blank home page for ~25s while
+  // competitor-metrics + ai-validate-metrics still ran in the background.
+  try {
+    const _totalSec = ((performance.now() - _runStart) / 1000).toFixed(1);
+    if (_elapsedEl) _elapsedEl.textContent = _totalSec + 's';
+    if (statusText) statusText.textContent = `✅ Intelligence report ready in ${_totalSec}s!`;
+    await wait(250);
+    overlay.style.display = 'none';
+    overlay.classList.add('hidden');
+    if (window._runAnalysisSafetyTimer) { clearTimeout(window._runAnalysisSafetyTimer); window._runAnalysisSafetyTimer = null; }
+    showToast(`✅ Dashboard ready in ${_totalSec}s`);
+  } catch(_) {}
 
   // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
   window.IGDiag && IGDiag.mark('runAnalysis: navigating to dashboard', 'comps=' + selectedComps.length);
