@@ -1,5 +1,6 @@
 const express = require('express');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 const OpenAI = require('openai');
 
 const router = express.Router();
@@ -39,9 +40,10 @@ Each list item is a single short line (max 140 chars). Counter_plays must be con
 router.get('/', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'battle_cards:list', allowFallback:true });
     const brand = req.query.brand ? String(req.query.brand).slice(0, 80) : null;
-    const params = []; let where = '';
-    if (brand) { params.push(brand); where = 'WHERE brand=$1'; }
+    const params = [tid]; let where = 'WHERE tenant_id=$1';
+    if (brand) { params.push(brand); where += ' AND brand=$2'; }
     const r = await _db.getPool().query(`SELECT * FROM battle_cards ${where} ORDER BY generated_at DESC LIMIT 200`, params);
     res.json({ ok:true, cards: r.rows });
   } catch (e) { _err(res, 500, e.message); }
@@ -49,7 +51,9 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   const id = Number(req.params.id); if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
-  try { const r = await _db.getPool().query(`SELECT * FROM battle_cards WHERE id=$1`, [id]);
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'battle_cards:get', allowFallback:true });
+    const r = await _db.getPool().query(`SELECT * FROM battle_cards WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     if (!r.rows[0]) return _err(res, 404, 'not found'); res.json({ ok:true, card: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -109,15 +113,17 @@ router.post('/generate', async (req, res) => {
     }
 
     const source = 'openai';
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'battle_cards:generate', allowFallback:true });
+    if (!tid) return _err(res, 400, 'no_tenant');
     const r = await _db.getPool().query(`
-      INSERT INTO battle_cards (competitor, domain, brand, summary, positioning, strengths, weaknesses, recent_moves, counter_plays, generated_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-      ON CONFLICT (competitor, brand) DO UPDATE SET
+      INSERT INTO battle_cards (tenant_id, competitor, domain, brand, summary, positioning, strengths, weaknesses, recent_moves, counter_plays, generated_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      ON CONFLICT (tenant_id, competitor, brand) DO UPDATE SET
         domain=EXCLUDED.domain, summary=EXCLUDED.summary, positioning=EXCLUDED.positioning,
         strengths=EXCLUDED.strengths, weaknesses=EXCLUDED.weaknesses, recent_moves=EXCLUDED.recent_moves,
         counter_plays=EXCLUDED.counter_plays, generated_by=EXCLUDED.generated_by, generated_at=now()
       RETURNING *`,
-      [competitor, domain, brand, summary, positioning,
+      [tid, competitor, domain, brand, summary, positioning,
        JSON.stringify(strengths), JSON.stringify(weaknesses),
        JSON.stringify(recentMoves), JSON.stringify(counterPlays), source]);
     res.json({ ok:true, source, card: r.rows[0] });
@@ -126,8 +132,11 @@ router.post('/generate', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   const id = Number(req.params.id); if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
-  try { await _db.getPool().query(`DELETE FROM battle_cards WHERE id=$1`, [id]); res.json({ ok:true }); }
-  catch (e) { _err(res, 500, e.message); }
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'battle_cards:delete', allowFallback:true });
+    const r = await _db.getPool().query(`DELETE FROM battle_cards WHERE id=$1 AND tenant_id=$2`, [id, tid]);
+    res.json({ ok:true, deleted: r.rowCount });
+  } catch (e) { _err(res, 500, e.message); }
 });
 
 module.exports = router;

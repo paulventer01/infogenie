@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 const hasDb = () => _db.hasDb();
 const pool = { query: (...a) => _db.getPool().query(...a) };
 
@@ -20,5 +21,8 @@ async function ensureProjectsSchema() {
       updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  // Phase 2B — inline tenant_id migration so routes can safely depend on it
+  // immediately on boot (without waiting for the deferred phase2_migrate batch).
+  await addTenantIdColumn('marketing_projects');
 }
 module.exports = { ensureProjectsSchema };

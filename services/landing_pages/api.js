@@ -1,6 +1,7 @@
 const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
@@ -10,7 +11,7 @@ async function _aiPage({ brand, title, goal, audience, brief, palette, adHeadlin
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return null;
   let brandCtx = '';
-  try { const bf = require('../brand_foundation/api'); if (bf.getBrandContextBlock) brandCtx = await bf.getBrandContextBlock(); } catch {}
+  try { const bf = require('../brand_foundation/api'); if (bf.getBrandContextBlock) brandCtx = await bf.getBrandContextBlock(arguments[0]?.tenantId); } catch {}
   const sys = `${brandCtx ? brandCtx + '\n\n' : ''}You are a senior conversion copywriter and landing-page designer. Draft a complete landing page in strict JSON ONLY:
 {"headline":"<H1, 6-10 words, benefit-led — MUST mirror the ad headline/offer when provided>","subhead":"<1 sentence, who it's for + outcome>","hero_cta":"<2-4 word CTA button — this exact text is repeated at every section>","social_proof":"<1 line specific social proof: include a real-sounding name, number, or outcome>","features":[{"title":"<3-5 word title>","body":"<1-2 sentence benefit>","icon":"<single emoji>"}],"how_it_works":[{"step":"<1-3 word step name>","body":"<1 sentence>"}],"testimonials":[{"quote":"<short customer quote with a specific metric or outcome>","name":"<first last>","role":"<role, company>"}],"faqs":[{"q":"<question>","a":"<plain-language answer>"}],"final_cta_headline":"<1 sentence>"}
 Rules:
@@ -165,15 +166,16 @@ router.post('/generate', async (req, res) => {
   const adOffer = String(req.body?.adOffer || '').trim().slice(0, 200);
   const accent = /^#[0-9a-f]{6}$/i.test(req.body?.accent || '') ? req.body.accent : '#14B8A6';
   if (!title) return _err(res, 400, 'title required');
-  let content = await _aiPage({ brand, title, goal, audience, brief, adHeadline, adOffer });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'landing_pages:generate', allowFallback:true });
+  let content = await _aiPage({ brand, title, goal, audience, brief, adHeadline, adOffer, tenantId: tid });
   let source = 'openai';
   if (!content) { content = _templatePage({ brand, title, goal }); source = 'template'; }
   const html = _renderHtml(content, { accent });
   if (_db.hasDb()) {
     try {
       await _db.getPool().query(
-        `INSERT INTO landing_pages (brand, title, goal, audience, brief, content, html, generated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [brand, title, goal, audience, brief, JSON.stringify(content), html, source]);
+        `INSERT INTO landing_pages (tenant_id, brand, title, goal, audience, brief, content, html, generated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [tid, brand, title, goal, audience, brief, JSON.stringify(content), html, source]);
     } catch (e) { console.warn('[landing-pages] persist failed:', e.message); }
   }
   res.json({ ok:true, source, content, html });
@@ -183,8 +185,10 @@ router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'landing_pages:history', allowFallback:true });
     const r = await _db.getPool().query(
-      `SELECT id, brand, title, goal, generated_by, created_at FROM landing_pages ORDER BY created_at DESC LIMIT $1`, [limit]);
+      `SELECT id, brand, title, goal, generated_by, created_at FROM landing_pages WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2`,
+      [tid, limit]);
     res.json({ ok:true, runs: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -194,7 +198,8 @@ router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
   try {
-    const r = await _db.getPool().query(`SELECT * FROM landing_pages WHERE id=$1`, [id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'landing_pages:get', allowFallback:true });
+    const r = await _db.getPool().query(`SELECT * FROM landing_pages WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     if (!r.rows[0]) return _err(res, 404, 'not found');
     res.json({ ok:true, page: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }

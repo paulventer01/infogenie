@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-05-23T06:58:52.756Z",
+  "capturedAt": "2026-05-23T09:05:11.100Z",
   "domain": "acora.com",
   "url": "acora.com",
   "capturedFromAnalyseRun": true,
@@ -45,11 +45,11 @@
           "name": "Rackspace Technology",
           "domain": "rackspace.com",
           "url": "rackspace.com",
-          "why": "Provides managed IT services and cybersecurity solutions, including threat detection and response.",
+          "why": "Provides managed IT services and cybersecurity solutions, including threat detection and response, cloud security, and compliance management.",
           "logo": "RT",
           "roas": 3.1,
-          "ctr": "2.7%",
-          "traffic": "350K",
+          "ctr": "2.5%",
+          "traffic": "1.0M",
           "adSpend": "—",
           "dataSource": "AI-estimate",
           "confidence": "low",
@@ -62,7 +62,7 @@
             {
               "name": "Brand Search Domination",
               "channel": "Google Search",
-              "ctr": "3.1%",
+              "ctr": "2.9%",
               "roas": 3.4,
               "budget": "—",
               "_split": 0.6
@@ -70,7 +70,7 @@
             {
               "name": "Comparison Landing Funnel",
               "channel": "Google Search",
-              "ctr": "2.3%",
+              "ctr": "2.1%",
               "roas": 2.8,
               "budget": "—",
               "_split": 0.4
@@ -89,17 +89,17 @@
             "Target Rackspace Technology's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Models diverged sharply (10.0×) — figure is approximate",
+          "dataNotes": "Models diverged sharply (4.3×) — figure is approximate",
           "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
         },
         {
           "name": "NTT Ltd.",
           "domain": "services.global.ntt",
           "url": "services.global.ntt",
-          "why": "Offers managed IT services and advanced cybersecurity solutions globally, including managed detection and response.",
+          "why": "Offers managed IT services and advanced cybersecurity solutions such as threat intelligence, incident response, and managed detection and response.",
           "logo": "NL",
-          "roas": "—",
-          "ctr": "—",
+          "roas": 2.8,
+          "ctr": "2.5%",
           "traffic": "120K",
           "adSpend": "—",
           "dataSource": "AI-estimate",
@@ -113,16 +113,16 @@
             {
               "name": "Lookalike Audience Push",
               "channel": "LinkedIn Ads",
-              "ctr": "—",
-              "roas": "—",
+              "ctr": "2.9%",
+              "roas": 3.1,
               "budget": "—",
               "_split": 0.6
             },
             {
               "name": "Free Trial Lead Gen",
               "channel": "LinkedIn Ads",
-              "ctr": "—",
-              "roas": "—",
+              "ctr": "2.1%",
+              "roas": 2.5,
               "budget": "—",
               "_split": 0.4
             }
@@ -140,14 +140,14 @@
             "Target NTT Ltd.'s mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Single-model estimate (Claude only)",
-          "dataOrigin": "GPT-4o: Industry benchmark · Claude: Industry benchmark"
+          "dataNotes": "Models diverged sharply (3.1×) — figure is approximate",
+          "dataOrigin": "GPT-4o: SemRush data · Claude: Industry benchmark"
         },
         {
           "name": "All Covered (Konica Minolta)",
           "domain": "allcovered.com",
           "url": "allcovered.com",
-          "why": "Specializes in managed IT services and cybersecurity for businesses, including compliance and risk management.",
+          "why": "Specializes in managed IT services and cybersecurity, including endpoint protection, network security, and compliance support.",
           "logo": "AC",
           "roas": "—",
           "ctr": "—",
@@ -196,33 +196,33 @@
           "name": "Dataprise",
           "domain": "dataprise.com",
           "url": "dataprise.com",
-          "why": "Provides managed IT services and cybersecurity solutions, including SOC-as-a-Service and endpoint protection.",
+          "why": "Provides managed IT services and cybersecurity solutions, including SOC-as-a-Service, vulnerability management, and compliance services.",
           "logo": "D",
-          "roas": 3.2,
+          "roas": 3.8,
           "ctr": "3.0%",
-          "traffic": "30K",
+          "traffic": "35K",
           "adSpend": "—",
           "dataSource": "AI-estimate",
           "confidence": "low",
-          "topChannel": "LinkedIn Ads",
+          "topChannel": "Google Search",
           "topChannels": [
-            "LinkedIn Ads"
+            "Google Search"
           ],
           "threatLevel": "critical",
           "campaigns": [
             {
               "name": "Awareness Reels Burst",
-              "channel": "LinkedIn Ads",
+              "channel": "Google Search",
               "ctr": "3.4%",
-              "roas": 3.5,
+              "roas": 4.1,
               "budget": "—",
               "_split": 0.6
             },
             {
               "name": "High-Intent Keyword Steal",
-              "channel": "LinkedIn Ads",
+              "channel": "Google Search",
               "ctr": "2.6%",
-              "roas": 2.9,
+              "roas": 3.5,
               "budget": "—",
               "_split": 0.4
             }
@@ -240,40 +240,40 @@
             "Target Dataprise's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Models diverged sharply (6.0×) — figure is approximate",
+          "dataNotes": "Models diverged sharply (4.0×) — figure is approximate",
           "dataOrigin": "GPT-4o: Similarweb estimate · Claude: SemRush data"
         },
         {
           "name": "eSentire",
           "domain": "esentire.com",
           "url": "esentire.com",
-          "why": "Focuses on managed detection and response (MDR) services and cybersecurity threat management.",
+          "why": "Focuses on managed detection and response (MDR) services, offering 24/7 threat monitoring and incident response.",
           "logo": "E",
-          "roas": 3.8,
+          "roas": 3.3,
           "ctr": "3.0%",
-          "traffic": "100K",
+          "traffic": "90K",
           "adSpend": "—",
           "dataSource": "AI-estimate",
-          "confidence": "low",
-          "topChannel": "Google Search",
+          "confidence": "medium",
+          "topChannel": "LinkedIn Ads",
           "topChannels": [
-            "Google Search"
+            "LinkedIn Ads"
           ],
           "threatLevel": "high",
           "campaigns": [
             {
               "name": "Brand Search Domination",
-              "channel": "Google Search",
+              "channel": "LinkedIn Ads",
               "ctr": "3.4%",
-              "roas": 4.1,
+              "roas": 3.6,
               "budget": "—",
               "_split": 0.6
             },
             {
               "name": "Comparison Landing Funnel",
-              "channel": "Google Search",
+              "channel": "LinkedIn Ads",
               "ctr": "2.6%",
-              "roas": 3.5,
+              "roas": 3,
               "budget": "—",
               "_split": 0.4
             }
@@ -291,14 +291,14 @@
             "Target eSentire's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Models diverged sharply (3.3×) — figure is approximate",
-          "dataOrigin": "GPT-4o: Trade-press estimate · Claude: Similarweb estimate"
+          "dataNotes": "Models disagreed (1.6×) — using conservative figure",
+          "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate"
         },
         {
           "name": "Prodec Networks",
           "domain": "prodec.co.uk",
           "url": "prodec.co.uk",
-          "why": "Delivers managed IT services and cybersecurity solutions, including network security and endpoint protection.",
+          "why": "Delivers managed IT services and cybersecurity solutions, including managed firewalls, endpoint protection, and cloud security.",
           "logo": "PN",
           "roas": "—",
           "ctr": "—",
@@ -340,40 +340,38 @@
             "Target Prodec Networks's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "UK-specific brand",
+          "dataNotes": "Limited public data",
           "dataOrigin": "GPT-4o: Industry benchmark · Claude: Industry benchmark"
         },
         {
-          "name": "Redcentric",
-          "domain": "redcentricplc.com",
-          "url": "redcentricplc.com",
-          "why": "Provides managed IT services and cybersecurity offerings, including cloud security and compliance solutions.",
-          "logo": "R",
-          "roas": 2.5,
-          "ctr": "2.2%",
-          "traffic": "20K",
+          "name": "Redscan (Kroll)",
+          "domain": "redscan.com",
+          "url": "redscan.com",
+          "why": "Specializes in managed cybersecurity services, including MDR, penetration testing, and threat intelligence.",
+          "logo": "R(",
+          "roas": "—",
+          "ctr": "—",
+          "traffic": "—",
           "adSpend": "—",
           "dataSource": "AI-estimate",
           "confidence": "low",
-          "topChannel": "SEO / Organic",
-          "topChannels": [
-            "SEO / Organic"
-          ],
+          "topChannel": null,
+          "topChannels": [],
           "threatLevel": "critical",
           "campaigns": [
             {
               "name": "Retargeting Wave",
-              "channel": "SEO / Organic",
-              "ctr": "2.6%",
-              "roas": 2.8,
+              "channel": null,
+              "ctr": "—",
+              "roas": "—",
               "budget": "—",
               "_split": 0.6
             },
             {
               "name": "Top-Funnel Display",
-              "channel": "SEO / Organic",
-              "ctr": "1.8%",
-              "roas": 2.2,
+              "channel": null,
+              "ctr": "—",
+              "roas": "—",
               "budget": "—",
               "_split": 0.4
             }
@@ -381,27 +379,27 @@
           "audiences": [],
           "adCopy": [
             {
-              "headline": "Trade smarter than Redcentric",
-              "body": "See why thousands switched from Redcentric to a faster, lower-fee platform."
+              "headline": "Trade smarter than Redscan (Kroll)",
+              "body": "See why thousands switched from Redscan (Kroll) to a faster, lower-fee platform."
             }
           ],
           "suggestions": [
-            "Outflank Redcentric on long-tail variations of their core keywords — they over-index on brand terms",
-            "Use comparison content (Redcentric vs You) to capture their branded search intent",
-            "Target Redcentric's mid-funnel comparison queries with high-intent landing pages"
+            "Outflank Redscan (Kroll) on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (Redscan (Kroll) vs You) to capture their branded search intent",
+            "Target Redscan (Kroll)'s mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Models diverged sharply (5.0×) — figure is approximate",
-          "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate"
+          "dataNotes": "",
+          "dataOrigin": "Dual-LLM estimate"
         },
         {
           "name": "Trustwave",
           "domain": "trustwave.com",
           "url": "trustwave.com",
-          "why": "Specializes in managed security services, including threat detection, vulnerability management, and compliance.",
+          "why": "Provides managed security services, including threat detection, vulnerability management, and compliance solutions.",
           "logo": "T",
-          "roas": 3.3,
-          "ctr": "3.0%",
+          "roas": 2.7,
+          "ctr": "2.5%",
           "traffic": "150K",
           "adSpend": "—",
           "dataSource": "AI-estimate",
@@ -415,16 +413,16 @@
             {
               "name": "Awareness Reels Burst",
               "channel": "Google Search",
-              "ctr": "3.4%",
-              "roas": 3.6,
+              "ctr": "2.9%",
+              "roas": 3,
               "budget": "—",
               "_split": 0.6
             },
             {
               "name": "High-Intent Keyword Steal",
               "channel": "Google Search",
-              "ctr": "2.6%",
-              "roas": 3,
+              "ctr": "2.1%",
+              "roas": 2.4,
               "budget": "—",
               "_split": 0.4
             }
@@ -443,7 +441,7 @@
           ],
           "aiDetected": true,
           "dataNotes": "Models diverged sharply (5.6×) — figure is approximate",
-          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: SemRush data"
+          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
         }
       ]
     },
@@ -458,116 +456,14 @@
     },
     "competitors": [
       {
-        "name": "Redcentric",
-        "domain": "redcentricplc.com",
-        "url": "redcentricplc.com",
-        "why": "Provides managed IT services and cybersecurity offerings, including cloud security and compliance solutions.",
-        "logo": "R",
-        "roas": 2.5,
-        "ctr": "2.2%",
-        "traffic": "20K",
-        "adSpend": "—",
-        "dataSource": "AI-estimate",
-        "confidence": "low",
-        "topChannel": "SEO / Organic",
-        "topChannels": [
-          "SEO / Organic"
-        ],
-        "threatLevel": "critical",
-        "campaigns": [
-          {
-            "name": "Retargeting Wave",
-            "channel": "SEO / Organic",
-            "ctr": "2.6%",
-            "roas": 2.8,
-            "budget": "—",
-            "_split": 0.6
-          },
-          {
-            "name": "Top-Funnel Display",
-            "channel": "SEO / Organic",
-            "ctr": "1.8%",
-            "roas": 2.2,
-            "budget": "—",
-            "_split": 0.4
-          }
-        ],
-        "audiences": [],
-        "adCopy": [
-          {
-            "headline": "Trade smarter than Redcentric",
-            "body": "See why thousands switched from Redcentric to a faster, lower-fee platform."
-          }
-        ],
-        "suggestions": [
-          "Outflank Redcentric on long-tail variations of their core keywords — they over-index on brand terms",
-          "Use comparison content (Redcentric vs You) to capture their branded search intent",
-          "Target Redcentric's mid-funnel comparison queries with high-intent landing pages"
-        ],
-        "aiDetected": true,
-        "dataNotes": "Models diverged sharply (5.0×) — figure is approximate",
-        "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate"
-      },
-      {
-        "name": "Dataprise",
-        "domain": "dataprise.com",
-        "url": "dataprise.com",
-        "why": "Provides managed IT services and cybersecurity solutions, including SOC-as-a-Service and endpoint protection.",
-        "logo": "D",
-        "roas": 3.2,
-        "ctr": "3.0%",
-        "traffic": "30K",
-        "adSpend": "—",
-        "dataSource": "AI-estimate",
-        "confidence": "low",
-        "topChannel": "LinkedIn Ads",
-        "topChannels": [
-          "LinkedIn Ads"
-        ],
-        "threatLevel": "critical",
-        "campaigns": [
-          {
-            "name": "Awareness Reels Burst",
-            "channel": "LinkedIn Ads",
-            "ctr": "3.4%",
-            "roas": 3.5,
-            "budget": "—",
-            "_split": 0.6
-          },
-          {
-            "name": "High-Intent Keyword Steal",
-            "channel": "LinkedIn Ads",
-            "ctr": "2.6%",
-            "roas": 2.9,
-            "budget": "—",
-            "_split": 0.4
-          }
-        ],
-        "audiences": [],
-        "adCopy": [
-          {
-            "headline": "Trade smarter than Dataprise",
-            "body": "See why thousands switched from Dataprise to a faster, lower-fee platform."
-          }
-        ],
-        "suggestions": [
-          "Outflank Dataprise on long-tail variations of their core keywords — they over-index on brand terms",
-          "Use comparison content (Dataprise vs You) to capture their branded search intent",
-          "Target Dataprise's mid-funnel comparison queries with high-intent landing pages"
-        ],
-        "aiDetected": true,
-        "dataNotes": "Models diverged sharply (6.0×) — figure is approximate",
-        "dataOrigin": "GPT-4o: Similarweb estimate · Claude: SemRush data"
-      },
-      {
-        "name": "Rackspace Technology",
-        "domain": "rackspace.com",
-        "url": "rackspace.com",
-        "why": "Provides managed IT services and cybersecurity solutions, including threat detection and response.",
-        "logo": "RT",
-        "roas": 3.1,
-        "ctr": "2.7%",
-        "traffic": "350K",
+        "name": "Trustwave",
+        "domain": "trustwave.com",
+        "url": "trustwave.com",
+        "why": "Provides managed security services, including threat detection, vulnerability management, and compliance solutions.",
+        "logo": "T",
+        "roas": 2.7,
+        "ctr": "2.5%",
+        "traffic": "150K",
         "adSpend": "—",
         "dataSource": "AI-estimate",
         "confidence": "low",
@@ -575,21 +471,21 @@
         "topChannels": [
           "Google Search"
         ],
-        "threatLevel": "critical",
+        "threatLevel": "high",
         "campaigns": [
           {
-            "name": "Brand Search Domination",
+            "name": "Awareness Reels Burst",
             "channel": "Google Search",
-            "ctr": "3.1%",
-            "roas": 3.4,
+            "ctr": "2.9%",
+            "roas": 3,
             "budget": "—",
             "_split": 0.6
           },
           {
-            "name": "Comparison Landing Funnel",
+            "name": "High-Intent Keyword Steal",
             "channel": "Google Search",
-            "ctr": "2.3%",
-            "roas": 2.8,
+            "ctr": "2.1%",
+            "roas": 2.4,
             "budget": "—",
             "_split": 0.4
           }
@@ -597,24 +493,175 @@
         "audiences": [],
         "adCopy": [
           {
-            "headline": "Trade smarter than Rackspace Technology",
-            "body": "See why thousands switched from Rackspace Technology to a faster, lower-fee platform."
+            "headline": "Trade smarter than Trustwave",
+            "body": "See why thousands switched from Trustwave to a faster, lower-fee platform."
           }
         ],
         "suggestions": [
-          "Outflank Rackspace Technology on long-tail variations of their core keywords — they over-index on brand terms",
-          "Use comparison content (Rackspace Technology vs You) to capture their branded search intent",
-          "Target Rackspace Technology's mid-funnel comparison queries with high-intent landing pages"
+          "Outflank Trustwave on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (Trustwave vs You) to capture their branded search intent",
+          "Target Trustwave's mid-funnel comparison queries with high-intent landing pages"
         ],
         "aiDetected": true,
-        "dataNotes": "Models diverged sharply (10.0×) — figure is approximate",
+        "dataNotes": "Models diverged sharply (5.6×) — figure is approximate",
         "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
+      },
+      {
+        "name": "All Covered (Konica Minolta)",
+        "domain": "allcovered.com",
+        "url": "allcovered.com",
+        "why": "Specializes in managed IT services and cybersecurity, including endpoint protection, network security, and compliance support.",
+        "logo": "AC",
+        "roas": "—",
+        "ctr": "—",
+        "traffic": "—",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "low",
+        "topChannel": null,
+        "topChannels": [],
+        "threatLevel": "medium",
+        "campaigns": [
+          {
+            "name": "Retargeting Wave",
+            "channel": null,
+            "ctr": "—",
+            "roas": "—",
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "Top-Funnel Display",
+            "channel": null,
+            "ctr": "—",
+            "roas": "—",
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than All Covered (Konica Minolta)",
+            "body": "See why thousands switched from All Covered (Konica Minolta) to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank All Covered (Konica Minolta) on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (All Covered (Konica Minolta) vs You) to capture their branded search intent",
+          "Target All Covered (Konica Minolta)'s mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "",
+        "dataOrigin": "Dual-LLM estimate"
+      },
+      {
+        "name": "NTT Ltd.",
+        "domain": "services.global.ntt",
+        "url": "services.global.ntt",
+        "why": "Offers managed IT services and advanced cybersecurity solutions such as threat intelligence, incident response, and managed detection and response.",
+        "logo": "NL",
+        "roas": 2.8,
+        "ctr": "2.5%",
+        "traffic": "120K",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "low",
+        "topChannel": "LinkedIn Ads",
+        "topChannels": [
+          "LinkedIn Ads"
+        ],
+        "threatLevel": "high",
+        "campaigns": [
+          {
+            "name": "Lookalike Audience Push",
+            "channel": "LinkedIn Ads",
+            "ctr": "2.9%",
+            "roas": 3.1,
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "Free Trial Lead Gen",
+            "channel": "LinkedIn Ads",
+            "ctr": "2.1%",
+            "roas": 2.5,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than NTT Ltd.",
+            "body": "See why thousands switched from NTT Ltd. to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank NTT Ltd. on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (NTT Ltd. vs You) to capture their branded search intent",
+          "Target NTT Ltd.'s mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "Models diverged sharply (3.1×) — figure is approximate",
+        "dataOrigin": "GPT-4o: SemRush data · Claude: Industry benchmark"
+      },
+      {
+        "name": "eSentire",
+        "domain": "esentire.com",
+        "url": "esentire.com",
+        "why": "Focuses on managed detection and response (MDR) services, offering 24/7 threat monitoring and incident response.",
+        "logo": "E",
+        "roas": 3.3,
+        "ctr": "3.0%",
+        "traffic": "90K",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "medium",
+        "topChannel": "LinkedIn Ads",
+        "topChannels": [
+          "LinkedIn Ads"
+        ],
+        "threatLevel": "high",
+        "campaigns": [
+          {
+            "name": "Brand Search Domination",
+            "channel": "LinkedIn Ads",
+            "ctr": "3.4%",
+            "roas": 3.6,
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "Comparison Landing Funnel",
+            "channel": "LinkedIn Ads",
+            "ctr": "2.6%",
+            "roas": 3,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than eSentire",
+            "body": "See why thousands switched from eSentire to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank eSentire on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (eSentire vs You) to capture their branded search intent",
+          "Target eSentire's mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "Models disagreed (1.6×) — using conservative figure",
+        "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate"
       },
       {
         "name": "Prodec Networks",
         "domain": "prodec.co.uk",
         "url": "prodec.co.uk",
-        "why": "Delivers managed IT services and cybersecurity solutions, including network security and endpoint protection.",
+        "why": "Delivers managed IT services and cybersecurity solutions, including managed firewalls, endpoint protection, and cloud security.",
         "logo": "PN",
         "roas": "—",
         "ctr": "—",
@@ -656,58 +703,7 @@
           "Target Prodec Networks's mid-funnel comparison queries with high-intent landing pages"
         ],
         "aiDetected": true,
-        "dataNotes": "UK-specific brand",
-        "dataOrigin": "GPT-4o: Industry benchmark · Claude: Industry benchmark"
-      },
-      {
-        "name": "NTT Ltd.",
-        "domain": "services.global.ntt",
-        "url": "services.global.ntt",
-        "why": "Offers managed IT services and advanced cybersecurity solutions globally, including managed detection and response.",
-        "logo": "NL",
-        "roas": "—",
-        "ctr": "—",
-        "traffic": "120K",
-        "adSpend": "—",
-        "dataSource": "AI-estimate",
-        "confidence": "low",
-        "topChannel": "LinkedIn Ads",
-        "topChannels": [
-          "LinkedIn Ads"
-        ],
-        "threatLevel": "high",
-        "campaigns": [
-          {
-            "name": "Lookalike Audience Push",
-            "channel": "LinkedIn Ads",
-            "ctr": "—",
-            "roas": "—",
-            "budget": "—",
-            "_split": 0.6
-          },
-          {
-            "name": "Free Trial Lead Gen",
-            "channel": "LinkedIn Ads",
-            "ctr": "—",
-            "roas": "—",
-            "budget": "—",
-            "_split": 0.4
-          }
-        ],
-        "audiences": [],
-        "adCopy": [
-          {
-            "headline": "Trade smarter than NTT Ltd.",
-            "body": "See why thousands switched from NTT Ltd. to a faster, lower-fee platform."
-          }
-        ],
-        "suggestions": [
-          "Outflank NTT Ltd. on long-tail variations of their core keywords — they over-index on brand terms",
-          "Use comparison content (NTT Ltd. vs You) to capture their branded search intent",
-          "Target NTT Ltd.'s mid-funnel comparison queries with high-intent landing pages"
-        ],
-        "aiDetected": true,
-        "dataNotes": "Single-model estimate (Claude only)",
+        "dataNotes": "Limited public data",
         "dataOrigin": "GPT-4o: Industry benchmark · Claude: Industry benchmark"
       }
     ],
@@ -717,10 +713,10 @@
   },
   "brandKit": null,
   "lastCompetitorNames": [
-    "Redcentric",
-    "Dataprise",
-    "Rackspace Technology",
-    "Prodec Networks",
-    "NTT Ltd."
+    "Trustwave",
+    "All Covered (Konica Minolta)",
+    "NTT Ltd.",
+    "eSentire",
+    "Prodec Networks"
   ]
 }
