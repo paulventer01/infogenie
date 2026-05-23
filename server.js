@@ -159,6 +159,68 @@ app.post('/api/diag-beacon', express.json({ limit: '8kb' }), (req, res) => {
   res.status(204).end();
 });
 
+// ── Dashboard-diag capture/replay ────────────────────────────────────────────
+// Save the full analysisData blob to disk so we can launch the dashboard
+// directly from cached data (zero external API calls). Used by the temporary
+// "Dashboard Diag" nav link to debug the post-render freeze quickly.
+const _DIAG_CAP_DIR = path.join(__dirname, 'data', 'diag-captures');
+try { fs.mkdirSync(_DIAG_CAP_DIR, { recursive: true }); } catch(_) {}
+function _safeDomainSlug(s) {
+  return String(s || 'unknown').toLowerCase().replace(/^https?:\/\//,'').replace(/^www\./,'')
+    .replace(/[^a-z0-9.-]+/g, '_').slice(0, 80) || 'unknown';
+}
+app.post('/api/diag-capture', express.json({ limit: '4mb' }), (req, res) => {
+  try {
+    const body = req.body || {};
+    const url  = body.url || (body.analysisData && body.analysisData.url) || 'unknown';
+    const slug = _safeDomainSlug(url);
+    const filename = `${slug}.json`;
+    const full = path.join(_DIAG_CAP_DIR, filename);
+    const payload = {
+      capturedAt: new Date().toISOString(),
+      domain: slug,
+      ...body
+    };
+    fs.writeFileSync(full, JSON.stringify(payload, null, 2));
+    // Also write a "latest.json" pointer for the diag launcher
+    fs.writeFileSync(path.join(_DIAG_CAP_DIR, '_latest.json'), JSON.stringify({ domain: slug, file: filename, at: payload.capturedAt }));
+    console.log(`[diag-capture] saved ${filename} (${(JSON.stringify(payload).length/1024).toFixed(1)}kb)`);
+    res.json({ ok: true, domain: slug, file: filename, bytes: JSON.stringify(payload).length });
+  } catch (e) {
+    console.warn('[diag-capture] save failed:', e && e.message || e);
+    res.status(500).json({ ok: false, error: String(e && e.message || e) });
+  }
+});
+app.get('/api/diag-capture/list', (_req, res) => {
+  try {
+    const files = fs.readdirSync(_DIAG_CAP_DIR)
+      .filter(f => f.endsWith('.json') && !f.startsWith('_'))
+      .map(f => {
+        const st = fs.statSync(path.join(_DIAG_CAP_DIR, f));
+        return { file: f, domain: f.replace(/\.json$/,''), bytes: st.size, at: st.mtime.toISOString() };
+      })
+      .sort((a, b) => b.at.localeCompare(a.at));
+    res.json({ ok: true, captures: files });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
+});
+app.get('/api/diag-capture/latest', (_req, res) => {
+  try {
+    const ptr = path.join(_DIAG_CAP_DIR, '_latest.json');
+    if (!fs.existsSync(ptr)) return res.status(404).json({ ok: false, error: 'no captures yet — run Analyse Now once to seed' });
+    const { file } = JSON.parse(fs.readFileSync(ptr, 'utf8'));
+    const data = JSON.parse(fs.readFileSync(path.join(_DIAG_CAP_DIR, file), 'utf8'));
+    res.json({ ok: true, ...data });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
+});
+app.get('/api/diag-capture/:domain', (req, res) => {
+  try {
+    const slug = _safeDomainSlug(req.params.domain);
+    const full = path.join(_DIAG_CAP_DIR, slug + '.json');
+    if (!fs.existsSync(full)) return res.status(404).json({ ok: false, error: 'not found' });
+    res.json({ ok: true, ...JSON.parse(fs.readFileSync(full, 'utf8')) });
+  } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
+});
+
 app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
 
 // ── Auth gate for /api/* (production hardening) ──────────────────────────────
@@ -169,6 +231,8 @@ app.use(express.static(path.join(__dirname), { etag: false, lastModified: false 
 // webhooks, status pings) are allowlisted and stay open even when auth is on.
 const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/auth\//,                  // session/token auth + OAuth callbacks
+  /^\/api\/diag-beacon$/,            // client breadcrumb mirror — fire-and-forget
+  /^\/api\/diag-capture/,            // dashboard-diag capture/replay (temp tool)
   /^\/api\/drips\/webhook\/resend$/, // Svix-signed inbound webhook
   /^\/api\/notify\/send$/,           // already gated by INFOGENIE_NOTIFY_SECRET
   /^\/api\/status$/,                 // global status

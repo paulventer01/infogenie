@@ -4048,8 +4048,37 @@ async function runAnalysis(url, country, industryOverride) {
     }
   }).catch(() => {});
 
+  // ── Dashboard-diag capture (fire-and-forget) ────────────────────────────────
+  // Save the fully-collated analyse payload so we can launch the dashboard
+  // directly from cache via the "Dashboard Diag" nav link — no API calls,
+  // no waiting, ideal for debugging the post-render freeze.
+  try {
+    const _capture = {
+      url: cleanUrl,
+      capturedFromAnalyseRun: true,
+      analysisData: JSON.parse(JSON.stringify(analysisData)),
+      brandKit:    window._brandKit || null,
+      lastCompetitorNames: window._lastCompetitorNames || []
+    };
+    fetch('/api/diag-capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_capture),
+      keepalive: true
+    }).then(r => r.json()).then(j => {
+      window.IGDiag && IGDiag.mark('diag-capture saved', j.domain + ' · ' + (j.bytes/1024).toFixed(1) + 'kb');
+    }).catch(e => window.IGDiag && IGDiag.err && IGDiag.err('diag-capture failed', String(e)));
+  } catch(e) { window.IGDiag && IGDiag.err && IGDiag.err('diag-capture serialise failed', String(e)); }
+
   // ── Navigate FIRST — guaranteed to always happen regardless of build errors ──
   window.IGDiag && IGDiag.mark('runAnalysis: navigating to dashboard', 'comps=' + selectedComps.length);
+  // Start a heartbeat that ticks every 250ms — any gap >500ms in the server
+  // log proves the main thread was blocked during that window and the prior
+  // breadcrumb names the culprit.
+  try { window.IGDiag && IGDiag.startHeartbeat && IGDiag.startHeartbeat('post-analyse', 250); } catch(_) {}
+  // Stop the heartbeat 15s later — by then the dashboard, all deferred
+  // builders and enrichments are well past done in the happy case.
+  setTimeout(() => { try { window.IGDiag && IGDiag.stopHeartbeat && IGDiag.stopHeartbeat(); } catch(_) {} }, 15000);
   navigateTo('dashboard');
   showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
 
@@ -4889,6 +4918,39 @@ function copyYourSwot() {
 window.copyYourSwot = copyYourSwot;
 
 // ===== BUILD DASHBOARD =====
+// ── Dashboard-diag replay ─────────────────────────────────────────────────
+// Loads a previously-captured analyse payload from the server and renders
+// the dashboard from it — no API calls, no waiting. Used by the temporary
+// "Dashboard Diag" nav link to debug the post-render freeze quickly.
+window._loadDashboardDiag = async function _loadDashboardDiag(domain) {
+  try {
+    window.IGDiag && IGDiag.mark('dashboard-diag: fetching capture', domain || 'latest');
+    const url = '/api/diag-capture/' + (domain ? encodeURIComponent(domain) : 'latest');
+    const r = await fetch(url);
+    const j = await r.json();
+    if (!j || !j.ok || !j.analysisData) {
+      showToast('⚠ No capture yet. Run Analyse Now once on any domain first.');
+      window.IGDiag && IGDiag.err && IGDiag.err('dashboard-diag: no capture', JSON.stringify(j||{}).slice(0,200));
+      return;
+    }
+    analysisData = j.analysisData;
+    window.analysisData = analysisData;
+    if (j.brandKit) window._brandKit = j.brandKit;
+    if (j.lastCompetitorNames) window._lastCompetitorNames = j.lastCompetitorNames;
+    window.IGDiag && IGDiag.mark('dashboard-diag: loaded',
+      'domain=' + (analysisData.url || '?') + ' · comps=' + ((analysisData.competitors||[]).length));
+    // Start the same heartbeat we use for the real analyse flow so freeze
+    // diagnosis is identical in both paths.
+    try { window.IGDiag && IGDiag.startHeartbeat && IGDiag.startHeartbeat('dash-diag', 250); } catch(_) {}
+    setTimeout(() => { try { window.IGDiag && IGDiag.stopHeartbeat && IGDiag.stopHeartbeat(); } catch(_) {} }, 15000);
+    navigateTo('dashboard');
+    showToast('🧪 Dashboard loaded from cached capture — ' + (analysisData.url || ''));
+  } catch (e) {
+    showToast('⚠ Dashboard-diag failed: ' + (e && e.message || e));
+    window.IGDiag && IGDiag.err && IGDiag.err('dashboard-diag: exception', String(e));
+  }
+};
+
 function buildDashboard() {
   // ── Tear-down between Analyse runs ────────────────────────────────────────
   // Destroy every chart instance this build will recreate so old chart
@@ -5614,19 +5676,19 @@ function buildDashboard() {
       return;
     }
     const [name, fn] = _dashStages[_dashIdx++];
-    const t0 = (window.performance && performance.now) ? performance.now() : Date.now();
-    try { fn(); } catch (e) { console.warn('[buildDashboard] stage', name, 'error:', e); }
-    const dt = ((window.performance && performance.now) ? performance.now() : Date.now()) - t0;
+    // Use IGDiag.stage for full verbose logging (start, end, duration, ΔDOM,
+    // memory). Every single dashboard stage is now individually traceable
+    // on the server log via the diag beacon.
     try {
-      performance.mark && performance.mark('ig:dashStage:' + name);
-      performance.measure && performance.measure('ig:dashStage:' + name + ':dur',
-        { start: t0, duration: dt });
-    } catch(_) {}
-    if (dt > 50) {
-      const msg = `[buildDashboard] stage "${name}" took ${dt.toFixed(0)}ms (>50ms budget)`;
-      console.warn(msg);
-      try { _dashDebug && window.IGDiag && IGDiag.log && IGDiag.log(msg); } catch(_) {}
-    }
+      if (window.IGDiag && window.IGDiag.stage) {
+        window.IGDiag.stage('dashStage[' + (_dashIdx) + '/' + _dashStages.length + ']:' + name, fn);
+      } else {
+        const t0 = performance.now();
+        fn();
+        const dt = performance.now() - t0;
+        if (dt > 50) console.warn(`[buildDashboard] stage "${name}" ${dt.toFixed(0)}ms`);
+      }
+    } catch (e) { console.warn('[buildDashboard] stage', name, 'error:', e); }
     (window.requestAnimationFrame || ((cb) => setTimeout(cb, 16)))(_runDashStage);
   };
   _runDashStage();

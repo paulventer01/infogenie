@@ -129,7 +129,84 @@
     if (el) el.textContent = events.length + ' events';
   }
 
-  window.IGDiag = { log, mark, err, reset, show, hide, toggle, events };
+  // ── Verbose stage helpers ───────────────────────────────────────────────────
+  // stage(name, fn)        sync wrapper: logs start, runs, logs end+duration+DOM-delta
+  // asyncStage(name, fn)   same for async functions (awaitable)
+  // heartbeat(label)       starts a 250ms tick that logs every 1s while alive
+  //                        → if main thread freezes you see the gap in server log
+  // domStats()             returns {nodes, listeners?} snapshot
+  function domStats() {
+    let n = 0;
+    try { n = document.getElementsByTagName('*').length; } catch(_) {}
+    return { nodes: n };
+  }
+  function memStats() {
+    if (performance && performance.memory) {
+      return { usedMB: +(performance.memory.usedJSHeapSize/1048576).toFixed(1) };
+    }
+    return null;
+  }
+  function _detailStr(d0, d1) {
+    const dn = d1.nodes - d0.nodes;
+    const parts = [];
+    parts.push('Δnodes=' + (dn >= 0 ? '+' : '') + dn);
+    parts.push('total=' + d1.nodes);
+    const m1 = memStats();
+    if (m1) parts.push('mem=' + m1.usedMB + 'MB');
+    return parts.join(' · ');
+  }
+  function stage(name, fn) {
+    const t0 = performance.now();
+    const d0 = domStats();
+    mark('▶ ' + name);
+    let out, threw;
+    try { out = fn(); } catch (e) { threw = e; err(name + ' THREW', e && e.message || String(e)); }
+    const dt = performance.now() - t0;
+    const d1 = domStats();
+    const slow = dt > 50 ? ' ⚠SLOW' : '';
+    log('◀ ' + name + slow, dt.toFixed(0) + 'ms · ' + _detailStr(d0, d1));
+    if (threw) throw threw;
+    return out;
+  }
+  async function asyncStage(name, fn) {
+    const t0 = performance.now();
+    const d0 = domStats();
+    mark('▶ ' + name + ' (async)');
+    let out, threw;
+    try { out = await fn(); } catch (e) { threw = e; err(name + ' THREW', e && e.message || String(e)); }
+    const dt = performance.now() - t0;
+    const d1 = domStats();
+    const slow = dt > 250 ? ' ⚠SLOW' : '';
+    log('◀ ' + name + ' (async)' + slow, dt.toFixed(0) + 'ms · ' + _detailStr(d0, d1));
+    if (threw) throw threw;
+    return out;
+  }
+  let _hbTimer = null, _hbLabel = '', _hbStart = 0, _hbN = 0, _hbLast = 0;
+  function startHeartbeat(label, periodMs) {
+    stopHeartbeat();
+    _hbLabel = label || 'heartbeat';
+    _hbStart = performance.now();
+    _hbLast  = _hbStart;
+    _hbN = 0;
+    mark('💓 heartbeat start', _hbLabel);
+    _hbTimer = setInterval(() => {
+      _hbN++;
+      const now = performance.now();
+      const gap = now - _hbLast;
+      _hbLast = now;
+      const sec = ((now - _hbStart)/1000).toFixed(1);
+      // Flag gaps >500ms (we tick every 250ms) — that's main-thread starvation
+      const flag = gap > 500 ? ' ⚠GAP ' + gap.toFixed(0) + 'ms' : '';
+      log('💓 ' + _hbLabel + ' #' + _hbN + flag, sec + 's · ' + domStats().nodes + ' nodes');
+    }, periodMs || 250);
+  }
+  function stopHeartbeat() {
+    if (_hbTimer) { clearInterval(_hbTimer); _hbTimer = null; mark('💓 heartbeat stop', _hbLabel); }
+  }
+
+  window.IGDiag = { log, mark, err, reset, show, hide, toggle, events,
+                    stage, asyncStage, startHeartbeat, stopHeartbeat,
+                    domStats, memStats };
 
   function init() {
     buildToggle();
