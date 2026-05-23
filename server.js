@@ -9076,6 +9076,16 @@ try {
         console.error('[tenants] schema init failed:', e.message);
         if (process.env.NODE_ENV === 'production') process.exit(1);
       }
+      // Phase 2 mass migration: add tenant_id column + index + backfill to
+      // every business table. Deferred 8s so all parallel `ensureXSchema()`
+      // CREATE TABLE statements have completed first. Fully idempotent —
+      // safe to re-run on every boot. Any table missing on first pass is
+      // logged and picked up on the next restart.
+      setTimeout(() => {
+        require('./services/tenants/phase2_migrate')
+          .runPhase2Migration()
+          .catch(e => console.error('[tenants/phase2] failed:', e.message));
+      }, 8000);
     } else {
       console.warn('[auth] disabled — DATABASE_URL not set. Sessions will be in-memory and lost on restart.');
     }
