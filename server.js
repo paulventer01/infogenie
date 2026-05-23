@@ -13,6 +13,9 @@ const Anthropic  = require('@anthropic-ai/sdk');
 const _authService = require('./services/auth/api');
 const _authSchema  = require('./services/auth/schema');
 const _credentialsVault = require('./services/credentials/vault');
+const _tenantSchema     = require('./services/tenants/schema');
+const _tenantMiddleware = require('./services/tenants/middleware');
+const _tenantRouter     = require('./services/tenants/api');
 
 // ── Env-var name aliases ─────────────────────────────────────────────────────
 // Some Replit Secrets were stored under the historical names below. The rest
@@ -138,9 +141,17 @@ app.use(expressSession({
 // Populate req.user from req.session (if any). Runs before the static-file
 // + API-key gate so every downstream route can read req.user.
 app.use(_authService.loadUserFromSession);
+// Attach tenant context (active tenant, role, permission set) to req. Phase 1
+// is non-enforcing — this just makes req.tenant / req.can(perm) available to
+// any route that wants to read it. No existing route is gated yet.
+app.use(_tenantMiddleware.loadTenantContext);
 // Mount /api/auth/* routes BEFORE the static-file handler + API-key gate so
 // they remain reachable to unauthenticated visitors.
 app.use('/api/auth', _authService.router);
+// /api/tenants/* — same exemption from the API-key + owner gates as /api/auth.
+// Logged-in users need to query/switch their own tenant memberships regardless
+// of platform-owner status. Each route inside enforces its own auth check.
+app.use('/api/tenants', _tenantRouter);
 
 // ── Client diagnostic beacon ─────────────────────────────────────────────────
 // IGDiag mirrors every breadcrumb here so freezes / crashes that wipe the
@@ -9055,6 +9066,15 @@ try {
           // Hard-fail in production — a broken vault schema is a data-integrity risk.
           process.exit(1);
         }
+      }
+      // Multi-tenancy foundation (Phase 1): tenants + roles + memberships +
+      // backfill of existing users into personal tenants. Additive only —
+      // does not modify any existing table.
+      try {
+        await _tenantSchema.ensureTenantSchema();
+      } catch (e) {
+        console.error('[tenants] schema init failed:', e.message);
+        if (process.env.NODE_ENV === 'production') process.exit(1);
       }
     } else {
       console.warn('[auth] disabled — DATABASE_URL not set. Sessions will be in-memory and lost on restart.');
