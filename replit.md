@@ -104,6 +104,8 @@ Listens on port 5000 (preview) and 80 (external). PostgreSQL via `DATABASE_URL`.
 
 **Field Enhancer** (`ig_field_enhancer.js`): MutationObserver adds AI Suggest + brand pill to every eligible input. Scans only newly-added nodes via `requestAnimationFrame` (never full-document re-scan). Skips auth forms, password/file/search inputs, already-decorated fields. Cache-busted as `?v=20260521REL1`.
 
+**Multitenant** (`services/tenants/`): All feature data is tenant-scoped via `tenant_id` columns (113/114 tables NOT NULL; `roles` intentionally nullable for global system roles). Enforcement flag `MULTITENANT_ENFORCEMENT` runs in three modes: `off` (Phase 1 legacy), `shadow` (warn but allow fallback — used during rollout to spot gaps), `on` (strict — `resolveTenantId` returns null with no fallback, callers 4xx). **Currently `on` in production.** Routes use `const tid = await _tenantCtx.resolveTenantId(req, {label:'svc:op'})`; cookie sessions get `req.tenant` from `loadTenantContext` middleware, api-key callers get it from `_injectApiKeyAuth` in `server.js` (which runs BEFORE the public-path bypass so tenant-bound public routes like `/api/optimizer/status` get correct scoping). Crons/background jobs call `getCronTenantId()` directly. Default tenant = first active tenant created by the owner (cached 60s). Observability via owner-only `GET /api/_debug/multitenant` (mode, defaultTenantId, api-key hit/miss counters, current request snapshot). To add a new tenant-scoped table: include `tenant_id INT NOT NULL REFERENCES tenants(id)` in schema, add `WHERE tenant_id=$1` to every read, and call `resolveTenantId(req, {label})` at the top of every route handler — never use `allowFallback:true` (removed everywhere in Phase 2F as part of the enforcement-on flip).
+
 ## Feature Surface (T1-T38)
 
 See `docs/tiers.md` for the full index. High-level areas:
@@ -128,6 +130,7 @@ See `docs/tiers.md` for the full index. High-level areas:
 - **GA/GSC**: Parked — Google Workspace org policy blocks OAuth.
 - **Ad platform creds**: Cross-Channel Report requires real Meta/Google/TikTok credentials.
 - **T35 index error**: `[t35] init failed: functions in index expression must be marked IMMUTABLE` — known, non-blocking.
+- **Multitenant enforcement is ON**: Any new tenant-scoped table or route MUST resolve tenant via `resolveTenantId(req, {label})` (no `allowFallback`). Forgetting this causes a 400 `no_tenant` for api-key callers or null-tenant queries — visible immediately in `/api/_debug/multitenant` as a rising `miss` counter.
 
 ## Docs
 

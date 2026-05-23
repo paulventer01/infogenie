@@ -6123,6 +6123,45 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// ── GET /api/_debug/multitenant ───────────────────────────────────────────────
+// Owner-only observability for the multitenant rollout. Exposes:
+//   • current enforcement mode (off | shadow | on)
+//   • resolved default tenant id (used by crons & api-key callers)
+//   • api-key tenant-injection hit/miss counters (since process start)
+//   • principal/tenant on the current request (sanity check)
+// Use this to detect drift — e.g. a rising miss counter means an api-key
+// caller hit a path before getDefaultTenantId() could resolve a tenant.
+app.get('/api/_debug/multitenant', (req, res) => {
+  if (!req.user || req.user.isOwner !== true) {
+    return res.status(403).json({ ok:false, error:'owner_only' });
+  }
+  const _ctx = require('./services/tenants/context');
+  _ctx.getDefaultTenantId().then((defaultTenantId) => {
+    const hits = global.__apiKeyTenantHits || 0;
+    const miss = global.__apiKeyTenantMiss || 0;
+    const total = hits + miss;
+    res.json({
+      ok: true,
+      mode: _ctx.mode(),
+      defaultTenantId,
+      apiKeyTenant: {
+        hits, miss,
+        hitRate: total ? +(hits / total).toFixed(4) : null,
+        warn: miss > 0 ? 'non-zero miss — api-key callers reached routes without a resolvable default tenant' : null,
+      },
+      request: {
+        viaApiKey: !!req.viaApiKey,
+        principalId: req.user ? req.user.id : null,
+        tenantId: req.tenant ? req.tenant.id : null,
+      },
+      processUptimeSec: Math.round(process.uptime()),
+    });
+  }).catch((e) => {
+    console.error('[_debug/multitenant] failed:', e.message);
+    res.status(500).json({ ok:false, error:'debug_failed' });
+  });
+});
+
 // ── GET /download-source — serves the full source code as a downloadable file ─
 app.get('/download-source', (req, res) => {
   const files = ['package.json','server.js','data.js','index.html','style.css','app.js'];
