@@ -4149,26 +4149,24 @@ async function runAnalysis(url, country, industryOverride) {
     { time: now.toLocaleTimeString(), date: now.toLocaleDateString(), action: `Analysed ${cleanUrl} — industry: ${industry.name}`, type: 'analysis', impact: `${selectedComps.length} competitors identified` }
   );
 
-  // Defer buildSettings + enrichment passes — these are non-critical and
-  // were blocking the main thread right after buildDashboard, preventing the
-  // background view-build queue from getting a tick to schedule its 150ms
-  // setTimeout. Pushing them to the macrotask queue (setTimeout 0) lets the
-  // browser paint the dashboard + lets _bgBuild start its work first.
-  setTimeout(() => {
-    _runBuilder('buildSettings', buildSettings, 'deferred');
-  }, 300);
+  // Defer enrichment passes — these overlay real DataForSEO data onto the
+  // dashboard after first paint. buildSettings is NOT called here: it's
+  // built lazily by navigateTo('settings') on first visit, because its
+  // innerHTML inserts ~2000+ integration-card DOM nodes which forces a
+  // multi-second style/layout pass that freezes rAF + setTimeout + the
+  // heartbeat. (Confirmed via IGDiag DIAG4 breadcrumbs 2026-05-23.)
   setTimeout(() => {
     try {
       window.IGDiag && IGDiag.mark('enrichWithRealCompetitorData: start');
       enrichWithRealCompetitorData(cleanUrl, industryKey, country);
     } catch(e) { window.IGDiag && IGDiag.err('enrichWithRealCompetitorData error', e && e.message); }
-  }, 600);
+  }, 1500);
   setTimeout(() => {
     try {
       window.IGDiag && IGDiag.mark('enrichKPIsWithLiveData: start');
       enrichKPIsWithLiveData(cleanUrl, industryKey, country);
     } catch(e) { window.IGDiag && IGDiag.err('enrichKPIsWithLiveData error', e && e.message); }
-  }, 900);
+  }, 2000);
 }
 
 // ── Real Competitor Data Enrichment ──────────────────────────────────────────
