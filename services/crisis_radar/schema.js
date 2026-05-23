@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 
 async function ensureCrisisRadarSchema() {
   if (!_db.hasDb()) return;
@@ -47,6 +48,15 @@ async function ensureCrisisRadarSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_inc_status ON crisis_incidents(status, created_at DESC);
   `);
+  // Phase 2B — add tenant_id and rewrite (brand,country) uniqueness per-tenant.
+  await addTenantIdColumn('crisis_watchlist');
+  await addTenantIdColumn('crisis_snapshots');
+  await addTenantIdColumn('crisis_incidents');
+  try {
+    await pool.query(`ALTER TABLE crisis_watchlist DROP CONSTRAINT IF EXISTS crisis_watchlist_brand_country_key`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uniq_crisis_tenant_brand_country
+      ON crisis_watchlist (tenant_id, brand, country)`);
+  } catch (e) { console.warn('[crisis_radar] unique rewrite skipped:', e.message); }
 }
 
 module.exports = { ensureCrisisRadarSchema };

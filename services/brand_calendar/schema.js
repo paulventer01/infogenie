@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 const hasDb = () => _db.hasDb();
 const pool = { query: (...a) => _db.getPool().query(...a) };
 
@@ -18,5 +19,6 @@ async function ensureBrandCalendarSchema() {
     CREATE INDEX IF NOT EXISTS idx_bcal_when ON brand_calendar_items(scheduled_at);
     CREATE INDEX IF NOT EXISTS idx_bcal_cat  ON brand_calendar_items(category);
   `);
+  await addTenantIdColumn('brand_calendar_items');
 }
 module.exports = { ensureBrandCalendarSchema };

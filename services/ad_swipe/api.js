@@ -2,6 +2,7 @@ const express = require('express');
 const _https = require('https');
 const router = express.Router();
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safe(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[ad-swipe]', e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
@@ -23,9 +24,10 @@ async function _openaiJson(messages, maxTokens=600) {
   });
 }
 
-// POST /save — persist an ad from the Ad Library into the swipe file
 router.post('/save', _safe(async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'database unavailable');
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:save', allowFallback:true });
+  if (!tid) return _err(res, 400, 'no_tenant');
   const b = req.body || {};
   const source = String(b.source || 'meta').slice(0, 32);
   const advertiser = String(b.advertiser || b.page_name || '').slice(0, 200);
@@ -41,28 +43,31 @@ router.post('/save', _safe(async (req, res) => {
   const notes = String(b.notes || '').slice(0, 1000);
   const score = Math.max(0, Math.min(10, parseInt(b.score, 10) || 0));
   try {
+    // Atomic upsert on the partial unique index ad_swipe_tenant_source_extid_uidx
+    // (Phase 2B). Partial-index ON CONFLICT must restate the WHERE clause.
     const r = await _db.getPool().query(
-      `INSERT INTO ad_swipe (source, external_id, advertiser, headline, body, cta, snapshot_url, platforms, tags, notes, score)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-       ON CONFLICT (source, external_id) WHERE external_id IS NOT NULL
-       DO UPDATE SET advertiser=EXCLUDED.advertiser, headline=EXCLUDED.headline, body=EXCLUDED.body,
-                     cta=EXCLUDED.cta, snapshot_url=EXCLUDED.snapshot_url, platforms=EXCLUDED.platforms,
-                     tags=EXCLUDED.tags, notes=EXCLUDED.notes, score=EXCLUDED.score
+      `INSERT INTO ad_swipe (tenant_id, source, external_id, advertiser, headline, body, cta, snapshot_url, platforms, tags, notes, score)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (tenant_id, source, external_id) WHERE external_id IS NOT NULL
+       DO UPDATE SET
+         advertiser=EXCLUDED.advertiser, headline=EXCLUDED.headline, body=EXCLUDED.body,
+         cta=EXCLUDED.cta, snapshot_url=EXCLUDED.snapshot_url, platforms=EXCLUDED.platforms,
+         tags=EXCLUDED.tags, notes=EXCLUDED.notes, score=EXCLUDED.score
        RETURNING id, saved_at`,
-      [source, external_id, advertiser, headline, body, cta, snapshot_url, JSON.stringify(platforms), JSON.stringify(tags), notes, score]
-    );
+      [tid, source, external_id, advertiser, headline, body, cta, snapshot_url,
+       JSON.stringify(platforms), JSON.stringify(tags), notes, score]);
     res.json({ ok:true, id: r.rows[0].id, saved_at: r.rows[0].saved_at });
   } catch (e) { _err(res, 500, e.message); }
 }));
 
-// GET /list — paginated swipe file with optional tag/advertiser filter
 router.get('/list', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, items: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:list', allowFallback:true });
   const limit = Math.min(100, parseInt(req.query.limit, 10) || 50);
   const tag = req.query.tag ? String(req.query.tag).slice(0, 40) : null;
   const advertiser = req.query.advertiser ? String(req.query.advertiser).slice(0, 200) : null;
-  let sql = `SELECT id, source, external_id, advertiser, headline, body, cta, snapshot_url, platforms, tags, notes, score, saved_at FROM ad_swipe WHERE 1=1`;
-  const params = [];
+  let sql = `SELECT id, source, external_id, advertiser, headline, body, cta, snapshot_url, platforms, tags, notes, score, saved_at FROM ad_swipe WHERE tenant_id=$1`;
+  const params = [tid];
   if (advertiser) { params.push(advertiser); sql += ` AND advertiser ILIKE '%' || $${params.length} || '%'`; }
   if (tag)        { params.push(JSON.stringify([tag])); sql += ` AND tags @> $${params.length}::jsonb`; }
   params.push(limit);
@@ -71,11 +76,11 @@ router.get('/list', _safe(async (req, res) => {
   res.json({ ok:true, items: r.rows });
 }));
 
-// POST /:id/update — update tags/notes/score
 router.post('/:id/update', _safe(async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'database unavailable');
   const id = parseInt(req.params.id, 10);
   if (!id) return _err(res, 400, 'invalid id');
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:update', allowFallback:true });
   const b = req.body || {};
   const tags = Array.isArray(b.tags) ? b.tags.slice(0, 12).map(t => String(t).slice(0, 40)) : null;
   const notes = b.notes !== undefined ? String(b.notes).slice(0, 1000) : null;
@@ -85,54 +90,55 @@ router.post('/:id/update', _safe(async (req, res) => {
   if (notes !== null) { params.push(notes);  sets.push(`notes=$${params.length}`); }
   if (score !== null) { params.push(score);  sets.push(`score=$${params.length}`); }
   if (!sets.length) return _err(res, 400, 'nothing to update');
-  params.push(id);
-  await _db.getPool().query(`UPDATE ad_swipe SET ${sets.join(', ')} WHERE id=$${params.length}`, params);
+  params.push(id, tid);
+  await _db.getPool().query(
+    `UPDATE ad_swipe SET ${sets.join(', ')} WHERE id=$${params.length - 1} AND tenant_id=$${params.length}`, params);
   res.json({ ok:true });
 }));
 
-// DELETE /:id
 router.delete('/:id', _safe(async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'database unavailable');
   const id = parseInt(req.params.id, 10);
   if (!id) return _err(res, 400, 'invalid id');
-  await _db.getPool().query('DELETE FROM ad_swipe WHERE id=$1', [id]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:delete', allowFallback:true });
+  await _db.getPool().query('DELETE FROM ad_swipe WHERE id=$1 AND tenant_id=$2', [id, tid]);
   res.json({ ok:true });
 }));
 
-// GET /tags — distinct tag list (for filter UI)
-router.get('/tags', _safe(async (_req, res) => {
+router.get('/tags', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, tags: [] });
-  const r = await _db.getPool().query(`SELECT DISTINCT jsonb_array_elements_text(tags) AS tag FROM ad_swipe ORDER BY tag`);
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:tags', allowFallback:true });
+  const r = await _db.getPool().query(
+    `SELECT DISTINCT jsonb_array_elements_text(tags) AS tag FROM ad_swipe WHERE tenant_id=$1 ORDER BY tag`, [tid]);
   res.json({ ok:true, tags: r.rows.map(x => x.tag) });
 }));
 
-// GET /advertisers — distinct advertiser list (for filter UI)
-router.get('/advertisers', _safe(async (_req, res) => {
+router.get('/advertisers', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, advertisers: [] });
-  const r = await _db.getPool().query(`SELECT advertiser, COUNT(*)::int AS n FROM ad_swipe GROUP BY advertiser ORDER BY n DESC, advertiser ASC LIMIT 100`);
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:advertisers', allowFallback:true });
+  const r = await _db.getPool().query(
+    `SELECT advertiser, COUNT(*)::int AS n FROM ad_swipe WHERE tenant_id=$1
+     GROUP BY advertiser ORDER BY n DESC, advertiser ASC LIMIT 100`, [tid]);
   res.json({ ok:true, advertisers: r.rows });
 }));
 
-// POST /suggest-tags — AI suggests filter tags based on the user's saved swipe library
-// Falls back to brand-context suggestions when the swipe file is empty so the
-// 🤖 AI Suggest button is useful even on first visit.
 router.post('/suggest-tags', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.status(503).json({ ok:false, error:'database unavailable', suggestions: [], existing: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:suggest-tags', allowFallback:true });
   const body = req.body || {};
   let items = [];
   let existing = [];
   try {
     const r = await _db.getPool().query(
-      `SELECT advertiser, headline, body, tags FROM ad_swipe ORDER BY saved_at DESC LIMIT 60`
-    );
+      `SELECT advertiser, headline, body, tags FROM ad_swipe WHERE tenant_id=$1 ORDER BY saved_at DESC LIMIT 60`, [tid]);
     items = r.rows || [];
-    const tagsRow = await _db.getPool().query(`SELECT DISTINCT jsonb_array_elements_text(tags) AS tag FROM ad_swipe`);
+    const tagsRow = await _db.getPool().query(
+      `SELECT DISTINCT jsonb_array_elements_text(tags) AS tag FROM ad_swipe WHERE tenant_id=$1`, [tid]);
     existing = tagsRow.rows.map(x => x.tag).filter(Boolean);
   } catch (e) {
     return res.status(500).json({ ok:false, error:'DB query failed: '+e.message, suggestions: [], existing: [] });
   }
 
-  // ── EMPTY SWIPE FILE — propose generic-but-grounded tags from brand context ──
   if (!items.length) {
     const brand = String(body.brand || '').slice(0, 80);
     const competitors = Array.isArray(body.competitors) ? body.competitors.slice(0, 8).map(s=>String(s).slice(0,60)) : [];
@@ -147,7 +153,6 @@ router.post('/suggest-tags', _safe(async (req, res) => {
         .filter(s => s.tag && s.tag.length >= 2);
       return res.json({ ok:true, suggestions: clean, existing: [], source:'brand_context', note:'Swipe file is empty — these are starter tags. Save some ads and click 🤖 AI Suggest again for tags tailored to your library.' });
     }
-    // ── No LLM key — return curated starter tags so the button is never silent ──
     const starter = [
       { tag:'social proof',   why:'Testimonials, reviews, customer counts.' },
       { tag:'scarcity',       why:'Limited time / limited stock urgency.' },
@@ -163,7 +168,6 @@ router.post('/suggest-tags', _safe(async (req, res) => {
     return res.json({ ok:true, suggestions: starter, existing: [], source:'starter', note:'Swipe file is empty + no AI key — starter tags shown. Save some ads and connect an LLM for tailored suggestions.' });
   }
 
-  // ── HAS SAVED ADS — use them as the prompt grounding ──
   const snippet = items.slice(0, 30).map((a, i) =>
     `${i+1}. ${a.advertiser} | ${a.headline||''} | ${(a.body||'').slice(0,160)}`
   ).join('\n');

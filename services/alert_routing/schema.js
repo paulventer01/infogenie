@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 
 async function ensureAlertRoutingSchema() {
   if (!_db.hasDb()) return;
@@ -26,6 +27,8 @@ async function ensureAlertRoutingSchema() {
     CREATE INDEX IF NOT EXISTS idx_alert_rules_kind_enabled ON alert_rules(trigger_kind, enabled);
     CREATE INDEX IF NOT EXISTS idx_alert_dispatches_rule_created ON alert_dispatches(rule_id, created_at DESC);
   `);
+  await addTenantIdColumn('alert_rules');
+  await addTenantIdColumn('alert_dispatches');
   console.log('[alert-routing] schema ready');
 }
 

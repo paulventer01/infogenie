@@ -1,31 +1,34 @@
 const _db = require('../../db');
 const _https = require('https');
 
-async function _gatherStats(brand) {
+async function _gatherStats(brand, tenantId) {
   const pool = _db.getPool();
   const since = "now() - interval '24 hours'";
   const stats = { brand, since: new Date(Date.now() - 86400000).toISOString() };
+  // Guard: only accept finite numeric tenantId; otherwise null-scope (no filter).
+  const tid = Number.isFinite(Number(tenantId)) && Number(tenantId) > 0 ? Number(tenantId) : null;
+  const tidClause = tid ? ` AND tenant_id=${tid}` : '';
 
   // Crisis incidents in last 24h
   try {
     const r = await pool.query(
       `SELECT id, kind, severity, headline, detail, status, created_at
-       FROM crisis_incidents WHERE brand=$1 AND created_at > ${since}
+       FROM crisis_incidents WHERE brand=$1 AND created_at > ${since}${tidClause}
        ORDER BY severity DESC, created_at DESC LIMIT 10`, [brand]);
     stats.incidents = r.rows;
   } catch { stats.incidents = []; }
 
-  // SoV: total mentions for target brand last 24h vs prior 24h
+  // SoV
   try {
     const cur = await pool.query(
       `SELECT brand, SUM(mentions)::int AS m, SUM(neg_count)::int AS n
-       FROM sov_snapshots WHERE target_brand=$1 AND taken_at > ${since}
+       FROM sov_snapshots WHERE target_brand=$1 AND taken_at > ${since}${tidClause}
        GROUP BY brand`, [brand]);
     const prev = await pool.query(
       `SELECT brand, SUM(mentions)::int AS m
        FROM sov_snapshots WHERE target_brand=$1
          AND taken_at > now() - interval '48 hours'
-         AND taken_at <= ${since}
+         AND taken_at <= ${since}${tidClause}
        GROUP BY brand`, [brand]);
     const prevMap = new Map(prev.rows.map(r => [r.brand, r.m]));
     const tot = cur.rows.reduce((s, r) => s + r.m, 0) || 1;
@@ -42,7 +45,7 @@ async function _gatherStats(brand) {
   try {
     const r = await pool.query(
       `SELECT category, country, topics FROM trend_runs
-       WHERE ran_at > ${since} ORDER BY ran_at DESC LIMIT 3`);
+       WHERE ran_at > ${since}${tidClause} ORDER BY ran_at DESC LIMIT 3`);
     stats.trends = r.rows.flatMap(row => (row.topics || []).slice(0, 3).map(t => ({
       ...t, category: row.category, country: row.country,
     }))).slice(0, 6);
@@ -52,16 +55,16 @@ async function _gatherStats(brand) {
   try {
     const r = await pool.query(
       `SELECT competitor, summary, created_at FROM battle_cards
-       WHERE brand=$1 AND created_at > ${since}
+       WHERE brand=$1 AND created_at > ${since}${tidClause}
        ORDER BY created_at DESC LIMIT 5`, [brand]);
     stats.new_battle_cards = r.rows;
   } catch { stats.new_battle_cards = []; }
 
-  // New influencers added
+  // New influencers
   try {
     const r = await pool.query(
       `SELECT handle, platform, followers, status FROM influencers
-       WHERE created_at > ${since} ORDER BY created_at DESC LIMIT 8`);
+       WHERE created_at > ${since}${tidClause} ORDER BY created_at DESC LIMIT 8`);
     stats.new_influencers = r.rows;
   } catch { stats.new_influencers = []; }
 
@@ -138,17 +141,17 @@ function _templateSummary(stats) {
   };
 }
 
-async function generateDigest(brand) {
+async function generateDigest(brand, tenantId) {
   const b = String(brand || '').trim().slice(0, 80);
   if (!b) throw new Error('brand required');
-  const stats = await _gatherStats(b);
+  const stats = await _gatherStats(b, tenantId);
   let body = await _aiSummary(stats);
   let generated_by = 'openai';
   if (!body) { body = _templateSummary(stats); generated_by = 'template'; }
   const r = await _db.getPool().query(
-    `INSERT INTO digest_runs (brand, headline, summary_md, sections, stats, generated_by)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [b, body.headline, body.summary_md, JSON.stringify(body.sections || []),
+    `INSERT INTO digest_runs (tenant_id, brand, headline, summary_md, sections, stats, generated_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [tenantId || null, b, body.headline, body.summary_md, JSON.stringify(body.sections || []),
      JSON.stringify(stats), generated_by]);
   return { ...r.rows[0], recommended_actions: body.recommended_actions || [] };
 }

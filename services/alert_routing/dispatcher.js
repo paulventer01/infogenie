@@ -76,7 +76,18 @@ async function _dispatchEmail(text, toEmail, subject) {
 async function dispatchEvent(event) {
   if (!_db.hasDb()) return { matched: 0 };
   const pool = _db.getPool();
-  const rules = await pool.query(`SELECT * FROM alert_rules WHERE enabled=true AND trigger_kind=$1`, [event.kind]);
+  // Phase 2B: tenant-isolated fan-out. Event MUST carry tenant_id when origin is
+  // tenant-bound (crisis_radar, sov, digest). Without it we still scan but only
+  // dispatch to rules with NULL tenant_id (legacy global rules) so we cannot
+  // cross-leak between tenants.
+  const evtTid = event.tenant_id != null ? Number(event.tenant_id) : null;
+  const rules = evtTid != null
+    ? await pool.query(
+        `SELECT * FROM alert_rules WHERE enabled=true AND trigger_kind=$1 AND tenant_id=$2`,
+        [event.kind, evtTid])
+    : await pool.query(
+        `SELECT * FROM alert_rules WHERE enabled=true AND trigger_kind=$1 AND tenant_id IS NULL`,
+        [event.kind]);
   const matched = rules.rows.filter(r => _matches(r, event));
   const out = [];
   for (const rule of matched) {
@@ -96,8 +107,8 @@ async function dispatchEvent(event) {
       }
     }
     await pool.query(
-      `INSERT INTO alert_dispatches (rule_id, event_kind, event_ref, channels_sent) VALUES ($1,$2,$3,$4)`,
-      [rule.id, event.kind, JSON.stringify(event), JSON.stringify(channelsSent)]);
+      `INSERT INTO alert_dispatches (tenant_id, rule_id, event_kind, event_ref, channels_sent) VALUES ($1,$2,$3,$4,$5)`,
+      [rule.tenant_id, rule.id, event.kind, JSON.stringify(event), JSON.stringify(channelsSent)]);
     await pool.query(`UPDATE alert_rules SET fire_count=fire_count+1, last_fired_at=now() WHERE id=$1`, [rule.id]);
     out.push({ rule_id: rule.id, name: rule.name, channels: channelsSent });
   }

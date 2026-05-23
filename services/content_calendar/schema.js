@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 async function ensureContentCalendarSchema() {
   if (!_db.hasDb()) return;
   await _db.getPool().query(`
@@ -14,6 +15,7 @@ async function ensureContentCalendarSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_cc_brand_created ON content_calendar_runs(brand, created_at DESC);
   `);
+  await addTenantIdColumn('content_calendar_runs');
   console.log('[content-calendar] schema ready');
 }
 module.exports = { ensureContentCalendarSchema };

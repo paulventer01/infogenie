@@ -72,9 +72,9 @@ async function _runOne(w) {
   const s = _summarise(resp, w.brand);
 
   const snap = await pool.query(`
-    INSERT INTO crisis_snapshots (watchlist_id, brand, total_mentions, pos_count, neu_count, neg_count, neg_pct, top_sources)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-    [w.id, w.brand, s.total, s.pos, s.neu, s.neg, s.negPct, JSON.stringify(s.topSources)]);
+    INSERT INTO crisis_snapshots (tenant_id, watchlist_id, brand, total_mentions, pos_count, neu_count, neg_count, neg_pct, top_sources)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [w.tenant_id, w.id, w.brand, s.total, s.pos, s.neu, s.neg, s.negPct, JSON.stringify(s.topSources)]);
 
   // Also persist Share-of-Voice rows: one per brand (target + each competitor)
   // sharing the same taken_at timestamp so the SoV chart can pivot easily.
@@ -84,9 +84,9 @@ async function _runOne(w) {
     for (const b of allBrands) {
       const bs = _summarise(resp, b);
       await pool.query(`
-        INSERT INTO sov_snapshots (watchlist_id, target_brand, brand, mentions, pos_count, neu_count, neg_count, taken_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [w.id, w.brand, b, bs.total, bs.pos, bs.neu, bs.neg, takenAt]);
+        INSERT INTO sov_snapshots (tenant_id, watchlist_id, target_brand, brand, mentions, pos_count, neu_count, neg_count, taken_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [w.tenant_id, w.id, w.brand, b, bs.total, bs.pos, bs.neu, bs.neg, takenAt]);
     }
   } catch (e) { console.warn('[sov] persist failed:', e.message); }
 
@@ -120,19 +120,21 @@ async function _runOne(w) {
   const created = [];
   for (const inc of incidents) {
     const r = await pool.query(`
-      INSERT INTO crisis_incidents (watchlist_id, brand, kind, severity, headline, detail, metric_value, baseline, sample_mentions)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [w.id, w.brand, inc.kind, inc.severity, inc.headline, inc.detail, inc.metric, inc.baseline, JSON.stringify(s.sampleMentions)]);
+      INSERT INTO crisis_incidents (tenant_id, watchlist_id, brand, kind, severity, headline, detail, metric_value, baseline, sample_mentions)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [w.tenant_id, w.id, w.brand, inc.kind, inc.severity, inc.headline, inc.detail, inc.metric, inc.baseline, JSON.stringify(s.sampleMentions)]);
     const slackOk = await _sendSlack(inc.headline, [
       { type:'header', text:{ type:'plain_text', text:'🚨 Crisis Radar — ' + inc.severity.toUpperCase() } },
       { type:'section', text:{ type:'mrkdwn', text:`*${inc.headline}*\n${inc.detail || ''}` } },
     ]);
     if (slackOk) await pool.query(`UPDATE crisis_incidents SET slack_sent=true WHERE id=$1`, [r.rows[0].id]);
-    // Tier 5: also fan out to Smart Alert Routing rules
+    // Tier 5: also fan out to Smart Alert Routing rules — stamp tenant_id so
+    // dispatcher only matches rules in the same tenant.
     try {
       const { dispatchEvent } = require('../alert_routing/dispatcher');
       await dispatchEvent({ kind:'crisis_incident', brand:w.brand, severity:inc.severity,
-        incident_kind:inc.kind, headline:inc.headline, detail:inc.detail, incident_id:r.rows[0].id });
+        incident_kind:inc.kind, headline:inc.headline, detail:inc.detail, incident_id:r.rows[0].id,
+        tenant_id: w.tenant_id });
     } catch (e) { console.warn('[alert-routing] dispatch failed:', e.message); }
     created.push(r.rows[0]);
   }

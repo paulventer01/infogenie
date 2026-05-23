@@ -3,6 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 const hasDb = () => _db.hasDb();
 const pool = { query: (...a) => _db.getPool().query(...a) };
 
@@ -10,14 +11,16 @@ async function _safe(q, params = []) {
   try { const r = await pool.query(q, params); return r.rows; } catch { return []; }
 }
 
-router.get('/acquisition', async (_req, res) => {
+router.get('/acquisition', async (req, res) => {
   if (!hasDb()) return res.json({ ga4_connected: false, channels: [], sources: [], countries: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'web_analytics:acquisition', allowFallback:true });
   // Channels — derived from ad_insights (optimizer) where it exists
   const channels = await _safe(
     `SELECT platform AS channel, SUM(clicks)::bigint AS sessions, SUM(impressions)::bigint AS impressions
        FROM ad_insights
-       WHERE ts >= now() - interval '30 days'
-       GROUP BY platform ORDER BY sessions DESC NULLS LAST`
+       WHERE tenant_id = $1 AND ts >= now() - interval '30 days'
+       GROUP BY platform ORDER BY sessions DESC NULLS LAST`,
+    [tid]
   );
   return res.json({
     ga4_connected: false,
@@ -28,10 +31,15 @@ router.get('/acquisition', async (_req, res) => {
   });
 });
 
-router.get('/behaviour', async (_req, res) => {
+router.get('/behaviour', async (req, res) => {
   if (!hasDb()) return res.json({ all_pages: [], landing_pages: [], exit_pages: [] });
-  // Landing pages — pulled from competitor_pages or landing_pages table if available
-  const landing = await _safe(`SELECT url, title, score FROM landing_pages ORDER BY score DESC NULLS LAST LIMIT 25`);
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'web_analytics:behaviour', allowFallback:true });
+  // NOTE: this references legacy columns (url, title, score) that don't exist
+  // in the current landing_pages schema — _safe() swallows the error and
+  // returns []. Kept tenant-scoped for the day the schema is unified.
+  const landing = await _safe(
+    `SELECT url, title, score FROM landing_pages WHERE tenant_id=$1 ORDER BY score DESC NULLS LAST LIMIT 25`,
+    [tid]);
   return res.json({
     note: 'Behaviour data is limited without GA4. Showing landing-page intelligence from your tracked sites.',
     all_pages: landing.map(r => ({ url: r.url, title: r.title, score: r.score })),
@@ -40,18 +48,25 @@ router.get('/behaviour', async (_req, res) => {
   });
 });
 
-router.get('/mobile', async (_req, res) => {
+router.get('/mobile', async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'web_analytics:mobile', allowFallback:true });
   // Mobile traffic share if PageSpeed or web vitals tables exist
-  const mobile = await _safe(`SELECT url, mobile_score, mobile_lcp_ms, mobile_cls FROM web_vitals ORDER BY mobile_score ASC NULLS LAST LIMIT 20`);
+  const mobile = await _safe(
+    `SELECT url, mobile_score, mobile_lcp_ms, mobile_cls FROM web_vitals WHERE tenant_id=$1 ORDER BY mobile_score ASC NULLS LAST LIMIT 20`,
+    [tid]);
   return res.json({
     note: 'Mobile analytics derived from PageSpeed audits. Connect GA4 for real mobile session data.',
     pages: mobile
   });
 });
 
-router.get('/summary', async (_req, res) => {
+router.get('/summary', async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'web_analytics:summary', allowFallback:true });
   // High-level rollup
-  const ai30 = await _safe(`SELECT SUM(clicks)::bigint AS clicks, SUM(impressions)::bigint AS impressions, SUM(spend_cents)::bigint AS spend FROM ad_insights WHERE ts >= now() - interval '30 days'`);
+  const ai30 = await _safe(
+    `SELECT SUM(clicks)::bigint AS clicks, SUM(impressions)::bigint AS impressions, SUM(spend_cents)::bigint AS spend
+       FROM ad_insights WHERE tenant_id=$1 AND ts >= now() - interval '30 days'`,
+    [tid]);
   res.json({
     ga4_connected: false,
     period: 'last_30d',

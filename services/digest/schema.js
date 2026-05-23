@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 
 async function ensureSchema() {
   if (!_db.hasDb()) return;
@@ -17,6 +18,7 @@ async function ensureSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_digest_runs_brand_created ON digest_runs(brand, created_at DESC);
   `);
+  await addTenantIdColumn('digest_runs');
   console.log('[digest] schema ready');
 }
 

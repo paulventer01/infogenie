@@ -1,5 +1,6 @@
 const express = require('express');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 const _http = require('http');
 const _https = require('https');
 const { generateDigest } = require('./generator');
@@ -29,13 +30,14 @@ router.get('/history', async (req, res) => {
   const brand = String(req.query.brand || '').trim().slice(0, 80);
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'digest:history', allowFallback:true });
     const q = brand
       ? await _db.getPool().query(
           `SELECT id, brand, headline, generated_by, delivered_to, created_at
-           FROM digest_runs WHERE brand=$1 ORDER BY created_at DESC LIMIT $2`, [brand, limit])
+           FROM digest_runs WHERE tenant_id=$1 AND brand=$2 ORDER BY created_at DESC LIMIT $3`, [tid, brand, limit])
       : await _db.getPool().query(
           `SELECT id, brand, headline, generated_by, delivered_to, created_at
-           FROM digest_runs ORDER BY created_at DESC LIMIT $1`, [limit]);
+           FROM digest_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2`, [tid, limit]);
     res.json({ ok:true, digests: q.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -45,7 +47,8 @@ router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) return _err(res, 400, 'bad id');
   try {
-    const q = await _db.getPool().query('SELECT * FROM digest_runs WHERE id=$1', [id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'digest:get', allowFallback:true });
+    const q = await _db.getPool().query('SELECT * FROM digest_runs WHERE id=$1 AND tenant_id=$2', [id, tid]);
     if (!q.rows[0]) return _err(res, 404, 'not found');
     res.json({ ok:true, digest: q.rows[0] });
   } catch (e) { _err(res, 500, e.message); }
@@ -56,7 +59,8 @@ router.post('/run-now', async (req, res) => {
   const brand = String(req.body?.brand || '').trim().slice(0, 80);
   if (!brand) return _err(res, 400, 'brand required');
   try {
-    const d = await generateDigest(brand);
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'digest:run-now', allowFallback:true });
+    const d = await generateDigest(brand, tid);
     res.json({ ok:true, digest: d });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -67,7 +71,8 @@ router.post('/:id/send', async (req, res) => {
   if (!Number.isFinite(id) || id <= 0) return _err(res, 400, 'bad id');
   const channels = Array.isArray(req.body?.channels) ? req.body.channels : ['slack'];
   try {
-    const q = await _db.getPool().query('SELECT * FROM digest_runs WHERE id=$1', [id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'digest:send', allowFallback:true });
+    const q = await _db.getPool().query('SELECT * FROM digest_runs WHERE id=$1 AND tenant_id=$2', [id, tid]);
     const d = q.rows[0];
     if (!d) return _err(res, 404, 'not found');
     const delivered = [];
@@ -81,8 +86,8 @@ router.post('/:id/send', async (req, res) => {
     }
 
     await _db.getPool().query(
-      `UPDATE digest_runs SET delivered_to = delivered_to || $1::jsonb WHERE id=$2`,
-      [JSON.stringify(delivered), id]);
+      `UPDATE digest_runs SET delivered_to = delivered_to || $1::jsonb WHERE id=$2 AND tenant_id=$3`,
+      [JSON.stringify(delivered), id, tid]);
     res.json({ ok:true, delivered });
   } catch (e) { _err(res, 500, e.message); }
 });

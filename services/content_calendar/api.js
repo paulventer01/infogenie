@@ -1,17 +1,18 @@
 const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 
 const VALID_CHANNELS = ['instagram','tiktok','linkedin','x','facebook','youtube','blog','email'];
 
-async function _aiCalendar({ brand, goal, channels, days, audience, tone }) {
+async function _aiCalendar({ brand, goal, channels, days, audience, tone, tenantId }) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return null;
   let brandCtx = '';
-  try { const bf = require('../brand_foundation/api'); if (bf.getBrandContextBlock) brandCtx = await bf.getBrandContextBlock(); } catch {}
+  try { const bf = require('../brand_foundation/api'); if (bf.getBrandContextBlock) brandCtx = await bf.getBrandContextBlock(tenantId); } catch {}
   const sys = `${brandCtx ? brandCtx + '\n\n' : ''}You are a senior content strategist drafting a ${days}-day social content calendar for ${brand}. Stay on-brand: respect the brand voice, banned words, and ICP above. Return strict JSON:
 {"posts":[{"day":1,"date":"YYYY-MM-DD","channel":"instagram|tiktok|linkedin|x|facebook|youtube|blog|email","format":"reel|carousel|short|post|thread|article|video|email","hook":"<8-word scroll-stopper>","copy":"<the full caption / body>","hashtags":["#tag1","#tag2"],"cta":"<single call to action>","best_time":"HH:MM"}]}
 Rules:
@@ -79,15 +80,15 @@ router.post('/generate', async (req, res) => {
     .filter(c => VALID_CHANNELS.includes(c)).slice(0, 6);
   if (!brand) return _err(res, 400, 'brand required');
   if (!channels.length) return _err(res, 400, 'at least one valid channel required');
-
-  let result = await _aiCalendar({ brand, goal, channels, days, audience, tone });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'content_calendar:generate', allowFallback:true });
+  let result = await _aiCalendar({ brand, goal, channels, days, audience, tone, tenantId: tid });
   let source = 'openai';
   if (!result || !Array.isArray(result.posts)) { result = _templateCalendar({ brand, channels, days }); source = 'template'; }
   if (_db.hasDb()) {
     try {
       await _db.getPool().query(
-        `INSERT INTO content_calendar_runs (brand, goal, channels, days, posts, generated_by) VALUES ($1,$2,$3,$4,$5,$6)`,
-        [brand, goal, JSON.stringify(channels), days, JSON.stringify(result.posts), source]);
+        `INSERT INTO content_calendar_runs (tenant_id, brand, goal, channels, days, posts, generated_by) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [tid, brand, goal, JSON.stringify(channels), days, JSON.stringify(result.posts), source]);
     } catch (e) { console.warn('[content-calendar] persist failed:', e.message); }
   }
   res.json({ ok:true, source, brand, days, channels, posts: result.posts });
@@ -119,9 +120,10 @@ router.post('/add', async (req, res) => {
   };
   if (_db.hasDb()) {
     try {
+      const tid = await _tenantCtx.resolveTenantId(req, { label:'content_calendar:add', allowFallback:true });
       const r = await _db.getPool().query(
-        `INSERT INTO content_calendar_runs (brand, goal, channels, days, posts, generated_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-        [brand, note || 'Counter-message scheduled from Win/Loss', JSON.stringify([channelClean]), 1, JSON.stringify([post]), 'wl-counter']);
+        `INSERT INTO content_calendar_runs (tenant_id, brand, goal, channels, days, posts, generated_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [tid, brand, note || 'Counter-message scheduled from Win/Loss', JSON.stringify([channelClean]), 1, JSON.stringify([post]), 'wl-counter']);
       return res.json({ ok:true, id: r.rows[0].id, post });
     } catch (e) { return _err(res, 500, 'persist failed: ' + e.message); }
   }
@@ -132,8 +134,10 @@ router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'content_calendar:history', allowFallback:true });
     const r = await _db.getPool().query(
-      `SELECT id, brand, goal, channels, days, generated_by, created_at FROM content_calendar_runs ORDER BY created_at DESC LIMIT $1`, [limit]);
+      `SELECT id, brand, goal, channels, days, generated_by, created_at FROM content_calendar_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2`,
+      [tid, limit]);
     res.json({ ok:true, runs: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -143,7 +147,8 @@ router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) return _err(res, 400, 'bad id');
   try {
-    const r = await _db.getPool().query(`SELECT * FROM content_calendar_runs WHERE id=$1`, [id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'content_calendar:get', allowFallback:true });
+    const r = await _db.getPool().query(`SELECT * FROM content_calendar_runs WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     if (!r.rows[0]) return _err(res, 404, 'not found');
     res.json({ ok:true, run: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }

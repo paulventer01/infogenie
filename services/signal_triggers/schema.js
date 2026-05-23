@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 const hasDb = () => _db.hasDb();
 const pool = { query: (...a) => _db.getPool().query(...a) };
 
@@ -24,6 +25,8 @@ async function ensureSignalTriggersSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_signal_events_type_time ON signal_events(signal_type, created_at DESC);
   `);
+  await addTenantIdColumn('signal_triggers');
+  await addTenantIdColumn('signal_events');
 }
 
 module.exports = { ensureSignalTriggersSchema };
