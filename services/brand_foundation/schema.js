@@ -37,8 +37,18 @@ async function ensureBrandFoundationSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       CONSTRAINT brand_foundation_singleton CHECK (id = 1)
     );
-    INSERT INTO brand_foundation (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
   `);
+  // Legacy seed of the singleton row — only safe on a *fresh* install where
+  // tenant_id doesn't exist yet. Once Phase 2E set tenant_id NOT NULL, the
+  // un-stamped INSERT would crash, so we skip it whenever tenant_id is
+  // present (migration handles the row in that case).
+  try {
+    const hasTid = await p.query(
+      `SELECT 1 FROM information_schema.columns WHERE table_name='brand_foundation' AND column_name='tenant_id'`);
+    if (!hasTid.rows.length) {
+      await p.query(`INSERT INTO brand_foundation (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);
+    }
+  } catch (_) { /* non-fatal */ }
 
   // ── Phase 2 migration ────────────────────────────────────────────────────
   // Add tenant_id + drop singleton CHECK + UNIQUE (tenant_id).

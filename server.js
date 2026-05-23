@@ -335,6 +335,25 @@ app.use(async (req, res, next) => {
           }
         }
         req.user = global.__apiKeyPrincipal;
+        // Phase 2E: also pre-resolve a default tenant for API-key callers so
+        // routes don't need allowFallback:true to work under enforcement=on.
+        // Cookie-session callers get req.tenant from loadTenantContext below.
+        if (!req.tenant) {
+          try {
+            const _ctx = require('./services/tenants/context');
+            const tid = await _ctx.getCronTenantId();
+            if (tid) {
+              req.tenant = { id: tid, name: 'API Key Default', slug: 'apikey', status: 'active' };
+              global.__apiKeyTenantHits = (global.__apiKeyTenantHits || 0) + 1;
+            } else {
+              global.__apiKeyTenantMiss = (global.__apiKeyTenantMiss || 0) + 1;
+              console.warn('[apikey] no default tenant resolvable — request proceeds without req.tenant');
+            }
+          } catch (e) {
+            global.__apiKeyTenantMiss = (global.__apiKeyTenantMiss || 0) + 1;
+            console.warn('[apikey] tenant injection failed:', e.message);
+          }
+        }
       } catch (_) { /* non-fatal — proceed without req.user */ }
     }
     return next();

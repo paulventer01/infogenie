@@ -204,6 +204,33 @@ async function runPhase2Migration() {
   if (summary.errors.length) {
     console.warn('[tenants/phase2] errors:', JSON.stringify(summary.errors));
   }
+
+  // Phase 2E integrity assertion: every table that has a tenant_id column
+  // must have it NOT NULL and contain zero NULL rows. Drift would mean a
+  // migration regressed or a new table was added without going through the
+  // multitenant pattern. Log-only (never throws) so a regression in a
+  // non-critical table doesn't take down the whole app.
+  try {
+    const pool = _db.getPool();
+    // `roles` is intentionally nullable: system role rows are global (tenant_id
+    // IS NULL); per-tenant custom roles are scoped (tenant_id IS NOT NULL),
+    // partial unique indexes enforce both. Skip it from the strict check.
+    const PHASE2E_NULLABLE_OK = new Set(['roles']);
+    const nullable = await pool.query(`
+      SELECT table_name FROM information_schema.columns
+       WHERE table_schema='public' AND column_name='tenant_id' AND is_nullable='YES'
+       ORDER BY table_name`);
+    const offenders = nullable.rows.filter(r => !PHASE2E_NULLABLE_OK.has(r.table_name));
+    if (offenders.length) {
+      console.warn(`[tenants/phase2e] INTEGRITY: ${offenders.length} table(s) still have nullable tenant_id:`,
+        offenders.map(r => r.table_name).join(', '));
+    } else {
+      console.log('[tenants/phase2e] integrity ok — all tenant_id columns NOT NULL');
+    }
+  } catch (e) {
+    console.warn('[tenants/phase2e] integrity check failed:', e.message);
+  }
+
   return { ok:true, summary, results };
 }
 
