@@ -14,7 +14,7 @@ router.get('/series', async (req, res) => {
   if (!target) return _err(res, 400, 'brand required');
   const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 30));
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'sov:series', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'sov:series' });
     const pool = _db.getPool();
 
     // Get the allowed brand set for this target — the brand itself + its declared competitors.
@@ -60,7 +60,7 @@ router.get('/series', async (req, res) => {
 router.get('/targets', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'sov:targets', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'sov:targets' });
     const pool = _db.getPool();
 
     let allowedBrands = null;

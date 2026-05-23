@@ -80,7 +80,7 @@ router.post('/generate', async (req, res) => {
     .filter(c => VALID_CHANNELS.includes(c)).slice(0, 6);
   if (!brand) return _err(res, 400, 'brand required');
   if (!channels.length) return _err(res, 400, 'at least one valid channel required');
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'content_calendar:generate', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'content_calendar:generate' });
   let result = await _aiCalendar({ brand, goal, channels, days, audience, tone, tenantId: tid });
   let source = 'openai';
   if (!result || !Array.isArray(result.posts)) { result = _templateCalendar({ brand, channels, days }); source = 'template'; }
@@ -120,7 +120,7 @@ router.post('/add', async (req, res) => {
   };
   if (_db.hasDb()) {
     try {
-      const tid = await _tenantCtx.resolveTenantId(req, { label:'content_calendar:add', allowFallback:true });
+      const tid = await _tenantCtx.resolveTenantId(req, { label:'content_calendar:add' });
       const r = await _db.getPool().query(
         `INSERT INTO content_calendar_runs (tenant_id, brand, goal, channels, days, posts, generated_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
         [tid, brand, note || 'Counter-message scheduled from Win/Loss', JSON.stringify([channelClean]), 1, JSON.stringify([post]), 'wl-counter']);
@@ -134,7 +134,7 @@ router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'content_calendar:history', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'content_calendar:history' });
     const r = await _db.getPool().query(
       `SELECT id, brand, goal, channels, days, generated_by, created_at FROM content_calendar_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2`,
       [tid, limit]);
@@ -147,7 +147,7 @@ router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) return _err(res, 400, 'bad id');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'content_calendar:get', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'content_calendar:get' });
     const r = await _db.getPool().query(`SELECT * FROM content_calendar_runs WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     if (!r.rows[0]) return _err(res, 404, 'not found');
     res.json({ ok:true, run: r.rows[0] });

@@ -162,13 +162,13 @@ async function _openai(messages, maxTokens=900) {
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_foundation:get', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_foundation:get' });
   const f = await _load(tid);
   res.json({ ok:true, foundation: f });
 });
 
 router.post('/save', async (req, res) => {
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_foundation:save', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_foundation:save' });
   if (!tid) return _err(res, 400, 'no_tenant');
   const f = await _save(req.body || {}, tid);
   res.json({ ok:true, foundation: f });
@@ -198,7 +198,7 @@ router.post('/suggest-icp', async (req, res) => {
 });
 
 router.post('/suggest-positioning', async (req, res) => {
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_foundation:suggest-positioning', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_foundation:suggest-positioning' });
   const f = await _load(tid);
   const out = await _openai([
     { role:'system', content:`You are a positioning expert (April Dunford-style). Draft a ONE-SENTENCE positioning a stranger can repeat after hearing it once. Strict JSON: {"positioning_statement":"<We help [specific person] achieve [specific outcome] without [specific pain]. ~20 words max.>","positioning_proof":"<1 sentence: the specific reason it works — credential, mechanism, or proof point>"}` },
@@ -211,7 +211,7 @@ router.post('/suggest-positioning', async (req, res) => {
 router.post('/voice-check', async (req, res) => {
   const text = String(req.body?.text || '').slice(0, 4000);
   if (!text) return _err(res, 400, 'text required');
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_foundation:voice-check', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_foundation:voice-check' });
   const out = await _openai([
     { role:'system', content:`You audit copy against a brand voice. Score 0-100 and give 3 concrete rewrites. Strict JSON: {"score":<0-100>,"issues":["<short issue>"],"banned_word_hits":["<word>"],"rewrite":"<full rewritten copy in the brand voice>"}` },
     { role:'user', content:`BRAND VOICE:\n${await getBrandContextBlock(tid)}\n\nCOPY TO AUDIT:\n${text}` },
@@ -221,7 +221,7 @@ router.post('/voice-check', async (req, res) => {
 });
 
 router.get('/context-preview', async (req, res) => {
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_foundation:context-preview', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_foundation:context-preview' });
   const block = await getBrandContextBlock(tid);
   res.json({ ok:true, block, configured: !!block });
 });

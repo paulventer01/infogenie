@@ -20,7 +20,7 @@ const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 async function _tid(req, label) {
-  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+  return await _tenantCtx.resolveTenantId(req, { label });
 }
 const _upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 

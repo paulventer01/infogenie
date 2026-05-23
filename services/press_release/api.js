@@ -87,7 +87,7 @@ router.post('/generate', async (req, res) => {
   let hydratedContext = context;
   if (_db.hasDb() && (req.body?.from_incident_id || req.body?.from_battle_card_id)) {
     try {
-      const tid = await _tenantCtx.resolveTenantId(req, { label:'press_release:hydrate', allowFallback:true });
+      const tid = await _tenantCtx.resolveTenantId(req, { label:'press_release:hydrate' });
       if (req.body?.from_incident_id) {
         const r = await _db.getPool().query('SELECT headline, detail FROM crisis_incidents WHERE id=$1 AND tenant_id=$2', [Number(req.body.from_incident_id), tid]);
         if (r.rows[0]) hydratedContext = `Crisis incident: ${r.rows[0].headline}\n${r.rows[0].detail}\n\nAdditional context: ${context}`;

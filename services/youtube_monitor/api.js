@@ -8,7 +8,7 @@ function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg });
 function _hasPerplexity() { const k = process.env.PERPLEXITY_API_KEY; return k && !/^_DUMMY/i.test(k); }
 function _safeAsync(handler) { return (req, res) => Promise.resolve(handler(req, res)).catch(e => { console.warn('[youtube-monitor] route error:', e.message); if (!res.headersSent) _err(res, 500, e.message || 'internal error'); }); }
 async function _tid(req, label) {
-  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+  return await _tenantCtx.resolveTenantId(req, { label });
 }
 
 async function _perplexityScan(channelName, channelUrl, maxVideos) {

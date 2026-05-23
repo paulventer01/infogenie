@@ -30,7 +30,7 @@ router.get('/history', async (req, res) => {
   const brand = String(req.query.brand || '').trim().slice(0, 80);
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'digest:history', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'digest:history' });
     const q = brand
       ? await _db.getPool().query(
           `SELECT id, brand, headline, generated_by, delivered_to, created_at
@@ -47,7 +47,7 @@ router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) return _err(res, 400, 'bad id');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'digest:get', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'digest:get' });
     const q = await _db.getPool().query('SELECT * FROM digest_runs WHERE id=$1 AND tenant_id=$2', [id, tid]);
     if (!q.rows[0]) return _err(res, 404, 'not found');
     res.json({ ok:true, digest: q.rows[0] });
@@ -59,7 +59,7 @@ router.post('/run-now', async (req, res) => {
   const brand = String(req.body?.brand || '').trim().slice(0, 80);
   if (!brand) return _err(res, 400, 'brand required');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'digest:run-now', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'digest:run-now' });
     const d = await generateDigest(brand, tid);
     res.json({ ok:true, digest: d });
   } catch (e) { _err(res, 500, e.message); }
@@ -71,7 +71,7 @@ router.post('/:id/send', async (req, res) => {
   if (!Number.isFinite(id) || id <= 0) return _err(res, 400, 'bad id');
   const channels = Array.isArray(req.body?.channels) ? req.body.channels : ['slack'];
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'digest:send', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'digest:send' });
     const q = await _db.getPool().query('SELECT * FROM digest_runs WHERE id=$1 AND tenant_id=$2', [id, tid]);
     const d = q.rows[0];
     if (!d) return _err(res, 404, 'not found');

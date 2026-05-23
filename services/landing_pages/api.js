@@ -166,7 +166,7 @@ router.post('/generate', async (req, res) => {
   const adOffer = String(req.body?.adOffer || '').trim().slice(0, 200);
   const accent = /^#[0-9a-f]{6}$/i.test(req.body?.accent || '') ? req.body.accent : '#14B8A6';
   if (!title) return _err(res, 400, 'title required');
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'landing_pages:generate', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'landing_pages:generate' });
   let content = await _aiPage({ brand, title, goal, audience, brief, adHeadline, adOffer, tenantId: tid });
   let source = 'openai';
   if (!content) { content = _templatePage({ brand, title, goal }); source = 'template'; }
@@ -185,7 +185,7 @@ router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'landing_pages:history', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'landing_pages:history' });
     const r = await _db.getPool().query(
       `SELECT id, brand, title, goal, generated_by, created_at FROM landing_pages WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2`,
       [tid, limit]);
@@ -198,7 +198,7 @@ router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'landing_pages:get', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'landing_pages:get' });
     const r = await _db.getPool().query(`SELECT * FROM landing_pages WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     if (!r.rows[0]) return _err(res, 404, 'not found');
     res.json({ ok:true, page: r.rows[0] });

@@ -297,67 +297,62 @@ function _isApiPublic(p) { return _AUTH_PUBLIC_API_PATHS.some(rx => rx.test(p));
 //      for non-browser/programmatic clients).
 // The historical "same-origin SPA bypass" is intentionally removed — the SPA
 // must now authenticate like any other client.
-app.use(async (req, res, next) => {
-  if (!req.path.startsWith('/api/')) return next(); // only gate API
-  if (_isApiPublic(req.path)) return next();
-  if (req.user) return next();                      // valid session
+// Phase 2F: extract API-key validation + principal/tenant injection. Runs
+// BEFORE the public-path bypass so tenant-bound public routes (e.g.
+// /api/*/status) that callers hit with a Bearer key still get req.tenant
+// populated — previously the public bypass returned first and these routes
+// would resolve to null tenant under enforcement=on.
+async function _injectApiKeyAuth(req) {
+  if (req.user) return;
   const expected = process.env.INFOGENIE_API_KEY;
   const supplied =
        (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
     || (req.headers['x-infogenie-key'] || '').trim()
     || (req.method === 'GET' ? String(req.query.key || '').trim() : '');
-  if (expected && supplied && supplied === expected) {
-    // Map API-key auth to a deterministic system/owner principal so any
-    // downstream code that reads req.user gets a consistent identity rather
-    // than `undefined`. We resolve the owner row lazily and cache it for the
-    // lifetime of the process; falls back to a synthetic system principal if
-    // no owner exists yet (e.g. fresh DB before first signup).
-    if (!req.user) {
-      try {
-        if (!global.__apiKeyPrincipal) {
-          const _db = require('./db');
-          if (_db.hasDb()) {
-            const r = await _db.getPool().query(
-              'SELECT id, email, name, is_owner FROM users WHERE is_owner = TRUE ORDER BY id ASC LIMIT 1');
-            if (r.rows[0]) {
-              const u = r.rows[0];
-              global.__apiKeyPrincipal = {
-                id: u.id, email: u.email, name: u.name,
-                isOwner: true, viaApiKey: true,
-              };
-            }
-          }
-          if (!global.__apiKeyPrincipal) {
-            global.__apiKeyPrincipal = {
-              id: 0, email: 'system@infogenie.local', name: 'API Key',
-              isOwner: true, viaApiKey: true,
-            };
-          }
+  if (!expected || !supplied || supplied !== expected) return;
+  try {
+    if (!global.__apiKeyPrincipal) {
+      const _db = require('./db');
+      if (_db.hasDb()) {
+        const r = await _db.getPool().query(
+          'SELECT id, email, name, is_owner FROM users WHERE is_owner = TRUE ORDER BY id ASC LIMIT 1');
+        if (r.rows[0]) {
+          const u = r.rows[0];
+          global.__apiKeyPrincipal = { id: u.id, email: u.email, name: u.name, isOwner: true, viaApiKey: true };
         }
-        req.user = global.__apiKeyPrincipal;
-        // Phase 2E: also pre-resolve a default tenant for API-key callers so
-        // routes don't need allowFallback:true to work under enforcement=on.
-        // Cookie-session callers get req.tenant from loadTenantContext below.
-        if (!req.tenant) {
-          try {
-            const _ctx = require('./services/tenants/context');
-            const tid = await _ctx.getCronTenantId();
-            if (tid) {
-              req.tenant = { id: tid, name: 'API Key Default', slug: 'apikey', status: 'active' };
-              global.__apiKeyTenantHits = (global.__apiKeyTenantHits || 0) + 1;
-            } else {
-              global.__apiKeyTenantMiss = (global.__apiKeyTenantMiss || 0) + 1;
-              console.warn('[apikey] no default tenant resolvable — request proceeds without req.tenant');
-            }
-          } catch (e) {
-            global.__apiKeyTenantMiss = (global.__apiKeyTenantMiss || 0) + 1;
-            console.warn('[apikey] tenant injection failed:', e.message);
-          }
-        }
-      } catch (_) { /* non-fatal — proceed without req.user */ }
+      }
+      if (!global.__apiKeyPrincipal) {
+        global.__apiKeyPrincipal = { id: 0, email: 'system@infogenie.local', name: 'API Key', isOwner: true, viaApiKey: true };
+      }
     }
-    return next();
-  }
+    req.user = global.__apiKeyPrincipal;
+    req.viaApiKey = true;
+    if (!req.tenant) {
+      try {
+        const _ctx = require('./services/tenants/context');
+        const tid = await _ctx.getCronTenantId();
+        if (tid) {
+          req.tenant = { id: tid, name: 'API Key Default', slug: 'apikey', status: 'active' };
+          global.__apiKeyTenantHits = (global.__apiKeyTenantHits || 0) + 1;
+        } else {
+          global.__apiKeyTenantMiss = (global.__apiKeyTenantMiss || 0) + 1;
+          console.warn('[apikey] no default tenant resolvable — request proceeds without req.tenant');
+        }
+      } catch (e) {
+        global.__apiKeyTenantMiss = (global.__apiKeyTenantMiss || 0) + 1;
+        console.warn('[apikey] tenant injection failed:', e.message);
+      }
+    }
+  } catch (_) { /* non-fatal */ }
+}
+
+app.use(async (req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next(); // only gate API
+  // Always try API-key auth first — even on public paths — so tenant injection
+  // happens regardless of which gate ultimately admits the request.
+  await _injectApiKeyAuth(req);
+  if (_isApiPublic(req.path)) return next();
+  if (req.user) return next();                      // session OR api-key principal
   res.status(401).json({ ok:false, error:'auth_required',
     hint:'Log in via POST /api/auth/login, or include INFOGENIE_API_KEY via Authorization: Bearer / X-InfoGenie-Key / ?key= (GET only).' });
 });

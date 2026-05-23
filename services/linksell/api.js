@@ -15,7 +15,7 @@ function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg });
 function _esc(s) { return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function _safeUrl(u) { return /^https?:\/\//i.test(u) ? u : '#'; }
 async function _tid(req, label) {
-  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+  return await _tenantCtx.resolveTenantId(req, { label });
 }
 const HAS_STRIPE = !!(process.env.STRIPE_SECRET_KEY && !/^_DUMMY/i.test(process.env.STRIPE_SECRET_KEY));
 

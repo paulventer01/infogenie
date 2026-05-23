@@ -8,7 +8,7 @@ const crypto = require('crypto');
 
 function genId() { return 'jny_' + crypto.randomBytes(6).toString('hex'); }
 async function _tid(req, label) {
-  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+  return await _tenantCtx.resolveTenantId(req, { label });
 }
 
 // ── List journeys (tenant-scoped) ─────────────────────

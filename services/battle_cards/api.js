@@ -40,7 +40,7 @@ Each list item is a single short line (max 140 chars). Counter_plays must be con
 router.get('/', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'battle_cards:list', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'battle_cards:list' });
     const brand = req.query.brand ? String(req.query.brand).slice(0, 80) : null;
     const params = [tid]; let where = 'WHERE tenant_id=$1';
     if (brand) { params.push(brand); where += ' AND brand=$2'; }
@@ -52,7 +52,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const id = Number(req.params.id); if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'battle_cards:get', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'battle_cards:get' });
     const r = await _db.getPool().query(`SELECT * FROM battle_cards WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     if (!r.rows[0]) return _err(res, 404, 'not found'); res.json({ ok:true, card: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }
@@ -113,7 +113,7 @@ router.post('/generate', async (req, res) => {
     }
 
     const source = 'openai';
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'battle_cards:generate', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'battle_cards:generate' });
     if (!tid) return _err(res, 400, 'no_tenant');
     const r = await _db.getPool().query(`
       INSERT INTO battle_cards (tenant_id, competitor, domain, brand, summary, positioning, strengths, weaknesses, recent_moves, counter_plays, generated_by)
@@ -133,7 +133,7 @@ router.post('/generate', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const id = Number(req.params.id); if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'battle_cards:delete', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'battle_cards:delete' });
     const r = await _db.getPool().query(`DELETE FROM battle_cards WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     res.json({ ok:true, deleted: r.rowCount });
   } catch (e) { _err(res, 500, e.message); }

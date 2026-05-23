@@ -10,7 +10,7 @@ function _hasResend() { const k = process.env.RESEND_API_KEY; return k && !/^_DU
 function _escHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function _safeAsync(handler) { return (req, res) => Promise.resolve(handler(req, res)).catch(e => { console.warn('[weekly-report] route error:', e.message); if (!res.headersSent) _err(res, 500, e.message || 'internal error'); }); }
 async function _tid(req, label) {
-  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+  return await _tenantCtx.resolveTenantId(req, { label });
 }
 
 // ── Section gatherers (read from existing tier tables) ──────────────────────

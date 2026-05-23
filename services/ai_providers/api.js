@@ -20,7 +20,7 @@ function _redact(row) {
   return { ...row, api_key: undefined, api_key_preview: k ? (k.slice(0, 4) + '…' + k.slice(-4)) : '', has_api_key: !!k };
 }
 async function _tid(req, label) {
-  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+  return await _tenantCtx.resolveTenantId(req, { label });
 }
 
 const VALID_CATEGORIES = ['writing', 'analysis', 'vision', 'audio'];

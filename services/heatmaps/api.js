@@ -10,7 +10,7 @@ const _tenantCtx = require('../tenants/context');
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safe(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[heatmaps]', e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
 async function _tid(req, label) {
-  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+  return await _tenantCtx.resolveTenantId(req, { label });
 }
 
 async function _loadConfig(tid) {

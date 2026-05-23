@@ -26,7 +26,7 @@ async function _openaiJson(messages, maxTokens=600) {
 
 router.post('/save', _safe(async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'database unavailable');
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:save', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:save' });
   if (!tid) return _err(res, 400, 'no_tenant');
   const b = req.body || {};
   const source = String(b.source || 'meta').slice(0, 32);
@@ -62,7 +62,7 @@ router.post('/save', _safe(async (req, res) => {
 
 router.get('/list', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, items: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:list', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:list' });
   const limit = Math.min(100, parseInt(req.query.limit, 10) || 50);
   const tag = req.query.tag ? String(req.query.tag).slice(0, 40) : null;
   const advertiser = req.query.advertiser ? String(req.query.advertiser).slice(0, 200) : null;
@@ -80,7 +80,7 @@ router.post('/:id/update', _safe(async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'database unavailable');
   const id = parseInt(req.params.id, 10);
   if (!id) return _err(res, 400, 'invalid id');
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:update', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:update' });
   const b = req.body || {};
   const tags = Array.isArray(b.tags) ? b.tags.slice(0, 12).map(t => String(t).slice(0, 40)) : null;
   const notes = b.notes !== undefined ? String(b.notes).slice(0, 1000) : null;
@@ -100,14 +100,14 @@ router.delete('/:id', _safe(async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'database unavailable');
   const id = parseInt(req.params.id, 10);
   if (!id) return _err(res, 400, 'invalid id');
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:delete', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:delete' });
   await _db.getPool().query('DELETE FROM ad_swipe WHERE id=$1 AND tenant_id=$2', [id, tid]);
   res.json({ ok:true });
 }));
 
 router.get('/tags', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, tags: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:tags', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:tags' });
   const r = await _db.getPool().query(
     `SELECT DISTINCT jsonb_array_elements_text(tags) AS tag FROM ad_swipe WHERE tenant_id=$1 ORDER BY tag`, [tid]);
   res.json({ ok:true, tags: r.rows.map(x => x.tag) });
@@ -115,7 +115,7 @@ router.get('/tags', _safe(async (req, res) => {
 
 router.get('/advertisers', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, advertisers: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:advertisers', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:advertisers' });
   const r = await _db.getPool().query(
     `SELECT advertiser, COUNT(*)::int AS n FROM ad_swipe WHERE tenant_id=$1
      GROUP BY advertiser ORDER BY n DESC, advertiser ASC LIMIT 100`, [tid]);
@@ -124,7 +124,7 @@ router.get('/advertisers', _safe(async (req, res) => {
 
 router.post('/suggest-tags', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.status(503).json({ ok:false, error:'database unavailable', suggestions: [], existing: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:suggest-tags', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'ad_swipe:suggest-tags' });
   const body = req.body || {};
   let items = [];
   let existing = [];

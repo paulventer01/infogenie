@@ -12,7 +12,7 @@ function _safeAsync(h) {
   });
 }
 async function _tid(req, label) {
-  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+  return await _tenantCtx.resolveTenantId(req, { label });
 }
 const VALID_STATUS = new Set(['open', 'in_progress', 'done', 'snoozed', 'wont_fix']);
 function _priorityFor(check) {

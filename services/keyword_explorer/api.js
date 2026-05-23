@@ -5,7 +5,7 @@ const _tenantCtx = require('../tenants/context');
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 async function _tid(req, label) {
-  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+  return await _tenantCtx.resolveTenantId(req, { label });
 }
 
 const COUNTRY_TO_LOC = { us:2840, gb:2826, ca:2124, au:2036, in:2356, de:2276, fr:2250, jp:2392, br:2076, mx:2484, za:2710, nl:2528, es:2724, it:2380, sg:2702 };

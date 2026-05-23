@@ -99,7 +99,7 @@ router.post('/to-calendar', _safe(async (req, res) => {
   const channel = String(req.body?.channel || 'blog').slice(0, 40);
   const when = req.body?.scheduled_for || new Date(Date.now() + 7 * 86400000).toISOString();
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'question_miner:to-calendar', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'question_miner:to-calendar' });
     await _db.getPool().query(
       `INSERT INTO content_calendar_items (tenant_id, title, channel, scheduled_for, status, body)
        VALUES ($1,$2,$3,$4,'draft',$5)`,

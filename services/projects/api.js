@@ -9,7 +9,7 @@ const crypto = require('crypto');
 router.get('/', async (req, res) => {
   try {
     if (!hasDb()) return res.json({ projects: [] });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'projects:list', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'projects:list' });
     const r = await pool.query(
       `SELECT * FROM marketing_projects WHERE tenant_id = $1 ORDER BY updated_at DESC`,
       [tid]);
@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     if (!hasDb()) return res.status(503).json({ error: 'database not configured' });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'projects:save', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'projects:save' });
     if (!tid) return res.status(400).json({ error: 'no_tenant' });
     const { id, name, goal = '', monthly_budget = 0, channels = [], owner_email, brand_color = '#0066FF', start_date, end_date, status = 'active' } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'name required' });
@@ -47,7 +47,7 @@ router.post('/', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     if (!hasDb()) return res.status(503).json({ error: 'database not configured' });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'projects:delete', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'projects:delete' });
     if (!tid) return res.status(400).json({ error: 'no_tenant' });
     const r = await pool.query(
       `DELETE FROM marketing_projects WHERE id=$1 AND tenant_id=$2`,

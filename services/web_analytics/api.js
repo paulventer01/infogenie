@@ -13,7 +13,7 @@ async function _safe(q, params = []) {
 
 router.get('/acquisition', async (req, res) => {
   if (!hasDb()) return res.json({ ga4_connected: false, channels: [], sources: [], countries: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'web_analytics:acquisition', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'web_analytics:acquisition' });
   // Channels — derived from ad_insights (optimizer) where it exists
   const channels = await _safe(
     `SELECT platform AS channel, SUM(clicks)::bigint AS sessions, SUM(impressions)::bigint AS impressions
@@ -33,7 +33,7 @@ router.get('/acquisition', async (req, res) => {
 
 router.get('/behaviour', async (req, res) => {
   if (!hasDb()) return res.json({ all_pages: [], landing_pages: [], exit_pages: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'web_analytics:behaviour', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'web_analytics:behaviour' });
   // NOTE: this references legacy columns (url, title, score) that don't exist
   // in the current landing_pages schema — _safe() swallows the error and
   // returns []. Kept tenant-scoped for the day the schema is unified.
@@ -49,7 +49,7 @@ router.get('/behaviour', async (req, res) => {
 });
 
 router.get('/mobile', async (req, res) => {
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'web_analytics:mobile', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'web_analytics:mobile' });
   // Mobile traffic share if PageSpeed or web vitals tables exist
   const mobile = await _safe(
     `SELECT url, mobile_score, mobile_lcp_ms, mobile_cls FROM web_vitals WHERE tenant_id=$1 ORDER BY mobile_score ASC NULLS LAST LIMIT 20`,
@@ -61,7 +61,7 @@ router.get('/mobile', async (req, res) => {
 });
 
 router.get('/summary', async (req, res) => {
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'web_analytics:summary', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'web_analytics:summary' });
   // High-level rollup
   const ai30 = await _safe(
     `SELECT SUM(clicks)::bigint AS clicks, SUM(impressions)::bigint AS impressions, SUM(spend_cents)::bigint AS spend

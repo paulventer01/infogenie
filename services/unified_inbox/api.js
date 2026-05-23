@@ -11,7 +11,7 @@ const _tenantCtx = require('../tenants/context');
 const _safeAsync = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const _err = (res, code, msg) => res.status(code).json({ ok: false, error: msg });
 async function _tid(req, label) {
-  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+  return await _tenantCtx.resolveTenantId(req, { label });
 }
 
 const SOURCES = ['reddit', 'twitter', 'review', 'quora', 'glassdoor', 'newsletter', 'chatbot'];

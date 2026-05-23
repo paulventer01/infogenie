@@ -73,7 +73,7 @@ router.post('/detect', async (req, res) => {
     }
     if (_db.hasDb()) {
       try {
-        const tid = await _tenantCtx.resolveTenantId(req, { label:'trends:detect', allowFallback:true });
+        const tid = await _tenantCtx.resolveTenantId(req, { label:'trends:detect' });
         await _db.getPool().query(`INSERT INTO trend_runs (tenant_id, category, keywords, country, topics, source) VALUES ($1,$2,$3,$4,$5,$6)`,
           [tid, category, JSON.stringify(keywords), country, JSON.stringify(topics), source]);
       } catch {}
@@ -85,7 +85,7 @@ router.post('/detect', async (req, res) => {
 router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, runs: [] });
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'trends:history', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'trends:history' });
     const r = await _db.getPool().query(`SELECT id, category, keywords, country, topics, source, ran_at FROM trend_runs WHERE tenant_id=$1 ORDER BY ran_at DESC LIMIT 50`, [tid]);
     res.json({ ok:true, runs: r.rows });
   } catch (e) { _err(res, 500, e.message); }

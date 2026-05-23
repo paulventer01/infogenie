@@ -13,7 +13,7 @@ const _https = require('https');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 async function _tid(req, label) {
-  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+  return await _tenantCtx.resolveTenantId(req, { label });
 }
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }

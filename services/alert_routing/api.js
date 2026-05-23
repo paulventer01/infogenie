@@ -25,7 +25,7 @@ function _normalizeRule(p = {}) {
 router.get('/', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'alert_routing:list', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'alert_routing:list' });
     const r = await _db.getPool().query('SELECT * FROM alert_rules WHERE tenant_id=$1 ORDER BY id DESC', [tid]);
     res.json({ ok:true, rules: r.rows });
   } catch (e) { _err(res, 500, e.message); }
@@ -35,7 +35,7 @@ router.post('/', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const n = _normalizeRule(req.body);
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'alert_routing:create', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'alert_routing:create' });
     if (!tid) return _err(res, 400, 'no_tenant');
     const r = await _db.getPool().query(
       `INSERT INTO alert_rules (tenant_id, name, enabled, trigger_kind, trigger_filter, channels)
@@ -51,7 +51,7 @@ router.put('/:id', async (req, res) => {
   if (!Number.isFinite(id) || id <= 0) return _err(res, 400, 'bad id');
   const n = _normalizeRule(req.body);
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'alert_routing:update', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'alert_routing:update' });
     const r = await _db.getPool().query(
       `UPDATE alert_rules SET name=$1, enabled=$2, trigger_kind=$3, trigger_filter=$4, channels=$5
        WHERE id=$6 AND tenant_id=$7 RETURNING *`,
@@ -66,7 +66,7 @@ router.delete('/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) return _err(res, 400, 'bad id');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'alert_routing:delete', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'alert_routing:delete' });
     await _db.getPool().query('DELETE FROM alert_rules WHERE id=$1 AND tenant_id=$2', [id, tid]);
     res.json({ ok:true });
   } catch (e) { _err(res, 500, e.message); }
@@ -76,7 +76,7 @@ router.get('/dispatches', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 30));
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'alert_routing:dispatches', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'alert_routing:dispatches' });
     const r = await _db.getPool().query(
       `SELECT d.*, r.name AS rule_name FROM alert_dispatches d
        LEFT JOIN alert_rules r ON r.id=d.rule_id
@@ -90,7 +90,7 @@ router.post('/test/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) return _err(res, 400, 'bad id');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'alert_routing:test', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'alert_routing:test' });
     const r = await _db.getPool().query('SELECT * FROM alert_rules WHERE id=$1 AND tenant_id=$2', [id, tid]);
     const rule = r.rows[0];
     if (!rule) return _err(res, 404, 'not found');

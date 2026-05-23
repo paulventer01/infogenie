@@ -12,7 +12,7 @@ function _ymNow() { const d = new Date(); return d.toISOString().slice(0,7); }
 router.get('/budgets', async (req, res) => {
   try {
     if (!hasDb()) return res.json({ budgets: [] });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'budgets:list', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'budgets:list' });
     const r = await pool.query(`SELECT * FROM budgets WHERE tenant_id=$1 ORDER BY period_month DESC`, [tid]);
     res.json({ budgets: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -21,7 +21,7 @@ router.get('/budgets', async (req, res) => {
 router.post('/budgets', async (req, res) => {
   try {
     if (!hasDb()) return res.status(503).json({ error: 'database not configured' });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'budgets:save', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'budgets:save' });
     if (!tid) return res.status(400).json({ error: 'no_tenant' });
     const { id, period_month, target_cents = 0, by_channel = {}, project_id } = req.body || {};
     if (!period_month) return res.status(400).json({ error: 'period_month required (YYYY-MM)' });
@@ -48,7 +48,7 @@ router.post('/budgets', async (req, res) => {
 router.post('/spend', async (req, res) => {
   try {
     if (!hasDb()) return res.status(503).json({ error: 'database not configured' });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'spend:log', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'spend:log' });
     if (!tid) return res.status(400).json({ error: 'no_tenant' });
     const { channel, amount_cents, occurred_at, source = 'manual', project_id, notes = '' } = req.body || {};
     if (!channel || amount_cents == null) return res.status(400).json({ error: 'channel + amount_cents required' });
@@ -64,7 +64,7 @@ router.post('/spend', async (req, res) => {
 router.get('/spend/recent', async (req, res) => {
   try {
     if (!hasDb()) return res.json({ events: [] });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'spend:recent', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'spend:recent' });
     const r = await pool.query(`SELECT * FROM spend_events WHERE tenant_id=$1 ORDER BY occurred_at DESC, id DESC LIMIT 100`, [tid]);
     res.json({ events: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -74,7 +74,7 @@ router.get('/spend/recent', async (req, res) => {
 router.get('/summary', async (req, res) => {
   try {
     if (!hasDb()) return res.json({ period_month: _ymNow(), target_cents: 0, spent_cents: 0, by_channel: [] });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'budgets:summary', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'budgets:summary' });
     const period = req.query.month || _ymNow();
     const bRow = await pool.query(
       `SELECT target_cents, by_channel FROM budgets WHERE tenant_id=$1 AND period_month=$2 ORDER BY created_at DESC LIMIT 1`,

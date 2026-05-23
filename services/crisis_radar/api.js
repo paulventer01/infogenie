@@ -9,7 +9,7 @@ function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg });
 router.get('/watchlist', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'crisis:watchlist:list', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'crisis:watchlist:list' });
     const r = await _db.getPool().query(`
       SELECT w.*, (SELECT COUNT(*) FROM crisis_snapshots s WHERE s.watchlist_id=w.id)::int AS snapshots,
         (SELECT COUNT(*) FROM crisis_incidents i WHERE i.watchlist_id=w.id AND i.status='open')::int AS open_incidents
@@ -28,7 +28,7 @@ router.post('/watchlist', async (req, res) => {
   const spike = Number(req.body?.spike_multiplier);
   const negPct = Number(req.body?.neg_pct_threshold);
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'crisis:watchlist:save', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'crisis:watchlist:save' });
     if (!tid) return _err(res, 400, 'no_tenant');
     const sp = Number.isFinite(spike) && spike > 0 ? spike : 1.8;
     const np = Number.isFinite(negPct) && negPct > 0 && negPct < 1 ? negPct : 0.35;
@@ -51,7 +51,7 @@ router.delete('/watchlist/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'crisis:watchlist:delete', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'crisis:watchlist:delete' });
     await _db.getPool().query(`DELETE FROM crisis_watchlist WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     res.json({ ok:true });
   } catch (e) { _err(res, 500, e.message); }
@@ -61,7 +61,7 @@ router.get('/incidents', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const status = ['open','acknowledged','resolved'].includes(req.query.status) ? req.query.status : null;
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'crisis:incidents:list', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'crisis:incidents:list' });
     const params = [tid]; const where = ['tenant_id=$1'];
     if (status) { params.push(status); where.push(`status=$${params.length}`); }
     const r = await _db.getPool().query(
@@ -76,7 +76,7 @@ router.patch('/incidents/:id', async (req, res) => {
   const status = ['open','acknowledged','resolved'].includes(req.body?.status) ? req.body.status : null;
   if (!status) return _err(res, 400, 'bad status');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'crisis:incidents:patch', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'crisis:incidents:patch' });
     const stamp = status === 'acknowledged' ? 'acknowledged_at=now()' : status === 'resolved' ? 'resolved_at=now()' : 'acknowledged_at=NULL, resolved_at=NULL';
     const r = await _db.getPool().query(
       `UPDATE crisis_incidents SET status=$1, ${stamp} WHERE id=$2 AND tenant_id=$3 RETURNING *`,
@@ -89,7 +89,7 @@ router.get('/snapshots/:watchlistId', async (req, res) => {
   const id = Number(req.params.watchlistId);
   if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'crisis:snapshots', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'crisis:snapshots' });
     const r = await _db.getPool().query(
       `SELECT s.* FROM crisis_snapshots s
        JOIN crisis_watchlist w ON w.id=s.watchlist_id

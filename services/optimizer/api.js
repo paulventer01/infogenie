@@ -18,7 +18,7 @@ const router = express.Router();
 router.get('/status', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, error: 'database not configured' });
   const pool = _db.getPool();
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:status', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:status' });
   const camps   = await pool.query(`SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE optimizer_enabled)::int enabled FROM ad_campaigns WHERE tenant_id = $1`, [tid]);
   const actions = await pool.query(`SELECT COUNT(*)::int n FROM optimizer_actions WHERE tenant_id = $1 AND created_at > now() - interval '24 hours'`, [tid]);
   const lastRun = await pool.query(`SELECT MAX(created_at) AS t FROM optimizer_actions WHERE tenant_id = $1`, [tid]);
@@ -41,7 +41,7 @@ router.get('/status', async (req, res) => {
 router.get('/campaigns', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, error: 'database not configured', campaigns: [] });
   const pool = _db.getPool();
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:campaigns:list', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:campaigns:list' });
   const r = await pool.query(`
     SELECT c.*,
       (SELECT json_build_object(
@@ -61,7 +61,7 @@ router.get('/campaigns', async (req, res) => {
 
 router.get('/actions', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, actions: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:actions:list', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:actions:list' });
   const limit = Math.min(parseInt(req.query.limit || '50', 10), 500);
   const r = await _db.getPool().query(`
     SELECT a.*, c.name AS campaign_name, c.platform
@@ -90,7 +90,7 @@ function _str(v, max = 200) {
 
 router.post('/campaigns/upsert', express.json(), async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, error: 'database not configured' });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:campaigns:upsert', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:campaigns:upsert' });
   const platform        = _str(req.body?.platform, 32);
   const platform_camp_id= _str(req.body?.platform_camp_id, 80);
   const name            = _str(req.body?.name, 200);
@@ -120,7 +120,7 @@ router.post('/campaigns/upsert', express.json(), async (req, res) => {
 router.post('/enable', express.json(), async (req, res) => {
   const id = parseInt(req.body?.id, 10);
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, error: 'valid id required' });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:enable', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:enable' });
   const enabled = !!req.body?.enabled;
   await _db.getPool().query(`UPDATE ad_campaigns SET optimizer_enabled=$1, updated_at=now() WHERE id=$2 AND tenant_id=$3`, [enabled, id, tid]);
   res.json({ ok: true });
@@ -129,7 +129,7 @@ router.post('/enable', express.json(), async (req, res) => {
 router.post('/target', express.json(), async (req, res) => {
   const id = parseInt(req.body?.id, 10);
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, error: 'valid id required' });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:target', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:target' });
   const target_roas      = _num(req.body?.target_roas,      { min: 0,  max: 100 });
   const min_spend_floor  = _num(req.body?.min_spend_floor,  { min: 0,  max: 1e6 });
   const max_daily_budget = _num(req.body?.max_daily_budget, { min: 0,  max: 1e6 });
@@ -161,7 +161,7 @@ router.post('/run-now', async (_req, res) => {
 // ── Phase 8: Creative Auto-Refresh ─────────────────────────────────────────
 router.get('/creative-refreshes', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, refreshes: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:creative-refreshes', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:creative-refreshes' });
   const n = parseInt(req.query.limit, 10);
   const limit = Math.min(Number.isFinite(n) && n > 0 ? n : 30, 200);
   const r = await _db.getPool().query(`
@@ -211,7 +211,7 @@ router.get('/bandit/status', async (req, res) => {
   if (_db.hasDb()) {
     // Aggregate counts/timestamps are scoped per-tenant so one tenant's
     // bandit cadence isn't visible to another.
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:bandit:status', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:bandit:status' });
     const lr = await _db.getPool().query(`SELECT MAX(created_at) AS t, COUNT(*)::int n FROM bandit_allocations WHERE tenant_id = $1`, [tid]);
     lastRun = lr.rows[0]?.t || null;
     total   = lr.rows[0]?.n || 0;
@@ -221,7 +221,7 @@ router.get('/bandit/status', async (req, res) => {
 
 router.get('/bandit/allocations', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, allocations: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:bandit:allocations', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:bandit:allocations' });
   const n = parseInt(req.query.limit, 10);
   const limit = Math.min(Number.isFinite(n) && n > 0 ? n : 50, 300);
   const r = await _db.getPool().query(`
@@ -260,7 +260,7 @@ router.post('/bandit/run-now', express.json(), async (_req, res) => {
 router.delete('/campaigns/:id', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, error: 'bad id' });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:campaigns:delete', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:campaigns:delete' });
   await _db.getPool().query(`DELETE FROM ad_campaigns WHERE id=$1 AND tenant_id=$2`, [id, tid]);
   res.json({ ok: true });
 });
@@ -271,7 +271,7 @@ router.delete('/campaigns/:id', async (req, res) => {
 // The frontend's "Why did the AI do this?" panel renders this directly.
 router.get('/decisions', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, decisions: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:decisions', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:decisions' });
   const limit = Math.min(parseInt(req.query.limit || '100', 10), 500);
   const platform = req.query.platform ? String(req.query.platform).slice(0, 32) : null;
   const params = [limit, tid];
@@ -293,7 +293,7 @@ router.get('/decisions', async (req, res) => {
 // ── T34: Day-part / hour-of-day budget shifting ───────────────────────────
 router.get('/dayparting', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, items: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:dayparting:list', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:dayparting:list' });
   const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
   // Latest dayparting analysis per campaign (one row each).
   const r = await _db.getPool().query(`
@@ -319,7 +319,7 @@ router.post('/dayparting/run-now', express.json(), async (_req, res) => {
 // ── T34: Predictive creative fatigue ──────────────────────────────────────
 router.get('/fatigue-forecast', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, items: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:fatigue-forecast', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:fatigue-forecast' });
   const limit = Math.min(parseInt(req.query.limit || '100', 10), 500);
   const onlyFlagged = String(req.query.flagged || '') === '1';
   // Outer WHERE filters the wrapped subquery alias `latest`, NOT `ff`.

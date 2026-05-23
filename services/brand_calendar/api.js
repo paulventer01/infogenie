@@ -24,7 +24,7 @@ router.get('/categories', (_req, res) => res.json({ categories: CATEGORIES }));
 router.get('/', async (req, res) => {
   try {
     if (!hasDb()) return res.json({ items: [] });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_calendar:list', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_calendar:list' });
     const cat = req.query.category;
     const from = req.query.from, to = req.query.to;
     const conds = ['tenant_id = $1']; const params = [tid];
@@ -40,7 +40,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     if (!hasDb()) return res.status(503).json({ error: 'database not configured' });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_calendar:save', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_calendar:save' });
     if (!tid) return res.status(400).json({ error: 'no_tenant' });
     const { id, category, title, scheduled_at, notes = '', project_id, status = 'planned' } = req.body || {};
     if (!category || !title || !scheduled_at) return res.status(400).json({ error: 'category, title, scheduled_at required' });
@@ -62,7 +62,7 @@ router.post('/', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     if (!hasDb()) return res.status(503).json({ error: 'database not configured' });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_calendar:delete', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'brand_calendar:delete' });
     const r = await pool.query(`DELETE FROM brand_calendar_items WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
     res.json({ ok: true, deleted: r.rowCount });
   } catch (e) { res.status(500).json({ error: e.message }); }

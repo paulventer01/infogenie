@@ -45,7 +45,7 @@ function _sanitiseRules(r) {
 function _err(res, status, msg) { return res.status(status).json({ ok:false, error:msg }); }
 
 async function _tid(req, label) {
-  return await _tenantCtx.resolveTenantId(req, { label, allowFallback:true });
+  return await _tenantCtx.resolveTenantId(req, { label });
 }
 
 // Verify an audience belongs to this tenant. Returns the audience row or null.

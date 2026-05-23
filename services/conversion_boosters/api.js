@@ -107,7 +107,7 @@ router.get('/defaults', (req, res) => res.json({ ok: true, defaults: DEFAULTS })
 // ── Admin: manage widgets ──────────────────────────────────────────────────
 router.get('/widgets', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, widgets: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:list', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:list' });
   const r = await _db.getPool().query(
     `SELECT w.id, w.type, w.name, w.settings, w.owner_email, w.created_at,
             (SELECT COUNT(*)::int FROM cb_events e WHERE e.widget_id=w.id AND e.event_type='view') AS views,
@@ -126,7 +126,7 @@ router.post('/widgets', _safeAsync(async (req, res) => {
   const ownerEmail = String(req.body?.ownerEmail || '').trim().slice(0, 200);
   const settings = _normaliseSettings(type, req.body?.settings);
   const id = (type === 'social_proof' ? 'sp_' : 'ei_') + crypto.randomBytes(8).toString('hex');
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:create', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:create' });
   await _db.getPool().query(
     `INSERT INTO cb_widgets (tenant_id, id, type, name, settings, owner_email) VALUES ($1,$2,$3,$4,$5,$6)`,
     [tid, id, type, name, JSON.stringify(settings), ownerEmail || null]
@@ -137,7 +137,7 @@ router.post('/widgets', _safeAsync(async (req, res) => {
 router.patch('/widgets/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database required.');
   const id = req.params.id;
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:patch', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:patch' });
   const cur = await _db.getPool().query(`SELECT type FROM cb_widgets WHERE id=$1 AND tenant_id=$2`, [id, tid]);
   if (!cur.rowCount) return _err(res, 404, 'Widget not found');
   const sets = []; const args = [];
@@ -155,7 +155,7 @@ router.patch('/widgets/:id', _safeAsync(async (req, res) => {
 
 router.delete('/widgets/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database required.');
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:delete', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:delete' });
   const r = await _db.getPool().query(`DELETE FROM cb_widgets WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
   if (!r.rowCount) return _err(res, 404, 'Widget not found');
   res.json({ ok: true });
@@ -163,7 +163,7 @@ router.delete('/widgets/:id', _safeAsync(async (req, res) => {
 
 router.get('/widgets/:id/events', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, events: [] });
-  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:events', allowFallback:true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:events' });
   // Verify widget ownership before exposing events
   const own = await _db.getPool().query(`SELECT id FROM cb_widgets WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
   if (!own.rowCount) return _err(res, 404, 'Widget not found');

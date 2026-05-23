@@ -21,7 +21,7 @@ router.get('/types', (_req, res) => res.json({ types: SIGNAL_TYPES }));
 router.get('/', async (req, res) => {
   try {
     if (!hasDb()) return res.json({ triggers: [] });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'signal_triggers:list', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'signal_triggers:list' });
     const r = await pool.query(`SELECT * FROM signal_triggers WHERE tenant_id=$1 ORDER BY created_at DESC`, [tid]);
     res.json({ triggers: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     if (!hasDb()) return res.status(503).json({ error: 'database not configured' });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'signal_triggers:save', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'signal_triggers:save' });
     if (!tid) return res.status(400).json({ error: 'no_tenant' });
     const { id, name, signal_type, condition = {}, journey_id, enabled = true } = req.body || {};
     if (!name || !signal_type) return res.status(400).json({ error: 'name + signal_type required' });
@@ -51,7 +51,7 @@ router.post('/', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     if (!hasDb()) return res.status(503).json({ error: 'database not configured' });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'signal_triggers:delete', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'signal_triggers:delete' });
     await pool.query(`DELETE FROM signal_triggers WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -102,7 +102,7 @@ async function fireSignal(signal_type, payload = {}) {
 
 router.post('/fire', async (req, res) => {
   try {
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'signal_triggers:fire', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'signal_triggers:fire' });
     const { signal_type, payload = {} } = req.body || {};
     if (!signal_type) return res.status(400).json({ error: 'signal_type required' });
     // Stamp tenant_id on payload so fanout stays in-tenant
@@ -114,7 +114,7 @@ router.post('/fire', async (req, res) => {
 router.get('/events/recent', async (req, res) => {
   try {
     if (!hasDb()) return res.json({ events: [] });
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'signal_triggers:events', allowFallback:true });
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'signal_triggers:events' });
     // Strict tenant scoping — global/null events are hidden from tenant views.
     const r = await pool.query(
       `SELECT * FROM signal_events WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30`, [tid]);
