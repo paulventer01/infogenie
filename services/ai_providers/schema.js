@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 
 async function ensureAiProvidersSchema() {
   if (!_db.hasDb()) return;
@@ -19,6 +20,8 @@ async function ensureAiProvidersSchema() {
     );
     CREATE INDEX IF NOT EXISTS ai_providers_cat_idx ON ai_providers(category, is_default DESC, enabled DESC);
   `);
+  try { await addTenantIdColumn('ai_providers'); }
+  catch (e) { console.error('[ai-providers] addTenantIdColumn:', e.message); }
   console.log('[ai-providers] schema ready');
 }
 

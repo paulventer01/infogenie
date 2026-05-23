@@ -8,10 +8,15 @@ const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
 const _scrollTracker = require('../scroll_tracker/api');
+const { addTenantIdColumn } = require('../tenants/migration');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _esc(s) { return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function _safeUrl(u) { return /^https?:\/\//i.test(u) ? u : '#'; }
+async function _tid(req, label) {
+  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+}
 const HAS_STRIPE = !!(process.env.STRIPE_SECRET_KEY && !/^_DUMMY/i.test(process.env.STRIPE_SECRET_KEY));
 
 async function ensureLinkSellSchema() {
@@ -27,6 +32,10 @@ async function ensureLinkSellSchema() {
       created_at TIMESTAMPTZ DEFAULT now(), paid_at TIMESTAMPTZ
     );
   `);
+  for (const t of ['linksell_leads', 'linksell_orders']) {
+    try { await addTenantIdColumn(t); }
+    catch (e) { console.error(`[linksell] addTenantIdColumn ${t}:`, e.message); }
+  }
 }
 ensureLinkSellSchema().catch(e => console.error('[linksell] schema:', e.message));
 
@@ -36,51 +45,90 @@ const DEFAULT_PAGE = {
   bio: 'One-line bio.',
   avatarUrl: '',
   primaryColor: '#0066FF',
-  links: [],         // [{label, url, icon}]
-  products: [],      // [{id, name, description, priceCents, currency, imageUrl}]
+  links: [],
+  products: [],
   emailOptin: { enabled:true, headline:'Join the list', cta:'Get updates' },
 };
 
+// Bio kv is keyed publicly by slug, but the blob carries tenant_id so we can
+// reject slug-squatting and stamp the right tenant onto leads/orders.
+const _bioKey = slug => `bio:${slug}`;
+
 router.get('/page/:slug', async (req, res) => {
-  const page = await _db.kvGet(`bio:${req.params.slug}`, null);
+  const page = await _db.kvGet(_bioKey(req.params.slug), null);
+  // Authenticated dashboard reads must not leak another tenant's bio config.
+  // Public /render/:slug stays open (it's the public-facing page). Blob carries
+  // tenant_id; if caller resolves to a tenant and the blob is stamped to a
+  // different one, return 404 (don't disclose existence).
+  if (page && Number.isFinite(+page.tenant_id)) {
+    const tid = await _tid(req, 'linksell:get-page');
+    if (+page.tenant_id !== tid) return _err(res, 404, 'page not found');
+  }
   res.json({ ok:true, page: page || { ...DEFAULT_PAGE, slug: req.params.slug } });
 });
 
 router.post('/page/:slug', async (req, res) => {
-  const page = { ...DEFAULT_PAGE, ...(req.body || {}), slug: req.params.slug, updatedAt: new Date().toISOString() };
-  await _db.kvSet(`bio:${req.params.slug}`, page);
+  const tid = await _tid(req, 'linksell:save-page');
+  const existing = await _db.kvGet(_bioKey(req.params.slug), null);
+  if (existing && Number.isFinite(+existing.tenant_id) && +existing.tenant_id !== tid) {
+    return _err(res, 409, 'Slug already in use by another workspace — pick a different slug.');
+  }
+  const page = { ...DEFAULT_PAGE, ...(req.body || {}), slug: req.params.slug, tenant_id: tid, updatedAt: new Date().toISOString() };
+  await _db.kvSet(_bioKey(req.params.slug), page);
   res.json({ ok:true, page });
 });
 
-router.get('/pages', async (_req, res) => {
+router.get('/pages', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, pages: [] });
-  const r = await _db.getPool().query(`SELECT key, value FROM kv_store WHERE key LIKE 'bio:%' ORDER BY key DESC LIMIT 100`);
-  res.json({ ok:true, pages: r.rows.map(row => ({ slug: row.key.replace('bio:',''), title: row.value?.title, productCount: (row.value?.products||[]).length, linkCount: (row.value?.links||[]).length })) });
+  const tid = await _tid(req, 'linksell:pages');
+  // Filter by tenant_id stored inside the blob. Legacy un-stamped pages
+  // belong to platform tenant 1.
+  const r = await _db.getPool().query(`SELECT key, value FROM kv_store WHERE key LIKE 'bio:%' ORDER BY key DESC LIMIT 500`);
+  const pages = r.rows
+    .map(row => ({ slug: row.key.replace('bio:',''), val: row.value }))
+    .filter(p => {
+      const blobTid = Number.isFinite(+p.val?.tenant_id) ? +p.val.tenant_id : 1;
+      return blobTid === tid;
+    })
+    .slice(0, 100)
+    .map(p => ({ slug: p.slug, title: p.val?.title, productCount: (p.val?.products||[]).length, linkCount: (p.val?.links||[]).length }));
+  res.json({ ok:true, pages });
 });
 
-// ── Email opt-in ─────────────────────────────────────────────────────────────
+// ── Email opt-in (public) ────────────────────────────────────────────────────
 router.post('/optin/:slug', async (req, res) => {
   const { email, name = '' } = req.body || {};
   if (!email) return _err(res, 400, 'email required');
   if (!_db.hasDb()) return _err(res, 503, 'No DB');
-  await _db.getPool().query(`INSERT INTO linksell_leads (page_slug, email, name) VALUES ($1, $2, $3)`, [req.params.slug, email, name]);
+  // Public endpoint — derive tenant from the page blob's stored tenant_id.
+  const page = await _db.kvGet(_bioKey(req.params.slug), null);
+  const ownerTid = Number.isFinite(+page?.tenant_id) ? +page.tenant_id : 1;
+  await _db.getPool().query(
+    `INSERT INTO linksell_leads (tenant_id, page_slug, email, name) VALUES ($1,$2,$3,$4)`,
+    [ownerTid, req.params.slug, email, name]
+  );
   res.json({ ok:true });
 });
 
 router.get('/leads/:slug', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, leads: [] });
-  const r = await _db.getPool().query(`SELECT id, email, name, source, created_at FROM linksell_leads WHERE page_slug=$1 ORDER BY created_at DESC LIMIT 500`, [req.params.slug]);
+  const tid = await _tid(req, 'linksell:leads');
+  const r = await _db.getPool().query(
+    `SELECT id, email, name, source, created_at FROM linksell_leads WHERE page_slug=$1 AND tenant_id=$2 ORDER BY created_at DESC LIMIT 500`,
+    [req.params.slug, tid]
+  );
   res.json({ ok:true, leads: r.rows });
 });
 
-// ── Stripe Checkout ──────────────────────────────────────────────────────────
+// ── Stripe Checkout (public — caller is the buyer's browser) ────────────────
 router.post('/checkout/:slug', async (req, res) => {
   if (!HAS_STRIPE) return _err(res, 400, 'Stripe not configured — add STRIPE_SECRET_KEY to enable checkout.');
   const { productId, customerEmail } = req.body || {};
-  const page = await _db.kvGet(`bio:${req.params.slug}`, null);
+  const page = await _db.kvGet(_bioKey(req.params.slug), null);
   if (!page) return _err(res, 404, 'Page not found');
   const product = (page.products || []).find(p => p.id === productId);
   if (!product) return _err(res, 404, 'Product not found');
+  const ownerTid = Number.isFinite(+page.tenant_id) ? +page.tenant_id : 1;
   const baseUrl = process.env.PUBLIC_URL || `https://${process.env.REPL_SLUG || 'app'}.replit.app`;
   try {
     const params = new URLSearchParams();
@@ -104,28 +152,28 @@ router.post('/checkout/:slug', async (req, res) => {
     if (!r.ok || j.error) throw new Error(j.error?.message || `Stripe ${r.status}`);
     if (_db.hasDb()) {
       await _db.getPool().query(
-        `INSERT INTO linksell_orders (page_slug, product_id, customer_email, amount_cents, currency, stripe_session_id) VALUES ($1, $2, $3, $4, $5, $6)`,
-        [req.params.slug, productId, customerEmail || null, product.priceCents || 0, product.currency || 'usd', j.id]
+        `INSERT INTO linksell_orders (tenant_id, page_slug, product_id, customer_email, amount_cents, currency, stripe_session_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [ownerTid, req.params.slug, productId, customerEmail || null, product.priceCents || 0, product.currency || 'usd', j.id]
       );
     }
     res.json({ ok:true, checkoutUrl: j.url, sessionId: j.id });
   } catch (e) { _err(res, 500, e.message); }
 });
 
-// Stripe webhook — verifies Stripe-Signature header per Stripe's spec (HMAC-SHA256
-// over `${timestamp}.${rawBody}` with secret = STRIPE_WEBHOOK_SECRET, scheme v1).
-// We capture the raw body via express.raw, verify, then JSON.parse.
+// Stripe webhook — verifies Stripe-Signature header per Stripe's spec.
 const _crypto = require('crypto');
 function _verifyStripeSig(rawBuf, header, secret) {
   if (!header || !secret) return false;
   const parts = String(header).split(',').reduce((acc, p) => { const [k,v] = p.split('='); if (k && v) (acc[k.trim()]=acc[k.trim()]||[]).push(v.trim()); return acc; }, {});
   const ts = (parts.t || [])[0]; const sigs = parts.v1 || [];
   if (!ts || !sigs.length) return false;
-  // Reject events older than 5 minutes (replay protection)
   if (Math.abs(Date.now()/1000 - Number(ts)) > 300) return false;
   const expected = _crypto.createHmac('sha256', secret).update(`${ts}.${rawBuf.toString('utf8')}`).digest('hex');
   return sigs.some(s => { try { return _crypto.timingSafeEqual(Buffer.from(s), Buffer.from(expected)); } catch { return false; } });
 }
+// Webhook is unauthenticated (Stripe signs it). UPDATE by stripe_session_id
+// alone is safe — that ID is globally unique and the row was created with a
+// tenant_id already; we're only flipping its status.
 router.post('/stripe-webhook', express.raw({ type:'*/*', limit:'1mb' }), async (req, res) => {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (secret) {
@@ -133,7 +181,6 @@ router.post('/stripe-webhook', express.raw({ type:'*/*', limit:'1mb' }), async (
       console.warn('[linksell stripe-webhook] signature verify failed'); return res.status(401).end();
     }
   } else {
-    // No secret configured: refuse webhook entirely in production to prevent forgery
     if (process.env.NODE_ENV === 'production') { console.warn('[linksell stripe-webhook] STRIPE_WEBHOOK_SECRET not set — rejecting'); return res.status(503).end(); }
   }
   res.status(200).end();
@@ -150,7 +197,11 @@ router.post('/stripe-webhook', express.raw({ type:'*/*', limit:'1mb' }), async (
 
 router.get('/orders/:slug', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, orders: [] });
-  const r = await _db.getPool().query(`SELECT id, product_id, customer_email, amount_cents, currency, status, created_at, paid_at FROM linksell_orders WHERE page_slug=$1 ORDER BY created_at DESC LIMIT 200`, [req.params.slug]);
+  const tid = await _tid(req, 'linksell:orders');
+  const r = await _db.getPool().query(
+    `SELECT id, product_id, customer_email, amount_cents, currency, status, created_at, paid_at FROM linksell_orders WHERE page_slug=$1 AND tenant_id=$2 ORDER BY created_at DESC LIMIT 200`,
+    [req.params.slug, tid]
+  );
   res.json({ ok:true, orders: r.rows });
 });
 
@@ -211,7 +262,7 @@ ${_scrollTracker.snippet('bio', page.slug || '')}
 }
 
 router.get('/render/:slug', async (req, res) => {
-  const page = await _db.kvGet(`bio:${req.params.slug}`, null) || { ...DEFAULT_PAGE, slug: req.params.slug };
+  const page = await _db.kvGet(_bioKey(req.params.slug), null) || { ...DEFAULT_PAGE, slug: req.params.slug };
   res.set('Content-Type', 'text/html; charset=utf-8').send(_renderBio(page));
 });
 

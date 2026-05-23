@@ -6,12 +6,43 @@ const express = require('express');
 const router = express.Router();
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 let getBrandContextBlock = async () => '';
 try { ({ getBrandContextBlock } = require('../brand_foundation/api')); } catch {}
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safe(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[infographics]', e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
+async function _tid(req, label) {
+  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+}
+// Kv keys are tenant-namespaced as `infographic:t<tid>:<id>`. Legacy keys
+// (no t-prefix) get rewritten once at boot so the pre-multitenancy infographics
+// surface to platform tenant 1 (the original owner) and stay scoped correctly.
+const _kvKey = (tid, id) => `infographic:t${tid}:${id}`;
+const _legacyPrefix = 'infographic:';
+const _tenantPrefix = tid => `infographic:t${tid}:`;
+
+async function _migrateLegacyKeys() {
+  if (!_db.hasDb()) return;
+  try {
+    // Match anything starting with 'infographic:' that's NOT already tenant-prefixed.
+    const r = await _db.getPool().query(
+      `SELECT key FROM kv_store WHERE key LIKE 'infographic:%' AND key NOT LIKE 'infographic:t%:%'`
+    );
+    for (const row of r.rows) {
+      const oldKey = row.key;
+      const newKey = `infographic:t1:${oldKey.slice(_legacyPrefix.length)}`;
+      await _db.getPool().query(
+        `UPDATE kv_store SET key=$1 WHERE key=$2 AND NOT EXISTS (SELECT 1 FROM kv_store WHERE key=$1)`,
+        [newKey, oldKey]
+      );
+      await _db.getPool().query(`DELETE FROM kv_store WHERE key=$1`, [oldKey]);
+    }
+    if (r.rows.length) console.log(`[infographics] migrated ${r.rows.length} legacy keys to tenant 1`);
+  } catch (e) { console.warn('[infographics] legacy migrate:', e.message); }
+}
+_migrateLegacyKeys();
 
 const LAYOUTS = ['funnel', 'list', 'comparison', 'journey', 'quadrant', 'pyramid', 'cycle'];
 
@@ -39,7 +70,6 @@ async function _openaiJSON(messages, maxTokens = 1200) {
 }
 
 function _fallback(topic, layout) {
-  // Deterministic template so the UI always has something to render.
   const items = ['Awareness', 'Consideration', 'Purchase', 'Retention', 'Advocacy'];
   return {
     title: topic.slice(0, 80),
@@ -75,22 +105,33 @@ Make labels under 24 chars. Make values under 18 chars. Make details under 80 ch
   }
   if (!result || !Array.isArray(result.items)) result = _fallback(topic, layout);
 
+  const tid = await _tid(req, 'infographics:generate');
   const id = 'ig_' + (require('crypto').randomUUID ? require('crypto').randomUUID().replace(/-/g,'').slice(0,16) : Date.now() + '_' + Math.random().toString(36).slice(2,8));
   if (_db.hasDb()) {
-    try { await _db.kvSet(`infographic:${id}`, { ...result, topic, createdAt: new Date().toISOString() }); } catch {}
+    try { await _db.kvSet(_kvKey(tid, id), { ...result, topic, createdAt: new Date().toISOString() }); } catch {}
   }
   res.json({ ok: true, id, infographic: result });
 }));
 
-router.get('/list', _safe(async (_req, res) => {
+router.get('/list', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, items: [] });
-  const r = await _db.getPool().query(`SELECT key, value FROM kv_store WHERE key LIKE 'infographic:%' ORDER BY key DESC LIMIT 50`);
-  res.json({ ok: true, items: r.rows.map(row => ({ id: row.key.replace('infographic:', ''), ...row.value })) });
+  const tid = await _tid(req, 'infographics:list');
+  const prefix = _tenantPrefix(tid);
+  const r = await _db.getPool().query(
+    `SELECT key, value FROM kv_store WHERE key LIKE $1 ORDER BY key DESC LIMIT 50`,
+    [prefix + '%']
+  );
+  res.json({ ok: true, items: r.rows.map(row => ({ id: row.key.slice(prefix.length), ...row.value })) });
 }));
 
 router.delete('/:id', _safe(async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'db unavailable');
-  await _db.getPool().query(`DELETE FROM kv_store WHERE key = $1`, ['infographic:' + req.params.id]);
+  const tid = await _tid(req, 'infographics:delete');
+  const r = await _db.getPool().query(
+    `DELETE FROM kv_store WHERE key = $1`,
+    [_kvKey(tid, req.params.id)]
+  );
+  if (!r.rowCount) return _err(res, 404, 'infographic not found');
   res.json({ ok: true });
 }));
 

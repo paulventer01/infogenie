@@ -1,26 +1,30 @@
 // Microsoft Clarity wrapper — free heatmaps, session recordings, rage-click data.
-// User pastes their Clarity Project ID + optional API token. We:
-//   1) emit the Clarity install snippet for them to paste into landing pages
-//   2) fetch top pages from our landing_pages table so they see context here
-//   3) call the Clarity Data Export API for top urls/devices/rage-clicks
-//      ( https://learn.microsoft.com/en-us/clarity/setup-and-installation/clarity-data-export-api )
+// Per-tenant config: each tenant pastes their own Clarity Project ID + token.
 
 const express = require('express');
 const router = express.Router();
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safe(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[heatmaps]', e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
+async function _tid(req, label) {
+  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+}
 
-async function _loadConfig() {
+async function _loadConfig(tid) {
   if (!_db.hasDb()) return { clarity_project_id: '', clarity_api_token: '' };
-  const r = await _db.getPool().query(`SELECT clarity_project_id, clarity_api_token FROM heatmap_config WHERE id=1`);
+  const r = await _db.getPool().query(
+    `SELECT clarity_project_id, clarity_api_token FROM heatmap_config WHERE tenant_id=$1`,
+    [tid]
+  );
   return r.rows[0] || { clarity_project_id: '', clarity_api_token: '' };
 }
 
-router.get('/config', _safe(async (_req, res) => {
-  const c = await _loadConfig();
+router.get('/config', _safe(async (req, res) => {
+  const tid = await _tid(req, 'heatmaps:get-config');
+  const c = await _loadConfig(tid);
   res.json({
     ok: true,
     configured: !!c.clarity_project_id,
@@ -39,23 +43,40 @@ router.get('/config', _safe(async (_req, res) => {
 
 router.post('/config', _safe(async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'db unavailable');
+  const tid = await _tid(req, 'heatmaps:save-config');
   const pid = String(req.body?.project_id || '').trim().slice(0, 50);
   const tok = String(req.body?.api_token || '').trim().slice(0, 500);
+  // Upsert per-tenant row.
   await _db.getPool().query(
-    `UPDATE heatmap_config SET clarity_project_id=$1, clarity_api_token=NULLIF($2,''), updated_at=NOW() WHERE id=1`,
-    [pid || null, tok]
+    `INSERT INTO heatmap_config (tenant_id, clarity_project_id, clarity_api_token, updated_at)
+     VALUES ($1, $2, NULLIF($3,''), NOW())
+     ON CONFLICT (tenant_id) DO UPDATE SET
+       clarity_project_id = EXCLUDED.clarity_project_id,
+       clarity_api_token  = COALESCE(EXCLUDED.clarity_api_token, heatmap_config.clarity_api_token),
+       updated_at = NOW()`,
+    [tid, pid || null, tok]
   );
   res.json({ ok: true });
 }));
 
 // GET /insights?days=3 — calls Clarity Data Export API for top pages + devices + rage-clicks.
-// Falls back to our own landing_pages table when no API token is configured.
+// Falls back to this tenant's own landing_pages table when no API token is configured.
 router.get('/insights', _safe(async (req, res) => {
-  const c = await _loadConfig();
-  const days = Math.max(1, Math.min(3, parseInt(req.query.days, 10) || 3)); // Clarity API max=3
-  const landingPages = _db.hasDb()
-    ? (await _db.getPool().query(`SELECT slug, title, traffic_total, conv_total FROM landing_pages ORDER BY traffic_total DESC NULLS LAST LIMIT 10`)).rows
-    : [];
+  const tid = await _tid(req, 'heatmaps:insights');
+  const c = await _loadConfig(tid);
+  const days = Math.max(1, Math.min(3, parseInt(req.query.days, 10) || 3));
+  // landing_pages schema varies (legacy installs may lack slug/traffic columns);
+  // fall back to an empty list so Heatmaps stays usable without breaking.
+  let landingPages = [];
+  if (_db.hasDb()) {
+    try {
+      const r = await _db.getPool().query(
+        `SELECT title, brand, created_at FROM landing_pages WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 10`,
+        [tid]
+      );
+      landingPages = r.rows;
+    } catch (e) { console.warn('[heatmaps] landing_pages query skipped:', e.message); }
+  }
 
   if (!c.clarity_api_token) {
     return res.json({
