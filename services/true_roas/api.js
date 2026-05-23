@@ -16,8 +16,12 @@ const multer = require('multer');
 const _https = require('https');
 const _crypto = require('crypto');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
+async function _tid(req, label) {
+  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+}
 const _upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 const SETTINGS_KEY = 'true_roas.settings';
@@ -170,24 +174,27 @@ function _parseConversionsCsv(buf) {
   return out;
 }
 
-async function _insertConversions(source, items) {
+async function _insertConversions(source, items, tid) {
   if (!_db.hasDb() || !items.length) return { inserted: 0, skipped: 0 };
+  if (!Number.isFinite(tid)) throw new Error('tenant_id required for offline conversion insert');
   const pool = _db.getPool();
   let inserted = 0, skipped = 0;
   for (const it of items) {
     try {
+      // ON CONFLICT target matches the tenant-scoped UNIQUE index so two
+      // tenants importing the same HubSpot deal id are kept separate.
       const r = await pool.query(
         `INSERT INTO offline_conversions
-           (source, source_deal_id, email, click_id, platform, revenue_cents, currency,
+           (tenant_id, source, source_deal_id, email, click_id, platform, revenue_cents, currency,
             lead_created_at, closed_at, raw)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-         ON CONFLICT (source, source_deal_id) DO UPDATE
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         ON CONFLICT (tenant_id, source, source_deal_id) DO UPDATE
            SET revenue_cents = EXCLUDED.revenue_cents,
                platform      = EXCLUDED.platform,
                closed_at     = EXCLUDED.closed_at,
                raw           = EXCLUDED.raw
          RETURNING (xmax = 0) AS was_insert`,
-        [source, it.source_deal_id, it.email, it.click_id, it.platform,
+        [tid, source, it.source_deal_id, it.email, it.click_id, it.platform,
          it.revenue_cents, it.currency, it.lead_created_at, it.closed_at,
          JSON.stringify(it.raw || {})],
       );
@@ -226,7 +233,8 @@ function _hsRequest(path, method, body) {
 }
 function _hsFetch(path) { return _hsRequest(path, 'GET', null); }
 
-async function _syncHubspot() {
+async function _syncHubspot(tid) {
+  if (!Number.isFinite(tid)) throw new Error('tenant_id required for hubspot sync');
   const settings = await _getSettings();
   const lookback = settings.hubspotLookbackDays;
   const stages = settings.hubspotPipelineStages.map(s => String(s));
@@ -285,9 +293,9 @@ async function _syncHubspot() {
     pages++;
     if (!after) break;
   }
-  const out = await _insertConversions('hubspot', items);
+  const out = await _insertConversions('hubspot', items, tid);
   await _saveSettings({ hubspotSyncEnabled: true });
-  await _stamp('true_roas.hubspot_last_sync', { at: new Date().toISOString(), ...out, scanned: items.length });
+  await _stamp(`true_roas.hubspot_last_sync.t${tid}`, { at: new Date().toISOString(), ...out, scanned: items.length, tenant_id: tid });
   return { ...out, scanned: items.length };
 }
 
@@ -303,7 +311,7 @@ async function _stamp(key, value) {
 }
 
 // ── True ROAS computation ───────────────────────────────────────────────────
-async function computeTrueRoas(days = 30) {
+async function computeTrueRoas(days = 30, tid) {
   const out = {
     days,
     online: { revenue: 0, byPlatform: {} },
@@ -315,9 +323,11 @@ async function computeTrueRoas(days = 30) {
     perPlatform: {},
   };
   if (!_db.hasDb()) return out;
+  if (!Number.isFinite(tid)) throw new Error('tenant_id required for computeTrueRoas');
   const pool = _db.getPool();
 
   // Online revenue + spend per platform from optimizer's ingested data.
+  // Join filter on c.tenant_id keeps cross-tenant campaigns out of the math.
   try {
     const r = await pool.query(`
       SELECT lower(replace(c.platform, 'facebook', 'meta')) AS platform,
@@ -326,8 +336,9 @@ async function computeTrueRoas(days = 30) {
         FROM ad_performance_hourly p
         JOIN ad_campaigns c ON c.id = p.campaign_id
        WHERE p.bucket_hour >= now() - ($1 || ' days')::interval
+         AND c.tenant_id = $2
        GROUP BY 1
-    `, [String(days)]);
+    `, [String(days), tid]);
     for (const row of r.rows) {
       const k = row.platform || 'unknown';
       out.online.byPlatform[k] = Number(row.revenue || 0);
@@ -349,8 +360,9 @@ async function computeTrueRoas(days = 30) {
              COUNT(*)::int AS n
         FROM offline_conversions
        WHERE closed_at >= now() - ($1 || ' days')::interval
+         AND tenant_id = $2
        GROUP BY 1
-    `, [String(days)]);
+    `, [String(days), tid]);
     for (const row of r.rows) {
       const k = (row.platform || 'unknown').toLowerCase();
       const rev = _fromCents(row.cents);
@@ -362,8 +374,9 @@ async function computeTrueRoas(days = 30) {
       SELECT currency, COUNT(*)::int AS n
         FROM offline_conversions
        WHERE closed_at >= now() - ($1 || ' days')::interval
+         AND tenant_id = $2
        GROUP BY 1
-    `, [String(days)]);
+    `, [String(days), tid]);
     out.offline.currencies = cur.rows.map(r => ({ currency: r.currency, count: Number(r.n) }));
     out.offline.mixedCurrency = cur.rows.length > 1;
   } catch {}
@@ -396,8 +409,9 @@ async function computeTrueRoas(days = 30) {
 }
 
 // ── Revenue lag ─────────────────────────────────────────────────────────────
-async function computeRevenueLag(days = 90) {
+async function computeRevenueLag(days = 90, tid) {
   if (!_db.hasDb()) return { ok: true, days, buckets: [], avgDaysToClose: null, totalDeals: 0, totalRevenue: 0 };
+  if (!Number.isFinite(tid)) throw new Error('tenant_id required for computeRevenueLag');
   const pool = _db.getPool();
   // Group leads by week-of-creation; what % closed and what revenue did they generate?
   const r = await pool.query(`
@@ -408,9 +422,10 @@ async function computeRevenueLag(days = 90) {
       FROM offline_conversions
      WHERE lead_created_at IS NOT NULL
        AND lead_created_at >= now() - ($1 || ' days')::interval
+       AND tenant_id = $2
      GROUP BY 1
      ORDER BY 1
-  `, [String(days)]);
+  `, [String(days), tid]);
   const buckets = r.rows.map(row => ({
     week: row.wk,
     deals: Number(row.deals || 0),
@@ -424,7 +439,8 @@ async function computeRevenueLag(days = 90) {
       FROM offline_conversions
      WHERE lead_created_at IS NOT NULL
        AND closed_at >= now() - ($1 || ' days')::interval
-  `, [String(days)]);
+       AND tenant_id = $2
+  `, [String(days), tid]);
   const t = totals.rows[0] || {};
   return {
     ok: true, days, buckets,
@@ -435,9 +451,10 @@ async function computeRevenueLag(days = 90) {
 }
 
 // ── Profit-aware budget cap recommendations ─────────────────────────────────
-async function generateBudgetRecommendations() {
+async function generateBudgetRecommendations(tid) {
   const settings = await _getSettings();
   if (!_db.hasDb() || !settings.budgetCapEnabled) return { ok: true, generated: 0, skipped: 'disabled' };
+  if (!Number.isFinite(tid)) throw new Error('tenant_id required for generateBudgetRecommendations');
   const pool = _db.getPool();
   // Compute per-campaign True ROAS over last 7 days; recommend cut/scale.
   const days = 7;
@@ -448,9 +465,10 @@ async function generateBudgetRecommendations() {
       FROM ad_campaigns c
       LEFT JOIN ad_performance_hourly p
         ON p.campaign_id = c.id AND p.bucket_hour >= now() - ($1 || ' days')::interval
+     WHERE c.tenant_id = $2
      GROUP BY c.id
     HAVING COALESCE(SUM(p.spend),0) > 0
-  `, [String(days)]);
+  `, [String(days), tid]);
   let generated = 0;
   for (const row of r.rows) {
     // Pull offline revenue for this platform (campaign-level offline attribution
@@ -462,12 +480,14 @@ async function generateBudgetRecommendations() {
         FROM ad_performance_hourly p JOIN ad_campaigns c ON c.id = p.campaign_id
        WHERE lower(replace(c.platform,'facebook','meta'))=$1
          AND p.bucket_hour >= now() - ($2 || ' days')::interval
-    `, [platform, String(days)]);
+         AND c.tenant_id = $3
+    `, [platform, String(days), tid]);
     const offlineRow = await pool.query(`
       SELECT COALESCE(SUM(revenue_cents),0)::bigint AS cents
         FROM offline_conversions
        WHERE lower(platform)=$1 AND closed_at >= now() - ($2 || ' days')::interval
-    `, [platform, String(days)]);
+         AND tenant_id = $3
+    `, [platform, String(days), tid]);
     const platOnline  = Number(platTotal.rows[0]?.total || 0);
     const platOffline = _fromCents(offlineRow.rows[0]?.cents || 0);
     const share = platOnline > 0 ? (Number(row.online_revenue) / platOnline) : 0;
@@ -482,35 +502,46 @@ async function generateBudgetRecommendations() {
     // Avoid churning: skip if same action recommended for this campaign in last 24h.
     const dup = await pool.query(`
       SELECT 1 FROM optimizer_actions
-       WHERE campaign_id=$1 AND action=$2 AND created_at > now() - interval '24 hours'
+       WHERE campaign_id=$1 AND action=$2 AND tenant_id=$3
+         AND created_at > now() - interval '24 hours'
        LIMIT 1
-    `, [row.campaign_id, action]);
+    `, [row.campaign_id, action, tid]);
     if (dup.rows.length) continue;
     await pool.query(`
-      INSERT INTO optimizer_actions (campaign_id, action, reason, before_state, after_state, mode, status)
-      VALUES ($1, $2, $3, $4, $5, 'recommend', 'pending')
+      INSERT INTO optimizer_actions (tenant_id, campaign_id, action, reason, before_state, after_state, mode, status)
+      VALUES ($1, $2, $3, $4, $5, $6, 'recommend', 'pending')
     `, [
-      row.campaign_id, action,
+      tid, row.campaign_id, action,
       `True ROAS = ${trueRoas} (online ${row.online_revenue.toFixed(2)} + offline ${apportionedOffline} / spend ${row.spend.toFixed(2)}) — recommend ${change > 0 ? '+' : ''}${change}% budget`,
       JSON.stringify({ trueRoas, online: +row.online_revenue.toFixed(2), offline: apportionedOffline, spend: +row.spend.toFixed(2) }),
       JSON.stringify({ recommendedBudgetChangePct: change, threshold: action === 'budget_cap_cut' ? settings.minTrueRoasThreshold : settings.scaleTrueRoasThreshold }),
     ]);
     generated++;
   }
-  await _stamp('true_roas.budget_cap_last_run', { at: new Date().toISOString(), generated });
+  await _stamp(`true_roas.budget_cap_last_run.t${tid}`, { at: new Date().toISOString(), generated, tenant_id: tid });
   return { ok: true, generated };
 }
 
 // ── Cron: HubSpot sync (6h) + budget recs (6h, offset by 3h) ────────────────
 let _cronTimer = null;
+async function _allTenantIds() {
+  if (!_db.hasDb()) return [];
+  try {
+    const r = await _db.getPool().query(`SELECT id FROM tenants ORDER BY id`);
+    return r.rows.map(x => Number(x.id)).filter(Number.isFinite);
+  } catch { return []; }
+}
 async function _cronTick() {
   try {
     const settings = await _getSettings();
-    if (settings.hubspotSyncEnabled && process.env.HUBSPOT_PRIVATE_APP_TOKEN) {
-      try { await _syncHubspot(); } catch (e) { console.warn('[true-roas] hubspot sync failed:', e.message); }
-    }
-    if (settings.budgetCapEnabled) {
-      try { await generateBudgetRecommendations(); } catch (e) { console.warn('[true-roas] budget recs failed:', e.message); }
+    const tids = await _allTenantIds();
+    for (const tid of tids) {
+      if (settings.hubspotSyncEnabled && process.env.HUBSPOT_PRIVATE_APP_TOKEN) {
+        try { await _syncHubspot(tid); } catch (e) { console.warn(`[true-roas] hubspot sync t${tid}:`, e.message); }
+      }
+      if (settings.budgetCapEnabled) {
+        try { await generateBudgetRecommendations(tid); } catch (e) { console.warn(`[true-roas] budget recs t${tid}:`, e.message); }
+      }
     }
   } catch (e) { console.warn('[true-roas] cron error:', e.message); }
 }
@@ -538,13 +569,17 @@ router.post('/upload', _upload.single('file'), async (req, res) => {
   try { items = _parseConversionsCsv(req.file.buffer); }
   catch (e) { return _err(res, 400, 'CSV parse failed: ' + e.message); }
   if (!items.length) return _err(res, 400, 'No valid rows found (need columns: revenue + deal_id or email)');
-  const out = await _insertConversions('csv', items);
+  const tid = await _tid(req, 'true-roas:upload');
+  const out = await _insertConversions('csv', items, tid);
   res.json({ ok: true, parsed: items.length, ...out });
 });
 
-router.post('/sync-hubspot', async (_req, res) => {
+router.post('/sync-hubspot', async (req, res) => {
   if (!process.env.HUBSPOT_PRIVATE_APP_TOKEN) return _err(res, 400, 'HUBSPOT_PRIVATE_APP_TOKEN not configured');
-  try { res.json({ ok: true, ...(await _syncHubspot()) }); }
+  try {
+    const tid = await _tid(req, 'true-roas:sync-hubspot');
+    res.json({ ok: true, ...(await _syncHubspot(tid)) });
+  }
   catch (e) { _err(res, 500, e.message); }
 });
 
@@ -552,12 +587,13 @@ router.get('/conversions', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, conversions: [] });
   const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 100));
   const platform = String(req.query.platform || '').toLowerCase();
-  const params = []; const where = [];
+  const tid = await _tid(req, 'true-roas:conversions-list');
+  const params = [tid]; const where = ['tenant_id = $1'];
   if (platform) { params.push(platform); where.push(`platform = $${params.length}`); }
   const sql = `SELECT id, source, source_deal_id, email, click_id, platform, revenue_cents, currency,
                       lead_created_at, closed_at, created_at
                  FROM offline_conversions
-                 ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+                 WHERE ${where.join(' AND ')}
                  ORDER BY closed_at DESC LIMIT ${limit}`;
   const r = await _db.getPool().query(sql, params);
   res.json({ ok: true, conversions: r.rows.map(x => ({ ...x, revenue: _fromCents(x.revenue_cents) })) });
@@ -565,22 +601,30 @@ router.get('/conversions', async (req, res) => {
 
 router.delete('/conversions/:id', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
-  await _db.getPool().query(`DELETE FROM offline_conversions WHERE id=$1`, [parseInt(req.params.id, 10)]);
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
+  const tid = await _tid(req, 'true-roas:conversions-del');
+  await _db.getPool().query(`DELETE FROM offline_conversions WHERE id=$1 AND tenant_id=$2`, [id, tid]);
   res.json({ ok: true });
 });
 
 router.get('/summary', async (req, res) => {
   const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30));
-  res.json({ ok: true, ...(await computeTrueRoas(days)) });
+  const tid = await _tid(req, 'true-roas:summary');
+  res.json({ ok: true, ...(await computeTrueRoas(days, tid)) });
 });
 
 router.get('/revenue-lag', async (req, res) => {
   const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 90));
-  res.json(await computeRevenueLag(days));
+  const tid = await _tid(req, 'true-roas:revenue-lag');
+  res.json(await computeRevenueLag(days, tid));
 });
 
-router.post('/budget-recommendations/run', async (_req, res) => {
-  try { res.json(await generateBudgetRecommendations()); }
+router.post('/budget-recommendations/run', async (req, res) => {
+  try {
+    const tid = await _tid(req, 'true-roas:budget-recs');
+    res.json(await generateBudgetRecommendations(tid));
+  }
   catch (e) { _err(res, 500, e.message); }
 });
 

@@ -1,9 +1,13 @@
 const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
+async function _tid(req, label) {
+  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+}
 const TONES = new Set(['direct','warm','consultative','witty','executive','curious']);
 
 async function _aiGenerate(payload) {
@@ -75,9 +79,10 @@ router.post('/generate', async (req, res) => {
   }
   if (_db.hasDb()) {
     try {
+      const tid = await _tid(req, 'cold-email:generate');
       await _db.getPool().query(
-        `INSERT INTO cold_email_runs (sender_brand, sender_name, sender_offer, target_company, target_role, target_pain, tone, sequence_steps, emails, generated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [payload.sender_brand, payload.sender_name, payload.sender_offer, payload.target_company, payload.target_role, payload.target_pain, tone, steps, JSON.stringify(result.emails), source]);
+        `INSERT INTO cold_email_runs (tenant_id, sender_brand, sender_name, sender_offer, target_company, target_role, target_pain, tone, sequence_steps, emails, generated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [tid, payload.sender_brand, payload.sender_name, payload.sender_offer, payload.target_company, payload.target_role, payload.target_pain, tone, steps, JSON.stringify(result.emails), source]);
     } catch (e) { console.warn('[cold-email] persist failed:', e.message); }
   }
   res.json({ ok:true, source, ...payload, emails: result.emails });
@@ -86,7 +91,11 @@ router.post('/generate', async (req, res) => {
 router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
-    const r = await _db.getPool().query(`SELECT id, sender_brand, target_company, target_role, tone, sequence_steps, generated_by, created_at FROM cold_email_runs ORDER BY created_at DESC LIMIT 30`);
+    const tid = await _tid(req, 'cold-email:history');
+    const r = await _db.getPool().query(
+      `SELECT id, sender_brand, target_company, target_role, tone, sequence_steps, generated_by, created_at FROM cold_email_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30`,
+      [tid]
+    );
     res.json({ ok:true, runs: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -96,7 +105,10 @@ router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
   try {
-    const r = await _db.getPool().query(`SELECT * FROM cold_email_runs WHERE id=$1`, [id]);
+    const tid = await _tid(req, 'cold-email:get');
+    const r = await _db.getPool().query(
+      `SELECT * FROM cold_email_runs WHERE id=$1 AND tenant_id=$2`, [id, tid]
+    );
     if (!r.rows[0]) return _err(res, 404, 'not found');
     res.json({ ok:true, run: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }

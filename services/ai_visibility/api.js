@@ -11,6 +11,10 @@ const router = express.Router();
 const crypto = require('crypto');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
+async function _tid(req, label) {
+  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+}
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safe(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => {
@@ -259,10 +263,11 @@ router.post('/run', _safe(async (req, res) => {
   const id = 'aiv_' + crypto.randomBytes(6).toString('hex');
   if (_db.hasDb()) {
     try {
+      const tid = await _tid(req, 'ai-vis:run');
       await _db.getPool().query(
-        `INSERT INTO ai_visibility_runs (id, brand, competitors, prompts, providers, results, summary, cost_usd)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [id, brand, JSON.stringify(competitors), JSON.stringify(prompts),
+        `INSERT INTO ai_visibility_runs (tenant_id, id, brand, competitors, prompts, providers, results, summary, cost_usd)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [tid, id, brand, JSON.stringify(competitors), JSON.stringify(prompts),
          JSON.stringify(providers), JSON.stringify(results), JSON.stringify(summary), totalCost.toFixed(4)]
       );
     } catch (e) { console.warn('[ai-visibility] insert failed', e.message); }
@@ -273,9 +278,10 @@ router.post('/run', _safe(async (req, res) => {
 // ── GET /api/ai-visibility/runs ─────────────────────────────────────────────
 router.get('/runs', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, runs: [] });
+  const tid = await _tid(req, 'ai-vis:runs-list');
   const r = await _db.getPool().query(
     `SELECT id, brand, competitors, prompts, providers, summary, cost_usd, created_at
-     FROM ai_visibility_runs ORDER BY created_at DESC LIMIT 30`
+     FROM ai_visibility_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30`, [tid]
   );
   res.json({ ok: true, runs: r.rows });
 }));
@@ -283,7 +289,8 @@ router.get('/runs', _safe(async (req, res) => {
 // ── GET /api/ai-visibility/runs/:id ─────────────────────────────────────────
 router.get('/runs/:id', _safe(async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'Database unavailable');
-  const r = await _db.getPool().query(`SELECT * FROM ai_visibility_runs WHERE id=$1`, [req.params.id]);
+  const tid = await _tid(req, 'ai-vis:runs-get');
+  const r = await _db.getPool().query(`SELECT * FROM ai_visibility_runs WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
   if (!r.rowCount) return _err(res, 404, 'Run not found');
   res.json({ ok: true, run: r.rows[0] });
 }));
@@ -313,22 +320,23 @@ router.post('/probe', _safe(async (req, res) => {
 router.get('/leaderboard', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, leaderboard: [], run: null, prevRun: null });
   const pool = _db.getPool();
+  const tid = await _tid(req, 'ai-vis:leaderboard');
 
-  // Latest run (optionally filter by brand query param)
+  // Latest run (optionally filter by brand query param) — tenant-scoped.
   const brand = String(req.query.brand || '').trim();
   const latest = brand
-    ? await pool.query(`SELECT * FROM ai_visibility_runs WHERE brand=$1 ORDER BY created_at DESC LIMIT 1`, [brand])
-    : await pool.query(`SELECT * FROM ai_visibility_runs ORDER BY created_at DESC LIMIT 1`);
+    ? await pool.query(`SELECT * FROM ai_visibility_runs WHERE brand=$1 AND tenant_id=$2 ORDER BY created_at DESC LIMIT 1`, [brand, tid])
+    : await pool.query(`SELECT * FROM ai_visibility_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 1`, [tid]);
 
   if (!latest.rowCount) return res.json({ ok: true, leaderboard: [], run: null, prevRun: null });
   const run = latest.rows[0];
   const summary = typeof run.summary === 'string' ? JSON.parse(run.summary) : run.summary;
   const sov = Array.isArray(summary.sov) ? summary.sov : [];
 
-  // Previous run for same brand (to compute deltas)
+  // Previous run for same brand (to compute deltas) — tenant-scoped.
   const prev = await pool.query(
-    `SELECT summary FROM ai_visibility_runs WHERE brand=$1 AND created_at < $2 ORDER BY created_at DESC LIMIT 1`,
-    [run.brand, run.created_at]
+    `SELECT summary FROM ai_visibility_runs WHERE brand=$1 AND tenant_id=$2 AND created_at < $3 ORDER BY created_at DESC LIMIT 1`,
+    [run.brand, tid, run.created_at]
   );
   let prevSov = [];
   let prevRun = null;

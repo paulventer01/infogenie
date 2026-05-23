@@ -203,13 +203,23 @@ function _syntheticContacts(n = 60) {
   return out;
 }
 
-// Persist the live count snapshot back to the segment row.
-async function snapshotSegmentCount(segmentId, count) {
+// Persist the live count snapshot back to the segment row. tenantId is
+// optional — when provided, the update is hard-scoped to that tenant so a
+// caller can never accidentally write counts to another tenant's segment.
+async function snapshotSegmentCount(segmentId, count, tenantId = null) {
   if (!_db.hasDb()) return;
-  await _db.getPool().query(
-    `UPDATE audience_segments SET member_count=$1, last_evaluated_at=now(), updated_at=now() WHERE id=$2`,
-    [Number(count) || 0, segmentId]
-  );
+  if (tenantId != null) {
+    await _db.getPool().query(
+      `UPDATE audience_segments SET member_count=$1, last_evaluated_at=now(), updated_at=now()
+       WHERE id=$2 AND tenant_id=$3`,
+      [Number(count) || 0, segmentId, tenantId]
+    );
+  } else {
+    await _db.getPool().query(
+      `UPDATE audience_segments SET member_count=$1, last_evaluated_at=now(), updated_at=now() WHERE id=$2`,
+      [Number(count) || 0, segmentId]
+    );
+  }
 }
 
 module.exports = { evaluateContact, previewSegmentLive, snapshotSegmentCount };

@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 async function ensureColdEmailSchema() {
   if (!_db.hasDb()) return;
   await _db.getPool().query(`
@@ -18,6 +19,8 @@ async function ensureColdEmailSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_cold_email_created ON cold_email_runs(created_at DESC);
   `);
+  try { await addTenantIdColumn('cold_email_runs'); }
+  catch (e) { console.error('[cold-email] addTenantIdColumn:', e.message); }
   console.log('[cold-email] schema ready');
 }
 module.exports = { ensureColdEmailSchema };

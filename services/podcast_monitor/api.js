@@ -1,9 +1,13 @@
 const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
+async function _tid(req, label) {
+  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+}
 
 async function _pplxPodcasts({ brand, days, count }) {
   const key = process.env.PERPLEXITY_API_KEY;
@@ -53,9 +57,10 @@ router.post('/scan', async (req, res) => {
   }
   if (_db.hasDb()) {
     try {
+      const tid = await _tid(req, 'podcast:scan');
       await _db.getPool().query(
-        `INSERT INTO podcast_monitor_runs (brand, lookback_days, episodes, source) VALUES ($1,$2,$3,$4)`,
-        [brand, days, JSON.stringify(result.episodes), source]);
+        `INSERT INTO podcast_monitor_runs (tenant_id, brand, lookback_days, episodes, source) VALUES ($1,$2,$3,$4,$5)`,
+        [tid, brand, days, JSON.stringify(result.episodes), source]);
     } catch (e) { console.warn('[podcast-monitor] persist failed:', e.message); }
   }
   res.json({ ok:true, source, brand, days, count: result.episodes.length, episodes: result.episodes });
@@ -65,9 +70,10 @@ router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
   try {
+    const tid = await _tid(req, 'podcast:history');
     const r = await _db.getPool().query(
       `SELECT id, brand, lookback_days, source, ran_at, jsonb_array_length(episodes) AS episode_count
-       FROM podcast_monitor_runs ORDER BY ran_at DESC LIMIT $1`, [limit]);
+       FROM podcast_monitor_runs WHERE tenant_id=$1 ORDER BY ran_at DESC LIMIT $2`, [tid, limit]);
     res.json({ ok:true, runs: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -77,7 +83,9 @@ router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) return _err(res, 400, 'bad id');
   try {
-    const r = await _db.getPool().query(`SELECT * FROM podcast_monitor_runs WHERE id=$1`, [id]);
+    const tid = await _tid(req, 'podcast:get');
+    const r = await _db.getPool().query(
+      `SELECT * FROM podcast_monitor_runs WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     if (!r.rows[0]) return _err(res, 404, 'not found');
     res.json({ ok:true, run: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }

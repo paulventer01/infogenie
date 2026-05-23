@@ -2,6 +2,7 @@
 // Drip-style real-time, rule-based audience membership.
 // Idempotent — called from server boot.
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 
 async function ensureAudiencesSchema() {
   if (!_db.hasDb()) return false;
@@ -44,10 +45,6 @@ async function ensureAudiencesSchema() {
       error        TEXT
     );
 
-    -- Phase 3: bind a saved audience to a Drip campaign sequence. When a
-    -- contact JOINS the segment they are auto-enrolled; when they LEAVE the
-    -- segment, any active enrollment that originated from this binding is
-    -- auto-marked unsubscribed so contacts auto-flow in/out of the funnel.
     CREATE TABLE IF NOT EXISTS audience_drip_bindings (
       id           SERIAL PRIMARY KEY,
       audience_id  INTEGER NOT NULL UNIQUE REFERENCES audience_segments(id) ON DELETE CASCADE,
@@ -61,11 +58,6 @@ async function ensureAudiencesSchema() {
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
-    -- Phase 4A: mirror audience membership to a HubSpot Static List so the
-    -- sales team can use the same segment inside HubSpot for follow-up, ads
-    -- custom audiences, etc. list_id is stored once the list is auto-created
-    -- the first time the binding is saved (or set manually if you already
-    -- own a list). Joins/leaves are pushed via the v3 lists/memberships API.
     CREATE TABLE IF NOT EXISTS audience_hubspot_list_bindings (
       id            SERIAL PRIMARY KEY,
       audience_id   INTEGER NOT NULL UNIQUE REFERENCES audience_segments(id) ON DELETE CASCADE,
@@ -79,15 +71,10 @@ async function ensureAudiencesSchema() {
       updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
-    -- Phase 4B: when a contact lands in a churn-risk audience, fire a
-    -- single-touch personalised win-back via the existing drip engine. The
-    -- variant body/subject is stored on the binding (regeneratable via the
-    -- /api/reengage/generate endpoint from the UI). Tagged with the same
-    -- provenance fields as Phase 3 drip bindings so onLeave can auto-exit.
     CREATE TABLE IF NOT EXISTS audience_reengage_bindings (
       id            SERIAL PRIMARY KEY,
       audience_id   INTEGER NOT NULL UNIQUE REFERENCES audience_segments(id) ON DELETE CASCADE,
-      variant       JSONB NOT NULL,   -- { subject, preheader, body, cta, angle, tone }
+      variant       JSONB NOT NULL,
       brand         TEXT,
       dry_run       BOOLEAN NOT NULL DEFAULT true,
       enabled       BOOLEAN NOT NULL DEFAULT true,
@@ -98,6 +85,22 @@ async function ensureAudiencesSchema() {
       updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+
+  // Multi-tenancy (Phase 2B) — idempotent column adds + indexes. The bindings
+  // tables keep their UNIQUE(audience_id) constraints because audience_id is a
+  // globally-unique SERIAL and is FK'd to a tenant-scoped audience row, so
+  // per-(tenant, audience) singleton semantics are preserved by the FK.
+  for (const t of [
+    'audience_segments',
+    'audience_segment_members',
+    'audience_evaluation_log',
+    'audience_drip_bindings',
+    'audience_hubspot_list_bindings',
+    'audience_reengage_bindings',
+  ]) {
+    try { await addTenantIdColumn(t); }
+    catch (e) { console.error(`[audiences] addTenantIdColumn ${t}: ${e.message}`); }
+  }
   return true;
 }
 

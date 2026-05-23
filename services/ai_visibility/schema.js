@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 
 async function ensureAiVisibilitySchema() {
   if (!_db.hasDb()) return;
@@ -17,6 +18,8 @@ async function ensureAiVisibilitySchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_ai_vis_brand ON ai_visibility_runs(brand, created_at DESC);
   `);
+  try { await addTenantIdColumn('ai_visibility_runs'); }
+  catch (e) { console.error('[ai-visibility] addTenantIdColumn:', e.message); }
 }
 
 module.exports = { ensureAiVisibilitySchema };

@@ -1,9 +1,13 @@
 const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
+async function _tid(req, label) {
+  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+}
 
 async function _perplexitySearch(payload) {
   const key = process.env.PERPLEXITY_API_KEY;
@@ -69,9 +73,10 @@ router.post('/search', async (req, res) => {
   const leads = raw.leads.slice(0, per_page);
   if (_db.hasDb()) {
     try {
+      const tid = await _tid(req, 'lead-finder:search');
       await _db.getPool().query(
-        `INSERT INTO lead_finder_runs (query_filters, result_count, leads, source) VALUES ($1,$2,$3,$4)`,
-        [JSON.stringify(filters), leads.length, JSON.stringify(leads), 'perplexity']);
+        `INSERT INTO lead_finder_runs (tenant_id, query_filters, result_count, leads, source) VALUES ($1,$2,$3,$4,$5)`,
+        [tid, JSON.stringify(filters), leads.length, JSON.stringify(leads), 'perplexity']);
     } catch (e) { console.warn('[lead-finder] persist failed:', e.message); }
   }
   res.json({ ok:true, source:'perplexity', filters, leads, total: leads.length });
@@ -80,7 +85,10 @@ router.post('/search', async (req, res) => {
 router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
-    const r = await _db.getPool().query(`SELECT id, query_filters, result_count, source, created_at FROM lead_finder_runs ORDER BY created_at DESC LIMIT 30`);
+    const tid = await _tid(req, 'lead-finder:history');
+    const r = await _db.getPool().query(
+      `SELECT id, query_filters, result_count, source, created_at FROM lead_finder_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30`,
+      [tid]);
     res.json({ ok:true, runs: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -90,7 +98,9 @@ router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
   try {
-    const r = await _db.getPool().query(`SELECT * FROM lead_finder_runs WHERE id=$1`, [id]);
+    const tid = await _tid(req, 'lead-finder:get');
+    const r = await _db.getPool().query(
+      `SELECT * FROM lead_finder_runs WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     if (!r.rows[0]) return _err(res, 404, 'not found');
     res.json({ ok:true, run: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }

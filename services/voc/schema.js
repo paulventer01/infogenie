@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 async function ensureVocSchema() {
   if (!_db.hasDb()) return;
   await _db.getPool().query(`
@@ -14,6 +15,8 @@ async function ensureVocSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_voc_brand_created ON voc_runs(brand, created_at DESC);
   `);
+  try { await addTenantIdColumn('voc_runs'); }
+  catch (e) { console.error('[voc] addTenantIdColumn:', e.message); }
   console.log('[voc] schema ready');
 }
 module.exports = { ensureVocSchema };

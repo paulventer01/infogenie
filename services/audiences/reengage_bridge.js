@@ -1,14 +1,7 @@
 // Dynamic Audiences ⇄ Re-Engagement Agent bridge (Phase 4B).
-// When a contact joins a churn-risk audience, auto-enrol them into a single-
-// touch personalised win-back via the existing drip engine. We reuse the drip
-// store (with audienceBindingId provenance tags) so:
-//   • onLeave can auto-unsubscribe just the win-backs we created (manual
-//     re-engagement campaigns are never touched)
-//   • the existing /api/drips/* deliverability/bounce/complaint pipeline
-//     applies for free
-//
-// The variant (subject/preheader/body/cta) is stored on the binding and is
-// regeneratable via the existing /api/reengage/generate endpoint from the UI.
+// All five functions accept a tenantId so multi-tenant scoping is enforced
+// end-to-end. Tenant is also stamped onto each row on INSERT so direct WHERE
+// clauses are fast.
 const _crypto = require('crypto');
 const _db = require('../../db');
 
@@ -29,15 +22,22 @@ function _validVariant(v) {
   };
 }
 
-async function getBinding(audienceId) {
+async function getBinding(audienceId, tenantId = null) {
   if (!_db.hasDb()) return null;
+  if (tenantId != null) {
+    const r = await _db.getPool().query(
+      `SELECT * FROM audience_reengage_bindings WHERE audience_id=$1 AND tenant_id=$2`,
+      [Number(audienceId), tenantId]
+    );
+    return r.rows[0] || null;
+  }
   const r = await _db.getPool().query(
     `SELECT * FROM audience_reengage_bindings WHERE audience_id=$1`, [Number(audienceId)]
   );
   return r.rows[0] || null;
 }
 
-async function setBinding(audienceId, payload) {
+async function setBinding(audienceId, payload, tenantId = null) {
   if (!_db.hasDb()) throw new Error('db not configured');
   const aid = Number(audienceId);
   if (!Number.isInteger(aid) || aid <= 0) throw new Error('invalid audience_id');
@@ -49,9 +49,10 @@ async function setBinding(audienceId, payload) {
   const appOrigin = payload?.app_origin ? String(payload.app_origin).slice(0, 400) : null;
 
   const r = await _db.getPool().query(`
-    INSERT INTO audience_reengage_bindings (audience_id, variant, brand, dry_run, enabled, auto_exit, app_origin)
-    VALUES ($1,$2,$3,$4,$5,$6,$7)
+    INSERT INTO audience_reengage_bindings (tenant_id, audience_id, variant, brand, dry_run, enabled, auto_exit, app_origin)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
     ON CONFLICT (audience_id) DO UPDATE SET
+      tenant_id  = COALESCE(EXCLUDED.tenant_id, audience_reengage_bindings.tenant_id),
       variant    = EXCLUDED.variant,
       brand      = EXCLUDED.brand,
       dry_run    = EXCLUDED.dry_run,
@@ -60,13 +61,20 @@ async function setBinding(audienceId, payload) {
       app_origin = EXCLUDED.app_origin,
       updated_at = now()
     RETURNING *
-  `, [aid, JSON.stringify(variant), brand, dryRun, enabled, autoExit, appOrigin]);
+  `, [tenantId, aid, JSON.stringify(variant), brand, dryRun, enabled, autoExit, appOrigin]);
   return r.rows[0];
 }
 
-async function deleteBinding(audienceId) {
+async function deleteBinding(audienceId, tenantId = null) {
   if (!_db.hasDb()) return false;
-  await _db.getPool().query(`DELETE FROM audience_reengage_bindings WHERE audience_id=$1`, [Number(audienceId)]);
+  if (tenantId != null) {
+    await _db.getPool().query(
+      `DELETE FROM audience_reengage_bindings WHERE audience_id=$1 AND tenant_id=$2`,
+      [Number(audienceId), tenantId]
+    );
+  } else {
+    await _db.getPool().query(`DELETE FROM audience_reengage_bindings WHERE audience_id=$1`, [Number(audienceId)]);
+  }
   return true;
 }
 
@@ -77,10 +85,10 @@ function _seqSig(seq) {
   } catch { return ''; }
 }
 
-async function onJoin(audienceId, contactId, contactEmail) {
+async function onJoin(audienceId, contactId, contactEmail, tenantId = null) {
   if (!_hasStore()) return { skipped:'drip-store-unavailable' };
   if (!contactEmail) return { skipped:'no-email' };
-  const b = await getBinding(audienceId);
+  const b = await getBinding(audienceId, tenantId);
   if (!b || !b.enabled) return { skipped:'no-binding' };
 
   const variant = b.variant;
@@ -108,28 +116,37 @@ async function onJoin(audienceId, contactId, contactEmail) {
       status:'active', dryRun: !!b.dry_run, appOrigin: b.app_origin || '',
       history: [],
       audienceId: Number(audienceId),
-      audienceBindingId: 'reng:' + b.id,   // namespaced so it never collides with drip_bridge ids
+      audienceBindingId: 'reng:' + b.id,
       sourceContactId: String(contactId || ''),
       reengageVariant: { subject: variant.subject, angle: variant.angle, tone: variant.tone },
+      tenantId: tenantId || b.tenant_id || null,
     };
     list.push(enr);
     global._dripStore.save(list);
     return { enrolled:true, enrollmentId: enr.id };
   });
 
-  // Track most-recent fire time for the dashboard badge.
   if (result.enrolled) {
-    try { await _db.getPool().query(
-      `UPDATE audience_reengage_bindings SET last_triggered_at = now() WHERE audience_id=$1`,
-      [Number(audienceId)]
-    ); } catch(_){}
+    try {
+      if (tenantId != null) {
+        await _db.getPool().query(
+          `UPDATE audience_reengage_bindings SET last_triggered_at = now() WHERE audience_id=$1 AND tenant_id=$2`,
+          [Number(audienceId), tenantId]
+        );
+      } else {
+        await _db.getPool().query(
+          `UPDATE audience_reengage_bindings SET last_triggered_at = now() WHERE audience_id=$1`,
+          [Number(audienceId)]
+        );
+      }
+    } catch(_){}
   }
   return result;
 }
 
-async function onLeave(audienceId, contactId, contactEmail) {
+async function onLeave(audienceId, contactId, contactEmail, tenantId = null) {
   if (!_hasStore()) return { skipped:'drip-store-unavailable' };
-  const b = await getBinding(audienceId);
+  const b = await getBinding(audienceId, tenantId);
   if (!b || !b.auto_exit) return { skipped:'auto-exit-off' };
   const tag = 'reng:' + b.id;
   const email = (contactEmail || '').toLowerCase().trim();

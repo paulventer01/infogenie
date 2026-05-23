@@ -1,7 +1,9 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 async function ensurePricingWatchSchema() {
   if (!_db.hasDb()) return;
-  await _db.getPool().query(`
+  const pool = _db.getPool();
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS pricing_watch_targets (
       id SERIAL PRIMARY KEY,
       label TEXT NOT NULL,
@@ -24,6 +26,20 @@ async function ensurePricingWatchSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_pws_target_taken ON pricing_watch_snapshots(target_id, taken_at DESC);
   `);
+
+  // Phase 2B multi-tenant migration on both tables.
+  for (const t of ['pricing_watch_targets', 'pricing_watch_snapshots']) {
+    try { await addTenantIdColumn(t); }
+    catch (e) { console.error(`[pricing-watch] addTenantIdColumn ${t}: ${e.message}`); }
+  }
+
+  // URL uniqueness must be tenant-scoped so two tenants can each track the
+  // same URL. Create-then-drop preserves the dedup contract during rollout.
+  try {
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uniq_pw_tenant_url ON pricing_watch_targets(tenant_id, url)`);
+    await pool.query(`ALTER TABLE pricing_watch_targets DROP CONSTRAINT IF EXISTS pricing_watch_targets_url_key`);
+  } catch (e) { console.error('[pricing-watch] uniq migrate:', e.message); }
+
   console.log('[pricing-watch] schema ready');
 }
 module.exports = { ensurePricingWatchSchema };

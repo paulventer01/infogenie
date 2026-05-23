@@ -2,10 +2,14 @@ const express = require('express');
 const router = express.Router();
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _hasPerplexity() { const k = process.env.PERPLEXITY_API_KEY; return k && !/^_DUMMY/i.test(k); }
 function _safeAsync(handler) { return (req, res) => Promise.resolve(handler(req, res)).catch(e => { console.warn('[youtube-monitor] route error:', e.message); if (!res.headersSent) _err(res, 500, e.message || 'internal error'); }); }
+async function _tid(req, label) {
+  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+}
 
 async function _perplexityScan(channelName, channelUrl, maxVideos) {
   if (!_hasPerplexity()) return null;
@@ -53,11 +57,12 @@ router.get('/test', (req, res) => {
 
 router.get('/channels', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok:true, channels:[], note:'DB not configured' });
+  const tid = await _tid(req, 'yt:channels-list');
   const brand = req.query.brand ? String(req.query.brand).trim() : null;
   const sql = brand
-    ? `SELECT * FROM yt_channels WHERE brand=$1 ORDER BY created_at DESC`
-    : `SELECT * FROM yt_channels ORDER BY created_at DESC`;
-  const r = await _db.getPool().query(sql, brand ? [brand] : []);
+    ? `SELECT * FROM yt_channels WHERE tenant_id=$1 AND brand=$2 ORDER BY created_at DESC`
+    : `SELECT * FROM yt_channels WHERE tenant_id=$1 ORDER BY created_at DESC`;
+  const r = await _db.getPool().query(sql, brand ? [tid, brand] : [tid]);
   res.json({ ok:true, channels: r.rows });
 }));
 
@@ -69,10 +74,11 @@ router.post('/channels', _safeAsync(async (req, res) => {
   if (!brand || !channel_name || !channel_url) return _err(res, 400, 'brand, channel_name, channel_url required');
   if (!/^https?:\/\/(www\.)?youtube\.com\//i.test(channel_url)) return _err(res, 400, 'channel_url must be a youtube.com URL (e.g. https://www.youtube.com/@MrBeast)');
   try {
+    const tid = await _tid(req, 'yt:channels-add');
     const r = await _db.getPool().query(
-      `INSERT INTO yt_channels (brand, channel_name, channel_url) VALUES ($1,$2,$3)
-       ON CONFLICT (brand, channel_url) DO UPDATE SET channel_name=EXCLUDED.channel_name, enabled=true RETURNING *`,
-      [brand, channel_name, channel_url]
+      `INSERT INTO yt_channels (tenant_id, brand, channel_name, channel_url) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (tenant_id, brand, channel_url) DO UPDATE SET channel_name=EXCLUDED.channel_name, enabled=true RETURNING *`,
+      [tid, brand, channel_name, channel_url]
     );
     res.json({ ok:true, channel: r.rows[0] });
   } catch (e) { _err(res, 400, e.message); }
@@ -80,7 +86,8 @@ router.post('/channels', _safeAsync(async (req, res) => {
 
 router.delete('/channels/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 400, 'DATABASE_URL required');
-  await _db.getPool().query('DELETE FROM yt_channels WHERE id=$1', [parseInt(req.params.id, 10)]);
+  const tid = await _tid(req, 'yt:channels-del');
+  await _db.getPool().query('DELETE FROM yt_channels WHERE id=$1 AND tenant_id=$2', [parseInt(req.params.id, 10), tid]);
   res.json({ ok:true });
 }));
 
@@ -89,22 +96,23 @@ router.post('/scan/:id', _safeAsync(async (req, res) => {
   if (!_hasPerplexity()) return _err(res, 400, 'PERPLEXITY_API_KEY required for live YouTube scans');
   const id = parseInt(req.params.id, 10);
   const max = Math.max(3, Math.min(15, parseInt(req.body?.max || 8, 10)));
-  const ch = await _db.getPool().query('SELECT * FROM yt_channels WHERE id=$1', [id]);
+  const tid = await _tid(req, 'yt:scan');
+  const ch = await _db.getPool().query('SELECT * FROM yt_channels WHERE id=$1 AND tenant_id=$2', [id, tid]);
   if (!ch.rows.length) return _err(res, 404, 'channel not found');
   const c = ch.rows[0];
   const videos = await _perplexityScan(c.channel_name, c.channel_url, max);
   if (!videos) return _err(res, 502, 'YouTube scan failed — Perplexity unreachable or rate-limited');
   if (!videos.length) {
-    await _db.getPool().query('UPDATE yt_channels SET last_scanned_at=now() WHERE id=$1', [id]);
+    await _db.getPool().query('UPDATE yt_channels SET last_scanned_at=now() WHERE id=$1 AND tenant_id=$2', [id, tid]);
     return res.json({ ok:true, channel:c, videos:[], note:'No videos found — verify the channel URL is correct.' });
   }
-  // Store snapshots
+  // Store snapshots — stamped with same tid that owns the parent channel.
   for (const v of videos) {
     try {
       await _db.getPool().query(
-        `INSERT INTO yt_snapshots (channel_id, video_title, video_url, published_at, view_count, like_count, comment_count, sentiment, summary)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [id, String(v.title||'').slice(0,500), String(v.url||'').slice(0,500), String(v.published_at||'').slice(0,100),
+        `INSERT INTO yt_snapshots (tenant_id, channel_id, video_title, video_url, published_at, view_count, like_count, comment_count, sentiment, summary)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [tid, id, String(v.title||'').slice(0,500), String(v.url||'').slice(0,500), String(v.published_at||'').slice(0,100),
          Number.isFinite(+v.view_count) ? +v.view_count : null,
          Number.isFinite(+v.like_count) ? +v.like_count : null,
          Number.isFinite(+v.comment_count) ? +v.comment_count : null,
@@ -112,14 +120,18 @@ router.post('/scan/:id', _safeAsync(async (req, res) => {
       );
     } catch(_) {}
   }
-  await _db.getPool().query('UPDATE yt_channels SET last_scanned_at=now() WHERE id=$1', [id]);
+  await _db.getPool().query('UPDATE yt_channels SET last_scanned_at=now() WHERE id=$1 AND tenant_id=$2', [id, tid]);
   res.json({ ok:true, channel:c, videos, scanned_at: new Date().toISOString() });
 }));
 
 router.get('/history/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok:true, snapshots:[] });
   const id = parseInt(req.params.id, 10);
-  const r = await _db.getPool().query('SELECT * FROM yt_snapshots WHERE channel_id=$1 ORDER BY captured_at DESC LIMIT 50', [id]);
+  const tid = await _tid(req, 'yt:history');
+  // Ownership gate then tenant-scoped snapshots query for defense-in-depth.
+  const own = await _db.getPool().query('SELECT 1 FROM yt_channels WHERE id=$1 AND tenant_id=$2', [id, tid]);
+  if (!own.rows.length) return _err(res, 404, 'channel not found');
+  const r = await _db.getPool().query('SELECT * FROM yt_snapshots WHERE channel_id=$1 AND tenant_id=$2 ORDER BY captured_at DESC LIMIT 50', [id, tid]);
   res.json({ ok:true, snapshots: r.rows });
 }));
 

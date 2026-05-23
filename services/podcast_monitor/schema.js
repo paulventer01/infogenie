@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 async function ensurePodcastMonitorSchema() {
   if (!_db.hasDb()) return;
   await _db.getPool().query(`
@@ -12,6 +13,8 @@ async function ensurePodcastMonitorSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_pmr_brand_ran ON podcast_monitor_runs(brand, ran_at DESC);
   `);
+  try { await addTenantIdColumn('podcast_monitor_runs'); }
+  catch (e) { console.error('[podcast-monitor] addTenantIdColumn:', e.message); }
   console.log('[podcast-monitor] schema ready');
 }
 module.exports = { ensurePodcastMonitorSchema };

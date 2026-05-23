@@ -2,13 +2,17 @@
 // Pulls items from every conversation surface InfoGenie already monitors
 // (Reddit Pulse, Twitter/X Pulse, Reviews, Quora, Glassdoor, Newsletter mentions,
 // Chatbot conversations) into one inbox-style stream with status tracking.
-// Items dedupe via UNIQUE(source, source_id) so /ingest is idempotent.
+// Items dedupe via UNIQUE(tenant_id, source, source_id) so /ingest is idempotent.
 const express = require('express');
 const router = express.Router();
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const _safeAsync = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const _err = (res, code, msg) => res.status(code).json({ ok: false, error: msg });
+async function _tid(req, label) {
+  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+}
 
 const SOURCES = ['reddit', 'twitter', 'review', 'quora', 'glassdoor', 'newsletter', 'chatbot'];
 const STATUSES = ['new', 'replied', 'resolved', 'snoozed'];
@@ -20,7 +24,6 @@ function _truncate(s, n) {
   return s.length > n ? s.slice(0, n) : s;
 }
 
-// Normalise sentiment from various source shapes (-1/0/1, "pos"/"neg", numeric scores, etc.).
 function _sentiment(raw) {
   if (raw == null) return null;
   if (typeof raw === 'number') {
@@ -35,7 +38,6 @@ function _sentiment(raw) {
   return null;
 }
 
-// Coerce a raw timestamp to a Date or null — never throw on garbage source data.
 function _toDate(v) {
   if (!v) return null;
   try {
@@ -44,19 +46,20 @@ function _toDate(v) {
   } catch { return null; }
 }
 
-// Bulk insert helper — leans on the UNIQUE(source, source_id) index for dedup.
-async function _upsertMany(rows) {
+// Bulk insert helper — leans on the UNIQUE(tenant_id, source, source_id) index.
+async function _upsertMany(rows, tenantId) {
   if (!Array.isArray(rows) || !rows.length) return 0;
   let inserted = 0;
   for (const r of rows) {
     if (!r || typeof r !== 'object' || !r.source_id) continue;
     const ins = await _db.getPool().query(
       `INSERT INTO unified_inbox_items
-        (source, source_id, source_url, author, title, content, sentiment, score, raw, occurred_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-       ON CONFLICT (source, source_id) DO NOTHING
+        (tenant_id, source, source_id, source_url, author, title, content, sentiment, score, raw, occurred_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (tenant_id, source, source_id) DO NOTHING
        RETURNING id`,
       [
+        tenantId,
         r.source,
         String(r.source_id).slice(0, 200),
         _truncate(r.source_url, 1000),
@@ -74,7 +77,6 @@ async function _upsertMany(rows) {
   return inserted;
 }
 
-// Per-item guard so one bad payload doesn't abort the whole source batch.
 function _safeMap(arr, fn) {
   if (!Array.isArray(arr)) return [];
   const out = [];
@@ -97,15 +99,17 @@ router.get('/test', _safeAsync(async (req, res) => {
 }));
 
 // Scan recent rows from each known source table, normalise into the inbox.
-// Idempotent — the UNIQUE index absorbs re-runs.
+// All upstream SELECTs are filtered by tenant_id; all INSERTs stamp tenant_id.
+// Idempotent — the UNIQUE(tenant_id, source, source_id) index absorbs re-runs.
 router.post('/ingest', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database required.');
+  const tid = await _tid(req, 'inbox:ingest');
   const counts = {};
 
-  // Reddit — posts JSONB array on each run
   try {
     const r = await _db.getPool().query(
-      `SELECT id, brand, posts, created_at FROM reddit_pulse_runs ORDER BY id DESC LIMIT 20`
+      `SELECT id, brand, posts, created_at FROM reddit_pulse_runs WHERE tenant_id=$1 ORDER BY id DESC LIMIT 20`,
+      [tid]
     );
     let rows = [];
     for (const run of r.rows) {
@@ -122,13 +126,13 @@ router.post('/ingest', _safeAsync(async (req, res) => {
         occurred_at: p.created_at || p.created_utc || run.created_at,
       })));
     }
-    counts.reddit = await _upsertMany(rows);
+    counts.reddit = await _upsertMany(rows, tid);
   } catch (e) { counts.reddit_error = e.message; }
 
-  // Twitter/X — tweets JSONB array
   try {
     const r = await _db.getPool().query(
-      `SELECT id, brand, tweets, created_at FROM twitter_pulse_runs ORDER BY id DESC LIMIT 20`
+      `SELECT id, brand, tweets, created_at FROM twitter_pulse_runs WHERE tenant_id=$1 ORDER BY id DESC LIMIT 20`,
+      [tid]
     );
     let rows = [];
     for (const run of r.rows) {
@@ -145,13 +149,13 @@ router.post('/ingest', _safeAsync(async (req, res) => {
         occurred_at: t.created_at || run.created_at,
       })));
     }
-    counts.twitter = await _upsertMany(rows);
+    counts.twitter = await _upsertMany(rows, tid);
   } catch (e) { counts.twitter_error = e.message; }
 
-  // Reviews — review_aggregator_runs has reviews JSONB
   try {
     const r = await _db.getPool().query(
-      `SELECT id, brand, platform, reviews, created_at FROM review_aggregator_runs ORDER BY id DESC LIMIT 20`
+      `SELECT id, brand, platform, reviews, created_at FROM review_aggregator_runs WHERE tenant_id=$1 ORDER BY id DESC LIMIT 20`,
+      [tid]
     );
     let rows = [];
     for (const run of r.rows) {
@@ -168,13 +172,13 @@ router.post('/ingest', _safeAsync(async (req, res) => {
         occurred_at: rv.date || rv.created_at || run.created_at,
       })));
     }
-    counts.review = await _upsertMany(rows);
+    counts.review = await _upsertMany(rows, tid);
   } catch (e) { counts.review_error = e.message; }
 
-  // Quora — questions JSONB
   try {
     const r = await _db.getPool().query(
-      `SELECT id, topic, questions, created_at FROM quora_runs ORDER BY id DESC LIMIT 20`
+      `SELECT id, topic, questions, created_at FROM quora_runs WHERE tenant_id=$1 ORDER BY id DESC LIMIT 20`,
+      [tid]
     );
     let rows = [];
     for (const run of r.rows) {
@@ -191,13 +195,13 @@ router.post('/ingest', _safeAsync(async (req, res) => {
         occurred_at: q.date || run.created_at,
       })));
     }
-    counts.quora = await _upsertMany(rows);
+    counts.quora = await _upsertMany(rows, tid);
   } catch (e) { counts.quora_error = e.message; }
 
-  // Glassdoor — reviews JSONB
   try {
     const r = await _db.getPool().query(
-      `SELECT id, company, reviews, created_at FROM glassdoor_runs ORDER BY id DESC LIMIT 20`
+      `SELECT id, company, reviews, created_at FROM glassdoor_runs WHERE tenant_id=$1 ORDER BY id DESC LIMIT 20`,
+      [tid]
     );
     let rows = [];
     for (const run of r.rows) {
@@ -214,16 +218,17 @@ router.post('/ingest', _safeAsync(async (req, res) => {
         occurred_at: rv.date || run.created_at,
       })));
     }
-    counts.glassdoor = await _upsertMany(rows);
+    counts.glassdoor = await _upsertMany(rows, tid);
   } catch (e) { counts.glassdoor_error = e.message; }
 
-  // Newsletter mentions — newsletter_issues table
   try {
     const r = await _db.getPool().query(
       `SELECT i.id, i.subject, i.preview, i.url, i.captured_at, t.brand
        FROM newsletter_issues i
        LEFT JOIN newsletter_targets t ON t.id = i.target_id
-       ORDER BY i.id DESC LIMIT 200`
+       WHERE i.tenant_id=$1
+       ORDER BY i.id DESC LIMIT 200`,
+      [tid]
     );
     const rows = r.rows.map((n) => ({
       source: 'newsletter',
@@ -237,10 +242,12 @@ router.post('/ingest', _safeAsync(async (req, res) => {
       raw: n,
       occurred_at: n.captured_at,
     }));
-    counts.newsletter = await _upsertMany(rows);
+    counts.newsletter = await _upsertMany(rows, tid);
   } catch (e) { counts.newsletter_error = e.message; }
 
-  // Chatbot — only if a conversation table actually exists; ignore otherwise.
+  // Chatbot — table is optional and currently has no tenant_id column.
+  // Fall back to a column-existence check and (if present) filter by tenant_id;
+  // otherwise skip rather than risk cross-tenant leak.
   try {
     const exists = await _db.getPool().query(
       `SELECT 1 FROM information_schema.tables WHERE table_name='chatbot_conversations' LIMIT 1`
@@ -250,9 +257,10 @@ router.post('/ingest', _safeAsync(async (req, res) => {
         `SELECT column_name FROM information_schema.columns WHERE table_name='chatbot_conversations'`
       );
       const colset = new Set(cols.rows.map((r) => r.column_name));
-      if (colset.has('id')) {
+      if (colset.has('id') && colset.has('tenant_id')) {
         const r = await _db.getPool().query(
-          `SELECT * FROM chatbot_conversations ORDER BY id DESC LIMIT 200`
+          `SELECT * FROM chatbot_conversations WHERE tenant_id=$1 ORDER BY id DESC LIMIT 200`,
+          [tid]
         );
         const rows = r.rows.map((c) => ({
           source: 'chatbot',
@@ -266,7 +274,9 @@ router.post('/ingest', _safeAsync(async (req, res) => {
           raw: c,
           occurred_at: c.updated_at || c.created_at,
         }));
-        counts.chatbot = await _upsertMany(rows);
+        counts.chatbot = await _upsertMany(rows, tid);
+      } else {
+        counts.chatbot_skipped = 'no tenant_id column on chatbot_conversations';
       }
     }
   } catch (e) { counts.chatbot_error = e.message; }
@@ -274,11 +284,12 @@ router.post('/ingest', _safeAsync(async (req, res) => {
   res.json({ ok: true, counts });
 }));
 
-// Filter, paginate, search.
+// Filter, paginate, search — always tenant-scoped.
 router.get('/list', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, items: [] });
-  const where = [];
-  const args = [];
+  const tid = await _tid(req, 'inbox:list');
+  const where = ['tenant_id = $1'];
+  const args = [tid];
   const source = String(req.query.source || '').trim();
   if (source && SOURCES.includes(source)) {
     args.push(source);
@@ -305,7 +316,7 @@ router.get('/list', _safeAsync(async (req, res) => {
   args.push(offset);
   const sql = `SELECT id, source, source_id, source_url, author, title, content, sentiment, score, status, assignee, tags, notes, occurred_at, ingested_at, updated_at, handled_at
                FROM unified_inbox_items
-               ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+               WHERE ${where.join(' AND ')}
                ORDER BY COALESCE(occurred_at, ingested_at) DESC, id DESC
                LIMIT $${args.length - 1} OFFSET $${args.length}`;
   const r = await _db.getPool().query(sql, args);
@@ -314,16 +325,18 @@ router.get('/list', _safeAsync(async (req, res) => {
 
 router.get('/stats', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, stats: {} });
-  const byStatus = await _db.getPool().query(
-    `SELECT status, COUNT(*)::int AS n FROM unified_inbox_items GROUP BY status`
+  const tid = await _tid(req, 'inbox:stats');
+  const pool = _db.getPool();
+  const byStatus = await pool.query(
+    `SELECT status, COUNT(*)::int AS n FROM unified_inbox_items WHERE tenant_id=$1 GROUP BY status`, [tid]
   );
-  const bySource = await _db.getPool().query(
-    `SELECT source, COUNT(*)::int AS n FROM unified_inbox_items GROUP BY source`
+  const bySource = await pool.query(
+    `SELECT source, COUNT(*)::int AS n FROM unified_inbox_items WHERE tenant_id=$1 GROUP BY source`, [tid]
   );
-  const bySent = await _db.getPool().query(
-    `SELECT COALESCE(sentiment,'unknown') AS sentiment, COUNT(*)::int AS n FROM unified_inbox_items GROUP BY 1`
+  const bySent = await pool.query(
+    `SELECT COALESCE(sentiment,'unknown') AS sentiment, COUNT(*)::int AS n FROM unified_inbox_items WHERE tenant_id=$1 GROUP BY 1`, [tid]
   );
-  const total = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM unified_inbox_items`);
+  const total = await pool.query(`SELECT COUNT(*)::int AS n FROM unified_inbox_items WHERE tenant_id=$1`, [tid]);
   const status = { new: 0, replied: 0, resolved: 0, snoozed: 0 };
   byStatus.rows.forEach((r) => { status[r.status] = r.n; });
   const source = {};
@@ -337,6 +350,7 @@ router.patch('/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database required.');
   const id = parseInt(req.params.id, 10);
   if (!id) return _err(res, 400, 'Bad id');
+  const tid = await _tid(req, 'inbox:patch');
   const sets = [];
   const args = [];
   const b = req.body || {};
@@ -364,8 +378,9 @@ router.patch('/:id', _safeAsync(async (req, res) => {
   if (!sets.length) return _err(res, 400, 'Nothing to update');
   sets.push('updated_at = now()');
   args.push(id);
+  args.push(tid);
   const upd = await _db.getPool().query(
-    `UPDATE unified_inbox_items SET ${sets.join(', ')} WHERE id = $${args.length}`,
+    `UPDATE unified_inbox_items SET ${sets.join(', ')} WHERE id = $${args.length - 1} AND tenant_id = $${args.length}`,
     args
   );
   if (!upd.rowCount) return _err(res, 404, 'Item not found');
@@ -376,7 +391,10 @@ router.delete('/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database required.');
   const id = parseInt(req.params.id, 10);
   if (!id) return _err(res, 400, 'Bad id');
-  const del = await _db.getPool().query(`DELETE FROM unified_inbox_items WHERE id = $1`, [id]);
+  const tid = await _tid(req, 'inbox:delete');
+  const del = await _db.getPool().query(
+    `DELETE FROM unified_inbox_items WHERE id = $1 AND tenant_id = $2`, [id, tid]
+  );
   if (!del.rowCount) return _err(res, 404, 'Item not found');
   res.json({ ok: true });
 }));

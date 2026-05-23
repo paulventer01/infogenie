@@ -1,11 +1,7 @@
 // Dynamic Audiences ⇄ Drip Campaigns bridge (Phase 3).
-// onJoin(audienceId, contactId, contactEmail)  — enrol the contact into the
-//                                                 bound drip sequence (if any).
-// onLeave(audienceId, contactId, contactEmail) — auto-unsubscribe any ACTIVE
-//                                                 enrollment originating from
-//                                                 this binding (only those —
-//                                                 we never touch enrollments a
-//                                                 user created manually).
+// onJoin/onLeave/getBinding/setBinding/deleteBinding all accept a tenantId so
+// multi-tenant scoping is enforced end-to-end. Tenant is also stamped onto
+// each row on INSERT so direct WHERE clauses are fast.
 //
 // All mutations of the drip JSON store go through global._dripStore.lock so
 // they serialize against the 60-second drip tick and any user-initiated
@@ -18,15 +14,22 @@ function _hasStore() {
   return !!(global._dripStore && typeof global._dripStore.lock === 'function');
 }
 
-async function getBinding(audienceId) {
+async function getBinding(audienceId, tenantId = null) {
   if (!_db.hasDb()) return null;
+  if (tenantId != null) {
+    const r = await _db.getPool().query(
+      `SELECT * FROM audience_drip_bindings WHERE audience_id=$1 AND tenant_id=$2`,
+      [Number(audienceId), tenantId]
+    );
+    return r.rows[0] || null;
+  }
   const r = await _db.getPool().query(
     `SELECT * FROM audience_drip_bindings WHERE audience_id=$1`, [Number(audienceId)]
   );
   return r.rows[0] || null;
 }
 
-async function setBinding(audienceId, payload) {
+async function setBinding(audienceId, payload, tenantId = null) {
   if (!_db.hasDb()) throw new Error('db not configured');
   const aid = Number(audienceId);
   if (!Number.isInteger(aid) || aid <= 0) throw new Error('invalid audience_id');
@@ -46,31 +49,36 @@ async function setBinding(audienceId, payload) {
   const autoExit  = payload?.auto_exit !== false;
 
   const r = await _db.getPool().query(`
-    INSERT INTO audience_drip_bindings (audience_id, sequence, brand, dry_run, enabled, app_origin, auto_exit)
-    VALUES ($1,$2,$3,$4,$5,$6,$7)
+    INSERT INTO audience_drip_bindings (tenant_id, audience_id, sequence, brand, dry_run, enabled, app_origin, auto_exit)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
     ON CONFLICT (audience_id) DO UPDATE SET
-      sequence = EXCLUDED.sequence,
-      brand    = EXCLUDED.brand,
-      dry_run  = EXCLUDED.dry_run,
-      enabled  = EXCLUDED.enabled,
+      tenant_id  = COALESCE(EXCLUDED.tenant_id, audience_drip_bindings.tenant_id),
+      sequence   = EXCLUDED.sequence,
+      brand      = EXCLUDED.brand,
+      dry_run    = EXCLUDED.dry_run,
+      enabled    = EXCLUDED.enabled,
       app_origin = EXCLUDED.app_origin,
       auto_exit  = EXCLUDED.auto_exit,
       updated_at = now()
     RETURNING *
-  `, [aid, JSON.stringify(cleanSeq), brand, dryRun, enabled, appOrigin, autoExit]);
+  `, [tenantId, aid, JSON.stringify(cleanSeq), brand, dryRun, enabled, appOrigin, autoExit]);
   return r.rows[0];
 }
 
-async function deleteBinding(audienceId) {
+async function deleteBinding(audienceId, tenantId = null) {
   if (!_db.hasDb()) return false;
-  await _db.getPool().query(`DELETE FROM audience_drip_bindings WHERE audience_id=$1`, [Number(audienceId)]);
+  if (tenantId != null) {
+    await _db.getPool().query(
+      `DELETE FROM audience_drip_bindings WHERE audience_id=$1 AND tenant_id=$2`,
+      [Number(audienceId), tenantId]
+    );
+  } else {
+    await _db.getPool().query(`DELETE FROM audience_drip_bindings WHERE audience_id=$1`, [Number(audienceId)]);
+  }
   return true;
 }
 
 function _seqSig(seq) {
-  // Mirror the dedup signature used by /api/drips/enroll so a contact who is
-  // ALREADY in this exact drip (e.g. a prior manual enroll) doesn't get a
-  // second copy when they join the segment.
   try {
     const json = JSON.stringify(
       (seq || []).map(s => ({ d:s.day, c:s.channel, m:String(s.msg||'').slice(0,80) }))
@@ -79,10 +87,10 @@ function _seqSig(seq) {
   } catch { return ''; }
 }
 
-async function onJoin(audienceId, contactId, contactEmail) {
+async function onJoin(audienceId, contactId, contactEmail, tenantId = null) {
   if (!_hasStore()) return { skipped: 'drip-store-unavailable' };
   if (!contactEmail) return { skipped: 'no-email' };
-  const binding = await getBinding(audienceId);
+  const binding = await getBinding(audienceId, tenantId);
   if (!binding || !binding.enabled) return { skipped: 'no-binding' };
 
   const sequence = binding.sequence;
@@ -110,11 +118,10 @@ async function onJoin(audienceId, contactId, contactEmail) {
       dryRun: !!binding.dry_run,
       appOrigin: binding.app_origin || '',
       history: [],
-      // Phase 3 provenance — used by onLeave to identify which enrollments to
-      // auto-unsubscribe (and to surface "joined via segment X" in the UI).
       audienceId: Number(audienceId),
       audienceBindingId: binding.id,
       sourceContactId: String(contactId || ''),
+      tenantId: tenantId || binding.tenant_id || null,
     };
     list.push(enr);
     global._dripStore.save(list);
@@ -122,9 +129,9 @@ async function onJoin(audienceId, contactId, contactEmail) {
   });
 }
 
-async function onLeave(audienceId, contactId, contactEmail) {
+async function onLeave(audienceId, contactId, contactEmail, tenantId = null) {
   if (!_hasStore()) return { skipped: 'drip-store-unavailable' };
-  const binding = await getBinding(audienceId);
+  const binding = await getBinding(audienceId, tenantId);
   if (!binding || !binding.auto_exit) return { skipped: 'auto-exit-off' };
   const email = (contactEmail || '').toLowerCase().trim();
 
@@ -134,7 +141,6 @@ async function onLeave(audienceId, contactId, contactEmail) {
     for (const e of list) {
       if (e.status !== 'active') continue;
       if (e.audienceBindingId !== binding.id) continue;
-      // Match by email if we have one, else by sourceContactId.
       const emailMatch = email && e.email === email;
       const idMatch    = !email && contactId && e.sourceContactId === String(contactId);
       if (emailMatch || idMatch) {

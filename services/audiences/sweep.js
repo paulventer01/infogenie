@@ -3,6 +3,11 @@
 // diffs against current membership (audience_segment_members), and writes
 // the join/leave events. Mutex-guarded single-writer; safe to call from
 // the 15-min cron, the manual /refresh endpoint, or the HubSpot webhook.
+//
+// Multi-tenancy (Phase 2B): every membership row, evaluation log entry, and
+// bridge call carries the segment's tenant_id. runSweepOnce can be scoped to
+// one tenant via opts.tenantId, one segment via opts.segmentId, or run
+// across all enabled segments globally (cron path).
 const _db = require('../../db');
 const { evaluateContact } = require('./engine');
 const _bridge   = require('./drip_bridge');
@@ -38,13 +43,11 @@ function _hubspotToContact(h) {
 
 async function _fetchHubspotPage(url, token, attempt = 0) {
   const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  // Honour HubSpot's 429 with Retry-After (max 3 retries, capped 30s wait)
   if (r.status === 429 && attempt < 3) {
     const wait = Math.min(30, Math.max(1, parseInt(r.headers.get('Retry-After') || '2', 10))) * 1000;
     await new Promise(res => setTimeout(res, wait));
     return _fetchHubspotPage(url, token, attempt + 1);
   }
-  // Retry transient 5xx with exponential backoff
   if (r.status >= 500 && attempt < 3) {
     await new Promise(res => setTimeout(res, (attempt + 1) * 1500));
     return _fetchHubspotPage(url, token, attempt + 1);
@@ -61,9 +64,6 @@ async function _fetchAllHubspotContacts(maxPages = 50) {
     const r = await _fetchHubspotPage(url, token);
     const j = await r.json().catch(()=>({}));
     if (!r.ok) {
-      // CRITICAL: if we got a partial fetch and bail, leaves would be wrongly
-      // applied (contacts that exist but weren't in our fetch). Caller checks
-      // result.ok and refuses to apply diffs unless it's true.
       return { ok:false, contacts:all, error: j.message || `hubspot ${r.status}`, partial: all.length > 0 };
     }
     (j.results || []).forEach(h => all.push(_hubspotToContact(h)));
@@ -75,7 +75,10 @@ async function _fetchAllHubspotContacts(maxPages = 50) {
 
 // Evaluate one segment against a contact array, diff against current
 // membership, and apply join/leave writes. Returns counts.
+// All membership rows and the snapshot count are scoped/stamped with the
+// segment's tenant_id.
 async function _applySegmentDiff(client, segment, contacts) {
+  const tid = segment.tenant_id; // may be null on legacy rows; column is nullable in Phase 2B
   const matchedNow = new Set();
   let evalErrors = 0;
   for (const c of contacts) {
@@ -87,32 +90,27 @@ async function _applySegmentDiff(client, segment, contacts) {
   }
   if (evalErrors > 0) console.warn(`[audiences] segment ${segment.id} had ${evalErrors} eval errors (rule may be malformed)`);
 
-  // Current active members for this segment
   const cur = await client.query(
     `SELECT contact_id FROM audience_segment_members WHERE segment_id=$1 AND left_at IS NULL`,
     [segment.id]
   );
   const currentlyIn = new Set(cur.rows.map(r => r.contact_id));
 
-  // Joins: in matchedNow but not currentlyIn
   const joins = [...matchedNow].filter(id => !currentlyIn.has(id));
-  // Leaves: in currentlyIn but not matchedNow
   const leaves = [...currentlyIn].filter(id => !matchedNow.has(id));
 
-  // Apply joins. If a row exists with left_at IS NOT NULL (re-entry), reopen it.
   const joinTargets = [];
   for (const cid of joins) {
     const contact = contacts.find(c => c.id === cid);
     await client.query(`
-      INSERT INTO audience_segment_members (segment_id, contact_id, contact_email, joined_at, left_at)
-      VALUES ($1,$2,$3, now(), NULL)
+      INSERT INTO audience_segment_members (tenant_id, segment_id, contact_id, contact_email, joined_at, left_at)
+      VALUES ($1,$2,$3,$4, now(), NULL)
       ON CONFLICT (segment_id, contact_id) DO UPDATE
-        SET joined_at = now(), left_at = NULL, contact_email = EXCLUDED.contact_email
-    `, [segment.id, cid, contact?.email || null]);
+        SET tenant_id = COALESCE(EXCLUDED.tenant_id, audience_segment_members.tenant_id),
+            joined_at = now(), left_at = NULL, contact_email = EXCLUDED.contact_email
+    `, [tid, segment.id, cid, contact?.email || null]);
     joinTargets.push({ id: cid, email: contact?.email || null });
   }
-  // Apply leaves — capture the emails BEFORE we mark them left_at so the drip
-  // bridge has something to match on.
   let leaveTargets = [];
   if (leaves.length) {
     const before = await client.query(
@@ -127,22 +125,30 @@ async function _applySegmentDiff(client, segment, contacts) {
       [segment.id, leaves]
     );
   }
-  // Update snapshot count on the segment row
-  await client.query(
-    `UPDATE audience_segments SET member_count=$1, last_evaluated_at=now(), updated_at=now() WHERE id=$2`,
-    [matchedNow.size, segment.id]
-  );
+  // Snapshot count — hard-scoped by tenant (when known) so cross-tenant
+  // segment-id collisions can never overwrite the wrong row.
+  if (tid != null) {
+    await client.query(
+      `UPDATE audience_segments SET member_count=$1, last_evaluated_at=now(), updated_at=now()
+       WHERE id=$2 AND tenant_id=$3`,
+      [matchedNow.size, segment.id, tid]
+    );
+  } else {
+    await client.query(
+      `UPDATE audience_segments SET member_count=$1, last_evaluated_at=now(), updated_at=now() WHERE id=$2`,
+      [matchedNow.size, segment.id]
+    );
+  }
 
   return {
     matched: matchedNow.size,
     added: joins.length,
     removed: leaves.length,
-    joinTargets,    // [{id,email}] for drip bridge — fired AFTER commit
+    joinTargets,
     leaveTargets,
   };
 }
 
-// ── Mutex (single-writer) ───────────────────────────────────────────────────
 let _sweepTail = Promise.resolve();
 function _withLock(fn) {
   const next = _sweepTail.then(() => fn(), () => fn());
@@ -150,21 +156,40 @@ function _withLock(fn) {
   return next;
 }
 
-// Run the sweep across ALL enabled segments, or just one if segmentId is set.
+// opts:
+//   segmentId — restrict to a single segment id
+//   tenantId  — restrict to one tenant's enabled segments (api /refresh path)
+//   maxPages  — HubSpot pagination cap
 async function runSweepOnce(opts = {}) {
   if (!_db.hasDb()) return { ok:false, error:'db not configured' };
   return _withLock(async () => {
     const t0 = Date.now();
     const pool = _db.getPool();
-    const segs = await pool.query(
-      opts.segmentId
-        ? `SELECT * FROM audience_segments WHERE id=$1`
-        : `SELECT * FROM audience_segments WHERE enabled = true`,
-      opts.segmentId ? [Number(opts.segmentId)] : []
-    );
+    let segs;
+    if (opts.segmentId) {
+      // Single-segment refresh — if a tenantId is supplied, hard-scope so a
+      // caller from tenant A cannot refresh tenant B's segment by guessing id.
+      if (opts.tenantId != null) {
+        segs = await pool.query(
+          `SELECT * FROM audience_segments WHERE id=$1 AND tenant_id=$2`,
+          [Number(opts.segmentId), opts.tenantId]
+        );
+      } else {
+        segs = await pool.query(
+          `SELECT * FROM audience_segments WHERE id=$1`, [Number(opts.segmentId)]
+        );
+      }
+    } else if (opts.tenantId != null) {
+      segs = await pool.query(
+        `SELECT * FROM audience_segments WHERE enabled = true AND tenant_id=$1`,
+        [opts.tenantId]
+      );
+    } else {
+      // Cron path — sweep every enabled segment across all tenants.
+      segs = await pool.query(`SELECT * FROM audience_segments WHERE enabled = true`);
+    }
     if (!segs.rows.length) return { ok:true, segments:0, note:'no segments to evaluate' };
 
-    // Fetch contacts ONCE per sweep (HubSpot is the heaviest cost).
     const fetchRes = await _fetchAllHubspotContacts(opts.maxPages || 50);
     const source = fetchRes.ok ? 'hubspot' : (fetchRes.contacts.length ? 'hubspot_partial' : 'unavailable');
 
@@ -176,24 +201,19 @@ async function runSweepOnce(opts = {}) {
         await client.query('BEGIN');
         const r = await _applySegmentDiff(client, seg, fetchRes.contacts);
         await client.query(
-          `INSERT INTO audience_evaluation_log (segment_id, contacts_scanned, members_added, members_removed, duration_ms, source)
-           VALUES ($1,$2,$3,$4,$5,$6)`,
-          [seg.id, fetchRes.contacts.length, r.added, r.removed, Date.now()-segT0, source]
+          `INSERT INTO audience_evaluation_log (tenant_id, segment_id, contacts_scanned, members_added, members_removed, duration_ms, source)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [seg.tenant_id, seg.id, fetchRes.contacts.length, r.added, r.removed, Date.now()-segT0, source]
         );
         await client.query('COMMIT');
 
-        // Bridges — fire onJoin/onLeave AFTER commit so a bridge failure can
-        // never roll back the membership writes. Best-effort + per-target
-        // try/catch, so one failure never blocks subsequent contacts. We
-        // run all three bridges (drip, hubspot list, re-engagement) for
-        // each contact in parallel for speed.
         const counters = { drip:{j:0,l:0}, hslist:{j:0,l:0}, reng:{j:0,l:0} };
         async function _fanOut(action, targets, counter) {
           for (const t of targets) {
             const calls = [
-              _bridge[action](seg.id, t.id, t.email).catch(e => ({ _err:'drip:'+e.message })),
-              _hsList[action](seg.id, t.id, t.email).catch(e => ({ _err:'hslist:'+e.message })),
-              _reengage[action](seg.id, t.id, t.email).catch(e => ({ _err:'reng:'+e.message })),
+              _bridge[action](seg.id, t.id, t.email, seg.tenant_id).catch(e => ({ _err:'drip:'+e.message })),
+              _hsList[action](seg.id, t.id, t.email, seg.tenant_id).catch(e => ({ _err:'hslist:'+e.message })),
+              _reengage[action](seg.id, t.id, t.email, seg.tenant_id).catch(e => ({ _err:'reng:'+e.message })),
             ];
             const [d,h,n] = await Promise.all(calls);
             if (d?._err) console.warn(`[audiences→${d._err.split(':')[0]}] ${action} seg=${seg.id} ${t.id}: ${d._err}`);
@@ -223,8 +243,8 @@ async function runSweepOnce(opts = {}) {
       } catch (e) {
         await client.query('ROLLBACK').catch(()=>{});
         await pool.query(
-          `INSERT INTO audience_evaluation_log (segment_id, contacts_scanned, source, error) VALUES ($1,$2,$3,$4)`,
-          [seg.id, fetchRes.contacts.length, source, e.message]
+          `INSERT INTO audience_evaluation_log (tenant_id, segment_id, contacts_scanned, source, error) VALUES ($1,$2,$3,$4,$5)`,
+          [seg.tenant_id, seg.id, fetchRes.contacts.length, source, e.message]
         ).catch(()=>{});
         results.push({ segmentId: seg.id, name: seg.name, error: e.message });
       } finally { client.release(); }
@@ -243,7 +263,6 @@ async function runSweepOnce(opts = {}) {
   });
 }
 
-// ── Cron ────────────────────────────────────────────────────────────────────
 let _timer = null, _running = false;
 async function _safeRun() {
   if (_running) { console.log('[audiences] sweep skipped — previous still running'); return; }
@@ -258,15 +277,15 @@ async function _safeRun() {
 }
 function startSweepCron(intervalMinutes = 15) {
   if (_timer) return false;
-  // First run 45s after boot to avoid hammering HubSpot during cold start
   setTimeout(_safeRun, 45 * 1000);
   _timer = setInterval(_safeRun, intervalMinutes * 60 * 1000);
   return true;
 }
 
-// ── Single-contact re-evaluation (called by webhook) ───────────────────────
-// Runs all enabled segments against a single freshly-fetched contact and
-// writes the join/leave events for that contact only.
+// Webhook path — HubSpot push for a single contact. We re-evaluate that
+// contact against every enabled segment across every tenant (the HubSpot
+// portal is, today, shared platform-wide). Each membership row is stamped
+// with the segment's own tenant_id so cross-tenant leakage is impossible.
 async function reevaluateContact(contactId) {
   if (!_db.hasDb()) return { ok:false, error:'db not configured' };
   const token = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
@@ -293,17 +312,19 @@ async function reevaluateContact(contactId) {
           const isIn = cur.rows.length > 0;
           if (matches && !isIn) {
             await client.query(`
-              INSERT INTO audience_segment_members (segment_id, contact_id, contact_email, joined_at, left_at)
-              VALUES ($1,$2,$3, now(), NULL)
-              ON CONFLICT (segment_id, contact_id) DO UPDATE SET joined_at = now(), left_at = NULL, contact_email = EXCLUDED.contact_email
-            `, [seg.id, contact.id, contact.email || null]);
-            summary.push({ segmentId: seg.id, action: 'joined', segName: seg.name });
+              INSERT INTO audience_segment_members (tenant_id, segment_id, contact_id, contact_email, joined_at, left_at)
+              VALUES ($1,$2,$3,$4, now(), NULL)
+              ON CONFLICT (segment_id, contact_id) DO UPDATE
+                SET tenant_id = COALESCE(EXCLUDED.tenant_id, audience_segment_members.tenant_id),
+                    joined_at = now(), left_at = NULL, contact_email = EXCLUDED.contact_email
+            `, [seg.tenant_id, seg.id, contact.id, contact.email || null]);
+            summary.push({ segmentId: seg.id, tenantId: seg.tenant_id, action: 'joined', segName: seg.name });
           } else if (!matches && isIn) {
             await client.query(
               `UPDATE audience_segment_members SET left_at=now() WHERE segment_id=$1 AND contact_id=$2 AND left_at IS NULL`,
               [seg.id, contact.id]
             );
-            summary.push({ segmentId: seg.id, action: 'left', segName: seg.name });
+            summary.push({ segmentId: seg.id, tenantId: seg.tenant_id, action: 'left', segName: seg.name });
           }
         } catch (e) { console.warn(`[audiences-reeval] seg=${seg.id} ${e.message}`); }
       }
@@ -313,14 +334,13 @@ async function reevaluateContact(contactId) {
       throw e;
     } finally { client.release(); }
 
-    // Bridges after commit — best effort, parallel per change.
     for (const ch of summary) {
       const action = ch.action === 'joined' ? 'onJoin' : ch.action === 'left' ? 'onLeave' : null;
       if (!action) continue;
       const calls = [
-        _bridge[action](ch.segmentId, contact.id, contact.email).catch(e => console.warn(`[audiences→drip] reeval seg=${ch.segmentId}: ${e.message}`)),
-        _hsList[action](ch.segmentId, contact.id, contact.email).catch(e => console.warn(`[audiences→hslist] reeval seg=${ch.segmentId}: ${e.message}`)),
-        _reengage[action](ch.segmentId, contact.id, contact.email).catch(e => console.warn(`[audiences→reng] reeval seg=${ch.segmentId}: ${e.message}`)),
+        _bridge[action](ch.segmentId, contact.id, contact.email, ch.tenantId).catch(e => console.warn(`[audiences→drip] reeval seg=${ch.segmentId}: ${e.message}`)),
+        _hsList[action](ch.segmentId, contact.id, contact.email, ch.tenantId).catch(e => console.warn(`[audiences→hslist] reeval seg=${ch.segmentId}: ${e.message}`)),
+        _reengage[action](ch.segmentId, contact.id, contact.email, ch.tenantId).catch(e => console.warn(`[audiences→reng] reeval seg=${ch.segmentId}: ${e.message}`)),
       ];
       await Promise.all(calls);
     }

@@ -1,8 +1,12 @@
 const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
+async function _tid(req, label) {
+  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+}
 
 const COUNTRY_TO_LOC = { us:2840, gb:2826, ca:2124, au:2036, in:2356, de:2276, fr:2250, jp:2392, br:2076, mx:2484, za:2710, nl:2528, es:2724, it:2380, sg:2702 };
 
@@ -75,9 +79,12 @@ router.post('/explore', async (req, res) => {
     .slice(0, limit);
 
   if (_db.hasDb()) {
-    try { await _db.getPool().query(
-      `INSERT INTO keyword_explorer_runs (seed, country, seed_metrics, ideas) VALUES ($1,$2,$3,$4)`,
-      [seed, country, JSON.stringify(seed_metrics), JSON.stringify(ideasArr)]); } catch (e) { console.warn('[keyword-explorer] persist:', e.message); }
+    try {
+      const tid = await _tid(req, 'kw-explorer:explore');
+      await _db.getPool().query(
+        `INSERT INTO keyword_explorer_runs (tenant_id, seed, country, seed_metrics, ideas) VALUES ($1,$2,$3,$4,$5)`,
+        [tid, seed, country, JSON.stringify(seed_metrics), JSON.stringify(ideasArr)]);
+    } catch (e) { console.warn('[keyword-explorer] persist:', e.message); }
   }
 
   res.json({ ok:true, source:'dataforseo_labs', seed_metrics, ideas: ideasArr, total_ideas: ideasArr.length });
@@ -86,7 +93,10 @@ router.post('/explore', async (req, res) => {
 router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, runs:[] });
   try {
-    const r = await _db.getPool().query(`SELECT id, seed, country, ran_at, jsonb_array_length(ideas) AS idea_count FROM keyword_explorer_runs ORDER BY ran_at DESC LIMIT 30`);
+    const tid = await _tid(req, 'kw-explorer:history');
+    const r = await _db.getPool().query(
+      `SELECT id, seed, country, ran_at, jsonb_array_length(ideas) AS idea_count FROM keyword_explorer_runs WHERE tenant_id=$1 ORDER BY ran_at DESC LIMIT 30`,
+      [tid]);
     res.json({ ok:true, runs: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -94,7 +104,10 @@ router.get('/history', async (req, res) => {
 router.get('/:id', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
-    const r = await _db.getPool().query(`SELECT * FROM keyword_explorer_runs WHERE id=$1`, [Number(req.params.id)]);
+    const tid = await _tid(req, 'kw-explorer:get');
+    const r = await _db.getPool().query(
+      `SELECT * FROM keyword_explorer_runs WHERE id=$1 AND tenant_id=$2`,
+      [Number(req.params.id), tid]);
     if (!r.rows.length) return _err(res, 404, 'not found');
     res.json({ ok:true, run: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }

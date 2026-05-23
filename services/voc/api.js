@@ -1,9 +1,13 @@
 const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
+async function _tid(req, label) {
+  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+}
 
 async function _fetchMentions(brand, days) {
   const port = process.env.PORT || 5000;
@@ -85,9 +89,10 @@ router.post('/mine', async (req, res) => {
   if (!result || !Array.isArray(result.themes)) { result = _templateCluster({ brand, mentions }); source = 'template'; }
   if (_db.hasDb()) {
     try {
+      const tid = await _tid(req, 'voc:mine');
       await _db.getPool().query(
-        `INSERT INTO voc_runs (brand, lookback_days, mention_count, themes, summary, generated_by) VALUES ($1,$2,$3,$4,$5,$6)`,
-        [brand, days, mentions.length, JSON.stringify(result.themes), result.summary || '', source]);
+        `INSERT INTO voc_runs (tenant_id, brand, lookback_days, mention_count, themes, summary, generated_by) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [tid, brand, days, mentions.length, JSON.stringify(result.themes), result.summary || '', source]);
     } catch (e) { console.warn('[voc] persist failed:', e.message); }
   }
   res.json({ ok:true, source, brand, days, mention_count: mentions.length, summary: result.summary || '', themes: result.themes });
@@ -97,8 +102,10 @@ router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
   try {
+    const tid = await _tid(req, 'voc:history');
     const r = await _db.getPool().query(
-      `SELECT id, brand, lookback_days, mention_count, summary, generated_by, created_at FROM voc_runs ORDER BY created_at DESC LIMIT $1`, [limit]);
+      `SELECT id, brand, lookback_days, mention_count, summary, generated_by, created_at FROM voc_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2`,
+      [tid, limit]);
     res.json({ ok:true, runs: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -108,7 +115,9 @@ router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) return _err(res, 400, 'bad id');
   try {
-    const r = await _db.getPool().query(`SELECT * FROM voc_runs WHERE id=$1`, [id]);
+    const tid = await _tid(req, 'voc:get');
+    const r = await _db.getPool().query(
+      `SELECT * FROM voc_runs WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     if (!r.rows[0]) return _err(res, 404, 'not found');
     res.json({ ok:true, run: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }

@@ -1,9 +1,13 @@
 const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
+async function _tid(req, label) {
+  return await _tenantCtx.resolveTenantId(req, { label, allowFallback: true });
+}
 
 const URL_RE = /^https?:\/\/[^\s]+$/i;
 
@@ -64,22 +68,27 @@ function _regexExtractPrice(markdown) {
   return { product_name: null, price: parseFloat(m[1].replace(',','.')), currency: cur, original_price: null, in_stock: null, promo: '' };
 }
 
+// List targets for caller's tenant, with latest snapshot + count (both
+// scoped by tenant so a leaked global snapshot can't surface).
 router.get('/targets', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
+    const tid = await _tid(req, 'pw:targets-list');
     const r = await _db.getPool().query(`
       SELECT t.*, (
         SELECT row_to_json(s) FROM (
           SELECT product_name, price, currency, original_price, in_stock, promo, taken_at
-          FROM pricing_watch_snapshots WHERE target_id=t.id ORDER BY taken_at DESC LIMIT 1
+          FROM pricing_watch_snapshots WHERE target_id=t.id AND tenant_id=$1 ORDER BY taken_at DESC LIMIT 1
         ) s
       ) AS latest,
-      (SELECT COUNT(*) FROM pricing_watch_snapshots WHERE target_id=t.id) AS snapshot_count
-      FROM pricing_watch_targets t ORDER BY t.created_at DESC`);
+      (SELECT COUNT(*) FROM pricing_watch_snapshots WHERE target_id=t.id AND tenant_id=$1) AS snapshot_count
+      FROM pricing_watch_targets t WHERE t.tenant_id=$1 ORDER BY t.created_at DESC`, [tid]);
     res.json({ ok:true, targets: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
 
+// Add or update a target. UNIQUE is (tenant_id, url) so two tenants can each
+// track the same URL.
 router.post('/targets', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const label = String(req.body?.label || '').trim().slice(0, 120);
@@ -88,10 +97,11 @@ router.post('/targets', async (req, res) => {
   if (!label || !url) return _err(res, 400, 'label + url required');
   if (!URL_RE.test(url)) return _err(res, 400, 'url must be http(s)://');
   try {
+    const tid = await _tid(req, 'pw:targets-add');
     const r = await _db.getPool().query(
-      `INSERT INTO pricing_watch_targets (label, url, competitor) VALUES ($1,$2,$3)
-       ON CONFLICT (url) DO UPDATE SET label=EXCLUDED.label, competitor=EXCLUDED.competitor RETURNING *`,
-      [label, url, competitor]);
+      `INSERT INTO pricing_watch_targets (tenant_id, label, url, competitor) VALUES ($1,$2,$3,$4)
+       ON CONFLICT (tenant_id, url) DO UPDATE SET label=EXCLUDED.label, competitor=EXCLUDED.competitor RETURNING *`,
+      [tid, label, url, competitor]);
     res.json({ ok:true, target: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -100,16 +110,26 @@ router.delete('/targets/:id', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
-  try { await _db.getPool().query(`DELETE FROM pricing_watch_targets WHERE id=$1`, [id]); res.json({ ok:true }); }
+  try {
+    const tid = await _tid(req, 'pw:targets-del');
+    await _db.getPool().query(
+      `DELETE FROM pricing_watch_targets WHERE id=$1 AND tenant_id=$2`, [id, tid]);
+    res.json({ ok:true });
+  }
   catch (e) { _err(res, 500, e.message); }
 });
 
+// Scan one target. Target lookup hard-scoped to caller's tenant (cross-tenant
+// guess returns 404). Snapshot INSERT stamps the same tid.
 router.post('/scan/:id', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
   try {
-    const t = (await _db.getPool().query(`SELECT * FROM pricing_watch_targets WHERE id=$1`, [id])).rows[0];
+    const tid = await _tid(req, 'pw:scan');
+    const t = (await _db.getPool().query(
+      `SELECT * FROM pricing_watch_targets WHERE id=$1 AND tenant_id=$2`, [id, tid]
+    )).rows[0];
     if (!t) return _err(res, 404, 'target not found');
     const md = await _firecrawlScrape(t.url);
     if (!md) return _err(res, 502, 'scrape failed (Firecrawl key missing or page blocked)');
@@ -117,21 +137,27 @@ router.post('/scan/:id', async (req, res) => {
     let source = 'openai';
     if (!extract) { extract = _regexExtractPrice(md) || { product_name:null, price:null, currency:null, original_price:null, in_stock:null, promo:'' }; source = 'regex'; }
     const ins = await _db.getPool().query(
-      `INSERT INTO pricing_watch_snapshots (target_id, product_name, price, currency, original_price, in_stock, promo, raw_extract)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [id, extract.product_name || t.label, extract.price, extract.currency, extract.original_price, extract.in_stock, extract.promo || '', JSON.stringify({ source, extract })]);
+      `INSERT INTO pricing_watch_snapshots (tenant_id, target_id, product_name, price, currency, original_price, in_stock, promo, raw_extract)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [tid, id, extract.product_name || t.label, extract.price, extract.currency, extract.original_price, extract.in_stock, extract.promo || '', JSON.stringify({ source, extract })]);
     res.json({ ok:true, snapshot: ins.rows[0], source });
   } catch (e) { _err(res, 500, e.message); }
 });
 
+// Snapshot history — ownership-gated then tenant-scoped query for
+// defense-in-depth (matches serp_tracker pattern).
 router.get('/snapshots/:id', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
   const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
   try {
+    const tid = await _tid(req, 'pw:snapshots');
+    const own = await _db.getPool().query(
+      `SELECT 1 FROM pricing_watch_targets WHERE id=$1 AND tenant_id=$2`, [id, tid]);
+    if (!own.rows.length) return _err(res, 404, 'target not found');
     const r = await _db.getPool().query(
-      `SELECT * FROM pricing_watch_snapshots WHERE target_id=$1 ORDER BY taken_at DESC LIMIT $2`, [id, limit]);
+      `SELECT * FROM pricing_watch_snapshots WHERE target_id=$1 AND tenant_id=$2 ORDER BY taken_at DESC LIMIT $3`, [id, tid, limit]);
     res.json({ ok:true, snapshots: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });

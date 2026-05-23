@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 const hasDb = () => _db.hasDb();
 const pool = { query: (...a) => _db.getPool().query(...a) };
 
@@ -34,6 +35,13 @@ async function ensureJourneySchema() {
     CREATE INDEX IF NOT EXISTS idx_journey_runs_journey ON journey_runs(journey_id);
     CREATE INDEX IF NOT EXISTS idx_journey_runs_pending ON journey_runs(status, next_run_at) WHERE status='running';
   `);
+
+  // Multi-tenancy (Phase 2B) — idempotent column adds. journey ids are user-
+  // generatable TEXT so tenant scoping at the query layer is critical.
+  for (const t of ['journeys', 'journey_runs']) {
+    try { await addTenantIdColumn(t); }
+    catch (e) { console.error(`[journey-builder] addTenantIdColumn ${t}: ${e.message}`); }
+  }
 }
 
 module.exports = { ensureJourneySchema };
