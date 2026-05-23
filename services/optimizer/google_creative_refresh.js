@@ -220,14 +220,15 @@ async function _pauseRSA(auth, adGroupId, adId) {
 // ── Log refresh decision ────────────────────────────────────────────────────
 async function _logRefresh({ camp, oldAd, newCopy, newAdId, applied, error, runId }) {
   try {
+    // tenant_id inherited from the parent campaign row.
     await _db.getPool().query(`
       INSERT INTO creative_refreshes
-        (campaign_id, old_ad_id, old_headline, old_body,
+        (tenant_id, campaign_id, old_ad_id, old_headline, old_body,
          new_ad_id, new_headline, new_body, new_image_url,
          reason, perf_snapshot, applied, apply_error, run_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     `, [
-      camp.id,
+      camp.tenant_id, camp.id,
       oldAd?.id || null,
       (oldAd?.headlines || []).slice(0,3).join(' | ') || null,
       (oldAd?.descriptions || []).slice(0,2).join(' | ') || null,
@@ -284,10 +285,10 @@ async function _refreshOneAd({ camp, ad, reason, dryRun, runId, auth }) {
   // Register new ad in our DB
   try {
     await _db.getPool().query(`
-      INSERT INTO ad_creatives (campaign_id, platform_ad_id, adset_id, headlines, descriptions, final_url, status, generation, parent_ad_id)
-      VALUES ($1,$2,$3,$4,$5,$6,'paused_pending_review',COALESCE((SELECT MAX(generation)+1 FROM ad_creatives WHERE campaign_id=$1),2),$7)
+      INSERT INTO ad_creatives (tenant_id, campaign_id, platform_ad_id, adset_id, headlines, descriptions, final_url, status, generation, parent_ad_id)
+      VALUES ($8,$1,$2,$3,$4,$5,$6,'paused_pending_review',COALESCE((SELECT MAX(generation)+1 FROM ad_creatives WHERE campaign_id=$1),2),$7)
       ON CONFLICT (campaign_id, platform_ad_id) DO NOTHING
-    `, [camp.id, created.ad_id, ad.adgroup_id, JSON.stringify(copy.headlines), JSON.stringify(copy.descriptions), finalUrl, ad.id]);
+    `, [camp.id, created.ad_id, ad.adgroup_id, JSON.stringify(copy.headlines), JSON.stringify(copy.descriptions), finalUrl, ad.id, camp.tenant_id]);
   } catch (e) { console.error('[google-creative-refresh] register err:', e.message); }
   await _logRefresh({
     camp, oldAd: ad,

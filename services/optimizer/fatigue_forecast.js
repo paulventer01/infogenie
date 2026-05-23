@@ -104,18 +104,20 @@ async function forecastCreative(creative, runId) {
     reason = `CTR stable or improving (slope ${(fit.slope * 1000).toFixed(2)}‰/day). No action needed.`;
   }
 
+  // tenant_id inherited from the parent ad_creatives row (which was populated
+  // from its parent ad_campaigns row during the Phase 2A backfill).
   await _db.getPool().query(`
     INSERT INTO creative_fatigue_forecasts
-      (campaign_id, creative_id, platform_ad_id, window_days, samples,
+      (tenant_id, campaign_id, creative_id, platform_ad_id, window_days, samples,
        current_ctr, slope_per_day, projected_ctr_3d, days_until_floor,
        ctr_floor, predicted_fatigue, reason, run_id)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    VALUES ($14,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
   `, [
     creative.campaign_id, creative.id, creative.platform_ad_id || null,
     WINDOW_DAYS, points.length,
     +currentCtr.toFixed(5), +fit.slope.toFixed(7),
     +projectedCtr3d.toFixed(5), daysUntilFloor,
-    CTR_FLOOR, predictedFatigue, reason, runId,
+    CTR_FLOOR, predictedFatigue, reason, runId, creative.tenant_id,
   ]);
 
   return {

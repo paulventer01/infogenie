@@ -6,7 +6,9 @@ const { fetchPerf } = require('./platforms');
 async function ingestOnce() {
   if (!_db.hasDb()) return { ok: false, error: 'no DB' };
   const pool = _db.getPool();
-  const camps = await pool.query(`SELECT id, platform, platform_camp_id, name FROM ad_campaigns WHERE optimizer_enabled = true`);
+  // tenant_id flows down from the parent ad_campaigns row so cron-ingested
+  // metrics land in the same tenant as the campaign they describe.
+  const camps = await pool.query(`SELECT id, tenant_id, platform, platform_camp_id, name FROM ad_campaigns WHERE optimizer_enabled = true`);
   const summary = { campaigns: camps.rows.length, ok: 0, failed: 0, rows: 0, errors: [] };
   for (const c of camps.rows) {
     try {
@@ -14,12 +16,13 @@ async function ingestOnce() {
       if (!res.ok) { summary.failed++; summary.errors.push({ id: c.id, name: c.name, error: res.error }); continue; }
       for (const row of res.rows) {
         await pool.query(`
-          INSERT INTO ad_performance_hourly (campaign_id, bucket_hour, spend, impressions, clicks, conversions, revenue, raw, fetched_at)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
+          INSERT INTO ad_performance_hourly (tenant_id, campaign_id, bucket_hour, spend, impressions, clicks, conversions, revenue, raw, fetched_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now())
           ON CONFLICT (campaign_id, bucket_hour) DO UPDATE SET
+            tenant_id=EXCLUDED.tenant_id,
             spend=EXCLUDED.spend, impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks,
             conversions=EXCLUDED.conversions, revenue=EXCLUDED.revenue, raw=EXCLUDED.raw, fetched_at=now()
-        `, [c.id, row.bucket_hour, row.spend, row.impressions, row.clicks, row.conversions, row.revenue, row.raw || {}]);
+        `, [c.tenant_id, c.id, row.bucket_hour, row.spend, row.impressions, row.clicks, row.conversions, row.revenue, row.raw || {}]);
         summary.rows++;
       }
       summary.ok++;

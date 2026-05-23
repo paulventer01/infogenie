@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const _tenantMig = require('../tenants/migration');
 
 async function ensureSovSchema() {
   if (!_db.hasDb()) return;
@@ -17,6 +18,7 @@ async function ensureSovSchema() {
     CREATE INDEX IF NOT EXISTS idx_sov_target ON sov_snapshots(target_brand, taken_at DESC);
     CREATE INDEX IF NOT EXISTS idx_sov_watch ON sov_snapshots(watchlist_id, taken_at DESC);
   `);
+  await _tenantMig.addTenantIdColumn('sov_snapshots');
 }
 
 module.exports = { ensureSovSchema };

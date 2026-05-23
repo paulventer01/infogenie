@@ -1,6 +1,7 @@
 const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
@@ -82,17 +83,18 @@ router.post('/generate', async (req, res) => {
   if (!brand) return _err(res, 400, 'brand required');
   if (!context) return _err(res, 400, 'context required');
 
-  // Optional: hydrate from a crisis_incident or battle_card
+  // Optional: hydrate from a crisis_incident or battle_card — tenant-scoped lookup
   let hydratedContext = context;
-  if (req.body?.from_incident_id && _db.hasDb()) {
+  if (_db.hasDb() && (req.body?.from_incident_id || req.body?.from_battle_card_id)) {
     try {
-      const r = await _db.getPool().query('SELECT headline, detail FROM crisis_incidents WHERE id=$1', [Number(req.body.from_incident_id)]);
-      if (r.rows[0]) hydratedContext = `Crisis incident: ${r.rows[0].headline}\n${r.rows[0].detail}\n\nAdditional context: ${context}`;
-    } catch {}
-  } else if (req.body?.from_battle_card_id && _db.hasDb()) {
-    try {
-      const r = await _db.getPool().query('SELECT competitor, summary FROM battle_cards WHERE id=$1', [Number(req.body.from_battle_card_id)]);
-      if (r.rows[0]) hydratedContext = `Competitor: ${r.rows[0].competitor}\n${r.rows[0].summary}\n\nAdditional context: ${context}`;
+      const tid = await _tenantCtx.resolveTenantId(req, { label:'press_release:hydrate', allowFallback:true });
+      if (req.body?.from_incident_id) {
+        const r = await _db.getPool().query('SELECT headline, detail FROM crisis_incidents WHERE id=$1 AND tenant_id=$2', [Number(req.body.from_incident_id), tid]);
+        if (r.rows[0]) hydratedContext = `Crisis incident: ${r.rows[0].headline}\n${r.rows[0].detail}\n\nAdditional context: ${context}`;
+      } else if (req.body?.from_battle_card_id) {
+        const r = await _db.getPool().query('SELECT competitor, summary FROM battle_cards WHERE id=$1 AND tenant_id=$2', [Number(req.body.from_battle_card_id), tid]);
+        if (r.rows[0]) hydratedContext = `Competitor: ${r.rows[0].competitor}\n${r.rows[0].summary}\n\nAdditional context: ${context}`;
+      }
     } catch {}
   }
 

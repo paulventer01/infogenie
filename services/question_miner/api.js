@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safe(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[question-miner]', e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
@@ -98,10 +99,11 @@ router.post('/to-calendar', _safe(async (req, res) => {
   const channel = String(req.body?.channel || 'blog').slice(0, 40);
   const when = req.body?.scheduled_for || new Date(Date.now() + 7 * 86400000).toISOString();
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'question_miner:to-calendar', allowFallback:true });
     await _db.getPool().query(
-      `INSERT INTO content_calendar_items (title, channel, scheduled_for, status, body)
-       VALUES ($1,$2,$3,'draft',$4)`,
-      [question, channel, when, `Article topic: ${question}\n\nSourced from Question Mining tool.`]
+      `INSERT INTO content_calendar_items (tenant_id, title, channel, scheduled_for, status, body)
+       VALUES ($1,$2,$3,$4,'draft',$5)`,
+      [tid, question, channel, when, `Article topic: ${question}\n\nSourced from Question Mining tool.`]
     );
     res.json({ ok: true });
   } catch (e) { _err(res, 500, e.message); }

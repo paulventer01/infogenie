@@ -1,4 +1,5 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 
 async function ensureConversionBoostersSchema() {
   if (!_db.hasDb || !_db.hasDb()) return;
@@ -27,6 +28,8 @@ async function ensureConversionBoostersSchema() {
     CREATE INDEX IF NOT EXISTS idx_cb_events_widget ON cb_events(widget_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_cb_events_type ON cb_events(widget_id, event_type);
   `);
+  await addTenantIdColumn('cb_widgets');
+  await addTenantIdColumn('cb_events');
 }
 
 module.exports = { ensureConversionBoostersSchema };

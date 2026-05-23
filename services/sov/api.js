@@ -1,5 +1,6 @@
 const express = require('express');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
@@ -13,14 +14,15 @@ router.get('/series', async (req, res) => {
   if (!target) return _err(res, 400, 'brand required');
   const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 30));
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'sov:series', allowFallback:true });
     const pool = _db.getPool();
 
     // Get the allowed brand set for this target — the brand itself + its declared competitors.
     let allowed = null;
     try {
       const w = await pool.query(
-        `SELECT competitors FROM crisis_watchlist WHERE LOWER(brand)=LOWER($1) LIMIT 1`,
-        [target]
+        `SELECT competitors FROM crisis_watchlist WHERE tenant_id=$1 AND LOWER(brand)=LOWER($2) LIMIT 1`,
+        [tid, target]
       );
       if (w.rows.length) {
         const comps = Array.isArray(w.rows[0].competitors) ? w.rows[0].competitors : [];
@@ -30,8 +32,8 @@ router.get('/series', async (req, res) => {
 
     const r = await pool.query(`
       SELECT brand, mentions, pos_count, neu_count, neg_count, taken_at
-      FROM sov_snapshots WHERE target_brand=$1 AND taken_at > now() - ($2 || ' days')::interval
-      ORDER BY taken_at ASC`, [target, String(days)]);
+      FROM sov_snapshots WHERE tenant_id=$1 AND target_brand=$2 AND taken_at > now() - ($3 || ' days')::interval
+      ORDER BY taken_at ASC`, [tid, target, String(days)]);
 
     let rows = r.rows;
     if (allowed) rows = rows.filter(x => allowed.has(String(x.brand).toLowerCase()));
@@ -58,11 +60,12 @@ router.get('/series', async (req, res) => {
 router.get('/targets', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'sov:targets', allowFallback:true });
     const pool = _db.getPool();
 
     let allowedBrands = null;
     try {
-      const w = await pool.query(`SELECT DISTINCT brand FROM crisis_watchlist`);
+      const w = await pool.query(`SELECT DISTINCT brand FROM crisis_watchlist WHERE tenant_id=$1`, [tid]);
       if (w.rows.length) {
         allowedBrands = new Set(w.rows.map(r => String(r.brand).toLowerCase()));
       }
@@ -70,7 +73,7 @@ router.get('/targets', async (req, res) => {
 
     const r = await pool.query(`
       SELECT target_brand, COUNT(*)::int AS snapshots, MAX(taken_at) AS last
-      FROM sov_snapshots GROUP BY target_brand ORDER BY last DESC`);
+      FROM sov_snapshots WHERE tenant_id=$1 GROUP BY target_brand ORDER BY last DESC`, [tid]);
 
     let targets = r.rows;
     if (allowedBrands && allowedBrands.size > 0) {

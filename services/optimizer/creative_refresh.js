@@ -204,14 +204,15 @@ async function _pauseMetaAd(adId, userId = null) {
 // ── Log a refresh decision to DB ───────────────────────────────────────────
 async function _logRefresh({ camp, oldAd, newCreative, newAdId, applied, error, runId }) {
   try {
+    // tenant_id inherited from the parent campaign row.
     await _db.getPool().query(`
       INSERT INTO creative_refreshes
-        (campaign_id, old_ad_id, old_headline, old_body,
+        (tenant_id, campaign_id, old_ad_id, old_headline, old_body,
          new_ad_id, new_headline, new_body, new_image_url,
          reason, perf_snapshot, applied, apply_error, run_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     `, [
-      camp.id,
+      camp.tenant_id, camp.id,
       oldAd?.id || null,
       oldAd?.creative?.title || oldAd?.creative?.name || null,
       oldAd?.creative?.body || null,
@@ -302,10 +303,10 @@ async function _refreshOneAd({ camp, ad, reason, dryRun, runId }) {
     const camprow = await _db.getPool().query(`SELECT id FROM ad_campaigns WHERE id=$1`, [camp.id]);
     if (camprow.rows.length) {
       await _db.getPool().query(`
-        INSERT INTO ad_creatives (campaign_id, platform_ad_id, adset_id, headline, body, image_hash, image_url, cta, link_url, status, generation, parent_ad_id)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'paused_pending_review',COALESCE((SELECT MAX(generation)+1 FROM ad_creatives WHERE campaign_id=$1),2),$10)
+        INSERT INTO ad_creatives (tenant_id, campaign_id, platform_ad_id, adset_id, headline, body, image_hash, image_url, cta, link_url, status, generation, parent_ad_id)
+        VALUES ($11,$1,$2,$3,$4,$5,$6,$7,$8,$9,'paused_pending_review',COALESCE((SELECT MAX(generation)+1 FROM ad_creatives WHERE campaign_id=$1),2),$10)
         ON CONFLICT (campaign_id, platform_ad_id) DO NOTHING
-      `, [camp.id, newAd.ad_id, ad.adset_id, copy.headline, copy.body, imgUp.image_hash, imgUp.image_url, copy.cta, linkUrl, ad.id]);
+      `, [camp.id, newAd.ad_id, ad.adset_id, copy.headline, copy.body, imgUp.image_hash, imgUp.image_url, copy.cta, linkUrl, ad.id, camp.tenant_id]);
     }
   } catch (e) { console.error('[creative-refresh] register err:', e.message); }
   await _logRefresh({

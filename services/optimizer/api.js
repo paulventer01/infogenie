@@ -1,6 +1,7 @@
 // Optimizer HTTP routes — mounted under /api/optimizer.
 const express = require('express');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 const { ingestOnce } = require('./ingest');
 const { runOptimizerOnce } = require('./rules');
 const { getSetting, setSetting } = require('./schema');
@@ -17,9 +18,10 @@ const router = express.Router();
 router.get('/status', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, error: 'database not configured' });
   const pool = _db.getPool();
-  const camps   = await pool.query(`SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE optimizer_enabled)::int enabled FROM ad_campaigns`);
-  const actions = await pool.query(`SELECT COUNT(*)::int n FROM optimizer_actions WHERE created_at > now() - interval '24 hours'`);
-  const lastRun = await pool.query(`SELECT MAX(created_at) AS t FROM optimizer_actions`);
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:status', allowFallback:true });
+  const camps   = await pool.query(`SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE optimizer_enabled)::int enabled FROM ad_campaigns WHERE tenant_id = $1`, [tid]);
+  const actions = await pool.query(`SELECT COUNT(*)::int n FROM optimizer_actions WHERE tenant_id = $1 AND created_at > now() - interval '24 hours'`, [tid]);
+  const lastRun = await pool.query(`SELECT MAX(created_at) AS t FROM optimizer_actions WHERE tenant_id = $1`, [tid]);
   const dryRun  = await getSetting('dry_run', { v: true });
   res.json({
     ok: true,
@@ -36,9 +38,10 @@ router.get('/status', async (req, res) => {
   });
 });
 
-router.get('/campaigns', async (_req, res) => {
+router.get('/campaigns', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, error: 'database not configured', campaigns: [] });
   const pool = _db.getPool();
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:campaigns:list', allowFallback:true });
   const r = await pool.query(`
     SELECT c.*,
       (SELECT json_build_object(
@@ -50,19 +53,22 @@ router.get('/campaigns', async (_req, res) => {
        FROM ad_performance_hourly WHERE campaign_id = c.id AND bucket_hour > now() - interval '7 days'
       ) AS perf7d
     FROM ad_campaigns c
+    WHERE c.tenant_id = $1
     ORDER BY c.created_at DESC LIMIT 200
-  `);
+  `, [tid]);
   res.json({ ok: true, campaigns: r.rows });
 });
 
 router.get('/actions', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, actions: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:actions:list', allowFallback:true });
   const limit = Math.min(parseInt(req.query.limit || '50', 10), 500);
   const r = await _db.getPool().query(`
     SELECT a.*, c.name AS campaign_name, c.platform
     FROM optimizer_actions a LEFT JOIN ad_campaigns c ON c.id = a.campaign_id
+    WHERE a.tenant_id = $2
     ORDER BY a.created_at DESC LIMIT $1
-  `, [limit]);
+  `, [limit, tid]);
   res.json({ ok: true, actions: r.rows });
 });
 
@@ -84,6 +90,7 @@ function _str(v, max = 200) {
 
 router.post('/campaigns/upsert', express.json(), async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, error: 'database not configured' });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:campaigns:upsert', allowFallback:true });
   const platform        = _str(req.body?.platform, 32);
   const platform_camp_id= _str(req.body?.platform_camp_id, 80);
   const name            = _str(req.body?.name, 200);
@@ -99,28 +106,30 @@ router.post('/campaigns/upsert', express.json(), async (req, res) => {
   // toggle. Existing rows keep whatever the user already set (we deliberately
   // do NOT touch optimizer_enabled in the ON CONFLICT branch).
   const r = await _db.getPool().query(`
-    INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, owner_email, target_roas, optimizer_enabled)
-    VALUES ($1,$2,$3,$4,$5,COALESCE($6,2.00), TRUE)
-    ON CONFLICT (platform, platform_camp_id)
+    INSERT INTO ad_campaigns (tenant_id, platform, platform_camp_id, name, daily_budget, owner_email, target_roas, optimizer_enabled)
+    VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,2.00), TRUE)
+    ON CONFLICT (tenant_id, platform, platform_camp_id)
     DO UPDATE SET name=EXCLUDED.name, daily_budget=COALESCE(EXCLUDED.daily_budget, ad_campaigns.daily_budget),
                   owner_email=COALESCE(EXCLUDED.owner_email, ad_campaigns.owner_email),
                   updated_at=now()
     RETURNING *
-  `, [platform.toLowerCase(), platform_camp_id, name, daily_budget, owner_email, target_roas]);
+  `, [tid, platform.toLowerCase(), platform_camp_id, name, daily_budget, owner_email, target_roas]);
   res.json({ ok: true, campaign: r.rows[0] });
 });
 
 router.post('/enable', express.json(), async (req, res) => {
   const id = parseInt(req.body?.id, 10);
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, error: 'valid id required' });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:enable', allowFallback:true });
   const enabled = !!req.body?.enabled;
-  await _db.getPool().query(`UPDATE ad_campaigns SET optimizer_enabled=$1, updated_at=now() WHERE id=$2`, [enabled, id]);
+  await _db.getPool().query(`UPDATE ad_campaigns SET optimizer_enabled=$1, updated_at=now() WHERE id=$2 AND tenant_id=$3`, [enabled, id, tid]);
   res.json({ ok: true });
 });
 
 router.post('/target', express.json(), async (req, res) => {
   const id = parseInt(req.body?.id, 10);
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, error: 'valid id required' });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:target', allowFallback:true });
   const target_roas      = _num(req.body?.target_roas,      { min: 0,  max: 100 });
   const min_spend_floor  = _num(req.body?.min_spend_floor,  { min: 0,  max: 1e6 });
   const max_daily_budget = _num(req.body?.max_daily_budget, { min: 0,  max: 1e6 });
@@ -132,8 +141,8 @@ router.post('/target', express.json(), async (req, res) => {
            min_spend_floor   = COALESCE($2, min_spend_floor),
            max_daily_budget  = COALESCE($3, max_daily_budget),
            updated_at        = now()
-     WHERE id = $4
-  `, [target_roas, min_spend_floor, max_daily_budget, id]);
+     WHERE id = $4 AND tenant_id = $5
+  `, [target_roas, min_spend_floor, max_daily_budget, id, tid]);
   res.json({ ok: true });
 });
 
@@ -152,13 +161,15 @@ router.post('/run-now', async (_req, res) => {
 // ── Phase 8: Creative Auto-Refresh ─────────────────────────────────────────
 router.get('/creative-refreshes', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, refreshes: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:creative-refreshes', allowFallback:true });
   const n = parseInt(req.query.limit, 10);
   const limit = Math.min(Number.isFinite(n) && n > 0 ? n : 30, 200);
   const r = await _db.getPool().query(`
     SELECT cr.*, c.name AS campaign_name, c.platform
     FROM creative_refreshes cr LEFT JOIN ad_campaigns c ON c.id = cr.campaign_id
+    WHERE cr.tenant_id = $2
     ORDER BY cr.created_at DESC LIMIT $1
-  `, [limit]);
+  `, [limit, tid]);
   res.json({ ok: true, refreshes: r.rows });
 });
 
@@ -193,12 +204,15 @@ router.post('/creative-refresh/run-now', express.json(), async (_req, res) => {
 });
 
 // ── Phase 7: Multi-Armed Bandit (ad-set budget allocation) ─────────────────
-router.get('/bandit/status', async (_req, res) => {
+router.get('/bandit/status', async (req, res) => {
   const enabled = await getSetting('bandit_enabled', { v: false });
   const dryRun  = await getSetting('bandit_dry_run', { v: true });
   let lastRun = null, total = 0;
   if (_db.hasDb()) {
-    const lr = await _db.getPool().query(`SELECT MAX(created_at) AS t, COUNT(*)::int n FROM bandit_allocations`);
+    // Aggregate counts/timestamps are scoped per-tenant so one tenant's
+    // bandit cadence isn't visible to another.
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:bandit:status', allowFallback:true });
+    const lr = await _db.getPool().query(`SELECT MAX(created_at) AS t, COUNT(*)::int n FROM bandit_allocations WHERE tenant_id = $1`, [tid]);
     lastRun = lr.rows[0]?.t || null;
     total   = lr.rows[0]?.n || 0;
   }
@@ -207,6 +221,7 @@ router.get('/bandit/status', async (_req, res) => {
 
 router.get('/bandit/allocations', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, allocations: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:bandit:allocations', allowFallback:true });
   const n = parseInt(req.query.limit, 10);
   const limit = Math.min(Number.isFinite(n) && n > 0 ? n : 50, 300);
   const r = await _db.getPool().query(`
@@ -214,8 +229,9 @@ router.get('/bandit/allocations', async (req, res) => {
     FROM bandit_allocations b
       LEFT JOIN ad_campaigns c ON c.id = b.campaign_id
       LEFT JOIN ad_sets s      ON s.id = b.ad_set_id
+    WHERE b.tenant_id = $2
     ORDER BY b.created_at DESC LIMIT $1
-  `, [limit]);
+  `, [limit, tid]);
   res.json({ ok: true, allocations: r.rows });
 });
 
@@ -244,7 +260,8 @@ router.post('/bandit/run-now', express.json(), async (_req, res) => {
 router.delete('/campaigns/:id', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, error: 'bad id' });
-  await _db.getPool().query(`DELETE FROM ad_campaigns WHERE id=$1`, [id]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:campaigns:delete', allowFallback:true });
+  await _db.getPool().query(`DELETE FROM ad_campaigns WHERE id=$1 AND tenant_id=$2`, [id, tid]);
   res.json({ ok: true });
 });
 
@@ -254,11 +271,12 @@ router.delete('/campaigns/:id', async (req, res) => {
 // The frontend's "Why did the AI do this?" panel renders this directly.
 router.get('/decisions', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, decisions: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:decisions', allowFallback:true });
   const limit = Math.min(parseInt(req.query.limit || '100', 10), 500);
   const platform = req.query.platform ? String(req.query.platform).slice(0, 32) : null;
-  const params = [limit];
-  let where = '';
-  if (platform) { params.push(platform); where = `WHERE c.platform = $2`; }
+  const params = [limit, tid];
+  let where = `WHERE a.tenant_id = $2`;
+  if (platform) { params.push(platform); where += ` AND c.platform = $3`; }
   const r = await _db.getPool().query(`
     SELECT a.id, a.action_type, a.reason, a.before_value, a.after_value,
            a.applied, a.apply_error, a.run_id, a.created_at,
@@ -275,6 +293,7 @@ router.get('/decisions', async (req, res) => {
 // ── T34: Day-part / hour-of-day budget shifting ───────────────────────────
 router.get('/dayparting', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, items: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:dayparting:list', allowFallback:true });
   const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
   // Latest dayparting analysis per campaign (one row each).
   const r = await _db.getPool().query(`
@@ -285,9 +304,10 @@ router.get('/dayparting', async (req, res) => {
       c.name AS campaign_name, c.platform, c.optimizer_enabled
     FROM optimizer_dayparting dp
     LEFT JOIN ad_campaigns c ON c.id = dp.campaign_id
+    WHERE dp.tenant_id = $2
     ORDER BY dp.campaign_id, dp.created_at DESC
     LIMIT $1
-  `, [limit]);
+  `, [limit, tid]);
   res.json({ ok: true, items: r.rows });
 });
 
@@ -299,6 +319,7 @@ router.post('/dayparting/run-now', express.json(), async (_req, res) => {
 // ── T34: Predictive creative fatigue ──────────────────────────────────────
 router.get('/fatigue-forecast', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: false, items: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:fatigue-forecast', allowFallback:true });
   const limit = Math.min(parseInt(req.query.limit || '100', 10), 500);
   const onlyFlagged = String(req.query.flagged || '') === '1';
   // Outer WHERE filters the wrapped subquery alias `latest`, NOT `ff`.
@@ -316,12 +337,13 @@ router.get('/fatigue-forecast', async (req, res) => {
       FROM creative_fatigue_forecasts ff
       LEFT JOIN ad_campaigns  c  ON c.id  = ff.campaign_id
       LEFT JOIN ad_creatives  cr ON cr.id = ff.creative_id
+      WHERE ff.tenant_id = $2
       ORDER BY ff.creative_id, ff.created_at DESC
     ) latest
     ${where}
     ORDER BY predicted_fatigue DESC, created_at DESC
     LIMIT $1
-  `, [limit]);
+  `, [limit, tid]);
   res.json({ ok: true, items: r.rows });
 });
 

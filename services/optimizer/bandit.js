@@ -142,16 +142,17 @@ async function _applyAdSetBudget(adsetId, newBudgetUsd, userId = null) {
 }
 
 // ── Upsert ad-set rows in our DB so allocations FK to a real id ─────────────
-async function _upsertAdSet(campaignId, a) {
+async function _upsertAdSet(tenantId, campaignId, a) {
   const r = await _db.getPool().query(`
-    INSERT INTO ad_sets (campaign_id, platform_adset_id, name, daily_budget)
-    VALUES ($1,$2,$3,$4)
+    INSERT INTO ad_sets (tenant_id, campaign_id, platform_adset_id, name, daily_budget)
+    VALUES ($1,$2,$3,$4,$5)
     ON CONFLICT (campaign_id, platform_adset_id)
-    DO UPDATE SET name=EXCLUDED.name,
+    DO UPDATE SET tenant_id=EXCLUDED.tenant_id,
+                  name=EXCLUDED.name,
                   daily_budget=COALESCE(EXCLUDED.daily_budget, ad_sets.daily_budget),
                   updated_at=now()
     RETURNING id
-  `, [campaignId, a.platform_adset_id, a.name || null, a.daily_budget || null]);
+  `, [tenantId, campaignId, a.platform_adset_id, a.name || null, a.daily_budget || null]);
   return r.rows[0].id;
 }
 
@@ -221,16 +222,16 @@ function _computeAllocation(adsets, totalBudget) {
 }
 
 // ── Log one bandit decision to DB ──────────────────────────────────────────
-async function _logAlloc({ campaignId, adSetId, runId, arm, oldBudget, newBudget, applied, error, reason }) {
+async function _logAlloc({ tenantId, campaignId, adSetId, runId, arm, oldBudget, newBudget, applied, error, reason }) {
   try {
     await _db.getPool().query(`
       INSERT INTO bandit_allocations
-        (campaign_id, ad_set_id, run_id, prior_alpha, prior_beta,
+        (tenant_id, campaign_id, ad_set_id, run_id, prior_alpha, prior_beta,
          sampled_score, avg_value, old_budget, new_budget, share,
          applied, apply_error, reason)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     `, [
-      campaignId, adSetId, runId,
+      tenantId, campaignId, adSetId, runId,
       arm.prior.alpha, arm.prior.beta,
       arm.sample, arm.aov,
       oldBudget, newBudget, arm.share,
@@ -253,10 +254,13 @@ async function _runOneCampaign({ camp, dryRun, runId, perRunLeft }) {
   }
   const allocation = _computeAllocation(adsR.adsets, totalBudget);
   let applied = 0, errors = 0;
+  // tenant_id is inherited from the parent campaign row so every ad set +
+  // allocation we write stays in the same tenant as the campaign.
+  const tenantId = camp.tenant_id;
   for (const arm of allocation) {
     if (perRunLeft.n <= 0) break;
     perRunLeft.n--;
-    const adSetId   = await _upsertAdSet(camp.id, arm);
+    const adSetId   = await _upsertAdSet(tenantId, camp.id, arm);
     // No per-arm floor here — minShare in _computeAllocation already
     // guarantees share*totalBudget ≥ MIN_DAILY_BUDGET, which preserves
     // Σ newBudget = totalBudget (the budget-conservation invariant).
@@ -264,23 +268,23 @@ async function _runOneCampaign({ camp, dryRun, runId, perRunLeft }) {
     const oldBudget = arm.daily_budget;
     const reason    = `Thompson sample ${arm.sample.toFixed(4)} × AOV $${arm.aov.toFixed(2)} → ${(arm.share*100).toFixed(1)}% share`;
     if (dryRun) {
-      await _logAlloc({ campaignId: camp.id, adSetId, runId, arm, oldBudget, newBudget, applied: false, error: null, reason: reason + ' [DRY-RUN]' });
+      await _logAlloc({ tenantId, campaignId: camp.id, adSetId, runId, arm, oldBudget, newBudget, applied: false, error: null, reason: reason + ' [DRY-RUN]' });
       continue;
     }
     // Skip the API call entirely if the change is < $1 or < 10% — saves
     // both API quota and avoids triggering Meta's budget-change rate limits.
     const diff = Math.abs(newBudget - oldBudget);
     if (diff < 1 || (oldBudget > 0 && diff / oldBudget < 0.10)) {
-      await _logAlloc({ campaignId: camp.id, adSetId, runId, arm, oldBudget, newBudget: oldBudget, applied: false, error: null, reason: reason + ' (no change — within ±$1 / 10%)' });
+      await _logAlloc({ tenantId, campaignId: camp.id, adSetId, runId, arm, oldBudget, newBudget: oldBudget, applied: false, error: null, reason: reason + ' (no change — within ±$1 / 10%)' });
       continue;
     }
     const r = await _applyAdSetBudget(arm.platform_adset_id, newBudget);
     if (r.ok) {
       applied++;
-      await _logAlloc({ campaignId: camp.id, adSetId, runId, arm, oldBudget, newBudget, applied: true, error: null, reason });
+      await _logAlloc({ tenantId, campaignId: camp.id, adSetId, runId, arm, oldBudget, newBudget, applied: true, error: null, reason });
     } else {
       errors++;
-      await _logAlloc({ campaignId: camp.id, adSetId, runId, arm, oldBudget, newBudget, applied: false, error: r.error, reason });
+      await _logAlloc({ tenantId, campaignId: camp.id, adSetId, runId, arm, oldBudget, newBudget, applied: false, error: r.error, reason });
     }
   }
   return { ok: true, applied, errors, scanned: allocation.length, totalBudget };

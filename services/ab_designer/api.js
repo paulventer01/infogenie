@@ -1,6 +1,7 @@
 const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
@@ -73,9 +74,10 @@ router.post('/generate', async (req, res) => {
   if (!result || !Array.isArray(result.variants)) { result = _templateVariants({ original, count }); source = 'template'; }
   if (_db.hasDb()) {
     try {
+      const tid = await _tenantCtx.resolveTenantId(req, { label:'ab_designer:generate', allowFallback:true });
       await _db.getPool().query(
-        `INSERT INTO ab_designer_runs (brand, element_kind, original, goal, audience, variants, generated_by) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [brand, element_kind, original, goal, audience, JSON.stringify(result.variants), source]);
+        `INSERT INTO ab_designer_runs (tenant_id, brand, element_kind, original, goal, audience, variants, generated_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [tid, brand, element_kind, original, goal, audience, JSON.stringify(result.variants), source]);
     } catch (e) { console.warn('[ab-designer] persist failed:', e.message); }
   }
   res.json({ ok:true, source, element_kind, ...result });
@@ -85,9 +87,10 @@ router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'ab_designer:history', allowFallback:true });
     const r = await _db.getPool().query(
       `SELECT id, brand, element_kind, original, goal, generated_by, created_at, jsonb_array_length(variants) AS variant_count
-       FROM ab_designer_runs ORDER BY created_at DESC LIMIT $1`, [limit]);
+       FROM ab_designer_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2`, [tid, limit]);
     res.json({ ok:true, runs: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });

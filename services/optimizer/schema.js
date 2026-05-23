@@ -1,6 +1,21 @@
 // Optimizer schema — Postgres tables for the autonomous campaign optimizer.
 // Idempotent. Called from server boot.
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
+
+// Tables that get a per-tenant `tenant_id` column. ad_campaigns also gets its
+// legacy UNIQUE(platform, platform_camp_id) rewritten as a per-tenant unique
+// so two tenants can independently mirror the same platform campaign id.
+const _TENANT_TABLES = [
+  'ad_campaigns', 'ad_performance_hourly', 'optimizer_actions',
+  'ad_creatives', 'creative_refreshes', 'ad_sets',
+  'ad_set_performance_hourly', 'bandit_allocations',
+  'optimizer_dayparting', 'creative_fatigue_forecasts',
+];
+const _INDEX_EXTRAS = {
+  ad_performance_hourly:     ['bucket_hour'],
+  ad_set_performance_hourly: ['bucket_hour'],
+};
 
 async function ensureOptimizerSchema() {
   if (!_db.hasDb()) return false;
@@ -215,6 +230,23 @@ async function ensureOptimizerSchema() {
     CREATE INDEX IF NOT EXISTS idx_fatigue_creative_time
       ON creative_fatigue_forecasts(creative_id, created_at DESC);
   `);
+
+  // ── Phase 2B (multi-tenant): add tenant_id to every optimizer data table.
+  // Idempotent — safe on every boot. The deferred phase2_migrate batch also
+  // covers these as a fallback, but doing it inline here keeps the optimizer
+  // self-contained and ensures the column exists before any route or cron
+  // tries to read/write it.
+  for (const t of _TENANT_TABLES) {
+    try { await addTenantIdColumn(t, { indexExtra: _INDEX_EXTRAS[t] }); }
+    catch (e) { console.error(`[optimizer/schema] tenant_id on ${t}: ${e.message}`); }
+  }
+  // Rewrite legacy UNIQUE(platform, platform_camp_id) so the same platform
+  // campaign id can exist in multiple tenants (different mirrors).
+  try {
+    await p.query(`ALTER TABLE ad_campaigns DROP CONSTRAINT IF EXISTS ad_campaigns_platform_platform_camp_id_key`);
+    await addTenantIdColumn('ad_campaigns', { uniqueWithExtra: ['platform','platform_camp_id'] });
+  } catch (e) { console.error('[optimizer/schema] ad_campaigns unique rewrite:', e.message); }
+
   return true;
 }
 

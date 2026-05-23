@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safeAsync(h) {
@@ -106,11 +107,13 @@ router.get('/defaults', (req, res) => res.json({ ok: true, defaults: DEFAULTS })
 // ── Admin: manage widgets ──────────────────────────────────────────────────
 router.get('/widgets', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, widgets: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:list', allowFallback:true });
   const r = await _db.getPool().query(
     `SELECT w.id, w.type, w.name, w.settings, w.owner_email, w.created_at,
             (SELECT COUNT(*)::int FROM cb_events e WHERE e.widget_id=w.id AND e.event_type='view') AS views,
             (SELECT COUNT(*)::int FROM cb_events e WHERE e.widget_id=w.id AND e.event_type='lead') AS leads
-     FROM cb_widgets w ORDER BY created_at DESC LIMIT 100`
+     FROM cb_widgets w WHERE w.tenant_id=$1 ORDER BY created_at DESC LIMIT 100`,
+    [tid]
   );
   res.json({ ok: true, widgets: r.rows });
 }));
@@ -123,9 +126,10 @@ router.post('/widgets', _safeAsync(async (req, res) => {
   const ownerEmail = String(req.body?.ownerEmail || '').trim().slice(0, 200);
   const settings = _normaliseSettings(type, req.body?.settings);
   const id = (type === 'social_proof' ? 'sp_' : 'ei_') + crypto.randomBytes(8).toString('hex');
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:create', allowFallback:true });
   await _db.getPool().query(
-    `INSERT INTO cb_widgets (id, type, name, settings, owner_email) VALUES ($1,$2,$3,$4,$5)`,
-    [id, type, name, JSON.stringify(settings), ownerEmail || null]
+    `INSERT INTO cb_widgets (tenant_id, id, type, name, settings, owner_email) VALUES ($1,$2,$3,$4,$5,$6)`,
+    [tid, id, type, name, JSON.stringify(settings), ownerEmail || null]
   );
   res.json({ ok: true, id, type, name, settings });
 }));
@@ -133,7 +137,8 @@ router.post('/widgets', _safeAsync(async (req, res) => {
 router.patch('/widgets/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database required.');
   const id = req.params.id;
-  const cur = await _db.getPool().query(`SELECT type FROM cb_widgets WHERE id=$1`, [id]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:patch', allowFallback:true });
+  const cur = await _db.getPool().query(`SELECT type FROM cb_widgets WHERE id=$1 AND tenant_id=$2`, [id, tid]);
   if (!cur.rowCount) return _err(res, 404, 'Widget not found');
   const sets = []; const args = [];
   if (req.body?.name !== undefined) { args.push(_safeText(req.body.name, 100)); sets.push('name=$' + args.length); }
@@ -143,20 +148,25 @@ router.patch('/widgets/:id', _safeAsync(async (req, res) => {
   }
   if (!sets.length) return _err(res, 400, 'Nothing to update');
   sets.push('updated_at=now()');
-  args.push(id);
-  await _db.getPool().query(`UPDATE cb_widgets SET ${sets.join(', ')} WHERE id=$${args.length}`, args);
+  args.push(id); args.push(tid);
+  await _db.getPool().query(`UPDATE cb_widgets SET ${sets.join(', ')} WHERE id=$${args.length-1} AND tenant_id=$${args.length}`, args);
   res.json({ ok: true });
 }));
 
 router.delete('/widgets/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database required.');
-  const r = await _db.getPool().query(`DELETE FROM cb_widgets WHERE id=$1`, [req.params.id]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:delete', allowFallback:true });
+  const r = await _db.getPool().query(`DELETE FROM cb_widgets WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
   if (!r.rowCount) return _err(res, 404, 'Widget not found');
   res.json({ ok: true });
 }));
 
 router.get('/widgets/:id/events', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, events: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'cb:widgets:events', allowFallback:true });
+  // Verify widget ownership before exposing events
+  const own = await _db.getPool().query(`SELECT id FROM cb_widgets WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
+  if (!own.rowCount) return _err(res, 404, 'Widget not found');
   const r = await _db.getPool().query(
     `SELECT id, event_type, email, data, created_at FROM cb_events WHERE widget_id=$1 ORDER BY created_at DESC LIMIT 200`,
     [req.params.id]
@@ -204,13 +214,14 @@ router.post('/event/:id', express.json({ limit: '4kb' }), _safeAsync(async (req,
   if (!_rateLimit('cb-ip:' + ip, 30, 60 * 1000)) return _err(res, 429, 'rate limited');
   if (!_rateLimit('cb-w:' + id, 600, 60 * 1000)) return _err(res, 429, 'widget rate limited');
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true });
-  const w = await _db.getPool().query(`SELECT id FROM cb_widgets WHERE id=$1`, [id]);
+  // Public endpoint — widget_id is the auth. Inherit tenant_id from widget row.
+  const w = await _db.getPool().query(`SELECT id, tenant_id FROM cb_widgets WHERE id=$1`, [id]);
   if (!w.rowCount) return _err(res, 404, 'not found');
   const t = String(req.body?.event || '').trim();
   if (!['view', 'dismiss'].includes(t)) return _err(res, 400, 'bad event');
   await _db.getPool().query(
-    `INSERT INTO cb_events (widget_id, event_type, data, ip_hash, ua) VALUES ($1,$2,$3,$4,$5)`,
-    [id, t, req.body?.data ? JSON.stringify(req.body.data).slice(0, 1000) : null, _ipHash(ip), String(req.headers['user-agent'] || '').slice(0, 200)]
+    `INSERT INTO cb_events (tenant_id, widget_id, event_type, data, ip_hash, ua) VALUES ($1,$2,$3,$4,$5,$6)`,
+    [w.rows[0].tenant_id, id, t, req.body?.data ? JSON.stringify(req.body.data).slice(0, 1000) : null, _ipHash(ip), String(req.headers['user-agent'] || '').slice(0, 200)]
   );
   res.json({ ok: true });
 }));
@@ -224,7 +235,8 @@ router.post('/lead/:id', express.json({ limit: '4kb' }), _safeAsync(async (req, 
   if (!_rateLimit('cb-lead-ip:' + ip, 5, 5 * 60 * 1000)) return _err(res, 429, 'Too many submissions — try again in a few minutes.');
   if (!_rateLimit('cb-lead-w:' + id, 60, 5 * 60 * 1000)) return _err(res, 429, 'Widget submission limit reached.');
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database required.');
-  const w = await _db.getPool().query(`SELECT id, type, name FROM cb_widgets WHERE id=$1`, [id]);
+  // Public endpoint — widget_id is the auth. Inherit tenant_id from widget row.
+  const w = await _db.getPool().query(`SELECT id, type, name, tenant_id FROM cb_widgets WHERE id=$1`, [id]);
   if (!w.rowCount) return _err(res, 404, 'Widget not found');
   const widget = w.rows[0];
   const email = String(req.body?.email || '').trim().slice(0, 200);
@@ -232,18 +244,18 @@ router.post('/lead/:id', express.json({ limit: '4kb' }), _safeAsync(async (req, 
   const sourceUrl = String(req.body?.pageUrl || '').trim().slice(0, 1000) || null;
   const data = { email, pageUrl: sourceUrl, widgetName: widget.name };
   await _db.getPool().query(
-    `INSERT INTO cb_events (widget_id, event_type, email, data, ip_hash, ua) VALUES ($1,'lead',$2,$3,$4,$5)`,
-    [id, email, JSON.stringify(data), _ipHash(ip), String(req.headers['user-agent'] || '').slice(0, 200)]
+    `INSERT INTO cb_events (tenant_id, widget_id, event_type, email, data, ip_hash, ua) VALUES ($1,$2,'lead',$3,$4,$5,$6)`,
+    [widget.tenant_id, id, email, JSON.stringify(data), _ipHash(ip), String(req.headers['user-agent'] || '').slice(0, 200)]
   );
   // Mirror into Unified Inbox so leads show up in the inbox stream.
   try {
     const inboxSource = widget.type === 'exit_intent' ? 'exit_intent' : 'social_proof';
     const sourceId = 'cb-' + id + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
     await _db.getPool().query(
-      `INSERT INTO unified_inbox_items (source, source_id, source_url, author, title, content, raw, occurred_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,now())
+      `INSERT INTO unified_inbox_items (tenant_id, source, source_id, source_url, author, title, content, raw, occurred_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now())
        ON CONFLICT (source, source_id) DO NOTHING`,
-      [inboxSource, sourceId, sourceUrl, email, widget.name + ' lead capture', 'Captured email: ' + email + (sourceUrl ? ' (from ' + sourceUrl + ')' : ''), JSON.stringify(data)]
+      [widget.tenant_id, inboxSource, sourceId, sourceUrl, email, widget.name + ' lead capture', 'Captured email: ' + email + (sourceUrl ? ' (from ' + sourceUrl + ')' : ''), JSON.stringify(data)]
     );
   } catch (_) { /* unified_inbox table may not exist yet — non-fatal */ }
   res.json({ ok: true, redirectUrl: (widget.type === 'exit_intent' && req.body?.honour ? null : null) });

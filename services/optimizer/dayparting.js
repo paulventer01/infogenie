@@ -123,14 +123,15 @@ async function analyseCampaign(campaign, runId, windowDays = DEFAULT_WINDOW_DAYS
   const best4    = sorted.slice(0, 4).map(b => ({ hour: b.hour, score: b.score, cpa: b.cpa, roas: b.roas, spend: b.spend }));
   const worst4   = sorted.slice(-4).reverse().map(b => ({ hour: b.hour, score: b.score, cpa: b.cpa, roas: b.roas, spend: b.spend }));
 
+  // tenant_id inherited from the parent campaign row.
   await _db.getPool().query(`
     INSERT INTO optimizer_dayparting
-      (campaign_id, window_days, total_spend, total_conv, hours_json, best_hours, worst_hours, recommendation, run_id)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      (tenant_id, campaign_id, window_days, total_spend, total_conv, hours_json, best_hours, worst_hours, recommendation, run_id)
+    VALUES ($10,$1,$2,$3,$4,$5,$6,$7,$8,$9)
   `, [
     campaign.id, windowDays, totalSpend.toFixed(2), totalConv.toFixed(2),
     JSON.stringify(scored), JSON.stringify(best4), JSON.stringify(worst4),
-    rec, runId,
+    rec, runId, campaign.tenant_id,
   ]);
   return { ok: true, campaignId: campaign.id, totalSpend, totalConv, hours: scored, bestHours: best4, worstHours: worst4, recommendation: rec };
 }

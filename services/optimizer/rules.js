@@ -28,10 +28,12 @@ async function _windowStats(campaignId, days = 7) {
 }
 
 async function _logAction(camp, type, reason, before, after, applied, applyError, runId) {
+  // tenant_id is inherited from the parent ad_campaigns row so cron-emitted
+  // actions land in the same tenant as the campaign they describe.
   await _db.getPool().query(`
-    INSERT INTO optimizer_actions (campaign_id, action_type, reason, before_value, after_value, applied, apply_error, run_id)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-  `, [camp.id, type, reason, JSON.stringify(before||{}), JSON.stringify(after||{}), !!applied, applyError||null, runId]);
+    INSERT INTO optimizer_actions (tenant_id, campaign_id, action_type, reason, before_value, after_value, applied, apply_error, run_id)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+  `, [camp.tenant_id, camp.id, type, reason, JSON.stringify(before||{}), JSON.stringify(after||{}), !!applied, applyError||null, runId]);
 }
 
 async function evaluateCampaign(camp, runId, dryRun) {
@@ -57,7 +59,7 @@ async function evaluateCampaign(camp, runId, dryRun) {
       `7-day ROAS ${stats.roas.toFixed(2)}× is below 50% of target ${target}× (spent $${stats.spend.toFixed(2)}, revenue $${stats.revenue.toFixed(2)})`,
       { status: camp.status, roas: stats.roas, target },
       { status: 'paused' }, applied, err, runId);
-    if (applied) await _db.getPool().query(`UPDATE ad_campaigns SET status='paused', updated_at=now() WHERE id=$1`, [camp.id]);
+    if (applied) await _db.getPool().query(`UPDATE ad_campaigns SET status='paused', updated_at=now() WHERE id=$1 AND tenant_id=$2`, [camp.id, camp.tenant_id]);
     return { decision: 'pause', applied, error: err, stats };
   }
   // SCALE rule
@@ -73,7 +75,7 @@ async function evaluateCampaign(camp, runId, dryRun) {
       `7-day ROAS ${stats.roas.toFixed(2)}× exceeds 1.5× target — raising daily budget $${dailyBud} → $${newBud}`,
       { daily_budget: dailyBud, roas: stats.roas, target },
       { daily_budget: newBud }, applied, err, runId);
-    if (applied) await _db.getPool().query(`UPDATE ad_campaigns SET daily_budget=$1, updated_at=now() WHERE id=$2`, [newBud, camp.id]);
+    if (applied) await _db.getPool().query(`UPDATE ad_campaigns SET daily_budget=$1, updated_at=now() WHERE id=$2 AND tenant_id=$3`, [newBud, camp.id, camp.tenant_id]);
     return { decision: 'scale_budget', applied, error: err, stats };
   }
   // HOLD — informational only; nothing was applied to any platform

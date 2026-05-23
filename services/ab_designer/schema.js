@@ -1,4 +1,6 @@
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
+
 async function ensureAbDesignerSchema() {
   if (!_db.hasDb()) return;
   await _db.getPool().query(`
@@ -15,6 +17,7 @@ async function ensureAbDesignerSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_abd_created ON ab_designer_runs(created_at DESC);
   `);
+  await addTenantIdColumn('ab_designer_runs');
   console.log('[ab-designer] schema ready');
 }
 module.exports = { ensureAbDesignerSchema };

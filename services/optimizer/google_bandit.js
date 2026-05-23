@@ -159,16 +159,17 @@ async function _applyAdGroupBid(auth, adGroupId, newBidUsd) {
 }
 
 // ── Upsert ad-group rows so allocations FK to a real id ─────────────────────
-async function _upsertAdGroup(campaignId, a) {
+async function _upsertAdGroup(tenantId, campaignId, a) {
   const r = await _db.getPool().query(`
-    INSERT INTO ad_sets (campaign_id, platform_adset_id, name, daily_budget)
-    VALUES ($1,$2,$3,$4)
+    INSERT INTO ad_sets (tenant_id, campaign_id, platform_adset_id, name, daily_budget)
+    VALUES ($1,$2,$3,$4,$5)
     ON CONFLICT (campaign_id, platform_adset_id)
-    DO UPDATE SET name=EXCLUDED.name,
+    DO UPDATE SET tenant_id=EXCLUDED.tenant_id,
+                  name=EXCLUDED.name,
                   daily_budget=COALESCE(EXCLUDED.daily_budget, ad_sets.daily_budget),
                   updated_at=now()
     RETURNING id
-  `, [campaignId, a.platform_adset_id, a.name || null, a.daily_budget || null]);
+  `, [tenantId, campaignId, a.platform_adset_id, a.name || null, a.daily_budget || null]);
   return r.rows[0].id;
 }
 
@@ -228,16 +229,16 @@ function _computeBidAllocation(adgroups) {
 }
 
 // ── Log allocation decision ─────────────────────────────────────────────────
-async function _logAlloc({ campaignId, adSetId, runId, arm, oldBid, newBid, applied, error, reason }) {
+async function _logAlloc({ tenantId, campaignId, adSetId, runId, arm, oldBid, newBid, applied, error, reason }) {
   try {
     await _db.getPool().query(`
       INSERT INTO bandit_allocations
-        (campaign_id, ad_set_id, run_id, prior_alpha, prior_beta,
+        (tenant_id, campaign_id, ad_set_id, run_id, prior_alpha, prior_beta,
          sampled_score, avg_value, old_budget, new_budget, share,
          applied, apply_error, reason)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
     `, [
-      campaignId, adSetId, runId,
+      tenantId, campaignId, adSetId, runId,
       arm.prior.alpha, arm.prior.beta,
       arm.sample, arm.aov,
       oldBid, newBid, arm.share,
@@ -258,29 +259,32 @@ async function _runOneCampaign({ camp, dryRun, runId, perRunLeft }) {
   const auth = await _refreshAccessToken();  // re-acquire (was used in fetch)
   if (!auth.ok) return { ok: false, error: auth.error, applied: 0, scanned: 0 };
   let applied = 0, errors = 0;
+  // tenant_id is inherited from the parent campaign row so every ad group +
+  // allocation we write stays in the same tenant as the campaign.
+  const tenantId = camp.tenant_id;
   for (const arm of allocation) {
     if (perRunLeft.n <= 0) break;
     perRunLeft.n--;
-    const adSetId = await _upsertAdGroup(camp.id, arm);
+    const adSetId = await _upsertAdGroup(tenantId, camp.id, arm);
     const oldBid = arm.daily_budget || 0;
     const newBid = arm.newBid;
     const reason = `Thompson sample ${arm.sample.toFixed(4)} × AOV $${arm.aov.toFixed(2)} → ${(arm.share*100).toFixed(1)}% share → bid mult ×${arm.multiplier.toFixed(2)}`;
     if (dryRun) {
-      await _logAlloc({ campaignId: camp.id, adSetId, runId, arm, oldBid, newBid, applied: false, error: null, reason: reason + ' [DRY-RUN]' });
+      await _logAlloc({ tenantId, campaignId: camp.id, adSetId, runId, arm, oldBid, newBid, applied: false, error: null, reason: reason + ' [DRY-RUN]' });
       continue;
     }
     const diff = Math.abs(newBid - oldBid);
     if (diff < 0.01 || (oldBid > 0 && diff / oldBid < 0.10)) {
-      await _logAlloc({ campaignId: camp.id, adSetId, runId, arm, oldBid, newBid: oldBid, applied: false, error: null, reason: reason + ' (no change — within ±$0.01 / 10%)' });
+      await _logAlloc({ tenantId, campaignId: camp.id, adSetId, runId, arm, oldBid, newBid: oldBid, applied: false, error: null, reason: reason + ' (no change — within ±$0.01 / 10%)' });
       continue;
     }
     const r = await _applyAdGroupBid(auth, arm.platform_adset_id, newBid);
     if (r.ok) {
       applied++;
-      await _logAlloc({ campaignId: camp.id, adSetId, runId, arm, oldBid, newBid, applied: true, error: null, reason });
+      await _logAlloc({ tenantId, campaignId: camp.id, adSetId, runId, arm, oldBid, newBid, applied: true, error: null, reason });
     } else {
       errors++;
-      await _logAlloc({ campaignId: camp.id, adSetId, runId, arm, oldBid, newBid, applied: false, error: r.error, reason });
+      await _logAlloc({ tenantId, campaignId: camp.id, adSetId, runId, arm, oldBid, newBid, applied: false, error: r.error, reason });
     }
   }
   return { ok: true, applied, errors, scanned: allocation.length };
