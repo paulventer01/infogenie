@@ -4941,7 +4941,17 @@ window._loadDashboardDiag = async function _loadDashboardDiag(domain) {
     // diagnosis is identical in both paths.
     try { window.IGDiag && IGDiag.startHeartbeat && IGDiag.startHeartbeat('dash-diag', 250); } catch(_) {}
     setTimeout(() => { try { window.IGDiag && IGDiag.stopHeartbeat && IGDiag.stopHeartbeat(); } catch(_) {} }, 15000);
+    // Navigate first so #dashboard view is visible, then explicitly call
+    // buildDashboard() — navigateTo only toggles view visibility; it does NOT
+    // build the dashboard (real Analyse flow calls buildDashboard directly).
     navigateTo('dashboard');
+    try {
+      window.IGDiag && IGDiag.mark('dashboard-diag: calling buildDashboard');
+      buildDashboard();
+    } catch (e) {
+      window.IGDiag && IGDiag.err && IGDiag.err('dashboard-diag: buildDashboard threw', e && e.message || String(e));
+      showToast('⚠ buildDashboard error: ' + (e && e.message || e));
+    }
     showToast('🧪 Dashboard loaded from cached capture — ' + (analysisData.url || ''));
   } catch (e) {
     showToast('⚠ Dashboard-diag failed: ' + (e && e.message || e));
