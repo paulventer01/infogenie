@@ -3075,6 +3075,10 @@ function buildCreativeModal(camp, idx) {
 
 // ===== NAVIGATION =====
 function navigateTo(viewId, updateActive = true) {
+  // Pause the field-enhancer for the duration of this synchronous call so the
+  // MutationObserver doesn't get hammered by every view's innerHTML swap.
+  // A deferred resume (below) reconnects it and scans only what's new.
+  try { window.IGFields && IGFields.pause && IGFields.pause(); } catch(_) {}
   document.querySelectorAll('.view').forEach(v => {
     v.style.display = 'none';
     v.classList.remove('active');
@@ -3371,6 +3375,18 @@ function navigateTo(viewId, updateActive = true) {
   window.scrollTo(0, 0);
   // Inject "What's Next?" guide banner after each view renders
   setTimeout(() => _injectNextStep(viewId), 120);
+  // Resume field-enhancer after all synchronous build work is done.
+  // requestAnimationFrame fires after the browser has painted the new view,
+  // so the scan sees the final DOM and doesn't fight with layout.
+  (window.requestAnimationFrame || setTimeout)(function() {
+    try {
+      if (window.IGFields) {
+        IGFields.resume && IGFields.resume({ scan: false });
+        const viewEl = document.getElementById('view-' + viewId);
+        if (viewEl) IGFields.scanRoot && IGFields.scanRoot(viewEl);
+      }
+    } catch(_) {}
+  }, 0);
 }
 
 // ── Next-Step Guide Banners ────────────────────────────────────────────────────
@@ -40227,6 +40243,10 @@ window.buildTwitterPulse = function() {
 // ============================================================================
 window.buildJobBoardSpy = function() {
   const wrap = document.getElementById('jbWrap'); if (!wrap) return;
+  const _t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+  window.IGDiag && IGDiag.log('buildJobBoardSpy: start');
+  try { window.IGFields && IGFields.pause && IGFields.pause(); } catch(_) {}
+  try {
   // ── Build picker from last analysis (own brand + competitors) ──
   const ownBrand = (window.analysisData && window.analysisData.brandName) || '';
   const compNames = (window.analysisData && Array.isArray(window.analysisData.competitors))
@@ -40283,6 +40303,16 @@ window.buildJobBoardSpy = function() {
         </div>`).join('')}</div>`;
     } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
   });
+  } finally {
+    try {
+      if (window.IGFields) {
+        IGFields.resume && IGFields.resume({ scan: false });
+        IGFields.scanRoot && IGFields.scanRoot(wrap);
+      }
+    } catch(_) {}
+    const _dt = ((window.performance && performance.now) ? performance.now() : Date.now()) - _t0;
+    window.IGDiag && IGDiag.log('buildJobBoardSpy: done', _dt.toFixed(0) + 'ms');
+  }
 };
 
 // ============================================================================
