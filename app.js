@@ -46620,21 +46620,70 @@ function _rpToCarousel(title) {
     const hdrs = (window.apiHeaders ? window.apiHeaders() : { 'Content-Type':'application/json' });
 
     async function load(){
-      const tag = document.getElementById('asTag')?.value || '';
-      const adv = document.getElementById('asAdv')?.value || '';
+      const tag = document.getElementById('asTag')?.value.trim() || '';
+      const adv = document.getElementById('asAdv')?.value.trim() || '';
+      const isFiltered = !!(tag || adv);
       const qs = new URLSearchParams();
       if (tag) qs.set('tag', tag);
       if (adv) qs.set('advertiser', adv);
+
+      // Visual feedback: show spinner in list + disable + time the Filter button
+      const filterBtn = document.getElementById('asFilterBtn');
+      const listEl = document.getElementById('asList');
+      const t0 = Date.now();
+      let timerIv = null;
+      if (filterBtn) {
+        filterBtn.disabled = true;
+        filterBtn.style.opacity = '0.7';
+        filterBtn.style.cursor = 'wait';
+        filterBtn.innerHTML = '⏳ 0.0s';
+        timerIv = setInterval(() => {
+          filterBtn.innerHTML = `⏳ ${((Date.now()-t0)/1000).toFixed(1)}s`;
+        }, 100);
+      }
+      if (listEl) {
+        listEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:20px;color:#6B7280;font-size:0.87rem">
+          <span style="display:inline-block;width:18px;height:18px;border:2px solid #E5E7EB;border-top-color:#0066FF;border-radius:50%;animation:asSpin2 0.7s linear infinite;flex-shrink:0"></span>
+          <style>@keyframes asSpin2{to{transform:rotate(360deg)}}</style>
+          Searching your swipe file${isFiltered ? ' with the selected filters' : ''}…
+        </div>`;
+      }
+
       try {
         const r = await fetch('/api/ad-swipe/list?' + qs.toString(), { headers: hdrs });
         const j = await r.json();
-        renderList(j.items || []);
-      } catch(e) { document.getElementById('asList').innerHTML = '<div style="color:#DC2626">'+esc(e.message)+'</div>'; }
+        renderList(j.items || [], isFiltered, { tag, adv });
+      } catch(e) {
+        if (listEl) listEl.innerHTML = '<div style="color:#DC2626;padding:16px">'+esc(e.message)+'</div>';
+      } finally {
+        if (timerIv) clearInterval(timerIv);
+        if (filterBtn) {
+          filterBtn.disabled = false;
+          filterBtn.style.opacity = '';
+          filterBtn.style.cursor = '';
+          filterBtn.innerHTML = '🔍 Filter';
+        }
+      }
     }
 
-    function renderList(items){
+    function renderList(items, isFiltered, filters){
       const out = document.getElementById('asList');
-      if (!items.length) { out.innerHTML = '<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:32px;text-align:center;color:#6B7280">Your swipe file is empty. Open <strong>Compete → Ad Library Spy</strong>, search a competitor, and click <strong>💾 Save to Swipe File</strong> on any winning ad.</div>'; return; }
+      if (!items.length) {
+        if (isFiltered) {
+          const parts = [];
+          if (filters && filters.adv) parts.push(`advertiser "<strong>${esc(filters.adv)}</strong>"`);
+          if (filters && filters.tag) parts.push(`tag "<strong>${esc(filters.tag)}</strong>"`);
+          out.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:32px;text-align:center;color:#6B7280">
+            <div style="font-size:1.4rem;margin-bottom:10px">🔍</div>
+            <div style="font-weight:700;color:#374151;margin-bottom:6px">No saved ads match ${parts.join(' and ')}</div>
+            <div style="font-size:0.82rem">Try clearing the filters, or go to <strong>Compete → Ad Library Spy</strong> to search and save ads for this advertiser.</div>
+            <button onclick="window._asClearFilters()" style="margin-top:14px;background:#0066FF;color:#fff;border:0;padding:8px 20px;border-radius:6px;font-weight:700;cursor:pointer;font-size:0.82rem">Clear Filters</button>
+          </div>`;
+        } else {
+          out.innerHTML = '<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:32px;text-align:center;color:#6B7280">Your swipe file is empty. Open <strong>Compete → Ad Library Spy</strong>, search a competitor, and click <strong>💾 Save to Swipe File</strong> on any winning ad.</div>';
+        }
+        return;
+      }
       out.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">${items.map(it => `
         <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px">
           <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
@@ -46680,7 +46729,7 @@ function _rpToCarousel(title) {
             <input id="asTag" list="asTagList" placeholder="any (or type)" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.85rem;box-sizing:border-box">
             <datalist id="asTagList"></datalist>
           </div>
-          <button onclick="window._asReload()" style="background:#0066FF;color:#fff;border:0;padding:9px 18px;border-radius:6px;font-weight:800;cursor:pointer;font-size:0.84rem">🔍 Filter</button>
+          <button id="asFilterBtn" onclick="window._asReload()" style="background:#0066FF;color:#fff;border:0;padding:9px 18px;border-radius:6px;font-weight:800;cursor:pointer;font-size:0.84rem">🔍 Filter</button>
           <button onclick="window._asClearFilters()" style="background:#F3F4F6;color:#374151;border:1px solid #D1D5DB;padding:9px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-size:0.82rem">Clear</button>
         </div>
         <div id="asTagSuggest" style="display:none;margin-top:10px;padding:10px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:8px"></div>

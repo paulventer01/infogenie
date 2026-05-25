@@ -1,10 +1,10 @@
 {
-  "capturedAt": "2026-05-25T08:23:25.768Z",
-  "domain": "fxpro.com",
-  "url": "fxpro.com",
+  "capturedAt": "2026-05-25T08:29:59.289Z",
+  "domain": "cmtrading._com",
+  "url": "cmtrading.,com",
   "capturedFromAnalyseRun": true,
   "analysisData": {
-    "url": "fxpro.com",
+    "url": "cmtrading.,com",
     "country": "global",
     "industryKey": "fintech",
     "industry": {
@@ -49,11 +49,11 @@
           "name": "eToro",
           "domain": "etoro.com",
           "url": "etoro.com",
-          "why": "Offers a global CFD trading platform with a focus on social trading and multi-asset trading.",
+          "why": "Offers a global CFD trading platform with a focus on stocks, commodities, and cryptocurrencies alongside social trading features.",
           "logo": "E",
-          "roas": 3.1,
+          "roas": 3.3,
           "ctr": "2.8%",
-          "traffic": "6.3M",
+          "traffic": "5.2M",
           "adSpend": "—",
           "dataSource": "AI-verified",
           "confidence": "high",
@@ -67,7 +67,7 @@
               "name": "Brand Search Domination",
               "channel": "Google Search",
               "ctr": "3.2%",
-              "roas": 3.4,
+              "roas": 3.6,
               "budget": "—",
               "_split": 0.6
             },
@@ -75,7 +75,7 @@
               "name": "Comparison Landing Funnel",
               "channel": "Google Search",
               "ctr": "2.4%",
-              "roas": 2.8,
+              "roas": 3,
               "budget": "—",
               "_split": 0.4
             }
@@ -93,21 +93,21 @@
             "Target eToro's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Consensus: GPT-4o $4.0M/mo · Claude $4.5M/mo",
+          "dataNotes": "Consensus: GPT-4o $3.5M/mo · Claude $4.5M/mo",
           "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate, Public earnings report"
         },
         {
           "name": "IG",
           "domain": "ig.com",
           "url": "ig.com",
-          "why": "Provides a comprehensive CFD trading platform with access to global markets and advanced tools.",
+          "why": "Provides a comprehensive CFD trading platform with access to thousands of markets including forex, indices, and shares.",
           "logo": "I",
-          "roas": 3,
+          "roas": 3.7,
           "ctr": "2.9%",
-          "traffic": "3.3M",
+          "traffic": "2.1M",
           "adSpend": "—",
-          "dataSource": "AI-verified",
-          "confidence": "high",
+          "dataSource": "AI-estimate",
+          "confidence": "low",
           "topChannel": "SEO / Organic",
           "topChannels": [
             "SEO / Organic"
@@ -118,7 +118,7 @@
               "name": "Lookalike Audience Push",
               "channel": "SEO / Organic",
               "ctr": "3.3%",
-              "roas": 3.3,
+              "roas": 4,
               "budget": "—",
               "_split": 0.6
             },
@@ -126,7 +126,7 @@
               "name": "Free Trial Lead Gen",
               "channel": "SEO / Organic",
               "ctr": "2.5%",
-              "roas": 2.7,
+              "roas": 3.4,
               "budget": "—",
               "_split": 0.4
             }
@@ -144,21 +144,21 @@
             "Target IG's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Consensus: GPT-4o $2.5M/mo · Claude $3.2M/mo",
-          "dataOrigin": "GPT-4o: Public earnings report · Claude: Similarweb estimate, SemRush data"
+          "dataNotes": "Models diverged sharply (2.7×) — figure is approximate",
+          "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate, Public earnings report"
         },
         {
           "name": "Plus500",
           "domain": "plus500.com",
           "url": "plus500.com",
-          "why": "Specializes in CFD trading with a user-friendly platform and a wide range of tradable assets.",
+          "why": "Specializes in CFD trading with a user-friendly platform and a wide range of tradable assets including forex, stocks, and commodities.",
           "logo": "P",
-          "roas": 3.1,
+          "roas": 3,
           "ctr": "2.6%",
           "traffic": "1.9M",
           "adSpend": "—",
-          "dataSource": "AI-estimate",
-          "confidence": "medium",
+          "dataSource": "AI-verified",
+          "confidence": "high",
           "topChannel": "Google Search",
           "topChannels": [
             "Google Search"
@@ -169,7 +169,7 @@
               "name": "Retargeting Wave",
               "channel": "Google Search",
               "ctr": "3.0%",
-              "roas": 3.4,
+              "roas": 3.3,
               "budget": "—",
               "_split": 0.6
             },
@@ -177,7 +177,7 @@
               "name": "Top-Funnel Display",
               "channel": "Google Search",
               "ctr": "2.2%",
-              "roas": 2.8,
+              "roas": 2.7,
               "budget": "—",
               "_split": 0.4
             }
@@ -195,40 +195,40 @@
             "Target Plus500's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Models disagreed (1.6×) — using conservative figure",
-          "dataOrigin": "GPT-4o: Trade-press estimate · Claude: Public earnings report, Similarweb estimate"
+          "dataNotes": "Consensus: GPT-4o $2.1M/mo · Claude $2.8M/mo",
+          "dataOrigin": "GPT-4o: Public earnings report · Claude: Public earnings report, Trade-press estimate"
         },
         {
           "name": "XM",
           "domain": "xm.com",
           "url": "xm.com",
-          "why": "Offers CFD trading with competitive spreads and a focus on forex and commodities.",
+          "why": "Offers CFD trading on forex, stocks, commodities, and indices with competitive spreads and global reach.",
           "logo": "X",
-          "roas": 3.3,
-          "ctr": "3.0%",
+          "roas": 2.9,
+          "ctr": "2.7%",
           "traffic": "1.2M",
           "adSpend": "—",
-          "dataSource": "AI-estimate",
-          "confidence": "medium",
-          "topChannel": "Display / Programmatic",
+          "dataSource": "AI-verified",
+          "confidence": "high",
+          "topChannel": "Google Search",
           "topChannels": [
-            "Display / Programmatic"
+            "Google Search"
           ],
           "threatLevel": "critical",
           "campaigns": [
             {
               "name": "Awareness Reels Burst",
-              "channel": "Display / Programmatic",
-              "ctr": "3.4%",
-              "roas": 3.6,
+              "channel": "Google Search",
+              "ctr": "3.1%",
+              "roas": 3.2,
               "budget": "—",
               "_split": 0.6
             },
             {
               "name": "High-Intent Keyword Steal",
-              "channel": "Display / Programmatic",
-              "ctr": "2.6%",
-              "roas": 3,
+              "channel": "Google Search",
+              "ctr": "2.3%",
+              "roas": 2.6,
               "budget": "—",
               "_split": 0.4
             }
@@ -246,69 +246,18 @@
             "Target XM's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Models disagreed (1.8×) — using conservative figure",
-          "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate, SemRush data"
-        },
-        {
-          "name": "CMC Markets",
-          "domain": "cmcmarkets.com",
-          "url": "cmcmarkets.com",
-          "why": "Provides a sophisticated CFD trading platform with advanced charting tools and global market access.",
-          "logo": "CM",
-          "roas": 3.1,
-          "ctr": "2.7%",
-          "traffic": "1.4M",
-          "adSpend": "—",
-          "dataSource": "AI-verified",
-          "confidence": "high",
-          "topChannel": "SEO / Organic",
-          "topChannels": [
-            "SEO / Organic"
-          ],
-          "threatLevel": "high",
-          "campaigns": [
-            {
-              "name": "Brand Search Domination",
-              "channel": "SEO / Organic",
-              "ctr": "3.1%",
-              "roas": 3.4,
-              "budget": "—",
-              "_split": 0.6
-            },
-            {
-              "name": "Comparison Landing Funnel",
-              "channel": "SEO / Organic",
-              "ctr": "2.3%",
-              "roas": 2.8,
-              "budget": "—",
-              "_split": 0.4
-            }
-          ],
-          "audiences": [],
-          "adCopy": [
-            {
-              "headline": "Trade smarter than CMC Markets",
-              "body": "See why thousands switched from CMC Markets to a faster, lower-fee platform."
-            }
-          ],
-          "suggestions": [
-            "Outflank CMC Markets on long-tail variations of their core keywords — they over-index on brand terms",
-            "Use comparison content (CMC Markets vs You) to capture their branded search intent",
-            "Target CMC Markets's mid-funnel comparison queries with high-intent landing pages"
-          ],
-          "aiDetected": true,
-          "dataNotes": "Consensus: GPT-4o $1.5M/mo · Claude $1.8M/mo",
-          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate, Trade-press estimate"
+          "dataNotes": "Consensus: GPT-4o $1.8M/mo · Claude $2.2M/mo",
+          "dataOrigin": "GPT-4o: Trade-press estimate · Claude: Similarweb estimate, SemRush data"
         },
         {
           "name": "AvaTrade",
           "domain": "avatrade.com",
           "url": "avatrade.com",
-          "why": "Delivers CFD trading services with multiple platform options and educational resources.",
+          "why": "Provides CFD trading across forex, cryptocurrencies, stocks, and commodities with multiple platform options.",
           "logo": "A",
-          "roas": 3,
-          "ctr": "2.8%",
-          "traffic": "975K",
+          "roas": 2.6,
+          "ctr": "2.3%",
+          "traffic": "1.2M",
           "adSpend": "—",
           "dataSource": "AI-verified",
           "confidence": "high",
@@ -316,21 +265,21 @@
           "topChannels": [
             "Google Search"
           ],
-          "threatLevel": "medium",
+          "threatLevel": "high",
           "campaigns": [
             {
-              "name": "Lookalike Audience Push",
+              "name": "Brand Search Domination",
               "channel": "Google Search",
-              "ctr": "3.2%",
-              "roas": 3.3,
+              "ctr": "2.7%",
+              "roas": 2.9,
               "budget": "—",
               "_split": 0.6
             },
             {
-              "name": "Free Trial Lead Gen",
+              "name": "Comparison Landing Funnel",
               "channel": "Google Search",
-              "ctr": "2.4%",
-              "roas": 2.7,
+              "ctr": "1.9%",
+              "roas": 2.3,
               "budget": "—",
               "_split": 0.4
             }
@@ -348,40 +297,40 @@
             "Target AvaTrade's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Consensus: GPT-4o $900K/mo · Claude $1.2M/mo",
-          "dataOrigin": "GPT-4o: Trade-press estimate · Claude: Similarweb estimate, Industry benchmark"
+          "dataNotes": "Consensus: GPT-4o $1.1M/mo · Claude $1.1M/mo",
+          "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate, SemRush data"
         },
         {
           "name": "Pepperstone",
           "domain": "pepperstone.com",
           "url": "pepperstone.com",
-          "why": "Focuses on CFD trading with competitive pricing and fast execution speeds.",
+          "why": "Focuses on CFD trading with low spreads and fast execution across forex, indices, and commodities.",
           "logo": "P",
-          "roas": 3.3,
+          "roas": 3.1,
           "ctr": "2.9%",
-          "traffic": "725K",
+          "traffic": "925K",
           "adSpend": "—",
           "dataSource": "AI-estimate",
           "confidence": "medium",
-          "topChannel": "Google Search",
+          "topChannel": "SEO / Organic",
           "topChannels": [
-            "Google Search"
+            "SEO / Organic"
           ],
-          "threatLevel": "critical",
+          "threatLevel": "medium",
           "campaigns": [
             {
-              "name": "Retargeting Wave",
-              "channel": "Google Search",
+              "name": "Lookalike Audience Push",
+              "channel": "SEO / Organic",
               "ctr": "3.3%",
-              "roas": 3.6,
+              "roas": 3.4,
               "budget": "—",
               "_split": 0.6
             },
             {
-              "name": "Top-Funnel Display",
-              "channel": "Google Search",
+              "name": "Free Trial Lead Gen",
+              "channel": "SEO / Organic",
               "ctr": "2.5%",
-              "roas": 3,
+              "roas": 2.8,
               "budget": "—",
               "_split": 0.4
             }
@@ -399,40 +348,40 @@
             "Target Pepperstone's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Models disagreed (1.5×) — using conservative figure",
-          "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate, SemRush data"
+          "dataNotes": "Models disagreed (1.6×) — using conservative figure",
+          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate, Trade-press estimate"
         },
         {
           "name": "OANDA",
           "domain": "oanda.com",
           "url": "oanda.com",
-          "why": "Offers CFD trading alongside forex trading with advanced analytics and tools.",
+          "why": "Offers CFD trading with advanced tools and analytics for forex, indices, and commodities.",
           "logo": "O",
-          "roas": 3,
-          "ctr": "2.6%",
-          "traffic": "1.4M",
+          "roas": 3.2,
+          "ctr": "2.7%",
+          "traffic": "1.6M",
           "adSpend": "—",
-          "dataSource": "AI-verified",
-          "confidence": "high",
+          "dataSource": "AI-estimate",
+          "confidence": "medium",
           "topChannel": "Google Search",
           "topChannels": [
             "Google Search"
           ],
-          "threatLevel": "high",
+          "threatLevel": "critical",
           "campaigns": [
             {
-              "name": "Awareness Reels Burst",
+              "name": "Retargeting Wave",
               "channel": "Google Search",
-              "ctr": "3.0%",
-              "roas": 3.3,
+              "ctr": "3.1%",
+              "roas": 3.5,
               "budget": "—",
               "_split": 0.6
             },
             {
-              "name": "High-Intent Keyword Steal",
+              "name": "Top-Funnel Display",
               "channel": "Google Search",
-              "ctr": "2.2%",
-              "roas": 2.7,
+              "ctr": "2.3%",
+              "roas": 2.9,
               "budget": "—",
               "_split": 0.4
             }
@@ -450,132 +399,81 @@
             "Target OANDA's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Consensus: GPT-4o $1.1M/mo · Claude $1.4M/mo",
-          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate, Trade-press estimate"
+          "dataNotes": "Models disagreed (1.5×) — using conservative figure",
+          "dataOrigin": "GPT-4o: Public earnings report · Claude: Similarweb estimate, SemRush data"
+        },
+        {
+          "name": "FXCM",
+          "domain": "fxcm.com",
+          "url": "fxcm.com",
+          "why": "Provides CFD trading with a focus on forex, indices, and commodities alongside educational resources.",
+          "logo": "F",
+          "roas": 2.5,
+          "ctr": "2.1%",
+          "traffic": "625K",
+          "adSpend": "—",
+          "dataSource": "AI-verified",
+          "confidence": "high",
+          "topChannel": "Google Search",
+          "topChannels": [
+            "Google Search"
+          ],
+          "threatLevel": "high",
+          "campaigns": [
+            {
+              "name": "Awareness Reels Burst",
+              "channel": "Google Search",
+              "ctr": "2.5%",
+              "roas": 2.8,
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "High-Intent Keyword Steal",
+              "channel": "Google Search",
+              "ctr": "1.7%",
+              "roas": 2.2,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than FXCM",
+              "body": "See why thousands switched from FXCM to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank FXCM on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (FXCM vs You) to capture their branded search intent",
+            "Target FXCM's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Consensus: GPT-4o $750K/mo · Claude $600K/mo",
+          "dataOrigin": "GPT-4o: Trade-press estimate · Claude: Similarweb estimate, Industry benchmark"
         }
       ]
     },
     "websiteKPIs": {
-      "ctr": 1.78,
-      "roas": 2.45,
-      "cpa": 21.4,
-      "trafficMo": 59425,
-      "adSpend": 12903,
-      "convRate": 3.19,
-      "impressions": 508859
+      "ctr": 1.56,
+      "roas": 2.24,
+      "cpa": 32.58,
+      "trafficMo": 55586,
+      "adSpend": 8960,
+      "convRate": 1.87,
+      "impressions": 506701
     },
     "competitors": [
       {
-        "name": "Pepperstone",
-        "domain": "pepperstone.com",
-        "url": "pepperstone.com",
-        "why": "Focuses on CFD trading with competitive pricing and fast execution speeds.",
-        "logo": "P",
-        "roas": 3.3,
-        "ctr": "2.9%",
-        "traffic": "725K",
-        "adSpend": "—",
-        "dataSource": "AI-estimate",
-        "confidence": "medium",
-        "topChannel": "Google Search",
-        "topChannels": [
-          "Google Search"
-        ],
-        "threatLevel": "critical",
-        "campaigns": [
-          {
-            "name": "Retargeting Wave",
-            "channel": "Google Search",
-            "ctr": "3.3%",
-            "roas": 3.6,
-            "budget": "—",
-            "_split": 0.6
-          },
-          {
-            "name": "Top-Funnel Display",
-            "channel": "Google Search",
-            "ctr": "2.5%",
-            "roas": 3,
-            "budget": "—",
-            "_split": 0.4
-          }
-        ],
-        "audiences": [],
-        "adCopy": [
-          {
-            "headline": "Trade smarter than Pepperstone",
-            "body": "See why thousands switched from Pepperstone to a faster, lower-fee platform."
-          }
-        ],
-        "suggestions": [
-          "Outflank Pepperstone on long-tail variations of their core keywords — they over-index on brand terms",
-          "Use comparison content (Pepperstone vs You) to capture their branded search intent",
-          "Target Pepperstone's mid-funnel comparison queries with high-intent landing pages"
-        ],
-        "aiDetected": true,
-        "dataNotes": "Models disagreed (1.5×) — using conservative figure",
-        "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate, SemRush data"
-      },
-      {
-        "name": "XM",
-        "domain": "xm.com",
-        "url": "xm.com",
-        "why": "Offers CFD trading with competitive spreads and a focus on forex and commodities.",
-        "logo": "X",
-        "roas": 3.3,
-        "ctr": "3.0%",
-        "traffic": "1.2M",
-        "adSpend": "—",
-        "dataSource": "AI-estimate",
-        "confidence": "medium",
-        "topChannel": "Display / Programmatic",
-        "topChannels": [
-          "Display / Programmatic"
-        ],
-        "threatLevel": "critical",
-        "campaigns": [
-          {
-            "name": "Awareness Reels Burst",
-            "channel": "Display / Programmatic",
-            "ctr": "3.4%",
-            "roas": 3.6,
-            "budget": "—",
-            "_split": 0.6
-          },
-          {
-            "name": "High-Intent Keyword Steal",
-            "channel": "Display / Programmatic",
-            "ctr": "2.6%",
-            "roas": 3,
-            "budget": "—",
-            "_split": 0.4
-          }
-        ],
-        "audiences": [],
-        "adCopy": [
-          {
-            "headline": "Trade smarter than XM",
-            "body": "See why thousands switched from XM to a faster, lower-fee platform."
-          }
-        ],
-        "suggestions": [
-          "Outflank XM on long-tail variations of their core keywords — they over-index on brand terms",
-          "Use comparison content (XM vs You) to capture their branded search intent",
-          "Target XM's mid-funnel comparison queries with high-intent landing pages"
-        ],
-        "aiDetected": true,
-        "dataNotes": "Models disagreed (1.8×) — using conservative figure",
-        "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate, SemRush data"
-      },
-      {
-        "name": "AvaTrade",
-        "domain": "avatrade.com",
-        "url": "avatrade.com",
-        "why": "Delivers CFD trading services with multiple platform options and educational resources.",
-        "logo": "A",
-        "roas": 3,
-        "ctr": "2.8%",
-        "traffic": "975K",
+        "name": "FXCM",
+        "domain": "fxcm.com",
+        "url": "fxcm.com",
+        "why": "Provides CFD trading with a focus on forex, indices, and commodities alongside educational resources.",
+        "logo": "F",
+        "roas": 2.5,
+        "ctr": "2.1%",
+        "traffic": "625K",
         "adSpend": "—",
         "dataSource": "AI-verified",
         "confidence": "high",
@@ -583,21 +481,21 @@
         "topChannels": [
           "Google Search"
         ],
-        "threatLevel": "medium",
+        "threatLevel": "high",
         "campaigns": [
           {
-            "name": "Lookalike Audience Push",
+            "name": "Awareness Reels Burst",
             "channel": "Google Search",
-            "ctr": "3.2%",
-            "roas": 3.3,
+            "ctr": "2.5%",
+            "roas": 2.8,
             "budget": "—",
             "_split": 0.6
           },
           {
-            "name": "Free Trial Lead Gen",
+            "name": "High-Intent Keyword Steal",
             "channel": "Google Search",
-            "ctr": "2.4%",
-            "roas": 2.7,
+            "ctr": "1.7%",
+            "roas": 2.2,
             "budget": "—",
             "_split": 0.4
           }
@@ -605,31 +503,31 @@
         "audiences": [],
         "adCopy": [
           {
-            "headline": "Trade smarter than AvaTrade",
-            "body": "See why thousands switched from AvaTrade to a faster, lower-fee platform."
+            "headline": "Trade smarter than FXCM",
+            "body": "See why thousands switched from FXCM to a faster, lower-fee platform."
           }
         ],
         "suggestions": [
-          "Outflank AvaTrade on long-tail variations of their core keywords — they over-index on brand terms",
-          "Use comparison content (AvaTrade vs You) to capture their branded search intent",
-          "Target AvaTrade's mid-funnel comparison queries with high-intent landing pages"
+          "Outflank FXCM on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (FXCM vs You) to capture their branded search intent",
+          "Target FXCM's mid-funnel comparison queries with high-intent landing pages"
         ],
         "aiDetected": true,
-        "dataNotes": "Consensus: GPT-4o $900K/mo · Claude $1.2M/mo",
+        "dataNotes": "Consensus: GPT-4o $750K/mo · Claude $600K/mo",
         "dataOrigin": "GPT-4o: Trade-press estimate · Claude: Similarweb estimate, Industry benchmark"
       },
       {
         "name": "IG",
         "domain": "ig.com",
         "url": "ig.com",
-        "why": "Provides a comprehensive CFD trading platform with access to global markets and advanced tools.",
+        "why": "Provides a comprehensive CFD trading platform with access to thousands of markets including forex, indices, and shares.",
         "logo": "I",
-        "roas": 3,
+        "roas": 3.7,
         "ctr": "2.9%",
-        "traffic": "3.3M",
+        "traffic": "2.1M",
         "adSpend": "—",
-        "dataSource": "AI-verified",
-        "confidence": "high",
+        "dataSource": "AI-estimate",
+        "confidence": "low",
         "topChannel": "SEO / Organic",
         "topChannels": [
           "SEO / Organic"
@@ -640,7 +538,7 @@
             "name": "Lookalike Audience Push",
             "channel": "SEO / Organic",
             "ctr": "3.3%",
-            "roas": 3.3,
+            "roas": 4,
             "budget": "—",
             "_split": 0.6
           },
@@ -648,7 +546,7 @@
             "name": "Free Trial Lead Gen",
             "channel": "SEO / Organic",
             "ctr": "2.5%",
-            "roas": 2.7,
+            "roas": 3.4,
             "budget": "—",
             "_split": 0.4
           }
@@ -666,18 +564,120 @@
           "Target IG's mid-funnel comparison queries with high-intent landing pages"
         ],
         "aiDetected": true,
-        "dataNotes": "Consensus: GPT-4o $2.5M/mo · Claude $3.2M/mo",
-        "dataOrigin": "GPT-4o: Public earnings report · Claude: Similarweb estimate, SemRush data"
+        "dataNotes": "Models diverged sharply (2.7×) — figure is approximate",
+        "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate, Public earnings report"
+      },
+      {
+        "name": "Pepperstone",
+        "domain": "pepperstone.com",
+        "url": "pepperstone.com",
+        "why": "Focuses on CFD trading with low spreads and fast execution across forex, indices, and commodities.",
+        "logo": "P",
+        "roas": 3.1,
+        "ctr": "2.9%",
+        "traffic": "925K",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "medium",
+        "topChannel": "SEO / Organic",
+        "topChannels": [
+          "SEO / Organic"
+        ],
+        "threatLevel": "medium",
+        "campaigns": [
+          {
+            "name": "Lookalike Audience Push",
+            "channel": "SEO / Organic",
+            "ctr": "3.3%",
+            "roas": 3.4,
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "Free Trial Lead Gen",
+            "channel": "SEO / Organic",
+            "ctr": "2.5%",
+            "roas": 2.8,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than Pepperstone",
+            "body": "See why thousands switched from Pepperstone to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank Pepperstone on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (Pepperstone vs You) to capture their branded search intent",
+          "Target Pepperstone's mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "Models disagreed (1.6×) — using conservative figure",
+        "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate, Trade-press estimate"
+      },
+      {
+        "name": "AvaTrade",
+        "domain": "avatrade.com",
+        "url": "avatrade.com",
+        "why": "Provides CFD trading across forex, cryptocurrencies, stocks, and commodities with multiple platform options.",
+        "logo": "A",
+        "roas": 2.6,
+        "ctr": "2.3%",
+        "traffic": "1.2M",
+        "adSpend": "—",
+        "dataSource": "AI-verified",
+        "confidence": "high",
+        "topChannel": "Google Search",
+        "topChannels": [
+          "Google Search"
+        ],
+        "threatLevel": "high",
+        "campaigns": [
+          {
+            "name": "Brand Search Domination",
+            "channel": "Google Search",
+            "ctr": "2.7%",
+            "roas": 2.9,
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "Comparison Landing Funnel",
+            "channel": "Google Search",
+            "ctr": "1.9%",
+            "roas": 2.3,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than AvaTrade",
+            "body": "See why thousands switched from AvaTrade to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank AvaTrade on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (AvaTrade vs You) to capture their branded search intent",
+          "Target AvaTrade's mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "Consensus: GPT-4o $1.1M/mo · Claude $1.1M/mo",
+        "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate, SemRush data"
       },
       {
         "name": "eToro",
         "domain": "etoro.com",
         "url": "etoro.com",
-        "why": "Offers a global CFD trading platform with a focus on social trading and multi-asset trading.",
+        "why": "Offers a global CFD trading platform with a focus on stocks, commodities, and cryptocurrencies alongside social trading features.",
         "logo": "E",
-        "roas": 3.1,
+        "roas": 3.3,
         "ctr": "2.8%",
-        "traffic": "6.3M",
+        "traffic": "5.2M",
         "adSpend": "—",
         "dataSource": "AI-verified",
         "confidence": "high",
@@ -691,7 +691,7 @@
             "name": "Brand Search Domination",
             "channel": "Google Search",
             "ctr": "3.2%",
-            "roas": 3.4,
+            "roas": 3.6,
             "budget": "—",
             "_split": 0.6
           },
@@ -699,7 +699,7 @@
             "name": "Comparison Landing Funnel",
             "channel": "Google Search",
             "ctr": "2.4%",
-            "roas": 2.8,
+            "roas": 3,
             "budget": "—",
             "_split": 0.4
           }
@@ -717,7 +717,7 @@
           "Target eToro's mid-funnel comparison queries with high-intent landing pages"
         ],
         "aiDetected": true,
-        "dataNotes": "Consensus: GPT-4o $4.0M/mo · Claude $4.5M/mo",
+        "dataNotes": "Consensus: GPT-4o $3.5M/mo · Claude $4.5M/mo",
         "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate, Public earnings report"
       }
     ],
@@ -727,10 +727,10 @@
   },
   "brandKit": null,
   "lastCompetitorNames": [
-    "Pepperstone",
-    "XM",
-    "AvaTrade",
+    "FXCM",
     "IG",
+    "Pepperstone",
+    "AvaTrade",
     "eToro"
   ]
 }
