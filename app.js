@@ -39307,6 +39307,14 @@ function _alCountryOptions(selected) {
 }
 window.buildAdLibrary = function() {
   const wrap = document.getElementById('alWrap'); if (!wrap) return;
+  const _t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+  window.IGDiag && IGDiag.log('buildAdLibrary: start');
+  // Pause field-enhancer during the innerHTML swap — without this, the
+  // MutationObserver flushes hundreds of mutation records (~100 country
+  // checkboxes + form inputs) and can spike the main thread on slower
+  // machines. Same pattern used by the dashboard builder.
+  try { window.IGFields && IGFields.pause && IGFields.pause(); } catch(_) {}
+  try {
   wrap.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
       <h3 style="margin:0 0 10px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem">🔍 Search Ad Libraries</h3>
@@ -39366,12 +39374,36 @@ window.buildAdLibrary = function() {
     <div id="alOut"></div>
   `;
   document.getElementById('alRun').addEventListener('click', _alRunMulti);
-  // Default selection: United States
-  window._alSelectedCountries = new Set(['US']);
-  _alRenderCountryList('');
+  // Default selection: United States. Preserve any prior selection so the
+  // user's last picks survive a tab-revisit.
+  if (!(window._alSelectedCountries instanceof Set) || !window._alSelectedCountries.size) {
+    window._alSelectedCountries = new Set(['US']);
+  }
+  // Lazy-render the country list: defer painting ~98 checkbox rows until the
+  // menu is actually opened. This was previously synchronous on view-init
+  // and caused a perceived freeze on slower machines.
   _alUpdateCountryLabel();
   _alPopulateBrandPicker();
-  document.addEventListener('click', _alOutsideCountryClose);
+  // Idempotent global listener — without the guard, every re-entry to this
+  // view re-added the handler; same fn reference dedupes on modern browsers
+  // but we belt-and-brace it for older ones.
+  if (!window.__alOutsideClickWired) {
+    document.addEventListener('click', _alOutsideCountryClose);
+    window.__alOutsideClickWired = true;
+  }
+  } finally {
+    // Always resume the field-enhancer — even if the build threw — so a
+    // transient error here can never leave AI Suggest decoration globally
+    // disabled. Scan only this subtree (cheap) instead of the whole document.
+    try {
+      if (window.IGFields) {
+        IGFields.resume && IGFields.resume({ scan: false });
+        IGFields.scanRoot && IGFields.scanRoot(wrap);
+      }
+    } catch(_) {}
+    const _dt = ((window.performance && performance.now) ? performance.now() : Date.now()) - _t0;
+    window.IGDiag && IGDiag.log('buildAdLibrary: done', _dt.toFixed(0) + 'ms');
+  }
 };
 
 window._alPopulateBrandPicker = function() {

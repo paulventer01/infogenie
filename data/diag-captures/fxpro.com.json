@@ -1,0 +1,736 @@
+{
+  "capturedAt": "2026-05-25T08:01:01.686Z",
+  "domain": "fxpro.com",
+  "url": "fxpro.com",
+  "capturedFromAnalyseRun": true,
+  "analysisData": {
+    "url": "fxpro.com",
+    "country": "global",
+    "industryKey": "fintech",
+    "industry": {
+      "name": "Online CFD & Forex Trading Brokers",
+      "keywords": [
+        "forex",
+        "trading",
+        "invest",
+        "finance",
+        "fintech",
+        "crypto",
+        "bank",
+        "payment",
+        "money",
+        "loan",
+        "credit",
+        "insurance",
+        "wealth",
+        "fund",
+        "stock",
+        "market",
+        "broker",
+        "fx",
+        "currency",
+        "etoro",
+        "ig markets",
+        "oanda",
+        "xm",
+        "plus500",
+        "revolut",
+        "wise",
+        "stripe",
+        "paypal",
+        "coinbase",
+        "robinhood",
+        "financial",
+        "capital",
+        "asset"
+      ],
+      "competitors": [
+        {
+          "name": "eToro",
+          "domain": "etoro.com",
+          "url": "etoro.com",
+          "why": "Offers a global CFD trading platform with a wide range of instruments including forex, stocks, and cryptocurrencies.",
+          "logo": "E",
+          "roas": 3.3,
+          "ctr": "2.8%",
+          "traffic": "5.8M",
+          "adSpend": "—",
+          "dataSource": "AI-verified",
+          "confidence": "high",
+          "topChannel": "Google Search",
+          "topChannels": [
+            "Google Search"
+          ],
+          "threatLevel": "critical",
+          "campaigns": [
+            {
+              "name": "Brand Search Domination",
+              "channel": "Google Search",
+              "ctr": "3.2%",
+              "roas": 3.6,
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "Comparison Landing Funnel",
+              "channel": "Google Search",
+              "ctr": "2.4%",
+              "roas": 3,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than eToro",
+              "body": "See why thousands switched from eToro to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank eToro on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (eToro vs You) to capture their branded search intent",
+            "Target eToro's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Consensus: GPT-4o $3.5M/mo · Claude $4.5M/mo",
+          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate, Public earnings report"
+        },
+        {
+          "name": "IG",
+          "domain": "ig.com",
+          "url": "ig.com",
+          "why": "Provides a comprehensive CFD trading platform with advanced tools and access to global markets.",
+          "logo": "I",
+          "roas": 3.3,
+          "ctr": "2.9%",
+          "traffic": "3.3M",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "medium",
+          "topChannel": "SEO / Organic",
+          "topChannels": [
+            "SEO / Organic"
+          ],
+          "threatLevel": "high",
+          "campaigns": [
+            {
+              "name": "Lookalike Audience Push",
+              "channel": "SEO / Organic",
+              "ctr": "3.3%",
+              "roas": 3.6,
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "Free Trial Lead Gen",
+              "channel": "SEO / Organic",
+              "ctr": "2.5%",
+              "roas": 3,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than IG",
+              "body": "See why thousands switched from IG to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank IG on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (IG vs You) to capture their branded search intent",
+            "Target IG's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Models disagreed (1.5×) — using conservative figure",
+          "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate, SemRush data"
+        },
+        {
+          "name": "Plus500",
+          "domain": "plus500.com",
+          "url": "plus500.com",
+          "why": "Specializes in CFD trading with a user-friendly platform and a wide range of tradable assets.",
+          "logo": "P",
+          "roas": 3.4,
+          "ctr": "2.8%",
+          "traffic": "1.2M",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "medium",
+          "topChannel": "Google Search",
+          "topChannels": [
+            "Google Search"
+          ],
+          "threatLevel": "medium",
+          "campaigns": [
+            {
+              "name": "Retargeting Wave",
+              "channel": "Google Search",
+              "ctr": "3.2%",
+              "roas": 3.7,
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "Top-Funnel Display",
+              "channel": "Google Search",
+              "ctr": "2.4%",
+              "roas": 3.1,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than Plus500",
+              "body": "See why thousands switched from Plus500 to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank Plus500 on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (Plus500 vs You) to capture their branded search intent",
+            "Target Plus500's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Models disagreed (1.6×) — using conservative figure",
+          "dataOrigin": "GPT-4o: Public earnings report · Claude: Public earnings report, Similarweb estimate"
+        },
+        {
+          "name": "CMC Markets",
+          "domain": "cmcmarkets.com",
+          "url": "cmcmarkets.com",
+          "why": "Offers a robust CFD trading platform with advanced charting tools and a broad asset selection.",
+          "logo": "CM",
+          "roas": 3,
+          "ctr": "2.7%",
+          "traffic": "1.4M",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "medium",
+          "topChannel": "SEO / Organic",
+          "topChannels": [
+            "SEO / Organic"
+          ],
+          "threatLevel": "critical",
+          "campaigns": [
+            {
+              "name": "Awareness Reels Burst",
+              "channel": "SEO / Organic",
+              "ctr": "3.1%",
+              "roas": 3.3,
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "High-Intent Keyword Steal",
+              "channel": "SEO / Organic",
+              "ctr": "2.3%",
+              "roas": 2.7,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than CMC Markets",
+              "body": "See why thousands switched from CMC Markets to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank CMC Markets on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (CMC Markets vs You) to capture their branded search intent",
+            "Target CMC Markets's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Models disagreed (1.5×) — using conservative figure",
+          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate, SemRush data"
+        },
+        {
+          "name": "AvaTrade",
+          "domain": "avatrade.com",
+          "url": "avatrade.com",
+          "why": "Provides a global CFD trading platform with multiple trading tools and educational resources.",
+          "logo": "A",
+          "roas": 3,
+          "ctr": "2.7%",
+          "traffic": "850K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "medium",
+          "topChannel": "Google Search",
+          "topChannels": [
+            "Google Search"
+          ],
+          "threatLevel": "high",
+          "campaigns": [
+            {
+              "name": "Brand Search Domination",
+              "channel": "Google Search",
+              "ctr": "3.1%",
+              "roas": 3.3,
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "Comparison Landing Funnel",
+              "channel": "Google Search",
+              "ctr": "2.3%",
+              "roas": 2.7,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than AvaTrade",
+              "body": "See why thousands switched from AvaTrade to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank AvaTrade on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (AvaTrade vs You) to capture their branded search intent",
+            "Target AvaTrade's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Models disagreed (1.6×) — using conservative figure",
+          "dataOrigin": "GPT-4o: Trade-press estimate · Claude: Similarweb estimate, Industry benchmark"
+        },
+        {
+          "name": "Pepperstone",
+          "domain": "pepperstone.com",
+          "url": "pepperstone.com",
+          "why": "Focuses on CFD trading with competitive spreads and access to multiple trading platforms.",
+          "logo": "P",
+          "roas": 2.9,
+          "ctr": "2.6%",
+          "traffic": "625K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "medium",
+          "topChannel": "SEO / Organic",
+          "topChannels": [
+            "SEO / Organic"
+          ],
+          "threatLevel": "medium",
+          "campaigns": [
+            {
+              "name": "Lookalike Audience Push",
+              "channel": "SEO / Organic",
+              "ctr": "3.0%",
+              "roas": 3.2,
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "Free Trial Lead Gen",
+              "channel": "SEO / Organic",
+              "ctr": "2.2%",
+              "roas": 2.6,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than Pepperstone",
+              "body": "See why thousands switched from Pepperstone to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank Pepperstone on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (Pepperstone vs You) to capture their branded search intent",
+            "Target Pepperstone's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Models disagreed (2.0×) — using conservative figure",
+          "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate, SemRush data"
+        },
+        {
+          "name": "OANDA",
+          "domain": "oanda.com",
+          "url": "oanda.com",
+          "why": "Offers CFD trading alongside forex with a strong emphasis on transparency and technology.",
+          "logo": "O",
+          "roas": 3,
+          "ctr": "2.6%",
+          "traffic": "1.1M",
+          "adSpend": "—",
+          "dataSource": "AI-verified",
+          "confidence": "high",
+          "topChannel": "Google Search",
+          "topChannels": [
+            "Google Search"
+          ],
+          "threatLevel": "critical",
+          "campaigns": [
+            {
+              "name": "Retargeting Wave",
+              "channel": "Google Search",
+              "ctr": "3.0%",
+              "roas": 3.3,
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "Top-Funnel Display",
+              "channel": "Google Search",
+              "ctr": "2.2%",
+              "roas": 2.7,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than OANDA",
+              "body": "See why thousands switched from OANDA to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank OANDA on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (OANDA vs You) to capture their branded search intent",
+            "Target OANDA's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Consensus: GPT-4o $1.5M/mo · Claude $1.4M/mo",
+          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate, SemRush data"
+        },
+        {
+          "name": "Saxo Bank",
+          "domain": "home.saxo",
+          "url": "home.saxo",
+          "why": "Provides a premium CFD trading platform with access to a wide range of global markets.",
+          "logo": "SB",
+          "roas": 3.5,
+          "ctr": "3.0%",
+          "traffic": "780K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "medium",
+          "topChannel": "SEO / Organic",
+          "topChannels": [
+            "SEO / Organic"
+          ],
+          "threatLevel": "high",
+          "campaigns": [
+            {
+              "name": "Awareness Reels Burst",
+              "channel": "SEO / Organic",
+              "ctr": "3.4%",
+              "roas": 3.8,
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "High-Intent Keyword Steal",
+              "channel": "SEO / Organic",
+              "ctr": "2.6%",
+              "roas": 3.2,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than Saxo Bank",
+              "body": "See why thousands switched from Saxo Bank to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank Saxo Bank on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (Saxo Bank vs You) to capture their branded search intent",
+            "Target Saxo Bank's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Models disagreed (1.5×) — using conservative figure",
+          "dataOrigin": "GPT-4o: Public earnings report · Claude: Similarweb estimate, Trade-press estimate"
+        }
+      ]
+    },
+    "websiteKPIs": {
+      "ctr": 1.78,
+      "roas": 2.45,
+      "cpa": 21.4,
+      "trafficMo": 59425,
+      "adSpend": 12903,
+      "convRate": 3.19,
+      "impressions": 508859
+    },
+    "competitors": [
+      {
+        "name": "Pepperstone",
+        "domain": "pepperstone.com",
+        "url": "pepperstone.com",
+        "why": "Focuses on CFD trading with competitive spreads and access to multiple trading platforms.",
+        "logo": "P",
+        "roas": 2.9,
+        "ctr": "2.6%",
+        "traffic": "625K",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "medium",
+        "topChannel": "SEO / Organic",
+        "topChannels": [
+          "SEO / Organic"
+        ],
+        "threatLevel": "medium",
+        "campaigns": [
+          {
+            "name": "Lookalike Audience Push",
+            "channel": "SEO / Organic",
+            "ctr": "3.0%",
+            "roas": 3.2,
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "Free Trial Lead Gen",
+            "channel": "SEO / Organic",
+            "ctr": "2.2%",
+            "roas": 2.6,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than Pepperstone",
+            "body": "See why thousands switched from Pepperstone to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank Pepperstone on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (Pepperstone vs You) to capture their branded search intent",
+          "Target Pepperstone's mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "Models disagreed (2.0×) — using conservative figure",
+        "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate, SemRush data"
+      },
+      {
+        "name": "IG",
+        "domain": "ig.com",
+        "url": "ig.com",
+        "why": "Provides a comprehensive CFD trading platform with advanced tools and access to global markets.",
+        "logo": "I",
+        "roas": 3.3,
+        "ctr": "2.9%",
+        "traffic": "3.3M",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "medium",
+        "topChannel": "SEO / Organic",
+        "topChannels": [
+          "SEO / Organic"
+        ],
+        "threatLevel": "high",
+        "campaigns": [
+          {
+            "name": "Lookalike Audience Push",
+            "channel": "SEO / Organic",
+            "ctr": "3.3%",
+            "roas": 3.6,
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "Free Trial Lead Gen",
+            "channel": "SEO / Organic",
+            "ctr": "2.5%",
+            "roas": 3,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than IG",
+            "body": "See why thousands switched from IG to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank IG on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (IG vs You) to capture their branded search intent",
+          "Target IG's mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "Models disagreed (1.5×) — using conservative figure",
+        "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate, SemRush data"
+      },
+      {
+        "name": "Plus500",
+        "domain": "plus500.com",
+        "url": "plus500.com",
+        "why": "Specializes in CFD trading with a user-friendly platform and a wide range of tradable assets.",
+        "logo": "P",
+        "roas": 3.4,
+        "ctr": "2.8%",
+        "traffic": "1.2M",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "medium",
+        "topChannel": "Google Search",
+        "topChannels": [
+          "Google Search"
+        ],
+        "threatLevel": "medium",
+        "campaigns": [
+          {
+            "name": "Retargeting Wave",
+            "channel": "Google Search",
+            "ctr": "3.2%",
+            "roas": 3.7,
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "Top-Funnel Display",
+            "channel": "Google Search",
+            "ctr": "2.4%",
+            "roas": 3.1,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than Plus500",
+            "body": "See why thousands switched from Plus500 to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank Plus500 on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (Plus500 vs You) to capture their branded search intent",
+          "Target Plus500's mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "Models disagreed (1.6×) — using conservative figure",
+        "dataOrigin": "GPT-4o: Public earnings report · Claude: Public earnings report, Similarweb estimate"
+      },
+      {
+        "name": "CMC Markets",
+        "domain": "cmcmarkets.com",
+        "url": "cmcmarkets.com",
+        "why": "Offers a robust CFD trading platform with advanced charting tools and a broad asset selection.",
+        "logo": "CM",
+        "roas": 3,
+        "ctr": "2.7%",
+        "traffic": "1.4M",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "medium",
+        "topChannel": "SEO / Organic",
+        "topChannels": [
+          "SEO / Organic"
+        ],
+        "threatLevel": "critical",
+        "campaigns": [
+          {
+            "name": "Awareness Reels Burst",
+            "channel": "SEO / Organic",
+            "ctr": "3.1%",
+            "roas": 3.3,
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "High-Intent Keyword Steal",
+            "channel": "SEO / Organic",
+            "ctr": "2.3%",
+            "roas": 2.7,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than CMC Markets",
+            "body": "See why thousands switched from CMC Markets to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank CMC Markets on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (CMC Markets vs You) to capture their branded search intent",
+          "Target CMC Markets's mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "Models disagreed (1.5×) — using conservative figure",
+        "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate, SemRush data"
+      },
+      {
+        "name": "Saxo Bank",
+        "domain": "home.saxo",
+        "url": "home.saxo",
+        "why": "Provides a premium CFD trading platform with access to a wide range of global markets.",
+        "logo": "SB",
+        "roas": 3.5,
+        "ctr": "3.0%",
+        "traffic": "780K",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "medium",
+        "topChannel": "SEO / Organic",
+        "topChannels": [
+          "SEO / Organic"
+        ],
+        "threatLevel": "high",
+        "campaigns": [
+          {
+            "name": "Awareness Reels Burst",
+            "channel": "SEO / Organic",
+            "ctr": "3.4%",
+            "roas": 3.8,
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "High-Intent Keyword Steal",
+            "channel": "SEO / Organic",
+            "ctr": "2.6%",
+            "roas": 3.2,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than Saxo Bank",
+            "body": "See why thousands switched from Saxo Bank to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank Saxo Bank on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (Saxo Bank vs You) to capture their branded search intent",
+          "Target Saxo Bank's mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "Models disagreed (1.5×) — using conservative figure",
+        "dataOrigin": "GPT-4o: Public earnings report · Claude: Similarweb estimate, Trade-press estimate"
+      }
+    ],
+    "sectorOnly": false,
+    "isWordPress": false,
+    "wpData": null
+  },
+  "brandKit": null,
+  "lastCompetitorNames": [
+    "Pepperstone",
+    "IG",
+    "Plus500",
+    "CMC Markets",
+    "Saxo Bank"
+  ]
+}
