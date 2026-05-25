@@ -36022,13 +36022,24 @@ window.buildSovTracker = async function() {
     const lastTarget = window._sovTarget || (targets[0]?.target_brand || '');
     wrap.innerHTML = `
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">
-        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Tracked brand</div>
-          <select id="sovTarget" style="padding:8px 11px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.84rem;min-width:200px">
-            ${targets.length===0 ? `<option value="">No data yet — add a brand in Crisis Radar</option>` :
-              targets.map(t=>`<option value="${_escapeHtml(t.target_brand)}" ${t.target_brand===lastTarget?'selected':''}>${_escapeHtml(t.target_brand)} (${t.snapshots} snapshots)</option>`).join('')}
-          </select>
+        <label title="Pick a competitor brand whose media-mention share you want to chart over time. Each entry here was added via Crisis Radar and has been snapshotted every 6 hours.">
+          <div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">
+            Tracked brand
+            <span style="font-weight:400;color:#9CA3AF;margin-left:4px">— whose media share to chart</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="sovTarget" style="padding:8px 11px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.84rem;min-width:200px">
+              ${targets.length===0 ? `<option value="">No data yet — add a brand in Crisis Radar</option>` :
+                targets.map(t=>`<option value="${_escapeHtml(t.target_brand)}" ${t.target_brand===lastTarget?'selected':''}>${_escapeHtml(t.target_brand)} (${t.snapshots} snapshots)</option>`).join('')}
+            </select>
+            <button id="sovAIBtn" onclick="_sovAISuggest()" title="Let AI pick the most strategically important competitor to focus on based on your brand" style="padding:8px 13px;background:#7C3AED;border:2px solid #7C3AED;border-radius:6px;font-size:0.78rem;font-weight:700;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.4)">✨ AI Suggest</button>
+          </div>
         </label>
-        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Window</div>
+        <label title="How far back to pull snapshots — each snapshot captures media-mention counts for all tracked brands at that moment in time.">
+          <div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">
+            Window
+            <span style="font-weight:400;color:#9CA3AF;margin-left:4px">— how far back to look</span>
+          </div>
           <select id="sovDays" style="padding:8px 11px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.84rem">
             <option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option>
           </select>
@@ -36083,6 +36094,49 @@ window._sovLoad = async function() {
         <td style="padding:4px 10px"><div style="background:#F3F4F6;border-radius:3px;height:8px;width:160px;margin-left:auto"><div style="background:${_SOV_PALETTE[i%_SOV_PALETTE.length]};height:100%;border-radius:3px;width:${(s.share*100).toFixed(1)}%"></div></div></td>
       </tr>`).join('')}</tbody></table></div>`;
   } catch (e) { w.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:16px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
+};
+
+window._sovAISuggest = async function() {
+  const sel = document.getElementById('sovTarget');
+  const btn = document.getElementById('sovAIBtn');
+  if (!sel || !btn) return;
+  const brands = Array.from(sel.options).map(o => o.value).filter(Boolean);
+  if (!brands.length) { alert('No tracked brands yet — add competitors in Crisis Radar first.'); return; }
+  const myDomain = (window.analysisData?.url || localStorage.getItem('ig-domain') || '')
+    .replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0] || 'your brand';
+  btn.disabled = true;
+  btn.textContent = '⏳ Thinking…';
+  try {
+    const r = await fetch('/api/openai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{
+          role: 'user',
+          content: `I am reviewing Share of Voice data for "${myDomain}". The following competitor brands are being tracked: ${brands.join(', ')}. Which single brand from this list is the most strategically important to monitor for share of voice against ${myDomain}? Consider factors like market overlap, brand similarity, and competitive threat. Reply with ONLY the exact brand string from the list — no explanation, no punctuation, just the domain.`
+        }]
+      })
+    }).then(x => x.json());
+    const raw = (r.choices?.[0]?.message?.content || '').trim().replace(/^["'.]+|["'.]+$/g, '');
+    const match = brands.find(b => b === raw) || brands.find(b => raw.includes(b) || b.includes(raw));
+    if (match) {
+      sel.value = match;
+      sel.style.transition = 'border-color 0.3s';
+      sel.style.borderColor = '#7C3AED';
+      setTimeout(() => { sel.style.borderColor = '#E5E7EB'; }, 2000);
+      _sovLoad();
+    } else {
+      btn.textContent = '✨ AI Suggest';
+      alert('AI suggested "' + _escapeHtml(raw) + '" but it didn\'t match any tracked brand. Try picking manually.');
+    }
+  } catch(e) {
+    console.error('sovAISuggest', e);
+    alert('AI Suggest failed — check your AI provider connection.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ AI Suggest';
+  }
 };
 
 window.buildDiscovery = function() {
