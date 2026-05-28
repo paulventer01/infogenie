@@ -37775,13 +37775,44 @@ window._lfExportCsv = function() {
 // ── Tier 12 #1: SERP Position Tracker ────────────────────────────────────
 window.buildSerpTracker = async function() {
   const el = document.getElementById('serpTrackerWrap'); if (!el) return;
+  const _stAutoDomain = (window.analysisData?.url || '')
+    .replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0] || '';
   el.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:16px">
-      <div style="display:grid;grid-template-columns:2fr 1fr 90px auto;gap:10px;align-items:end">
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Keyword</label><input id="stKw" placeholder="best running shoes" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Your domain</label><input id="stDom" placeholder="nike.com" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Country</label><input id="stCty" value="us" maxlength="5" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
-        <button onclick="_stAdd()" style="padding:10px 18px;background:#F97316;border:2px solid #F97316;border-radius:8px;font-size:0.82rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">+ Track</button>
+      <div style="display:grid;grid-template-columns:2fr 1fr 160px auto;gap:10px;align-items:end">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280">Keyword</label>
+            <button id="stKwSuggestBtn" onclick="_stKwSuggest()" title="Fill from your analysis keywords" style="padding:2px 8px;background:linear-gradient(135deg,#7C3AED,#A855F7);border:none;border-radius:5px;color:#fff;font-size:0.62rem;font-weight:700;cursor:pointer;-webkit-text-fill-color:#fff">✨ AI Suggest</button>
+          </div>
+          <input id="stKw" placeholder="best running shoes" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Your domain <span style="color:#15803D;font-weight:600">(auto-filled)</span></label>
+          <input id="stDom" value="${_escapeHtml(_stAutoDomain)}" placeholder="nike.com" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;box-sizing:border-box;background:${_stAutoDomain?'#F0FDF4':'#fff'}">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Country</label>
+          <select id="stCty" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.82rem;background:#fff;box-sizing:border-box">
+            <option value="us" selected>🇺🇸 United States</option>
+            <option value="gb">🇬🇧 United Kingdom</option>
+            <option value="au">🇦🇺 Australia</option>
+            <option value="ca">🇨🇦 Canada</option>
+            <option value="za">🇿🇦 South Africa</option>
+            <option value="de">🇩🇪 Germany</option>
+            <option value="fr">🇫🇷 France</option>
+            <option value="es">🇪🇸 Spain</option>
+            <option value="it">🇮🇹 Italy</option>
+            <option value="nl">🇳🇱 Netherlands</option>
+            <option value="br">🇧🇷 Brazil</option>
+            <option value="mx">🇲🇽 Mexico</option>
+            <option value="in">🇮🇳 India</option>
+            <option value="sg">🇸🇬 Singapore</option>
+            <option value="ae">🇦🇪 UAE</option>
+            <option value="global">🌐 Global</option>
+          </select>
+        </div>
+        <button id="stTrackBtn" onclick="_stAdd()" style="padding:10px 18px;background:#F97316;border:2px solid #F97316;border-radius:8px;font-size:0.82rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4);white-space:nowrap">+ Track</button>
       </div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -37822,10 +37853,58 @@ window._stAdd = async function() {
   const target_domain = (document.getElementById('stDom')||{}).value || '';
   const country = (document.getElementById('stCty')||{}).value || 'us';
   if (!keyword.trim() || !target_domain.trim()) return showToast('⚠️ Keyword + domain required');
-  const r = await fetch('/api/serp-tracker/keywords', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ keyword, target_domain, country }) }).then(x=>x.json());
-  if (!r.ok) return showToast('❌ ' + r.error);
-  document.getElementById('stKw').value = '';
-  showToast('✅ Tracking added'); _stRefresh();
+  const btn = document.getElementById('stTrackBtn');
+  const t0 = Date.now();
+  let ticker;
+  if (btn) {
+    btn.disabled = true;
+    ticker = setInterval(() => {
+      const s = ((Date.now() - t0) / 1000).toFixed(0);
+      btn.textContent = `⏳ ${s}s…`;
+    }, 500);
+  }
+  try {
+    const r = await fetch('/api/serp-tracker/keywords', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ keyword, target_domain, country }) }).then(x=>x.json());
+    if (!r.ok) { showToast('❌ ' + r.error); return; }
+    document.getElementById('stKw').value = '';
+    showToast('✅ Tracking added'); _stRefresh();
+  } finally {
+    clearInterval(ticker);
+    if (btn) { btn.disabled = false; btn.textContent = '+ Track'; }
+  }
+};
+window._stKwSuggest = async function() {
+  const kw = document.getElementById('stKw');
+  const btn = document.getElementById('stKwSuggestBtn');
+  if (!kw || !btn) return;
+  // First try: pull directly from analysis keywords (instant, no AI call needed)
+  const fromAnalysis = (window.analysisData && Array.isArray(window.analysisData.keywords))
+    ? window.analysisData.keywords.map(k => typeof k === 'string' ? k : (k.keyword || k.term || '')).filter(Boolean).slice(0, 10)
+    : [];
+  if (fromAnalysis.length) {
+    // Cycle through analysis keywords each click
+    window._stKwIdx = ((window._stKwIdx || 0) % fromAnalysis.length);
+    kw.value = fromAnalysis[window._stKwIdx];
+    kw.style.borderColor = '#7C3AED';
+    setTimeout(() => { kw.style.borderColor = '#D1D5DB'; }, 1500);
+    window._stKwIdx++;
+    return;
+  }
+  // Fallback: ask AI to suggest a keyword based on the domain
+  const domain = (document.getElementById('stDom')||{}).value || (window.analysisData?.url || '');
+  if (!domain) { showToast('⚠️ Run an analysis first or enter your domain — then AI Suggest will fill keywords from it.'); return; }
+  btn.disabled = true; btn.textContent = '⏳';
+  try {
+    const r = await fetch('/api/openai', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ model:'gpt-4o-mini', messages:[{ role:'user',
+        content:`Suggest one high-value SEO keyword to track in Google SERP rankings for the website "${domain}". Reply with ONLY the keyword phrase — no explanation, no quotes.`
+      }]})
+    }).then(x => x.json());
+    const suggested = (r.choices?.[0]?.message?.content || '').trim().replace(/^["'.]+|["'.]+$/g,'');
+    if (suggested) { kw.value = suggested; kw.style.borderColor = '#7C3AED'; setTimeout(() => { kw.style.borderColor = '#D1D5DB'; }, 1500); }
+  } catch(e) { showToast('AI Suggest failed — enter keyword manually.'); }
+  finally { btn.disabled = false; btn.textContent = '✨ AI Suggest'; }
 };
 window._stScan = async function(id) {
   showToast('⏳ Scanning Google…');
