@@ -1,0 +1,3 @@
+- [Admin Portal & Data-Mode](admin-portal-data-mode.md) — /api/admin must mount after the api-key gate but before the owner gate; demo/strict honesty policy + central fabrication-marker interceptor.
+- [Repo navigation quirks](repo-navigation.md) — app.js is ~50k lines; the read tool can mis-report its length — use rg/sed for accurate line numbers.
+- [Frontend cache-busting](frontend-cache-busting.md) — editing app.js is inert for users until the ?v= string in index.html is bumped.

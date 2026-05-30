@@ -7940,3 +7940,13 @@ body:has(#counterTargetBanner) #launchCampaignBtn{display:none !important}
 .ig-related-pill:hover { background: #6366f1; color: #fff; border-color: #6366f1; transform: translateY(-1px); }
 [data-theme="dark"] .ig-related-pill { background: #14172a; border-color: #2a2f47; color: #cbd5e1; }
 [data-theme="dark"] .ig-related-pill:hover { background: #6366f1; color: #fff; border-color: #6366f1; }
+
+/* ── Admin Portal (Task 10) ───────────────────────────────────────────────── */
+.ig-admin-tab { padding: 8px 14px; border: none; background: transparent; color: #64748B; font-weight: 700; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; border-radius: 6px 6px 0 0; transition: color .12s, background .12s; }
+.ig-admin-tab:hover { color: #1E293B; background: #F1F5F9; }
+.ig-admin-tab.active { color: #0F172A; border-bottom-color: #0F172A; background: #fff; }
+[data-theme="dark"] .ig-admin-tab { color: #94a3b8; }
+[data-theme="dark"] .ig-admin-tab:hover { color: #e2e8f0; background: #1e293b; }
+[data-theme="dark"] .ig-admin-tab.active { color: #fff; border-bottom-color: #e2e8f0; background: #0f172a; }
+.ig-demo-badge { vertical-align: middle; }
+.ig-data-unavailable { font-size: 14px; }

@@ -152,6 +152,12 @@ app.use('/api/auth', _authService.router);
 // Logged-in users need to query/switch their own tenant memberships regardless
 // of platform-owner status. Each route inside enforces its own auth check.
 app.use('/api/tenants', _tenantRouter);
+// Data-mode enforcement: wrap res.json on every /api response so fabricated
+// data is either badged (demo) or replaced with an honest "data unavailable"
+// message (strict). Wraps res.json at request start; reads the resolved
+// tenant/client at flush time, so registration order is not sensitive.
+// Identical behaviour in dev + prod (never NODE_ENV-gated).
+app.use(require('./services/admin/enforcement').dataModeEnforcement);
 
 // ── Client diagnostic beacon ─────────────────────────────────────────────────
 // IGDiag mirrors every breadcrumb here so freezes / crashes that wipe the
@@ -355,6 +361,32 @@ app.use(async (req, res, next) => {
   if (req.user) return next();                      // session OR api-key principal
   res.status(401).json({ ok:false, error:'auth_required',
     hint:'Log in via POST /api/auth/login, or include INFOGENIE_API_KEY via Authorization: Bearer / X-InfoGenie-Key / ?key= (GET only).' });
+});
+
+// /api/admin/* — Admin Portal (workspaces, users, clients, data-mode, issues).
+// Mounted AFTER the API-key/session auth gate (so req.user is populated for both
+// session and api-key callers) but BEFORE the owner gate — platform admins who
+// are not the deployment owner must still reach it. The router self-gates to
+// platform_owner / platform_admin / isOwner internally.
+app.use('/api/admin', require('./services/admin/api'));
+
+// GET /api/data-mode/effective — non-admin-safe resolver returning the EFFECTIVE
+// data mode (client → tenant → platform → strict) for the current request.
+// Mounted before the owner gate so ANY authenticated user (not just owners) can
+// read it; the frontend uses it to badge or withhold browser-generated
+// estimates (e.g. data.js KPIs/trend). Changing the mode stays admin-only.
+app.get('/api/data-mode/effective', async (req, res) => {
+  try {
+    const _dm = require('./services/admin/data_mode');
+    const _ctx = require('./services/tenants/context');
+    let tenantId = (req.tenant && req.tenant.id) || null;
+    if (!tenantId) { try { tenantId = await _ctx.resolveTenantId(req, { label: 'data-mode:effective' }); } catch (_) {} }
+    const clientId = Number(req.query.clientId) || null;
+    const r = await _dm.resolveDataMode({ clientId, tenantId });
+    res.json({ ok: true, mode: (r && r.mode) || 'strict', source: r && r.source, tenantId: tenantId || null, clientId });
+  } catch (e) {
+    res.json({ ok: true, mode: 'strict', source: 'fallback' });
+  }
 });
 
 // ── Owner-only gate for legacy global data ──────────────────────────────────
@@ -6503,8 +6535,27 @@ Return ONLY valid JSON, no markdown.`;
     let raw = completion.choices[0]?.message?.content || '{}';
     const parsed = JSON.parse(raw);
     const opportunities = parsed.opportunities || parsed.backlinks || parsed.sites || Object.values(parsed)[0] || [];
-    res.json({ opportunities });
+    // These targets are AI-generated, NOT verified live backlink data (the
+    // DataForSEO Backlinks source is not active for this deployment). Tag the
+    // payload as fabricated so the central data-mode enforcement layer can badge
+    // it in demo mode or withhold it (data_unavailable) in strict mode.
+    res.json({ opportunities, source: 'demo', _estimated: true });
   } catch(err) {
+    // Deterministic real-source failure → record an issue for admins (the AI
+    // fallback that normally masks this could not be produced at all).
+    try {
+      require('./services/admin/issues').raiseIssue({
+        severity: 'warning',
+        source: 'backlinks',
+        code: 'backlink-opportunities:generation_failed',
+        title: 'Backlink opportunity generation failed',
+        detail: `AI generation of backlink opportunities failed: ${err.message}`,
+        context: { domain: req.body && req.body.domain },
+        route: '/api/backlink-opportunities',
+        tenantId: req.tenant ? req.tenant.id : null,
+        clientId: require('./services/admin/data_mode').clientIdFromReq(req),
+      });
+    } catch (_) {}
     res.status(500).json({ error: err.message });
   }
 });
@@ -9128,6 +9179,14 @@ try {
       } catch (e) {
         console.error('[tenants] schema init failed:', e.message);
         if (process.env.NODE_ENV === 'production') process.exit(1);
+      }
+      // Admin Portal (Task 10): clients + issues tables, tenant data-mode
+      // default column, platform data-mode default seed. Runs after tenants
+      // schema so the FK to tenants(id) exists.
+      try {
+        await require('./services/admin/schema').ensureAdminSchema();
+      } catch (e) {
+        console.error('[admin] schema init failed:', e.message);
       }
       // Phase 2 mass migration: add tenant_id column + index + backfill to
       // every business table. Deferred 8s so all parallel `ensureXSchema()`

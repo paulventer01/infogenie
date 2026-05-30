@@ -3362,6 +3362,17 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'workspaces') {
     try { buildWorkspaces(); } catch(e) { console.warn('buildWorkspaces error:', e); }
   }
+  if (viewId === 'admin') {
+    // Client-side gate: only platform owners/admins may reach the Admin portal.
+    // If the cached flag is unknown, verify on the fly; non-admins are bounced
+    // back to the dashboard (the server also hard-gates every /api/admin call).
+    (async () => {
+      let allowed = window._isPlatformAdmin;
+      if (allowed === undefined) { await _adminGateNav(); allowed = window._isPlatformAdmin; }
+      if (!allowed) { showToast('⚠️ Admin access only'); navigateTo('dashboard'); return; }
+      try { buildAdmin(); } catch(e) { console.warn('buildAdmin error:', e); }
+    })();
+  }
   if (viewId === 'dashboard') {
     setTimeout(() => { try { renderForecastSavingsWidget(); } catch(e) { console.warn('renderForecastSavingsWidget error:', e); } }, 200);
   }
@@ -5113,7 +5124,16 @@ function buildDashboard() {
     ? `<span style="font-size:.65rem;background:#10B98120;color:#10B981;padding:2px 6px;border-radius:10px;font-weight:700" title="Live data pulled directly from DataForSEO — this is a real-time measurement, not an estimate.">LIVE</span>`
     : `<span style="font-size:.65rem;background:#F1F5F9;color:#94A3B8;padding:2px 6px;border-radius:10px;font-weight:700" title="AI-estimated figure based on industry benchmarks. Connect Google Analytics to replace this with your real data.">AI EST.</span>`;
 
-  const aiBadge = `<span style="font-size:.65rem;background:#F1F5F9;color:#94A3B8;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px" title="AI-estimated figure based on industry benchmarks and competitor analysis. Not pulled from a live ad account.">AI EST.</span>`;
+  // ── Data-mode honesty (Task 10) ──────────────────────────────────────────
+  // These KPIs (CTR/ROAS/CPA/conv) are AI estimates tagged source:'demo' in
+  // data.js. The effective per-platform data mode decides how they surface:
+  //   demo   → keep the numbers but stamp a clear "DEMO DATA" badge on them
+  //   strict → hide the fabricated figures behind an honest "unavailable" state
+  const _dmMode = (window._igDataMode || 'strict');
+  const _kpiEstimated = !!(websiteKPIs && (websiteKPIs._estimated || websiteKPIs.source === 'demo'));
+  const _demoPill = (_kpiEstimated && _dmMode === 'demo' && typeof window._demoBadge === 'function')
+    ? window._demoBadge('AI estimate') + ' ' : '';
+  const aiBadge = `${_demoPill}<span style="font-size:.65rem;background:#F1F5F9;color:#94A3B8;padding:2px 6px;border-radius:10px;font-weight:700;display:inline-block;margin-bottom:4px" title="AI-estimated figure based on industry benchmarks and competitor analysis. Not pulled from a live ad account.">AI EST.</span>`;
 
   // ── Whose-data-is-this indicators for every KPI tile ──────────────────────
   // Two layers so it's UNMISSABLE:
@@ -5195,8 +5215,17 @@ function buildDashboard() {
       ${srcAiScore}
     </div>
   `;
+  // Publish the effective fabrication state so the chart renderers (CTR/ROAS/
+  // Trend/Spend) can apply the same demo-badge / strict-hide policy as the KPIs.
+  window._kpiEstimated = _kpiEstimated;
+  window._hasRealTraffic = !!realTraffic;
   _dashEnq('kpiGrid', () => {
-    if (kpiGrid && kpiGrid.isConnected) kpiGrid.innerHTML = _kpiHtml;
+    if (!kpiGrid || !kpiGrid.isConnected) return;
+    if (_kpiEstimated && _dmMode === 'strict' && !realTraffic && typeof window._dataUnavailableState === 'function') {
+      kpiGrid.innerHTML = window._dataUnavailableState('Performance benchmarks (CTR, ROAS, CPA, conversion rate) shown here are AI estimates, not live measurements. Demo Data Mode is off, so estimated figures are hidden. An administrator can switch this client to Demo Data Mode in the Admin portal to preview sample numbers.');
+    } else {
+      kpiGrid.innerHTML = _kpiHtml;
+    }
   });
 
   // Data source notice below KPI grid
@@ -5505,6 +5534,7 @@ function buildDashboard() {
     if (spendChartInstance) { try { spendChartInstance.destroy(); } catch(_) {} spendChartInstance = null; }
     const spendCtx = document.getElementById('spendChart');
     if (!spendCtx || !spendCtx.isConnected) return;
+    if (window._applyChartDataMode && window._applyChartDataMode('spendChart', source !== 'DataForSEO', 'Estimated spend')) return;
     const colors = labels.map((l, i) => l === 'You' ? 'rgba(0,229,255,0.9)' : (sovPalette[i-1] || '#6B7280') + 'BB');
     spendChartInstance = new Chart(spendCtx.getContext('2d'), {
       type: 'bar',
@@ -5756,6 +5786,7 @@ function renderCTRChart(competitors, yourCTR) {
   if (ctrChartInstance) { try { ctrChartInstance.destroy(); } catch(_) {} ctrChartInstance = null; }
   const _ctrEl = document.getElementById('ctrChart');
   if (!_ctrEl || !_ctrEl.isConnected) return;
+  if (window._applyChartDataMode && window._applyChartDataMode('ctrChart', !!(window._kpiEstimated && !window._hasRealTraffic), 'AI estimate')) return;
   const ctx = _ctrEl.getContext('2d');
   // Skip competitors with no CTR data — don't fabricate bars
   const _withCtr = competitors.filter(c => {
@@ -5806,6 +5837,7 @@ function renderROASChart(competitors, yourROAS) {
   if (roasChartInstance) { try { roasChartInstance.destroy(); } catch(_) {} roasChartInstance = null; }
   const _roasEl = document.getElementById('roasChart');
   if (!_roasEl || !_roasEl.isConnected) return;
+  if (window._applyChartDataMode && window._applyChartDataMode('roasChart', !!(window._kpiEstimated && !window._hasRealTraffic), 'AI estimate')) return;
   const ctx = _roasEl.getContext('2d');
   const labels = ['Your Site', ...competitors.map(c => c.name)];
   const data = [yourROAS, ...competitors.map(c => c.roas)];
@@ -5845,6 +5877,7 @@ function renderTrendChart(competitors) {
   if (trendChartInstance) { try { trendChartInstance.destroy(); } catch(_) {} trendChartInstance = null; }
   const _trendEl = document.getElementById('trendChart');
   if (!_trendEl || !_trendEl.isConnected) return;
+  if (window._applyChartDataMode && window._applyChartDataMode('trendChart', !!(window._kpiEstimated && !window._hasRealTraffic), 'AI estimate')) return;
   const ctx = _trendEl.getContext('2d');
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   
@@ -5943,6 +5976,13 @@ function renderCompetitorCards(comps) {
   const yourReal   = analysisData._yourRealData;
   const liveCount  = comps.filter(c => c._dataSource === 'DataForSEO').length;
 
+  // Data-mode honesty: campaign metrics (CTR/ROAS) on these tiles are AI-estimated
+  // industry benchmarks. demo → badge the panel + keep numbers; strict → withhold
+  // the estimated CTR/ROAS (real traffic, where present, still shows).
+  const _dmMode = (window._igDataMode || 'strict');
+  const _compDemoPill = (_dmMode === 'demo' && typeof window._demoBadge === 'function')
+    ? ' ' + window._demoBadge('AI estimate') : '';
+
   // Expose for the click handlers on benchmark tiles
   window._liveBenchmarkComps = comps;
 
@@ -5963,7 +6003,7 @@ function renderCompetitorCards(comps) {
         <div style="font-size:0.85rem;font-weight:800;color:#0A2F2D;margin-bottom:2px">${c.name}</div>
         <div style="font-size:0.7rem;color:#134E4A;opacity:.85;margin-bottom:6px">${c.url}</div>
         <div style="font-size:0.74rem;color:#0A2F2D;font-weight:700">${hasLive && c._realTraffic ? c._realTraffic + ' traffic/mo' : (c.traffic || '—') + ' traffic'}</div>
-        <div style="font-size:0.7rem;color:#134E4A;opacity:.9">${(c.ctr || '—')} CTR · ${(c.roas || '—')}× ROAS</div>
+        <div style="font-size:0.7rem;color:#134E4A;opacity:.9">${_dmMode === 'strict' ? '<span style="opacity:.7">CTR/ROAS hidden · Demo Mode off</span>' : (c.ctr || '—') + ' CTR · ' + (c.roas || '—') + '× ROAS'}</div>
         <div style="margin-top:8px;font-size:0.62rem;font-weight:800;color:#065F46;letter-spacing:.06em;text-transform:uppercase;opacity:.85">Click for full analysis →</div>
       </div>`;
   }).join('');
@@ -5971,7 +6011,7 @@ function renderCompetitorCards(comps) {
   const realCompsPanel = `
     <div style="background:linear-gradient(135deg,#ECFEFF 0%,#F0FDFA 100%);border-radius:14px;padding:18px 20px;margin-bottom:18px;border:1px solid rgba(15,76,74,.14);box-shadow:0 4px 14px rgba(15,76,74,.08)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-        <span style="font-family:Sora,sans-serif;font-size:0.875rem;font-weight:800;color:#0A2F2D">📡 Live Competitor Intelligence</span>
+        <span style="font-family:Sora,sans-serif;font-size:0.875rem;font-weight:800;color:#0A2F2D">📡 Live Competitor Intelligence</span>${_compDemoPill}
         ${liveCount > 0
           ? `<span style="background:linear-gradient(135deg,#10B981,#0E7490);border-radius:20px;padding:3px 10px;font-size:0.68rem;font-weight:800;color:white">${liveCount} LIVE · DataForSEO</span>`
           : `<span style="background:#FFFFFF;border:1px solid rgba(15,76,74,.18);border-radius:20px;padding:3px 10px;font-size:0.68rem;font-weight:800;color:#0F4C4A">AI BENCHMARKS</span>`}
@@ -25350,17 +25390,24 @@ function renderArticleGrid(articles, wpOk, sch) {
 // ─── TAB 2: Backlink Opportunities ───────────────────────────────────────────
 function renderAutoSeoBacklinks(domain, industry, comps) {
   const opps = window._autoSeoBacklinks;
+  // Data-mode honesty: these opportunities are AI-generated. demo → badge the
+  // header; strict → the server returns data_unavailable, so withhold the table.
+  const _blUnavail = window._autoSeoBacklinksUnavailable === true;
+  const _blDemoPill = (window._autoSeoBacklinksDemo && opps && opps.length && typeof window._demoBadge === 'function')
+    ? ' ' + window._demoBadge('AI estimate') : '';
   return `
 <div style="background:white;border-radius:16px;border:1.5px solid #E5E7EB;overflow:hidden">
   <div style="padding:20px 24px;border-bottom:1.5px solid #F3F4F6;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
     <div>
-      <div style="font-size:1rem;font-weight:800;color:#111827">🔗 High-Authority Backlink Opportunities</div>
+      <div style="font-size:1rem;font-weight:800;color:#111827">🔗 High-Authority Backlink Opportunities${_blDemoPill}</div>
       <div style="font-size:0.75rem;color:#6B7280;margin-top:2px">AI-identified link prospects tailored to <strong>${domain}</strong></div>
     </div>
     <button onclick="loadBacklinkOpps()" id="bl-opps-btn" style="padding:9px 18px;background:linear-gradient(135deg,#0066FF,#0052CC);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">🔍 ${opps ? 'Refresh Opportunities' : 'Find Backlink Targets'}</button>
   </div>
   <div id="bl-opps-content" style="padding:20px 24px">
-    ${opps ? renderBacklinkTable(opps) : `
+    ${_blUnavail && typeof window._dataUnavailableState === 'function'
+      ? window._dataUnavailableState('Backlink opportunities are AI-generated suggestions, not verified live link data. Demo Data Mode is off, so estimated results are hidden. An administrator can enable Demo Data Mode for this client in the Admin portal.')
+      : opps ? renderBacklinkTable(opps) : `
 <div style="text-align:center;padding:50px 20px">
   <div style="font-size:3rem;margin-bottom:12px">🔗</div>
   <div style="font-size:1.1rem;font-weight:700;color:#111827;margin-bottom:8px">Discover 5+ High-Authority Backlink Targets</div>
@@ -25788,8 +25835,16 @@ async function loadBacklinkOpps() {
       body: JSON.stringify({ domain: ctx.domain, industry: ctx.industry, competitors: ctx.comps, keywords: kws })
     });
     const data = await resp.json();
+    // Capture the server's data-mode verdict so the tab can badge (demo) or
+    // withhold (strict) these AI-generated link prospects honestly.
+    window._autoSeoBacklinksUnavailable = data.data_unavailable === true;
+    window._autoSeoBacklinksDemo = (data._dataMode === 'demo' || data._demo === true);
     window._autoSeoBacklinks = data.opportunities || [];
-    showToast(`✅ Found ${window._autoSeoBacklinks.length} backlink opportunities!`);
+    if (window._autoSeoBacklinksUnavailable) {
+      showToast('📭 Backlink data unavailable — Demo Data Mode is off (admin can enable it).');
+    } else {
+      showToast(`✅ Found ${window._autoSeoBacklinks.length} backlink opportunities!`);
+    }
   } catch(e) { showToast('❌ ' + e.message); }
   finally {
     if (btn) { btn.disabled = false; btn.textContent = '🔍 Refresh Opportunities'; }
@@ -29558,6 +29613,554 @@ window.inviteTeamMember = function() {
   buildWorkspaces();
   showToast(`✓ Invitation sent to ${email}`);
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ADMIN PORTAL (Task 10) — workspaces · users · clients · data-mode · issues
+// Owner/admin only. Server self-gates /api/admin/* (403 for non-admins); the
+// nav link is also hidden client-side unless the signed-in user is an owner.
+// ═══════════════════════════════════════════════════════════════════════════
+window._adminState = { tab: 'data-mode', tenantFilter: '', issueFilter: 'open', issueSeverity: '', issueTenant: '', data: {} };
+
+async function _adminFetch(path, opts) {
+  const o = Object.assign({ headers: {} }, opts || {});
+  o.headers = Object.assign({ 'Accept': 'application/json' }, o.headers);
+  if (o.body && typeof o.body !== 'string') { o.body = JSON.stringify(o.body); o.headers['Content-Type'] = 'application/json'; }
+  o.credentials = 'same-origin';
+  const r = await fetch('/api/admin' + path, o);
+  let j = {}; try { j = await r.json(); } catch(_) {}
+  if (!r.ok || j.ok === false) {
+    const msg = (j && j.error) || ('request failed (' + r.status + ')');
+    const err = new Error(msg); err.status = r.status; throw err;
+  }
+  return j;
+}
+
+// Reveal the Admin nav link only for owners (UX gate; server enforces real gate).
+async function _adminGateNav() {
+  try {
+    const me = await _adminFetch('/me');
+    const link = document.getElementById('navAdminLink');
+    const isAdmin = !!(me && me.ok);
+    window._isPlatformAdmin = isAdmin;
+    if (link) link.style.display = isAdmin ? '' : 'none';
+    return me;
+  } catch (_) { window._isPlatformAdmin = false; return null; }
+}
+document.addEventListener('DOMContentLoaded', () => { setTimeout(_adminGateNav, 1500); });
+
+// Cache the EFFECTIVE data mode (client → tenant → platform) for the signed-in
+// context so frontend-generated figures (e.g. data.js KPIs/trend estimates) can
+// badge (demo) or withhold (strict) themselves consistently — for ALL users,
+// not just admins. Re-fetched on a soft poll so an admin's toggle is reflected.
+window._igDataMode = window._igDataMode || 'strict';
+async function _loadEffectiveDataMode(clientId) {
+  try {
+    const q = clientId ? ('?clientId=' + encodeURIComponent(clientId)) : '';
+    const r = await fetch('/api/data-mode/effective' + q, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+    if (!r.ok) return;
+    const j = await r.json();
+    if (j && j.ok && j.mode) window._igDataMode = j.mode;
+  } catch (_) {}
+}
+window._loadEffectiveDataMode = _loadEffectiveDataMode;
+document.addEventListener('DOMContentLoaded', () => { setTimeout(() => _loadEffectiveDataMode(window._activeClientId), 600); });
+
+async function buildAdmin(force) {
+  const wrap = document.getElementById('adminWrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="padding:40px;text-align:center;color:#64748B">Loading admin portal…</div>';
+  try {
+    const me = await _adminFetch('/me');
+    window._adminState.me = me;
+  } catch (e) {
+    wrap.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:12px;padding:28px;text-align:center;color:#991B1B">
+      <div style="font-size:30px;margin-bottom:8px">🔒</div>
+      <div style="font-weight:800;font-size:16px;margin-bottom:4px">Admin access required</div>
+      <div style="font-size:13px;color:#7F1D1D">${e.status === 403 ? 'Your account is not a platform owner or admin.' : _esc(e.message)}</div>
+    </div>`;
+    return;
+  }
+  _adminRenderTabs();
+  _adminRenderActive(force);
+}
+
+function _adminRenderTabs() {
+  const wrap = document.getElementById('adminWrap');
+  const tabs = [
+    { id:'data-mode',  label:'🎛️ Data Mode' },
+    { id:'workspaces', label:'🏢 Workspaces' },
+    { id:'clients',    label:'👤 Clients' },
+    { id:'users',      label:'👥 Users & Roles' },
+    { id:'issues',     label:'🚨 Issues' }
+  ];
+  const st = window._adminState;
+  wrap.innerHTML = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;border-bottom:1px solid #E2E8F0;padding-bottom:2px">
+      ${tabs.map(t=>`<button class="ig-admin-tab${st.tab===t.id?' active':''}" onclick="_adminSwitch('${t.id}')">${t.label}</button>`).join('')}
+    </div>
+    <div id="adminTabBody"><div style="padding:30px;text-align:center;color:#64748B">Loading…</div></div>`;
+}
+
+window._adminSwitch = function(tab) {
+  window._adminState.tab = tab;
+  document.querySelectorAll('.ig-admin-tab').forEach(b => b.classList.toggle('active', b.getAttribute('onclick').includes("'"+tab+"'")));
+  _adminRenderActive(true);
+};
+
+async function _adminRenderActive(force) {
+  const body = document.getElementById('adminTabBody');
+  if (!body) return;
+  const tab = window._adminState.tab;
+  body.innerHTML = '<div style="padding:30px;text-align:center;color:#64748B">Loading…</div>';
+  try {
+    if (tab === 'data-mode')  return await _adminRenderDataMode(body);
+    if (tab === 'workspaces') return await _adminRenderWorkspaces(body);
+    if (tab === 'clients')    return await _adminRenderClients(body, force);
+    if (tab === 'users')      return await _adminRenderUsers(body);
+    if (tab === 'issues')     return await _adminRenderIssues(body);
+  } catch (e) {
+    body.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:18px;color:#991B1B">⚠️ ${_esc(e.message)}</div>`;
+  }
+}
+
+// ── Data Mode tab ───────────────────────────────────────────────────────────
+async function _adminRenderDataMode(body) {
+  const d = await _adminFetch('/data-mode');
+  const mode = d.platformDefault;
+  const card = (m, title, desc, icon) => {
+    const on = mode === m;
+    const accent = m === 'strict' ? '#0F766E' : '#B45309';
+    return `<button onclick="_adminSetMode('${m}')" style="flex:1;text-align:left;cursor:pointer;background:${on?(m==='strict'?'#F0FDFA':'#FFFBEB'):'#fff'};border:2px solid ${on?accent:'#E2E8F0'};border-radius:12px;padding:18px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:22px">${icon}</span><span style="font-weight:800;color:#1E293B;font-size:15px">${title}</span>${on?`<span style="margin-left:auto;font-size:11px;font-weight:800;color:${accent};background:${accent}1a;padding:3px 10px;border-radius:99px">ACTIVE</span>`:''}</div>
+      <div style="font-size:13px;color:#475569;line-height:1.5">${desc}</div>
+    </button>`;
+  };
+  body.innerHTML = `
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:22px;margin-bottom:18px">
+      <div style="font-weight:800;color:#1E293B;font-size:16px;margin-bottom:4px">Platform data mode (default)</div>
+      <div style="font-size:13px;color:#64748B;margin-bottom:16px">When a real data source is unavailable, this controls what InfoGenie shows. Workspaces and individual clients can override this below. This policy is identical in development and production.</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        ${card('strict','Strict — honest', 'Never show made-up numbers. When data is unavailable, show a clear "data unavailable — reported to admin" message and log an issue for you to fix. <strong>Recommended.</strong>', '🔒')}
+        ${card('demo','Demo — badged', 'Show illustrative demo data so the screen is never empty, with a visible "DEMO DATA" badge on every fabricated value so no one mistakes it for real.', '🎭')}
+      </div>
+    </div>
+    <div style="background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:10px;padding:14px;font-size:12.5px;color:#64748B">
+      <strong>How resolution works:</strong> a client's own setting wins → otherwise its workspace default → otherwise this platform default → otherwise <strong>strict</strong>.
+    </div>`;
+}
+
+window._adminSetMode = async function(mode) {
+  try {
+    await _adminFetch('/data-mode', { method:'PUT', body:{ mode } });
+    showToast('✓ Platform data mode set to ' + mode);
+    try { await _loadEffectiveDataMode(); } catch (_) {}
+    _adminRenderActive(true);
+  } catch (e) { showToast('⚠️ ' + e.message); }
+};
+
+// ── Workspaces tab ──────────────────────────────────────────────────────────
+async function _adminRenderWorkspaces(body) {
+  const d = await _adminFetch('/workspaces');
+  const ws = d.workspaces || [];
+  const modeSel = (w) => ['inherit','demo','strict'].map(m=>`<option value="${m}"${w.data_mode_default===m?' selected':''}>${m==='inherit'?'Inherit platform':m}</option>`).join('');
+  body.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-weight:800;color:#1E293B">Workspaces (${ws.length})</div>
+      <button onclick="_adminAddWorkspace()" style="padding:7px 14px;background:#1E293B;color:#fff;border:none;border-radius:7px;font-weight:700;font-size:12px;cursor:pointer">+ New Workspace</button>
+    </div>
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead style="background:#F8FAFC"><tr>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">WORKSPACE</th>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">MEMBERS</th>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">CLIENTS</th>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">DATA MODE DEFAULT</th>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">STATUS</th>
+        </tr></thead><tbody>
+        ${ws.map(w=>`<tr style="border-top:1px solid #F1F5F9">
+          <td style="padding:11px 16px"><div style="font-weight:700;color:#1E293B">${_esc(w.name)}</div><div style="font-size:11px;color:#94A3B8">${_esc(w.slug)}</div></td>
+          <td style="padding:11px 16px;color:#475569">${w.member_count||0}</td>
+          <td style="padding:11px 16px;color:#475569">${w.client_count||0}</td>
+          <td style="padding:11px 16px"><select onchange="_adminSetWsMode(${w.id}, this.value)" style="padding:5px 8px;border:1px solid #CBD5E1;border-radius:6px;font-size:12px">${modeSel(w)}</select></td>
+          <td style="padding:11px 16px"><span style="font-size:11px;font-weight:700;color:${w.status==='active'?'#065F46':'#92400E'};background:${w.status==='active'?'#D1FAE5':'#FEF3C7'};padding:3px 9px;border-radius:99px">${w.status}</span></td>
+        </tr>`).join('')}
+      </tbody></table>
+    </div>`;
+}
+
+window._adminAddWorkspace = async function() {
+  const name = prompt('New workspace name?');
+  if (!name) return;
+  try { await _adminFetch('/workspaces', { method:'POST', body:{ name } }); showToast('✓ Workspace created'); _adminRenderActive(true); }
+  catch (e) { showToast('⚠️ ' + e.message); }
+};
+window._adminSetWsMode = async function(id, mode) {
+  try { await _adminFetch('/workspaces/' + id, { method:'PATCH', body:{ data_mode_default: mode } }); showToast('✓ Workspace data mode updated'); }
+  catch (e) { showToast('⚠️ ' + e.message); _adminRenderActive(true); }
+};
+
+// ── Clients tab ─────────────────────────────────────────────────────────────
+async function _adminRenderClients(body) {
+  const [cd, wd] = await Promise.all([ _adminFetch('/clients'), _adminFetch('/workspaces') ]);
+  const clients = cd.clients || [];
+  const ws = wd.workspaces || [];
+  const wsOpts = ws.map(w=>`<option value="${w.id}">${_esc(w.name)}</option>`).join('');
+  const modeSel = (c) => ['inherit','demo','strict'].map(m=>`<option value="${m}"${c.data_mode===m?' selected':''}>${m==='inherit'?'Inherit workspace':m}</option>`).join('');
+  body.innerHTML = `
+    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px;margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+      <div><label style="font-size:11px;font-weight:700;color:#64748B;display:block;margin-bottom:4px">WORKSPACE</label><select id="adminNewClientWs" style="padding:7px 10px;border:1px solid #CBD5E1;border-radius:6px;font-size:13px">${wsOpts}</select></div>
+      <div style="flex:1;min-width:160px"><label style="font-size:11px;font-weight:700;color:#64748B;display:block;margin-bottom:4px">CLIENT NAME</label><input id="adminNewClientName" placeholder="Acme Corp" style="width:100%;padding:7px 10px;border:1px solid #CBD5E1;border-radius:6px;font-size:13px"></div>
+      <div style="flex:1;min-width:160px"><label style="font-size:11px;font-weight:700;color:#64748B;display:block;margin-bottom:4px">WEBSITE (optional)</label><input id="adminNewClientSite" placeholder="acme.com" style="width:100%;padding:7px 10px;border:1px solid #CBD5E1;border-radius:6px;font-size:13px"></div>
+      <button onclick="_adminAddClient()" style="padding:8px 16px;background:#1E293B;color:#fff;border:none;border-radius:7px;font-weight:700;font-size:13px;cursor:pointer">+ Add Client</button>
+    </div>
+    ${clients.length ? `<div style="background:white;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead style="background:#F8FAFC"><tr>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">CLIENT</th>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">WORKSPACE</th>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">DATA MODE</th>
+          <th style="text-align:right;padding:10px 16px"></th>
+        </tr></thead><tbody>
+        ${clients.map(c=>`<tr style="border-top:1px solid #F1F5F9">
+          <td style="padding:11px 16px"><div style="font-weight:700;color:#1E293B">${_esc(c.name)}</div>${c.website?`<div style="font-size:11px;color:#94A3B8">${_esc(c.website)}</div>`:''}</td>
+          <td style="padding:11px 16px;color:#475569">${_esc(c.tenant_name)}</td>
+          <td style="padding:11px 16px"><select onchange="_adminSetClientMode(${c.id}, this.value)" style="padding:5px 8px;border:1px solid #CBD5E1;border-radius:6px;font-size:12px">${modeSel(c)}</select></td>
+          <td style="padding:11px 16px;text-align:right;white-space:nowrap">
+            <button onclick="_adminPreviewClient(${c.id})" title="View the app as this client — applies its data mode across the dashboard" style="background:${window._activeClientId===c.id?'#0F766E':'none'};border:1px solid #5EEAD4;color:${window._activeClientId===c.id?'#fff':'#0F766E'};border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;margin-right:6px">${window._activeClientId===c.id?'✓ Previewing':'👁 Preview'}</button>
+            <button onclick="_adminArchiveClient(${c.id})" style="background:none;border:1px solid #FCA5A5;color:#DC2626;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer">Archive</button>
+          </td>
+        </tr>`).join('')}
+      </tbody></table>
+    </div>` : `<div style="background:white;border:1px dashed #CBD5E1;border-radius:12px;padding:34px;text-align:center;color:#94A3B8">No clients yet. Add one above to control its data mode.</div>`}`;
+}
+
+window._adminAddClient = async function() {
+  const tenantId = Number(document.getElementById('adminNewClientWs').value);
+  const name = document.getElementById('adminNewClientName').value.trim();
+  const website = document.getElementById('adminNewClientSite').value.trim();
+  if (!name) { showToast('⚠️ Enter a client name'); return; }
+  try { await _adminFetch('/clients', { method:'POST', body:{ tenantId, name, website } }); showToast('✓ Client added'); _adminRenderActive(true); }
+  catch (e) { showToast('⚠️ ' + e.message); }
+};
+window._adminSetClientMode = async function(id, mode) {
+  try { await _adminFetch('/clients/' + id, { method:'PATCH', body:{ data_mode: mode } }); showToast('✓ Client data mode updated');
+    if (window._activeClientId === id && typeof window._loadEffectiveDataMode === 'function') window._loadEffectiveDataMode(id);
+  }
+  catch (e) { showToast('⚠️ ' + e.message); _adminRenderActive(true); }
+};
+// Set (or toggle off) the active client preview context. Establishes the
+// per-client data mode across the app via the x-ig-client header + effective
+// resolver, so an admin can verify a client's demo/strict policy end-to-end.
+window._adminPreviewClient = function(id) {
+  const turningOff = window._activeClientId === id;
+  if (typeof window._setActiveClient === 'function') window._setActiveClient(turningOff ? null : id);
+  showToast(turningOff ? '👁 Stopped previewing client' : '👁 Now previewing as client #' + id);
+  _adminRenderActive(true);
+};
+window._adminArchiveClient = async function(id) {
+  if (!confirm('Archive this client?')) return;
+  try { await _adminFetch('/clients/' + id, { method:'DELETE' }); showToast('✓ Client archived'); _adminRenderActive(true); }
+  catch (e) { showToast('⚠️ ' + e.message); }
+};
+
+// ── Users tab ───────────────────────────────────────────────────────────────
+async function _adminRenderUsers(body) {
+  const [ud, rd, wd] = await Promise.all([ _adminFetch('/users'), _adminFetch('/roles'), _adminFetch('/workspaces') ]);
+  const users = ud.users || [];
+  const roles = rd.roles || [];
+  const workspaces = wd.workspaces || [];
+  const tenantRoles = roles.filter(r => r.scope === 'tenant');
+  window._adminUsersCache = { users, workspaces, tenantRoles };
+
+  const wsName = id => { const w = workspaces.find(x => x.id === id); return w ? w.name : ('#' + id); };
+  const tenantRoleOpts = (selKey) => tenantRoles.map(r => `<option value="${_esc(r.key)}"${r.key===selKey?' selected':''}>${_esc(r.name)}</option>`).join('');
+
+  const memberBlock = (u) => {
+    const mems = u.memberships || [];
+    const rows = mems.length ? mems.map(m => `
+      <div style="display:flex;align-items:center;gap:6px;margin:3px 0">
+        <span style="font-size:12px;color:#334155;min-width:120px">${_esc(m.tenant)}</span>
+        <select onchange="_adminSetMemberRole(${m.tenantId},${u.id},this.value)" style="font-size:11px;padding:3px 6px;border:1px solid #E2E8F0;border-radius:6px">
+          ${tenantRoles.map(r => `<option value="${_esc(r.key)}"${r.name===m.role?' selected':''}>${_esc(r.name)}</option>`).join('')}
+        </select>
+        <button onclick="_adminRemoveMember(${m.tenantId},${u.id})" title="Remove from workspace" style="border:1px solid #FECACA;background:#FEF2F2;color:#B91C1C;border-radius:6px;font-size:11px;padding:3px 7px;cursor:pointer">Remove</button>
+      </div>`).join('') : '<div style="font-size:12px;color:#94A3B8">No workspaces</div>';
+    const availWs = workspaces.filter(w => !mems.some(m => m.tenantId === w.id));
+    const addCtl = availWs.length ? `
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+        <select id="addWs-${u.id}" style="font-size:11px;padding:3px 6px;border:1px solid #E2E8F0;border-radius:6px"><option value="">+ Add to workspace…</option>${availWs.map(w=>`<option value="${w.id}">${_esc(w.name)}</option>`).join('')}</select>
+        <select id="addRole-${u.id}" style="font-size:11px;padding:3px 6px;border:1px solid #E2E8F0;border-radius:6px">${tenantRoleOpts('marketer')}</select>
+        <button onclick="_adminAddMember(${u.id})" style="border:1px solid #BBF7D0;background:#F0FDF4;color:#15803D;border-radius:6px;font-size:11px;padding:3px 9px;cursor:pointer;font-weight:700">Add</button>
+      </div>` : '';
+    return rows + addCtl;
+  };
+
+  const platformCell = (u) => {
+    if (u.is_owner) return '<span style="font-size:11px;font-weight:700;color:#7E22CE;background:#F3E8FF;padding:3px 9px;border-radius:99px">OWNER</span>';
+    const isAdmin = u.platform_role === 'platform_admin';
+    return `<select onchange="_adminSetPlatformRole(${u.id},this.value)" style="font-size:12px;padding:4px 8px;border:1px solid #E2E8F0;border-radius:7px">
+      <option value="none"${!isAdmin?' selected':''}>Regular user</option>
+      <option value="platform_admin"${isAdmin?' selected':''}>Platform Admin</option>
+    </select>`;
+  };
+
+  body.innerHTML = `
+    <div style="font-weight:800;color:#1E293B;margin-bottom:12px">Platform users (${users.length})</div>
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;margin-bottom:22px">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead style="background:#F8FAFC"><tr>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">USER</th>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">PLATFORM ROLE</th>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">WORKSPACES &amp; ROLES</th>
+        </tr></thead><tbody>
+        ${users.map(u=>`<tr style="border-top:1px solid #F1F5F9">
+          <td style="padding:11px 16px;vertical-align:top"><div style="font-weight:700;color:#1E293B">${_esc(u.name||u.email)}</div><div style="font-size:11px;color:#94A3B8">${_esc(u.email)}</div></td>
+          <td style="padding:11px 16px;vertical-align:top">${platformCell(u)}</td>
+          <td style="padding:11px 16px;vertical-align:top">${memberBlock(u)}</td>
+        </tr>`).join('')}
+      </tbody></table>
+    </div>
+    <div style="font-weight:800;color:#1E293B;margin-bottom:12px">System roles</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
+      ${roles.map(r=>`<div style="background:white;border:1px solid #E2E8F0;border-radius:10px;padding:14px">
+        <div style="font-weight:700;color:#1E293B">${_esc(r.name)}</div>
+        <div style="font-size:11px;color:#94A3B8;margin:3px 0 8px">${_esc(r.scope)} · ${r.permissionCount} permissions</div>
+        <div style="font-size:12px;color:#64748B;line-height:1.4">${_esc(r.description||'')}</div>
+      </div>`).join('')}
+    </div>`;
+}
+
+window._adminSetPlatformRole = async function(userId, roleKey) {
+  try { await _adminFetch('/users/' + userId + '/platform-role', { method:'PATCH', body:{ roleKey } }); showToast('✓ Platform role updated'); _adminRenderActive(true); }
+  catch (e) { showToast('⚠️ ' + e.message); _adminRenderActive(true); }
+};
+window._adminSetMemberRole = async function(tenantId, userId, roleKey) {
+  try { await _adminFetch('/workspaces/' + tenantId + '/members/' + userId, { method:'PATCH', body:{ roleKey } }); showToast('✓ Role updated'); }
+  catch (e) { showToast('⚠️ ' + e.message); _adminRenderActive(true); }
+};
+window._adminRemoveMember = async function(tenantId, userId) {
+  if (!confirm('Remove this user from the workspace?')) return;
+  try { await _adminFetch('/workspaces/' + tenantId + '/members/' + userId, { method:'DELETE' }); showToast('✓ Removed'); _adminRenderActive(true); }
+  catch (e) { showToast('⚠️ ' + e.message); }
+};
+window._adminAddMember = async function(userId) {
+  const ws = document.getElementById('addWs-' + userId);
+  const role = document.getElementById('addRole-' + userId);
+  const tenantId = Number(ws && ws.value);
+  const roleKey = role && role.value;
+  if (!tenantId) { showToast('Pick a workspace first'); return; }
+  try { await _adminFetch('/workspaces/' + tenantId + '/members', { method:'POST', body:{ userId, roleKey } }); showToast('✓ Added to workspace'); _adminRenderActive(true); }
+  catch (e) { showToast('⚠️ ' + e.message); }
+};
+
+// ── Issues tab ──────────────────────────────────────────────────────────────
+async function _adminRenderIssues(body) {
+  const st = window._adminState;
+  const wd = await _adminFetch('/workspaces');
+  const workspaces = wd.workspaces || [];
+  const qs = ['status=' + encodeURIComponent(st.issueFilter)];
+  if (st.issueSeverity) qs.push('severity=' + encodeURIComponent(st.issueSeverity));
+  if (st.issueTenant) qs.push('tenantId=' + encodeURIComponent(st.issueTenant));
+  const d = await _adminFetch('/issues?' + qs.join('&'));
+  const issues = d.issues || [];
+  const counts = d.counts || {};
+  const sevCounts = d.severityCounts || {};
+  const sevColor = { critical:'#DC2626', error:'#EA580C', warning:'#B45309', info:'#2563EB' };
+  const filterBtn = (s,label) => `<button onclick="_adminSetIssueFilter('${s}')" style="padding:6px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid ${st.issueFilter===s?'#1E293B':'#E2E8F0'};background:${st.issueFilter===s?'#1E293B':'#fff'};color:${st.issueFilter===s?'#fff':'#475569'}">${label}${counts[s]!=null?` (${counts[s]})`:''}</button>`;
+  const sevOpts = ['','critical','error','warning','info'].map(s=>`<option value="${s}"${st.issueSeverity===s?' selected':''}>${s?('Severity: '+s+(sevCounts[s]!=null?' ('+sevCounts[s]+')':'')):'All severities'}</option>`).join('');
+  const wsOpts = ['<option value="">All workspaces</option>'].concat(workspaces.map(w=>`<option value="${w.id}"${String(st.issueTenant)===String(w.id)?' selected':''}>${_esc(w.name)}</option>`)).join('');
+  body.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        ${filterBtn('open','Open')}${filterBtn('acknowledged','Acknowledged')}${filterBtn('resolved','Resolved')}
+        <select onchange="_adminSetIssueSeverity(this.value)" style="padding:6px 10px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px;color:#475569">${sevOpts}</select>
+        <select onchange="_adminSetIssueTenant(this.value)" style="padding:6px 10px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px;color:#475569">${wsOpts}</select>
+      </div>
+      <button onclick="_adminTestIssue()" style="padding:6px 12px;background:#F1F5F9;border:1px solid #E2E8F0;border-radius:7px;font-size:12px;font-weight:700;color:#475569;cursor:pointer">✉️ Send test issue</button>
+    </div>
+    ${issues.length ? issues.map(i=>`<div style="background:white;border:1px solid #E2E8F0;border-left:4px solid ${sevColor[i.severity]||'#64748B'};border-radius:10px;padding:14px 16px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div style="flex:1">
+          <div style="font-weight:700;color:#1E293B">${_esc(i.title)}</div>
+          <div style="font-size:12.5px;color:#64748B;margin-top:3px">${_esc(i.detail||'')}</div>
+          <div style="font-size:11px;color:#94A3B8;margin-top:6px">
+            <span style="font-weight:700;color:${sevColor[i.severity]||'#64748B'}">${i.severity}</span>
+            · ${_esc(i.source||'')} · seen ${i.occurrence_count||1}× ${i.tenant_name?'· '+_esc(i.tenant_name):''} ${i.client_name?'· '+_esc(i.client_name):''}
+            ${i.route?'· <code style="background:#F1F5F9;padding:1px 5px;border-radius:4px">'+_esc(i.route)+'</code>':''}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          ${i.status!=='acknowledged'&&i.status!=='resolved'?`<button onclick="_adminIssueAction(${i.id},'acknowledge')" style="padding:5px 10px;border:1px solid #CBD5E1;background:#fff;border-radius:6px;font-size:12px;cursor:pointer">Ack</button>`:''}
+          ${i.status!=='resolved'?`<button onclick="_adminIssueAction(${i.id},'resolve')" style="padding:5px 10px;border:1px solid #6EE7B7;background:#ECFDF5;color:#065F46;border-radius:6px;font-size:12px;cursor:pointer">Resolve</button>`:`<button onclick="_adminIssueAction(${i.id},'reopen')" style="padding:5px 10px;border:1px solid #CBD5E1;background:#fff;border-radius:6px;font-size:12px;cursor:pointer">Reopen</button>`}
+        </div>
+      </div>
+    </div>`).join('') : `<div style="background:white;border:1px dashed #CBD5E1;border-radius:12px;padding:34px;text-align:center;color:#94A3B8">No ${_esc(st.issueFilter)} issues. 🎉</div>`}`;
+}
+
+window._adminSetIssueFilter = function(s) { window._adminState.issueFilter = s; _adminRenderActive(true); };
+window._adminSetIssueSeverity = function(s) { window._adminState.issueSeverity = s; _adminRenderActive(true); };
+window._adminSetIssueTenant = function(s) { window._adminState.issueTenant = s; _adminRenderActive(true); };
+window._adminIssueAction = async function(id, action) {
+  try { await _adminFetch('/issues/' + id, { method:'PATCH', body:{ action } }); showToast('✓ Issue ' + action + 'd'); _adminRenderActive(true); }
+  catch (e) { showToast('⚠️ ' + e.message); }
+};
+window._adminTestIssue = async function() {
+  try { await _adminFetch('/issues/test', { method:'POST', body:{} }); showToast('✓ Test issue raised — check inbox + email'); window._adminState.issueFilter='open'; _adminRenderActive(true); }
+  catch (e) { showToast('⚠️ ' + e.message); }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DATA-MODE FRONTEND COMPONENTS (Task 10) — reusable demo badge, honest empty
+// state, and a global fetch interceptor that surfaces the markers the server's
+// data-mode enforcement layer stamps onto responses.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Reusable "DEMO DATA" badge — follows the existing _dataBadge pill styling.
+window._demoBadge = function(source) {
+  const src = source ? String(source).replace(/[<>"]/g,'') : '';
+  return `<span class="ig-demo-badge" title="${src.replace(/"/g,'&quot;')}" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;background:#FEF3C7;color:#92400E;font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;border:1px solid #92400E33;line-height:1.4">🎭 DEMO DATA${src?' · '+src:''}</span>`;
+};
+
+// Reusable honest empty-state for strict mode "data unavailable" responses.
+window._dataUnavailableState = function(msg) {
+  const m = msg ? String(msg) : 'This data is currently unavailable. The issue has been reported to your administrator.';
+  return `<div class="ig-data-unavailable" style="background:#F8FAFC;border:1px dashed #CBD5E1;border-radius:12px;padding:28px;text-align:center;color:#64748B">
+    <div style="font-size:26px;margin-bottom:8px">📭</div>
+    <div style="font-weight:800;color:#475569;margin-bottom:4px">Data unavailable</div>
+    <div style="font-size:13px;max-width:440px;margin:0 auto">${_esc(m)}</div>
+  </div>`;
+};
+
+// Apply the effective data-mode honesty policy to a Chart.js canvas whose
+// series are AI-estimated/fabricated. Idempotent — clears any prior decoration
+// first so re-renders don't stack badges. Returns true when the chart must NOT
+// be drawn (strict mode hid it), false when it may render (real or demo-badged).
+window._applyChartDataMode = function(canvasId, isEstimated, source) {
+  const el = document.getElementById(canvasId);
+  if (!el) return false;
+  const host = el.parentElement;
+  // Clear decoration from any previous render.
+  if (host) {
+    host.querySelectorAll(':scope > .ig-chart-demo-badge, :scope > .ig-chart-unavailable')
+        .forEach(n => n.remove());
+  }
+  el.style.display = '';
+  if (!isEstimated) return false;
+  const mode = (window._igDataMode || 'strict');
+  if (mode === 'demo') {
+    if (host && typeof window._demoBadge === 'function') {
+      if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+      const b = document.createElement('div');
+      b.className = 'ig-chart-demo-badge';
+      b.style.cssText = 'position:absolute;top:8px;right:8px;z-index:5';
+      b.innerHTML = window._demoBadge(source || 'AI estimate');
+      host.appendChild(b);
+    }
+    return false;
+  }
+  // strict — hide the fabricated chart, show an honest unavailable state.
+  if (host && typeof window._dataUnavailableState === 'function') {
+    el.style.display = 'none';
+    const d = document.createElement('div');
+    d.className = 'ig-chart-unavailable';
+    d.innerHTML = window._dataUnavailableState('This chart plots AI-estimated figures, not live measurements. Demo Data Mode is off, so estimated charts are hidden. An administrator can enable Demo Data Mode for this client in the Admin portal.');
+    host.insertBefore(d, el);
+  }
+  return true;
+};
+
+// Apply the honesty policy to a non-chart section: demo → prepend a DEMO badge
+// to a header element; strict → replace a body element with the unavailable
+// state. Both args are elements (or null). `isEstimated` gates the whole thing.
+window._applySectionDataMode = function(headerEl, bodyEl, isEstimated, source, strictMsg) {
+  if (headerEl) headerEl.querySelectorAll(':scope > .ig-demo-badge').forEach(n => n.remove());
+  if (!isEstimated) return false;
+  const mode = (window._igDataMode || 'strict');
+  if (mode === 'demo') {
+    if (headerEl && typeof window._demoBadge === 'function') {
+      const span = document.createElement('span');
+      span.style.marginLeft = '8px';
+      span.innerHTML = window._demoBadge(source || 'AI estimate');
+      headerEl.appendChild(span.firstChild);
+    }
+    return false;
+  }
+  if (bodyEl && typeof window._dataUnavailableState === 'function') {
+    bodyEl.innerHTML = window._dataUnavailableState(strictMsg || 'This section shows AI-estimated data. Demo Data Mode is off, so estimated figures are hidden. An administrator can enable Demo Data Mode in the Admin portal.');
+  }
+  return true;
+};
+
+// Active client context — which agency client the user is currently viewing.
+// Persisted so the per-client data mode survives reloads, and propagated to the
+// backend as an `x-ig-client` header on every /api call so the server's
+// resolveDataMode (and the enforcement layer) apply that client's demo/strict
+// policy. Only honored server-side when the client belongs to the caller's
+// tenant (tenant-match guard in resolveDataMode).
+try { window._activeClientId = Number(localStorage.getItem('ig_active_client_id')) || null; } catch (_) { window._activeClientId = null; }
+window._setActiveClient = function(id) {
+  window._activeClientId = id ? Number(id) : null;
+  try {
+    if (window._activeClientId) localStorage.setItem('ig_active_client_id', String(window._activeClientId));
+    else localStorage.removeItem('ig_active_client_id');
+  } catch (_) {}
+  if (typeof window._loadEffectiveDataMode === 'function') window._loadEffectiveDataMode(window._activeClientId);
+};
+
+// Global fetch interceptor: injects the active-client header on outgoing /api
+// calls, and inspects JSON responses for the data-mode markers the server stamps
+// on (_dataMode='demo' / data_unavailable), broadcasting an `ig:data-mode` event.
+(function _installDataModeInterceptor() {
+  if (window._dataModeInterceptorInstalled) return;
+  window._dataModeInterceptorInstalled = true;
+  window._dataModeSeen = { demo: false, unavailable: false };
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function(input, init) {
+    // Propagate the active client context to same-origin app APIs (never to the
+    // admin API, which reports the real config, and never to cross-origin URLs).
+    try {
+      const _u = (typeof input === 'string') ? input : (input && input.url) || '';
+      if (window._activeClientId && _u.indexOf('/api/') !== -1 && _u.indexOf('/api/admin/') === -1
+          && !/^https?:\/\//i.test(_u)) {
+        init = Object.assign({}, init);
+        const h = new Headers((init && init.headers) || {});
+        if (!h.has('x-ig-client')) h.set('x-ig-client', String(window._activeClientId));
+        init.headers = h;
+      }
+    } catch (_) {}
+    return _origFetch(input, init).then(res => {
+      try {
+        const ct = res.headers && res.headers.get && res.headers.get('content-type');
+        const url = (typeof input === 'string') ? input : (input && input.url) || '';
+        if (ct && ct.indexOf('application/json') !== -1 && url.indexOf('/api/') !== -1 && url.indexOf('/api/admin/') === -1) {
+          res.clone().json().then(j => {
+            if (!j || typeof j !== 'object') return;
+            if (j.data_unavailable === true || j._dataMode === 'strict') {
+              window._dataModeSeen.unavailable = true;
+              document.dispatchEvent(new CustomEvent('ig:data-mode', { detail:{ kind:'unavailable', url, payload:j } }));
+            } else if (j._dataMode === 'demo' || j._demo === true) {
+              window._dataModeSeen.demo = true;
+              document.dispatchEvent(new CustomEvent('ig:data-mode', { detail:{ kind:'demo', url, payload:j } }));
+              _dataModeNotice('demo');
+            }
+          }).catch(()=>{});
+        }
+      } catch(_) {}
+      return res;
+    });
+  };
+  // One notice per kind per view so the user always knows when demo data shows.
+  let _lastNoticeView = null;
+  window._dataModeNotice = function(kind) {
+    const v = window.currentView || '';
+    const key = kind + '|' + v;
+    if (_lastNoticeView === key) return;
+    _lastNoticeView = key;
+    if (typeof showToast === 'function') {
+      showToast(kind === 'demo' ? '🎭 Some figures on this screen are demo data' : '📭 Some data is unavailable and was reported to admin');
+    }
+  };
+})();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 10. FORECAST vs ACTUAL + SAVINGS WIDGET (inline on Dashboard)

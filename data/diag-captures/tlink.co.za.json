@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-05-30T13:36:03.656Z",
+  "capturedAt": "2026-05-30T15:22:58.487Z",
   "domain": "tlink.co.za",
   "url": "tlink.co.za",
   "capturedFromAnalyseRun": true,
@@ -8,7 +8,7 @@
     "country": "za",
     "industryKey": "marketing",
     "industry": {
-      "name": "IT Security Consulting Services",
+      "name": "IT Security Services Providers",
       "keywords": [
         "marketing",
         "seo",
@@ -42,87 +42,36 @@
       ],
       "competitors": [
         {
-          "name": "Dimension Data",
-          "domain": "dimensiondata.com",
-          "url": "dimensiondata.com",
-          "why": "Provides IT security consulting services including risk assessments, compliance, and cybersecurity strategy in South Africa.",
-          "logo": "DD",
-          "roas": 3.1,
-          "ctr": "2.7%",
-          "traffic": "350K",
+          "name": "CyberLogic",
+          "domain": "cyberlogic.co.za",
+          "url": "cyberlogic.co.za",
+          "why": "Provides managed IT security services including endpoint protection and threat management in South Africa.",
+          "logo": "C",
+          "roas": "—",
+          "ctr": "—",
+          "traffic": "15K",
           "adSpend": "—",
           "dataSource": "AI-estimate",
           "confidence": "low",
-          "topChannel": "Google Search",
+          "topChannel": "SEO / Organic",
           "topChannels": [
-            "Google Search"
+            "SEO / Organic"
           ],
           "threatLevel": "critical",
           "campaigns": [
             {
               "name": "Brand Search Domination",
-              "channel": "Google Search",
-              "ctr": "3.1%",
-              "roas": 3.4,
+              "channel": "SEO / Organic",
+              "ctr": "—",
+              "roas": "—",
               "budget": "—",
               "_split": 0.6
             },
             {
               "name": "Comparison Landing Funnel",
-              "channel": "Google Search",
-              "ctr": "2.3%",
-              "roas": 2.8,
-              "budget": "—",
-              "_split": 0.4
-            }
-          ],
-          "audiences": [],
-          "adCopy": [
-            {
-              "headline": "Trade smarter than Dimension Data",
-              "body": "See why thousands switched from Dimension Data to a faster, lower-fee platform."
-            }
-          ],
-          "suggestions": [
-            "Outflank Dimension Data on long-tail variations of their core keywords — they over-index on brand terms",
-            "Use comparison content (Dimension Data vs You) to capture their branded search intent",
-            "Target Dimension Data's mid-funnel comparison queries with high-intent landing pages"
-          ],
-          "aiDetected": true,
-          "dataNotes": "Models diverged sharply (5.6×) — figure is approximate",
-          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
-        },
-        {
-          "name": "CyberLogic",
-          "domain": "cyberlogic.co.za",
-          "url": "cyberlogic.co.za",
-          "why": "Specializes in IT security consulting with a focus on managed security services and compliance for South African businesses.",
-          "logo": "C",
-          "roas": 2.8,
-          "ctr": "2.5%",
-          "traffic": "45K",
-          "adSpend": "—",
-          "dataSource": "AI-estimate",
-          "confidence": "low",
-          "topChannel": "LinkedIn Ads",
-          "topChannels": [
-            "LinkedIn Ads"
-          ],
-          "threatLevel": "high",
-          "campaigns": [
-            {
-              "name": "Lookalike Audience Push",
-              "channel": "LinkedIn Ads",
-              "ctr": "2.9%",
-              "roas": 3.1,
-              "budget": "—",
-              "_split": 0.6
-            },
-            {
-              "name": "Free Trial Lead Gen",
-              "channel": "LinkedIn Ads",
-              "ctr": "2.1%",
-              "roas": 2.5,
+              "channel": "SEO / Organic",
+              "ctr": "—",
+              "roas": "—",
               "budget": "—",
               "_split": 0.4
             }
@@ -140,68 +89,17 @@
             "Target CyberLogic's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Single-model estimate (GPT-4o only)",
-          "dataOrigin": "GPT-4o: SemRush data · Claude: Industry benchmark"
+          "dataNotes": "Small SA-focused MSP; limited public ad-spend data available",
+          "dataOrigin": "GPT-4o: No reliable public data · Claude: Similarweb estimate"
         },
         {
-          "name": "Securicom",
-          "domain": "securicom.co.za",
-          "url": "securicom.co.za",
-          "why": "Offers IT security consulting services such as vulnerability assessments, penetration testing, and managed security solutions in South Africa.",
-          "logo": "S",
-          "roas": 2.5,
-          "ctr": "2.2%",
-          "traffic": "35K",
-          "adSpend": "—",
-          "dataSource": "AI-estimate",
-          "confidence": "low",
-          "topChannel": "SEO / Organic",
-          "topChannels": [
-            "SEO / Organic"
-          ],
-          "threatLevel": "medium",
-          "campaigns": [
-            {
-              "name": "Retargeting Wave",
-              "channel": "SEO / Organic",
-              "ctr": "2.6%",
-              "roas": 2.8,
-              "budget": "—",
-              "_split": 0.6
-            },
-            {
-              "name": "Top-Funnel Display",
-              "channel": "SEO / Organic",
-              "ctr": "1.8%",
-              "roas": 2.2,
-              "budget": "—",
-              "_split": 0.4
-            }
-          ],
-          "audiences": [],
-          "adCopy": [
-            {
-              "headline": "Trade smarter than Securicom",
-              "body": "See why thousands switched from Securicom to a faster, lower-fee platform."
-            }
-          ],
-          "suggestions": [
-            "Outflank Securicom on long-tail variations of their core keywords — they over-index on brand terms",
-            "Use comparison content (Securicom vs You) to capture their branded search intent",
-            "Target Securicom's mid-funnel comparison queries with high-intent landing pages"
-          ],
-          "aiDetected": true,
-          "dataNotes": "Single-model estimate (GPT-4o only)",
-          "dataOrigin": "GPT-4o: Trade-press estimate · Claude: Industry benchmark"
-        },
-        {
-          "name": "BCX",
-          "domain": "bcx.co.za",
-          "url": "bcx.co.za",
-          "why": "Provides IT security consulting services including cybersecurity strategy, risk management, and compliance for enterprises in South Africa.",
-          "logo": "B",
-          "roas": 2.7,
-          "ctr": "2.4%",
+          "name": "Dimension Data",
+          "domain": "dimensiondata.com",
+          "url": "dimensiondata.com",
+          "why": "Offers comprehensive IT security solutions including managed security services and threat intelligence in South Africa.",
+          "logo": "DD",
+          "roas": 2.8,
+          "ctr": "3.2%",
           "traffic": "120K",
           "adSpend": "—",
           "dataSource": "AI-estimate",
@@ -210,121 +108,21 @@
           "topChannels": [
             "Google Search"
           ],
-          "threatLevel": "critical",
-          "campaigns": [
-            {
-              "name": "Awareness Reels Burst",
-              "channel": "Google Search",
-              "ctr": "2.8%",
-              "roas": 3,
-              "budget": "—",
-              "_split": 0.6
-            },
-            {
-              "name": "High-Intent Keyword Steal",
-              "channel": "Google Search",
-              "ctr": "2.0%",
-              "roas": 2.4,
-              "budget": "—",
-              "_split": 0.4
-            }
-          ],
-          "audiences": [],
-          "adCopy": [
-            {
-              "headline": "Trade smarter than BCX",
-              "body": "See why thousands switched from BCX to a faster, lower-fee platform."
-            }
-          ],
-          "suggestions": [
-            "Outflank BCX on long-tail variations of their core keywords — they over-index on brand terms",
-            "Use comparison content (BCX vs You) to capture their branded search intent",
-            "Target BCX's mid-funnel comparison queries with high-intent landing pages"
-          ],
-          "aiDetected": true,
-          "dataNotes": "Models diverged sharply (5.0×) — figure is approximate",
-          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
-        },
-        {
-          "name": "Galix",
-          "domain": "galix.com",
-          "url": "galix.com",
-          "why": "Focuses on IT security consulting services such as cybersecurity audits, risk assessments, and managed security services in South Africa.",
-          "logo": "G",
-          "roas": "—",
-          "ctr": "—",
-          "traffic": "—",
-          "adSpend": "—",
-          "dataSource": "AI-estimate",
-          "confidence": "low",
-          "topChannel": null,
-          "topChannels": [],
           "threatLevel": "high",
           "campaigns": [
             {
-              "name": "Brand Search Domination",
-              "channel": null,
-              "ctr": "—",
-              "roas": "—",
-              "budget": "—",
-              "_split": 0.6
-            },
-            {
-              "name": "Comparison Landing Funnel",
-              "channel": null,
-              "ctr": "—",
-              "roas": "—",
-              "budget": "—",
-              "_split": 0.4
-            }
-          ],
-          "audiences": [],
-          "adCopy": [
-            {
-              "headline": "Trade smarter than Galix",
-              "body": "See why thousands switched from Galix to a faster, lower-fee platform."
-            }
-          ],
-          "suggestions": [
-            "Outflank Galix on long-tail variations of their core keywords — they over-index on brand terms",
-            "Use comparison content (Galix vs You) to capture their branded search intent",
-            "Target Galix's mid-funnel comparison queries with high-intent landing pages"
-          ],
-          "aiDetected": true,
-          "dataNotes": "Limited public data",
-          "dataOrigin": "GPT-4o: Industry benchmark · Claude: Industry benchmark"
-        },
-        {
-          "name": "First Technology Group",
-          "domain": "firsttech.co.za",
-          "url": "firsttech.co.za",
-          "why": "Delivers IT security consulting services including cybersecurity assessments, compliance, and managed security solutions in South Africa.",
-          "logo": "FT",
-          "roas": 3.2,
-          "ctr": "3.1%",
-          "traffic": "120K",
-          "adSpend": "—",
-          "dataSource": "AI-estimate",
-          "confidence": "low",
-          "topChannel": "LinkedIn Ads",
-          "topChannels": [
-            "LinkedIn Ads"
-          ],
-          "threatLevel": "medium",
-          "campaigns": [
-            {
               "name": "Lookalike Audience Push",
-              "channel": "LinkedIn Ads",
-              "ctr": "3.5%",
-              "roas": 3.5,
+              "channel": "Google Search",
+              "ctr": "3.6%",
+              "roas": 3.1,
               "budget": "—",
               "_split": 0.6
             },
             {
               "name": "Free Trial Lead Gen",
-              "channel": "LinkedIn Ads",
-              "ctr": "2.7%",
-              "roas": 2.9,
+              "channel": "Google Search",
+              "ctr": "2.8%",
+              "roas": 2.5,
               "budget": "—",
               "_split": 0.4
             }
@@ -332,28 +130,28 @@
           "audiences": [],
           "adCopy": [
             {
-              "headline": "Trade smarter than First Technology Group",
-              "body": "See why thousands switched from First Technology Group to a faster, lower-fee platform."
+              "headline": "Trade smarter than Dimension Data",
+              "body": "See why thousands switched from Dimension Data to a faster, lower-fee platform."
             }
           ],
           "suggestions": [
-            "Outflank First Technology Group on long-tail variations of their core keywords — they over-index on brand terms",
-            "Use comparison content (First Technology Group vs You) to capture their branded search intent",
-            "Target First Technology Group's mid-funnel comparison queries with high-intent landing pages"
+            "Outflank Dimension Data on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (Dimension Data vs You) to capture their branded search intent",
+            "Target Dimension Data's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Single-model estimate (GPT-4o only)",
-          "dataOrigin": "GPT-4o: SemRush data · Claude: Industry benchmark"
+          "dataNotes": "Models diverged sharply (3.0×) — figure is approximate",
+          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
         },
         {
           "name": "Datacentrix",
           "domain": "datacentrix.co.za",
           "url": "datacentrix.co.za",
-          "why": "Provides IT security consulting services such as cybersecurity strategy, risk management, and compliance for South African businesses.",
+          "why": "Specializes in managed IT security services such as vulnerability assessments and security monitoring.",
           "logo": "D",
-          "roas": 2.5,
-          "ctr": "2.2%",
-          "traffic": "45K",
+          "roas": 3.5,
+          "ctr": "2.5%",
+          "traffic": "10K",
           "adSpend": "—",
           "dataSource": "AI-estimate",
           "confidence": "low",
@@ -361,21 +159,21 @@
           "topChannels": [
             "SEO / Organic"
           ],
-          "threatLevel": "critical",
+          "threatLevel": "medium",
           "campaigns": [
             {
               "name": "Retargeting Wave",
               "channel": "SEO / Organic",
-              "ctr": "2.6%",
-              "roas": 2.8,
+              "ctr": "2.9%",
+              "roas": 3.8,
               "budget": "—",
               "_split": 0.6
             },
             {
               "name": "Top-Funnel Display",
               "channel": "SEO / Organic",
-              "ctr": "1.8%",
-              "roas": 2.2,
+              "ctr": "2.1%",
+              "roas": 3.2,
               "budget": "—",
               "_split": 0.4
             }
@@ -393,17 +191,168 @@
             "Target Datacentrix's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Models diverged sharply (3.1×) — figure is approximate",
-          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
+          "dataNotes": "Single-model estimate (GPT-4o only)",
+          "dataOrigin": "GPT-4o: SemRush data · Claude: Similarweb estimate"
         },
         {
-          "name": "iOCO",
-          "domain": "ioco.tech",
-          "url": "ioco.tech",
-          "why": "Offers IT security consulting services including risk assessments, penetration testing, and cybersecurity strategy in South Africa.",
-          "logo": "I",
-          "roas": 2.8,
-          "ctr": "2.5%",
+          "name": "Securicom",
+          "domain": "securicom.co.za",
+          "url": "securicom.co.za",
+          "why": "Focuses on managed IT security services including email security and endpoint protection for businesses in South Africa.",
+          "logo": "S",
+          "roas": "—",
+          "ctr": "—",
+          "traffic": "8K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "low",
+          "topChannel": null,
+          "topChannels": [],
+          "threatLevel": "critical",
+          "campaigns": [
+            {
+              "name": "Awareness Reels Burst",
+              "channel": null,
+              "ctr": "—",
+              "roas": "—",
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "High-Intent Keyword Steal",
+              "channel": null,
+              "ctr": "—",
+              "roas": "—",
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than Securicom",
+              "body": "See why thousands switched from Securicom to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank Securicom on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (Securicom vs You) to capture their branded search intent",
+            "Target Securicom's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Niche SA security firm; no reliable public ad-spend signals found",
+          "dataOrigin": "GPT-4o: No reliable public data · Claude: Industry benchmark"
+        },
+        {
+          "name": "Nclose",
+          "domain": "nclose.com",
+          "url": "nclose.com",
+          "why": "Provides managed IT security services including penetration testing and security operations center (SOC) services.",
+          "logo": "N",
+          "roas": "—",
+          "ctr": "—",
+          "traffic": "12K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "low",
+          "topChannel": "SEO / Organic",
+          "topChannels": [
+            "SEO / Organic"
+          ],
+          "threatLevel": "high",
+          "campaigns": [
+            {
+              "name": "Brand Search Domination",
+              "channel": "SEO / Organic",
+              "ctr": "—",
+              "roas": "—",
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "Comparison Landing Funnel",
+              "channel": "SEO / Organic",
+              "ctr": "—",
+              "roas": "—",
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than Nclose",
+              "body": "See why thousands switched from Nclose to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank Nclose on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (Nclose vs You) to capture their branded search intent",
+            "Target Nclose's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "SA-based MDR/SOC provider; minimal paid media presence detected",
+          "dataOrigin": "GPT-4o: No reliable public data · Claude: Similarweb estimate"
+        },
+        {
+          "name": "Performanta",
+          "domain": "performanta.com",
+          "url": "performanta.com",
+          "why": "Delivers managed IT security services such as threat detection and response tailored for South African businesses.",
+          "logo": "P",
+          "roas": 3,
+          "ctr": "2.8%",
+          "traffic": "20K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "medium",
+          "topChannel": "LinkedIn Ads",
+          "topChannels": [
+            "LinkedIn Ads"
+          ],
+          "threatLevel": "medium",
+          "campaigns": [
+            {
+              "name": "Lookalike Audience Push",
+              "channel": "LinkedIn Ads",
+              "ctr": "3.2%",
+              "roas": 3.3,
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "Free Trial Lead Gen",
+              "channel": "LinkedIn Ads",
+              "ctr": "2.4%",
+              "roas": 2.7,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than Performanta",
+              "body": "See why thousands switched from Performanta to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank Performanta on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (Performanta vs You) to capture their branded search intent",
+            "Target Performanta's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Models disagreed (1.5×) — using conservative figure",
+          "dataOrigin": "GPT-4o: Trade-press estimate · Claude: Similarweb estimate"
+        },
+        {
+          "name": "EOH",
+          "domain": "eoh.co.za",
+          "url": "eoh.co.za",
+          "why": "Offers managed IT security services including risk management and compliance solutions in South Africa.",
+          "logo": "E",
+          "roas": 2.5,
+          "ctr": "3.0%",
           "traffic": "35K",
           "adSpend": "—",
           "dataSource": "AI-estimate",
@@ -412,21 +361,21 @@
           "topChannels": [
             "Google Search"
           ],
-          "threatLevel": "high",
+          "threatLevel": "critical",
           "campaigns": [
             {
-              "name": "Awareness Reels Burst",
+              "name": "Retargeting Wave",
               "channel": "Google Search",
-              "ctr": "2.9%",
-              "roas": 3.1,
+              "ctr": "3.4%",
+              "roas": 2.8,
               "budget": "—",
               "_split": 0.6
             },
             {
-              "name": "High-Intent Keyword Steal",
+              "name": "Top-Funnel Display",
               "channel": "Google Search",
-              "ctr": "2.1%",
-              "roas": 2.5,
+              "ctr": "2.6%",
+              "roas": 2.2,
               "budget": "—",
               "_split": 0.4
             }
@@ -434,18 +383,67 @@
           "audiences": [],
           "adCopy": [
             {
-              "headline": "Trade smarter than iOCO",
-              "body": "See why thousands switched from iOCO to a faster, lower-fee platform."
+              "headline": "Trade smarter than EOH",
+              "body": "See why thousands switched from EOH to a faster, lower-fee platform."
             }
           ],
           "suggestions": [
-            "Outflank iOCO on long-tail variations of their core keywords — they over-index on brand terms",
-            "Use comparison content (iOCO vs You) to capture their branded search intent",
-            "Target iOCO's mid-funnel comparison queries with high-intent landing pages"
+            "Outflank EOH on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (EOH vs You) to capture their branded search intent",
+            "Target EOH's mid-funnel comparison queries with high-intent landing pages"
           ],
           "aiDetected": true,
-          "dataNotes": "Models diverged sharply (5.0×) — figure is approximate",
+          "dataNotes": "Models diverged sharply (6.7×) — figure is approximate",
           "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
+        },
+        {
+          "name": "First Technology Group",
+          "domain": "firsttech.co.za",
+          "url": "firsttech.co.za",
+          "why": "Provides managed IT security services including firewall management and endpoint security for South African enterprises.",
+          "logo": "FT",
+          "roas": "—",
+          "ctr": "—",
+          "traffic": "18K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "low",
+          "topChannel": null,
+          "topChannels": [],
+          "threatLevel": "high",
+          "campaigns": [
+            {
+              "name": "Awareness Reels Burst",
+              "channel": null,
+              "ctr": "—",
+              "roas": "—",
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "High-Intent Keyword Steal",
+              "channel": null,
+              "ctr": "—",
+              "roas": "—",
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than First Technology Group",
+              "body": "See why thousands switched from First Technology Group to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank First Technology Group on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (First Technology Group vs You) to capture their branded search intent",
+            "Target First Technology Group's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "SA IT reseller/services group; limited public paid-media data",
+          "dataOrigin": "GPT-4o: No reliable public data · Claude: Similarweb estimate"
         }
       ]
     },
@@ -456,40 +454,93 @@
       "trafficMo": 52793,
       "adSpend": 11570,
       "convRate": 2.45,
-      "impressions": 504120
+      "impressions": 504120,
+      "source": "demo",
+      "_estimated": true
     },
     "competitors": [
       {
-        "name": "CyberLogic",
-        "domain": "cyberlogic.co.za",
-        "url": "cyberlogic.co.za",
-        "why": "Specializes in IT security consulting with a focus on managed security services and compliance for South African businesses.",
-        "logo": "C",
-        "roas": 2.8,
-        "ctr": "2.5%",
-        "traffic": "45K",
+        "name": "EOH",
+        "domain": "eoh.co.za",
+        "url": "eoh.co.za",
+        "why": "Offers managed IT security services including risk management and compliance solutions in South Africa.",
+        "logo": "E",
+        "roas": 2.5,
+        "ctr": "3.0%",
+        "traffic": "35K",
         "adSpend": "—",
         "dataSource": "AI-estimate",
         "confidence": "low",
-        "topChannel": "LinkedIn Ads",
+        "topChannel": "Google Search",
         "topChannels": [
-          "LinkedIn Ads"
+          "Google Search"
         ],
-        "threatLevel": "high",
+        "threatLevel": "critical",
         "campaigns": [
           {
-            "name": "Lookalike Audience Push",
-            "channel": "LinkedIn Ads",
-            "ctr": "2.9%",
-            "roas": 3.1,
+            "name": "Retargeting Wave",
+            "channel": "Google Search",
+            "ctr": "3.4%",
+            "roas": 2.8,
             "budget": "—",
             "_split": 0.6
           },
           {
-            "name": "Free Trial Lead Gen",
-            "channel": "LinkedIn Ads",
-            "ctr": "2.1%",
-            "roas": 2.5,
+            "name": "Top-Funnel Display",
+            "channel": "Google Search",
+            "ctr": "2.6%",
+            "roas": 2.2,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than EOH",
+            "body": "See why thousands switched from EOH to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank EOH on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (EOH vs You) to capture their branded search intent",
+          "Target EOH's mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "Models diverged sharply (6.7×) — figure is approximate",
+        "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
+      },
+      {
+        "name": "CyberLogic",
+        "domain": "cyberlogic.co.za",
+        "url": "cyberlogic.co.za",
+        "why": "Provides managed IT security services including endpoint protection and threat management in South Africa.",
+        "logo": "C",
+        "roas": "—",
+        "ctr": "—",
+        "traffic": "15K",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "low",
+        "topChannel": "SEO / Organic",
+        "topChannels": [
+          "SEO / Organic"
+        ],
+        "threatLevel": "critical",
+        "campaigns": [
+          {
+            "name": "Brand Search Domination",
+            "channel": "SEO / Organic",
+            "ctr": "—",
+            "roas": "—",
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "Comparison Landing Funnel",
+            "channel": "SEO / Organic",
+            "ctr": "—",
+            "roas": "—",
             "budget": "—",
             "_split": 0.4
           }
@@ -507,120 +558,18 @@
           "Target CyberLogic's mid-funnel comparison queries with high-intent landing pages"
         ],
         "aiDetected": true,
-        "dataNotes": "Single-model estimate (GPT-4o only)",
-        "dataOrigin": "GPT-4o: SemRush data · Claude: Industry benchmark"
-      },
-      {
-        "name": "Securicom",
-        "domain": "securicom.co.za",
-        "url": "securicom.co.za",
-        "why": "Offers IT security consulting services such as vulnerability assessments, penetration testing, and managed security solutions in South Africa.",
-        "logo": "S",
-        "roas": 2.5,
-        "ctr": "2.2%",
-        "traffic": "35K",
-        "adSpend": "—",
-        "dataSource": "AI-estimate",
-        "confidence": "low",
-        "topChannel": "SEO / Organic",
-        "topChannels": [
-          "SEO / Organic"
-        ],
-        "threatLevel": "medium",
-        "campaigns": [
-          {
-            "name": "Retargeting Wave",
-            "channel": "SEO / Organic",
-            "ctr": "2.6%",
-            "roas": 2.8,
-            "budget": "—",
-            "_split": 0.6
-          },
-          {
-            "name": "Top-Funnel Display",
-            "channel": "SEO / Organic",
-            "ctr": "1.8%",
-            "roas": 2.2,
-            "budget": "—",
-            "_split": 0.4
-          }
-        ],
-        "audiences": [],
-        "adCopy": [
-          {
-            "headline": "Trade smarter than Securicom",
-            "body": "See why thousands switched from Securicom to a faster, lower-fee platform."
-          }
-        ],
-        "suggestions": [
-          "Outflank Securicom on long-tail variations of their core keywords — they over-index on brand terms",
-          "Use comparison content (Securicom vs You) to capture their branded search intent",
-          "Target Securicom's mid-funnel comparison queries with high-intent landing pages"
-        ],
-        "aiDetected": true,
-        "dataNotes": "Single-model estimate (GPT-4o only)",
-        "dataOrigin": "GPT-4o: Trade-press estimate · Claude: Industry benchmark"
-      },
-      {
-        "name": "First Technology Group",
-        "domain": "firsttech.co.za",
-        "url": "firsttech.co.za",
-        "why": "Delivers IT security consulting services including cybersecurity assessments, compliance, and managed security solutions in South Africa.",
-        "logo": "FT",
-        "roas": 3.2,
-        "ctr": "3.1%",
-        "traffic": "120K",
-        "adSpend": "—",
-        "dataSource": "AI-estimate",
-        "confidence": "low",
-        "topChannel": "LinkedIn Ads",
-        "topChannels": [
-          "LinkedIn Ads"
-        ],
-        "threatLevel": "medium",
-        "campaigns": [
-          {
-            "name": "Lookalike Audience Push",
-            "channel": "LinkedIn Ads",
-            "ctr": "3.5%",
-            "roas": 3.5,
-            "budget": "—",
-            "_split": 0.6
-          },
-          {
-            "name": "Free Trial Lead Gen",
-            "channel": "LinkedIn Ads",
-            "ctr": "2.7%",
-            "roas": 2.9,
-            "budget": "—",
-            "_split": 0.4
-          }
-        ],
-        "audiences": [],
-        "adCopy": [
-          {
-            "headline": "Trade smarter than First Technology Group",
-            "body": "See why thousands switched from First Technology Group to a faster, lower-fee platform."
-          }
-        ],
-        "suggestions": [
-          "Outflank First Technology Group on long-tail variations of their core keywords — they over-index on brand terms",
-          "Use comparison content (First Technology Group vs You) to capture their branded search intent",
-          "Target First Technology Group's mid-funnel comparison queries with high-intent landing pages"
-        ],
-        "aiDetected": true,
-        "dataNotes": "Single-model estimate (GPT-4o only)",
-        "dataOrigin": "GPT-4o: SemRush data · Claude: Industry benchmark"
+        "dataNotes": "Small SA-focused MSP; limited public ad-spend data available",
+        "dataOrigin": "GPT-4o: No reliable public data · Claude: Similarweb estimate"
       },
       {
         "name": "Dimension Data",
         "domain": "dimensiondata.com",
         "url": "dimensiondata.com",
-        "why": "Provides IT security consulting services including risk assessments, compliance, and cybersecurity strategy in South Africa.",
+        "why": "Offers comprehensive IT security solutions including managed security services and threat intelligence in South Africa.",
         "logo": "DD",
-        "roas": 3.1,
-        "ctr": "2.7%",
-        "traffic": "350K",
+        "roas": 2.8,
+        "ctr": "3.2%",
+        "traffic": "120K",
         "adSpend": "—",
         "dataSource": "AI-estimate",
         "confidence": "low",
@@ -628,21 +577,21 @@
         "topChannels": [
           "Google Search"
         ],
-        "threatLevel": "critical",
+        "threatLevel": "high",
         "campaigns": [
           {
-            "name": "Brand Search Domination",
+            "name": "Lookalike Audience Push",
             "channel": "Google Search",
-            "ctr": "3.1%",
-            "roas": 3.4,
+            "ctr": "3.6%",
+            "roas": 3.1,
             "budget": "—",
             "_split": 0.6
           },
           {
-            "name": "Comparison Landing Funnel",
+            "name": "Free Trial Lead Gen",
             "channel": "Google Search",
-            "ctr": "2.3%",
-            "roas": 2.8,
+            "ctr": "2.8%",
+            "roas": 2.5,
             "budget": "—",
             "_split": 0.4
           }
@@ -660,40 +609,38 @@
           "Target Dimension Data's mid-funnel comparison queries with high-intent landing pages"
         ],
         "aiDetected": true,
-        "dataNotes": "Models diverged sharply (5.6×) — figure is approximate",
+        "dataNotes": "Models diverged sharply (3.0×) — figure is approximate",
         "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
       },
       {
-        "name": "Datacentrix",
-        "domain": "datacentrix.co.za",
-        "url": "datacentrix.co.za",
-        "why": "Provides IT security consulting services such as cybersecurity strategy, risk management, and compliance for South African businesses.",
-        "logo": "D",
-        "roas": 2.5,
-        "ctr": "2.2%",
-        "traffic": "45K",
+        "name": "Securicom",
+        "domain": "securicom.co.za",
+        "url": "securicom.co.za",
+        "why": "Focuses on managed IT security services including email security and endpoint protection for businesses in South Africa.",
+        "logo": "S",
+        "roas": "—",
+        "ctr": "—",
+        "traffic": "8K",
         "adSpend": "—",
         "dataSource": "AI-estimate",
         "confidence": "low",
-        "topChannel": "SEO / Organic",
-        "topChannels": [
-          "SEO / Organic"
-        ],
+        "topChannel": null,
+        "topChannels": [],
         "threatLevel": "critical",
         "campaigns": [
           {
-            "name": "Retargeting Wave",
-            "channel": "SEO / Organic",
-            "ctr": "2.6%",
-            "roas": 2.8,
+            "name": "Awareness Reels Burst",
+            "channel": null,
+            "ctr": "—",
+            "roas": "—",
             "budget": "—",
             "_split": 0.6
           },
           {
-            "name": "Top-Funnel Display",
-            "channel": "SEO / Organic",
-            "ctr": "1.8%",
-            "roas": 2.2,
+            "name": "High-Intent Keyword Steal",
+            "channel": null,
+            "ctr": "—",
+            "roas": "—",
             "budget": "—",
             "_split": 0.4
           }
@@ -701,18 +648,69 @@
         "audiences": [],
         "adCopy": [
           {
-            "headline": "Trade smarter than Datacentrix",
-            "body": "See why thousands switched from Datacentrix to a faster, lower-fee platform."
+            "headline": "Trade smarter than Securicom",
+            "body": "See why thousands switched from Securicom to a faster, lower-fee platform."
           }
         ],
         "suggestions": [
-          "Outflank Datacentrix on long-tail variations of their core keywords — they over-index on brand terms",
-          "Use comparison content (Datacentrix vs You) to capture their branded search intent",
-          "Target Datacentrix's mid-funnel comparison queries with high-intent landing pages"
+          "Outflank Securicom on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (Securicom vs You) to capture their branded search intent",
+          "Target Securicom's mid-funnel comparison queries with high-intent landing pages"
         ],
         "aiDetected": true,
-        "dataNotes": "Models diverged sharply (3.1×) — figure is approximate",
-        "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
+        "dataNotes": "Niche SA security firm; no reliable public ad-spend signals found",
+        "dataOrigin": "GPT-4o: No reliable public data · Claude: Industry benchmark"
+      },
+      {
+        "name": "Nclose",
+        "domain": "nclose.com",
+        "url": "nclose.com",
+        "why": "Provides managed IT security services including penetration testing and security operations center (SOC) services.",
+        "logo": "N",
+        "roas": "—",
+        "ctr": "—",
+        "traffic": "12K",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "low",
+        "topChannel": "SEO / Organic",
+        "topChannels": [
+          "SEO / Organic"
+        ],
+        "threatLevel": "high",
+        "campaigns": [
+          {
+            "name": "Brand Search Domination",
+            "channel": "SEO / Organic",
+            "ctr": "—",
+            "roas": "—",
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "Comparison Landing Funnel",
+            "channel": "SEO / Organic",
+            "ctr": "—",
+            "roas": "—",
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than Nclose",
+            "body": "See why thousands switched from Nclose to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank Nclose on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (Nclose vs You) to capture their branded search intent",
+          "Target Nclose's mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "SA-based MDR/SOC provider; minimal paid media presence detected",
+        "dataOrigin": "GPT-4o: No reliable public data · Claude: Similarweb estimate"
       }
     ],
     "sectorOnly": false,
@@ -721,10 +719,10 @@
   },
   "brandKit": null,
   "lastCompetitorNames": [
+    "EOH",
     "CyberLogic",
-    "Securicom",
-    "First Technology Group",
     "Dimension Data",
-    "Datacentrix"
+    "Securicom",
+    "Nclose"
   ]
 }

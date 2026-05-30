@@ -1581,7 +1581,10 @@ function generateWebsiteKPIs(url, industryKey) {
     trafficMo: Math.floor(r(50000, 2000000, 4)),
     adSpend: Math.floor(r(5000, 120000, 5)),
     convRate: r(1.8, 4.2, 6),
-    impressions: Math.floor(r(500000, 8000000, 7))
+    impressions: Math.floor(r(500000, 8000000, 7)),
+    // Data-mode (Task 10): hash-seeded synthetic KPIs, not a real source.
+    source: 'demo',
+    _estimated: true
   };
 };
 
@@ -1591,6 +1594,9 @@ function generateTrendData() {
   const base = [120, 135, 128, 142, 156, 168, 175, 182, 195, 188, 210, 228];
   return {
     labels: months,
-    datasets: base
+    datasets: base,
+    // Data-mode (Task 10): static placeholder trend curve, not a real source.
+    source: 'demo',
+    _estimated: true
   };
 }
