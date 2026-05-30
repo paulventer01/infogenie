@@ -127,17 +127,17 @@ async function runQueryAcrossProviders(queryRow) {
     const out = settled[i] || {};
     if (out.error) {
       await pool.query(`
-        INSERT INTO search_intel_llm_runs (query_id, provider, response_text, brand_mentioned, error)
-        VALUES ($1,$2,'',false,$3)
-      `, [queryRow.id, provider, String(out.error).slice(0, 400)]);
+        INSERT INTO search_intel_llm_runs (tenant_id, query_id, provider, response_text, brand_mentioned, error)
+        VALUES ($1,$2,$3,'',false,$4)
+      `, [queryRow.tenant_id, queryRow.id, provider, String(out.error).slice(0, 400)]);
       summary.providers[provider] = { error: out.error };
       continue;
     }
     const { mentioned, position, competitorHits } = _parseBrandSignals(out.text || '', queryRow.brand, queryRow.competitors || []);
     await pool.query(`
-      INSERT INTO search_intel_llm_runs (query_id, provider, response_text, brand_mentioned, brand_position, competitor_hits, citations, tokens_used)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-    `, [queryRow.id, provider, (out.text||'').slice(0, 8000), mentioned, position, JSON.stringify(competitorHits), JSON.stringify(out.citations||[]), out.tokens || null]);
+      INSERT INTO search_intel_llm_runs (tenant_id, query_id, provider, response_text, brand_mentioned, brand_position, competitor_hits, citations, tokens_used)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    `, [queryRow.tenant_id, queryRow.id, provider, (out.text||'').slice(0, 8000), mentioned, position, JSON.stringify(competitorHits), JSON.stringify(out.citations||[]), out.tokens || null]);
     summary.providers[provider] = { mentioned, position, competitorHits, citations: out.citations||[], textPreview: (out.text||'').slice(0, 220) };
     if (mentioned) summary.brandHits++;
     summary.competitorTotal += competitorHits.length;
@@ -146,20 +146,22 @@ async function runQueryAcrossProviders(queryRow) {
   return summary;
 }
 
-async function listQueries() {
+async function listQueries(tenantId) {
   if (!_db.hasDb()) return [];
   const r = await _db.getPool().query(`
     SELECT q.*,
       (SELECT COUNT(*)::int FROM search_intel_llm_runs r WHERE r.query_id=q.id AND r.brand_mentioned) AS hit_count,
       (SELECT COUNT(*)::int FROM search_intel_llm_runs r WHERE r.query_id=q.id) AS run_count
     FROM search_intel_queries q
+    WHERE q.tenant_id=$1
     ORDER BY q.created_at DESC LIMIT 200
-  `);
+  `, [tenantId]);
   return r.rows;
 }
 
-async function createQuery(payload) {
+async function createQuery(payload, tenantId) {
   if (!_db.hasDb()) throw new Error('db not configured');
+  if (tenantId == null) throw new Error('no_tenant');
   const query = String(payload?.query || '').trim().slice(0, 500);
   const brand = String(payload?.brand || '').trim().slice(0, 200);
   if (!query || !brand) throw new Error('query and brand required');
@@ -167,26 +169,28 @@ async function createQuery(payload) {
     ? payload.competitors.map(c => String(c || '').trim()).filter(Boolean).slice(0, 10) : [];
   const locale = String(payload?.locale || 'en-US').slice(0, 16);
   const r = await _db.getPool().query(`
-    INSERT INTO search_intel_queries (query, brand, competitors, locale)
-    VALUES ($1,$2,$3,$4)
-    ON CONFLICT (query, brand, locale) DO UPDATE SET competitors = EXCLUDED.competitors
+    INSERT INTO search_intel_queries (tenant_id, query, brand, competitors, locale)
+    VALUES ($1,$2,$3,$4,$5)
+    ON CONFLICT (tenant_id, query, brand, locale) DO UPDATE SET competitors = EXCLUDED.competitors
     RETURNING *
-  `, [query, brand, competitors, locale]);
+  `, [tenantId, query, brand, competitors, locale]);
   return r.rows[0];
 }
 
-async function deleteQuery(id) {
+async function deleteQuery(id, tenantId) {
   if (!_db.hasDb()) return false;
-  await _db.getPool().query(`DELETE FROM search_intel_queries WHERE id=$1`, [Number(id)]);
+  await _db.getPool().query(`DELETE FROM search_intel_queries WHERE id=$1 AND tenant_id=$2`, [Number(id), tenantId]);
   return true;
 }
 
-async function getRunHistory(queryId, limit = 40) {
+async function getRunHistory(queryId, tenantId, limit = 40) {
   if (!_db.hasDb()) return [];
   const r = await _db.getPool().query(`
-    SELECT id, provider, brand_mentioned, brand_position, competitor_hits, citations, response_text, tokens_used, error, ran_at
-    FROM search_intel_llm_runs WHERE query_id=$1 ORDER BY ran_at DESC LIMIT $2
-  `, [Number(queryId), Math.min(Math.max(Number(limit)||40, 1), 200)]);
+    SELECT r.id, r.provider, r.brand_mentioned, r.brand_position, r.competitor_hits, r.citations, r.response_text, r.tokens_used, r.error, r.ran_at
+    FROM search_intel_llm_runs r
+    JOIN search_intel_queries q ON q.id = r.query_id
+    WHERE r.query_id=$1 AND q.tenant_id=$2 ORDER BY r.ran_at DESC LIMIT $3
+  `, [Number(queryId), tenantId, Math.min(Math.max(Number(limit)||40, 1), 200)]);
   return r.rows;
 }
 

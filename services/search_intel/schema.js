@@ -7,6 +7,7 @@
 //   term + locale (the "what is the world searching for" view).
 // • search_intel_images:   OpenAI-vision logo/brand detections cached per URL.
 const _db = require('../../db');
+const { addTenantIdColumn } = require('../tenants/migration');
 
 async function ensureSearchIntelSchema() {
   if (!_db.hasDb()) return false;
@@ -58,6 +59,26 @@ async function ensureSearchIntelSchema() {
       ran_at      TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+
+  // ── Phase 2 migration (inline) ───────────────────────────────────────────
+  // These tables are tenant-scoped. Run the tenant_id migration inline (rather
+  // than relying solely on the deferred phase2 batch) so reads/writes that use
+  // tenant_id work immediately on boot, including on fresh installs. The
+  // deferred batch then becomes a redundant no-op.
+  //
+  // search_intel_queries: its legacy global UNIQUE (query, brand, locale) is
+  // replaced with a per-tenant composite so two workspaces can track the same
+  // prompt independently.
+  try {
+    await pool.query(`ALTER TABLE search_intel_queries DROP CONSTRAINT IF EXISTS search_intel_queries_query_brand_locale_key`);
+    await addTenantIdColumn('search_intel_queries', { uniqueWithExtra: ['query', 'brand', 'locale'] });
+    await addTenantIdColumn('search_intel_llm_runs');
+    await addTenantIdColumn('search_intel_pulse_runs');
+    await addTenantIdColumn('search_intel_images');
+  } catch (e) {
+    console.warn('[search-intel] tenant migration warning:', e.message);
+  }
+
   return true;
 }
 

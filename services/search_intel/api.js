@@ -3,37 +3,47 @@ const express = require('express');
 const _db = require('../../db');
 const _ai = require('./ai_visibility');
 const _pulse = require('./search_pulse');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: String(msg||'error') }); }
 function _id(v) { const n = parseInt(v, 10); return Number.isInteger(n) && n > 0 ? n : null; }
 
 // ─── AI Visibility (tracked queries → multi-LLM citation tracking) ─────────
-router.get('/queries', async (_req, res) => {
-  try { res.json({ ok:true, queries: await _ai.listQueries() }); }
-  catch (e) { _err(res, 500, e.message); }
+router.get('/queries', async (req, res) => {
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'search_intel:list' });
+    res.json({ ok:true, queries: await _ai.listQueries(tid) });
+  } catch (e) { _err(res, 500, e.message); }
 });
 router.post('/queries', async (req, res) => {
-  try { res.json({ ok:true, query: await _ai.createQuery(req.body || {}) }); }
-  catch (e) { _err(res, 400, e.message); }
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'search_intel:create' });
+    res.json({ ok:true, query: await _ai.createQuery(req.body || {}, tid) });
+  } catch (e) { _err(res, 400, e.message); }
 });
 router.delete('/queries/:id', async (req, res) => {
   const id = _id(req.params.id); if (!id) return _err(res, 400, 'invalid id');
-  try { await _ai.deleteQuery(id); res.json({ ok:true }); }
-  catch (e) { _err(res, 500, e.message); }
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'search_intel:delete' });
+    await _ai.deleteQuery(id, tid); res.json({ ok:true });
+  } catch (e) { _err(res, 500, e.message); }
 });
 router.post('/queries/:id/run', async (req, res) => {
   const id = _id(req.params.id); if (!id) return _err(res, 400, 'invalid id');
   try {
-    const r = await _db.getPool().query(`SELECT * FROM search_intel_queries WHERE id=$1`, [id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'search_intel:run' });
+    const r = await _db.getPool().query(`SELECT * FROM search_intel_queries WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     if (!r.rows[0]) return _err(res, 404, 'query not found');
     res.json({ ok:true, summary: await _ai.runQueryAcrossProviders(r.rows[0]) });
   } catch (e) { _err(res, 500, e.message); }
 });
 router.get('/queries/:id/history', async (req, res) => {
   const id = _id(req.params.id); if (!id) return _err(res, 400, 'invalid id');
-  try { res.json({ ok:true, runs: await _ai.getRunHistory(id, req.query.limit) }); }
-  catch (e) { _err(res, 500, e.message); }
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'search_intel:history' });
+    res.json({ ok:true, runs: await _ai.getRunHistory(id, tid, req.query.limit) });
+  } catch (e) { _err(res, 500, e.message); }
 });
 router.post('/run-all', async (_req, res) => {
   try { res.json(await _ai.runAllEnabled()); }

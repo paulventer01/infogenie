@@ -80,7 +80,7 @@ const PLAIN_TABLES = [
   'seo_annotations', 'site_search_events', 'scroll_events',
   'ai_traffic_sites', 'ai_traffic_hits',
   'keyword_explorer_runs', 'lead_finder_runs',
-  'search_intel_queries', 'search_intel_llm_runs',
+  'search_intel_llm_runs',
   'search_intel_pulse_runs', 'search_intel_images',
   // Listening / social
   'job_board_runs', 'churn_scores',
@@ -139,6 +139,10 @@ const REWRITE_UNIQUE = [
   // so each tenant's mirror is independent.
   { table:'ad_campaigns',      dropConstraint:'ad_campaigns_platform_platform_camp_id_key',
     uniqueExtras:['platform','platform_camp_id'] },
+  // search_intel_queries: (query, brand, locale) was globally unique, so two
+  // tenants couldn't track the same prompt independently. Scope per-tenant.
+  { table:'search_intel_queries', dropConstraint:'search_intel_queries_query_brand_locale_key',
+    uniqueExtras:['query','brand','locale'] },
 ];
 
 async function _safeDropConstraint(p, table, constraint) {
