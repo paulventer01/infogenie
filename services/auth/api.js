@@ -496,10 +496,13 @@ router.post('/accept-invite/:token', async (req, res) => {
     // confirm a matching pending membership still exists for the token's
     // workspace — a cancelled invite has no such row, so we must refuse.
     const peek = await _db.getPool().query(
-      `SELECT u.id, et.tenant_id, (u.password_hash IS NOT NULL) AS has_password
+      `SELECT u.id, u.email, et.tenant_id, (u.password_hash IS NOT NULL) AS has_password,
+              t.name AS workspace_name, r.name AS role_name
          FROM email_tokens et
          JOIN users u ON u.id = et.user_id
          JOIN tenant_users tu ON tu.user_id = et.user_id AND tu.tenant_id = et.tenant_id AND tu.status='invited'
+         LEFT JOIN tenants t ON t.id = et.tenant_id
+         LEFT JOIN roles r ON r.id = tu.role_id
         WHERE et.token=$1 AND et.purpose='invite' AND et.consumed_at IS NULL AND et.expires_at > now()
         LIMIT 1`, [req.params.token]);
     if (!peek.rows[0]) return _err(res, 400, 'Invite link is invalid or has expired. Ask for a new one.');
@@ -525,6 +528,17 @@ router.post('/accept-invite/:token', async (req, res) => {
     }
     await markEmailVerified(uid);
     const user = await findUserById(uid);
+    // Close the invite lifecycle loop: record that the invitee themselves
+    // accepted and activated their membership. Best-effort — never blocks login.
+    try {
+      require('../admin/audit').recordAudit({
+        action: 'membership.accept',
+        actorUserId: uid, actorEmail: peek.rows[0].email,
+        targetUserId: uid, targetEmail: peek.rows[0].email,
+        tenantId, workspaceId: tenantId, workspaceName: peek.rows[0].workspace_name,
+        oldRole: 'invited', newRole: peek.rows[0].role_name,
+      });
+    } catch (_) {}
     await _establishSession(req, user);
     await touchLastLogin(uid);
     res.json({ ok:true, user: _publicUser(user) });
