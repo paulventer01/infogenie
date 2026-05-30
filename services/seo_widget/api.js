@@ -35,9 +35,10 @@ router.post('/sites', _safeAsync(async (req, res) => {
   const ctaText = _safeText(req.body?.ctaText, 80) || 'Get my free SEO audit';
   const ownerEmail = String(req.body?.ownerEmail || '').trim().slice(0, 200);
   const id = 'sw_' + crypto.randomBytes(8).toString('hex');
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-widget:site-create' });
   await _db.getPool().query(
-    `INSERT INTO seo_widget_sites (id, name, accent, cta_text, owner_email) VALUES ($1,$2,$3,$4,$5)`,
-    [id, name, accent, ctaText, ownerEmail || null]
+    `INSERT INTO seo_widget_sites (tenant_id, id, name, accent, cta_text, owner_email) VALUES ($1,$2,$3,$4,$5,$6)`,
+    [tid, id, name, accent, ctaText, ownerEmail || null]
   );
   res.json({ ok: true, id, name, accent, ctaText });
 }));
@@ -148,8 +149,10 @@ router.post('/audit/:siteId', _safeAsync(async (req, res) => {
   if (!_rateLimit('site:' + siteId, 30, 5 * 60 * 1000)) return _err(res, 429, 'This widget has hit its 5-minute audit limit — try again shortly.');
 
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database required.');
-  const site = await _db.getPool().query(`SELECT id FROM seo_widget_sites WHERE id=$1`, [siteId]);
+  // Public endpoint — site_id is the auth. Inherit tenant_id from the site row.
+  const site = await _db.getPool().query(`SELECT id, tenant_id FROM seo_widget_sites WHERE id=$1`, [siteId]);
   if (!site.rowCount) return _err(res, 404, 'Widget not found.');
+  const siteTenantId = site.rows[0].tenant_id;
 
   const url = String(req.body?.url || '').trim();
   const email = String(req.body?.email || '').trim();
@@ -161,8 +164,8 @@ router.post('/audit/:siteId', _safeAsync(async (req, res) => {
   let auditRunId = null;
   try {
     const r = await _db.getPool().query(
-      `INSERT INTO seo_audit_runs (url, score, grade, checks, summary) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-      [audit.url, audit.score, audit.grade, JSON.stringify(audit.checks), JSON.stringify(audit.summary)]
+      `INSERT INTO seo_audit_runs (tenant_id, url, score, grade, checks, summary) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [siteTenantId, audit.url, audit.score, audit.grade, JSON.stringify(audit.checks), JSON.stringify(audit.summary)]
     );
     auditRunId = r.rows[0].id;
   } catch (_) {}
@@ -170,8 +173,8 @@ router.post('/audit/:siteId', _safeAsync(async (req, res) => {
   if (_emailValid(email)) {
     try {
       await _db.getPool().query(
-        `INSERT INTO seo_widget_leads (site_id, email, url, score, grade, audit_id) VALUES ($1,$2,$3,$4,$5,$6)`,
-        [siteId, email, audit.url, audit.score, audit.grade, auditRunId]
+        `INSERT INTO seo_widget_leads (tenant_id, site_id, email, url, score, grade, audit_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [siteTenantId, siteId, email, audit.url, audit.score, audit.grade, auditRunId]
       );
     } catch (_) {}
   }

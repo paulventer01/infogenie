@@ -99,9 +99,10 @@ Return 8-12 stories from the last 14 days. Be specific about publications (TechC
     // Persist to DB
     if (_db.hasDb()) {
       try {
+        const tid = await _tenantCtx.resolveTenantId(req, { label: 'media_intel:scan' });
         await pool().query(
-          `INSERT INTO media_intel_scans (brand, competitors, results, summary) VALUES ($1,$2,$3,$4)`,
-          [brand, competitors, JSON.stringify(parsed), parsed.rising_narratives?.[0]?.narrative || '']
+          `INSERT INTO media_intel_scans (tenant_id, brand, competitors, results, summary) VALUES ($1,$2,$3,$4,$5)`,
+          [tid, brand, competitors, JSON.stringify(parsed), parsed.rising_narratives?.[0]?.narrative || '']
         );
       } catch (_) {}
     }

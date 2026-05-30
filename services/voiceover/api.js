@@ -67,9 +67,10 @@ router.post('/generate', _safeAsync(async (req, res) => {
 
   if (_db.hasDb && _db.hasDb()) {
     try {
+      const tid = await _tid(req, 'voiceover:generate');
       await _db.getPool().query(
-        `INSERT INTO voiceover_runs (label, voice, model, char_count, mp3_url) VALUES ($1,$2,$3,$4,$5)`,
-        [label || null, voice, model, text.length, mp3Url]
+        `INSERT INTO voiceover_runs (tenant_id, label, voice, model, char_count, mp3_url) VALUES ($1,$2,$3,$4,$5,$6)`,
+        [tid, label || null, voice, model, text.length, mp3Url]
       );
     } catch (_) {}
   }

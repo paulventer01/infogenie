@@ -291,9 +291,10 @@ router.post('/score', _safe(async (req, res) => {
 
   if (_db.hasDb()) {
     try {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'content_score:run' });
       await _db.getPool().query(
-        `INSERT INTO content_score_runs (url, keyword, score, breakdown) VALUES ($1,$2,$3,$4)`,
-        [url, keyword, score, JSON.stringify(breakdown)]
+        `INSERT INTO content_score_runs (tenant_id, url, keyword, score, breakdown) VALUES ($1,$2,$3,$4,$5)`,
+        [tid, url, keyword, score, JSON.stringify(breakdown)]
       );
     } catch (e) { console.warn('[content-score] insert failed', e.message); }
   }

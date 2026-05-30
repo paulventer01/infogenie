@@ -89,8 +89,10 @@ router.post('/scan', _safeAsync(async (req, res) => {
   const counts = { pos: classified.filter(p => p.sentiment === 'positive').length, neu: classified.filter(p => p.sentiment === 'neutral').length, neg: classified.filter(p => p.sentiment === 'negative').length };
 
   if (_db.hasDb && _db.hasDb()) {
-    try { await _db.getPool().query('INSERT INTO reddit_pulse_runs (brand, subreddits, keywords, total_posts, pos_count, neu_count, neg_count, posts) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-      [brand, JSON.stringify(subreddits), JSON.stringify(keywords), classified.length, counts.pos, counts.neu, counts.neg, JSON.stringify(classified.slice(0, 100))]); } catch(_) {}
+    try {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'reddit_pulse:scan' });
+      await _db.getPool().query('INSERT INTO reddit_pulse_runs (tenant_id, brand, subreddits, keywords, total_posts, pos_count, neu_count, neg_count, posts) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+      [tid, brand, JSON.stringify(subreddits), JSON.stringify(keywords), classified.length, counts.pos, counts.neu, counts.neg, JSON.stringify(classified.slice(0, 100))]); } catch(_) {}
   }
   res.json({ ok:true, brand, total: classified.length, counts, posts: classified });
 }));

@@ -181,9 +181,10 @@ router.post('/run', _safeAsync(async (req, res) => {
   if (_db.hasDb && _db.hasDb()) {
     try {
       const id = 'social_' + crypto.randomBytes(6).toString('hex');
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'social-tags:run' });
       await _db.getPool().query(
-        `INSERT INTO social_tags_runs (id, url, score, grade, summary, checks) VALUES ($1,$2,$3,$4,$5,$6)`,
-        [id, result.url, result.score, result.grade, JSON.stringify(result.summary), JSON.stringify(result.checks)]
+        `INSERT INTO social_tags_runs (tenant_id, id, url, score, grade, summary, checks) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [tid, id, result.url, result.score, result.grade, JSON.stringify(result.summary), JSON.stringify(result.checks)]
       );
       result.id = id;
     } catch (e) { console.warn('[social-tags] insert failed', e.message); }

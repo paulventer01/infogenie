@@ -71,17 +71,18 @@ router.post('/', async (req, res) => {
   const n = _normalize(req.body || {});
   if (!n.handle) return _err(res, 400, 'handle required');
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'influencers:create' });
     const r = await _db.getPool().query(`
-      INSERT INTO influencers (handle, platform, name, bio, niche, country, followers, engagement_rate,
+      INSERT INTO influencers (tenant_id, handle, platform, name, bio, niche, country, followers, engagement_rate,
         contact_email, contact_phone, profile_url, status, tags, owner, deal_value, notes)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
       ON CONFLICT (platform, handle) DO UPDATE SET
         name=EXCLUDED.name, bio=EXCLUDED.bio, niche=EXCLUDED.niche, country=EXCLUDED.country,
         followers=EXCLUDED.followers, engagement_rate=EXCLUDED.engagement_rate,
         contact_email=EXCLUDED.contact_email, contact_phone=EXCLUDED.contact_phone, profile_url=EXCLUDED.profile_url,
         status=EXCLUDED.status, tags=EXCLUDED.tags, owner=EXCLUDED.owner, deal_value=EXCLUDED.deal_value,
         notes=EXCLUDED.notes, updated_at=now()
-      RETURNING *`, [n.handle, n.platform, n.name, n.bio, n.niche, n.country, n.followers, n.engagement_rate,
+      RETURNING *`, [tid, n.handle, n.platform, n.name, n.bio, n.niche, n.country, n.followers, n.engagement_rate,
         n.contact_email, n.contact_phone, n.profile_url, n.status, JSON.stringify(n.tags), n.owner, n.deal_value, n.notes]);
     res.json({ ok:true, influencer: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }
@@ -121,10 +122,11 @@ router.post('/:id/outreach', async (req, res) => {
   const body = req.body?.body ? String(req.body.body).slice(0, 8000) : null;
   const direction = ['outbound','inbound'].includes(req.body?.direction) ? req.body.direction : 'outbound';
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'influencers:outreach' });
     const r = await _db.getPool().query(`
-      INSERT INTO influencer_outreach (influencer_id, kind, subject, body, direction, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [id, kind, subject, body, direction, req.body?.created_by || null]);
+      INSERT INTO influencer_outreach (tenant_id, influencer_id, kind, subject, body, direction, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [tid, id, kind, subject, body, direction, req.body?.created_by || null]);
     await _db.getPool().query(`UPDATE influencers SET last_contacted_at=now(), updated_at=now() WHERE id=$1`, [id]);
     res.json({ ok:true, outreach: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }

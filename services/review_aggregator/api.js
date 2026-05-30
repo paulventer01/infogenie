@@ -62,9 +62,11 @@ router.post('/scan', _safeAsync(async (req, res) => {
   const counts = { pos: reviews.filter(x => x.sentiment === 'positive').length, neu: reviews.filter(x => x.sentiment === 'neutral').length, neg: reviews.filter(x => x.sentiment === 'negative').length };
 
   if (_db.hasDb && _db.hasDb()) {
-    try { await _db.getPool().query(
-      `INSERT INTO review_aggregator_runs (brand, platform, avg_rating, total_reviews, pos_count, neu_count, neg_count, reviews) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [brand, platform, parseFloat(r.avg_rating)||null, parseInt(r.total_reviews,10)||reviews.length, counts.pos, counts.neu, counts.neg, JSON.stringify(reviews)]
+    try {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'review_aggregator:scan' });
+      await _db.getPool().query(
+      `INSERT INTO review_aggregator_runs (tenant_id, brand, platform, avg_rating, total_reviews, pos_count, neu_count, neg_count, reviews) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [tid, brand, platform, parseFloat(r.avg_rating)||null, parseInt(r.total_reviews,10)||reviews.length, counts.pos, counts.neu, counts.neg, JSON.stringify(reviews)]
     ); } catch(_) {}
   }
   res.json({ ok:true, brand, platform, found:true, avg_rating: r.avg_rating, total_reviews: r.total_reviews, counts, reviews });

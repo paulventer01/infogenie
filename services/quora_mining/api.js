@@ -60,9 +60,11 @@ router.post('/mine', _safeAsync(async (req, res) => {
   const questions = Array.isArray(r.questions) ? r.questions.slice(0, 25) : [];
 
   if (_db.hasDb && _db.hasDb()) {
-    try { await _db.getPool().query(
-      `INSERT INTO quora_runs (topic, total_questions, questions) VALUES ($1,$2,$3)`,
-      [topic, questions.length, JSON.stringify(questions)]
+    try {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'quora_mining:mine' });
+      await _db.getPool().query(
+      `INSERT INTO quora_runs (tenant_id, topic, total_questions, questions) VALUES ($1,$2,$3,$4)`,
+      [tid, topic, questions.length, JSON.stringify(questions)]
     ); } catch(_) {}
   }
   res.json({ ok:true, topic, brand, total: questions.length, questions });

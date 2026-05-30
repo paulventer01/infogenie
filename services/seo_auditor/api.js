@@ -394,9 +394,10 @@ router.post('/audit', _safeAsync(async (req, res) => {
   let runId = null;
   if (_db.hasDb && _db.hasDb()) {
     try {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-auditor:audit' });
       const r = await _db.getPool().query(
-        `INSERT INTO seo_audit_runs (url, score, grade, checks, summary) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-        [fetched.finalUrl, score, grade, JSON.stringify(parsed.checks), JSON.stringify(summary)]
+        `INSERT INTO seo_audit_runs (tenant_id, url, score, grade, checks, summary) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [tid, fetched.finalUrl, score, grade, JSON.stringify(parsed.checks), JSON.stringify(summary)]
       );
       runId = r.rows[0].id;
     } catch (_) {}

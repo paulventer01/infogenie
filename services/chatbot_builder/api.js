@@ -85,9 +85,10 @@ router.post('/generate', _safeAsync(async (req, res) => {
   let id = null;
   if (_db.hasDb && _db.hasDb()) {
     try {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'chatbot_builder:create' });
       const ins = await _db.getPool().query(
-        `INSERT INTO chatbot_configs (brand, greeting, tone, faq, fallback, lead_fields, accent) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-        [brand, greeting, tone, JSON.stringify(faq), fallback, JSON.stringify(leadFields), accent]
+        `INSERT INTO chatbot_configs (tenant_id, brand, greeting, tone, faq, fallback, lead_fields, accent) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+        [tid, brand, greeting, tone, JSON.stringify(faq), fallback, JSON.stringify(leadFields), accent]
       );
       id = ins.rows[0].id;
     } catch(_) {}

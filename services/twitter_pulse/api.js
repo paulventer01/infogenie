@@ -58,9 +58,11 @@ router.post('/scan', _safeAsync(async (req, res) => {
   const viralCount = tweets.filter(t => t.viral === true).length;
 
   if (_db.hasDb && _db.hasDb()) {
-    try { await _db.getPool().query(
-      `INSERT INTO twitter_pulse_runs (brand, keywords, total_tweets, pos_count, neu_count, neg_count, tweets, viral_thread_count) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [brand, JSON.stringify(keywords), tweets.length, counts.pos, counts.neu, counts.neg, JSON.stringify(tweets.slice(0, 50)), viralCount]
+    try {
+      const tid = await _tid(req, 'twitter-pulse:scan');
+      await _db.getPool().query(
+      `INSERT INTO twitter_pulse_runs (tenant_id, brand, keywords, total_tweets, pos_count, neu_count, neg_count, tweets, viral_thread_count) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [tid, brand, JSON.stringify(keywords), tweets.length, counts.pos, counts.neu, counts.neg, JSON.stringify(tweets.slice(0, 50)), viralCount]
     ); } catch(_) {}
   }
   res.json({ ok:true, brand, total: tweets.length, counts, viral_count: viralCount, tweets });

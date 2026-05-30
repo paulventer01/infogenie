@@ -213,15 +213,16 @@ router.post('/run', _upload.single('file'), async (req, res) => {
   const name = String(req.body?.name || `Bulk audit ${new Date().toISOString().slice(0, 10)}`).slice(0, 120);
   const headless = String(req.body?.headless || '') === '1' || req.body?.headless === true;
   const pool = _db.getPool();
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'bulk_reporting:run' });
   const ins = await pool.query(
-    `INSERT INTO bulk_audit_runs (name, total, settings) VALUES ($1, $2, $3) RETURNING id`,
-    [name, urls.length, JSON.stringify({ opts: { headless } })],
+    `INSERT INTO bulk_audit_runs (tenant_id, name, total, settings) VALUES ($1, $2, $3, $4) RETURNING id`,
+    [tid, name, urls.length, JSON.stringify({ opts: { headless } })],
   );
   const runId = Number(ins.rows[0].id);
-  const values = urls.map((_, i) => `($1, $${i + 2})`).join(',');
+  const values = urls.map((_, i) => `($1, $2, $${i + 3})`).join(',');
   await pool.query(
-    `INSERT INTO bulk_audit_items (run_id, url) VALUES ${values}`,
-    [runId, ...urls],
+    `INSERT INTO bulk_audit_items (tenant_id, run_id, url) VALUES ${values}`,
+    [tid, runId, ...urls],
   );
   setImmediate(() => _processRun(runId, { headless }));
   res.json({ ok: true, runId, total: urls.length, name });

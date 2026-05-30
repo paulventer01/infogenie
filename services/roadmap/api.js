@@ -23,10 +23,11 @@ router.post('/progress/:taskId', async (req, res) => {
   if (!_db.hasDb()) return res.status(503).json({ ok: false, error: 'no-db' });
   const taskId = String(req.params.taskId).slice(0, 64);
   if (!PLAN.find(p => p.id === taskId)) return res.status(404).json({ ok: false, error: 'unknown task' });
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'roadmap:set-progress' });
   await _db.getPool().query(
-    `INSERT INTO roadmap_progress (task_id) VALUES ($1)
+    `INSERT INTO roadmap_progress (tenant_id, task_id) VALUES ($1,$2)
      ON CONFLICT (task_id) DO UPDATE SET completed_at = now()`,
-    [taskId],
+    [tid, taskId],
   );
   res.json({ ok: true });
 });

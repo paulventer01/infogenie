@@ -62,9 +62,12 @@ router.post('/event', express.json({ limit:'2kb' }), async (req, res) => {
     const key = `${type}|${slug}|${d}|${sid}`;
     if (_wasSeen(key)) return res.json({ ok:true, deduped:true });
     if (!_db.hasDb()) return res.json({ ok:true, persisted:false });
+    // Public ingest from a rendered page — no parent entity carries tenant_id,
+    // so scope events to the default tenant (same convention as cron writers).
+    const tid = await _tenantCtx.getDefaultTenantId();
     await _db.getPool().query(
-      `INSERT INTO scroll_events (page_type, page_slug, depth, session_id, user_agent) VALUES ($1,$2,$3,$4,$5)`,
-      [type, slug, d, sid, String(req.headers['user-agent'] || '').slice(0, 300)]
+      `INSERT INTO scroll_events (tenant_id, page_type, page_slug, depth, session_id, user_agent) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [tid, type, slug, d, sid, String(req.headers['user-agent'] || '').slice(0, 300)]
     );
     res.json({ ok:true });
   } catch (e) { _err(res, 500, e.message); }

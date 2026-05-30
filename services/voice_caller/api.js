@@ -105,10 +105,11 @@ Rules:
     const j = await r.json();
     if (!r.ok) throw new Error(j.message || j.error || `Vapi ${r.status}`);
     if (_db.hasDb()) {
+      const tid = await _tid(req, 'voice-caller:call');
       await _db.getPool().query(
-        `INSERT INTO voice_calls (vapi_call_id, to_number, lead_name, goal, script, status) VALUES ($1, $2, $3, $4, $5, 'queued')
+        `INSERT INTO voice_calls (tenant_id, vapi_call_id, to_number, lead_name, goal, script, status) VALUES ($1, $2, $3, $4, $5, $6, 'queued')
          ON CONFLICT (vapi_call_id) DO NOTHING`,
-        [j.id, to, leadName, goal, script]
+        [tid, j.id, to, leadName, goal, script]
       );
     }
     res.json({ ok:true, callId: j.id, status: j.status });
@@ -184,11 +185,12 @@ router.post('/webhook', express.json({ limit:'2mb' }), async (req, res) => {
       // Pre-create a call record so the inbound shows up immediately in /calls
       if (id && _db.hasDb()) {
         const fromNumber = call.customer?.number || msg.phoneNumber?.number || 'unknown';
+        const tid = await _tenantCtx.getDefaultTenantId();
         await _db.getPool().query(
-          `INSERT INTO voice_calls (vapi_call_id, to_number, lead_name, goal, status, direction)
-           VALUES ($1, $2, $3, 'inbound-receptionist', 'in-progress', 'in')
+          `INSERT INTO voice_calls (tenant_id, vapi_call_id, to_number, lead_name, goal, status, direction)
+           VALUES ($1, $2, $3, $4, 'inbound-receptionist', 'in-progress', 'in')
            ON CONFLICT (vapi_call_id) DO NOTHING`,
-          [id, fromNumber, '']
+          [tid, id, fromNumber, '']
         );
       }
       return res.status(200).json({ assistant: _buildInboundAssistant(cfg) });
@@ -210,11 +212,12 @@ router.post('/webhook', express.json({ limit:'2mb' }), async (req, res) => {
     if (_db.hasDb()) {
       // For inbound calls the row may already exist from assistant-request; if
       // not (older webhook only) UPSERT so nothing is dropped.
+      const tid = await _tenantCtx.getDefaultTenantId();
       await _db.getPool().query(
-        `INSERT INTO voice_calls (vapi_call_id, to_number, status, direction)
-         VALUES ($1, $2, 'ended', $3)
+        `INSERT INTO voice_calls (tenant_id, vapi_call_id, to_number, status, direction)
+         VALUES ($1, $2, $3, 'ended', $4)
          ON CONFLICT (vapi_call_id) DO NOTHING`,
-        [id, call.customer?.number || 'unknown', call.type === 'inboundPhoneCall' ? 'in' : 'out']
+        [tid, id, call.customer?.number || 'unknown', call.type === 'inboundPhoneCall' ? 'in' : 'out']
       );
       await _db.getPool().query(
         `UPDATE voice_calls SET status='ended', outcome=$1, duration_sec=$2, transcript=$3, summary=$4, structured_data=$5::jsonb, recording_url=$6, ended_at=now() WHERE vapi_call_id=$7`,

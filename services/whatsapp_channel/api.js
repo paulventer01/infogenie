@@ -100,13 +100,14 @@ router.post('/send', async (req, res) => {
     if (!r.ok || j.error) throw new Error(j.error?.message || `Meta returned ${r.status}`);
     const wamid = j.messages?.[0]?.id || null;
     if (_db.hasDb()) {
+      const tid = await _tid(req, 'whatsapp:send');
       await _db.getPool().query(
-        `INSERT INTO wa_messages (direction, wa_id, message_id, body, template, raw) VALUES ('out', $1, $2, $3, $4, $5::jsonb)`,
-        [cleanTo, wamid, text || null, template || null, JSON.stringify(j)]
+        `INSERT INTO wa_messages (tenant_id, direction, wa_id, message_id, body, template, raw) VALUES ($1, 'out', $2, $3, $4, $5, $6::jsonb)`,
+        [tid, cleanTo, wamid, text || null, template || null, JSON.stringify(j)]
       );
       await _db.getPool().query(
-        `INSERT INTO wa_contacts (wa_id, last_at) VALUES ($1, now())
-         ON CONFLICT (wa_id) DO UPDATE SET last_at=EXCLUDED.last_at`, [cleanTo]
+        `INSERT INTO wa_contacts (tenant_id, wa_id, last_at) VALUES ($1, $2, now())
+         ON CONFLICT (wa_id) DO UPDATE SET last_at=EXCLUDED.last_at`, [tid, cleanTo]
       );
     }
     res.json({ ok:true, messageId: wamid });
@@ -148,14 +149,16 @@ router.post('/webhook', express.raw({ type: '*/*', limit: '2mb' }), async (req, 
         const text = m.text?.body || m.button?.text || m.interactive?.button_reply?.title || '[non-text]';
         const name = (v.contacts || []).find(c => c.wa_id === wa)?.profile?.name || null;
         if (_db.hasDb()) {
+          // Public webhook — no auth context; scope to the default tenant.
+          const tid = await _tenantCtx.getDefaultTenantId();
           await _db.getPool().query(
-            `INSERT INTO wa_messages (direction, wa_id, message_id, body, raw) VALUES ('in', $1, $2, $3, $4::jsonb)`,
-            [wa, m.id, text, JSON.stringify(m)]
+            `INSERT INTO wa_messages (tenant_id, direction, wa_id, message_id, body, raw) VALUES ($1, 'in', $2, $3, $4, $5::jsonb)`,
+            [tid, wa, m.id, text, JSON.stringify(m)]
           );
           await _db.getPool().query(
-            `INSERT INTO wa_contacts (wa_id, name, last_at, unread_count) VALUES ($1, $2, now(), 1)
+            `INSERT INTO wa_contacts (tenant_id, wa_id, name, last_at, unread_count) VALUES ($1, $2, $3, now(), 1)
              ON CONFLICT (wa_id) DO UPDATE SET name=COALESCE(EXCLUDED.name, wa_contacts.name), last_at=EXCLUDED.last_at, unread_count=wa_contacts.unread_count+1`,
-            [wa, name]
+            [tid, wa, name]
           );
         }
       }
@@ -229,12 +232,13 @@ router.post('/templates', async (req, res) => {
   const matches = String(body).match(/\{\{(\d+)\}\}/g) || [];
   const varCount = matches.length ? Math.max(...matches.map(m => parseInt(m.replace(/[^0-9]/g,''), 10))) : 0;
   try {
+    const tid = await _tid(req, 'whatsapp:template-save');
     const r = await _db.getPool().query(
-      `INSERT INTO wa_templates (name, category, language, body, var_count, is_meta_approved)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO wa_templates (tenant_id, name, category, language, body, var_count, is_meta_approved)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT (name) DO UPDATE SET category=EXCLUDED.category, language=EXCLUDED.language, body=EXCLUDED.body, var_count=EXCLUDED.var_count, is_meta_approved=EXCLUDED.is_meta_approved
        RETURNING id, name, var_count`,
-      [name, category, language, body, varCount, !!isMetaApproved]
+      [tid, name, category, language, body, varCount, !!isMetaApproved]
     );
     res.json({ ok:true, template: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }
@@ -272,9 +276,10 @@ router.post('/send-bulk', async (req, res) => {
   if (!tpl) return _err(res, 404, 'Template not found');
 
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const tid = await _tid(req, 'whatsapp:send-bulk');
   const cmp = await _db.getPool().query(
-    `INSERT INTO wa_campaigns (name, template_id, template_name, total, status) VALUES ($1,$2,$3,$4,'running') RETURNING id`,
-    [name, tpl.id, tpl.name, recipients.length]
+    `INSERT INTO wa_campaigns (tenant_id, name, template_id, template_name, total, status) VALUES ($1,$2,$3,$4,$5,'running') RETURNING id`,
+    [tid, name, tpl.id, tpl.name, recipients.length]
   );
   const campaignId = cmp.rows[0].id;
   res.json({ ok:true, campaignId, total: recipients.length });
@@ -305,18 +310,18 @@ router.post('/send-bulk', async (req, res) => {
         if (!r.ok || j.error) throw new Error(j.error?.message || `Meta ${r.status}`);
         const wamid = j.messages?.[0]?.id || null;
         await _db.getPool().query(
-          `INSERT INTO wa_messages (direction, wa_id, message_id, body, template, raw) VALUES ('out',$1,$2,$3,$4,$5::jsonb)`,
-          [to, wamid, renderedBody, tpl.name, JSON.stringify({ campaignId })]
+          `INSERT INTO wa_messages (tenant_id, direction, wa_id, message_id, body, template, raw) VALUES ($1,'out',$2,$3,$4,$5,$6::jsonb)`,
+          [tid, to, wamid, renderedBody, tpl.name, JSON.stringify({ campaignId })]
         );
         await _db.getPool().query(
-          `INSERT INTO wa_contacts (wa_id, last_at) VALUES ($1, now()) ON CONFLICT (wa_id) DO UPDATE SET last_at=EXCLUDED.last_at`, [to]
+          `INSERT INTO wa_contacts (tenant_id, wa_id, last_at) VALUES ($1, $2, now()) ON CONFLICT (wa_id) DO UPDATE SET last_at=EXCLUDED.last_at`, [tid, to]
         );
         sent++;
       } catch (e) {
         failed++;
         await _db.getPool().query(
-          `INSERT INTO wa_messages (direction, wa_id, body, template, status, raw) VALUES ('out',$1,$2,$3,'failed',$4::jsonb)`,
-          [to, renderedBody, tpl.name, JSON.stringify({ campaignId, error: e.message })]
+          `INSERT INTO wa_messages (tenant_id, direction, wa_id, body, template, status, raw) VALUES ($1,'out',$2,$3,$4,'failed',$5::jsonb)`,
+          [tid, to, renderedBody, tpl.name, JSON.stringify({ campaignId, error: e.message })]
         ).catch(()=>{});
       }
       await _db.getPool().query(`UPDATE wa_campaigns SET sent=$1, failed=$2 WHERE id=$3`, [sent, failed, campaignId]).catch(()=>{});

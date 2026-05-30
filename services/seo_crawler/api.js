@@ -76,7 +76,7 @@ function _extractLinks(html, baseUrl) {
 
 const _runs = new Map(); // id → in-memory state for active runs
 
-async function _executeCrawl(runId, rootUrl, maxPages) {
+async function _executeCrawl(runId, rootUrl, maxPages, tenantId) {
   const start = Date.now();
   const visited = new Set();
   const queue = [rootUrl];
@@ -99,8 +99,8 @@ async function _executeCrawl(runId, rootUrl, maxPages) {
         if (_db.hasDb && _db.hasDb()) {
           try {
             await _db.getPool().query(
-              `INSERT INTO seo_crawl_pages (run_id, url, score, grade, summary, checks) VALUES ($1,$2,$3,$4,$5,$6)`,
-              [runId, url, audit.score, audit.grade, JSON.stringify(audit.summary || {}), JSON.stringify(audit.checks || [])]
+              `INSERT INTO seo_crawl_pages (tenant_id, run_id, url, score, grade, summary, checks) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+              [tenantId, runId, url, audit.score, audit.grade, JSON.stringify(audit.summary || {}), JSON.stringify(audit.checks || [])]
             );
           } catch (e) { console.warn('[seo-crawler] insert page failed', e.message); }
         }
@@ -143,13 +143,14 @@ router.post('/run', _safeAsync(async (req, res) => {
   const safe = await isUrlSafeToFetch(url);
   if (!safe.ok) return _err(res, 400, safe.error);
   const id = 'crawl_' + crypto.randomBytes(6).toString('hex');
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-crawler:run' });
   await _db.getPool().query(
-    `INSERT INTO seo_crawl_runs (id, root_url, max_pages, status) VALUES ($1, $2, $3, 'running')`,
-    [id, url, maxPages]
+    `INSERT INTO seo_crawl_runs (tenant_id, id, root_url, max_pages, status) VALUES ($1, $2, $3, $4, 'running')`,
+    [tid, id, url, maxPages]
   );
   _runs.set(id, { id, rootUrl: url, maxPages, progress: 0, errors: 0, status: 'running', completed: false });
   // Fire and forget
-  _executeCrawl(id, url, maxPages).catch(e => {
+  _executeCrawl(id, url, maxPages, tid).catch(e => {
     console.warn('[seo-crawler] crawl failed', e.message);
     _db.getPool().query(`UPDATE seo_crawl_runs SET status='failed', error=$2, completed_at=now() WHERE id=$1`, [id, e.message]).catch(()=>{});
   });
@@ -214,8 +215,9 @@ router.post('/runs/:id/import-tasks', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database unavailable');
   const id = req.params.id;
   const onlyFails = !!(req.body && req.body.onlyFails);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-crawler:import-tasks' });
   const r = await _db.getPool().query(
-    `SELECT url, checks FROM seo_crawl_pages WHERE run_id=$1`, [id]
+    `SELECT url, checks FROM seo_crawl_pages WHERE run_id=$1 AND tenant_id=$2`, [id, tid]
   );
   if (!r.rowCount) return _err(res, 404, 'No pages in this crawl');
   let created = 0, skipped = 0, total = 0;
@@ -225,11 +227,11 @@ router.post('/runs/:id/import-tasks', _safeAsync(async (req, res) => {
       total++;
       const priority = c.status === 'fail' ? (c.weight >= 6 ? 1 : 2) : (c.weight >= 6 ? 2 : 3);
       const ins = await _db.getPool().query(
-        `INSERT INTO seo_tasks (source, source_url, check_id, label, message, fix, priority)
-         VALUES ('seo_crawl', $1, $2, $3, $4, $5, $6)
+        `INSERT INTO seo_tasks (tenant_id, source, source_url, check_id, label, message, fix, priority)
+         VALUES ($7, 'seo_crawl', $1, $2, $3, $4, $5, $6)
          ON CONFLICT (source_url, check_id) WHERE status NOT IN ('done','wont_fix') DO NOTHING
          RETURNING id`,
-        [row.url, c.id, c.label, c.message, c.fix, priority]
+        [row.url, c.id, c.label, c.message, c.fix, priority, tid]
       );
       if (ins.rowCount) created++; else skipped++;
     }

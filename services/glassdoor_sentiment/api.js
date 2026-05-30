@@ -66,9 +66,11 @@ router.post('/scan', _safeAsync(async (req, res) => {
   const total = parseInt(r.total_reviews, 10) || null;
 
   if (_db.hasDb && _db.hasDb()) {
-    try { await _db.getPool().query(
-      `INSERT INTO glassdoor_runs (company, overall_rating, ceo_approval, recommend_pct, total_reviews, reviews, top_complaints, top_praises, culture_signals) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [company, overall, ceo, rec, total, JSON.stringify(reviews), JSON.stringify(r.top_complaints||[]), JSON.stringify(r.top_praises||[]), JSON.stringify(r.culture_signals||[])]
+    try {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'glassdoor:scan' });
+      await _db.getPool().query(
+      `INSERT INTO glassdoor_runs (tenant_id, company, overall_rating, ceo_approval, recommend_pct, total_reviews, reviews, top_complaints, top_praises, culture_signals) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [tid, company, overall, ceo, rec, total, JSON.stringify(reviews), JSON.stringify(r.top_complaints||[]), JSON.stringify(r.top_praises||[]), JSON.stringify(r.culture_signals||[])]
     ); } catch(_) {}
   }
   res.json({ ok:true, company, overall_rating: overall, ceo_approval: ceo, recommend_pct: rec, total_reviews: total, reviews, top_complaints: r.top_complaints||[], top_praises: r.top_praises||[], culture_signals: r.culture_signals||[] });

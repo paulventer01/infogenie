@@ -61,10 +61,11 @@ router.post('/broadcasts', async (req, res) => {
   if (!subject) return _err(res, 400, 'subject required');
   if (!body_html && !body_text) return _err(res, 400, 'body_html or body_text required');
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'email_broadcast:create' });
     const { rows } = await _pool().query(
-      `INSERT INTO email_broadcasts (name,subject,from_name,from_email,body_html,body_text)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [name, subject, from_name || 'InfoGenie', from_email || '', body_html || '', body_text || '']
+      `INSERT INTO email_broadcasts (tenant_id,name,subject,from_name,from_email,body_html,body_text)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [tid, name, subject, from_name || 'InfoGenie', from_email || '', body_html || '', body_text || '']
     );
     res.json({ ok:true, broadcast: rows[0] });
   } catch(e) { _err(res, 500, e.message); }
@@ -148,16 +149,16 @@ router.post('/broadcasts/:id/recipients', async (req, res) => {
   if (!list.length) return _err(res, 400, 'no valid email addresses found');
 
   try {
-    const { rows: bc } = await _pool().query('SELECT status FROM email_broadcasts WHERE id=$1', [id]);
+    const { rows: bc } = await _pool().query('SELECT status, tenant_id FROM email_broadcasts WHERE id=$1', [id]);
     if (!bc.length) return _err(res, 404, 'broadcast not found');
     if (bc[0].status !== 'draft') return _err(res, 400, 'can only add recipients to a draft broadcast');
 
     let added = 0;
     for (const r of list) {
       const { rowCount } = await _pool().query(
-        `INSERT INTO email_broadcast_recipients (broadcast_id, email, name)
-         VALUES ($1,$2,$3) ON CONFLICT (broadcast_id, email) DO NOTHING`,
-        [id, r.email, r.name]
+        `INSERT INTO email_broadcast_recipients (tenant_id, broadcast_id, email, name)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (broadcast_id, email) DO NOTHING`,
+        [bc[0].tenant_id, id, r.email, r.name]
       );
       added += rowCount;
     }

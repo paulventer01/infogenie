@@ -235,9 +235,10 @@ router.post('/save', _safeAsync(async (req, res) => {
   if (missing.length) return _err(res, 400, 'Missing required fields: ' + missing.join(', '));
   const obj = _strip(_build(type, fields));
   const jsonld = `<script type="application/ld+json">\n${JSON.stringify(obj, null, 2)}\n</script>`;
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'schema-generator:save' });
   const r = await _db.getPool().query(
-    `INSERT INTO schema_blocks (name, type, fields, jsonld) VALUES ($1,$2,$3,$4) RETURNING id, created_at`,
-    [name, type, JSON.stringify(fields), jsonld]
+    `INSERT INTO schema_blocks (tenant_id, name, type, fields, jsonld) VALUES ($1,$2,$3,$4,$5) RETURNING id, created_at`,
+    [tid, name, type, JSON.stringify(fields), jsonld]
   );
   res.json({ ok: true, id: r.rows[0].id, name, type, jsonld, created_at: r.rows[0].created_at });
 }));

@@ -38,9 +38,12 @@ router.post('/event', express.json({ limit:'2kb' }), async (req, res) => {
     if (!q || q.length < 2) return res.json({ ok:true, ignored:true });
     const sid = String(sessionId || '').slice(0, 64) || null;
     if (!_db.hasDb()) return res.json({ ok:true, persisted:false });
+    // Public ingest from a rendered page — no parent entity carries tenant_id,
+    // so scope events to the default tenant (same convention as cron writers).
+    const tid = await _tenantCtx.getDefaultTenantId();
     await _db.getPool().query(
-      `INSERT INTO site_search_events (page_slug, query, result_count, session_id) VALUES ($1,$2,$3,$4)`,
-      [slug, q, Math.max(0, Math.min(9999, Number(resultCount) || 0)), sid]
+      `INSERT INTO site_search_events (tenant_id, page_slug, query, result_count, session_id) VALUES ($1,$2,$3,$4,$5)`,
+      [tid, slug, q, Math.max(0, Math.min(9999, Number(resultCount) || 0)), sid]
     );
     res.json({ ok:true });
   } catch (e) { _err(res, 500, e.message); }

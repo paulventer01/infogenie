@@ -40,10 +40,11 @@ router.post('/log', async (req, res) => {
     const safeUrls = Array.isArray(urls) ? urls.filter(u => typeof u === 'string').slice(0, 50) : [];
     const when = occurredAt ? new Date(occurredAt) : new Date();
     if (Number.isNaN(when.getTime())) return _err(res, 400, 'bad occurredAt');
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-annotations:log' });
     const r = await _db.getPool().query(
-      `INSERT INTO seo_annotations (occurred_at, title, description, tag, urls)
-       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-      [when.toISOString(), String(title).slice(0, 200), String(description).slice(0, 2000), safeTag, safeUrls]
+      `INSERT INTO seo_annotations (tenant_id, occurred_at, title, description, tag, urls)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [tid, when.toISOString(), String(title).slice(0, 200), String(description).slice(0, 2000), safeTag, safeUrls]
     );
     res.json({ ok:true, id: r.rows[0].id });
   } catch (e) { _err(res, 500, e.message); }

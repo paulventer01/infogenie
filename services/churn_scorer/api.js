@@ -63,10 +63,12 @@ router.post('/score', _safeAsync(async (req, res) => {
   if (!result || typeof result.score !== 'number') return _err(res, 502, 'AI scoring failed');
 
   if (_db.hasDb && _db.hasDb()) {
-    try { await _db.getPool().query(
-      `INSERT INTO churn_scores (contact_email, contact_name, score, risk_level, signals, recommendation, input_data) VALUES ($1,$2,$3,$4,$5,$6,$7)
+    try {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'churn_scorer:score' });
+      await _db.getPool().query(
+      `INSERT INTO churn_scores (tenant_id, contact_email, contact_name, score, risk_level, signals, recommendation, input_data) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        ON CONFLICT (contact_email) DO UPDATE SET score=EXCLUDED.score, risk_level=EXCLUDED.risk_level, signals=EXCLUDED.signals, recommendation=EXCLUDED.recommendation, input_data=EXCLUDED.input_data, created_at=now()`,
-      [email, contact.name||null, result.score, result.risk_level||'medium', JSON.stringify(result.signals||[]), result.recommendation||'', JSON.stringify(contact)]
+      [tid, email, contact.name||null, result.score, result.risk_level||'medium', JSON.stringify(result.signals||[]), result.recommendation||'', JSON.stringify(contact)]
     ); } catch(_) {}
   }
   res.json({ ok:true, email, ...result });
@@ -84,10 +86,12 @@ router.post('/bulk', _safeAsync(async (req, res) => {
     const r = await _scoreContact(c);
     if (!r || typeof r.score !== 'number') { out.push({ ok:false, email, error:'scoring failed' }); continue; }
     if (_db.hasDb && _db.hasDb()) {
-      try { await _db.getPool().query(
-        `INSERT INTO churn_scores (contact_email, contact_name, score, risk_level, signals, recommendation, input_data) VALUES ($1,$2,$3,$4,$5,$6,$7)
+      try {
+        const tid = await _tenantCtx.resolveTenantId(req, { label: 'churn_scorer:bulk' });
+        await _db.getPool().query(
+        `INSERT INTO churn_scores (tenant_id, contact_email, contact_name, score, risk_level, signals, recommendation, input_data) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
          ON CONFLICT (contact_email) DO UPDATE SET score=EXCLUDED.score, risk_level=EXCLUDED.risk_level, signals=EXCLUDED.signals, recommendation=EXCLUDED.recommendation, input_data=EXCLUDED.input_data, created_at=now()`,
-        [email, c.name||null, r.score, r.risk_level||'medium', JSON.stringify(r.signals||[]), r.recommendation||'', JSON.stringify(c)]
+        [tid, email, c.name||null, r.score, r.risk_level||'medium', JSON.stringify(r.signals||[]), r.recommendation||'', JSON.stringify(c)]
       ); } catch(_) {}
     }
     out.push({ ok:true, email, ...r });

@@ -170,14 +170,15 @@ router.post('/parse', _safeAsync(async (req, res) => {
   // Persist successful results (best-effort, never blocks the response).
   if (_db.hasDb && _db.hasDb()) {
     const pool = _db.getPool();
+    const tid = await _tid(req, 'tiktok-downloader:resolve');
     for (const r of results) {
       if (!r.ok) continue;
       try {
         await pool.query(
           `INSERT INTO tiktok_downloads
-            (url, author, caption, hashtags, music, likes, views, comments, shares, duration_sec, video_url, cover_url)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-          [r.url, r.author, r.caption, JSON.stringify(r.hashtags || []), r.music,
+            (tenant_id, url, author, caption, hashtags, music, likes, views, comments, shares, duration_sec, video_url, cover_url)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [tid, r.url, r.author, r.caption, JSON.stringify(r.hashtags || []), r.music,
            r.likes, r.views, r.comments, r.shares, r.duration, r.videoUrl, r.coverUrl]
         );
       } catch (_) {}

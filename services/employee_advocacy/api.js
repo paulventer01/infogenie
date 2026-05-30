@@ -22,10 +22,11 @@ router.post('/posts', async (req, res) => {
   const { title, body, platforms, tags, cta_url } = req.body || {};
   if (!title || !body) return res.status(400).json({ ok: false, error: 'title and body required' });
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'advocacy:create-post' });
     const r = await pool().query(
-      `INSERT INTO advocacy_posts (title, body, platforms, tags, cta_url, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [title, body, platforms || ['linkedin','twitter','facebook'], tags || [], cta_url || null, req.user?.id || null]
+      `INSERT INTO advocacy_posts (tenant_id, title, body, platforms, tags, cta_url, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [tid, title, body, platforms || ['linkedin','twitter','facebook'], tags || [], cta_url || null, req.user?.id || null]
     );
     res.json({ ok: true, post: r.rows[0] });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -73,9 +74,10 @@ router.post('/share-keys', async (req, res) => {
   const { label } = req.body || {};
   const key = crypto.randomBytes(16).toString('hex');
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'advocacy:create-share-key' });
     const r = await pool().query(
-      `INSERT INTO advocacy_share_keys (share_key, label) VALUES ($1,$2) RETURNING *`,
-      [key, label || 'Team Share Link']
+      `INSERT INTO advocacy_share_keys (tenant_id, share_key, label) VALUES ($1,$2,$3) RETURNING *`,
+      [tid, key, label || 'Team Share Link']
     );
     res.json({ ok: true, key: r.rows[0] });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -109,9 +111,12 @@ router.post('/log-share', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true });
   const { share_key, platform, post_id } = req.body || {};
   try {
+    // Public endpoint — share_key is the auth. Inherit tenant_id from the key row.
+    const kr = await pool().query(`SELECT tenant_id FROM advocacy_share_keys WHERE share_key=$1`, [share_key]);
+    if (!kr.rows.length) return res.json({ ok: true });
     await pool().query(
-      `INSERT INTO advocacy_shares (share_key, platform, post_id) VALUES ($1,$2,$3)`,
-      [share_key, platform, post_id]
+      `INSERT INTO advocacy_shares (tenant_id, share_key, platform, post_id) VALUES ($1,$2,$3,$4)`,
+      [kr.rows[0].tenant_id, share_key, platform, post_id]
     );
     res.json({ ok: true });
   } catch (e) { res.json({ ok: true }); }

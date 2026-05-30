@@ -147,26 +147,26 @@ async function _runMonitor(monitor) {
     }
     for (const c of news) {
       await client.query(
-        `INSERT INTO backlink_changes (monitor_id, change_type, referring_domain, rank, country) VALUES ($1, 'new', $2, $3, $4)
+        `INSERT INTO backlink_changes (tenant_id, monitor_id, change_type, referring_domain, rank, country) VALUES ($1, $2, 'new', $3, $4, $5)
          ON CONFLICT DO NOTHING`,
-        [monitor.id, c.referring_domain, c.rank, c.country],
+        [monitor.tenant_id, monitor.id, c.referring_domain, c.rank, c.country],
       );
     }
     for (const c of losts) {
       await client.query(
-        `INSERT INTO backlink_changes (monitor_id, change_type, referring_domain, rank, country) VALUES ($1, 'lost', $2, $3, $4)
+        `INSERT INTO backlink_changes (tenant_id, monitor_id, change_type, referring_domain, rank, country) VALUES ($1, $2, 'lost', $3, $4, $5)
          ON CONFLICT DO NOTHING`,
-        [monitor.id, c.referring_domain, c.rank, c.country],
+        [monitor.tenant_id, monitor.id, c.referring_domain, c.rank, c.country],
       );
     }
     await client.query(`DELETE FROM backlink_snapshots WHERE monitor_id=$1`, [monitor.id]);
     for (const it of items) {
       await client.query(
-        `INSERT INTO backlink_snapshots (monitor_id, referring_domain, rank, backlinks, country, first_seen)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO backlink_snapshots (tenant_id, monitor_id, referring_domain, rank, backlinks, country, first_seen)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (monitor_id, referring_domain) DO UPDATE
            SET rank = EXCLUDED.rank, backlinks = EXCLUDED.backlinks, country = EXCLUDED.country, snapshot_at = now()`,
-        [monitor.id, it.domain, it.rank || 0, it.backlinks || 0, it.country || null, it.first_seen || null],
+        [monitor.tenant_id, monitor.id, it.domain, it.rank || 0, it.backlinks || 0, it.country || null, it.first_seen || null],
       );
     }
     await client.query(
@@ -233,16 +233,17 @@ router.post('/domains', async (req, res) => {
   const alert_email = String(req.body?.alert_email || '').trim().slice(0, 200) || null;
   const alert_slack = String(req.body?.alert_slack_webhook || '').trim().slice(0, 500) || null;
   const frequency = ['daily','weekly'].includes(req.body?.frequency) ? req.body.frequency : 'daily';
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'backlink_monitor:create' });
   try {
     const r = await _db.getPool().query(
-      `INSERT INTO backlink_monitors (domain, alert_email, alert_slack_webhook, frequency)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO backlink_monitors (tenant_id, domain, alert_email, alert_slack_webhook, frequency)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (domain) DO UPDATE
          SET alert_email = EXCLUDED.alert_email,
              alert_slack_webhook = EXCLUDED.alert_slack_webhook,
              frequency = EXCLUDED.frequency
        RETURNING *`,
-      [domain, alert_email, alert_slack, frequency],
+      [tid, domain, alert_email, alert_slack, frequency],
     );
     res.json({ ok: true, monitor: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }

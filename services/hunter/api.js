@@ -60,9 +60,10 @@ router.post('/domain-search', async (req, res) => {
       total: d?.meta?.results || emails.length
     };
     if (_db.hasDb()) {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'hunter:domain' });
       await _db.getPool().query(
-        `INSERT INTO hunter_searches (type, query, result) VALUES ('domain',$1,$2)`,
-        [domain, JSON.stringify(result)]
+        `INSERT INTO hunter_searches (tenant_id, type, query, result) VALUES ($1,'domain',$2,$3)`,
+        [tid, domain, JSON.stringify(result)]
       );
     }
     res.json({ ok: true, result });
@@ -90,9 +91,10 @@ router.post('/email-finder', async (req, res) => {
       sources: (d?.data?.sources || []).length
     };
     if (_db.hasDb()) {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'hunter:finder' });
       await _db.getPool().query(
-        `INSERT INTO hunter_searches (type, query, result) VALUES ('finder',$1,$2)`,
-        [`${first_name} ${last_name} @ ${domain}`, JSON.stringify(result)]
+        `INSERT INTO hunter_searches (tenant_id, type, query, result) VALUES ($1,'finder',$2,$3)`,
+        [tid, `${first_name} ${last_name} @ ${domain}`, JSON.stringify(result)]
       );
     }
     res.json({ ok: true, result });
@@ -122,9 +124,10 @@ router.post('/email-verifier', async (req, res) => {
       block: d?.data?.block
     };
     if (_db.hasDb()) {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'hunter:verifier' });
       await _db.getPool().query(
-        `INSERT INTO hunter_searches (type, query, result) VALUES ('verifier',$1,$2)`,
-        [email, JSON.stringify(result)]
+        `INSERT INTO hunter_searches (tenant_id, type, query, result) VALUES ($1,'verifier',$2,$3)`,
+        [tid, email, JSON.stringify(result)]
       );
     }
     res.json({ ok: true, result });

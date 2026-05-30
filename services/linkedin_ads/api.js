@@ -98,9 +98,10 @@ Return ONLY valid JSON with this exact structure — no extra text:
     }
 
     if (_db.hasDb()) {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'linkedin_ads:search' });
       await _db.getPool().query(
-        `INSERT INTO linkedin_ad_searches (company, result) VALUES ($1,$2)`,
-        [company, JSON.stringify(result)]
+        `INSERT INTO linkedin_ad_searches (tenant_id, company, result) VALUES ($1,$2,$3)`,
+        [tid, company, JSON.stringify(result)]
       );
     }
     res.json({ ok: true, company, result });

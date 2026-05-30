@@ -187,10 +187,11 @@ router.post('/push', async (req, res) => {
 
     const status = failed === 0 ? 'ok' : (ok > 0 ? 'partial' : 'failed');
     if (_db.hasDb()) {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'crm_sync:log' });
       await _db.getPool().query(
-        `INSERT INTO crm_sync_logs (provider, contacts_total, contacts_ok, contacts_failed, status, error)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [provider, valid.length, ok, failed, status, errors.length ? errors.join('; ') : null]
+        `INSERT INTO crm_sync_logs (tenant_id, provider, contacts_total, contacts_ok, contacts_failed, status, error)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [tid, provider, valid.length, ok, failed, status, errors.length ? errors.join('; ') : null]
       );
     }
     res.json({ ok: true, provider, pushed: ok, failed, total: valid.length, status, errors: errors.slice(0, 5) });

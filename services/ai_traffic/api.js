@@ -76,9 +76,10 @@ router.post('/sites', _safe(async (req, res) => {
   const id = 'ats_' + crypto.randomBytes(6).toString('hex');
   const dom = String(domain).trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
   if (!_db.hasDb()) return res.json({ ok: true, site: { id, name, domain: dom }, warning: 'DB unavailable — data not persisted' });
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'ai_traffic:create-site' });
   await _db.getPool().query(
-    `INSERT INTO ai_traffic_sites (id, name, domain) VALUES ($1,$2,$3) ON CONFLICT (id) DO NOTHING`,
-    [id, String(name).trim().slice(0, 100), dom]
+    `INSERT INTO ai_traffic_sites (tenant_id, id, name, domain) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
+    [tid, id, String(name).trim().slice(0, 100), dom]
   );
   res.json({ ok: true, site: { id, name: String(name).trim(), domain: dom } });
 }));
@@ -135,12 +136,12 @@ router.get('/beacon', _safe(async (req, res) => {
   if (!source) return; // not from a known AI engine — ignore
 
   try {
-    // Check site exists
-    const sr = await _db.getPool().query(`SELECT id FROM ai_traffic_sites WHERE id=$1`, [sid]);
+    // Public beacon — site id is the auth. Inherit tenant_id from the site row.
+    const sr = await _db.getPool().query(`SELECT id, tenant_id FROM ai_traffic_sites WHERE id=$1`, [sid]);
     if (!sr.rowCount) return;
     await _db.getPool().query(
-      `INSERT INTO ai_traffic_hits (site_id, source, referrer, path) VALUES ($1,$2,$3,$4)`,
-      [sid, source, ref, path]
+      `INSERT INTO ai_traffic_hits (tenant_id, site_id, source, referrer, path) VALUES ($1,$2,$3,$4,$5)`,
+      [sr.rows[0].tenant_id, sid, source, ref, path]
     );
   } catch (e) { console.warn('[ai-traffic] beacon insert failed', e.message); }
 }));

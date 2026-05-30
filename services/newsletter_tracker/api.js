@@ -69,10 +69,11 @@ router.post('/targets', _safeAsync(async (req, res) => {
   const archive_url = String(req.body?.archive_url || '').trim();
   if (!brand || !newsletter_name || !archive_url) return _err(res, 400, 'brand, newsletter_name, archive_url required');
   if (!/^https?:\/\//i.test(archive_url)) return _err(res, 400, 'archive_url must be a valid http(s) URL');
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'newsletter:target-create' });
   const r = await _db.getPool().query(
-    `INSERT INTO newsletter_targets (brand, newsletter_name, archive_url) VALUES ($1,$2,$3)
+    `INSERT INTO newsletter_targets (tenant_id, brand, newsletter_name, archive_url) VALUES ($1,$2,$3,$4)
      ON CONFLICT (brand, archive_url) DO UPDATE SET newsletter_name=EXCLUDED.newsletter_name RETURNING *`,
-    [brand, newsletter_name, archive_url]
+    [tid, brand, newsletter_name, archive_url]
   );
   res.json({ ok:true, target: r.rows[0] });
 }));
@@ -99,8 +100,8 @@ router.post('/scan/:id', _safeAsync(async (req, res) => {
     const issues = await _extractIssues(md, target.archive_url);
     for (const iss of issues) {
       try { await _db.getPool().query(
-        'INSERT INTO newsletter_issues (target_id, subject, sent_date, preview, url) VALUES ($1,$2,$3,$4,$5)',
-        [id, String(iss.subject||'').slice(0,500), String(iss.sent_date||'').slice(0,100), String(iss.preview||'').slice(0,500), String(iss.url||'').slice(0,500)]
+        'INSERT INTO newsletter_issues (tenant_id, target_id, subject, sent_date, preview, url) VALUES ($1,$2,$3,$4,$5,$6)',
+        [target.tenant_id, id, String(iss.subject||'').slice(0,500), String(iss.sent_date||'').slice(0,100), String(iss.preview||'').slice(0,500), String(iss.url||'').slice(0,500)]
       ); } catch(_) {}
     }
     await _db.getPool().query('UPDATE newsletter_targets SET last_scanned_at=now() WHERE id=$1', [id]);

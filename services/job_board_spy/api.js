@@ -57,9 +57,11 @@ router.post('/scan', _safeAsync(async (req, res) => {
   if (r.error) return _err(res, 502, r.error);
 
   if (_db.hasDb && _db.hasDb()) {
-    try { await _db.getPool().query(
-      `INSERT INTO job_board_runs (company, total_jobs, by_dept, jobs, strategic_signals) VALUES ($1,$2,$3,$4,$5)`,
-      [company, parseInt(r.total_jobs,10) || (r.jobs||[]).length, JSON.stringify(r.by_dept||{}), JSON.stringify((r.jobs||[]).slice(0,50)), JSON.stringify(r.strategic_signals||[])]
+    try {
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'job_board_spy:scan' });
+      await _db.getPool().query(
+      `INSERT INTO job_board_runs (tenant_id, company, total_jobs, by_dept, jobs, strategic_signals) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [tid, company, parseInt(r.total_jobs,10) || (r.jobs||[]).length, JSON.stringify(r.by_dept||{}), JSON.stringify((r.jobs||[]).slice(0,50)), JSON.stringify(r.strategic_signals||[])]
     ); } catch(_) {}
   }
   res.json({ ok:true, company, ...r });
