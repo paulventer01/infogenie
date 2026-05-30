@@ -10464,6 +10464,7 @@ function _buildSocialAnalytics(wrap, tabBar) {
     const rCtx = document.getElementById('socialReachChart');
     if (rCtx && window.Chart) {
       if (window._sReachChart) try { window._sReachChart.destroy(); } catch(e){}
+      if (!(window._applyChartDataMode && window._applyChartDataMode('socialReachChart', !hasData, 'Sample data')))
       window._sReachChart = new Chart(rCtx.getContext('2d'), {
         type:'line',
         data:{ labels:weekLabels, datasets:[{ label:'Total Reach', data:weekReach, borderColor:'#7C3AED', backgroundColor:'rgba(124,58,237,0.08)', tension:0.4, fill:true, pointRadius:4, pointBackgroundColor:'#7C3AED' }] },
@@ -10473,6 +10474,7 @@ function _buildSocialAnalytics(wrap, tabBar) {
     const pCtx = document.getElementById('socialPlatChart');
     if (pCtx && window.Chart) {
       if (window._sPlatChart) try { window._sPlatChart.destroy(); } catch(e){}
+      if (!(window._applyChartDataMode && window._applyChartDataMode('socialPlatChart', !hasData, 'Sample data')))
       window._sPlatChart = new Chart(pCtx.getContext('2d'), {
         type:'doughnut',
         data:{ labels:chartPlats, datasets:[{ data:chartReach, backgroundColor:chartColors, borderWidth:2, borderColor:'white' }] },
@@ -10482,6 +10484,7 @@ function _buildSocialAnalytics(wrap, tabBar) {
     const eCtx = document.getElementById('socialEngageChart');
     if (eCtx && window.Chart) {
       if (window._sEngageChart) try { window._sEngageChart.destroy(); } catch(e){}
+      if (!(window._applyChartDataMode && window._applyChartDataMode('socialEngageChart', !hasData, 'Sample data')))
       window._sEngageChart = new Chart(eCtx.getContext('2d'), {
         type:'bar',
         data:{ labels:chartPlats, datasets:[{ label:'Engagement Rate (%)', data:chartEngage, backgroundColor:chartColors, borderRadius:6, borderWidth:0 }] },
@@ -12406,6 +12409,7 @@ function buildResults() {
     if (rtCtx) {
       const weeks = ['Wk1','Wk2','Wk3','Wk4','Wk5','Wk6','Wk7','Wk8'];
       const campColors = ['#0066FF','#00C9C8','#10B981','#F59E0B','#7C3AED','#EF4444'];
+      if (!(window._applyChartDataMode && window._applyChartDataMode('roasTrendChart', true, 'AI estimate')))
       roasTrendChartInstance = new Chart(rtCtx.getContext('2d'), {
         type: 'line',
         data: {
@@ -12436,6 +12440,7 @@ function buildResults() {
       });
       const ppLabels = Object.keys(platformMap);
       const avg = arr => arr.reduce((a,b) => a+b, 0) / arr.length;
+      if (!(window._applyChartDataMode && window._applyChartDataMode('platformPerfChart', true, 'AI estimate')))
       platformPerfChartInstance = new Chart(ppCtx.getContext('2d'), {
         type: 'bar',
         data: {
@@ -13641,6 +13646,7 @@ function buildAudience() {
     const ageCanvas = document.getElementById('audAgeChart');
     if (ageCanvas) {
       if (window._audAgeChart) { window._audAgeChart.destroy(); }
+      if (!(window._applyChartDataMode && window._applyChartDataMode('audAgeChart', true, 'AI estimate')))
       window._audAgeChart = new Chart(ageCanvas.getContext('2d'), {
         type: 'bar',
         data: {
@@ -13662,6 +13668,7 @@ function buildAudience() {
     const genderCanvas = document.getElementById('audGenderChart');
     if (genderCanvas) {
       if (window._audGenderChart) { window._audGenderChart.destroy(); }
+      if (!(window._applyChartDataMode && window._applyChartDataMode('audGenderChart', true, 'AI estimate')))
       window._audGenderChart = new Chart(genderCanvas.getContext('2d'), {
         type: 'doughnut',
         data: {
@@ -13676,6 +13683,7 @@ function buildAudience() {
     const deviceCanvas = document.getElementById('audDeviceChart');
     if (deviceCanvas) {
       if (window._audDeviceChart) { window._audDeviceChart.destroy(); }
+      if (!(window._applyChartDataMode && window._applyChartDataMode('audDeviceChart', true, 'AI estimate')))
       window._audDeviceChart = new Chart(deviceCanvas.getContext('2d'), {
         type: 'doughnut',
         data: {
@@ -13690,6 +13698,7 @@ function buildAudience() {
     const geoCanvas = document.getElementById('audGeoChart');
     if (geoCanvas) {
       if (window._audGeoChart) { window._audGeoChart.destroy(); }
+      if (!(window._applyChartDataMode && window._applyChartDataMode('audGeoChart', true, 'AI estimate')))
       window._audGeoChart = new Chart(geoCanvas.getContext('2d'), {
         type: 'bar',
         data: {
@@ -13712,6 +13721,7 @@ function buildAudience() {
     const canvas = document.getElementById('audienceChart');
     if (canvas) {
       if (audienceChartInstance) { audienceChartInstance.destroy(); audienceChartInstance = null; }
+      if (!(window._applyChartDataMode && window._applyChartDataMode('audienceChart', true, 'AI estimate')))
       audienceChartInstance = new Chart(canvas.getContext('2d'), {
         type: 'doughnut',
         data: {
@@ -14045,6 +14055,7 @@ function renderCreativeChart(creatives) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   if (creativeChartInstance) { creativeChartInstance.destroy(); creativeChartInstance = null; }
+  if (window._applyChartDataMode && window._applyChartDataMode('creativeChart', true, 'AI estimate')) return;
   const labels = creatives.map(c => c.platform + ' · ' + c.format.split(' ')[0]);
   const ctrs = creatives.map(c => parseFloat(c.estCTR));
   const roas = creatives.map(c => parseFloat(c.estROAS));
@@ -15677,11 +15688,11 @@ function buildIntelligence() {
     <!-- Share of Voice -->
     <div class="intel-section">
       <div class="intel-section-head">
-        <div class="intel-section-title">📊 Share of Voice Analysis</div>
+        <div class="intel-section-title" id="sovBarHeaderIntel">📊 Share of Voice Analysis</div>
         <div class="intel-section-badge" id="ldb-meta-ad-library">Live Estimate</div>
         <div class="intel-exclusive-badge" onclick="openExclusiveModal()" style="cursor:pointer">⚡ InfoGenie Exclusive</div>
       </div>
-      <div class="sov-wrap">
+      <div class="sov-wrap" id="sovBarBodyIntel">
         <div class="sov-legend">
           ${displaySov.map(s => `
             <div class="sov-legend-item">
@@ -15869,6 +15880,16 @@ function buildIntelligence() {
   // browsers/cache states, so it now lives in the modal that always loads.
 
   // Build Share of Voice horizontal bar chart
+  // Honesty gate: SOV shares are AI-estimated unless real DataForSEO competitor
+  // data backs them. Demo mode badges the panel header; strict mode replaces the
+  // legend + chart body with an honest unavailable state (so no fabricated share
+  // %, legend rows or bars render).
+  const _sovBarEstimated = !(realComps && realComps.some(c => c._dataSource === 'DataForSEO'));
+  if (!(window._applySectionDataMode && window._applySectionDataMode(
+        document.getElementById('sovBarHeaderIntel'),
+        document.getElementById('sovBarBodyIntel'),
+        _sovBarEstimated, 'AI estimate',
+        'Share of Voice is derived from AI-estimated competitor traffic, not verified live measurements. Demo Data Mode is off, so estimated figures are hidden. An administrator can enable Demo Data Mode for this client in the Admin portal.'))) {
   const sovBarCtx = document.getElementById('sovBarChartIntel');
   if (sovBarCtx) {
     if (sovBarCtx._chartInstance) sovBarCtx._chartInstance.destroy();
@@ -15918,6 +15939,7 @@ function buildIntelligence() {
         animation: { duration: 800 }
       }
     });
+  }
   }
 
   _updateLiveDataBadges();
