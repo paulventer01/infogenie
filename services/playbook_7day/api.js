@@ -5,6 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 let _openai = null;
 try { _openai = require('openai').OpenAI ? new (require('openai').OpenAI)({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY }) : null; } catch(_) {}
 
@@ -143,17 +144,23 @@ router.post('/suggest', async (req, res) => {
     const businessContext = (req.body && req.body.context) || '';
 
     // Pull a small live snapshot to ground the suggestion in real platform data.
+    // Tenant isolation: scope every count to the caller's workspace so one
+    // workspace's playbook advice is never grounded in another's data. When tid
+    // is null (no resolvable tenant under enforcement) `tenant_id=$1` matches
+    // nothing — safe, no leak. ad_insights and budget_spend are legacy names
+    // with no table in the schema (they always return null) and are left as-is.
     const snap = {};
     if (_db.hasDb()) {
       const pool = _db.getPool();
-      const safe = async (sql) => { try { const r = await pool.query(sql); return r.rows?.[0]?.c == null ? null : +r.rows[0].c; } catch(_) { return null; } };
-      snap.adCampaigns_total      = await safe(`SELECT COUNT(*)::int c FROM ad_campaigns`);
+      const tid = await _tenantCtx.resolveTenantId(req, { label: 'playbook_7day:suggest' });
+      const safe = async (sql, params = []) => { try { const r = await pool.query(sql, params); return r.rows?.[0]?.c == null ? null : +r.rows[0].c; } catch(_) { return null; } };
+      snap.adCampaigns_total      = await safe(`SELECT COUNT(*)::int c FROM ad_campaigns WHERE tenant_id=$1`, [tid]);
       snap.adInsights_last7d      = await safe(`SELECT COUNT(*)::int c FROM ad_insights WHERE inserted_at > now() - interval '7 days'`);
-      snap.landingPages_total     = await safe(`SELECT COUNT(*)::int c FROM landing_pages`);
+      snap.landingPages_total     = await safe(`SELECT COUNT(*)::int c FROM landing_pages WHERE tenant_id=$1`, [tid]);
       snap.budgetSpend_last30d    = await safe(`SELECT COALESCE(SUM(amount),0)::int c FROM budget_spend WHERE spend_date > current_date - 30`);
-      snap.linksellLeads_last30d  = await safe(`SELECT COUNT(*)::int c FROM linksell_leads WHERE created_at > now() - interval '30 days'`);
-      snap.bookings_last30d       = await safe(`SELECT COUNT(*)::int c FROM bookings WHERE created_at > now() - interval '30 days'`);
-      snap.activeProjects         = await safe(`SELECT COUNT(*)::int c FROM marketing_projects WHERE status='active'`);
+      snap.linksellLeads_last30d  = await safe(`SELECT COUNT(*)::int c FROM linksell_leads WHERE created_at > now() - interval '30 days' AND tenant_id=$1`, [tid]);
+      snap.bookings_last30d       = await safe(`SELECT COUNT(*)::int c FROM bookings WHERE created_at > now() - interval '30 days' AND tenant_id=$1`, [tid]);
+      snap.activeProjects         = await safe(`SELECT COUNT(*)::int c FROM marketing_projects WHERE status='active' AND tenant_id=$1`, [tid]);
     }
 
     // Hard-cap context to prevent prompt-injection bloat (already wrapped in

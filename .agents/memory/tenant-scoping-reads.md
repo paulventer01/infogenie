@@ -50,6 +50,17 @@ add `AND tenant_id=$N` / inherit it from the validated parent row.
 parent belongs to the tenant. A naive "SQL literal lacks tenant_id" scan flags these
 as false positives; check for the preceding ownership SELECT before "fixing".
 
+**Ask InfoGenie + 7-Day Playbook are now read-scoped:** `platform_search/api.js`
+`_buildContext(req)` and `playbook_7day/api.js` `/suggest` snapshot both resolve the
+caller's tenant and filter the tenant-scoped tables (ad_campaigns, linksell_leads,
+landing_pages, brand_calendar_items, bookings, marketing_projects) by `tenant_id`.
+**Beware platform_search's dead table names:** its `_buildContext` also SELECTs from
+`ad_insights`, `mentions`, `content_calendar_items`, `budget_spend`, `linksell_pages`,
+`dynamic_audiences`, `officer_tasks_v1` — NONE of these have a CREATE TABLE anywhere
+(real tables are `ad_performance_hourly`, `audience_segments`, `content_calendar_runs`,
+`budgets`/`spend_events`; `officer_tasks_v1` is a kv key). They always return [] via
+the defensive try/catch, so they're intentionally left unscoped. Don't "fix" them.
+
 **Separate write-side gap (OUT OF SCOPE of the read/delete audit, real bug):** many
 "unwired" feature modules never set `tenant_id` on INSERT, so writes FAIL the NOT NULL
 constraint and are swallowed by try/catch — these features silently can't persist new

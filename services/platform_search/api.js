@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safe(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[platform-search]', e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
@@ -16,45 +17,55 @@ function _hasOpenAI() {
   return k && !/^_DUMMY/i.test(k);
 }
 
-async function _safeCount(sql) {
+async function _safeCount(sql, params = []) {
   try {
     if (!_db.hasDb()) return 0;
-    const r = await _db.getPool().query(sql);
+    const r = await _db.getPool().query(sql, params);
     return parseInt(r.rows[0]?.n || 0, 10);
   } catch { return 0; }
 }
-async function _safeRows(sql, max = 8) {
+async function _safeRows(sql, params = [], max = 8) {
   try {
     if (!_db.hasDb()) return [];
-    const r = await _db.getPool().query(sql);
+    const r = await _db.getPool().query(sql, params);
     return (r.rows || []).slice(0, max);
   } catch { return []; }
 }
 
 // Build a compact snapshot of the user's platform state — passed as the LLM
 // context window. Each table is queried defensively (missing tables return []).
-async function _buildContext() {
+//
+// Tenant isolation: every query against a tenant-scoped table (ad_campaigns,
+// linksell_leads, landing_pages, brand_calendar_items, bookings) filters by the
+// caller's tenant_id so one workspace's chat is never grounded in another's
+// data. When tid is null (no resolvable tenant under enforcement) the
+// `tenant_id=$1` predicate matches nothing — safe, no leak. The remaining
+// tables referenced below (ad_insights, mentions, content_calendar_items,
+// budget_spend, linksell_pages, dynamic_audiences, officer_tasks_v1) are legacy
+// names with no table in the schema; they always return [] and are left as-is.
+async function _buildContext(req) {
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'platform_search:context' });
   const [campaigns, insights, leads, mentions, landing, contentCal, brandCal, budget, bookings, linksell, audiences, tasks] = await Promise.all([
-    _safeRows(`SELECT name, platform, status, daily_budget FROM ad_campaigns ORDER BY created_at DESC LIMIT 8`),
+    _safeRows(`SELECT name, platform, status, daily_budget FROM ad_campaigns WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 8`, [tid]),
     _safeRows(`SELECT campaign_name, platform, impressions, clicks, spend, conversions FROM ad_insights ORDER BY date_recorded DESC LIMIT 12`),
-    _safeRows(`SELECT name, email, source, score, status FROM linksell_leads ORDER BY created_at DESC LIMIT 10`),
+    _safeRows(`SELECT name, email, source, score, status FROM linksell_leads WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 10`, [tid]),
     _safeRows(`SELECT brand, source, sentiment, snippet FROM mentions ORDER BY published_at DESC NULLS LAST LIMIT 10`),
-    _safeRows(`SELECT slug, title, traffic_total, conv_total FROM landing_pages ORDER BY created_at DESC LIMIT 10`),
+    _safeRows(`SELECT slug, title, traffic_total, conv_total FROM landing_pages WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 10`, [tid]),
     _safeRows(`SELECT title, channel, scheduled_for, status FROM content_calendar_items ORDER BY scheduled_for DESC LIMIT 10`),
-    _safeRows(`SELECT title, category, scheduled_for FROM brand_calendar_items ORDER BY scheduled_for DESC LIMIT 10`),
+    _safeRows(`SELECT title, category, scheduled_for FROM brand_calendar_items WHERE tenant_id=$1 ORDER BY scheduled_for DESC LIMIT 10`, [tid]),
     _safeRows(`SELECT month, channel, amount FROM budget_spend ORDER BY logged_at DESC LIMIT 10`),
-    _safeRows(`SELECT customer_name, customer_email, slot_at, status FROM bookings ORDER BY slot_at DESC LIMIT 8`),
+    _safeRows(`SELECT customer_name, customer_email, slot_at, status FROM bookings WHERE tenant_id=$1 ORDER BY slot_at DESC LIMIT 8`, [tid]),
     _safeRows(`SELECT slug, title, total_clicks, total_revenue FROM linksell_pages ORDER BY created_at DESC LIMIT 6`),
     _safeRows(`SELECT name, member_count FROM dynamic_audiences ORDER BY created_at DESC LIMIT 6`),
     _safeRows(`SELECT officer, title, status FROM officer_tasks_v1 ORDER BY created_at DESC LIMIT 10`),
   ]);
 
   const counts = await Promise.all([
-    _safeCount(`SELECT COUNT(*) AS n FROM ad_campaigns`),
-    _safeCount(`SELECT COUNT(*) AS n FROM linksell_leads`),
+    _safeCount(`SELECT COUNT(*) AS n FROM ad_campaigns WHERE tenant_id=$1`, [tid]),
+    _safeCount(`SELECT COUNT(*) AS n FROM linksell_leads WHERE tenant_id=$1`, [tid]),
     _safeCount(`SELECT COUNT(*) AS n FROM mentions`),
-    _safeCount(`SELECT COUNT(*) AS n FROM landing_pages`),
-    _safeCount(`SELECT COUNT(*) AS n FROM bookings`),
+    _safeCount(`SELECT COUNT(*) AS n FROM landing_pages WHERE tenant_id=$1`, [tid]),
+    _safeCount(`SELECT COUNT(*) AS n FROM bookings WHERE tenant_id=$1`, [tid]),
   ]);
 
   return {
@@ -84,7 +95,7 @@ async function _openai(messages, maxTokens = 700) {
 router.post('/ask', _safe(async (req, res) => {
   const q = String(req.body?.question || '').trim().slice(0, 1000);
   if (!q) return _err(res, 400, 'question required');
-  const ctx = await _buildContext();
+  const ctx = await _buildContext(req);
   if (!_hasOpenAI()) {
     // Graceful fallback — surface the raw context so users see *something*.
     return res.json({ ok: true, answer: 'AI not configured. Here is your raw platform snapshot:', context: ctx, source: 'fallback' });
@@ -102,8 +113,8 @@ router.post('/ask', _safe(async (req, res) => {
   res.json({ ok: true, answer: ans || 'No answer generated. Try a more specific question.', source: ans ? 'gpt-4o-mini' : 'empty', snapshotSizes: Object.fromEntries(Object.entries(ctx.recent).map(([k, v]) => [k, v.length])) });
 }));
 
-router.get('/snapshot', _safe(async (_req, res) => {
-  const ctx = await _buildContext();
+router.get('/snapshot', _safe(async (req, res) => {
+  const ctx = await _buildContext(req);
   res.json({ ok: true, ...ctx });
 }));
 
