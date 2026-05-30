@@ -10375,13 +10375,18 @@ function _buildSocialAnalytics(wrap, tabBar) {
   wrap.innerHTML = `<div style="padding:28px 0">
     ${tabBar}
     <!-- KPI tiles -->
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px">
-      ${kpis.map(k=>`<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:18px 16px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
-        <div style="font-size:1.5rem;margin-bottom:6px">${k.icon}</div>
-        <div style="font-size:1.5rem;font-weight:800;color:${k.color};margin-bottom:2px">${k.value}</div>
-        <div style="font-size:0.7rem;font-weight:700;color:#374151">${k.label}</div>
-        <div style="font-size:0.64rem;color:#9CA3AF;margin-top:2px">${k.sub}</div>
-      </div>`).join('')}
+    <div id="socialKpiHeader" style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <div style="font-family:'Space Grotesk',sans-serif;font-size:0.92rem;font-weight:800;color:#0A1628">📊 Performance Overview</div>
+    </div>
+    <div id="socialKpiBody" style="margin-bottom:24px">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+        ${kpis.map(k=>`<div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:18px 16px;box-shadow:0 1px 4px rgba(0,0,0,.04)">
+          <div style="font-size:1.5rem;margin-bottom:6px">${k.icon}</div>
+          <div style="font-size:1.5rem;font-weight:800;color:${k.color};margin-bottom:2px">${k.value}</div>
+          <div style="font-size:0.7rem;font-weight:700;color:#374151">${k.label}</div>
+          <div style="font-size:0.64rem;color:#9CA3AF;margin-top:2px">${k.sub}</div>
+        </div>`).join('')}
+      </div>
     </div>
 
     <!-- Charts row -->
@@ -10461,6 +10466,14 @@ function _buildSocialAnalytics(wrap, tabBar) {
 
   // Render charts
   requestAnimationFrame(() => {
+    // Honesty gate: KPI tiles show sample figures until real posts are published.
+    // Demo mode badges the header; strict mode replaces the tiles with an honest
+    // unavailable state (so no fabricated "28,600" reach / follower-growth show).
+    if (window._applySectionDataMode) window._applySectionDataMode(
+      document.getElementById('socialKpiHeader'),
+      document.getElementById('socialKpiBody'),
+      !hasData, 'Sample data',
+      'These KPIs show sample figures until you publish posts — they are not live measurements. Demo Data Mode is off, so estimated figures are hidden. An administrator can enable Demo Data Mode for this client in the Admin portal.');
     const rCtx = document.getElementById('socialReachChart');
     if (rCtx && window.Chart) {
       if (window._sReachChart) try { window._sReachChart.destroy(); } catch(e){}
@@ -13633,7 +13646,10 @@ function buildAudience() {
       <canvas id="audienceChart" height="140"></canvas>
     </div>
 
-    <div class="audience-grid">${audienceCards}</div>
+    <div id="audCardsHeader" style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+      <div style="font-family:'Space Grotesk','Sora',sans-serif;font-size:1.05rem;font-weight:800;color:#0A1628">🎯 High-Value Audience Segments</div>
+    </div>
+    <div id="audCardsBody"><div class="audience-grid">${audienceCards}</div></div>
   `;
 
   // ── Render all charts ────────────────────────────────────────────────────────
@@ -13641,6 +13657,16 @@ function buildAudience() {
   _audienceChartTimer = setTimeout(() => {
     const chartDefaults = { responsive: true, maintainAspectRatio: true };
     const gridColor = 'rgba(0,0,0,.06)';
+
+    // Honesty gate: audience cards' CTR / CPA / reachable-users / engagement-rate
+    // are AI-estimated (built with Math.random + heuristics), never live metrics.
+    // Demo mode badges the header; strict mode replaces the cards with an honest
+    // unavailable state so no fabricated figures show.
+    if (window._applySectionDataMode) window._applySectionDataMode(
+      document.getElementById('audCardsHeader'),
+      document.getElementById('audCardsBody'),
+      true, 'AI estimate',
+      'These audience segments show AI-estimated CTR, CPA, reach and engagement — not verified measurements. Demo Data Mode is off, so estimated figures are hidden. An administrator can enable Demo Data Mode for this client in the Admin portal.');
 
     // Age bar chart
     const ageCanvas = document.getElementById('audAgeChart');
