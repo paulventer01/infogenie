@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "node --test test/",
+    "lint:fabrication": "node scripts/check-fabrication-markers.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.89.0",
