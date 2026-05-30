@@ -5406,6 +5406,15 @@ function buildDashboard() {
   const otherSovShare = Math.max(0, 100 - usedPct - yourSovShare);
   const sovData = [...sovRows, { name: 'You', share: yourSovShare, color: '#00E5FF' }, { name: 'Others', share: otherSovShare, color: '#E2E8F0' }];
 
+  // Data-mode honesty: the Share-of-Voice donut is derived from competitor
+  // traffic AND a fabricated "Your share" formula. It is a real measurement only
+  // when at least one competitor carries live DataForSEO traffic; otherwise every
+  // slice is an AI estimate. demo → badge it; strict → withhold the whole panel.
+  const _sovEstimated = !competitors.some(c => c._dataSource === 'DataForSEO' && parseTrafficNum(c) > 0);
+  const _sovLiveTag = _sovEstimated
+    ? ''
+    : ' <span class="chart-tag" style="background:#00C9C820;color:#00C9C8" title="Calculated in real time from current competitor traffic and ad spend data.">LIVE</span>';
+
   // Alert templates
   const alertTmpls = [
     { icon: '🔥', color: '#EF4444', bg: '#FEF2F2', label: 'HIGH', labelTitle: 'High priority — act within 24 hours to capitalise on this competitor vulnerability.', age: '2h ago', msg: (c) => `${c.name} dropped Google Ads spend — their core keywords are now underserved and CPCs have fallen. Attack window is open.` },
@@ -5444,10 +5453,10 @@ function buildDashboard() {
     <div class="two-charts" style="margin-top:24px">
       <div class="chart-box">
         <div class="chart-box-header">
-          <h3 title="Share of Voice: your estimated percentage of total search and ad visibility compared to all tracked competitors in your market. Higher = you dominate more of the conversation.">Share of Voice <span class="chart-tag" style="background:#00C9C820;color:#00C9C8" title="Calculated in real time from current competitor traffic and ad spend data.">LIVE</span></h3>
+          <h3 id="sovChartHeader" title="Share of Voice: your estimated percentage of total search and ad visibility compared to all tracked competitors in your market. Higher = you dominate more of the conversation.">Share of Voice${_sovLiveTag}</h3>
           <span style="font-size:0.72rem;color:#9CA3AF">Derived from competitor traffic data</span>
         </div>
-        <div style="display:flex;gap:16px;align-items:center;min-height:190px;padding:8px 0">
+        <div id="sovChartBody" style="display:flex;gap:16px;align-items:center;min-height:190px;padding:8px 0">
           <div style="position:relative;width:160px;min-width:160px;height:160px">
             <canvas id="sovChart"></canvas>
             <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
@@ -5514,6 +5523,14 @@ function buildDashboard() {
   // inserted DOM first and never builds two canvases back-to-back.
   _dashEnq('sovChart', () => {
     if (sovChartInstance) { try { sovChartInstance.destroy(); } catch(_) {} sovChartInstance = null; }
+    // Honesty gate: when SOV is AI-estimated, demo mode badges the panel header
+    // and strict mode replaces the whole donut+legend body with an unavailable
+    // state (so no fabricated "Your share" %, slices or legend numbers show).
+    if (window._applySectionDataMode && window._applySectionDataMode(
+          document.getElementById('sovChartHeader'),
+          document.getElementById('sovChartBody'),
+          _sovEstimated, 'AI estimate',
+          'Share of Voice is derived from AI-estimated competitor traffic, not verified live measurements. Demo Data Mode is off, so estimated figures are hidden. An administrator can enable Demo Data Mode for this client in the Admin portal.')) return;
     const sovCtx = document.getElementById('sovChart');
     if (!sovCtx || !sovCtx.isConnected) return;
     sovChartInstance = new Chart(sovCtx.getContext('2d'), {

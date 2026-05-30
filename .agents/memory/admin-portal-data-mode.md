@@ -82,3 +82,14 @@ and whenever it changes. Admin "Preview as client" sets/clears that context.
 ## Email alerts are best-effort
 Issue emails use Resend `RESEND_FROM_EMAIL`; an unverified domain logs a 403 and
 the inbox/dedupe still work. Same verified-domain gotcha noted in replit.md.
+
+## Charts with surrounding fabricated text need _applySectionDataMode, not _applyChartDataMode
+The Share-of-Voice donut also renders a center "Your share %" overlay and a
+legend list of per-competitor %s as plain DOM siblings of the `<canvas>`.
+`_applyChartDataMode` only hides the canvas, so in strict mode those fabricated
+numbers would remain visible. Gate such panels with `_applySectionDataMode`
+(header + a wrapping body element id) so strict replaces the *whole* body.
+**Why:** hiding just the canvas leaves the lie in the overlay/legend.
+**How to apply:** if a chart panel has fabricated values outside the canvas
+(overlays, legends, captions), wrap the body in an id'd container and use the
+section helper; reserve `_applyChartDataMode` for canvas-only panels.
