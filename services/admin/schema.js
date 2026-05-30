@@ -71,6 +71,33 @@ async function ensureAdminSchema() {
   await p.query(`CREATE INDEX IF NOT EXISTS idx_issues_last_seen ON issues(last_seen_at DESC)`);
   await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_issues_open_dedupe ON issues(tenant_id, dedupe_key) WHERE status='open'`);
 
+  // ── audit log (who changed roles & memberships) ───────────────────────────
+  // Append-only record of every membership / platform-role mutation made in the
+  // Admin Portal, for accountability & support. Tenant-scoped (tenant_id NOT
+  // NULL per multitenant rules); platform-role changes attribute to the default
+  // tenant (like issues). Actor/target emails are denormalized snapshots so the
+  // log stays readable even after a user row is later cleaned up.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id              SERIAL PRIMARY KEY,
+      tenant_id       INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      action          TEXT NOT NULL,
+      actor_user_id   INTEGER,
+      actor_email     TEXT,
+      target_user_id  INTEGER,
+      target_email    TEXT,
+      workspace_id    INTEGER,
+      workspace_name  TEXT,
+      old_role        TEXT,
+      new_role        TEXT,
+      detail          TEXT,
+      context         JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_audit_created ON admin_audit_log(created_at DESC)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_audit_tenant ON admin_audit_log(tenant_id, created_at DESC)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_audit_target ON admin_audit_log(target_user_id)`);
+
   // ── tenant-level data-mode default ────────────────────────────────────────
   await p.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS data_mode_default TEXT NOT NULL DEFAULT 'inherit'`);
 

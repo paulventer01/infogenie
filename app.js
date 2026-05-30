@@ -29658,7 +29658,7 @@ window.inviteTeamMember = function() {
 // Owner/admin only. Server self-gates /api/admin/* (403 for non-admins); the
 // nav link is also hidden client-side unless the signed-in user is an owner.
 // ═══════════════════════════════════════════════════════════════════════════
-window._adminState = { tab: 'data-mode', tenantFilter: '', issueFilter: 'open', issueSeverity: '', issueTenant: '', data: {} };
+window._adminState = { tab: 'data-mode', tenantFilter: '', issueFilter: 'open', issueSeverity: '', issueTenant: '', auditAction: '', auditTenant: '', data: {} };
 
 async function _adminFetch(path, opts) {
   const o = Object.assign({ headers: {} }, opts || {});
@@ -29730,6 +29730,7 @@ function _adminRenderTabs() {
     { id:'workspaces', label:'🏢 Workspaces' },
     { id:'clients',    label:'👤 Clients' },
     { id:'users',      label:'👥 Users & Roles' },
+    { id:'audit',      label:'📜 Audit Log' },
     { id:'issues',     label:'🚨 Issues' }
   ];
   const st = window._adminState;
@@ -29756,6 +29757,7 @@ async function _adminRenderActive(force) {
     if (tab === 'workspaces') return await _adminRenderWorkspaces(body);
     if (tab === 'clients')    return await _adminRenderClients(body, force);
     if (tab === 'users')      return await _adminRenderUsers(body);
+    if (tab === 'audit')      return await _adminRenderAudit(body);
     if (tab === 'issues')     return await _adminRenderIssues(body);
   } catch (e) {
     body.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:18px;color:#991B1B">⚠️ ${_esc(e.message)}</div>`;
@@ -30048,6 +30050,65 @@ window._adminCancelInvite = async function(tenantId, userId) {
   try { await _adminFetch('/invites/' + tenantId + '/' + userId, { method:'DELETE' }); showToast('✓ Invite cancelled'); _adminRenderActive(true); }
   catch (e) { showToast('⚠️ ' + e.message); }
 };
+
+// ── Audit Log tab ─────────────────────────────────────────────────────────
+// Read-only history of who changed roles & memberships (accountability).
+async function _adminRenderAudit(body) {
+  const st = window._adminState;
+  const [wd, ad] = await Promise.all([ _adminFetch('/workspaces'), _adminFetch('/audit' + _adminAuditQs()) ]);
+  const workspaces = wd.workspaces || [];
+  const entries = ad.entries || [];
+  const ACTION_META = {
+    'membership.add':         { label:'Member added',     color:'#059669', icon:'➕' },
+    'membership.role_change': { label:'Role changed',     color:'#2563EB', icon:'🔄' },
+    'membership.remove':      { label:'Member removed',   color:'#DC2626', icon:'➖' },
+    'platform_role.grant':    { label:'Platform role granted', color:'#7C3AED', icon:'🛡️' },
+    'platform_role.revoke':   { label:'Platform role revoked', color:'#B45309', icon:'🚫' },
+    'invite.send':            { label:'Invite sent',      color:'#0891B2', icon:'✉️' },
+    'invite.cancel':          { label:'Invite cancelled', color:'#9333EA', icon:'🗑️' },
+  };
+  const meta = a => ACTION_META[a] || { label:a, color:'#64748B', icon:'•' };
+  const actionOpts = ['<option value="">All actions</option>'].concat(
+    Object.keys(ACTION_META).map(a=>`<option value="${a}"${st.auditAction===a?' selected':''}>${meta(a).label}</option>`)).join('');
+  const wsOpts = ['<option value="">All workspaces</option>'].concat(
+    workspaces.map(w=>`<option value="${w.id}"${String(st.auditTenant)===String(w.id)?' selected':''}>${_esc(w.name)}</option>`)).join('');
+  const fmtRole = r => r ? _esc(r) : '<span style="color:#94A3B8">—</span>';
+  const fmtTime = ts => { try { return new Date(ts).toLocaleString(); } catch(_) { return _esc(String(ts||'')); } };
+  body.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="font-size:12.5px;color:#64748B">A record of every role &amp; membership change made in the Admin Portal — newest first (last 200).</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <select onchange="_adminSetAuditAction(this.value)" style="padding:6px 10px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px;color:#475569">${actionOpts}</select>
+        <select onchange="_adminSetAuditTenant(this.value)" style="padding:6px 10px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px;color:#475569">${wsOpts}</select>
+      </div>
+    </div>
+    ${entries.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="text-align:left;color:#64748B;font-size:11px;text-transform:uppercase;letter-spacing:.04em">
+        <th style="padding:8px 10px;border-bottom:1px solid #E2E8F0">When</th>
+        <th style="padding:8px 10px;border-bottom:1px solid #E2E8F0">Action</th>
+        <th style="padding:8px 10px;border-bottom:1px solid #E2E8F0">Who (actor)</th>
+        <th style="padding:8px 10px;border-bottom:1px solid #E2E8F0">Target user</th>
+        <th style="padding:8px 10px;border-bottom:1px solid #E2E8F0">Workspace</th>
+        <th style="padding:8px 10px;border-bottom:1px solid #E2E8F0">Change</th>
+      </tr></thead>
+      <tbody>${entries.map(e=>{const m=meta(e.action);return `<tr style="border-bottom:1px solid #F1F5F9">
+        <td style="padding:8px 10px;color:#64748B;white-space:nowrap">${fmtTime(e.created_at)}</td>
+        <td style="padding:8px 10px;white-space:nowrap"><span style="font-weight:700;color:${m.color}">${m.icon} ${_esc(m.label)}</span></td>
+        <td style="padding:8px 10px;color:#1E293B">${_esc(e.actor_email||('#'+(e.actor_user_id||'?')))}</td>
+        <td style="padding:8px 10px;color:#1E293B">${_esc(e.target_email||('#'+(e.target_user_id||'?')))}</td>
+        <td style="padding:8px 10px;color:#475569">${e.workspace_name?_esc(e.workspace_name):'<span style="color:#94A3B8">platform</span>'}</td>
+        <td style="padding:8px 10px;color:#475569">${fmtRole(e.old_role)} <span style="color:#94A3B8">→</span> ${fmtRole(e.new_role)}${e.detail?`<div style="font-size:11px;color:#94A3B8;margin-top:2px">${_esc(e.detail)}</div>`:''}</td>
+      </tr>`;}).join('')}</tbody>
+    </table></div>` : `<div style="background:white;border:1px dashed #CBD5E1;border-radius:12px;padding:34px;text-align:center;color:#94A3B8">No role or membership changes recorded yet.</div>`}`;
+}
+function _adminAuditQs() {
+  const st = window._adminState; const qs = [];
+  if (st.auditAction) qs.push('action=' + encodeURIComponent(st.auditAction));
+  if (st.auditTenant) qs.push('tenantId=' + encodeURIComponent(st.auditTenant));
+  return qs.length ? ('?' + qs.join('&')) : '';
+}
+window._adminSetAuditAction = function(a) { window._adminState.auditAction = a; _adminRenderActive(true); };
+window._adminSetAuditTenant = function(t) { window._adminState.auditTenant = t; _adminRenderActive(true); };
 
 // ── Issues tab ──────────────────────────────────────────────────────────────
 async function _adminRenderIssues(body) {

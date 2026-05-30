@@ -23,6 +23,7 @@ const _db = require('../../db');
 const { SYSTEM_ROLES } = require('../tenants/permissions');
 const _dataMode = require('./data_mode');
 const _issues = require('./issues');
+const _audit = require('./audit');
 
 const router = express.Router();
 
@@ -164,17 +165,31 @@ router.post('/workspaces/:id/members', async (req, res) => {
   if (!Number.isInteger(userId)) return _err(res, 400, 'bad_user');
   try {
     const p = _db.getPool();
-    const role = await p.query(`SELECT id, scope FROM roles WHERE tenant_id IS NULL AND key=$1 LIMIT 1`, [roleKey]);
+    const role = await p.query(`SELECT id, name, scope FROM roles WHERE tenant_id IS NULL AND key=$1 LIMIT 1`, [roleKey]);
     if (!role.rows[0] || role.rows[0].scope !== 'tenant') return _err(res, 400, 'bad_role');
-    const ux = await p.query('SELECT 1 FROM users WHERE id=$1', [userId]);
+    const ux = await p.query('SELECT email FROM users WHERE id=$1', [userId]);
     if (!ux.rows[0]) return _err(res, 404, 'user_not_found');
-    const tx = await p.query(`SELECT 1 FROM tenants WHERE id=$1 AND status<>'deleted'`, [id]);
+    const tx = await p.query(`SELECT name FROM tenants WHERE id=$1 AND status<>'deleted'`, [id]);
     if (!tx.rows[0]) return _err(res, 404, 'workspace_not_found');
+    // Capture the prior role (if already a member) so the audit shows the change.
+    const prior = await p.query(
+      `SELECT r.name AS role_name, tu.status FROM tenant_users tu
+         LEFT JOIN roles r ON r.id = tu.role_id
+        WHERE tu.tenant_id=$1 AND tu.user_id=$2`, [id, userId]);
+    const wasMember = !!(prior.rows[0] && prior.rows[0].status === 'active');
     await p.query(`
       INSERT INTO tenant_users (tenant_id, user_id, role_id, status, joined_at)
       VALUES ($1,$2,$3,'active',now())
       ON CONFLICT (tenant_id, user_id) DO UPDATE SET role_id=EXCLUDED.role_id, status='active'`,
       [id, userId, role.rows[0].id]);
+    await _audit.recordAudit({
+      action: wasMember ? 'membership.role_change' : 'membership.add',
+      actorUserId: req.user.id, actorEmail: req.user.email,
+      targetUserId: userId, targetEmail: ux.rows[0].email,
+      tenantId: id, workspaceId: id, workspaceName: tx.rows[0].name,
+      oldRole: prior.rows[0] ? prior.rows[0].role_name : null,
+      newRole: role.rows[0].name,
+    });
     res.json({ ok: true });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -187,11 +202,26 @@ router.patch('/workspaces/:id/members/:userId', async (req, res) => {
   if (!Number.isInteger(id) || !Number.isInteger(userId)) return _err(res, 400, 'bad_id');
   try {
     const p = _db.getPool();
-    const role = await p.query(`SELECT id, scope FROM roles WHERE tenant_id IS NULL AND key=$1 LIMIT 1`, [roleKey]);
+    const role = await p.query(`SELECT id, name, scope FROM roles WHERE tenant_id IS NULL AND key=$1 LIMIT 1`, [roleKey]);
     if (!role.rows[0] || role.rows[0].scope !== 'tenant') return _err(res, 400, 'bad_role');
+    const prior = await p.query(
+      `SELECT u.email, r.name AS role_name, t.name AS workspace_name
+         FROM tenant_users tu
+         JOIN users u ON u.id = tu.user_id
+         LEFT JOIN roles r ON r.id = tu.role_id
+         LEFT JOIN tenants t ON t.id = tu.tenant_id
+        WHERE tu.tenant_id=$1 AND tu.user_id=$2`, [id, userId]);
     const r = await p.query(`UPDATE tenant_users SET role_id=$3 WHERE tenant_id=$1 AND user_id=$2 RETURNING user_id`,
       [id, userId, role.rows[0].id]);
     if (!r.rows[0]) return _err(res, 404, 'not_a_member');
+    await _audit.recordAudit({
+      action: 'membership.role_change',
+      actorUserId: req.user.id, actorEmail: req.user.email,
+      targetUserId: userId, targetEmail: prior.rows[0] ? prior.rows[0].email : null,
+      tenantId: id, workspaceId: id, workspaceName: prior.rows[0] ? prior.rows[0].workspace_name : null,
+      oldRole: prior.rows[0] ? prior.rows[0].role_name : null,
+      newRole: role.rows[0].name,
+    });
     res.json({ ok: true });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -202,8 +232,25 @@ router.delete('/workspaces/:id/members/:userId', async (req, res) => {
   const userId = Number(req.params.userId);
   if (!Number.isInteger(id) || !Number.isInteger(userId)) return _err(res, 400, 'bad_id');
   try {
-    const r = await _db.getPool().query(`DELETE FROM tenant_users WHERE tenant_id=$1 AND user_id=$2 RETURNING user_id`, [id, userId]);
+    const p = _db.getPool();
+    const prior = await p.query(
+      `SELECT u.email, r.name AS role_name, t.name AS workspace_name, tu.status
+         FROM tenant_users tu
+         JOIN users u ON u.id = tu.user_id
+         LEFT JOIN roles r ON r.id = tu.role_id
+         LEFT JOIN tenants t ON t.id = tu.tenant_id
+        WHERE tu.tenant_id=$1 AND tu.user_id=$2`, [id, userId]);
+    const r = await p.query(`DELETE FROM tenant_users WHERE tenant_id=$1 AND user_id=$2 RETURNING user_id`, [id, userId]);
     if (!r.rows[0]) return _err(res, 404, 'not_a_member');
+    await _audit.recordAudit({
+      action: 'membership.remove',
+      actorUserId: req.user.id, actorEmail: req.user.email,
+      targetUserId: userId, targetEmail: prior.rows[0] ? prior.rows[0].email : null,
+      tenantId: id, workspaceId: id, workspaceName: prior.rows[0] ? prior.rows[0].workspace_name : null,
+      oldRole: prior.rows[0] ? prior.rows[0].role_name : null,
+      newRole: null,
+      detail: prior.rows[0] && prior.rows[0].status === 'invited' ? 'Removed a pending invite' : null,
+    });
     res.json({ ok: true });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -217,20 +264,66 @@ router.patch('/users/:id/platform-role', async (req, res) => {
   const roleKey = (raw == null || raw === '' || raw === 'none') ? null : String(raw);
   try {
     const p = _db.getPool();
-    const ux = await p.query('SELECT is_owner FROM users WHERE id=$1', [uid]);
+    const ux = await p.query('SELECT email, is_owner FROM users WHERE id=$1', [uid]);
     if (!ux.rows[0]) return _err(res, 404, 'user_not_found');
     if (ux.rows[0].is_owner) return _err(res, 400, 'cannot_change_owner');
+    // Capture the existing platform role so the audit reflects the change.
+    const cur = await p.query(
+      `SELECT r.name AS role_name FROM platform_users pu
+         LEFT JOIN roles r ON r.id = pu.role_id WHERE pu.user_id=$1`, [uid]);
+    const oldRole = cur.rows[0] ? cur.rows[0].role_name : null;
     if (roleKey === null) {
       await p.query('DELETE FROM platform_users WHERE user_id=$1', [uid]);
+      await _audit.recordAudit({
+        action: 'platform_role.revoke',
+        actorUserId: req.user.id, actorEmail: req.user.email,
+        targetUserId: uid, targetEmail: ux.rows[0].email,
+        oldRole, newRole: null,
+      });
       return res.json({ ok: true, platformRole: null });
     }
     if (roleKey !== 'platform_admin') return _err(res, 400, 'only_platform_admin_grantable');
-    const role = await p.query(`SELECT id FROM roles WHERE tenant_id IS NULL AND key='platform_admin' LIMIT 1`);
+    const role = await p.query(`SELECT id, name FROM roles WHERE tenant_id IS NULL AND key='platform_admin' LIMIT 1`);
     if (!role.rows[0]) return _err(res, 400, 'role_not_found');
     await p.query(`INSERT INTO platform_users (user_id, role_id, granted_by, granted_at)
       VALUES ($1,$2,$3,now())
       ON CONFLICT (user_id) DO UPDATE SET role_id=EXCLUDED.role_id`, [uid, role.rows[0].id, req.user.id]);
+    await _audit.recordAudit({
+      action: 'platform_role.grant',
+      actorUserId: req.user.id, actorEmail: req.user.email,
+      targetUserId: uid, targetEmail: ux.rows[0].email,
+      oldRole, newRole: role.rows[0].name,
+    });
     res.json({ ok: true, platformRole: 'platform_admin' });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+// ── Audit log (who changed roles & memberships) ─────────────────────────────
+// Read-only history of membership & platform-role mutations. Gated to platform
+// owner/admin by the router-level gate above (both hold `platform.audit.view`).
+// Optional filters: ?tenantId= ?action= ?userId= (target). Capped at 200 rows.
+router.get('/audit', async (req, res) => {
+  try {
+    const params = [], where = [];
+    const tenantId = Number(req.query.tenantId);
+    const userId = Number(req.query.userId);
+    const action = typeof req.query.action === 'string' ? req.query.action.trim() : '';
+    if (Number.isInteger(tenantId)) { params.push(tenantId); where.push(`a.tenant_id=$${params.length}`); }
+    if (Number.isInteger(userId)) { params.push(userId); where.push(`a.target_user_id=$${params.length}`); }
+    if (action) { params.push(action); where.push(`a.action=$${params.length}`); }
+    const r = await _db.getPool().query(`
+      SELECT a.id, a.action, a.actor_user_id, a.actor_email, a.target_user_id,
+             a.target_email, a.workspace_id, a.workspace_name, a.old_role,
+             a.new_role, a.detail, a.created_at,
+             t.name AS tenant_name
+        FROM admin_audit_log a
+        LEFT JOIN tenants t ON t.id = a.tenant_id
+       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+       ORDER BY a.created_at DESC, a.id DESC
+       LIMIT 200`, params);
+    const actions = await _db.getPool().query(
+      `SELECT action, COUNT(*)::int AS n FROM admin_audit_log GROUP BY action ORDER BY action`);
+    res.json({ ok: true, entries: r.rows, actionCounts: Object.fromEntries(actions.rows.map(x => [x.action, x.n])) });
   } catch (e) { _err(res, 500, e.message); }
 });
 
@@ -310,6 +403,14 @@ router.post('/invites', async (req, res) => {
       mailError = e2.message;
       console.warn('[admin/invites] email failed:', e2.message);
     }
+    await _audit.recordAudit({
+      action: 'invite.send',
+      actorUserId: req.user.id, actorEmail: req.user.email,
+      targetUserId: user.id, targetEmail: email,
+      tenantId, workspaceId: tenantId, workspaceName: tx.rows[0].name,
+      oldRole: null, newRole: role.rows[0].name,
+      detail: mailed ? null : 'Invite recorded but email not sent',
+    });
     res.json({ ok: true, invited: { email, tenantId, userId: user.id }, emailSent: mailed, mailError });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -322,10 +423,24 @@ router.delete('/invites/:tenantId/:userId', async (req, res) => {
   if (!Number.isInteger(tenantId) || !Number.isInteger(userId)) return _err(res, 400, 'bad_id');
   try {
     const p = _db.getPool();
+    const prior = await p.query(
+      `SELECT u.email, r.name AS role_name, t.name AS workspace_name
+         FROM tenant_users tu
+         JOIN users u ON u.id = tu.user_id
+         LEFT JOIN roles r ON r.id = tu.role_id
+         LEFT JOIN tenants t ON t.id = tu.tenant_id
+        WHERE tu.tenant_id=$1 AND tu.user_id=$2 AND tu.status='invited'`, [tenantId, userId]);
     const del = await p.query(
       `DELETE FROM tenant_users WHERE tenant_id=$1 AND user_id=$2 AND status='invited' RETURNING user_id`,
       [tenantId, userId]);
     if (!del.rows[0]) return _err(res, 404, 'not_a_pending_invite');
+    await _audit.recordAudit({
+      action: 'invite.cancel',
+      actorUserId: req.user.id, actorEmail: req.user.email,
+      targetUserId: userId, targetEmail: prior.rows[0] ? prior.rows[0].email : null,
+      tenantId, workspaceId: tenantId, workspaceName: prior.rows[0] ? prior.rows[0].workspace_name : null,
+      oldRole: prior.rows[0] ? prior.rows[0].role_name : null, newRole: null,
+    });
     // Always revoke the workspace-bound invite token(s) for this exact invite so
     // a cancelled link can never be accepted (or used as a login vector).
     await p.query(

@@ -3,3 +3,4 @@
 - [Frontend cache-busting](frontend-cache-busting.md) — editing app.js is inert for users until the ?v= string in index.html is bumped.
 - [Fabrication tagging audit](fabrication-tagging-audit.md) — what to tag for honesty mode; template-helper false positives (routes already mark); don't tag catalogs/real-data/grounded-LLM.
 - [Team invite flow (security invariants)](team-invites.md) — invite tokens MUST be workspace-bound; cancel must revoke the exact token or a cancelled invite becomes a login vector.
+- [Admin audit log](admin-audit-log.md) — role/membership changes logged via best-effort recordAudit(); platform-role rows attribute to default tenant; emails/roles denormalized so orphan cleanup can't erase them.
