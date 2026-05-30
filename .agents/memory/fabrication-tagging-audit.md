@@ -43,3 +43,16 @@ placeholder is inside `results[]` and caught at depth 1.
 
 **Why:** a sweep that tags every helper or every catalog would break strict mode
 across the product. Check where the response is actually emitted before tagging.
+
+## Extending test/data-mode-strict.test.js (gotchas)
+- AI routes (cold_email, content_calendar, ab_designer, carousel, landing_pages,
+  press_release, voc) gate on `/^_DUMMY/i` and use `_https.request`; the shared
+  `_DUMMY` OpenAI key already forces their template fallback with no network.
+- tech_stack: set `BUILTWITH_API_KEY='_DUMMY...'` so `_builtwithFree` returns null
+  with no network. `/compare` has unavoidable ~6.5s sleeps per domain.
+- voc `/mine` first fetches `/api/mentions` over HTTP; with no mentions it returns
+  `source:'empty'` (NOT a recognized marker). Mount a canned GET `/api/mentions`
+  and set `process.env.PORT` to the test server's port so it reaches `template`.
+- Stub `db.hasDb()=false` to keep the test hermetic. carousel `/generate` is the
+  one route whose INSERT isn't wrapped in a per-route try/catch (and omits
+  tenant_id), so a persist failure surfaces as a 500 instead of a logged warning.

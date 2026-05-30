@@ -11,6 +11,14 @@
 //   • infographics template        (POST /api/infographics/generate, no AI key)
 //   • social-listening estimate    (POST /api/social-listening/sentiment-trend, LLM-invented)
 //   • INDUSTRY_DB demo competitor  (data.js competitor metrics surfaced via a route)
+//   • cold-email template          (POST /api/cold-email/generate, no AI key)
+//   • content-calendar template    (POST /api/content-calendar/generate, no AI key)
+//   • ab-designer template         (POST /api/ab-designer/generate, no AI key)
+//   • carousel template            (POST /api/carousel/generate, no AI key)
+//   • landing-page template        (POST /api/landing-pages/generate, no AI key)
+//   • press-release template       (POST /api/press-release/generate, no AI key)
+//   • voc template                 (POST /api/voc/mine, no AI key)
+//   • tech-stack placeholder       (POST /api/tech-stack/detect + /compare, no BuiltWith key)
 //
 // strict  → standardized { data_unavailable:true, source:'data_unavailable' }
 // demo    → original payload, annotated { _dataMode:'demo', _demo:true }
@@ -33,6 +41,9 @@ process.env.AI_INTEGRATIONS_OPENAI_API_KEY = '_DUMMY_test_key';
 process.env.OPENAI_API_KEY = '_DUMMY_test_key';
 delete process.env.DATAFORSEO_LOGIN;      // force backlinks placeholder
 delete process.env.DATAFORSEO_PASSWORD;
+// '_DUMMY*' reads as "present but disabled" to tech_stack's _builtwithFree()
+// (returns null immediately, no network) → /detect + /compare placeholder.
+process.env.BUILTWITH_API_KEY = '_DUMMY_test_key';
 
 // Stub fetch so social_listening's AI call returns a canned estimate (no
 // network). Test HTTP calls below use the http module, so they are unaffected.
@@ -56,6 +67,13 @@ dataMode.resolveDataMode = async () => ({ mode: EFFECTIVE_MODE, source: 'test' }
 // Keep the test side-effect-free: don't write rows to the issues table.
 const issues = require('../services/admin/issues');
 issues.raiseIssue = async () => ({ ok: true });
+
+// Keep the test side-effect-free and DB-independent: routes only persist when
+// hasDb() is true. Forcing it false skips every INSERT (the response payload is
+// unchanged) — and avoids carousel's persist error, which isn't wrapped in the
+// per-route try/catch the other modules use, surfacing as a 500.
+const db = require('../db');
+db.hasDb = () => false;
 
 const { dataModeEnforcement } = require('../services/admin/enforcement');
 
@@ -83,6 +101,23 @@ before(async () => {
   app.use('/api/google-ads-insights', require('../services/google_ads_insights/api'));
   app.use('/api/infographics', require('../services/infographics/api'));
   app.use('/api/social-listening', require('../services/social_listening/api'));
+  app.use('/api/cold-email', require('../services/cold_email/api'));
+  app.use('/api/content-calendar', require('../services/content_calendar/api'));
+  app.use('/api/ab-designer', require('../services/ab_designer/api'));
+  app.use('/api/carousel', require('../services/carousel/api'));
+  app.use('/api/landing-pages', require('../services/landing_pages/api'));
+  app.use('/api/press-release', require('../services/press_release/api'));
+  app.use('/api/voc', require('../services/voc/api'));
+  app.use('/api/tech-stack', require('../services/tech_stack/api'));
+
+  // voc's /mine fetches mentions from the same server over HTTP before it can
+  // cluster (and fall back to its template). Serve a small canned set so the
+  // route reaches its source:'template' branch (not source:'empty').
+  app.get('/api/mentions', (_req, res) => res.json({ ok: true, mentions: [
+    { sentiment: 'positive', title: 'Love the product', snippet: 'Works great for our team.' },
+    { sentiment: 'negative', title: 'Support was slow', snippet: 'Waited two days for a reply.' },
+    { sentiment: 'neutral', title: 'Pricing question', snippet: 'Is there an annual plan?' },
+  ] }));
 
   // INDUSTRY_DB competitor metrics are tagged demo/_estimated in data.js and
   // are normally consumed by the SPA; surface a representative competitor
@@ -97,6 +132,9 @@ before(async () => {
   server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   PORT = server.address().port;
+  // voc's _fetchMentions calls 127.0.0.1:${process.env.PORT||5000}/api/mentions —
+  // point it at THIS test server so it hits the canned mentions route above.
+  process.env.PORT = String(PORT);
 });
 
 after(async () => {
@@ -133,6 +171,24 @@ const CASES = [
     demoMarker: (b) => b._estimated === true, leaked: (b) => b.trend !== undefined },
   { name: 'INDUSTRY_DB demo competitor', method: 'POST', route: '/api/competitor-profile', body: {},
     demoMarker: (b) => Array.isArray(b.competitors) && b.competitors[0] && b.competitors[0].source === 'demo', leaked: (b) => Array.isArray(b.competitors) && b.competitors.length > 0 },
+  { name: 'cold-email template (no AI key)', method: 'POST', route: '/api/cold-email/generate', body: { sender_offer: 'B2B CRM software' },
+    demoSource: 'template', leaked: (b) => Array.isArray(b.emails) },
+  { name: 'content-calendar template (no AI key)', method: 'POST', route: '/api/content-calendar/generate', body: { brand: 'Acme', channels: ['instagram'], days: 3 },
+    demoSource: 'template', leaked: (b) => Array.isArray(b.posts) },
+  { name: 'ab-designer template (no AI key)', method: 'POST', route: '/api/ab-designer/generate', body: { original: 'Buy now and save 20%', element_kind: 'email_subject', count: 2 },
+    demoSource: 'template', leaked: (b) => Array.isArray(b.variants) },
+  { name: 'carousel template (no AI key)', method: 'POST', route: '/api/carousel/generate', body: { topic: 'Email marketing tips', structure: 'pure-info' },
+    demoSource: 'template', leaked: (b) => Array.isArray(b.slides) },
+  { name: 'landing-page template (no AI key)', method: 'POST', route: '/api/landing-pages/generate', body: { title: 'Launch your store', brand: 'Acme' },
+    demoSource: 'template', leaked: (b) => b.content !== undefined || b.html !== undefined },
+  { name: 'press-release template (no AI key)', method: 'POST', route: '/api/press-release/generate', body: { brand: 'Acme', context: 'We launched a new product line today.' },
+    demoSource: 'template', leaked: (b) => b.release !== undefined },
+  { name: 'voc template (no AI key)', method: 'POST', route: '/api/voc/mine', body: { brand: 'Acme', days: 7 },
+    demoSource: 'template', leaked: (b) => Array.isArray(b.themes) },
+  { name: 'tech-stack detect placeholder (no BuiltWith key)', method: 'POST', route: '/api/tech-stack/detect', body: { domain: 'example.com' },
+    demoSource: 'placeholder', leaked: (b) => b.note !== undefined && b.source === 'placeholder' },
+  { name: 'tech-stack compare placeholder (no BuiltWith key)', method: 'POST', route: '/api/tech-stack/compare', body: { domains: ['example.com'] },
+    demoMarker: (b) => Array.isArray(b.results) && b.results.some((r) => r.source === 'placeholder'), leaked: (b) => Array.isArray(b.results) && b.results.length > 0 },
 ];
 
 for (const c of CASES) {
