@@ -1,14 +1,14 @@
 {
-  "capturedAt": "2026-05-23T07:17:56.465Z",
+  "capturedAt": "2026-05-30T13:36:03.656Z",
   "domain": "tlink.co.za",
   "url": "tlink.co.za",
   "capturedFromAnalyseRun": true,
   "analysisData": {
     "url": "tlink.co.za",
-    "country": "global",
+    "country": "za",
     "industryKey": "marketing",
     "industry": {
-      "name": "Unknown industry",
+      "name": "IT Security Consulting Services",
       "keywords": [
         "marketing",
         "seo",
@@ -42,572 +42,410 @@
       ],
       "competitors": [
         {
-          "name": "Semrush",
-          "url": "semrush.com",
-          "logo": "SR",
-          "traffic": "96M",
-          "ctr": "3.6%",
-          "roas": 5.1,
-          "adSpend": "$42M/mo",
+          "name": "Dimension Data",
+          "domain": "dimensiondata.com",
+          "url": "dimensiondata.com",
+          "why": "Provides IT security consulting services including risk assessments, compliance, and cybersecurity strategy in South Africa.",
+          "logo": "DD",
+          "roas": 3.1,
+          "ctr": "2.7%",
+          "traffic": "350K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "low",
           "topChannel": "Google Search",
-          "threatLevel": "high",
+          "topChannels": [
+            "Google Search"
+          ],
+          "threatLevel": "critical",
           "campaigns": [
             {
-              "name": "SEO Toolkit",
-              "channel": "Google",
-              "ctr": "4.1%",
-              "roas": 5.8,
-              "budget": "$14M",
-              "status": "Active"
-            },
-            {
-              "name": "Competitor Research",
-              "channel": "Meta",
-              "ctr": "2.9%",
-              "roas": 4.2,
-              "budget": "$8M",
-              "status": "Active"
-            },
-            {
-              "name": "Content Marketing",
-              "channel": "LinkedIn",
-              "ctr": "2.4%",
-              "roas": 4.6,
-              "budget": "$6M",
-              "status": "Active"
-            }
-          ],
-          "suggestions": [
-            "Semrush provides data dashboards — InfoGenie provides autonomous action. Lead with this differentiation.",
-            "Semrush's onboarding is complex — simplicity-first ads with \"results in 24 hours\" convert better",
-            "Semrush underinvests in automated campaign execution messaging — this is InfoGenie's core advantage",
-            "Semrush targets SEO specialists — expand to CMOs and business owners who want results, not data"
-          ],
-          "audiences": [
-            {
-              "label": "SEO Specialists 25–45",
-              "pct": 36
-            },
-            {
-              "label": "Digital Marketers",
-              "pct": 28
-            },
-            {
-              "label": "Agency Owners",
-              "pct": 22
-            },
-            {
-              "label": "Content Teams",
-              "pct": 14
-            }
-          ],
-          "topKeywords": [
-            "keyword research tool",
-            "SEO software",
-            "competitor analysis",
-            "backlink checker"
-          ],
-          "estimatedROI": "+48% market capture from Semrush's execution gap",
-          "adCopy": [
-            {
-              "headline": "From Intelligence to Live Campaigns. Automatically.",
-              "body": "Competitor data, keyword gaps, and campaign execution — all in one autonomous platform. Results in 24 hours."
-            },
-            {
-              "headline": "Data That Actually Does Something.",
-              "body": "Stop staring at dashboards. Your insights automatically become campaign actions. AI-powered execution, always on."
-            },
-            {
-              "headline": "The Marketing Platform CMOs Actually Want.",
-              "body": "Your whole team gets results — not raw data they have to interpret. Full automation. Real ROAS improvement."
-            }
-          ]
-        },
-        {
-          "name": "SimilarWeb",
-          "url": "similarweb.com",
-          "logo": "SW",
-          "traffic": "38M",
-          "ctr": "3.1%",
-          "roas": 4.4,
-          "adSpend": "$28M/mo",
-          "topChannel": "LinkedIn Ads",
-          "threatLevel": "high",
-          "campaigns": [
-            {
-              "name": "Traffic Intelligence",
-              "channel": "LinkedIn",
-              "ctr": "2.8%",
-              "roas": 4.8,
-              "budget": "$10M",
-              "status": "Active"
-            },
-            {
-              "name": "Market Research",
-              "channel": "Google",
-              "ctr": "3.4%",
-              "roas": 4.2,
-              "budget": "$8M",
-              "status": "Active"
-            }
-          ],
-          "suggestions": [
-            "SimilarWeb sells data — position InfoGenie as the platform that converts data into campaigns automatically",
-            "SimilarWeb's enterprise focus leaves SMB underserved — affordable intelligence for SMBs is a gap",
-            "SimilarWeb has no AI generation — \"intelligence to execution in one platform\" is a direct differentiator"
-          ],
-          "audiences": [
-            {
-              "label": "Enterprise Strategy Teams",
-              "pct": 44
-            },
-            {
-              "label": "Market Researchers",
-              "pct": 26
-            },
-            {
-              "label": "Competitive Intel Teams",
-              "pct": 18
-            },
-            {
-              "label": "Investors",
-              "pct": 12
-            }
-          ],
-          "topKeywords": [
-            "website traffic data",
-            "competitor traffic analysis",
-            "market intelligence",
-            "digital insights"
-          ],
-          "estimatedROI": "+41% conversion via execution-first vs. SimilarWeb data-only positioning",
-          "adCopy": [
-            {
-              "headline": "Insights That Launch Campaigns.",
-              "body": "The market intelligence platform that turns competitor data into live ads — automatically. No analyst required."
-            },
-            {
-              "headline": "Enterprise Intelligence. SMB Price.",
-              "body": "Full competitor traffic, keyword, and ad data from £149/month. Affordable intelligence for every business size."
-            },
-            {
-              "headline": "Stop Watching. Start Acting.",
-              "body": "See what your market is doing — then let AI generate the counter-campaign automatically. From data to live ad in minutes."
-            }
-          ]
-        },
-        {
-          "name": "AdCreative.ai",
-          "url": "adcreative.ai",
-          "logo": "AC",
-          "traffic": "8M",
-          "ctr": "4.2%",
-          "roas": 5.8,
-          "adSpend": "$8M/mo",
-          "topChannel": "Meta Ads",
-          "threatLevel": "medium",
-          "campaigns": [
-            {
-              "name": "AI Ad Generation",
-              "channel": "Meta",
-              "ctr": "4.8%",
-              "roas": 6.2,
-              "budget": "$3M",
-              "status": "Active"
-            },
-            {
-              "name": "Better Ad Creative",
-              "channel": "Google",
-              "ctr": "3.6%",
-              "roas": 4.8,
-              "budget": "$2M",
-              "status": "Active"
-            }
-          ],
-          "suggestions": [
-            "AdCreative.ai only generates — InfoGenie generates AND analyses AND deploys. Lead with full automation.",
-            "AdCreative.ai lacks competitor intelligence integration — position InfoGenie as grounded in real data",
-            "AdCreative.ai's quality is inconsistent — position verified performance benchmarks as your differentiator"
-          ],
-          "audiences": [
-            {
-              "label": "Performance Marketers 25–40",
-              "pct": 42
-            },
-            {
-              "label": "Growth Hackers",
-              "pct": 28
-            },
-            {
-              "label": "E-commerce Brands",
-              "pct": 18
-            },
-            {
-              "label": "Ad Agencies",
-              "pct": 12
-            }
-          ],
-          "topKeywords": [
-            "AI ad generator",
-            "AI ad creative",
-            "auto ad generation",
-            "performance creative"
-          ],
-          "estimatedROI": "+52% platform stickiness with full intelligence-to-execution loop",
-          "adCopy": [
-            {
-              "headline": "Intelligence-Grounded Creatives That Convert.",
-              "body": "Every ad backed by real competitor data and performance benchmarks. AI generation with a brain, not just a prompt."
-            },
-            {
-              "headline": "Generate. Analyse. Deploy. Automatically.",
-              "body": "The complete loop from creative concept to live campaign — without any manual steps between."
-            },
-            {
-              "headline": "Performance You Can Predict.",
-              "body": "Every creative scored against real market benchmarks before it goes live. No more guessing what will work."
-            }
-          ]
-        },
-        {
-          "name": "Hootsuite",
-          "url": "hootsuite.com",
-          "logo": "HT",
-          "traffic": "52M",
-          "ctr": "2.4%",
-          "roas": 3.6,
-          "adSpend": "$22M/mo",
-          "topChannel": "Google Search",
-          "threatLevel": "medium",
-          "campaigns": [
-            {
-              "name": "Social Media Management",
-              "channel": "Google",
-              "ctr": "2.8%",
-              "roas": 3.9,
-              "budget": "$8M",
-              "status": "Active"
-            },
-            {
-              "name": "Agency Plan",
-              "channel": "LinkedIn",
-              "ctr": "2.1%",
-              "roas": 3.4,
-              "budget": "$4M",
-              "status": "Active"
-            }
-          ],
-          "suggestions": [
-            "Hootsuite focuses on scheduling — InfoGenie adds competitor intelligence and autonomous optimisation",
-            "Hootsuite's pricing increases have caused mass churn — target former users with migration campaigns",
-            "Hootsuite has no AI ad generation — position as the next evolution of social marketing tools"
-          ],
-          "audiences": [
-            {
-              "label": "Social Media Managers 25–40",
-              "pct": 44
-            },
-            {
-              "label": "Content Teams",
-              "pct": 26
-            },
-            {
-              "label": "SMB Marketers",
-              "pct": 18
-            },
-            {
-              "label": "Agency Teams",
-              "pct": 12
-            }
-          ],
-          "topKeywords": [
-            "social media scheduler",
-            "social media management tool",
-            "content calendar",
-            "social analytics"
-          ],
-          "estimatedROI": "+29% customer acquisition from Hootsuite pricing frustration",
-          "adCopy": [
-            {
-              "headline": "Schedule Smarter. Earn More.",
-              "body": "AI-generated content, competitor insights, and automated publishing — all from one platform that never needs upgrading."
-            },
-            {
-              "headline": "The Marketing Platform That Grows With You.",
-              "body": "Competitor intelligence, campaign execution, and performance tracking — one subscription, infinite value."
-            },
-            {
-              "headline": "Social. Ads. Analytics. Unified.",
-              "body": "One dashboard runs your entire digital marketing operation. Integrates with 50+ ad platforms. Set up in an afternoon."
-            }
-          ]
-        },
-        {
-          "name": "Ahrefs",
-          "url": "ahrefs.com",
-          "logo": "AH",
-          "traffic": "44M",
-          "ctr": "3.3%",
-          "roas": 4.6,
-          "adSpend": "$14M/mo",
-          "topChannel": "Google Search",
-          "threatLevel": "medium",
-          "campaigns": [
-            {
-              "name": "Backlink Analysis",
-              "channel": "Google",
-              "ctr": "3.8%",
-              "roas": 5.1,
-              "budget": "$5M",
-              "status": "Active"
-            },
-            {
-              "name": "SEO for Beginners",
-              "channel": "YouTube",
-              "ctr": "2.6%",
-              "roas": 3.8,
-              "budget": "$3M",
-              "status": "Active"
-            }
-          ],
-          "suggestions": [
-            "Ahrefs is deep SEO — position InfoGenie as the paid marketing intelligence complement to Ahrefs SEO",
-            "Ahrefs has no campaign automation — paid media teams are underserved by current Ahrefs positioning",
-            "Ahrefs' educational content is excellent — match with actionable AI execution messaging"
-          ],
-          "audiences": [
-            {
-              "label": "SEO Professionals 25–45",
-              "pct": 48
-            },
-            {
-              "label": "Content Marketers",
-              "pct": 24
-            },
-            {
-              "label": "Link Building Teams",
-              "pct": 16
-            },
-            {
-              "label": "Technical SEOs",
-              "pct": 12
-            }
-          ],
-          "topKeywords": [
-            "backlink checker",
-            "keyword difficulty",
-            "site audit",
-            "competitor keywords"
-          ],
-          "estimatedROI": "+35% paid media market capture from Ahrefs' SEO-only positioning",
-          "adCopy": [
-            {
-              "headline": "SEO Intelligence Meets Paid Media Execution.",
-              "body": "Your organic keyword data drives your paid campaigns automatically. No more manual keyword lists or disconnected tools."
-            },
-            {
-              "headline": "The Complete Marketing Intelligence Stack.",
-              "body": "Organic rankings, paid media gaps, and competitor ads — connected, automated, all driving one outcome: revenue."
-            },
-            {
-              "headline": "From Research to Revenue. In Minutes.",
-              "body": "Identify content gaps, generate ad copy, and launch campaigns — without switching between five different tools."
-            }
-          ]
-        },
-        {
-          "name": "Moz",
-          "url": "moz.com",
-          "logo": "MZ",
-          "traffic": "28M",
-          "ctr": "2.8%",
-          "roas": 3.9,
-          "adSpend": "$10M/mo",
-          "topChannel": "Google Search",
-          "threatLevel": "low",
-          "trafficMo": 28000000,
-          "campaigns": [
-            {
-              "name": "Domain Authority",
-              "channel": "Google",
+              "name": "Brand Search Domination",
+              "channel": "Google Search",
               "ctr": "3.1%",
-              "roas": 4.2,
-              "budget": "$3.5M",
-              "status": "Active"
+              "roas": 3.4,
+              "budget": "—",
+              "_split": 0.6
             },
             {
-              "name": "Local SEO",
-              "channel": "Meta",
-              "ctr": "2.4%",
-              "roas": 3.6,
-              "budget": "$2.5M",
-              "status": "Active"
+              "name": "Comparison Landing Funnel",
+              "channel": "Google Search",
+              "ctr": "2.3%",
+              "roas": 2.8,
+              "budget": "—",
+              "_split": 0.4
             }
           ],
-          "suggestions": [
-            "Moz has lost market share to Semrush and Ahrefs — their churned users are actively evaluating alternatives",
-            "Moz is perceived as the \"old guard\" of SEO — a modern, AI-first positioning captures their disenchanted base",
-            "Moz's local SEO product is strong but underadvertised — local business campaigns targeting Moz customers convert 3.2× better"
-          ],
-          "audiences": [
-            {
-              "label": "SEO Agency Teams 25–45",
-              "pct": 42
-            },
-            {
-              "label": "Local Business Marketers",
-              "pct": 28
-            },
-            {
-              "label": "In-house SEO 28–42",
-              "pct": 18
-            },
-            {
-              "label": "SMB Owners",
-              "pct": 12
-            }
-          ],
-          "topKeywords": [
-            "domain authority checker",
-            "Moz Pro alternative",
-            "local SEO tool",
-            "SEO rank tracker"
-          ],
-          "estimatedROI": "+28% acquisition from Moz's declining market share and churned user base",
+          "audiences": [],
           "adCopy": [
             {
-              "headline": "The Future of SEO Is Automated.",
-              "body": "Modern AI-powered intelligence that identifies opportunities, creates campaigns, and tracks results — built for today."
-            },
-            {
-              "headline": "Marketing Intelligence for the Next Decade.",
-              "body": "Real-time competitive monitoring, AI-generated campaign strategies, and autonomous execution. All in one."
-            },
-            {
-              "headline": "Search Smarter. Rank Higher. Spend Less.",
-              "body": "Intelligent keyword targeting, automated content briefs, and paid campaign generation — connected in one AI platform."
+              "headline": "Trade smarter than Dimension Data",
+              "body": "See why thousands switched from Dimension Data to a faster, lower-fee platform."
             }
-          ]
+          ],
+          "suggestions": [
+            "Outflank Dimension Data on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (Dimension Data vs You) to capture their branded search intent",
+            "Target Dimension Data's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Models diverged sharply (5.6×) — figure is approximate",
+          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
         },
         {
-          "name": "Sprout Social",
-          "url": "sproutsocial.com",
-          "logo": "SS",
-          "traffic": "22M",
-          "ctr": "2.4%",
-          "roas": 3.8,
-          "adSpend": "$14M/mo",
+          "name": "CyberLogic",
+          "domain": "cyberlogic.co.za",
+          "url": "cyberlogic.co.za",
+          "why": "Specializes in IT security consulting with a focus on managed security services and compliance for South African businesses.",
+          "logo": "C",
+          "roas": 2.8,
+          "ctr": "2.5%",
+          "traffic": "45K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "low",
           "topChannel": "LinkedIn Ads",
-          "threatLevel": "low",
-          "trafficMo": 22000000,
+          "topChannels": [
+            "LinkedIn Ads"
+          ],
+          "threatLevel": "high",
           "campaigns": [
             {
-              "name": "Social Media ROI",
-              "channel": "LinkedIn",
-              "ctr": "2.6%",
-              "roas": 4.1,
-              "budget": "$5M",
-              "status": "Active"
+              "name": "Lookalike Audience Push",
+              "channel": "LinkedIn Ads",
+              "ctr": "2.9%",
+              "roas": 3.1,
+              "budget": "—",
+              "_split": 0.6
             },
             {
-              "name": "Enterprise Social",
-              "channel": "Google",
+              "name": "Free Trial Lead Gen",
+              "channel": "LinkedIn Ads",
               "ctr": "2.1%",
-              "roas": 3.6,
-              "budget": "$3M",
-              "status": "Active"
+              "roas": 2.5,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than CyberLogic",
+              "body": "See why thousands switched from CyberLogic to a faster, lower-fee platform."
             }
           ],
           "suggestions": [
-            "Sprout Social is enterprise-priced but SMB-needed — SMB social management at 1/5th the price is a massive gap",
-            "Sprout Social has no ad intelligence features — positioning InfoGenie as the ad-aware social intelligence layer is a direct differentiator",
-            "Sprout Social's price increases in 2023 caused significant SMB churn — target those users specifically with migration offers"
+            "Outflank CyberLogic on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (CyberLogic vs You) to capture their branded search intent",
+            "Target CyberLogic's mid-funnel comparison queries with high-intent landing pages"
           ],
-          "audiences": [
-            {
-              "label": "Social Media Managers 25–40",
-              "pct": 42
-            },
-            {
-              "label": "Enterprise Marketing Teams",
-              "pct": 28
-            },
-            {
-              "label": "Agency Social Teams",
-              "pct": 18
-            },
-            {
-              "label": "Brand Managers",
-              "pct": 12
-            }
-          ],
-          "topKeywords": [
-            "social media analytics",
-            "social media management enterprise",
-            "Sprout Social alternative",
-            "social listening tool"
-          ],
-          "estimatedROI": "+33% win rate from Sprout Social's pricing-driven churn"
+          "aiDetected": true,
+          "dataNotes": "Single-model estimate (GPT-4o only)",
+          "dataOrigin": "GPT-4o: SemRush data · Claude: Industry benchmark"
         },
         {
-          "name": "Buffer",
-          "url": "buffer.com",
-          "logo": "BF",
-          "traffic": "18M",
+          "name": "Securicom",
+          "domain": "securicom.co.za",
+          "url": "securicom.co.za",
+          "why": "Offers IT security consulting services such as vulnerability assessments, penetration testing, and managed security solutions in South Africa.",
+          "logo": "S",
+          "roas": 2.5,
           "ctr": "2.2%",
-          "roas": 3.4,
-          "adSpend": "$6M/mo",
-          "topChannel": "Google Search",
-          "threatLevel": "low",
-          "trafficMo": 18000000,
+          "traffic": "35K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "low",
+          "topChannel": "SEO / Organic",
+          "topChannels": [
+            "SEO / Organic"
+          ],
+          "threatLevel": "medium",
           "campaigns": [
             {
-              "name": "Simple Social Publishing",
-              "channel": "Google",
-              "ctr": "2.8%",
-              "roas": 3.8,
-              "budget": "$2M",
-              "status": "Active"
+              "name": "Retargeting Wave",
+              "channel": "SEO / Organic",
+              "ctr": "2.6%",
+              "roas": 2.8,
+              "budget": "—",
+              "_split": 0.6
             },
             {
-              "name": "Creator Plans",
-              "channel": "Meta",
-              "ctr": "2.4%",
-              "roas": 3.2,
-              "budget": "$1.5M",
-              "status": "Active"
+              "name": "Top-Funnel Display",
+              "channel": "SEO / Organic",
+              "ctr": "1.8%",
+              "roas": 2.2,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than Securicom",
+              "body": "See why thousands switched from Securicom to a faster, lower-fee platform."
             }
           ],
           "suggestions": [
-            "Buffer is a publisher tool only — no competitor intelligence, no ad data, no AI copy generation. InfoGenie's full stack is a direct superior.",
-            "Buffer's creator positioning is niche — target their business users who need analytics and campaign performance beyond just scheduling",
-            "Buffer lacks paid media integration — users who scale past organic social are forced to find other tools, creating a perfect upgrade path"
+            "Outflank Securicom on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (Securicom vs You) to capture their branded search intent",
+            "Target Securicom's mid-funnel comparison queries with high-intent landing pages"
           ],
-          "audiences": [
+          "aiDetected": true,
+          "dataNotes": "Single-model estimate (GPT-4o only)",
+          "dataOrigin": "GPT-4o: Trade-press estimate · Claude: Industry benchmark"
+        },
+        {
+          "name": "BCX",
+          "domain": "bcx.co.za",
+          "url": "bcx.co.za",
+          "why": "Provides IT security consulting services including cybersecurity strategy, risk management, and compliance for enterprises in South Africa.",
+          "logo": "B",
+          "roas": 2.7,
+          "ctr": "2.4%",
+          "traffic": "120K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "low",
+          "topChannel": "Google Search",
+          "topChannels": [
+            "Google Search"
+          ],
+          "threatLevel": "critical",
+          "campaigns": [
             {
-              "label": "Creators & Solopreneurs 22–38",
-              "pct": 46
+              "name": "Awareness Reels Burst",
+              "channel": "Google Search",
+              "ctr": "2.8%",
+              "roas": 3,
+              "budget": "—",
+              "_split": 0.6
             },
             {
-              "label": "Small Marketing Teams",
-              "pct": 28
-            },
-            {
-              "label": "Startup Founders",
-              "pct": 16
-            },
-            {
-              "label": "Non-profits",
-              "pct": 10
+              "name": "High-Intent Keyword Steal",
+              "channel": "Google Search",
+              "ctr": "2.0%",
+              "roas": 2.4,
+              "budget": "—",
+              "_split": 0.4
             }
           ],
-          "topKeywords": [
-            "social media scheduler free",
-            "Buffer alternative",
-            "schedule social posts",
-            "creator social tool"
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than BCX",
+              "body": "See why thousands switched from BCX to a faster, lower-fee platform."
+            }
           ],
-          "estimatedROI": "+24% platform upgrade conversion from Buffer's limited feature ceiling"
+          "suggestions": [
+            "Outflank BCX on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (BCX vs You) to capture their branded search intent",
+            "Target BCX's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Models diverged sharply (5.0×) — figure is approximate",
+          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
+        },
+        {
+          "name": "Galix",
+          "domain": "galix.com",
+          "url": "galix.com",
+          "why": "Focuses on IT security consulting services such as cybersecurity audits, risk assessments, and managed security services in South Africa.",
+          "logo": "G",
+          "roas": "—",
+          "ctr": "—",
+          "traffic": "—",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "low",
+          "topChannel": null,
+          "topChannels": [],
+          "threatLevel": "high",
+          "campaigns": [
+            {
+              "name": "Brand Search Domination",
+              "channel": null,
+              "ctr": "—",
+              "roas": "—",
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "Comparison Landing Funnel",
+              "channel": null,
+              "ctr": "—",
+              "roas": "—",
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than Galix",
+              "body": "See why thousands switched from Galix to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank Galix on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (Galix vs You) to capture their branded search intent",
+            "Target Galix's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Limited public data",
+          "dataOrigin": "GPT-4o: Industry benchmark · Claude: Industry benchmark"
+        },
+        {
+          "name": "First Technology Group",
+          "domain": "firsttech.co.za",
+          "url": "firsttech.co.za",
+          "why": "Delivers IT security consulting services including cybersecurity assessments, compliance, and managed security solutions in South Africa.",
+          "logo": "FT",
+          "roas": 3.2,
+          "ctr": "3.1%",
+          "traffic": "120K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "low",
+          "topChannel": "LinkedIn Ads",
+          "topChannels": [
+            "LinkedIn Ads"
+          ],
+          "threatLevel": "medium",
+          "campaigns": [
+            {
+              "name": "Lookalike Audience Push",
+              "channel": "LinkedIn Ads",
+              "ctr": "3.5%",
+              "roas": 3.5,
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "Free Trial Lead Gen",
+              "channel": "LinkedIn Ads",
+              "ctr": "2.7%",
+              "roas": 2.9,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than First Technology Group",
+              "body": "See why thousands switched from First Technology Group to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank First Technology Group on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (First Technology Group vs You) to capture their branded search intent",
+            "Target First Technology Group's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Single-model estimate (GPT-4o only)",
+          "dataOrigin": "GPT-4o: SemRush data · Claude: Industry benchmark"
+        },
+        {
+          "name": "Datacentrix",
+          "domain": "datacentrix.co.za",
+          "url": "datacentrix.co.za",
+          "why": "Provides IT security consulting services such as cybersecurity strategy, risk management, and compliance for South African businesses.",
+          "logo": "D",
+          "roas": 2.5,
+          "ctr": "2.2%",
+          "traffic": "45K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "low",
+          "topChannel": "SEO / Organic",
+          "topChannels": [
+            "SEO / Organic"
+          ],
+          "threatLevel": "critical",
+          "campaigns": [
+            {
+              "name": "Retargeting Wave",
+              "channel": "SEO / Organic",
+              "ctr": "2.6%",
+              "roas": 2.8,
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "Top-Funnel Display",
+              "channel": "SEO / Organic",
+              "ctr": "1.8%",
+              "roas": 2.2,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than Datacentrix",
+              "body": "See why thousands switched from Datacentrix to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank Datacentrix on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (Datacentrix vs You) to capture their branded search intent",
+            "Target Datacentrix's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Models diverged sharply (3.1×) — figure is approximate",
+          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
+        },
+        {
+          "name": "iOCO",
+          "domain": "ioco.tech",
+          "url": "ioco.tech",
+          "why": "Offers IT security consulting services including risk assessments, penetration testing, and cybersecurity strategy in South Africa.",
+          "logo": "I",
+          "roas": 2.8,
+          "ctr": "2.5%",
+          "traffic": "35K",
+          "adSpend": "—",
+          "dataSource": "AI-estimate",
+          "confidence": "low",
+          "topChannel": "Google Search",
+          "topChannels": [
+            "Google Search"
+          ],
+          "threatLevel": "high",
+          "campaigns": [
+            {
+              "name": "Awareness Reels Burst",
+              "channel": "Google Search",
+              "ctr": "2.9%",
+              "roas": 3.1,
+              "budget": "—",
+              "_split": 0.6
+            },
+            {
+              "name": "High-Intent Keyword Steal",
+              "channel": "Google Search",
+              "ctr": "2.1%",
+              "roas": 2.5,
+              "budget": "—",
+              "_split": 0.4
+            }
+          ],
+          "audiences": [],
+          "adCopy": [
+            {
+              "headline": "Trade smarter than iOCO",
+              "body": "See why thousands switched from iOCO to a faster, lower-fee platform."
+            }
+          ],
+          "suggestions": [
+            "Outflank iOCO on long-tail variations of their core keywords — they over-index on brand terms",
+            "Use comparison content (iOCO vs You) to capture their branded search intent",
+            "Target iOCO's mid-funnel comparison queries with high-intent landing pages"
+          ],
+          "aiDetected": true,
+          "dataNotes": "Models diverged sharply (5.0×) — figure is approximate",
+          "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
         }
       ]
     },
@@ -622,357 +460,259 @@
     },
     "competitors": [
       {
-        "name": "Hootsuite",
-        "url": "hootsuite.com",
-        "logo": "HT",
-        "traffic": "52M",
-        "ctr": "2.4%",
-        "roas": 3.6,
-        "adSpend": "$22M/mo",
-        "topChannel": "Google Search",
-        "threatLevel": "medium",
-        "campaigns": [
-          {
-            "name": "Social Media Management",
-            "channel": "Google",
-            "ctr": "2.8%",
-            "roas": 3.9,
-            "budget": "$8M",
-            "status": "Active"
-          },
-          {
-            "name": "Agency Plan",
-            "channel": "LinkedIn",
-            "ctr": "2.1%",
-            "roas": 3.4,
-            "budget": "$4M",
-            "status": "Active"
-          }
-        ],
-        "suggestions": [
-          "Hootsuite focuses on scheduling — InfoGenie adds competitor intelligence and autonomous optimisation",
-          "Hootsuite's pricing increases have caused mass churn — target former users with migration campaigns",
-          "Hootsuite has no AI ad generation — position as the next evolution of social marketing tools"
-        ],
-        "audiences": [
-          {
-            "label": "Social Media Managers 25–40",
-            "pct": 44
-          },
-          {
-            "label": "Content Teams",
-            "pct": 26
-          },
-          {
-            "label": "SMB Marketers",
-            "pct": 18
-          },
-          {
-            "label": "Agency Teams",
-            "pct": 12
-          }
-        ],
-        "topKeywords": [
-          "social media scheduler",
-          "social media management tool",
-          "content calendar",
-          "social analytics"
-        ],
-        "estimatedROI": "+29% customer acquisition from Hootsuite pricing frustration",
-        "adCopy": [
-          {
-            "headline": "Schedule Smarter. Earn More.",
-            "body": "AI-generated content, competitor insights, and automated publishing — all from one platform that never needs upgrading."
-          },
-          {
-            "headline": "The Marketing Platform That Grows With You.",
-            "body": "Competitor intelligence, campaign execution, and performance tracking — one subscription, infinite value."
-          },
-          {
-            "headline": "Social. Ads. Analytics. Unified.",
-            "body": "One dashboard runs your entire digital marketing operation. Integrates with 50+ ad platforms. Set up in an afternoon."
-          }
-        ]
-      },
-      {
-        "name": "Moz",
-        "url": "moz.com",
-        "logo": "MZ",
-        "traffic": "28M",
-        "ctr": "2.8%",
-        "roas": 3.9,
-        "adSpend": "$10M/mo",
-        "topChannel": "Google Search",
-        "threatLevel": "low",
-        "trafficMo": 28000000,
-        "campaigns": [
-          {
-            "name": "Domain Authority",
-            "channel": "Google",
-            "ctr": "3.1%",
-            "roas": 4.2,
-            "budget": "$3.5M",
-            "status": "Active"
-          },
-          {
-            "name": "Local SEO",
-            "channel": "Meta",
-            "ctr": "2.4%",
-            "roas": 3.6,
-            "budget": "$2.5M",
-            "status": "Active"
-          }
-        ],
-        "suggestions": [
-          "Moz has lost market share to Semrush and Ahrefs — their churned users are actively evaluating alternatives",
-          "Moz is perceived as the \"old guard\" of SEO — a modern, AI-first positioning captures their disenchanted base",
-          "Moz's local SEO product is strong but underadvertised — local business campaigns targeting Moz customers convert 3.2× better"
-        ],
-        "audiences": [
-          {
-            "label": "SEO Agency Teams 25–45",
-            "pct": 42
-          },
-          {
-            "label": "Local Business Marketers",
-            "pct": 28
-          },
-          {
-            "label": "In-house SEO 28–42",
-            "pct": 18
-          },
-          {
-            "label": "SMB Owners",
-            "pct": 12
-          }
-        ],
-        "topKeywords": [
-          "domain authority checker",
-          "Moz Pro alternative",
-          "local SEO tool",
-          "SEO rank tracker"
-        ],
-        "estimatedROI": "+28% acquisition from Moz's declining market share and churned user base",
-        "adCopy": [
-          {
-            "headline": "The Future of SEO Is Automated.",
-            "body": "Modern AI-powered intelligence that identifies opportunities, creates campaigns, and tracks results — built for today."
-          },
-          {
-            "headline": "Marketing Intelligence for the Next Decade.",
-            "body": "Real-time competitive monitoring, AI-generated campaign strategies, and autonomous execution. All in one."
-          },
-          {
-            "headline": "Search Smarter. Rank Higher. Spend Less.",
-            "body": "Intelligent keyword targeting, automated content briefs, and paid campaign generation — connected in one AI platform."
-          }
-        ]
-      },
-      {
-        "name": "Sprout Social",
-        "url": "sproutsocial.com",
-        "logo": "SS",
-        "traffic": "22M",
-        "ctr": "2.4%",
-        "roas": 3.8,
-        "adSpend": "$14M/mo",
+        "name": "CyberLogic",
+        "domain": "cyberlogic.co.za",
+        "url": "cyberlogic.co.za",
+        "why": "Specializes in IT security consulting with a focus on managed security services and compliance for South African businesses.",
+        "logo": "C",
+        "roas": 2.8,
+        "ctr": "2.5%",
+        "traffic": "45K",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "low",
         "topChannel": "LinkedIn Ads",
-        "threatLevel": "low",
-        "trafficMo": 22000000,
-        "campaigns": [
-          {
-            "name": "Social Media ROI",
-            "channel": "LinkedIn",
-            "ctr": "2.6%",
-            "roas": 4.1,
-            "budget": "$5M",
-            "status": "Active"
-          },
-          {
-            "name": "Enterprise Social",
-            "channel": "Google",
-            "ctr": "2.1%",
-            "roas": 3.6,
-            "budget": "$3M",
-            "status": "Active"
-          }
+        "topChannels": [
+          "LinkedIn Ads"
         ],
-        "suggestions": [
-          "Sprout Social is enterprise-priced but SMB-needed — SMB social management at 1/5th the price is a massive gap",
-          "Sprout Social has no ad intelligence features — positioning InfoGenie as the ad-aware social intelligence layer is a direct differentiator",
-          "Sprout Social's price increases in 2023 caused significant SMB churn — target those users specifically with migration offers"
-        ],
-        "audiences": [
-          {
-            "label": "Social Media Managers 25–40",
-            "pct": 42
-          },
-          {
-            "label": "Enterprise Marketing Teams",
-            "pct": 28
-          },
-          {
-            "label": "Agency Social Teams",
-            "pct": 18
-          },
-          {
-            "label": "Brand Managers",
-            "pct": 12
-          }
-        ],
-        "topKeywords": [
-          "social media analytics",
-          "social media management enterprise",
-          "Sprout Social alternative",
-          "social listening tool"
-        ],
-        "estimatedROI": "+33% win rate from Sprout Social's pricing-driven churn"
-      },
-      {
-        "name": "SimilarWeb",
-        "url": "similarweb.com",
-        "logo": "SW",
-        "traffic": "38M",
-        "ctr": "3.1%",
-        "roas": 4.4,
-        "adSpend": "$28M/mo",
-        "topChannel": "LinkedIn Ads",
         "threatLevel": "high",
         "campaigns": [
           {
-            "name": "Traffic Intelligence",
-            "channel": "LinkedIn",
-            "ctr": "2.8%",
-            "roas": 4.8,
-            "budget": "$10M",
-            "status": "Active"
+            "name": "Lookalike Audience Push",
+            "channel": "LinkedIn Ads",
+            "ctr": "2.9%",
+            "roas": 3.1,
+            "budget": "—",
+            "_split": 0.6
           },
           {
-            "name": "Market Research",
-            "channel": "Google",
-            "ctr": "3.4%",
-            "roas": 4.2,
-            "budget": "$8M",
-            "status": "Active"
+            "name": "Free Trial Lead Gen",
+            "channel": "LinkedIn Ads",
+            "ctr": "2.1%",
+            "roas": 2.5,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than CyberLogic",
+            "body": "See why thousands switched from CyberLogic to a faster, lower-fee platform."
           }
         ],
         "suggestions": [
-          "SimilarWeb sells data — position InfoGenie as the platform that converts data into campaigns automatically",
-          "SimilarWeb's enterprise focus leaves SMB underserved — affordable intelligence for SMBs is a gap",
-          "SimilarWeb has no AI generation — \"intelligence to execution in one platform\" is a direct differentiator"
+          "Outflank CyberLogic on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (CyberLogic vs You) to capture their branded search intent",
+          "Target CyberLogic's mid-funnel comparison queries with high-intent landing pages"
         ],
-        "audiences": [
-          {
-            "label": "Enterprise Strategy Teams",
-            "pct": 44
-          },
-          {
-            "label": "Market Researchers",
-            "pct": 26
-          },
-          {
-            "label": "Competitive Intel Teams",
-            "pct": 18
-          },
-          {
-            "label": "Investors",
-            "pct": 12
-          }
-        ],
-        "topKeywords": [
-          "website traffic data",
-          "competitor traffic analysis",
-          "market intelligence",
-          "digital insights"
-        ],
-        "estimatedROI": "+41% conversion via execution-first vs. SimilarWeb data-only positioning",
-        "adCopy": [
-          {
-            "headline": "Insights That Launch Campaigns.",
-            "body": "The market intelligence platform that turns competitor data into live ads — automatically. No analyst required."
-          },
-          {
-            "headline": "Enterprise Intelligence. SMB Price.",
-            "body": "Full competitor traffic, keyword, and ad data from £149/month. Affordable intelligence for every business size."
-          },
-          {
-            "headline": "Stop Watching. Start Acting.",
-            "body": "See what your market is doing — then let AI generate the counter-campaign automatically. From data to live ad in minutes."
-          }
-        ]
+        "aiDetected": true,
+        "dataNotes": "Single-model estimate (GPT-4o only)",
+        "dataOrigin": "GPT-4o: SemRush data · Claude: Industry benchmark"
       },
       {
-        "name": "AdCreative.ai",
-        "url": "adcreative.ai",
-        "logo": "AC",
-        "traffic": "8M",
-        "ctr": "4.2%",
-        "roas": 5.8,
-        "adSpend": "$8M/mo",
-        "topChannel": "Meta Ads",
+        "name": "Securicom",
+        "domain": "securicom.co.za",
+        "url": "securicom.co.za",
+        "why": "Offers IT security consulting services such as vulnerability assessments, penetration testing, and managed security solutions in South Africa.",
+        "logo": "S",
+        "roas": 2.5,
+        "ctr": "2.2%",
+        "traffic": "35K",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "low",
+        "topChannel": "SEO / Organic",
+        "topChannels": [
+          "SEO / Organic"
+        ],
         "threatLevel": "medium",
         "campaigns": [
           {
-            "name": "AI Ad Generation",
-            "channel": "Meta",
-            "ctr": "4.8%",
-            "roas": 6.2,
-            "budget": "$3M",
-            "status": "Active"
+            "name": "Retargeting Wave",
+            "channel": "SEO / Organic",
+            "ctr": "2.6%",
+            "roas": 2.8,
+            "budget": "—",
+            "_split": 0.6
           },
           {
-            "name": "Better Ad Creative",
-            "channel": "Google",
-            "ctr": "3.6%",
-            "roas": 4.8,
-            "budget": "$2M",
-            "status": "Active"
+            "name": "Top-Funnel Display",
+            "channel": "SEO / Organic",
+            "ctr": "1.8%",
+            "roas": 2.2,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than Securicom",
+            "body": "See why thousands switched from Securicom to a faster, lower-fee platform."
           }
         ],
         "suggestions": [
-          "AdCreative.ai only generates — InfoGenie generates AND analyses AND deploys. Lead with full automation.",
-          "AdCreative.ai lacks competitor intelligence integration — position InfoGenie as grounded in real data",
-          "AdCreative.ai's quality is inconsistent — position verified performance benchmarks as your differentiator"
+          "Outflank Securicom on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (Securicom vs You) to capture their branded search intent",
+          "Target Securicom's mid-funnel comparison queries with high-intent landing pages"
         ],
-        "audiences": [
+        "aiDetected": true,
+        "dataNotes": "Single-model estimate (GPT-4o only)",
+        "dataOrigin": "GPT-4o: Trade-press estimate · Claude: Industry benchmark"
+      },
+      {
+        "name": "First Technology Group",
+        "domain": "firsttech.co.za",
+        "url": "firsttech.co.za",
+        "why": "Delivers IT security consulting services including cybersecurity assessments, compliance, and managed security solutions in South Africa.",
+        "logo": "FT",
+        "roas": 3.2,
+        "ctr": "3.1%",
+        "traffic": "120K",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "low",
+        "topChannel": "LinkedIn Ads",
+        "topChannels": [
+          "LinkedIn Ads"
+        ],
+        "threatLevel": "medium",
+        "campaigns": [
           {
-            "label": "Performance Marketers 25–40",
-            "pct": 42
+            "name": "Lookalike Audience Push",
+            "channel": "LinkedIn Ads",
+            "ctr": "3.5%",
+            "roas": 3.5,
+            "budget": "—",
+            "_split": 0.6
           },
           {
-            "label": "Growth Hackers",
-            "pct": 28
-          },
-          {
-            "label": "E-commerce Brands",
-            "pct": 18
-          },
-          {
-            "label": "Ad Agencies",
-            "pct": 12
+            "name": "Free Trial Lead Gen",
+            "channel": "LinkedIn Ads",
+            "ctr": "2.7%",
+            "roas": 2.9,
+            "budget": "—",
+            "_split": 0.4
           }
         ],
-        "topKeywords": [
-          "AI ad generator",
-          "AI ad creative",
-          "auto ad generation",
-          "performance creative"
-        ],
-        "estimatedROI": "+52% platform stickiness with full intelligence-to-execution loop",
+        "audiences": [],
         "adCopy": [
           {
-            "headline": "Intelligence-Grounded Creatives That Convert.",
-            "body": "Every ad backed by real competitor data and performance benchmarks. AI generation with a brain, not just a prompt."
-          },
-          {
-            "headline": "Generate. Analyse. Deploy. Automatically.",
-            "body": "The complete loop from creative concept to live campaign — without any manual steps between."
-          },
-          {
-            "headline": "Performance You Can Predict.",
-            "body": "Every creative scored against real market benchmarks before it goes live. No more guessing what will work."
+            "headline": "Trade smarter than First Technology Group",
+            "body": "See why thousands switched from First Technology Group to a faster, lower-fee platform."
           }
-        ]
+        ],
+        "suggestions": [
+          "Outflank First Technology Group on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (First Technology Group vs You) to capture their branded search intent",
+          "Target First Technology Group's mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "Single-model estimate (GPT-4o only)",
+        "dataOrigin": "GPT-4o: SemRush data · Claude: Industry benchmark"
+      },
+      {
+        "name": "Dimension Data",
+        "domain": "dimensiondata.com",
+        "url": "dimensiondata.com",
+        "why": "Provides IT security consulting services including risk assessments, compliance, and cybersecurity strategy in South Africa.",
+        "logo": "DD",
+        "roas": 3.1,
+        "ctr": "2.7%",
+        "traffic": "350K",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "low",
+        "topChannel": "Google Search",
+        "topChannels": [
+          "Google Search"
+        ],
+        "threatLevel": "critical",
+        "campaigns": [
+          {
+            "name": "Brand Search Domination",
+            "channel": "Google Search",
+            "ctr": "3.1%",
+            "roas": 3.4,
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "Comparison Landing Funnel",
+            "channel": "Google Search",
+            "ctr": "2.3%",
+            "roas": 2.8,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than Dimension Data",
+            "body": "See why thousands switched from Dimension Data to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank Dimension Data on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (Dimension Data vs You) to capture their branded search intent",
+          "Target Dimension Data's mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "Models diverged sharply (5.6×) — figure is approximate",
+        "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
+      },
+      {
+        "name": "Datacentrix",
+        "domain": "datacentrix.co.za",
+        "url": "datacentrix.co.za",
+        "why": "Provides IT security consulting services such as cybersecurity strategy, risk management, and compliance for South African businesses.",
+        "logo": "D",
+        "roas": 2.5,
+        "ctr": "2.2%",
+        "traffic": "45K",
+        "adSpend": "—",
+        "dataSource": "AI-estimate",
+        "confidence": "low",
+        "topChannel": "SEO / Organic",
+        "topChannels": [
+          "SEO / Organic"
+        ],
+        "threatLevel": "critical",
+        "campaigns": [
+          {
+            "name": "Retargeting Wave",
+            "channel": "SEO / Organic",
+            "ctr": "2.6%",
+            "roas": 2.8,
+            "budget": "—",
+            "_split": 0.6
+          },
+          {
+            "name": "Top-Funnel Display",
+            "channel": "SEO / Organic",
+            "ctr": "1.8%",
+            "roas": 2.2,
+            "budget": "—",
+            "_split": 0.4
+          }
+        ],
+        "audiences": [],
+        "adCopy": [
+          {
+            "headline": "Trade smarter than Datacentrix",
+            "body": "See why thousands switched from Datacentrix to a faster, lower-fee platform."
+          }
+        ],
+        "suggestions": [
+          "Outflank Datacentrix on long-tail variations of their core keywords — they over-index on brand terms",
+          "Use comparison content (Datacentrix vs You) to capture their branded search intent",
+          "Target Datacentrix's mid-funnel comparison queries with high-intent landing pages"
+        ],
+        "aiDetected": true,
+        "dataNotes": "Models diverged sharply (3.1×) — figure is approximate",
+        "dataOrigin": "GPT-4o: Similarweb estimate · Claude: Similarweb estimate"
       }
     ],
     "sectorOnly": false,
@@ -981,10 +721,10 @@
   },
   "brandKit": null,
   "lastCompetitorNames": [
-    "Hootsuite",
-    "Moz",
-    "Sprout Social",
-    "SimilarWeb",
-    "AdCreative.ai"
+    "CyberLogic",
+    "Securicom",
+    "First Technology Group",
+    "Dimension Data",
+    "Datacentrix"
   ]
 }
