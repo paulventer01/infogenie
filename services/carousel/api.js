@@ -203,29 +203,45 @@ Rules:
   }
 });
 
-router.get('/list', async (_req, res) => {
+router.get('/list', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, items: [] });
-  const r = await _db.getPool().query(
-    `SELECT id, topic, structure, brand_voice, audience, meta, created_at FROM carousels ORDER BY created_at DESC LIMIT 50`,
-  );
-  res.json({ ok: true, items: r.rows });
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'carousel:list' });
+    const r = await _db.getPool().query(
+      `SELECT id, topic, structure, brand_voice, audience, meta, created_at FROM carousels WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 50`,
+      [tid],
+    );
+    res.json({ ok: true, items: r.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message || 'list failed' });
+  }
 });
 
 router.get('/:id', async (req, res) => {
   if (!_db.hasDb()) return res.status(503).json({ ok: false, error: 'no-db' });
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: 'bad id' });
-  const r = await _db.getPool().query(`SELECT * FROM carousels WHERE id = $1`, [id]);
-  if (!r.rows[0]) return res.status(404).json({ ok: false, error: 'not found' });
-  res.json({ ok: true, item: r.rows[0] });
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'carousel:get' });
+    const r = await _db.getPool().query(`SELECT * FROM carousels WHERE id = $1 AND tenant_id = $2`, [id, tid]);
+    if (!r.rows[0]) return res.status(404).json({ ok: false, error: 'not found' });
+    res.json({ ok: true, item: r.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message || 'get failed' });
+  }
 });
 
 router.delete('/:id', async (req, res) => {
   if (!_db.hasDb()) return res.status(503).json({ ok: false, error: 'no-db' });
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: 'bad id' });
-  await _db.getPool().query(`DELETE FROM carousels WHERE id = $1`, [id]);
-  res.json({ ok: true });
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'carousel:delete' });
+    await _db.getPool().query(`DELETE FROM carousels WHERE id = $1 AND tenant_id = $2`, [id, tid]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message || 'delete failed' });
+  }
 });
 
 module.exports = router;
