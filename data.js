@@ -1566,6 +1566,22 @@ const AD_COPY_DB = {
   });
 })();
 
+// Data-mode (honesty) tagging: INDUSTRY_DB competitor metrics (traffic, ctr,
+// roas, adSpend, campaign budgets, audiences, ROI) are illustrative/estimated
+// figures, not measured from a live source. Stamp every competitor object so
+// the enforcement layer (services/admin/enforcement.js) and the frontend
+// data-mode logic detect them: demo mode badges them, strict mode withholds.
+(function tagSyntheticCompetitors() {
+  Object.values(INDUSTRY_DB).forEach(industry => {
+    (industry.competitors || []).forEach(comp => {
+      if (comp && typeof comp === 'object') {
+        comp.source = 'demo';
+        comp._estimated = true;
+      }
+    });
+  });
+})();
+
 // Generate realistic KPI data based on URL
 function generateWebsiteKPIs(url, industryKey) {
   const hash = url.split('').reduce((a, c) => a + c.charCodeAt(0), 0);

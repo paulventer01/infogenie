@@ -116,7 +116,10 @@ Return ${days} data points (one per day). Make the data realistic and varied.`;
     if (!raw) return res.status(503).json({ ok: false, error: 'No AI provider available' });
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
-    res.json({ ok: true, ...parsed });
+    // Data-mode (honesty): these daily sentiment percentages are LLM-generated
+    // estimates (the prompt asks the model to invent realistic numbers), not
+    // measured from a real social source. Tag so strict mode withholds them.
+    res.json({ ok: true, ...parsed, _estimated: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }

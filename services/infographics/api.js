@@ -79,6 +79,9 @@ function _fallback(topic, layout) {
       label, value: `Step ${i + 1}`, detail: 'Outline the key action for this stage.',
     })),
     takeaway: 'Map every stage to a single owner and a single metric.',
+    // Data-mode (honesty): generic template used when AI is unavailable — not a
+    // real, topic-specific design. Tagged so strict mode withholds it.
+    source: 'template',
   };
 }
 
