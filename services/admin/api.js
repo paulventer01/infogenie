@@ -330,6 +330,48 @@ router.get('/audit', async (req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
+// ── Audit log CSV export ────────────────────────────────────────────────────
+// Streams the FULL filtered history (no 200-row cap) as a downloadable CSV for
+// compliance reviews & support investigations. Honors the same optional filters
+// as GET /audit: ?tenantId= ?action= ?userId=. Same owner/admin gate applies.
+const _csvCell = v => {
+  const s = v == null ? '' : String(v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+};
+router.get('/audit/export', async (req, res) => {
+  try {
+    const params = [], where = [];
+    const tenantId = Number(req.query.tenantId);
+    const userId = Number(req.query.userId);
+    const action = typeof req.query.action === 'string' ? req.query.action.trim() : '';
+    if (Number.isInteger(tenantId)) { params.push(tenantId); where.push(`a.tenant_id=$${params.length}`); }
+    if (Number.isInteger(userId)) { params.push(userId); where.push(`a.target_user_id=$${params.length}`); }
+    if (action) { params.push(action); where.push(`a.action=$${params.length}`); }
+    const r = await _db.getPool().query(`
+      SELECT a.action, a.actor_email, a.actor_user_id, a.target_email, a.target_user_id,
+             a.workspace_name, a.old_role, a.new_role, a.detail, a.created_at,
+             t.name AS tenant_name
+        FROM admin_audit_log a
+        LEFT JOIN tenants t ON t.id = a.tenant_id
+       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+       ORDER BY a.created_at DESC, a.id DESC`, params);
+    const header = ['when', 'action', 'actor email', 'target email', 'workspace', 'old role', 'new role', 'detail'];
+    const lines = [header.map(_csvCell).join(',')];
+    for (const e of r.rows) {
+      const when = e.created_at ? new Date(e.created_at).toISOString() : '';
+      const actor = e.actor_email || (e.actor_user_id ? '#' + e.actor_user_id : '');
+      const target = e.target_email || (e.target_user_id ? '#' + e.target_user_id : '');
+      const workspace = e.workspace_name || e.tenant_name || 'platform';
+      lines.push([when, e.action, actor, target, workspace, e.old_role || '', e.new_role || '', e.detail || '']
+        .map(_csvCell).join(','));
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="audit-log-${stamp}.csv"`);
+    res.send('\uFEFF' + lines.join('\r\n') + '\r\n');
+  } catch (e) { _err(res, 500, e.message); }
+});
+
 // ── Team invites (email a teammate to join a workspace) ─────────────────────
 const _auth = require('../auth/api');
 const INVITE_TTL_MIN = 60 * 24 * 7; // 7 days

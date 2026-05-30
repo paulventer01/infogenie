@@ -30213,6 +30213,7 @@ async function _adminRenderAudit(body) {
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         <select onchange="_adminSetAuditAction(this.value)" style="padding:6px 10px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px;color:#475569">${actionOpts}</select>
         <select onchange="_adminSetAuditTenant(this.value)" style="padding:6px 10px;border:1px solid #E2E8F0;border-radius:7px;font-size:12px;color:#475569">${wsOpts}</select>
+        <button onclick="_adminExportAudit()" title="Export the full filtered history as a CSV file" style="padding:6px 12px;background:#1E293B;border:1px solid #1E293B;border-radius:7px;font-size:12px;font-weight:700;color:#fff;cursor:pointer">⬇️ Download CSV</button>
       </div>
     </div>
     ${entries.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -30242,6 +30243,23 @@ function _adminAuditQs() {
 }
 window._adminSetAuditAction = function(a) { window._adminState.auditAction = a; _adminRenderActive(true); };
 window._adminSetAuditTenant = function(t) { window._adminState.auditTenant = t; _adminRenderActive(true); };
+// Download the full filtered audit history as a CSV. Uses fetch+blob (rather than
+// a raw link) so the session cookie is sent and server errors surface as a toast.
+window._adminExportAudit = async function() {
+  try {
+    const r = await fetch('/api/admin/audit/export' + _adminAuditQs(), {
+      headers: { 'Accept': 'text/csv' }, credentials: 'same-origin' });
+    if (!r.ok) throw new Error('export failed (' + r.status + ')');
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'audit-log-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('✓ Audit log exported');
+  } catch (e) { showToast('⚠️ ' + e.message); }
+};
 
 // ── Issues tab ──────────────────────────────────────────────────────────────
 async function _adminRenderIssues(body) {
