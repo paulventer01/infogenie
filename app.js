@@ -29904,10 +29904,11 @@ window._adminArchiveClient = async function(id) {
 
 // ── Users tab ───────────────────────────────────────────────────────────────
 async function _adminRenderUsers(body) {
-  const [ud, rd, wd] = await Promise.all([ _adminFetch('/users'), _adminFetch('/roles'), _adminFetch('/workspaces') ]);
+  const [ud, rd, wd, vd] = await Promise.all([ _adminFetch('/users'), _adminFetch('/roles'), _adminFetch('/workspaces'), _adminFetch('/invites') ]);
   const users = ud.users || [];
   const roles = rd.roles || [];
   const workspaces = wd.workspaces || [];
+  const invites = vd.invites || [];
   const tenantRoles = roles.filter(r => r.scope === 'tenant');
   window._adminUsersCache = { users, workspaces, tenantRoles };
 
@@ -29943,7 +29944,45 @@ async function _adminRenderUsers(body) {
     </select>`;
   };
 
+  const inviteWsOpts = workspaces.map(w => `<option value="${w.id}">${_esc(w.name)}</option>`).join('');
+  const inviteRoleOpts = tenantRoles.map(r => `<option value="${_esc(r.key)}"${r.key==='marketer'?' selected':''}>${_esc(r.name)}</option>`).join('');
+  const inviteCtl = `
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;padding:16px;margin-bottom:22px">
+      <div style="font-weight:800;color:#1E293B;margin-bottom:4px">Invite a teammate</div>
+      <div style="font-size:12px;color:#94A3B8;margin-bottom:12px">Send an email invite to someone who doesn't have an InfoGenie account yet. They'll set a password and join the workspace in one step.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <input id="inviteEmail" type="email" placeholder="teammate@company.com" style="flex:1;min-width:200px;font-size:13px;padding:8px 11px;border:1px solid #E2E8F0;border-radius:8px" />
+        <select id="inviteWs" style="font-size:13px;padding:8px 11px;border:1px solid #E2E8F0;border-radius:8px">${workspaces.length ? inviteWsOpts : '<option value="">No workspaces</option>'}</select>
+        <select id="inviteRole" style="font-size:13px;padding:8px 11px;border:1px solid #E2E8F0;border-radius:8px">${inviteRoleOpts}</select>
+        <button onclick="_adminSendInvite()" style="border:none;background:linear-gradient(135deg,#0066FF,#00C9C8);color:#fff;border-radius:8px;font-size:13px;font-weight:800;padding:9px 16px;cursor:pointer">Send invite</button>
+      </div>
+    </div>`;
+
+  const inviteRows = invites.map(v => `
+    <tr style="border-top:1px solid #F1F5F9">
+      <td style="padding:10px 16px"><div style="font-weight:700;color:#1E293B">${_esc(v.email)}</div>${v.name?`<div style="font-size:11px;color:#94A3B8">${_esc(v.name)}</div>`:''}</td>
+      <td style="padding:10px 16px;color:#334155">${_esc(v.workspace)}</td>
+      <td style="padding:10px 16px;color:#334155">${_esc(v.role_name||'—')}</td>
+      <td style="padding:10px 16px;font-size:11px;color:#94A3B8">${v.invited_by_email?('by '+_esc(v.invited_by_email)):''}</td>
+      <td style="padding:10px 16px;text-align:right"><button onclick="_adminCancelInvite(${v.tenant_id},${v.user_id})" style="border:1px solid #FECACA;background:#FEF2F2;color:#B91C1C;border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:700">Cancel</button></td>
+    </tr>`).join('');
+  const inviteList = `
+    <div style="font-weight:800;color:#1E293B;margin:0 0 12px">Pending invites (${invites.length})</div>
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;margin-bottom:22px">
+      ${invites.length ? `<table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead style="background:#F8FAFC"><tr>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">EMAIL</th>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">WORKSPACE</th>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">ROLE</th>
+          <th style="text-align:left;padding:10px 16px;color:#64748B;font-size:11px;font-weight:700">INVITED</th>
+          <th style="padding:10px 16px"></th>
+        </tr></thead><tbody>${inviteRows}</tbody></table>`
+      : '<div style="padding:18px;text-align:center;font-size:13px;color:#94A3B8">No pending invites.</div>'}
+    </div>`;
+
   body.innerHTML = `
+    ${inviteCtl}
+    ${inviteList}
     <div style="font-weight:800;color:#1E293B;margin-bottom:12px">Platform users (${users.length})</div>
     <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;margin-bottom:22px">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -29989,6 +30028,24 @@ window._adminAddMember = async function(userId) {
   const roleKey = role && role.value;
   if (!tenantId) { showToast('Pick a workspace first'); return; }
   try { await _adminFetch('/workspaces/' + tenantId + '/members', { method:'POST', body:{ userId, roleKey } }); showToast('✓ Added to workspace'); _adminRenderActive(true); }
+  catch (e) { showToast('⚠️ ' + e.message); }
+};
+window._adminSendInvite = async function() {
+  const email = (document.getElementById('inviteEmail').value || '').trim();
+  const tenantId = Number(document.getElementById('inviteWs').value);
+  const roleKey = document.getElementById('inviteRole').value;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('Enter a valid email'); return; }
+  if (!tenantId) { showToast('Pick a workspace first'); return; }
+  const friendly = { bad_email:'Enter a valid email', bad_role:'Pick a role', workspace_not_found:'Workspace not found', already_member:'That person is already in this workspace' };
+  try {
+    const r = await _adminFetch('/invites', { method:'POST', body:{ email, tenantId, roleKey } });
+    showToast(r.emailSent ? ('✓ Invite emailed to ' + email) : ('Invite created, but email failed: ' + (r.mailError || 'mail not configured')));
+    _adminRenderActive(true);
+  } catch (e) { showToast('⚠️ ' + (friendly[e.message] || e.message)); }
+};
+window._adminCancelInvite = async function(tenantId, userId) {
+  if (!confirm('Cancel this pending invite?')) return;
+  try { await _adminFetch('/invites/' + tenantId + '/' + userId, { method:'DELETE' }); showToast('✓ Invite cancelled'); _adminRenderActive(true); }
   catch (e) { showToast('⚠️ ' + e.message); }
 };
 

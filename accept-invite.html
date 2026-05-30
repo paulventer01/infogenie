@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Accept your invite · InfoGenie</title>
+  <style>
+    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;
+      font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      background:radial-gradient(ellipse at top left,#0066FF22,transparent 60%),
+                 radial-gradient(ellipse at bottom right,#00C9C822,transparent 60%),#0A1628; }
+    .card { width:100%; max-width:420px; background:#fff; border-radius:18px;
+      box-shadow:0 24px 60px rgba(0,0,0,.34); overflow:hidden; }
+    .head { background:linear-gradient(135deg,#0066FF,#00C9C8); color:#fff; padding:24px 28px; text-align:center; }
+    .head h1 { margin:0; font-size:1.35rem; font-weight:800; letter-spacing:-.02em; }
+    .head p  { margin:6px 0 0; font-size:.82rem; opacity:.92; }
+    .body { padding:22px 26px 26px; }
+    label  { display:block; font-size:.72rem; font-weight:700; color:#374151; margin:0 0 5px; }
+    input  { width:100%; box-sizing:border-box; padding:11px 13px; border:1.5px solid #E5E7EB;
+      border-radius:9px; font-size:.9rem; outline:none; }
+    button { width:100%; padding:13px; background:linear-gradient(135deg,#0066FF,#00C9C8);
+      border:none; border-radius:10px; font-size:.92rem; font-weight:800; color:#fff;
+      cursor:pointer; box-shadow:0 6px 18px rgba(0,102,255,.32); margin-top:14px; }
+    button:disabled { opacity:.6; cursor:default; }
+    .err  { display:none; background:#FEE2E2; border:1px solid #FCA5A5; color:#991B1B;
+      padding:9px 12px; border-radius:8px; font-size:.78rem; font-weight:600; margin-top:12px; }
+    .ok   { display:none; background:#ECFDF5; border:1px solid #6EE7B7; color:#065F46;
+      padding:9px 12px; border-radius:8px; font-size:.78rem; font-weight:600; margin-top:12px; }
+    .invite { background:#F1F5FF; border:1px solid #C7D7FF; color:#1E3A8A; border-radius:10px;
+      padding:11px 13px; font-size:.82rem; margin-bottom:16px; line-height:1.45; }
+    .invite b { font-weight:800; }
+    .hint { font-size:.7rem; color:#6B7280; margin-top:6px; }
+    a.back { display:block; text-align:center; margin-top:14px; color:#0066FF;
+      font-size:.78rem; font-weight:700; text-decoration:none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="head">
+      <h1>Accept your invite</h1>
+      <p>Join your team on InfoGenie.</p>
+    </div>
+    <div class="body">
+      <div id="invite" class="invite" style="display:none"></div>
+      <form id="acceptForm" onsubmit="return false">
+        <label for="nm">Your name</label>
+        <input id="nm" type="text" autocomplete="name" placeholder="e.g. Jordan Lee" />
+        <label for="pw" style="margin-top:12px">Choose a password</label>
+        <input id="pw"  type="password" autocomplete="new-password" placeholder="At least 8 characters" />
+        <label for="pw2" style="margin-top:12px">Confirm password</label>
+        <input id="pw2" type="password" autocomplete="new-password" placeholder="Repeat it" />
+        <div class="hint">Use a passphrase you don't reuse elsewhere.</div>
+        <div id="err" class="err"></div>
+        <div id="ok"  class="ok"></div>
+        <button id="submitBtn" type="submit">Accept &amp; create account →</button>
+      </form>
+      <a class="back" href="/">← Back to InfoGenie</a>
+    </div>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const token = params.get('token') || '';
+    const err = document.getElementById('err');
+    const ok  = document.getElementById('ok');
+    const btn = document.getElementById('submitBtn');
+    const inviteBox = document.getElementById('invite');
+    const nmEl = document.getElementById('nm');
+    let hasPassword = false;
+    function show(el, msg){ el.textContent = msg; el.style.display = 'block'; }
+    function hide(el){ el.style.display = 'none'; }
+    function esc(s){ return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    if (!token) show(err, 'Missing invite token in URL. Use the link from the email exactly.');
+
+    async function loadInvite() {
+      if (!token) return;
+      try {
+        const r = await fetch('/api/auth/invite/' + encodeURIComponent(token), { credentials:'same-origin' });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) { show(err, (j && j.error) || 'This invite link is invalid or has expired.'); btn.disabled = true; return; }
+        const inv = j.invite || {};
+        hasPassword = !!inv.hasPassword;
+        if (inv.name) nmEl.value = inv.name;
+        const parts = [];
+        if (inv.email) parts.push('Inviting <b>' + esc(inv.email) + '</b>');
+        if (inv.workspace) parts.push('to <b>' + esc(inv.workspace) + '</b>');
+        if (inv.role) parts.push('as <b>' + esc(inv.role) + '</b>');
+        if (parts.length) { inviteBox.innerHTML = parts.join(' '); inviteBox.style.display = 'block'; }
+      } catch (e) { /* non-fatal — the accept call will surface errors */ }
+    }
+    loadInvite();
+
+    async function submit() {
+      hide(err); hide(ok);
+      const nm  = nmEl.value || '';
+      const pw  = document.getElementById('pw').value || '';
+      const pw2 = document.getElementById('pw2').value || '';
+      if (pw.length < 8)   return show(err, 'Password must be at least 8 characters.');
+      if (pw !== pw2)      return show(err, 'The two passwords don\u2019t match.');
+      if (!token)          return;
+      btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        const r = await fetch('/api/auth/accept-invite/' + encodeURIComponent(token), {
+          method: 'POST', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ password: pw, name: nm })
+        });
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) { show(err, body.error || 'Could not accept invite.');
+                     btn.disabled = false; btn.textContent = 'Accept & create account →'; return; }
+        show(ok, 'You\u2019re in! Redirecting you to InfoGenie…');
+        setTimeout(() => location.href = '/', 900);
+      } catch (e) {
+        show(err, 'Network error — please try again.');
+        btn.disabled = false; btn.textContent = 'Accept & create account →';
+      }
+    }
+    document.getElementById('submitBtn').addEventListener('click', submit);
+    document.getElementById('acceptForm').addEventListener('submit', e => { e.preventDefault(); submit(); });
+  </script>
+</body>
+</html>

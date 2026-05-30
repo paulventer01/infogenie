@@ -234,6 +234,120 @@ router.patch('/users/:id/platform-role', async (req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
+// ── Team invites (email a teammate to join a workspace) ─────────────────────
+const _auth = require('../auth/api');
+const INVITE_TTL_MIN = 60 * 24 * 7; // 7 days
+const _emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// List all pending (status='invited') memberships across workspaces.
+router.get('/invites', async (_req, res) => {
+  try {
+    const r = await _db.getPool().query(`
+      SELECT tu.tenant_id, t.name AS workspace, tu.user_id, u.email, u.name,
+             r.key AS role_key, r.name AS role_name,
+             tu.invited_at, ib.email AS invited_by_email
+        FROM tenant_users tu
+        JOIN tenants t ON t.id = tu.tenant_id AND t.status <> 'deleted'
+        JOIN users u ON u.id = tu.user_id
+        LEFT JOIN roles r ON r.id = tu.role_id
+        LEFT JOIN users ib ON ib.id = tu.invited_by_user_id
+       WHERE tu.status = 'invited'
+       ORDER BY tu.invited_at DESC NULLS LAST`);
+    res.json({ ok: true, invites: r.rows });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+// Send an invite — body { email, tenantId, roleKey }. Creates the user (no
+// password) if needed, records a pending membership, and emails an accept link.
+router.post('/invites', async (req, res) => {
+  const b = req.body || {};
+  const email = String(b.email || '').trim().toLowerCase();
+  const tenantId = Number(b.tenantId);
+  const roleKey = String(b.roleKey || '').trim();
+  if (!_emailRx.test(email)) return _err(res, 400, 'bad_email');
+  if (!Number.isInteger(tenantId)) return _err(res, 400, 'bad_tenant');
+  try {
+    const p = _db.getPool();
+    const role = await p.query(`SELECT id, name, scope FROM roles WHERE tenant_id IS NULL AND key=$1 LIMIT 1`, [roleKey]);
+    if (!role.rows[0] || role.rows[0].scope !== 'tenant') return _err(res, 400, 'bad_role');
+    const tx = await p.query(`SELECT name FROM tenants WHERE id=$1 AND status='active'`, [tenantId]);
+    if (!tx.rows[0]) return _err(res, 404, 'workspace_not_found');
+
+    // Find or create the invitee account (no password until they accept).
+    let user = await _auth.findUserByEmail(email);
+    if (!user) {
+      user = await _auth.createUser({ email, password: null, name: '' });
+    } else {
+      // Already an active member of this exact workspace? Nothing to do.
+      const ex = await p.query(
+        `SELECT status FROM tenant_users WHERE tenant_id=$1 AND user_id=$2`, [tenantId, user.id]);
+      if (ex.rows[0] && ex.rows[0].status === 'active') return _err(res, 409, 'already_member');
+    }
+
+    // Record (or refresh) the pending membership.
+    await p.query(`
+      INSERT INTO tenant_users (tenant_id, user_id, role_id, status, invited_by_user_id, invited_at)
+      VALUES ($1,$2,$3,'invited',$4,now())
+      ON CONFLICT (tenant_id, user_id)
+        DO UPDATE SET role_id=EXCLUDED.role_id, status='invited',
+                      invited_by_user_id=EXCLUDED.invited_by_user_id, invited_at=now()`,
+      [tenantId, user.id, role.rows[0].id, req.user.id]);
+
+    // Mint a workspace-bound invite token + email the accept link (best-effort).
+    const token = await _auth.createInviteToken(user.id, tenantId, INVITE_TTL_MIN);
+    const link = `${_auth.publicBaseUrl(req)}/accept-invite.html?token=${token}`;
+    let mailed = false, mailError = null;
+    try {
+      const tpl = _auth.inviteEmailTemplate({
+        inviterName: req.user.name || req.user.email,
+        workspaceName: tx.rows[0].name,
+        roleName: role.rows[0].name,
+        link,
+      });
+      await _auth.sendMail({ to: email, ...tpl });
+      mailed = true;
+    } catch (e2) {
+      mailError = e2.message;
+      console.warn('[admin/invites] email failed:', e2.message);
+    }
+    res.json({ ok: true, invited: { email, tenantId, userId: user.id }, emailSent: mailed, mailError });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+// Cancel a pending invite — removes the invited membership and tidies up the
+// orphan account if the invitee never accepted anything else.
+router.delete('/invites/:tenantId/:userId', async (req, res) => {
+  const tenantId = Number(req.params.tenantId);
+  const userId = Number(req.params.userId);
+  if (!Number.isInteger(tenantId) || !Number.isInteger(userId)) return _err(res, 400, 'bad_id');
+  try {
+    const p = _db.getPool();
+    const del = await p.query(
+      `DELETE FROM tenant_users WHERE tenant_id=$1 AND user_id=$2 AND status='invited' RETURNING user_id`,
+      [tenantId, userId]);
+    if (!del.rows[0]) return _err(res, 404, 'not_a_pending_invite');
+    // Always revoke the workspace-bound invite token(s) for this exact invite so
+    // a cancelled link can never be accepted (or used as a login vector).
+    await p.query(
+      `DELETE FROM email_tokens WHERE user_id=$1 AND tenant_id=$2 AND purpose='invite' AND consumed_at IS NULL`,
+      [userId, tenantId]);
+    // Any memberships left for this user?
+    const rest = await p.query(`SELECT COUNT(*)::int AS n FROM tenant_users WHERE user_id=$1`, [userId]);
+    if (rest.rows[0].n === 0) {
+      // Orphan with no password and no linked identities → safe to clean up.
+      const u = await p.query(
+        `SELECT (password_hash IS NULL) AS no_pw, is_owner,
+                (SELECT COUNT(*)::int FROM user_identities ui WHERE ui.user_id=u.id) AS idents
+           FROM users u WHERE id=$1`, [userId]);
+      if (u.rows[0] && u.rows[0].no_pw && !u.rows[0].is_owner && u.rows[0].idents === 0) {
+        await p.query(`DELETE FROM email_tokens WHERE user_id=$1 AND consumed_at IS NULL`, [userId]);
+        await p.query(`DELETE FROM users WHERE id=$1`, [userId]);
+      }
+    }
+    res.json({ ok: true });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
 // ── Clients (tenant-scoped) ─────────────────────────────────────────────────
 router.get('/clients', async (req, res) => {
   try {

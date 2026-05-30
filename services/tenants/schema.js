@@ -80,6 +80,13 @@ async function ensureTenantSchema() {
       granted_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
       granted_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+
+    -- 'invite' tokens (in email_tokens) are bound to the specific workspace the
+    -- invite is for, so preview/accept/cancel act on a single invite (not all
+    -- of a user's). Added here because it references tenants(id), which the auth
+    -- schema (which owns email_tokens) creates before tenants exists.
+    ALTER TABLE email_tokens ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE;
+    CREATE INDEX IF NOT EXISTS email_tokens_tenant_idx ON email_tokens (tenant_id);
   `);
 
   await _seedSystemRoles(p);

@@ -2,3 +2,4 @@
 - [Repo navigation quirks](repo-navigation.md) — app.js is ~50k lines; the read tool can mis-report its length — use rg/sed for accurate line numbers.
 - [Frontend cache-busting](frontend-cache-busting.md) — editing app.js is inert for users until the ?v= string in index.html is bumped.
 - [Fabrication tagging audit](fabrication-tagging-audit.md) — what to tag for honesty mode; template-helper false positives (routes already mark); don't tag catalogs/real-data/grounded-LLM.
+- [Team invite flow (security invariants)](team-invites.md) — invite tokens MUST be workspace-bound; cancel must revoke the exact token or a cancelled invite becomes a login vector.

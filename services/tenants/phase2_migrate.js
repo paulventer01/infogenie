@@ -215,7 +215,10 @@ async function runPhase2Migration() {
     // `roles` is intentionally nullable: system role rows are global (tenant_id
     // IS NULL); per-tenant custom roles are scoped (tenant_id IS NOT NULL),
     // partial unique indexes enforce both. Skip it from the strict check.
-    const PHASE2E_NULLABLE_OK = new Set(['roles']);
+    // `email_tokens` is intentionally nullable too: only invite tokens are
+    // workspace-bound (tenant_id NOT NULL); password-reset / email-verify
+    // tokens have no tenant (tenant_id IS NULL). Skip it from the strict check.
+    const PHASE2E_NULLABLE_OK = new Set(['roles', 'email_tokens']);
     const nullable = await pool.query(`
       SELECT table_name FROM information_schema.columns
        WHERE table_schema='public' AND column_name='tenant_id' AND is_nullable='YES'

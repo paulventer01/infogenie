@@ -93,6 +93,23 @@ async function createToken(userId, purpose, ttlMin) {
     [token, userId, purpose, exp]);
   return token;
 }
+// Invite tokens are bound to a specific workspace so they only ever activate
+// the one pending membership they were issued for.
+async function createInviteToken(userId, tenantId, ttlMin) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const exp = new Date(Date.now() + ttlMin * 60_000);
+  await _db.getPool().query(
+    'INSERT INTO email_tokens (token,user_id,purpose,tenant_id,expires_at) VALUES ($1,$2,$3,$4,$5)',
+    [token, userId, 'invite', tenantId, exp]);
+  return token;
+}
+async function consumeInviteToken(token) {
+  const r = await _db.getPool().query(
+    `UPDATE email_tokens SET consumed_at = now()
+     WHERE token=$1 AND purpose='invite' AND consumed_at IS NULL AND expires_at > now()
+     RETURNING user_id, tenant_id`, [token]);
+  return r.rows[0] || null;
+}
 async function consumeToken(token, purpose) {
   const r = await _db.getPool().query(
     `UPDATE email_tokens SET consumed_at = now()
@@ -179,6 +196,24 @@ function _resetEmailTemplate(name, link) {
       <p style="margin:24px 0"><a href="${link}" style="background:#0066FF;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:700">Set new password</a></p>
       <p style="font-size:0.78rem;color:#6B7280">Or paste this link into your browser:<br>${link}</p>
       <p style="font-size:0.74rem;color:#9CA3AF">This link expires in 1 hour. If you didn't ask for a reset, you can safely ignore this email — your password won't be changed.</p>
+    </div>`,
+  };
+}
+
+function _inviteEmailTemplate({ inviterName, workspaceName, roleName, link }) {
+  const safeWs = String(workspaceName || 'a workspace').replace(/[<>&"]/g,'').slice(0,80);
+  const safeInviter = String(inviterName || 'A teammate').replace(/[<>&"]/g,'').slice(0,80);
+  const safeRole = String(roleName || 'a teammate').replace(/[<>&"]/g,'').slice(0,60);
+  return {
+    subject: `You're invited to join ${safeWs} on InfoGenie`,
+    text: `${safeInviter} invited you to join "${safeWs}" on InfoGenie as ${safeRole}.\n\nAccept your invite and set a password here:\n${link}\n\nThe link expires in 7 days. If you weren't expecting this, you can ignore this email.`,
+    html: `<div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:auto;padding:24px">
+      <h2 style="color:#0066FF">You're invited to InfoGenie</h2>
+      <p>${safeInviter} invited you to join <strong>${safeWs}</strong> as <strong>${safeRole}</strong>.</p>
+      <p>Accept the invite below to create your account and set a password.</p>
+      <p style="margin:24px 0"><a href="${link}" style="background:#0066FF;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:700">Accept invite</a></p>
+      <p style="font-size:0.78rem;color:#6B7280">Or paste this link into your browser:<br>${link}</p>
+      <p style="font-size:0.74rem;color:#9CA3AF">This link expires in 7 days. If you weren't expecting this invite, you can safely ignore this email.</p>
     </div>`,
   };
 }
@@ -421,6 +456,84 @@ router.post('/reset-password/:token', async (req, res) => {
   }
 });
 
+// GET /api/auth/invite/:token — preview an invite (who/where) without consuming
+// it, so the accept page can greet the invitee before they set a password.
+router.get('/invite/:token', async (req, res) => {
+  try {
+    if (!_db.hasDb()) return _err(res, 503, 'Database not configured.');
+    const r = await _db.getPool().query(`
+      SELECT et.user_id, u.email, u.name, (u.password_hash IS NOT NULL) AS has_password,
+             t.name AS workspace, rl.name AS role_name
+        FROM email_tokens et
+        JOIN users u ON u.id = et.user_id
+        JOIN tenant_users tu ON tu.user_id = et.user_id AND tu.tenant_id = et.tenant_id AND tu.status='invited'
+        JOIN tenants t ON t.id = tu.tenant_id
+        LEFT JOIN roles rl ON rl.id = tu.role_id
+       WHERE et.token=$1 AND et.purpose='invite' AND et.consumed_at IS NULL AND et.expires_at > now()
+       LIMIT 1`, [req.params.token]);
+    if (!r.rows[0]) return _err(res, 400, 'Invite link is invalid or has expired.');
+    const row = r.rows[0];
+    res.json({ ok:true, invite: {
+      email: row.email, name: row.name || '', hasPassword: !!row.has_password,
+      workspace: row.workspace || null, role: row.role_name || null,
+    }});
+  } catch (e) {
+    console.error('[auth/invite-preview] error:', e);
+    _err(res, 500, 'Server error loading invite.');
+  }
+});
+
+// POST /api/auth/accept-invite/:token — { password, name } body.
+// Consumes an 'invite' token: sets a password (if the account has none),
+// verifies the email, activates the pending workspace membership(s), and logs
+// the invitee straight in.
+router.post('/accept-invite/:token', async (req, res) => {
+  try {
+    if (!_db.hasDb()) return _err(res, 503, 'Database not configured.');
+    const { password, name } = req.body || {};
+    // Peek at the user so we know whether a password is required (brand-new
+    // account) or optional (already has one — they were re-invited). Also
+    // confirm a matching pending membership still exists for the token's
+    // workspace — a cancelled invite has no such row, so we must refuse.
+    const peek = await _db.getPool().query(
+      `SELECT u.id, et.tenant_id, (u.password_hash IS NOT NULL) AS has_password
+         FROM email_tokens et
+         JOIN users u ON u.id = et.user_id
+         JOIN tenant_users tu ON tu.user_id = et.user_id AND tu.tenant_id = et.tenant_id AND tu.status='invited'
+        WHERE et.token=$1 AND et.purpose='invite' AND et.consumed_at IS NULL AND et.expires_at > now()
+        LIMIT 1`, [req.params.token]);
+    if (!peek.rows[0]) return _err(res, 400, 'Invite link is invalid or has expired. Ask for a new one.');
+    const needsPassword = !peek.rows[0].has_password;
+    if (needsPassword && (!password || password.length < 8)) {
+      return _err(res, 400, 'Password must be at least 8 characters.');
+    }
+    const consumed = await consumeInviteToken(req.params.token);
+    if (!consumed) return _err(res, 400, 'Invite link is invalid or has expired. Ask for a new one.');
+    const uid = consumed.user_id;
+    const tenantId = consumed.tenant_id;
+    // Re-check the pending membership now that the token is consumed (defends
+    // against a cancel racing in between the peek and the consume).
+    const mem = await _db.getPool().query(
+      `UPDATE tenant_users SET status='active', joined_at=now()
+         WHERE user_id=$1 AND tenant_id=$2 AND status='invited' RETURNING user_id`, [uid, tenantId]);
+    if (!mem.rows[0]) return _err(res, 400, 'This invite is no longer valid. Ask for a new one.');
+    if (needsPassword || (password && password.length >= 8)) {
+      await setUserPassword(uid, password);
+    }
+    if (typeof name === 'string' && name.trim()) {
+      await _db.getPool().query(`UPDATE users SET name=$1 WHERE id=$2 AND COALESCE(name,'')=''`, [name.trim().slice(0,120), uid]);
+    }
+    await markEmailVerified(uid);
+    const user = await findUserById(uid);
+    await _establishSession(req, user);
+    await touchLastLogin(uid);
+    res.json({ ok:true, user: _publicUser(user) });
+  } catch (e) {
+    console.error('[auth/accept-invite] error:', e);
+    _err(res, 500, 'Server error accepting invite.');
+  }
+});
+
 // GET /api/auth/oauth/:provider/start — kicks off the OAuth flow
 router.get('/oauth/:provider/start', (req, res) => {
   const { provider } = req.params;
@@ -512,4 +625,7 @@ module.exports = {
   requireAuthGuard,
   // DAO + helpers (exported so other tiers can use them later)
   findUserByEmail, findUserById, createUser, countUsers,
+  // Invite flow helpers (used by the Admin Portal to send team invites)
+  createToken, createInviteToken, sendMail: _sendMail, publicBaseUrl: _publicBaseUrl,
+  inviteEmailTemplate: _inviteEmailTemplate,
 };
