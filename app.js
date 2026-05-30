@@ -29896,7 +29896,7 @@ window._adminWsMembersRefresh = async function(id) {
             ? `<select onchange="_adminSetMemberRoleWs(${id},${m.user_id},this.value)" style="font-size:11px;padding:3px 6px;border:1px solid #E2E8F0;border-radius:6px">${tenantRoles.map(r => `<option value="${_esc(r.key)}"${r.key===m.role_key?' selected':''}>${_esc(r.name)}</option>`).join('')}</select>`
             : `<span style="color:#475569;font-size:12px">${_esc(m.role_name||'—')}</span>`);
       const action = pending
-        ? `<button onclick="_adminCancelInviteWs(${id},${m.user_id})" style="border:1px solid #FECACA;background:#FEF2F2;color:#B91C1C;border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:700">Cancel</button>`
+        ? `<button onclick="_adminResendInviteWs(${id},${m.user_id})" style="border:1px solid #BAE6FD;background:#F0F9FF;color:#0369A1;border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:700;margin-right:6px">Resend</button><button onclick="_adminCancelInviteWs(${id},${m.user_id})" style="border:1px solid #FECACA;background:#FEF2F2;color:#B91C1C;border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:700">Cancel</button>`
         : `<button onclick="_adminRemoveMemberWs(${id},${m.user_id})" style="border:1px solid #FECACA;background:#FEF2F2;color:#B91C1C;border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer">Remove</button>`;
       return `<tr style="border-top:1px solid #EEF2F7">
         <td style="padding:8px 12px"><div style="font-weight:700;color:#1E293B;font-size:12.5px">${_esc(name)}</div><div style="font-size:11px;color:#94A3B8">${_esc(m.email)}</div></td>
@@ -29925,6 +29925,17 @@ window._adminCancelInviteWs = async function(tenantId, userId) {
   if (!confirm('Cancel this pending invite?')) return;
   try { await _adminFetch('/invites/' + tenantId + '/' + userId, { method:'DELETE' }); showToast('✓ Invite cancelled'); _adminWsMembersRefresh(tenantId); }
   catch (e) { showToast('⚠️ ' + e.message); }
+};
+
+// Resend a pending invite from within a workspace's member list, then refresh
+// just that list so the expansion stays open. Mirrors _adminResendInvite.
+window._adminResendInviteWs = async function(tenantId, userId) {
+  const friendly = { not_a_pending_invite:'This invite is no longer pending', bad_id:'Invalid invite' };
+  try {
+    const r = await _adminFetch('/invites/' + tenantId + '/' + userId + '/resend', { method:'POST' });
+    showToast(r.emailSent ? ('✓ Invite re-sent to ' + r.email) : ('Invite re-issued, but email failed: ' + (r.mailError || 'mail not configured')));
+    _adminWsMembersRefresh(tenantId);
+  } catch (e) { showToast('⚠️ ' + (friendly[e.message] || e.message)); }
 };
 
 // Remove an active member from within a workspace's member list, then refresh.
