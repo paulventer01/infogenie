@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safeAsync(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[chatbot]', e.stack || e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
@@ -96,7 +97,8 @@ router.post('/generate', _safeAsync(async (req, res) => {
 
 router.get('/configs', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok:true, configs:[] });
-  const r = await _db.getPool().query('SELECT id, brand, tone, greeting, accent, created_at FROM chatbot_configs ORDER BY created_at DESC LIMIT 30');
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'chatbot_builder:configs' });
+  const r = await _db.getPool().query('SELECT id, brand, tone, greeting, accent, created_at FROM chatbot_configs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30', [tid]);
   res.json({ ok:true, configs: r.rows });
 }));
 
@@ -104,7 +106,8 @@ router.get('/configs/:id', _safeAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id) || id <= 0) return _err(res, 400, 'invalid id');
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 404, 'not found');
-  const r = await _db.getPool().query('SELECT * FROM chatbot_configs WHERE id=$1', [id]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'chatbot_builder:config' });
+  const r = await _db.getPool().query('SELECT * FROM chatbot_configs WHERE id=$1 AND tenant_id=$2', [id, tid]);
   if (!r.rows.length) return _err(res, 404, 'not found');
   res.json({ ok:true, config: r.rows[0] });
 }));

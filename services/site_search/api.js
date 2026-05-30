@@ -5,6 +5,9 @@
 const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
+const _tenantCtx = require('../tenants/context');
+
+async function _tid(req, label) { return await _tenantCtx.resolveTenantId(req, { label }); }
 
 async function ensureSchema() {
   if (!_db.hasDb()) return;
@@ -47,9 +50,10 @@ router.post('/event', express.json({ limit:'2kb' }), async (req, res) => {
 router.get('/insights/:slug?', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, top: [], zeroResults: [], total: 0 });
   try {
+    const tid = await _tid(req, 'site-search:insights');
     const slug = req.params.slug || null;
-    const filter = slug ? `WHERE page_slug = $1` : '';
-    const args = slug ? [slug] : [];
+    const filter = slug ? `WHERE tenant_id = $1 AND page_slug = $2` : `WHERE tenant_id = $1`;
+    const args = slug ? [tid, slug] : [tid];
     const top = await _db.getPool().query(
       `SELECT query, COUNT(*)::int AS searches, AVG(result_count)::int AS avg_results,
               SUM(CASE WHEN result_count=0 THEN 1 ELSE 0 END)::int AS zero_hits
@@ -57,7 +61,7 @@ router.get('/insights/:slug?', async (req, res) => {
          GROUP BY query ORDER BY searches DESC LIMIT 50`, args);
     const zr = await _db.getPool().query(
       `SELECT query, COUNT(*)::int AS searches FROM site_search_events
-         ${filter ? filter + ' AND' : 'WHERE'} result_count = 0
+         ${filter} AND result_count = 0
          GROUP BY query ORDER BY searches DESC LIMIT 30`, args);
     const total = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM site_search_events ${filter}`, args);
     res.json({

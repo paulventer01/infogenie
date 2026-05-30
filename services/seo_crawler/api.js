@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const _https = require('https');
 const _http = require('http');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 const { isUrlSafeToFetch } = require('../_shared/ssrf');
 const { runAudit } = require('../seo_auditor/api');
 
@@ -157,8 +158,10 @@ router.post('/run', _safeAsync(async (req, res) => {
 
 router.get('/runs', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, runs: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-crawler:runs' });
   const r = await _db.getPool().query(
-    `SELECT id, root_url, max_pages, page_count, avg_score, site_grade, status, started_at, completed_at FROM seo_crawl_runs ORDER BY started_at DESC LIMIT 40`
+    `SELECT id, root_url, max_pages, page_count, avg_score, site_grade, status, started_at, completed_at FROM seo_crawl_runs WHERE tenant_id = $1 ORDER BY started_at DESC LIMIT 40`,
+    [tid]
   );
   res.json({ ok: true, runs: r.rows });
 }));
@@ -166,10 +169,11 @@ router.get('/runs', _safeAsync(async (req, res) => {
 router.get('/runs/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database unavailable');
   const id = req.params.id;
-  const meta = await _db.getPool().query(`SELECT * FROM seo_crawl_runs WHERE id=$1`, [id]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-crawler:run-get' });
+  const meta = await _db.getPool().query(`SELECT * FROM seo_crawl_runs WHERE id=$1 AND tenant_id=$2`, [id, tid]);
   if (!meta.rowCount) return _err(res, 404, 'Run not found');
   const pages = await _db.getPool().query(
-    `SELECT url, score, grade, summary, checks FROM seo_crawl_pages WHERE run_id=$1 ORDER BY score ASC, url ASC`, [id]
+    `SELECT url, score, grade, summary, checks FROM seo_crawl_pages WHERE run_id=$1 AND tenant_id=$2 ORDER BY score ASC, url ASC`, [id, tid]
   );
   const live = _runs.get(id);
   const aggregate = _aggregateInsights(pages.rows);
@@ -188,8 +192,9 @@ router.get('/runs/:id', _safeAsync(async (req, res) => {
 router.get('/runs/:id/export.csv', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database unavailable');
   const id = req.params.id;
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-crawler:export-csv' });
   const r = await _db.getPool().query(
-    `SELECT url, score, grade, summary FROM seo_crawl_pages WHERE run_id=$1 ORDER BY score ASC, url ASC`, [id]
+    `SELECT url, score, grade, summary FROM seo_crawl_pages WHERE run_id=$1 AND tenant_id=$2 ORDER BY score ASC, url ASC`, [id, tid]
   );
   const csvEscape = (v) => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const header = ['url','score','grade','passed','warned','failed'];
@@ -234,7 +239,9 @@ router.post('/runs/:id/import-tasks', _safeAsync(async (req, res) => {
 
 router.delete('/runs/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database unavailable');
-  await _db.getPool().query(`DELETE FROM seo_crawl_runs WHERE id=$1`, [req.params.id]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-crawler:run-delete' });
+  await _db.getPool().query(`DELETE FROM seo_crawl_pages WHERE run_id=$1 AND tenant_id=$2`, [req.params.id, tid]);
+  await _db.getPool().query(`DELETE FROM seo_crawl_runs WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
   _runs.delete(req.params.id);
   res.json({ ok: true });
 }));

@@ -13,6 +13,9 @@
 const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
+const _tenantCtx = require('../tenants/context');
+
+async function _tid(req, label) { return await _tenantCtx.resolveTenantId(req, { label }); }
 
 const GRAPH = 'https://graph.facebook.com/v19.0';
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
@@ -169,14 +172,15 @@ router.post('/webhook', express.raw({ type: '*/*', limit: '2mb' }), async (req, 
 });
 
 // ── Threads ──────────────────────────────────────────────────────────────────
-router.get('/threads', async (_req, res) => {
+router.get('/threads', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, threads: [] });
   try {
+    const tid = await _tid(req, 'whatsapp:threads');
     const r = await _db.getPool().query(`
       SELECT c.wa_id, c.name, c.last_at, c.unread_count,
-             (SELECT body FROM wa_messages m WHERE m.wa_id=c.wa_id ORDER BY created_at DESC LIMIT 1) AS preview
-      FROM wa_contacts c ORDER BY c.last_at DESC LIMIT 100
-    `);
+             (SELECT body FROM wa_messages m WHERE m.wa_id=c.wa_id AND m.tenant_id=$1 ORDER BY created_at DESC LIMIT 1) AS preview
+      FROM wa_contacts c WHERE c.tenant_id=$1 ORDER BY c.last_at DESC LIMIT 100
+    `, [tid]);
     res.json({ ok:true, threads: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -184,31 +188,34 @@ router.get('/threads', async (_req, res) => {
 router.get('/thread/:wa', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, messages: [] });
   try {
-    await _db.getPool().query(`UPDATE wa_contacts SET unread_count=0 WHERE wa_id=$1`, [req.params.wa]);
+    const tid = await _tid(req, 'whatsapp:thread');
+    await _db.getPool().query(`UPDATE wa_contacts SET unread_count=0 WHERE wa_id=$1 AND tenant_id=$2`, [req.params.wa, tid]);
     const r = await _db.getPool().query(
-      `SELECT direction, body, template, status, message_id, created_at FROM wa_messages WHERE wa_id=$1 ORDER BY created_at ASC LIMIT 500`,
-      [req.params.wa]
+      `SELECT direction, body, template, status, message_id, created_at FROM wa_messages WHERE wa_id=$1 AND tenant_id=$2 ORDER BY created_at ASC LIMIT 500`,
+      [req.params.wa, tid]
     );
     res.json({ ok:true, messages: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
 
-router.get('/stats', async (_req, res) => {
+router.get('/stats', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, totalIn:0, totalOut:0, contacts:0, last24h:0 });
   try {
-    const out = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_messages WHERE direction='out'`);
-    const inn = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_messages WHERE direction='in'`);
-    const c   = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_contacts`);
-    const r24 = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_messages WHERE created_at > now() - interval '24 hours'`);
+    const tid = await _tid(req, 'whatsapp:stats');
+    const out = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_messages WHERE direction='out' AND tenant_id=$1`, [tid]);
+    const inn = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_messages WHERE direction='in' AND tenant_id=$1`, [tid]);
+    const c   = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_contacts WHERE tenant_id=$1`, [tid]);
+    const r24 = await _db.getPool().query(`SELECT COUNT(*)::int AS n FROM wa_messages WHERE created_at > now() - interval '24 hours' AND tenant_id=$1`, [tid]);
     res.json({ ok:true, totalOut: out.rows[0].n, totalIn: inn.rows[0].n, contacts: c.rows[0].n, last24h: r24.rows[0].n });
   } catch (e) { _err(res, 500, e.message); }
 });
 
 // ── Templates: list / save / delete ──────────────────────────────────────────
-router.get('/templates', async (_req, res) => {
+router.get('/templates', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, templates: [] });
   try {
-    const r = await _db.getPool().query(`SELECT id, name, category, language, body, var_count, is_meta_approved, created_at FROM wa_templates ORDER BY created_at DESC LIMIT 200`);
+    const tid = await _tid(req, 'whatsapp:templates');
+    const r = await _db.getPool().query(`SELECT id, name, category, language, body, var_count, is_meta_approved, created_at FROM wa_templates WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 200`, [tid]);
     res.json({ ok:true, templates: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -235,8 +242,11 @@ router.post('/templates', async (req, res) => {
 
 router.delete('/templates/:id', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 500, 'No DB');
-  try { await _db.getPool().query(`DELETE FROM wa_templates WHERE id=$1`, [req.params.id]); res.json({ ok:true }); }
-  catch (e) { _err(res, 500, e.message); }
+  try {
+    const tid = await _tid(req, 'whatsapp:template-delete');
+    await _db.getPool().query(`DELETE FROM wa_templates WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
+    res.json({ ok:true });
+  } catch (e) { _err(res, 500, e.message); }
 });
 
 // ── Bulk send: render template body with vars and send to many recipients ────
@@ -316,10 +326,11 @@ router.post('/send-bulk', async (req, res) => {
   })().catch(e => console.error('[whatsapp bulk]', e.message));
 });
 
-router.get('/campaigns', async (_req, res) => {
+router.get('/campaigns', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, campaigns: [] });
   try {
-    const r = await _db.getPool().query(`SELECT id, name, template_name, total, sent, failed, status, created_at, finished_at FROM wa_campaigns ORDER BY created_at DESC LIMIT 50`);
+    const tid = await _tid(req, 'whatsapp:campaigns');
+    const r = await _db.getPool().query(`SELECT id, name, template_name, total, sent, failed, status, created_at, finished_at FROM wa_campaigns WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 50`, [tid]);
     res.json({ ok:true, campaigns: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });

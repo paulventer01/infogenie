@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function pool() { return _db.getPool(); }
 
@@ -115,8 +116,10 @@ Return 8-12 stories from the last 14 days. Be specific about publications (TechC
 router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, history: [] });
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'media_intel:history' });
     const r = await pool().query(
-      `SELECT id, brand, competitors, summary, created_at FROM media_intel_scans ORDER BY created_at DESC LIMIT 20`
+      `SELECT id, brand, competitors, summary, created_at FROM media_intel_scans WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 20`,
+      [tid]
     );
     res.json({ ok: true, history: r.rows });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -126,7 +129,8 @@ router.get('/history', async (req, res) => {
 router.get('/scan/:id', async (req, res) => {
   if (!_db.hasDb()) return res.status(404).json({ ok: false });
   try {
-    const r = await pool().query(`SELECT * FROM media_intel_scans WHERE id=$1`, [req.params.id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'media_intel:scan-get' });
+    const r = await pool().query(`SELECT * FROM media_intel_scans WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
     if (!r.rows.length) return res.status(404).json({ ok: false, error: 'Not found' });
     const row = r.rows[0];
     res.json({ ok: true, brand: row.brand, ...row.results, created_at: row.created_at });

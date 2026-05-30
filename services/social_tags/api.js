@@ -9,6 +9,9 @@ const _http = require('http');
 const _db = require('../../db');
 const { isUrlSafeToFetch } = require('../_shared/ssrf');
 const _headless = require('../_shared/headless_fetch');
+const _tenantCtx = require('../tenants/context');
+
+async function _tid(req, label) { return await _tenantCtx.resolveTenantId(req, { label }); }
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safeAsync(h) {
@@ -190,15 +193,18 @@ router.post('/run', _safeAsync(async (req, res) => {
 
 router.get('/runs', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, runs: [] });
+  const tid = await _tid(req, 'social-tags:runs');
   const r = await _db.getPool().query(
-    `SELECT id, url, score, grade, summary, created_at FROM social_tags_runs ORDER BY created_at DESC LIMIT 30`
+    `SELECT id, url, score, grade, summary, created_at FROM social_tags_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30`,
+    [tid]
   );
   res.json({ ok: true, runs: r.rows });
 }));
 
 router.get('/runs/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database unavailable');
-  const r = await _db.getPool().query(`SELECT * FROM social_tags_runs WHERE id=$1`, [req.params.id]);
+  const tid = await _tid(req, 'social-tags:run-get');
+  const r = await _db.getPool().query(`SELECT * FROM social_tags_runs WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
   if (!r.rowCount) return _err(res, 404, 'Run not found');
   res.json({ ok: true, run: r.rows[0] });
 }));

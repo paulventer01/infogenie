@@ -16,6 +16,7 @@
 const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 // Fetch + snapshot must use the SAME cardinality, otherwise rows past the cap
@@ -218,9 +219,10 @@ function startCron() {
 }
 
 // ── Routes ───────────────────────────────────────────────────────────────────
-router.get('/domains', async (_req, res) => {
+router.get('/domains', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, monitors: [] });
-  const r = await _db.getPool().query(`SELECT * FROM backlink_monitors ORDER BY id DESC`);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'backlink_monitor:domains' });
+  const r = await _db.getPool().query(`SELECT * FROM backlink_monitors WHERE tenant_id=$1 ORDER BY id DESC`, [tid]);
   res.json({ ok: true, monitors: r.rows });
 });
 
@@ -248,21 +250,24 @@ router.post('/domains', async (req, res) => {
 
 router.delete('/domains/:id', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
-  await _db.getPool().query(`DELETE FROM backlink_monitors WHERE id=$1`, [parseInt(req.params.id, 10)]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'backlink_monitor:delete-domain' });
+  await _db.getPool().query(`DELETE FROM backlink_monitors WHERE id=$1 AND tenant_id=$2`, [parseInt(req.params.id, 10), tid]);
   res.json({ ok: true });
 });
 
 router.get('/changes', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, changes: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'backlink_monitor:changes' });
   const monitorId = parseInt(req.query.monitor_id, 10);
   const type = ['new','lost'].includes(req.query.type) ? req.query.type : null;
   const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 100));
   const params = [];
   const where = [];
-  if (Number.isFinite(monitorId)) { params.push(monitorId); where.push(`monitor_id = $${params.length}`); }
-  if (type) { params.push(type); where.push(`change_type = $${params.length}`); }
+  params.push(tid); where.push(`m.tenant_id = $${params.length}`);
+  if (Number.isFinite(monitorId)) { params.push(monitorId); where.push(`c.monitor_id = $${params.length}`); }
+  if (type) { params.push(type); where.push(`c.change_type = $${params.length}`); }
   const sql = `SELECT c.*, m.domain FROM backlink_changes c JOIN backlink_monitors m ON m.id=c.monitor_id
-               ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+               WHERE ${where.join(' AND ')}
                ORDER BY c.detected_at DESC LIMIT ${limit}`;
   const r = await _db.getPool().query(sql, params);
   res.json({ ok: true, changes: r.rows });

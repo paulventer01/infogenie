@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safeAsync(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[glassdoor]', e.stack || e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
@@ -75,7 +76,8 @@ router.post('/scan', _safeAsync(async (req, res) => {
 
 router.get('/runs', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok:true, runs:[] });
-  const r = await _db.getPool().query('SELECT id, company, overall_rating, ceo_approval, recommend_pct, total_reviews, culture_signals, created_at FROM glassdoor_runs ORDER BY created_at DESC LIMIT 30');
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'glassdoor:runs' });
+  const r = await _db.getPool().query('SELECT id, company, overall_rating, ceo_approval, recommend_pct, total_reviews, culture_signals, created_at FROM glassdoor_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30', [tid]);
   res.json({ ok:true, runs: r.rows });
 }));
 

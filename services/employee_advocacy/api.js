@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
 const crypto  = require('crypto');
+const _tenantCtx = require('../tenants/context');
 
 function pool() { return _db.getPool(); }
 
@@ -9,7 +10,8 @@ function pool() { return _db.getPool(); }
 router.get('/posts', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, posts: [] });
   try {
-    const r = await pool().query(`SELECT * FROM advocacy_posts ORDER BY created_at DESC`);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'advocacy:posts' });
+    const r = await pool().query(`SELECT * FROM advocacy_posts WHERE tenant_id=$1 ORDER BY created_at DESC`, [tid]);
     res.json({ ok: true, posts: r.rows });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -49,7 +51,8 @@ router.put('/posts/:id', async (req, res) => {
 router.delete('/posts/:id', async (req, res) => {
   if (!_db.hasDb()) return res.status(503).json({ ok: false, error: 'No DB' });
   try {
-    await pool().query(`DELETE FROM advocacy_posts WHERE id=$1`, [req.params.id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'advocacy:delete-post' });
+    await pool().query(`DELETE FROM advocacy_posts WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -58,7 +61,8 @@ router.delete('/posts/:id', async (req, res) => {
 router.get('/share-keys', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, keys: [] });
   try {
-    const r = await pool().query(`SELECT * FROM advocacy_share_keys ORDER BY created_at DESC`);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'advocacy:share-keys' });
+    const r = await pool().query(`SELECT * FROM advocacy_share_keys WHERE tenant_id=$1 ORDER BY created_at DESC`, [tid]);
     res.json({ ok: true, keys: r.rows });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -81,7 +85,8 @@ router.post('/share-keys', async (req, res) => {
 router.delete('/share-keys/:key', async (req, res) => {
   if (!_db.hasDb()) return res.status(503).json({ ok: false, error: 'No DB' });
   try {
-    await pool().query(`DELETE FROM advocacy_share_keys WHERE share_key=$1`, [req.params.key]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'advocacy:delete-share-key' });
+    await pool().query(`DELETE FROM advocacy_share_keys WHERE share_key=$1 AND tenant_id=$2`, [req.params.key, tid]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -116,9 +121,11 @@ router.post('/log-share', async (req, res) => {
 router.get('/stats', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, stats: [] });
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'advocacy:stats' });
     const r = await pool().query(
       `SELECT post_id, platform, COUNT(*) as shares
-       FROM advocacy_shares GROUP BY post_id, platform ORDER BY post_id`
+       FROM advocacy_shares WHERE tenant_id=$1 GROUP BY post_id, platform ORDER BY post_id`,
+      [tid]
     );
     res.json({ ok: true, stats: r.rows });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }

@@ -10,6 +10,7 @@
 const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const ALLOWED_DEPTHS = new Set([10, 25, 50, 75, 100]);
 const ALLOWED_TYPES  = new Set(['lp', 'bio']);
@@ -74,10 +75,11 @@ router.get('/page/:type/:slug', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, depths: {}, sessions: 0 });
   if (!ALLOWED_TYPES.has(req.params.type)) return _err(res, 400, 'bad type');
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'scroll-tracker:page' });
     const r = await _db.getPool().query(
       `SELECT depth, COUNT(*)::int AS hits, COUNT(DISTINCT session_id)::int AS sessions
-         FROM scroll_events WHERE page_type=$1 AND page_slug=$2 GROUP BY depth ORDER BY depth`,
-      [req.params.type, req.params.slug]
+         FROM scroll_events WHERE page_type=$1 AND page_slug=$2 AND tenant_id=$3 GROUP BY depth ORDER BY depth`,
+      [req.params.type, req.params.slug, tid]
     );
     const depths = {};
     r.rows.forEach(row => { depths[row.depth] = { hits: row.hits, sessions: row.sessions }; });
@@ -94,13 +96,14 @@ router.get('/page/:type/:slug', async (req, res) => {
 });
 
 // ─── DASHBOARD: leaderboard across all pages ────────────────────────────────
-router.get('/summary', async (_req, res) => {
+router.get('/summary', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, pages: [] });
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'scroll-tracker:summary' });
     const r = await _db.getPool().query(`
       WITH per AS (
         SELECT page_type, page_slug, depth, COUNT(DISTINCT session_id)::int AS sessions
-          FROM scroll_events WHERE created_at > now() - interval '90 days'
+          FROM scroll_events WHERE created_at > now() - interval '90 days' AND tenant_id = $1
           GROUP BY page_type, page_slug, depth
       )
       SELECT page_type, page_slug,
@@ -109,7 +112,7 @@ router.get('/summary', async (_req, res) => {
              COALESCE(MAX(sessions) FILTER (WHERE depth=100), 0) AS s100
         FROM per GROUP BY page_type, page_slug
         ORDER BY s10 DESC LIMIT 50
-    `);
+    `, [tid]);
     res.json({
       ok: true,
       pages: r.rows.map(row => ({

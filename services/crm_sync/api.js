@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const _err = (res, code, msg) => res.status(code).json({ ok: false, error: msg });
 
@@ -201,9 +202,11 @@ router.post('/push', async (req, res) => {
 router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, history: [] });
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'crm_sync:history' });
     const { rows } = await _db.getPool().query(
       `SELECT id,provider,operation,contacts_total,contacts_ok,contacts_failed,status,error,created_at
-       FROM crm_sync_logs ORDER BY created_at DESC LIMIT 50`
+       FROM crm_sync_logs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 50`,
+      [tid]
     );
     res.json({ ok: true, history: rows });
   } catch(e) { _err(res, 500, e.message); }

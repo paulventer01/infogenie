@@ -4,6 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
+
+async function _tid(req, label) { return await _tenantCtx.resolveTenantId(req, { label }); }
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safeAsync(h) {
@@ -77,9 +80,11 @@ router.post('/generate', _safeAsync(async (req, res) => {
 // GET /api/voiceover/list — last 50
 router.get('/list', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, items: [] });
+  const tid = await _tid(req, 'voiceover:list');
   const r = await _db.getPool().query(
     `SELECT id, label, voice, model, char_count, mp3_url, created_at
-       FROM voiceover_runs ORDER BY created_at DESC LIMIT 50`
+       FROM voiceover_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 50`,
+    [tid]
   );
   res.json({ ok: true, items: r.rows });
 }));

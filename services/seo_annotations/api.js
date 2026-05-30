@@ -7,6 +7,7 @@
 const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const ALLOWED_TAGS = ['content','technical','onpage','backlink','redesign','launch','outage','other'];
 
@@ -51,10 +52,12 @@ router.post('/log', async (req, res) => {
 router.get('/list', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, annotations: [] });
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-annotations:list' });
     const since = req.query.since ? new Date(req.query.since) : null;
     const urlFilter = req.query.url ? String(req.query.url) : null;
     const tagFilter = req.query.tag ? String(req.query.tag) : null;
     const cond = []; const args = [];
+    args.push(tid); cond.push(`tenant_id = $${args.length}`);
     if (since && !Number.isNaN(since.getTime())) { args.push(since.toISOString()); cond.push(`occurred_at >= $${args.length}`); }
     if (urlFilter) { args.push(urlFilter); cond.push(`$${args.length} = ANY(urls)`); }
     if (tagFilter && ALLOWED_TAGS.includes(tagFilter)) { args.push(tagFilter); cond.push(`tag = $${args.length}`); }
@@ -73,7 +76,8 @@ router.get('/list', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'database not available');
   try {
-    await _db.getPool().query(`DELETE FROM seo_annotations WHERE id=$1`, [Number(req.params.id)]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-annotations:delete' });
+    await _db.getPool().query(`DELETE FROM seo_annotations WHERE id=$1 AND tenant_id=$2`, [Number(req.params.id), tid]);
     res.json({ ok:true });
   } catch (e) { _err(res, 500, e.message); }
 });

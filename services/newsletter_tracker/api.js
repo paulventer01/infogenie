@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safeAsync(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[newsletter]', e.stack || e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
@@ -56,7 +57,8 @@ router.get('/test', (req, res) => res.json({ ok:true, firecrawl: _hasFirecrawl()
 
 router.get('/targets', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok:true, targets:[] });
-  const r = await _db.getPool().query('SELECT * FROM newsletter_targets ORDER BY created_at DESC');
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'newsletter:targets' });
+  const r = await _db.getPool().query('SELECT * FROM newsletter_targets WHERE tenant_id=$1 ORDER BY created_at DESC', [tid]);
   res.json({ ok:true, targets: r.rows });
 }));
 
@@ -77,7 +79,8 @@ router.post('/targets', _safeAsync(async (req, res) => {
 
 router.delete('/targets/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 400, 'DATABASE_URL required');
-  await _db.getPool().query('DELETE FROM newsletter_targets WHERE id=$1', [parseInt(req.params.id, 10)]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'newsletter:target-delete' });
+  await _db.getPool().query('DELETE FROM newsletter_targets WHERE id=$1 AND tenant_id=$2', [parseInt(req.params.id, 10), tid]);
   res.json({ ok:true });
 }));
 
@@ -107,7 +110,8 @@ router.post('/scan/:id', _safeAsync(async (req, res) => {
 
 router.get('/history/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok:true, issues:[] });
-  const r = await _db.getPool().query('SELECT * FROM newsletter_issues WHERE target_id=$1 ORDER BY captured_at DESC LIMIT 50', [parseInt(req.params.id, 10)]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'newsletter:history' });
+  const r = await _db.getPool().query('SELECT * FROM newsletter_issues WHERE target_id=$1 AND tenant_id=$2 ORDER BY captured_at DESC LIMIT 50', [parseInt(req.params.id, 10), tid]);
   res.json({ ok:true, issues: r.rows });
 }));
 

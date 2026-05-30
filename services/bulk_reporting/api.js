@@ -17,6 +17,7 @@ const multer = require('multer');
 const { PassThrough } = require('stream');
 const archiver = require('archiver');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 const { runAudit } = require('../seo_auditor/api');
 const { streamPdf } = require('../exports/pdf_report');
 
@@ -226,11 +227,13 @@ router.post('/run', _upload.single('file'), async (req, res) => {
   res.json({ ok: true, runId, total: urls.length, name });
 });
 
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, runs: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'bulk_reporting:list' });
   const r = await _db.getPool().query(
     `SELECT id, name, status, total, completed, failed, created_at, finished_at
-       FROM bulk_audit_runs ORDER BY id DESC LIMIT 50`,
+       FROM bulk_audit_runs WHERE tenant_id=$1 ORDER BY id DESC LIMIT 50`,
+    [tid],
   );
   res.json({ ok: true, runs: r.rows });
 });
@@ -239,13 +242,14 @@ router.get('/:id', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'bulk_reporting:get' });
   const pool = _db.getPool();
-  const r = await pool.query(`SELECT * FROM bulk_audit_runs WHERE id=$1`, [id]);
+  const r = await pool.query(`SELECT * FROM bulk_audit_runs WHERE id=$1 AND tenant_id=$2`, [id, tid]);
   if (!r.rows.length) return _err(res, 404, 'not found');
   const items = await pool.query(
     `SELECT id, url, status, score, grade, passed, warned, failed, error, processed_at
-       FROM bulk_audit_items WHERE run_id=$1 ORDER BY id LIMIT 1000`,
-    [id],
+       FROM bulk_audit_items WHERE run_id=$1 AND tenant_id=$2 ORDER BY id LIMIT 1000`,
+    [id, tid],
   );
   res.json({ ok: true, run: r.rows[0], items: items.rows });
 });
@@ -254,18 +258,20 @@ router.delete('/:id', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const id = parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) return _err(res, 400, 'bad id');
-  await _db.getPool().query(`DELETE FROM bulk_audit_runs WHERE id=$1`, [id]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'bulk_reporting:delete' });
+  await _db.getPool().query(`DELETE FROM bulk_audit_runs WHERE id=$1 AND tenant_id=$2`, [id, tid]);
   res.json({ ok: true });
 });
 
 router.get('/:id/csv', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const id = parseInt(req.params.id, 10);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'bulk_reporting:csv' });
   const pool = _db.getPool();
   const r = await pool.query(
     `SELECT url, status, score, grade, passed, warned, failed, error, processed_at, report_json
-       FROM bulk_audit_items WHERE run_id=$1 ORDER BY id`,
-    [id],
+       FROM bulk_audit_items WHERE run_id=$1 AND tenant_id=$2 ORDER BY id`,
+    [id, tid],
   );
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', `attachment; filename="bulk-audit-${id}.csv"`);
@@ -290,13 +296,14 @@ router.get('/:id/csv', async (req, res) => {
 router.get('/:id/zip', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const id = parseInt(req.params.id, 10);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'bulk_reporting:zip' });
   const pool = _db.getPool();
-  const run = await pool.query(`SELECT name FROM bulk_audit_runs WHERE id=$1`, [id]);
+  const run = await pool.query(`SELECT name FROM bulk_audit_runs WHERE id=$1 AND tenant_id=$2`, [id, tid]);
   if (!run.rows.length) return _err(res, 404, 'not found');
   const items = await pool.query(
     `SELECT url, score, grade, passed, warned, failed, processed_at, report_json
-       FROM bulk_audit_items WHERE run_id=$1 AND status='done' AND report_json IS NOT NULL ORDER BY id`,
-    [id],
+       FROM bulk_audit_items WHERE run_id=$1 AND tenant_id=$2 AND status='done' AND report_json IS NOT NULL ORDER BY id`,
+    [id, tid],
   );
   if (!items.rows.length) return _err(res, 409, 'no completed items yet');
   const brand = await _loadBrand();

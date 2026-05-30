@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const _err = (res, code, msg) => res.status(code).json({ ok: false, error: msg });
 const _key = () => process.env.HUNTER_API_KEY || '';
@@ -135,13 +136,17 @@ router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, history: [] });
   const type = ['domain','finder','verifier'].includes(req.query.type) ? req.query.type : null;
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'hunter:history' });
+    const params = [tid];
+    let typeClause = '';
+    if (type) { params.push(type); typeClause = ` AND type=$${params.length}`; }
     const { rows } = await _db.getPool().query(
       `SELECT id,type,query,created_at,
               result->>'total' AS total_emails,
               result->>'email' AS found_email,
               result->>'status' AS verify_status
-       FROM hunter_searches ${type ? "WHERE type=$1" : ''} ORDER BY created_at DESC LIMIT 50`,
-      type ? [type] : []
+       FROM hunter_searches WHERE tenant_id=$1${typeClause} ORDER BY created_at DESC LIMIT 50`,
+      params
     );
     res.json({ ok: true, history: rows });
   } catch(e) { _err(res, 500, e.message); }

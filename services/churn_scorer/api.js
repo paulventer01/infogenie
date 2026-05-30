@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safeAsync(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[churn]', e.stack || e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
@@ -96,8 +97,9 @@ router.post('/bulk', _safeAsync(async (req, res) => {
 
 router.get('/scores', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok:true, scores:[] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'churn_scorer:scores' });
   const minScore = parseInt(req.query.min || 0, 10);
-  const r = await _db.getPool().query('SELECT contact_email, contact_name, score, risk_level, signals, recommendation, created_at FROM churn_scores WHERE score >= $1 ORDER BY score DESC, created_at DESC LIMIT 200', [minScore]);
+  const r = await _db.getPool().query('SELECT contact_email, contact_name, score, risk_level, signals, recommendation, created_at FROM churn_scores WHERE score >= $1 AND tenant_id=$2 ORDER BY score DESC, created_at DESC LIMIT 200', [minScore, tid]);
   res.json({ ok:true, scores: r.rows });
 }));
 

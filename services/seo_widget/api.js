@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 const { runAudit } = require('../seo_auditor/api');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
@@ -20,9 +21,10 @@ router.get('/test', (req, res) => res.json({ ok: true, db: _db.hasDb && _db.hasD
 // Manage sites
 router.get('/sites', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, sites: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-widget:sites' });
   const r = await _db.getPool().query(`SELECT id, name, accent, cta_text, owner_email, created_at,
-      (SELECT COUNT(*) FROM seo_widget_leads l WHERE l.site_id = s.id) AS lead_count
-    FROM seo_widget_sites s ORDER BY created_at DESC LIMIT 50`);
+      (SELECT COUNT(*) FROM seo_widget_leads l WHERE l.site_id = s.id AND l.tenant_id = $1) AS lead_count
+    FROM seo_widget_sites s WHERE s.tenant_id = $1 ORDER BY created_at DESC LIMIT 50`, [tid]);
   res.json({ ok: true, sites: r.rows });
 }));
 
@@ -42,15 +44,18 @@ router.post('/sites', _safeAsync(async (req, res) => {
 
 router.delete('/sites/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database required.');
-  await _db.getPool().query(`DELETE FROM seo_widget_sites WHERE id=$1`, [req.params.id]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-widget:site-delete' });
+  await _db.getPool().query(`DELETE FROM seo_widget_leads WHERE site_id=$1 AND tenant_id=$2`, [req.params.id, tid]);
+  await _db.getPool().query(`DELETE FROM seo_widget_sites WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
   res.json({ ok: true });
 }));
 
 router.get('/sites/:id/leads', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, leads: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'seo-widget:leads' });
   const r = await _db.getPool().query(
-    `SELECT id, email, url, score, grade, created_at FROM seo_widget_leads WHERE site_id=$1 ORDER BY created_at DESC LIMIT 200`,
-    [req.params.id]
+    `SELECT id, email, url, score, grade, created_at FROM seo_widget_leads WHERE site_id=$1 AND tenant_id=$2 ORDER BY created_at DESC LIMIT 200`,
+    [req.params.id, tid]
   );
   res.json({ ok: true, leads: r.rows });
 }));

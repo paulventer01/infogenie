@@ -8,6 +8,7 @@ const express = require('express');
 const router  = express.Router();
 const _https  = require('https');
 const _db     = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safe(h) {
@@ -343,8 +344,10 @@ router.post('/auto-optimize', _safe(async (req, res) => {
 // GET /api/content-score/runs
 router.get('/runs', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, runs: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'content_score:runs' });
   const r = await _db.getPool().query(
-    `SELECT id, url, keyword, score, created_at FROM content_score_runs ORDER BY created_at DESC LIMIT 30`
+    `SELECT id, url, keyword, score, created_at FROM content_score_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30`,
+    [tid]
   );
   res.json({ ok: true, runs: r.rows });
 }));

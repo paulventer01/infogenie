@@ -12,6 +12,9 @@
 const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
+const _tenantCtx = require('../tenants/context');
+
+async function _tid(req, label) { return await _tenantCtx.resolveTenantId(req, { label }); }
 
 const VAPI = 'https://api.vapi.ai';
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
@@ -225,17 +228,19 @@ router.post('/webhook', express.json({ limit:'2mb' }), async (req, res) => {
   }
 });
 
-router.get('/calls', async (_req, res) => {
+router.get('/calls', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, calls: [] });
   try {
-    const r = await _db.getPool().query(`SELECT id, vapi_call_id, to_number, lead_name, goal, status, outcome, duration_sec, summary, recording_url, created_at, ended_at, direction FROM voice_calls ORDER BY created_at DESC LIMIT 100`);
+    const tid = await _tid(req, 'voice-caller:calls');
+    const r = await _db.getPool().query(`SELECT id, vapi_call_id, to_number, lead_name, goal, status, outcome, duration_sec, summary, recording_url, created_at, ended_at, direction FROM voice_calls WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 100`, [tid]);
     res.json({ ok:true, calls: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
 
 router.get('/call/:id', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 404, 'No DB');
-  const r = await _db.getPool().query(`SELECT * FROM voice_calls WHERE id=$1 OR vapi_call_id=$1 LIMIT 1`, [req.params.id]);
+  const tid = await _tid(req, 'voice-caller:call-get');
+  const r = await _db.getPool().query(`SELECT * FROM voice_calls WHERE (id=$1 OR vapi_call_id=$1) AND tenant_id=$2 LIMIT 1`, [req.params.id, tid]);
   if (!r.rows[0]) return _err(res, 404, 'Not found');
   res.json({ ok:true, call: r.rows[0] });
 });

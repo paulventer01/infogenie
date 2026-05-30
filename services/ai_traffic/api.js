@@ -12,6 +12,7 @@ const express = require('express');
 const router  = express.Router();
 const crypto  = require('crypto');
 const _db     = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safe(h) {
@@ -85,15 +86,17 @@ router.post('/sites', _safe(async (req, res) => {
 // ── GET /api/ai-traffic/sites ────────────────────────────────────────────────
 router.get('/sites', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, sites: [] });
-  const r = await _db.getPool().query(`SELECT id, name, domain, created_at FROM ai_traffic_sites ORDER BY created_at DESC`);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'ai_traffic:sites' });
+  const r = await _db.getPool().query(`SELECT id, name, domain, created_at FROM ai_traffic_sites WHERE tenant_id=$1 ORDER BY created_at DESC`, [tid]);
   res.json({ ok: true, sites: r.rows });
 }));
 
 // ── DELETE /api/ai-traffic/sites/:id ────────────────────────────────────────
 router.delete('/sites/:id', _safe(async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'DB unavailable');
-  await _db.getPool().query(`DELETE FROM ai_traffic_sites WHERE id=$1`, [req.params.id]);
-  await _db.getPool().query(`DELETE FROM ai_traffic_hits WHERE site_id=$1`, [req.params.id]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'ai_traffic:delete-site' });
+  await _db.getPool().query(`DELETE FROM ai_traffic_sites WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
+  await _db.getPool().query(`DELETE FROM ai_traffic_hits WHERE site_id=$1 AND tenant_id=$2`, [req.params.id, tid]);
   res.json({ ok: true });
 }));
 
@@ -151,11 +154,12 @@ router.get('/stats', _safe(async (req, res) => {
 
   const pool = _db.getPool();
   const since = new Date(Date.now() - days * 86400000).toISOString();
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'ai_traffic:stats' });
 
   const [totRow, srcRow, dayRow] = await Promise.all([
-    pool.query(`SELECT COUNT(*) AS n FROM ai_traffic_hits WHERE site_id=$1 AND ts>=$2`, [sid, since]),
-    pool.query(`SELECT source, COUNT(*) AS hits FROM ai_traffic_hits WHERE site_id=$1 AND ts>=$2 GROUP BY source ORDER BY hits DESC`, [sid, since]),
-    pool.query(`SELECT DATE(ts) AS day, source, COUNT(*) AS hits FROM ai_traffic_hits WHERE site_id=$1 AND ts>=$2 GROUP BY day, source ORDER BY day`, [sid, since]),
+    pool.query(`SELECT COUNT(*) AS n FROM ai_traffic_hits WHERE site_id=$1 AND ts>=$2 AND tenant_id=$3`, [sid, since, tid]),
+    pool.query(`SELECT source, COUNT(*) AS hits FROM ai_traffic_hits WHERE site_id=$1 AND ts>=$2 AND tenant_id=$3 GROUP BY source ORDER BY hits DESC`, [sid, since, tid]),
+    pool.query(`SELECT DATE(ts) AS day, source, COUNT(*) AS hits FROM ai_traffic_hits WHERE site_id=$1 AND ts>=$2 AND tenant_id=$3 GROUP BY day, source ORDER BY day`, [sid, since, tid]),
   ]);
 
   const total = parseInt(totRow.rows[0]?.n || 0, 10);
@@ -169,7 +173,7 @@ router.get('/stats', _safe(async (req, res) => {
 
   // Trend vs previous period
   const prevSince = new Date(Date.now() - 2 * days * 86400000).toISOString();
-  const prevRow = await pool.query(`SELECT COUNT(*) AS n FROM ai_traffic_hits WHERE site_id=$1 AND ts>=$2 AND ts<$3`, [sid, prevSince, since]);
+  const prevRow = await pool.query(`SELECT COUNT(*) AS n FROM ai_traffic_hits WHERE site_id=$1 AND ts>=$2 AND ts<$3 AND tenant_id=$4`, [sid, prevSince, since, tid]);
   const prevTotal = parseInt(prevRow.rows[0]?.n || 0, 10);
   const trend = prevTotal > 0 ? Math.round(((total - prevTotal) / prevTotal) * 100) : null;
 

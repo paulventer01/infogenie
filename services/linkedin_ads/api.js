@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const _err = (res, code, msg) => res.status(code).json({ ok: false, error: msg });
 
@@ -110,10 +111,12 @@ Return ONLY valid JSON with this exact structure — no extra text:
 router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, history: [] });
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'linkedin_ads:history' });
     const { rows } = await _db.getPool().query(
       `SELECT id, company, created_at,
               result->>'overview' AS overview
-       FROM linkedin_ad_searches ORDER BY created_at DESC LIMIT 30`
+       FROM linkedin_ad_searches WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 30`,
+      [tid]
     );
     res.json({ ok: true, history: rows });
   } catch(e) { _err(res, 500, e.message); }

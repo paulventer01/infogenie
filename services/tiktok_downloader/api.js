@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
+
+async function _tid(req, label) { return await _tenantCtx.resolveTenantId(req, { label }); }
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safeAsync(h) {
@@ -189,12 +192,15 @@ router.post('/parse', _safeAsync(async (req, res) => {
 // GET /api/tiktok-downloader/recent — last 50 successful downloads
 router.get('/recent', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, items: [] });
+  const tid = await _tid(req, 'tiktok-downloader:recent');
   const r = await _db.getPool().query(
     `SELECT id, url, author, caption, hashtags, music, likes, views, comments, shares,
             duration_sec, video_url, cover_url, created_at
        FROM tiktok_downloads
+      WHERE tenant_id=$1
       ORDER BY created_at DESC
-      LIMIT 50`
+      LIMIT 50`,
+    [tid]
   );
   res.json({ ok: true, items: r.rows });
 }));

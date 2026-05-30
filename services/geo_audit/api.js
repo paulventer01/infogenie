@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const _https = require('https');
 const _http = require('http');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 const { isUrlSafeToFetch } = require('../_shared/ssrf');
 const _headless = require('../_shared/headless_fetch');
 
@@ -243,15 +244,18 @@ router.post('/run', _safeAsync(async (req, res) => {
 
 router.get('/runs', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, runs: [] });
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'geo_audit:runs' });
   const r = await _db.getPool().query(
-    `SELECT id, url, score, grade, summary, created_at FROM geo_audit_runs ORDER BY created_at DESC LIMIT 30`
+    `SELECT id, url, score, grade, summary, created_at FROM geo_audit_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30`,
+    [tid]
   );
   res.json({ ok: true, runs: r.rows });
 }));
 
 router.get('/runs/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database unavailable');
-  const r = await _db.getPool().query(`SELECT * FROM geo_audit_runs WHERE id=$1`, [req.params.id]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'geo_audit:run' });
+  const r = await _db.getPool().query(`SELECT * FROM geo_audit_runs WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
   if (!r.rowCount) return _err(res, 404, 'Run not found');
   res.json({ ok: true, run: r.rows[0] });
 }));

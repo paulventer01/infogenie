@@ -1,6 +1,7 @@
 const express = require('express');
 const _db = require('../../db');
 const _https = require('https');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 const VALID_STATUS = ['prospect','contacted','negotiating','active','declined','inactive'];
@@ -39,16 +40,17 @@ function _normalize(p = {}) {
 router.get('/', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'influencers:list' });
     const status = req.query.status && VALID_STATUS.includes(req.query.status) ? req.query.status : null;
     const platform = req.query.platform && VALID_PLATFORMS.includes(req.query.platform) ? req.query.platform : null;
     const search = req.query.q ? '%' + String(req.query.q).slice(0, 100).toLowerCase() + '%' : null;
-    const params = []; const where = [];
+    const params = [tid]; const where = [`tenant_id=$1`];
     if (status)   { params.push(status);   where.push(`status=$${params.length}`); }
     if (platform) { params.push(platform); where.push(`platform=$${params.length}`); }
     if (search)   { params.push(search);   where.push(`(LOWER(handle) LIKE $${params.length} OR LOWER(COALESCE(name,'')) LIKE $${params.length} OR LOWER(COALESCE(niche,'')) LIKE $${params.length})`); }
-    const sql = `SELECT * FROM influencers ${where.length?'WHERE '+where.join(' AND '):''} ORDER BY followers DESC NULLS LAST, id DESC LIMIT 500`;
+    const sql = `SELECT * FROM influencers WHERE ${where.join(' AND ')} ORDER BY followers DESC NULLS LAST, id DESC LIMIT 500`;
     const r = await _db.getPool().query(sql, params);
-    const stats = await _db.getPool().query(`SELECT status, COUNT(*)::int AS c, COALESCE(SUM(deal_value),0) AS v FROM influencers GROUP BY status`);
+    const stats = await _db.getPool().query(`SELECT status, COUNT(*)::int AS c, COALESCE(SUM(deal_value),0) AS v FROM influencers WHERE tenant_id=$1 GROUP BY status`, [tid]);
     res.json({ ok:true, influencers: r.rows, stats: stats.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -56,9 +58,10 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const id = _id(req, res); if (!id) return;
   try {
-    const r = await _db.getPool().query(`SELECT * FROM influencers WHERE id=$1`, [id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'influencers:get' });
+    const r = await _db.getPool().query(`SELECT * FROM influencers WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     if (!r.rows[0]) return _err(res, 404, 'not found');
-    const out = await _db.getPool().query(`SELECT * FROM influencer_outreach WHERE influencer_id=$1 ORDER BY created_at DESC LIMIT 100`, [id]);
+    const out = await _db.getPool().query(`SELECT * FROM influencer_outreach WHERE influencer_id=$1 AND tenant_id=$2 ORDER BY created_at DESC LIMIT 100`, [id, tid]);
     res.json({ ok:true, influencer: r.rows[0], outreach: out.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -105,7 +108,9 @@ router.patch('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   const id = _id(req, res); if (!id) return;
-  try { await _db.getPool().query(`DELETE FROM influencers WHERE id=$1`, [id]); res.json({ ok:true }); }
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'influencers:delete' });
+    await _db.getPool().query(`DELETE FROM influencers WHERE id=$1 AND tenant_id=$2`, [id, tid]); res.json({ ok:true }); }
   catch (e) { _err(res, 500, e.message); }
 });
 
@@ -129,7 +134,9 @@ router.delete('/:id/outreach/:oid', async (req, res) => {
   const id = _id(req, res); if (!id) return;
   const oid = Number(req.params.oid);
   if (!Number.isFinite(oid) || oid <= 0) return _err(res, 400, 'bad oid');
-  try { await _db.getPool().query(`DELETE FROM influencer_outreach WHERE id=$1 AND influencer_id=$2`, [oid, id]); res.json({ ok:true }); }
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'influencers:delete-outreach' });
+    await _db.getPool().query(`DELETE FROM influencer_outreach WHERE id=$1 AND influencer_id=$2 AND tenant_id=$3`, [oid, id, tid]); res.json({ ok:true }); }
   catch (e) { _err(res, 500, e.message); }
 });
 

@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
 const crypto  = require('crypto');
+const _tenantCtx = require('../tenants/context');
 
 const _err = (res, code, msg) => res.status(code).json({ ok:false, error: msg });
 
@@ -40,11 +41,13 @@ async function _sendEmail({ to, toName, subject, html, text, fromName, fromEmail
 router.get('/broadcasts', async (req, res) => {
   if (!_hasDb()) return res.json({ ok:true, broadcasts:[], note:'Database not configured.' });
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'email_broadcast:list' });
     const { rows } = await _pool().query(
       `SELECT id,name,subject,from_name,from_email,status,recipient_count,sent_count,
               open_count,click_count,bounce_count,complaint_count,unsubscribe_count,
               created_at,sent_at
-       FROM email_broadcasts ORDER BY created_at DESC LIMIT 100`
+       FROM email_broadcasts WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 100`,
+      [tid]
     );
     res.json({ ok:true, broadcasts: rows });
   } catch(e) { _err(res, 500, e.message); }
@@ -73,7 +76,8 @@ router.get('/broadcasts/:id', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return _err(res, 400, 'invalid id');
   try {
-    const { rows } = await _pool().query('SELECT * FROM email_broadcasts WHERE id=$1', [id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'email_broadcast:get' });
+    const { rows } = await _pool().query('SELECT * FROM email_broadcasts WHERE id=$1 AND tenant_id=$2', [id, tid]);
     if (!rows.length) return _err(res, 404, 'broadcast not found');
     const bc = rows[0];
     // Compute open/click/bounce rates
@@ -113,7 +117,8 @@ router.delete('/broadcasts/:id', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return _err(res, 400, 'invalid id');
   try {
-    await _pool().query('DELETE FROM email_broadcasts WHERE id=$1', [id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'email_broadcast:delete' });
+    await _pool().query('DELETE FROM email_broadcasts WHERE id=$1 AND tenant_id=$2', [id, tid]);
     res.json({ ok:true });
   } catch(e) { _err(res, 500, e.message); }
 });
@@ -174,20 +179,22 @@ router.get('/broadcasts/:id/recipients', async (req, res) => {
   const statusFilter = req.query.status;
   const allowed = ['queued','sent','opened','clicked','bounced','complained','unsubscribed'];
   try {
-    const params = [id, limit, offset];
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'email_broadcast:recipients' });
+    const params = [id, limit, offset, tid];
     let where = '';
     if (statusFilter && allowed.includes(statusFilter)) {
-      where = ` AND status=$4`;
+      where = ` AND status=$5`;
       params.push(statusFilter);
     }
     const { rows } = await _pool().query(
       `SELECT id,email,name,status,sent_at,opened_at,clicked_at,bounced_at FROM email_broadcast_recipients
-       WHERE broadcast_id=$1 ${where} ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+       WHERE broadcast_id=$1 AND tenant_id=$4 ${where} ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
       params
     );
+    const hasStatus = statusFilter && allowed.includes(statusFilter);
     const { rows: cnt } = await _pool().query(
-      `SELECT COUNT(*) AS total FROM email_broadcast_recipients WHERE broadcast_id=$1 ${where.replace('$4','$2')}`,
-      statusFilter && allowed.includes(statusFilter) ? [id, statusFilter] : [id]
+      `SELECT COUNT(*) AS total FROM email_broadcast_recipients WHERE broadcast_id=$1 AND tenant_id=$2${hasStatus ? ' AND status=$3' : ''}`,
+      hasStatus ? [id, tid, statusFilter] : [id, tid]
     );
     res.json({ ok:true, recipients: rows, total: parseInt(cnt[0].total, 10) });
   } catch(e) { _err(res, 500, e.message); }
@@ -261,14 +268,15 @@ router.get('/broadcasts/:id/stats', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return _err(res, 400, 'invalid id');
   try {
-    const { rows } = await _pool().query('SELECT * FROM email_broadcasts WHERE id=$1', [id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'email_broadcast:stats' });
+    const { rows } = await _pool().query('SELECT * FROM email_broadcasts WHERE id=$1 AND tenant_id=$2', [id, tid]);
     if (!rows.length) return _err(res, 404, 'broadcast not found');
     const bc = rows[0];
     const s = bc.sent_count || 0;
     // Status breakdown
     const { rows: breakdown } = await _pool().query(
-      `SELECT status, COUNT(*) AS cnt FROM email_broadcast_recipients WHERE broadcast_id=$1 GROUP BY status`,
-      [id]
+      `SELECT status, COUNT(*) AS cnt FROM email_broadcast_recipients WHERE broadcast_id=$1 AND tenant_id=$2 GROUP BY status`,
+      [id, tid]
     );
     const byStatus = {};
     for (const r of breakdown) byStatus[r.status] = parseInt(r.cnt, 10);

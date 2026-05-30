@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
+
+async function _tid(req, label) { return await _tenantCtx.resolveTenantId(req, { label }); }
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safeAsync(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[twitter-pulse]', e.stack || e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
@@ -65,7 +68,8 @@ router.post('/scan', _safeAsync(async (req, res) => {
 
 router.get('/runs', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok:true, runs:[] });
-  const r = await _db.getPool().query('SELECT id, brand, keywords, total_tweets, pos_count, neu_count, neg_count, viral_thread_count, created_at FROM twitter_pulse_runs ORDER BY created_at DESC LIMIT 30');
+  const tid = await _tid(req, 'twitter-pulse:runs');
+  const r = await _db.getPool().query('SELECT id, brand, keywords, total_tweets, pos_count, neu_count, neg_count, viral_thread_count, created_at FROM twitter_pulse_runs WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 30', [tid]);
   res.json({ ok:true, runs: r.rows });
 }));
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safeAsync(h) {
@@ -243,13 +244,15 @@ router.post('/save', _safeAsync(async (req, res) => {
 
 router.get('/list', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, blocks: [] });
-  const r = await _db.getPool().query(`SELECT id, name, type, fields, jsonld, created_at FROM schema_blocks ORDER BY created_at DESC LIMIT 100`);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'schema-generator:list' });
+  const r = await _db.getPool().query(`SELECT id, name, type, fields, jsonld, created_at FROM schema_blocks WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 100`, [tid]);
   res.json({ ok: true, blocks: r.rows });
 }));
 
 router.delete('/:id', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database required.');
-  await _db.getPool().query(`DELETE FROM schema_blocks WHERE id=$1`, [parseInt(req.params.id, 10)]);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'schema-generator:delete' });
+  await _db.getPool().query(`DELETE FROM schema_blocks WHERE id=$1 AND tenant_id=$2`, [parseInt(req.params.id, 10), tid]);
   res.json({ ok: true });
 }));
 
