@@ -76,7 +76,7 @@ router.post('/', async (req, res) => {
       INSERT INTO influencers (tenant_id, handle, platform, name, bio, niche, country, followers, engagement_rate,
         contact_email, contact_phone, profile_url, status, tags, owner, deal_value, notes)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-      ON CONFLICT (platform, handle) DO UPDATE SET
+      ON CONFLICT (tenant_id, platform, handle) DO UPDATE SET
         name=EXCLUDED.name, bio=EXCLUDED.bio, niche=EXCLUDED.niche, country=EXCLUDED.country,
         followers=EXCLUDED.followers, engagement_rate=EXCLUDED.engagement_rate,
         contact_email=EXCLUDED.contact_email, contact_phone=EXCLUDED.contact_phone, profile_url=EXCLUDED.profile_url,

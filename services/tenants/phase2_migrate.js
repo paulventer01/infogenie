@@ -32,12 +32,11 @@ const { addTenantIdColumn } = require('./migration');
 //   a redundant no-op for that table — exactly what we want.
 //
 // ── KNOWN PHASE-2 LIMITATIONS (deferred to closeout):
-//   • wa_contacts uses a single-column PK on wa_id (phone number). Adding
-//     tenant_id is additive only — two tenants messaging the same number
-//     can still collide on insert. Needs PK rewrite to (tenant_id, wa_id)
-//     before WhatsApp goes multi-tenant in production.
-//   • Same risk for webpush_subs (PK on endpoint) and optimizer_settings
-//     (PK on key). All flagged for Phase 2 closeout.
+//   • wa_contacts USED to use a single-column PK on wa_id (phone number),
+//     so two tenants messaging the same number collided on insert. Now
+//     rewritten to UNIQUE (tenant_id, wa_id) via REWRITE_UNIQUE below.
+//   • Same risk remains for webpush_subs (PK on endpoint) and
+//     optimizer_settings (PK on key). Both flagged for Phase 2 closeout.
 //
 // ── Plain additive migrations ────────────────────────────────────────────
 // Just add tenant_id + index + backfill. No constraint changes.
@@ -62,11 +61,11 @@ const PLAIN_TABLES = [
   'journeys', 'journey_runs',
   'cold_email_runs', 'email_broadcasts', 'email_broadcast_recipients',
   'unified_inbox_items',
-  'wa_messages', 'wa_contacts', 'wa_campaigns',
+  'wa_messages', 'wa_campaigns',
   'voice_calls', 'webpush_subs',
   'digest_runs',
   // Manage tier
-  'marketing_projects', 'roadmap_progress',
+  'marketing_projects',
   'crm_sync_logs',
   // Creator Studio / content
   'carousels', 'ab_designer_runs', 'voiceover_runs', 'tiktok_downloads',
@@ -85,12 +84,12 @@ const PLAIN_TABLES = [
   'search_intel_pulse_runs', 'search_intel_images',
   // Listening / social
   'job_board_runs', 'churn_scores',
-  'influencers', 'influencer_outreach',
+  'influencer_outreach',
   'chatbot_configs', 'glassdoor_runs',
   'review_aggregator_runs', 'twitter_pulse_runs', 'reddit_pulse_runs',
   'quora_runs', 'voc_runs',
   'podcast_monitor_runs', 'hunter_searches',
-  'newsletter_targets', 'newsletter_issues',
+  'newsletter_issues',
   'bulk_audit_runs', 'bulk_audit_items',
   'backlink_snapshots', 'backlink_changes',
   'trend_runs',
@@ -124,6 +123,17 @@ const REWRITE_UNIQUE = [
   { table:'backlink_monitors', dropConstraint:'backlink_monitors_domain_key',   uniqueExtras:['domain'] },
   // wa_templates: WhatsApp template name unique per tenant
   { table:'wa_templates',      dropConstraint:'wa_templates_name_key',          uniqueExtras:['name'] },
+  // wa_contacts: WhatsApp contact phone number unique per tenant. The legacy
+  // schema used wa_id as a single-column PRIMARY KEY, so the constraint to
+  // drop is the auto-named PK (wa_contacts_pkey), not a *_key.
+  { table:'wa_contacts',       dropConstraint:'wa_contacts_pkey',              uniqueExtras:['wa_id'] },
+  // influencers: (platform, handle) unique per tenant
+  { table:'influencers',       dropConstraint:'influencers_platform_handle_key', uniqueExtras:['platform','handle'] },
+  // newsletter_targets: (brand, archive_url) unique per tenant
+  { table:'newsletter_targets', dropConstraint:'newsletter_targets_brand_archive_url_key', uniqueExtras:['brand','archive_url'] },
+  // roadmap_progress: task_id unique per tenant. Legacy schema used task_id as
+  // a single-column PRIMARY KEY, so the constraint to drop is the auto-named PK.
+  { table:'roadmap_progress',  dropConstraint:'roadmap_progress_pkey',         uniqueExtras:['task_id'] },
   // ad_campaigns: (platform, platform_camp_id) is platform-scoped already, but
   // two tenants could connect the same ad account by mistake. Scope per-tenant
   // so each tenant's mirror is independent.

@@ -26,7 +26,7 @@ router.post('/progress/:taskId', async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'roadmap:set-progress' });
   await _db.getPool().query(
     `INSERT INTO roadmap_progress (tenant_id, task_id) VALUES ($1,$2)
-     ON CONFLICT (task_id) DO UPDATE SET completed_at = now()`,
+     ON CONFLICT (tenant_id, task_id) DO UPDATE SET completed_at = now()`,
     [tid, taskId],
   );
   res.json({ ok: true });

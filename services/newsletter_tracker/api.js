@@ -72,7 +72,7 @@ router.post('/targets', _safeAsync(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'newsletter:target-create' });
   const r = await _db.getPool().query(
     `INSERT INTO newsletter_targets (tenant_id, brand, newsletter_name, archive_url) VALUES ($1,$2,$3,$4)
-     ON CONFLICT (brand, archive_url) DO UPDATE SET newsletter_name=EXCLUDED.newsletter_name RETURNING *`,
+     ON CONFLICT (tenant_id, brand, archive_url) DO UPDATE SET newsletter_name=EXCLUDED.newsletter_name RETURNING *`,
     [tid, brand, newsletter_name, archive_url]
   );
   res.json({ ok:true, target: r.rows[0] });

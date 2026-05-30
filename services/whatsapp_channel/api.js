@@ -107,7 +107,7 @@ router.post('/send', async (req, res) => {
       );
       await _db.getPool().query(
         `INSERT INTO wa_contacts (tenant_id, wa_id, last_at) VALUES ($1, $2, now())
-         ON CONFLICT (wa_id) DO UPDATE SET last_at=EXCLUDED.last_at`, [tid, cleanTo]
+         ON CONFLICT (tenant_id, wa_id) DO UPDATE SET last_at=EXCLUDED.last_at`, [tid, cleanTo]
       );
     }
     res.json({ ok:true, messageId: wamid });
@@ -157,7 +157,7 @@ router.post('/webhook', express.raw({ type: '*/*', limit: '2mb' }), async (req, 
           );
           await _db.getPool().query(
             `INSERT INTO wa_contacts (tenant_id, wa_id, name, last_at, unread_count) VALUES ($1, $2, $3, now(), 1)
-             ON CONFLICT (wa_id) DO UPDATE SET name=COALESCE(EXCLUDED.name, wa_contacts.name), last_at=EXCLUDED.last_at, unread_count=wa_contacts.unread_count+1`,
+             ON CONFLICT (tenant_id, wa_id) DO UPDATE SET name=COALESCE(EXCLUDED.name, wa_contacts.name), last_at=EXCLUDED.last_at, unread_count=wa_contacts.unread_count+1`,
             [tid, wa, name]
           );
         }
@@ -236,7 +236,7 @@ router.post('/templates', async (req, res) => {
     const r = await _db.getPool().query(
       `INSERT INTO wa_templates (tenant_id, name, category, language, body, var_count, is_meta_approved)
        VALUES ($1,$2,$3,$4,$5,$6,$7)
-       ON CONFLICT (name) DO UPDATE SET category=EXCLUDED.category, language=EXCLUDED.language, body=EXCLUDED.body, var_count=EXCLUDED.var_count, is_meta_approved=EXCLUDED.is_meta_approved
+       ON CONFLICT (tenant_id, name) DO UPDATE SET category=EXCLUDED.category, language=EXCLUDED.language, body=EXCLUDED.body, var_count=EXCLUDED.var_count, is_meta_approved=EXCLUDED.is_meta_approved
        RETURNING id, name, var_count`,
       [tid, name, category, language, body, varCount, !!isMetaApproved]
     );
@@ -315,7 +315,7 @@ router.post('/send-bulk', async (req, res) => {
           [tid, to, wamid, renderedBody, tpl.name, JSON.stringify({ campaignId })]
         );
         await _db.getPool().query(
-          `INSERT INTO wa_contacts (tenant_id, wa_id, last_at) VALUES ($1, $2, now()) ON CONFLICT (wa_id) DO UPDATE SET last_at=EXCLUDED.last_at`, [tid, to]
+          `INSERT INTO wa_contacts (tenant_id, wa_id, last_at) VALUES ($1, $2, now()) ON CONFLICT (tenant_id, wa_id) DO UPDATE SET last_at=EXCLUDED.last_at`, [tid, to]
         );
         sent++;
       } catch (e) {
