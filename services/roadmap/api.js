@@ -40,9 +40,10 @@ router.delete('/progress/:taskId', async (req, res) => {
   res.json({ ok: true });
 });
 
-router.post('/reset', async (_req, res) => {
+router.post('/reset', async (req, res) => {
   if (!_db.hasDb()) return res.status(503).json({ ok: false, error: 'no-db' });
-  await _db.getPool().query(`DELETE FROM roadmap_progress`);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'roadmap:reset' });
+  await _db.getPool().query(`DELETE FROM roadmap_progress WHERE tenant_id = $1`, [tid]);
   res.json({ ok: true });
 });
 

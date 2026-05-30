@@ -101,7 +101,9 @@ router.get('/public/:shareKey', async (req, res) => {
       `SELECT * FROM advocacy_share_keys WHERE share_key=$1 AND active=TRUE`, [req.params.shareKey]
     );
     if (!kr.rows.length) return res.status(404).json({ ok: false, valid: false, error: 'Share link not found or deactivated' });
-    const pr = await pool().query(`SELECT * FROM advocacy_posts WHERE status='active' ORDER BY created_at DESC`);
+    // Scope posts to the share key's own tenant — a public share page must never
+    // expose another workspace's advocacy posts.
+    const pr = await pool().query(`SELECT * FROM advocacy_posts WHERE status='active' AND tenant_id=$1 ORDER BY created_at DESC`, [kr.rows[0].tenant_id]);
     res.json({ ok: true, valid: true, label: kr.rows[0].label, posts: pr.rows });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });

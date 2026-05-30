@@ -277,10 +277,11 @@ router.get('/changes', async (req, res) => {
 router.post('/run-now', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   const id = parseInt(req.body?.monitor_id, 10);
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'backlink_monitor:run-now' });
   const pool = _db.getPool();
   const r = id
-    ? await pool.query(`SELECT * FROM backlink_monitors WHERE id=$1`, [id])
-    : await pool.query(`SELECT * FROM backlink_monitors ORDER BY last_run_at NULLS FIRST LIMIT 25`);
+    ? await pool.query(`SELECT * FROM backlink_monitors WHERE id=$1 AND tenant_id=$2`, [id, tid])
+    : await pool.query(`SELECT * FROM backlink_monitors WHERE tenant_id=$1 ORDER BY last_run_at NULLS FIRST LIMIT 25`, [tid]);
   const results = [];
   for (const m of r.rows) {
     try { results.push({ id: m.id, domain: m.domain, ...(await _runMonitor(m)) }); }

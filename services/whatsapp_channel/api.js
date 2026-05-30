@@ -265,18 +265,19 @@ router.post('/send-bulk', async (req, res) => {
   if (!Array.isArray(recipients) || !recipients.length) return _err(res, 400, 'recipients[] required');
   if (recipients.length > 1000) return _err(res, 400, 'Max 1000 recipients per bulk send');
 
-  // Resolve template
+  // Resolve template — tenant-scoped so one workspace can't send using another
+  // workspace's template (wa_templates.name is unique only WITHIN a tenant).
+  const tid = await _tid(req, 'whatsapp:send-bulk');
   let tpl = null;
   try {
     const q = templateId
-      ? await _db.getPool().query(`SELECT * FROM wa_templates WHERE id=$1`, [templateId])
-      : await _db.getPool().query(`SELECT * FROM wa_templates WHERE name=$1`, [templateName]);
+      ? await _db.getPool().query(`SELECT * FROM wa_templates WHERE id=$1 AND tenant_id=$2`, [templateId, tid])
+      : await _db.getPool().query(`SELECT * FROM wa_templates WHERE name=$1 AND tenant_id=$2`, [templateName, tid]);
     tpl = q.rows[0];
   } catch (e) { return _err(res, 500, e.message); }
   if (!tpl) return _err(res, 404, 'Template not found');
 
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const tid = await _tid(req, 'whatsapp:send-bulk');
   const cmp = await _db.getPool().query(
     `INSERT INTO wa_campaigns (tenant_id, name, template_id, template_name, total, status) VALUES ($1,$2,$3,$4,$5,'running') RETURNING id`,
     [tid, name, tpl.id, tpl.name, recipients.length]

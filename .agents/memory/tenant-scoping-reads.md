@@ -36,6 +36,20 @@ read/destroy another's data.
 authenticated SPA calls it via `_api(...)`/`fetch`, it's a dashboard read → scope it.
 The public embed/tracking snippet only ever POSTs to `/event` or hits `/embed*.js`.
 
+**Leaks hide in non-GET routes too:** the read/delete audit must also cover POST
+*action* routes that READ a tenant-scoped table by an arbitrary id/name or with no
+filter, then act on it — these leak/act cross-tenant just like a list read. Real
+cases found: a public share page selecting child rows without scoping to the parent
+key's tenant; a `/reset` that `DELETE`d a whole table; `/run-now` selecting rows by
+arbitrary id or all-rows; a bulk-send resolving a template by id/name unscoped (and
+`name` is only unique WITHIN a tenant after REWRITE_UNIQUE). Fix = resolve tid and
+add `AND tenant_id=$N` / inherit it from the validated parent row.
+
+**Parent-check is the dominant safe pattern here** — `/widgets/:id/events`,
+`/:id/runs`, audiences members all SELECT child rows by parent id AFTER verifying the
+parent belongs to the tenant. A naive "SQL literal lacks tenant_id" scan flags these
+as false positives; check for the preceding ownership SELECT before "fixing".
+
 **Separate write-side gap (OUT OF SCOPE of the read/delete audit, real bug):** many
 "unwired" feature modules never set `tenant_id` on INSERT, so writes FAIL the NOT NULL
 constraint and are swallowed by try/catch — these features silently can't persist new
