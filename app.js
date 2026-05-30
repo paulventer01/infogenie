@@ -30062,7 +30062,7 @@ async function _adminRenderUsers(body) {
       <td style="padding:10px 16px;color:#334155">${_esc(v.workspace)}</td>
       <td style="padding:10px 16px;color:#334155">${_esc(v.role_name||'—')}</td>
       <td style="padding:10px 16px;font-size:11px;color:#94A3B8">${v.invited_by_email?('by '+_esc(v.invited_by_email)):''}</td>
-      <td style="padding:10px 16px;text-align:right"><button onclick="_adminCancelInvite(${v.tenant_id},${v.user_id})" style="border:1px solid #FECACA;background:#FEF2F2;color:#B91C1C;border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:700">Cancel</button></td>
+      <td style="padding:10px 16px;text-align:right;white-space:nowrap"><button onclick="_adminResendInvite(${v.tenant_id},${v.user_id})" style="border:1px solid #BAE6FD;background:#F0F9FF;color:#0369A1;border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:700;margin-right:6px">Resend</button><button onclick="_adminCancelInvite(${v.tenant_id},${v.user_id})" style="border:1px solid #FECACA;background:#FEF2F2;color:#B91C1C;border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:700">Cancel</button></td>
     </tr>`).join('');
   const inviteList = `
     <div style="font-weight:800;color:#1E293B;margin:0 0 12px">Pending invites (${invites.length})</div>
@@ -30146,6 +30146,14 @@ window._adminCancelInvite = async function(tenantId, userId) {
   try { await _adminFetch('/invites/' + tenantId + '/' + userId, { method:'DELETE' }); showToast('✓ Invite cancelled'); _adminRenderActive(true); }
   catch (e) { showToast('⚠️ ' + e.message); }
 };
+window._adminResendInvite = async function(tenantId, userId) {
+  const friendly = { not_a_pending_invite:'This invite is no longer pending', bad_id:'Invalid invite' };
+  try {
+    const r = await _adminFetch('/invites/' + tenantId + '/' + userId + '/resend', { method:'POST' });
+    showToast(r.emailSent ? ('✓ Invite re-sent to ' + r.email) : ('Invite re-issued, but email failed: ' + (r.mailError || 'mail not configured')));
+    _adminRenderActive(true);
+  } catch (e) { showToast('⚠️ ' + (friendly[e.message] || e.message)); }
+};
 
 // ── Audit Log tab ─────────────────────────────────────────────────────────
 // Read-only history of who changed roles & memberships (accountability).
@@ -30161,6 +30169,7 @@ async function _adminRenderAudit(body) {
     'platform_role.grant':    { label:'Platform role granted', color:'#7C3AED', icon:'🛡️' },
     'platform_role.revoke':   { label:'Platform role revoked', color:'#B45309', icon:'🚫' },
     'invite.send':            { label:'Invite sent',      color:'#0891B2', icon:'✉️' },
+    'invite.resend':          { label:'Invite resent',    color:'#0EA5E9', icon:'🔁' },
     'invite.cancel':          { label:'Invite cancelled', color:'#9333EA', icon:'🗑️' },
   };
   const meta = a => ACTION_META[a] || { label:a, color:'#64748B', icon:'•' };

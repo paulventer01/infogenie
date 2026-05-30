@@ -466,6 +466,64 @@ router.delete('/invites/:tenantId/:userId', async (req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
+// Resend a pending invite — mints a fresh token, invalidates the old one(s),
+// and re-emails the same person/workspace/role. No body needed; everything is
+// recovered from the existing pending membership.
+router.post('/invites/:tenantId/:userId/resend', async (req, res) => {
+  const tenantId = Number(req.params.tenantId);
+  const userId = Number(req.params.userId);
+  if (!Number.isInteger(tenantId) || !Number.isInteger(userId)) return _err(res, 400, 'bad_id');
+  try {
+    const p = _db.getPool();
+    const inv = await p.query(
+      `SELECT u.email, u.name, r.name AS role_name, t.name AS workspace_name
+         FROM tenant_users tu
+         JOIN users u ON u.id = tu.user_id
+         JOIN tenants t ON t.id = tu.tenant_id AND t.status = 'active'
+         LEFT JOIN roles r ON r.id = tu.role_id
+        WHERE tu.tenant_id=$1 AND tu.user_id=$2 AND tu.status='invited'`, [tenantId, userId]);
+    if (!inv.rows[0]) return _err(res, 404, 'not_a_pending_invite');
+    const row = inv.rows[0];
+
+    // Invalidate any outstanding invite token(s) for this exact invite, then
+    // mint a fresh one so the old (lost/expired) link can never be used.
+    await p.query(
+      `DELETE FROM email_tokens WHERE user_id=$1 AND tenant_id=$2 AND purpose='invite' AND consumed_at IS NULL`,
+      [userId, tenantId]);
+    const token = await _auth.createInviteToken(userId, tenantId, INVITE_TTL_MIN);
+    const link = `${_auth.publicBaseUrl(req)}/accept-invite.html?token=${token}`;
+
+    let mailed = false, mailError = null;
+    try {
+      const tpl = _auth.inviteEmailTemplate({
+        inviterName: req.user.name || req.user.email,
+        workspaceName: row.workspace_name,
+        roleName: row.role_name,
+        link,
+      });
+      await _auth.sendMail({ to: row.email, ...tpl });
+      mailed = true;
+    } catch (e2) {
+      mailError = e2.message;
+      console.warn('[admin/invites] resend email failed:', e2.message);
+    }
+    // Refresh the invited_at timestamp so the pending list reflects the resend.
+    await p.query(
+      `UPDATE tenant_users SET invited_by_user_id=$3, invited_at=now()
+        WHERE tenant_id=$1 AND user_id=$2 AND status='invited'`,
+      [tenantId, userId, req.user.id]);
+    await _audit.recordAudit({
+      action: 'invite.resend',
+      actorUserId: req.user.id, actorEmail: req.user.email,
+      targetUserId: userId, targetEmail: row.email,
+      tenantId, workspaceId: tenantId, workspaceName: row.workspace_name,
+      oldRole: null, newRole: row.role_name,
+      detail: mailed ? null : 'Invite re-issued but email not sent',
+    });
+    res.json({ ok: true, email: row.email, emailSent: mailed, mailError });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
 // ── Clients (tenant-scoped) ─────────────────────────────────────────────────
 router.get('/clients', async (req, res) => {
   try {
