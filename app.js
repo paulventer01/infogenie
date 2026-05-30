@@ -29846,14 +29846,84 @@ async function _adminRenderWorkspaces(body) {
         </tr></thead><tbody>
         ${ws.map(w=>`<tr style="border-top:1px solid #F1F5F9">
           <td style="padding:11px 16px"><div style="font-weight:700;color:#1E293B">${_esc(w.name)}</div><div style="font-size:11px;color:#94A3B8">${_esc(w.slug)}</div></td>
-          <td style="padding:11px 16px;color:#475569">${w.member_count||0}</td>
+          <td style="padding:11px 16px;color:#475569"><button onclick="_adminToggleWsMembers(${w.id})" style="display:inline-flex;align-items:center;gap:5px;background:none;border:1px solid #E2E8F0;border-radius:7px;padding:4px 9px;font-size:12px;color:#334155;cursor:pointer"><span id="wsMembersCaret-${w.id}" style="font-size:9px;color:#94A3B8">▶</span>${w.member_count||0} member${(w.member_count||0)===1?'':'s'}</button></td>
           <td style="padding:11px 16px;color:#475569">${w.client_count||0}</td>
           <td style="padding:11px 16px"><select onchange="_adminSetWsMode(${w.id}, this.value)" style="padding:5px 8px;border:1px solid #CBD5E1;border-radius:6px;font-size:12px">${modeSel(w)}</select></td>
           <td style="padding:11px 16px"><span style="font-size:11px;font-weight:700;color:${w.status==='active'?'#065F46':'#92400E'};background:${w.status==='active'?'#D1FAE5':'#FEF3C7'};padding:3px 9px;border-radius:99px">${w.status}</span></td>
-        </tr>`).join('')}
+        </tr>
+        <tr id="wsMembersRow-${w.id}" style="display:none"><td colspan="5" style="padding:0 16px 14px 16px;background:#FBFCFE"><div id="wsMembersBody-${w.id}"></div></td></tr>`).join('')}
       </tbody></table>
     </div>`;
 }
+
+// Toggle the inline per-workspace member list (active + pending invites).
+window._adminToggleWsMembers = async function(id) {
+  const row = document.getElementById('wsMembersRow-' + id);
+  const caret = document.getElementById('wsMembersCaret-' + id);
+  if (!row) return;
+  const open = row.style.display !== 'none';
+  if (open) { row.style.display = 'none'; if (caret) caret.textContent = '▶'; return; }
+  row.style.display = 'table-row';
+  if (caret) caret.textContent = '▼';
+  await _adminWsMembersRefresh(id);
+};
+
+// Fetch + render the member list for one workspace into its expansion row.
+window._adminWsMembersRefresh = async function(id) {
+  const box = document.getElementById('wsMembersBody-' + id);
+  if (!box) return;
+  box.innerHTML = '<div style="padding:14px;color:#94A3B8;font-size:12px">Loading members…</div>';
+  try {
+    const d = await _adminFetch('/workspaces/' + id + '/members');
+    const members = d.members || [];
+    if (!members.length) { box.innerHTML = '<div style="padding:14px;color:#94A3B8;font-size:12px">No members yet.</div>'; return; }
+    const rows = members.map(m => {
+      const pending = m.status === 'invited';
+      const name = m.name || m.email;
+      const badge = pending
+        ? '<span style="font-size:10px;font-weight:800;color:#92400E;background:#FEF3C7;padding:2px 8px;border-radius:99px;letter-spacing:.3px">PENDING</span>'
+        : '<span style="font-size:10px;font-weight:800;color:#065F46;background:#D1FAE5;padding:2px 8px;border-radius:99px;letter-spacing:.3px">ACTIVE</span>';
+      const meta = pending
+        ? `<div style="font-size:11px;color:#94A3B8">Invited${m.invited_by_email?(' by '+_esc(m.invited_by_email)):''}</div>`
+        : '';
+      const action = pending
+        ? `<button onclick="_adminCancelInviteWs(${id},${m.user_id})" style="border:1px solid #FECACA;background:#FEF2F2;color:#B91C1C;border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:700">Cancel</button>`
+        : `<button onclick="_adminRemoveMemberWs(${id},${m.user_id})" style="border:1px solid #FECACA;background:#FEF2F2;color:#B91C1C;border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer">Remove</button>`;
+      return `<tr style="border-top:1px solid #EEF2F7">
+        <td style="padding:8px 12px"><div style="font-weight:700;color:#1E293B;font-size:12.5px">${_esc(name)}</div><div style="font-size:11px;color:#94A3B8">${_esc(m.email)}</div></td>
+        <td style="padding:8px 12px;color:#475569;font-size:12px">${_esc(m.role_name||'—')}</td>
+        <td style="padding:8px 12px">${badge}${meta}</td>
+        <td style="padding:8px 12px;text-align:right">${action}</td>
+      </tr>`;
+    }).join('');
+    box.innerHTML = `<div style="background:white;border:1px solid #E2E8F0;border-radius:10px;overflow:hidden;margin-top:4px">
+      <table style="width:100%;border-collapse:collapse">
+        <thead style="background:#F8FAFC"><tr>
+          <th style="text-align:left;padding:7px 12px;color:#64748B;font-size:10px;font-weight:700">MEMBER</th>
+          <th style="text-align:left;padding:7px 12px;color:#64748B;font-size:10px;font-weight:700">ROLE</th>
+          <th style="text-align:left;padding:7px 12px;color:#64748B;font-size:10px;font-weight:700">STATUS</th>
+          <th style="padding:7px 12px"></th>
+        </tr></thead><tbody>${rows}</tbody></table>
+    </div>`;
+  } catch (e) {
+    box.innerHTML = `<div style="padding:14px;color:#B91C1C;font-size:12px">⚠️ ${_esc(e.message)}</div>`;
+  }
+};
+
+// Cancel a pending invite from within a workspace's member list, then refresh
+// just that list so the expansion stays open.
+window._adminCancelInviteWs = async function(tenantId, userId) {
+  if (!confirm('Cancel this pending invite?')) return;
+  try { await _adminFetch('/invites/' + tenantId + '/' + userId, { method:'DELETE' }); showToast('✓ Invite cancelled'); _adminWsMembersRefresh(tenantId); }
+  catch (e) { showToast('⚠️ ' + e.message); }
+};
+
+// Remove an active member from within a workspace's member list, then refresh.
+window._adminRemoveMemberWs = async function(tenantId, userId) {
+  if (!confirm('Remove this user from the workspace?')) return;
+  try { await _adminFetch('/workspaces/' + tenantId + '/members/' + userId, { method:'DELETE' }); showToast('✓ Removed'); _adminWsMembersRefresh(tenantId); }
+  catch (e) { showToast('⚠️ ' + e.message); }
+};
 
 window._adminAddWorkspace = async function() {
   const name = prompt('New workspace name?');

@@ -145,12 +145,15 @@ router.get('/workspaces/:id/members', async (req, res) => {
   try {
     const r = await _db.getPool().query(`
       SELECT tu.user_id, u.email, u.name, tu.status, tu.joined_at,
+             tu.invited_at, ib.email AS invited_by_email,
              r.key AS role_key, r.name AS role_name
         FROM tenant_users tu
         JOIN users u ON u.id = tu.user_id
         LEFT JOIN roles r ON r.id = tu.role_id
+        LEFT JOIN users ib ON ib.id = tu.invited_by_user_id
        WHERE tu.tenant_id = $1
-       ORDER BY tu.joined_at ASC`, [id]);
+       ORDER BY CASE tu.status WHEN 'active' THEN 0 ELSE 1 END,
+                tu.joined_at ASC NULLS LAST, tu.invited_at DESC NULLS LAST`, [id]);
     res.json({ ok: true, members: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
