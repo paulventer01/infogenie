@@ -7,6 +7,7 @@
 const express = require('express');
 const _https = require('https');
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
 
 const router = express.Router();
 
@@ -184,12 +185,15 @@ Rules:
     const meta = { source, structureLabel: tpl.label, brandVoice: brandVoice || null, audience: audience || null };
     let id = null;
     if (_db.hasDb()) {
-      const r = await _db.getPool().query(
-        `INSERT INTO carousels (topic, structure, brand_voice, audience, slides, meta)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb) RETURNING id`,
-        [topicS, structureKey, brandVoice || null, audience || null, JSON.stringify(slides), JSON.stringify(meta)],
-      );
-      id = r.rows[0].id;
+      try {
+        const tid = await _tenantCtx.resolveTenantId(req, { label: 'carousel:generate' });
+        const r = await _db.getPool().query(
+          `INSERT INTO carousels (tenant_id, topic, structure, brand_voice, audience, slides, meta)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb) RETURNING id`,
+          [tid, topicS, structureKey, brandVoice || null, audience || null, JSON.stringify(slides), JSON.stringify(meta)],
+        );
+        id = r.rows[0].id;
+      } catch (e) { console.warn('[t38] persist failed:', e.message); }
     }
 
     res.json({ ok: true, id, topic: topicS, structure: structureKey, structureLabel: tpl.label, slides, source, meta });
