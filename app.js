@@ -29874,8 +29874,12 @@ window._adminWsMembersRefresh = async function(id) {
   if (!box) return;
   box.innerHTML = '<div style="padding:14px;color:#94A3B8;font-size:12px">Loading members…</div>';
   try {
-    const d = await _adminFetch('/workspaces/' + id + '/members');
+    const [d, rd] = await Promise.all([
+      _adminFetch('/workspaces/' + id + '/members'),
+      _adminFetch('/roles'),
+    ]);
     const members = d.members || [];
+    const tenantRoles = (rd.roles || []).filter(r => r.scope === 'tenant');
     if (!members.length) { box.innerHTML = '<div style="padding:14px;color:#94A3B8;font-size:12px">No members yet.</div>'; return; }
     const rows = members.map(m => {
       const pending = m.status === 'invited';
@@ -29886,12 +29890,17 @@ window._adminWsMembersRefresh = async function(id) {
       const meta = pending
         ? `<div style="font-size:11px;color:#94A3B8">Invited${m.invited_by_email?(' by '+_esc(m.invited_by_email)):''}</div>`
         : '';
+      const roleCell = pending
+        ? `<span style="color:#475569;font-size:12px">${_esc(m.role_name||'—')}</span>`
+        : (tenantRoles.length
+            ? `<select onchange="_adminSetMemberRoleWs(${id},${m.user_id},this.value)" style="font-size:11px;padding:3px 6px;border:1px solid #E2E8F0;border-radius:6px">${tenantRoles.map(r => `<option value="${_esc(r.key)}"${r.key===m.role_key?' selected':''}>${_esc(r.name)}</option>`).join('')}</select>`
+            : `<span style="color:#475569;font-size:12px">${_esc(m.role_name||'—')}</span>`);
       const action = pending
         ? `<button onclick="_adminCancelInviteWs(${id},${m.user_id})" style="border:1px solid #FECACA;background:#FEF2F2;color:#B91C1C;border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer;font-weight:700">Cancel</button>`
         : `<button onclick="_adminRemoveMemberWs(${id},${m.user_id})" style="border:1px solid #FECACA;background:#FEF2F2;color:#B91C1C;border-radius:6px;font-size:11px;padding:4px 10px;cursor:pointer">Remove</button>`;
       return `<tr style="border-top:1px solid #EEF2F7">
         <td style="padding:8px 12px"><div style="font-weight:700;color:#1E293B;font-size:12.5px">${_esc(name)}</div><div style="font-size:11px;color:#94A3B8">${_esc(m.email)}</div></td>
-        <td style="padding:8px 12px;color:#475569;font-size:12px">${_esc(m.role_name||'—')}</td>
+        <td style="padding:8px 12px">${roleCell}</td>
         <td style="padding:8px 12px">${badge}${meta}</td>
         <td style="padding:8px 12px;text-align:right">${action}</td>
       </tr>`;
@@ -29923,6 +29932,13 @@ window._adminRemoveMemberWs = async function(tenantId, userId) {
   if (!confirm('Remove this user from the workspace?')) return;
   try { await _adminFetch('/workspaces/' + tenantId + '/members/' + userId, { method:'DELETE' }); showToast('✓ Removed'); _adminWsMembersRefresh(tenantId); }
   catch (e) { showToast('⚠️ ' + e.message); }
+};
+
+// Change an active member's role from within a workspace's member list, then
+// refresh just that list so the expansion stays open.
+window._adminSetMemberRoleWs = async function(tenantId, userId, roleKey) {
+  try { await _adminFetch('/workspaces/' + tenantId + '/members/' + userId, { method:'PATCH', body:{ roleKey } }); showToast('✓ Role updated'); _adminWsMembersRefresh(tenantId); }
+  catch (e) { showToast('⚠️ ' + e.message); _adminWsMembersRefresh(tenantId); }
 };
 
 window._adminAddWorkspace = async function() {
