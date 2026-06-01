@@ -69,3 +69,19 @@ rows. Their list pages only show data backfilled during the tenants phase2 migra
 the per-module INSERT statements were not updated. Fixing reads stops the leak; the
 features still need their writes wired (resolve tid + include `tenant_id` in INSERT)
 to actually function per-workspace.
+
+**Runtime isolation tests close the static guard's function-level blind spot:**
+`tenant-read-audit.test.js` trusts ALL statements in a function that resolves a
+tenant anywhere, so a single dropped `tenant_id` filter inside an otherwise
+scoped handler is invisible statically. The fix is per-feature runtime tests
+(`test/*-tenant-isolation.test.js`) that spin up the real Express router, stub
+`db.getPool` + `tenantCtx.resolveTenantId` (reads an `x-test-tid` header, à la
+`site-builder-isolation.test.js`), seed tenants 2 & 3, and assert no cross-tenant
+read/mutation. **Key design:** the in-memory fake pool applies a WHERE condition
+ONLY when the executed SQL text contains it (regex-extract `col=$n` from the WHERE
+substring) — so dropping `AND tenant_id=$N` from one query actually leaks rows and
+fails the test, rather than the fake silently re-scoping. Covered the multi-query
+handlers with NO parent-ownership pre-check (influencers GET / list+stats,
+email_broadcast recipients list+count & stats breakdown, advocacy public share
+page posts query). `node --test` runs each test file in its own process, so the
+global `db`/`tenantCtx` monkey-patches don't bleed across files.
