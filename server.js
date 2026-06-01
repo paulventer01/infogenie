@@ -10944,7 +10944,7 @@ async function _fetchAmplitudeConversions(days = 30) {
 // T34 — pull revenue per platform from `ad_performance_hourly` (the optimizer's
 // own ingested table). This lets us compute MER + per-channel ROAS without
 // adding new fields to the spend fetchers and without depending on Stripe/Shopify.
-async function _revenueByPlatform(days = 30) {
+async function _revenueByPlatform(days = 30, tenantId = null) {
   if (!_db.hasDb()) return {};
   try {
     const r = await _db.getPool().query(`
@@ -10954,8 +10954,9 @@ async function _revenueByPlatform(days = 30) {
       FROM ad_performance_hourly p
       JOIN ad_campaigns c ON c.id = p.campaign_id
       WHERE p.bucket_hour >= now() - ($1 || ' days')::interval
+        AND c.tenant_id = $2
       GROUP BY 1
-    `, [String(days)]);
+    `, [String(days), tenantId]);
     const out = {};
     for (const row of r.rows) {
       const k = (row.platform || '').toLowerCase().replace('facebook', 'meta');
@@ -10967,12 +10968,14 @@ async function _revenueByPlatform(days = 30) {
 
 app.get('/api/blended-roas', async (req, res) => {
   const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 30));
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'blended-roas' });
+  if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
   const [meta, google, tiktok, amp, revByPlatform] = await Promise.all([
     _fetchMetaSpend(days),
     _fetchGoogleAdsSpend(days),
     _fetchTikTokSpend(days),
     _fetchAmplitudeConversions(days),
-    _revenueByPlatform(days),
+    _revenueByPlatform(days, tid),
   ]);
   // Stitch revenue back onto each channel object.
   const _enrich = (ch, key) => {

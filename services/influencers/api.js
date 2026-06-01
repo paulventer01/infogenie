@@ -91,19 +91,21 @@ router.post('/', async (req, res) => {
 
 router.patch('/:id', async (req, res) => {
   const id = _id(req, res); if (!id) return;
-  const cur = await _db.getPool().query(`SELECT * FROM influencers WHERE id=$1`, [id]);
-  if (!cur.rows[0]) return _err(res, 404, 'not found');
-  const n = _normalize({ ...cur.rows[0], ...req.body });
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'influencers:update' });
+    if (tid == null) return _err(res, 400, 'no_tenant');
+    const cur = await _db.getPool().query(`SELECT * FROM influencers WHERE id=$1 AND tenant_id=$2`, [id, tid]);
+    if (!cur.rows[0]) return _err(res, 404, 'not found');
+    const n = _normalize({ ...cur.rows[0], ...req.body });
     const r = await _db.getPool().query(`
       UPDATE influencers SET handle=$1, platform=$2, name=$3, bio=$4, niche=$5, country=$6,
         followers=$7, engagement_rate=$8, contact_email=$9, contact_phone=$10, profile_url=$11,
         status=$12, tags=$13, owner=$14, deal_value=$15, notes=$16, updated_at=now(),
         last_contacted_at=CASE WHEN $12 IN ('contacted','negotiating') AND last_contacted_at IS NULL THEN now() ELSE last_contacted_at END
-      WHERE id=$17 RETURNING *`,
+      WHERE id=$17 AND tenant_id=$18 RETURNING *`,
       [n.handle, n.platform, n.name, n.bio, n.niche, n.country, n.followers, n.engagement_rate,
        n.contact_email, n.contact_phone, n.profile_url, n.status, JSON.stringify(n.tags), n.owner,
-       n.deal_value, n.notes, id]);
+       n.deal_value, n.notes, id, tid]);
     res.json({ ok:true, influencer: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -128,7 +130,7 @@ router.post('/:id/outreach', async (req, res) => {
       INSERT INTO influencer_outreach (tenant_id, influencer_id, kind, subject, body, direction, created_by)
       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
       [tid, id, kind, subject, body, direction, req.body?.created_by || null]);
-    await _db.getPool().query(`UPDATE influencers SET last_contacted_at=now(), updated_at=now() WHERE id=$1`, [id]);
+    await _db.getPool().query(`UPDATE influencers SET last_contacted_at=now(), updated_at=now() WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     res.json({ ok:true, outreach: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -155,8 +157,8 @@ router.post('/:id/vet', async (req, res) => {
     const inf = r.rows[0];
     const vet = await _vetter.vetInfluencer(inf);
     await _db.getPool().query(
-      `UPDATE influencers SET vet_score=$1, vet_risk=$2, vet_flags=$3, vetted_at=now(), updated_at=now() WHERE id=$4`,
-      [vet.score, vet.risk_level, JSON.stringify(vet), id]
+      `UPDATE influencers SET vet_score=$1, vet_risk=$2, vet_flags=$3, vetted_at=now(), updated_at=now() WHERE id=$4 AND tenant_id=$5`,
+      [vet.score, vet.risk_level, JSON.stringify(vet), id, tid]
     );
     res.json({ ok: true, vet, source: vet.source });
   } catch (e) { _err(res, 500, e.message); }
@@ -166,7 +168,9 @@ router.post('/:id/vet', async (req, res) => {
 router.post('/:id/draft-email', async (req, res) => {
   const id = _id(req, res); if (!id) return;
   try {
-    const r = await _db.getPool().query(`SELECT * FROM influencers WHERE id=$1`, [id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'influencers:draft-email' });
+    if (tid == null) return _err(res, 400, 'no_tenant');
+    const r = await _db.getPool().query(`SELECT * FROM influencers WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     if (!r.rows[0]) return _err(res, 404, 'not found');
     const inf = r.rows[0];
     const brand = String(req.body?.brand || 'our brand').slice(0, 120);

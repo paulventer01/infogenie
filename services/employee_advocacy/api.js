@@ -37,12 +37,13 @@ router.put('/posts/:id', async (req, res) => {
   if (!_db.hasDb()) return res.status(503).json({ ok: false, error: 'No DB' });
   const { title, body, platforms, tags, cta_url, status } = req.body || {};
   try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'advocacy:update-post' });
     const r = await pool().query(
       `UPDATE advocacy_posts SET title=COALESCE($1,title), body=COALESCE($2,body),
        platforms=COALESCE($3,platforms), tags=COALESCE($4,tags), cta_url=COALESCE($5,cta_url),
        status=COALESCE($6,status), updated_at=NOW()
-       WHERE id=$7 RETURNING *`,
-      [title, body, platforms, tags, cta_url, status, req.params.id]
+       WHERE id=$7 AND tenant_id=$8 RETURNING *`,
+      [title, body, platforms, tags, cta_url, status, req.params.id, tid]
     );
     res.json({ ok: true, post: r.rows[0] });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }

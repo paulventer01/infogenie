@@ -98,16 +98,17 @@ router.put('/broadcasts/:id', async (req, res) => {
   if (!id) return _err(res, 400, 'invalid id');
   const { name, subject, from_name, from_email, body_html, body_text } = req.body || {};
   try {
-    const { rows } = await _pool().query('SELECT status FROM email_broadcasts WHERE id=$1', [id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'email_broadcast:update' });
+    const { rows } = await _pool().query('SELECT status FROM email_broadcasts WHERE id=$1 AND tenant_id=$2', [id, tid]);
     if (!rows.length) return _err(res, 404, 'broadcast not found');
     if (rows[0].status !== 'draft') return _err(res, 400, 'only draft broadcasts can be edited');
     await _pool().query(
       `UPDATE email_broadcasts SET name=COALESCE($1,name), subject=COALESCE($2,subject),
        from_name=COALESCE($3,from_name), from_email=COALESCE($4,from_email),
-       body_html=COALESCE($5,body_html), body_text=COALESCE($6,body_text) WHERE id=$7`,
-      [name, subject, from_name, from_email, body_html, body_text, id]
+       body_html=COALESCE($5,body_html), body_text=COALESCE($6,body_text) WHERE id=$7 AND tenant_id=$8`,
+      [name, subject, from_name, from_email, body_html, body_text, id, tid]
     );
-    const { rows: r2 } = await _pool().query('SELECT * FROM email_broadcasts WHERE id=$1', [id]);
+    const { rows: r2 } = await _pool().query('SELECT * FROM email_broadcasts WHERE id=$1 AND tenant_id=$2', [id, tid]);
     res.json({ ok:true, broadcast: r2[0] });
   } catch(e) { _err(res, 500, e.message); }
 });
@@ -149,7 +150,8 @@ router.post('/broadcasts/:id/recipients', async (req, res) => {
   if (!list.length) return _err(res, 400, 'no valid email addresses found');
 
   try {
-    const { rows: bc } = await _pool().query('SELECT status, tenant_id FROM email_broadcasts WHERE id=$1', [id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'email_broadcast:add-recipients' });
+    const { rows: bc } = await _pool().query('SELECT status, tenant_id FROM email_broadcasts WHERE id=$1 AND tenant_id=$2', [id, tid]);
     if (!bc.length) return _err(res, 404, 'broadcast not found');
     if (bc[0].status !== 'draft') return _err(res, 400, 'can only add recipients to a draft broadcast');
 
@@ -164,8 +166,8 @@ router.post('/broadcasts/:id/recipients', async (req, res) => {
     }
     await _pool().query(
       `UPDATE email_broadcasts SET recipient_count=(
-         SELECT COUNT(*) FROM email_broadcast_recipients WHERE broadcast_id=$1
-       ) WHERE id=$1`, [id]
+         SELECT COUNT(*) FROM email_broadcast_recipients WHERE broadcast_id=$1 AND tenant_id=$2
+       ) WHERE id=$1 AND tenant_id=$2`, [id, tid]
     );
     res.json({ ok:true, added, total: list.length });
   } catch(e) { _err(res, 500, e.message); }
@@ -207,23 +209,25 @@ router.post('/broadcasts/:id/send', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return _err(res, 400, 'invalid id');
   try {
-    const { rows } = await _pool().query('SELECT * FROM email_broadcasts WHERE id=$1', [id]);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'email_broadcast:send' });
+    const { rows } = await _pool().query('SELECT * FROM email_broadcasts WHERE id=$1 AND tenant_id=$2', [id, tid]);
     if (!rows.length) return _err(res, 404, 'broadcast not found');
     const bc = rows[0];
     if (!['draft','paused'].includes(bc.status)) return _err(res, 400, `Cannot send a broadcast in '${bc.status}' status.`);
     if (!process.env.RESEND_API_KEY) return _err(res, 503, 'RESEND_API_KEY not configured — add it in Settings.');
 
     // Mark as sending immediately; respond to client; fan-out in background
-    await _pool().query(`UPDATE email_broadcasts SET status='sending', sent_at=now() WHERE id=$1`, [id]);
+    await _pool().query(`UPDATE email_broadcasts SET status='sending', sent_at=now() WHERE id=$1 AND tenant_id=$2`, [id, tid]);
     res.json({ ok:true, message: 'Broadcast queued — emails are sending in the background.' });
 
-    // Background fan-out (async, no await from the route)
+    // Background fan-out (async, no await from the route). tid captured in the
+    // closure keeps every write tenant-scoped even though we've left the request.
     ;(async () => {
       try {
         const BATCH = 5; // max 5 concurrent Resend sends
         const { rows: recips } = await _pool().query(
-          `SELECT id,email,name FROM email_broadcast_recipients WHERE broadcast_id=$1 AND status='queued'`,
-          [id]
+          `SELECT id,email,name FROM email_broadcast_recipients WHERE broadcast_id=$1 AND status='queued' AND tenant_id=$2`,
+          [id, tid]
         );
         for (let i = 0; i < recips.length; i += BATCH) {
           const chunk = recips.slice(i, i + BATCH);
@@ -236,26 +240,26 @@ router.post('/broadcasts/:id/send', async (req, res) => {
                 broadcastId: id, recipientId: r.id
               });
               await _pool().query(
-                `UPDATE email_broadcast_recipients SET status='sent', resend_message_id=$1, sent_at=now() WHERE id=$2`,
-                [msgId, r.id]
+                `UPDATE email_broadcast_recipients SET status='sent', resend_message_id=$1, sent_at=now() WHERE id=$2 AND tenant_id=$3`,
+                [msgId, r.id, tid]
               );
               await _pool().query(
-                `UPDATE email_broadcasts SET sent_count=sent_count+1 WHERE id=$1`, [id]
+                `UPDATE email_broadcasts SET sent_count=sent_count+1 WHERE id=$1 AND tenant_id=$2`, [id, tid]
               );
             } catch(sendErr) {
               console.warn(`[email-broadcast] send failed for ${r.email}:`, sendErr.message);
               await _pool().query(
-                `UPDATE email_broadcast_recipients SET status='bounced', bounced_at=now() WHERE id=$1`, [r.id]
+                `UPDATE email_broadcast_recipients SET status='bounced', bounced_at=now() WHERE id=$1 AND tenant_id=$2`, [r.id, tid]
               );
               await _pool().query(
-                `UPDATE email_broadcasts SET bounce_count=bounce_count+1 WHERE id=$1`, [id]
+                `UPDATE email_broadcasts SET bounce_count=bounce_count+1 WHERE id=$1 AND tenant_id=$2`, [id, tid]
               );
             }
           }));
           // Tiny pause between batches to respect Resend rate limits
           if (i + BATCH < recips.length) await new Promise(r => setTimeout(r, 200));
         }
-        await _pool().query(`UPDATE email_broadcasts SET status='sent' WHERE id=$1`, [id]);
+        await _pool().query(`UPDATE email_broadcasts SET status='sent' WHERE id=$1 AND tenant_id=$2`, [id, tid]);
       } catch(err) {
         console.error('[email-broadcast] fan-out error:', err.message);
       }
@@ -343,38 +347,40 @@ router.post('/webhook', async (req, res) => {
 
   try {
     const { rows } = await _pool().query(
-      `SELECT id, broadcast_id FROM email_broadcast_recipients WHERE resend_message_id=$1 LIMIT 1`,
+      `SELECT id, broadcast_id, tenant_id FROM email_broadcast_recipients WHERE resend_message_id=$1 LIMIT 1`,
       [msgId]
     );
     if (!rows.length) return res.json({ ok:true, matched:0 });
-    const { id: recipId, broadcast_id: broadcastId } = rows[0];
+    // Tenant is derived from the matched recipient row (resolved via the
+    // globally-unique Resend message id) — the webhook itself has no session.
+    const { id: recipId, broadcast_id: broadcastId, tenant_id: tid } = rows[0];
 
     if (type.includes('opened') || type.includes('open')) {
       await _pool().query(
-        `UPDATE email_broadcast_recipients SET status='opened', opened_at=COALESCE(opened_at,now()) WHERE id=$1`, [recipId]
+        `UPDATE email_broadcast_recipients SET status='opened', opened_at=COALESCE(opened_at,now()) WHERE id=$1 AND tenant_id=$2`, [recipId, tid]
       );
       await _pool().query(
-        `UPDATE email_broadcasts SET open_count=open_count+1 WHERE id=$1 AND NOT EXISTS (
-           SELECT 1 FROM email_broadcast_recipients WHERE id=$2 AND opened_at IS NOT NULL AND opened_at < now()
-         )`, [broadcastId, recipId]
+        `UPDATE email_broadcasts SET open_count=open_count+1 WHERE id=$1 AND tenant_id=$3 AND NOT EXISTS (
+           SELECT 1 FROM email_broadcast_recipients WHERE id=$2 AND tenant_id=$3 AND opened_at IS NOT NULL AND opened_at < now()
+         )`, [broadcastId, recipId, tid]
       );
       // Simpler: just increment (Resend may fire multiple opens — acceptable for now)
-      await _pool().query(`UPDATE email_broadcasts SET open_count=open_count+1 WHERE id=$1`, [broadcastId]);
+      await _pool().query(`UPDATE email_broadcasts SET open_count=open_count+1 WHERE id=$1 AND tenant_id=$2`, [broadcastId, tid]);
     } else if (type.includes('clicked') || type.includes('click')) {
       await _pool().query(
-        `UPDATE email_broadcast_recipients SET status='clicked', clicked_at=COALESCE(clicked_at,now()) WHERE id=$1`, [recipId]
+        `UPDATE email_broadcast_recipients SET status='clicked', clicked_at=COALESCE(clicked_at,now()) WHERE id=$1 AND tenant_id=$2`, [recipId, tid]
       );
-      await _pool().query(`UPDATE email_broadcasts SET click_count=click_count+1 WHERE id=$1`, [broadcastId]);
+      await _pool().query(`UPDATE email_broadcasts SET click_count=click_count+1 WHERE id=$1 AND tenant_id=$2`, [broadcastId, tid]);
     } else if (type.includes('bounced') || type.includes('bounce')) {
       await _pool().query(
-        `UPDATE email_broadcast_recipients SET status='bounced', bounced_at=COALESCE(bounced_at,now()) WHERE id=$1`, [recipId]
+        `UPDATE email_broadcast_recipients SET status='bounced', bounced_at=COALESCE(bounced_at,now()) WHERE id=$1 AND tenant_id=$2`, [recipId, tid]
       );
-      await _pool().query(`UPDATE email_broadcasts SET bounce_count=bounce_count+1 WHERE id=$1`, [broadcastId]);
+      await _pool().query(`UPDATE email_broadcasts SET bounce_count=bounce_count+1 WHERE id=$1 AND tenant_id=$2`, [broadcastId, tid]);
     } else if (type.includes('complain')) {
       await _pool().query(
-        `UPDATE email_broadcast_recipients SET status='complained' WHERE id=$1`, [recipId]
+        `UPDATE email_broadcast_recipients SET status='complained' WHERE id=$1 AND tenant_id=$2`, [recipId, tid]
       );
-      await _pool().query(`UPDATE email_broadcasts SET complaint_count=complaint_count+1 WHERE id=$1`, [broadcastId]);
+      await _pool().query(`UPDATE email_broadcasts SET complaint_count=complaint_count+1 WHERE id=$1 AND tenant_id=$2`, [broadcastId, tid]);
     }
     res.json({ ok:true, matched:1 });
   } catch(e) {
