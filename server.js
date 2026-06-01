@@ -842,11 +842,12 @@ app.post('/api/launch/google-ads', async (req, res) => {
     // Register with optimizer (best-effort)
     try {
       const dailyBud = (parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30;
+      const _tid = await _tkvCtx.resolveTenantId(req, { label: 'launch:google' });
       await _db.getPool().query(`
-        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
-        VALUES ('google', $1, $2, $3, 'paused', TRUE)
-        ON CONFLICT (platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
-      `, [String(campaignId), campaignName, dailyBud]);
+        INSERT INTO ad_campaigns (tenant_id, platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
+        VALUES ($4, 'google', $1, $2, $3, 'paused', TRUE)
+        ON CONFLICT (tenant_id, platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
+      `, [String(campaignId), campaignName, dailyBud, _tid]);
     } catch (_e) {}
     res.json({
       success: true, platform: 'Google Ads', campaignId, status: 'PAUSED',
@@ -896,11 +897,12 @@ app.post('/api/launch/meta', async (req, res) => {
 
     try {
       const dailyBud = (parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30;
+      const _tid = await _tkvCtx.resolveTenantId(req, { label: 'launch:meta' });
       await _db.getPool().query(`
-        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
-        VALUES ('meta', $1, $2, $3, 'paused', TRUE)
-        ON CONFLICT (platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
-      `, [String(campData.id), campaignName, dailyBud]);
+        INSERT INTO ad_campaigns (tenant_id, platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
+        VALUES ($4, 'meta', $1, $2, $3, 'paused', TRUE)
+        ON CONFLICT (tenant_id, platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
+      `, [String(campData.id), campaignName, dailyBud, _tid]);
     } catch (_e) {}
     res.json({
       success: true, platform: 'Meta Ads', campaignId: campData.id, status: 'PAUSED',
@@ -981,11 +983,12 @@ app.post('/api/launch/microsoft-ads', async (req, res) => {
     }
 
     try {
+      const _tid = await _tkvCtx.resolveTenantId(req, { label: 'launch:microsoft' });
       await _db.getPool().query(`
-        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
-        VALUES ('microsoft', $1, $2, $3, 'paused', TRUE)
-        ON CONFLICT (platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
-      `, [String(newId), campaignName, dailyBud]);
+        INSERT INTO ad_campaigns (tenant_id, platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
+        VALUES ($4, 'microsoft', $1, $2, $3, 'paused', TRUE)
+        ON CONFLICT (tenant_id, platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
+      `, [String(newId), campaignName, dailyBud, _tid]);
     } catch (_e) {}
 
     res.json({
@@ -1026,11 +1029,12 @@ app.post('/api/launch/tiktok', async (req, res) => {
 
     try {
       const dailyBud = Math.max((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30, 50);
+      const _tid = await _tkvCtx.resolveTenantId(req, { label: 'launch:tiktok' });
       await _db.getPool().query(`
-        INSERT INTO ad_campaigns (platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
-        VALUES ('tiktok', $1, $2, $3, 'paused', TRUE)
-        ON CONFLICT (platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
-      `, [String(campaignId), campaignName, dailyBud]);
+        INSERT INTO ad_campaigns (tenant_id, platform, platform_camp_id, name, daily_budget, status, optimizer_enabled)
+        VALUES ($4, 'tiktok', $1, $2, $3, 'paused', TRUE)
+        ON CONFLICT (tenant_id, platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
+      `, [String(campaignId), campaignName, dailyBud, _tid]);
     } catch (_e) {}
     res.json({
       success: true, platform: 'TikTok Ads', campaignId, status: 'DISABLED',
