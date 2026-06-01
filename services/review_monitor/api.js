@@ -32,13 +32,18 @@ function _normalizeDate(dateStr) {
   return s.slice(0, 20).toLowerCase();
 }
 
-// ── Stable review fingerprint (author + normalised date + rating) ────────────
-// Body is intentionally excluded — review text can be edited/truncated by the
-// platform without the review being truly removed, which would create false
-// "deleted" events if body were part of the identity.
-function _reviewId(author, date, rating) {
+// ── Stable review fingerprint (author + normalised date + rating + body prefix) ─
+// Design rationale:
+// - author|rating alone collides for anonymous/same-rating reviews on same platform.
+// - Full body causes false deletions when platforms lightly edit/truncate text.
+// - Body prefix (first 80 chars) is stable: platforms rarely rewrite review openings,
+//   and 80 chars provides strong collision resistance for same-author same-rating pairs.
+// - Relative dates are normalised to '' (see _normalizeDate) to prevent drift, but the
+//   body prefix still distinguishes distinct reviews in that case.
+function _reviewId(author, date, rating, body) {
   const stableDate = _normalizeDate(date);
-  const str = `${String(author || '').trim()}|${stableDate}|${rating || 0}`;
+  const bodyPrefix = String(body || '').trim().slice(0, 80).toLowerCase();
+  const str = `${String(author || '').trim()}|${stableDate}|${rating || 0}|${bodyPrefix}`;
   return crypto.createHash('sha256').update(str).digest('hex').slice(0, 32);
 }
 
@@ -114,8 +119,8 @@ async function recordSnapshot(tenantId, brand, platform, reviews) {
   if (tenantId == null) return [];
   const pool = _db.getPool();
 
-  // Build list of current review IDs using stable author+normalizedDate+rating fingerprint
-  const currentIds = reviews.map(rv => _reviewId(rv.author, rv.date, rv.rating));
+  // Build list of current review IDs using stable author+normalizedDate+rating+bodyPrefix fingerprint
+  const currentIds = reviews.map(rv => _reviewId(rv.author, rv.date, rv.rating, rv.body));
 
   // Upsert all current reviews (mark as seen / resurrect if previously deleted)
   for (let i = 0; i < reviews.length; i++) {
