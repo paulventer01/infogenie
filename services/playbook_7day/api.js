@@ -6,13 +6,20 @@ const express = require('express');
 const router = express.Router();
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const _kvScope = require('../tenants/kv_scope');
 let _openai = null;
 try { _openai = require('openai').OpenAI ? new (require('openai').OpenAI)({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY }) : null; } catch(_) {}
 
+// All four stores are per-workspace (`<base>:t<tid>`). TASKS_KEY is shared with
+// the Officers feature in server.js, which owns its boot migration; we only
+// migrate the three playbook-owned keys here.
 const KV_STATE = 'playbook_7day_state_v1';
 const KV_SUGGESTIONS = 'playbook_7day_suggestions_v1';
 const KV_RUNS = 'playbook_7day_runs_v1';
 const TASKS_KEY = 'officer_tasks_v1';
+const _pk = (base, tid) => _kvScope.tkey(base, tid);
+async function _tid(req, label) { return await _tenantCtx.resolveTenantId(req, { label }); }
+for (const base of [KV_STATE, KV_SUGGESTIONS, KV_RUNS]) _kvScope.migrateGlobalSingleton(base, base).catch(() => {});
 
 // In-process per-key mutex so concurrent run-autonomous / toggle / suggest
 // requests don't lose updates on shared kv keys (especially TASKS_KEY which
@@ -111,11 +118,13 @@ const _findStep = (id) => {
   return null;
 };
 
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const state = (await _db.kvGet(KV_STATE, {})) || {};
-    const suggestions = (await _db.kvGet(KV_SUGGESTIONS, {})) || {};
-    const runs = (await _db.kvGet(KV_RUNS, [])) || [];
+    const tid = await _tid(req, 'playbook_7day:get');
+    if (tid == null) return res.json({ playbook: PLAYBOOK, state: {}, suggestions: {}, runs: [] });
+    const state = (await _db.kvGet(_pk(KV_STATE, tid), {})) || {};
+    const suggestions = (await _db.kvGet(_pk(KV_SUGGESTIONS, tid), {})) || {};
+    const runs = (await _db.kvGet(_pk(KV_RUNS, tid), [])) || [];
     res.json({ playbook: PLAYBOOK, state, suggestions, runs: Array.isArray(runs) ? runs.slice(0, 20) : [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -124,11 +133,14 @@ router.post('/step/:stepId/toggle', async (req, res) => {
   try {
     const id = req.params.stepId;
     if (!_findStep(id)) return res.status(400).json({ error: 'unknown step' });
-    const state = await _withLock(KV_STATE, async () => {
-      const s = (await _db.kvGet(KV_STATE, {})) || {};
+    const tid = await _tid(req, 'playbook_7day:toggle');
+    if (tid == null) return res.status(400).json({ error: 'no_tenant' });
+    const stateKey = _pk(KV_STATE, tid);
+    const state = await _withLock(stateKey, async () => {
+      const s = (await _db.kvGet(stateKey, {})) || {};
       s[id] = s[id] === 'done' ? 'pending' : 'done';
       s[id + '_at'] = new Date().toISOString();
-      await _db.kvSet(KV_STATE, s);
+      await _db.kvSet(stateKey, s);
       return s;
     });
     res.json({ ok: true, state });
@@ -141,6 +153,8 @@ router.post('/suggest', async (req, res) => {
     if (!stepId) return res.status(400).json({ error: 'stepId required' });
     const found = _findStep(stepId);
     if (!found) return res.status(400).json({ error: 'unknown step' });
+    const tid = await _tid(req, 'playbook_7day:suggest');
+    if (tid == null) return res.status(400).json({ error: 'no_tenant' });
     const businessContext = (req.body && req.body.context) || '';
 
     // Pull a small live snapshot to ground the suggestion in real platform data.
@@ -152,7 +166,6 @@ router.post('/suggest', async (req, res) => {
     const snap = {};
     if (_db.hasDb()) {
       const pool = _db.getPool();
-      const tid = await _tenantCtx.resolveTenantId(req, { label: 'playbook_7day:suggest' });
       const safe = async (sql, params = []) => { try { const r = await pool.query(sql, params); return r.rows?.[0]?.c == null ? null : +r.rows[0].c; } catch(_) { return null; } };
       snap.adCampaigns_total      = await safe(`SELECT COUNT(*)::int c FROM ad_campaigns WHERE tenant_id=$1`, [tid]);
       snap.adInsights_last7d      = await safe(`SELECT COUNT(*)::int c FROM ad_insights WHERE inserted_at > now() - interval '7 days'`);
@@ -218,10 +231,11 @@ Return 3-5 actions. Be specific to the snapshot — if a number is 0, recommend 
     }
     suggestion.generatedAt = new Date().toISOString();
     suggestion.snapshot = snap;
-    await _withLock(KV_SUGGESTIONS, async () => {
-      const all = (await _db.kvGet(KV_SUGGESTIONS, {})) || {};
+    const suggKey = _pk(KV_SUGGESTIONS, tid);
+    await _withLock(suggKey, async () => {
+      const all = (await _db.kvGet(suggKey, {})) || {};
       all[stepId] = suggestion;
-      await _db.kvSet(KV_SUGGESTIONS, all);
+      await _db.kvSet(suggKey, all);
     });
     res.json({ ok: true, suggestion });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -235,6 +249,10 @@ router.post('/run-autonomous', async (req, res) => {
   try {
     const dayFilter = req.body && req.body.day ? +req.body.day : null;
     const projectId = (req.body && req.body.projectId) || null;
+    const tid = await _tid(req, 'playbook_7day:run-autonomous');
+    if (tid == null) return res.status(400).json({ error: 'no_tenant' });
+    const tasksKey = _pk(TASKS_KEY, tid);
+    const runsKey = _pk(KV_RUNS, tid);
 
     // Build new task lines first (pure / no I/O), then write under a lock.
     const planned = [];
@@ -251,8 +269,8 @@ router.post('/run-autonomous', async (req, res) => {
 
     // RMW under lock so concurrent /api/officer/tasks-store writes (and the
     // autonomous runner reads) don't drop updates.
-    const { added, taskTags } = await _withLock(TASKS_KEY, async () => {
-      const tasks = (await _db.kvGet(TASKS_KEY, {})) || {};
+    const { added, taskTags } = await _withLock(tasksKey, async () => {
+      const tasks = (await _db.kvGet(tasksKey, {})) || {};
       const _added = {}; const _tags = [];
       planned.forEach(p => {
         const arr = Array.isArray(tasks[p.role]) ? tasks[p.role] : [];
@@ -264,16 +282,16 @@ router.post('/run-autonomous', async (req, res) => {
           _tags.push({ stepId: p.stepId, role: p.role, day: p.day });
         }
       });
-      await _db.kvSet(TASKS_KEY, tasks);
+      await _db.kvSet(tasksKey, tasks);
       return { added: _added, taskTags: _tags };
     });
 
     const run = { id: 'pbrun_' + Date.now().toString(36), at: new Date().toISOString(), dayFilter, projectId, added, taskTags, totalAdded: taskTags.length };
-    await _withLock(KV_RUNS, async () => {
-      const runs = (await _db.kvGet(KV_RUNS, [])) || [];
+    await _withLock(runsKey, async () => {
+      const runs = (await _db.kvGet(runsKey, [])) || [];
       const safeRuns = Array.isArray(runs) ? runs : [];
       safeRuns.unshift(run);
-      await _db.kvSet(KV_RUNS, safeRuns.slice(0, 50));
+      await _db.kvSet(runsKey, safeRuns.slice(0, 50));
     });
     res.json({ ok: true, run, message: `Assigned ${taskTags.length} tasks across ${Object.keys(added).length} officers. The Daily Report Scheduler will start tracking them.` });
   } catch (e) { res.status(500).json({ error: e.message }); }

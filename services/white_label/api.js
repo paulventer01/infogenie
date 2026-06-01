@@ -6,8 +6,14 @@
 const express = require('express');
 const router = express.Router();
 const _db = require('../../db');
+const _tenantCtx = require('../tenants/context');
+const _kvScope = require('../tenants/kv_scope');
 
+// Per-workspace brand profile. Stored as `white_label.brand_profile:t<tid>`.
+// The legacy global key is migrated into the default (owner) tenant once at boot.
 const KV_KEY = 'white_label.brand_profile';
+_kvScope.migrateGlobalSingleton(KV_KEY, KV_KEY).catch(() => {});
+async function _tid(req, label) { return await _tenantCtx.resolveTenantId(req, { label }); }
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safeAsync(h) {
@@ -52,30 +58,35 @@ function _normalise(raw) {
   };
 }
 
-async function getBrand() {
+async function getBrand(tid) {
   if (!_db.hasDb || !_db.hasDb()) return DEFAULTS;
+  if (tid == null) return DEFAULTS; // no resolvable workspace → no white-label override
   try {
-    const v = await _db.kvGet(KV_KEY, null);
+    const v = await _db.kvGet(_kvScope.tkey(KV_KEY, tid), null);
     if (!v) return DEFAULTS;
     return Object.assign({}, DEFAULTS, _normalise(v));
   } catch { return DEFAULTS; }
 }
 
 router.get('/profile', _safeAsync(async (req, res) => {
-  const brand = await getBrand();
+  const brand = await getBrand(await _tid(req, 'white-label:get'));
   res.json({ ok: true, brand, defaults: DEFAULTS });
 }));
 
 router.put('/profile', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database unavailable');
+  const tid = await _tid(req, 'white-label:put');
+  if (tid == null) return _err(res, 400, 'no_tenant');
   const brand = _normalise(req.body || {});
-  await _db.kvSet(KV_KEY, brand);
+  await _db.kvSet(_kvScope.tkey(KV_KEY, tid), brand);
   res.json({ ok: true, brand });
 }));
 
 router.delete('/profile', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return _err(res, 503, 'Database unavailable');
-  await _db.kvSet(KV_KEY, DEFAULTS);
+  const tid = await _tid(req, 'white-label:delete');
+  if (tid == null) return _err(res, 400, 'no_tenant');
+  await _db.kvSet(_kvScope.tkey(KV_KEY, tid), DEFAULTS);
   res.json({ ok: true, brand: DEFAULTS });
 }));
 
@@ -84,7 +95,7 @@ router.delete('/profile', _safeAsync(async (req, res) => {
 router.get('/preview/:format', _safeAsync(async (req, res) => {
   const fmt = req.params.format;
   if (!['pdf', 'pptx', 'xlsx'].includes(fmt)) return _err(res, 400, 'unknown format');
-  const brand = await getBrand();
+  const brand = await getBrand(await _tid(req, 'white-label:preview'));
   const report = {
     title: (brand.agencyName ? brand.agencyName + ' — ' : '') + 'Sample Branded Report',
     generated_at: Date.now(),

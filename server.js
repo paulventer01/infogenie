@@ -176,65 +176,108 @@ app.post('/api/diag-beacon', express.json({ limit: '8kb' }), (req, res) => {
   res.status(204).end();
 });
 
+// ── Per-tenant kv-backed store helper (Task #49 Group B) ─────────────────────
+// Replaces the legacy disk-file stores (goals, alerts, launches, drip, etc.).
+// Each feature picks a base key; its data lives at `${base}:t<tid>` so one
+// workspace can never read or overwrite another's. `_tkvMutate` serialises
+// read-modify-write per (base,tid) via an in-process promise chain, mirroring
+// the old per-file mutex. When the db is absent or tid is null the read/mutate
+// returns the fallback and writes are no-ops (null tid never touches global).
+const _tkvScope = require('./services/tenants/kv_scope');
+const _tkvCtx   = require('./services/tenants/context');
+const _dripUnsubscribe = require('./services/drips/unsubscribe');
+const _tkvChain = new Map();
+function _tkvFallback(fb) { return typeof fb === 'function' ? fb() : fb; }
+async function _tkvRead(base, tid, fallback) {
+  const _db = require('./db');
+  if (!_db.hasDb() || tid == null) return _tkvFallback(fallback);
+  const v = await _db.kvGet(_tkvScope.tkey(base, tid), undefined);
+  return (v === undefined || v === null) ? _tkvFallback(fallback) : v;
+}
+async function _tkvWrite(base, tid, value) {
+  const _db = require('./db');
+  if (!_db.hasDb() || tid == null) return false;
+  await _db.kvSet(_tkvScope.tkey(base, tid), value);
+  return true;
+}
+async function _tkvMutate(base, tid, fallback, mutator) {
+  const key = `${base}:t${tid}`;
+  const prev = _tkvChain.get(key) || Promise.resolve();
+  const run = prev.then(async () => {
+    const cur = await _tkvRead(base, tid, fallback);
+    const updated = await mutator(cur);
+    if (updated !== undefined) await _tkvWrite(base, tid, updated);
+    return updated;
+  });
+  _tkvChain.set(key, run.catch(() => {}));
+  return run;
+}
+
 // ── Dashboard-diag capture/replay ────────────────────────────────────────────
 // Save the full analysisData blob to disk so we can launch the dashboard
 // directly from cached data (zero external API calls). Used by the temporary
 // "Dashboard Diag" nav link to debug the post-render freeze quickly.
-const _DIAG_CAP_DIR = path.join(__dirname, 'data', 'diag-captures');
-try { fs.mkdirSync(_DIAG_CAP_DIR, { recursive: true }); } catch(_) {}
+// Captures are stored per-workspace in kv: each capture at
+// `diag_capture:t<tid>:<slug>` and a latest pointer at `diag_capture_latest:t<tid>`.
+const _DIAG_CAP_PREFIX = 'diag_capture:';
+const _DIAG_LATEST_KEY = 'diag_capture_latest';
 function _safeDomainSlug(s) {
   return String(s || 'unknown').toLowerCase().replace(/^https?:\/\//,'').replace(/^www\./,'')
     .replace(/[^a-z0-9.-]+/g, '_').slice(0, 80) || 'unknown';
 }
-app.post('/api/diag-capture', express.json({ limit: '4mb' }), (req, res) => {
+app.post('/api/diag-capture', express.json({ limit: '4mb' }), async (req, res) => {
   try {
+    const _db = require('./db');
+    if (!_db.hasDb()) return res.status(503).json({ ok:false, error:'database not configured' });
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'diag-capture:save' });
+    if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
     const body = req.body || {};
     const url  = body.url || (body.analysisData && body.analysisData.url) || 'unknown';
     const slug = _safeDomainSlug(url);
-    const filename = `${slug}.json`;
-    const full = path.join(_DIAG_CAP_DIR, filename);
-    const payload = {
-      capturedAt: new Date().toISOString(),
-      domain: slug,
-      ...body
-    };
-    fs.writeFileSync(full, JSON.stringify(payload, null, 2));
-    // Also write a "latest.json" pointer for the diag launcher
-    fs.writeFileSync(path.join(_DIAG_CAP_DIR, '_latest.json'), JSON.stringify({ domain: slug, file: filename, at: payload.capturedAt }));
-    console.log(`[diag-capture] saved ${filename} (${(JSON.stringify(payload).length/1024).toFixed(1)}kb)`);
-    res.json({ ok: true, domain: slug, file: filename, bytes: JSON.stringify(payload).length });
+    const payload = { capturedAt: new Date().toISOString(), domain: slug, ...body };
+    await _db.kvSet(`${_DIAG_CAP_PREFIX}t${tid}:${slug}`, payload);
+    await _tkvWrite(_DIAG_LATEST_KEY, tid, { domain: slug, at: payload.capturedAt });
+    console.log(`[diag-capture] saved ${slug} (${(JSON.stringify(payload).length/1024).toFixed(1)}kb)`);
+    res.json({ ok: true, domain: slug, bytes: JSON.stringify(payload).length });
   } catch (e) {
     console.warn('[diag-capture] save failed:', e && e.message || e);
     res.status(500).json({ ok: false, error: String(e && e.message || e) });
   }
 });
-app.get('/api/diag-capture/list', (_req, res) => {
+app.get('/api/diag-capture/list', async (req, res) => {
   try {
-    const files = fs.readdirSync(_DIAG_CAP_DIR)
-      .filter(f => f.endsWith('.json') && !f.startsWith('_'))
-      .map(f => {
-        const st = fs.statSync(path.join(_DIAG_CAP_DIR, f));
-        return { file: f, domain: f.replace(/\.json$/,''), bytes: st.size, at: st.mtime.toISOString() };
-      })
-      .sort((a, b) => b.at.localeCompare(a.at));
-    res.json({ ok: true, captures: files });
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'diag-capture:list' });
+    if (tid == null) return res.json({ ok: true, captures: [] });
+    const rows = await _tkvScope.listTenantPrefix(_DIAG_CAP_PREFIX, tid, 200);
+    const captures = rows.map(r => ({
+      domain: r.id,
+      bytes: JSON.stringify(r.value || {}).length,
+      at: r.value?.capturedAt || null
+    })).sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    res.json({ ok: true, captures });
   } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
 });
-app.get('/api/diag-capture/latest', (_req, res) => {
+app.get('/api/diag-capture/latest', async (req, res) => {
   try {
-    const ptr = path.join(_DIAG_CAP_DIR, '_latest.json');
-    if (!fs.existsSync(ptr)) return res.status(404).json({ ok: false, error: 'no captures yet — run Analyse Now once to seed' });
-    const { file } = JSON.parse(fs.readFileSync(ptr, 'utf8'));
-    const data = JSON.parse(fs.readFileSync(path.join(_DIAG_CAP_DIR, file), 'utf8'));
+    const _db = require('./db');
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'diag-capture:latest' });
+    if (tid == null) return res.status(404).json({ ok: false, error: 'no captures yet — run Analyse Now once to seed' });
+    const ptr = await _tkvRead(_DIAG_LATEST_KEY, tid, null);
+    if (!ptr || !ptr.domain) return res.status(404).json({ ok: false, error: 'no captures yet — run Analyse Now once to seed' });
+    const data = await _db.kvGet(`${_DIAG_CAP_PREFIX}t${tid}:${ptr.domain}`, undefined);
+    if (data === undefined) return res.status(404).json({ ok: false, error: 'not found' });
     res.json({ ok: true, ...data });
   } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
 });
-app.get('/api/diag-capture/:domain', (req, res) => {
+app.get('/api/diag-capture/:domain', async (req, res) => {
   try {
+    const _db = require('./db');
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'diag-capture:get' });
+    if (tid == null) return res.status(404).json({ ok: false, error: 'not found' });
     const slug = _safeDomainSlug(req.params.domain);
-    const full = path.join(_DIAG_CAP_DIR, slug + '.json');
-    if (!fs.existsSync(full)) return res.status(404).json({ ok: false, error: 'not found' });
-    res.json({ ok: true, ...JSON.parse(fs.readFileSync(full, 'utf8')) });
+    const data = await _db.kvGet(`${_DIAG_CAP_PREFIX}t${tid}:${slug}`, undefined);
+    if (data === undefined) return res.status(404).json({ ok: false, error: 'not found' });
+    res.json({ ok: true, ...data });
   } catch (e) { res.status(500).json({ ok: false, error: String(e) }); }
 });
 
@@ -3952,8 +3995,9 @@ app.post('/api/ai-visibility-coverage', async (req, res) => {
     const overallHits = cells.filter(c => c.cited).length;
     const overallCoverage = overallCells ? +(overallHits / overallCells).toFixed(3) : 0;
 
-    // Record this run into trend history (best-effort, non-blocking).
-    try { recordAivisRun(cleanDomain, { ts: Date.now(), overallCoverage, coverageByModel, coverageByPrompt, modelKeys, totalCells: overallCells, totalCitations: overallHits }); } catch(_){}
+    // Record this run into trend history (best-effort, non-blocking), scoped
+    // to the caller's workspace.
+    try { const _aivisTid = await _tkvCtx.resolveTenantId(req, { label: 'aivis:record' }); await recordAivisRun(_aivisTid, cleanDomain, { ts: Date.now(), overallCoverage, coverageByModel, coverageByPrompt, modelKeys, totalCells: overallCells, totalCitations: overallHits }); } catch(_){}
 
     res.json({ ok:true, domain:cleanDomain, industry, modelKeys, matrix, coverageByModel, coverageByPrompt, overallCoverage,
       summary: { promptsRun: matrix.length, modelsRun: modelKeys.length, totalCells: overallCells, totalCitations: overallHits } });
@@ -4996,40 +5040,34 @@ ORIGINAL ARTICLE HTML:
 // ── AI Visibility Trend persistence ──────────────────────────────────────────
 // Stores every coverage-matrix run to data/aivis-history.json (keyed by domain)
 // so users can see citation deltas over time per model and per prompt.
-const AIVIS_DATA_DIR = path.join(__dirname, 'data');
-const AIVIS_HISTORY_FILE = path.join(AIVIS_DATA_DIR, 'aivis-history.json');
-function loadAivisHistory() {
-  try {
-    if (!fs.existsSync(AIVIS_DATA_DIR)) fs.mkdirSync(AIVIS_DATA_DIR, { recursive:true });
-    if (!fs.existsSync(AIVIS_HISTORY_FILE)) return {};
-    return JSON.parse(fs.readFileSync(AIVIS_HISTORY_FILE, 'utf8'));
-  } catch (e) { console.warn('[aivis-history] load error:', e.message); return {}; }
+// Per-workspace: trend history lives at kv `aivis_history:t<tid>` (a
+// {domain:[runs]} map). null tid → empty (never reads another workspace).
+const AIVIS_HISTORY_BASE = 'aivis_history';
+async function loadAivisHistory(tid) {
+  return await _tkvRead(AIVIS_HISTORY_BASE, tid, () => ({}));
 }
-function saveAivisHistory(h) {
-  try {
-    if (!fs.existsSync(AIVIS_DATA_DIR)) fs.mkdirSync(AIVIS_DATA_DIR, { recursive:true });
-    fs.writeFileSync(AIVIS_HISTORY_FILE, JSON.stringify(h));
-  } catch (e) { console.warn('[aivis-history] save error:', e.message); }
-}
-function recordAivisRun(domain, run) {
-  if (!domain || !run) return;
-  const h = loadAivisHistory();
-  if (!h[domain]) h[domain] = [];
-  h[domain].push(run);
-  // Keep last 60 runs per domain (about 2 months daily).
-  if (h[domain].length > 60) h[domain] = h[domain].slice(-60);
-  saveAivisHistory(h);
+async function recordAivisRun(tid, domain, run) {
+  if (tid == null || !domain || !run) return;
+  await _tkvMutate(AIVIS_HISTORY_BASE, tid, () => ({}), (h) => {
+    const safe = (h && typeof h === 'object' && !Array.isArray(h)) ? h : {};
+    if (!safe[domain]) safe[domain] = [];
+    safe[domain].push(run);
+    // Keep last 60 runs per domain (about 2 months daily).
+    if (safe[domain].length > 60) safe[domain] = safe[domain].slice(-60);
+    return safe;
+  });
 }
 
 // ── GET /api/ai-visibility-trend?domain=X ─────────────────────────────────────
 // TREND TRACKING — returns the historical citation series for a domain so the
 // AI Visibility view can render sparklines + week-over-week deltas per model
 // and per prompt.
-app.get('/api/ai-visibility-trend', (req, res) => {
+app.get('/api/ai-visibility-trend', async (req, res) => {
   try {
     const cleanDomain = String(req.query.domain || '').replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase();
     if (!cleanDomain) return res.json({ ok:true, domain:'', runs:[], series:{}, deltas:{} });
-    const h = loadAivisHistory();
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'aivis:trend' });
+    const h = await loadAivisHistory(tid);
     const runs = (h[cleanDomain] || []).slice(-30); // last 30 runs
 
     // Build per-model series.
@@ -6688,53 +6726,49 @@ app.post('/api/publish-to-wordpress', async (req, res) => {
 // fire but the enrollment still progresses through the sequence so the
 // timeline reflects what would happen in production.
 
-const DRIP_DATA_DIR  = path.join(__dirname, 'data');
-const DRIP_FILE      = path.join(DRIP_DATA_DIR, 'drip-enrollments.json');
-const DRIP_UNSUB_FILE = path.join(DRIP_DATA_DIR, 'drip-unsubscribes.json');
-try { fs.mkdirSync(DRIP_DATA_DIR, { recursive: true }); } catch(e) {}
+// Per-workspace: enrollments live at kv `drip_enrollments:t<tid>` (array) and
+// unsubscribes at `drip_unsubs:t<tid>` (array of lowercased emails). Every
+// read/write is scoped to one tenant — a null tid yields an empty list and a
+// no-op write, so a workspace can never touch another's drip data.
+const DRIP_ENROLL_BASE = 'drip_enrollments';
+const DRIP_UNSUB_BASE  = 'drip_unsubs';
 
-function _dripLoad() {
-  try { return JSON.parse(fs.readFileSync(DRIP_FILE, 'utf8')); }
-  catch(e) { return []; }
+async function _dripLoad(tid) {
+  const list = await _tkvRead(DRIP_ENROLL_BASE, tid, () => []);
+  return Array.isArray(list) ? list : [];
 }
-function _dripSave(list) {
-  try {
-    // Atomic write: tmp file + rename so a crash mid-write can't corrupt the
-    // store. Combined with the _dripLock below this is enough single-process
-    // safety for the file-backed model.
-    const tmp = DRIP_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(list, null, 2));
-    fs.renameSync(tmp, DRIP_FILE);
-  } catch(e) { console.error('drip save failed:', e.message); }
+async function _dripSave(tid, list) {
+  return await _tkvWrite(DRIP_ENROLL_BASE, tid, Array.isArray(list) ? list : []);
 }
 
 // Single-writer mutex around any read-modify-write sequence on the drip
 // store. Prevents the 60s tick, an inbound webhook, and a user enroll from
 // clobbering each other (last-write-wins would otherwise drop bounce/
-// delivered flags). All async; queues callers FIFO.
+// delivered flags). All async; queues callers FIFO. The mutex is global
+// (cross-tenant) — a small concurrency cost for guaranteed correctness given
+// the shared 60s tick that walks every workspace.
 let _dripLockTail = Promise.resolve();
 function _dripLock(fn) {
   const next = _dripLockTail.then(() => fn());
   _dripLockTail = next.catch(() => {}); // never let one error break the chain
   return next;
 }
-function _dripLoadUnsubs() {
-  try { return new Set(JSON.parse(fs.readFileSync(DRIP_UNSUB_FILE, 'utf8'))); }
-  catch(e) { return new Set(); }
+async function _dripLoadUnsubs(tid) {
+  const arr = await _tkvRead(DRIP_UNSUB_BASE, tid, () => []);
+  return new Set(Array.isArray(arr) ? arr : []);
 }
-function _dripSaveUnsubs(set) {
-  try { fs.writeFileSync(DRIP_UNSUB_FILE, JSON.stringify([...set], null, 2)); }
-  catch(e) {}
+async function _dripSaveUnsubs(tid, set) {
+  return await _tkvWrite(DRIP_UNSUB_BASE, tid, [...set]);
 }
 
 // Expose the drip store helpers on a global so other modules (e.g. the
 // Dynamic Audiences → Drip bridge in services/audiences/drip_bridge.js)
 // can read/mutate the store under the same single-writer mutex without
 // taking the latency hit of an internal HTTP loopback to /api/drips/enroll.
+// All store methods are tenant-scoped: callers MUST pass the tenant id.
 global._dripStore = {
   load: _dripLoad, save: _dripSave, lock: _dripLock,
   loadUnsubs: _dripLoadUnsubs, saveUnsubs: _dripSaveUnsubs,
-  file: DRIP_FILE,
 };
 
 // Generic Resend email sender — extracted from _sendVerificationEmail so the
@@ -6806,11 +6840,23 @@ function _dripEmailHtml({ subject, body, brand, unsubUrl }) {
 // timer below. Pure function over (enrollments, unsubs, now) → mutates each
 // enrollment's currentStep / nextSendAt / status / history. Wrapped in the
 // drip lock so concurrent enrolls / webhook events can't clobber updates.
-function _dripTick() { return _dripLock(_dripTickInner); }
-async function _dripTickInner() {
-  let list  = _dripLoad();
+// Walk every active workspace and process its due enrollments. Each tenant's
+// list/unsubs are loaded and saved under its own kv keys so sends never bleed
+// across workspaces.
+function _dripTick() {
+  return _dripLock(async () => {
+    let tids = [];
+    try { tids = await _tkvCtx.listActiveTenantIds(); } catch (_) { tids = []; }
+    for (const tid of tids) {
+      try { await _dripTickInner(tid); }
+      catch (e) { console.error(`[drip] tick error (t${tid}):`, e.message); }
+    }
+  });
+}
+async function _dripTickInner(tid) {
+  let list  = await _dripLoad(tid);
   if (!list.length) return;
-  const unsubs = _dripLoadUnsubs();
+  const unsubs = await _dripLoadUnsubs(tid);
   const now = Date.now();
   let mutated = false;
   for (const enr of list) {
@@ -6841,7 +6887,7 @@ async function _dripTickInner() {
         entry.ok = true; entry.note = 'dry-run (no real send)';
       } else if (isEmail) {
         const subject = (step.subject || step.label || `Message from ${enr.brand || 'InfoGenie'}`).slice(0, 140);
-        const unsubUrl = `${enr.appOrigin || ''}/api/drips/unsubscribe?email=${encodeURIComponent(enr.email)}`;
+        const unsubUrl = `${enr.appOrigin || ''}/api/drips/unsubscribe?email=${encodeURIComponent(enr.email)}&t=${encodeURIComponent(tid)}`;
         const html = _dripEmailHtml({ subject, body: step.msg || '', brand: enr.brand, unsubUrl });
         const text = (step.msg || '') + `\n\n— Unsubscribe: ${unsubUrl}`;
         const sendRes = await _sendEmailViaResend({ to: enr.email, subject, html, text });
@@ -6882,7 +6928,7 @@ async function _dripTickInner() {
     }
     mutated = true;
   }
-  if (mutated) _dripSave(list);
+  if (mutated) await _dripSave(tid, list);
 }
 
 // Tick every 60 seconds. Errors in the engine should never crash the server.
@@ -6893,19 +6939,14 @@ setTimeout(() => { _dripTick().catch(()=>{}); }, 5_000);
 // ── POST /api/drips/enroll ────────────────────────────────────────────────
 // body: { contacts:[{email, name?}], sequence:[{day, channel, msg, label, subject?}],
 //         brand?, dryRun?:bool, appOrigin? }
-app.post('/api/drips/enroll', async (req, res) => {
-  try {
-    const { contacts, sequence, brand, dryRun, appOrigin } = req.body || {};
-    if (!Array.isArray(contacts) || !contacts.length) {
-      return res.status(400).json({ ok: false, error: 'contacts array required' });
-    }
-    if (!Array.isArray(sequence) || !sequence.length) {
-      return res.status(400).json({ ok: false, error: 'sequence array required' });
-    }
-    const validEmail = e => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
-    const result = await _dripLock(async () => {
-    const list = _dripLoad();
-    const unsubs = _dripLoadUnsubs();
+// Core enrollment logic shared by the HTTP route and in-process callers
+// (e.g. the re-engagement launcher) so we avoid an authenticated loopback.
+// Caller MUST pass a resolved tenant id.
+async function _enrollDripCore(tid, { contacts, sequence, brand, dryRun, appOrigin }) {
+  const validEmail = e => typeof e === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+  const result = await _dripLock(async () => {
+    const list = await _dripLoad(tid);
+    const unsubs = await _dripLoadUnsubs(tid);
     const startedAt = Date.now();
     const dayZeroOffset = (sequence[0] && typeof sequence[0].day === 'number') ? sequence[0].day : 0;
     const created = [];
@@ -6941,11 +6982,26 @@ app.post('/api/drips/enroll', async (req, res) => {
       });
       created.push({ id, email });
     }
-    _dripSave(list);
+    await _dripSave(tid, list);
     return { created, skipped };
-    });
-    // Kick off an immediate tick so day-0 sends fire right away (after lock release)
-    _dripTick().catch(()=>{});
+  });
+  // Kick off an immediate tick so day-0 sends fire right away (after lock release)
+  _dripTick().catch(()=>{});
+  return result;
+}
+
+app.post('/api/drips/enroll', async (req, res) => {
+  try {
+    const { contacts, sequence, brand, dryRun, appOrigin } = req.body || {};
+    if (!Array.isArray(contacts) || !contacts.length) {
+      return res.status(400).json({ ok: false, error: 'contacts array required' });
+    }
+    if (!Array.isArray(sequence) || !sequence.length) {
+      return res.status(400).json({ ok: false, error: 'sequence array required' });
+    }
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'drips:enroll' });
+    if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
+    const result = await _enrollDripCore(tid, { contacts, sequence, brand, dryRun, appOrigin });
     res.json({ ok: true, enrolled: result.created.length, skipped: result.skipped, created: result.created });
   } catch (err) {
     console.error('/api/drips/enroll error:', err);
@@ -6954,8 +7010,10 @@ app.post('/api/drips/enroll', async (req, res) => {
 });
 
 // ── GET /api/drips ─ list all enrollments (most recent first), optionally filtered
-app.get('/api/drips', (req, res) => {
-  const list = _dripLoad().sort((a,b) => (b.startedAt||0) - (a.startedAt||0));
+app.get('/api/drips', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'drips:list' });
+  if (tid == null) return res.json({ ok: true, count: 0, enrollments: [] });
+  const list = (await _dripLoad(tid)).sort((a,b) => (b.startedAt||0) - (a.startedAt||0));
   const status = (req.query.status || '').toString();
   const filtered = status ? list.filter(e => e.status === status) : list;
   res.json({ ok: true, count: filtered.length, enrollments: filtered.slice(0, 200) });
@@ -6966,8 +7024,9 @@ app.get('/api/drips', (req, res) => {
 // bounce rate (%) and complaint rate (%). Only email-channel sends are
 // counted toward deliverability — non-email channels (SMS, ads, etc.) are
 // excluded so the rates reflect actual email performance.
-app.get('/api/drips/stats', (req, res) => {
-  const list = _dripLoad();
+app.get('/api/drips/stats', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'drips:stats' });
+  const list = tid == null ? [] : await _dripLoad(tid);
   const stats = {
     total: list.length, active: 0, paused: 0, completed: 0, cancelled: 0, unsubscribed: 0,
     sentTotal: 0, failedTotal: 0,
@@ -7002,14 +7061,16 @@ app.get('/api/drips/stats', (req, res) => {
 app.post('/api/drips/:id/:action', async (req, res, next) => {
   const { id, action } = req.params;
   if (!['pause','resume','cancel'].includes(action)) return next();
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'drips:action' });
+  if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
   const result = await _dripLock(async () => {
-    const list = _dripLoad();
+    const list = await _dripLoad(tid);
     const enr = list.find(e => e.id === id);
     if (!enr) return { notFound: true };
     if (action === 'pause')       enr.status = 'paused';
     else if (action === 'resume') enr.status = 'active';
     else if (action === 'cancel') enr.status = 'cancelled';
-    _dripSave(list);
+    await _dripSave(tid, list);
     return { enr };
   });
   if (result.notFound) return res.status(404).json({ ok: false, error: 'not found' });
@@ -7019,20 +7080,18 @@ app.post('/api/drips/:id/:action', async (req, res, next) => {
 // ── GET /api/drips/unsubscribe?email=... ─ public unsubscribe (no auth)
 // Returns a small HTML page so the link in the email works in any browser.
 app.get('/api/drips/unsubscribe', async (req, res) => {
-  const email = String(req.query.email || '').trim().toLowerCase();
-  if (!email) return res.status(400).send('Missing email parameter');
-  const touched = await _dripLock(async () => {
-    const unsubs = _dripLoadUnsubs();
-    unsubs.add(email);
-    _dripSaveUnsubs(unsubs);
-    const list = _dripLoad();
-    let n = 0;
-    for (const e of list) {
-      if (e.email === email && e.status === 'active') { e.status = 'unsubscribed'; n++; }
-    }
-    if (n) _dripSave(list);
-    return n;
+  // Single-tenant, bounded unsubscribe (see services/drips/unsubscribe.js).
+  // Never fans out across workspaces — modern links carry `t`, legacy links
+  // fall back to the default/owner tenant only.
+  const r = await _dripUnsubscribe.unsubscribeEmail({
+    email: req.query.email,
+    tParam: req.query.t,
+    store: global._dripStore,
+    ctx: _tkvCtx,
   });
+  if (!r.ok) return res.status(400).send('Missing email parameter');
+  const email = r.email;
+  const touched = r.touched;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(`<!doctype html><html><head><title>Unsubscribed</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
     <body style="font-family:-apple-system,sans-serif;background:#F3F4F6;margin:0;padding:60px 20px;text-align:center">
@@ -7099,21 +7158,28 @@ app.post('/api/drips/webhook/resend', async (req, res) => {
     const data = evt.data || evt;
     const msgId = data.email_id || data.id || data.message_id;
     if (!msgId) return res.json({ ok: true, ignored: 'no message id' });
+    // Resend's event only carries the message id, not the tenant — walk every
+    // active workspace and update wherever the providerId matches.
+    let tids = [];
+    try { tids = await _tkvCtx.listActiveTenantIds(); } catch (_) { tids = []; }
     const matched = await _dripLock(async () => {
-      const list = _dripLoad();
       let n = 0;
-      for (const enr of list) {
-        for (const h of (enr.history || [])) {
-          if (h.providerId !== msgId) continue;
-          n++;
-          if (type.includes('delivered'))      { h.delivered = true; h.deliveredAt = Date.now(); }
-          else if (type.includes('bounced'))   { h.bounced   = true; h.bouncedAt   = Date.now(); h.failureType = 'bounce';    h.bounceReason = (data.bounce && data.bounce.message) || ''; }
-          else if (type.includes('complain'))  { h.complaint = true; h.complaintAt = Date.now(); h.failureType = 'complaint'; }
-          else if (type.includes('opened'))    { h.opened    = true; h.openedAt    = Date.now(); }
-          else if (type.includes('clicked'))   { h.clicked   = true; h.clickedAt   = Date.now(); }
+      for (const tid of tids) {
+        const list = await _dripLoad(tid);
+        let changed = false;
+        for (const enr of list) {
+          for (const h of (enr.history || [])) {
+            if (h.providerId !== msgId) continue;
+            n++; changed = true;
+            if (type.includes('delivered'))      { h.delivered = true; h.deliveredAt = Date.now(); }
+            else if (type.includes('bounced'))   { h.bounced   = true; h.bouncedAt   = Date.now(); h.failureType = 'bounce';    h.bounceReason = (data.bounce && data.bounce.message) || ''; }
+            else if (type.includes('complain'))  { h.complaint = true; h.complaintAt = Date.now(); h.failureType = 'complaint'; }
+            else if (type.includes('opened'))    { h.opened    = true; h.openedAt    = Date.now(); }
+            else if (type.includes('clicked'))   { h.clicked   = true; h.clickedAt   = Date.now(); }
+          }
         }
+        if (changed) await _dripSave(tid, list);
       }
-      if (n) _dripSave(list);
       return n;
     });
     res.json({ ok: true, matched });
@@ -11054,17 +11120,25 @@ app.post('/api/officer/tasks', async (req, res) => {
 // localStorage remains the source of truth for the modal UI; this kv mirror
 // is updated whenever the user clicks Save in the tasks modal.
 const _TASKS_KEY = 'officer_tasks_v1';
+// All Officer kv stores are per-workspace (`<base>:t<tid>`). _TASKS_KEY is also
+// written by services/playbook_7day (keep the base aligned). resolveTenantId is
+// used per request; the auto-report / auto-meeting schedulers iterate tenants.
+const _officerScope = require('./services/tenants/kv_scope');
+const _officerCtx   = require('./services/tenants/context');
+const _officerKey = (base, tid) => _officerScope.tkey(base, tid);
 const _OFFICER_ROLES = ['marketing','sales','analyst','content','seo','cro','finance','ops'];
 const _OFFICER_TITLES = {
   marketing:'Marketing Officer', sales:'Sales Officer', analyst:'Analyst Officer',
   content:'Content Officer', seo:'SEO Officer', cro:'CRO Officer',
   finance:'Finance Officer', ops:'Operations Officer'
 };
-app.get('/api/officer/tasks-store', async (_req, res) => {
+app.get('/api/officer/tasks-store', async (req, res) => {
   try {
     const _db = require('./db');
     if (!_db.hasDb()) return res.json({ tasks: {} });
-    const v = (await _db.kvGet(_TASKS_KEY, {})) || {};
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:tasks-store:get' });
+    if (tid == null) return res.json({ tasks: {} });
+    const v = (await _db.kvGet(_officerKey(_TASKS_KEY, tid), {})) || {};
     res.json({ tasks: (v && typeof v==='object' && !Array.isArray(v)) ? v : {} });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -11072,14 +11146,17 @@ app.post('/api/officer/tasks-store', async (req, res) => {
   try {
     const _db = require('./db');
     if (!_db.hasDb()) return res.status(503).json({ error: 'database not configured' });
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:tasks-store:post' });
+    if (tid == null) return res.status(400).json({ error: 'no_tenant' });
     const { role, tasks } = req.body || {};
     const safeRole = String(role||'').toLowerCase();
     if (!_OFFICER_ROLES.includes(safeRole)) return res.status(400).json({ error: 'unknown role' });
     const safeTasks = Array.isArray(tasks) ? tasks.filter(t => typeof t==='string').slice(0,40).map(t=>String(t).slice(0,200)) : [];
-    const cur = (await _db.kvGet(_TASKS_KEY, {})) || {};
+    const key = _officerKey(_TASKS_KEY, tid);
+    const cur = (await _db.kvGet(key, {})) || {};
     const safeCur = (cur && typeof cur==='object' && !Array.isArray(cur)) ? cur : {};
     safeCur[safeRole] = safeTasks;
-    await _db.kvSet(_TASKS_KEY, safeCur);
+    await _db.kvSet(key, safeCur);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -11129,22 +11206,27 @@ app.post('/api/officer/avatar-upload', (req, res, next) => {
     const role = String(req.body?.role || '').toLowerCase();
     if (!_OFFICER_ROLES_WL.includes(role)) { cleanup(); return res.status(400).json({ error: 'unknown role' }); }
     if (!req.file) return res.status(400).json({ error: 'no image uploaded' });
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:avatar-upload' });
+    if (tid == null) { cleanup(); return res.status(400).json({ error: 'no_tenant' }); }
     const url = `/uploads/officer-avatars/${req.file.filename}`;
-    const cur = (await _db.kvGet(_AVATAR_KEY, {})) || {};
+    const key = _officerKey(_AVATAR_KEY, tid);
+    const cur = (await _db.kvGet(key, {})) || {};
     const safeCur = (cur && typeof cur==='object' && !Array.isArray(cur)) ? cur : {};
     safeCur[role] = url;
-    await _db.kvSet(_AVATAR_KEY, safeCur);
+    await _db.kvSet(key, safeCur);
     res.json({ ok: true, role, url, avatars: safeCur });
   } catch (e) { cleanup(); res.status(500).json({ error: e.message }); }
 });
 
 // ── Officer avatars (kv_store) ────────────────────────────────────────────
 const _AVATAR_KEY = 'officer_avatars_v1';
-app.get('/api/officer/avatars', async (_req, res) => {
+app.get('/api/officer/avatars', async (req, res) => {
   try {
     const _db = require('./db');
     if (!_db.hasDb()) return res.json({ avatars: {} });
-    const v = await _db.kvGet(_AVATAR_KEY, {});
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:avatars:get' });
+    if (tid == null) return res.json({ avatars: {} });
+    const v = await _db.kvGet(_officerKey(_AVATAR_KEY, tid), {});
     res.json({ avatars: (v && typeof v==='object' && !Array.isArray(v)) ? v : {} });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -11154,14 +11236,17 @@ app.post('/api/officer/avatars', async (req, res) => {
     const { role, avatar } = req.body || {};
     if (!role || !avatar) return res.status(400).json({ error: 'role+avatar required' });
     if (!_db.hasDb()) return res.status(503).json({ error: 'database not configured' });
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:avatars:post' });
+    if (tid == null) return res.status(400).json({ error: 'no_tenant' });
     const ALLOWED_ROLES = ['marketing','sales','analyst','content','seo','cro','finance','ops'];
     const safeRole = String(role).toLowerCase();
     if (!ALLOWED_ROLES.includes(safeRole)) return res.status(400).json({ error: 'unknown role' });
-    const cur = (await _db.kvGet(_AVATAR_KEY, {})) || {};
+    const key = _officerKey(_AVATAR_KEY, tid);
+    const cur = (await _db.kvGet(key, {})) || {};
     const safeCur = (cur && typeof cur==='object' && !Array.isArray(cur)) ? cur : {};
     // Emoji is short (≤8 chars). For uploaded image URLs use /api/officer/avatar-upload.
     safeCur[safeRole] = String(avatar).slice(0, 8);
-    await _db.kvSet(_AVATAR_KEY, safeCur);
+    await _db.kvSet(key, safeCur);
     res.json({ ok: true, avatars: safeCur });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -11177,21 +11262,26 @@ app.post('/api/officer/daily-report', async (req, res) => {
     const tasks = Array.isArray(req.body?.tasks) ? req.body.tasks.filter(t => typeof t==='string').slice(0,40) : [];
     if (!role) return res.status(400).json({ ok:false, error: 'role required' });
 
+    // Snapshot is scoped to the caller's workspace so one workspace's report is
+    // never grounded in another's counts. tid null → tenant_id=$1 matches
+    // nothing (safe). ad_insights/budget_spend are legacy dead tables (no
+    // tenant_id, always null) — left unscoped.
     const snap = {};
     try {
       const _db = require('./db');
       if (_db.hasDb()) {
         const pool = _db.getPool();
-        const safe = async (sql) => { try { const r = await pool.query(sql); return +r.rows?.[0]?.c || 0; } catch(_) { return null; } };
-        snap.adCampaigns_total    = await safe(`SELECT COUNT(*)::int c FROM ad_campaigns`);
+        const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:daily-report' });
+        const safe = async (sql, params=[]) => { try { const r = await pool.query(sql, params); return r.rows?.[0]?.c == null ? null : +r.rows[0].c; } catch(_) { return null; } };
+        snap.adCampaigns_total    = await safe(`SELECT COUNT(*)::int c FROM ad_campaigns WHERE tenant_id=$1`, [tid]);
         snap.adInsights_last24h   = await safe(`SELECT COUNT(*)::int c FROM ad_insights WHERE inserted_at > now() - interval '24 hours'`);
-        snap.brandCalendar_next7d = await safe(`SELECT COUNT(*)::int c FROM brand_calendar_items WHERE event_date BETWEEN current_date AND current_date + 7`);
-        snap.landingPages_total   = await safe(`SELECT COUNT(*)::int c FROM landing_pages`);
+        snap.brandCalendar_next7d = await safe(`SELECT COUNT(*)::int c FROM brand_calendar_items WHERE event_date BETWEEN current_date AND current_date + 7 AND tenant_id=$1`, [tid]);
+        snap.landingPages_total   = await safe(`SELECT COUNT(*)::int c FROM landing_pages WHERE tenant_id=$1`, [tid]);
         snap.budgetSpend_last7d   = await safe(`SELECT COUNT(*)::int c FROM budget_spend WHERE spend_date > current_date - 7`);
-        snap.leadsLinksell_last7d = await safe(`SELECT COUNT(*)::int c FROM linksell_leads WHERE created_at > now() - interval '7 days'`);
-        snap.bookings_last7d      = await safe(`SELECT COUNT(*)::int c FROM bookings WHERE created_at > now() - interval '7 days'`);
-        snap.waCampaigns_total    = await safe(`SELECT COUNT(*)::int c FROM wa_campaigns`);
-        snap.activeProjects       = await safe(`SELECT COUNT(*)::int c FROM marketing_projects WHERE status='active'`);
+        snap.leadsLinksell_last7d = await safe(`SELECT COUNT(*)::int c FROM linksell_leads WHERE created_at > now() - interval '7 days' AND tenant_id=$1`, [tid]);
+        snap.bookings_last7d      = await safe(`SELECT COUNT(*)::int c FROM bookings WHERE created_at > now() - interval '7 days' AND tenant_id=$1`, [tid]);
+        snap.waCampaigns_total    = await safe(`SELECT COUNT(*)::int c FROM wa_campaigns WHERE tenant_id=$1`, [tid]);
+        snap.activeProjects       = await safe(`SELECT COUNT(*)::int c FROM marketing_projects WHERE status='active' AND tenant_id=$1`, [tid]);
       }
     } catch(_) {}
 
@@ -11259,11 +11349,13 @@ Return ONLY this JSON:
 
 // ── Officer meetings ──────────────────────────────────────────────────────
 const _MEETINGS_KEY = 'officer_meetings_v1';
-app.get('/api/officer/meetings', async (_req, res) => {
+app.get('/api/officer/meetings', async (req, res) => {
   try {
     const _db = require('./db');
     if (!_db.hasDb()) return res.json({ meetings: [] });
-    const v = (await _db.kvGet(_MEETINGS_KEY, [])) || [];
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:meetings:get' });
+    if (tid == null) return res.json({ meetings: [] });
+    const v = (await _db.kvGet(_officerKey(_MEETINGS_KEY, tid), [])) || [];
     res.json({ meetings: Array.isArray(v) ? v : [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -11276,6 +11368,8 @@ app.post('/api/officer/meetings', async (req, res) => {
     const tasksByRole = (req.body?.tasksByRole && typeof req.body.tasksByRole==='object' && !Array.isArray(req.body.tasksByRole))
       ? req.body.tasksByRole : {};
     if (attendees.length < 2 || !topic) return res.status(400).json({ ok:false, error: 'attendees (≥2) + topic required' });
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:meetings:post' });
+    if (tid == null) return res.status(400).json({ ok:false, error: 'no_tenant' });
 
     const FALLBACK = {
       discussion: [`${attendees.join(', ')} convened to discuss "${topic}".`, 'AI minute-taker is offline — please add notes manually or retry when AI is available.'],
@@ -11329,10 +11423,11 @@ Return ONLY this JSON:
     const id = 'mtg_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
     const record = { id, scheduledAt: new Date().toISOString(), attendees, topic, ...minutes };
 
-    const cur = (await _db.kvGet(_MEETINGS_KEY, [])) || [];
+    const key = _officerKey(_MEETINGS_KEY, tid);
+    const cur = (await _db.kvGet(key, [])) || [];
     const safeCur = Array.isArray(cur) ? cur : [];
     safeCur.unshift(record);
-    await _db.kvSet(_MEETINGS_KEY, safeCur.slice(0, 200));
+    await _db.kvSet(key, safeCur.slice(0, 200));
 
     res.json({ ok:true, meeting: record });
   } catch (err) {
@@ -11349,12 +11444,14 @@ const _AUTOREPORT_KEY = 'officer_autoreport_settings_v1';
 const _AUTOREPORT_DEFAULTS = { enabled:false, hour:8, minute:0, timezone:'UTC', email:'', lastRunDate:'', lastScheduledRunDate:'', lastRunAt:null, lastRunStatus:null };
 const _AUTOREPORT_HISTORY_KEY = 'officer_autoreport_history_v1';
 
-app.get('/api/officer/autoreport', async (_req, res) => {
+app.get('/api/officer/autoreport', async (req, res) => {
   try {
     const _db = require('./db');
     if (!_db.hasDb()) return res.json({ settings: _AUTOREPORT_DEFAULTS, history: [] });
-    const s = (await _db.kvGet(_AUTOREPORT_KEY, _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
-    const h = (await _db.kvGet(_AUTOREPORT_HISTORY_KEY, [])) || [];
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:autoreport:get' });
+    if (tid == null) return res.json({ settings: _AUTOREPORT_DEFAULTS, history: [] });
+    const s = (await _db.kvGet(_officerKey(_AUTOREPORT_KEY, tid), _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
+    const h = (await _db.kvGet(_officerKey(_AUTOREPORT_HISTORY_KEY, tid), [])) || [];
     res.json({ settings: { ..._AUTOREPORT_DEFAULTS, ...s }, history: Array.isArray(h) ? h.slice(0,30) : [] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -11362,6 +11459,8 @@ app.post('/api/officer/autoreport', async (req, res) => {
   try {
     const _db = require('./db');
     if (!_db.hasDb()) return res.status(503).json({ error: 'database not configured' });
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:autoreport:post' });
+    if (tid == null) return res.status(400).json({ error: 'no_tenant' });
     const { enabled, hour, minute, timezone, email } = req.body || {};
     const h = Math.max(0, Math.min(23, parseInt(hour, 10) || 0));
     const m = Math.max(0, Math.min(59, parseInt(minute, 10) || 0));
@@ -11370,38 +11469,43 @@ app.post('/api/officer/autoreport', async (req, res) => {
     catch { return res.status(400).json({ error: 'invalid timezone — use e.g. America/New_York' }); }
     const em = String(email || '').trim().slice(0, 200);
     if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return res.status(400).json({ error: 'invalid email' });
-    const cur = (await _db.kvGet(_AUTOREPORT_KEY, _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
+    const key = _officerKey(_AUTOREPORT_KEY, tid);
+    const cur = (await _db.kvGet(key, _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
     const next = { ...cur, enabled: !!enabled, hour: h, minute: m, timezone: tz, email: em };
-    await _db.kvSet(_AUTOREPORT_KEY, next);
+    await _db.kvSet(key, next);
     res.json({ ok: true, settings: next });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/officer/autoreport/run-now', async (req, res) => {
   try {
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:autoreport:run-now' });
+    if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
     const skipDelivery = req.query.skipDelivery === '1' || req.body?.skipDelivery === true;
-    const result = await _runAutonomousDailyReports({ manualTrigger: true, skipDelivery });
+    const result = await _runAutonomousDailyReports({ manualTrigger: true, skipDelivery, tenantId: tid });
     res.json({ ok: true, ...result });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // Internal: generate a single officer's daily report by reusing the same
 // snapshot + AI logic as the on-demand endpoint. Returns the same shape.
-async function _generateOfficerReportInternal(role, title, tasks) {
+async function _generateOfficerReportInternal(role, title, tasks, tid = null) {
   const snap = {};
   try {
     const _db = require('./db');
     if (_db.hasDb()) {
       const pool = _db.getPool();
-      const safe = async (sql) => { try { const r = await pool.query(sql); return +r.rows?.[0]?.c || 0; } catch(_) { return null; } };
-      snap.adCampaigns_total    = await safe(`SELECT COUNT(*)::int c FROM ad_campaigns`);
+      // Scoped to the report's workspace. tid null → tenant_id=$1 matches
+      // nothing. ad_insights/budget_spend are legacy dead tables (left global).
+      const safe = async (sql, params=[]) => { try { const r = await pool.query(sql, params); return r.rows?.[0]?.c == null ? null : +r.rows[0].c; } catch(_) { return null; } };
+      snap.adCampaigns_total    = await safe(`SELECT COUNT(*)::int c FROM ad_campaigns WHERE tenant_id=$1`, [tid]);
       snap.adInsights_last24h   = await safe(`SELECT COUNT(*)::int c FROM ad_insights WHERE inserted_at > now() - interval '24 hours'`);
-      snap.brandCalendar_next7d = await safe(`SELECT COUNT(*)::int c FROM brand_calendar_items WHERE event_date BETWEEN current_date AND current_date + 7`);
-      snap.landingPages_total   = await safe(`SELECT COUNT(*)::int c FROM landing_pages`);
+      snap.brandCalendar_next7d = await safe(`SELECT COUNT(*)::int c FROM brand_calendar_items WHERE event_date BETWEEN current_date AND current_date + 7 AND tenant_id=$1`, [tid]);
+      snap.landingPages_total   = await safe(`SELECT COUNT(*)::int c FROM landing_pages WHERE tenant_id=$1`, [tid]);
       snap.budgetSpend_last7d   = await safe(`SELECT COUNT(*)::int c FROM budget_spend WHERE spend_date > current_date - 7`);
-      snap.leadsLinksell_last7d = await safe(`SELECT COUNT(*)::int c FROM linksell_leads WHERE created_at > now() - interval '7 days'`);
-      snap.bookings_last7d      = await safe(`SELECT COUNT(*)::int c FROM bookings WHERE created_at > now() - interval '7 days'`);
-      snap.waCampaigns_total    = await safe(`SELECT COUNT(*)::int c FROM wa_campaigns`);
-      snap.activeProjects       = await safe(`SELECT COUNT(*)::int c FROM marketing_projects WHERE status='active'`);
+      snap.leadsLinksell_last7d = await safe(`SELECT COUNT(*)::int c FROM linksell_leads WHERE created_at > now() - interval '7 days' AND tenant_id=$1`, [tid]);
+      snap.bookings_last7d      = await safe(`SELECT COUNT(*)::int c FROM bookings WHERE created_at > now() - interval '7 days' AND tenant_id=$1`, [tid]);
+      snap.waCampaigns_total    = await safe(`SELECT COUNT(*)::int c FROM wa_campaigns WHERE tenant_id=$1`, [tid]);
+      snap.activeProjects       = await safe(`SELECT COUNT(*)::int c FROM marketing_projects WHERE status='active' AND tenant_id=$1`, [tid]);
     }
   } catch(_) {}
   const FALLBACK = {
@@ -11435,20 +11539,24 @@ async function _generateOfficerReportInternal(role, title, tasks) {
   return { role, title, generatedAt: new Date().toISOString(), snapshot: snap, report };
 }
 
-async function _runAutonomousDailyReports({ manualTrigger = false, skipDelivery = false } = {}) {
+async function _runAutonomousDailyReports({ manualTrigger = false, skipDelivery = false, tenantId = null } = {}) {
   const _db = require('./db');
   if (!_db.hasDb()) return { ok:false, reason:'no-db' };
-  const settings = (await _db.kvGet(_AUTOREPORT_KEY, _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
+  // Per-workspace: settings/tasks/history are keyed by tenant; null tid is a
+  // no-op (matches nothing) so a missing workspace never reads global data.
+  if (tenantId == null) return { ok:false, reason:'no-tenant' };
+  const tid = tenantId;
+  const settings = (await _db.kvGet(_officerKey(_AUTOREPORT_KEY, tid), _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
   // Defensive: validate stored timezone, fall back to UTC if corrupt.
   let _tz = settings.timezone || 'UTC';
   try { new Intl.DateTimeFormat('en-US', { timeZone: _tz }).format(new Date()); }
   catch { console.warn('[autoreport] stored timezone invalid, falling back to UTC:', _tz); _tz = 'UTC'; settings.timezone = 'UTC'; }
-  const tasksStore = (await _db.kvGet(_TASKS_KEY, {})) || {};
+  const tasksStore = (await _db.kvGet(_officerKey(_TASKS_KEY, tid), {})) || {};
 
   // Generate all 8 reports in parallel
   const reports = await Promise.all(_OFFICER_ROLES.map(role => {
     const tasks = Array.isArray(tasksStore[role]) ? tasksStore[role] : [];
-    return _generateOfficerReportInternal(role, _OFFICER_TITLES[role], tasks)
+    return _generateOfficerReportInternal(role, _OFFICER_TITLES[role], tasks, tid)
       .catch(e => ({ role, title:_OFFICER_TITLES[role], error: e.message, report:{ summary:`Error generating report: ${e.message}`, tasksReviewed:[], successes:[], issues:[], actionPlan:[] }, snapshot:{} }));
   }));
 
@@ -11520,14 +11628,16 @@ async function _runAutonomousDailyReports({ manualTrigger = false, skipDelivery 
   // still fires on time. Only scheduled runs advance lastScheduledRunDate.
   try {
     const todayInTz = new Intl.DateTimeFormat('en-CA', { year:'numeric', month:'2-digit', day:'2-digit', timeZone: _tz }).format(new Date());
-    const cur = (await _db.kvGet(_AUTOREPORT_KEY, _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
+    const settingsKey = _officerKey(_AUTOREPORT_KEY, tid);
+    const cur = (await _db.kvGet(settingsKey, _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
     const update = { ...cur, lastRunDate: todayInTz, lastRunAt: result.sentAt, lastRunStatus: result };
     if (!manualTrigger) update.lastScheduledRunDate = todayInTz;
-    await _db.kvSet(_AUTOREPORT_KEY, update);
-    const hist = (await _db.kvGet(_AUTOREPORT_HISTORY_KEY, [])) || [];
+    await _db.kvSet(settingsKey, update);
+    const histKey = _officerKey(_AUTOREPORT_HISTORY_KEY, tid);
+    const hist = (await _db.kvGet(histKey, [])) || [];
     const safeHist = Array.isArray(hist) ? hist : [];
     safeHist.unshift({ at: result.sentAt, manualTrigger, slackOk: result.slackOk, emailOk: result.emailOk, recipientEmail: result.recipientEmail, officerCount: reports.length });
-    await _db.kvSet(_AUTOREPORT_HISTORY_KEY, safeHist.slice(0, 60));
+    await _db.kvSet(histKey, safeHist.slice(0, 60));
   } catch(_) {}
 
   return { ...result, officerCount: reports.length };
@@ -11542,20 +11652,27 @@ async function _runAutonomousDailyReports({ manualTrigger = false, skipDelivery 
 async function _autoReportTickOnce() {
   const _db = require('./db');
   if (!_db.hasDb()) return;
-  const s = (await _db.kvGet(_AUTOREPORT_KEY, _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
-  if (!s.enabled) return;
-  let tz = s.timezone || 'UTC';
-  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date()); } catch { tz = 'UTC'; }
-  const parts = new Intl.DateTimeFormat('en-CA', { hour12:false, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', timeZone: tz }).formatToParts(new Date());
-  const get = (t) => parts.find(p=>p.type===t)?.value;
-  const hour = parseInt(get('hour'), 10);
-  const minute = parseInt(get('minute'), 10);
-  const today = `${get('year')}-${get('month')}-${get('day')}`;
-  const scheduledMinsOfDay = (s.hour|0) * 60 + (s.minute|0);
-  const nowMinsOfDay = hour * 60 + minute;
-  if (nowMinsOfDay >= scheduledMinsOfDay && s.lastScheduledRunDate !== today) {
-    console.log('[autoreport] firing scheduled run', { tz, nowTime: `${hour}:${minute}`, scheduled: `${s.hour}:${s.minute}`, today, catchup: nowMinsOfDay > scheduledMinsOfDay });
-    await _runAutonomousDailyReports({ manualTrigger:false });
+  // Each workspace has its own schedule; fire per-tenant independently.
+  let tenantIds = [];
+  try { tenantIds = await _officerCtx.listActiveTenantIds(); } catch(_) { tenantIds = []; }
+  for (const tid of tenantIds) {
+    try {
+      const s = (await _db.kvGet(_officerKey(_AUTOREPORT_KEY, tid), _AUTOREPORT_DEFAULTS)) || _AUTOREPORT_DEFAULTS;
+      if (!s.enabled) continue;
+      let tz = s.timezone || 'UTC';
+      try { new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date()); } catch { tz = 'UTC'; }
+      const parts = new Intl.DateTimeFormat('en-CA', { hour12:false, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', timeZone: tz }).formatToParts(new Date());
+      const get = (t) => parts.find(p=>p.type===t)?.value;
+      const hour = parseInt(get('hour'), 10);
+      const minute = parseInt(get('minute'), 10);
+      const today = `${get('year')}-${get('month')}-${get('day')}`;
+      const scheduledMinsOfDay = (s.hour|0) * 60 + (s.minute|0);
+      const nowMinsOfDay = hour * 60 + minute;
+      if (nowMinsOfDay >= scheduledMinsOfDay && s.lastScheduledRunDate !== today) {
+        console.log('[autoreport] firing scheduled run', { tenantId: tid, tz, nowTime: `${hour}:${minute}`, scheduled: `${s.hour}:${s.minute}`, today, catchup: nowMinsOfDay > scheduledMinsOfDay });
+        await _runAutonomousDailyReports({ manualTrigger:false, tenantId: tid });
+      }
+    } catch (e) { console.warn('[autoreport tick] tenant', tid, e.message); }
   }
 }
 let _autoReportTickInFlight = false;
@@ -11592,11 +11709,27 @@ const _AUTOMTG_DEFAULTS = { enabled:false, frequency:'weekly', dayOfWeek:1, hour
   'Quarterly OKR check-in and risk register'
 ], lastScheduledRunDate:'' };
 
-app.get('/api/officer/auto-meetings', async (_req, res) => {
+// One-time boot migration: move legacy GLOBAL officer singletons into the
+// default (original owner) tenant's namespaced keys. Idempotent — no-op once
+// the tenant keys exist. officer_tasks_v1 is shared with playbook_7day; both
+// callers migrate the same base, second is a no-op (destination already set).
+// Deferred 9s so the tenants/users schema is ready and getDefaultTenantId()
+// resolves (otherwise it returns null this early and every migration skips).
+setTimeout(async () => {
+  try {
+    for (const base of [_TASKS_KEY, _AVATAR_KEY, _MEETINGS_KEY, _AUTOREPORT_KEY, _AUTOREPORT_HISTORY_KEY, _AUTOMTG_KEY]) {
+      await _officerScope.migrateGlobalSingleton(base, base);
+    }
+  } catch (e) { console.warn('[officer] boot migration', e.message); }
+}, 9000);
+
+app.get('/api/officer/auto-meetings', async (req, res) => {
   try {
     const _db = require('./db');
     if (!_db.hasDb()) return res.json({ settings: _AUTOMTG_DEFAULTS });
-    const s = (await _db.kvGet(_AUTOMTG_KEY, _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:auto-meetings:get' });
+    if (tid == null) return res.json({ settings: _AUTOMTG_DEFAULTS });
+    const s = (await _db.kvGet(_officerKey(_AUTOMTG_KEY, tid), _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
     res.json({ settings: { ..._AUTOMTG_DEFAULTS, ...s } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -11604,6 +11737,8 @@ app.post('/api/officer/auto-meetings', async (req, res) => {
   try {
     const _db = require('./db');
     if (!_db.hasDb()) return res.status(503).json({ error: 'database not configured' });
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:auto-meetings:post' });
+    if (tid == null) return res.status(400).json({ error: 'no_tenant' });
     const { enabled, frequency, dayOfWeek, hour, minute, timezone } = req.body || {};
     const freq = ['daily','weekly'].includes(frequency) ? frequency : 'weekly';
     const dow = Math.max(0, Math.min(6, parseInt(dayOfWeek, 10) || 0));
@@ -11612,9 +11747,10 @@ app.post('/api/officer/auto-meetings', async (req, res) => {
     let tz = String(timezone || 'UTC').slice(0, 64);
     try { new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date()); }
     catch { return res.status(400).json({ error: 'invalid timezone' }); }
-    const cur = (await _db.kvGet(_AUTOMTG_KEY, _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
+    const key = _officerKey(_AUTOMTG_KEY, tid);
+    const cur = (await _db.kvGet(key, _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
     const next = { ...cur, enabled: !!enabled, frequency: freq, dayOfWeek: dow, hour: h, minute: m, timezone: tz };
-    await _db.kvSet(_AUTOMTG_KEY, next);
+    await _db.kvSet(key, next);
     res.json({ ok: true, settings: next });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -11622,7 +11758,7 @@ app.post('/api/officer/auto-meetings', async (req, res) => {
 // Single endpoint that tells the UI whether every part of the AI Team
 // system is wired up and live: database, AI provider, both schedulers,
 // and the most recent activity timestamps.
-app.get('/api/officer/system-status', async (_req, res) => {
+app.get('/api/officer/system-status', async (req, res) => {
   try {
     const _db = require('./db');
     const dbOk = !!_db.hasDb();
@@ -11631,16 +11767,19 @@ app.get('/api/officer/system-status', async (_req, res) => {
     let automtg    = { enabled:false, frequency:'weekly', dayOfWeek:1, hour:null, minute:null, timezone:'UTC', lastScheduledRunDate:'' };
     let lastMeetingAt = null, totalMeetings = 0, lastReportAt = null, totalReports = 0;
     if (dbOk) {
-      try { autoreport = { ...autoreport, ...((await _db.kvGet(_AUTOREPORT_KEY, _AUTOREPORT_DEFAULTS)) || {}) }; } catch(_){}
-      try { automtg    = { ...automtg,    ...((await _db.kvGet(_AUTOMTG_KEY, _AUTOMTG_DEFAULTS)) || {}) }; } catch(_){}
-      try {
-        const meetings = (await _db.kvGet(_MEETINGS_KEY, [])) || [];
-        if (Array.isArray(meetings)) { totalMeetings = meetings.length; if (meetings[0]?.scheduledAt) lastMeetingAt = meetings[0].scheduledAt; }
-      } catch(_){}
-      try {
-        const hist = (await _db.kvGet('officer_autoreport_history_v1', [])) || [];
-        if (Array.isArray(hist)) { totalReports = hist.length; if (hist[0]?.runAt) lastReportAt = hist[0].runAt; }
-      } catch(_){}
+      const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:system-status' });
+      if (tid != null) {
+        try { autoreport = { ...autoreport, ...((await _db.kvGet(_officerKey(_AUTOREPORT_KEY, tid), _AUTOREPORT_DEFAULTS)) || {}) }; } catch(_){}
+        try { automtg    = { ...automtg,    ...((await _db.kvGet(_officerKey(_AUTOMTG_KEY, tid), _AUTOMTG_DEFAULTS)) || {}) }; } catch(_){}
+        try {
+          const meetings = (await _db.kvGet(_officerKey(_MEETINGS_KEY, tid), [])) || [];
+          if (Array.isArray(meetings)) { totalMeetings = meetings.length; if (meetings[0]?.scheduledAt) lastMeetingAt = meetings[0].scheduledAt; }
+        } catch(_){}
+        try {
+          const hist = (await _db.kvGet(_officerKey(_AUTOREPORT_HISTORY_KEY, tid), [])) || [];
+          if (Array.isArray(hist)) { totalReports = hist.length; if (hist[0]?.runAt) lastReportAt = hist[0].runAt; }
+        } catch(_){}
+      }
     }
     const tickAlive = (Date.now() - (global._lastAutoTickAt || 0)) < 90 * 1000;
     res.json({
@@ -11665,18 +11804,22 @@ app.get('/api/officer/system-status', async (_req, res) => {
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
 });
 
-app.post('/api/officer/auto-meetings/run-now', async (_req, res) => {
+app.post('/api/officer/auto-meetings/run-now', async (req, res) => {
   try {
-    const meeting = await _runAutonomousMeeting({ manualTrigger: true });
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:auto-meetings:run-now' });
+    if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
+    const meeting = await _runAutonomousMeeting({ manualTrigger: true, tenantId: tid });
     res.json({ ok: true, meeting });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-async function _runAutonomousMeeting({ manualTrigger = false } = {}) {
+async function _runAutonomousMeeting({ manualTrigger = false, tenantId = null } = {}) {
   const _db = require('./db');
   if (!_db.hasDb()) throw new Error('database not configured');
-  const settings = (await _db.kvGet(_AUTOMTG_KEY, _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
-  const tasksStore = (await _db.kvGet(_TASKS_KEY, {})) || {};
+  if (tenantId == null) throw new Error('no_tenant');
+  const tid = tenantId;
+  const settings = (await _db.kvGet(_officerKey(_AUTOMTG_KEY, tid), _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
+  const tasksStore = (await _db.kvGet(_officerKey(_TASKS_KEY, tid), {})) || {};
   const attendees = _OFFICER_ROLES.map(r => _OFFICER_TITLES[r]);
   const tasksByRole = {};
   attendees.forEach((t, i) => { tasksByRole[t] = Array.isArray(tasksStore[_OFFICER_ROLES[i]]) ? tasksStore[_OFFICER_ROLES[i]].slice(0,8) : []; });
@@ -11714,17 +11857,18 @@ async function _runAutonomousMeeting({ manualTrigger = false } = {}) {
   const id = 'mtg_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
   const record = { id, scheduledAt: new Date().toISOString(), attendees, topic, autonomous: true, manualTrigger, ...minutes };
 
-  const cur = (await _db.kvGet(_MEETINGS_KEY, [])) || [];
+  const meetingsKey = _officerKey(_MEETINGS_KEY, tid);
+  const cur = (await _db.kvGet(meetingsKey, [])) || [];
   const safeCur = Array.isArray(cur) ? cur : [];
   safeCur.unshift(record);
-  await _db.kvSet(_MEETINGS_KEY, safeCur.slice(0, 200));
+  await _db.kvSet(meetingsKey, safeCur.slice(0, 200));
 
   // Mark scheduled day as fired (manual triggers do not advance this)
   if (!manualTrigger) {
     let tz = settings.timezone || 'UTC';
     try { new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date()); } catch { tz = 'UTC'; }
     const today = new Intl.DateTimeFormat('en-CA', { year:'numeric', month:'2-digit', day:'2-digit', timeZone: tz }).format(new Date());
-    await _db.kvSet(_AUTOMTG_KEY, { ...settings, lastScheduledRunDate: today });
+    await _db.kvSet(_officerKey(_AUTOMTG_KEY, tid), { ...settings, lastScheduledRunDate: today });
   }
   return record;
 }
@@ -11732,24 +11876,31 @@ async function _runAutonomousMeeting({ manualTrigger = false } = {}) {
 async function _autoMeetingTickOnce() {
   const _db = require('./db');
   if (!_db.hasDb()) return;
-  const s = (await _db.kvGet(_AUTOMTG_KEY, _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
-  if (!s.enabled) return;
-  let tz = s.timezone || 'UTC';
-  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date()); } catch { tz = 'UTC'; }
-  const parts = new Intl.DateTimeFormat('en-CA', { hour12:false, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', weekday:'short', timeZone: tz }).formatToParts(new Date());
-  const get = (t) => parts.find(p=>p.type===t)?.value;
-  const hour = parseInt(get('hour'), 10);
-  const minute = parseInt(get('minute'), 10);
-  const today = `${get('year')}-${get('month')}-${get('day')}`;
-  const wkMap = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
-  const dow = wkMap[get('weekday')] ?? 0;
-  if (s.frequency === 'weekly' && dow !== (s.dayOfWeek|0)) return;
-  const scheduledMins = (s.hour|0)*60 + (s.minute|0);
-  const nowMins = hour*60 + minute;
-  if (nowMins >= scheduledMins && s.lastScheduledRunDate !== today) {
-    console.log('[auto-meeting] firing', { tz, today, scheduled:`${s.hour}:${s.minute}`, freq: s.frequency });
-    try { await _runAutonomousMeeting({ manualTrigger:false }); }
-    catch (e) { console.warn('[auto-meeting] run failed:', e.message); }
+  // Each workspace self-schedules independently.
+  let tenantIds = [];
+  try { tenantIds = await _officerCtx.listActiveTenantIds(); } catch(_) { tenantIds = []; }
+  for (const tid of tenantIds) {
+    try {
+      const s = (await _db.kvGet(_officerKey(_AUTOMTG_KEY, tid), _AUTOMTG_DEFAULTS)) || _AUTOMTG_DEFAULTS;
+      if (!s.enabled) continue;
+      let tz = s.timezone || 'UTC';
+      try { new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date()); } catch { tz = 'UTC'; }
+      const parts = new Intl.DateTimeFormat('en-CA', { hour12:false, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', weekday:'short', timeZone: tz }).formatToParts(new Date());
+      const get = (t) => parts.find(p=>p.type===t)?.value;
+      const hour = parseInt(get('hour'), 10);
+      const minute = parseInt(get('minute'), 10);
+      const today = `${get('year')}-${get('month')}-${get('day')}`;
+      const wkMap = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+      const dow = wkMap[get('weekday')] ?? 0;
+      if (s.frequency === 'weekly' && dow !== (s.dayOfWeek|0)) continue;
+      const scheduledMins = (s.hour|0)*60 + (s.minute|0);
+      const nowMins = hour*60 + minute;
+      if (nowMins >= scheduledMins && s.lastScheduledRunDate !== today) {
+        console.log('[auto-meeting] firing', { tenantId: tid, tz, today, scheduled:`${s.hour}:${s.minute}`, freq: s.frequency });
+        try { await _runAutonomousMeeting({ manualTrigger:false, tenantId: tid }); }
+        catch (e) { console.warn('[auto-meeting] run failed:', e.message); }
+      }
+    } catch (e) { console.warn('[auto-meeting tick] tenant', tid, e.message); }
   }
 }
 let _autoMeetingTickInFlight = false;
@@ -11767,9 +11918,12 @@ app.delete('/api/officer/meetings/:id', async (req, res) => {
   try {
     const _db = require('./db');
     if (!_db.hasDb()) return res.json({ ok:true });
-    const cur = (await _db.kvGet(_MEETINGS_KEY, [])) || [];
+    const tid = await _officerCtx.resolveTenantId(req, { label: 'officer:meetings:delete' });
+    if (tid == null) return res.status(400).json({ error: 'no_tenant' });
+    const key = _officerKey(_MEETINGS_KEY, tid);
+    const cur = (await _db.kvGet(key, [])) || [];
     const next = (Array.isArray(cur) ? cur : []).filter(m => m && m.id !== req.params.id);
-    await _db.kvSet(_MEETINGS_KEY, next);
+    await _db.kvSet(key, next);
     res.json({ ok:true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -11827,22 +11981,20 @@ app.post('/api/ops-officer/scan', async (req, res) => {
   }
 });
 
-const GOALS_FILE = path.join(__dirname, 'data', 'goals.json');
+// Per-workspace: goals live at kv `goals:t<tid>` (array). null tid → empty.
+const GOALS_BASE = 'goals';
 let _goalsLockTail = Promise.resolve();
 function _goalsLock(fn) {
   const next = _goalsLockTail.then(() => fn());
   _goalsLockTail = next.catch(() => {});
   return next;
 }
-async function _readGoals() {
-  try { return JSON.parse(await fsp.readFile(GOALS_FILE, 'utf8')); }
-  catch (e) { if (e.code === 'ENOENT') return []; throw e; }
+async function _readGoals(tid) {
+  const list = await _tkvRead(GOALS_BASE, tid, () => []);
+  return Array.isArray(list) ? list : [];
 }
-async function _writeGoals(goals) {
-  await fsp.mkdir(path.dirname(GOALS_FILE), { recursive: true });
-  const tmp = GOALS_FILE + '.tmp';
-  await fsp.writeFile(tmp, JSON.stringify(goals, null, 2));
-  await fsp.rename(tmp, GOALS_FILE);
+async function _writeGoals(tid, goals) {
+  return await _tkvWrite(GOALS_BASE, tid, Array.isArray(goals) ? goals : []);
 }
 const GOAL_METRICS = {
   'drip.bounceRate':   { label:'Drip Bounce Rate',         direction:'lte', unit:'%' },
@@ -11852,10 +12004,10 @@ const GOAL_METRICS = {
   'ads.totalSpend':    { label:'Total Ad Spend (30d)',      direction:'lte', unit:'$' },
   'ads.cac':           { label:'Blended CAC',               direction:'lte', unit:'$' },
 };
-async function _measureGoal(metric) {
+async function _measureGoal(metric, tid) {
   if (metric.startsWith('drip.')) {
     // Reuse drip-store logic inline (cheaper than HTTP self-call)
-    const list = _dripLoad();
+    const list = tid == null ? [] : await _dripLoad(tid);
     let attempts = 0, bounced = 0, sentTotal = 0, delivered = 0;
     for (const e of list) {
       for (const h of (e.history || [])) {
@@ -11920,7 +12072,9 @@ function _goalStatus(g, current) {
 }
 app.get('/api/goals', async (req, res) => {
   try {
-    const goals = await _goalsLock(_readGoals);
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'goals:list' });
+    if (tid == null) return res.json({ ok:true, goals: [], metrics: GOAL_METRICS });
+    const goals = await _goalsLock(() => _readGoals(tid));
     res.json({ ok:true, goals, metrics: GOAL_METRICS });
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
 });
@@ -11939,8 +12093,9 @@ app.post('/api/goals/suggest', async (req, res) => {
     if (!metric || !GOAL_METRICS[metric]) return res.status(400).json({ ok:false, error:'invalid-metric' });
     if (field !== 'target' && field !== 'label') return res.status(400).json({ ok:false, error:'invalid-field' });
     const meta = GOAL_METRICS[metric];
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'goals:suggest' });
     let current = null;
-    try { current = await _measureGoal(metric); } catch (_) { current = null; }
+    try { current = await _measureGoal(metric, tid); } catch (_) { current = null; }
 
     // Deterministic fallback so the button always returns something useful
     // even if the LLM is degraded or no API key is set.
@@ -12008,23 +12163,27 @@ app.post('/api/goals', async (req, res) => {
     createdAt: new Date().toISOString(),
   };
   try {
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'goals:create' });
+    if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
     await _goalsLock(async () => {
-      const goals = await _readGoals();
+      const goals = await _readGoals(tid);
       goals.push(goal);
-      await _writeGoals(goals);
+      await _writeGoals(tid, goals);
     });
     res.json({ ok:true, goal });
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
 });
 app.delete('/api/goals/:id', async (req, res) => {
   try {
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'goals:delete' });
+    if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
     let removed = false;
     await _goalsLock(async () => {
-      const goals = await _readGoals();
+      const goals = await _readGoals(tid);
       const idx = goals.findIndex(g => g.id === req.params.id);
       if (idx === -1) return;
       goals.splice(idx, 1);
-      await _writeGoals(goals);
+      await _writeGoals(tid, goals);
       removed = true;
     });
     if (!removed) return res.status(404).json({ ok:false, error:'not-found' });
@@ -12033,10 +12192,12 @@ app.delete('/api/goals/:id', async (req, res) => {
 });
 app.get('/api/goals/check', async (req, res) => {
   try {
-    const goals = await _goalsLock(_readGoals);
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'goals:check' });
+    if (tid == null) return res.json({ ok:true, goals: [], rootCause: null, generatedAt: new Date().toISOString() });
+    const goals = await _goalsLock(() => _readGoals(tid));
     const evaluated = await Promise.all(goals.map(async g => {
       try {
-        const current = await _measureGoal(g.metric);
+        const current = await _measureGoal(g.metric, tid);
         const st = _goalStatus(g, current);
         return { ...g, ...st, meta: GOAL_METRICS[g.metric] };
       } catch (e) {
@@ -12073,27 +12234,27 @@ app.get('/api/goals/check', async (req, res) => {
 // persists the qualification. File-backed store mirroring the goals pattern
 // (mutex + atomic tmp+rename writes).
 // ─────────────────────────────────────────────────────────────────────────────
-const LEADS_FILE = path.join(__dirname, 'data', 'qualified-leads.json');
+// Per-workspace: qualified leads live at kv `qualified_leads:t<tid>` (array).
+const LEADS_BASE = 'qualified_leads';
 let _leadsLockTail = Promise.resolve();
 function _leadsLock(fn) {
   const next = _leadsLockTail.then(() => fn());
   _leadsLockTail = next.catch(() => {});
   return next;
 }
-async function _readLeads() {
-  try { return JSON.parse(await fsp.readFile(LEADS_FILE, 'utf8')); }
-  catch (e) { if (e.code === 'ENOENT') return []; throw e; }
+async function _readLeads(tid) {
+  const list = await _tkvRead(LEADS_BASE, tid, () => []);
+  return Array.isArray(list) ? list : [];
 }
-async function _writeLeads(leads) {
-  await fsp.mkdir(path.dirname(LEADS_FILE), { recursive: true });
-  const tmp = LEADS_FILE + '.tmp';
-  await fsp.writeFile(tmp, JSON.stringify(leads, null, 2));
-  await fsp.rename(tmp, LEADS_FILE);
+async function _writeLeads(tid, leads) {
+  return await _tkvWrite(LEADS_BASE, tid, Array.isArray(leads) ? leads : []);
 }
 
 app.get('/api/leads/qualified', async (req, res) => {
   try {
-    const leads = await _leadsLock(_readLeads);
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'leads:list' });
+    if (tid == null) return res.json({ ok:true, leads: [] });
+    const leads = await _leadsLock(() => _readLeads(tid));
     leads.sort((a, b) => (b.qualifiedAt || 0) - (a.qualifiedAt || 0));
     res.json({ ok:true, leads });
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
@@ -12150,10 +12311,12 @@ Return ONLY valid JSON in this exact shape:
       qualification,
       qualifiedAt: Date.now(),
     };
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'leads:qualify' });
+    if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
     await _leadsLock(async () => {
-      const list = await _readLeads();
+      const list = await _readLeads(tid);
       list.push(record);
-      await _writeLeads(list);
+      await _writeLeads(tid, list);
     });
     res.json({ ok:true, lead: record });
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
@@ -12162,13 +12325,15 @@ Return ONLY valid JSON in this exact shape:
 app.delete('/api/leads/qualified/:id', async (req, res) => {
   try {
     const id = req.params.id;
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'leads:delete' });
+    if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
     let removed = null;
     await _leadsLock(async () => {
-      const list = await _readLeads();
+      const list = await _readLeads(tid);
       const idx = list.findIndex(l => l.id === id);
       if (idx === -1) return;
       removed = list.splice(idx, 1)[0];
-      await _writeLeads(list);
+      await _writeLeads(tid, list);
     });
     if (!removed) return res.status(404).json({ ok:false, error: 'lead not found' });
     res.json({ ok:true, removed });
@@ -12181,22 +12346,20 @@ app.delete('/api/leads/qualified/:id', async (req, res) => {
 // campaign via the existing drip enrollment endpoint. File-backed campaign
 // store mirrors the leads/goals pattern.
 // ─────────────────────────────────────────────────────────────────────────────
-const REENGAGE_FILE = path.join(__dirname, 'data', 'reengagement-campaigns.json');
+// Per-workspace: re-engagement campaigns live at kv `reengage_campaigns:t<tid>` (array).
+const REENGAGE_BASE = 'reengage_campaigns';
 let _reengageLockTail = Promise.resolve();
 function _reengageLock(fn) {
   const next = _reengageLockTail.then(() => fn());
   _reengageLockTail = next.catch(() => {});
   return next;
 }
-async function _readReengage() {
-  try { return JSON.parse(await fsp.readFile(REENGAGE_FILE, 'utf8')); }
-  catch (e) { if (e.code === 'ENOENT') return []; throw e; }
+async function _readReengage(tid) {
+  const list = await _tkvRead(REENGAGE_BASE, tid, () => []);
+  return Array.isArray(list) ? list : [];
 }
-async function _writeReengage(list) {
-  await fsp.mkdir(path.dirname(REENGAGE_FILE), { recursive: true });
-  const tmp = REENGAGE_FILE + '.tmp';
-  await fsp.writeFile(tmp, JSON.stringify(list, null, 2));
-  await fsp.rename(tmp, REENGAGE_FILE);
+async function _writeReengage(tid, list) {
+  return await _tkvWrite(REENGAGE_BASE, tid, Array.isArray(list) ? list : []);
 }
 
 // Find dormant subscribers — drip enrollees whose last touch (sentAt) is older
@@ -12206,7 +12369,8 @@ app.get('/api/reengage/dormant', async (req, res) => {
   try {
     const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30));
     const cutoff = Date.now() - days * 86400000;
-    const enrollments = _dripLoad();
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'reengage:dormant' });
+    const enrollments = tid == null ? [] : await _dripLoad(tid);
     const dormant = [];
     for (const e of enrollments) {
       const history = e.history || [];
@@ -12273,9 +12437,11 @@ app.post('/api/reengage/upload-csv', async (req, res) => {
     const idxPhone = header.findIndex(h => /^(phone|mobile|cell|tel(ephone)?)$/i.test(h));
     if (idxEmail < 0) return res.status(400).json({ ok:false, error:'CSV must include an "email" column header' });
     const startedAt = Date.now() - (backdateDays * 86400000);
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'reengage:upload-csv' });
+    if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
     let imported = 0; let skipped = 0; const errors = [];
     await _dripLock(async () => {
-      const list = _dripLoad();
+      const list = await _dripLoad(tid);
       const existingEmails = new Set(list.map(e => String(e.email || '').toLowerCase()));
       for (let li = 1; li < lines.length; li++) {
         const cols = parseRow(lines[li]);
@@ -12300,7 +12466,7 @@ app.post('/api/reengage/upload-csv', async (req, res) => {
         });
         imported++;
       }
-      _dripSave(list);
+      await _dripSave(tid, list);
     });
     res.json({ ok:true, imported, skipped, total: lines.length - 1, backdateDays });
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
@@ -12365,12 +12531,12 @@ app.post('/api/reengage/launch', async (req, res) => {
       enrollment: null,
       enrollmentError: null,
     };
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'reengage:launch' });
+    if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
     let enrollmentOk = true;   // true when no enrollment was attempted, OR
-                                // when the inner /api/drips/enroll call succeeded
+                                // when the in-process enrollment succeeded
     if (cleanEmails.length > 0) {
       enrollmentOk = false;     // assume failure until proven otherwise
-      const port = process.env.PORT || 5000;
-      const baseUrl = `http://localhost:${port}`;
       const sequence = [{
         day: 0,
         channel: 'email',
@@ -12380,27 +12546,16 @@ app.post('/api/reengage/launch', async (req, res) => {
       }];
       const contacts = cleanEmails.map(e => ({ email: e }));
       try {
-        const enrollResp = await fetch(`${baseUrl}/api/drips/enroll`, {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ contacts, sequence, brand: campaign.brand, dryRun: !!dryRun }),
-        });
-        const body = await enrollResp.json().catch(() => ({}));
-        campaign.enrollment = body;
-        if (enrollResp.ok && body && body.ok === true) {
-          enrollmentOk = true;
-        } else {
-          campaign.enrollmentError =
-            (body && (body.error || body.message)) ||
-            `drips/enroll returned HTTP ${enrollResp.status}`;
-        }
+        const result = await _enrollDripCore(tid, { contacts, sequence, brand: campaign.brand, dryRun: !!dryRun });
+        campaign.enrollment = { ok: true, enrolled: result.created.length, skipped: result.skipped, created: result.created };
+        enrollmentOk = true;
       } catch (e) { campaign.enrollmentError = e.message; }
     }
     // Persist the campaign record either way — useful for audit even on failure
     await _reengageLock(async () => {
-      const list = await _readReengage();
+      const list = await _readReengage(tid);
       list.push(campaign);
-      await _writeReengage(list);
+      await _writeReengage(tid, list);
     });
     // Top-level ok reflects whether the launch actually succeeded end-to-end.
     // When enrollment was attempted and failed, ok:false so callers (UI + assistant)
@@ -12419,7 +12574,9 @@ app.post('/api/reengage/launch', async (req, res) => {
 
 app.get('/api/reengage/campaigns', async (req, res) => {
   try {
-    const list = await _reengageLock(_readReengage);
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'reengage:campaigns' });
+    if (tid == null) return res.json({ ok:true, campaigns: [] });
+    const list = await _reengageLock(() => _readReengage(tid));
     list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     res.json({ ok:true, campaigns: list });
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
@@ -12537,11 +12694,21 @@ const _ASSISTANT_TOOLS = [
 ];
 const _DESTRUCTIVE_TOOLS = new Set(['enroll_drip_campaign', 'create_goal', 'launch_reengagement']);
 
-async function _executeAssistantTool(name, args) {
+async function _executeAssistantTool(name, args, req) {
   const port = process.env.PORT || 5000;
   const baseUrl = `http://localhost:${port}`;
-  const POST = (p, body) => fetch(`${baseUrl}${p}`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body || {}) }).then(r => r.json());
-  const GET  = (p)       => fetch(`${baseUrl}${p}`).then(r => r.json());
+  // Forward the caller's auth (session cookie or api-key headers) so loopback
+  // calls resolve the SAME tenant as the originating request — without this,
+  // tenant-scoped routes (drips/enroll, goals, leads, reengage) would 400 no_tenant.
+  const _authHeaders = () => {
+    const h = {};
+    if (req?.headers?.cookie) h['cookie'] = req.headers.cookie;
+    if (req?.headers?.authorization) h['authorization'] = req.headers.authorization;
+    if (req?.headers?.['x-infogenie-key']) h['x-infogenie-key'] = req.headers['x-infogenie-key'];
+    return h;
+  };
+  const POST = (p, body) => fetch(`${baseUrl}${p}`, { method:'POST', headers:{ 'Content-Type':'application/json', ..._authHeaders() }, body: JSON.stringify(body || {}) }).then(r => r.json());
+  const GET  = (p)       => fetch(`${baseUrl}${p}`, { headers: _authHeaders() }).then(r => r.json());
   switch (name) {
     case 'enroll_drip_campaign': {
       const emails = (args.emails || []).filter(e => typeof e === 'string' && e.trim());
@@ -12653,7 +12820,7 @@ Available capability areas: drip campaigns, Amplitude product-analytics agents, 
         preview: _describeToolCall(toolName, toolArgs),
       });
     }
-    const toolResult = await _executeAssistantTool(toolName, toolArgs);
+    const toolResult = await _executeAssistantTool(toolName, toolArgs, req);
     let summary = '';
     try {
       const second = await openaiChatWithRetry({
@@ -12853,71 +13020,38 @@ app.post('/api/mentions', async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────────
 // REAL-TIME ALERTS (Feature 2)
 // ────────────────────────────────────────────────────────────────────────────
-const _ALERTS_DIR  = path.join(__dirname, 'data');
-const _ALERTS_FILE = path.join(_ALERTS_DIR, 'alerts.json');
-const _SNAP_FILE   = path.join(_ALERTS_DIR, 'alerts_snapshot.json');
-
-// Atomic temp+rename + single-writer mutex chain to prevent races
-function _atomicWriteJson(file, data) {
-  const tmp = file + '.' + process.pid + '.' + Date.now() + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
-  fs.renameSync(tmp, file);
-}
-let _alertsWriteChain = Promise.resolve();
-function _alertsMutate(mutator) {
-  _alertsWriteChain = _alertsWriteChain.then(async () => {
-    const cur = _readAlerts();
+// Per-workspace alert + snapshot stores in kv: `alerts:t<tid>` /
+// `alerts_snapshot:t<tid>`. _tkvMutate serialises read-modify-write per
+// (base,tid). Mutators may return `false` to signal "no change" (skip write);
+// that is translated to `undefined` so _tkvMutate never persists the sentinel.
+const _ALERTS_BASE = 'alerts';
+const _SNAP_BASE   = 'alerts_snapshot';
+function _readAlerts(tid) { return _tkvRead(_ALERTS_BASE, tid, () => ({ alerts: [] })); }
+function _readSnap(tid)   { return _tkvRead(_SNAP_BASE, tid, () => ({})); }
+function _alertsMutate(tid, mutator) {
+  if (tid == null) return Promise.resolve();
+  return _tkvMutate(_ALERTS_BASE, tid, () => ({ alerts: [] }), async (cur) => {
     const next = await mutator(cur);
-    if (next !== false) {
-      try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_ALERTS_FILE, next); }
-      catch (e) { console.warn('alerts write failed:', e.message); }
-    }
-    return next;
-  }).catch(e => { console.warn('alerts mutator error:', e.message); });
-  return _alertsWriteChain;
+    return next === false ? undefined : next;
+  });
 }
-let _snapWriteChain = Promise.resolve();
-function _snapMutate(mutator) {
-  _snapWriteChain = _snapWriteChain.then(async () => {
-    const cur = _readSnap();
+function _snapMutate(tid, mutator) {
+  if (tid == null) return Promise.resolve();
+  return _tkvMutate(_SNAP_BASE, tid, () => ({}), async (cur) => {
     const next = await mutator(cur);
-    if (next !== false) {
-      try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_SNAP_FILE, next); }
-      catch (e) { console.warn('snapshot write failed:', e.message); }
-    }
-    return next;
-  }).catch(e => { console.warn('snapshot mutator error:', e.message); });
-  return _snapWriteChain;
-}
-function _readAlerts() {
-  try {
-    const d = JSON.parse(fs.readFileSync(_ALERTS_FILE, 'utf8'));
-    return (d && Array.isArray(d.alerts)) ? d : { alerts: [] };
-  } catch { return { alerts: [] }; }
-}
-function _writeAlerts(d) {
-  try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_ALERTS_FILE, d); }
-  catch (e) { console.warn('alerts write failed:', e.message); }
-}
-function _readSnap() {
-  try {
-    const d = JSON.parse(fs.readFileSync(_SNAP_FILE, 'utf8'));
-    return (d && typeof d === 'object') ? d : {};
-  } catch { return {}; }
-}
-function _writeSnap(d) {
-  try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_SNAP_FILE, d); }
-  catch (e) { console.warn('snapshot write failed:', e.message); }
+    return next === false ? undefined : next;
+  });
 }
 
 const _ALERTS_META = {
-  dataOrigin: 'data/alerts.json (file persistence)',
+  dataOrigin: 'kv_store alerts:t<tid> (per-workspace persistence)',
   dataSource: 'InfoGenie Alerts Engine',
   confidence: 'high'
 };
 
-app.get('/api/alerts/list', (req, res) => {
-  const data = _readAlerts();
+app.get('/api/alerts/list', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'alerts:list' });
+  const data = await _readAlerts(tid);
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 30));
   res.json({
     ok:true,
@@ -12929,8 +13063,10 @@ app.get('/api/alerts/list', (req, res) => {
 });
 
 app.post('/api/alerts/ack', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'alerts:ack' });
+  if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
   const id = String((req.body && req.body.id) || '');
-  await _alertsMutate(async (data) => {
+  await _alertsMutate(tid, async (data) => {
     if (id === 'all') data.alerts.forEach(a => a.read = true);
     else if (id) { const a = data.alerts.find(x => x.id === id); if (a) a.read = true; }
     return data;
@@ -12948,6 +13084,8 @@ app.post('/api/alerts/check', async (req, res) => {
     const locCode = _COUNTRY_TO_DFS_LOC[country] || 2840;
 
     if (!brand && !domain) return res.status(400).json({ ok:false, error:'brand-or-domain-required' });
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'alerts:check' });
+    if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
     if (!process.env.DATAFORSEO_LOGIN || !process.env.DATAFORSEO_PASSWORD) {
       return res.status(503).json({ ok:false, error:'dataforseo-not-configured' });
     }
@@ -12992,7 +13130,7 @@ app.post('/api/alerts/check', async (req, res) => {
 
     // Phase 2: compare against snapshot + write next snapshot atomically inside mutex
     const newAlerts = [];
-    await _snapMutate(async (snap) => {
+    await _snapMutate(tid, async (snap) => {
       if (baseKey !== null && brandLast24h !== null) {
         const lastBase = typeof snap[baseKey] === 'number' ? snap[baseKey] : 0;
         if (brandLast24h >= 3 && lastBase > 0 && brandLast24h >= lastBase * 2) {
@@ -13029,7 +13167,7 @@ app.post('/api/alerts/check', async (req, res) => {
     });
 
     if (newAlerts.length) {
-      await _alertsMutate(async (data) => {
+      await _alertsMutate(tid, async (data) => {
         const existing = new Set(data.alerts.map(a => a.id));
         for (const a of newAlerts) if (!existing.has(a.id)) data.alerts.unshift(a);
         data.alerts = data.alerts.slice(0, 100);
@@ -13043,7 +13181,7 @@ app.post('/api/alerts/check', async (req, res) => {
     let stakeholderEmail = { sent:false, reason:'queued-async' };
     if (newAlerts.length && typeof _dispatchStakeholderDigest === 'function') {
       Promise.resolve()
-        .then(() => _dispatchStakeholderDigest(newAlerts, { accountLabel: brand || domain }))
+        .then(() => _dispatchStakeholderDigest(tid, newAlerts, { accountLabel: brand || domain }))
         .then(r => { if (r && r.sent) console.log(`[stakeholder-email] dispatched ${r.sentCount} digest(s) from /alerts/check`); })
         .catch(e => console.warn('[stakeholder-email] /alerts/check dispatch failed:', e.message));
     } else if (!newAlerts.length) {
@@ -13052,7 +13190,7 @@ app.post('/api/alerts/check', async (req, res) => {
     // Parallel real-time delivery to chat webhooks (Slack/Teams/Telegram/generic)
     if (newAlerts.length && typeof _dispatchWebhookDigest === 'function') {
       Promise.resolve()
-        .then(() => _dispatchWebhookDigest(newAlerts, { accountLabel: brand || domain }))
+        .then(() => _dispatchWebhookDigest(tid, newAlerts, { accountLabel: brand || domain }))
         .then(r => { if (r && r.sent) console.log(`[webhook] dispatched ${r.sentCount}/${r.sentCount + r.failCount} channels from /alerts/check`); })
         .catch(e => console.warn('[webhook] /alerts/check dispatch failed:', e.message));
     }
@@ -13077,8 +13215,8 @@ app.post('/api/alerts/check', async (req, res) => {
 // the same alerts.json store so the bell badge surfaces them automatically.
 // Idempotent: each kind+resource emits at most one unread alert at a time.
 
-async function _emitCreditAlert(alert) {
-  await _alertsMutate(async (data) => {
+async function _emitCreditAlert(tid, alert) {
+  await _alertsMutate(tid, async (data) => {
     // De-dup: drop any prior unread alert with the same id-stem so the bell
     // never shows duplicates of the same warning.
     const stem = alert.id.replace(/-\d+$/, '');
@@ -13112,8 +13250,9 @@ async function _dfsBalance() {
 }
 
 // Runs the full credit-check sweep. Returns { emitted: [...] }.
-async function _runCreditCheck() {
+async function _runCreditCheck(tid) {
   const emitted = [];
+  if (tid == null) return { emitted, dfs: { ok:false, error:'no_tenant' } };
 
   // ── 1. DataForSEO balance ────────────────────────────────────────────────
   const dfs = await _dfsBalance();
@@ -13130,13 +13269,13 @@ async function _runCreditCheck() {
     }
     if (severity) {
       const a = { id:`credit-dfs-balance-${Date.now()}`, type:'credit_low', severity, title, body };
-      await _emitCreditAlert(a); emitted.push(a);
+      await _emitCreditAlert(tid, a); emitted.push(a);
     }
   } else if (dfs.error !== 'no_creds') {
     const a = { id:`credit-dfs-error-${Date.now()}`, type:'credit_error', severity:'medium',
       title:'⚠️ DataForSEO balance check failed',
       body:`Could not read DataForSEO balance (${dfs.error}). The login/password may be wrong, or the account may be suspended for non-payment.` };
-    await _emitCreditAlert(a); emitted.push(a);
+    await _emitCreditAlert(tid, a); emitted.push(a);
   }
 
   // ── 2. Missing / unconfigured paid services that the app expects ─────────
@@ -13162,7 +13301,7 @@ async function _runCreditCheck() {
       title: `🔑 ${svc.name} not connected — subscription / API key required`,
       body: `${svc.why} Add ${svc.key} in Replit Secrets to enable.`,
     };
-    await _emitCreditAlert(a); emitted.push(a);
+    await _emitCreditAlert(tid, a); emitted.push(a);
   }
 
   // ── 3. Detect placeholder/dummy keys (silent failures otherwise) ────────
@@ -13175,7 +13314,7 @@ async function _runCreditCheck() {
         title: `🚧 ${svc.name} key is a placeholder`,
         body: `${svc.key} starts with "_DUMMY". ${svc.name} calls are skipped and template fallbacks are used. Replace with a real key in Replit Secrets to unlock live ${svc.name} responses.`,
       };
-      await _emitCreditAlert(a); emitted.push(a);
+      await _emitCreditAlert(tid, a); emitted.push(a);
     }
   }
 
@@ -13185,51 +13324,54 @@ async function _runCreditCheck() {
 // GET /api/alerts/check-credits  — manual + cron entrypoint
 app.get('/api/alerts/check-credits', async (req, res) => {
   try {
-    const r = await _runCreditCheck();
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'alerts:check-credits' });
+    if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
+    const r = await _runCreditCheck(tid);
     res.json({ ok:true, emitted: r.emitted, dfs: r.dfs, lastChecked: Date.now() });
   } catch (e) {
     res.status(500).json({ ok:false, error: e.message });
   }
 });
 
-// Auto-run on boot (after 8 s grace) + every 6 h thereafter.
-setTimeout(() => { _runCreditCheck().catch(e => console.warn('credit check failed:', e.message)); }, 8000);
-setInterval(() => { _runCreditCheck().catch(e => console.warn('credit check failed:', e.message)); }, 6 * 60 * 60 * 1000);
+// Auto-run on boot (after 8 s grace) + every 6 h thereafter. Credit/key issues
+// are platform-wide (shared env keys), so the cron surfaces them in the default
+// (owner) workspace via getCronTenantId().
+async function _runCreditCheckCron() {
+  try {
+    const tid = await _tkvCtx.getCronTenantId();
+    if (tid == null) return;
+    await _runCreditCheck(tid);
+  } catch (e) { console.warn('credit check failed:', e.message); }
+}
+setTimeout(() => { _runCreditCheckCron(); }, 8000);
+setInterval(() => { _runCreditCheckCron(); }, 6 * 60 * 60 * 1000);
 
 // ────────────────────────────────────────────────────────────────────────────
 // STAKEHOLDER DISTRIBUTION (Feature 5 — auto-emails on critical alerts)
 // ────────────────────────────────────────────────────────────────────────────
-const _STAKE_FILE = path.join(_ALERTS_DIR, 'stakeholders.json');
+// Per-workspace stakeholder store in kv: `stakeholders:t<tid>`.
+const _STAKE_BASE = 'stakeholders';
 const _STAKE_META = {
-  dataOrigin: 'data/stakeholders.json (file persistence)',
+  dataOrigin: 'kv_store stakeholders:t<tid> (per-workspace persistence)',
   dataSource: 'InfoGenie Stakeholder Engine',
   confidence: 'high'
 };
-function _readStake() {
-  try {
-    const d = JSON.parse(fs.readFileSync(_STAKE_FILE, 'utf8'));
-    if (d && Array.isArray(d.stakeholders)) return d;
-  } catch {}
-  return { stakeholders: [], lastEmailSentAt: 0 };
+function _readStake(tid) {
+  return _tkvRead(_STAKE_BASE, tid, () => ({ stakeholders: [], lastEmailSentAt: 0 }));
 }
-let _stakeWriteChain = Promise.resolve();
-function _stakeMutate(mutator) {
-  _stakeWriteChain = _stakeWriteChain.then(async () => {
-    const cur = _readStake();
+function _stakeMutate(tid, mutator) {
+  if (tid == null) return Promise.resolve();
+  return _tkvMutate(_STAKE_BASE, tid, () => ({ stakeholders: [], lastEmailSentAt: 0 }), async (cur) => {
     const next = await mutator(cur);
-    if (next !== false) {
-      try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_STAKE_FILE, next); }
-      catch (e) { console.warn('stakeholders write failed:', e.message); }
-    }
-    return next;
-  }).catch(e => { console.warn('stakeholders mutator error:', e.message); });
-  return _stakeWriteChain;
+    return next === false ? undefined : next;
+  });
 }
 
 const _EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-app.get('/api/stakeholders/list', (req, res) => {
-  const d = _readStake();
+app.get('/api/stakeholders/list', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'stakeholders:list' });
+  const d = await _readStake(tid);
   res.json({
     ok:true,
     stakeholders: d.stakeholders,
@@ -13240,13 +13382,15 @@ app.get('/api/stakeholders/list', (req, res) => {
 });
 
 app.post('/api/stakeholders/add', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'stakeholders:add' });
+  if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
   const body = (req.body && typeof req.body === 'object') ? req.body : {};
   const name  = String(body.name  || '').trim().slice(0, 80);
   const email = String(body.email || '').trim().slice(0, 120).toLowerCase();
   if (!name)  return res.status(400).json({ ok:false, error:'name required' });
   if (!_EMAIL_RE.test(email)) return res.status(400).json({ ok:false, error:'valid email required' });
   let added = null, dup = false;
-  await _stakeMutate(async (data) => {
+  await _stakeMutate(tid, async (data) => {
     if (data.stakeholders.some(s => s.email === email)) { dup = true; return false; }
     added = {
       id: 'stk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
@@ -13260,10 +13404,12 @@ app.post('/api/stakeholders/add', async (req, res) => {
 });
 
 app.post('/api/stakeholders/remove', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'stakeholders:remove' });
+  if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
   const id = String((req.body && req.body.id) || '');
   if (!id) return res.status(400).json({ ok:false, error:'id required' });
   let removed = false;
-  await _stakeMutate(async (data) => {
+  await _stakeMutate(tid, async (data) => {
     const before = data.stakeholders.length;
     data.stakeholders = data.stakeholders.filter(s => s.id !== id);
     removed = data.stakeholders.length < before;
@@ -13306,7 +13452,8 @@ function _buildStakeholderDigest(newAlerts, accountLabel) {
 // Filters to high/critical severity only by default (override via opts.minSeverity).
 // THROTTLE IS ATOMIC: lastEmailSentAt is reserved inside _stakeMutate BEFORE the
 // network sends, so two concurrent triggers cannot both pass the throttle.
-async function _dispatchStakeholderDigest(newAlerts, opts = {}) {
+async function _dispatchStakeholderDigest(tid, newAlerts, opts = {}) {
+  if (tid == null) return { sent:false, reason:'no-tenant' };
   if (!process.env.RESEND_API_KEY) return { sent:false, reason:'resend-not-configured' };
   if (!Array.isArray(newAlerts) || !newAlerts.length) return { sent:false, reason:'no-alerts' };
   const minSev = opts.minSeverity || 'high';
@@ -13319,7 +13466,7 @@ async function _dispatchStakeholderDigest(newAlerts, opts = {}) {
   // callers cannot both observe lastEmailSentAt < (now-THROTTLE) and proceed.
   let recipients = null;
   let reservedAt = 0;
-  await _stakeMutate(async (d) => {
+  await _stakeMutate(tid, async (d) => {
     if (!d.stakeholders.length) return false;
     const now = Date.now();
     if ((now - (d.lastEmailSentAt || 0)) < THROTTLE_MS) return false;
@@ -13330,7 +13477,7 @@ async function _dispatchStakeholderDigest(newAlerts, opts = {}) {
   });
   if (!recipients) {
     // Either no stakeholders or throttled — figure out which for the response
-    const cur = _readStake();
+    const cur = await _readStake(tid);
     return { sent:false, reason: cur.stakeholders.length ? 'throttled' : 'no-stakeholders' };
   }
   const { subject, html, text } = _buildStakeholderDigest(eligible, opts.accountLabel || '');
@@ -13346,7 +13493,7 @@ async function _dispatchStakeholderDigest(newAlerts, opts = {}) {
   }
   // If every send failed, release the throttle so the next legitimate alert can try
   if (okCount === 0) {
-    await _stakeMutate(async (d) => {
+    await _stakeMutate(tid, async (d) => {
       if (d.lastEmailSentAt === reservedAt) { d.lastEmailSentAt = 0; return d; }
       return false;
     });
@@ -13358,7 +13505,9 @@ app.post('/api/stakeholders/test-email', async (req, res) => {
   if (!process.env.RESEND_API_KEY) {
     return res.status(503).json({ ok:false, error:'RESEND_API_KEY missing — cannot send test email' });
   }
-  const stake = _readStake();
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'stakeholders:test-email' });
+  if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
+  const stake = await _readStake(tid);
   if (!stake.stakeholders.length) {
     return res.status(400).json({ ok:false, error:'no stakeholders to send to — add at least one first' });
   }
@@ -13383,32 +13532,23 @@ app.post('/api/stakeholders/test-email', async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────────
 // Stakeholders get email digests; webhooks deliver the same alerts in real-time
 // to chat channels. User pastes their own webhook URL — no API keys needed.
-const _WEBHOOKS_FILE = path.join(_ALERTS_DIR, 'webhooks.json');
+// Per-workspace webhook store in kv: `webhooks:t<tid>`.
+const _WEBHOOKS_BASE = 'webhooks';
 const _WEBHOOK_TYPES = ['slack', 'teams', 'telegram', 'generic'];
 const _WEBHOOKS_META = {
-  dataOrigin: 'data/webhooks.json (file persistence)',
+  dataOrigin: 'kv_store webhooks:t<tid> (per-workspace persistence)',
   dataSource: 'InfoGenie Webhook Engine',
   confidence: 'high'
 };
-function _readWebhooks() {
-  try {
-    const d = JSON.parse(fs.readFileSync(_WEBHOOKS_FILE, 'utf8'));
-    if (d && Array.isArray(d.webhooks)) return d;
-  } catch {}
-  return { webhooks: [], lastDispatchAt: 0 };
+function _readWebhooks(tid) {
+  return _tkvRead(_WEBHOOKS_BASE, tid, () => ({ webhooks: [], lastDispatchAt: 0 }));
 }
-let _webhookWriteChain = Promise.resolve();
-function _webhookMutate(mutator) {
-  _webhookWriteChain = _webhookWriteChain.then(async () => {
-    const cur = _readWebhooks();
+function _webhookMutate(tid, mutator) {
+  if (tid == null) return Promise.resolve();
+  return _tkvMutate(_WEBHOOKS_BASE, tid, () => ({ webhooks: [], lastDispatchAt: 0 }), async (cur) => {
     const next = await mutator(cur);
-    if (next !== false) {
-      try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_WEBHOOKS_FILE, next); }
-      catch (e) { console.warn('webhooks write failed:', e.message); }
-    }
-    return next;
-  }).catch(e => { console.warn('webhooks mutator error:', e.message); });
-  return _webhookWriteChain;
+    return next === false ? undefined : next;
+  });
 }
 
 // SSRF-safe URL validation. Public HTTPS only; per-platform host allowlist for
@@ -13558,14 +13698,15 @@ function _psiWhRateLimit(req, res) {
 
 // Dispatch alerts to all active webhook channels in parallel. Filters by
 // minSeverity (default high). Errors per webhook are isolated. Fire-and-forget.
-async function _dispatchWebhookDigest(newAlerts, opts = {}) {
+async function _dispatchWebhookDigest(tid, newAlerts, opts = {}) {
+  if (tid == null) return { sent:false, reason:'no-tenant' };
   if (!Array.isArray(newAlerts) || !newAlerts.length) return { sent:false, reason:'no-alerts' };
   const minSev = opts.minSeverity || 'high';
   const sevRank = { low: 0, medium: 1, high: 2, critical: 3 };
   const minRank = sevRank[minSev] != null ? sevRank[minSev] : 2;
   const eligible = newAlerts.filter(a => (sevRank[a.severity] != null ? sevRank[a.severity] : 0) >= minRank);
   if (!eligible.length) return { sent:false, reason:'no-eligible-severity' };
-  const data = _readWebhooks();
+  const data = await _readWebhooks(tid);
   const active = (data.webhooks || []).filter(w => w.active !== false);
   if (!active.length) return { sent:false, reason:'no-webhooks' };
   const results = await Promise.allSettled(active.map(wh =>
@@ -13576,7 +13717,7 @@ async function _dispatchWebhookDigest(newAlerts, opts = {}) {
     if (r.status === 'fulfilled') okCount++;
     else { failCount++; failures.push({ id: active[i].id, label: active[i].label, error: (r.reason && r.reason.message) || String(r.reason) }); }
   });
-  await _webhookMutate(async (d) => {
+  await _webhookMutate(tid, async (d) => {
     d.lastDispatchAt = Date.now();
     for (const wh of d.webhooks) {
       const idx = active.findIndex(a => a.id === wh.id);
@@ -13591,8 +13732,9 @@ async function _dispatchWebhookDigest(newAlerts, opts = {}) {
 }
 
 // ── Webhook CRUD endpoints ─────────────────────────────────────────────────
-app.get('/api/webhooks/list', (req, res) => {
-  const d = _readWebhooks();
+app.get('/api/webhooks/list', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'webhooks:list' });
+  const d = await _readWebhooks(tid);
   // Mask URLs for safety on display (show only host + last 10 chars)
   const masked = (d.webhooks || []).map(w => {
     let urlMasked;
@@ -13615,6 +13757,8 @@ app.get('/api/webhooks/list', (req, res) => {
 });
 
 app.post('/api/webhooks/add', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'webhooks:add' });
+  if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
   const body = (req.body && typeof req.body === 'object') ? req.body : {};
   const type = String(body.type || '').toLowerCase();
   const label = String(body.label || '').trim().slice(0, 80);
@@ -13624,7 +13768,7 @@ app.post('/api/webhooks/add', async (req, res) => {
   const v = _validateWebhookUrl(type, url);
   if (!v.ok) return res.status(400).json({ ok:false, error: v.error });
   let added = null, dup = false;
-  await _webhookMutate(async (d) => {
+  await _webhookMutate(tid, async (d) => {
     if (d.webhooks.some(w => w.url === url)) { dup = true; return false; }
     added = {
       id: 'whk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
@@ -13642,10 +13786,12 @@ app.post('/api/webhooks/add', async (req, res) => {
 });
 
 app.post('/api/webhooks/remove', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'webhooks:remove' });
+  if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
   const id = String((req.body && req.body.id) || '');
   if (!id) return res.status(400).json({ ok:false, error:'id required' });
   let removed = false;
-  await _webhookMutate(async (d) => {
+  await _webhookMutate(tid, async (d) => {
     const before = d.webhooks.length;
     d.webhooks = d.webhooks.filter(w => w.id !== id);
     removed = d.webhooks.length < before;
@@ -13655,10 +13801,12 @@ app.post('/api/webhooks/remove', async (req, res) => {
 });
 
 app.post('/api/webhooks/toggle', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'webhooks:toggle' });
+  if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
   const id = String((req.body && req.body.id) || '');
   if (!id) return res.status(400).json({ ok:false, error:'id required' });
   let updated = null;
-  await _webhookMutate(async (d) => {
+  await _webhookMutate(tid, async (d) => {
     const w = d.webhooks.find(x => x.id === id);
     if (w) { w.active = !w.active; updated = { id: w.id, active: w.active }; return d; }
     return false;
@@ -13669,9 +13817,11 @@ app.post('/api/webhooks/toggle', async (req, res) => {
 
 app.post('/api/webhooks/test', async (req, res) => {
   if (!_psiWhRateLimit(req, res)) return;
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'webhooks:test' });
+  if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
   const id = String((req.body && req.body.id) || '');
   if (!id) return res.status(400).json({ ok:false, error:'id required' });
-  const data = _readWebhooks();
+  const data = await _readWebhooks(tid);
   const wh = data.webhooks.find(w => w.id === id);
   if (!wh) return res.status(404).json({ ok:false, error:'webhook not found' });
   const sample = [{
@@ -13682,14 +13832,14 @@ app.post('/api/webhooks/test', async (req, res) => {
   }];
   try {
     await _sendOneWebhook(wh, sample, 'TEST');
-    await _webhookMutate(async (d) => {
+    await _webhookMutate(tid, async (d) => {
       const w = d.webhooks.find(x => x.id === id);
       if (w) { w.lastOkAt = Date.now(); w.lastError = null; return d; }
       return false;
     });
     res.json({ ok:true, sent:true, ..._WEBHOOKS_META });
   } catch (e) {
-    await _webhookMutate(async (d) => {
+    await _webhookMutate(tid, async (d) => {
       const w = d.webhooks.find(x => x.id === id);
       if (w) { w.lastErrorAt = Date.now(); w.lastError = e.message.slice(0, 200); return d; }
       return false;
@@ -13781,42 +13931,36 @@ app.post('/api/pagespeed/run', async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────────
 // LAUNCH CALENDAR (Feature 6 — campaign launch tracker + 24h/1h reminders)
 // ────────────────────────────────────────────────────────────────────────────
-const _LAUNCH_FILE = path.join(_ALERTS_DIR, 'launches.json');
+// Per-workspace launch store in kv: `launches:t<tid>`.
+const _LAUNCH_BASE = 'launches';
 const _LAUNCH_META = {
-  dataOrigin: 'data/launches.json (file persistence) + setInterval 60s sweeper',
+  dataOrigin: 'kv_store launches:t<tid> (per-workspace persistence) + setInterval 60s sweeper',
   dataSource: 'InfoGenie Launch Engine',
   confidence: 'high'
 };
 const _LAUNCH_CHANNELS = ['Email','Social','Paid Ad','PR','Mixed','Other'];
-function _readLaunches() {
-  try {
-    const d = JSON.parse(fs.readFileSync(_LAUNCH_FILE, 'utf8'));
-    if (d && Array.isArray(d.launches)) return d;
-  } catch {}
-  return { launches: [] };
+function _readLaunches(tid) {
+  return _tkvRead(_LAUNCH_BASE, tid, () => ({ launches: [] }));
 }
-let _launchWriteChain = Promise.resolve();
-function _launchMutate(mutator) {
-  _launchWriteChain = _launchWriteChain.then(async () => {
-    const cur = _readLaunches();
+function _launchMutate(tid, mutator) {
+  if (tid == null) return Promise.resolve();
+  return _tkvMutate(_LAUNCH_BASE, tid, () => ({ launches: [] }), async (cur) => {
     const next = await mutator(cur);
-    if (next !== false) {
-      try { fs.mkdirSync(_ALERTS_DIR, { recursive:true }); _atomicWriteJson(_LAUNCH_FILE, next); }
-      catch (e) { console.warn('launches write failed:', e.message); }
-    }
-    return next;
-  }).catch(e => { console.warn('launches mutator error:', e.message); });
-  return _launchWriteChain;
+    return next === false ? undefined : next;
+  });
 }
 
-app.get('/api/launches/list', (req, res) => {
-  const d = _readLaunches();
+app.get('/api/launches/list', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'launches:list' });
+  const d = await _readLaunches(tid);
   // Sort soonest first
   const launches = [...d.launches].sort((a,b) => (a.datetimeISO < b.datetimeISO ? -1 : 1));
   res.json({ ok:true, launches, channels: _LAUNCH_CHANNELS, now: Date.now(), ..._LAUNCH_META });
 });
 
 app.post('/api/launches/add', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'launches:add' });
+  if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
   const body = (req.body && typeof req.body === 'object') ? req.body : {};
   const name = String(body.name || '').trim().slice(0, 120);
   const datetimeISO = String(body.datetimeISO || '').trim();
@@ -13835,15 +13979,17 @@ app.post('/api/launches/add', async (req, res) => {
     createdAt: Date.now(),
     reminders: { h24: false, h1: false, live: false }
   };
-  await _launchMutate(async (d) => { d.launches.push(launch); return d; });
+  await _launchMutate(tid, async (d) => { d.launches.push(launch); return d; });
   res.json({ ok:true, launch, ..._LAUNCH_META });
 });
 
 app.post('/api/launches/remove', async (req, res) => {
+  const tid = await _tkvCtx.resolveTenantId(req, { label: 'launches:remove' });
+  if (tid == null) return res.status(400).json({ ok:false, error:'no_tenant' });
   const id = String((req.body && req.body.id) || '');
   if (!id) return res.status(400).json({ ok:false, error:'id required' });
   let removed = false;
-  await _launchMutate(async (d) => {
+  await _launchMutate(tid, async (d) => {
     const before = d.launches.length;
     d.launches = d.launches.filter(l => l.id !== id);
     removed = d.launches.length < before;
@@ -13852,18 +13998,29 @@ app.post('/api/launches/remove', async (req, res) => {
   res.json({ ok:true, removed, ..._LAUNCH_META });
 });
 
-// Background sweeper — runs every 60s in-process. For each scheduled launch,
-// fires a 24h-before reminder, a 1h-before reminder, and a "now live" alert.
-// Pushes alerts into alerts.json and emails stakeholders. Idempotent: each
+// Background sweeper — runs every 60s in-process. Iterates every active
+// workspace (tenant); for each scheduled launch, fires a 24h-before reminder,
+// a 1h-before reminder, and a "now live" alert. Pushes alerts into that
+// workspace's alerts store and emails its stakeholders. Idempotent: each
 // reminder fires at most once per launch via the reminders.{h24,h1,live} flags.
 async function _sweepLaunches() {
   try {
-    const data = _readLaunches();
+    const tids = await _tkvCtx.listActiveTenantIds();
+    for (const tid of tids) {
+      await _sweepLaunchesForTenant(tid);
+    }
+  } catch (e) {
+    console.warn('[launch-sweep] error:', e.message);
+  }
+}
+async function _sweepLaunchesForTenant(tid) {
+  try {
+    const data = await _readLaunches(tid);
     if (!data.launches.length) return;
     const now = Date.now();
     const due = []; // alerts to push
     let mutated = false;
-    await _launchMutate(async (d) => {
+    await _launchMutate(tid, async (d) => {
       for (const l of d.launches) {
         const ts = Date.parse(l.datetimeISO);
         if (!Number.isFinite(ts)) continue;
@@ -13909,7 +14066,7 @@ async function _sweepLaunches() {
       return mutated ? d : false;
     });
     if (due.length) {
-      await _alertsMutate(async (a) => {
+      await _alertsMutate(tid, async (a) => {
         const seen = new Set(a.alerts.map(x => x.id));
         for (const x of due) if (!seen.has(x.id)) a.alerts.unshift(x);
         a.alerts = a.alerts.slice(0, 100);
@@ -13917,13 +14074,13 @@ async function _sweepLaunches() {
       });
       // Fire stakeholder emails async (helper applies its own atomic 30-min throttle)
       Promise.resolve()
-        .then(() => _dispatchStakeholderDigest(due, { minSeverity: 'medium', accountLabel: 'Launch reminder' }))
+        .then(() => _dispatchStakeholderDigest(tid, due, { minSeverity: 'medium', accountLabel: 'Launch reminder' }))
         .then(r => { if (r && r.sent) console.log(`[launch-sweep] dispatched ${r.sentCount} reminder digest(s)`); })
         .catch(e => console.warn('[launch-sweep] stakeholder dispatch failed:', e.message));
       // Parallel chat-webhook delivery for launch reminders
       if (typeof _dispatchWebhookDigest === 'function') {
         Promise.resolve()
-          .then(() => _dispatchWebhookDigest(due, { minSeverity: 'medium', accountLabel: 'Launch reminder' }))
+          .then(() => _dispatchWebhookDigest(tid, due, { minSeverity: 'medium', accountLabel: 'Launch reminder' }))
           .then(r => { if (r && r.sent) console.log(`[launch-sweep] webhook dispatched to ${r.sentCount}/${r.sentCount + r.failCount} channels`); })
           .catch(e => console.warn('[launch-sweep] webhook dispatch failed:', e.message));
       }
@@ -13936,6 +14093,66 @@ async function _sweepLaunches() {
 setInterval(_sweepLaunches, 60 * 1000);
 // Run once on boot to catch reminders that became due while the server was down
 setTimeout(_sweepLaunches, 5 * 1000);
+
+// One-time boot migration: copy legacy GLOBAL disk-file blobs (migrated by
+// db.js into `file:<name>.json` kv keys) into the default (owner) tenant's
+// per-workspace namespaced keys. Idempotent — no-op once the tenant keys exist.
+// Nothing is dropped; the `file:` copies remain in place as backups.
+// Deferred 9s so the tenants/users schema is ready and getDefaultTenantId()
+// resolves (otherwise it returns null this early and every migration skips).
+setTimeout(async () => {
+  try {
+    const _fileMigrations = [
+      ['file:aivis-history.json', 'aivis_history'],
+      ['file:alerts.json', 'alerts'],
+      ['file:alerts_snapshot.json', 'alerts_snapshot'],
+      ['file:drip-enrollments.json', 'drip_enrollments'],
+      ['file:drip-unsubscribes.json', 'drip_unsubs'],
+      ['file:goals.json', 'goals'],
+      ['file:launches.json', 'launches'],
+      ['file:qualified-leads.json', 'qualified_leads'],
+      ['file:reengagement-campaigns.json', 'reengage_campaigns'],
+      ['file:stakeholders.json', 'stakeholders'],
+      ['file:webhooks.json', 'webhooks'],
+    ];
+    for (const [fileKey, base] of _fileMigrations) {
+      await _tkvScope.migrateFileKeyToTenant(fileKey, base);
+    }
+  } catch (e) { console.warn('[kv_scope] disk-file boot migration', e.message); }
+
+  // Diag captures live on disk as data/diag-captures/<slug>.json — a directory,
+  // so db.js's flat-file boot migration never copied them into kv. Move each
+  // capture (and the _latest pointer) into the default tenant's per-workspace
+  // keys so the per-tenant diag-capture routes can still read prior captures.
+  // Idempotent: skip entirely once any capture exists for the default tenant.
+  try {
+    const _db = require('./db');
+    const _diagDir = path.join(__dirname, 'data', 'diag-captures');
+    const diagTid = await _tkvCtx.getDefaultTenantId();
+    if (diagTid && _db.hasDb() && fs.existsSync(_diagDir)) {
+      const existing = await _tkvScope.listTenantPrefix(_DIAG_CAP_PREFIX, diagTid, 1);
+      if (!existing.length) {
+        let n = 0;
+        for (const f of fs.readdirSync(_diagDir)) {
+          if (!f.endsWith('.json') || f === '_latest.json') continue;
+          try {
+            const payload = JSON.parse(fs.readFileSync(path.join(_diagDir, f), 'utf8'));
+            await _db.kvSet(`${_DIAG_CAP_PREFIX}t${diagTid}:${f.slice(0, -5)}`, payload);
+            n++;
+          } catch (e) { console.warn('[kv_scope] diag capture migrate', f, e.message); }
+        }
+        try {
+          const latestPath = path.join(_diagDir, '_latest.json');
+          if (fs.existsSync(latestPath)) {
+            const ptr = JSON.parse(fs.readFileSync(latestPath, 'utf8'));
+            if (ptr && ptr.domain) await _db.kvSet(`${_DIAG_LATEST_KEY}:t${diagTid}`, { domain: ptr.domain, at: ptr.at || null });
+          }
+        } catch (e) { console.warn('[kv_scope] diag latest migrate', e.message); }
+        if (n) console.log(`[kv_scope] migrated ${n} diag captures -> tenant ${diagTid}`);
+      }
+    }
+  } catch (e) { console.warn('[kv_scope] diag-captures boot migration', e.message); }
+}, 9000);
 
 // ────────────────────────────────────────────────────────────────────────────
 // AI CONTENT-GAP IDEATION (Feature 3)

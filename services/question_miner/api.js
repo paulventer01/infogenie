@@ -7,6 +7,12 @@ const router = express.Router();
 const _https = require('https');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const _kvScope = require('../tenants/kv_scope');
+
+// Mined-question records are per-workspace: `question_mine:t<tid>:<id>`.
+// Legacy un-namespaced `question_mine:<id>` keys migrate to the default tenant.
+const _QM_PREFIX = 'question_mine:';
+_kvScope.migrateLegacyPrefix(_QM_PREFIX).catch(() => {});
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safe(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[question-miner]', e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
@@ -48,6 +54,7 @@ function _fallback(seed) {
 router.post('/mine', _safe(async (req, res) => {
   const seed = String(req.body?.seed || '').trim().slice(0, 100);
   if (!seed) return _err(res, 400, 'seed keyword required');
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'question_miner:mine' });
   const locCode = parseInt(req.body?.location_code, 10) || 2840; // US
 
   let questions = [];
@@ -80,16 +87,18 @@ router.post('/mine', _safe(async (req, res) => {
 
   // Persist for content-calendar handoff
   const id = 'qmine_' + (require('crypto').randomUUID ? require('crypto').randomUUID().replace(/-/g,'').slice(0,16) : Date.now() + '_' + Math.random().toString(36).slice(2,8));
-  if (_db.hasDb()) {
-    try { await _db.kvSet(`question_mine:${id}`, { seed, source, questions, createdAt: new Date().toISOString() }); } catch {}
+  if (_db.hasDb() && tid != null) {
+    try { await _db.kvSet(`${_QM_PREFIX}t${tid}:${id}`, { seed, source, questions, createdAt: new Date().toISOString() }); } catch {}
   }
   res.json({ ok: true, id, seed, source, total: questions.length, grouped, questions });
 }));
 
-router.get('/list', _safe(async (_req, res) => {
+router.get('/list', _safe(async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok: true, items: [] });
-  const r = await _db.getPool().query(`SELECT key, value FROM kv_store WHERE key LIKE 'question_mine:%' ORDER BY key DESC LIMIT 20`);
-  res.json({ ok: true, items: r.rows.map(row => ({ id: row.key.replace('question_mine:', ''), ...row.value })) });
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'question_miner:list' });
+  if (tid == null) return res.json({ ok: true, items: [] });
+  const rows = await _kvScope.listTenantPrefix(_QM_PREFIX, tid, 20);
+  res.json({ ok: true, items: rows.map(row => ({ id: row.id, ...row.value })) });
 }));
 
 router.post('/to-calendar', _safe(async (req, res) => {

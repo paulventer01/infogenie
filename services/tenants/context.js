@@ -103,6 +103,20 @@ async function getCronTenantId() {
   return await getDefaultTenantId();
 }
 
+// All active tenant ids — for background jobs that must run once PER workspace
+// (e.g. the officer auto-report / auto-meeting schedulers). Returns [] if the
+// DB is down. Not cached (cheap, and crons tick infrequently).
+async function listActiveTenantIds() {
+  if (!_db.hasDb()) return [];
+  try {
+    const r = await _db.getPool().query(`SELECT id FROM tenants WHERE status='active' ORDER BY id ASC`);
+    return r.rows.map(row => row.id);
+  } catch (e) {
+    console.error('[tenants] listActiveTenantIds failed:', e.message);
+    return [];
+  }
+}
+
 // ── Express helper: 4xx if no tenant resolvable in 'on' mode ───────────────
 // Use inside a route as:
 //   const tenantId = await requireTenant(req, res); if (!tenantId) return;
@@ -120,5 +134,6 @@ module.exports = {
   requireTenant,
   getDefaultTenantId,
   getCronTenantId,
+  listActiveTenantIds,
   clearDefaultTenantCache,
 };

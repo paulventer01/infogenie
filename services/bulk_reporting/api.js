@@ -78,11 +78,11 @@ function _parseCsv(buf) {
   return Array.from(new Set(out));
 }
 
-async function _loadBrand() {
+async function _loadBrand(tid) {
   try {
     const wl = require('../white_label/api');
     if (wl && typeof wl.getBrand === 'function') {
-      const b = await wl.getBrand();
+      const b = await wl.getBrand(tid);
       return (b && b.enabled) ? b : null;
     }
   } catch {}
@@ -307,7 +307,7 @@ router.get('/:id/zip', async (req, res) => {
     [id, tid],
   );
   if (!items.rows.length) return _err(res, 409, 'no completed items yet');
-  const brand = await _loadBrand();
+  const brand = await _loadBrand(tid);
   const slug = (run.rows[0].name || 'bulk').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'bulk';
   res.setHeader('Content-Type', 'application/zip');
   res.setHeader('Content-Disposition', `attachment; filename="${slug}-${id}.zip"`);

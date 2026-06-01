@@ -17,6 +17,7 @@ const _https = require('https');
 const _crypto = require('crypto');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const _kvScope = require('../tenants/kv_scope');
 
 const router = express.Router();
 async function _tid(req, label) {
@@ -24,7 +25,10 @@ async function _tid(req, label) {
 }
 const _upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
+// Per-workspace settings: `true_roas.settings:t<tid>`. Legacy global key is
+// migrated into the default (owner) tenant once at boot.
 const SETTINGS_KEY = 'true_roas.settings';
+_kvScope.migrateGlobalSingleton(SETTINGS_KEY, SETTINGS_KEY).catch(() => {});
 
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 
@@ -39,17 +43,17 @@ const DEFAULT_SETTINGS = {
   defaultCurrency: 'USD',
 };
 
-async function _getSettings() {
-  if (!_db.hasDb()) return { ...DEFAULT_SETTINGS };
+async function _getSettings(tid) {
+  if (!_db.hasDb() || tid == null) return { ...DEFAULT_SETTINGS };
   try {
-    const r = await _db.getPool().query(`SELECT value FROM kv_store WHERE key=$1`, [SETTINGS_KEY]);
+    const r = await _db.getPool().query(`SELECT value FROM kv_store WHERE key=$1`, [_kvScope.tkey(SETTINGS_KEY, tid)]);
     if (!r.rows.length) return { ...DEFAULT_SETTINGS };
     return { ...DEFAULT_SETTINGS, ...(r.rows[0].value || {}) };
   } catch { return { ...DEFAULT_SETTINGS }; }
 }
 
-async function _saveSettings(patch) {
-  const cur = await _getSettings();
+async function _saveSettings(tid, patch) {
+  const cur = await _getSettings(tid);
   const next = { ...cur, ...(patch || {}) };
   // Normalise types
   next.hubspotSyncEnabled = !!next.hubspotSyncEnabled;
@@ -60,11 +64,11 @@ async function _saveSettings(patch) {
   if (!Array.isArray(next.hubspotPipelineStages) || !next.hubspotPipelineStages.length) {
     next.hubspotPipelineStages = ['closedwon'];
   }
-  if (_db.hasDb()) {
+  if (_db.hasDb() && tid != null) {
     await _db.getPool().query(
       `INSERT INTO kv_store (key, value) VALUES ($1, $2)
        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-      [SETTINGS_KEY, JSON.stringify(next)],
+      [_kvScope.tkey(SETTINGS_KEY, tid), JSON.stringify(next)],
     );
   }
   return next;
@@ -235,7 +239,7 @@ function _hsFetch(path) { return _hsRequest(path, 'GET', null); }
 
 async function _syncHubspot(tid) {
   if (!Number.isFinite(tid)) throw new Error('tenant_id required for hubspot sync');
-  const settings = await _getSettings();
+  const settings = await _getSettings(tid);
   const lookback = settings.hubspotLookbackDays;
   const stages = settings.hubspotPipelineStages.map(s => String(s));
   const props = ['dealname','amount','deal_currency_code','dealstage','closedate','createdate',
@@ -294,7 +298,7 @@ async function _syncHubspot(tid) {
     if (!after) break;
   }
   const out = await _insertConversions('hubspot', items, tid);
-  await _saveSettings({ hubspotSyncEnabled: true });
+  await _saveSettings(tid, { hubspotSyncEnabled: true });
   await _stamp(`true_roas.hubspot_last_sync.t${tid}`, { at: new Date().toISOString(), ...out, scanned: items.length, tenant_id: tid });
   return { ...out, scanned: items.length };
 }
@@ -452,7 +456,7 @@ async function computeRevenueLag(days = 90, tid) {
 
 // ── Profit-aware budget cap recommendations ─────────────────────────────────
 async function generateBudgetRecommendations(tid) {
-  const settings = await _getSettings();
+  const settings = await _getSettings(tid);
   if (!_db.hasDb() || !settings.budgetCapEnabled) return { ok: true, generated: 0, skipped: 'disabled' };
   if (!Number.isFinite(tid)) throw new Error('tenant_id required for generateBudgetRecommendations');
   const pool = _db.getPool();
@@ -533,9 +537,9 @@ async function _allTenantIds() {
 }
 async function _cronTick() {
   try {
-    const settings = await _getSettings();
     const tids = await _allTenantIds();
     for (const tid of tids) {
+      const settings = await _getSettings(tid);
       if (settings.hubspotSyncEnabled && process.env.HUBSPOT_PRIVATE_APP_TOKEN) {
         try { await _syncHubspot(tid); } catch (e) { console.warn(`[true-roas] hubspot sync t${tid}:`, e.message); }
       }
@@ -553,12 +557,17 @@ function startCron() {
 }
 
 // ── Routes ──────────────────────────────────────────────────────────────────
-router.get('/settings', async (_req, res) => {
-  res.json({ ok: true, settings: await _getSettings(), hubspotConfigured: !!process.env.HUBSPOT_PRIVATE_APP_TOKEN });
+router.get('/settings', async (req, res) => {
+  const tid = await _tid(req, 'true-roas:settings-get');
+  res.json({ ok: true, settings: await _getSettings(tid), hubspotConfigured: !!process.env.HUBSPOT_PRIVATE_APP_TOKEN });
 });
 
 router.post('/settings', async (req, res) => {
-  try { res.json({ ok: true, settings: await _saveSettings(req.body || {}) }); }
+  try {
+    const tid = await _tid(req, 'true-roas:settings-set');
+    if (tid == null) return _err(res, 400, 'no_tenant');
+    res.json({ ok: true, settings: await _saveSettings(tid, req.body || {}) });
+  }
   catch (e) { _err(res, 500, e.message); }
 });
 

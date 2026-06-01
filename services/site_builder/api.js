@@ -8,6 +8,32 @@ const express = require('express');
 const OpenAI  = require('openai');
 const router  = express.Router();
 const _db     = require('../../db');
+const _tenantCtx = require('../tenants/context');
+const _kvScope = require('../tenants/kv_scope');
+
+async function _tid(req, label) { return await _tenantCtx.resolveTenantId(req, { label }); }
+
+// Pages are keyed by public slug (`lp:<slug>`) so the slug namespace stays
+// global — but each page blob carries `tenant_id` so management views only
+// surface a workspace's own pages and one workspace can't overwrite another's
+// slug. Legacy pages missing tenant_id are backfilled to the default tenant.
+async function _migrateLpTenants() {
+  if (!_db.hasDb()) return;
+  try {
+    // Runs at module-load (require time), when the tenants/users schema may not
+    // exist yet and getDefaultTenantId() returns null. Poll for the boot window
+    // (kv_scope-style retry) so legacy lp:* rows are reliably backfilled rather
+    // than skipped on a fast first call.
+    const tid = await _kvScope.resolveDefaultTenantWithRetry();
+    if (!tid) return;
+    await _db.getPool().query(
+      `UPDATE kv_store SET value = jsonb_set(value, '{tenant_id}', to_jsonb($1::int))
+         WHERE key LIKE 'lp:%' AND (value->>'tenant_id') IS NULL`,
+      [tid]
+    );
+  } catch (e) { console.warn('[site-builder] lp tenant backfill:', e.message); }
+}
+_migrateLpTenants();
 
 const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || 'dummy' });
 const HAS_OPENAI = !!(process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY);
@@ -107,20 +133,34 @@ function _renderPage(page) {
 </head><body>${blocks}${tracking}</body></html>`;
 }
 
-router.get('/pages', async (_req, res) => {
+router.get('/pages', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, pages: [] });
-  const r = await _db.getPool().query(`SELECT key, value FROM kv_store WHERE key LIKE 'lp:%' ORDER BY key DESC LIMIT 100`);
+  const tid = await _tid(req, 'site-builder:pages');
+  if (tid == null) return res.json({ ok:true, pages: [] });
+  const r = await _db.getPool().query(
+    `SELECT key, value FROM kv_store WHERE key LIKE 'lp:%' AND (value->>'tenant_id')::int = $1 ORDER BY key DESC LIMIT 100`,
+    [tid]
+  );
   res.json({ ok:true, pages: r.rows.map(row => ({ slug: row.key.replace('lp:',''), title: row.value?.title, blockCount: row.value?.blocks?.length || 0, updatedAt: row.value?.updatedAt })) });
 });
 
 router.get('/page/:slug', async (req, res) => {
+  const tid = await _tid(req, 'site-builder:page-get');
   const page = await _db.kvGet(`lp:${req.params.slug}`, null);
   if (!page) return _err(res, 404, 'Not found');
+  if (tid == null || page.tenant_id !== tid) return _err(res, 404, 'Not found');
   res.json({ ok:true, page });
 });
 
 router.post('/page/:slug', async (req, res) => {
-  const page = { ...(req.body || {}), slug: req.params.slug, updatedAt: new Date().toISOString() };
+  const tid = await _tid(req, 'site-builder:page-save');
+  if (tid == null) return _err(res, 400, 'no_tenant');
+  // Reject overwriting a slug owned by another workspace (slug squatting).
+  const existing = await _db.kvGet(`lp:${req.params.slug}`, null);
+  if (existing && existing.tenant_id != null && existing.tenant_id !== tid) {
+    return _err(res, 409, 'slug already in use');
+  }
+  const page = { ...(req.body || {}), slug: req.params.slug, tenant_id: tid, updatedAt: new Date().toISOString() };
   await _db.kvSet(`lp:${req.params.slug}`, page);
   res.json({ ok:true, page });
 });
@@ -129,6 +169,17 @@ router.post('/page/:slug', async (req, res) => {
 router.post('/ai-generate', async (req, res) => {
   const { brand, valueProp, audience = '', primaryColor = '#0066FF', slug } = req.body || {};
   if (!brand || !valueProp) return _err(res, 400, 'brand and valueProp required');
+  const tid = await _tid(req, 'site-builder:ai-generate');
+  if (tid == null) return _err(res, 400, 'no_tenant');
+  // Reject overwriting a slug owned by another workspace before doing any work
+  // (slug squatting guard, mirrors POST /page/:slug). Only relevant when the
+  // caller supplies a slug — the auto-generated fallback is collision-free.
+  if (slug) {
+    const existing = await _db.kvGet(`lp:${slug}`, null);
+    if (existing && existing.tenant_id != null && existing.tenant_id !== tid) {
+      return _err(res, 409, 'slug already in use');
+    }
+  }
   if (!HAS_OPENAI) return _err(res, 500, 'OpenAI key not configured');
   try {
     const r = await openai.chat.completions.create({
@@ -154,6 +205,7 @@ Order: hero → features (3-4 items) → stats (3-4) → testimonial → faq (4-
     const page = JSON.parse(r.choices[0].message.content);
     page.theme = { ...(page.theme || {}), primary: primaryColor };
     page.slug = slug || ('lp_' + Date.now().toString(36));
+    page.tenant_id = tid;
     page.updatedAt = new Date().toISOString();
     await _db.kvSet(`lp:${page.slug}`, page);
     res.json({ ok:true, slug: page.slug, page });
@@ -168,3 +220,4 @@ router.get('/render/:slug', async (req, res) => {
 });
 
 module.exports = router;
+module.exports._migrateLpTenants = _migrateLpTenants;

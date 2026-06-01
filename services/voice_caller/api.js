@@ -13,8 +13,14 @@ const express = require('express');
 const router  = express.Router();
 const _db     = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const _kvScope = require('../tenants/kv_scope');
 
 async function _tid(req, label) { return await _tenantCtx.resolveTenantId(req, { label }); }
+
+// Per-workspace inbound receptionist config: `voice_inbound_config:t<tid>`.
+// Legacy global key migrated into the default (owner) tenant once at boot.
+const _INBOUND_BASE = 'voice_inbound_config';
+_kvScope.migrateGlobalSingleton('voice_inbound_config:default', _INBOUND_BASE).catch(() => {});
 
 const VAPI = 'https://api.vapi.ai';
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
@@ -124,8 +130,8 @@ Rules:
 // the configured phone number. We respond with a JSON `{assistant: {...}}` body
 // and Vapi loads that assistant for the call. Persist with kvSet so non-tech
 // users can edit greeting/system-prompt/voice from the UI.
-async function _getInboundConfig() {
-  const cfg = await _db.kvGet('voice_inbound_config:default', null);
+async function _getInboundConfig(tid) {
+  const cfg = (tid == null) ? null : await _db.kvGet(_kvScope.tkey(_INBOUND_BASE, tid), null);
   return cfg || {
     enabled: false,
     greeting: 'Hi, thanks for calling. How can I help you today?',
@@ -152,15 +158,17 @@ function _buildInboundAssistant(cfg) {
   };
 }
 
-router.get('/inbound-config', async (_req, res) => {
-  try { res.json({ ok: true, config: await _getInboundConfig() }); }
+router.get('/inbound-config', async (req, res) => {
+  try { res.json({ ok: true, config: await _getInboundConfig(await _tid(req, 'voice-caller:inbound-get')) }); }
   catch (e) { _err(res, 500, e.message); }
 });
 
 router.post('/inbound-config', async (req, res) => {
-  const cur = await _getInboundConfig();
+  const tid = await _tid(req, 'voice-caller:inbound-set');
+  if (tid == null) return _err(res, 400, 'no_tenant');
+  const cur = await _getInboundConfig(tid);
   const next = { ...cur, ...(req.body || {}), updatedAt: new Date().toISOString() };
-  await _db.kvSet('voice_inbound_config:default', next);
+  await _db.kvSet(_kvScope.tkey(_INBOUND_BASE, tid), next);
   res.json({ ok: true, config: next });
 });
 
@@ -177,7 +185,10 @@ router.post('/webhook', express.json({ limit:'2mb' }), async (req, res) => {
 
     // ── INBOUND: Vapi asks us which assistant to use for an incoming call ───
     if (msg.type === 'assistant-request') {
-      const cfg = await _getInboundConfig();
+      // The inbound phone number is a single platform resource → use the
+      // default (owner) tenant's receptionist config.
+      const inboundTid = await _tenantCtx.getDefaultTenantId();
+      const cfg = await _getInboundConfig(inboundTid);
       if (!cfg.enabled) {
         // Politely refuse the call so Vapi can play a fallback / hang up
         return res.status(200).json({ error: 'Inbound calling is not enabled for this number.' });
@@ -185,7 +196,7 @@ router.post('/webhook', express.json({ limit:'2mb' }), async (req, res) => {
       // Pre-create a call record so the inbound shows up immediately in /calls
       if (id && _db.hasDb()) {
         const fromNumber = call.customer?.number || msg.phoneNumber?.number || 'unknown';
-        const tid = await _tenantCtx.getDefaultTenantId();
+        const tid = inboundTid;
         await _db.getPool().query(
           `INSERT INTO voice_calls (tenant_id, vapi_call_id, to_number, lead_name, goal, status, direction)
            VALUES ($1, $2, $3, $4, 'inbound-receptionist', 'in-progress', 'in')

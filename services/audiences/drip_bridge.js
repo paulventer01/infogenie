@@ -96,9 +96,11 @@ async function onJoin(audienceId, contactId, contactEmail, tenantId = null) {
   const sequence = binding.sequence;
   const sig = _seqSig(sequence);
   const email = String(contactEmail).toLowerCase().trim();
+  const tid = tenantId != null ? tenantId : (binding.tenant_id != null ? binding.tenant_id : null);
+  if (tid == null) return { skipped: 'no-tenant' };
 
   return global._dripStore.lock(async () => {
-    const list = global._dripStore.load();
+    const list = await global._dripStore.load(tid);
     const dup = list.find(e => e.email === email && e.status === 'active' && e._seqSig === sig);
     if (dup) return { skipped: 'duplicate-active', enrollmentId: dup.id };
 
@@ -124,7 +126,7 @@ async function onJoin(audienceId, contactId, contactEmail, tenantId = null) {
       tenantId: tenantId || binding.tenant_id || null,
     };
     list.push(enr);
-    global._dripStore.save(list);
+    await global._dripStore.save(tid, list);
     return { enrolled: true, enrollmentId: enr.id };
   });
 }
@@ -134,9 +136,11 @@ async function onLeave(audienceId, contactId, contactEmail, tenantId = null) {
   const binding = await getBinding(audienceId, tenantId);
   if (!binding || !binding.auto_exit) return { skipped: 'auto-exit-off' };
   const email = (contactEmail || '').toLowerCase().trim();
+  const tid = tenantId != null ? tenantId : (binding.tenant_id != null ? binding.tenant_id : null);
+  if (tid == null) return { skipped: 'no-tenant' };
 
   return global._dripStore.lock(async () => {
-    const list = global._dripStore.load();
+    const list = await global._dripStore.load(tid);
     let n = 0;
     for (const e of list) {
       if (e.status !== 'active') continue;
@@ -150,7 +154,7 @@ async function onLeave(audienceId, contactId, contactEmail, tenantId = null) {
         n++;
       }
     }
-    if (n) global._dripStore.save(list);
+    if (n) await global._dripStore.save(tid, list);
     return { unsubscribed: n };
   });
 }

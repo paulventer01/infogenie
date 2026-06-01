@@ -8,11 +8,11 @@ const { streamPdf }  = require('./pdf_report');
 const router = express.Router();
 
 // Lazy require to avoid circular load order: white_label is mounted later.
-async function _loadBrand() {
+async function _loadBrand(tid) {
   try {
     const wl = require('../white_label/api');
     if (wl && typeof wl.getBrand === 'function') {
-      const b = await wl.getBrand();
+      const b = await wl.getBrand(tid);
       return (b && b.enabled) ? b : null;
     }
   } catch {}
@@ -30,7 +30,7 @@ router.get('/:format/:source', async (req, res) => {
   try {
     const tid = await _tenantCtx.resolveTenantId(req, { label: 'exports:' + source });
     const report = await fetchSource(source, tid);
-    const brand  = await _loadBrand();
+    const brand  = await _loadBrand(tid);
     const stamp = new Date().toISOString().slice(0, 10);
     const slug = (brand && brand.agencyName) ? brand.agencyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : 'infogenie';
     const filename = `${slug}-${source}-${stamp}.${format}`;

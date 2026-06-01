@@ -6,3 +6,4 @@
 - [Admin audit log](admin-audit-log.md) — role/membership changes logged via best-effort recordAudit(); platform-role rows attribute to default tenant; emails/roles denormalized so orphan cleanup can't erase them.
 - [Tenant scoping of reads](tenant-scoping-reads.md) — GET/DELETE on tenant-scoped tables must filter tenant_id; which routes are intentionally unscoped (admin, audiences, public embeds); separate write-side NOT NULL gap.
 - [Tenant write-side wiring](tenant-write-wiring.md) — how to pick tenant_id source for INSERTs (auth→resolveTenantId, parent-inherit, webhook→getDefaultTenantId, bulk loop→resolve once); ON CONFLICT keys still global.
+- [Tenant kv migration (boot)](tenant-kv-migration.md) — boot/module-load migrations must wait for the tenant schema (poll/defer) or they silently no-op; kvGet's null default needs a sentinel; directory disk-stores need bespoke migration; don't assume default tenant id 1.
