@@ -35,9 +35,13 @@ Return up to 8 most recent reviews. If nothing found, return {"found":false}. Ne
           const j = JSON.parse(d);
           const txt = j?.choices?.[0]?.message?.content || '';
           const m = txt.match(/\{[\s\S]*\}/);
-          if (!m) return resolve({ found:false });
+          // Distinguish parse/format failures from a genuine "not found" response.
+          // Only return {found:false} when the LLM explicitly said so; everything
+          // else (no JSON, malformed JSON) is a transient error — do NOT treat it
+          // as "no reviews" or it would falsely mark all tracked reviews as deleted.
+          if (!m) return resolve({ error: 'parse_failed' });
           resolve(JSON.parse(m[0]));
-        } catch { resolve({ found:false }); }
+        } catch { resolve({ error: 'parse_failed' }); }
       });
     });
     req.on('error', e => resolve({ error: e.message }));
