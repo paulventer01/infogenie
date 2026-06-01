@@ -52137,7 +52137,7 @@ window.buildCreativeIntel = async function() {
     const lengthItems = (p.length_buckets||[]);
 
     // ── brief panel ──
-    const briefHtml = (_ciCurrent.brief||'').replace(/^##\s+(.+)$/mg, '<h4 style="font-size:0.88rem;font-weight:800;color:#0A1628;margin:14px 0 4px">$1</h4>')
+    const briefHtml = _escapeHtml(_ciCurrent.brief||'').replace(/^##\s+(.+)$/mg, '<h4 style="font-size:0.88rem;font-weight:800;color:#0A1628;margin:14px 0 4px">$1</h4>')
       .replace(/^#\s+(.+)$/mg, '<h3 style="font-size:1rem;font-weight:800;color:#0A1628;margin:0 0 8px">$1</h3>')
       .replace(/^\*\*(.+?)\*\*/mg, '<strong>$1</strong>')
       .replace(/^- (.+)$/mg, '<div style="display:flex;gap:6px;margin-bottom:5px"><span style="color:#0EA5E9">•</span><span>$1</span></div>')
