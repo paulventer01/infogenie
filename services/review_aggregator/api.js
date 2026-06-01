@@ -57,14 +57,20 @@ router.post('/scan', _safeAsync(async (req, res) => {
 
   const r = await _scrapePlatform(brand, platform);
   if (r.error) return _err(res, 502, r.error);
-  if (!r.found) return res.json({ ok:true, brand, platform, found:false, reviews: [] });
+
+  // Resolve tenant once, independently — snapshot diff must run for ALL scan outcomes,
+  // including found:false (empty array marks any previously-tracked reviews as deleted).
+  let _scanTid = null;
+  try { _scanTid = await _tenantCtx.resolveTenantId(req, { label: 'review_aggregator:scan' }); } catch(_) {}
+
+  if (!r.found) {
+    // Still diff against snapshot — prior reviews for this brand/platform should become deleted
+    if (_scanTid != null) _revMon.recordSnapshot(_scanTid, brand, platform, []).catch(() => {});
+    return res.json({ ok:true, brand, platform, found:false, reviews: [] });
+  }
 
   const reviews = Array.isArray(r.reviews) ? r.reviews : [];
   const counts = { pos: reviews.filter(x => x.sentiment === 'positive').length, neu: reviews.filter(x => x.sentiment === 'neutral').length, neg: reviews.filter(x => x.sentiment === 'negative').length };
-
-  // Resolve tenant once, independently — snapshot diff must run even if run-logging INSERT fails
-  let _scanTid = null;
-  try { _scanTid = await _tenantCtx.resolveTenantId(req, { label: 'review_aggregator:scan' }); } catch(_) {}
 
   if (_db.hasDb && _db.hasDb() && _scanTid != null) {
     try {
