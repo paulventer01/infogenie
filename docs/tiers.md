@@ -364,3 +364,15 @@ Closes the offline-revenue blind spot. Recommendation-only — never auto-applie
 - **Platform detection**: TikTok (tiktok.com), YouTube Shorts (youtube.com/shorts), Instagram Reels (instagram.com/reel|/p/) — all other URLs classified as Unknown.
 - **Hook types**: curiosity_gap | bold_claim | question | listicle | controversy | story | how_to | social_proof.
 - **UI**: `/#creative-intel` under Create → "3 · Design the visuals". URL textarea (one per line), Analyse button, per-video card grid (platform badge, metrics, hook/emotion/CTA/music tags, caption excerpt), pattern analysis panel with percentage bars (hook styles / emotion triggers / music types / length buckets), winning formula bullets, full creative brief panel with "→ Open Video Script Generator" handoff button (pre-fills topic field in video-script view).
+
+## Tier 43 — YouTube Comment Mining for Content Ideas
+
+*   **T43 YouTube Comment Miner** (Compete → 💬 Comment Miner) · `services/yt_comment_miner/{schema,api}.js` · `POST /api/yt-comment-miner/mine {channelId?, videoUrl?}` — accepts either a tracked channel ID (from YouTube Monitor) or a direct YouTube video URL; calls Perplexity Sonar to collect 80-120 real audience comments from the channel's latest videos; then calls GPT-4o-mini strict-JSON to classify comments into questions/themes/sentiment and generate 6-10 actionable content ideas. `GET /api/yt-comment-miner/runs` (last 20, tenant-scoped). `GET /api/yt-comment-miner/runs/:id`. `DELETE /api/yt-comment-miner/runs/:id`. Table `yt_comment_runs` (id, tenant_id NOT NULL, channel_id, channel_name, video_url, questions JSONB, themes JSONB, content_ideas JSONB, sentiment_breakdown JSONB, comment_count, created_at).
+- **Data source**: Perplexity Sonar (`model: sonar`) for live YouTube comment collection; GPT-4o-mini strict-JSON for classification + content idea generation.
+- **Template fallback**: 6 deterministic questions, 5 themes, 6 content ideas, and sentiment breakdown when Perplexity or OpenAI key absent — `source:'template'` honesty tag.
+- **Comment fields**: text (up to 200 chars), likes, video title/url.
+- **Questions**: 5-10 recurring questions sorted by estimated recurrence count.
+- **Themes**: 4-6 dominant content-gap themes with sentiment label (positive/neutral/negative) and comment count.
+- **Content ideas**: 6-10 ideas each with title (ready-to-use), angle (specific approach), and why_it_works (evidence from comments).
+- **Sentiment breakdown**: positive + neutral + negative percentages summing to 100.
+- **UI**: `/#yt-comment-miner` under Compete → "6 · Listen for mentions" nav group. Channel selector dropdown (fetched from `/api/youtube-monitor/channels`) OR paste a YouTube video URL. Mine button. Results: Questions panel + Themes panel side-by-side, Sentiment breakdown bar, Content Ideas cards each with "→ Add to Calendar" button (POSTs to `/api/content-calendar/add`). Run history with delete. YouTube Monitor channel cards gain a "💬 Mine" shortcut button (navigates to Comment Miner with that channel pre-selected).

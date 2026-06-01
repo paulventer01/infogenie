@@ -3217,6 +3217,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'social-publisher')     { try { window.buildSocialPublisher && window.buildSocialPublisher(); }      catch(e) { console.warn('buildSocialPublisher error:', e); } }
   if (viewId === 'email-personalizer')   { try { window.buildEmailPersonalizer && window.buildEmailPersonalizer(); }    catch(e) { console.warn('buildEmailPersonalizer error:', e); } }
   if (viewId === 'youtube-monitor')      { try { window.buildYoutubeMonitor && window.buildYoutubeMonitor(); }       catch(e) { console.warn('buildYoutubeMonitor error:', e); } }
+  if (viewId === 'yt-comment-miner')    { try { window.buildYtCommentMiner && window.buildYtCommentMiner(); }        catch(e) { console.warn('buildYtCommentMiner error:', e); } }
   if (viewId === 'weekly-report')        { try { window.buildWeeklyReport && window.buildWeeklyReport(); }         catch(e) { console.warn('buildWeeklyReport error:', e); } }
   if (viewId === 'reddit-pulse')         { try { window.buildRedditPulse && window.buildRedditPulse(); }          catch(e) { console.warn('buildRedditPulse error:', e); } }
   if (viewId === 'ad-library')           { try { window.buildAdLibrary && window.buildAdLibrary(); }            catch(e) { console.warn('buildAdLibrary error:', e); } }
@@ -39983,6 +39984,14 @@ window.buildYoutubeMonitor = async function() {
   `;
   document.getElementById('ymAdd').addEventListener('click', _ymAdd);
   await _ymLoad();
+  // Delegated handler for "💬 Mine" buttons (rendered inside ymList)
+  document.getElementById('ymList').addEventListener('click', e => {
+    const btn = e.target.closest('.ym-mine-btn');
+    if (!btn) return;
+    window._ycmPresetChannelId = btn.getAttribute('data-mine-ch');
+    const navLink = document.querySelector('[data-view="yt-comment-miner"]');
+    if (navLink) navLink.click();
+  });
 };
 
 async function _ymLoad() {
@@ -40003,6 +40012,7 @@ async function _ymLoad() {
           <div style="display:flex;gap:6px">
             <button onclick="_ymScan(${c.id})" style="background:linear-gradient(135deg,#FF0000,#FF4444);color:#fff;border:none;padding:7px 14px;border-radius:6px;font-size:0.74rem;font-weight:800;cursor:pointer">🔍 Scan now</button>
             <button onclick="_ymHistory(${c.id})" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:7px 12px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">📜 History</button>
+            <button data-mine-ch="${c.id}" class="ym-mine-btn" style="background:#EFF6FF;border:1px solid #BFDBFE;color:#1D4ED8;padding:7px 12px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">💬 Mine</button>
             <button onclick="_ymDelete(${c.id})" style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:7px 12px;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">🗑</button>
           </div>
         </div>
@@ -52248,3 +52258,223 @@ window.buildCreativeIntel = async function() {
     }
   });
 };
+
+// ============================================================================
+// TIER 43 — YouTube Comment Miner (Content Ideas from Audience Comments)
+// ============================================================================
+window.buildYtCommentMiner = async function(presetChannelId) {
+  const wrap = document.getElementById('ycmWrap');
+  if (!wrap) return;
+
+  // Scaffold
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:20px">
+      <h3 style="margin:0 0 14px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem;font-weight:800">⛏ Mine Comments</h3>
+      <div style="display:grid;gap:12px">
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">TRACKED CHANNEL (from YouTube Monitor)</label>
+          <select id="ycmChannelSel" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.84rem;background:#fff">
+            <option value="">— Select a tracked channel —</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;color:#6B7280;font-size:0.8rem">
+          <div style="flex:1;height:1px;background:#E5E7EB"></div><span>OR</span><div style="flex:1;height:1px;background:#E5E7EB"></div>
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">PASTE A VIDEO URL</label>
+          <input id="ycmVideoUrl" type="url" placeholder="https://www.youtube.com/watch?v=..." style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.84rem;box-sizing:border-box">
+        </div>
+        <div>
+          <button id="ycmMineBtn" style="background:linear-gradient(135deg,#FF0000,#FF4444);color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:0.84rem;font-weight:800;cursor:pointer;width:100%">⛏ Mine Comments</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="ycmResult"></div>
+
+    <div id="ycmHistory" style="margin-top:28px"></div>
+  `;
+
+  // Load tracked channels
+  try {
+    const ch = await fetch('/api/youtube-monitor/channels').then(x => x.json());
+    const sel = document.getElementById('ycmChannelSel');
+    if (ch.ok && ch.channels && ch.channels.length) {
+      ch.channels.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.channel_name + (c.brand ? ' — ' + c.brand : '');
+        sel.appendChild(opt);
+      });
+      if (presetChannelId) sel.value = String(presetChannelId);
+    }
+  } catch (_) {}
+
+  // Apply presetChannelId from global if set
+  const pid = presetChannelId || window._ycmPresetChannelId;
+  if (pid) {
+    const sel = document.getElementById('ycmChannelSel');
+    if (sel) sel.value = String(pid);
+    window._ycmPresetChannelId = null;
+  }
+
+  // Mine button handler
+  document.getElementById('ycmMineBtn').addEventListener('click', async () => {
+    const channelId = document.getElementById('ycmChannelSel').value;
+    const videoUrl  = document.getElementById('ycmVideoUrl').value.trim();
+    if (!channelId && !videoUrl) { showToast('⚠ Select a channel or paste a video URL'); return; }
+
+    const out = document.getElementById('ycmResult');
+    out.innerHTML = `<div style="text-align:center;padding:40px;background:#FFF7F7;border-radius:12px;color:#991B1B"><div style="font-size:1.8rem;margin-bottom:10px">💬</div><div style="font-size:0.85rem">Mining YouTube comments…<br><span style="opacity:.7">Perplexity Sonar + GPT-4o-mini · 30-60s</span></div></div>`;
+
+    try {
+      const body = {};
+      if (channelId) body.channelId = parseInt(channelId, 10);
+      if (videoUrl)  body.videoUrl  = videoUrl;
+      const r = await fetch('/api/yt-comment-miner/mine', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      }).then(x => x.json());
+
+      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">⚠ ${_escapeHtml(r.error)}</div>`; return; }
+      _ycmRender(out, r);
+      _ycmLoadHistory();
+    } catch (e) {
+      out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`;
+    }
+  });
+
+  _ycmLoadHistory();
+};
+
+function _ycmRender(el, r) {
+  const sb = r.sentiment_breakdown || {};
+  const pos = sb.positive || 0, neu = sb.neutral || 0, neg = sb.negative || 0;
+
+  const questionsHtml = (r.questions || []).map(q => `
+    <div style="background:#F9FAFB;border-left:3px solid #3B82F6;border-radius:0 6px 6px 0;padding:8px 12px;margin-bottom:6px">
+      <div style="font-size:0.82rem;color:#1E3A5F;font-weight:600">${_escapeHtml(q.text||'')}</div>
+      ${q.recurrence ? `<div style="font-size:0.68rem;color:#6B7280;margin-top:2px">~${q.recurrence} mentions</div>` : ''}
+    </div>`).join('');
+
+  const themesHtml = (r.themes || []).map(t => {
+    const sentCol = { positive:'#065F46', neutral:'#374151', negative:'#991B1B' };
+    const sentBg  = { positive:'#ECFDF5', neutral:'#F3F4F6', negative:'#FEF2F2' };
+    const s = (t.sentiment||'neutral').toLowerCase();
+    return `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div>
+        <div style="font-size:0.82rem;font-weight:700;color:#0A1628">${_escapeHtml(t.theme||'')}</div>
+        ${t.count ? `<div style="font-size:0.7rem;color:#6B7280;margin-top:2px">${t.count} comments</div>` : ''}
+      </div>
+      <span style="background:${sentBg[s]||sentBg.neutral};color:${sentCol[s]||sentCol.neutral};padding:2px 8px;border-radius:4px;font-size:0.68rem;font-weight:700;white-space:nowrap">${_escapeHtml(t.sentiment||'neutral')}</span>
+    </div>`;
+  }).join('');
+
+  const ideasHtml = (r.content_ideas || []).map((idea, idx) => {
+    const title = _escapeHtml(idea.title || '');
+    const angle = _escapeHtml(idea.angle || '');
+    const why   = _escapeHtml(idea.why_it_works || '');
+    const encTitle = encodeURIComponent(idea.title || '');
+    const encAngle = encodeURIComponent(idea.angle || '');
+    return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:10px;margin-bottom:8px">
+        <div style="font-weight:800;color:#0A1628;font-size:0.9rem;line-height:1.35">${title}</div>
+        <button data-title="${title}" data-angle="${angle}" class="ycm-cal-btn" style="background:#F0FDF4;border:1px solid #BBF7D0;color:#065F46;padding:5px 10px;border-radius:6px;font-size:0.7rem;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">→ Add to Calendar</button>
+      </div>
+      ${angle ? `<div style="font-size:0.78rem;color:#374151;margin-bottom:6px"><strong>Angle:</strong> ${angle}</div>` : ''}
+      ${why   ? `<div style="font-size:0.75rem;color:#6B7280;background:#F9FAFB;border-radius:6px;padding:6px 8px;border-left:2px solid #D1D5DB"><strong>Why it works:</strong> ${why}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:20px">
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px">
+        <div style="font-weight:800;color:#0A1628;font-size:0.88rem;margin-bottom:10px">❓ Recurring Questions (${(r.questions||[]).length})</div>
+        ${questionsHtml || '<div style="color:#9CA3AF;font-size:0.82rem">No questions found</div>'}
+      </div>
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px">
+        <div style="font-weight:800;color:#0A1628;font-size:0.88rem;margin-bottom:10px">🗂 Content Themes (${(r.themes||[]).length})</div>
+        ${themesHtml || '<div style="color:#9CA3AF;font-size:0.82rem">No themes found</div>'}
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:20px">
+      <div style="font-weight:800;color:#0A1628;font-size:0.88rem;margin-bottom:12px">😊 Sentiment Breakdown (${r.comment_count||0} comments mined${r.source==='template'?' · demo data':''})</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <div style="flex:1;height:16px;border-radius:8px;overflow:hidden;display:flex">
+          ${pos ? `<div style="width:${pos}%;background:#10B981"></div>` : ''}
+          ${neu ? `<div style="width:${neu}%;background:#9CA3AF"></div>` : ''}
+          ${neg ? `<div style="width:${neg}%;background:#EF4444"></div>` : ''}
+        </div>
+        <div style="display:flex;gap:12px;font-size:0.74rem;white-space:nowrap">
+          <span><span style="color:#10B981;font-weight:800">${pos}%</span> positive</span>
+          <span><span style="color:#9CA3AF;font-weight:800">${neu}%</span> neutral</span>
+          <span><span style="color:#EF4444;font-weight:800">${neg}%</span> negative</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px">
+      <div style="font-weight:800;color:#0A1628;font-size:0.88rem;margin-bottom:14px">💡 Content Ideas (${(r.content_ideas||[]).length}) — click <em>Add to Calendar</em> to schedule any idea</div>
+      ${ideasHtml || '<div style="color:#9CA3AF;font-size:0.82rem">No ideas generated</div>'}
+    </div>
+  `;
+
+  // Wire Add to Calendar buttons
+  el.querySelectorAll('.ycm-cal-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const title = btn.getAttribute('data-title');
+      const angle = btn.getAttribute('data-angle');
+      try {
+        const payload = {
+          brand: '', channel: 'YouTube', headline: title,
+          copy: angle || title, cta: 'Watch Now',
+          date: new Date(Date.now() + 7*24*3600*1000).toISOString().slice(0,10)
+        };
+        await fetch('/api/content-calendar/add', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        showToast('✅ Added to Content Calendar');
+      } catch (e) { showToast('❌ Failed to add to Calendar'); }
+    });
+  });
+}
+
+async function _ycmLoadHistory() {
+  const el = document.getElementById('ycmHistory');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/yt-comment-miner/runs').then(x => x.json());
+    if (!r.ok || !r.runs || !r.runs.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px">
+        <div style="font-weight:800;color:#0A1628;font-size:0.88rem;margin-bottom:12px">🕑 Recent Mining Runs</div>
+        <div id="ycmHistList"></div>
+      </div>`;
+    document.getElementById('ycmHistList').innerHTML = r.runs.map(row => {
+      const sb = row.sentiment_breakdown || {};
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F3F4F6;gap:10px">
+        <div>
+          <div style="font-size:0.82rem;font-weight:700;color:#0A1628">${_escapeHtml(row.channel_name||row.video_url||'Unknown')}</div>
+          <div style="font-size:0.7rem;color:#9CA3AF">${new Date(row.created_at).toLocaleString()} · ${row.comment_count||0} comments</div>
+          ${sb.positive !== undefined ? `<div style="font-size:0.68rem;color:#6B7280;margin-top:2px">😊 ${sb.positive}% · 😐 ${sb.neutral}% · 😠 ${sb.negative}%</div>` : ''}
+        </div>
+        <button data-run-id="${row.id}" class="ycm-del-btn" style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:5px 10px;border-radius:6px;font-size:0.7rem;font-weight:700;cursor:pointer">🗑</button>
+      </div>`;
+    }).join('');
+
+    // Wire delete buttons
+    el.querySelectorAll('.ycm-del-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-run-id');
+        if (!confirm('Delete this mining run?')) return;
+        try {
+          await fetch(`/api/yt-comment-miner/runs/${id}`, { method: 'DELETE' });
+          _ycmLoadHistory();
+          showToast('🗑 Run deleted');
+        } catch (e) { showToast('❌ ' + e.message); }
+      });
+    });
+  } catch (_) {}
+}

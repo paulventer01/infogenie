@@ -9544,6 +9544,17 @@ app.use('/api/creative-intel', _creativeIntelRouter);
   }
 } catch (e) { console.warn('[t42] creative-intel init failed:', e.message); }})();
 
+// ── T43 — YouTube Comment Mining for Content Ideas ───────────────────────────
+const _ytCommentMinerRouter = require('./services/yt_comment_miner/api');
+const _ytCommentMinerSchema = require('./services/yt_comment_miner/schema');
+app.use('/api/yt-comment-miner', _ytCommentMinerRouter);
+(async () => { try {
+  if (_db.hasDb()) {
+    await _ytCommentMinerSchema.ensureYtCommentMinerSchema();
+    console.log('[t43] yt-comment-miner schema ready');
+  }
+} catch (e) { console.warn('[t43] yt-comment-miner init failed:', e.message); }})();
+
 // ── Tier 7 ─────────────────────────────────────────────────────────────────
 const _podcastSchema = require('./services/podcast_monitor/schema');
 const _podcastRouter = require('./services/podcast_monitor/api');
