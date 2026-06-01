@@ -346,3 +346,12 @@ Closes the offline-revenue blind spot. Recommendation-only — never auto-applie
 - **Cluster structure**: Each cluster has `name`, `description`, `hashtags[]`, `reach` (Mega/High/Medium/Niche), `strategy`, `post_frequency`.
 - **Template fallback**: When Perplexity key is absent, returns deterministic template tags and clusters based on the keyword — clearly labelled as template.
 - **UI**: `/#hashtag-intel` under Reach → "4 · Publish organically" nav group. Platform picker (Instagram/TikTok), keyword input, strategic cluster cards with copy-all per cluster, full sortable hashtag table with niche score bars, caption-ready copy block (top 30 tags), run history with load/delete.
+
+## Tier 41 — Google Maps Competitor Intelligence
+
+*   **T41 Maps Intel** (Compete → 🗺️ Maps Intel) · `services/maps_intel/{schema,api}.js` · `POST /api/maps-intel/scan {keyword, region}` — Perplexity Sonar researches 12-20 local competitor businesses from Google Maps data, GPT-4o-mini generates a `market_summary` (density, avg_rating_benchmark, market_maturity, opportunities[], threats[]). `GET /api/maps-intel/runs` (last 20, tenant-scoped). `DELETE /api/maps-intel/runs/:id`. Table `maps_intel_runs` (id, tenant_id NOT NULL, keyword, region, businesses JSONB, market_summary JSONB, total_count, created_at).
+- **Data source**: Perplexity Sonar (`model: sonar`) for live Google Maps business discovery; GPT-4o-mini strict-JSON for market summary analysis.
+- **Routes**: `POST /api/maps-intel/scan` (Perplexity research → GPT summary), `GET /api/maps-intel/runs` (history), `GET /api/maps-intel/runs/:id`, `DELETE /api/maps-intel/runs/:id`.
+- **Business fields**: name, address, rating (1.0-5.0), review_count, price_range ($|$$|$$$|$$$$), website, competitive_signal.
+- **Template fallback**: 12 deterministic businesses generated from keyword/region when Perplexity key absent — `source:'template'` honesty tag.
+- **UI**: `/#maps-intel` under Compete → "3 · Spy on what they're doing". Keyword + region inputs with 🧠 AI Suggest buttons (two separate suggesters), Scan Market button, market summary card (avg rating, density, market maturity badge, opportunities/threats), competitor table sortable by name/rating/review_count, filter dropdowns (min rating, min reviews), run history with load/delete.

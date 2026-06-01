@@ -9522,6 +9522,17 @@ app.use('/api/hashtag-intel', _hashtagIntelRouter);
   }
 } catch (e) { console.warn('[t40] hashtag-intel init failed:', e.message); }})();
 
+// ── T41 — Google Maps Competitor Intelligence ────────────────────────────────
+const _mapsIntelRouter = require('./services/maps_intel/api');
+const _mapsIntelSchema = require('./services/maps_intel/schema');
+app.use('/api/maps-intel', _mapsIntelRouter);
+(async () => { try {
+  if (_db.hasDb()) {
+    await _mapsIntelSchema.ensureMapsIntelSchema();
+    console.log('[t41] maps-intel schema ready');
+  }
+} catch (e) { console.warn('[t41] maps-intel init failed:', e.message); }})();
+
 // ── Tier 7 ─────────────────────────────────────────────────────────────────
 const _podcastSchema = require('./services/podcast_monitor/schema');
 const _podcastRouter = require('./services/podcast_monitor/api');

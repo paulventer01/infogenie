@@ -3263,6 +3263,7 @@ function navigateTo(viewId, updateActive = true) {
   }
   if (viewId === 'content-score')     { try { window.buildContentScore && window.buildContentScore(); }     catch(e) { console.warn('buildContentScore error:', e); } }
   if (viewId === 'ai-traffic')        { try { window.buildAiTrafficMonitor && window.buildAiTrafficMonitor(); } catch(e) { console.warn('buildAiTrafficMonitor error:', e); } }
+  if (viewId === 'maps-intel')        { try { window.buildMapsIntel && window.buildMapsIntel(); }             catch(e) { console.warn('buildMapsIntel error:', e); } }
   if (viewId === 'hashtag-intel')     { try { window.buildHashtagIntel && window.buildHashtagIntel(); }       catch(e) { console.warn('buildHashtagIntel error:', e); } }
   if (viewId === 'vis-leaderboard')   { try { window.buildVisLeaderboard && window.buildVisLeaderboard(); }  catch(e) { console.warn('buildVisLeaderboard error:', e); } }
   if (viewId === 'post-performance')  { try { window.buildPostPerformance && window.buildPostPerformance(); } catch(e) { console.warn('buildPostPerformance error:', e); } }
@@ -51683,6 +51684,325 @@ window.buildHashtagIntel = async function() {
       _hiRenderResult(r.seedKeyword, r.platform, r.hashtags, r.clusters);
       const rr = await fetch('/api/hashtag-intel/runs').then(x => x.json());
       _hiRuns = rr.runs || [];
+      renderRuns();
+    } catch(e) {
+      out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`;
+    }
+  });
+};
+
+// ============================================================================
+// T41 — Google Maps Competitor Intelligence
+// ============================================================================
+window.buildMapsIntel = async function() {
+  const wrap = document.getElementById('miWrap'); if (!wrap) return;
+
+  const RATING_COLOR = r => r >= 4.5 ? '#059669' : r >= 4.0 ? '#D97706' : '#DC2626';
+  const PRICE_BG     = { '$':'#EDE9FE', '$$':'#DBEAFE', '$$$':'#FEF3C7', '$$$$':'#FEE2E2' };
+  const PRICE_COL    = { '$':'#7C3AED', '$$':'#1D4ED8', '$$$':'#92400E', '$$$$':'#991B1B' };
+
+  let _miRuns    = [];
+  let _miCurrent = null; // { keyword, region, businesses, market_summary }
+  let _miFilter  = { minRating: 0, minReviews: 0, sortCol: 'rating', sortDir: -1 };
+
+  try { const rr = await fetch('/api/maps-intel/runs').then(x=>x.json()); _miRuns = rr.runs||[]; } catch(_) {}
+
+  // ── run history ──────────────────────────────────────────────────────────
+  function renderRuns() {
+    const hist = document.getElementById('miHistory');
+    if (!hist) return;
+    if (!_miRuns.length) { hist.innerHTML = '<div style="color:#9CA3AF;font-size:0.8rem">No scans yet.</div>'; return; }
+    hist.innerHTML = _miRuns.slice(0,20).map(r => {
+      const ms = r.market_summary || {};
+      return `<div style="display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;margin-bottom:6px;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <strong style="color:#0A1628">${_escapeHtml(r.keyword)}</strong>
+          <span style="color:#6B7280;font-size:0.74rem;margin-left:8px">in ${_escapeHtml(r.region)}</span>
+          <span style="color:#9CA3AF;font-size:0.72rem;margin-left:8px">${r.total_count||0} businesses · avg ⭐${ms.avg_rating_benchmark||'N/A'}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:#9CA3AF;font-size:0.72rem">${new Date(r.created_at).toLocaleDateString()}</span>
+          <button data-load="${r.id}" style="padding:4px 12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:5px;font-size:0.74rem;font-weight:700;color:#1D4ED8;cursor:pointer">Load</button>
+          <button data-del="${r.id}"  style="padding:4px 10px;background:#FEE2E2;border:1px solid #FECACA;border-radius:5px;font-size:0.74rem;font-weight:700;color:#B91C1C;cursor:pointer">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+    hist.querySelectorAll('[data-load]').forEach(b => b.addEventListener('click', () => _miLoadRun(b.dataset.load)));
+    hist.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Delete this scan?')) return;
+      try {
+        await fetch('/api/maps-intel/runs/'+b.dataset.del, { method:'DELETE' });
+        _miRuns = _miRuns.filter(r => String(r.id) !== b.dataset.del);
+        renderRuns();
+      } catch(_) {}
+    }));
+  }
+
+  async function _miLoadRun(id) {
+    const out = document.getElementById('miOut');
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Loading…</div>';
+    try {
+      const r = await fetch('/api/maps-intel/runs/'+id).then(x=>x.json());
+      if (!r.ok) { out.innerHTML = `<div style="color:#B91C1C">${_escapeHtml(r.error)}</div>`; return; }
+      _miRenderResult(r.run.keyword, r.run.region, r.run.businesses, r.run.market_summary);
+    } catch(e) { out.innerHTML = `<div style="color:#B91C1C">Error: ${_escapeHtml(e.message)}</div>`; }
+  }
+
+  // ── stars renderer ───────────────────────────────────────────────────────
+  function _miStars(rating) {
+    if (!rating) return '<span style="color:#9CA3AF">N/A</span>';
+    const full = Math.floor(rating);
+    const half = (rating - full) >= 0.5 ? 1 : 0;
+    const emp  = 5 - full - half;
+    return '<span style="color:#F59E0B;font-size:0.9rem">' + '★'.repeat(full) + (half?'½':'') + '<span style="opacity:.35">' + '☆'.repeat(emp) + '</span></span> <span style="color:#374151;font-size:0.78rem;font-weight:700">' + rating.toFixed(1) + '</span>';
+  }
+
+  // ── table rebuild (re-filters + re-sorts) ────────────────────────────────
+  function _miRebuildTable(businesses) {
+    const tbody = document.getElementById('miTableBody'); if (!tbody) return;
+    let rows = (businesses||[]).filter(b =>
+      (b.rating == null || b.rating >= _miFilter.minRating) &&
+      (b.review_count == null || b.review_count >= _miFilter.minReviews)
+    );
+    rows = rows.sort((a,b) => {
+      const col = _miFilter.sortCol;
+      const av = col === 'rating' ? (a.rating||0) : col === 'review_count' ? (a.review_count||0) : String(a.name||'').toLowerCase();
+      const bv = col === 'rating' ? (b.rating||0) : col === 'review_count' ? (b.review_count||0) : String(b.name||'').toLowerCase();
+      return av < bv ? _miFilter.sortDir : av > bv ? -_miFilter.sortDir : 0;
+    });
+
+    tbody.innerHTML = rows.map((b, i) => {
+      const rc  = b.rating ? RATING_COLOR(b.rating) : '#9CA3AF';
+      const pbg = PRICE_BG[b.price_range]  || '#F3F4F6';
+      const pc  = PRICE_COL[b.price_range] || '#6B7280';
+      const websiteHtml = b.website
+        ? `<a href="${_safeUrl(b.website)}" target="_blank" rel="noopener noreferrer" style="color:#1D4ED8;font-size:0.74rem;text-decoration:none;font-weight:700">🔗 Visit</a>`
+        : '<span style="color:#D1D5DB;font-size:0.74rem">—</span>';
+      return `<tr style="border-bottom:1px solid #F3F4F6;${i%2===0?'':'background:#FAFAFA'}">
+        <td style="padding:8px 10px">
+          <div style="font-weight:700;color:#0A1628;font-size:0.83rem">${_escapeHtml(b.name||'')}</div>
+          <div style="color:#9CA3AF;font-size:0.7rem">${_escapeHtml(b.address||'')}</div>
+        </td>
+        <td style="padding:8px 10px;white-space:nowrap">${_miStars(b.rating)}</td>
+        <td style="padding:8px 10px;color:#374151;font-size:0.8rem;font-weight:700">${b.review_count != null ? b.review_count.toLocaleString() : '—'}</td>
+        <td style="padding:8px 10px">${b.price_range ? `<span style="background:${pbg};color:${pc};padding:2px 8px;border-radius:8px;font-size:0.72rem;font-weight:800">${_escapeHtml(b.price_range)}</span>` : '<span style="color:#D1D5DB;font-size:0.74rem">—</span>'}</td>
+        <td style="padding:8px 10px">${websiteHtml}</td>
+        <td style="padding:8px 10px;color:#4B5563;font-size:0.74rem;max-width:220px">${_escapeHtml((b.competitive_signal||'').slice(0,180))}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="6" style="padding:14px;color:#9CA3AF;text-align:center">No businesses match the current filters.</td></tr>';
+
+    // update sort indicators
+    document.querySelectorAll('[data-mi-sort]').forEach(th => {
+      const ind = th.querySelector('.mi-sort-ind');
+      if (ind) ind.textContent = th.dataset.miSort === _miFilter.sortCol ? (_miFilter.sortDir === -1 ? ' ▼' : ' ▲') : ' ⇅';
+    });
+  }
+
+  // ── render full result ────────────────────────────────────────────────────
+  function _miRenderResult(keyword, region, businesses, market_summary) {
+    const out = document.getElementById('miOut'); if (!out) return;
+    _miCurrent = { keyword, region, businesses: Array.isArray(businesses)?businesses:[], market_summary: market_summary||{} };
+    const ms = _miCurrent.market_summary;
+    const avgR = ms.avg_rating_benchmark ? parseFloat(ms.avg_rating_benchmark).toFixed(1) : 'N/A';
+    const maturityCol = { saturated:'#DC2626', mature:'#F97316', moderate:'#0EA5E9', emerging:'#059669', fragmented:'#8B5CF6' }[ms.market_maturity] || '#6B7280';
+
+    const oppsHtml = (ms.opportunities||[]).map(o =>
+      `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:6px"><span style="color:#059669;font-size:0.85rem;flex-shrink:0">✅</span><div style="color:#374151;font-size:0.8rem">${_escapeHtml(o)}</div></div>`
+    ).join('');
+    const threatsHtml = (ms.threats||[]).map(t =>
+      `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:6px"><span style="color:#DC2626;font-size:0.85rem;flex-shrink:0">⚠️</span><div style="color:#374151;font-size:0.8rem">${_escapeHtml(t)}</div></div>`
+    ).join('');
+
+    out.innerHTML = `
+      <div style="background:linear-gradient(135deg,#0F4C81,#1E88E5);color:#fff;border-radius:12px;padding:18px 22px;margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <div>
+            <div style="font-size:0.72rem;font-weight:700;opacity:.8;text-transform:uppercase;margin-bottom:4px">🗺️ Google Maps · Competitive Landscape</div>
+            <div style="font-size:1.3rem;font-weight:800">${_escapeHtml(keyword)} <span style="opacity:.8;font-size:1rem">in</span> ${_escapeHtml(region)}</div>
+          </div>
+          <div style="display:flex;gap:16px;text-align:center">
+            <div><div style="font-size:1.5rem;font-weight:800">${_miCurrent.businesses.length}</div><div style="font-size:0.68rem;opacity:.8;font-weight:700">BUSINESSES</div></div>
+            <div><div style="font-size:1.5rem;font-weight:800">⭐ ${avgR}</div><div style="font-size:0.68rem;opacity:.8;font-weight:700">AVG RATING</div></div>
+            <div><div style="font-size:1.5rem;font-weight:800">${_escapeHtml(ms.density||_miCurrent.businesses.length)}</div><div style="font-size:0.68rem;opacity:.8;font-weight:700">DENSITY</div></div>
+          </div>
+        </div>
+        ${ms.market_maturity ? `<div style="margin-top:10px"><span style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);padding:3px 12px;border-radius:10px;font-size:0.72rem;font-weight:800;text-transform:uppercase">Market: ${_escapeHtml(ms.market_maturity)}</span></div>` : ''}
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
+        <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:16px">
+          <div style="font-weight:800;color:#065F46;font-size:0.88rem;margin-bottom:10px">🚀 Opportunities (${(ms.opportunities||[]).length})</div>
+          ${oppsHtml || '<div style="color:#9CA3AF;font-size:0.8rem">None identified.</div>'}
+        </div>
+        <div style="background:#FFF5F5;border:1px solid #FED7D7;border-radius:10px;padding:16px">
+          <div style="font-weight:800;color:#991B1B;font-size:0.88rem;margin-bottom:10px">⚠️ Threats (${(ms.threats||[]).length})</div>
+          ${threatsHtml || '<div style="color:#9CA3AF;font-size:0.8rem">None identified.</div>'}
+        </div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px;margin-bottom:14px">
+        <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+          <div>
+            <label style="display:block;font-size:0.68rem;font-weight:700;color:#6B7280;margin-bottom:4px">MIN RATING</label>
+            <select id="miMinRating" style="padding:5px 8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.8rem;background:#F9FAFB">
+              <option value="0">Any rating</option>
+              <option value="3">3.0+</option>
+              <option value="3.5">3.5+</option>
+              <option value="4">4.0+</option>
+              <option value="4.5">4.5+</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:0.68rem;font-weight:700;color:#6B7280;margin-bottom:4px">MIN REVIEWS</label>
+            <select id="miMinReviews" style="padding:5px 8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.8rem;background:#F9FAFB">
+              <option value="0">Any count</option>
+              <option value="10">10+</option>
+              <option value="50">50+</option>
+              <option value="100">100+</option>
+              <option value="250">250+</option>
+            </select>
+          </div>
+          <div id="miFilterCount" style="font-size:0.78rem;color:#6B7280;padding-bottom:5px"></div>
+        </div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:auto;margin-bottom:14px">
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+          <thead><tr style="background:#F9FAFB;border-bottom:2px solid #E5E7EB">
+            <th data-mi-sort="name"         style="padding:9px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.7rem;text-transform:uppercase;cursor:pointer;user-select:none;min-width:180px">Business<span class="mi-sort-ind"> ⇅</span></th>
+            <th data-mi-sort="rating"       style="padding:9px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.7rem;text-transform:uppercase;cursor:pointer;user-select:none;white-space:nowrap">Rating<span class="mi-sort-ind"> ▼</span></th>
+            <th data-mi-sort="review_count" style="padding:9px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.7rem;text-transform:uppercase;cursor:pointer;user-select:none;white-space:nowrap">Reviews<span class="mi-sort-ind"> ⇅</span></th>
+            <th style="padding:9px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.7rem;text-transform:uppercase;white-space:nowrap">Price</th>
+            <th style="padding:9px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.7rem;text-transform:uppercase">Website</th>
+            <th style="padding:9px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.7rem;text-transform:uppercase;min-width:200px">Competitive Signal</th>
+          </tr></thead>
+          <tbody id="miTableBody"></tbody>
+        </table>
+      </div>`;
+
+    // safe event binding — sort headers
+    out.querySelectorAll('[data-mi-sort]').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.dataset.miSort;
+        if (_miFilter.sortCol === col) { _miFilter.sortDir *= -1; } else { _miFilter.sortCol = col; _miFilter.sortDir = -1; }
+        _miRebuildTable(_miCurrent.businesses);
+      });
+    });
+
+    // safe event binding — filter dropdowns
+    function _applyFilters() {
+      _miFilter.minRating  = parseFloat(document.getElementById('miMinRating').value  || '0');
+      _miFilter.minReviews = parseInt(document.getElementById('miMinReviews').value   || '0', 10);
+      _miRebuildTable(_miCurrent.businesses);
+      const visible = _miCurrent.businesses.filter(b =>
+        (b.rating == null || b.rating >= _miFilter.minRating) &&
+        (b.review_count == null || b.review_count >= _miFilter.minReviews)
+      ).length;
+      const fc = document.getElementById('miFilterCount');
+      if (fc) fc.textContent = `Showing ${visible} of ${_miCurrent.businesses.length} businesses`;
+    }
+    document.getElementById('miMinRating').addEventListener('change',  _applyFilters);
+    document.getElementById('miMinReviews').addEventListener('change', _applyFilters);
+
+    _miRebuildTable(_miCurrent.businesses);
+    _applyFilters();
+  }
+
+  // ── shell ─────────────────────────────────────────────────────────────────
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <label style="font-size:0.7rem;font-weight:700;color:#6B7280">BUSINESS CATEGORY / KEYWORD *</label>
+            <button id="miKwSuggest" style="padding:3px 10px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);border:none;border-radius:5px;color:#fff;font-size:0.65rem;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
+          </div>
+          <input id="miKeyword" placeholder="e.g. dentist, coffee shop, digital marketing agency" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+          <div id="miKwPills" style="display:none;margin-top:5px;flex-wrap:wrap;gap:5px"></div>
+        </div>
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <label style="font-size:0.7rem;font-weight:700;color:#6B7280">TARGET CITY / REGION *</label>
+            <button id="miRgSuggest" style="padding:3px 10px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);border:none;border-radius:5px;color:#fff;font-size:0.65rem;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
+          </div>
+          <input id="miRegion" placeholder="e.g. Cape Town, Manhattan New York, London UK" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+          <div id="miRgPills" style="display:none;margin-top:5px;flex-wrap:wrap;gap:5px"></div>
+        </div>
+        <button id="miGo" style="background:linear-gradient(135deg,#0F4C81,#1E88E5);color:#fff;border:none;padding:9px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer;white-space:nowrap;align-self:flex-end">🗺️ Scan Market</button>
+      </div>
+      <div style="font-size:0.74rem;color:#6B7280;margin-top:8px">Powered by Perplexity Sonar · AI-researched from live Google Maps data · 25-45s per scan</div>
+    </div>
+    <div id="miOut"></div>
+    <h3 style="margin:24px 0 8px;color:#0A1628;font-size:0.96rem;font-weight:800">📚 Recent Scans</h3>
+    <div id="miHistory"></div>
+  `;
+
+  renderRuns();
+
+  // AI Suggest for keyword
+  async function _miAISuggest(inputId, pillsId, btnId, fieldLabel, suggestions) {
+    const btn   = document.getElementById(btnId);
+    const pills = document.getElementById(pillsId);
+    const inp   = document.getElementById(inputId);
+    btn.textContent = '⏳…'; btn.disabled = true;
+    try {
+      const r = await fetch('/api/studio/ai-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fieldLabel, fieldPlaceholder: inp.placeholder, context: `Google Maps competitor intelligence tool. ${fieldLabel}. Suggest 5 options. Return a JSON array of 5 short strings.`, format: 'json_array' })
+      }).then(x => x.json());
+      let sugs = suggestions; // fallback
+      if (r.ok && r.result) {
+        try { sugs = JSON.parse(r.result); } catch(_) {
+          const m = String(r.result).match(/\[[\s\S]*\]/);
+          if (m) { try { sugs = JSON.parse(m[0]); } catch(_) {} }
+        }
+      }
+      if (!Array.isArray(sugs) || !sugs.length) sugs = suggestions;
+      pills.style.display = 'flex';
+      pills.innerHTML = sugs.slice(0,6).map(s => `<button data-sug="${_escapeHtml(String(s).slice(0,80))}" style="padding:4px 12px;background:#EDE9FE;color:#7C3AED;border:1px solid #DDD6FE;border-radius:12px;font-size:0.74rem;font-weight:700;cursor:pointer">${_escapeHtml(String(s).slice(0,80))}</button>`).join('');
+      pills.querySelectorAll('[data-sug]').forEach(p => {
+        p.addEventListener('click', () => { inp.value = p.dataset.sug; pills.style.display = 'none'; });
+      });
+    } catch(_) {}
+    btn.textContent = '🧠 AI Suggest'; btn.disabled = false;
+  }
+
+  document.getElementById('miKwSuggest').addEventListener('click', () =>
+    _miAISuggest('miKeyword', 'miKwPills', 'miKwSuggest', 'Business category or keyword for local competitor research',
+      ['dentist', 'coffee shop', 'digital marketing agency', 'gym', 'accounting firm'])
+  );
+  document.getElementById('miRgSuggest').addEventListener('click', () =>
+    _miAISuggest('miRegion', 'miRgPills', 'miRgSuggest', 'Target city or region for local competitor research',
+      ['Cape Town South Africa', 'London UK', 'Manhattan New York', 'Sydney Australia', 'Dubai UAE'])
+  );
+
+  // enter key
+  ['miKeyword','miRegion'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('miGo').click(); });
+  });
+
+  // scan button
+  document.getElementById('miGo').addEventListener('click', async () => {
+    const keyword = document.getElementById('miKeyword').value.trim();
+    const region  = document.getElementById('miRegion').value.trim();
+    const out = document.getElementById('miOut');
+    if (!keyword) { out.innerHTML = '<div style="color:#991B1B;background:#FEE2E2;padding:10px 14px;border-radius:8px">⚠ Business category / keyword is required</div>'; return; }
+    if (!region)  { out.innerHTML = '<div style="color:#991B1B;background:#FEE2E2;padding:10px 14px;border-radius:8px">⚠ Target city / region is required</div>'; return; }
+    out.innerHTML = `<div style="text-align:center;padding:40px;background:#F0F7FF;border-radius:12px;color:#1E40AF"><div style="font-size:1.8rem;margin-bottom:10px">🗺️</div><div style="font-size:0.85rem">Scanning <strong>${_escapeHtml(keyword)}</strong> competitors in <strong>${_escapeHtml(region)}</strong>…<br><span style="opacity:.7">Powered by Perplexity Sonar · 25-45s</span></div></div>`;
+    try {
+      const r = await fetch('/api/maps-intel/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword, region })
+      }).then(x => x.json());
+      if (!r.ok) {
+        out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">⚠ ${_escapeHtml(r.error)}</div>`;
+        return;
+      }
+      _miRenderResult(r.keyword, r.region, r.businesses, r.market_summary);
+      const rr = await fetch('/api/maps-intel/runs').then(x => x.json());
+      _miRuns = rr.runs || [];
       renderRuns();
     } catch(e) {
       out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`;
