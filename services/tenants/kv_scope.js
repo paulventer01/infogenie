@@ -104,43 +104,6 @@ async function migrateLegacyPrefix(prefix) {
   } catch (e) { console.warn('[kv_scope] migrateLegacyPrefix', prefix, e.message); return 0; }
 }
 
-// Move a legacy disk-migrated blob (stored in kv as `file:<name>` by db.js's
-// boot migration) into the default tenant's namespaced key. Idempotent on dest.
-// The `file:<name>` copy is left in place as a backup (nothing dropped).
-async function migrateFileKeyToTenant(fileKey, base) {
-  if (!_db.hasDb()) return false;
-  try {
-    const v = await _db.kvGet(fileKey, _MISSING);
-    if (v === _MISSING || v === null) return false;
-    return await migrateBlobToTenant(base, v);
-  } catch (e) { console.warn('[kv_scope] migrateFileKeyToTenant', fileKey, e.message); return false; }
-}
-
-// Drop a legacy global `file:<name>` backup row now that Task #49's migration
-// into per-workspace keys is proven stable. SELF-GUARDING: only deletes the
-// backup once the default tenant's `${base}:t<tid>` key actually holds the data,
-// so it can never erase the only copy. If the per-tenant key is somehow still
-// missing (un-migrated environment), it migrates first and leaves the backup
-// for the next boot. Idempotent — no-op once the backup row is gone.
-async function cleanupLegacyFileKey(fileKey, base) {
-  if (!_db.hasDb()) return false;
-  try {
-    const legacy = await _db.kvGet(fileKey, _MISSING);
-    if (legacy === _MISSING) return false; // already removed (or never existed)
-    const tid = await _resolveDefaultTenantWithRetry();
-    if (!tid) return false; // no resolvable tenant yet — retry on next boot
-    const perTenant = await _db.kvGet(tkey(base, tid), _MISSING);
-    if (perTenant === _MISSING) {
-      // Not yet migrated here — migrate first, keep the backup until next boot.
-      await migrateBlobToTenant(base, legacy);
-      return false;
-    }
-    await _db.getPool().query(`DELETE FROM kv_store WHERE key=$1`, [fileKey]);
-    console.log(`[kv_scope] removed legacy backup ${fileKey} (data confirmed in ${tkey(base, tid)})`);
-    return true;
-  } catch (e) { console.warn('[kv_scope] cleanupLegacyFileKey', fileKey, e.message); return false; }
-}
-
 // List all per-tenant collection rows for a prefix+tenant, returning [{id,value}].
 async function listTenantPrefix(prefix, tid, limit = 100) {
   if (!_db.hasDb()) return [];
@@ -152,4 +115,4 @@ async function listTenantPrefix(prefix, tid, limit = 100) {
   return r.rows.map(row => ({ id: row.key.slice(full.length), value: row.value }));
 }
 
-module.exports = { tkey, migrateGlobalSingleton, migrateBlobToTenant, migrateLegacyPrefix, migrateFileKeyToTenant, cleanupLegacyFileKey, listTenantPrefix, resolveDefaultTenantWithRetry: _resolveDefaultTenantWithRetry };
+module.exports = { tkey, migrateGlobalSingleton, migrateBlobToTenant, migrateLegacyPrefix, listTenantPrefix, resolveDefaultTenantWithRetry: _resolveDefaultTenantWithRetry };

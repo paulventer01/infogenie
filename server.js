@@ -9199,19 +9199,17 @@ app.post('/api/content-scorer/analyze', async (req, res) => {
 });
 
 // ── Postgres init (T003 foundation) ──────────────────────────────────────────
-// Boots the kv_store schema and migrates existing data/*.json blobs into the
-// DB on first run. Idempotent — subsequent boots no-op. If DATABASE_URL is
-// unset (e.g. local dev without Replit Postgres), the helpers silently fall
-// back to filesystem persistence so nothing breaks.
+// Boots the kv_store schema. Idempotent — subsequent boots no-op. If
+// DATABASE_URL is unset (e.g. local dev without Replit Postgres), the kv
+// helpers silently no-op so nothing breaks.
 const _db = require('./db');
 (async () => {
   try {
     if (_db.hasDb()) {
       await _db.ensureSchema();
-      const rep = await _db.migrateJsonFilesIfNeeded();
-      console.log('[db] kv_store ready. migration:', JSON.stringify(rep));
+      console.log('[db] kv_store ready.');
     } else {
-      console.log('[db] DATABASE_URL not set — file persistence only');
+      console.log('[db] DATABASE_URL not set — kv persistence disabled');
     }
   } catch (e) { console.error('[db] init failed:', e.message); }
 })();
@@ -14146,39 +14144,13 @@ setInterval(_sweepLaunches, 60 * 1000);
 // Run once on boot to catch reminders that became due while the server was down
 setTimeout(_sweepLaunches, 5 * 1000);
 
-// One-time boot cleanup: Task #49 migrated these legacy GLOBAL disk-file blobs
-// (stored by db.js as `file:<name>.json` kv keys) into the default (owner)
-// tenant's per-workspace namespaced keys, intentionally leaving the `file:`
-// copies as backups. That split is now proven stable, so drop the stale
-// backups. cleanupLegacyFileKey is SELF-GUARDING: it only deletes a backup once
-// the `${base}:t<tid>` key actually holds the data, and falls back to migrating
-// first on any environment that somehow hasn't migrated yet — so it is safe to
-// run unconditionally and idempotent once the backups are gone.
-// Deferred 9s so the tenants/users schema is ready and getDefaultTenantId()
-// resolves (otherwise it returns null this early and every step skips).
+// One-time boot migration (deferred 9s so the tenants/users schema is ready and
+// getDefaultTenantId() resolves — otherwise it returns null this early and every
+// step skips).
 setTimeout(async () => {
-  try {
-    const _legacyFileBackups = [
-      ['file:aivis-history.json', 'aivis_history'],
-      ['file:alerts.json', 'alerts'],
-      ['file:alerts_snapshot.json', 'alerts_snapshot'],
-      ['file:drip-enrollments.json', 'drip_enrollments'],
-      ['file:drip-unsubscribes.json', 'drip_unsubs'],
-      ['file:goals.json', 'goals'],
-      ['file:launches.json', 'launches'],
-      ['file:qualified-leads.json', 'qualified_leads'],
-      ['file:reengagement-campaigns.json', 'reengage_campaigns'],
-      ['file:stakeholders.json', 'stakeholders'],
-      ['file:webhooks.json', 'webhooks'],
-    ];
-    for (const [fileKey, base] of _legacyFileBackups) {
-      await _tkvScope.cleanupLegacyFileKey(fileKey, base);
-    }
-  } catch (e) { console.warn('[kv_scope] legacy backup cleanup', e.message); }
-
   // Diag captures live on disk as data/diag-captures/<slug>.json — a directory,
-  // so db.js's flat-file boot migration never copied them into kv. Move each
-  // capture (and the _latest pointer) into the default tenant's per-workspace
+  // never copied into kv by the (now-removed) legacy flat-file boot migration.
+  // Move each capture (and the _latest pointer) into the default tenant's per-workspace
   // keys so the per-tenant diag-capture routes can still read prior captures.
   // Idempotent: skip entirely once any capture exists for the default tenant.
   try {

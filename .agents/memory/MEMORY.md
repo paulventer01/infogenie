@@ -8,3 +8,4 @@
 - [Tenant write-side wiring](tenant-write-wiring.md) — how to pick tenant_id source for INSERTs (auth→resolveTenantId, parent-inherit, webhook→getDefaultTenantId, bulk loop→resolve once); ON CONFLICT keys still global.
 - [Tenant kv migration (boot)](tenant-kv-migration.md) — boot/module-load migrations must wait for the tenant schema (poll/defer) or they silently no-op; kvGet's null default needs a sentinel; directory disk-stores need bespoke migration; don't assume default tenant id 1.
 - [Tenant schema-isolation audit](tenant-schema-audit.md) — a live-DB test guards whole-schema per-workspace invariants; new tables auto-checked via phase2_migrate exports; global/nullable tables must be allow-listed in BOTH places.
+- [Legacy file-storage removed](legacy-file-storage.md) — db.js file:* helpers + boot cleanup IIFE are gone; persistence is per-tenant kv keys only; orphaned data/*.json may linger.
