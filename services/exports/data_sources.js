@@ -4,16 +4,16 @@ const _db = require('../../db');
 const _path = require('path');
 const _fs = require('fs');
 
-async function _searchIntelData() {
+async function _searchIntelData(tid) {
   const out = { title: 'Search & AI Visibility Report', generated_at: new Date().toISOString(), sections: [] };
   if (!_db.hasDb()) return out;
   const pool = _db.getPool();
 
   const q = await pool.query(`
     SELECT q.id, q.query, q.brand, q.competitors, q.locale, q.last_run_at,
-      (SELECT COUNT(*) FROM search_intel_llm_runs r WHERE r.query_id=q.id) AS run_count,
-      (SELECT COUNT(*) FROM search_intel_llm_runs r WHERE r.query_id=q.id AND r.brand_mentioned=true) AS hit_count
-    FROM search_intel_queries q WHERE q.enabled=true ORDER BY q.id ASC LIMIT 200`);
+      (SELECT COUNT(*) FROM search_intel_llm_runs r WHERE r.query_id=q.id AND r.tenant_id=$1) AS run_count,
+      (SELECT COUNT(*) FROM search_intel_llm_runs r WHERE r.query_id=q.id AND r.tenant_id=$1 AND r.brand_mentioned=true) AS hit_count
+    FROM search_intel_queries q WHERE q.enabled=true AND q.tenant_id=$1 ORDER BY q.id ASC LIMIT 200`, [tid]);
 
   out.sections.push({
     kind: 'table', title: 'Tracked AI Visibility Prompts',
@@ -28,8 +28,8 @@ async function _searchIntelData() {
   const recent = await pool.query(`
     SELECT r.provider, r.brand_mentioned, r.brand_position, r.competitor_hits,
       r.response_text, r.ran_at, q.query
-    FROM search_intel_llm_runs r JOIN search_intel_queries q ON q.id=r.query_id
-    WHERE r.error IS NULL ORDER BY r.ran_at DESC LIMIT 50`);
+    FROM search_intel_llm_runs r JOIN search_intel_queries q ON q.id=r.query_id AND q.tenant_id=$1
+    WHERE r.error IS NULL AND r.tenant_id=$1 ORDER BY r.ran_at DESC LIMIT 50`, [tid]);
   out.sections.push({
     kind: 'table', title: 'Latest AI Engine Runs (last 50)',
     headers: ['Time', 'Engine', 'Prompt', 'Cited?', 'Position', 'Competitors Named'],
@@ -45,7 +45,7 @@ async function _searchIntelData() {
 
   const pulse = await pool.query(`
     SELECT seed, locale, total_volume, suggestions, ran_at FROM search_intel_pulse_runs
-    ORDER BY ran_at DESC LIMIT 10`);
+    WHERE tenant_id=$1 ORDER BY ran_at DESC LIMIT 10`, [tid]);
   out.sections.push({
     kind: 'table', title: 'Recent Search Pulses',
     headers: ['Seed', 'Locale', 'Total Volume', '# Keywords', 'Time'],
@@ -70,7 +70,7 @@ async function _searchIntelData() {
     });
   }
 
-  const imgs = await pool.query(`SELECT source_url, brands, objects, ran_at FROM search_intel_images ORDER BY ran_at DESC LIMIT 25`);
+  const imgs = await pool.query(`SELECT source_url, brands, objects, ran_at FROM search_intel_images WHERE tenant_id=$1 ORDER BY ran_at DESC LIMIT 25`, [tid]);
   out.sections.push({
     kind: 'table', title: 'Image / Logo Recognition (recent)',
     headers: ['When', 'Image URL', 'Brands Detected', 'Objects'],
@@ -85,7 +85,7 @@ async function _searchIntelData() {
   return out;
 }
 
-async function _campaignsData() {
+async function _campaignsData(tid) {
   const out = { title: 'Campaign Performance Report', generated_at: new Date().toISOString(), sections: [] };
   try {
     const file = _path.join(__dirname, '..', '..', 'data', 'launches.json');
@@ -103,7 +103,7 @@ async function _campaignsData() {
 
   if (_db.hasDb()) {
     try {
-      const opt = await _db.getPool().query(`SELECT campaign_id, platform, decision, reason, created_at FROM optimizer_decisions ORDER BY created_at DESC LIMIT 50`);
+      const opt = await _db.getPool().query(`SELECT campaign_id, platform, decision, reason, created_at FROM optimizer_decisions WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 50`, [tid]);
       out.sections.push({
         kind: 'table', title: 'Recent Optimizer Decisions',
         headers: ['When', 'Platform', 'Campaign', 'Decision', 'Reason'],
@@ -124,10 +124,10 @@ const SOURCES = {
   'campaigns':    _campaignsData,
 };
 
-async function fetchSource(name) {
+async function fetchSource(name, tid) {
   const fn = SOURCES[name];
   if (!fn) throw new Error('unknown source: ' + name);
-  return await fn();
+  return await fn(tid);
 }
 
 module.exports = { fetchSource, SOURCES };

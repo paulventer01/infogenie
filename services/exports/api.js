@@ -1,4 +1,5 @@
 const express = require('express');
+const _tenantCtx = require('../tenants/context');
 const { fetchSource, SOURCES } = require('./data_sources');
 const { streamPptx } = require('./pptx_report');
 const { streamXlsx } = require('./xlsx_report');
@@ -27,7 +28,8 @@ router.get('/:format/:source', async (req, res) => {
   if (!SOURCES[source])               return res.status(400).json({ ok: false, error: 'unknown source' });
   if (!['pptx','pdf','xlsx'].includes(format)) return res.status(400).json({ ok: false, error: 'unknown format' });
   try {
-    const report = await fetchSource(source);
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'exports:' + source });
+    const report = await fetchSource(source, tid);
     const brand  = await _loadBrand();
     const stamp = new Date().toISOString().slice(0, 10);
     const slug = (brand && brand.agencyName) ? brand.agencyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : 'infogenie';
