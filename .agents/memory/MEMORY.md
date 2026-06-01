@@ -11,4 +11,4 @@
 - [Legacy file-storage removed](legacy-file-storage.md) — db.js file:* helpers + boot cleanup IIFE are gone; persistence is per-tenant kv keys only; orphaned data/*.json may linger.
 - [Tenant read-audit guard](tenant-read-audit-guard.md) — static read/update/delete leak guard; per-FUNCTION leniency (blind to one bad stmt in a scoped fn); allowlist key = "relpath :: normalized-stmt[:160]".
 - [Field enhancer global-listener leak](field-enhancer-listeners.md) — per-field window listeners leak unbounded across innerHTML-swapping views; use ONE delegated listener acting on in-DOM elements, store per-el data on the element.
-- [Ad Library Spy render freeze](ad-library-render-freeze.md) — freeze was the unbounded ad-card render (Meta pads 300/country) not the field enhancer; cap + rAF-chunk any `map().join('')`+innerHTML list.
+- [Ad Library Spy render freeze](ad-library-render-freeze.md) — real cause = MutationObserver feedback loop in app.js inline "fae" decorator (makeBrandPicker inserts a select the observer re-enhances); tag-and-skip created nodes at handler top.

@@ -706,8 +706,21 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
       const cur = stripTimer(el.textContent);
       if (!RX_HOURGLASS.test(cur)) { stop(el); return; }
       const elapsed = ((performance.now() - rec.t0) / 1000).toFixed(1);
+      const next = cur + ' [' + elapsed + 's]';
       selfWrites.add(el);
-      try { el.textContent = cur + ' [' + elapsed + 's]'; } catch {}
+      try {
+        // Update an existing text node's value (a characterData mutation)
+        // rather than reassigning textContent (a childList mutation).
+        // textContent= replaces the child text node every 100ms tick, which
+        // wakes every other whole-document childList MutationObserver
+        // (dock-magnify, hero-unify, field-enhancer) ~10x/sec and can saturate
+        // the main thread on large DOMs. nodeValue= does not wake them.
+        if (el.childNodes.length === 1 && el.firstChild.nodeType === 3) {
+          el.firstChild.nodeValue = next;
+        } else {
+          el.textContent = next;
+        }
+      } catch {}
       setTimeout(() => selfWrites.delete(el), 0);
     }, 100);
     tracked.set(el, rec);
@@ -26592,36 +26605,56 @@ function buildMasterCalendar() {
     });
   }
 
-  function scan(){
+  function scan(root){
+    // Scope the scan to a subtree when given (incremental mode). Re-scanning
+    // the whole document on every DOM mutation runs this heavy compound
+    // querySelectorAll + per-match sibling filter constantly and saturates the
+    // main thread on large DOMs. attach() is idempotent (guarded by
+    // _dockBound), so processing only newly-added subtrees is sufficient.
+    const scope = (root && root.querySelectorAll) ? root : document;
     const parents = new Set();
-    document.querySelectorAll(SELECTORS).forEach(el => {
+    function consider(el){
       const p = el.parentElement;
       if (!p) return;
       const siblings = Array.from(p.children).filter(c => c.matches && c.matches(SELECTORS));
       if (siblings.length >= 2) parents.add(p);
-    });
+    }
+    scope.querySelectorAll(SELECTORS).forEach(consider);
+    if (root && root.nodeType === 1 && root.matches && root.matches(SELECTORS)) consider(root);
     parents.forEach(p => attach(p));
 
     // Special case: top-nav main tabs (.nav-group-btn) live each in their own
     // .nav-group-wrap, so they aren't direct siblings. Find their common
-    // ancestor and treat the buttons as a single dock row.
-    const groupBtns = Array.from(document.querySelectorAll('.nav-group-btn'));
-    if (groupBtns.length >= 2) {
-      const wrap = groupBtns[0].closest('.nav-groups, nav, header, .topbar') || groupBtns[0].parentElement?.parentElement;
-      if (wrap) attach(wrap, groupBtns);
+    // ancestor and treat the buttons as a single dock row. Only meaningful at
+    // the document level (top nav renders once at load).
+    if (scope === document) {
+      const groupBtns = Array.from(document.querySelectorAll('.nav-group-btn'));
+      if (groupBtns.length >= 2) {
+        const wrap = groupBtns[0].closest('.nav-groups, nav, header, .topbar') || groupBtns[0].parentElement?.parentElement;
+        if (wrap) attach(wrap, groupBtns);
+      }
     }
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', scan);
+    document.addEventListener('DOMContentLoaded', () => scan());
   } else {
     scan();
   }
-  // Re-scan as views render dynamically (debounced)
+  // Re-scan ONLY newly-added element subtrees as views render dynamically.
   let _t = null;
-  new MutationObserver(() => {
-    if (_t) return;
-    _t = setTimeout(() => { _t = null; scan(); }, 150);
+  let _pending = new Set();
+  new MutationObserver(muts => {
+    for (const m of muts) {
+      if (m.type !== 'childList' || !m.addedNodes) continue;
+      m.addedNodes.forEach(n => { if (n.nodeType === 1) _pending.add(n); });
+    }
+    if (!_pending.size || _t) return;
+    _t = setTimeout(() => {
+      _t = null;
+      const roots = _pending; _pending = new Set();
+      roots.forEach(r => { if (r.isConnected) scan(r); });
+    }, 150);
   }).observe(document.body, { childList: true, subtree: true });
 })();
 
@@ -26634,22 +26667,39 @@ function buildMasterCalendar() {
     if (el.style.backgroundImage) el.style.backgroundImage = '';
     if (el.style.borderBottom) el.style.borderBottom = '';
   }
-  function sweep(){
-    document.querySelectorAll('.view-header, .intel-header').forEach(strip);
-    // Battle Plan custom header swap
-    const bpHero = document.querySelector('#battlePlanWrap [data-bp-hero]');
+  function applyBpHero(scope){
+    const bpHero = (scope && scope.querySelector ? scope : document).querySelector('#battlePlanWrap [data-bp-hero]');
     if (bpHero) {
       bpHero.style.background = BLUE;
       bpHero.style.borderBottom = 'none';
     }
   }
+  function sweep(root){
+    // Scope to a subtree when given. Re-running querySelectorAll over the whole
+    // document on every mutation is needless work that piles up on large DOMs;
+    // strip() is idempotent so processing only newly-added subtrees suffices.
+    const scope = (root && root.querySelectorAll) ? root : document;
+    scope.querySelectorAll('.view-header, .intel-header').forEach(strip);
+    if (root && root.nodeType === 1 && root.matches && root.matches('.view-header, .intel-header')) strip(root);
+    applyBpHero(root);
+  }
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', sweep);
+    document.addEventListener('DOMContentLoaded', () => sweep());
   } else { sweep(); }
+  // Strip ONLY newly-added element subtrees as views render dynamically.
   let _t = null;
-  new MutationObserver(() => {
-    if (_t) return;
-    _t = setTimeout(() => { _t = null; sweep(); }, 80);
+  let _pending = new Set();
+  new MutationObserver(muts => {
+    for (const m of muts) {
+      if (m.type !== 'childList' || !m.addedNodes) continue;
+      m.addedNodes.forEach(n => { if (n.nodeType === 1) _pending.add(n); });
+    }
+    if (!_pending.size || _t) return;
+    _t = setTimeout(() => {
+      _t = null;
+      const roots = _pending; _pending = new Set();
+      roots.forEach(r => { if (r.isConnected) sweep(r); });
+    }, 80);
   }).observe(document.body, { childList: true, subtree: true });
 })();
 
@@ -49284,6 +49334,7 @@ window._aivLoadHistory = async function() {
     if (!brand && comps.length === 0) return; // nothing to offer
     if (!input.value && brand) input.value = brand;
     const sel = document.createElement('select');
+    sel.dataset.fae = '1'; // tag generated picker so enhance() never re-processes it (prevents observer feedback loop)
     sel.style.cssText = 'width:100%;padding:6px 9px;border:1.5px solid #D1D5DB;border-radius:6px;font-size:0.76rem;background:#F0FDF4;margin-bottom:5px;box-sizing:border-box;color:#065F46;font-weight:600';
     sel.innerHTML =
       '<option value="">— Pick from your analysis (or type manually below) —</option>' +
@@ -49357,6 +49408,15 @@ window._aivLoadHistory = async function() {
 
   function enhance(input) {
     try {
+      // Idempotency guard: never re-process an element we already enhanced.
+      // makeBrandPicker/makeCountryDropdown INSERT a <select> next to the
+      // field; the body MutationObserver below sees that childList mutation and
+      // calls enhance() on the new <select>. Without this guard that <select>
+      // gets classified 'brand' again → another <select> inserted → infinite
+      // microtask feedback loop that grows the DOM unbounded and OOM-crashes
+      // the tab (the Ad Library Spy freeze). Generated pickers are tagged with
+      // dataset.fae='1' so they short-circuit here.
+      if (input.dataset.fae) return;
       const kind = classify(input);
       if (!kind) return;
       input.dataset.fae = '1';
