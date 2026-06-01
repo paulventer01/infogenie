@@ -12,3 +12,4 @@
 - [Tenant read-audit guard](tenant-read-audit-guard.md) — static read/update/delete leak guard; per-FUNCTION leniency (blind to one bad stmt in a scoped fn); allowlist key = "relpath :: normalized-stmt[:160]".
 - [Field enhancer global-listener leak](field-enhancer-listeners.md) — per-field window listeners leak unbounded across innerHTML-swapping views; use ONE delegated listener acting on in-DOM elements, store per-el data on the element.
 - [Ad Library Spy render freeze](ad-library-render-freeze.md) — real cause = MutationObserver feedback loop in app.js inline "fae" decorator (makeBrandPicker inserts a select the observer re-enhances); tag-and-skip created nodes at handler top.
+- [server.js route modularization](server-route-modularization.md) — safe register(app,ctx) extraction: compute free vars w/ parser, reverse-ref check, leave latent-undeclared refs undeclared; fab-lint scans only services/.

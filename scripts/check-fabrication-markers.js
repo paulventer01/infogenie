@@ -37,6 +37,10 @@ const ALLOWLIST = new Map([
     'Internal weekly-digest email body copy. Tagged generated_by="template" (not a real-metrics fabrication); the digest is genuine generated copy, not data presented as a live measurement.'],
   ['services/search_intel/ai_visibility.js',
     '_fallbackPrompts returns UI prompt SUGGESTIONS (scaffolding the user edits), not fabricated metrics dressed as real data.'],
+  ['services/growth_ops/routes.js',
+    '_fallbackTarget/_fallbackLabel in /api/goals/suggest return AI-suggested goal target VALUES/LABELS for a form field (user-editable suggestions, flagged with fallback:true in the response), not fabricated metrics dressed as real measurements. Pre-existing helpers moved verbatim from server.js (which the lint never scanned).'],
+  ['services/market_signals/routes.js',
+    '_templateImageCache is an in-memory LRU cache (Map) memoizing AI-generated template image URLs — a performance cache, not a synthetic-when-AI-unavailable data fallback. Name matches the _template* regex only incidentally. Pre-existing helper moved verbatim from server.js (which the lint never scanned).'],
 ]);
 
 function walk(dir, out = []) {
