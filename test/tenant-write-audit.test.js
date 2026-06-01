@@ -20,6 +20,11 @@
 // The tenant-scoped table set is derived from PLAIN_TABLES + REWRITE_UNIQUE in
 // services/tenants/phase2_migrate.js, so it stays in sync automatically: add a
 // table to the migration and its INSERTs are audited here with no extra wiring.
+//
+// Scan coverage is not limited to services/: tenant-scoped INSERTs also live in
+// top-level source (notably server.js, which wires many routes) and in scripts/.
+// All three roots are walked so an omission anywhere fails the build, not just
+// the ones inside per-tier service modules.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -28,8 +33,9 @@ const path = require('path');
 
 const { PLAIN_TABLES, REWRITE_UNIQUE } = require('../services/tenants/phase2_migrate');
 
-const SERVICES_DIR = path.join(__dirname, '..', 'services');
 const REPO_ROOT = path.join(__dirname, '..');
+const SERVICES_DIR = path.join(REPO_ROOT, 'services');
+const SCRIPTS_DIR = path.join(REPO_ROOT, 'scripts');
 
 // Every tenant-scoped table, derived straight from the migration source lists.
 const SCOPED_TABLES = new Set([
@@ -52,12 +58,28 @@ const ALLOWLIST = new Map([
 ]);
 
 function walk(dir, out = []) {
+  if (!fs.existsSync(dir)) return out;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(full, out);
     else if (entry.isFile() && entry.name.endsWith('.js')) out.push(full);
   }
   return out;
+}
+
+// Every .js source file we audit: the per-tier service modules, the build/util
+// scripts, and the top-level files in the repo root (server.js wires many
+// routes; db.js, app.js, etc.). Directories other than services/ and scripts/
+// are NOT recursed (node_modules, data, uploads, …); only the root's own .js
+// files are picked up.
+function collectFiles() {
+  const files = [...walk(SERVICES_DIR), ...walk(SCRIPTS_DIR)];
+  for (const entry of fs.readdirSync(REPO_ROOT, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith('.js')) {
+      files.push(path.join(REPO_ROOT, entry.name));
+    }
+  }
+  return files;
 }
 
 // Given the source and the index immediately AFTER an `INSERT INTO <table>`
@@ -110,7 +132,7 @@ function scanFile(full) {
 }
 
 test('every INSERT into a tenant-scoped table names tenant_id in its column list', () => {
-  const files = walk(SERVICES_DIR);
+  const files = collectFiles();
   const offenders = files.flatMap(scanFile);
   assert.deepStrictEqual(
     offenders, [],
