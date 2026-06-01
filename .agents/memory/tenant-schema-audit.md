@@ -30,3 +30,14 @@ migration list is enough — don't duplicate the list in the test.
 **Caveat:** the audit needs a live `DATABASE_URL` (skips with a message if unset).
 It does NOT check write paths — INSERTs that omit `tenant_id` are a separate gap
 (features silently fail to persist). See the tenant-write-wiring memory.
+
+**Behavioral real-DB isolation tests** (e.g. `test/search-pulse-tenant-db.test.js`):
+the schema audit proves the constraints EXIST; a behavioral test proves they
+actually isolate. To make one self-contained and non-destructive: idempotently
+call the feature's `ensure*Schema()` + `ensureTenantSchema()`, create two
+throwaway `tenants` rows with unique slugs (created_by_user_id may be NULL),
+use a random source_url/seed suffix so you never collide with real data, and
+clean up in `after` by `DELETE FROM tenants WHERE id = ANY(...)` — the
+`tenant_id ... ON DELETE CASCADE` FK removes every row you created. Fake-pool
+tests can't catch a dropped/missing UNIQUE; only a real INSERT against the live
+constraint can.
