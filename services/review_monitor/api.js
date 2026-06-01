@@ -13,12 +13,32 @@ const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safe(fn) { return (req, res) => Promise.resolve(fn(req, res)).catch(e => { if (!res.headersSent) _err(res, 500, e.message); }); }
 
-// ── Stable review fingerprint (author + date + rating) ───────────────────────
+// ── Date normalizer ───────────────────────────────────────────────────────────
+// Perplexity scan returns dates as "YYYY-MM-DD or relative" — relative strings
+// like "2 weeks ago" drift on every scan, causing false deletions if included
+// in the fingerprint. Detect and discard relative strings; parse absolute dates
+// to YYYY-MM-DD so the token is canonical regardless of original format.
+function _normalizeDate(dateStr) {
+  if (!dateStr) return '';
+  const s = String(dateStr).trim();
+  // Relative date — exclude from fingerprint to prevent drift
+  if (/\b(ago|last|yesterday|today|week|month|day|hour|minute|just now)\b/i.test(s)) return '';
+  try {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10); // YYYY-MM-DD
+  } catch (_) {}
+  // Non-parseable string that isn't obviously relative — include as-is so
+  // purely static strings (e.g. "March 2024") still contribute to identity.
+  return s.slice(0, 20).toLowerCase();
+}
+
+// ── Stable review fingerprint (author + normalised date + rating) ────────────
 // Body is intentionally excluded — review text can be edited/truncated by the
 // platform without the review being truly removed, which would create false
 // "deleted" events if body were part of the identity.
 function _reviewId(author, date, rating) {
-  const str = `${String(author || '').trim()}|${String(date || '').trim()}|${rating || 0}`;
+  const stableDate = _normalizeDate(date);
+  const str = `${String(author || '').trim()}|${stableDate}|${rating || 0}`;
   return crypto.createHash('sha256').update(str).digest('hex').slice(0, 32);
 }
 
@@ -42,22 +62,32 @@ async function _sendSlack(text) {
   } catch (_) {}
 }
 
+// ── Tenant-scoped email recipient resolver ───────────────────────────────────
+// Priority: RESEND_ALERT_EMAIL env (platform override) → tenant creator's email
+// (scoped to the specific tenantId so multi-tenant deployments never leak across
+// workspaces). Returns null if neither is available.
+async function _getAlertEmail(tenantId) {
+  if (process.env.RESEND_ALERT_EMAIL) return process.env.RESEND_ALERT_EMAIL;
+  try {
+    if (_db.hasDb && _db.hasDb() && tenantId != null) {
+      const r = await _db.getPool().query(
+        `SELECT u.email FROM users u
+           JOIN tenants t ON t.created_by_user_id = u.id
+          WHERE t.id = $1 LIMIT 1`,
+        [tenantId]
+      );
+      if (r.rows[0] && r.rows[0].email) return r.rows[0].email;
+    }
+  } catch (_) {}
+  return null;
+}
+
 // ── Resend email alert helper ─────────────────────────────────────────────────
-// Sends to the owner's email (first is_owner user) when RESEND_API_KEY is set.
-async function _sendEmail(subject, htmlBody) {
+async function _sendEmail(tenantId, subject, htmlBody) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey || /^_DUMMY/i.test(apiKey)) return;
   const from = process.env.RESEND_FROM_EMAIL || 'alerts@resend.dev';
-  let to = process.env.RESEND_ALERT_EMAIL || null;
-  if (!to) {
-    try {
-      if (_db.hasDb && _db.hasDb()) {
-        const r = await _db.getPool().query(
-          'SELECT email FROM users WHERE is_owner=TRUE ORDER BY id ASC LIMIT 1');
-        if (r.rows[0]) to = r.rows[0].email;
-      }
-    } catch (_) {}
-  }
+  const to = await _getAlertEmail(tenantId);
   if (!to) return;
   try {
     const payload = Buffer.from(JSON.stringify({ from, to, subject, html: htmlBody }));
@@ -84,7 +114,7 @@ async function recordSnapshot(tenantId, brand, platform, reviews) {
   if (tenantId == null) return [];
   const pool = _db.getPool();
 
-  // Build list of current review IDs using stable author+date+rating fingerprint
+  // Build list of current review IDs using stable author+normalizedDate+rating fingerprint
   const currentIds = reviews.map(rv => _reviewId(rv.author, rv.date, rv.rating));
 
   // Upsert all current reviews (mark as seen / resurrect if previously deleted)
@@ -149,7 +179,7 @@ async function recordSnapshot(tenantId, brand, platform, reviews) {
     // Fire both channels concurrently; neither blocks the caller
     Promise.all([
       _sendSlack(alertText).catch(() => {}),
-      _sendEmail(`Review Deletion Alert — ${brand} on ${platform}`, htmlBody).catch(() => {})
+      _sendEmail(tenantId, `Review Deletion Alert — ${brand} on ${platform}`, htmlBody).catch(() => {})
     ]).catch(() => {});
   }
 
