@@ -40642,6 +40642,29 @@ window._alToggleAll = function(checked) {
   document.querySelectorAll('.al-plat').forEach(cb => { cb.checked = checked; });
 };
 
+// Bounded-concurrency async map. Runs `fn` over `items` at most `limit` at a
+// time, preserving input order in the returned array. Used to throttle the
+// per-country ad-library fan-out so we never fire hundreds of fetches at once.
+window._alMapLimit = async function(items, limit, fn) {
+  const results = new Array(items.length);
+  let idx = 0;
+  const n = Math.max(1, Math.min(limit, items.length));
+  const workers = new Array(n).fill(0).map(async () => {
+    while (idx < items.length) {
+      const i = idx++;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+};
+
+// Single ad-card builder, extracted so _alAppendResult can render large
+// result sets in rAF-yielding chunks instead of one blocking innerHTML pass.
+window._alAdCardHtml = function(a, brand, platform) {
+  return `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:11px"><div style="font-weight:700;color:#0A1628;font-size:0.82rem;margin-bottom:4px">${_escapeHtml(a.page_name || a.advertiser || brand)}</div>${a.title ? `<div style="font-weight:600;color:#1E1B4B;font-size:0.8rem;margin-bottom:3px">${_escapeHtml(a.title)}</div>` : ''}<div style="color:#374151;font-size:0.76rem;line-height:1.4;white-space:pre-wrap">${_escapeHtml((a.body || a.ad_text || '').slice(0, 240))}</div>${a.description ? `<div style="color:#6B7280;font-size:0.72rem;margin-top:4px;font-style:italic">${_escapeHtml(a.description.slice(0,140))}</div>` : ''}<div style="font-size:0.68rem;color:#9CA3AF;margin-top:7px;border-top:1px solid #E5E7EB;padding-top:6px">${a.created ? '📅 ' + new Date(a.created).toLocaleDateString() + ' · ' : ''}${a.first_seen ? '👁 ' + _escapeHtml(a.first_seen) + ' · ' : ''}${Array.isArray(a.platforms) ? a.platforms.map(p => _escapeHtml(String(p))).join(', ') : ''}${a.industry ? ' · ' + _escapeHtml(a.industry) : ''}${(a.snapshot_url || a.url) && _safeUrl(a.snapshot_url || a.url) ? ` · <a href="${_safeUrl(a.snapshot_url || a.url)}" target="_blank" rel="noopener" style="color:#0066FF;font-weight:700">View →</a>` : ''}</div><button onclick='window._alSaveSwipe(${JSON.stringify({source:platform, external_id:a.id||null, advertiser:a.page_name||a.advertiser||brand, headline:a.title||"", body:a.body||a.ad_text||"", cta:a.description||"", snapshot_url:a.snapshot_url||a.url||"", platforms:a.platforms||[]}).replace(/'/g,"&#39;")}, this)' style="margin-top:8px;width:100%;background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;padding:6px;border-radius:6px;font-size:0.72rem;font-weight:800;cursor:pointer">💾 Save to Swipe File</button></div>`;
+};
+
 window._alRunMulti = async function() {
   const brand = document.getElementById('alBrand').value.trim();
   const countriesRaw = document.getElementById('alCountry').value.trim();
@@ -40660,13 +40683,16 @@ window._alRunMulti = async function() {
   await Promise.all(selected.map(async (platform) => {
     const progEl = document.getElementById('alProg_' + platform);
     try {
-      // Fan out per country, then merge + dedupe by ad id.
-      const perCountry = await Promise.all(countries.map(async (cc) => {
+      // Fan out per country with BOUNDED concurrency, then merge + dedupe by
+      // ad id. Without the limit, "All countries" (~98) × 5 platforms fires
+      // ~490 simultaneous fetches that hammer the browser/server and stall
+      // the UI; _alMapLimit caps it to a handful at a time per platform.
+      const perCountry = await _alMapLimit(countries, 6, async (cc) => {
         try {
           const r = await fetch(`/api/ad-library/${platform}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, country: cc }) }).then(x => x.json());
           return { cc, r };
         } catch (e) { return { cc, r: { ok:false, error:e.message } }; }
-      }));
+      });
       const ok = perCountry.filter(x => x.r && x.r.ok);
       const errs = perCountry.filter(x => !x.r || !x.r.ok);
       const seen = new Set(); const merged = [];
@@ -40677,8 +40703,18 @@ window._alRunMulti = async function() {
           merged.push(Object.assign({ _country: cc }, a));
         });
       });
+      // Hard-cap the rendered set. The Meta backend pads results up to 300
+      // ads PER country, so a multi-country search can yield thousands — far
+      // more than anyone reviews, and enough to freeze the page when built
+      // into one DOM pass. Cap, then note how many were withheld.
+      const MAX_RENDER_ADS = 150;
+      const totalFound = merged.length;
+      if (merged.length > MAX_RENDER_ADS) merged.length = MAX_RENDER_ADS;
+      const noteParts = [];
+      if (errs.length) noteParts.push(`${errs.length} of ${countries.length} country lookup(s) failed.`);
+      if (totalFound > MAX_RENDER_ADS) noteParts.push(`Showing first ${MAX_RENDER_ADS} of ${totalFound} ads.`);
       const finalRes = ok.length
-        ? { ok:true, ads: merged, note: errs.length ? `${errs.length} of ${countries.length} country lookup(s) failed.` : null }
+        ? { ok:true, ads: merged, note: noteParts.length ? noteParts.join(' ') : null }
         : { ok:false, error: (errs[0] && errs[0].r && errs[0].r.error) || 'All country lookups failed' };
       if (progEl) progEl.remove();
       _alAppendResult(platform, labels[platform] || platform, brand, countryLbl, finalRes);
@@ -40701,7 +40737,28 @@ window._alAppendResult = function(platform, label, brand, country, r) {
   } else if (!r.ads || !r.ads.length) {
     block.innerHTML = `<div style="font-weight:800;color:#0A1628;margin-bottom:8px">${_escapeHtml(label)}</div><div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:6px;padding:14px;text-align:center;color:#6B7280;font-size:0.8rem">${_escapeHtml(r.note || 'No active ads found.')}</div>`;
   } else {
-    block.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-weight:800;color:#0A1628">${_escapeHtml(label)}</div><div style="font-size:0.74rem;color:#6B7280">✅ ${r.ads.length} ad(s) for ${_escapeHtml(brand)} (${_escapeHtml(country)})</div></div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">${r.ads.map(a => `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:11px"><div style="font-weight:700;color:#0A1628;font-size:0.82rem;margin-bottom:4px">${_escapeHtml(a.page_name || a.advertiser || brand)}</div>${a.title ? `<div style="font-weight:600;color:#1E1B4B;font-size:0.8rem;margin-bottom:3px">${_escapeHtml(a.title)}</div>` : ''}<div style="color:#374151;font-size:0.76rem;line-height:1.4;white-space:pre-wrap">${_escapeHtml((a.body || a.ad_text || '').slice(0, 240))}</div>${a.description ? `<div style="color:#6B7280;font-size:0.72rem;margin-top:4px;font-style:italic">${_escapeHtml(a.description.slice(0,140))}</div>` : ''}<div style="font-size:0.68rem;color:#9CA3AF;margin-top:7px;border-top:1px solid #E5E7EB;padding-top:6px">${a.created ? '📅 ' + new Date(a.created).toLocaleDateString() + ' · ' : ''}${a.first_seen ? '👁 ' + _escapeHtml(a.first_seen) + ' · ' : ''}${Array.isArray(a.platforms) ? a.platforms.map(p => _escapeHtml(String(p))).join(', ') : ''}${a.industry ? ' · ' + _escapeHtml(a.industry) : ''}${(a.snapshot_url || a.url) && _safeUrl(a.snapshot_url || a.url) ? ` · <a href="${_safeUrl(a.snapshot_url || a.url)}" target="_blank" rel="noopener" style="color:#0066FF;font-weight:700">View →</a>` : ''}</div><button onclick='window._alSaveSwipe(${JSON.stringify({source:platform, external_id:a.id||null, advertiser:a.page_name||a.advertiser||brand, headline:a.title||"", body:a.body||a.ad_text||"", cta:a.description||"", snapshot_url:a.snapshot_url||a.url||"", platforms:a.platforms||[]}).replace(/'/g,"&#39;")}, this)' style="margin-top:8px;width:100%;background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;padding:6px;border-radius:6px;font-size:0.72rem;font-weight:800;cursor:pointer">💾 Save to Swipe File</button></div>`).join('')}</div>`;
+    const noteHtml = r.note ? `<span style="font-size:0.7rem;color:#92400E;background:#FEF3C7;border:1px solid #FCD34D;border-radius:5px;padding:2px 7px;margin-left:8px">${_escapeHtml(r.note)}</span>` : '';
+    block.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-weight:800;color:#0A1628">${_escapeHtml(label)}${noteHtml}</div><div style="font-size:0.74rem;color:#6B7280">✅ ${r.ads.length} ad(s) for ${_escapeHtml(brand)} (${_escapeHtml(country)})</div></div><div data-al-grid style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px"></div>`;
+    container.appendChild(block);
+    // Render ad cards in rAF-yielding chunks. Building all cards into one
+    // innerHTML string and inserting them synchronously is what froze the page
+    // on large result sets — each card carries a JSON.stringify'd button, so a
+    // few hundred ads is a multi-second main-thread block. Chunking yields to
+    // the browser between batches so the page stays responsive.
+    const grid = block.querySelector('[data-al-grid]');
+    const ads = r.ads || [];
+    const CHUNK = 24;
+    let i = 0;
+    const renderChunk = () => {
+      if (!grid.isConnected) return; // view was navigated away — stop
+      const parts = [];
+      const end = Math.min(i + CHUNK, ads.length);
+      for (; i < end; i++) parts.push(window._alAdCardHtml(ads[i], brand, platform));
+      grid.insertAdjacentHTML('beforeend', parts.join(''));
+      if (i < ads.length) (window.requestAnimationFrame || setTimeout)(renderChunk, 16);
+    };
+    renderChunk();
+    return;
   }
   container.appendChild(block);
 };
