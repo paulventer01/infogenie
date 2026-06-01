@@ -3079,6 +3079,10 @@ function buildCreativeModal(camp, idx) {
 
 // ===== NAVIGATION =====
 function navigateTo(viewId, updateActive = true) {
+  // Breadcrumb for the watchdog: if the main thread stalls anywhere inside this
+  // synchronous navigation (build dispatch, field-enhancer scan, etc.), the
+  // beaconed STALL line will be tagged with the view we were switching to.
+  try { window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('nav→' + viewId); } catch(_) {}
   // Pause the field-enhancer for the duration of this synchronous call so the
   // MutationObserver doesn't get hammered by every view's innerHTML swap.
   // A deferred resume (below) reconnects it and scans only what's new.

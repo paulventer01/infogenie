@@ -23,7 +23,11 @@
       kind: kind || 'info'
     };
     events.push(e);
-    _lastLabel = e.label;
+    // Only non-error logs update the breadcrumb fallback. Error logs (window
+    // errors, and especially the watchdog's own STALL lines) must NOT clobber
+    // the trail of what the app was actually doing — otherwise every stall just
+    // reports "last=<previous stall>" and the real culprit is lost.
+    if (e.kind !== 'error') _lastLabel = e.label;
     if (events.length > MAX) events.shift();
     if (list && panel && !panel.classList.contains('hidden')) appendRow(e);
     updateCount();
@@ -214,7 +218,7 @@
   // so we can see WHAT was running when it froze. This is what catches freezes
   // that happen long after the 15s post-analyse heartbeat window, and on any
   // page. setBreadcrumb() lets callers annotate the current action.
-  let _wdTimer = null, _wdLast = 0, _breadcrumb = '';
+  let _wdTimer = null, _wdLast = 0, _breadcrumb = '', _wdHidden = false, _wdVisWired = false;
   const _WD_THRESHOLD = 700;
   function setBreadcrumb(s) { _breadcrumb = String(s == null ? '' : s); }
   function _curView() {
@@ -223,10 +227,28 @@
   function startWatchdog() {
     if (_wdTimer) return;
     _wdLast = performance.now();
+    // Visibility-aware. When the tab/iframe is hidden the browser throttles
+    // timers to ~1Hz and fully suspends a backgrounded tab — so on the next tick
+    // the measured "gap" equals the entire hidden duration. That is NOT a freeze
+    // (it's the user looking away / the canvas iframe being off-screen), but it
+    // is indistinguishable from a real stall by gap size alone. So: reset the
+    // baseline on every visibility change and never report while hidden. We only
+    // ever flag stalls that happen with the page continuously VISIBLE.
+    try {
+      _wdHidden = !!document.hidden;
+      if (!_wdVisWired) {
+        document.addEventListener('visibilitychange', () => {
+          _wdHidden = !!document.hidden;
+          _wdLast = performance.now();
+        });
+        _wdVisWired = true;
+      }
+    } catch(_) {}
     _wdTimer = setInterval(() => {
       const now = performance.now();
       const gap = now - _wdLast;
       _wdLast = now;
+      if (_wdHidden || document.hidden) return; // throttled/suspended ≠ frozen
       if (gap > _WD_THRESHOLD) {
         err('⚠ MAIN-THREAD STALL ' + gap.toFixed(0) + 'ms',
             'last=' + (_breadcrumb || _lastLabel || '?') + ' · view=' + _curView() + ' · nodes=' + domStats().nodes);
