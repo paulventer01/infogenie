@@ -3264,6 +3264,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'content-score')     { try { window.buildContentScore && window.buildContentScore(); }     catch(e) { console.warn('buildContentScore error:', e); } }
   if (viewId === 'ai-traffic')        { try { window.buildAiTrafficMonitor && window.buildAiTrafficMonitor(); } catch(e) { console.warn('buildAiTrafficMonitor error:', e); } }
   if (viewId === 'maps-intel')        { try { window.buildMapsIntel && window.buildMapsIntel(); }             catch(e) { console.warn('buildMapsIntel error:', e); } }
+  if (viewId === 'creative-intel')   { try { window.buildCreativeIntel && window.buildCreativeIntel(); }      catch(e) { console.warn('buildCreativeIntel error:', e); } }
   if (viewId === 'hashtag-intel')     { try { window.buildHashtagIntel && window.buildHashtagIntel(); }       catch(e) { console.warn('buildHashtagIntel error:', e); } }
   if (viewId === 'vis-leaderboard')   { try { window.buildVisLeaderboard && window.buildVisLeaderboard(); }  catch(e) { console.warn('buildVisLeaderboard error:', e); } }
   if (viewId === 'post-performance')  { try { window.buildPostPerformance && window.buildPostPerformance(); } catch(e) { console.warn('buildPostPerformance error:', e); } }
@@ -52004,6 +52005,244 @@ window.buildMapsIntel = async function() {
       const rr = await fetch('/api/maps-intel/runs').then(x => x.json());
       _miRuns = rr.runs || [];
       renderRuns();
+    } catch(e) {
+      out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`;
+    }
+  });
+};
+
+// ============================================================================
+// T42 — Creative Intelligence (What Makes Content Perform)
+// ============================================================================
+window.buildCreativeIntel = async function() {
+  const wrap = document.getElementById('ciWrap'); if (!wrap) return;
+
+  const PLATFORM_COLORS = { 'TikTok':'#FF0050', 'YouTube Shorts':'#FF0000', 'Instagram Reels':'#C13584', 'Instagram':'#C13584', 'YouTube':'#FF0000', 'Unknown':'#6B7280' };
+  const HOOK_LABELS     = { curiosity_gap:'Curiosity Gap', bold_claim:'Bold Claim', question:'Question Hook', listicle:'Listicle', controversy:'Controversy', story:'Story', how_to:'How-To', social_proof:'Social Proof' };
+  const EMOTION_LABELS  = { excitement:'Excitement', fear_of_missing_out:'FOMO', curiosity:'Curiosity', inspiration:'Inspiration', humour:'Humour', relatability:'Relatability', urgency:'Urgency' };
+  const MUSIC_LABELS    = { trending_audio:'Trending Audio', voiceover_only:'Voiceover Only', original_music:'Original Music', silence:'Silence / SFX', royalty_free:'Royalty Free' };
+
+  let _ciRuns = [];
+  let _ciCurrent = null;
+
+  try { const rr = await fetch('/api/creative-intel/runs').then(x=>x.json()); _ciRuns = rr.runs||[]; } catch(_) {}
+
+  function _fmt(n) {
+    if (n == null) return '—';
+    if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
+    if (n >= 1000)    return (n/1000).toFixed(1) + 'K';
+    return String(n);
+  }
+
+  function renderHistory() {
+    const hist = document.getElementById('ciHistory'); if (!hist) return;
+    if (!_ciRuns.length) { hist.innerHTML = '<div style="color:#9CA3AF;font-size:0.8rem">No analyses yet.</div>'; return; }
+    hist.innerHTML = _ciRuns.slice(0,20).map(r => {
+      const urls = Array.isArray(r.urls) ? r.urls : [];
+      const p    = r.patterns || {};
+      return `<div style="display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;margin-bottom:6px;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <strong style="color:#0A1628">${r.url_count||urls.length} videos analysed</strong>
+          <span style="color:#9CA3AF;font-size:0.72rem;margin-left:8px">${p.optimal_length_range||''} · avg ${p.avg_engagement_rate||'?'}% eng</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:#9CA3AF;font-size:0.72rem">${new Date(r.created_at).toLocaleDateString()}</span>
+          <button data-load="${r.id}" style="padding:4px 12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:5px;font-size:0.74rem;font-weight:700;color:#1D4ED8;cursor:pointer">Load</button>
+          <button data-del="${r.id}"  style="padding:4px 10px;background:#FEE2E2;border:1px solid #FECACA;border-radius:5px;font-size:0.74rem;font-weight:700;color:#B91C1C;cursor:pointer">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+    hist.querySelectorAll('[data-load]').forEach(b => b.addEventListener('click', () => _ciLoadRun(b.dataset.load)));
+    hist.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Delete this analysis?')) return;
+      try {
+        await fetch('/api/creative-intel/runs/'+b.dataset.del, { method:'DELETE' });
+        _ciRuns = _ciRuns.filter(r => String(r.id) !== b.dataset.del);
+        renderHistory();
+      } catch(_) {}
+    }));
+  }
+
+  async function _ciLoadRun(id) {
+    const out = document.getElementById('ciOut'); if (!out) return;
+    out.innerHTML = '<div style="color:#9CA3AF">⏳ Loading…</div>';
+    try {
+      const r = await fetch('/api/creative-intel/runs/'+id).then(x=>x.json());
+      if (!r.ok) { out.innerHTML = `<div style="color:#B91C1C">${_escapeHtml(r.error)}</div>`; return; }
+      _ciRender(r.run.analyses, r.run.patterns, r.run.brief);
+    } catch(e) { out.innerHTML = `<div style="color:#B91C1C">Error: ${_escapeHtml(e.message)}</div>`; }
+  }
+
+  function _pctBar(pct, color) {
+    return `<div style="display:flex;align-items:center;gap:8px">
+      <div style="flex:1;background:#F3F4F6;border-radius:4px;height:8px;overflow:hidden">
+        <div style="width:${Math.min(100,pct||0)}%;background:${color||'#0EA5E9'};height:8px;border-radius:4px"></div>
+      </div>
+      <div style="min-width:36px;text-align:right;font-size:0.72rem;font-weight:700;color:#374151">${pct||0}%</div>
+    </div>`;
+  }
+
+  function _ciRender(analyses, patterns, brief) {
+    const out = document.getElementById('ciOut'); if (!out) return;
+    _ciCurrent = { analyses: analyses||[], patterns: patterns||{}, brief: brief||'' };
+    const p = _ciCurrent.patterns;
+    const ana = _ciCurrent.analyses;
+
+    // ── per-video card grid ──
+    const cardGrid = ana.map(v => {
+      const pColor = PLATFORM_COLORS[v.platform] || '#6B7280';
+      return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="background:${pColor};color:#fff;padding:2px 8px;border-radius:8px;font-size:0.68rem;font-weight:800">${_escapeHtml(v.platform||'Unknown')}</span>
+          ${v.engagement_rate != null ? `<span style="color:#059669;font-size:0.72rem;font-weight:700">${v.engagement_rate}% eng</span>` : ''}
+        </div>
+        <div style="font-weight:700;color:#0A1628;font-size:0.82rem;line-height:1.3">${_escapeHtml((v.title||'Untitled').slice(0,80))}</div>
+        ${v.creator ? `<div style="color:#6B7280;font-size:0.7rem">@${_escapeHtml(v.creator.slice(0,40))}</div>` : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;text-align:center">
+          <div style="background:#F9FAFB;border-radius:6px;padding:4px 2px"><div style="font-size:0.78rem;font-weight:800;color:#374151">${_fmt(v.views)}</div><div style="font-size:0.6rem;color:#9CA3AF">VIEWS</div></div>
+          <div style="background:#F9FAFB;border-radius:6px;padding:4px 2px"><div style="font-size:0.78rem;font-weight:800;color:#374151">${_fmt(v.likes)}</div><div style="font-size:0.6rem;color:#9CA3AF">LIKES</div></div>
+          <div style="background:#F9FAFB;border-radius:6px;padding:4px 2px"><div style="font-size:0.78rem;font-weight:800;color:#374151">${v.duration_sec != null ? v.duration_sec+'s' : '—'}</div><div style="font-size:0.6rem;color:#9CA3AF">LENGTH</div></div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          ${v.hook_type       ? `<span style="padding:2px 8px;background:#EDE9FE;color:#7C3AED;border-radius:8px;font-size:0.65rem;font-weight:700">${_escapeHtml(HOOK_LABELS[v.hook_type]||v.hook_type)}</span>` : ''}
+          ${v.emotion_trigger ? `<span style="padding:2px 8px;background:#FEF3C7;color:#92400E;border-radius:8px;font-size:0.65rem;font-weight:700">${_escapeHtml(EMOTION_LABELS[v.emotion_trigger]||v.emotion_trigger)}</span>` : ''}
+          ${v.has_text_overlay ? '<span style="padding:2px 8px;background:#DCFCE7;color:#166534;border-radius:8px;font-size:0.65rem;font-weight:700">📝 Text Overlay</span>' : ''}
+          ${v.cta_present      ? '<span style="padding:2px 8px;background:#FEE2E2;color:#991B1B;border-radius:8px;font-size:0.65rem;font-weight:700">📣 CTA</span>' : ''}
+          ${v.music_type && v.music_type !== 'silence' ? `<span style="padding:2px 8px;background:#DBEAFE;color:#1D4ED8;border-radius:8px;font-size:0.65rem;font-weight:700">🎵 ${_escapeHtml(MUSIC_LABELS[v.music_type]||v.music_type)}</span>` : ''}
+        </div>
+        ${v.caption ? `<div style="color:#6B7280;font-size:0.72rem;border-top:1px solid #F3F4F6;padding-top:6px">${_escapeHtml(v.caption.slice(0,120))}${v.caption.length>120?'…':''}</div>` : ''}
+      </div>`;
+    }).join('');
+
+    // ── winning formula bullets ──
+    const formulaBullets = (p.winning_formula||[]).map(f =>
+      `<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px"><span style="color:#F59E0B;font-size:1rem;flex-shrink:0">⚡</span><div style="color:#374151;font-size:0.82rem">${_escapeHtml(f)}</div></div>`
+    ).join('');
+
+    // ── pattern distribution bars ──
+    function patternBlock(title, items, colorFn) {
+      if (!items || !items.length) return '';
+      return `<div style="margin-bottom:14px">
+        <div style="font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;margin-bottom:6px">${_escapeHtml(title)}</div>
+        ${items.slice(0,5).map(it => `<div style="margin-bottom:6px">
+          <div style="font-size:0.76rem;color:#374151;margin-bottom:3px">${_escapeHtml(it.label||it.value||'')}</div>
+          ${_pctBar(it.pct, colorFn(it.value))}
+        </div>`).join('')}
+      </div>`;
+    }
+
+    const hookItems   = (p.hook_styles||[]).map(h => ({...h, label: HOOK_LABELS[h.value]||h.value}));
+    const emotionItems= (p.emotion_triggers||[]).map(e => ({...e, label: EMOTION_LABELS[e.value]||e.value}));
+    const musicItems  = (p.music_types||[]).map(m => ({...m, label: MUSIC_LABELS[m.value]||m.value}));
+    const lengthItems = (p.length_buckets||[]);
+
+    // ── brief panel ──
+    const briefHtml = (_ciCurrent.brief||'').replace(/^##\s+(.+)$/mg, '<h4 style="font-size:0.88rem;font-weight:800;color:#0A1628;margin:14px 0 4px">$1</h4>')
+      .replace(/^#\s+(.+)$/mg, '<h3 style="font-size:1rem;font-weight:800;color:#0A1628;margin:0 0 8px">$1</h3>')
+      .replace(/^\*\*(.+?)\*\*/mg, '<strong>$1</strong>')
+      .replace(/^- (.+)$/mg, '<div style="display:flex;gap:6px;margin-bottom:5px"><span style="color:#0EA5E9">•</span><span>$1</span></div>')
+      .split('\n').join('<br>');
+
+    // brief topic for handoff (extract first non-heading line as topic)
+    const briefTopic = encodeURIComponent((_ciCurrent.brief.split('\n').find(l => l.trim() && !l.startsWith('#'))||'').replace(/^[-*]\s*/,'').slice(0,200));
+
+    out.innerHTML = `
+      <!-- Summary banner -->
+      <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;border-radius:12px;padding:18px 22px;margin-bottom:18px">
+        <div style="font-size:0.72rem;font-weight:700;opacity:.8;text-transform:uppercase;margin-bottom:6px">🎬 Creative Intelligence Report</div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
+          <div><div style="font-size:1.6rem;font-weight:800">${ana.length}</div><div style="font-size:0.68rem;opacity:.8;font-weight:700">VIDEOS ANALYSED</div></div>
+          <div><div style="font-size:1.6rem;font-weight:800">${p.avg_engagement_rate||'—'}%</div><div style="font-size:0.68rem;opacity:.8;font-weight:700">AVG ENGAGEMENT</div></div>
+          <div><div style="font-size:1.6rem;font-weight:800">${p.optimal_length_range||'—'}</div><div style="font-size:0.68rem;opacity:.8;font-weight:700">OPTIMAL LENGTH</div></div>
+          <div><div style="font-size:1.6rem;font-weight:800">${p.text_overlay_pct||0}%</div><div style="font-size:0.68rem;opacity:.8;font-weight:700">USE TEXT OVERLAY</div></div>
+          <div><div style="font-size:1.6rem;font-weight:800">${p.cta_pct||0}%</div><div style="font-size:0.68rem;opacity:.8;font-weight:700">INCLUDE CTA</div></div>
+        </div>
+      </div>
+
+      <!-- Per-video cards -->
+      <h3 style="font-size:0.94rem;font-weight:800;color:#0A1628;margin:0 0 10px">📹 Video Breakdown (${ana.length})</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:22px">${cardGrid}</div>
+
+      <!-- Patterns + Winning Formula -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:16px">
+          <div style="font-weight:800;color:#0A1628;font-size:0.9rem;margin-bottom:14px">📊 Pattern Analysis</div>
+          ${patternBlock('Hook Styles', hookItems, () => '#7C3AED')}
+          ${patternBlock('Emotion Triggers', emotionItems, () => '#F59E0B')}
+          ${patternBlock('Music / Audio', musicItems, () => '#0EA5E9')}
+          ${patternBlock('Video Length', lengthItems, () => '#059669')}
+        </div>
+        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:16px;display:flex;flex-direction:column">
+          <div style="font-weight:800;color:#0A1628;font-size:0.9rem;margin-bottom:12px">⚡ Winning Formula</div>
+          <div style="flex:1">${formulaBullets || '<div style="color:#9CA3AF;font-size:0.8rem">No formula generated.</div>'}</div>
+        </div>
+      </div>
+
+      <!-- Creative Brief -->
+      <div style="background:#F0F7FF;border:1px solid #BFDBFE;border-radius:10px;padding:18px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div style="font-weight:800;color:#1E3A5F;font-size:0.94rem">📋 Creative Brief</div>
+          <button id="ciHandoff" style="background:linear-gradient(135deg,#7C3AED,#0EA5E9);color:#fff;border:none;padding:7px 16px;border-radius:6px;font-size:0.78rem;font-weight:800;cursor:pointer">→ Open Video Script Generator</button>
+        </div>
+        <div style="color:#1E3A5F;font-size:0.82rem;line-height:1.6">${briefHtml}</div>
+      </div>
+    `;
+
+    // handoff to Video Script Generator
+    document.getElementById('ciHandoff').addEventListener('click', () => {
+      const topHook = (p.hook_styles&&p.hook_styles[0]&&p.hook_styles[0].value)||'curiosity_gap';
+      const topEmo  = (p.emotion_triggers&&p.emotion_triggers[0]&&p.emotion_triggers[0].value)||'excitement';
+      const topic   = `Top competitor creative analysis — use a ${(topHook||'').replace(/_/g,' ')} hook with ${(topEmo||'').replace(/_/g,' ')} emotion. Optimal length: ${p.optimal_length_range||'30-60s'}. ${(p.winning_formula||[])[0]||''}`.slice(0,400);
+      // navigate to video-script view and pre-fill
+      const link = document.querySelector('[data-view="video-script"]');
+      if (link) link.click();
+      setTimeout(() => {
+        const topicEl = document.getElementById('vsScriptTopic') || document.querySelector('#vsWrap textarea') || document.querySelector('[placeholder*="topic" i]');
+        if (topicEl) { topicEl.value = topic; topicEl.dispatchEvent(new Event('input')); }
+      }, 400);
+    });
+  }
+
+  // ── shell ──────────────────────────────────────────────────────────────────
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+      <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">COMPETITOR VIDEO URLs (one per line, up to 20) — TikTok · YouTube Shorts · Instagram Reels</label>
+      <textarea id="ciUrls" rows="5" placeholder="https://www.tiktok.com/@creator/video/123...&#10;https://www.youtube.com/shorts/abc123&#10;https://www.instagram.com/reel/xyz..." style="width:100%;padding:10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.82rem;font-family:monospace;box-sizing:border-box;resize:vertical"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px">
+        <div style="color:#6B7280;font-size:0.74rem">Powered by Perplexity Sonar + GPT-4o-mini · 30-60s for 10+ videos</div>
+        <button id="ciGo" style="background:linear-gradient(135deg,#1a1a2e,#7C3AED);color:#fff;border:none;padding:9px 22px;border-radius:6px;font-size:0.85rem;font-weight:800;cursor:pointer">🎬 Analyse Videos</button>
+      </div>
+    </div>
+    <div id="ciOut"></div>
+    <h3 style="margin:24px 0 8px;color:#0A1628;font-size:0.96rem;font-weight:800">📚 Recent Analyses</h3>
+    <div id="ciHistory"></div>
+  `;
+
+  renderHistory();
+
+  document.getElementById('ciGo').addEventListener('click', async () => {
+    const raw  = document.getElementById('ciUrls').value;
+    const urls = raw.split(/[\r\n]+/).map(s => s.trim()).filter(u => u.startsWith('http'));
+    const out  = document.getElementById('ciOut');
+    if (!urls.length) {
+      out.innerHTML = '<div style="color:#991B1B;background:#FEE2E2;padding:10px 14px;border-radius:8px">⚠ Paste at least one valid URL (must start with https://)</div>';
+      return;
+    }
+    out.innerHTML = `<div style="text-align:center;padding:40px;background:#F5F3FF;border-radius:12px;color:#4C1D95"><div style="font-size:1.8rem;margin-bottom:10px">🎬</div><div style="font-size:0.85rem">Analysing <strong>${urls.length}</strong> video${urls.length!==1?'s':''}…<br><span style="opacity:.7">Perplexity Sonar + GPT-4o-mini · 30-60s</span></div></div>`;
+    try {
+      const r = await fetch('/api/creative-intel/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls })
+      }).then(x => x.json());
+      if (!r.ok) {
+        out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">⚠ ${_escapeHtml(r.error)}</div>`;
+        return;
+      }
+      _ciRender(r.analyses, r.patterns, r.brief);
+      const rr = await fetch('/api/creative-intel/runs').then(x => x.json());
+      _ciRuns = rr.runs || [];
+      renderHistory();
     } catch(e) {
       out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`;
     }

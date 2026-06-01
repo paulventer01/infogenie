@@ -9533,6 +9533,17 @@ app.use('/api/maps-intel', _mapsIntelRouter);
   }
 } catch (e) { console.warn('[t41] maps-intel init failed:', e.message); }})();
 
+// ── T42 — Creative Intelligence (What Makes Content Perform) ─────────────────
+const _creativeIntelRouter = require('./services/creative_intel/api');
+const _creativeIntelSchema = require('./services/creative_intel/schema');
+app.use('/api/creative-intel', _creativeIntelRouter);
+(async () => { try {
+  if (_db.hasDb()) {
+    await _creativeIntelSchema.ensureCreativeIntelSchema();
+    console.log('[t42] creative-intel schema ready');
+  }
+} catch (e) { console.warn('[t42] creative-intel init failed:', e.message); }})();
+
 // ── Tier 7 ─────────────────────────────────────────────────────────────────
 const _podcastSchema = require('./services/podcast_monitor/schema');
 const _podcastRouter = require('./services/podcast_monitor/api');
