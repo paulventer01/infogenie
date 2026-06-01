@@ -38518,6 +38518,15 @@ window.buildColdEmail = function() {
       </div>
     </div>
     <div id="ceOut"></div>`;
+  // Pre-fill from Link Prospector (or any other handoff that sets window._cePreset)
+  if (window._cePreset) {
+    const p = window._cePreset;
+    window._cePreset = null;
+    if (p.target_company) { const el2 = document.getElementById('ceComp'); if (el2) el2.value = p.target_company; }
+    if (p.target_pain)    { const el2 = document.getElementById('cePain'); if (el2) el2.value = p.target_pain; }
+    if (p.sender_offer)   { const el2 = document.getElementById('ceOffer'); if (el2) el2.value = p.sender_offer; }
+    if (p.target_role)    { const el2 = document.getElementById('ceRole'); if (el2) el2.value = p.target_role; }
+  }
 };
 window._ceGo = async function() {
   const payload = {
