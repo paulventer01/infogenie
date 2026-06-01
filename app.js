@@ -2134,7 +2134,11 @@ function buildLaunchModal(camp, idx) {
               <div style="font-weight:700;margin-bottom:4px">✅ Pushed live to ${apiResult.platform}</div>
               <div>${apiResult.message}</div>
               ${apiResult.dashboardUrl ? `<a href="${apiResult.dashboardUrl}" target="_blank" style="color:#059669;font-weight:600;font-size:0.78rem">Open in ${apiResult.platform} dashboard →</a>` : ''}
-            </div>`;
+            </div>
+            ${apiResult.optimizerEnabled === false ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:12px 16px;font-size:0.8rem;color:#92400E;line-height:1.7;margin-top:8px">
+              <div style="font-weight:700;margin-bottom:4px">⚠️ Automatic optimization not enabled</div>
+              <div>${apiResult.optimizerWarning || 'This campaign could not be added to the AI Optimizer, so it won\'t be auto-managed. Retry the launch or check your workspace.'}</div>
+            </div>` : ''}`;
             // Update emoji to rocket
             const emojiEl = statusEl.closest('[style*="padding:36px"]')?.querySelector('[style*="font-size:3rem"]');
             if (emojiEl) emojiEl.textContent = '🚀';

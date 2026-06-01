@@ -840,6 +840,7 @@ app.post('/api/launch/google-ads', async (req, res) => {
     const campaignId = campData.results[0].resourceName.split('/').pop();
 
     // Register with optimizer (best-effort)
+    let optimizerEnabled = true;
     try {
       const dailyBud = (parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30;
       const _tid = await _tkvCtx.resolveTenantId(req, { label: 'launch:google' });
@@ -848,10 +849,16 @@ app.post('/api/launch/google-ads', async (req, res) => {
         VALUES ($4, 'google', $1, $2, $3, 'paused', TRUE)
         ON CONFLICT (tenant_id, platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
       `, [String(campaignId), campaignName, dailyBud, _tid]);
-    } catch (_e) {}
+    } catch (_e) {
+      optimizerEnabled = false;
+      console.error('[Google Ads launch] optimizer registration failed:', _e.message);
+    }
     res.json({
       success: true, platform: 'Google Ads', campaignId, status: 'PAUSED',
-      message: `Campaign "${campaignName}" created in Google Ads (ID: ${campaignId}). It's paused — activate it in your Google Ads dashboard.`,
+      optimizerEnabled,
+      optimizerWarning: optimizerEnabled ? null : 'Campaign was created on Google Ads, but it could not be added to the AI Optimizer, so automatic optimization is not running. Retry the launch or check your workspace, then re-launch to enable it.',
+      message: `Campaign "${campaignName}" created in Google Ads (ID: ${campaignId}). It's paused — activate it in your Google Ads dashboard.`
+        + (optimizerEnabled ? '' : ' ⚠️ Automatic optimization could not be enabled — this campaign won\'t be auto-managed by the AI Optimizer.'),
       dashboardUrl: `https://ads.google.com/aw/campaigns?campaignId=${campaignId}`
     });
   } catch(e) {
@@ -895,6 +902,7 @@ app.post('/api/launch/meta', async (req, res) => {
     if (campData.error) throw new Error(campData.error.message || 'Meta API error');
     if (!campData.id)   throw new Error('No campaign ID returned from Meta');
 
+    let optimizerEnabled = true;
     try {
       const dailyBud = (parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30;
       const _tid = await _tkvCtx.resolveTenantId(req, { label: 'launch:meta' });
@@ -903,10 +911,16 @@ app.post('/api/launch/meta', async (req, res) => {
         VALUES ($4, 'meta', $1, $2, $3, 'paused', TRUE)
         ON CONFLICT (tenant_id, platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
       `, [String(campData.id), campaignName, dailyBud, _tid]);
-    } catch (_e) {}
+    } catch (_e) {
+      optimizerEnabled = false;
+      console.error('[Meta launch] optimizer registration failed:', _e.message);
+    }
     res.json({
       success: true, platform: 'Meta Ads', campaignId: campData.id, status: 'PAUSED',
-      message: `Campaign "${campaignName}" created in Meta Ads Manager (ID: ${campData.id}). Add an Ad Set and Ads in Business Manager to go live.`,
+      optimizerEnabled,
+      optimizerWarning: optimizerEnabled ? null : 'Campaign was created on Meta Ads, but it could not be added to the AI Optimizer, so automatic optimization is not running. Retry the launch or check your workspace, then re-launch to enable it.',
+      message: `Campaign "${campaignName}" created in Meta Ads Manager (ID: ${campData.id}). Add an Ad Set and Ads in Business Manager to go live.`
+        + (optimizerEnabled ? '' : ' ⚠️ Automatic optimization could not be enabled — this campaign won\'t be auto-managed by the AI Optimizer.'),
       dashboardUrl: `https://business.facebook.com/adsmanager/manage/campaigns?act=${adAccountId}&selected_campaign_ids=${campData.id}`
     });
   } catch(e) {
@@ -982,6 +996,7 @@ app.post('/api/launch/microsoft-ads', async (req, res) => {
       throw new Error(errMsg);
     }
 
+    let optimizerEnabled = true;
     try {
       const _tid = await _tkvCtx.resolveTenantId(req, { label: 'launch:microsoft' });
       await _db.getPool().query(`
@@ -989,11 +1004,17 @@ app.post('/api/launch/microsoft-ads', async (req, res) => {
         VALUES ($4, 'microsoft', $1, $2, $3, 'paused', TRUE)
         ON CONFLICT (tenant_id, platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
       `, [String(newId), campaignName, dailyBud, _tid]);
-    } catch (_e) {}
+    } catch (_e) {
+      optimizerEnabled = false;
+      console.error('[Microsoft Ads launch] optimizer registration failed:', _e.message);
+    }
 
     res.json({
       success: true, platform: 'Microsoft Ads', campaignId: newId, status: 'PAUSED',
-      message: `Campaign "${campaignName}" created in Microsoft Advertising (ID: ${newId}). It's paused — open the dashboard to add ad groups, ads and keywords, then activate.`,
+      optimizerEnabled,
+      optimizerWarning: optimizerEnabled ? null : 'Campaign was created on Microsoft Ads, but it could not be added to the AI Optimizer, so automatic optimization is not running. Retry the launch or check your workspace, then re-launch to enable it.',
+      message: `Campaign "${campaignName}" created in Microsoft Advertising (ID: ${newId}). It's paused — open the dashboard to add ad groups, ads and keywords, then activate.`
+        + (optimizerEnabled ? '' : ' ⚠️ Automatic optimization could not be enabled — this campaign won\'t be auto-managed by the AI Optimizer.'),
       dashboardUrl: `https://ui.ads.microsoft.com/campaign/vnext/campaigns?customerId=${process.env.MICROSOFT_ADS_CUSTOMER_ID}&aid=${process.env.MICROSOFT_ADS_ACCOUNT_ID}`,
     });
   } catch (e) {
@@ -1027,6 +1048,7 @@ app.post('/api/launch/tiktok', async (req, res) => {
     if (campData.code !== 0) throw new Error(campData.message || 'TikTok error code ' + campData.code);
     const campaignId = campData.data && campData.data.campaign_id;
 
+    let optimizerEnabled = true;
     try {
       const dailyBud = Math.max((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30, 50);
       const _tid = await _tkvCtx.resolveTenantId(req, { label: 'launch:tiktok' });
@@ -1035,10 +1057,16 @@ app.post('/api/launch/tiktok', async (req, res) => {
         VALUES ($4, 'tiktok', $1, $2, $3, 'paused', TRUE)
         ON CONFLICT (tenant_id, platform, platform_camp_id) DO UPDATE SET name=EXCLUDED.name, updated_at=now()
       `, [String(campaignId), campaignName, dailyBud, _tid]);
-    } catch (_e) {}
+    } catch (_e) {
+      optimizerEnabled = false;
+      console.error('[TikTok launch] optimizer registration failed:', _e.message);
+    }
     res.json({
       success: true, platform: 'TikTok Ads', campaignId, status: 'DISABLED',
-      message: `Campaign "${campaignName}" created in TikTok Ads Manager (ID: ${campaignId}). Enable it and add an Ad Group in TikTok Business Center.`,
+      optimizerEnabled,
+      optimizerWarning: optimizerEnabled ? null : 'Campaign was created on TikTok Ads, but it could not be added to the AI Optimizer, so automatic optimization is not running. Retry the launch or check your workspace, then re-launch to enable it.',
+      message: `Campaign "${campaignName}" created in TikTok Ads Manager (ID: ${campaignId}). Enable it and add an Ad Group in TikTok Business Center.`
+        + (optimizerEnabled ? '' : ' ⚠️ Automatic optimization could not be enabled — this campaign won\'t be auto-managed by the AI Optimizer.'),
       dashboardUrl: `https://ads.tiktok.com/i18n/perf/campaign?aadvid=${advertiserId}`
     });
   } catch(e) {
