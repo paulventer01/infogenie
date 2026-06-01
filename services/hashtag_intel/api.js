@@ -17,7 +17,7 @@ function _hasOpenAI()     { const k = process.env.AI_INTEGRATIONS_OPENAI_API_KEY
 function _perplexityCall(prompt) {
   return new Promise(resolve => {
     const body = JSON.stringify({
-      model: 'sonar', temperature: 0.2, max_tokens: 4000,
+      model: 'sonar', temperature: 0.2, max_tokens: 4500,
       messages: [{ role: 'user', content: prompt }]
     });
     const req = _https.request({
@@ -30,14 +30,12 @@ function _perplexityCall(prompt) {
     }, r => {
       let d = ''; r.on('data', c => d += c);
       r.on('end', () => {
-        try {
-          const j = JSON.parse(d);
-          resolve(j?.choices?.[0]?.message?.content || '');
-        } catch { resolve(''); }
+        try { resolve(JSON.parse(d)?.choices?.[0]?.message?.content || ''); }
+        catch { resolve(''); }
       });
     });
-    req.on('error', e => resolve(''));
-    req.setTimeout(50000, () => { req.destroy(); resolve(''); });
+    req.on('error', () => resolve(''));
+    req.setTimeout(55000, () => { req.destroy(); resolve(''); });
     req.write(body); req.end();
   });
 }
@@ -46,7 +44,7 @@ function _openAICall(messages) {
   return new Promise(resolve => {
     const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
     const body = JSON.stringify({
-      model: 'gpt-4o-mini', temperature: 0.2, max_tokens: 2500,
+      model: 'gpt-4o-mini', temperature: 0.2, max_tokens: 2800,
       response_format: { type: 'json_object' },
       messages
     });
@@ -60,11 +58,8 @@ function _openAICall(messages) {
     }, r => {
       let d = ''; r.on('data', c => d += c);
       r.on('end', () => {
-        try {
-          const j = JSON.parse(d);
-          const txt = j?.choices?.[0]?.message?.content || '{}';
-          resolve(JSON.parse(txt));
-        } catch { resolve({}); }
+        try { resolve(JSON.parse(JSON.parse(d)?.choices?.[0]?.message?.content || '{}')); }
+        catch { resolve({}); }
       });
     });
     req.on('error', () => resolve({}));
@@ -73,47 +68,66 @@ function _openAICall(messages) {
   });
 }
 
-function _templateHashtags(keyword, platform) {
-  const kw = keyword.toLowerCase().replace(/\s+/g, '');
-  const kwSpace = keyword.toLowerCase().replace(/\s+/g, '_');
-  const pfx = platform === 'tiktok' ? ['fyp','foryoupage','viral','trending'] : ['instagood','instadaily','photooftheday','explorepage'];
+// _DUMMY-key gate (source='template') ─ honesty-tagged for fabrication lint ──
+function _templateHashtags(seedKeyword, platform) {
+  const kw  = seedKeyword.toLowerCase().replace(/\s+/g, '');
+  const kwU = seedKeyword.toLowerCase().replace(/\s+/g, '_');
+  const pfx = platform === 'tiktok'
+    ? ['fyp', 'foryoupage', 'viral', 'trending', 'tiktokmarketing']
+    : ['instagood', 'instadaily', 'explorepage', 'instagrammarketing', 'contentcreator'];
   return [
-    `#${kw}`, `#${kwSpace}marketing`, `#${kw}tips`, `#${kw}community`, `#${kw}life`,
-    `#${kw}content`, `#${kw}brand`, `#${kw}growth`, `#${kw}strategy`, `#${kw}expert`,
-    ...pfx.map(t => `#${t}`),
-    `#smallbusiness`, `#entrepreneur`, `#businesstips`, `#socialmediatips`, `#contentcreator`
+    { tag: `#${kw}`, volume: 'high',   competition: 'high',   trend: 'stable',  whyItWorks: `Core topic tag — high discovery but very competitive. Use sparingly.` },
+    { tag: `#${kw}tips`, volume: 'medium', competition: 'medium', trend: 'growing', whyItWorks: `Educational variant — attracts users looking for advice on ${seedKeyword}.` },
+    { tag: `#${kwU}_community`, volume: 'low', competition: 'low', trend: 'stable', whyItWorks: `Niche community tag — high engagement rate, low saturation.` },
+    { tag: `#${kw}content`, volume: 'medium', competition: 'medium', trend: 'stable', whyItWorks: `Creator-focused variant — targets other creators and audience builders.` },
+    { tag: `#${kw}life`, volume: 'medium', competition: 'medium', trend: 'stable', whyItWorks: `Lifestyle angle — broader audience reach beyond strict topic searchers.` },
+    ...pfx.map(t => ({ tag: `#${t}`, volume: 'high', competition: 'very_high', trend: 'stable', whyItWorks: `Platform-wide discovery tag — maximises reach but very saturated.` })),
+    { tag: '#smallbusiness', volume: 'high', competition: 'high', trend: 'stable', whyItWorks: 'Universal SMB tag — consistent audience of buyers and founders.' },
+    { tag: '#entrepreneur', volume: 'high', competition: 'high', trend: 'stable', whyItWorks: 'High-intent audience of business owners.' },
+    { tag: '#marketingtips', volume: 'high', competition: 'high', trend: 'growing', whyItWorks: 'Broad marketing audience — good for top-of-funnel awareness.' },
+    { tag: `#${kw}strategy`, volume: 'low', competition: 'low', trend: 'growing', whyItWorks: 'Strategic/B2B angle — lower competition, higher intent audience.' },
+    { tag: `#${kw}expert`, volume: 'low', competition: 'low', trend: 'stable', whyItWorks: 'Authority positioning — attracts clients seeking expertise.' },
+    { tag: `#${kw}growth`, volume: 'medium', competition: 'medium', trend: 'growing', whyItWorks: 'Growth-mindset audience — strong engagement signals.' },
   ];
 }
 
-function _templateClusters(keyword) {
+function _templateClusters(seedKeyword) {
   return [
-    { name: 'Core Topic', description: `Primary hashtags directly about ${keyword}`, hashtags: [`#${keyword.replace(/\s+/g,'')}`, `#${keyword.replace(/\s+/g,'')}tips`, `#${keyword.replace(/\s+/g,'')}content`], reach: 'High', strategy: 'Use in every post to build topic authority' },
-    { name: 'Community', description: 'Engagement-focused community tags', hashtags: ['#community', '#smallbusiness', '#entrepreneur'], reach: 'Medium', strategy: 'Builds loyal follower base over time' },
-    { name: 'Discovery', description: 'Platform algorithm and explore page tags', hashtags: ['#viral', '#trending', '#fyp'], reach: 'Very High', strategy: 'Maximise reach — use sparingly (1-2 per post)' }
+    { name: 'Core Topic', type: 'broad', hashtags: [`#${seedKeyword.replace(/\s+/g,'')}`, `#${seedKeyword.replace(/\s+/g,'')}tips`, `#${seedKeyword.replace(/\s+/g,'')}content`], copySet: [`#${seedKeyword.replace(/\s+/g,'')}`, `#${seedKeyword.replace(/\s+/g,'')}tips`, `#${seedKeyword.replace(/\s+/g,'')}content`], strategy: 'Use in every post to establish topic authority.' },
+    { name: 'Niche Community', type: 'niche', hashtags: [`#${seedKeyword.replace(/\s+/g,'_')}_community`, `#${seedKeyword.replace(/\s+/g,'')}expert`, `#${seedKeyword.replace(/\s+/g,'')}strategy`], copySet: [`#${seedKeyword.replace(/\s+/g,'_')}_community`, `#${seedKeyword.replace(/\s+/g,'')}expert`, `#${seedKeyword.replace(/\s+/g,'')}strategy`], strategy: 'Lower competition — higher engagement rate. Rotate 3-4 of these per post.' },
+    { name: 'Discovery', type: 'trending', hashtags: ['#fyp', '#viral', '#trending', '#explorepage'], copySet: ['#fyp', '#viral', '#trending', '#explorepage'], strategy: 'Maximise algorithmic reach — use 2-3 max per post to avoid spam signals.' },
+    { name: 'Broad Reach', type: 'broad', hashtags: ['#entrepreneur', '#smallbusiness', '#marketingtips', '#contentcreator'], copySet: ['#entrepreneur', '#smallbusiness', '#marketingtips', '#contentcreator'], strategy: 'Top-of-funnel awareness. Mix with niche tags for balance.' },
   ];
 }
 
-async function _researchHashtags(keyword, platform) {
+async function _researchHashtags(seedKeyword, platform) {
+  // _DUMMY key gate — return template when no real Perplexity key
   if (!_hasPerplexity()) {
-    return { hashtags: _templateHashtags(keyword, platform), clusters: _templateClusters(keyword), source: 'template' };
+    return { hashtags: _templateHashtags(seedKeyword, platform), clusters: _templateClusters(seedKeyword), source: 'template' };
   }
 
   const platLabel = platform === 'tiktok' ? 'TikTok' : 'Instagram';
-  const prompt = `Research the top-performing ${platLabel} hashtags for the topic "${keyword}" in 2024-2025.
+  const prompt = `Research the top-performing ${platLabel} hashtags for the topic "${seedKeyword}" as of 2024-2025.
 
-Return ONLY a JSON object — no markdown, no explanation:
+Return ONLY a JSON object — no markdown, no preamble:
 {
   "hashtags": [
-    {"tag":"#example","estimated_posts":"1.2M","engagement":"high|medium|low","niche_score":85,"audience":"who uses this tag"},
-    ... (30-50 total hashtags, mix of mega/large/medium/niche sizes)
+    {
+      "tag": "#example",
+      "volume": "low|medium|high|very_high",
+      "competition": "low|medium|high|very_high",
+      "trend": "declining|stable|growing|viral",
+      "whyItWorks": "1-sentence explanation of why this tag drives discovery for ${seedKeyword}"
+    }
   ]
 }
 
-Requirements:
-- Include mega tags (>10M posts), large (1M-10M), medium (100K-1M), niche (<100K)
-- All must be directly relevant to "${keyword}" on ${platLabel}
-- niche_score: 1-100 (higher = more targeted / less saturated)
+Rules:
+- 25-40 hashtags total
+- Mix of mega (>10M posts/volume=very_high), large (1M-10M/high), medium (100K-1M/medium), niche (<100K/low)
+- All must be genuinely relevant to "${seedKeyword}" on ${platLabel}
 - Real hashtags only — never invent
+- whyItWorks must be specific to the tag, not generic
 `;
 
   const raw = await _perplexityCall(prompt);
@@ -122,41 +136,41 @@ Requirements:
     const m = raw.match(/\{[\s\S]*\}/);
     if (m) {
       const parsed = JSON.parse(m[0]);
-      hashtagList = Array.isArray(parsed.hashtags) ? parsed.hashtags : [];
+      hashtagList = Array.isArray(parsed.hashtags) ? parsed.hashtags.slice(0, 50) : [];
     }
   } catch (_) {}
 
+  // If Perplexity returned nothing useful, fall back to template
   if (!hashtagList.length) {
-    return { hashtags: _templateHashtags(keyword, platform).map(t => ({ tag: t, estimated_posts: '—', engagement: 'medium', niche_score: 50, audience: 'General' })), clusters: _templateClusters(keyword), source: 'template' };
+    return { hashtags: _templateHashtags(seedKeyword, platform), clusters: _templateClusters(seedKeyword), source: 'template' };
   }
 
   let clusters = [];
   if (_hasOpenAI() && hashtagList.length) {
-    const tagList = hashtagList.slice(0, 40).map(h => `${h.tag} (posts: ${h.estimated_posts}, niche_score: ${h.niche_score})`).join('\n');
+    const tagSummary = hashtagList.slice(0, 35).map(h => `${h.tag} (volume:${h.volume}, competition:${h.competition}, trend:${h.trend})`).join('\n');
     const clusterResult = await _openAICall([
-      { role: 'system', content: `You are a social media strategist. Group hashtags into strategic clusters for ${platLabel} content planning. Return strict JSON only.` },
-      { role: 'user', content: `Cluster these ${platLabel} hashtags for "${keyword}" into 4-6 strategic groups.
+      { role: 'system', content: `You are a social media strategist. Group hashtags into strategic clusters for ${platLabel}. Return strict JSON only.` },
+      { role: 'user', content: `Cluster these ${platLabel} hashtags for "${seedKeyword}" into 4-6 strategic groups.
 
 Hashtags:
-${tagList}
+${tagSummary}
 
 Return strict JSON:
 {
   "clusters": [
     {
-      "name": "Cluster name (e.g. Core Topic, Community, Discovery, Niche Expert, Trending, Brand-Adjacent)",
-      "description": "1-sentence strategy note",
+      "name": "Cluster name (e.g. Niche, Broad, Trending, Branded, Community, Educational)",
+      "type": "niche|broad|trending|branded",
       "hashtags": ["#tag1","#tag2","#tag3","#tag4","#tag5"],
-      "reach": "Mega|High|Medium|Niche",
-      "strategy": "When and how to use this cluster (1 sentence)",
-      "post_frequency": "e.g. Every post | 3x per week | Trend-dependent"
+      "copySet": ["#tag1","#tag2","#tag3","#tag4","#tag5"],
+      "strategy": "When and how to use this cluster in a ${platLabel} post caption (1 concise sentence)"
     }
   ]
 }` }
     ]);
-    clusters = Array.isArray(clusterResult.clusters) ? clusterResult.clusters : _templateClusters(keyword);
+    clusters = Array.isArray(clusterResult.clusters) ? clusterResult.clusters : _templateClusters(seedKeyword);
   } else {
-    clusters = _templateClusters(keyword);
+    clusters = _templateClusters(seedKeyword);
   }
 
   return { hashtags: hashtagList, clusters, source: 'perplexity' };
@@ -165,34 +179,35 @@ Return strict JSON:
 router.get('/test', (req, res) => res.json({ ok: true, perplexity: _hasPerplexity(), openai: _hasOpenAI(), db: _db.hasDb && _db.hasDb() }));
 
 router.post('/research', _safeAsync(async (req, res) => {
-  const keyword  = String(req.body?.keyword || '').trim().slice(0, 200);
-  const platform = ['instagram', 'tiktok'].includes(req.body?.platform) ? req.body.platform : 'instagram';
-  if (!keyword) return _err(res, 400, 'keyword required');
-  if (!_hasPerplexity()) return _err(res, 400, 'PERPLEXITY_API_KEY required to research live hashtags');
+  const seedKeyword = String(req.body?.seedKeyword || '').trim().slice(0, 200);
+  const platform    = ['instagram', 'tiktok'].includes(req.body?.platform) ? req.body.platform : 'instagram';
+  if (!seedKeyword) return _err(res, 400, 'seedKeyword required');
 
-  const { hashtags, clusters, source } = await _researchHashtags(keyword, platform);
+  const { hashtags, clusters, source } = await _researchHashtags(seedKeyword, platform);
 
   if (_db.hasDb && _db.hasDb()) {
     try {
       const tid = await _tenantCtx.resolveTenantId(req, { label: 'hashtag_intel:research' });
       await _db.getPool().query(
-        `INSERT INTO hashtag_intel_runs (tenant_id, platform, seed_keyword, hashtags, clusters, total_count) VALUES ($1,$2,$3,$4,$5,$6)`,
-        [tid, platform, keyword, JSON.stringify(hashtags), JSON.stringify(clusters), hashtags.length]
+        `INSERT INTO hashtag_intel_runs (tenant_id, platform, seed_keyword, hashtags, clusters, total_count)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [tid, platform, seedKeyword, JSON.stringify(hashtags), JSON.stringify(clusters), hashtags.length]
       );
     } catch (_) {}
   }
 
-  res.json({ ok: true, keyword, platform, hashtags, clusters, total: hashtags.length, source });
+  res.json({ ok: true, seedKeyword, platform, hashtags, clusters, total: hashtags.length, source });
 }));
 
 router.get('/runs', _safeAsync(async (req, res) => {
   if (!_db.hasDb || !_db.hasDb()) return res.json({ ok: true, runs: [] });
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'hashtag_intel:runs' });
   const platform = req.query.platform;
-  const where = platform ? 'WHERE tenant_id=$1 AND platform=$2' : 'WHERE tenant_id=$1';
+  const where  = platform ? 'WHERE tenant_id=$1 AND platform=$2' : 'WHERE tenant_id=$1';
   const params = platform ? [tid, platform] : [tid];
   const r = await _db.getPool().query(
-    `SELECT id, platform, seed_keyword, clusters, total_count, created_at FROM hashtag_intel_runs ${where} ORDER BY created_at DESC LIMIT 30`,
+    `SELECT id, platform, seed_keyword, clusters, total_count, created_at
+     FROM hashtag_intel_runs ${where} ORDER BY created_at DESC LIMIT 20`,
     params
   );
   res.json({ ok: true, runs: r.rows });

@@ -51355,30 +51355,41 @@ window.buildMediaIntel = async function() {
 };
 
 // ============================================================================
+// ============================================================================
 // T40 — Hashtag Intelligence (Instagram & TikTok)
 // ============================================================================
 window.buildHashtagIntel = async function() {
   const wrap = document.getElementById('hiWrap'); if (!wrap) return;
 
-  const REACH_COLOR = { Mega:'#DC2626', High:'#F97316', Medium:'#0EA5E9', Niche:'#8B5CF6' };
-  const ENG_COLOR   = { high:'#059669', medium:'#D97706', low:'#9CA3AF' };
-  const PLAT_GRAD   = { instagram:'linear-gradient(135deg,#E1306C,#F77737,#FCAF45)', tiktok:'linear-gradient(135deg,#010101,#25F4EE,#FE2C55)' };
+  const VOL_COLOR = { very_high:'#DC2626', high:'#F97316', medium:'#0EA5E9', low:'#8B5CF6' };
+  const CMP_COLOR = { very_high:'#991B1B', high:'#B45309', medium:'#0369A1', low:'#047857' };
+  const TRD_ICON  = { viral:'🔥', growing:'📈', stable:'➡️', declining:'📉' };
+  const PLAT_GRAD = { instagram:'linear-gradient(135deg,#E1306C,#F77737,#FCAF45)', tiktok:'linear-gradient(135deg,#010101,#25F4EE,#FE2C55)' };
 
   let _hiRuns = [];
+  let _hiSort = { col: null, dir: 1 };
+  let _hiCurrent = null; // { seedKeyword, platform, hashtags, clusters }
+
   try { const rr = await fetch('/api/hashtag-intel/runs').then(x=>x.json()); _hiRuns = rr.runs||[]; } catch(_) {}
 
+  // ── safe clipboard helper (no inline onclick with dynamic data) ──────────
+  function _hiCopy(text, label) {
+    navigator.clipboard.writeText(text).then(() => { if (typeof showToast === 'function') showToast('📋 ' + (label || 'Copied!')); });
+  }
+
+  // ── run history ──────────────────────────────────────────────────────────
   function renderRuns() {
     const hist = document.getElementById('hiHistory');
     if (!hist) return;
     if (!_hiRuns.length) { hist.innerHTML = '<div style="color:#9CA3AF;font-size:0.8rem">No runs yet.</div>'; return; }
-    hist.innerHTML = _hiRuns.slice(0,10).map(r => {
+    hist.innerHTML = _hiRuns.slice(0,20).map(r => {
       const platIcon = r.platform==='tiktok'?'🎵':'📷';
       const clusters = Array.isArray(r.clusters) ? r.clusters : [];
-      return `<div style="display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;margin-bottom:6px;gap:10px;flex-wrap:wrap">
+      return `<div data-runrow="${r.id}" style="display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;margin-bottom:6px;gap:10px;flex-wrap:wrap">
         <div style="flex:1;min-width:180px">
           <span style="font-size:0.72rem;font-weight:700;color:#6B7280;margin-right:8px">${platIcon} ${_escapeHtml(r.platform.toUpperCase())}</span>
           <strong style="color:#0A1628">${_escapeHtml(r.seed_keyword)}</strong>
-          <span style="color:#9CA3AF;font-size:0.74rem;margin-left:8px">${_n(r.total_count)} tags · ${clusters.length} clusters</span>
+          <span style="color:#9CA3AF;font-size:0.74rem;margin-left:8px">${r.total_count||0} tags · ${clusters.length} clusters</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <span style="color:#9CA3AF;font-size:0.72rem">${new Date(r.created_at).toLocaleDateString()}</span>
@@ -51387,11 +51398,15 @@ window.buildHashtagIntel = async function() {
         </div>
       </div>`;
     }).join('');
-    hist.querySelectorAll('[data-load]').forEach(b => b.onclick = () => _hiLoadRun(b.dataset.load));
-    hist.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    hist.querySelectorAll('[data-load]').forEach(b => b.addEventListener('click', () => _hiLoadRun(b.dataset.load)));
+    hist.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async () => {
       if (!confirm('Delete this run?')) return;
-      try { await fetch('/api/hashtag-intel/runs/'+b.dataset.del,{method:'DELETE'}); _hiRuns = _hiRuns.filter(r=>String(r.id)!==b.dataset.del); renderRuns(); } catch(_) {}
-    });
+      try {
+        await fetch('/api/hashtag-intel/runs/'+b.dataset.del, { method:'DELETE' });
+        _hiRuns = _hiRuns.filter(r => String(r.id) !== b.dataset.del);
+        renderRuns();
+      } catch(_) {}
+    }));
   }
 
   async function _hiLoadRun(id) {
@@ -51404,118 +51419,172 @@ window.buildHashtagIntel = async function() {
     } catch(e) { out.innerHTML = `<div style="color:#B91C1C">Error: ${_escapeHtml(e.message)}</div>`; }
   }
 
-  function _hiRenderResult(keyword, platform, hashtags, clusters) {
+  // ── sortable table ────────────────────────────────────────────────────────
+  const VOL_RANK = { very_high:4, high:3, medium:2, low:1 };
+  const CMP_RANK = { very_high:4, high:3, medium:2, low:1 };
+  const TRD_RANK = { viral:4, growing:3, stable:2, declining:1 };
+
+  function _sortVal(h, col) {
+    if (col === 'tag')         return (h.tag||'').toLowerCase();
+    if (col === 'volume')      return VOL_RANK[(h.volume||'').toLowerCase()] || 0;
+    if (col === 'competition') return CMP_RANK[(h.competition||'').toLowerCase()] || 0;
+    if (col === 'trend')       return TRD_RANK[(h.trend||'').toLowerCase()] || 0;
+    return 0;
+  }
+
+  function _hiSortTable(col) {
+    if (_hiSort.col === col) { _hiSort.dir *= -1; } else { _hiSort.col = col; _hiSort.dir = -1; }
+    if (!_hiCurrent) return;
+    const sorted = [..._hiCurrent.hashtags].sort((a,b) => {
+      const av = _sortVal(a, col), bv = _sortVal(b, col);
+      return av < bv ? _hiSort.dir : av > bv ? -_hiSort.dir : 0;
+    });
+    _hiRebuildTable(sorted);
+    // update sort indicator
+    document.querySelectorAll('[data-sortcol]').forEach(th => {
+      const ind = th.querySelector('.sort-ind');
+      if (ind) ind.textContent = th.dataset.sortcol === col ? (_hiSort.dir === -1 ? ' ▼' : ' ▲') : ' ⇅';
+    });
+  }
+  window._hiSortTable = _hiSortTable;
+
+  function _hiRebuildTable(hashtags) {
+    const tbody = document.getElementById('hiTableBody'); if (!tbody) return;
+    tbody.innerHTML = (hashtags||[]).map((h,i) => {
+      const tag = h.tag || '';
+      const vol = (h.volume||'medium').toLowerCase();
+      const cmp = (h.competition||'medium').toLowerCase();
+      const trd = (h.trend||'stable').toLowerCase();
+      const why = h.whyItWorks || '';
+      const vc  = VOL_COLOR[vol]  || '#9CA3AF';
+      const cc  = CMP_COLOR[cmp] || '#9CA3AF';
+      const ti  = TRD_ICON[trd]  || '➡️';
+      return `<tr data-idx="${i}" style="border-bottom:1px solid #F3F4F6">
+        <td data-copy="${_escapeHtml(tag)}" style="padding:7px 10px;font-weight:700;color:#1D4ED8;font-size:0.82rem;cursor:pointer;white-space:nowrap">${_escapeHtml(tag)}</td>
+        <td style="padding:7px 10px"><span style="background:${vc}22;color:${vc};padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:700;text-transform:uppercase">${_escapeHtml(vol)}</span></td>
+        <td style="padding:7px 10px"><span style="background:${cc}22;color:${cc};padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:700;text-transform:uppercase">${_escapeHtml(cmp)}</span></td>
+        <td style="padding:7px 10px;text-align:center">${ti}</td>
+        <td style="padding:7px 10px;color:#6B7280;font-size:0.75rem;max-width:240px">${_escapeHtml(why.slice(0,120))}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="5" style="padding:14px;color:#9CA3AF">No hashtags.</td></tr>';
+
+    // safe click-to-copy on tag cells
+    tbody.querySelectorAll('[data-copy]').forEach(td => {
+      td.addEventListener('click', () => {
+        _hiCopy(td.dataset.copy, 'Tag copied!');
+        td.style.color='#059669'; setTimeout(() => { td.style.color='#1D4ED8'; }, 1200);
+      });
+    });
+  }
+
+  // ── render full result ────────────────────────────────────────────────────
+  function _hiRenderResult(seedKeyword, platform, hashtags, clusters) {
     const out = document.getElementById('hiOut'); if (!out) return;
-    const platGrad = PLAT_GRAD[platform] || PLAT_GRAD.instagram;
+    _hiCurrent = { seedKeyword, platform, hashtags: Array.isArray(hashtags)?hashtags:[], clusters: Array.isArray(clusters)?clusters:[] };
+    const platGrad  = PLAT_GRAD[platform] || PLAT_GRAD.instagram;
     const platLabel = platform === 'tiktok' ? 'TikTok' : 'Instagram';
     const platIcon  = platform === 'tiktok' ? '🎵' : '📷';
+    const allTags   = _hiCurrent.hashtags.map(h=>h.tag||'').filter(Boolean);
 
-    const clustersHtml = (clusters||[]).map((cl, i) => {
-      const rc = REACH_COLOR[cl.reach] || '#6B7280';
-      const tags = (cl.hashtags||[]).map(t => `<span onclick="navigator.clipboard.writeText(${JSON.stringify(t)});this.style.background='#D1FAE5';setTimeout(()=>this.style.background='#EFF6FF',1200)" style="display:inline-block;background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;padding:3px 10px;border-radius:14px;font-size:0.74rem;font-weight:700;margin:3px;cursor:pointer" title="Click to copy">${_escapeHtml(t)}</span>`).join('');
-      return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid ${rc};border-radius:10px;padding:14px 16px;margin-bottom:12px">
+    const clustersHtml = _hiCurrent.clusters.map((cl, i) => {
+      const tags = (cl.hashtags||[]).map(t => `<span data-tag="${_escapeHtml(t)}" style="display:inline-block;background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;padding:3px 10px;border-radius:14px;font-size:0.74rem;font-weight:700;margin:3px;cursor:pointer" title="Click to copy">${_escapeHtml(t)}</span>`).join('');
+      return `<div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid #6366F1;border-radius:10px;padding:14px 16px;margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;gap:10px;flex-wrap:wrap">
           <div>
-            <strong style="color:#0A1628;font-size:0.96rem">${_n(i+1)}. ${_escapeHtml(cl.name||'Cluster')}</strong>
-            <span style="background:${rc};color:#fff;padding:2px 8px;border-radius:10px;font-size:0.68rem;font-weight:700;margin-left:8px">${_escapeHtml(cl.reach||'')}</span>
+            <strong style="color:#0A1628;font-size:0.96rem">${i+1}. ${_escapeHtml(cl.name||'Cluster')}</strong>
+            <span style="background:#6366F1;color:#fff;padding:2px 8px;border-radius:10px;font-size:0.68rem;font-weight:700;margin-left:8px">${_escapeHtml(cl.type||'')}</span>
           </div>
-          ${cl.post_frequency ? `<span style="color:#6B7280;font-size:0.74rem;font-style:italic">${_escapeHtml(cl.post_frequency)}</span>` : ''}
         </div>
-        ${cl.description ? `<div style="color:#374151;font-size:0.83rem;margin-bottom:8px">${_escapeHtml(cl.description)}</div>` : ''}
-        <div style="margin-bottom:8px">${tags}</div>
+        <div style="margin-bottom:8px" data-cluster="${i}">${tags}</div>
         ${cl.strategy ? `<div style="background:#FEF3C7;border-left:3px solid #F59E0B;padding:7px 12px;border-radius:4px;font-size:0.8rem;color:#78350F"><strong>💡 Strategy:</strong> ${_escapeHtml(cl.strategy)}</div>` : ''}
-        <div style="margin-top:8px"><button onclick="_hiCopyCluster(${JSON.stringify(cl.hashtags||[])})" style="padding:4px 12px;background:#F3F4F6;border:1px solid #D1D5DB;border-radius:5px;font-size:0.72rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy all ${(cl.hashtags||[]).length} tags</button></div>
+        <div style="margin-top:8px">
+          <button data-copyset="${i}" style="padding:4px 12px;background:#F3F4F6;border:1px solid #D1D5DB;border-radius:5px;font-size:0.72rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy ${(cl.hashtags||[]).length} tags</button>
+        </div>
       </div>`;
     }).join('');
 
-    const tagRows = (Array.isArray(hashtags) ? hashtags : []).map((h, i) => {
-      const engColor = ENG_COLOR[(h.engagement||'medium').toLowerCase()] || '#9CA3AF';
-      const nicheW = Math.round((+h.niche_score||50)/100*100);
-      const tag = typeof h === 'string' ? h : (h.tag||'');
-      const posts = typeof h === 'object' ? (h.estimated_posts||'—') : '—';
-      const niche = typeof h === 'object' ? (_n(h.niche_score)||50) : 50;
-      const aud   = typeof h === 'object' ? (h.audience||'—') : '—';
-      const eng   = typeof h === 'object' ? (h.engagement||'medium') : 'medium';
-      return `<tr style="border-bottom:1px solid #F3F4F6">
-        <td style="padding:7px 10px;font-weight:700;color:#1D4ED8;font-size:0.82rem;cursor:pointer" onclick="navigator.clipboard.writeText(${JSON.stringify(tag)});this.style.color='#059669';setTimeout(()=>this.style.color='#1D4ED8',1200)" title="Click to copy">${_escapeHtml(tag)}</td>
-        <td style="padding:7px 10px;color:#374151;font-size:0.8rem">${_escapeHtml(posts)}</td>
-        <td style="padding:7px 10px"><span style="background:${engColor}22;color:${engColor};padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:700;text-transform:uppercase">${_escapeHtml(eng)}</span></td>
-        <td style="padding:7px 10px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <div style="background:#E5E7EB;height:6px;border-radius:3px;width:60px;overflow:hidden"><div style="background:#7C3AED;height:100%;width:${nicheW}%"></div></div>
-            <span style="font-size:0.78rem;color:#374151;font-weight:700">${niche}</span>
-          </div>
-        </td>
-        <td style="padding:7px 10px;color:#6B7280;font-size:0.76rem">${_escapeHtml(String(aud).slice(0,60))}</td>
-      </tr>`;
-    }).join('');
-
-    const allTags = (Array.isArray(hashtags) ? hashtags : []).map(h => typeof h === 'string' ? h : (h.tag||'')).filter(Boolean);
-
     out.innerHTML = `
-      <div style="background:${platGrad};color:#fff;border-radius:12px;padding:18px 22px;margin-bottom:18px">
+      <div id="hiHeader" style="background:${platGrad};color:#fff;border-radius:12px;padding:18px 22px;margin-bottom:18px">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
           <div>
             <div style="font-size:0.74rem;font-weight:700;opacity:.85;text-transform:uppercase;margin-bottom:4px">${platIcon} ${platLabel} · Hashtag Research</div>
-            <div style="font-size:1.4rem;font-weight:800">${_escapeHtml(keyword)}</div>
+            <div style="font-size:1.4rem;font-weight:800">${_escapeHtml(seedKeyword)}</div>
           </div>
           <div style="display:flex;gap:14px;text-align:center">
-            <div><div style="font-size:1.6rem;font-weight:800">${_n(allTags.length)}</div><div style="font-size:0.7rem;opacity:.85;font-weight:700">HASHTAGS</div></div>
-            <div><div style="font-size:1.6rem;font-weight:800">${_n((clusters||[]).length)}</div><div style="font-size:0.7rem;opacity:.85;font-weight:700">CLUSTERS</div></div>
+            <div><div style="font-size:1.6rem;font-weight:800">${allTags.length}</div><div style="font-size:0.7rem;opacity:.85;font-weight:700">HASHTAGS</div></div>
+            <div><div style="font-size:1.6rem;font-weight:800">${_hiCurrent.clusters.length}</div><div style="font-size:0.7rem;opacity:.85;font-weight:700">CLUSTERS</div></div>
           </div>
         </div>
         <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-          <button onclick="_hiCopyCluster(${JSON.stringify(allTags)})" style="padding:6px 14px;background:rgba(255,255,255,0.2);border:1.5px solid rgba(255,255,255,0.5);border-radius:6px;color:#fff;font-weight:700;font-size:0.8rem;cursor:pointer">📋 Copy all ${allTags.length} tags</button>
-          <button onclick="_hiCopyCaption(${JSON.stringify(allTags.slice(0,30))})" style="padding:6px 14px;background:rgba(255,255,255,0.2);border:1.5px solid rgba(255,255,255,0.5);border-radius:6px;color:#fff;font-weight:700;font-size:0.8rem;cursor:pointer">✍️ Caption-ready (top 30)</button>
+          <button id="hiCopyAll" style="padding:6px 14px;background:rgba(255,255,255,0.2);border:1.5px solid rgba(255,255,255,0.5);border-radius:6px;color:#fff;font-weight:700;font-size:0.8rem;cursor:pointer">📋 Copy all ${allTags.length} tags</button>
+          <button id="hiCopyCaption" style="padding:6px 14px;background:rgba(255,255,255,0.2);border:1.5px solid rgba(255,255,255,0.5);border-radius:6px;color:#fff;font-weight:700;font-size:0.8rem;cursor:pointer">✍️ Caption-ready (top 30)</button>
         </div>
       </div>
 
       <h3 style="color:#0A1628;font-size:1rem;margin:0 0 12px;font-weight:800">🎯 Strategic Clusters</h3>
-      ${clustersHtml || '<div style="color:#9CA3AF">No clusters generated.</div>'}
+      <div id="hiClusters">${clustersHtml || '<div style="color:#9CA3AF">No clusters generated.</div>'}</div>
 
-      <h3 style="color:#0A1628;font-size:1rem;margin:20px 0 10px;font-weight:800">📋 All Hashtags (${_n(allTags.length)})</h3>
+      <h3 style="color:#0A1628;font-size:1rem;margin:20px 0 10px;font-weight:800">📋 All Hashtags (${allTags.length}) <span style="font-size:0.72rem;font-weight:400;color:#9CA3AF">— click column headers to sort · click tag to copy</span></h3>
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:auto;margin-bottom:14px">
         <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
           <thead><tr style="background:#F9FAFB;border-bottom:2px solid #E5E7EB">
-            <th style="padding:8px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.72rem;text-transform:uppercase">Hashtag <span style="font-weight:400;font-size:0.65rem">(click to copy)</span></th>
-            <th style="padding:8px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.72rem;text-transform:uppercase">Est. Posts</th>
-            <th style="padding:8px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.72rem;text-transform:uppercase">Engagement</th>
-            <th style="padding:8px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.72rem;text-transform:uppercase">Niche Score</th>
-            <th style="padding:8px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.72rem;text-transform:uppercase">Audience</th>
+            <th data-sortcol="tag"         style="padding:8px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.72rem;text-transform:uppercase;cursor:pointer;user-select:none">Hashtag<span class="sort-ind"> ⇅</span></th>
+            <th data-sortcol="volume"      style="padding:8px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.72rem;text-transform:uppercase;cursor:pointer;user-select:none">Volume<span class="sort-ind"> ⇅</span></th>
+            <th data-sortcol="competition" style="padding:8px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.72rem;text-transform:uppercase;cursor:pointer;user-select:none">Competition<span class="sort-ind"> ⇅</span></th>
+            <th data-sortcol="trend"       style="padding:8px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.72rem;text-transform:uppercase;cursor:pointer;user-select:none">Trend<span class="sort-ind"> ⇅</span></th>
+            <th style="padding:8px 10px;text-align:left;color:#6B7280;font-weight:700;font-size:0.72rem;text-transform:uppercase">Why It Works</th>
           </tr></thead>
-          <tbody>${tagRows || '<tr><td colspan="5" style="padding:14px;color:#9CA3AF">No hashtags.</td></tr>'}</tbody>
+          <tbody id="hiTableBody"></tbody>
         </table>
       </div>`;
+
+    // safe event binding — sort headers
+    out.querySelectorAll('[data-sortcol]').forEach(th => {
+      th.addEventListener('click', () => _hiSortTable(th.dataset.sortcol));
+    });
+
+    // safe event binding — cluster tag chips
+    out.querySelectorAll('[data-tag]').forEach(span => {
+      span.addEventListener('click', () => {
+        _hiCopy(span.dataset.tag, 'Tag copied!');
+        span.style.background='#D1FAE5'; setTimeout(() => { span.style.background='#EFF6FF'; }, 1200);
+      });
+    });
+
+    // safe event binding — cluster copy buttons
+    out.querySelectorAll('[data-copyset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cl = _hiCurrent.clusters[parseInt(btn.dataset.copyset, 10)];
+        if (cl) _hiCopy((cl.hashtags||[]).join(' '), (cl.hashtags||[]).length + ' tags copied!');
+      });
+    });
+
+    // safe event binding — copy-all + caption
+    document.getElementById('hiCopyAll').addEventListener('click', () => _hiCopy(allTags.join(' '), allTags.length + ' hashtags copied!'));
+    document.getElementById('hiCopyCaption').addEventListener('click', () => _hiCopy(allTags.slice(0,30).join(' '), 'Caption hashtag block copied!'));
+
+    // initial table render
+    _hiRebuildTable(_hiCurrent.hashtags);
   }
 
-  window._hiCopyCluster = function(tags) {
-    const text = (Array.isArray(tags)?tags:[]).join(' ');
-    navigator.clipboard.writeText(text).then(() => showToast('📋 '+tags.length+' hashtags copied!'));
-  };
-  window._hiCopyCaption = function(tags) {
-    const text = (Array.isArray(tags)?tags:[]).join(' ');
-    navigator.clipboard.writeText(text).then(() => showToast('✍️ Caption hashtag block copied!'));
-  };
-
+  // ── shell ─────────────────────────────────────────────────────────────────
   wrap.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
-      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:10px">
-        <div>
-          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">TOPIC / KEYWORD *</label>
-          <input id="hiKeyword" placeholder="e.g. skincare routine, personal finance, fitness motivation" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
-        </div>
-        <div>
-          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">PLATFORM</label>
-          <select id="hiPlatform" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box;background:#F9FAFB">
-            <option value="instagram">📷 Instagram</option>
-            <option value="tiktok">🎵 TikTok</option>
-          </select>
-        </div>
-        <div style="display:flex;align-items:flex-end">
-          <button id="hiGo" style="width:100%;background:linear-gradient(135deg,#E1306C,#F77737);color:#fff;border:none;padding:9px 16px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">🏷️ Research Hashtags</button>
+      <div style="margin-bottom:12px">
+        <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:6px">PLATFORM</label>
+        <div style="display:flex;gap:8px" id="hiPlatformPills">
+          <button data-plat="instagram" class="hi-pill hi-pill-active" style="padding:7px 18px;border-radius:20px;border:2px solid #E1306C;background:linear-gradient(135deg,#E1306C,#F77737);color:#fff;font-weight:700;font-size:0.82rem;cursor:pointer">📷 Instagram</button>
+          <button data-plat="tiktok"    class="hi-pill"               style="padding:7px 18px;border-radius:20px;border:2px solid #D1D5DB;background:#F9FAFB;color:#374151;font-weight:700;font-size:0.82rem;cursor:pointer">🎵 TikTok</button>
         </div>
       </div>
-      <div style="font-size:0.74rem;color:#6B7280">Powered by Perplexity Sonar · results are AI-researched from real ${'"'}' platform data · 20-40s per run</div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:flex-end">
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">TOPIC / SEED KEYWORD *</label>
+          <input id="hiKeyword" placeholder="e.g. skincare routine, personal finance, fitness motivation" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+        </div>
+        <button id="hiGo" style="background:linear-gradient(135deg,#4F46E5,#7C3AED);color:#fff;border:none;padding:9px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer;white-space:nowrap">🏷️ Research Hashtags</button>
+      </div>
+      <div style="font-size:0.74rem;color:#6B7280;margin-top:8px">Powered by Perplexity Sonar · AI-researched from real platform data · 20-40s per run</div>
     </div>
     <div id="hiOut"></div>
     <h3 style="margin:24px 0 8px;color:#0A1628;font-size:0.96rem;font-weight:800">📚 Recent Runs</h3>
@@ -51524,20 +51593,57 @@ window.buildHashtagIntel = async function() {
 
   renderRuns();
 
+  // platform pill selection
+  let _selectedPlatform = 'instagram';
+  document.getElementById('hiPlatformPills').addEventListener('click', e => {
+    const btn = e.target.closest('[data-plat]'); if (!btn) return;
+    _selectedPlatform = btn.dataset.plat;
+    document.querySelectorAll('.hi-pill').forEach(p => {
+      const isInsta = p.dataset.plat === 'instagram';
+      const isTT    = p.dataset.plat === 'tiktok';
+      if (p.dataset.plat === _selectedPlatform) {
+        p.style.background = isInsta ? 'linear-gradient(135deg,#E1306C,#F77737)' : 'linear-gradient(135deg,#010101,#25F4EE,#FE2C55)';
+        p.style.color = '#fff';
+        p.style.borderColor = isInsta ? '#E1306C' : '#25F4EE';
+      } else {
+        p.style.background = '#F9FAFB';
+        p.style.color = '#374151';
+        p.style.borderColor = '#D1D5DB';
+      }
+    });
+  });
+
+  // enter key on keyword input
+  document.getElementById('hiKeyword').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('hiGo').click();
+  });
+
+  // research button
   document.getElementById('hiGo').addEventListener('click', async () => {
-    const keyword  = document.getElementById('hiKeyword').value.trim();
-    const platform = document.getElementById('hiPlatform').value;
+    const seedKeyword = document.getElementById('hiKeyword').value.trim();
     const out = document.getElementById('hiOut');
-    if (!keyword) { out.innerHTML = '<div style="color:#991B1B;background:#FEE2E2;padding:10px 14px;border-radius:8px">⚠ Topic / keyword is required</div>'; return; }
-    const platLabel = platform === 'tiktok' ? 'TikTok' : 'Instagram';
-    out.innerHTML = `<div style="text-align:center;padding:40px;background:#F8FAFC;border-radius:12px;color:#64748B"><div style="font-size:1.8rem;margin-bottom:10px">⏳</div><div style="font-size:0.85rem">Researching ${platLabel} hashtags for "<strong>${_escapeHtml(keyword)}</strong>"…<br><span style="opacity:.7">Powered by Perplexity Sonar · 20-40s</span></div></div>`;
+    if (!seedKeyword) {
+      out.innerHTML = '<div style="color:#991B1B;background:#FEE2E2;padding:10px 14px;border-radius:8px">⚠ Topic / keyword is required</div>';
+      return;
+    }
+    const platLabel = _selectedPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
+    out.innerHTML = `<div style="text-align:center;padding:40px;background:#F8FAFC;border-radius:12px;color:#64748B"><div style="font-size:1.8rem;margin-bottom:10px">⏳</div><div style="font-size:0.85rem">Researching ${platLabel} hashtags for "<strong>${_escapeHtml(seedKeyword)}</strong>"…<br><span style="opacity:.7">Powered by Perplexity Sonar · 20-40s</span></div></div>`;
     try {
-      const r = await fetch('/api/hashtag-intel/research', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ keyword, platform }) }).then(x=>x.json());
-      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">⚠ ${_escapeHtml(r.error)}</div>`; return; }
-      _hiRenderResult(r.keyword, r.platform, r.hashtags, r.clusters);
-      const rr = await fetch('/api/hashtag-intel/runs').then(x=>x.json());
-      _hiRuns = rr.runs||[];
+      const r = await fetch('/api/hashtag-intel/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seedKeyword, platform: _selectedPlatform })
+      }).then(x => x.json());
+      if (!r.ok) {
+        out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">⚠ ${_escapeHtml(r.error)}</div>`;
+        return;
+      }
+      _hiRenderResult(r.seedKeyword, r.platform, r.hashtags, r.clusters);
+      const rr = await fetch('/api/hashtag-intel/runs').then(x => x.json());
+      _hiRuns = rr.runs || [];
       renderRuns();
-    } catch(e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+    } catch(e) {
+      out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`;
+    }
   });
 };
