@@ -3218,6 +3218,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'email-personalizer')   { try { window.buildEmailPersonalizer && window.buildEmailPersonalizer(); }    catch(e) { console.warn('buildEmailPersonalizer error:', e); } }
   if (viewId === 'youtube-monitor')      { try { window.buildYoutubeMonitor && window.buildYoutubeMonitor(); }       catch(e) { console.warn('buildYoutubeMonitor error:', e); } }
   if (viewId === 'yt-comment-miner')    { try { window.buildYtCommentMiner && window.buildYtCommentMiner(); }        catch(e) { console.warn('buildYtCommentMiner error:', e); } }
+  if (viewId === 'link-prospector')     { try { window.buildLinkProspector && window.buildLinkProspector(); }         catch(e) { console.warn('buildLinkProspector error:', e); } }
   if (viewId === 'weekly-report')        { try { window.buildWeeklyReport && window.buildWeeklyReport(); }         catch(e) { console.warn('buildWeeklyReport error:', e); } }
   if (viewId === 'reddit-pulse')         { try { window.buildRedditPulse && window.buildRedditPulse(); }          catch(e) { console.warn('buildRedditPulse error:', e); } }
   if (viewId === 'ad-library')           { try { window.buildAdLibrary && window.buildAdLibrary(); }            catch(e) { console.warn('buildAdLibrary error:', e); } }
@@ -37571,8 +37572,17 @@ window.buildBacklinks = function() {
       </div>
     </div>
     <div id="blOut"></div>
-    <div style="margin-top:18px"><button onclick="_blResearch()" style="padding:10px 22px;background:#fff;border:2px solid #7C3AED;border-radius:8px;font-size:0.84rem;font-weight:800;color:#7C3AED;cursor:pointer">🔬 Deep Research (Anchors · Top Pages · TLDs · Countries)</button></div>
+    <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+      <button onclick="_blResearch()" style="padding:10px 22px;background:#fff;border:2px solid #7C3AED;border-radius:8px;font-size:0.84rem;font-weight:800;color:#7C3AED;cursor:pointer">🔬 Deep Research (Anchors · Top Pages · TLDs · Countries)</button>
+      <button id="blProspectBtn" style="padding:10px 22px;background:#EFF6FF;border:2px solid #3B82F6;border-radius:8px;font-size:0.84rem;font-weight:800;color:#1D4ED8;cursor:pointer">🎯 Find Link Prospects</button>
+    </div>
     <div id="blResearchOut" style="margin-top:14px"></div>`;
+  document.getElementById('blProspectBtn').addEventListener('click', () => {
+    const domain = (document.getElementById('blTarget') || {}).value || '';
+    if (domain) window._lpPresetDomain = domain;
+    const navLink = document.querySelector('[data-view="link-prospector"]');
+    if (navLink) navLink.click();
+  });
 };
 window._blGo = async function() {
   const target = (document.getElementById('blTarget')||{}).value || '';
@@ -52473,6 +52483,249 @@ async function _ycmLoadHistory() {
           await fetch(`/api/yt-comment-miner/runs/${id}`, { method: 'DELETE' });
           _ycmLoadHistory();
           showToast('🗑 Run deleted');
+        } catch (e) { showToast('❌ ' + e.message); }
+      });
+    });
+  } catch (_) {}
+}
+
+// ============================================================================
+// TIER 44 — Link Prospector (Automated Link Building Outreach List)
+// ============================================================================
+window.buildLinkProspector = async function(presetDomain) {
+  const wrap = document.getElementById('lpWrap');
+  if (!wrap) return;
+
+  const initDomain = presetDomain || window._lpPresetDomain || '';
+  window._lpPresetDomain = null;
+
+  wrap.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:20px">
+      <h3 style="margin:0 0 14px;color:#0A1628;font-family:Sora,sans-serif;font-size:1rem;font-weight:800">🎯 Find Link Prospects</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end">
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">TARGET KEYWORD</label>
+          <input id="lpKeyword" placeholder="e.g. best email marketing tools" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.84rem;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">YOUR DOMAIN</label>
+          <input id="lpDomain" placeholder="e.g. yoursite.com" value="${_escapeHtml(initDomain)}" style="width:100%;padding:8px 10px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.84rem;box-sizing:border-box">
+        </div>
+        <button id="lpFindBtn" style="background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff;border:none;padding:9px 22px;border-radius:8px;font-size:0.84rem;font-weight:800;cursor:pointer;white-space:nowrap">🎯 Find Prospects</button>
+      </div>
+      <div style="margin-top:10px">
+        <label style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-right:8px">FILTER:</label>
+        <select id="lpStrengthFilter" style="padding:4px 8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.78rem;margin-right:8px">
+          <option value="">All strengths</option>
+          <option value="high">High only</option>
+          <option value="medium">Medium+</option>
+        </select>
+        <label style="font-size:0.7rem;font-weight:700;color:#6B7280;margin-right:4px">Min relevance:</label>
+        <select id="lpRelevanceFilter" style="padding:4px 8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.78rem">
+          <option value="0">Any</option>
+          <option value="60">60+</option>
+          <option value="70">70+</option>
+          <option value="80">80+</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="lpResult"></div>
+    <div id="lpHistory" style="margin-top:28px"></div>
+  `;
+
+  document.getElementById('lpFindBtn').addEventListener('click', _lpFind);
+  document.getElementById('lpStrengthFilter').addEventListener('change', _lpApplyFilters);
+  document.getElementById('lpRelevanceFilter').addEventListener('change', _lpApplyFilters);
+
+  _lpLoadHistory();
+};
+
+let _lpLastProspects = [];
+
+async function _lpFind() {
+  const keyword = document.getElementById('lpKeyword').value.trim();
+  const domain  = document.getElementById('lpDomain').value.trim();
+  if (!keyword) { showToast('⚠ Enter a keyword'); return; }
+  if (!domain)  { showToast('⚠ Enter your domain'); return; }
+
+  const out = document.getElementById('lpResult');
+  out.innerHTML = `<div style="text-align:center;padding:40px;background:#EFF6FF;border-radius:12px;color:#1D4ED8"><div style="font-size:1.8rem;margin-bottom:10px">🎯</div><div style="font-size:0.85rem">Finding link prospects for <strong>${_escapeHtml(keyword)}</strong>…<br><span style="opacity:.7">DataForSEO SERP + Perplexity + GPT-4o-mini · 30-60s</span></div></div>`;
+
+  try {
+    const r = await fetch('/api/link-prospector/find', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword, domain })
+    }).then(x => x.json());
+
+    if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">⚠ ${_escapeHtml(r.error)}</div>`; return; }
+    _lpLastProspects = r.prospects || [];
+    _lpRender(out, r);
+    _lpLoadHistory();
+  } catch (e) {
+    out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`;
+  }
+}
+
+function _lpApplyFilters() {
+  if (!_lpLastProspects.length) return;
+  const strengthFilter  = document.getElementById('lpStrengthFilter').value;
+  const relevanceFilter = parseInt(document.getElementById('lpRelevanceFilter').value, 10) || 0;
+  const keyword = document.getElementById('lpKeyword').value.trim();
+  const domain  = document.getElementById('lpDomain').value.trim();
+
+  let filtered = _lpLastProspects;
+  if (strengthFilter === 'high')   filtered = filtered.filter(p => p.domain_strength === 'high');
+  if (strengthFilter === 'medium') filtered = filtered.filter(p => p.domain_strength === 'high' || p.domain_strength === 'medium');
+  if (relevanceFilter > 0) filtered = filtered.filter(p => (p.content_relevance || 0) >= relevanceFilter);
+
+  const out = document.getElementById('lpResult');
+  if (out) _lpRender(out, { prospects: filtered, keyword, domain, total_found: filtered.length, source: '' });
+}
+
+function _lpRender(el, r) {
+  const keyword = r.keyword || '';
+  const domain  = r.domain  || '';
+  const prospects = r.prospects || [];
+
+  const strengthPill = s => {
+    const cfg = { high: ['#ECFDF5','#065F46','High'], medium: ['#FEF3C7','#92400E','Medium'], low: ['#F3F4F6','#374151','Low'] };
+    const c = cfg[s] || cfg.low;
+    return `<span style="background:${c[0]};color:${c[1]};padding:2px 7px;border-radius:4px;font-size:0.65rem;font-weight:800">${c[2]}</span>`;
+  };
+
+  const priorityPill = (label, score) => {
+    const col = label === 'High' ? '#065F46' : label === 'Medium' ? '#92400E' : '#374151';
+    const bg  = label === 'High' ? '#ECFDF5' : label === 'Medium' ? '#FEF3C7' : '#F3F4F6';
+    return `<span style="background:${bg};color:${col};padding:2px 8px;border-radius:4px;font-size:0.65rem;font-weight:800">${score ? score + ' · ' : ''}${label}</span>`;
+  };
+
+  const rows = prospects.map((p, i) => {
+    const safeUrl = _safeUrl(p.url) ? `<a href="${_safeUrl(p.url)}" target="_blank" rel="noopener" style="color:#0066FF;font-weight:700;text-decoration:none">${_escapeHtml(p.title || p.url)}</a>` : _escapeHtml(p.title || p.url);
+    const encKw     = encodeURIComponent(keyword);
+    const encDomain = encodeURIComponent(p.domain);
+    const encOffer  = encodeURIComponent('Link building outreach');
+    const contactHtml = p.contact_email
+      ? `<span style="font-size:0.7rem;color:#0066FF">${_escapeHtml(p.contact_email)}</span>`
+      : (p.contact_twitter ? `<span style="font-size:0.7rem;color:#1DA1F2">${_escapeHtml(p.contact_twitter)}</span>` : '<span style="font-size:0.7rem;color:#9CA3AF">—</span>');
+
+    return `<tr style="border-top:1px solid #F3F4F6" data-strength="${_escapeHtml(p.domain_strength||'low')}" data-relevance="${p.content_relevance||0}">
+      <td style="padding:10px 12px;vertical-align:top;width:36px;color:#9CA3AF;font-size:0.75rem;text-align:center">${i+1}</td>
+      <td style="padding:10px 12px;vertical-align:top;max-width:260px">
+        <div style="font-size:0.82rem;line-height:1.35;margin-bottom:3px">${safeUrl}</div>
+        <div style="font-size:0.7rem;color:#6B7280">${_escapeHtml(p.domain || '')}</div>
+        ${p.outreach_angle ? `<div style="font-size:0.69rem;color:#6B7280;margin-top:3px;font-style:italic">"${_escapeHtml(p.outreach_angle)}"</div>` : ''}
+      </td>
+      <td style="padding:10px 12px;vertical-align:top;white-space:nowrap">${strengthPill(p.domain_strength||'low')}</td>
+      <td style="padding:10px 12px;vertical-align:top">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="width:60px;height:6px;background:#E5E7EB;border-radius:3px;overflow:hidden"><div style="width:${p.content_relevance||0}%;height:100%;background:#3B82F6"></div></div>
+          <span style="font-size:0.72rem;color:#374151;font-weight:700">${p.content_relevance||0}</span>
+        </div>
+      </td>
+      <td style="padding:10px 12px;vertical-align:top;text-align:center">
+        ${p.links_to_competitor ? '<span style="font-size:0.72rem;background:#FEF3C7;color:#92400E;padding:2px 6px;border-radius:4px;font-weight:700">✓ Yes</span>' : '<span style="color:#9CA3AF;font-size:0.72rem">—</span>'}
+      </td>
+      <td style="padding:10px 12px;vertical-align:top">${contactHtml}</td>
+      <td style="padding:10px 12px;vertical-align:top;white-space:nowrap">${priorityPill(p.priority_label||'Medium', p.priority_score||0)}</td>
+      <td style="padding:10px 12px;vertical-align:top">
+        <button data-lp-domain="${_escapeHtml(p.domain)}" data-lp-url="${_escapeHtml(p.url)}" data-lp-title="${_escapeHtml(p.title||'')}" data-lp-angle="${_escapeHtml(p.outreach_angle||'')}" class="lp-draft-btn" style="background:#EFF6FF;border:1px solid #BFDBFE;color:#1D4ED8;padding:4px 10px;border-radius:5px;font-size:0.7rem;font-weight:700;cursor:pointer;white-space:nowrap">✉️ Draft</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;margin-bottom:12px">
+      <div style="padding:12px 16px;border-bottom:1px solid #E5E7EB;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:800;color:#0A1628;font-size:0.88rem">🎯 ${prospects.length} Link Prospects${r.source === 'template' ? ' <span style="font-size:0.7rem;color:#9CA3AF;font-weight:400">(demo data — connect DataForSEO for live results)</span>' : ''}</div>
+      </div>
+      ${prospects.length ? `
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+          <thead><tr style="background:#F9FAFB">
+            <th style="padding:8px 12px;text-align:left;color:#6B7280;font-size:0.65rem;font-weight:800">#</th>
+            <th style="padding:8px 12px;text-align:left;color:#6B7280;font-size:0.65rem;font-weight:800">PAGE / DOMAIN</th>
+            <th style="padding:8px 12px;text-align:left;color:#6B7280;font-size:0.65rem;font-weight:800">STRENGTH</th>
+            <th style="padding:8px 12px;text-align:left;color:#6B7280;font-size:0.65rem;font-weight:800">RELEVANCE</th>
+            <th style="padding:8px 12px;text-align:left;color:#6B7280;font-size:0.65rem;font-weight:800">LINKS COMPETITORS</th>
+            <th style="padding:8px 12px;text-align:left;color:#6B7280;font-size:0.65rem;font-weight:800">CONTACT</th>
+            <th style="padding:8px 12px;text-align:left;color:#6B7280;font-size:0.65rem;font-weight:800">PRIORITY</th>
+            <th style="padding:8px 12px;text-align:left;color:#6B7280;font-size:0.65rem;font-weight:800">ACTION</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>` : `<div style="padding:32px;text-align:center;color:#9CA3AF;font-size:0.85rem">No prospects match your filters.</div>`}
+    </div>
+  `;
+
+  // Wire Draft Outreach buttons
+  el.querySelectorAll('.lp-draft-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pDomain  = btn.getAttribute('data-lp-domain');
+      const pUrl     = btn.getAttribute('data-lp-url');
+      const pTitle   = btn.getAttribute('data-lp-title');
+      const pAngle   = btn.getAttribute('data-lp-angle');
+      // Pre-fill Cold Email Writer
+      window._cePreset = {
+        target_company: pDomain,
+        target_pain: `They published "${pTitle}" and may be interested in linking to content from ${document.getElementById('lpDomain')?.value || ''} — ${pAngle}`,
+        sender_offer: `Link-worthy content on ${document.getElementById('lpKeyword')?.value || ''}`,
+      };
+      const navLink = document.querySelector('[data-view="cold-email"]');
+      if (navLink) navLink.click();
+      showToast('✅ Opening Cold Email Writer…');
+    });
+  });
+}
+
+async function _lpLoadHistory() {
+  const el = document.getElementById('lpHistory');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/link-prospector/runs').then(x => x.json());
+    if (!r.ok || !r.runs || !r.runs.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px">
+        <div style="font-weight:800;color:#0A1628;font-size:0.88rem;margin-bottom:12px">🕑 Recent Prospecting Runs</div>
+        <div id="lpHistList"></div>
+      </div>`;
+    document.getElementById('lpHistList').innerHTML = r.runs.map(row => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F3F4F6;gap:10px">
+        <div>
+          <div style="font-size:0.82rem;font-weight:700;color:#0A1628">${_escapeHtml(row.keyword)} → ${_escapeHtml(row.domain)}</div>
+          <div style="font-size:0.7rem;color:#9CA3AF">${new Date(row.created_at).toLocaleString()} · ${row.total_found||0} prospects</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button data-hist-id="${row.id}" class="lp-load-btn" style="background:#EFF6FF;border:1px solid #BFDBFE;color:#1D4ED8;padding:4px 10px;border-radius:5px;font-size:0.7rem;font-weight:700;cursor:pointer">📂 Load</button>
+          <button data-del-id="${row.id}" class="lp-del-btn" style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:4px 10px;border-radius:5px;font-size:0.7rem;font-weight:700;cursor:pointer">🗑</button>
+        </div>
+      </div>`).join('');
+
+    // Wire load buttons
+    el.querySelectorAll('.lp-load-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-hist-id');
+        try {
+          const r2 = await fetch(`/api/link-prospector/runs/${id}`).then(x => x.json());
+          if (!r2.ok) return showToast('❌ ' + r2.error);
+          _lpLastProspects = r2.run.prospects || [];
+          document.getElementById('lpKeyword').value = r2.run.keyword || '';
+          document.getElementById('lpDomain').value  = r2.run.domain  || '';
+          const out = document.getElementById('lpResult');
+          if (out) _lpRender(out, { prospects: _lpLastProspects, keyword: r2.run.keyword, domain: r2.run.domain, source: '' });
+        } catch (e) { showToast('❌ ' + e.message); }
+      });
+    });
+
+    // Wire delete buttons
+    el.querySelectorAll('.lp-del-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-del-id');
+        if (!confirm('Delete this prospecting run?')) return;
+        try {
+          await fetch(`/api/link-prospector/runs/${id}`, { method: 'DELETE' });
+          showToast('🗑 Deleted');
+          _lpLoadHistory();
         } catch (e) { showToast('❌ ' + e.message); }
       });
     });

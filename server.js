@@ -9555,6 +9555,17 @@ app.use('/api/yt-comment-miner', _ytCommentMinerRouter);
   }
 } catch (e) { console.warn('[t43] yt-comment-miner init failed:', e.message); }})();
 
+// ── T44 — Automated Link Prospecting ─────────────────────────────────────────
+const _linkProspectorRouter = require('./services/link_prospector/api');
+const _linkProspectorSchema = require('./services/link_prospector/schema');
+app.use('/api/link-prospector', _linkProspectorRouter);
+(async () => { try {
+  if (_db.hasDb()) {
+    await _linkProspectorSchema.ensureLinkProspectorSchema();
+    console.log('[t44] link-prospector schema ready');
+  }
+} catch (e) { console.warn('[t44] link-prospector init failed:', e.message); }})();
+
 // ── Tier 7 ─────────────────────────────────────────────────────────────────
 const _podcastSchema = require('./services/podcast_monitor/schema');
 const _podcastRouter = require('./services/podcast_monitor/api');
