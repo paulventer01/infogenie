@@ -9445,6 +9445,17 @@ app.use('/api/ai-traffic', _atRouter);
   }
 } catch (e) { console.warn('[t39] init failed:', e.message); }})();
 
+// ── T40 — Hashtag Intelligence (Instagram & TikTok) ─────────────────────────
+const _hashtagIntelRouter = require('./services/hashtag_intel/api');
+const _hashtagIntelSchema = require('./services/hashtag_intel/schema');
+app.use('/api/hashtag-intel', _hashtagIntelRouter);
+(async () => { try {
+  if (_db.hasDb()) {
+    await _hashtagIntelSchema.ensureHashtagIntelSchema();
+    console.log('[t40] hashtag-intel schema ready');
+  }
+} catch (e) { console.warn('[t40] hashtag-intel init failed:', e.message); }})();
+
 // ── Tier 7 ─────────────────────────────────────────────────────────────────
 const _podcastSchema = require('./services/podcast_monitor/schema');
 const _podcastRouter = require('./services/podcast_monitor/api');

@@ -336,3 +336,13 @@ Closes the offline-revenue blind spot. Recommendation-only — never auto-applie
 - **New route**: `POST /api/reddit-pulse/generate-reply` — accepts `{postTitle, postBody, tone: engaging|direct|balanced}` → GPT-4o-mini generates a contextual, non-spammy Reddit reply matching the tone preset.
 - **UI enhancement**: Each post card in Reddit Live Pulse gains tone pills (Engaging / Direct / Balanced) + "✍️ Generate Reply" button → reply modal with copy button. Tone state persisted in `window._rpTones`.
 
+
+## T40 — Hashtag Intelligence (Instagram & TikTok)
+
+- **Service**: `services/hashtag_intel/{schema,api}.js`
+- **Storage**: `hashtag_intel_runs` table (tenant_id NOT NULL, platform, seed_keyword, hashtags JSONB, clusters JSONB, total_count).
+- **Data source**: Perplexity Sonar (`POST /chat/completions` with `model: sonar`) for live hashtag research; GPT-4o-mini for cluster analysis and strategy generation.
+- **Routes**: `POST /api/hashtag-intel/research` (Perplexity sonar research → GPT cluster), `GET /api/hashtag-intel/runs` (history, optional `?platform=`), `GET /api/hashtag-intel/runs/:id`, `DELETE /api/hashtag-intel/runs/:id`.
+- **Cluster structure**: Each cluster has `name`, `description`, `hashtags[]`, `reach` (Mega/High/Medium/Niche), `strategy`, `post_frequency`.
+- **Template fallback**: When Perplexity key is absent, returns deterministic template tags and clusters based on the keyword — clearly labelled as template.
+- **UI**: `/#hashtag-intel` under Reach → "4 · Publish organically" nav group. Platform picker (Instagram/TikTok), keyword input, strategic cluster cards with copy-all per cluster, full sortable hashtag table with niche score bars, caption-ready copy block (top 30 tags), run history with load/delete.
