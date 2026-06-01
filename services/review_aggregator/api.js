@@ -3,6 +3,7 @@ const router = express.Router();
 const _https = require('https');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
+const _revMon = require('../review_monitor/api');
 
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 function _safeAsync(h) { return (req, res) => Promise.resolve(h(req, res)).catch(e => { console.warn('[review-agg]', e.stack || e.message); if (!res.headersSent) _err(res, 500, 'Internal server error'); }); }
@@ -61,15 +62,20 @@ router.post('/scan', _safeAsync(async (req, res) => {
   const reviews = Array.isArray(r.reviews) ? r.reviews : [];
   const counts = { pos: reviews.filter(x => x.sentiment === 'positive').length, neu: reviews.filter(x => x.sentiment === 'neutral').length, neg: reviews.filter(x => x.sentiment === 'negative').length };
 
+  let _scanTid = null;
   if (_db.hasDb && _db.hasDb()) {
     try {
-      const tid = await _tenantCtx.resolveTenantId(req, { label: 'review_aggregator:scan' });
+      _scanTid = await _tenantCtx.resolveTenantId(req, { label: 'review_aggregator:scan' });
       await _db.getPool().query(
       `INSERT INTO review_aggregator_runs (tenant_id, brand, platform, avg_rating, total_reviews, pos_count, neu_count, neg_count, reviews) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [tid, brand, platform, parseFloat(r.avg_rating)||null, parseInt(r.total_reviews,10)||reviews.length, counts.pos, counts.neu, counts.neg, JSON.stringify(reviews)]
+      [_scanTid, brand, platform, parseFloat(r.avg_rating)||null, parseInt(r.total_reviews,10)||reviews.length, counts.pos, counts.neu, counts.neg, JSON.stringify(reviews)]
     ); } catch(_) {}
   }
   res.json({ ok:true, brand, platform, found:true, avg_rating: r.avg_rating, total_reviews: r.total_reviews, counts, reviews });
+  // Fire-and-forget deleted-review snapshot diff — never blocks the scan response
+  if (_scanTid != null) {
+    _revMon.recordSnapshot(_scanTid, brand, platform, reviews).catch(() => {});
+  }
 }));
 
 router.post('/compare', _safeAsync(async (req, res) => {

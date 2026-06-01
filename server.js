@@ -9704,7 +9704,10 @@ const _twPulseRouter = require('./services/twitter_pulse/api');
 const _jobSpySchema = require('./services/job_board_spy/schema');
 const _jobSpyRouter = require('./services/job_board_spy/api');
 const _videoScriptRouter = require('./services/video_script/api');
+const _revMonSchema = require('./services/review_monitor/schema');
+const _revMonRouter = require('./services/review_monitor/api');
 app.use('/api/review-aggregator', _revAggRouter);
+app.use('/api/review-monitor', _revMonRouter);
 app.use('/api/churn-scorer', _churnRouter);
 app.use('/api/twitter-pulse', _twPulseRouter);
 app.use('/api/job-board-spy', _jobSpyRouter);
@@ -9712,10 +9715,11 @@ app.use('/api/video-script', _videoScriptRouter);
 (async () => { try {
   if (process.env.DATABASE_URL) {
     await _revAggSchema.ensureReviewAggregatorSchema();
+    await _revMonSchema.ensureReviewMonitorSchema();
     await _churnSchema.ensureChurnScorerSchema();
     await _twPulseSchema.ensureTwitterPulseSchema();
     await _jobSpySchema.ensureJobBoardSpySchema();
-    console.log('[tier18] review-aggregator + churn-scorer + twitter-pulse + job-board-spy schemas ready');
+    console.log('[tier18] review-aggregator + review-monitor + churn-scorer + twitter-pulse + job-board-spy schemas ready');
   }
 } catch (e) { console.warn('[tier18] schema init failed:', e.message); }})();
 

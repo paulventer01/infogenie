@@ -41134,6 +41134,7 @@ window.buildReviewAggregator = function() {
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <button class="ra-tab active" data-tab="single" style="padding:8px 16px;border-radius:6px;border:1px solid #1E1B4B;background:#1E1B4B;color:#fff;font-size:0.78rem;font-weight:700;cursor:pointer">Single Brand</button>
         <button class="ra-tab" data-tab="compare" style="padding:8px 16px;border-radius:6px;border:1px solid #E5E7EB;background:#fff;color:#374151;font-size:0.78rem;font-weight:700;cursor:pointer">Compare 2-4 Brands</button>
+        <button class="ra-tab" data-tab="deleted" style="padding:8px 16px;border-radius:6px;border:1px solid #E5E7EB;background:#fff;color:#374151;font-size:0.78rem;font-weight:700;cursor:pointer">🗑️ Deleted <span id="raDeletedBadge" style="display:none;background:#EF4444;color:#fff;border-radius:9999px;font-size:0.65rem;padding:1px 6px;margin-left:4px;vertical-align:middle">0</span></button>
       </div>
       <div id="raSingle">
         ${(() => {
@@ -41176,6 +41177,9 @@ window.buildReviewAggregator = function() {
         </select>
         <button id="raCompareGo" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">⚖️ Compare</button>
       </div>
+      <div id="raDeleted" style="display:none">
+        <div style="color:#9CA3AF;padding:20px;text-align:center;font-size:0.82rem">Loading deleted reviews…</div>
+      </div>
     </div>
     <div id="raOut"></div>
   `;
@@ -41188,6 +41192,8 @@ window.buildReviewAggregator = function() {
     b.classList.add('active'); b.style.background='#1E1B4B'; b.style.color='#fff'; b.style.borderColor='#1E1B4B';
     document.getElementById('raSingle').style.display = b.dataset.tab === 'single' ? '' : 'none';
     document.getElementById('raCompare').style.display = b.dataset.tab === 'compare' ? '' : 'none';
+    document.getElementById('raDeleted').style.display = b.dataset.tab === 'deleted' ? '' : 'none';
+    if (b.dataset.tab === 'deleted') window._raLoadDeleted && window._raLoadDeleted();
   }));
   document.getElementById('raGo').addEventListener('click', async () => {
     const brand = document.getElementById('raBrand').value.trim();
@@ -41240,6 +41246,82 @@ window.buildReviewAggregator = function() {
       </div>`).join('')}</div>`;
     } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
   });
+
+  window._raLoadDeleted = async function() {
+    const el = document.getElementById('raDeleted'); if (!el) return;
+    el.innerHTML = '<div style="color:#9CA3AF;padding:20px;text-align:center;font-size:0.82rem">⏳ Loading deleted reviews…</div>';
+    try {
+      const brand = (document.getElementById('raBrand') || {}).value || '';
+      const platform = (document.getElementById('raPlatform') || {}).value || '';
+      const qs = new URLSearchParams();
+      if (brand) qs.set('brand', brand);
+      if (platform) qs.set('platform', platform);
+      const [dRes, sRes] = await Promise.all([
+        fetch('/api/review-monitor/deleted?' + qs.toString()).then(x => x.json()),
+        fetch('/api/review-monitor/stats?' + (brand ? new URLSearchParams({ brand }).toString() : '')).then(x => x.json())
+      ]);
+      // Update badge
+      const total = sRes.ok ? (sRes.totalDeletedThisMonth || 0) : 0;
+      const badge = document.getElementById('raDeletedBadge');
+      if (badge) { badge.textContent = total; badge.style.display = total > 0 ? 'inline' : 'none'; }
+      if (!dRes.ok) { el.innerHTML = `<div style="color:#991B1B;padding:14px">${_escapeHtml(dRes.error||'Error loading deleted reviews')}</div>`; return; }
+      const rows = dRes.deleted || [];
+      if (rows.length === 0) {
+        el.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:28px;text-align:center;color:#6B7280;font-size:0.84rem">
+          <div style="font-size:1.5rem;margin-bottom:8px">✅</div>
+          No deleted reviews detected yet.<br><span style="font-size:0.75rem;color:#9CA3AF">Deleted reviews appear here when a review present in a previous scan is missing from a new one.</span>
+        </div>`;
+        return;
+      }
+      const stars = (n) => { const k = Math.max(0, Math.min(5, Number(n)||0)); return '★'.repeat(k) + '☆'.repeat(5-k); };
+      const _fmtDate = (s) => { try { return s ? new Date(s).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : ''; } catch(_) { return String(s||''); } };
+      // Group by platform
+      const byPlatform = {};
+      rows.forEach(rv => { (byPlatform[rv.platform] = byPlatform[rv.platform] || []).push(rv); });
+      const platformHtml = Object.entries(byPlatform).map(([plat, revs]) => `
+        <div style="margin-bottom:18px">
+          <div style="font-size:0.7rem;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:8px">
+            ${_escapeHtml(plat.toUpperCase())}
+            <span style="background:#FEE2E2;color:#991B1B;border-radius:4px;padding:1px 7px;font-size:0.65rem">${revs.length} removed</span>
+          </div>
+          <div style="display:grid;gap:8px">${revs.map(rv => `
+            <div style="background:#fff;border:1px solid #FCA5A5;border-radius:8px;padding:12px 14px;border-left:4px solid #EF4444">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+                <div>
+                  <strong style="color:#0A1628;font-size:0.86rem">${_escapeHtml(rv.author||'Anonymous')}</strong>
+                  <span style="color:#FBBF24;letter-spacing:1px;margin-left:6px">${stars(rv.rating)}</span>
+                  ${rv.title ? `<div style="font-weight:700;color:#374151;font-size:0.82rem;margin-top:2px">${_escapeHtml(rv.title)}</div>` : ''}
+                </div>
+                <div style="text-align:right;white-space:nowrap">
+                  <span style="background:#FEE2E2;color:#991B1B;padding:2px 8px;border-radius:4px;font-size:0.66rem;font-weight:700">DELETED</span>
+                </div>
+              </div>
+              ${rv.body ? `<div style="color:#4B5563;font-size:0.8rem;line-height:1.5;margin-top:6px">${_escapeHtml(String(rv.body).slice(0,300))}${rv.body.length>300?'…':''}</div>` : ''}
+              <div style="display:flex;gap:14px;margin-top:8px;font-size:0.7rem;color:#9CA3AF;flex-wrap:wrap">
+                ${rv.first_seen_at ? `<span>First seen: <strong>${_fmtDate(rv.first_seen_at)}</strong></span>` : ''}
+                ${rv.deleted_at    ? `<span>Disappeared: <strong style="color:#DC2626">${_fmtDate(rv.deleted_at)}</strong></span>` : ''}
+                <span style="margin-left:auto"><a href="https://${_escapeHtml(plat)}.com/review/${_escapeHtml(rv.brand||'')}" target="_blank" rel="noopener noreferrer" style="color:#6366F1;text-decoration:none;font-weight:700">⚠️ Report to platform ↗</a></span>
+              </div>
+            </div>`).join('')}
+          </div>
+        </div>`).join('');
+      // Stats summary row
+      const statsHtml = sRes.ok && sRes.stats && sRes.stats.length ? `
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">${sRes.stats.map(s =>
+          `<div style="background:#FFF7ED;border:1px solid #FDBA74;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px">
+            <div style="font-size:1.1rem;font-weight:800;color:#C2410C">${s.deleted_count}</div>
+            <div style="font-size:0.65rem;font-weight:700;color:#9A3412;text-transform:uppercase">${_escapeHtml(s.platform)}</div>
+            <div style="font-size:0.65rem;color:#9CA3AF">${s.active_count} tracked</div>
+          </div>`).join('')}
+        </div>` : '';
+      el.innerHTML = `
+        <div style="padding:4px 0">
+          ${statsHtml}
+          <div style="font-size:0.78rem;color:#6B7280;margin-bottom:12px">Showing up to 200 most recently removed reviews. Each scan compares against the previous snapshot and flags reviews that have disappeared.</div>
+          ${platformHtml}
+        </div>`;
+    } catch (e) { el.innerHTML = `<div style="color:#991B1B;padding:14px">Network error: ${_escapeHtml(e.message)}</div>`; }
+  };
 };
 
 // ============================================================================
