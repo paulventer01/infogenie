@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const sms = require('./sms');
 const wp = require('./webpush');
+const _tenantCtx = require('../tenants/context');
 
 // ── Get available channels + which are configured ──
 router.get('/channels', (_req, res) => {
@@ -20,7 +21,11 @@ router.get('/channels', (_req, res) => {
 router.post('/webpush/subscribe', async (req, res) => {
   try {
     const { subscription, contact } = req.body || {};
-    const out = await wp.subscribe(subscription, contact);
+    // Service-worker call carries the user's session cookie when signed in;
+    // fall back to the default tenant so a logged-out subscribe still lands somewhere.
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'omni:webpush:subscribe' })
+      || await _tenantCtx.getDefaultTenantId();
+    const out = await wp.subscribe(subscription, contact, tid);
     res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -40,8 +45,9 @@ router.post('/send', async (req, res) => {
     const perContactChannels = channels.filter(ch => ch !== 'webpush');
     if (channels.includes('webpush')) {
       try {
-        const r = await wp.broadcast(subject || 'Update', body);
-        results.push({ channel: 'webpush', ok: true, sent: r.sent, stub: !!r.stub });
+        const tid = await _tenantCtx.resolveTenantId(req, { label:'omni:send:webpush' });
+        const r = await wp.broadcast(subject || 'Update', body, undefined, tid);
+        results.push({ channel: 'webpush', ok: r.ok !== false, sent: r.sent, stub: !!r.stub, error: r.error });
       } catch (e) { results.push({ channel: 'webpush', ok: false, error: e.message }); }
     }
     for (const c of contacts) {

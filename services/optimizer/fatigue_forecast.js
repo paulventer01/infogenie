@@ -18,7 +18,7 @@
 // fade — refresh now" callouts.
 
 const _db = require('../../db');
-const { getSetting } = require('./schema');
+const { makeSettingsCache } = require('./schema');
 
 const WINDOW_DAYS           = 14;   // learning window
 const MIN_SAMPLES           = 5;    // need ≥5 days with impressions to fit a line
@@ -145,12 +145,19 @@ async function runFatigueForecastOnce(opts = {}) {
     LIMIT 500
   `);
   const results = [];
+  // fatigue_forecast_enabled is a per-tenant setting — gate each creative by its
+  // own tenant's toggle (cached per run). force=true bypasses the gate.
+  const readSetting = makeSettingsCache();
   for (const cr of r.rows) {
+    if (!opts.force) {
+      const enabled = await readSetting(cr.tenant_id, 'fatigue_forecast_enabled', { v: true });
+      if (!enabled.v) continue;
+    }
     try { results.push({ id: cr.id, ...(await forecastCreative(cr, runId)) }); }
     catch (e) { results.push({ id: cr.id, ok: false, error: e.message }); }
   }
   const flagged = results.filter(x => x.predictedFatigue).length;
-  return { ok: true, runId, evaluated: r.rows.length, flagged, results, ranAt: new Date().toISOString() };
+  return { ok: true, runId, evaluated: results.length, flagged, results, ranAt: new Date().toISOString() };
 }
 
 let _timer = null, _running = false;
@@ -158,8 +165,7 @@ async function _safeRun() {
   if (_running) { console.log('[optimizer] fatigue-forecast skipped — previous run still in flight'); return; }
   _running = true;
   try {
-    const enabled = await getSetting('fatigue_forecast_enabled', { v: true });
-    if (!enabled.v) return;
+    // fatigue_forecast_enabled is now gated per-tenant inside runFatigueForecastOnce.
     const s = await runFatigueForecastOnce();
     console.log('[optimizer] fatigue-forecast run:', JSON.stringify({ ok: s.ok, evaluated: s.evaluated, flagged: s.flagged }));
   } catch (e) { console.error('[optimizer] fatigue-forecast err:', e.message); }

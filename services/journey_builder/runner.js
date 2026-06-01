@@ -75,7 +75,7 @@ async function executeNode(run, journey, node) {
       } else if (channel === 'webpush') {
         try {
           const wp = require('../omnichannel/webpush');
-          await wp.broadcast(subject || 'Notification', message, run.contact_meta?.subscription);
+          await wp.broadcast(subject || 'Notification', message, run.contact_meta?.subscription, run.tenant_id);
         } catch (e) { result = 'webpush-failed:' + e.message; }
       } else if (channel === 'tag') {
         result = 'tag:' + (node.config?.tag || 'untagged');

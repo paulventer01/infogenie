@@ -3,7 +3,7 @@
 // are crossed. Every decision is logged to optimizer_actions.
 const _db = require('../../db');
 const { applyChange, platformConnected } = require('./platforms');
-const { getSetting } = require('./schema');
+const { makeSettingsCache } = require('./schema');
 
 async function _windowStats(campaignId, days = 7) {
   const r = await _db.getPool().query(`
@@ -87,15 +87,20 @@ async function evaluateCampaign(camp, runId, dryRun) {
 
 async function runOptimizerOnce(opts = {}) {
   if (!_db.hasDb()) return { ok: false, error: 'no DB' };
-  const dryRun = opts.dryRun !== undefined ? !!opts.dryRun : !!(await getSetting('dry_run', { v: true })).v;
   const runId  = `run_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
   const camps  = await _db.getPool().query(`SELECT * FROM ad_campaigns WHERE optimizer_enabled = true AND status != 'archived'`);
   const results = [];
+  // dry_run is a per-tenant setting now — read it per campaign's tenant (cached).
+  const readSetting = makeSettingsCache();
   for (const c of camps.rows) {
-    try { results.push({ id: c.id, name: c.name, ...(await evaluateCampaign(c, runId, dryRun)) }); }
+    try {
+      const dryRun = opts.dryRun !== undefined ? !!opts.dryRun
+        : !!(await readSetting(c.tenant_id, 'dry_run', { v: true })).v;
+      results.push({ id: c.id, name: c.name, ...(await evaluateCampaign(c, runId, dryRun)) });
+    }
     catch (e) { results.push({ id: c.id, name: c.name, decision: 'error', error: e.message }); }
   }
-  return { ok: true, runId, dryRun, evaluated: camps.rows.length, results, ranAt: new Date().toISOString() };
+  return { ok: true, runId, evaluated: camps.rows.length, results, ranAt: new Date().toISOString() };
 }
 
 let _timer = null, _running = false;

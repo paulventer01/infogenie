@@ -8,7 +8,7 @@
 // significantly per platform). Persists to optimizer_dayparting.
 
 const _db = require('../../db');
-const { getSetting } = require('./schema');
+const { makeSettingsCache } = require('./schema');
 
 const DEFAULT_WINDOW_DAYS = 14;
 const MIN_HOURS_WITH_DATA = 6;   // need at least 6 hour-of-day buckets to make a call
@@ -144,11 +144,18 @@ async function runDaypartingOnce(opts = {}) {
     SELECT * FROM ad_campaigns WHERE optimizer_enabled = true AND status != 'archived'
   `);
   const results = [];
+  // dayparting_enabled is a per-tenant setting — gate each campaign by its own
+  // tenant's toggle (cached per run). force=true bypasses the gate.
+  const readSetting = makeSettingsCache();
   for (const c of camps.rows) {
+    if (!opts.force) {
+      const enabled = await readSetting(c.tenant_id, 'dayparting_enabled', { v: true });
+      if (!enabled.v) continue;
+    }
     try { results.push({ id: c.id, name: c.name, ...(await analyseCampaign(c, runId, windowDays)) }); }
     catch (e) { results.push({ id: c.id, name: c.name, ok: false, error: e.message }); }
   }
-  return { ok: true, runId, evaluated: camps.rows.length, results, ranAt: new Date().toISOString() };
+  return { ok: true, runId, evaluated: results.length, results, ranAt: new Date().toISOString() };
 }
 
 let _timer = null, _running = false;
@@ -156,8 +163,7 @@ async function _safeRun() {
   if (_running) { console.log('[optimizer] dayparting skipped — previous run still in flight'); return; }
   _running = true;
   try {
-    const enabled = await getSetting('dayparting_enabled', { v: true });
-    if (!enabled.v) return;
+    // dayparting_enabled is now gated per-tenant inside runDaypartingOnce.
     const s = await runDaypartingOnce();
     console.log('[optimizer] dayparting run:', JSON.stringify({ ok: s.ok, evaluated: s.evaluated }));
   } catch (e) { console.error('[optimizer] dayparting err:', e.message); }

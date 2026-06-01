@@ -11,7 +11,7 @@
 
 const https = require('https');
 const _db = require('../../db');
-const { getSetting } = require('./schema');
+const { makeSettingsCache } = require('./schema');
 const { resolveGoogleAdsCredentials } = require('../credentials/vault');
 
 const STALE_AGE_HOURS = 72;
@@ -303,9 +303,6 @@ let _running = false;
 
 async function _runUnsafe(opts = {}) {
   if (!_db.hasDb()) return { ok: false, error: 'no DB' };
-  const enabled = await getSetting('creative_refresh_enabled', { v: true });
-  if (!enabled.v && !opts.force) return { ok: true, skipped: 'creative refresh disabled' };
-  const dryRun = opts.dryRun !== undefined ? !!opts.dryRun : !!(await getSetting('creative_refresh_dry_run', { v: true })).v;
   const runId = 'gcr-' + Date.now();
   const camps = await _db.getPool().query(
     `SELECT * FROM ad_campaigns WHERE optimizer_enabled = true AND platform = 'google'`
@@ -313,8 +310,17 @@ async function _runUnsafe(opts = {}) {
   // Re-acquire one access token per run to avoid the per-ad refresh chatter
   const auth = camps.rows.length ? await _refreshAccessToken() : { ok: true };
   if (!auth.ok) return { ok: false, error: auth.error };
+  // creative_refresh_enabled / _dry_run are per-tenant — gate each campaign by
+  // its own tenant's settings (cached per run) instead of a single global toggle.
+  const readSetting = makeSettingsCache();
   let refreshed = 0, scanned = 0, skipped = 0, errors = 0;
   outer: for (const camp of camps.rows) {
+    if (!opts.force) {
+      const enabled = await readSetting(camp.tenant_id, 'creative_refresh_enabled', { v: true });
+      if (!enabled.v) continue; // this tenant has creative refresh turned off
+    }
+    const dryRun = opts.dryRun !== undefined ? !!opts.dryRun
+      : !!(await readSetting(camp.tenant_id, 'creative_refresh_dry_run', { v: true })).v;
     const adsR = await fetchActiveRSAsGoogle(camp.platform_camp_id);
     if (!adsR.ok) { errors++; continue; }
     for (const ad of adsR.ads) {

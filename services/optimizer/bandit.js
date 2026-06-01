@@ -18,7 +18,7 @@
 
 const https = require('https');
 const _db = require('../../db');
-const { getSetting } = require('./schema');
+const { makeSettingsCache } = require('./schema');
 const { resolveMetaAdsCredentials } = require('../credentials/vault');
 
 const MIN_EXPLORE_SHARE = 0.10;   // each arm gets at least 10% of budget
@@ -295,18 +295,24 @@ let _timer = null, _running = false;
 
 async function _runUnsafe(opts = {}) {
   if (!_db.hasDb()) return { ok: false, error: 'no DB' };
-  const enabled = await getSetting('bandit_enabled', { v: false });
-  if (!enabled.v && !opts.force) return { ok: true, skipped: 'bandit disabled' };
-  const dryRun = opts.dryRun !== undefined ? !!opts.dryRun : !!(await getSetting('bandit_dry_run', { v: true })).v;
   const runId  = 'bd-' + Date.now();
   const camps  = await _db.getPool().query(
     `SELECT * FROM ad_campaigns WHERE optimizer_enabled = true AND platform IN ('meta','facebook')`
   );
+  // bandit_enabled / bandit_dry_run are per-tenant — gate each campaign by its
+  // own tenant's settings (cached per run) instead of a single global toggle.
+  const readSetting = makeSettingsCache();
   const perRunLeft = { n: MAX_PER_RUN };
   let totalApplied = 0, totalErrors = 0, totalScanned = 0;
   const perCampaign = [];
   for (const camp of camps.rows) {
     if (perRunLeft.n <= 0) break;
+    if (!opts.force) {
+      const enabled = await readSetting(camp.tenant_id, 'bandit_enabled', { v: false });
+      if (!enabled.v) continue; // this tenant has the bandit turned off
+    }
+    const dryRun = opts.dryRun !== undefined ? !!opts.dryRun
+      : !!(await readSetting(camp.tenant_id, 'bandit_dry_run', { v: true })).v;
     const r = await _runOneCampaign({ camp, dryRun, runId, perRunLeft });
     totalApplied += (r.applied || 0);
     totalErrors  += (r.errors  || 0);
@@ -314,7 +320,7 @@ async function _runUnsafe(opts = {}) {
     perCampaign.push({ campaign: camp.name, scanned: r.scanned, applied: r.applied, errors: r.errors, error: r.error || null });
   }
   return {
-    ok: true, runId, dryRun,
+    ok: true, runId,
     campaigns: camps.rows.length, scanned: totalScanned,
     applied: totalApplied, errors: totalErrors,
     cap: MAX_PER_RUN, capped: perRunLeft.n <= 0,

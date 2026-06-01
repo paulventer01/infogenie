@@ -1,7 +1,7 @@
 // Optimizer schema — Postgres tables for the autonomous campaign optimizer.
 // Idempotent. Called from server boot.
 const _db = require('../../db');
-const { addTenantIdColumn } = require('../tenants/migration');
+const { addTenantIdColumn, markTenantIdNotNull } = require('../tenants/migration');
 
 // Tables that get a per-tenant `tenant_id` column. ad_campaigns also gets its
 // legacy UNIQUE(platform, platform_camp_id) rewritten as a per-tenant unique
@@ -72,7 +72,7 @@ async function ensureOptimizerSchema() {
       ON optimizer_actions(campaign_id, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS optimizer_settings (
-      key         TEXT PRIMARY KEY,
+      key         TEXT NOT NULL,
       value       JSONB NOT NULL,
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -247,22 +247,51 @@ async function ensureOptimizerSchema() {
     await addTenantIdColumn('ad_campaigns', { uniqueWithExtra: ['platform','platform_camp_id'] });
   } catch (e) { console.error('[optimizer/schema] ad_campaigns unique rewrite:', e.message); }
 
+  // Rewrite legacy PRIMARY KEY(key) so the same setting name can be stored
+  // independently per tenant — otherwise one workspace's INSERT ... ON CONFLICT
+  // silently overwrites another's. Becomes UNIQUE (tenant_id, key).
+  try {
+    await p.query(`ALTER TABLE optimizer_settings DROP CONSTRAINT IF EXISTS optimizer_settings_pkey`);
+    await addTenantIdColumn('optimizer_settings', { uniqueWithExtra: ['key'] });
+    // addTenantIdColumn backfills NULL rows to the default tenant; flip the
+    // column NOT NULL so enforcement-on can't leave a tenant-less setting that
+    // would be invisible to every workspace's scoped reads.
+    await markTenantIdNotNull('optimizer_settings');
+  } catch (e) { console.error('[optimizer/schema] optimizer_settings unique rewrite:', e.message); }
+
   return true;
 }
 
-async function getSetting(key, fallback = null) {
+async function getSetting(tenantId, key, fallback = null) {
   if (!_db.hasDb()) return fallback;
-  const r = await _db.getPool().query('SELECT value FROM optimizer_settings WHERE key=$1', [key]);
+  if (tenantId == null) return fallback;
+  const r = await _db.getPool().query(
+    'SELECT value FROM optimizer_settings WHERE tenant_id=$1 AND key=$2', [tenantId, key]);
   return r.rows.length ? r.rows[0].value : fallback;
 }
 
-async function setSetting(key, value) {
+async function setSetting(tenantId, key, value) {
   if (!_db.hasDb()) return false;
+  if (tenantId == null) return false;
   await _db.getPool().query(`
-    INSERT INTO optimizer_settings (key, value, updated_at) VALUES ($1, $2, now())
-    ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()
-  `, [key, JSON.stringify(value)]);
+    INSERT INTO optimizer_settings (tenant_id, key, value, updated_at) VALUES ($1, $2, $3, now())
+    ON CONFLICT (tenant_id, key) DO UPDATE SET value=EXCLUDED.value, updated_at=now()
+  `, [tenantId, key, JSON.stringify(value)]);
   return true;
 }
 
-module.exports = { ensureOptimizerSchema, getSetting, setSetting };
+// Per-run helper for crons that iterate many campaigns across tenants. Caches
+// each (tenant_id, key) lookup (the in-flight promise) so the same tenant's
+// setting isn't re-queried once per campaign. Build a fresh one per run.
+function makeSettingsCache() {
+  const cache = new Map();
+  return (tenantId, key, fallback = null) => {
+    const ck = tenantId + '\u0000' + key;
+    if (cache.has(ck)) return cache.get(ck);
+    const pr = getSetting(tenantId, key, fallback);
+    cache.set(ck, pr);
+    return pr;
+  };
+}
+
+module.exports = { ensureOptimizerSchema, getSetting, setSetting, makeSettingsCache };

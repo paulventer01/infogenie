@@ -35,8 +35,11 @@ const { addTenantIdColumn } = require('./migration');
 //   • wa_contacts USED to use a single-column PK on wa_id (phone number),
 //     so two tenants messaging the same number collided on insert. Now
 //     rewritten to UNIQUE (tenant_id, wa_id) via REWRITE_UNIQUE below.
-//   • Same risk remains for webpush_subs (PK on endpoint) and
-//     optimizer_settings (PK on key). Both flagged for Phase 2 closeout.
+//   • webpush_subs (PK on endpoint) and optimizer_settings (PK on key) had
+//     the same risk — a second workspace's INSERT ... ON CONFLICT silently
+//     overwrote the first's row. RESOLVED: both rewritten to per-tenant
+//     UNIQUE (tenant_id, endpoint) / UNIQUE (tenant_id, key) via
+//     REWRITE_UNIQUE below (and inline in their owning ensureXSchema()).
 //
 // ── Plain additive migrations ────────────────────────────────────────────
 // Just add tenant_id + index + backfill. No constraint changes.
@@ -62,7 +65,7 @@ const PLAIN_TABLES = [
   'cold_email_runs', 'email_broadcasts', 'email_broadcast_recipients',
   'unified_inbox_items',
   'wa_messages', 'wa_campaigns',
-  'voice_calls', 'webpush_subs',
+  'voice_calls',
   'digest_runs',
   // Manage tier
   'marketing_projects',
@@ -143,6 +146,12 @@ const REWRITE_UNIQUE = [
   // tenants couldn't track the same prompt independently. Scope per-tenant.
   { table:'search_intel_queries', dropConstraint:'search_intel_queries_query_brand_locale_key',
     uniqueExtras:['query','brand','locale'] },
+  // webpush_subs: browser push endpoint unique per tenant. Legacy schema used
+  // endpoint as a single-column PRIMARY KEY, so drop the auto-named PK.
+  { table:'webpush_subs',      dropConstraint:'webpush_subs_pkey',             uniqueExtras:['endpoint'] },
+  // optimizer_settings: setting key unique per tenant. Legacy schema used key as
+  // a single-column PRIMARY KEY, so drop the auto-named PK.
+  { table:'optimizer_settings', dropConstraint:'optimizer_settings_pkey',      uniqueExtras:['key'] },
 ];
 
 async function _safeDropConstraint(p, table, constraint) {

@@ -22,7 +22,7 @@ router.get('/status', async (req, res) => {
   const camps   = await pool.query(`SELECT COUNT(*)::int n, COUNT(*) FILTER (WHERE optimizer_enabled)::int enabled FROM ad_campaigns WHERE tenant_id = $1`, [tid]);
   const actions = await pool.query(`SELECT COUNT(*)::int n FROM optimizer_actions WHERE tenant_id = $1 AND created_at > now() - interval '24 hours'`, [tid]);
   const lastRun = await pool.query(`SELECT MAX(created_at) AS t FROM optimizer_actions WHERE tenant_id = $1`, [tid]);
-  const dryRun  = await getSetting('dry_run', { v: true });
+  const dryRun  = await getSetting(tid, 'dry_run', { v: true });
   res.json({
     ok: true,
     db: true,
@@ -147,8 +147,10 @@ router.post('/target', express.json(), async (req, res) => {
 });
 
 router.post('/dry-run', express.json(), async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:dry-run' });
+  if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
   const v = !!(req.body && req.body.dryRun);
-  await setSetting('dry_run', { v });
+  await setSetting(tid, 'dry_run', { v });
   res.json({ ok: true, dryRun: v });
 });
 
@@ -173,21 +175,26 @@ router.get('/creative-refreshes', async (req, res) => {
   res.json({ ok: true, refreshes: r.rows });
 });
 
-router.get('/creative-refresh/status', async (_req, res) => {
-  const enabled = await getSetting('creative_refresh_enabled', { v: true });
-  const dryRun  = await getSetting('creative_refresh_dry_run', { v: true });
+router.get('/creative-refresh/status', async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:creative-refresh:status' });
+  const enabled = await getSetting(tid, 'creative_refresh_enabled', { v: true });
+  const dryRun  = await getSetting(tid, 'creative_refresh_dry_run', { v: true });
   res.json({ ok: true, enabled: !!enabled.v, dryRun: !!dryRun.v });
 });
 
 router.post('/creative-refresh/toggle', express.json(), async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:creative-refresh:toggle' });
+  if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
   const v = !!(req.body && req.body.enabled);
-  await setSetting('creative_refresh_enabled', { v });
+  await setSetting(tid, 'creative_refresh_enabled', { v });
   res.json({ ok: true, enabled: v });
 });
 
 router.post('/creative-refresh/dry-run', express.json(), async (req, res) => {
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:creative-refresh:dry-run' });
+  if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
   const v = !!(req.body && req.body.dryRun);
-  await setSetting('creative_refresh_dry_run', { v });
+  await setSetting(tid, 'creative_refresh_dry_run', { v });
   res.json({ ok: true, dryRun: v });
 });
 
@@ -205,13 +212,13 @@ router.post('/creative-refresh/run-now', express.json(), async (_req, res) => {
 
 // ── Phase 7: Multi-Armed Bandit (ad-set budget allocation) ─────────────────
 router.get('/bandit/status', async (req, res) => {
-  const enabled = await getSetting('bandit_enabled', { v: false });
-  const dryRun  = await getSetting('bandit_dry_run', { v: true });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:bandit:status' });
+  const enabled = await getSetting(tid, 'bandit_enabled', { v: false });
+  const dryRun  = await getSetting(tid, 'bandit_dry_run', { v: true });
   let lastRun = null, total = 0;
   if (_db.hasDb()) {
     // Aggregate counts/timestamps are scoped per-tenant so one tenant's
     // bandit cadence isn't visible to another.
-    const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:bandit:status' });
     const lr = await _db.getPool().query(`SELECT MAX(created_at) AS t, COUNT(*)::int n FROM bandit_allocations WHERE tenant_id = $1`, [tid]);
     lastRun = lr.rows[0]?.t || null;
     total   = lr.rows[0]?.n || 0;
@@ -238,14 +245,18 @@ router.get('/bandit/allocations', async (req, res) => {
 router.post('/bandit/toggle', express.json(), async (req, res) => {
   const raw = req.body && req.body.enabled;
   if (raw !== true && raw !== false) return res.status(400).json({ ok: false, error: 'enabled must be boolean true or false' });
-  await setSetting('bandit_enabled', { v: raw });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:bandit:toggle' });
+  if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
+  await setSetting(tid, 'bandit_enabled', { v: raw });
   res.json({ ok: true, enabled: raw });
 });
 
 router.post('/bandit/dry-run', express.json(), async (req, res) => {
   const raw = req.body && req.body.dryRun;
   if (raw !== true && raw !== false) return res.status(400).json({ ok: false, error: 'dryRun must be boolean true or false' });
-  await setSetting('bandit_dry_run', { v: raw });
+  const tid = await _tenantCtx.resolveTenantId(req, { label:'optimizer:bandit:dry-run' });
+  if (tid == null) return res.status(400).json({ ok: false, error: 'no_tenant' });
+  await setSetting(tid, 'bandit_dry_run', { v: raw });
   res.json({ ok: true, dryRun: raw });
 });
 
