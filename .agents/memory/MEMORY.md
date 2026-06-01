@@ -10,3 +10,4 @@
 - [Tenant schema-isolation audit](tenant-schema-audit.md) — a live-DB test guards whole-schema per-workspace invariants; new tables auto-checked via phase2_migrate exports; global/nullable tables must be allow-listed in BOTH places.
 - [Legacy file-storage removed](legacy-file-storage.md) — db.js file:* helpers + boot cleanup IIFE are gone; persistence is per-tenant kv keys only; orphaned data/*.json may linger.
 - [Tenant read-audit guard](tenant-read-audit-guard.md) — static read/update/delete leak guard; per-FUNCTION leniency (blind to one bad stmt in a scoped fn); allowlist key = "relpath :: normalized-stmt[:160]".
+- [Field enhancer global-listener leak](field-enhancer-listeners.md) — per-field window listeners leak unbounded across innerHTML-swapping views; use ONE delegated listener acting on in-DOM elements, store per-el data on the element.

@@ -250,25 +250,47 @@
     if (el.parentNode) el.parentNode.insertBefore(bar, el);
   }
 
+  // Rebuild the <option> list for a single competitor picker from the live
+  // analysis data. Placeholder is stored on the element so the global
+  // ig:analysis-updated handler can repopulate any picker without a closure.
+  function rebuildCompPicker(sel){
+    const list = getCompetitors();
+    const placeholder = sel.dataset.igPlaceholder || '';
+    sel.innerHTML = '<option value="">' + placeholder + '</option>' +
+      list.map(c => '<option>' + escapeHtml(c) + '</option>').join('');
+    sel.style.display = list.length ? '' : 'none';
+  }
+
+  // ONE global listener (not one-per-field). When analysis updates, re-fetch
+  // competitors and refresh every picker CURRENTLY in the document. Pickers
+  // from prior innerHTML swaps are gone from the DOM (and get GC'd), so this
+  // never accumulates work or retains detached nodes — fixing the unbounded
+  // listener leak that froze heavy views after an analyse run.
+  let _compListenerWired = false;
+  function ensureCompPickerListener(){
+    if (_compListenerWired) return;
+    _compListenerWired = true;
+    window.addEventListener('ig:analysis-updated', () => {
+      try {
+        document.querySelectorAll('select[data-ig-comp-picker]').forEach(rebuildCompPicker);
+      } catch(_) {}
+    });
+  }
+
   function buildCompetitorSelect(el, placeholder, style){
     style = style || { bg:'#EEF2FF', color:'#4F46E5', border:'#C7D2FE' };
-    const comps = getCompetitors();
     const sel = document.createElement('select');
     sel.dataset.igCompPicker = '1';
+    sel.dataset.igPlaceholder = placeholder || '';
     sel.style.cssText = 'background:' + style.bg + ';color:' + style.color + ';border:1px solid ' + style.border + ';' +
       'padding:2px 6px;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit';
-    function rebuild(){
-      const list = getCompetitors();
-      sel.innerHTML = '<option value="">' + placeholder + '</option>' +
-        list.map(c => '<option>' + escapeHtml(c) + '</option>').join('');
-      sel.style.display = list.length ? '' : 'none';
-    }
-    rebuild();
+    rebuildCompPicker(sel);
     sel.addEventListener('change', () => {
       if (sel.value) { el.value = sel.value; fireInput(el); sel.selectedIndex = 0; }
     });
-    // Re-fetch competitors whenever analysis updates.
-    window.addEventListener('ig:analysis-updated', rebuild);
+    // Re-fetch competitors whenever analysis updates — via a single shared
+    // listener, wired lazily on first picker creation.
+    ensureCompPickerListener();
     return sel;
   }
 
