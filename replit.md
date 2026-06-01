@@ -121,6 +121,7 @@ See `docs/tiers.md` for the full index. High-level areas:
 
 - Non-technical — plain language, execute over options.
 - Counter-Message modal: 🚀 Launch Now pre-fills Campaign Brief + sets `window._counterTarget`.
+- **Task scoping** — When scoping a task, do a wider "implications sweep" first and fold the obvious derivatives into the same task rather than emitting a thin task plus follow-ups. Cover: the obvious next ask (e.g. ship automation/schedule + all alert channels with a feature, not just the manual trigger), adjacent surfaces sharing the same pattern, persistence/durability (migrations, tenant scoping, backfill), the verification test/guard, edge cases & failure handling, and security/privacy. Prefer fewer, more complete tasks. Still split work that parallel agents would collide on or that's too large to execute reliably in one go, and name any deliberately-deferred follow-ups in the plan's scope section (in-scope vs. deferred) instead of surfacing them after delivery.
 
 ## Gotchas
 
