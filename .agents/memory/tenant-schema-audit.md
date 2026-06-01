@@ -28,8 +28,15 @@ and `REWRITE_UNIQUE`. The audit reuses those exports, so adding a table to the
 migration list is enough — don't duplicate the list in the test.
 
 **Caveat:** the audit needs a live `DATABASE_URL` (skips with a message if unset).
-It does NOT check write paths — INSERTs that omit `tenant_id` are a separate gap
-(features silently fail to persist). See the tenant-write-wiring memory.
+It does NOT check write paths — that is now covered by the sibling static guard
+`test/tenant-write-audit.test.js` (no DB needed): it scans ALL `services/**/*.js`
+for `INSERT INTO <scoped table>` whose column list omits `tenant_id` (such an
+INSERT throws NOT-NULL under enforcement=on and the per-tier try/catch swallows
+it, silently dropping the row). Same source of truth (`PLAIN_TABLES` +
+`REWRITE_UNIQUE`); known-safe omissions go in that test's `ALLOWLIST` (keyed
+`relpath:table`) with a reason, kept honest by a stale-entry test. Scope is
+intentionally ALL service files, not just `{api,schema}.js` — 30 of the scoped
+INSERTs live in optimizer/audiences/search_intel helpers. See tenant-write-wiring.
 
 **Behavioral real-DB isolation tests** (e.g. `test/search-pulse-tenant-db.test.js`):
 the schema audit proves the constraints EXIST; a behavioral test proves they
