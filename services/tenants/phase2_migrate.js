@@ -170,8 +170,13 @@ async function _safeDropConstraint(p, table, constraint) {
 }
 
 async function _runPlain(name) {
+  // notNull:true flips tenant_id NOT NULL after the backfill so every plain
+  // table self-enforces the workspace-owner invariant — no manual
+  // markTenantIdNotNull() per table, no phase2e regression when a table is
+  // added here. Graceful inside addTenantIdColumn (skips if any row is NULL).
   return await addTenantIdColumn(name, {
     indexExtra: INDEX_EXTRAS[name],
+    notNull: true,
   });
 }
 
@@ -181,13 +186,16 @@ async function _runRewrite({ table, dropConstraint, uniqueExtras }) {
   // First do the standard migration (adds column, backfills, plain index).
   const base = await addTenantIdColumn(table);
   if (!base.ok) return base;
-  // Drop the legacy single-column UNIQUE then add the per-tenant variant.
+  // Drop the legacy single-column UNIQUE then add the per-tenant variant, and
+  // flip tenant_id NOT NULL once the backfill has run (notNull:true). This is
+  // what makes REWRITE_UNIQUE tables stop depending on a manual inline flip.
   await _safeDropConstraint(p, table, dropConstraint);
-  const unique = await addTenantIdColumn(table, { uniqueWithExtra: uniqueExtras });
+  const unique = await addTenantIdColumn(table, { uniqueWithExtra: uniqueExtras, notNull: true });
   return Object.assign({}, base, {
     rewriteDropped: true,
     uniqueAdded: unique.uniqueAdded === true,
     uniqueError: unique.uniqueError || null,
+    notNullSet: base.notNullSet === true || unique.notNullSet === true,
   });
 }
 
@@ -222,10 +230,15 @@ async function runPhase2Migration() {
     tables: results.length,
     added: results.filter(r => r.added).length,
     backfilled: results.reduce((s, r) => s + (r.backfilled || 0), 0),
+    notNullSet: results.filter(r => r.notNullSet).length,
+    notNullSkipped: results.filter(r => r.notNullSkipped).map(r => r.name),
     missing: results.filter(r => r.reason === 'table_missing').map(r => r.name),
     errors: results.filter(r => r.ok === false && r.reason !== 'table_missing'),
   };
-  console.log(`[tenants/phase2] migration complete — ${summary.added} columns added, ${summary.backfilled} rows backfilled across ${summary.tables} tables (${summary.durationMs}ms)`);
+  console.log(`[tenants/phase2] migration complete — ${summary.added} columns added, ${summary.backfilled} rows backfilled, ${summary.notNullSet} flipped NOT NULL across ${summary.tables} tables (${summary.durationMs}ms)`);
+  if (summary.notNullSkipped.length) {
+    console.warn('[tenants/phase2] NOT NULL skipped (rows still NULL — will retry next boot):', summary.notNullSkipped.join(', '));
+  }
   if (summary.missing.length) {
     console.warn('[tenants/phase2] tables not yet created (will retry next boot):', summary.missing.join(', '));
   }

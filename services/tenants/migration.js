@@ -84,6 +84,11 @@ function _safeIdent(name) {
  *                                             for a UNIQUE constraint. Pass [] to
  *                                             enforce one row per tenant.
  *                                             Omit to skip the unique constraint.
+ * @param {boolean} [options.notNull]          when true, flip tenant_id to NOT NULL
+ *                                             after a successful backfill (every row
+ *                                             has a tenant). Graceful: if any row is
+ *                                             still NULL it logs + skips instead of
+ *                                             throwing, so boot never crashes.
  */
 async function addTenantIdColumn(tableName, options = {}) {
   if (!_db.hasDb()) return { ok:false, reason:'no_db' };
@@ -94,7 +99,7 @@ async function addTenantIdColumn(tableName, options = {}) {
     return { ok:false, reason:'table_missing', table:t };
   }
 
-  const result = { table:t, added:false, backfilled:0, indexed:false, droppedCheck:false, uniqueAdded:false };
+  const result = { table:t, added:false, backfilled:0, indexed:false, droppedCheck:false, uniqueAdded:false, notNullSet:false };
 
   // 1) Add tenant_id column if missing
   if (!(await _columnExists(p, t, 'tenant_id'))) {
@@ -142,6 +147,34 @@ async function addTenantIdColumn(tableName, options = {}) {
         console.error(`[tenants/migration] could not add UNIQUE on ${t}(${uCols}): ${e.message}`);
         result.uniqueError = e.message;
       }
+    }
+  }
+
+  // 6) Optionally flip tenant_id to NOT NULL after a successful backfill.
+  // This is what keeps every workspace row owned by a tenant — no orphan
+  // rows that bypass enforcement. Graceful by design: if a row is still NULL
+  // (e.g. backfill skipped because no default tenant exists yet), we log and
+  // skip rather than throw, so boot is never blocked. Idempotent: if the
+  // column is already NOT NULL we do nothing.
+  if (options.notNull) {
+    try {
+      const col = await p.query(
+        `SELECT is_nullable FROM information_schema.columns
+          WHERE table_schema='public' AND table_name=$1 AND column_name='tenant_id' LIMIT 1`, [t]);
+      const isNullable = col.rows[0] && col.rows[0].is_nullable === 'YES';
+      if (isNullable) {
+        const nulls = await p.query(`SELECT COUNT(*)::int AS n FROM ${t} WHERE tenant_id IS NULL`);
+        if (nulls.rows[0].n === 0) {
+          await p.query(`ALTER TABLE ${t} ALTER COLUMN tenant_id SET NOT NULL`);
+          result.notNullSet = true;
+        } else {
+          result.notNullSkipped = `${nulls.rows[0].n} null rows`;
+          console.warn(`[tenants/migration] skipped NOT NULL on ${t}.tenant_id — ${nulls.rows[0].n} rows still NULL`);
+        }
+      }
+    } catch (e) {
+      result.notNullError = e.message;
+      console.warn(`[tenants/migration] could not set NOT NULL on ${t}.tenant_id: ${e.message}`);
     }
   }
 
