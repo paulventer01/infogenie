@@ -2,6 +2,7 @@ const express = require('express');
 const _db = require('../../db');
 const _https = require('https');
 const _tenantCtx = require('../tenants/context');
+const _vetter = require('./vetter');
 
 const router = express.Router();
 const VALID_STATUS = ['prospect','contacted','negotiating','active','declined','inactive'];
@@ -140,6 +141,25 @@ router.delete('/:id/outreach/:oid', async (req, res) => {
     const tid = await _tenantCtx.resolveTenantId(req, { label: 'influencers:delete-outreach' });
     await _db.getPool().query(`DELETE FROM influencer_outreach WHERE id=$1 AND influencer_id=$2 AND tenant_id=$3`, [oid, id, tid]); res.json({ ok:true }); }
   catch (e) { _err(res, 500, e.message); }
+});
+
+// T45 — Fake-Detection & Deep Vetting
+router.post('/:id/vet', async (req, res) => {
+  const id = _id(req, res); if (!id) return;
+  if (!_db.hasDb()) return _err(res, 503, 'no-db');
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'influencers:vet' });
+    if (tid == null) return _err(res, 400, 'no_tenant');
+    const r = await _db.getPool().query(`SELECT * FROM influencers WHERE id=$1 AND tenant_id=$2`, [id, tid]);
+    if (!r.rows[0]) return _err(res, 404, 'not found');
+    const inf = r.rows[0];
+    const vet = await _vetter.vetInfluencer(inf);
+    await _db.getPool().query(
+      `UPDATE influencers SET vet_score=$1, vet_risk=$2, vet_flags=$3, vetted_at=now(), updated_at=now() WHERE id=$4`,
+      [vet.score, vet.risk_level, JSON.stringify(vet), id]
+    );
+    res.json({ ok: true, vet, source: vet.source });
+  } catch (e) { _err(res, 500, e.message); }
 });
 
 // AI-drafted outreach email — uses OpenAI if available, falls back to template

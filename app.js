@@ -36285,6 +36285,7 @@ const _INF_STATUS_COLORS = {
   prospect:'#6B7280', contacted:'#3B82F6', negotiating:'#F59E0B',
   active:'#15803D', declined:'#B91C1C', inactive:'#9CA3AF'
 };
+const _INF_VET_COLORS = { Low:'#15803D', Medium:'#D97706', High:'#B91C1C', Suspicious:'#7C3AED' };
 
 window.buildInfluencers = async function() {
   const wrap = document.getElementById('infWrap'); if (!wrap) return;
@@ -36328,7 +36329,7 @@ window.buildInfluencers = async function() {
               <tr><th style="padding:11px 14px;text-align:left">Creator</th><th style="padding:11px;text-align:left">Platform</th><th style="padding:11px;text-align:right">Followers</th><th style="padding:11px;text-align:right">Eng %</th><th style="padding:11px;text-align:left">Niche</th><th style="padding:11px;text-align:left">Status</th><th style="padding:11px;text-align:right">Deal $</th><th style="padding:11px;text-align:left">Last touch</th><th style="padding:11px;text-align:right">Actions</th></tr>
             </thead>
             <tbody>${list.map(i => `<tr style="border-top:1px solid #F3F4F6;cursor:pointer" onclick="_infOpenDetail(${i.id})">
-              <td style="padding:9px 14px"><div style="font-weight:800;color:#0A1628">@${_escapeHtml(i.handle)}</div>${i.name?`<div style="font-size:0.7rem;color:#6B7280">${_escapeHtml(i.name)}</div>`:''}</td>
+              <td style="padding:9px 14px"><div style="font-weight:800;color:#0A1628">@${_escapeHtml(i.handle)}</div>${i.name?`<div style="font-size:0.7rem;color:#6B7280">${_escapeHtml(i.name)}</div>`:''} ${i.vet_risk?`<div style="margin-top:2px"><span style="font-size:0.58rem;font-weight:800;color:${_INF_VET_COLORS[i.vet_risk]||'#6B7280'};background:${(_INF_VET_COLORS[i.vet_risk]||'#6B7280')}18;border:1px solid ${_INF_VET_COLORS[i.vet_risk]||'#6B7280'}44;padding:1px 6px;border-radius:4px">🔍 ${_escapeHtml(i.vet_risk)} ${i.vet_score}/100</span></div>`:''}</td>
               <td style="padding:9px;color:#374151">${_escapeHtml(i.platform)}</td>
               <td style="padding:9px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#7C3AED">${(i.followers||0).toLocaleString()}</td>
               <td style="padding:9px;text-align:right;font-variant-numeric:tabular-nums">${Number(i.engagement_rate||0).toFixed(2)}%</td>
@@ -36336,7 +36337,7 @@ window.buildInfluencers = async function() {
               <td style="padding:9px"><span style="background:${_INF_STATUS_COLORS[i.status]};color:#fff;padding:2px 8px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase">${_escapeHtml(i.status)}</span></td>
               <td style="padding:9px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#15803D">${i.deal_value?'$'+Number(i.deal_value).toLocaleString():'-'}</td>
               <td style="padding:9px;font-size:0.7rem;color:#9CA3AF">${i.last_contacted_at?new Date(i.last_contacted_at).toLocaleDateString():'never'}</td>
-              <td style="padding:9px;text-align:right" onclick="event.stopPropagation()"><button onclick="_infOpenEdit(${i.id})" style="padding:5px 10px;background:#fff;border:1.5px solid #E5E7EB;border-radius:5px;font-size:0.68rem;font-weight:700;color:#374151;cursor:pointer">✏</button> <button onclick="_infDelete(${i.id})" style="padding:5px 10px;background:#fff;border:1.5px solid #FCA5A5;border-radius:5px;font-size:0.68rem;font-weight:700;color:#B91C1C;cursor:pointer">🗑</button></td>
+              <td style="padding:9px;text-align:right" onclick="event.stopPropagation()"><button onclick="_infOpenEdit(${i.id})" style="padding:5px 10px;background:#fff;border:1.5px solid #E5E7EB;border-radius:5px;font-size:0.68rem;font-weight:700;color:#374151;cursor:pointer">✏</button> <button onclick="_infDelete(${i.id})" style="padding:5px 10px;background:#fff;border:1.5px solid #FCA5A5;border-radius:5px;font-size:0.68rem;font-weight:700;color:#B91C1C;cursor:pointer">🗑</button> <button onclick="_infVet(${i.id})" style="padding:5px 10px;background:#fff;border:1.5px solid #C4B5FD;border-radius:5px;font-size:0.68rem;font-weight:700;color:#7C3AED;cursor:pointer">🔍 Vet</button></td>
             </tr>`).join('')}</tbody>
           </table>
         </div>`}`;
@@ -36442,6 +36443,7 @@ window._infOpenDetail = async function(id) {
         </div>
         <div style="display:flex;gap:6px">
           <button onclick="_infOpenEdit(${i.id})" style="padding:7px 12px;background:#fff;border:2px solid #E5E7EB;border-radius:6px;font-size:0.74rem;font-weight:700;cursor:pointer">✏ Edit</button>
+          <button onclick="_infVet(${i.id})" style="padding:7px 12px;background:#fff;border:2px solid #C4B5FD;border-radius:6px;font-size:0.74rem;font-weight:800;color:#7C3AED;cursor:pointer">${i.vetted_at ? '🔄 Re-vet' : '🔍 Vet'}</button>
           <button onclick="_infDraftEmail(${i.id})" style="padding:7px 12px;background:#7C3AED;border:2px solid #7C3AED;border-radius:6px;font-size:0.74rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">✨ AI draft email</button>
           <button onclick="_infCloseModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6B7280">×</button>
         </div>
@@ -36454,6 +36456,25 @@ window._infOpenDetail = async function(id) {
         <div><div style="font-size:0.6rem;color:#9CA3AF;font-weight:700;text-transform:uppercase">Deal</div><div style="font-weight:800;color:#15803D">${i.deal_value?'$'+Number(i.deal_value).toLocaleString():'-'}</div></div>
       </div>
       ${i.notes?`<div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.8rem;color:#78350F;white-space:pre-wrap">${_escapeHtml(i.notes)}</div>`:''}
+      ${(()=>{
+        if (!i.vet_score && i.vet_score !== 0) return '';
+        const vf = i.vet_flags || {};
+        const vc = _INF_VET_COLORS[i.vet_risk] || '#6B7280';
+        const reds = Array.isArray(vf.red_flags) ? vf.red_flags : [];
+        const greens = Array.isArray(vf.green_flags) ? vf.green_flags : [];
+        return `<div style="background:${vc}0D;border:1.5px solid ${vc}44;border-radius:10px;padding:14px 16px;margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+            <div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:${vc}">${i.vet_score}/100</div>
+            <div style="background:${vc};color:#fff;padding:3px 10px;border-radius:5px;font-size:0.66rem;font-weight:800;text-transform:uppercase">🔍 ${_escapeHtml(i.vet_risk||'')} Risk</div>
+            <div style="font-size:0.64rem;color:#9CA3AF;margin-left:auto">Vetted ${i.vetted_at ? new Date(i.vetted_at).toLocaleDateString() : ''} · ${_escapeHtml((vf.source||'').replace('+',' + '))}</div>
+          </div>
+          ${vf.summary ? `<div style="font-size:0.8rem;color:#374151;margin-bottom:10px;line-height:1.5">${_escapeHtml(vf.summary)}</div>` : ''}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            ${reds.length ? `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:7px;padding:8px 10px"><div style="font-size:0.6rem;font-weight:800;color:#B91C1C;text-transform:uppercase;margin-bottom:4px">⚠ Red flags</div>${reds.map(f=>`<div style="font-size:0.72rem;color:#7F1D1D;margin-bottom:2px">• ${_escapeHtml(f)}</div>`).join('')}</div>` : ''}
+            ${greens.length ? `<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:7px;padding:8px 10px"><div style="font-size:0.6rem;font-weight:800;color:#15803D;text-transform:uppercase;margin-bottom:4px">✓ Green flags</div>${greens.map(f=>`<div style="font-size:0.72rem;color:#14532D;margin-bottom:2px">• ${_escapeHtml(f)}</div>`).join('')}</div>` : ''}
+          </div>
+        </div>`;
+      })()}
       <div style="font-family:Sora,sans-serif;font-weight:800;margin-bottom:8px">Outreach log (${out.length})</div>
       <div style="background:#FAFBFC;border:1px solid #E5E7EB;border-radius:8px;padding:12px;margin-bottom:10px">
         <div style="display:grid;grid-template-columns:120px 1fr auto;gap:8px;align-items:start">
@@ -36481,6 +36502,20 @@ window._infAddOutreach = async function(id) {
     await fetch('/api/influencers/'+id+'/outreach', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
     showToast('✅ Logged'); _infOpenDetail(id); buildInfluencers();
   } catch (e) { showToast('❌ ' + e.message); }
+};
+
+window._infVet = async function(id) {
+  showToast('⏳ Vetting creator — this may take 20-30 seconds…');
+  try {
+    const r = await fetch('/api/influencers/'+id+'/vet', { method:'POST', headers:{'Content-Type':'application/json'} }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error || 'vet failed');
+    const vet = r.vet || {};
+    const vc = _INF_VET_COLORS[vet.risk_level] || '#6B7280';
+    showToast(`✅ ${vet.risk_level || 'Unknown'} risk · ${vet.score}/100 · ${(vet.source||'').replace('+',' + ')}`);
+    const m = document.getElementById('infModal');
+    if (m && m.style.display !== 'none') { _infOpenDetail(id); }
+    buildInfluencers();
+  } catch (e) { showToast('❌ Vet failed: ' + e.message); }
 };
 
 window._infDraftEmail = async function(id) {

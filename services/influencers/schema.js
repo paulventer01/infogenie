@@ -43,6 +43,12 @@ async function ensureInfluencerSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_outreach_inf ON influencer_outreach(influencer_id, created_at DESC);
   `);
+
+  // T45 — Influencer Fake-Detection & Deep Vetting: add vet columns
+  await pool.query(`ALTER TABLE influencers ADD COLUMN IF NOT EXISTS vet_score   INT`);
+  await pool.query(`ALTER TABLE influencers ADD COLUMN IF NOT EXISTS vet_risk    TEXT`);
+  await pool.query(`ALTER TABLE influencers ADD COLUMN IF NOT EXISTS vet_flags   JSONB`);
+  await pool.query(`ALTER TABLE influencers ADD COLUMN IF NOT EXISTS vetted_at   TIMESTAMPTZ`);
 }
 
 module.exports = { ensureInfluencerSchema };
