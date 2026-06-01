@@ -40678,6 +40678,7 @@ window._alRunMulti = async function() {
   const btn = document.getElementById('alRun');
   const origBtn = btn.innerHTML;
   const countryLbl = countries.length === 1 ? countries[0] : `${countries.length} countries`;
+  try { if (window.IGDiag) { IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('ad-search:fetch ' + selected.join('+') + ' × ' + countryLbl); IGDiag.mark && IGDiag.mark('ad-search: run', selected.length + ' plat × ' + countryLbl); } } catch(_) {}
   btn.disabled = true; btn.innerHTML = `⏳ Searching ${selected.length} platform${selected.length>1?'s':''} × ${countryLbl}…`; btn.style.opacity = '0.7'; btn.style.cursor = 'wait';
   out.innerHTML = `<div id="alProgress" style="display:grid;gap:8px;margin-bottom:14px">${selected.map(p => `<div id="alProg_${p}" style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;font-size:0.82rem"><span style="display:inline-block;width:14px;height:14px;border:2px solid #E5E7EB;border-top-color:#0066FF;border-radius:50%;animation:alSpin 0.8s linear infinite"></span><span style="font-weight:700;color:#0A1628">${_escapeHtml(labels[p] || p)}</span><span style="color:#6B7280;font-size:0.74rem">searching ${_escapeHtml(countryLbl)}…</span></div>`).join('')}<style>@keyframes alSpin{to{transform:rotate(360deg)}}</style></div><div id="alResults" style="display:grid;gap:18px"></div>`;
   await Promise.all(selected.map(async (platform) => {
@@ -40747,6 +40748,7 @@ window._alAppendResult = function(platform, label, brand, country, r) {
     // the browser between batches so the page stays responsive.
     const grid = block.querySelector('[data-al-grid]');
     const ads = r.ads || [];
+    try { window.IGDiag && IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('ad-search:render ' + platform + ' ' + ads.length + ' ads'); } catch(_) {}
     const CHUNK = 24;
     let i = 0;
     const renderChunk = () => {

@@ -5,6 +5,7 @@
   const events = [];
   const MAX = 500;
   let panel, list, startedAt = performance.now();
+  let _lastLabel = '';
 
   function fmtMs(ms) {
     if (ms < 1000) return ms.toFixed(0) + 'ms';
@@ -22,6 +23,7 @@
       kind: kind || 'info'
     };
     events.push(e);
+    _lastLabel = e.label;
     if (events.length > MAX) events.shift();
     if (list && panel && !panel.classList.contains('hidden')) appendRow(e);
     updateCount();
@@ -204,8 +206,38 @@
     if (_hbTimer) { clearInterval(_hbTimer); _hbTimer = null; mark('💓 heartbeat stop', _hbLabel); }
   }
 
+  // ── Always-on main-thread watchdog ──────────────────────────────────────────
+  // Ticks every 250ms for the ENTIRE session and stays silent unless it detects
+  // a stall: a gap far larger than the tick interval means the main thread was
+  // blocked (a freeze). On a stall it logs ONE error line — beaconed to the
+  // server so it survives the freeze — tagged with the last breadcrumb and view
+  // so we can see WHAT was running when it froze. This is what catches freezes
+  // that happen long after the 15s post-analyse heartbeat window, and on any
+  // page. setBreadcrumb() lets callers annotate the current action.
+  let _wdTimer = null, _wdLast = 0, _breadcrumb = '';
+  const _WD_THRESHOLD = 700;
+  function setBreadcrumb(s) { _breadcrumb = String(s == null ? '' : s); }
+  function _curView() {
+    try { return window._currentView || window.currentView || (location.hash || '').replace('#','') || ''; } catch(_) { return ''; }
+  }
+  function startWatchdog() {
+    if (_wdTimer) return;
+    _wdLast = performance.now();
+    _wdTimer = setInterval(() => {
+      const now = performance.now();
+      const gap = now - _wdLast;
+      _wdLast = now;
+      if (gap > _WD_THRESHOLD) {
+        err('⚠ MAIN-THREAD STALL ' + gap.toFixed(0) + 'ms',
+            'last=' + (_breadcrumb || _lastLabel || '?') + ' · view=' + _curView() + ' · nodes=' + domStats().nodes);
+      }
+    }, 250);
+  }
+  function stopWatchdog() { if (_wdTimer) { clearInterval(_wdTimer); _wdTimer = null; } }
+
   window.IGDiag = { log, mark, err, reset, show, hide, toggle, events,
                     stage, asyncStage, startHeartbeat, stopHeartbeat,
+                    startWatchdog, stopWatchdog, setBreadcrumb,
                     domStats, memStats };
 
   function init() {
@@ -221,7 +253,8 @@
     // Capture unhandled errors automatically
     window.addEventListener('error', (ev) => err('window error', (ev.message || '') + ' @ ' + (ev.filename || '') + ':' + (ev.lineno || '')));
     window.addEventListener('unhandledrejection', (ev) => err('unhandled rejection', String(ev.reason && (ev.reason.message || ev.reason) || 'unknown')));
-    log('Diagnostic ready', 'Press Ctrl+Shift+D or click 🔧 to toggle', 'mark');
+    startWatchdog();
+    log('Diagnostic ready', 'Press Ctrl+Shift+D or click 🔧 to toggle · watchdog armed', 'mark');
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
