@@ -354,6 +354,11 @@
       (window.requestAnimationFrame || setTimeout)(flushPending, 16);
     }
   }
+  function scheduleFlush(){
+    if (rafScheduled) return;
+    rafScheduled = true;
+    (window.requestAnimationFrame || setTimeout)(flushPending, 16);
+  }
   function queueRoot(node){
     if (!node || node.nodeType !== 1) return;
     // PAUSE switch — set window.__IG_FIELDS_PAUSED__ = true to suppress all
@@ -361,9 +366,7 @@
     // subtrees). Drained automatically when the flag is cleared.
     if (window.__IG_FIELDS_PAUSED__) return;
     pendingRoots.add(node);
-    if (rafScheduled) return;
-    rafScheduled = true;
-    (window.requestAnimationFrame || setTimeout)(flushPending, 16);
+    scheduleFlush();
   }
 
   let _mo = null;
@@ -397,7 +400,19 @@
     window.IGFields = {
       rescan: () => scan(document),
       refresh: () => scan(document),
-      scanRoot: (root) => { try { if (root) scan(root); } catch(_) {} },
+      // scanRoot decorates a known subtree the caller just inserted. It feeds
+      // the SAME chunked queue as the MutationObserver path (MAX_PER_FRAME per
+      // frame, yielding via rAF) so a view with hundreds of fields never blocks
+      // the main thread in one synchronous pass. Unlike queueRoot it is NOT
+      // gated by the pause flag — it's an explicit request, and callers invoke
+      // it right after resume() to drain the view they just built.
+      scanRoot: (root) => {
+        try {
+          if (!root || root.nodeType !== 1) return;
+          pendingRoots.add(root);
+          scheduleFlush();
+        } catch(_) {}
+      },
       pause:  () => {
         window.__IG_FIELDS_PAUSED__ = true;
         _disconnect();
