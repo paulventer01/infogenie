@@ -73,21 +73,31 @@ function _templateHashtags(seedKeyword, platform) {
   const kw  = seedKeyword.toLowerCase().replace(/\s+/g, '');
   const kwU = seedKeyword.toLowerCase().replace(/\s+/g, '_');
   const pfx = platform === 'tiktok'
-    ? ['fyp', 'foryoupage', 'viral', 'trending', 'tiktokmarketing']
-    : ['instagood', 'instadaily', 'explorepage', 'instagrammarketing', 'contentcreator'];
+    ? ['fyp', 'foryoupage', 'viral', 'trending', 'tiktokmarketing', 'tiktok', 'tiktokcreator']
+    : ['instagood', 'instadaily', 'explorepage', 'instagrammarketing', 'contentcreator', 'instagramreels', 'reels'];
   return [
-    { tag: `#${kw}`, volume: 'high',   competition: 'high',   trend: 'stable',  whyItWorks: `Core topic tag — high discovery but very competitive. Use sparingly.` },
-    { tag: `#${kw}tips`, volume: 'medium', competition: 'medium', trend: 'growing', whyItWorks: `Educational variant — attracts users looking for advice on ${seedKeyword}.` },
-    { tag: `#${kwU}_community`, volume: 'low', competition: 'low', trend: 'stable', whyItWorks: `Niche community tag — high engagement rate, low saturation.` },
-    { tag: `#${kw}content`, volume: 'medium', competition: 'medium', trend: 'stable', whyItWorks: `Creator-focused variant — targets other creators and audience builders.` },
-    { tag: `#${kw}life`, volume: 'medium', competition: 'medium', trend: 'stable', whyItWorks: `Lifestyle angle — broader audience reach beyond strict topic searchers.` },
-    ...pfx.map(t => ({ tag: `#${t}`, volume: 'high', competition: 'very_high', trend: 'stable', whyItWorks: `Platform-wide discovery tag — maximises reach but very saturated.` })),
-    { tag: '#smallbusiness', volume: 'high', competition: 'high', trend: 'stable', whyItWorks: 'Universal SMB tag — consistent audience of buyers and founders.' },
-    { tag: '#entrepreneur', volume: 'high', competition: 'high', trend: 'stable', whyItWorks: 'High-intent audience of business owners.' },
-    { tag: '#marketingtips', volume: 'high', competition: 'high', trend: 'growing', whyItWorks: 'Broad marketing audience — good for top-of-funnel awareness.' },
-    { tag: `#${kw}strategy`, volume: 'low', competition: 'low', trend: 'growing', whyItWorks: 'Strategic/B2B angle — lower competition, higher intent audience.' },
-    { tag: `#${kw}expert`, volume: 'low', competition: 'low', trend: 'stable', whyItWorks: 'Authority positioning — attracts clients seeking expertise.' },
-    { tag: `#${kw}growth`, volume: 'medium', competition: 'medium', trend: 'growing', whyItWorks: 'Growth-mindset audience — strong engagement signals.' },
+    // topic-specific tags (12)
+    { tag: `#${kw}`,            volume: 'high',     competition: 'high',     trend: 'stable',   whyItWorks: `Core topic tag — high discovery but very competitive. Use sparingly.` },
+    { tag: `#${kw}tips`,        volume: 'medium',   competition: 'medium',   trend: 'growing',  whyItWorks: `Educational variant — attracts users looking for advice on ${seedKeyword}.` },
+    { tag: `#${kwU}_community`, volume: 'low',      competition: 'low',      trend: 'stable',   whyItWorks: `Niche community tag — high engagement rate, low saturation.` },
+    { tag: `#${kw}content`,     volume: 'medium',   competition: 'medium',   trend: 'stable',   whyItWorks: `Creator-focused variant — targets creators and audience builders.` },
+    { tag: `#${kw}life`,        volume: 'medium',   competition: 'medium',   trend: 'stable',   whyItWorks: `Lifestyle angle — broader reach beyond strict topic searchers.` },
+    { tag: `#${kw}strategy`,    volume: 'low',      competition: 'low',      trend: 'growing',  whyItWorks: `Strategic/B2B angle — lower competition, higher intent audience.` },
+    { tag: `#${kw}expert`,      volume: 'low',      competition: 'low',      trend: 'stable',   whyItWorks: `Authority positioning — attracts clients seeking expertise.` },
+    { tag: `#${kw}growth`,      volume: 'medium',   competition: 'medium',   trend: 'growing',  whyItWorks: `Growth-mindset audience — strong engagement signals.` },
+    { tag: `#${kw}101`,         volume: 'low',      competition: 'low',      trend: 'stable',   whyItWorks: `Beginner-friendly tag — reaches newcomers actively learning about ${seedKeyword}.` },
+    { tag: `#${kw}hacks`,       volume: 'medium',   competition: 'medium',   trend: 'growing',  whyItWorks: `High-shareability format — audiences love quick wins and shortcuts.` },
+    { tag: `#${kw}motivation`,  volume: 'medium',   competition: 'medium',   trend: 'stable',   whyItWorks: `Emotional appeal — drives saves and shares from aspirational users.` },
+    { tag: `#${kwU}_inspo`,     volume: 'low',      competition: 'low',      trend: 'growing',  whyItWorks: `Inspiration niche — lower competition with high bookmark rates.` },
+    // platform-wide discovery (7)
+    ...pfx.map(t => ({ tag: `#${t}`, volume: 'very_high', competition: 'very_high', trend: 'stable', whyItWorks: `Platform-wide discovery tag — maximises reach but very saturated.` })),
+    // universal business / creator tags (6)
+    { tag: '#smallbusiness',    volume: 'high',     competition: 'high',     trend: 'stable',   whyItWorks: `Universal SMB tag — consistent audience of buyers and founders.` },
+    { tag: '#entrepreneur',     volume: 'high',     competition: 'high',     trend: 'stable',   whyItWorks: `High-intent audience of business owners.` },
+    { tag: '#marketingtips',    volume: 'high',     competition: 'high',     trend: 'growing',  whyItWorks: `Broad marketing audience — good for top-of-funnel awareness.` },
+    { tag: '#contentcreation',  volume: 'high',     competition: 'high',     trend: 'growing',  whyItWorks: `Creator economy tag — reaches fellow creators and brand decision-makers.` },
+    { tag: '#digitalmarketing', volume: 'very_high',competition: 'very_high',trend: 'stable',   whyItWorks: `Broad B2B discovery — best used occasionally to avoid dilution.` },
+    { tag: '#onlinebusiness',   volume: 'high',     competition: 'high',     trend: 'growing',  whyItWorks: `SMB/e-commerce buyer audience with commercial intent.` },
   ];
 }
 

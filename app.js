@@ -51577,13 +51577,15 @@ window.buildHashtagIntel = async function() {
           <button data-plat="tiktok"    class="hi-pill"               style="padding:7px 18px;border-radius:20px;border:2px solid #D1D5DB;background:#F9FAFB;color:#374151;font-weight:700;font-size:0.82rem;cursor:pointer">🎵 TikTok</button>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:flex-end">
-        <div>
-          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">TOPIC / SEED KEYWORD *</label>
-          <input id="hiKeyword" placeholder="e.g. skincare routine, personal finance, fitness motivation" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+          <label style="font-size:0.7rem;font-weight:700;color:#6B7280">TOPIC / SEED KEYWORD *</label>
+          <button id="hiAISuggest" style="padding:3px 10px;background:linear-gradient(135deg,#7C3AED,#0EA5E9);border:none;border-radius:5px;color:#fff;font-size:0.65rem;font-weight:700;cursor:pointer">🧠 AI Suggest</button>
         </div>
-        <button id="hiGo" style="background:linear-gradient(135deg,#4F46E5,#7C3AED);color:#fff;border:none;padding:9px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer;white-space:nowrap">🏷️ Research Hashtags</button>
+        <input id="hiKeyword" placeholder="e.g. skincare routine, personal finance, fitness motivation" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+        <div id="hiSuggestPills" style="display:none;margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
+      <button id="hiGo" style="width:100%;background:linear-gradient(135deg,#4F46E5,#7C3AED);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">🏷️ Research Hashtags</button>
       <div style="font-size:0.74rem;color:#6B7280;margin-top:8px">Powered by Perplexity Sonar · AI-researched from real platform data · 20-40s per run</div>
     </div>
     <div id="hiOut"></div>
@@ -51616,6 +51618,46 @@ window.buildHashtagIntel = async function() {
   // enter key on keyword input
   document.getElementById('hiKeyword').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('hiGo').click();
+  });
+
+  // AI Suggest — proposes seed keyword ideas via /api/studio/ai-suggest
+  document.getElementById('hiAISuggest').addEventListener('click', async () => {
+    const btn = document.getElementById('hiAISuggest');
+    const pills = document.getElementById('hiSuggestPills');
+    btn.textContent = '⏳ Thinking…'; btn.disabled = true;
+    try {
+      const platLabel = _selectedPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
+      const r = await fetch('/api/studio/ai-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fieldLabel: `${platLabel} hashtag research seed keyword`,
+          fieldPlaceholder: 'e.g. skincare routine, personal finance, fitness motivation',
+          context: `Social media hashtag intelligence tool for ${platLabel}. Suggest 5 specific, high-potential seed keyword topics the user might want to research hashtags for. Return a JSON array of 5 short topic strings (2-4 words each). Example: ["skincare routine", "morning workout", "meal prep ideas", "passive income", "travel hacks"]`,
+          format: 'json_array'
+        })
+      }).then(x => x.json());
+      let suggestions = [];
+      if (r.ok && r.result) {
+        try { suggestions = JSON.parse(r.result); } catch(_) {
+          // try extracting from string
+          const m = String(r.result).match(/\[[\s\S]*\]/);
+          if (m) { try { suggestions = JSON.parse(m[0]); } catch(_) {} }
+        }
+      }
+      if (!Array.isArray(suggestions) || !suggestions.length) {
+        suggestions = ['skincare routine', 'morning workout', 'meal prep ideas', 'passive income', 'travel hacks'];
+      }
+      pills.style.display = 'flex';
+      pills.innerHTML = suggestions.slice(0,6).map(s => `<button data-sug="${_escapeHtml(String(s).slice(0,80))}" style="padding:4px 12px;background:#EDE9FE;color:#7C3AED;border:1px solid #DDD6FE;border-radius:12px;font-size:0.74rem;font-weight:700;cursor:pointer">${_escapeHtml(String(s).slice(0,80))}</button>`).join('');
+      pills.querySelectorAll('[data-sug]').forEach(p => {
+        p.addEventListener('click', () => {
+          document.getElementById('hiKeyword').value = p.dataset.sug;
+          pills.style.display = 'none';
+        });
+      });
+    } catch(_) {}
+    btn.textContent = '🧠 AI Suggest'; btn.disabled = false;
   });
 
   // research button
