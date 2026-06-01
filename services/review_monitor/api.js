@@ -13,9 +13,12 @@ const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
 function _safe(fn) { return (req, res) => Promise.resolve(fn(req, res)).catch(e => { if (!res.headersSent) _err(res, 500, e.message); }); }
 
-// ── Stable review fingerprint ─────────────────────────────────────────────────
-function _reviewId(author, rating, body) {
-  const str = `${String(author || '').trim()}|${rating || 0}|${String(body || '').trim().slice(0, 150)}`;
+// ── Stable review fingerprint (author + date + rating) ───────────────────────
+// Body is intentionally excluded — review text can be edited/truncated by the
+// platform without the review being truly removed, which would create false
+// "deleted" events if body were part of the identity.
+function _reviewId(author, date, rating) {
+  const str = `${String(author || '').trim()}|${String(date || '').trim()}|${rating || 0}`;
   return crypto.createHash('sha256').update(str).digest('hex').slice(0, 32);
 }
 
@@ -39,6 +42,41 @@ async function _sendSlack(text) {
   } catch (_) {}
 }
 
+// ── Resend email alert helper ─────────────────────────────────────────────────
+// Sends to the owner's email (first is_owner user) when RESEND_API_KEY is set.
+async function _sendEmail(subject, htmlBody) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey || /^_DUMMY/i.test(apiKey)) return;
+  const from = process.env.RESEND_FROM_EMAIL || 'alerts@resend.dev';
+  let to = process.env.RESEND_ALERT_EMAIL || null;
+  if (!to) {
+    try {
+      if (_db.hasDb && _db.hasDb()) {
+        const r = await _db.getPool().query(
+          'SELECT email FROM users WHERE is_owner=TRUE ORDER BY id ASC LIMIT 1');
+        if (r.rows[0]) to = r.rows[0].email;
+      }
+    } catch (_) {}
+  }
+  if (!to) return;
+  try {
+    const payload = Buffer.from(JSON.stringify({ from, to, subject, html: htmlBody }));
+    await new Promise(resolve => {
+      const req = _https.request({
+        hostname: 'api.resend.com', path: '/emails', method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': payload.length
+        }
+      }, r => { r.resume(); r.on('end', resolve); });
+      req.on('error', resolve);
+      req.setTimeout(15000, () => { req.destroy(); resolve(); });
+      req.write(payload); req.end();
+    });
+  } catch (_) {}
+}
+
 // ── Core snapshot helper — called by review_aggregator after every scan ───────
 // Returns array of newly-deleted review rows.
 async function recordSnapshot(tenantId, brand, platform, reviews) {
@@ -46,8 +84,8 @@ async function recordSnapshot(tenantId, brand, platform, reviews) {
   if (tenantId == null) return [];
   const pool = _db.getPool();
 
-  // Build list of current review IDs
-  const currentIds = reviews.map(rv => _reviewId(rv.author, rv.rating, rv.body));
+  // Build list of current review IDs using stable author+date+rating fingerprint
+  const currentIds = reviews.map(rv => _reviewId(rv.author, rv.date, rv.rating));
 
   // Upsert all current reviews (mark as seen / resurrect if previously deleted)
   for (let i = 0; i < reviews.length; i++) {
@@ -72,7 +110,6 @@ async function recordSnapshot(tenantId, brand, platform, reviews) {
   // Find rows that were active before but are not in the current set → mark deleted
   let newlyDeleted = [];
   if (currentIds.length > 0) {
-    // Build a parameterised NOT IN list
     const placeholders = currentIds.map((_, j) => `$${j + 4}`).join(',');
     const r = await pool.query(`
       UPDATE review_snapshots
@@ -94,14 +131,26 @@ async function recordSnapshot(tenantId, brand, platform, reviews) {
     newlyDeleted = r.rows;
   }
 
-  // Alert if any reviews disappeared
+  // Alert (Slack + email) if any reviews disappeared
   if (newlyDeleted.length > 0) {
     const preview = newlyDeleted.slice(0, 3).map(rv =>
       `• ${rv.author || 'Anonymous'} (${rv.rating || '?'}★): "${String(rv.body || '').slice(0, 80)}${(rv.body || '').length > 80 ? '…' : ''}"`
     ).join('\n');
-    const text = `🗑️ *Review Deletion Alert* — *${brand}* on *${platform}*\n` +
+    const alertText = `🗑️ *Review Deletion Alert* — *${brand}* on *${platform}*\n` +
       `${newlyDeleted.length} review(s) disappeared since the last scan.\n${preview}`;
-    _sendSlack(text).catch(() => {});
+    const htmlBody = `<h2>🗑️ Review Deletion Alert</h2>
+<p><strong>${brand}</strong> on <strong>${platform}</strong> — ` +
+      `${newlyDeleted.length} review(s) disappeared since the last scan.</p>
+<ul>${newlyDeleted.slice(0, 5).map(rv =>
+  `<li><strong>${rv.author || 'Anonymous'}</strong> (${rv.rating || '?'}★): ` +
+  `&ldquo;${String(rv.body || '').replace(/</g, '&lt;').slice(0, 120)}${(rv.body || '').length > 120 ? '&hellip;' : ''}&rdquo;</li>`
+).join('')}</ul>
+<p style="color:#6B7280;font-size:12px">Detected by InfoGenie T46 Deleted Review Monitor</p>`;
+    // Fire both channels concurrently; neither blocks the caller
+    Promise.all([
+      _sendSlack(alertText).catch(() => {}),
+      _sendEmail(`Review Deletion Alert — ${brand} on ${platform}`, htmlBody).catch(() => {})
+    ]).catch(() => {});
   }
 
   return newlyDeleted;
