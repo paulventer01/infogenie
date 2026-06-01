@@ -1,8 +1,6 @@
 // Centralised data fetchers for export reports. Each source returns a normalised
 // shape: { title, generated_at, sections: [{ title, kind:'kv'|'table'|'text', ... }] }
 const _db = require('../../db');
-const _path = require('path');
-const _fs = require('fs');
 
 async function _searchIntelData(tid) {
   const out = { title: 'Search & AI Visibility Report', generated_at: new Date().toISOString(), sections: [] };
@@ -88,15 +86,21 @@ async function _searchIntelData(tid) {
 async function _campaignsData(tid) {
   const out = { title: 'Campaign Performance Report', generated_at: new Date().toISOString(), sections: [] };
   try {
-    const file = _path.join(__dirname, '..', '..', 'data', 'launches.json');
-    const launches = _fs.existsSync(file) ? JSON.parse(_fs.readFileSync(file, 'utf8')) : [];
+    // Per-workspace launch store: kv key `launches:t<tid>` (shape { launches: [] }).
+    // Previously read the legacy global data/launches.json backup, which leaked
+    // one workspace's launches into every report and is now removed.
+    let launches = [];
+    if (_db.hasDb() && tid != null) {
+      const store = await _db.kvGet(`launches:t${tid}`, null);
+      if (store && Array.isArray(store.launches)) launches = store.launches;
+    }
     out.sections.push({
       kind: 'table', title: 'Tracked Campaign Launches',
-      headers: ['Name', 'Platform', 'Status', 'Platform ID', 'Created'],
+      headers: ['Name', 'Channel', 'Status', 'Scheduled', 'Created'],
       rows: launches.slice(0, 100).map(l => [
-        l.name || '-', l.platform || '-', l.status || '-',
-        l.platform_camp_id || '-',
-        l.created_at ? new Date(l.created_at).toLocaleString() : '-',
+        l.name || '-', l.channel || '-', l.status || '-',
+        l.datetimeISO ? new Date(l.datetimeISO).toLocaleString() : '-',
+        l.createdAt ? new Date(l.createdAt).toLocaleString() : '-',
       ]),
     });
   } catch (e) { /* no data yet */ }

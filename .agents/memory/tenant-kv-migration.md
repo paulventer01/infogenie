@@ -52,6 +52,19 @@ any rows for that prefix).
 whether its data is a flat file or a directory. Flat file → add a
 `['file:<name>.json', base]` entry. Directory → write a bespoke readdir→kvSet loop.
 
+## Removing legacy backups: delete BOTH the disk file and the kv row
+The persistence chain is `data/<name>.json` → `file:<name>.json` kv row → `<base>:t<tid>`.
+`db.js`'s `migrateJsonFilesIfNeeded` runs on EVERY boot and re-creates a
+`file:<name>.json` kv row from any `data/<name>.json` still on disk. So deleting
+only the `file:` kv rows is not enough — they reappear next boot. To retire a
+legacy backup you must delete the `data/*.json` disk file (it's version-controlled,
+so this carries to prod) AND the `file:` kv row. A pure SQL DELETE in dev never
+touches prod's kv_store, so durable cleanup needs a self-guarding boot routine
+(`kv_scope.cleanupLegacyFileKey`) that only drops the `file:` row once the
+`<base>:t<tid>` per-workspace key is confirmed present (falls back to migrate-first).
+**Why:** removing one without the other either resurrects the backup or never
+cleans production.
+
 ## Cover legacy keys even when this environment has none
 Add migration entries for every store that *could* have legacy data in another
 deployment (e.g. production), not just the ones with data on this disk. Stores like

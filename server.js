@@ -5038,8 +5038,8 @@ ORIGINAL ARTICLE HTML:
 });
 
 // ── AI Visibility Trend persistence ──────────────────────────────────────────
-// Stores every coverage-matrix run to data/aivis-history.json (keyed by domain)
-// so users can see citation deltas over time per model and per prompt.
+// Stores every coverage-matrix run (keyed by domain) so users can see citation
+// deltas over time per model and per prompt.
 // Per-workspace: trend history lives at kv `aivis_history:t<tid>` (a
 // {domain:[runs]} map). null tid → empty (never reads another workspace).
 const AIVIS_HISTORY_BASE = 'aivis_history';
@@ -14142,15 +14142,19 @@ setInterval(_sweepLaunches, 60 * 1000);
 // Run once on boot to catch reminders that became due while the server was down
 setTimeout(_sweepLaunches, 5 * 1000);
 
-// One-time boot migration: copy legacy GLOBAL disk-file blobs (migrated by
-// db.js into `file:<name>.json` kv keys) into the default (owner) tenant's
-// per-workspace namespaced keys. Idempotent — no-op once the tenant keys exist.
-// Nothing is dropped; the `file:` copies remain in place as backups.
+// One-time boot cleanup: Task #49 migrated these legacy GLOBAL disk-file blobs
+// (stored by db.js as `file:<name>.json` kv keys) into the default (owner)
+// tenant's per-workspace namespaced keys, intentionally leaving the `file:`
+// copies as backups. That split is now proven stable, so drop the stale
+// backups. cleanupLegacyFileKey is SELF-GUARDING: it only deletes a backup once
+// the `${base}:t<tid>` key actually holds the data, and falls back to migrating
+// first on any environment that somehow hasn't migrated yet — so it is safe to
+// run unconditionally and idempotent once the backups are gone.
 // Deferred 9s so the tenants/users schema is ready and getDefaultTenantId()
-// resolves (otherwise it returns null this early and every migration skips).
+// resolves (otherwise it returns null this early and every step skips).
 setTimeout(async () => {
   try {
-    const _fileMigrations = [
+    const _legacyFileBackups = [
       ['file:aivis-history.json', 'aivis_history'],
       ['file:alerts.json', 'alerts'],
       ['file:alerts_snapshot.json', 'alerts_snapshot'],
@@ -14163,10 +14167,10 @@ setTimeout(async () => {
       ['file:stakeholders.json', 'stakeholders'],
       ['file:webhooks.json', 'webhooks'],
     ];
-    for (const [fileKey, base] of _fileMigrations) {
-      await _tkvScope.migrateFileKeyToTenant(fileKey, base);
+    for (const [fileKey, base] of _legacyFileBackups) {
+      await _tkvScope.cleanupLegacyFileKey(fileKey, base);
     }
-  } catch (e) { console.warn('[kv_scope] disk-file boot migration', e.message); }
+  } catch (e) { console.warn('[kv_scope] legacy backup cleanup', e.message); }
 
   // Diag captures live on disk as data/diag-captures/<slug>.json — a directory,
   // so db.js's flat-file boot migration never copied them into kv. Move each
