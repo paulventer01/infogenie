@@ -66,22 +66,28 @@ router.post('/pulse', async (req, res) => {
   const seed = String(req.body?.seed || '').trim();
   const locale = String(req.body?.locale || 'en-US');
   if (!seed) return _err(res, 400, 'seed required');
-  try { res.json(await _pulse.runPulse(seed, locale)); }
-  catch (e) { _err(res, 502, e.message); }
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'search_intel:pulse' });
+    res.json(await _pulse.runPulse(seed, locale, tid));
+  } catch (e) { _err(res, 502, e.message); }
 });
 router.get('/pulse/history', async (req, res) => {
   const seed = String(req.query?.seed || '').trim();
   if (!seed) return _err(res, 400, 'seed required');
-  try { res.json({ ok:true, history: await _pulse.getPulseHistory(seed, req.query.limit) }); }
-  catch (e) { _err(res, 500, e.message); }
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'search_intel:pulse_history' });
+    res.json({ ok:true, history: await _pulse.getPulseHistory(seed, req.query.limit, tid) });
+  } catch (e) { _err(res, 500, e.message); }
 });
 
 // ─── Image / logo recognition ──────────────────────────────────────────────
 router.post('/image', async (req, res) => {
   const url = String(req.body?.url || '').trim();
   if (!url) return _err(res, 400, 'url required');
-  try { res.json(await _pulse.analyzeImage(url, !!req.body?.force)); }
-  catch (e) { _err(res, 502, e.message); }
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'search_intel:image' });
+    res.json(await _pulse.analyzeImage(url, !!req.body?.force, tid));
+  } catch (e) { _err(res, 502, e.message); }
 });
 
 module.exports = router;

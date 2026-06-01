@@ -30,7 +30,7 @@ function _localeToDfs(locale) {
   return map[locale] || map['en-US'];
 }
 
-async function runPulse(seed, locale = 'en-US') {
+async function runPulse(seed, locale = 'en-US', tenantId = null) {
   const login = process.env.DATAFORSEO_LOGIN;
   const pass  = process.env.DATAFORSEO_PASSWORD;
   if (!login || !pass) throw new Error('DataForSEO not configured');
@@ -55,21 +55,21 @@ async function runPulse(seed, locale = 'en-US') {
   if (_db.hasDb()) {
     try {
       await _db.getPool().query(`
-        INSERT INTO search_intel_pulse_runs (seed, locale, suggestions, total_volume)
-        VALUES ($1,$2,$3,$4)
-      `, [String(seed).slice(0, 200), locale, JSON.stringify(suggestions), totalVolume]);
+        INSERT INTO search_intel_pulse_runs (seed, locale, suggestions, total_volume, tenant_id)
+        VALUES ($1,$2,$3,$4,$5)
+      `, [String(seed).slice(0, 200), locale, JSON.stringify(suggestions), totalVolume, tenantId]);
     } catch(e) { console.warn('[search-pulse] log fail:', e.message); }
   }
   return { ok:true, seed, locale, count: suggestions.length, totalVolume, suggestions };
 }
 
-async function getPulseHistory(seed, limit = 12) {
+async function getPulseHistory(seed, limit = 12, tenantId = null) {
   if (!_db.hasDb()) return [];
   const r = await _db.getPool().query(`
     SELECT id, seed, locale, total_volume, ran_at,
       jsonb_array_length(suggestions) AS suggestion_count
-    FROM search_intel_pulse_runs WHERE seed=$1 ORDER BY ran_at DESC LIMIT $2
-  `, [String(seed).slice(0, 200), Math.min(Math.max(Number(limit)||12, 1), 60)]);
+    FROM search_intel_pulse_runs WHERE seed=$1 AND tenant_id=$2 ORDER BY ran_at DESC LIMIT $3
+  `, [String(seed).slice(0, 200), tenantId, Math.min(Math.max(Number(limit)||12, 1), 60)]);
   return r.rows;
 }
 
@@ -78,13 +78,13 @@ async function getPulseHistory(seed, limit = 12) {
 // from an image URL and caches the result. The frontend wires this into the
 // existing mention tracker so the user finds brand appearances even when
 // nobody @-mentions them.
-async function analyzeImage(sourceUrl, force = false) {
+async function analyzeImage(sourceUrl, force = false, tenantId = null) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key) throw new Error('OpenAI key missing');
   const url = String(sourceUrl || '').trim();
   if (!/^https?:\/\//i.test(url) || url.length > 800) throw new Error('valid http(s) URL required');
   if (_db.hasDb() && !force) {
-    const cached = await _db.getPool().query(`SELECT * FROM search_intel_images WHERE source_url=$1`, [url]);
+    const cached = await _db.getPool().query(`SELECT * FROM search_intel_images WHERE source_url=$1 AND tenant_id=$2`, [url, tenantId]);
     if (cached.rows[0]) return { ok:true, cached:true, ...cached.rows[0] };
   }
   const r = await _httpJson({
@@ -110,10 +110,10 @@ async function analyzeImage(sourceUrl, force = false) {
   if (_db.hasDb()) {
     try {
       await _db.getPool().query(`
-        INSERT INTO search_intel_images (source_url, brands, objects, raw)
-        VALUES ($1,$2,$3,$4)
-        ON CONFLICT (source_url) DO UPDATE SET brands=EXCLUDED.brands, objects=EXCLUDED.objects, raw=EXCLUDED.raw, ran_at=now()
-      `, [url, JSON.stringify(parsed.brands), JSON.stringify(parsed.objects), raw.slice(0, 4000)]);
+        INSERT INTO search_intel_images (source_url, brands, objects, raw, tenant_id)
+        VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (tenant_id, source_url) DO UPDATE SET brands=EXCLUDED.brands, objects=EXCLUDED.objects, raw=EXCLUDED.raw, ran_at=now()
+      `, [url, JSON.stringify(parsed.brands), JSON.stringify(parsed.objects), raw.slice(0, 4000), tenantId]);
     } catch(e) { console.warn('[search-pulse] image cache fail:', e.message); }
   }
   return { ok:true, cached:false, source_url:url, brands:parsed.brands, objects:parsed.objects };

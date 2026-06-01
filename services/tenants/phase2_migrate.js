@@ -84,7 +84,7 @@ const PLAIN_TABLES = [
   'ai_traffic_sites', 'ai_traffic_hits',
   'keyword_explorer_runs', 'lead_finder_runs',
   'search_intel_llm_runs',
-  'search_intel_pulse_runs', 'search_intel_images',
+  'search_intel_pulse_runs',
   // Listening / social
   'job_board_runs', 'churn_scores',
   'influencer_outreach',
@@ -146,6 +146,11 @@ const REWRITE_UNIQUE = [
   // tenants couldn't track the same prompt independently. Scope per-tenant.
   { table:'search_intel_queries', dropConstraint:'search_intel_queries_query_brand_locale_key',
     uniqueExtras:['query','brand','locale'] },
+  // search_intel_images: source_url was globally unique, so the OpenAI-vision
+  // logo/brand cache was shared across workspaces. Scope per-tenant so each
+  // workspace keeps its own cache and analyses don't leak between tenants.
+  { table:'search_intel_images', dropConstraint:'search_intel_images_source_url_key',
+    uniqueExtras:['source_url'] },
   // webpush_subs: browser push endpoint unique per tenant. Legacy schema used
   // endpoint as a single-column PRIMARY KEY, so drop the auto-named PK.
   { table:'webpush_subs',      dropConstraint:'webpush_subs_pkey',             uniqueExtras:['endpoint'] },

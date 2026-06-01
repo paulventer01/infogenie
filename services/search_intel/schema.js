@@ -69,12 +69,17 @@ async function ensureSearchIntelSchema() {
   // search_intel_queries: its legacy global UNIQUE (query, brand, locale) is
   // replaced with a per-tenant composite so two workspaces can track the same
   // prompt independently.
+  //
+  // search_intel_images: its legacy global UNIQUE (source_url) is replaced with
+  // a per-tenant composite so each workspace keeps its own logo/brand cache and
+  // one workspace's analysis can't leak into another's.
   try {
     await pool.query(`ALTER TABLE search_intel_queries DROP CONSTRAINT IF EXISTS search_intel_queries_query_brand_locale_key`);
     await addTenantIdColumn('search_intel_queries', { uniqueWithExtra: ['query', 'brand', 'locale'] });
     await addTenantIdColumn('search_intel_llm_runs');
     await addTenantIdColumn('search_intel_pulse_runs');
-    await addTenantIdColumn('search_intel_images');
+    await pool.query(`ALTER TABLE search_intel_images DROP CONSTRAINT IF EXISTS search_intel_images_source_url_key`);
+    await addTenantIdColumn('search_intel_images', { uniqueWithExtra: ['source_url'] });
   } catch (e) {
     console.warn('[search-intel] tenant migration warning:', e.message);
   }
