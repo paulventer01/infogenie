@@ -182,3 +182,215 @@ test('no stale ALLOWLIST entries', () => {
     `Stale ALLOWLIST entries in tenant-write-audit — remove them so a real ` +
     `omission cannot hide behind a dead exception:\n  ` + stale.join('\n  '));
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// VALUE-SIDE AUDIT (Task #73)
+// ════════════════════════════════════════════════════════════════════════════
+// The name-side audit above proves every INSERT into a tenant-scoped table
+// *names* tenant_id in its column list. That is necessary but not sufficient: an
+// INSERT can name tenant_id and still feed it an obviously-broken value, e.g.
+//
+//     INSERT INTO foo (tenant_id, name) VALUES (NULL, $1)      -- literal NULL
+//     INSERT INTO foo (tenant_id, name) VALUES (0, $1)         -- literal 0
+//     INSERT INTO foo (tenant_id, name) VALUES (undefined, $1) -- JS undefined
+//     INSERT INTO foo (tenant_id, name) VALUES ($1)            -- value missing
+//
+// With MULTITENANT_ENFORCEMENT='on' the NOT NULL column makes a literal NULL /
+// missing value throw (swallowed by the surrounding try/catch → row silently
+// dropped); a literal 0 inserts a row owned by a tenant that does not exist,
+// cross-contaminating no one but orphaning the data. Either way the user's save
+// silently fails or lands in the wrong place. This static scan flags the
+// obvious cases before they ship.
+//
+// It can only judge VALUES that are statically inspectable — literal tuples like
+// `VALUES (NULL, $1, ...)`. It deliberately skips anything it cannot map with
+// confidence (INSERT ... SELECT, JS `${...}` interpolation, multi-string
+// concatenation) to avoid false positives; the worst it does there is stay
+// silent, never cry wolf. Placeholder values (`$N`) are accepted — verifying the
+// JS params array binds a real tenant id is beyond a static text scan and is the
+// job of the runtime schema/read audits.
+
+// Split a comma-separated SQL fragment at the TOP level only — commas inside
+// parens/brackets/braces (subqueries, ARRAY[...], jsonb_build_object(...)) and
+// inside quoted string literals do not split. Used for both column lists and
+// VALUES tuples so column N lines up with value N.
+function splitTopLevel(s) {
+  const parts = [];
+  let depth = 0, buf = '', q = null;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (q) {
+      buf += c;
+      if (c === q && s[i - 1] !== '\\') q = null;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') { q = c; buf += c; continue; }
+    if (c === '(' || c === '[' || c === '{') { depth++; buf += c; continue; }
+    if (c === ')' || c === ']' || c === '}') { depth--; buf += c; continue; }
+    if (c === ',' && depth === 0) { parts.push(buf.trim()); buf = ''; continue; }
+    buf += c;
+  }
+  if (buf.trim() !== '' || parts.length) parts.push(buf.trim());
+  return parts;
+}
+
+// Like readColumnList but also returns the index immediately AFTER the closing
+// ')' of the column list, so the caller can locate the VALUES clause.
+function readColumnListAndEnd(src, fromIdx) {
+  let i = fromIdx;
+  while (i < src.length && /\s/.test(src[i])) i++;
+  if (src[i] !== '(') return { cols: null, endIdx: i };
+  let depth = 0, buf = '';
+  for (let j = i; j < src.length; j++) {
+    const c = src[j];
+    if (c === '(') depth++;
+    else if (c === ')') {
+      depth--;
+      if (depth === 0) return { cols: buf.slice(1), endIdx: j + 1 };
+    }
+    buf += c;
+  }
+  return { cols: null, endIdx: src.length };
+}
+
+// Starting at the index right after a column list's ')', parse the VALUES
+// clause into an array of tuples (each an array of top-level value tokens).
+// Returns null when there is no literal VALUES tuple to inspect — INSERT ...
+// SELECT, DEFAULT VALUES, or a VALUES list built by interpolation rather than
+// a literal '(' — so the caller skips (cannot statically map).
+function readValueTuples(src, afterColsIdx) {
+  const rest = src.slice(afterColsIdx);
+  const kw = /^\s*([a-z_]+)/i.exec(rest);
+  if (!kw || !/^values$/i.test(kw[1])) return null; // SELECT / DEFAULT / etc.
+  let i = afterColsIdx + kw[0].length;
+  const tuples = [];
+  while (true) {
+    while (i < src.length && /\s/.test(src[i])) i++;
+    if (src[i] !== '(') break;
+    let depth = 0, buf = '', q = null, j = i;
+    for (; j < src.length; j++) {
+      const c = src[j];
+      if (q) { buf += c; if (c === q && src[j - 1] !== '\\') q = null; continue; }
+      if (c === "'" || c === '"' || c === '`') { q = c; buf += c; continue; }
+      if (c === '(') depth++;
+      else if (c === ')') { depth--; if (depth === 0) { buf += c; j++; break; } }
+      buf += c;
+    }
+    tuples.push(splitTopLevel(buf.slice(1, -1))); // strip outer parens
+    i = j;
+    while (i < src.length && /\s/.test(src[i])) i++;
+    if (src[i] === ',') { i++; continue; } // another row tuple follows
+    break;
+  }
+  return tuples.length ? tuples : null;
+}
+
+// Classify a single value token bound to the tenant_id column. Returns a human
+// reason string when the value is an obvious non-value, else null. Placeholders
+// ($N), column refs, function calls and sub-selects are all accepted here.
+function badTenantValueReason(tok) {
+  const t = tok.trim();
+  if (/^null$/i.test(t)) return 'literal NULL';
+  if (/^undefined$/.test(t)) return 'literal undefined';
+  if (/^0$/.test(t)) return 'literal 0 (no tenant has id 0)';
+  return null;
+}
+
+// Value-side exceptions: an INSERT whose statically-visible tenant_id value
+// LOOKS bad but is provably correct in context. Same mechanism as ALLOWLIST —
+// key "relative/path.js:table", value a documented reason. Empty today.
+const VALUE_ALLOWLIST = new Map([
+  // ['services/foo/api.js:bar_items',
+  //   'tenant_id literal 0 is the sentinel global-template row, never a real tenant.'],
+]);
+
+function scanFileValues(full) {
+  const src = fs.readFileSync(full, 'utf8');
+  const rel = path.relative(REPO_ROOT, full).split(path.sep).join('/');
+  const offenders = [];
+  const re = /INSERT\s+INTO\s+([a-z_][a-z0-9_]*)/gi;
+  let m;
+  while ((m = re.exec(src))) {
+    const table = m[1];
+    if (!SCOPED_TABLES.has(table)) continue;              // not tenant-scoped
+    if (VALUE_ALLOWLIST.has(`${rel}:${table}`)) continue; // documented exception
+    const { cols, endIdx } = readColumnListAndEnd(src, re.lastIndex);
+    if (cols == null) continue;                 // no column list — name-side audit owns this
+    if (cols.includes('${')) continue;          // interpolated column list — can't index reliably
+    const colTokens = splitTopLevel(cols);
+    const tidIdx = colTokens.findIndex(c => /^tenant_id$/i.test(c.trim()));
+    if (tidIdx < 0) continue;                    // doesn't name tenant_id — name-side audit owns this
+    const tuples = readValueTuples(src, endIdx);
+    if (!tuples) continue;                       // INSERT ... SELECT / non-literal VALUES — unmappable
+    const line = src.slice(0, m.index).split('\n').length;
+    for (const tuple of tuples) {
+      if (tuple.join(',').includes('${')) continue; // interpolated row tuple — can't map positions
+      if (tuple.length !== colTokens.length) {
+        offenders.push({
+          rel, table, line,
+          why: `VALUES has ${tuple.length} entries but the column list has ` +
+               `${colTokens.length} — positional mapping is broken, tenant_id may be unset`,
+        });
+        continue;
+      }
+      const reason = badTenantValueReason(tuple[tidIdx]);
+      if (reason) {
+        offenders.push({
+          rel, table, line,
+          why: `tenant_id maps to ${reason} ("${tuple[tidIdx].trim()}")`,
+        });
+      }
+    }
+  }
+  return offenders;
+}
+
+test('no INSERT feeds tenant_id an obvious non-value (literal NULL/undefined/0 or missing param)', () => {
+  const files = collectFiles();
+  const offenders = files.flatMap(scanFileValues);
+  assert.deepStrictEqual(
+    offenders, [],
+    `These INSERT statements name tenant_id in their column list but supply an ` +
+    `obviously-broken value for it. Under MULTITENANT_ENFORCEMENT='on' a literal ` +
+    `NULL / undefined / missing value throws a not-null violation (swallowed by ` +
+    `the surrounding try/catch, so the row is silently dropped) and a literal 0 ` +
+    `orphans the row under a non-existent tenant. Pass the resolved tenant id ` +
+    `(resolveTenantId(req, {label}) / getCronTenantId() / parent row's tenant_id) ` +
+    `instead, or, if the value is provably correct in context, add the key to ` +
+    `VALUE_ALLOWLIST in this test with a documented reason:\n  ` +
+    offenders.map(o => `${o.rel}:${o.line} → INSERT INTO ${o.table} (${o.why})`).join('\n  ')
+  );
+});
+
+// Keep VALUE_ALLOWLIST honest: every entry must still correspond to a real,
+// currently-offending INSERT, or it could mask a new bad value.
+test('no stale VALUE_ALLOWLIST entries', () => {
+  const stale = [];
+  for (const key of VALUE_ALLOWLIST.keys()) {
+    const sep = key.lastIndexOf(':');
+    const rel = key.slice(0, sep);
+    const table = key.slice(sep + 1);
+    const full = path.join(REPO_ROOT, rel);
+    if (!fs.existsSync(full)) { stale.push(`${key} (file missing)`); continue; }
+    if (!SCOPED_TABLES.has(table)) { stale.push(`${key} (table no longer tenant-scoped)`); continue; }
+    // Re-run the value scan for just this file with the allowlist bypassed; the
+    // entry is live only if the file still produces a value-side offender for
+    // this table.
+    const stillOffends = scanFileValues(full).some(o => o.table === table)
+      // scanFileValues already skips allowlisted (rel,table) pairs, so temporarily
+      // test against a fresh scan that ignores the allowlist:
+      || (() => {
+        const saved = VALUE_ALLOWLIST.get(key);
+        VALUE_ALLOWLIST.delete(key);
+        const hit = scanFileValues(full).some(o => o.table === table);
+        VALUE_ALLOWLIST.set(key, saved);
+        return hit;
+      })();
+    if (!stillOffends) {
+      stale.push(`${key} (INSERT no longer feeds a bad tenant_id value — drop the exception)`);
+    }
+  }
+  assert.deepStrictEqual(stale, [],
+    `Stale VALUE_ALLOWLIST entries in tenant-write-audit — remove them so a real ` +
+    `bad value cannot hide behind a dead exception:\n  ` + stale.join('\n  '));
+});
