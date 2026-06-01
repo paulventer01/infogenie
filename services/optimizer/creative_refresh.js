@@ -333,12 +333,15 @@ async function _runUnsafe(opts = {}) {
   // its own tenant's settings (cached per run) instead of a single global toggle.
   const readSetting = makeSettingsCache();
   let refreshed = 0, scanned = 0, skipped = 0, errors = 0;
+  // Declared at function scope so the summary return below can reference it even
+  // when there are no campaigns to iterate (otherwise: "dryRun is not defined").
+  let dryRun = opts.dryRun !== undefined ? !!opts.dryRun : true;
   outer: for (const camp of camps.rows) {
     if (!opts.force) {
       const enabled = await readSetting(camp.tenant_id, 'creative_refresh_enabled', { v: true });
       if (!enabled.v) continue; // this tenant has creative refresh turned off
     }
-    const dryRun = opts.dryRun !== undefined ? !!opts.dryRun
+    dryRun = opts.dryRun !== undefined ? !!opts.dryRun
       : !!(await readSetting(camp.tenant_id, 'creative_refresh_dry_run', { v: true })).v;
     const adsR = await fetchActiveAdsMeta(camp.platform_camp_id);
     if (!adsR.ok) { errors++; continue; }
