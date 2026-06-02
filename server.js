@@ -228,7 +228,17 @@ const _serveIndexHtml = _staticVersioning.serveVersionedHtml(
 );
 app.get(['/', '/index.html'], _serveIndexHtml);
 
-app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
+// Fingerprinted static assets (.js/.css carrying a content-hash `?v=`) are
+// served `public, max-age=31536000, immutable` via setHeaders so returning
+// visitors skip re-downloading unchanged files (e.g. the 3.6 MB app.js). The
+// hashed URL only appears when the bytes change, so this is always safe; HTML
+// (no-cache) and API responses (no-store, set by the global middleware) are
+// unaffected. See services/static_versioning.
+app.use(express.static(path.join(__dirname), {
+  etag: false,
+  lastModified: false,
+  setHeaders: _staticVersioning.setVersionedAssetHeaders,
+}));
 
 // ── Auth gate for /api/* (production hardening) ──────────────────────────────
 // When INFOGENIE_API_KEY is set, all /api/* requests must include it via:

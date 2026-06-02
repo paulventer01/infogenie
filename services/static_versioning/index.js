@@ -90,4 +90,25 @@ function serveVersionedHtml(htmlAbsPath, rootDir) {
   };
 }
 
-module.exports = { assetVersion, versionHtml, serveVersionedHtml };
+// `express.static` `setHeaders` hook: when a request targets a fingerprinted
+// asset (a .js/.css whose `?v=` matches the file's CURRENT content hash), mark
+// it long-lived & immutable so returning visitors are served straight from
+// cache and never re-download an unchanged 3.6 MB app.js. A request whose `?v=`
+// does NOT match the current hash (e.g. a stale URL from an old, no-cached
+// index.html) is intentionally left untouched — so it keeps the global
+// middleware's no-store header and the browser re-fetches & self-corrects on the
+// next load. Non-`?v=` requests are likewise untouched. `absPath` is the
+// resolved file path send is about to stream.
+function setVersionedAssetHeaders(res, absPath) {
+  const req = res && res.req;
+  const v = req && req.query && req.query.v;
+  if (!v || typeof v !== 'string') return;
+  if (!/\.(?:js|css)$/i.test(absPath)) return;
+  const current = assetVersion(absPath);
+  if (!current || v !== current) return;
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.removeHeader('Pragma');
+  res.removeHeader('Expires');
+}
+
+module.exports = { assetVersion, versionHtml, serveVersionedHtml, setVersionedAssetHeaders };
