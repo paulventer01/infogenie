@@ -60,3 +60,4 @@ each file is small enough to read.
 | `ig_true_roas.js` | True ROAS (T36) — Conversions · Revenue Lag · Settings (`_trState` + `buildTrueRoas` + `_tr*` helpers) |
 | `ig_content_traffic.js` | Content Score (T39-A) · AI Traffic Monitor · Visibility Leaderboard |
 | `ig_navchrome.js` | Navigation chrome — Slim Sidebar collapse/filter · auto-injected View Header + breadcrumbs · Related Views pill bar |
+| `ig_reach_automation.js` | Reach automation cluster — Agency Hub (multi-client mgmt · white-label · scheduled sends) · Automations Center · Re-engagement Hub (incl. live Drip engine status panel + action helpers) |
