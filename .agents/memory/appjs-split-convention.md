@@ -48,7 +48,11 @@ top-level fns, no IIFE, no shared decls), `ig_content_traffic.js`
 contiguous top-level fns), `ig_navchrome.js` (three clustered IIFEs right after
 onboarding: Slim Sidebar collapse/filter + auto-injected View Header/breadcrumbs +
 Related Views pill bar — each its own self-contained DOMContentLoaded IIFE, moved
-verbatim as one contiguous region). Remaining candidates: etc.
+verbatim as one contiguous region), `ig_results_export.js` (Results view: PDF
+export + competitor ROAS breakdown + customise panel — bare top-level fns wrapped
+in ONE IIFE; externally/inline-referenced ones re-exported on window, incl.
+`getIndustryROASBenchmark` which app.js probes via a bare `typeof …==='function'`
+that still resolves because window props are global). Remaining candidates: etc.
 All edit the same app.js + index.html so they can't run in parallel.
 
 Note: index.html script tags carry NO manual `?v=` anymore — the server

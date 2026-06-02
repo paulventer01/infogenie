@@ -62,3 +62,4 @@ each file is small enough to read.
 | `ig_navchrome.js` | Navigation chrome — Slim Sidebar collapse/filter · auto-injected View Header + breadcrumbs · Related Views pill bar |
 | `ig_reach_automation.js` | Reach automation cluster — Agency Hub (multi-client mgmt · white-label · scheduled sends) · Automations Center · Re-engagement Hub (incl. live Drip engine status panel + action helpers) |
 | `ig_drip_serp.js` | Drip action helpers (`dripAction` · `generateSequenceContent` · `generateCounterOffer`) · Live Google SERP Intelligence (`initSerpView` · quick-search chips · `runSerpSearch` · `renderSerpResults`) · Brand Assets Library (`initBrandAssets` + `ba*` upload/preview/delete/remove-bg) |
+| `ig_results_export.js` | Results view — PDF export (`exportResultsPDF`) · Competitor ROAS breakdown (`buildCompetitorROASBreakdown` + `getIndustryROASBenchmark`/`compROASIssues`) · Customise panel (`toggleResultsCustomisePanel` · `rcToggle` · `rcApply`) |
