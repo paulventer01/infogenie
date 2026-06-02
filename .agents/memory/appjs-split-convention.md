@@ -52,7 +52,15 @@ verbatim as one contiguous region), `ig_results_export.js` (Results view: PDF
 export + competitor ROAS breakdown + customise panel — bare top-level fns wrapped
 in ONE IIFE; externally/inline-referenced ones re-exported on window, incl.
 `getIndustryROASBenchmark` which app.js probes via a bare `typeof …==='function'`
-that still resolves because window props are global). Remaining candidates: etc.
+that still resolves because window props are global), `ig_csuite.js` (C-Suite
+Executive Reports `initCsuite`/`csSetRole`/`csSetPeriod`/`csData`/`csBuildView`/
+`csROIPanel`/`csBuildCEO/CMO/CFO/COO`/`csSuitePDF`/`csPeriodLabel` + Action Center
+`initActionCenter`/`acBuild` — one contiguous region of bare top-level fns wrapped
+in ONE IIFE; acBuild's bare `typeof getIndustryROASBenchmark` probe resolves via
+the window export from ig_results_export.js, loaded first; the small REDDIT POST
+NOW `postReplyToReddit` fn sat just before the region and was LEFT in app.js as a
+separate Reddit concern). Remaining candidates: Manual Competitor Entry +
+auto-SEO calendar cluster immediately after the ig_csuite.js pointer, etc.
 All edit the same app.js + index.html so they can't run in parallel.
 
 Note: index.html script tags carry NO manual `?v=` anymore — the server
