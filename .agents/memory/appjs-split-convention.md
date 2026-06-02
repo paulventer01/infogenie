@@ -38,7 +38,15 @@ about converting bare→guarded when extracting.
 HTTP 200 on `/public/js/<file>.js`; clean browser console at load (a failed IIFE
 throws at load and the builder would be undefined).
 
-First wave already extracted: `ig_studio.js`, `ig_journey_omnichannel.js`,
-`ig_manage_pack.js`. Remaining packs (onboarding IIFE, SEO `window.buildSeoAuditor`
-/`buildSeoCrawler`/`buildGeoAudit` standalone fns at ~42k, etc.) are follow-ups —
-they edit the same app.js + index.html so they can't run in parallel.
+Extracted so far: `ig_studio.js`, `ig_journey_omnichannel.js`, `ig_manage_pack.js`,
+`ig_seo.js` (T22/T29/T30 + Local SEO + Social Tags — 5 contiguous standalone
+`window.build*` fns, NOT one IIFE, but the contiguous region had no shared
+top-level decls so it moved verbatim as one unit), `ig_onboarding.js` (Onboarding
+Wizard + Tour IIFE). Remaining candidates: the navmenu-collapse / breadcrumbs /
+related-links IIFEs (clustered right after onboarding), `buildTrueRoas`/`_trState`
+(T36), `buildContentScore`/`buildAiTrafficMonitor`/`buildVisLeaderboard`, etc.
+All edit the same app.js + index.html so they can't run in parallel.
+
+Note: index.html script tags carry NO manual `?v=` anymore — the server
+auto-appends a content-hash `?v=` at serve time (see static-asset-versioning.md),
+so just add a plain `<script src="/public/js/ig_<feature>.js">` tag after app.js.

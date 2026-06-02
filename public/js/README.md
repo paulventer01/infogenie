@@ -55,3 +55,5 @@ each file is small enough to read.
 | `ig_studio.js` | Creator Studio (Brand Identity, Image Toolkit, AI Video, Presentations, Email Signature, Case Study, Page Insights, SEO Change Log) + WhatsApp/Voice/Bookings/Site/Link-in-Bio tiles |
 | `ig_journey_omnichannel.js` | Customer Journey Builder · Real-time Signal Triggers · Omnichannel Composer |
 | `ig_manage_pack.js` | New Project · Brand Calendar · Ask InfoGenie · Infographics · Heatmaps · Question Miner · AI Providers · Ad Swipe · Brand Foundation · Budget Board · Web Analytics |
+| `ig_seo.js` | SEO On-Page Auditor (T22) · Multi-Page Crawler (T29) · GEO Audit (T30) · Local SEO · Social/OG Tags |
+| `ig_onboarding.js` | Onboarding Wizard + Global Tour Button (novice-friendly UX layer) |
