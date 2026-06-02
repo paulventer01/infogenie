@@ -26,7 +26,8 @@ Listens on port 5000 (preview) and 80 (external). PostgreSQL via `DATABASE_URL`.
 |---|---|
 | `index.html` | SPA entry point |
 | `style.css` | All styling |
-| `app.js` | Frontend logic (~47k lines) |
+| `app.js` | Frontend logic (~50k lines; being split per-feature into `public/js/`) |
+| `public/js/<feature>.js` | Extracted per-feature view-builders (plain `<script>` + `window` globals; own `?v=`). See `public/js/README.md` |
 | `data.js` | Industry intelligence + competitor data |
 | `server.js` | Express server + API wiring |
 | `ig_field_enhancer.js` | Global AI-Suggest field decorator (MutationObserver) |

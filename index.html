@@ -3264,6 +3264,12 @@
 </div>
 
 <script src="/app.js?v=20260601FIX2"></script>
+<!-- Extracted per-feature modules (see public/js/README.md). Plain <script>,
+     load AFTER app.js, each with its own ?v= so editing one feature only
+     re-downloads that file — not the whole app.js. -->
+<script src="/public/js/ig_studio.js?v=20260601SPLIT1"></script>
+<script src="/public/js/ig_journey_omnichannel.js?v=20260601SPLIT1"></script>
+<script src="/public/js/ig_manage_pack.js?v=20260601SPLIT1"></script>
 <script src="/ig_field_enhancer.js?v=20260601CHUNK1"></script>
 <script src="/ig_diag.js?v=20260601WD2"></script>
 <script>
