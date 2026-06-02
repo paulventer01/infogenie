@@ -14,3 +14,4 @@
 - [Ad Library Spy render freeze](ad-library-render-freeze.md) — real cause = MutationObserver feedback loop in app.js inline "fae" decorator (makeBrandPicker inserts a select the observer re-enhances); tag-and-skip created nodes at handler top.
 - [server.js route modularization](server-route-modularization.md) — safe register(app,ctx) extraction: compute free vars w/ parser, reverse-ref check, leave latent-undeclared refs undeclared; fab-lint scans only services/.
 - [app.js split convention](appjs-split-convention.md) — carve app.js into public/js/ig_*.js plain-script modules; whole top-level IIFE is the safe verbatim extraction unit; load after app.js, own ?v=.
+- [Static asset cache-busting](static-asset-versioning.md) — index.html .js/.css ?v= auto-derived from content hash at serve time; recompute per request, never cache the rewritten HTML by index.html mtime alone.

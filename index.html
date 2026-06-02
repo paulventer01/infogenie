@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <base href="/">
-  <link rel="stylesheet" href="/style.css?v=20260430H" />
+  <link rel="stylesheet" href="/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.amplitude.com/libs/analytics-browser-2.11.1-min.js.gz"></script>
   <!-- PostHog SDK stub — init called from app.js after config fetch -->
@@ -3263,15 +3263,16 @@
   </div>
 </div>
 
-<script src="/app.js?v=20260601FIX2"></script>
+<script src="/app.js"></script>
 <!-- Extracted per-feature modules (see public/js/README.md). Plain <script>,
-     load AFTER app.js, each with its own ?v= so editing one feature only
-     re-downloads that file — not the whole app.js. -->
-<script src="/public/js/ig_studio.js?v=20260601SPLIT1"></script>
-<script src="/public/js/ig_journey_omnichannel.js?v=20260601SPLIT1"></script>
-<script src="/public/js/ig_manage_pack.js?v=20260601SPLIT1"></script>
-<script src="/ig_field_enhancer.js?v=20260601CHUNK1"></script>
-<script src="/ig_diag.js?v=20260601WD2"></script>
+     load AFTER app.js. The server auto-appends a content-hash ?v= to every local
+     .js/.css reference at serve time (see services/static_versioning), so editing
+     one feature only re-downloads that file — with no manual version bump. -->
+<script src="/public/js/ig_studio.js"></script>
+<script src="/public/js/ig_journey_omnichannel.js"></script>
+<script src="/public/js/ig_manage_pack.js"></script>
+<script src="/ig_field_enhancer.js"></script>
+<script src="/ig_diag.js"></script>
 <script>
 (function(){
   var btn = document.getElementById('themeToggle');

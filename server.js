@@ -214,6 +214,20 @@ const _DIAG_LATEST_KEY = 'diag_capture_latest';
 // Diagnostics capture routes → services/diag_capture/routes.js
 require('./services/diag_capture/routes')(app, { _DIAG_CAP_PREFIX, _DIAG_LATEST_KEY, _tkvCtx, _tkvRead, _tkvScope, _tkvWrite, express });
 
+// ── Auto cache-busting for index.html ───────────────────────────────────────
+// Serve index.html with every local .js/.css reference auto-versioned by its
+// file content hash (see services/static_versioning). This retires the manual
+// `?v=YYYYMMDD<TAG>` strings: editing any frontend file changes its hash, so the
+// URL changes automatically and returning users always get the new bytes — with
+// no manual bump and no stale-code bugs. Registered before express.static so the
+// rewritten HTML wins over the raw on-disk file.
+const _staticVersioning = require('./services/static_versioning');
+const _serveIndexHtml = _staticVersioning.serveVersionedHtml(
+  path.join(__dirname, 'index.html'),
+  __dirname,
+);
+app.get(['/', '/index.html'], _serveIndexHtml);
+
 app.use(express.static(path.join(__dirname), { etag: false, lastModified: false }));
 
 // ── Auth gate for /api/* (production hardening) ──────────────────────────────
