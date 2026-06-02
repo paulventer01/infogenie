@@ -59,9 +59,15 @@ Executive Reports `initCsuite`/`csSetRole`/`csSetPeriod`/`csData`/`csBuildView`/
 in ONE IIFE; acBuild's bare `typeof getIndustryROASBenchmark` probe resolves via
 the window export from ig_results_export.js, loaded first; the small REDDIT POST
 NOW `postReplyToReddit` fn sat just before the region and was LEFT in app.js as a
-separate Reddit concern). Remaining candidates: Manual Competitor Entry +
-auto-SEO calendar cluster immediately after the ig_csuite.js pointer, etc.
-All edit the same app.js + index.html so they can't run in parallel.
+separate Reddit concern), `ig_manual_comp_autoseo.js` (Manual Competitor Entry +
+Launch Now `toggleManualCompPanel`/`addManualCompetitor`/`removeManualCompetitor`/
+`launchNow` + Auto-SEO Pro `buildAutoSEO`+calendar+keyword/backlink/outreach/
+settings/traffic renderers — one contiguous region right after the ig_csuite.js
+pointer wrapped in ONE IIFE; note `_artDate` is shared — `buildMasterCalendar`
+(stays in app.js) calls it, so it MUST be re-exported on window alongside the
+onclick/index.html handlers; app.js also has a SEPARATE local `_fmtDate` const in
+the reviews view, so the region's private `_fmtDate` doesn't conflict). All edit
+the same app.js + index.html so they can't run in parallel.
 
 Note: index.html script tags carry NO manual `?v=` anymore — the server
 auto-appends a content-hash `?v=` at serve time (see static-asset-versioning.md),
