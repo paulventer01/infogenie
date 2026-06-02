@@ -42,9 +42,11 @@ Extracted so far: `ig_studio.js`, `ig_journey_omnichannel.js`, `ig_manage_pack.j
 `ig_seo.js` (T22/T29/T30 + Local SEO + Social Tags — 5 contiguous standalone
 `window.build*` fns, NOT one IIFE, but the contiguous region had no shared
 top-level decls so it moved verbatim as one unit), `ig_onboarding.js` (Onboarding
-Wizard + Tour IIFE). Remaining candidates: the navmenu-collapse / breadcrumbs /
-related-links IIFEs (clustered right after onboarding), `buildTrueRoas`/`_trState`
-(T36), `buildContentScore`/`buildAiTrafficMonitor`/`buildVisLeaderboard`, etc.
+Wizard + Tour IIFE), `ig_true_roas.js` (T36 `_trState`+`buildTrueRoas`+`_tr*` —
+top-level fns, no IIFE, no shared decls), `ig_content_traffic.js`
+(`buildContentScore`/`_csRender`+`buildAiTrafficMonitor`+`buildVisLeaderboard` —
+contiguous top-level fns). Remaining candidates: the navmenu-collapse / breadcrumbs /
+related-links IIFEs (clustered right after onboarding), etc.
 All edit the same app.js + index.html so they can't run in parallel.
 
 Note: index.html script tags carry NO manual `?v=` anymore — the server

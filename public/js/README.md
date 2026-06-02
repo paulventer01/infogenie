@@ -57,3 +57,5 @@ each file is small enough to read.
 | `ig_manage_pack.js` | New Project · Brand Calendar · Ask InfoGenie · Infographics · Heatmaps · Question Miner · AI Providers · Ad Swipe · Brand Foundation · Budget Board · Web Analytics |
 | `ig_seo.js` | SEO On-Page Auditor (T22) · Multi-Page Crawler (T29) · GEO Audit (T30) · Local SEO · Social/OG Tags |
 | `ig_onboarding.js` | Onboarding Wizard + Global Tour Button (novice-friendly UX layer) |
+| `ig_true_roas.js` | True ROAS (T36) — Conversions · Revenue Lag · Settings (`_trState` + `buildTrueRoas` + `_tr*` helpers) |
+| `ig_content_traffic.js` | Content Score (T39-A) · AI Traffic Monitor · Visibility Leaderboard |
