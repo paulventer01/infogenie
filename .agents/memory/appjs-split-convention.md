@@ -45,8 +45,10 @@ top-level decls so it moved verbatim as one unit), `ig_onboarding.js` (Onboardin
 Wizard + Tour IIFE), `ig_true_roas.js` (T36 `_trState`+`buildTrueRoas`+`_tr*` —
 top-level fns, no IIFE, no shared decls), `ig_content_traffic.js`
 (`buildContentScore`/`_csRender`+`buildAiTrafficMonitor`+`buildVisLeaderboard` —
-contiguous top-level fns). Remaining candidates: the navmenu-collapse / breadcrumbs /
-related-links IIFEs (clustered right after onboarding), etc.
+contiguous top-level fns), `ig_navchrome.js` (three clustered IIFEs right after
+onboarding: Slim Sidebar collapse/filter + auto-injected View Header/breadcrumbs +
+Related Views pill bar — each its own self-contained DOMContentLoaded IIFE, moved
+verbatim as one contiguous region). Remaining candidates: etc.
 All edit the same app.js + index.html so they can't run in parallel.
 
 Note: index.html script tags carry NO manual `?v=` anymore — the server
