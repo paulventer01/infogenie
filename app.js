@@ -32191,7 +32191,7 @@ window.buildTrendingTopics = async function() {
             <div style="font-size:0.66rem;font-weight:700;color:#6B7280">Keywords (comma, optional)</div>
             <button type="button" onclick="window._trSuggestKw()" id="trKwSuggestBtn" title="Let AI suggest keywords for the chosen category" style="background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:2px 8px;border-radius:8px;font-size:0.6rem;font-weight:800;cursor:pointer">🤖 AI Suggest</button>
           </div>
-          <input id="trKw" placeholder="growth, automation" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem">
+          <input id="trKw" data-fae="1" placeholder="growth, automation" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem">
         </div>
         <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Country</div>
           <select id="trCountry" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem">
@@ -32239,6 +32239,28 @@ window._trSuggestKw = async function() {
   const cat = document.getElementById('trCat').value.trim();
   if (!cat) return showToast('❌ Type or suggest a category first');
   const orig = btn.innerHTML; btn.innerHTML = '⏳…'; btn.disabled = true;
+
+  // ── Step 1: pull from keywords already established in the last analysis ──
+  const _ad = window.analysisData || {};
+  const _im = window._intentMap;
+  const _directKws = [];
+  // Primary source: analysisData.keywords (populated by keyword explorer / SEO tools)
+  if (Array.isArray(_ad.keywords) && _ad.keywords.length) {
+    _ad.keywords.forEach(k => { const s = typeof k==='string'?k:(k&&(k.keyword||k.term)||''); if(s) _directKws.push(s); });
+  }
+  // Secondary source: Intent Map keywords
+  if (!_directKws.length && _im && Array.isArray(_im.keywords) && _im.keywords.length) {
+    _im.keywords.forEach(k => { const s = typeof k==='string'?k:(k&&(k.keyword||k.term)||''); if(s) _directKws.push(s); });
+  }
+  if (_directKws.length) {
+    const inp = document.getElementById('trKw');
+    if (inp) inp.value = _directKws.slice(0, 6).join(', ');
+    showToast('✅ ' + Math.min(_directKws.length, 6) + ' keywords pulled from your analysis');
+    btn.innerHTML = orig; btn.disabled = false;
+    return;
+  }
+
+  // ── Step 2: AI generation (multi-model: OpenAI → Gemini → Perplexity) ──
   try {
     const r = await fetch('/api/ai-quick', { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ prompt: `Category: ${cat}\n\nReturn 5 short trend-tracking keywords (1-2 words each, lowercase, comma-separated, no numbering, no punctuation other than commas). Focus on terms that indicate emerging trends in this category right now.` })
@@ -32247,7 +32269,7 @@ window._trSuggestKw = async function() {
     let j = null; try { j = txt ? JSON.parse(txt) : null; } catch {}
     const kws = (j && (j.text || j.answer || j.result) || '').toString().trim().replace(/^["']|["']$/g,'').split('\n')[0].slice(0,200);
     if (kws) { const inp = document.getElementById('trKw'); if (inp) inp.value = kws; showToast('✅ Keywords suggested'); }
-    else showToast('⚠ No keyword suggestions returned');
+    else showToast('⚠ No keyword suggestions returned — type manually');
   } catch (e) { showToast('❌ '+e.message); }
   btn.innerHTML = orig; btn.disabled = false;
 };
@@ -39530,9 +39552,16 @@ window._aivLoadHistory = async function() {
   }
   function getKeywords() {
     const d = window.analysisData || {};
-    return Array.isArray(d.keywords)
-      ? d.keywords.map(k => typeof k === 'string' ? k : (k && (k.keyword || k.term))).filter(Boolean).slice(0, 12)
-      : [];
+    // Primary: analysisData.keywords (populated by keyword explorer / SEO tools after a full analysis)
+    if (Array.isArray(d.keywords) && d.keywords.length) {
+      return d.keywords.map(k => typeof k === 'string' ? k : (k && (k.keyword || k.term))).filter(Boolean).slice(0, 12);
+    }
+    // Fallback: Intent Map keywords (available after running the Keyword-Page Map tool)
+    const im = window._intentMap;
+    if (im && Array.isArray(im.keywords) && im.keywords.length) {
+      return im.keywords.map(k => typeof k === 'string' ? k : (k && (k.keyword || k.term))).filter(Boolean).slice(0, 12);
+    }
+    return [];
   }
 
   function labelOf(el) {

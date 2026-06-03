@@ -19,15 +19,53 @@ app.post('/api/ai-quick', async (req, res) => {
   try {
     const prompt = String((req.body && req.body.prompt) || '').slice(0, 4000);
     if (!prompt) return res.status(400).json({ ok:false, error:'prompt required', text:'' });
-    const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
-    if (!key || /^_DUMMY/i.test(key)) return res.status(503).json({ ok:false, error:'OpenAI key not configured', text:'' });
-    const c = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{ role:'user', content: prompt }],
-      max_tokens: 200, temperature: 0.6,
-    });
-    const text = (c.choices && c.choices[0] && c.choices[0].message && c.choices[0].message.content || '').trim();
-    res.json({ ok:true, text });
+
+    // ── Try OpenAI first ────────────────────────────────────────────────────
+    const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || '';
+    if (openaiKey && !/^_DUMMY/i.test(openaiKey)) {
+      try {
+        const c = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ role:'user', content: prompt }],
+          max_tokens: 200, temperature: 0.6,
+        });
+        const text = (c.choices && c.choices[0] && c.choices[0].message && c.choices[0].message.content || '').trim();
+        return res.json({ ok:true, text });
+      } catch (_) { /* fall through to next model */ }
+    }
+
+    // ── Fallback: Gemini Flash ──────────────────────────────────────────────
+    const geminiKey = process.env.GEMINI_API_KEY || '';
+    if (geminiKey) {
+      try {
+        const gr = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { maxOutputTokens: 200, temperature: 0.6 } }) }
+        );
+        const gj = await gr.json();
+        const text = (gj?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+        if (text) return res.json({ ok:true, text });
+      } catch (_) { /* fall through */ }
+    }
+
+    // ── Fallback: Perplexity ────────────────────────────────────────────────
+    const perplexityKey = process.env.PERPLEXITY_API_KEY || '';
+    if (perplexityKey) {
+      try {
+        const pr = await fetch('https://api.perplexity.ai/chat/completions', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${perplexityKey}` },
+          body: JSON.stringify({ model: 'llama-3.1-sonar-small-128k-online',
+            messages: [{ role:'user', content: prompt }], max_tokens: 200, temperature: 0.6 }),
+        });
+        const pj = await pr.json();
+        const text = (pj?.choices?.[0]?.message?.content || '').trim();
+        if (text) return res.json({ ok:true, text });
+      } catch (_) { /* fall through */ }
+    }
+
+    return res.status(503).json({ ok:false, error:'No AI model available — configure OpenAI, Gemini, or Perplexity', text:'' });
   } catch (e) { res.status(500).json({ ok:false, error: e.message, text:'' }); }
 });
 
