@@ -1,17 +1,1 @@
-- [Admin Portal & Data-Mode](admin-portal-data-mode.md) — /api/admin must mount after the api-key gate but before the owner gate; demo/strict honesty policy + central fabrication-marker interceptor.
-- [Repo navigation quirks](repo-navigation.md) — app.js is ~50k lines; the read tool can mis-report its length — use rg/sed for accurate line numbers.
-- [Frontend cache-busting](frontend-cache-busting.md) — editing app.js is inert for users until the ?v= string in index.html is bumped.
-- [Fabrication tagging audit](fabrication-tagging-audit.md) — what to tag for honesty mode; template-helper false positives (routes already mark); don't tag catalogs/real-data/grounded-LLM.
-- [Team invite flow (security invariants)](team-invites.md) — invite tokens MUST be workspace-bound; cancel must revoke the exact token or a cancelled invite becomes a login vector.
-- [Admin audit log](admin-audit-log.md) — role/membership changes logged via best-effort recordAudit(); platform-role rows attribute to default tenant; emails/roles denormalized so orphan cleanup can't erase them.
-- [Tenant scoping of reads](tenant-scoping-reads.md) — GET/DELETE on tenant-scoped tables must filter tenant_id; which routes are intentionally unscoped (admin, audiences, public embeds); separate write-side NOT NULL gap.
-- [Tenant write-side wiring](tenant-write-wiring.md) — how to pick tenant_id source for INSERTs (auth→resolveTenantId, parent-inherit, webhook→getDefaultTenantId, bulk loop→resolve once); ON CONFLICT keys still global.
-- [Tenant kv migration (boot)](tenant-kv-migration.md) — boot/module-load migrations must wait for the tenant schema (poll/defer) or they silently no-op; kvGet's null default needs a sentinel; directory disk-stores need bespoke migration; don't assume default tenant id 1.
-- [Tenant schema-isolation audit](tenant-schema-audit.md) — a live-DB test guards whole-schema per-workspace invariants; new tables auto-checked via phase2_migrate exports; global/nullable tables must be allow-listed in BOTH places.
-- [Legacy file-storage removed](legacy-file-storage.md) — db.js file:* helpers + boot cleanup IIFE are gone; persistence is per-tenant kv keys only; orphaned data/*.json may linger.
-- [Tenant read-audit guard](tenant-read-audit-guard.md) — static read/update/delete leak guard; per-FUNCTION leniency (blind to one bad stmt in a scoped fn); allowlist key = "relpath :: normalized-stmt[:160]".
-- [Field enhancer global-listener leak](field-enhancer-listeners.md) — per-field window listeners leak unbounded across innerHTML-swapping views; use ONE delegated listener acting on in-DOM elements, store per-el data on the element.
-- [Ad Library Spy render freeze](ad-library-render-freeze.md) — real cause = MutationObserver feedback loop in app.js inline "fae" decorator (makeBrandPicker inserts a select the observer re-enhances); tag-and-skip created nodes at handler top.
-- [server.js route modularization](server-route-modularization.md) — safe register(app,ctx) extraction: compute free vars w/ parser, reverse-ref check, leave latent-undeclared refs undeclared; fab-lint scans only services/.
-- [app.js split convention](appjs-split-convention.md) — carve app.js into public/js/ig_*.js plain-script modules; whole top-level IIFE is the safe verbatim extraction unit; load after app.js, own ?v=.
-- [Static asset cache-busting](static-asset-versioning.md) — index.html .js/.css ?v= auto-derived from content hash at serve time; recompute per request, never cache the rewritten HTML by index.html mtime alone.
+- [Google Workspace OAuth](google-workspace-oauth.md) — single OAuth flow for Gmail+Drive+Calendar; vault key google_workspace; env GOOGLE_WORKSPACE_CLIENT_ID/SECRET; callback /api/integrations/workspace/oauth/callback

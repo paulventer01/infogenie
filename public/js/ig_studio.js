@@ -273,7 +273,12 @@
     const out=document.getElementById('iout');
     async function gen(endpoint, body){
       out.innerHTML='⏳ Generating image (8-15 sec)…';
-      try{ const j=await _api(endpoint,{method:'POST',body}); out.innerHTML=`<img src="${j.image}" style="max-width:100%;border-radius:10px;border:1px solid #E5E7EB"><a href="${j.image}" download="image.png" style="display:inline-block;margin-top:8px;background:#0F172A;color:white;padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px">⬇ Download</a>`; }
+      try{
+        const j=await _api(endpoint,{method:'POST',body});
+        out.innerHTML=`<img src="${j.image}" style="max-width:100%;border-radius:10px;border:1px solid #E5E7EB"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><a href="${j.image}" download="image.png" style="background:#0F172A;color:white;padding:8px 14px;border-radius:6px;text-decoration:none;font-size:13px;display:inline-block">⬇ Download</a><button class="ig-drive-save" style="background:#4285F4;color:white;border:0;padding:8px 14px;border-radius:6px;font-size:13px;cursor:pointer">☁ Save to Drive</button></div>`;
+        const db=out.querySelector('.ig-drive-save');
+        if(db){ const imgUrl=j.image; db.onclick=()=>_gwSaveToDrive('AI Image '+new Date().toLocaleDateString()+'.txt', 'Image URL: '+imgUrl+'\nGenerated: '+new Date().toISOString()+'\nPrompt: '+(body.prompt||body.product||''), db); }
+      }
       catch(e){ out.innerHTML=`<div style="color:#DC2626">${_esc(e.message)}</div>`; }
     }
     b1.addEventListener('click',()=>gen('/api/studio/image/sketch-to-image',{prompt: imp.value || 'a clean modern design concept'}));
@@ -395,7 +400,9 @@
           mout.innerHTML = '⏳ Stitching MP4 (needs Render Key Frames first — voice-over auto-attached if generated)…';
           try {
             const mj = await _api('/api/studio/video/render-mp4', { method:'POST', body:{ id: vrmp.dataset.id } });
-            mout.innerHTML = `<div style="background:#ECFDF5;border:1px solid #6EE7B7;padding:12px;border-radius:8px"><div style="font-weight:800;color:#065F46;margin-bottom:6px">🎬 MP4 ready — ${mj.scenes} scene(s), ${mj.hasAudio ? 'with voice-over' : 'video-only'}</div><video controls src="${mj.mp4Url}" style="width:100%;border-radius:6px;background:#000"></video><div style="margin-top:6px"><a href="${mj.mp4Url}" download style="color:#065F46;font-weight:700;text-decoration:underline">⬇ Download MP4</a></div></div>`;
+            mout.innerHTML = `<div style="background:#ECFDF5;border:1px solid #6EE7B7;padding:12px;border-radius:8px"><div style="font-weight:800;color:#065F46;margin-bottom:6px">🎬 MP4 ready — ${mj.scenes} scene(s), ${mj.hasAudio ? 'with voice-over' : 'video-only'}</div><video controls src="${mj.mp4Url}" style="width:100%;border-radius:6px;background:#000"></video><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><a href="${mj.mp4Url}" download style="color:#065F46;font-weight:700;text-decoration:underline;padding:4px 0">⬇ Download MP4</a><button class="ig-drive-save-mp4" style="background:#4285F4;color:white;border:0;padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer">☁ Save to Drive</button></div></div>`;
+            const mpdb=mout.querySelector('.ig-drive-save-mp4');
+            if(mpdb){ const mpUrl=mj.mp4Url; mpdb.onclick=()=>_gwSaveToDrive('AI Video '+new Date().toLocaleDateString()+'.txt', 'MP4 URL: '+mpUrl+'\nGenerated: '+new Date().toISOString()+'\nScenes: '+mj.scenes, mpdb); }
           } catch(e) { mout.innerHTML = `<div style="color:#DC2626">${_esc(e.message)}</div>`; }
         });
         const rfBtn = document.getElementById('vrf');
@@ -1035,4 +1042,41 @@
       catch(e){ _toast(e.message,'err'); }
     });
   };
+
+  // ── Google Drive helper — shared across all Save to Drive buttons ────────
+  async function _gwSaveToDrive(filename, content, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
+    try {
+      const r = await fetch('/api/integrations/workspace/drive/upload', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: filename, content, mimeType: 'text/plain', description: 'Saved from InfoGenie Creator Studio' }),
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) {
+        const notConn = j.error && (j.error.includes('not connected') || j.error.includes('token_refresh'));
+        if (notConn) {
+          alert('Google Workspace is not connected.\n\nGo to Settings → Google Workspace → Connect via OAuth to enable Drive saving.');
+        } else {
+          alert('Drive upload failed: ' + (j.error || 'unknown'));
+        }
+        if (btn) { btn.disabled = false; btn.textContent = '☁ Save to Drive'; }
+        return;
+      }
+      if (btn) {
+        btn.textContent = '✅ Saved!';
+        btn.style.background = '#16a34a';
+        if (j.webViewLink) {
+          btn.onclick = () => window.open(j.webViewLink, '_blank');
+          btn.title = 'Click to open in Google Drive';
+        }
+      }
+      if (window.showToast) showToast('☁ Saved to Google Drive · ' + (j.name || filename));
+    } catch (e) {
+      alert('Drive error: ' + e.message);
+      if (btn) { btn.disabled = false; btn.textContent = '☁ Save to Drive'; }
+    }
+  }
+  window._gwSaveToDrive = _gwSaveToDrive;
+
 })();

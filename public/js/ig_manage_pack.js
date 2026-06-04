@@ -133,7 +133,10 @@
                 <strong id="bc_month_label" style="font-size:1.1rem;color:#0F172A;min-width:170px;text-align:center"></strong>
                 <button id="bc_next" style="width:32px;height:32px;border:1px solid #BAE6FD;background:#F0F9FF;border-radius:8px;cursor:pointer;font-weight:700">›</button>
               </div>
-              <button id="bc_add" style="padding:8px 16px;background:linear-gradient(135deg,#0EA5E9,#0284C7);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">+ Add item</button>
+              <div style="display:flex;gap:8px">
+                <button id="bc_gcal" title="Sync this month's Brand Calendar items to Google Calendar as all-day events" style="padding:8px 14px;background:#fff;color:#0369a1;border:1px solid #BAE6FD;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.85rem">📅 Sync to Google Calendar</button>
+                <button id="bc_add" style="padding:8px 16px;background:linear-gradient(135deg,#0EA5E9,#0284C7);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">+ Add item</button>
+              </div>
             </div>
             <div id="bc_grid"></div>
           </div>
@@ -153,6 +156,41 @@
     document.getElementById('bc_prev').onclick = ()=>{ if (viewMonth===0){viewMonth=11;viewYear--;}else viewMonth--; renderGrid(); };
     document.getElementById('bc_next').onclick = ()=>{ if (viewMonth===11){viewMonth=0;viewYear++;}else viewMonth++; renderGrid(); };
     document.getElementById('bc_add').onclick = ()=> openAdd(null);
+    document.getElementById('bc_gcal').onclick = () => _bcSyncToGCal(viewYear, viewMonth);
+
+    async function _bcSyncToGCal(year, month) {
+      const btn = document.getElementById('bc_gcal');
+      if (!btn) return;
+      btn.disabled = true; btn.textContent = '⏳ Syncing…';
+      try {
+        const from = new Date(year, month, 1, -12, 0).toISOString();
+        const to   = new Date(year, month + 1, 1, 12, 0).toISOString();
+        const { items = [] } = await _f(`/api/brand-calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+        if (!items.length) {
+          if (window._toast || window.showToast) (window.showToast || window._toast)('No items this month to sync.');
+          btn.disabled = false; btn.textContent = '📅 Sync to Google Calendar'; return;
+        }
+        const r = await fetch('/api/integrations/workspace/calendar/sync', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items }),
+        });
+        const j = await r.json();
+        if (!r.ok || !j.ok) {
+          if (j.error && j.error.includes('not connected')) {
+            alert('Google Workspace is not connected yet.\n\nGo to Settings → Google Workspace → Connect via OAuth to link your account.');
+          } else {
+            alert('Sync failed: ' + (j.error || 'unknown'));
+          }
+        } else {
+          const msg = `✅ ${j.synced} item${j.synced !== 1 ? 's' : ''} synced to Google Calendar${j.failed ? ` (${j.failed} failed)` : ''}.`;
+          if (window.showToast) showToast(msg); else alert(msg);
+        }
+      } catch (e) {
+        alert('Sync error: ' + e.message);
+      }
+      btn.disabled = false; btn.textContent = '📅 Sync to Google Calendar';
+    }
 
     async function renderGrid(){
       const monthName = new Date(viewYear, viewMonth, 1).toLocaleString('default',{month:'long',year:'numeric'});

@@ -15390,6 +15390,36 @@ const INTEGRATIONS = {
         ]
       }
     ]
+  },
+
+  productivity: {
+    label: 'Google Workspace',
+    icon: '🔷',
+    desc: 'Connect Gmail, Google Drive, and Google Calendar in one OAuth click — monitor your inbox inside Unified Inbox, save reports and exports to Drive, and sync Brand Calendar items to Google Calendar.',
+    badge: '3 Apps',
+    items: [
+      {
+        id: 'google-workspace',
+        logo: '🔷',
+        name: 'Google Workspace',
+        tagline: 'Gmail · Google Drive · Google Calendar',
+        authType: 'oauth',
+        unlocks: [
+          'Read and reply to Gmail threads directly inside Unified Inbox',
+          'Save AI-generated assets, scripts, and reports to Google Drive',
+          'Sync Brand Calendar items to Google Calendar as all-day events',
+          'One-click OAuth — all three apps, one consent screen'
+        ],
+        steps: [
+          { text: 'Go to <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a> and create or select a project' },
+          { text: 'Enable <strong>Gmail API</strong>, <strong>Google Drive API</strong>, and <strong>Google Calendar API</strong> under <strong>APIs &amp; Services → Library</strong>' },
+          { text: 'Under <strong>Credentials → Create Credentials → OAuth 2.0 Client ID</strong>, choose <strong>Web application</strong>' },
+          { text: 'Add your InfoGenie URL + <code>/api/integrations/workspace/oauth/callback</code> to <strong>Authorised Redirect URIs</strong>' },
+          { text: 'Set <code>GOOGLE_WORKSPACE_CLIENT_ID</code> and <code>GOOGLE_WORKSPACE_CLIENT_SECRET</code> in your environment secrets' },
+          { text: 'Click <strong>Connect via OAuth</strong> below — InfoGenie requests read/send for Gmail, <code>drive.file</code> for Drive, and <code>calendar.events</code> for Calendar' }
+        ]
+      }
+    ]
   }
 };
 
@@ -17253,6 +17283,8 @@ function buildSettings() {
   setTimeout(() => { try { _handleGoogleAdsReturnParams(); } catch(e) {} }, 250);
   setTimeout(() => { try { hydrateMetaAdsCard(); } catch(e) { console.warn('hydrateMetaAdsCard', e); } }, 200);
   setTimeout(() => { try { _handleMetaAdsReturnParams(); } catch(e) {} }, 250);
+  setTimeout(() => { try { hydrateGoogleWorkspaceCard(); } catch(e) { console.warn('hydrateGoogleWorkspaceCard', e); } }, 200);
+  setTimeout(() => { try { _handleGWReturnParams(); } catch(e) {} }, 250);
 }
 
 async function checkAPIHealth() {
@@ -40199,6 +40231,130 @@ async function _openMetaAdsPicker() {
       }
     } catch (e) { alert('Bind failed: ' + e.message); }
   };
+}
+
+// ===================================================
+// GOOGLE WORKSPACE — Settings card hydration + OAuth wiring
+// ===================================================
+
+async function hydrateGoogleWorkspaceCard() {
+  const card = document.getElementById('card-google-workspace');
+  if (!card) return;
+  const body   = card.querySelector('.integ-card-body');
+  const status = document.getElementById('status-google-workspace');
+  let summary  = null;
+  try {
+    const r = await fetch('/api/integrations/workspace/summary', { credentials: 'same-origin' });
+    summary = await r.json();
+  } catch (e) { return; }
+  if (!summary || summary.ok === false) return;
+
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  const operatorBlock = !summary.operatorReady
+    ? `<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:0.78rem;color:#92400E">
+         ⚠️ <strong>Setup incomplete</strong> — the deployment owner must set
+         <code>GOOGLE_WORKSPACE_CLIENT_ID</code> and <code>GOOGLE_WORKSPACE_CLIENT_SECRET</code>
+         before any user can connect Google Workspace.
+       </div>` : '';
+
+  if (summary.connected) {
+    const newHtml = `
+      <div class="unlocks-title">✦ Connected Google Workspace account</div>
+      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 14px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:0.85rem;font-weight:700;color:white">${esc(summary.email || 'Connected via OAuth')}</div>
+          <span style="background:rgba(16,185,129,.18);color:#34D399;padding:3px 9px;border-radius:6px;font-size:0.7rem;font-weight:700">✅ Connected</span>
+        </div>
+        <div style="font-size:0.74rem;color:rgba(255,255,255,.55)">
+          Gmail · Drive · Calendar access granted
+        </div>
+      </div>
+      <div style="font-size:0.74rem;color:rgba(255,255,255,.55);margin-bottom:10px;line-height:1.5">
+        ✓ Gmail threads appear in <strong>Unified Inbox → Gmail</strong><br>
+        ✓ Save to Drive button on generated assets in <strong>Creator Studio</strong><br>
+        ✓ Sync button in <strong>Brand Calendar</strong> to push items to Google Calendar
+      </div>
+      <div class="integ-card-actions" style="flex-direction:column;gap:8px">
+        <button class="btn-docs-card" style="width:100%;background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.35);color:#FCA5A5" onclick="disconnectGoogleWorkspace()">🔌 Disconnect Google Workspace</button>
+      </div>
+    `;
+    if (body)   body.innerHTML = newHtml;
+    if (status) { status.className = 'integ-conn-status ics-live'; status.innerHTML = '<span>●</span> Connected'; }
+    card.classList.add('connected');
+    try { localStorage.setItem('ig_integ_google-workspace', 'oauth'); } catch (_) {}
+  } else {
+    const disableAttr = summary.operatorReady ? '' : 'disabled style="opacity:.5;cursor:not-allowed"';
+    const newHtml = `
+      ${operatorBlock}
+      <div class="unlocks-title">✦ What InfoGenie will be allowed to do</div>
+      <ul class="unlocks-list">
+        <li><span class="ul-check">✓</span><span>Read your Gmail inbox threads (read-only) — shown in Unified Inbox</span></li>
+        <li><span class="ul-check">✓</span><span>Send replies to Gmail threads from inside InfoGenie</span></li>
+        <li><span class="ul-check">✓</span><span>Save generated assets, scripts, and reports to your Google Drive</span></li>
+        <li><span class="ul-check">✓</span><span>Sync Brand Calendar items to your Google Calendar as all-day events</span></li>
+      </ul>
+      <div style="font-size:0.72rem;color:rgba(255,255,255,.45);margin:8px 0 12px;line-height:1.5">
+        Scopes requested: <code>gmail.readonly</code>, <code>gmail.send</code>, <code>drive.file</code>, <code>calendar.events</code>.<br>
+        You will be sent to Google's consent screen and bounced back here.
+      </div>
+      <div class="integ-card-actions" style="flex-direction:column;gap:8px">
+        <button class="oauth-btn" ${disableAttr} onclick="connectGoogleWorkspace()">🔗 Connect Google Workspace</button>
+        <button class="btn-docs-card" style="width:100%;text-align:center" onclick="showIntegrationDoc('google-workspace')">📖 View Integration Docs</button>
+      </div>
+    `;
+    if (body)   body.innerHTML = newHtml;
+    if (status) { status.className = 'integ-conn-status ics-off'; status.innerHTML = '<span>○</span> Not connected'; }
+    card.classList.remove('connected');
+    try { localStorage.removeItem('ig_integ_google-workspace'); } catch (_) {}
+  }
+}
+
+function connectGoogleWorkspace() {
+  window.location.href = '/api/integrations/workspace/oauth/start';
+}
+
+async function disconnectGoogleWorkspace() {
+  if (!confirm('Disconnect Google Workspace? InfoGenie will lose access to Gmail, Drive, and Calendar until you reconnect.')) return;
+  try {
+    const r = await fetch('/api/integrations/workspace/disconnect', { method: 'POST', credentials: 'same-origin' });
+    const j = await r.json();
+    if (j.ok) {
+      if (window.showToast) showToast('🔌 Google Workspace disconnected');
+      hydrateGoogleWorkspaceCard();
+    } else {
+      alert('Disconnect failed: ' + (j.error || 'unknown'));
+    }
+  } catch (e) { alert('Disconnect failed: ' + e.message); }
+}
+
+function _handleGWReturnParams() {
+  const url = new URL(window.location.href);
+  const qs  = url.searchParams;
+  const connected = qs.get('gw_connected');
+  const err       = qs.get('gw_error');
+  const detail    = qs.get('gw_detail');
+  if (!connected && !err) return;
+
+  ['gw_connected','gw_error','gw_detail'].forEach(k => qs.delete(k));
+  const cleaned = url.pathname + (qs.toString() ? '?' + qs.toString() : '') + url.hash;
+  try { window.history.replaceState({}, '', cleaned); } catch (_) {}
+
+  if (connected) {
+    if (window.showToast) showToast('✅ Google Workspace connected! Gmail · Drive · Calendar ready.');
+    setTimeout(() => hydrateGoogleWorkspaceCard(), 150);
+    return;
+  }
+  if (err) {
+    const msgs = {
+      not_signed_in:           'You must be signed in to InfoGenie before connecting Google Workspace.',
+      operator_client_missing: 'The deployment owner must set GOOGLE_WORKSPACE_CLIENT_ID and GOOGLE_WORKSPACE_CLIENT_SECRET first.',
+      invalid_state:           'OAuth state mismatch — please try again.',
+      session_lost:            'Your session expired during OAuth. Please sign in and try again.',
+      no_refresh_token:        'Google did not return a refresh token. This can happen if you already granted access before — try revoking access in your Google Account settings first, then reconnect.',
+    };
+    alert('Google Workspace connection failed:\n\n' + (msgs[err] || err) + (detail ? '\n\nDetail: ' + detail : ''));
+  }
 }
 
 // ─── Content Score (T39-A) · AI Traffic Monitor · Visibility Leaderboard (buildContentScore/buildAiTrafficMonitor/buildVisLeaderboard) → moved to public/js/ig_content_traffic.js ───

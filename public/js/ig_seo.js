@@ -432,6 +432,7 @@ window.buildUnifiedInbox = function() {
 
   const SOURCES = [
     { k: '',          label: 'All sources',  emoji: '📬' },
+    { k: 'gmail',     label: 'Gmail',        emoji: '📧' },
     { k: 'reddit',    label: 'Reddit',       emoji: '👽' },
     { k: 'twitter',   label: 'Twitter/X',    emoji: '🐦' },
     { k: 'review',    label: 'Reviews',      emoji: '⭐' },
@@ -514,9 +515,138 @@ window.buildUnifiedInbox = function() {
     }).catch(() => {});
   }
 
+  function loadGmail() {
+    const list = document.getElementById('uiboxList');
+    list.innerHTML = '<div style="padding:32px;text-align:center;color:#64748b">Loading Gmail threads…</div>';
+    fetch('/api/integrations/workspace/gmail/threads?max=20', { credentials: 'same-origin' })
+      .then(x => x.json())
+      .then(j => {
+        if (!j.ok) {
+          const notConn = j.error && (j.error.includes('not connected') || j.error.includes('token_refresh'));
+          list.innerHTML = notConn
+            ? `<div style="padding:48px 32px;text-align:center;color:#64748b">
+                 <div style="font-size:2rem;margin-bottom:8px">📧</div>
+                 <strong>Google Workspace not connected</strong><br>
+                 <span style="font-size:0.85rem">Go to <a href="#" onclick="navigateTo('settings')">Settings → Google Workspace</a> and click <strong>Connect via OAuth</strong> to enable Gmail in your inbox.</span>
+               </div>`
+            : `<div style="padding:32px;text-align:center;color:#dc2626">Failed to load Gmail: ${esc(j.error || 'unknown')}</div>`;
+          return;
+        }
+        if (!j.threads || !j.threads.length) {
+          list.innerHTML = '<div style="padding:48px 32px;text-align:center;color:#64748b"><div style="font-size:2rem;margin-bottom:8px">📭</div>No Gmail threads found.</div>';
+          return;
+        }
+        list.innerHTML = j.threads.map(t => `
+          <div class="uibox-row" data-gthread="${esc(t.id)}" style="padding:14px 18px;border-bottom:1px solid var(--border-color,#e2e8f0);display:flex;gap:14px;align-items:flex-start;cursor:pointer">
+            <div style="width:10px;height:10px;border-radius:50%;background:${t.unread ? '#0ea5e9' : '#cbd5e1'};margin-top:7px;flex-shrink:0" title="${t.unread ? 'Unread' : 'Read'}"></div>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">
+                <span style="font-size:0.78rem;background:var(--bg-secondary,#f1f5f9);padding:2px 8px;border-radius:10px">📧 gmail</span>
+                ${t.unread ? '<span class="uibox-badge uibox-st-new">new</span>' : ''}
+                <span style="font-size:0.78rem;color:#64748b">${esc(t.from.replace(/<[^>]+>/g,'').trim() || 'Unknown')}</span>
+                <span style="font-size:0.72rem;color:#94a3b8">· ${esc(t.date ? new Date(t.date).toLocaleString() : '')}</span>
+                ${t.messageCount > 1 ? `<span style="font-size:0.72rem;color:#94a3b8">· ${t.messageCount} messages</span>` : ''}
+              </div>
+              <div style="font-weight:600;margin-bottom:2px">${esc(t.subject)}</div>
+              <div style="color:#475569;font-size:0.9rem">${esc(String(t.snippet || '').slice(0, 200))}</div>
+              <div id="gthread-body-${esc(t.id)}" style="display:none;margin-top:10px"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+              <button class="btn btn-link gmail-reply-btn" data-tid="${esc(t.id)}" data-to="${esc(t.from)}" data-subj="${esc(t.subject)}" style="font-size:0.78rem;padding:4px 8px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;color:#0369a1;cursor:pointer">↩ Reply</button>
+            </div>
+          </div>
+        `).join('');
+
+        list.querySelectorAll('[data-gthread]').forEach(row => {
+          row.addEventListener('click', async (e) => {
+            if (e.target.closest('.gmail-reply-btn')) return;
+            const tid = row.getAttribute('data-gthread');
+            const bodyEl = document.getElementById('gthread-body-' + tid);
+            if (!bodyEl) return;
+            if (bodyEl.style.display === 'block') { bodyEl.style.display = 'none'; return; }
+            bodyEl.style.display = 'block';
+            bodyEl.innerHTML = '<div style="color:#64748b;font-size:0.85rem">Loading thread…</div>';
+            try {
+              const r = await fetch(`/api/integrations/workspace/gmail/threads/${encodeURIComponent(tid)}`, { credentials: 'same-origin' });
+              const td = await r.json();
+              if (!td.ok) throw new Error(td.error || 'unknown');
+              bodyEl.innerHTML = td.messages.map(m => `
+                <div style="margin-bottom:10px;padding:10px 12px;background:var(--bg-secondary,#f8fafc);border-left:3px solid #0ea5e9;border-radius:0 6px 6px 0">
+                  <div style="font-size:0.72rem;color:#64748b;margin-bottom:4px">
+                    <strong>${esc(m.from)}</strong> → ${esc(m.to)} · ${esc(m.date ? new Date(m.date).toLocaleString() : '')}
+                  </div>
+                  <div style="font-size:0.85rem;color:#1e293b;white-space:pre-wrap;word-break:break-word">${esc(m.body || m.snippet || '')}</div>
+                </div>
+              `).join('');
+            } catch (err) {
+              bodyEl.innerHTML = `<div style="color:#dc2626;font-size:0.85rem">Failed to load thread: ${esc(err.message)}</div>`;
+            }
+          });
+        });
+
+        list.querySelectorAll('.gmail-reply-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const tid  = btn.getAttribute('data-tid');
+            const to   = btn.getAttribute('data-to');
+            const subj = btn.getAttribute('data-subj');
+            _gmailReplyModal(tid, to, subj);
+          });
+        });
+      })
+      .catch(err => {
+        list.innerHTML = `<div style="padding:32px;text-align:center;color:#dc2626">Failed: ${esc(err.message)}</div>`;
+      });
+  }
+
+  function _gmailReplyModal(threadId, to, subject) {
+    const existing = document.getElementById('gmailReplyModal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'gmailReplyModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = `
+      <div style="background:var(--card-bg,#fff);border-radius:14px;padding:24px;max-width:560px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+        <div style="font-weight:700;font-size:1.05rem;margin-bottom:4px">↩ Reply via Gmail</div>
+        <div style="font-size:0.8rem;color:#64748b;margin-bottom:16px">To: ${esc(to)} · ${esc(subject ? (subject.startsWith('Re:') ? subject : 'Re: ' + subject) : 'Re:')}</div>
+        <textarea id="gmailReplyBody" rows="6" placeholder="Type your reply…" style="width:100%;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;font-family:inherit;font-size:0.9rem;box-sizing:border-box;resize:vertical"></textarea>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+          <button onclick="document.getElementById('gmailReplyModal').remove()" style="padding:8px 16px;background:var(--bg-secondary,#f1f5f9);border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;font-weight:600">Cancel</button>
+          <button id="gmailSendBtn" style="padding:8px 18px;background:#0ea5e9;color:white;border:0;border-radius:8px;font-weight:700;cursor:pointer">📤 Send Reply</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    document.getElementById('gmailSendBtn').onclick = async () => {
+      const body = (document.getElementById('gmailReplyBody') || {}).value || '';
+      if (!body.trim()) { alert('Please type a reply first.'); return; }
+      const sendBtn = document.getElementById('gmailSendBtn');
+      sendBtn.disabled = true; sendBtn.textContent = 'Sending…';
+      try {
+        const r = await fetch('/api/integrations/workspace/gmail/reply', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ threadId, to, subject, body }),
+        });
+        const j = await r.json();
+        if (j.ok) {
+          modal.remove();
+          if (window.showToast) showToast('✅ Reply sent via Gmail');
+        } else {
+          alert('Failed to send: ' + (j.error || 'unknown'));
+          sendBtn.disabled = false; sendBtn.textContent = '📤 Send Reply';
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+        sendBtn.disabled = false; sendBtn.textContent = '📤 Send Reply';
+      }
+    };
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  }
+
   function load() {
     const list = document.getElementById('uiboxList');
     list.innerHTML = '<div style="padding:32px;text-align:center;color:#64748b">Loading…</div>';
+    if (filt.source === 'gmail') { loadGmail(); return; }
     const q = new URLSearchParams();
     if (filt.source) q.set('source', filt.source);
     if (filt.status) q.set('status', filt.status);
