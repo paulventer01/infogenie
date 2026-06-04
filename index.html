@@ -177,6 +177,8 @@
           <div class="nav-drop-header">5 · Plan the campaign</div>
           <a href="#" class="nav-link" data-view="campaigns"><span class="ndl-icon">🚀</span><span class="ndl-text">Campaign Strategy</span></a>
           <a href="#" class="nav-link" data-view="content-calendar"><span class="ndl-icon">🗓️</span><span class="ndl-text">Content Calendar</span></a>
+          <a href="#" class="nav-link" data-view="content-modes"><span class="ndl-icon">✍️</span><span class="ndl-text">Content Modes</span></a>
+          <a href="#" class="nav-link" data-view="content-autopilot"><span class="ndl-icon">🤖</span><span class="ndl-text">Content Autopilot</span></a>
           <a href="#" class="nav-link" data-view="social"><span class="ndl-icon">📅</span><span class="ndl-text">Social Calendar</span></a>
           <a href="#" class="nav-drop-next" data-open-group="reach">Assets are ready — push them out via <strong>Reach</strong><span class="ndn-arrow">→</span></a>
         </div>
@@ -1103,6 +1105,30 @@
     </div>
   </div></div></div>
   <div class="container" id="ccWrap" style="padding-top:24px;padding-bottom:56px"></div>
+</div>
+
+<!-- CONTENT MODES VIEW (T48) -->
+<div class="view hidden" id="view-content-modes">
+  <div class="view-header"><div class="container"><div class="vh-inner">
+    <div>
+      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Content Modes</div>
+      <h2 class="view-title">✍️ Content Modes</h2>
+      <p class="view-sub">Generate full SEO articles in 6 specialised modes — Affiliation, E-commerce, Local SEO, Discovery, Update, and standard Article. Publish directly to WordPress.</p>
+    </div>
+  </div></div></div>
+  <div class="container" id="cmWrap" style="padding-top:24px;padding-bottom:56px"></div>
+</div>
+
+<!-- CONTENT AUTOPILOT VIEW (T49) -->
+<div class="view hidden" id="view-content-autopilot">
+  <div class="view-header"><div class="container"><div class="vh-inner">
+    <div>
+      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Content Autopilot</div>
+      <h2 class="view-title">🤖 Content Autopilot</h2>
+      <p class="view-sub">Schedule automated content generation on a recurring cadence. Optionally auto-publish to WordPress as draft or live.</p>
+    </div>
+  </div></div></div>
+  <div class="container" id="apWrap" style="padding-top:24px;padding-bottom:56px"></div>
 </div>
 
 <!-- PODCAST MONITOR VIEW (Tier 7 #1) -->
@@ -3268,6 +3294,7 @@
      load AFTER app.js. The server auto-appends a content-hash ?v= to every local
      .js/.css reference at serve time (see services/static_versioning), so editing
      one feature only re-downloads that file — with no manual version bump. -->
+<script src="/public/js/ig_content_pro.js?v=20260604PRO1"></script>
 <script src="/public/js/ig_studio.js"></script>
 <script src="/public/js/ig_journey_omnichannel.js"></script>
 <script src="/public/js/ig_manage_pack.js"></script>

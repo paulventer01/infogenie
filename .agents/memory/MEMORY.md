@@ -1,1 +1,2 @@
 - [Google Workspace OAuth](google-workspace-oauth.md) — single OAuth flow for Gmail+Drive+Calendar; vault key google_workspace; env GOOGLE_WORKSPACE_CLIENT_ID/SECRET; callback /api/integrations/workspace/oauth/callback
+- [WordPress + Content Pro](wordpress-content-pro.md) — T47-T50: WP publishing + content modes + autopilot + audio; all UI in ig_content_pro.js

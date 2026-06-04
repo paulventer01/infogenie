@@ -2688,6 +2688,28 @@ BOOT_TASKS.push(async () => { try {
   }
 } catch (e) { console.warn('[t44] link-prospector init failed:', e.message); }});
 
+// ── T47-T50: WordPress Publishing · Content Modes · Autopilot · Audio ──────
+const _wpRouter           = require('./services/wordpress/api');
+const _wpSchema           = require('./services/wordpress/schema');
+const _contentModesRouter = require('./services/content_modes/api');
+const _contentModesSchema = require('./services/content_modes/schema');
+const _autopilotRouter    = require('./services/autopilot/api');
+const _autopilotSchema    = require('./services/autopilot/schema');
+const _audioSummaryRouter = require('./services/audio_summary/api');
+app.use('/api/wordpress',      _wpRouter);
+app.use('/api/content-modes',  _contentModesRouter);
+app.use('/api/autopilot',      _autopilotRouter);
+app.use('/api/audio-summary',  _audioSummaryRouter);
+BOOT_TASKS.push(async () => { try {
+  if (_db.hasDb()) {
+    await _wpSchema.ensureWordpressSchema();
+    await _contentModesSchema.ensureContentModesSchema();
+    await _autopilotSchema.ensureAutopilotSchema();
+    _autopilotRouter.startAutopilotCron();
+    console.log('[t47-50] wordpress + content-modes + autopilot + audio-summary ready');
+  }
+} catch (e) { console.warn('[t47-50] init failed:', e.message); }});
+
 // ── Tier 7 ─────────────────────────────────────────────────────────────────
 const _podcastSchema = require('./services/podcast_monitor/schema');
 const _podcastRouter = require('./services/podcast_monitor/api');

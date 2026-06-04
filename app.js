@@ -3216,7 +3216,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'press-release')   { try { window.buildPressRelease && window.buildPressRelease(); }   catch(e) { console.warn('buildPressRelease error:', e); } }
   if (viewId === 'alert-routing')   { try { window.buildAlertRouting && window.buildAlertRouting(); }   catch(e) { console.warn('buildAlertRouting error:', e); } }
   if (viewId === 'backlinks')        { try { window.buildBacklinks && window.buildBacklinks(); }       catch(e) { console.warn('buildBacklinks error:', e); } }
-  if (viewId === 'content-calendar') { try { window.buildContentCalendar && window.buildContentCalendar(); } catch(e) { console.warn('buildContentCalendar error:', e); } }
+  if (viewId === 'content-calendar')  { try { window.buildContentCalendar && window.buildContentCalendar(); } catch(e) { console.warn('buildContentCalendar error:', e); } }
+  if (viewId === 'content-modes')     { try { window.buildContentModes   && window.buildContentModes();   } catch(e) { console.warn('buildContentModes error:', e); } }
+  if (viewId === 'content-autopilot') { try { window.buildAutopilot      && window.buildAutopilot();      } catch(e) { console.warn('buildAutopilot error:', e); } }
   if (viewId === 'podcast-monitor')  { try { window.buildPodcastMonitor && window.buildPodcastMonitor(); }  catch(e) { console.warn('buildPodcastMonitor error:', e); } }
   if (viewId === 'ab-designer')      { try { window.buildAbDesigner && window.buildAbDesigner(); }      catch(e) { console.warn('buildAbDesigner error:', e); } }
   if (viewId === 'voc')              { try { window.buildVoc && window.buildVoc(); }              catch(e) { console.warn('buildVoc error:', e); } }
@@ -33117,6 +33119,8 @@ window._ccGo = async function() {
         }).join('')}
       </div>`;
     window._ccLastPosts = r.posts;
+    // Enhance cards with WP publish + Audio Summary buttons (ig_content_pro.js)
+    setTimeout(() => { try { window._ccEnhanceCards && window._ccEnhanceCards(r.posts); } catch(e) {} }, 50);
   } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
 };
 window._ccCopy = async function() {
