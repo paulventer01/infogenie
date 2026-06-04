@@ -3219,6 +3219,8 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'content-calendar')  { try { window.buildContentCalendar && window.buildContentCalendar(); } catch(e) { console.warn('buildContentCalendar error:', e); } }
   if (viewId === 'content-modes')     { try { window.buildContentModes   && window.buildContentModes();   } catch(e) { console.warn('buildContentModes error:', e); } }
   if (viewId === 'content-autopilot') { try { window.buildAutopilot      && window.buildAutopilot();      } catch(e) { console.warn('buildAutopilot error:', e); } }
+  if (viewId === 'ad-creative')       { try { window.buildAdCreative     && window.buildAdCreative();     } catch(e) { console.warn('buildAdCreative error:', e); } }
+  if (viewId === 'idea-feed')         { try { window.buildIdeaFeed       && window.buildIdeaFeed();       } catch(e) { console.warn('buildIdeaFeed error:', e); } }
   if (viewId === 'podcast-monitor')  { try { window.buildPodcastMonitor && window.buildPodcastMonitor(); }  catch(e) { console.warn('buildPodcastMonitor error:', e); } }
   if (viewId === 'ab-designer')      { try { window.buildAbDesigner && window.buildAbDesigner(); }      catch(e) { console.warn('buildAbDesigner error:', e); } }
   if (viewId === 'voc')              { try { window.buildVoc && window.buildVoc(); }              catch(e) { console.warn('buildVoc error:', e); } }

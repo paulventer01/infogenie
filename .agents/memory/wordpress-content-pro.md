@@ -20,3 +20,15 @@ description: How WordPress publishing, Content Modes, Autopilot, and Audio Summa
 **Why:** WiseWand-inspired gap analysis: InfoGenie had social content generation but no long-form article generator, no CMS publishing, no scheduled automation pipeline, and no audio output from articles.
 
 **How to apply:** Adding a new content mode: add key to MODES array in services/content_modes/api.js, add prompt case in _buildPrompt(), add template case in _template(), add entry to MODE_CONFIG in ig_content_pro.js. Adding a new WP site field: extend wordpress_sites table + api.js /connect handler.
+
+## T51-T55 additions (ig_creative_suite.js)
+
+**T51 Ad Creative:** `services/ad_creative/api.js` — DALL-E 3 via `/v1/images/generations`. Downloads image to `uploads/ad_creatives/`. Placeholder fallback via placehold.co when no key.
+
+**T52 URL Brand Scanner:** Route `POST /api/brand-foundation/scan-url` added directly to `services/brand_foundation/api.js` (end of file, before module.exports). Firecrawl first, raw HTTPS fetch fallback. SSRF guard included. Frontend injected by MutationObserver in `ig_creative_suite.js`.
+
+**T53/T54 Idea Feed:** `services/idea_feed/api.js` — 20 ideas/day cached by `batch_date`. `/angles` is statically returned (no DB). `/ideas?force=1` refreshes batch. Swipe UI in `ig_creative_suite.js → buildIdeaFeed()`.
+
+**T55 Multi-language:** `language` param added to both `services/content_modes/api.js` and `services/content_calendar/api.js`. Injected into AI prompts only when language ≠ 'English'. Dropdown injected by MutationObserver in ig_creative_suite.js watching for `#ccTone` and `#cmTone` elements.
+
+**All UI:** `public/js/ig_creative_suite.js?v=20260604CS1` — loaded between ig_content_pro.js and ig_studio.js in index.html.

@@ -179,6 +179,8 @@
           <a href="#" class="nav-link" data-view="content-calendar"><span class="ndl-icon">🗓️</span><span class="ndl-text">Content Calendar</span></a>
           <a href="#" class="nav-link" data-view="content-modes"><span class="ndl-icon">✍️</span><span class="ndl-text">Content Modes</span></a>
           <a href="#" class="nav-link" data-view="content-autopilot"><span class="ndl-icon">🤖</span><span class="ndl-text">Content Autopilot</span></a>
+          <a href="#" class="nav-link" data-view="ad-creative"><span class="ndl-icon">🎨</span><span class="ndl-text">Ad Creative Gen</span></a>
+          <a href="#" class="nav-link" data-view="idea-feed"><span class="ndl-icon">💡</span><span class="ndl-text">Idea Swipe Feed</span></a>
           <a href="#" class="nav-link" data-view="social"><span class="ndl-icon">📅</span><span class="ndl-text">Social Calendar</span></a>
           <a href="#" class="nav-drop-next" data-open-group="reach">Assets are ready — push them out via <strong>Reach</strong><span class="ndn-arrow">→</span></a>
         </div>
@@ -1117,6 +1119,30 @@
     </div>
   </div></div></div>
   <div class="container" id="cmWrap" style="padding-top:24px;padding-bottom:56px"></div>
+</div>
+
+<!-- AD CREATIVE GENERATOR VIEW (T51) -->
+<div class="view hidden" id="view-ad-creative">
+  <div class="view-header"><div class="container"><div class="vh-inner">
+    <div>
+      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Ad Creative Generator</div>
+      <h2 class="view-title">🎨 AI Ad Creative Generator</h2>
+      <p class="view-sub">Generate professional ad images for any platform using DALL-E 3. Facebook ads, Instagram posts, Google Display banners, TikTok thumbnails and more — in any style.</p>
+    </div>
+  </div></div></div>
+  <div class="container" id="adCreativeWrap" style="padding-top:24px;padding-bottom:56px"></div>
+</div>
+
+<!-- IDEA SWIPE FEED VIEW (T53/T54) -->
+<div class="view hidden" id="view-idea-feed">
+  <div class="view-header"><div class="container"><div class="vh-inner">
+    <div>
+      <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Idea Feed</div>
+      <h2 class="view-title">💡 Daily Idea Feed</h2>
+      <p class="view-sub">Fresh AI-generated content ideas every day — swipe to save or add straight to your calendar. Explore 20 proven content angles like Mythbuster, Before &amp; After, Us vs Them, and more.</p>
+    </div>
+  </div></div></div>
+  <div class="container" id="ideaFeedWrap" style="padding-top:24px;padding-bottom:56px"></div>
 </div>
 
 <!-- CONTENT AUTOPILOT VIEW (T49) -->
@@ -3295,6 +3321,7 @@
      .js/.css reference at serve time (see services/static_versioning), so editing
      one feature only re-downloads that file — with no manual version bump. -->
 <script src="/public/js/ig_content_pro.js?v=20260604PRO1"></script>
+<script src="/public/js/ig_creative_suite.js?v=20260604CS1"></script>
 <script src="/public/js/ig_studio.js"></script>
 <script src="/public/js/ig_journey_omnichannel.js"></script>
 <script src="/public/js/ig_manage_pack.js"></script>

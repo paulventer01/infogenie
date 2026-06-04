@@ -226,5 +226,72 @@ router.get('/context-preview', async (req, res) => {
   res.json({ ok:true, block, configured: !!block });
 });
 
+// POST /scan-url — scrape a URL and extract brand identity fields via AI
+router.post('/scan-url', async (req, res) => {
+  const rawUrl = String(req.body?.url || '').trim().slice(0, 500);
+  if (!rawUrl) return _err(res, 400, 'url required');
+
+  let url;
+  try {
+    url = new URL(rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl);
+    if (!['https:', 'http:'].includes(url.protocol)) throw new Error('bad protocol');
+    const host = url.hostname.toLowerCase();
+    const privateRanges = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|0\.0\.0\.0|::1|metadata\.google\.internal)/i;
+    if (privateRanges.test(host)) return _err(res, 400, 'private_host');
+  } catch { return _err(res, 400, 'invalid_url'); }
+
+  // Try Firecrawl first, fall back to raw HTTPS fetch
+  async function _fetchPageText(targetUrl) {
+    const fcKey = process.env.FIRECRAWL_API_KEY;
+    if (fcKey && !/^_DUMMY/i.test(fcKey)) {
+      const body = JSON.stringify({ url: targetUrl.href, formats: ['markdown'], onlyMainContent: true });
+      const result = await new Promise(resolve => {
+        const req2 = _https.request({
+          hostname: 'api.firecrawl.dev', path: '/v1/scrape', method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + fcKey, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+        }, r => { let d = ''; r.on('data', c => d += c); r.on('end', () => {
+          try { const j = JSON.parse(d); resolve(j.data?.markdown || j.markdown || null); } catch { resolve(null); }
+        }); });
+        req2.on('error', () => resolve(null));
+        req2.setTimeout(20000, () => req2.destroy());
+        req2.write(body); req2.end();
+      });
+      if (result) return result.slice(0, 8000);
+    }
+    // Raw fetch fallback
+    return new Promise(resolve => {
+      const proto = targetUrl.protocol === 'https:' ? _https : require('http');
+      const reqOpts = { hostname: targetUrl.hostname, path: targetUrl.pathname + targetUrl.search, method: 'GET',
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; InfoGenie/1.0)', 'Accept': 'text/html' } };
+      const r = proto.request(reqOpts, res2 => {
+        let d = ''; res2.setEncoding('utf8');
+        res2.on('data', c => { if (d.length < 80000) d += c; });
+        res2.on('end', () => {
+          const text = d.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000);
+          resolve(text || null);
+        });
+      });
+      r.on('error', () => resolve(null));
+      r.setTimeout(15000, () => r.destroy());
+      r.end();
+    });
+  }
+
+  const pageText = await _fetchPageText(url);
+  if (!pageText || pageText.length < 50) return _err(res, 422, 'Could not read page content — try a different URL');
+
+  const extracted = await _openai([
+    { role: 'system', content: `You are a brand strategist. Analyse the webpage content and extract brand identity information. Return strict JSON:
+{"brand_name":"<company/brand name>","purpose_why":"<why they exist — customer benefit, 1-2 sentences>","purpose_beyond_money":"<mission beyond profit, if evident>","icp_name":"<persona name for their ideal customer>","icp_role":"<job title or life stage of their ideal customer>","icp_pain":"<main pain point their customers face>","icp_dream_outcome":"<what their customers want to achieve>","voice_tone_warm":<0-10>,"voice_tone_witty":<0-10>,"voice_tone_bold":<0-10>,"voice_we_say":"<phrases/words they use>","positioning_statement":"<one-sentence positioning>","brand_colors":"<detected color palette if any e.g. #FF5733, #1A1A2E>"}
+Fill fields from evidence in the page. Use empty string for fields you cannot determine. Scores: 0=not at all, 10=extremely.` },
+    { role: 'user', content: `URL: ${url.href}\n\nPage content:\n${pageText}` },
+  ], 1200);
+
+  if (!extracted) return _err(res, 502, 'AI extraction unavailable — fill fields manually');
+  res.json({ ok: true, url: url.href, extracted });
+});
+
 module.exports = router;
 module.exports.getBrandContextBlock = getBrandContextBlock;

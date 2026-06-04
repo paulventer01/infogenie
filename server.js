@@ -2696,19 +2696,27 @@ const _contentModesSchema = require('./services/content_modes/schema');
 const _autopilotRouter    = require('./services/autopilot/api');
 const _autopilotSchema    = require('./services/autopilot/schema');
 const _audioSummaryRouter = require('./services/audio_summary/api');
+const _adCreativeRouter   = require('./services/ad_creative/api');
+const _adCreativeSchema   = require('./services/ad_creative/schema');
+const _ideaFeedRouter     = require('./services/idea_feed/api');
+const _ideaFeedSchema     = require('./services/idea_feed/schema');
 app.use('/api/wordpress',      _wpRouter);
 app.use('/api/content-modes',  _contentModesRouter);
 app.use('/api/autopilot',      _autopilotRouter);
 app.use('/api/audio-summary',  _audioSummaryRouter);
+app.use('/api/ad-creative',    _adCreativeRouter);
+app.use('/api/idea-feed',      _ideaFeedRouter);
 BOOT_TASKS.push(async () => { try {
   if (_db.hasDb()) {
     await _wpSchema.ensureWordpressSchema();
     await _contentModesSchema.ensureContentModesSchema();
     await _autopilotSchema.ensureAutopilotSchema();
     _autopilotRouter.startAutopilotCron();
-    console.log('[t47-50] wordpress + content-modes + autopilot + audio-summary ready');
+    await _adCreativeSchema.ensureAdCreativeSchema();
+    await _ideaFeedSchema.ensureIdeaFeedSchema();
+    console.log('[t47-55] wordpress + content-modes + autopilot + audio-summary + ad-creative + idea-feed ready');
   }
-} catch (e) { console.warn('[t47-50] init failed:', e.message); }});
+} catch (e) { console.warn('[t47-55] init failed:', e.message); }});
 
 // ── Tier 7 ─────────────────────────────────────────────────────────────────
 const _podcastSchema = require('./services/podcast_monitor/schema');

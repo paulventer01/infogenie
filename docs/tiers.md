@@ -425,3 +425,28 @@ Closes the offline-revenue blind spot. Recommendation-only — never auto-applie
 
 *   **T50 Audio Summaries** (Cross-feature helper) · `services/audio_summary/api.js` · `POST /api/audio-summary/generate {text, title, voice?}` — GPT-4o-mini condenses article to 250-300 word spoken prose (hook + 2-3 key points + takeaway), then OpenAI TTS (`tts-1`, default voice `nova`) generates MP3. Saves to `uploads/voiceovers/` and persists in `voiceover_runs` (reuses existing table). 6 voices: alloy, echo, fable, onyx, nova, shimmer.
 - **UI**: Shared `window._audioSummary(text, title, btn?, outputContainerId?)` helper in `ig_content_pro.js`. Opens voice-picker modal → generates audio → renders inline `<audio>` player with ⬇ Download MP3. Called from: Content Modes article view (🎧 Audio Summary button), Content Calendar post cards (🎧 Audio button per card). Script viewable in `<details>` accordion.
+
+## Tier 51 — AI Ad Creative Generator
+
+*   **T51 Ad Creative Generator** (Create → 🎨 Ad Creative Gen) · `services/ad_creative/{schema,api}.js` · `POST /api/ad-creative/generate {platform, format, style, headline, body_copy, brand_name, brand_colors, cta_text, extra_context}`, `GET /api/ad-creative/history`, `GET /api/ad-creative/:id`, `DELETE /api/ad-creative/:id` — generates actual ad images via DALL-E 3 (OpenAI Images API). Saves to `uploads/ad_creatives/` and persists in `ad_creatives` table. Falls back to placeholder image when OpenAI key absent.
+- **Platforms**: facebook_ad, instagram_post, instagram_story, google_display, twitter_x, linkedin, tiktok, pinterest, email_banner, youtube_thumbnail
+- **Formats**: square (1024×1024), landscape (1792×1024), portrait (1024×1792) — maps directly to DALL-E 3 size param
+- **Styles**: photorealistic, illustration, minimalist, bold_graphic, corporate, playful, editorial, flat_design
+- **Table**: `ad_creatives (tenant_id, platform, format, style, headline, body_copy, brand_name, brand_colors, cta_text, image_url, image_path, prompt, source)`
+- **UI**: `/#ad-creative` — platform/format/style selectors, headline/body/brand/CTA/colors inputs, generates image with download + copy URL + regenerate. History gallery grid with delete.
+
+## Tier 52 — URL Brand Scanner
+
+*   **T52 URL Brand Scanner** (Manage → Brand Foundation) · `POST /api/brand-foundation/scan-url {url}` — scrapes any public URL (Firecrawl if key present, raw HTTPS fetch fallback), strips HTML, passes page content to GPT-4o to extract brand identity fields (name, purpose, ICP, voice, positioning, brand_colors). SSRF-guarded (blocks localhost, private ranges). Returns `extracted` object for user review before applying.
+- **UI**: `🔍 Scan from URL` bar injected above the Brand Foundation form by `_injectBrandScanner()` in `ig_creative_suite.js`. MutationObserver re-injects whenever Brand Foundation re-renders. Shows extraction preview cards, then one-click "✅ Apply to Brand Foundation" auto-saves via `/api/brand-foundation/save`.
+
+## Tier 53/54 — Content Angles Library + Daily Idea Swipe Feed
+
+*   **T53/T54 Idea Feed** (Create → 💡 Idea Swipe Feed) · `services/idea_feed/{schema,api}.js` · `GET /api/idea-feed/ideas?brand=&force=`, `POST /api/idea-feed/save/:id`, `POST /api/idea-feed/dismiss/:id`, `GET /api/idea-feed/saved`, `GET /api/idea-feed/angles` — generates 20 AI content ideas per day using brand context from Brand Foundation. Cached by `batch_date`; `force=1` refreshes. 20 content angles as static library.
+- **20 Angles**: Mythbuster, Before & After, Us vs Them, Problem-Solution, Statistics, Negative Hook, What's Inside, Top Reasons, FAQ, Testimonial Story, Best-seller Spotlight, Behind the Scenes, Media Feature, Customer Mistake, Quick Win Tip, Trend Reaction, Founder Story, Product Demo, Social Proof, Limited Offer
+- **Table**: `idea_feed_items (tenant_id, angle, headline, copy, channel, hashtags JSONB, cta, visual_concept, status, batch_date)`
+- **UI**: `/#idea-feed` — Tinder-style card swipe (✕ Skip / ⭐ Save / 📅 Add to Calendar), angles library sidebar with one-click filter, saved ideas view. "Add to Calendar" calls `/api/content-calendar/add` and shows toast.
+
+## Tier 55 — Multi-language Generation
+
+*   **T55 Multi-language** (Cross-feature) — `language` param added to `POST /api/content-modes/generate` and `POST /api/content-calendar/generate`. 30 languages supported. When language ≠ English, a `Write ALL content in [language]` instruction is injected into every AI prompt. Language selector dropdown injected into Content Calendar and Content Modes forms via MutationObserver in `ig_creative_suite.js`. Supported: English, Spanish, French, German, Portuguese, Italian, Dutch, Polish, Russian, Turkish, Arabic, Japanese, Korean, Chinese (Simplified/Traditional), Hindi, Indonesian, Thai, Vietnamese, Swedish, Norwegian, Danish, Finnish, Czech, Romanian, Hungarian, Greek, Hebrew, Ukrainian, Malay.

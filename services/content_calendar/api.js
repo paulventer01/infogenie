@@ -8,12 +8,13 @@ function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg });
 
 const VALID_CHANNELS = ['instagram','tiktok','linkedin','x','facebook','youtube','blog','email'];
 
-async function _aiCalendar({ brand, goal, channels, days, audience, tone, tenantId }) {
+async function _aiCalendar({ brand, goal, channels, days, audience, tone, language, tenantId }) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return null;
   let brandCtx = '';
   try { const bf = require('../brand_foundation/api'); if (bf.getBrandContextBlock) brandCtx = await bf.getBrandContextBlock(tenantId); } catch {}
-  const sys = `${brandCtx ? brandCtx + '\n\n' : ''}You are a senior content strategist drafting a ${days}-day social content calendar for ${brand}. Stay on-brand: respect the brand voice, banned words, and ICP above. Return strict JSON:
+  const langNote = language && language.toLowerCase() !== 'english' ? ` Write ALL copy in ${language}.` : '';
+  const sys = `${brandCtx ? brandCtx + '\n\n' : ''}You are a senior content strategist drafting a ${days}-day social content calendar for ${brand}. Stay on-brand: respect the brand voice, banned words, and ICP above.${langNote} Return strict JSON:
 {"posts":[{"day":1,"date":"YYYY-MM-DD","channel":"instagram|tiktok|linkedin|x|facebook|youtube|blog|email","format":"reel|carousel|short|post|thread|article|video|email","hook":"<8-word scroll-stopper>","copy":"<the full caption / body>","hashtags":["#tag1","#tag2"],"cta":"<single call to action>","best_time":"HH:MM"}]}
 Rules:
 - Cover exactly ${days} days, dates starting today.
@@ -76,12 +77,13 @@ router.post('/generate', async (req, res) => {
   const audience = String(req.body?.audience || '').slice(0, 300);
   const tone = String(req.body?.tone || '').slice(0, 100);
   const days = Math.min(30, Math.max(1, parseInt(req.body?.days, 10) || 7));
+  const language = String(req.body?.language || 'English').trim().slice(0, 50);
   const channels = (Array.isArray(req.body?.channels) ? req.body.channels : ['instagram','linkedin','x'])
     .filter(c => VALID_CHANNELS.includes(c)).slice(0, 6);
   if (!brand) return _err(res, 400, 'brand required');
   if (!channels.length) return _err(res, 400, 'at least one valid channel required');
   const tid = await _tenantCtx.resolveTenantId(req, { label:'content_calendar:generate' });
-  let result = await _aiCalendar({ brand, goal, channels, days, audience, tone, tenantId: tid });
+  let result = await _aiCalendar({ brand, goal, channels, days, audience, tone, language, tenantId: tid });
   let source = 'openai';
   if (!result || !Array.isArray(result.posts)) { result = _templateCalendar({ brand, channels, days }); source = 'template'; }
   if (_db.hasDb()) {

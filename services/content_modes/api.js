@@ -52,10 +52,11 @@ function _buildPrompt(mode, params) {
   const brandCtxNote = brand ? `Brand: ${brand}. ` : '';
   const audNote = audience ? `Target audience: ${audience}. ` : '';
   const toneNote = tone ? `Tone: ${tone}. ` : '';
+  const langNote = (language && language.toLowerCase() !== 'english') ? `Write ALL content in ${language}. ` : '';
 
   if (mode === 'article') {
     return {
-      system: `You are a senior SEO content writer. ${brandCtxNote}${audNote}${toneNote}Write a comprehensive, humanized SEO blog article that ranks on Google. Return strict JSON:\n${baseSchema}\nRules: No placeholder text. Write as if a human expert wrote it. Include E-E-A-T signals.`,
+      system: `You are a senior SEO content writer. ${brandCtxNote}${audNote}${toneNote}${langNote}Write a comprehensive, humanized SEO blog article that ranks on Google. Return strict JSON:\n${baseSchema}\nRules: No placeholder text. Write as if a human expert wrote it. Include E-E-A-T signals.`,
       user: `Keyword: "${keyword || 'content marketing'}"\nWrite the full article now. Target 1200+ words.`,
     };
   }
@@ -170,13 +171,14 @@ router.post('/generate', async (req, res) => {
   const location = String(req.body?.location || '').trim().slice(0, 100);
   const audience = String(req.body?.audience || '').trim().slice(0, 200);
   const tone     = String(req.body?.tone     || '').trim().slice(0, 100);
+  const language = String(req.body?.language || 'English').trim().slice(0, 50);
   const existing_content = String(req.body?.existing_content || '').trim().slice(0, 6000);
 
   if (!keyword && mode !== 'update') return _err(res, 400, 'keyword required');
 
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'content_modes:generate' });
 
-  const params = { brand, keyword, location, audience, tone, existing_content };
+  const params = { brand, keyword, location, audience, tone, language, existing_content };
   const prompt = _buildPrompt(mode, params);
   let result = null, source = 'openai';
 
