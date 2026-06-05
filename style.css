@@ -5905,8 +5905,8 @@ p, span, label, td, li {
 [data-theme="light"] .nav-group-sep { background: #E2E8F0; }
 
 /* Hero section */
-[data-theme="light"] .hero {
-  background: linear-gradient(135deg, #EFF3F9 0%, #E8F0FE 40%, #EDF9F9 100%);
+[data-theme="light"] .hero { /* lint-ok-important: dark .hero uses !important on background */
+  background: linear-gradient(135deg, #EFF3F9 0%, #E8F0FE 40%, #EDF9F9 100%) !important;
 }
 [data-theme="light"] .hero .orb-1 { opacity: 0.12; }
 [data-theme="light"] .hero .orb-2 { opacity: 0.12; }
@@ -6431,8 +6431,8 @@ h3:hover {
 [data-theme="light"] body.dashboard-active,
 [data-theme="light"] .view,
 [data-theme="light"] .view.active,
-[data-theme="light"] .view:not(#view-home).active {
-  background: #EFF3F9;
+[data-theme="light"] .view:not(#view-home).active { /* lint-ok-important: dark body.dashboard-active and .view:not(#view-home).active use !important on background */
+  background: #EFF3F9 !important;
   color: #0A1628;
 }
 
@@ -6476,14 +6476,22 @@ h3:hover {
 }
 
 /* CSS rules with !important hardcoded to dark — override */
-[data-theme="light"] .price-enterprise {
-  background: #FFFFFF;
-  color: #0A1628;
-  border: 1px solid #E2E8F0;
+[data-theme="light"] .price-enterprise { /* lint-ok-important: dark .price-enterprise uses !important on background, color, border */
+  background: #FFFFFF !important;
+  color: #0A1628 !important;
+  border: 1px solid #E2E8F0 !important;
 }
 [data-theme="light"] .price-enterprise * { color: inherit; }
 [data-theme="light"] .price-enterprise .price-amount,
 [data-theme="light"] .price-enterprise .price-feature { color: #0A1628; }
+
+/* ROI banner — dark gradient uses !important; flip to light */
+[data-theme="light"] .roi-banner { /* lint-ok-important: dark .roi-banner uses !important on background */
+  background: linear-gradient(135deg, #FFFFFF 0%, #EEF2FF 60%, #E8F4FF 100%) !important;
+  border: 1px solid rgba(0,102,255,.15);
+  color: #0A1628;
+}
+[data-theme="light"] .roi-banner * { color: inherit; }
 
 /* C-Suite executive banner & period buttons */
 [data-theme="light"] .cs-exec-banner {
@@ -6874,8 +6882,8 @@ h3:hover {
 [data-theme="light"] .ba-stats span { color: #4A5670; }
 
 /* ── Home view — kill !important dark bg in light mode ── */
-[data-theme="light"] #view-home {
-  background: linear-gradient(180deg, #FFFFFF 0%, #F0F4F8 100%);
+[data-theme="light"] #view-home { /* lint-ok-important: dark #view-home uses !important on background */
+  background: linear-gradient(180deg, #FFFFFF 0%, #F0F4F8 100%) !important;
 }
 
 /* ── Platform trust strip — light mode visibility ── */
