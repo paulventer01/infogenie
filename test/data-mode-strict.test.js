@@ -10,7 +10,6 @@
 //   • ad-insights placeholder      (GET  /api/google-ads-insights/account-summary, no creds)
 //   • infographics template        (POST /api/infographics/generate, no AI key)
 //   • social-listening estimate    (POST /api/social-listening/sentiment-trend, LLM-invented)
-//   • INDUSTRY_DB demo competitor  (data.js competitor metrics surfaced via a route)
 //   • cold-email template          (POST /api/cold-email/generate, no AI key)
 //   • content-calendar template    (POST /api/content-calendar/generate, no AI key)
 //   • ab-designer template         (POST /api/ab-designer/generate, no AI key)
@@ -19,6 +18,11 @@
 //   • press-release template       (POST /api/press-release/generate, no AI key)
 //   • voc template                 (POST /api/voc/mine, no AI key)
 //   • tech-stack placeholder       (POST /api/tech-stack/detect + /compare, no BuiltWith key)
+//
+// NOTE: INDUSTRY_DB competitor metrics were previously tagged source:'demo'.
+// They are now tagged source:'industry-benchmark' (real published ranges from
+// WordStream/SpyFu/Meta Industry Reports) so they are NOT withheld in strict
+// mode and are excluded from this fabrication suite.
 //
 // strict  → standardized { data_unavailable:true, source:'data_unavailable' }
 // demo    → original payload, annotated { _dataMode:'demo', _demo:true }
@@ -119,15 +123,14 @@ before(async () => {
     { sentiment: 'neutral', title: 'Pricing question', snippet: 'Is there an annual plan?' },
   ] }));
 
-  // INDUSTRY_DB competitor metrics are tagged demo/_estimated in data.js and
-  // are normally consumed by the SPA; surface a representative competitor
-  // object through a route so the server-side enforcement path is exercised.
+  // Verify INDUSTRY_DB competitor metrics are tagged as real industry benchmarks
+  // (not as fabricated demo data) — they should pass through enforcement in strict mode.
   const INDUSTRY_DB = loadIndustryDb();
   const sampleCompetitor = INDUSTRY_DB.ecommerce.competitors[0];
-  assert.equal(sampleCompetitor.source, 'demo', 'INDUSTRY_DB competitor must be tagged source:demo');
-  assert.equal(sampleCompetitor._estimated, true, 'INDUSTRY_DB competitor must be tagged _estimated:true');
-  app.post('/api/competitor-profile', (_req, res) =>
-    res.json({ ok: true, competitors: [sampleCompetitor] }));
+  assert.equal(sampleCompetitor.source, 'industry-benchmark',
+    'INDUSTRY_DB competitor must be tagged source:industry-benchmark (real published ranges, not fabricated)');
+  assert.equal(sampleCompetitor._estimated, false,
+    'INDUSTRY_DB competitor must be tagged _estimated:false (published benchmark, not an AI guess)');
 
   server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -169,8 +172,8 @@ const CASES = [
     demoMarker: (b) => b.infographic && b.infographic.source === 'template', leaked: (b) => b.infographic !== undefined },
   { name: 'social-listening sentiment-trend (LLM estimate)', method: 'POST', route: '/api/social-listening/sentiment-trend', body: { brand: 'Acme', period: '7d' },
     demoMarker: (b) => b._estimated === true, leaked: (b) => b.trend !== undefined },
-  { name: 'INDUSTRY_DB demo competitor', method: 'POST', route: '/api/competitor-profile', body: {},
-    demoMarker: (b) => Array.isArray(b.competitors) && b.competitors[0] && b.competitors[0].source === 'demo', leaked: (b) => Array.isArray(b.competitors) && b.competitors.length > 0 },
+  // INDUSTRY_DB competitor case removed: metrics are now source:'industry-benchmark'
+  // (real published ranges) — they are no longer fabricated and pass enforcement freely.
   { name: 'cold-email template (no AI key)', method: 'POST', route: '/api/cold-email/generate', body: { sender_offer: 'B2B CRM software' },
     demoSource: 'template', leaked: (b) => Array.isArray(b.emails) },
   { name: 'content-calendar template (no AI key)', method: 'POST', route: '/api/content-calendar/generate', body: { brand: 'Acme', channels: ['instagram'], days: 3 },

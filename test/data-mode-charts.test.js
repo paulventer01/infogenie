@@ -209,8 +209,12 @@ test('lint: chart helper call sites are present and pass a source label', () => 
   // Scan app.js + all extracted public/js files (some charts were split out of app.js)
   const chartCalls = [...ALL_SRC.matchAll(/_applyChartDataMode\(\s*'([^']+)'\s*,\s*([^,]+?)\s*,\s*('[^']*'|[A-Za-z_$][\w$.]*)\s*\)/g)];
   // Keep a floor so an accidental wholesale removal of the gates fails loudly.
-  assert.ok(chartCalls.length >= 15,
-    `expected >=15 _applyChartDataMode call sites, found ${chartCalls.length} — were chart gates removed?`);
+  // Floor reduced to 7: charts backed by real published benchmarks no longer need
+  // the gate (only charts whose isEstimated flag can genuinely be true at runtime
+  // still call it). Current sites: spendChart, ctrChart, roasChart, trendChart
+  // in app.js + socialReachChart/socialPlatChart/socialEngageChart in ig_content_social.js.
+  assert.ok(chartCalls.length >= 7,
+    `expected >=7 _applyChartDataMode call sites, found ${chartCalls.length} — were chart gates removed?`);
   for (const m of chartCalls) {
     const [whole, canvasId, , source] = m;
     assert.ok(canvasId && canvasId.length > 0, `empty canvasId in call: ${whole}`);
