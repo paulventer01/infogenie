@@ -749,14 +749,13 @@ app.post('/api/launch/microsoft-ads', async (req, res) => {
 // ── TikTok Ads campaign launch ────────────────────────────────────────────────
 app.post('/api/launch/tiktok', async (req, res) => {
   const { campaignName, budget } = req.body;
-  const advertiserId = process.env.TIKTOK_ADVERTISER_ID;
-  const accessToken  = process.env.TIKTOK_ACCESS_TOKEN;
+  const cleanAdvertiserId = _tiktokAdvertiserId();
+  const accessToken  = _cleanSecret(process.env.TIKTOK_ACCESS_TOKEN || '');
 
-  if (!advertiserId || !accessToken)
+  if (!cleanAdvertiserId || !accessToken)
     return res.json({ success: false, error: 'TikTok credentials not configured — connect them in Settings → TikTok Ads.' });
 
   try {
-    const cleanAdvertiserId = String(advertiserId).replace(/[^0-9]/g, '');
     const dailyBudget = Math.max(Math.round((parseInt(String(budget).replace(/[^0-9]/g,'')) || 2000) / 30), 50);
     const payload = JSON.stringify({
       advertiser_id: cleanAdvertiserId, campaign_name: campaignName,
@@ -787,7 +786,7 @@ app.post('/api/launch/tiktok', async (req, res) => {
       optimizerWarning: optimizerEnabled ? null : 'Campaign was created on TikTok Ads, but it could not be added to the AI Optimizer, so automatic optimization is not running. Retry the launch or check your workspace, then re-launch to enable it.',
       message: `Campaign "${campaignName}" created in TikTok Ads Manager (ID: ${campaignId}). Enable it and add an Ad Group in TikTok Business Center.`
         + (optimizerEnabled ? '' : ' ⚠️ Automatic optimization could not be enabled — this campaign won\'t be auto-managed by the AI Optimizer.'),
-      dashboardUrl: `https://ads.tiktok.com/i18n/perf/campaign?aadvid=${advertiserId}`
+      dashboardUrl: `https://ads.tiktok.com/i18n/perf/campaign?aadvid=${cleanAdvertiserId}`
     });
   } catch(e) {
     console.error('[TikTok launch]', e.message);
@@ -1870,11 +1869,9 @@ async function _fetchGoogleAdsSpendDaily(days = 90, userId = null) {
 }
 
 async function _fetchTikTokSpendDaily(days = 90) {
-  const rawAdvertiserId = _cleanSecret(process.env.TIKTOK_ADVERTISER_ID);
-  const accessToken     = _cleanSecret(process.env.TIKTOK_ACCESS_TOKEN);
-  if (!rawAdvertiserId || !accessToken) return { ok:false, channel:'tiktok', error:'not-configured', daily:[] };
-  const advertiserId = _digitsOnly(rawAdvertiserId);
-  if (!advertiserId) return { ok:false, channel:'tiktok', error:'TIKTOK_ADVERTISER_ID is not a number', daily:[] };
+  const advertiserId = _tiktokAdvertiserId();
+  const accessToken  = _cleanSecret(process.env.TIKTOK_ACCESS_TOKEN);
+  if (!advertiserId || !accessToken) return { ok:false, channel:'tiktok', error:'not-configured', daily:[] };
   try {
     const since = _isoDate(Date.now() - days*86400000);
     const until = _isoDate(Date.now());
@@ -3415,6 +3412,12 @@ function _cleanSecret(v) {
   return s;
 }
 function _digitsOnly(v) { return String(v == null ? '' : v).replace(/\D+/g, ''); }
+// TikTok advertiser IDs are purely numeric. If the env var contains any letters
+// it is the wrong credential (e.g. a RapidAPI key) — treat as not configured.
+function _tiktokAdvertiserId() {
+  const raw = _cleanSecret(process.env.TIKTOK_ADVERTISER_ID || '').replace(/^['"\s]+|['"\s]+$/g, '');
+  return /^[0-9]+$/.test(raw) ? raw : '';
+}
 
 async function _fetchMetaSpend(days = 30, userId = null) {
   const _r = await _credentialsVault.resolveMetaAdsCredentials(userId);
@@ -3505,15 +3508,9 @@ async function _fetchGoogleAdsSpend(days = 30, userId = null) {
 }
 
 async function _fetchTikTokSpend(days = 30) {
-  const rawAdvertiserId = _cleanSecret(process.env.TIKTOK_ADVERTISER_ID);
-  const accessToken     = _cleanSecret(process.env.TIKTOK_ACCESS_TOKEN);
-  if (!rawAdvertiserId || !accessToken) return { ok:false, channel:'tiktok', error:'not-configured' };
-  // TikTok requires a pure integer string — strip any stray non-digit chars
-  // (whitespace, dashes, quotes, "act_" prefix from a pasted Meta ID, etc.)
-  const advertiserId = _digitsOnly(rawAdvertiserId);
-  if (!advertiserId) {
-    return { ok:false, channel:'tiktok', error:'TIKTOK_ADVERTISER_ID is not a number — paste only the numeric advertiser ID from TikTok Ads Manager' };
-  }
+  const advertiserId = _tiktokAdvertiserId();
+  const accessToken  = _cleanSecret(process.env.TIKTOK_ACCESS_TOKEN);
+  if (!advertiserId || !accessToken) return { ok:false, channel:'tiktok', error:'not-configured' };
   try {
     const since = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
     const until = new Date().toISOString().slice(0,10);

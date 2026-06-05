@@ -3,10 +3,21 @@ const _https = require('https');
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 
+function _cleanId(raw) {
+  // TikTok advertiser IDs are purely numeric — strip stray whitespace/quotes only.
+  // If the value contains any letters it is the wrong credential entirely (e.g. a
+  // RapidAPI key accidentally placed here) and we treat it as not configured.
+  if (!raw) return '';
+  const stripped = raw.replace(/^['"\s]+|['"\s]+$/g, '');
+  return /^[0-9]+$/.test(stripped) ? stripped : '';
+}
+
 function _hasCreds() {
   const t = process.env.TIKTOK_ACCESS_TOKEN, a = process.env.TIKTOK_ADVERTISER_ID;
-  return t && a && !/^_DUMMY/i.test(t) && !/^_DUMMY/i.test(a);
+  return !!(t && a && !/^_DUMMY/i.test(t) && !/^_DUMMY/i.test(a) && _cleanId(a));
 }
+
+function _advertiserId() { return _cleanId(process.env.TIKTOK_ADVERTISER_ID); }
 
 const HOST = 'business-api.tiktok.com';
 
@@ -73,7 +84,7 @@ const COMMON_METRICS = [
 router.post('/test', async (req, res) => {
   if (!_hasCreds()) return _err(res, 400, 'TIKTOK_ACCESS_TOKEN + TIKTOK_ADVERTISER_ID required');
   const r = await _ttGet('/open_api/v1.3/advertiser/info/', {
-    advertiser_ids: [process.env.TIKTOK_ADVERTISER_ID],
+    advertiser_ids: [_advertiserId()],
     fields: ['id','name','currency','timezone','status','company']
   });
   if (!r.ok) return _err(res, 400, _friendly(r.error));
@@ -84,7 +95,7 @@ router.post('/test', async (req, res) => {
 async function _report(level, presetKey, dimensions, extraFields = []) {
   const range = _dateRange(presetKey);
   return await _ttGet('/open_api/v1.3/report/integrated/get/', {
-    advertiser_id: process.env.TIKTOK_ADVERTISER_ID,
+    advertiser_id: _advertiserId(),
     report_type: 'BASIC',
     data_level: level,
     dimensions,
