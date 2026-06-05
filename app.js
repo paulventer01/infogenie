@@ -3221,6 +3221,9 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'content-autopilot') { try { window.buildAutopilot      && window.buildAutopilot();      } catch(e) { console.warn('buildAutopilot error:', e); } }
   if (viewId === 'ad-creative')       { try { window.buildAdCreative     && window.buildAdCreative();     } catch(e) { console.warn('buildAdCreative error:', e); } }
   if (viewId === 'idea-feed')         { try { window.buildIdeaFeed       && window.buildIdeaFeed();       } catch(e) { console.warn('buildIdeaFeed error:', e); } }
+  if (viewId === 'pitch-deck')        { try { window.buildPitchDeck      && window.buildPitchDeck();      } catch(e) { console.warn('buildPitchDeck error:', e); } }
+  if (viewId === 'accessibility')     { try { window.buildAccessibility  && window.buildAccessibility();  } catch(e) { console.warn('buildAccessibility error:', e); } }
+  if (viewId === 'wireframe')         { try { window.buildWireframe      && window.buildWireframe();      } catch(e) { console.warn('buildWireframe error:', e); } }
   if (viewId === 'podcast-monitor')  { try { window.buildPodcastMonitor && window.buildPodcastMonitor(); }  catch(e) { console.warn('buildPodcastMonitor error:', e); } }
   if (viewId === 'ab-designer')      { try { window.buildAbDesigner && window.buildAbDesigner(); }      catch(e) { console.warn('buildAbDesigner error:', e); } }
   if (viewId === 'voc')              { try { window.buildVoc && window.buildVoc(); }              catch(e) { console.warn('buildVoc error:', e); } }

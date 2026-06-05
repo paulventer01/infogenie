@@ -2718,6 +2718,25 @@ BOOT_TASKS.push(async () => { try {
   }
 } catch (e) { console.warn('[t47-55] init failed:', e.message); }});
 
+// ── T56-T59: Pitch Deck · Accessibility Audit · Wireframe Generator ──────
+const _pitchDeckRouter      = require('./services/pitch_deck/api');
+const _pitchDeckSchema      = require('./services/pitch_deck/schema');
+const _accessibilityRouter  = require('./services/accessibility/api');
+const _accessibilitySchema  = require('./services/accessibility/schema');
+const _wireframeRouter      = require('./services/wireframe/api');
+const _wireframeSchema      = require('./services/wireframe/schema');
+app.use('/api/pitch-deck',      _pitchDeckRouter);
+app.use('/api/accessibility',   _accessibilityRouter);
+app.use('/api/wireframe',       _wireframeRouter);
+BOOT_TASKS.push(async () => { try {
+  if (_db.hasDb()) {
+    await _pitchDeckSchema.ensurePitchDeckSchema();
+    await _accessibilitySchema.ensureAccessibilitySchema();
+    await _wireframeSchema.ensureWireframeSchema();
+    console.log('[t56-59] pitch-deck + accessibility + wireframe ready');
+  }
+} catch (e) { console.warn('[t56-59] init failed:', e.message); }});
+
 // ── Tier 7 ─────────────────────────────────────────────────────────────────
 const _podcastSchema = require('./services/podcast_monitor/schema');
 const _podcastRouter = require('./services/podcast_monitor/api');
