@@ -2889,6 +2889,10 @@ app.get('/api/ecom-video/veo-status', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── T65-T66: Apify — Organic Social Monitor · Local Lead Finder ──────────
+const _apifyRouter = require('./services/apify/api');
+app.use('/api/apify', _apifyRouter);
+
 // ── T56-T59: Pitch Deck · Accessibility Audit · Wireframe Generator ──────
 const _pitchDeckRouter      = require('./services/pitch_deck/api');
 const _pitchDeckSchema      = require('./services/pitch_deck/schema');
