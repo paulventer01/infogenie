@@ -2795,6 +2795,100 @@ Return JSON: {"title":"...","duration_seconds":30,"hook":"...","scenes":[{"scene
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Veo 3 Video Generation ─────────────────────────────────────────────────
+app.post('/api/ecom-video/render-veo', async (req, res) => {
+  try {
+    const _tenantCtx = require('./services/tenants/context');
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'ecom-video:render-veo' });
+    if (!tid) return res.status(400).json({ error: 'no_tenant' });
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (!geminiKey || /^_DUMMY/i.test(geminiKey)) {
+      return res.status(503).json({ error: 'GEMINI_API_KEY required for Veo 3 video generation' });
+    }
+    const { prompt, aspect_ratio = '9:16', duration_seconds = 5 } = req.body;
+    if (!prompt) return res.status(400).json({ error: 'prompt required' });
+    const _h = require('https');
+    const body = JSON.stringify({
+      prompt: { text: String(prompt).slice(0, 500) },
+      generationConfig: {
+        durationSeconds: Math.min(8, Math.max(4, parseInt(duration_seconds) || 5)),
+        aspectRatio: aspect_ratio,
+        numberOfVideos: 1,
+        personGeneration: 'DONT_ALLOW'
+      }
+    });
+    const opName = await new Promise((resolve, reject) => {
+      const r = _h.request({
+        hostname: 'generativelanguage.googleapis.com',
+        path: `/v1beta/models/veo-003:generateVideo?key=${geminiKey}`,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+      }, resp => {
+        let d = ''; resp.on('data', c => d += c);
+        resp.on('end', () => {
+          try {
+            const j = JSON.parse(d);
+            if (j.error) return reject(new Error(j.error.message || JSON.stringify(j.error)));
+            if (!j.name) return reject(new Error('No operation returned from Veo API'));
+            resolve(j.name);
+          } catch (e) { reject(e); }
+        });
+      });
+      r.on('error', reject);
+      r.setTimeout(30000, () => { r.destroy(); reject(new Error('Veo API submission timed out')); });
+      r.write(body); r.end();
+    });
+    res.json({ ok: true, operation_id: opName });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/ecom-video/veo-status', async (req, res) => {
+  try {
+    const _tenantCtx = require('./services/tenants/context');
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'ecom-video:veo-status' });
+    if (!tid) return res.status(400).json({ error: 'no_tenant' });
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (!geminiKey || /^_DUMMY/i.test(geminiKey)) return res.status(503).json({ error: 'No Gemini key' });
+    const opName = req.query.op;
+    if (!opName || !/^operations\//.test(opName)) return res.status(400).json({ error: 'Invalid operation id' });
+    const _h = require('https');
+    const poll = await new Promise((resolve, reject) => {
+      const r = _h.request({
+        hostname: 'generativelanguage.googleapis.com',
+        path: `/v1beta/${opName}?key=${geminiKey}`,
+        method: 'GET'
+      }, resp => {
+        let d = ''; resp.on('data', c => d += c);
+        resp.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(e); } });
+      });
+      r.on('error', reject);
+      r.setTimeout(20000, () => { r.destroy(); reject(new Error('Poll timeout')); });
+      r.end();
+    });
+    if (poll.error) return res.status(500).json({ error: poll.error.message || 'Operation error' });
+    if (!poll.done) return res.json({ status: 'pending', progress: poll.metadata?.progressPercent || null });
+    const samples = poll.response?.generateVideoResponse?.generatedSamples ||
+                    poll.response?.generatedSamples || [];
+    if (!samples.length) return res.json({ status: 'failed', error: 'No video generated' });
+    const videoUri = samples[0]?.video?.uri;
+    const mimeType = samples[0]?.video?.mimeType || 'video/mp4';
+    if (!videoUri) return res.json({ status: 'failed', error: 'No video URI in Veo response' });
+    const _h2 = require('https');
+    const videoB64 = await new Promise((resolve, reject) => {
+      const fullUrl = videoUri + (videoUri.includes('?') ? '&' : '?') + `key=${geminiKey}`;
+      const u = new URL(fullUrl);
+      const r = _h2.request({ hostname: u.hostname, path: u.pathname + u.search, method: 'GET' }, resp => {
+        const chunks = []; resp.on('data', c => chunks.push(c));
+        resp.on('end', () => resolve(Buffer.concat(chunks).toString('base64')));
+      });
+      r.on('error', reject);
+      r.setTimeout(60000, () => { r.destroy(); reject(new Error('Video download timeout')); });
+      r.end();
+    });
+    res.json({ status: 'complete', video_base64: videoB64, mime_type: mimeType });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── T56-T59: Pitch Deck · Accessibility Audit · Wireframe Generator ──────
 const _pitchDeckRouter      = require('./services/pitch_deck/api');
 const _pitchDeckSchema      = require('./services/pitch_deck/schema');

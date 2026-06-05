@@ -286,4 +286,89 @@ router.post('/x', _safeAsync(async (req, res) => {
   res.json({ ok:true, brand, country, total: r.ads.length, ads: r.ads, note: r.note });
 }));
 
+// ── Creative / Vision Analysis (Gemini multimodal) ────────────────────────
+router.post('/analyze-creative', _safeAsync(async (req, res) => {
+  const _tenantCtx = require('../tenants/context');
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'ad-library:analyze-creative' });
+  if (!tid) return _err(res, 400, 'no_tenant');
+  const { image_url, ad_text, headline, brand_name } = req.body;
+  if (!ad_text && !image_url) return _err(res, 400, 'ad_text or image_url required');
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const _TMPL = {
+    hook_score: 6, hook_type: 'curiosity gap', emotional_appeal: 'aspiration',
+    persuasion_tactics: ['social proof', 'benefit-led headline'], cta_strength: 'medium',
+    copy_clarity: 'clear', tone: 'professional',
+    strengths: ['Concise copy', 'Clear value proposition'],
+    weaknesses: ['Generic CTA', 'Could be more specific'],
+    quality_score: 62,
+    improvement_suggestions: ['Add a number or stat to the headline', 'Test a more urgent CTA', 'Lead with the outcome, not the product'],
+    estimated_performance: 'medium', visual_notes: 'Connect GEMINI_API_KEY for visual analysis',
+    source: 'template'
+  };
+  if (!geminiKey || /^_DUMMY/i.test(geminiKey)) return res.json({ ok: true, source: 'template', analysis: _TMPL });
+
+  const safeBrand   = String(brand_name || 'unknown').replace(/[\x00-\x1F]/g, ' ').slice(0, 80);
+  const safeHead    = String(headline   || '(none)').replace(/[\x00-\x1F]/g, ' ').slice(0, 200);
+  const safeCopy    = String(ad_text    || '(none)').replace(/[\x00-\x1F]/g, ' ').slice(0, 600);
+  const prompt = `You are an expert direct-response ad creative analyst. Analyse this ad creative and return strict JSON only (no markdown, no commentary).
+
+Brand: ${safeBrand}
+Headline: ${safeHead}
+Ad copy: ${safeCopy}
+
+Return this exact JSON shape:
+{"hook_score":<1-10>,"hook_type":"<curiosity|fear|aspiration|social_proof|urgency|humor|pain_point>","emotional_appeal":"<primary emotion targeted>","persuasion_tactics":["<tactic1>","<tactic2>"],"cta_strength":"<weak|medium|strong>","copy_clarity":"<confusing|unclear|clear|crystal>","tone":"<professional|casual|urgent|playful|authoritative>","strengths":["<what works well>","<another strength>"],"weaknesses":["<what could improve>","<another weakness>"],"quality_score":<0-100>,"improvement_suggestions":["<specific actionable fix 1>","<fix 2>","<fix 3>"],"estimated_performance":"<low|medium|high>","visual_notes":"<note on visual elements if image was analysed, else text-only>"}`;
+
+  // Try to download image for multimodal analysis
+  let imgB64 = null; let imgMime = 'image/jpeg';
+  if (image_url) {
+    try {
+      const u = new URL(image_url);
+      if (u.protocol === 'https:' && !/localhost|127\.|^10\.|^192\.168\.|^169\.254\.|::1/.test(u.hostname)) {
+        imgB64 = await new Promise(resolve => {
+          const r = _https.request({ hostname: u.hostname, path: u.pathname + u.search, method: 'GET',
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; InfoGenie/1.0)' }
+          }, resp => {
+            const ct = resp.headers['content-type'] || '';
+            if (!ct.startsWith('image/')) return resolve(null);
+            imgMime = ct.split(';')[0]; const ch = []; let sz = 0;
+            resp.on('data', c => { if (sz < 4_000_000) { ch.push(c); sz += c.length; } });
+            resp.on('end', () => resolve(ch.length ? Buffer.concat(ch).toString('base64') : null));
+          });
+          r.on('error', () => resolve(null)); r.setTimeout(8000, () => { r.destroy(); resolve(null); }); r.end();
+        });
+      }
+    } catch (_) {}
+  }
+
+  const parts = imgB64
+    ? [{ inlineData: { mimeType: imgMime, data: imgB64 } }, { text: prompt }]
+    : [{ text: prompt }];
+  const gbody = JSON.stringify({ contents: [{ parts }], generationConfig: { temperature: 0.3, maxOutputTokens: 700 } });
+  const raw = await new Promise(resolve => {
+    const r = _https.request({
+      hostname: 'generativelanguage.googleapis.com',
+      path: `/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(gbody) }
+    }, resp => {
+      let d = ''; resp.on('data', c => d += c);
+      resp.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve(null); } });
+    });
+    r.on('error', () => resolve(null)); r.setTimeout(20000, () => { r.destroy(); resolve(null); });
+    r.write(gbody); r.end();
+  });
+  const txt = raw?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const m = txt.match(/\{[\s\S]*\}/);
+  if (m) {
+    try {
+      const analysis = JSON.parse(m[0]);
+      if (!analysis._DUMMY) {
+        analysis.source = imgB64 ? 'gemini-vision' : 'gemini';
+        return res.json({ ok: true, source: analysis.source, analysis });
+      }
+    } catch (_) {}
+  }
+  res.json({ ok: true, source: 'template', analysis: _TMPL });
+}));
+
 module.exports = router;

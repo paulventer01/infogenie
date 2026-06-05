@@ -1771,7 +1771,55 @@ window._alMapLimit = async function(items, limit, fn) {
 // Single ad-card builder, extracted so _alAppendResult can render large
 // result sets in rAF-yielding chunks instead of one blocking innerHTML pass.
 window._alAdCardHtml = function(a, brand, platform) {
-  return `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:11px"><div style="font-weight:700;color:#0A1628;font-size:0.82rem;margin-bottom:4px">${_escapeHtml(a.page_name || a.advertiser || brand)}</div>${a.title ? `<div style="font-weight:600;color:#1E1B4B;font-size:0.8rem;margin-bottom:3px">${_escapeHtml(a.title)}</div>` : ''}<div style="color:#374151;font-size:0.76rem;line-height:1.4;white-space:pre-wrap">${_escapeHtml((a.body || a.ad_text || '').slice(0, 240))}</div>${a.description ? `<div style="color:#6B7280;font-size:0.72rem;margin-top:4px;font-style:italic">${_escapeHtml(a.description.slice(0,140))}</div>` : ''}<div style="font-size:0.68rem;color:#9CA3AF;margin-top:7px;border-top:1px solid #E5E7EB;padding-top:6px">${a.created ? '📅 ' + new Date(a.created).toLocaleDateString() + ' · ' : ''}${a.first_seen ? '👁 ' + _escapeHtml(a.first_seen) + ' · ' : ''}${Array.isArray(a.platforms) ? a.platforms.map(p => _escapeHtml(String(p))).join(', ') : ''}${a.industry ? ' · ' + _escapeHtml(a.industry) : ''}${(a.snapshot_url || a.url) && _safeUrl(a.snapshot_url || a.url) ? ` · <a href="${_safeUrl(a.snapshot_url || a.url)}" target="_blank" rel="noopener" style="color:#0066FF;font-weight:700">View →</a>` : ''}</div><button onclick='window._alSaveSwipe(${JSON.stringify({source:platform, external_id:a.id||null, advertiser:a.page_name||a.advertiser||brand, headline:a.title||"", body:a.body||a.ad_text||"", cta:a.description||"", snapshot_url:a.snapshot_url||a.url||"", platforms:a.platforms||[]}).replace(/'/g,"&#39;")}, this)' style="margin-top:8px;width:100%;background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;padding:6px;border-radius:6px;font-size:0.72rem;font-weight:800;cursor:pointer">💾 Save to Swipe File</button></div>`;
+  const _cardId = 'alVis_' + Math.random().toString(36).slice(2,8);
+  const _analyzePayload = JSON.stringify({
+    brand_name: a.page_name || a.advertiser || brand,
+    headline: a.title || '',
+    ad_text: a.body || a.ad_text || '',
+    image_url: a.snapshot_url || a.url || ''
+  }).replace(/'/g,"&#39;");
+  return `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:11px"><div style="font-weight:700;color:#0A1628;font-size:0.82rem;margin-bottom:4px">${_escapeHtml(a.page_name || a.advertiser || brand)}</div>${a.title ? `<div style="font-weight:600;color:#1E1B4B;font-size:0.8rem;margin-bottom:3px">${_escapeHtml(a.title)}</div>` : ''}<div style="color:#374151;font-size:0.76rem;line-height:1.4;white-space:pre-wrap">${_escapeHtml((a.body || a.ad_text || '').slice(0, 240))}</div>${a.description ? `<div style="color:#6B7280;font-size:0.72rem;margin-top:4px;font-style:italic">${_escapeHtml(a.description.slice(0,140))}</div>` : ''}<div style="font-size:0.68rem;color:#9CA3AF;margin-top:7px;border-top:1px solid #E5E7EB;padding-top:6px">${a.created ? '📅 ' + new Date(a.created).toLocaleDateString() + ' · ' : ''}${a.first_seen ? '👁 ' + _escapeHtml(a.first_seen) + ' · ' : ''}${Array.isArray(a.platforms) ? a.platforms.map(p => _escapeHtml(String(p))).join(', ') : ''}${a.industry ? ' · ' + _escapeHtml(a.industry) : ''}${(a.snapshot_url || a.url) && _safeUrl(a.snapshot_url || a.url) ? ` · <a href="${_safeUrl(a.snapshot_url || a.url)}" target="_blank" rel="noopener" style="color:#0066FF;font-weight:700">View →</a>` : ''}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px"><button onclick='window._alSaveSwipe(${JSON.stringify({source:platform, external_id:a.id||null, advertiser:a.page_name||a.advertiser||brand, headline:a.title||"", body:a.body||a.ad_text||"", cta:a.description||"", snapshot_url:a.snapshot_url||a.url||"", platforms:a.platforms||[]}).replace(/'/g,"&#39;")}, this)' style="background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;padding:6px;border-radius:6px;font-size:0.72rem;font-weight:800;cursor:pointer">💾 Save to Swipe File</button><button onclick='window._alAnalyzeCreative(${_analyzePayload}, "${_cardId}", this)' style="background:#EEF2FF;border:1px solid #C7D2FE;color:#3730A3;padding:6px;border-radius:6px;font-size:0.72rem;font-weight:800;cursor:pointer">🔍 Analyze Creative</button></div><div id="${_cardId}" style="margin-top:8px"></div></div>`;
+};
+
+window._alAnalyzeCreative = async function(payload, cardId, btn) {
+  const el = document.getElementById(cardId);
+  if (!el) return;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analysing…'; }
+  el.innerHTML = '<div style="font-size:0.76rem;color:#6B7280;padding:8px 0">Analysing with Gemini Vision…</div>';
+  try {
+    const r = await fetch('/api/ad-library/analyze-creative', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Re-analyze'; }
+    if (!d.ok || !d.analysis) { el.innerHTML = `<div style="color:#991B1B;font-size:0.75rem;padding:8px 0">${_escapeHtml(d.error || 'Analysis failed')}</div>`; return; }
+    const a = d.analysis;
+    const scoreColor = a.quality_score >= 75 ? '#16a34a' : a.quality_score >= 50 ? '#d97706' : '#dc2626';
+    const perfColor  = a.estimated_performance === 'high' ? '#16a34a' : a.estimated_performance === 'medium' ? '#d97706' : '#dc2626';
+    el.innerHTML = `
+<div style="border:1px solid #E0E7FF;border-radius:8px;background:#F5F7FF;padding:10px;font-size:0.74rem;margin-top:4px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <span style="font-weight:800;color:#1E1B4B;font-size:0.78rem">🔍 Creative Analysis <span style="font-weight:400;color:#6B7280">(${_escapeHtml(d.source||'ai')})</span></span>
+    <div style="display:flex;gap:6px">
+      <span style="background:${scoreColor};color:#fff;border-radius:4px;padding:2px 8px;font-weight:800;font-size:0.78rem">${a.quality_score||0}/100</span>
+      <span style="background:${perfColor};color:#fff;border-radius:4px;padding:2px 8px;font-weight:700;font-size:0.72rem;text-transform:capitalize">${_escapeHtml(a.estimated_performance||'medium')}</span>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:8px">
+    ${[['Hook', a.hook_score + '/10'],['Hook Type', (a.hook_type||'').replace(/_/g,' ')],['Emotion', a.emotional_appeal||''],['CTA', a.cta_strength||''],['Clarity', a.copy_clarity||''],['Tone', a.tone||'']].map(([l,v])=>`<div style="background:#fff;border:1px solid #E5E7EB;border-radius:4px;padding:4px 6px"><div style="font-size:0.64rem;font-weight:700;color:#6B7280;text-transform:uppercase">${_escapeHtml(l)}</div><div style="font-weight:600;color:#0A1628;text-transform:capitalize">${_escapeHtml(String(v))}</div></div>`).join('')}
+  </div>
+  ${Array.isArray(a.persuasion_tactics) && a.persuasion_tactics.length ? `<div style="margin-bottom:6px"><span style="font-weight:700;color:#1E1B4B">Tactics: </span>${a.persuasion_tactics.map(t=>`<span style="background:#DBEAFE;color:#1E40AF;border-radius:3px;padding:1px 5px;font-size:0.7rem;margin-right:3px">${_escapeHtml(t)}</span>`).join('')}</div>` : ''}
+  ${Array.isArray(a.strengths) && a.strengths.length ? `<div style="margin-bottom:4px"><span style="font-size:0.68rem;font-weight:700;color:#15803D">✓ </span>${a.strengths.map(s=>`<span style="font-size:0.72rem;color:#166534">${_escapeHtml(s)}</span>`).join(' · ')}</div>` : ''}
+  ${Array.isArray(a.weaknesses) && a.weaknesses.length ? `<div style="margin-bottom:6px"><span style="font-size:0.68rem;font-weight:700;color:#B91C1C">✗ </span>${a.weaknesses.map(w=>`<span style="font-size:0.72rem;color:#991B1B">${_escapeHtml(w)}</span>`).join(' · ')}</div>` : ''}
+  ${Array.isArray(a.improvement_suggestions) && a.improvement_suggestions.length ? `<div style="border-top:1px solid #E0E7FF;padding-top:6px;margin-top:4px"><div style="font-weight:700;color:#1E1B4B;margin-bottom:4px">💡 Improvements</div>${a.improvement_suggestions.map(i=>`<div style="color:#374151;margin-bottom:3px">• ${_escapeHtml(i)}</div>`).join('')}</div>` : ''}
+  ${a.visual_notes ? `<div style="margin-top:6px;color:#6B7280;font-style:italic">${_escapeHtml(a.visual_notes)}</div>` : ''}
+</div>`;
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Analyze Creative'; }
+    el.innerHTML = `<div style="color:#991B1B;font-size:0.75rem;padding:8px 0">Error: ${_escapeHtml(e.message)}</div>`;
+  }
 };
 
 window._alRunMulti = async function() {

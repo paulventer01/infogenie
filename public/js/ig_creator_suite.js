@@ -597,7 +597,13 @@ window._evGenerate = function() {
     if (data.error) { _csStatus(statusEl, data.error, 'error'); if(resultEl) resultEl.innerHTML=''; return; }
     _csStatus(statusEl, '', 'info');
     const s = data.storyboard || {};
+    window._evLastStoryboard = s;
+    window._evLastProduct = body.product_name || 'product';
+    window._evLastPlatform = body.platform || 'Instagram Reels / TikTok';
     if (!resultEl) return;
+    const veoSceneOpts = (s.scenes||[]).map(sc =>
+      `<option value="${sc.scene}">${sc.scene}. ${_csEsc((sc.shot_type||'Scene ' + sc.scene).slice(0,30))} · ${sc.duration_s||5}s</option>`
+    ).join('');
     resultEl.innerHTML = `
 <div class="ig-card">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
@@ -619,13 +625,112 @@ window._evGenerate = function() {
     <div style="font-weight:600;">${_csEsc(s.cta||'')}</div>
   </div>
   ${s.caption ? `
-  <div style="background:var(--bg-subtle,#f8f9fa);border-radius:8px;padding:14px;">
+  <div style="background:var(--bg-subtle,#f8f9fa);border-radius:8px;padding:14px;margin-bottom:16px;">
     <div style="font-size:0.75rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;">CAPTION + HASHTAGS</div>
     <div style="font-size:0.88rem;line-height:1.6;">${_csEsc(s.caption)}</div>
     <div style="color:var(--ig-primary,#667eea);font-size:0.85rem;margin-top:6px;">${(s.hashtags||[]).map(h=>_csEsc(h)).join(' ')}</div>
   </div>` : ''}
+  <div style="border:1px solid var(--ig-primary,#667eea);border-radius:10px;padding:16px;background:linear-gradient(135deg,#667eea08,#764ba208);">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+      <div style="font-size:1.4rem;">🎬</div>
+      <div>
+        <div style="font-weight:700;font-size:0.95rem;">Generate with Veo 3</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);">Turn any scene into an AI-generated video clip (Google Veo 3 · requires GEMINI_API_KEY)</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end;">
+      <div>
+        <label class="ig-label">Select Scene</label>
+        <select id="evVeoScene" class="ig-select">${veoSceneOpts}</select>
+      </div>
+      <div>
+        <label class="ig-label">Format</label>
+        <select id="evVeoRatio" class="ig-select">
+          <option value="9:16">9:16 (Reels/TikTok)</option>
+          <option value="16:9">16:9 (YouTube)</option>
+          <option value="1:1">1:1 (Square)</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="window._evRenderVeo()" style="white-space:nowrap;">▶ Generate Clip</button>
+    </div>
+    <div id="evVeoResult" style="margin-top:12px;"></div>
+  </div>
 </div>`;
   }).catch(() => { _csStatus(statusEl, 'Generation failed.', 'error'); if(resultEl) resultEl.innerHTML=''; });
+};
+
+window._evRenderVeo = function() {
+  const resultEl = document.getElementById('evVeoResult');
+  if (!resultEl) return;
+  const s = window._evLastStoryboard || {};
+  const sceneNum = parseInt((document.getElementById('evVeoScene')||{}).value) || 1;
+  const ratio = (document.getElementById('evVeoRatio')||{}).value || '9:16';
+  const scene = (s.scenes||[]).find(sc => sc.scene === sceneNum) || (s.scenes||[])[0] || {};
+  const product = window._evLastProduct || 'product';
+  const platform = window._evLastPlatform || 'Instagram Reels';
+  const prompt = [
+    `Cinematic product video clip for ${platform}.`,
+    scene.shot_type ? `Shot type: ${scene.shot_type}.` : '',
+    scene.action ? `Scene: ${scene.action}.` : '',
+    scene.voiceover ? `Mood matches voiceover: "${scene.voiceover}".` : '',
+    `Product: ${product}. Professional lighting, clean background, high-end commercial style. No text overlays.`
+  ].filter(Boolean).join(' ');
+  resultEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-subtle,#f8f9fa);border-radius:8px;">
+    <div style="width:18px;height:18px;border:2px solid var(--ig-primary,#667eea);border-top-color:transparent;border-radius:50%;animation:_csSpinKf 0.8s linear infinite;flex-shrink:0;"></div>
+    <div style="font-size:0.85rem;">Submitting to Veo 3… this takes 1-3 minutes.</div>
+  </div>`;
+  _csPost('/api/ecom-video/render-veo', { prompt, aspect_ratio: ratio, duration_seconds: scene.duration_s || 5 })
+    .then(data => {
+      if (data.error) { resultEl.innerHTML = `<div class="ig-alert ig-alert-error">Veo 3: ${_csEsc(data.error)}</div>`; return; }
+      resultEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--bg-subtle,#f8f9fa);border-radius:8px;">
+        <div style="width:18px;height:18px;border:2px solid #22c55e;border-top-color:transparent;border-radius:50%;animation:_csSpinKf 0.8s linear infinite;flex-shrink:0;"></div>
+        <div style="font-size:0.85rem;">Generating video… polling every 10s</div>
+        <div id="evVeoPct" style="font-size:0.78rem;color:var(--text-muted);margin-left:auto;"></div>
+      </div>`;
+      window._evPollVeo(data.operation_id, 0);
+    })
+    .catch(e => { resultEl.innerHTML = `<div class="ig-alert ig-alert-error">Request failed: ${_csEsc(e.message)}</div>`; });
+};
+
+window._evPollVeo = function(opId, attempts) {
+  const MAX_ATTEMPTS = 30;
+  if (attempts > MAX_ATTEMPTS) {
+    const r = document.getElementById('evVeoResult');
+    if (r) r.innerHTML = `<div class="ig-alert ig-alert-error">Veo 3 timed out after ${MAX_ATTEMPTS} polls. Try a shorter duration.</div>`;
+    return;
+  }
+  setTimeout(() => {
+    fetch(`/api/ecom-video/veo-status?op=${encodeURIComponent(opId)}`, { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(data => {
+        const resultEl = document.getElementById('evVeoResult');
+        if (!resultEl) return;
+        if (data.error) { resultEl.innerHTML = `<div class="ig-alert ig-alert-error">Veo error: ${_csEsc(data.error)}</div>`; return; }
+        if (data.status === 'pending') {
+          const pct = document.getElementById('evVeoPct');
+          if (pct && data.progress) pct.textContent = data.progress + '%';
+          window._evPollVeo(opId, attempts + 1);
+          return;
+        }
+        if (data.status === 'failed') { resultEl.innerHTML = `<div class="ig-alert ig-alert-error">Veo 3 failed: ${_csEsc(data.error||'unknown')}</div>`; return; }
+        if (data.status === 'complete' && data.video_base64) {
+          const mime = data.mime_type || 'video/mp4';
+          const src = `data:${mime};base64,${data.video_base64}`;
+          resultEl.innerHTML = `
+<div style="margin-top:4px;">
+  <video controls playsinline style="width:100%;max-height:320px;border-radius:8px;background:#000;" src="${src}"></video>
+  <div style="display:flex;gap:8px;margin-top:10px;">
+    <a href="${src}" download="veo3_scene.mp4" class="btn btn-primary" style="font-size:0.82rem;padding:8px 16px;">⬇ Download MP4</a>
+    <span style="font-size:0.78rem;color:var(--text-muted);align-self:center;">Generated by Google Veo 3</span>
+  </div>
+</div>`;
+        }
+      })
+      .catch(e => {
+        const r = document.getElementById('evVeoResult');
+        if (r) r.innerHTML = `<div class="ig-alert ig-alert-error">Poll error: ${_csEsc(e.message)}</div>`;
+      });
+  }, 10000);
 };
 
 /* ─────────────────────────────────────────────────────────────────────
