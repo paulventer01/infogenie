@@ -7429,9 +7429,14 @@ select option { background: #FFFFFF !important; color: #0F4C4A !important; }
   color: #1E293B;
   font-weight: 700;
 }
+/* Inactive tabs use inline color:rgba(255,255,255,.5) — needs !important to beat inline style */
+[data-theme="light"] .cs-tab-btn[style*="color:rgba(255,255,255"] {
+  color: #475569 !important;
+}
 [data-theme="light"] .cs-tab-btn[style*="color:white"] {
   color: #0066FF !important;
   background: rgba(0,102,255,.08) !important;
+  border-bottom-color: #0066FF !important;
 }
 [data-theme="light"] .cs-tab-btn:hover {
   background: rgba(0,102,255,.06);
