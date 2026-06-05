@@ -6006,6 +6006,7 @@ body,
   box-shadow: 0 4px 32px rgba(0,0,0,.1);
 }
 [data-theme="light"] .url-card-header { color: #64748B; }
+[data-theme="light"] .url-card-label-row { color: #475569 !important; } /* lint-ok-important: dark .url-card-label-row uses !important on color */
 [data-theme="light"] .url-field-wrap {
   background: #F8FAFC;
   border-color: #D1D9E6;
