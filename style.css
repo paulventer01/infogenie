@@ -204,7 +204,8 @@ body {
 .btn-nav-analyse:hover { background: linear-gradient(135deg, var(--cyan), var(--teal)); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,201,200,.45); }
 
 /* ===== VIEWS ===== */
-.view { display: none; padding-top: 96px; background: #0A1628; }
+/* padding-top: 96px was an orphan from the old fixed-navbar layout; navbar is now sticky and reserves its own space. Restore if the navbar ever returns to position:fixed. */
+.view { display: none; /* padding-top: 96px; */ background: #0A1628; }
 .view.active { display: block; }
 
 /* ===== HERO ===== */
@@ -5008,7 +5009,6 @@ p, span, label, td, li {
 /* Fix: home view background matches hero so no gap shows */
 #view-home {
   background: #060C1A !important;
-  padding-top: 96px !important;
 }
 #view-home .hero {
   min-height: calc(100vh - 92px) !important;
