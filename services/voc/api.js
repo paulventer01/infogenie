@@ -13,15 +13,19 @@ async function _fetchMentions(brand, days) {
   const port = process.env.PORT || 5000;
   return await new Promise((resolve) => {
     const http = require('http');
+    const body = JSON.stringify({ brand, competitors: [], country: 'US', days: Number(days) || 14 });
+    const headers = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) };
+    if (process.env.INFOGENIE_API_KEY) headers['x-api-key'] = process.env.INFOGENIE_API_KEY;
     const req = http.request({
-      hostname:'127.0.0.1', port, method:'GET',
-      path:`/api/mentions?brand=${encodeURIComponent(brand)}&days=${encodeURIComponent(days)}`,
-      headers: process.env.INFOGENIE_API_KEY ? { 'x-api-key': process.env.INFOGENIE_API_KEY } : {},
+      hostname:'127.0.0.1', port, method:'POST',
+      path:'/api/mentions',
+      headers,
     }, r => { let d=''; r.on('data', c => d += c); r.on('end', () => {
       try { resolve(JSON.parse(d)); } catch { resolve(null); }
     }); });
     req.on('error', () => resolve(null));
     req.setTimeout(45000, () => req.destroy());
+    req.write(body);
     req.end();
   });
 }
