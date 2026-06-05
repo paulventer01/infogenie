@@ -2424,7 +2424,12 @@ window.buildReviewAggregator = function() {
     try {
       const r = await fetch('/api/review-aggregator/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, platform }) }).then(x => x.json());
       if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
-      if (!r.found) { out.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">No reviews found for ${_escapeHtml(brand)} on ${_escapeHtml(platform)}.</div>`; return; }
+      if (!r.found) {
+        const shortNameTip = brand.length <= 4 ? `<div style="margin-top:10px;font-size:0.78rem;color:#6B7280">💡 Tip: <strong>"${_escapeHtml(brand)}"</strong> may be too short to match. Try the full company name (e.g. "${_escapeHtml(brand)} Group" or "${_escapeHtml(brand)} Markets").</div>` : '';
+        const altPlatform = platform === 'google' ? 'trustpilot' : platform === 'trustpilot' ? 'google' : 'trustpilot';
+        out.innerHTML = `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">No reviews found for <strong>${_escapeHtml(brand)}</strong> on ${_escapeHtml(platform)}.${shortNameTip}<div style="margin-top:12px;font-size:0.78rem">Try switching the platform to <strong>${_escapeHtml(altPlatform)}</strong>, or enter a more specific company name above.</div></div>`;
+        return;
+      }
       const sentColor = { positive:['#ECFDF5','#065F46'], neutral:['#F3F4F6','#374151'], negative:['#FEF2F2','#991B1B'] };
       const stars = (n) => { const k = Math.max(0, Math.min(5, _n(n))); return '★'.repeat(k) + '☆'.repeat(5 - k); };
       out.innerHTML = `
@@ -2915,13 +2920,13 @@ window.buildGlassdoor = function() {
       const r = await fetch('/api/glassdoor/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ company }) }).then(x => x.json());
       if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
       const sentColor = { positive:['#ECFDF5','#065F46'], neutral:['#F3F4F6','#374151'], negative:['#FEF2F2','#991B1B'] };
-      const ratingNum = _f(r.overall_rating);
+      const ratingNum = Number.isFinite(Number(r.overall_rating)) ? Number(r.overall_rating) : null;
       const ratingPct = ratingNum ? Math.min(100, Math.max(0, (ratingNum/5)*100)) : 0;
       out.innerHTML = `
         <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px 20px;margin-bottom:14px">
           <h3 style="margin:0 0 12px;color:#0A1628">🏢 ${_escapeHtml(r.company)}</h3>
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;text-align:center">
-            <div><div style="font-size:1.6rem;font-weight:800;color:#0E9F6E">${ratingNum ? ratingNum.toFixed(1) : '—'}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">OVERALL ⭐</div><div style="background:#E5E7EB;height:5px;border-radius:3px;margin-top:6px;overflow:hidden"><div style="background:#0E9F6E;height:100%;width:${ratingPct}%"></div></div></div>
+            <div><div style="font-size:1.6rem;font-weight:800;color:#0E9F6E">${ratingNum !== null ? ratingNum.toFixed(1) : '—'}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">OVERALL ⭐</div><div style="background:#E5E7EB;height:5px;border-radius:3px;margin-top:6px;overflow:hidden"><div style="background:#0E9F6E;height:100%;width:${ratingPct}%"></div></div></div>
             <div><div style="font-size:1.6rem;font-weight:800;color:#0066FF">${_n(r.ceo_approval) || '—'}${r.ceo_approval != null ? '%' : ''}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">CEO APPROVAL</div></div>
             <div><div style="font-size:1.6rem;font-weight:800;color:#7C3AED">${_n(r.recommend_pct) || '—'}${r.recommend_pct != null ? '%' : ''}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">RECOMMEND</div></div>
             <div><div style="font-size:1.6rem;font-weight:800;color:#374151">${_n(r.total_reviews) || '—'}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">REVIEWS</div></div>
@@ -2942,7 +2947,7 @@ window.buildGlassdoor = function() {
           return `<div style="background:${c[0]};border:1px solid #E5E7EB;border-left:4px solid ${c[1]};border-radius:8px;padding:12px 14px">
             <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:6px;align-items:start">
               <div><strong style="color:#0A1628;font-size:0.9rem">${_escapeHtml(rev.title||'(no title)')}</strong> <span style="color:#6B7280;font-size:0.74rem">· ${_escapeHtml(rev.role||'')} · ${_escapeHtml(rev.tenure||'')}</span></div>
-              <div style="white-space:nowrap"><span style="font-weight:800;color:${c[1]}">${_f(rev.rating) ? _f(rev.rating).toFixed(1)+'⭐' : ''}</span> <span style="color:#9CA3AF;font-size:0.72rem;margin-left:6px">${_escapeHtml(rev.date||'')}</span></div>
+              <div style="white-space:nowrap"><span style="font-weight:800;color:${c[1]}">${Number.isFinite(Number(rev.rating)) ? Number(rev.rating).toFixed(1)+'⭐' : ''}</span> <span style="color:#9CA3AF;font-size:0.72rem;margin-left:6px">${_escapeHtml(rev.date||'')}</span></div>
             </div>
             ${rev.pros ? `<div style="font-size:0.8rem;color:#065F46;margin-top:4px"><strong>Pros:</strong> ${_escapeHtml(rev.pros)}</div>` : ''}
             ${rev.cons ? `<div style="font-size:0.8rem;color:#991B1B;margin-top:4px"><strong>Cons:</strong> ${_escapeHtml(rev.cons)}</div>` : ''}

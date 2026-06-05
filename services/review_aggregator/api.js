@@ -13,7 +13,9 @@ const PLATFORMS = ['trustpilot','g2','google','capterra','tripadvisor'];
 
 async function _scrapePlatform(brand, platform) {
   if (!_hasPerplexity()) return { error: 'PERPLEXITY_API_KEY required' };
-  const prompt = `Search ${platform === 'g2' ? 'G2.com' : platform === 'google' ? 'Google Reviews/Maps' : platform === 'capterra' ? 'Capterra' : platform === 'tripadvisor' ? 'TripAdvisor' : 'Trustpilot'} for the company "${brand}". Return strict JSON only:
+  const platformLabel = platform === 'g2' ? 'G2.com' : platform === 'google' ? 'Google Reviews/Maps' : platform === 'capterra' ? 'Capterra' : platform === 'tripadvisor' ? 'TripAdvisor' : 'Trustpilot';
+  const brandNote = brand.length <= 4 ? ` Note: "${brand}" may be a ticker symbol, abbreviation, or brand shorthand — search for the most prominent business entity (company or financial broker) using this name and return its reviews.` : '';
+  const prompt = `Search ${platformLabel} for the company "${brand}".${brandNote} Return strict JSON only:
 {
   "found": true,
   "avg_rating": 0.0-5.0,
@@ -22,7 +24,7 @@ async function _scrapePlatform(brand, platform) {
     {"author":"...","rating":1-5,"date":"YYYY-MM-DD or relative","title":"...","body":"...","sentiment":"positive|neutral|negative"}
   ]
 }
-Return up to 8 most recent reviews. If nothing found, return {"found":false}. Never invent.`;
+Return up to 8 most recent reviews. If nothing found on ${platformLabel}, return {"found":false}. Never invent.`;
   return await new Promise(resolve => {
     const body = JSON.stringify({ model:'sonar', temperature:0.1, max_tokens:2000, messages:[{ role:'user', content: prompt }] });
     const req = _https.request({

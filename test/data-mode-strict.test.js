@@ -117,7 +117,7 @@ before(async () => {
   // voc's /mine fetches mentions from the same server over HTTP before it can
   // cluster (and fall back to its template). Serve a small canned set so the
   // route reaches its source:'template' branch (not source:'empty').
-  app.get('/api/mentions', (_req, res) => res.json({ ok: true, mentions: [
+  app.post('/api/mentions', (_req, res) => res.json({ ok: true, mentions: [
     { sentiment: 'positive', title: 'Love the product', snippet: 'Works great for our team.' },
     { sentiment: 'negative', title: 'Support was slow', snippet: 'Waited two days for a reply.' },
     { sentiment: 'neutral', title: 'Pricing question', snippet: 'Is there an annual plan?' },
