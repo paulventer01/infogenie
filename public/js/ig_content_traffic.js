@@ -41,12 +41,12 @@ window.buildContentScore = function() {
       }).then(x => x.json());
       if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;border-radius:8px;padding:14px">${_escapeHtml(r.error)}</div>`; return; }
       window._csLastResult = r;
-      _csRender(out, r);
+      _csTrafficRender(out, r);
     } catch(e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
   });
 };
 
-function _csRender(out, r) {
+function _csTrafficRender(out, r) {
   const score = r.score || 0;
   const scoreColor = score >= 80 ? '#10B981' : score >= 55 ? '#F59E0B' : '#EF4444';
   const scoreBg    = score >= 80 ? '#ECFDF5' : score >= 55 ? '#FFFBEB' : '#FEF2F2';

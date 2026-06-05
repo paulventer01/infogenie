@@ -102,12 +102,14 @@ router.get('/history', async (req, res) => {
 });
 
 router.get('/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return _err(res, 400, 'invalid id');
   if (!_db.hasDb()) return _err(res, 503, 'no-db');
   try {
     const tid = await _tid(req, 'kw-explorer:get');
     const r = await _db.getPool().query(
       `SELECT * FROM keyword_explorer_runs WHERE id=$1 AND tenant_id=$2`,
-      [Number(req.params.id), tid]);
+      [id, tid]);
     if (!r.rows.length) return _err(res, 404, 'not found');
     res.json({ ok:true, run: r.rows[0] });
   } catch (e) { _err(res, 500, e.message); }

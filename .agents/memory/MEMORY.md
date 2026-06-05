@@ -1,2 +1,3 @@
 - [Google Workspace OAuth](google-workspace-oauth.md) — single OAuth flow for Gmail+Drive+Calendar; vault key google_workspace; env GOOGLE_WORKSPACE_CLIENT_ID/SECRET; callback /api/integrations/workspace/oauth/callback
 - [WordPress + Content Pro](wordpress-content-pro.md) — T47-T55: WP/ContentModes/Autopilot/Audio + AdCreative/BrandScanner/IdeaFeed/MultiLang; ig_content_pro.js + ig_creative_suite.js
+- [Global name collisions in public/js](global-name-collisions.md) — public/js files share the global scope with app.js; audit found real conflicts; pattern to check when extracting code.

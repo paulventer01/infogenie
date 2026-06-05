@@ -25,13 +25,13 @@ async function buildTrueRoas() {
     window._trState.hubspotConfigured = !!settingsR.hubspotConfigured;
     window._trState.conversions = convR.conversions || [];
     window._trState.lag = lagR;
-    _trRender();
+    _trRoasRender();
   } catch (e) {
     wrap.innerHTML = `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:14px;padding:24px;color:#991B1B">⚠️ Could not load: ${_esc(e.message)}</div>`;
   }
 }
 
-function _trRender() {
+function _trRoasRender() {
   const wrap = document.getElementById('trueRoasWrap');
   if (!wrap) return;
   const tab = window._trState.tab || 'conversions';
@@ -51,7 +51,7 @@ function _trRender() {
   else                       body.innerHTML = _trSettingsHtml();
 }
 
-function _trTab(id) { window._trState.tab = id; _trRender(); }
+function _trTab(id) { window._trState.tab = id; _trRoasRender(); }
 
 function _trHeroHtml() {
   const s = window._trState.summary || {};
