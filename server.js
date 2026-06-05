@@ -2893,6 +2893,12 @@ app.get('/api/ecom-video/veo-status', async (req, res) => {
 const _apifyRouter = require('./services/apify/api');
 app.use('/api/apify', _apifyRouter);
 
+// ── Growth Flywheel + SEO Roadmap ─────────────────────────────────────────
+const _flywheelRouter   = require('./services/flywheel/api');
+const _seoRoadmapRouter = require('./services/seo_roadmap/api');
+app.use('/api/flywheel',     _flywheelRouter);
+app.use('/api/seo-roadmap',  _seoRoadmapRouter);
+
 // ── T56-T59: Pitch Deck · Accessibility Audit · Wireframe Generator ──────
 const _pitchDeckRouter      = require('./services/pitch_deck/api');
 const _pitchDeckSchema      = require('./services/pitch_deck/schema');
