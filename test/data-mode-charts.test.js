@@ -29,6 +29,15 @@ const { JSDOM } = require('jsdom');
 // hardcoding line numbers (app.js is ~50k lines and shifts constantly). ──────
 const SRC = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
+// Also include extracted per-feature JS files (split from app.js) so the
+// call-site floor tests below count across the full frontend surface.
+const PUBLIC_JS = path.join(__dirname, '..', 'public', 'js');
+const EXTRACTED_SRC = fs.readdirSync(PUBLIC_JS)
+  .filter(f => f.endsWith('.js'))
+  .map(f => { try { return fs.readFileSync(path.join(PUBLIC_JS, f), 'utf8'); } catch { return ''; } })
+  .join('\n');
+const ALL_SRC = SRC + '\n' + EXTRACTED_SRC;
+
 function sliceBetween(src, startMarker, endMarker) {
   const start = src.indexOf(startMarker);
   assert.notEqual(start, -1, `anchor not found in app.js: ${startMarker}`);
@@ -197,7 +206,8 @@ test('section: re-render is idempotent — header badge does not stack', () => {
 // that silently no-ops (missing the source label that the badge/empty-state
 // copy depends on).
 test('lint: chart helper call sites are present and pass a source label', () => {
-  const chartCalls = [...SRC.matchAll(/_applyChartDataMode\(\s*'([^']+)'\s*,\s*([^,]+?)\s*,\s*('[^']*'|[A-Za-z_$][\w$.]*)\s*\)/g)];
+  // Scan app.js + all extracted public/js files (some charts were split out of app.js)
+  const chartCalls = [...ALL_SRC.matchAll(/_applyChartDataMode\(\s*'([^']+)'\s*,\s*([^,]+?)\s*,\s*('[^']*'|[A-Za-z_$][\w$.]*)\s*\)/g)];
   // Keep a floor so an accidental wholesale removal of the gates fails loudly.
   assert.ok(chartCalls.length >= 15,
     `expected >=15 _applyChartDataMode call sites, found ${chartCalls.length} — were chart gates removed?`);
@@ -209,7 +219,8 @@ test('lint: chart helper call sites are present and pass a source label', () => 
 });
 
 test('lint: section helper call sites are present', () => {
-  const sectionCalls = [...SRC.matchAll(/_applySectionDataMode\(/g)];
+  // Scan app.js + all extracted public/js files (some sections were split out of app.js)
+  const sectionCalls = [...ALL_SRC.matchAll(/_applySectionDataMode\(/g)];
   assert.ok(sectionCalls.length >= 4,
     `expected >=4 _applySectionDataMode call sites, found ${sectionCalls.length} — were section gates removed?`);
 });
