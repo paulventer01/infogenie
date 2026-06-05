@@ -5638,10 +5638,11 @@ function buildDashboard() {
   // Stage: kick off live DataForSEO fetch (network happens off-thread; the
   // .then handler does its own destroy + isConnected re-check).
   const compDomains = competitors.slice(0,6).map(c => c.domain || c.url || c.name.toLowerCase().replace(/\s+/g,'')+'.com');
+  const compNames   = competitors.slice(0,6).map(c => c.name || '');
   _dashEnq('spendFetch', () => { fetch('/api/competitor-spend', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ domains: compDomains, yourDomain: url, yourBudget: yourEstSpend })
+    body: JSON.stringify({ domains: compDomains, names: compNames, yourDomain: url, yourBudget: yourEstSpend })
   }).then(r => r.json()).then(data => {
     if (!data.success) return;
     // Final safety-net estimate: when all preferred sources return 0 for a
@@ -5666,10 +5667,16 @@ function buildDashboard() {
         : (yourEstSpend && yourEstSpend > 0 ? yourEstSpend : 25_000),
       ...data.competitors.map((c, ci) => {
         const comp = competitors[ci];
-        if (c.adSpend > 0) return c.adSpend;                              // 1. Live DataForSEO
-        if (comp?.adSpendEst > 0) return comp.adSpendEst;                 // 2. AI-validated number
-        const parsed = parseAdSpend(comp?.adSpend || '$0');
-        if (parsed > 0) return parsed;                                    // 3. AI-validated string
+        // Use the maximum of: live DataForSEO + curated data.js value.
+        // DataForSEO's keyword-sample misses display/programmatic spend (e.g.
+        // IG Markets runs heavy display advertising that doesn't appear in its
+        // paid-keyword index, so DataForSEO vastly understates its spend).
+        // Taking the max ensures well-known big spenders aren't misrepresented.
+        const liveVal  = c.adSpend > 0 ? c.adSpend : 0;                  // 1. Live DataForSEO
+        const estVal   = comp?.adSpendEst > 0 ? comp.adSpendEst : 0;     // 2. AI-validated number
+        const parsed   = parseAdSpend(comp?.adSpend || '$0');              // 3. Curated data.js string
+        const bestVal  = Math.max(liveVal, estVal, parsed > 0 ? parsed : 0);
+        if (bestVal > 0) return bestVal;
         return _trafficSpendFloor(comp);                                  // 4. Traffic-derived floor
       })
     ];

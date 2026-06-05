@@ -807,7 +807,7 @@ require('./services/ai_quick_tools/routes')(app, { anthropic, openai });
 
 // ── Competitor Ad Spend (DataForSEO paid traffic value) ───────────────────────
 app.post('/api/competitor-spend', async (req, res) => {
-  const { domains = [], yourDomain = '', yourBudget = 5000 } = req.body;
+  const { domains = [], names = [], yourDomain = '', yourBudget = 5000 } = req.body;
   if (!domains.length) return res.json({ success: false, error: 'No domains provided' });
 
   const clean = d => d.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].trim();
@@ -868,10 +868,21 @@ app.post('/api/competitor-spend', async (req, res) => {
   // IG, etc.) from public Similarweb/SemRush/earnings-report data. Single
   // batched call → ~1-2s extra latency, but every competitor ends up with a
   // realistic, knowledge-grounded number instead of a missing bar.
-  const zeroDomains = results.filter(r => !r.adSpend || r.adSpend < 100);
+  // Build domain→brandName map from the names[] param so the AI gets full context
+  // (e.g. "ig.com (IG Markets)" instead of just "ig.com").
+  const _nameMap = {};
+  domains.forEach((d, i) => { if (names[i]) _nameMap[clean(d)] = names[i]; });
+
+  // Threshold: 50 000 — any domain where DataForSEO returned less than $50K/mo
+  // gets AI enrichment. DataForSEO's keyword-sample systematically understates
+  // brands that invest heavily in display/programmatic (e.g. IG Markets, OANDA).
+  const zeroDomains = results.filter(r => !r.adSpend || r.adSpend < 50_000);
   if (zeroDomains.length > 0 && process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
     try {
-      const aiList = zeroDomains.map((r, i) => `${i+1}. ${r.domain}`).join('\n');
+      const aiList = zeroDomains.map((r, i) => {
+        const brand = _nameMap[r.domain];
+        return `${i+1}. ${r.domain}${brand ? ` (${brand})` : ''}`;
+      }).join('\n');
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         max_tokens: 600,
@@ -903,7 +914,7 @@ Return ONLY the JSON object, no prose.` }
         }
       });
       results.forEach(r => {
-        if (r.adSpend && r.adSpend >= 100) return;
+        if (r.adSpend && r.adSpend >= 50_000) return;
         const k = r.domain.toLowerCase().trim();
         const v = byDomain[k];
         if (v) {
