@@ -5831,7 +5831,8 @@ p, span, label, td, li {
         base dark rules that themselves used !important (so the
         light override must also use !important to win).
 
-   Run `npm run lint:css-important` to catch regressions.
+   Runs automatically via `npm run lint` (combined with lint:fabrication).
+   Also available standalone: `npm run lint:css-important`.
    ============================================================ */
 
 [data-theme="light"] .theme-toggle .theme-icon-dark  { display: none; }

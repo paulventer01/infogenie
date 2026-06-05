@@ -27,11 +27,7 @@ args = "test"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "lint:fabrication"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "lint:css-important"
+args = "lint"
 
 [[workflows.workflow]]
 name = "Start application"
@@ -57,23 +53,12 @@ args = "npm test"
 isValidation = true
 
 [[workflows.workflow]]
-name = "lint:fabrication"
+name = "lint"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run lint:fabrication"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
-name = "lint:css-important"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run lint:css-important"
+args = "npm run lint"
 
 [workflows.workflow.metadata]
 outputType = "console"

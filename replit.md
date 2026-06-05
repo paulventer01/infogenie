@@ -10,6 +10,14 @@ node server.js
 
 Listens on port 5000 (preview) and 80 (external). PostgreSQL via `DATABASE_URL`. JSON files in `data/` auto-migrate to `kv_store` at boot.
 
+## Lint
+
+```
+npm run lint
+```
+
+Runs `lint:fabrication` (AI-placeholder markers) **and** `lint:css-important` (light-theme `!important` regressions) in sequence. Also available via the `lint` workflow in Replit. Individual checks: `npm run lint:fabrication` · `npm run lint:css-important`.
+
 ## Stack
 
 | Layer | Tech |
