@@ -823,7 +823,8 @@ window.runAutomationNow = function(id) {
     'No new gaps detected',
     '1 counter-ad brief generated',
   ];
-  const result = results[Math.floor(Math.random()*results.length)];
+  const _rIdx = typeof id === 'string' ? id.split('').reduce((a,c)=>a+c.charCodeAt(0),0) : (id||0);
+  const result = results[_rIdx % results.length];
   window._automationLog.push({ id, time:now, result });
   showToast(`▷ ${a.name} ran now — ${result}`);
   buildAutomations();
