@@ -5815,7 +5815,23 @@ p, span, label, td, li {
 
 /* ============================================================
    LIGHT MODE — [data-theme="light"] on <html>
-   Transitions for all themed properties
+   ============================================================
+   SPECIFICITY CONVENTION — read before adding rules here
+   ─────────────────────────────────────────────────────────
+   The [data-theme="light"] attribute selector already wins
+   against plain class selectors. You do NOT need !important:
+
+     ✓  [data-theme="light"] .card { background: #FFF; }
+     ✗  [data-theme="light"] .card { background: #FFF !important; }
+
+   !important IS legitimate only in two cases:
+     1. Selectors containing [style*=...] — needed to beat
+        browser inline styles.
+     2. Blocks annotated with a lint-ok-important comment —
+        base dark rules that themselves used !important (so the
+        light override must also use !important to win).
+
+   Run `npm run lint:css-important` to catch regressions.
    ============================================================ */
 
 [data-theme="light"] .theme-toggle .theme-icon-dark  { display: none; }
@@ -6445,11 +6461,11 @@ h3:hover {
 
 /* Edge fade gradients used on horizontal scrollers — fade to LIGHT in light mode */
 [data-theme="light"] [style*="linear-gradient(to right, transparent, #0A1628)"],
-[data-theme="light"] .scroll-fade-right {
+[data-theme="light"] .scroll-fade-right { /* lint-ok-important: multi-selector — [style*=] variant must win over inline style; bare-class variant overrides dark base which used !important */
   background: linear-gradient(to right, transparent, #EFF3F9) !important;
 }
 [data-theme="light"] [style*="linear-gradient(to left, transparent, #0A1628)"],
-[data-theme="light"] .scroll-fade-left {
+[data-theme="light"] .scroll-fade-left { /* lint-ok-important: multi-selector — same as scroll-fade-right above */
   background: linear-gradient(to left, transparent, #EFF3F9) !important;
 }
 
@@ -6578,7 +6594,7 @@ h3:hover {
 /* Navbar dropdowns (often inline-styled dark) */
 [data-theme="light"] .nav-dropdown,
 [data-theme="light"] .dropdown-menu,
-[data-theme="light"] .nav-mega {
+[data-theme="light"] .nav-mega { /* lint-ok-important: dropdowns are frequently given dark inline styles by JS; !important is required to override them without a [style*=] selector for every variant */
   background: #FFFFFF !important;
   color: #0A1628 !important;
   border: 1px solid #E2E8F0 !important;
@@ -6586,7 +6602,7 @@ h3:hover {
 }
 [data-theme="light"] .nav-dropdown *,
 [data-theme="light"] .dropdown-menu *,
-[data-theme="light"] .nav-mega *:not(button):not(.badge) {
+[data-theme="light"] .nav-mega *:not(button):not(.badge) { /* lint-ok-important: child wildcard inheriting from inline-styled parent — same rationale as parent block above */
   color: #0A1628 !important;
 }
 
@@ -6930,7 +6946,7 @@ h3:hover {
   color: #4A5670;
 }
 [data-theme="light"] [id^="rdttb-"][style*="rgba(255,100,0,.25)"],
-[data-theme="light"] [id^="rdttb-"]:hover {
+[data-theme="light"] [id^="rdttb-"]:hover { /* lint-ok-important: multi-selector — [style*=] variant needs !important to beat inline style; :hover variant overrides JS-applied inline style on sibling state */
   background: rgba(255,100,0,.18) !important;
   color: #E55A1C !important;
 }
@@ -7853,7 +7869,7 @@ body:has(#counterTargetBanner) #launchCampaignBtn{display:none !important}
 .nav-dropdown .nav-drop-header,
 .nav-dropdown .nav-drop-header.nav-drop-header-toggle,
 [data-theme="light"] .nav-dropdown .nav-drop-header,
-[data-theme="dark"] .nav-dropdown .nav-drop-header { color: #2563eb !important; font-weight: 700 !important; opacity: 1 !important; }
+[data-theme="dark"] .nav-dropdown .nav-drop-header { /* lint-ok-important: overrides earlier !important gray rules; multi-selector with [data-theme="dark"] means !important is required to win in both themes */ color: #2563eb !important; font-weight: 700 !important; opacity: 1 !important; }
 [data-theme="dark"] .nav-dropdown .nav-drop-header { color: #60a5fa !important; }
 .nav-drop-header-toggle .ndh-count { font-size: 0.68rem; opacity: 0.55; background: rgba(0,0,0,0.06); padding: 1px 7px; border-radius: 8px; font-weight: 500; }
 .nav-drop-section:not(.collapsed) .nav-drop-header-toggle .ndh-chev { transform: rotate(90deg); }
