@@ -177,7 +177,7 @@ router.post('/suggest-tags', _safe(async (req, res) => {
     },
     { role:'user', content: `EXISTING_TAGS: ${existing.join(', ') || '(none yet)'}\n\nSAVED_ADS (${items.length}):\n${snippet}` },
   ], 600);
-  if (!out || !Array.isArray(out.suggestions)) return res.status(502).json({ ok:false, error:'AI tag suggestions unavailable — set OPENAI key or add tags manually.', suggestions: [], existing });
+  if (!out || !Array.isArray(out.suggestions)) return res.json({ ok:true, suggestions: starter, existing, source:'starter', note:'AI tag generation unavailable — showing starter tags. Connect an LLM in Manage → AI Providers for tailored suggestions.' });
   const clean = out.suggestions
     .map(s => ({ tag: String(s.tag||'').toLowerCase().replace(/[^a-z0-9 \-]/g,'').trim().slice(0,40), why: String(s.why||'').slice(0,140) }))
     .filter(s => s.tag && s.tag.length >= 2);

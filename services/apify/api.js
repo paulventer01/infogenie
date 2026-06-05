@@ -8,7 +8,7 @@ function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg })
 function _safeAsync(h) {
   return (req, res) => Promise.resolve(h(req, res)).catch(e => {
     console.warn('[apify]', e.stack || e.message);
-    if (!res.headersSent) _err(res, 500, 'Internal server error');
+    if (!res.headersSent) _err(res, 500, e.message || 'Internal server error');
   });
 }
 
@@ -41,7 +41,7 @@ function _apifyReq(path, method, body, key) {
     if (body) opts.headers['Content-Length'] = Buffer.byteLength(body);
     const req = _https.request(opts, r => {
       let d = ''; r.on('data', c => d += c);
-      r.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(e); } });
+      r.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(new Error(`Apify returned non-JSON (HTTP ${r.statusCode}): ${d.slice(0, 300)}`)); } });
     });
     req.on('error', reject);
     req.setTimeout(30000, () => { req.destroy(); reject(new Error('Apify request timed out')); });

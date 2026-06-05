@@ -103,7 +103,7 @@ window._hsLoadRecent = async function() {
 
 // ── Tier 13 #1: Meta Ads Insights ────────────────────────────────────
 window.buildMetaInsights = async function() {
-  const el = document.getElementById('miWrap'); if (!el) return;
+  const el = document.getElementById('metaInsWrap'); if (!el) return;
   el.innerHTML = `
     <div style="background:linear-gradient(135deg,#1877F2 0%,#0D5FBF 100%);color:#fff;border-radius:12px;padding:18px 22px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <div><div style="font-weight:800;font-size:1.05rem">📘 Meta Marketing API</div><div style="font-size:0.82rem;opacity:.92;margin-top:2px">Live spend, ROAS, top campaigns and creatives — refreshes on every load.</div></div>
