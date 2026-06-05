@@ -5637,12 +5637,12 @@ function buildDashboard() {
 
   // Stage: kick off live DataForSEO fetch (network happens off-thread; the
   // .then handler does its own destroy + isConnected re-check).
-  const compDomains = competitors.slice(0,6).map(c => c.domain || c.url || c.name.toLowerCase().replace(/\s+/g,'')+'.com');
-  const compNames   = competitors.slice(0,6).map(c => c.name || '');
+  const compDomains     = competitors.slice(0,6).map(c => c.domain || c.url || c.name.toLowerCase().replace(/\s+/g,'')+'.com');
+  const _compBrandNames = competitors.slice(0,6).map(c => c.name || '');
   _dashEnq('spendFetch', () => { fetch('/api/competitor-spend', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ domains: compDomains, names: compNames, yourDomain: url, yourBudget: yourEstSpend })
+    body: JSON.stringify({ domains: compDomains, names: _compBrandNames, yourDomain: url, yourBudget: yourEstSpend })
   }).then(r => r.json()).then(data => {
     if (!data.success) return;
     // Final safety-net estimate: when all preferred sources return 0 for a
