@@ -5916,16 +5916,16 @@ p, span, label, td, li {
     linear-gradient(rgba(0,0,0,.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0,0,0,.03) 1px, transparent 1px);
 }
-[data-theme="light"] .hero-badge {
-  background: rgba(0,102,255,.07);
-  border-color: rgba(0,102,255,.2);
-  color: #0055CC;
+[data-theme="light"] .hero-badge { /* lint-ok-important: dark .hero-badge uses !important on background, border, color */
+  background: rgba(0,102,255,.07) !important;
+  border-color: rgba(0,102,255,.2) !important;
+  color: #0055CC !important;
 }
-[data-theme="light"] .hero-title { color: #0A1628; }
-[data-theme="light"] .hero-subtitle { color: #475569; }
+[data-theme="light"] .hero-title { color: #0A1628 !important; text-shadow: none !important; } /* lint-ok-important: dark .hero-title uses !important on color and text-shadow */
+[data-theme="light"] .hero-subtitle { color: #475569 !important; } /* lint-ok-important: dark .hero-subtitle uses !important on color */
 [data-theme="light"] .hero-stat { border-color: rgba(0,0,0,.1); }
-[data-theme="light"] .hero-stat-num { color: #0A1628; }
-[data-theme="light"] .hero-stat-label { color: #64748B; }
+[data-theme="light"] .hero-stat-num { color: #0A1628 !important; } /* lint-ok-important: dark forces color via !important on parent */
+[data-theme="light"] .hero-stat-label { color: #64748B !important; } /* lint-ok-important: same */
 
 /* View headers (section banners) */
 [data-theme="light"] .view-header {
@@ -5996,8 +5996,8 @@ body,
 [data-theme="light"] .logo-text { color: #0A1628; }
 
 /* ── Hero: main text ── */
-[data-theme="light"] .hero-title  { color: #0A1628; text-shadow: none; }
-[data-theme="light"] .hero-subtitle { color: #475569; }
+[data-theme="light"] .hero-title  { color: #0A1628 !important; text-shadow: none !important; } /* lint-ok-important: dark .hero-title uses !important on color */
+[data-theme="light"] .hero-subtitle { color: #475569 !important; } /* lint-ok-important: dark .hero-subtitle uses !important on color */
 
 /* ── Hero: URL card full restyle ── */
 [data-theme="light"] .url-card {
@@ -6045,7 +6045,7 @@ body,
 }
 
 /* ── Hero stats bar ── */
-[data-theme="light"] .stat-lbl { color: #64748B; }
+[data-theme="light"] .stat-lbl { color: #64748B !important; } /* lint-ok-important: dark .stat-lbl uses !important on color */
 [data-theme="light"] .stat-sep  { background: rgba(0,0,0,.1); }
 
 /* ── View-header: white text on the medium-blue hero ── */
