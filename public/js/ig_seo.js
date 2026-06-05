@@ -7,6 +7,11 @@
 // Moved verbatim — see public/js/README.md and appjs-split-convention.md.
 // ============================================================================
 // ============================================================================
+// Local numeric helper (mirrors ig_intel_pack_a.js — not exposed on window)
+// ============================================================================
+function _n(x, d) { const v = Number(x); return Number.isFinite(v) ? Math.round(v) : (d || 0); }
+
+// ============================================================================
 // SEO ON-PAGE AUDITOR (Tier 22)
 // ============================================================================
 window.buildSeoAuditor = function() {
