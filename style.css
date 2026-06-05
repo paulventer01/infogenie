@@ -5849,43 +5849,43 @@ p, span, label, td, li {
   border-bottom: 1px solid #E8EDF4;
 }
 [data-theme="light"] .nav-group-btn {
-  color: #334155 !important;
+  color: #334155;
 }
 [data-theme="light"] .nav-group-btn:hover,
 [data-theme="light"] .nav-group-btn.active {
-  background: rgba(0,102,255,.07) !important;
-  color: #0066FF !important;
+  background: rgba(0,102,255,.07);
+  color: #0066FF;
 }
-[data-theme="light"] .ngb-label { color: #334155 !important; }
-[data-theme="light"] .ngb-chevron { color: #94A3B8 !important; }
-[data-theme="light"] .ngb-icon  { color: #64748B !important; }
+[data-theme="light"] .ngb-label { color: #334155; }
+[data-theme="light"] .ngb-chevron { color: #94A3B8; }
+[data-theme="light"] .ngb-icon  { color: #64748B; }
 [data-theme="light"] .nav-dropdown {
-  background: white !important;
-  border: 1px solid #E2E8F0 !important;
-  box-shadow: 0 8px 32px rgba(0,0,0,.12) !important;
+  background: white;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 8px 32px rgba(0,0,0,.12);
 }
-[data-theme="light"] .nav-drop-header { color: #94A3B8 !important; }
+[data-theme="light"] .nav-drop-header { color: #94A3B8; }
 [data-theme="light"] .nav-link { color: #374151; }
 [data-theme="light"] .nav-link:hover { background: #F1F5F9; color: #0066FF; }
 [data-theme="light"] .nav-plan-badge {
-  background: linear-gradient(135deg, #0066FF, #00C9C8) !important;
-  color: white !important;
+  background: linear-gradient(135deg, #0066FF, #00C9C8);
+  color: white;
 }
 
 /* Nav scroll fade — match new bg */
 [data-theme="light"] .nav-scroll-wrap::after {
-  background: linear-gradient(to right, transparent, #EFF3F9) !important;
+  background: linear-gradient(to right, transparent, #EFF3F9);
 }
 [data-theme="light"] .nav-scroll-wrap::before {
-  background: linear-gradient(to left, transparent, #EFF3F9) !important;
+  background: linear-gradient(to left, transparent, #EFF3F9);
 }
 [data-theme="light"] .nav-groups {
-  background: rgba(255,255,255,.98) !important;
+  background: rgba(255,255,255,.98);
 }
 [data-theme="light"] .nav-scroll {
-  background: transparent !important;
+  background: transparent;
 }
-[data-theme="light"] .nav-group-sep { background: #E2E8F0 !important; }
+[data-theme="light"] .nav-group-sep { background: #E2E8F0; }
 
 /* Hero section */
 [data-theme="light"] .hero {
