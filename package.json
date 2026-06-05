@@ -8,7 +8,8 @@
     "dev": "node server.js",
     "test": "node --test test/",
     "lint:fabrication": "node scripts/check-fabrication-markers.js",
-    "lint:css-important": "node scripts/check-light-theme-important.js"
+    "lint:css-important": "node scripts/check-light-theme-important.js",
+    "lint:css-specificity": "node scripts/check-light-theme-specificity.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.89.0",
