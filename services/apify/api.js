@@ -1,6 +1,7 @@
-const express  = require('express');
-const _https   = require('https');
+const express    = require('express');
+const _https     = require('https');
 const _tenantCtx = require('../tenants/context');
+const _vault     = require('../credentials/vault');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok: false, error: msg }); }
@@ -10,14 +11,25 @@ function _safeAsync(h) {
     if (!res.headersSent) _err(res, 500, 'Internal server error');
   });
 }
-function _hasApify() {
-  const k = process.env.APIFY_API_KEY;
-  return k && !/^_DUMMY/i.test(k);
+
+// Resolve Apify key: tenant vault first, then env var fallback.
+async function _resolveApifyKey(tid) {
+  if (tid) {
+    try {
+      const k = await _vault.getApiKey(tid, 'apify');
+      if (k && !/^_DUMMY/i.test(k)) return k;
+    } catch (_e) {}
+  }
+  const e = process.env.APIFY_API_KEY;
+  return (e && !/^_DUMMY/i.test(e)) ? e : null;
+}
+
+function _hasKey(key) {
+  return !!(key && !/^_DUMMY/i.test(key));
 }
 
 // ── Apify REST helpers ─────────────────────────────────────────────────────
-function _apifyReq(path, method, body) {
-  const key = process.env.APIFY_API_KEY;
+function _apifyReq(path, method, body, key) {
   const sep = path.includes('?') ? '&' : '?';
   return new Promise((resolve, reject) => {
     const opts = {
@@ -38,24 +50,24 @@ function _apifyReq(path, method, body) {
   });
 }
 
-async function _startRun(actorId, input) {
+async function _startRun(actorId, input, key) {
   const body = JSON.stringify(input);
-  const res = await _apifyReq(`/v2/acts/${actorId}/runs`, 'POST', body);
+  const res = await _apifyReq(`/v2/acts/${actorId}/runs`, 'POST', body, key);
   if (res.error) throw new Error(res.error.message || JSON.stringify(res.error));
   if (!res.data?.id) throw new Error('No run ID returned by Apify');
   return res.data;
 }
 
-async function _pollRun(runId) {
-  const res = await _apifyReq(`/v2/actor-runs/${runId}`, 'GET');
+async function _pollRun(runId, key) {
+  const res = await _apifyReq(`/v2/actor-runs/${runId}`, 'GET', null, key);
   if (res.error) throw new Error(res.error.message || JSON.stringify(res.error));
   return res.data;
 }
 
-async function _getItems(datasetId, limit) {
+async function _getItems(datasetId, limit, key) {
   const res = await _apifyReq(
     `/v2/datasets/${datasetId}/items?format=json&limit=${limit || 25}&clean=true`,
-    'GET'
+    'GET', null, key
   );
   return Array.isArray(res) ? res : [];
 }
@@ -64,7 +76,8 @@ async function _getItems(datasetId, limit) {
 router.post('/tiktok-organic', _safeAsync(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'apify:tiktok-organic' });
   if (!tid) return _err(res, 400, 'no_tenant');
-  if (!_hasApify()) return _err(res, 503, 'APIFY_API_KEY required — add it in Settings → Integrations');
+  const key = await _resolveApifyKey(tid);
+  if (!_hasKey(key)) return _err(res, 503, 'APIFY_API_KEY required — add it in Settings → Integrations → Apify');
   const { keyword, limit = 20 } = req.body;
   if (!keyword) return _err(res, 400, 'keyword required');
   const run = await _startRun('clockworks~tiktok-scraper', {
@@ -74,7 +87,7 @@ router.post('/tiktok-organic', _safeAsync(async (req, res) => {
     shouldDownloadCovers: false,
     shouldDownloadVideos: false,
     shouldDownloadSubtitles: false,
-  });
+  }, key);
   res.json({ ok: true, run_id: run.id, dataset_id: run.defaultDatasetId, status: run.status });
 }));
 
@@ -82,7 +95,8 @@ router.post('/tiktok-organic', _safeAsync(async (req, res) => {
 router.post('/maps-leads', _safeAsync(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'apify:maps-leads' });
   if (!tid) return _err(res, 400, 'no_tenant');
-  if (!_hasApify()) return _err(res, 503, 'APIFY_API_KEY required — add it in Settings → Integrations');
+  const key = await _resolveApifyKey(tid);
+  if (!_hasKey(key)) return _err(res, 503, 'APIFY_API_KEY required — add it in Settings → Integrations → Apify');
   const { query, limit = 20 } = req.body;
   if (!query) return _err(res, 400, 'query required (e.g. "dentists in Miami FL")');
   const run = await _startRun('compass~crawler-google-places', {
@@ -94,7 +108,7 @@ router.post('/maps-leads', _safeAsync(async (req, res) => {
     includeOpeningHours: true,
     includePeopleAlsoSearch: false,
     additionalInfo: false,
-  });
+  }, key);
   res.json({ ok: true, run_id: run.id, dataset_id: run.defaultDatasetId, status: run.status });
 }));
 
@@ -102,10 +116,11 @@ router.post('/maps-leads', _safeAsync(async (req, res) => {
 router.get('/run-status', _safeAsync(async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'apify:run-status' });
   if (!tid) return _err(res, 400, 'no_tenant');
-  if (!_hasApify()) return _err(res, 503, 'No APIFY_API_KEY');
+  const key = await _resolveApifyKey(tid);
+  if (!_hasKey(key)) return _err(res, 503, 'No APIFY_API_KEY');
   const { run_id, dataset_id, limit = 25 } = req.query;
   if (!run_id) return _err(res, 400, 'run_id required');
-  const run = await _pollRun(run_id);
+  const run = await _pollRun(run_id, key);
   const terminal = ['SUCCEEDED', 'FAILED', 'ABORTED', 'TIMED-OUT'];
   if (!terminal.includes(run.status)) {
     return res.json({ status: 'pending', apify_status: run.status, stats: run.stats || {} });
@@ -115,7 +130,7 @@ router.get('/run-status', _safeAsync(async (req, res) => {
   }
   const dsId = dataset_id || run.defaultDatasetId;
   if (!dsId) return res.json({ status: 'complete', items: [] });
-  const items = await _getItems(dsId, parseInt(limit) || 25);
+  const items = await _getItems(dsId, parseInt(limit) || 25, key);
   res.json({ status: 'complete', items });
 }));
 

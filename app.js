@@ -12525,6 +12525,25 @@ const INTEGRATIONS = {
         ]
       },
       {
+        id: 'apify', logo: '🕸️', name: 'Apify',
+        tagline: 'Web scraping platform — powers TikTok Organic Monitor & Local Lead Finder',
+        authType: 'apikey',
+        vaultSave: true,
+        placeholder: 'Apify API Token (apify_api_...)',
+        unlocks: [
+          '🔴 LIVE: TikTok Organic Monitor — track any brand or keyword\'s TikTok videos, views & engagement',
+          'Local Lead Finder — pull verified Google Maps business leads for any location + category',
+          'Top creator analysis per keyword — identify who is driving competitor TikTok reach',
+          'Export leads with phone numbers, ratings, hours, and website URLs in one click'
+        ],
+        steps: [
+          { text: 'Visit <a href="https://console.apify.com/sign-up" target="_blank">console.apify.com</a> and create a free account' },
+          { text: 'Go to <strong>Settings → Integrations → API tokens</strong>' },
+          { text: 'Click <strong>+ Create new token</strong> and copy the value (starts with <code>apify_api_</code>)' },
+          { text: 'Paste your token above and click <strong>Connect</strong> — saved instantly, no restart needed' }
+        ]
+      },
+      {
         id: 'profound', logo: '🧠', name: 'Profound',
         tagline: 'Brand mention tracking across ChatGPT, Claude, Perplexity, Gemini',
         authType: 'apikey',
@@ -15148,6 +15167,7 @@ function buildSettings() {
   setTimeout(() => { try { _handleMetaAdsReturnParams(); } catch(e) {} }, 250);
   setTimeout(() => { try { hydrateGoogleWorkspaceCard(); } catch(e) { console.warn('hydrateGoogleWorkspaceCard', e); } }, 200);
   setTimeout(() => { try { _handleGWReturnParams(); } catch(e) {} }, 250);
+  setTimeout(() => { hydrateApifyCard().catch(() => {}); }, 300);
 }
 
 async function checkAPIHealth() {
@@ -15191,13 +15211,14 @@ function buildIntegCard(item) {
     </div>
   `).join('');
 
+  const connectFn = (isApiKey && item.vaultSave) ? `connectVault` : `connectCard`;
   const connectSection = isApiKey ? `
     <div class="api-key-row">
       <input type="password" class="api-key-inp" placeholder="${item.placeholder || 'Paste your API Key here...'}" id="inp-${item.id}" />
       <button class="btn-test" onclick="testConnection('${item.id}')">Test</button>
     </div>
     <div class="integ-card-actions">
-      <button class="btn-connect-card" id="btn-${item.id}" onclick="connectCard('${item.id}', '${item.name}')">Connect</button>
+      <button class="btn-connect-card" id="btn-${item.id}" onclick="${connectFn}('${item.id}', '${item.name}')">Connect</button>
       <button class="btn-docs-card" onclick="showIntegrationDoc('${item.id}')">📖 View Docs</button>
     </div>
   ` : `
@@ -17531,6 +17552,24 @@ const API_VALIDATORS = {
   runway: (key) => {
     if (key.length < 30) return { status: 'rejected', message: 'Key too short — Runway ML API keys are typically 40+ characters. Check you copied it in full.' };
     return { status: 'unverifiable', message: 'Runway ML does not allow browser-side API validation. Key length looks correct — actual validity will be confirmed on first video generation request.' };
+  },
+
+  // ── Apify: live CORS-enabled call to /v2/users/me ────────────────────────
+  apify: async (key) => {
+    if (!key.startsWith('apify_api_')) return { status: 'rejected', message: 'Invalid format — Apify API tokens start with "apify_api_"' };
+    if (key.length < 40) return { status: 'rejected', message: 'Key too short — Apify API tokens are typically 50+ characters. Check you copied it in full.' };
+    try {
+      const r = await fetch(`https://api.apify.com/v2/users/me?token=${encodeURIComponent(key)}`);
+      if (r.status === 200) {
+        const d = await r.json();
+        const name = d.data?.username || d.data?.profile?.name || 'user';
+        return { status: 'verified', message: `Apify token confirmed live — connected as ${name}` };
+      }
+      if (r.status === 401) return { status: 'rejected', message: 'Apify rejected this token — check it is correct and active in console.apify.com → Settings → API tokens' };
+      return { status: 'rejected', message: `Apify returned HTTP ${r.status} — check the token is valid` };
+    } catch (e) {
+      return { status: 'unverifiable', message: 'Could not reach Apify — token format looks correct, validity will be confirmed on first scrape' };
+    }
   }
 };
 
@@ -17569,6 +17608,36 @@ async function testConnection(id) {
     showToast('❌ Validation error — ' + (e.message || 'unexpected error'));
   } finally {
     if (testBtn) { testBtn.disabled = false; testBtn.textContent = 'Test'; }
+  }
+}
+
+// Save API key to server vault, then update the card UI on success.
+// Used for integrations with vaultSave:true (e.g. Apify).
+async function connectVault(id, name) {
+  const inp = document.getElementById('inp-' + id);
+  if (!inp || !inp.value.trim()) { showToast('⚠️ Please enter your API key before connecting'); return; }
+  const btn = document.getElementById('btn-' + id);
+  const status = document.getElementById('status-' + id);
+  const card = document.getElementById('card-' + id);
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const r = await fetch('/api/settings/api-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: id, key: inp.value.trim() })
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Save failed');
+    if (btn) { btn.textContent = '✓ Connected'; btn.classList.add('btn-connected-card'); btn.disabled = false; }
+    if (status) { status.className = 'integ-conn-status ics-live'; status.innerHTML = '<span>●</span> Connected'; }
+    if (card) card.classList.add('connected');
+    try { localStorage.setItem('ig_integ_' + id, '1'); } catch(e) {}
+    updateConnectedCount(1);
+    _updateLiveDataBadges();
+    showToast(`✅ ${name} key saved — ${id === 'apify' ? 'TikTok Organic Monitor and Local Lead Finder are now active' : name + ' is now active'}`);
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Connect'; }
+    showToast('❌ Could not save key: ' + (e.message || 'unknown error'));
   }
 }
 
@@ -31007,6 +31076,25 @@ async function _openMetaAdsPicker() {
 // ===================================================
 // GOOGLE WORKSPACE — Settings card hydration + OAuth wiring
 // ===================================================
+
+async function hydrateApifyCard() {
+  const card = document.getElementById('card-apify');
+  if (!card) return;
+  try {
+    const r = await fetch('/api/settings/api-key/apify', { credentials: 'same-origin' });
+    const d = await r.json();
+    if (!d.ok || !d.configured) return;
+    const btn    = document.getElementById('btn-apify');
+    const status = document.getElementById('status-apify');
+    if (btn && !btn.classList.contains('btn-connected-card')) {
+      btn.textContent = '✓ Connected';
+      btn.classList.add('btn-connected-card');
+    }
+    if (status) { status.className = 'integ-conn-status ics-live'; status.innerHTML = '<span>●</span> Connected'; }
+    card.classList.add('connected');
+    try { localStorage.setItem('ig_integ_apify', '1'); } catch(_e) {}
+  } catch(_e) {}
+}
 
 async function hydrateGoogleWorkspaceCard() {
   const card = document.getElementById('card-google-workspace');

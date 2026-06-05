@@ -37,6 +37,7 @@ app.get('/api/integrations/status', (req, res) => {
   if (process.env.PROFOUND_API_KEY) configured.push('profound');
   if (process.env.SHOPIFY_SHOP && process.env.SHOPIFY_ADMIN_TOKEN) configured.push('shopify');
   if (process.env.APPSFLYER_API_TOKEN && process.env.APPSFLYER_APP_ID) configured.push('appsflyer');
+  if (process.env.APIFY_API_KEY && !/^_DUMMY/i.test(process.env.APIFY_API_KEY)) configured.push('apify');
   res.json({ configured });
 });
 

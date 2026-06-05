@@ -2900,6 +2900,41 @@ app.get('/api/ecom-video/veo-status', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Settings: simple API-key vault (tenant-scoped, Postgres kv_store) ─────
+// POST /api/settings/api-key  { platform, key }  → saves encrypted key
+// GET  /api/settings/api-key/:platform           → { ok, configured: bool }
+app.post('/api/settings/api-key', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ ok: false, error: 'Login required' });
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'settings:save-api-key' });
+    if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
+    const { platform, key } = req.body || {};
+    if (!platform || typeof platform !== 'string' || !platform.trim())
+      return res.status(400).json({ ok: false, error: 'platform required' });
+    if (!key || typeof key !== 'string' || !key.trim())
+      return res.status(400).json({ ok: false, error: 'key required' });
+    const _vault = require('./services/credentials/vault');
+    await _vault.setApiKey(tid, platform.toLowerCase().trim(), key.trim());
+    console.log(`[settings] api-key saved: platform=${platform.toLowerCase().trim()} tid=${tid}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[settings] api-key save error:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+app.get('/api/settings/api-key/:platform', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ ok: false, error: 'Login required' });
+    const tid = await _tkvCtx.resolveTenantId(req, { label: 'settings:get-api-key' });
+    if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
+    const _vault = require('./services/credentials/vault');
+    const k = await _vault.getApiKey(tid, req.params.platform.toLowerCase().trim());
+    res.json({ ok: true, configured: !!(k && k.trim()) });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ── T65-T66: Apify — Organic Social Monitor · Local Lead Finder ──────────
 const _apifyRouter = require('./services/apify/api');
 app.use('/api/apify', _apifyRouter);

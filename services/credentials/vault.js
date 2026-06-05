@@ -347,6 +347,46 @@ async function resolveGoogleAdsCredentials(userId) {
   };
 }
 
+// ── Simple API-key vault (tenant-scoped, kv_store, AES-256-GCM) ──────────
+// Unlike getCredentials/saveCredentials (per-user, user_integrations table),
+// these are platform-wide per-tenant keys (e.g. Apify, Firecrawl).
+// kv_store key shape: `apikey:<platform>:t<tid>`
+async function setApiKey(tid, platform, keyStr) {
+  if (!_db.hasDb()) throw new Error('setApiKey: no DATABASE_URL');
+  let stored;
+  if (hasKey()) {
+    const { ciphertext, iv, tag } = _encrypt(keyStr);
+    stored = {
+      ct:  ciphertext.toString('base64'),
+      iv:  iv.toString('base64'),
+      tag: tag.toString('base64'),
+    };
+  } else {
+    // Dev mode — no CREDENTIAL_ENCRYPTION_KEY, store plain (never in production)
+    stored = { plain: keyStr };
+  }
+  await _db.kvSet(`apikey:${platform}:t${tid}`, stored);
+  return { ok: true };
+}
+
+async function getApiKey(tid, platform) {
+  if (!_db.hasDb()) return null;
+  const stored = await _db.kvGet(`apikey:${platform}:t${tid}`, null);
+  if (!stored) return null;
+  if (stored.plain !== undefined) return stored.plain;
+  try {
+    const pt = _decrypt(
+      Buffer.from(stored.ct,  'base64'),
+      Buffer.from(stored.iv,  'base64'),
+      Buffer.from(stored.tag, 'base64')
+    );
+    return pt;
+  } catch (e) {
+    console.error('[credentials] getApiKey decrypt failed', { platform, err: e.message });
+    return null;
+  }
+}
+
 module.exports = {
   // Generic vault API
   ensureCredentialsSchema,
@@ -358,6 +398,9 @@ module.exports = {
   deleteCredentials,
   getStatus,
   setStatus,
+  // Simple tenant-scoped API-key store
+  setApiKey,
+  getApiKey,
   // Platform-specific resolvers
   resolveGoogleAdsCredentials,
   resolveMetaAdsCredentials,

@@ -36,7 +36,7 @@ function _apNoKeyBanner(feature) {
        style="display:inline-block;padding:10px 22px;background:#667eea;color:#fff;border-radius:8px;font-weight:700;font-size:0.85rem;text-decoration:none">
       Get Free Apify Key →
     </a>
-    <div style="font-size:0.75rem;color:#9CA3AF;margin-top:10px">Then add APIFY_API_KEY in Replit → Secrets</div>
+    <div style="font-size:0.75rem;color:#9CA3AF;margin-top:10px">Then add it in <strong>Settings → Integrations → Apify</strong></div>
   </div>`;
 }
 
