@@ -74,11 +74,11 @@ app.post('/api/keyword-gap', async (req, res) => {
     // ── Step 1: Pull REAL ranked keywords for each competitor + your domain ──
     // ranked_keywords returns the actual organic keywords a domain ranks for
     // in Google, with live search volume, CPC, and the competitor's exact rank.
-    const buildRankedTask = (target) => {
+    const buildRankedTask = (target, limit = 200) => {
       const t = {
         target,
         language_name: language,
-        limit: 200,
+        limit,
         load_rank_absolute: true,
         ignore_synonyms: true
       };
@@ -87,9 +87,10 @@ app.post('/api/keyword-gap', async (req, res) => {
     };
 
     const rankedCalls = [
-      // Your domain — to find what you ALREADY rank for (so we can subtract it)
+      // Your domain — use a larger limit so we capture deeper rankings (e.g. #30-100)
+      // that are outside the competitor keyword window but still relevant to gap analysis.
       callDataForSEO('/v3/dataforseo_labs/google/ranked_keywords/live',
-        [buildRankedTask(cleanYourDomain)], 14000)
+        [buildRankedTask(cleanYourDomain, 500)], 20000)
         .then(raw => ({ domain: cleanYourDomain, raw, isYou: true }))
         .catch(e => { console.warn(`ranked_keywords failed for ${cleanYourDomain}:`, e.message); return { domain: cleanYourDomain, raw: null, isYou: true }; }),
       // Each competitor in parallel — all identified competitors (cap 10 for safety)

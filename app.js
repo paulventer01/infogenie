@@ -23014,7 +23014,7 @@ document.addEventListener('DOMContentLoaded', () => { setTimeout(_adminGateNav, 
 // context so frontend-generated figures (e.g. data.js KPIs/trend estimates) can
 // badge (demo) or withhold (strict) themselves consistently — for ALL users,
 // not just admins. Re-fetched on a soft poll so an admin's toggle is reflected.
-window._igDataMode = window._igDataMode || 'strict';
+window._igDataMode = window._igDataMode || 'demo';
 async function _loadEffectiveDataMode(clientId) {
   try {
     const q = clientId ? ('?clientId=' + encodeURIComponent(clientId)) : '';
