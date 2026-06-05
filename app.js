@@ -3276,6 +3276,11 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'bulk-reports')         { try { window.buildBulkReports && window.buildBulkReports(); }          catch(e) { console.warn('buildBulkReports error:', e); } }
   if (viewId === 'backlink-monitor')     { try { window.buildBacklinkMonitor && window.buildBacklinkMonitor(); }      catch(e) { console.warn('buildBacklinkMonitor error:', e); } }
   if (viewId === 'true-roas')            { try { window.buildTrueRoas && window.buildTrueRoas(); }             catch(e) { console.warn('buildTrueRoas error:', e); } }
+  if (viewId === 'persona-studio')       { try { window.buildPersonaStudio  && window.buildPersonaStudio();  } catch(e) { console.warn('buildPersonaStudio error:', e); } }
+  if (viewId === 'iroas')                { try { window.buildIroas           && window.buildIroas();           } catch(e) { console.warn('buildIroas error:', e); } }
+  if (viewId === 'agent-goals')          { try { window.buildAgentGoals      && window.buildAgentGoals();      } catch(e) { console.warn('buildAgentGoals error:', e); } }
+  if (viewId === 'ecom-video')           { try { window.buildEcomVideo        && window.buildEcomVideo();        } catch(e) { console.warn('buildEcomVideo error:', e); } }
+  if (viewId === 'brand-deals')          { try { window.buildBrandDeals      && window.buildBrandDeals();      } catch(e) { console.warn('buildBrandDeals error:', e); } }
   if (viewId === 'roadmap')              { try { window.buildRoadmap && window.buildRoadmap(); }              catch(e) { console.warn('buildRoadmap error:', e); } }
   if (viewId === 'carousel')             { try { window.buildCarousel && window.buildCarousel(); }             catch(e) { console.warn('buildCarousel error:', e); } }
   if (viewId === 'seo-crawler')          { try { window.buildSeoCrawler && window.buildSeoCrawler(); }           catch(e) { console.warn('buildSeoCrawler error:', e); } }

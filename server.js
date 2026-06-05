@@ -2718,6 +2718,83 @@ BOOT_TASKS.push(async () => { try {
   }
 } catch (e) { console.warn('[t47-55] init failed:', e.message); }});
 
+// ── T60-T64: AI Persona Studio · iROAS · Agent Goals · Ecom Video · Brand Deals ──
+const _personaRouter      = require('./services/persona/api');
+const _personaSchema      = require('./services/persona/schema');
+const _iroasRouter        = require('./services/iroas/api');
+const _iroasSchema        = require('./services/iroas/schema');
+const _agentGoalsRouter   = require('./services/agent_goals/api');
+const _agentGoalsSchema   = require('./services/agent_goals/schema');
+const _brandDealsRouter   = require('./services/brand_deals/api');
+const _brandDealsSchema   = require('./services/brand_deals/schema');
+app.use('/api/personas',      _personaRouter);
+app.use('/api/iroas',         _iroasRouter);
+app.use('/api/agent-goals',   _agentGoalsRouter);
+app.use('/api/brand-deals',   _brandDealsRouter);
+BOOT_TASKS.push(async () => { try {
+  if (_db.hasDb()) {
+    await _personaSchema.ensurePersonaSchema();
+    await _iroasSchema.ensureIroasSchema();
+    await _agentGoalsSchema.ensureAgentGoalsSchema();
+    await _brandDealsSchema.ensureBrandDealsSchema();
+    console.log('[t60-64] persona + iroas + agent-goals + brand-deals ready');
+  }
+} catch (e) { console.warn('[t60-64] init failed:', e.message); }});
+
+// ── E-commerce Product Video (T63) ──────────────────────────────────────────
+app.post('/api/ecom-video/generate', async (req, res) => {
+  try {
+    const _tenantCtx = require('./services/tenants/context');
+    const tid = await _tenantCtx.resolveTenantId(req, { label: 'ecom-video:generate' });
+    if (!tid) return res.status(400).json({ error: 'no_tenant' });
+    const OpenAI = require('openai');
+    const oa = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY });
+    const { product_name, product_description, target_audience, video_style, platform, persona_name } = req.body;
+    if (!product_name) return res.status(400).json({ error: 'product_name required' });
+
+    const completion = await oa.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{
+        role: 'user',
+        content: `You are a world-class e-commerce video director. Create a compelling product video storyboard for:
+Product: ${product_name}
+Description: ${product_description || 'Not provided'}
+Target audience: ${target_audience || 'general consumers'}
+Platform: ${platform || 'Instagram Reels / TikTok'}
+Style: ${video_style || 'lifestyle + demo hybrid'}
+${persona_name ? `Presenter: ${persona_name} (AI influencer persona)` : ''}
+
+Generate a 6-scene video storyboard optimised for conversion. Each scene has a shot, action, voiceover, and text overlay.
+Return JSON: {"title":"...","duration_seconds":30,"hook":"...","scenes":[{"scene":1,"shot_type":"...","action":"...","voiceover":"...","text_overlay":"...","duration_s":5}],"cta":"...","caption":"...","hashtags":["..."]}`
+      }],
+      response_format: { type: 'json_object' }, max_tokens: 1200
+    });
+
+    let result = {};
+    try { result = JSON.parse(completion.choices[0].message.content); } catch (_) {}
+    if (result._DUMMY || !result.scenes) {
+      result = {
+        title: `${product_name} — 30s Product Video`,
+        duration_seconds: 30,
+        hook: `Wait — have you seen what ${product_name} actually does?`,
+        scenes: [
+          { scene: 1, shot_type: 'Close-up', action: 'Product reveal from packaging', voiceover: `Introducing ${product_name}`, text_overlay: product_name, duration_s: 4 },
+          { scene: 2, shot_type: 'Medium shot', action: 'Lifestyle context shot — product in use', voiceover: product_description || 'The product you didn\'t know you needed', text_overlay: 'Before vs After', duration_s: 5 },
+          { scene: 3, shot_type: 'Close-up detail', action: 'Key feature highlight with zoom', voiceover: 'Here\'s why it\'s different', text_overlay: 'Key Feature', duration_s: 5 },
+          { scene: 4, shot_type: 'B-roll', action: 'Happy customer / results shot', voiceover: 'Thousands of people already love it', text_overlay: '⭐⭐⭐⭐⭐ 4.9 rating', duration_s: 5 },
+          { scene: 5, shot_type: 'Product flat lay', action: 'All variants / what\'s included', voiceover: 'Everything you need, nothing you don\'t', text_overlay: 'What\'s Inside', duration_s: 5 },
+          { scene: 6, shot_type: 'CTA card', action: 'Link in bio / swipe up animation', voiceover: 'Get yours — link in bio', text_overlay: 'Shop Now 🛒', duration_s: 6 }
+        ],
+        cta: 'Link in bio — limited stock',
+        caption: `You need to try ${product_name} 🔥 Link in bio 👆`,
+        hashtags: ['#productreview', '#musthave', '#amazonfinds', '#tiktokmademebuyit'],
+        source: 'template'
+      };
+    }
+    res.json({ storyboard: result, source: result.source || 'gpt-4o' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── T56-T59: Pitch Deck · Accessibility Audit · Wireframe Generator ──────
 const _pitchDeckRouter      = require('./services/pitch_deck/api');
 const _pitchDeckSchema      = require('./services/pitch_deck/schema');
