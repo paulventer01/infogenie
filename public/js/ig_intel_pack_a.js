@@ -2610,16 +2610,86 @@ function _csRender(out, results) {
 // ============================================================================
 window.buildTwitterPulse = function() {
   const wrap = document.getElementById('twWrap'); if (!wrap) return;
+  const ownBrand = (window.analysisData && window.analysisData.brandName) || '';
+  const compNames = (window.analysisData && Array.isArray(window.analysisData.competitors))
+    ? window.analysisData.competitors.map(c => c.name || c.domain).filter(Boolean).slice(0, 15)
+    : [];
+  const pickerOpts = [
+    ownBrand ? `<option value="${_escapeHtml(ownBrand)}">${_escapeHtml(ownBrand)} (your brand)</option>` : '',
+    ...compNames.map(n => `<option value="${_escapeHtml(n)}">${_escapeHtml(n)}</option>`)
+  ].filter(Boolean).join('');
   wrap.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
       <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:10px">
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND</label><input id="twBrand" placeholder="e.g. Tesla" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">EXTRA KEYWORDS (optional, comma-sep)</label><input id="twKw" placeholder="cybertruck, FSD, autopilot" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box"></div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">BRAND <span style="color:#15803D;font-weight:600">(auto-filled from your analysis)</span></label>
+          ${pickerOpts
+            ? `<select id="twPick" onchange="window._twPickChange()" style="width:100%;padding:7px 10px;border:1.5px solid #D1D5DB;border-radius:5px;font-size:0.78rem;background:#F9FAFB;margin-bottom:5px;box-sizing:border-box">
+                 <option value="">— Pick from your analysis —</option>
+                 ${pickerOpts}
+               </select>`
+            : ''}
+          <input id="twBrand" value="${_escapeHtml(ownBrand)}" placeholder="e.g. Tesla — or pick from list above" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box;background:${ownBrand?'#F0FDF4':'#fff'}">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">EXTRA KEYWORDS (optional, comma-sep)
+            <button type="button" id="twKwSuggestBtn" onclick="window._twKwSuggest()" style="margin-left:6px;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;border:0;padding:2px 8px;border-radius:8px;font-size:0.6rem;font-weight:800;cursor:pointer;vertical-align:middle">🤖 AI Suggest</button>
+          </label>
+          <input id="twKw" placeholder="cybertruck, FSD, autopilot" style="width:100%;padding:8px;border:1px solid #D1D5DB;border-radius:5px;font-size:0.84rem;box-sizing:border-box">
+        </div>
       </div>
       <button id="twGo" style="background:linear-gradient(135deg,#1DA1F2,#0EA5E9);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">🐦 Scan X</button>
     </div>
     <div id="twOut"></div>
   `;
+  window._twPickChange = function() {
+    const s = document.getElementById('twPick'), i = document.getElementById('twBrand');
+    if (s && i && s.value) i.value = s.value;
+  };
+  window._twKwSuggest = async function() {
+    const btn = document.getElementById('twKwSuggestBtn'); if (!btn) return;
+    const orig = btn.innerHTML; btn.innerHTML = '⏳'; btn.disabled = true;
+    try {
+      // Step 1: pull from analysis keywords already identified
+      const _ad = window.analysisData || {};
+      const _im = window._intentMap;
+      let directKws = [];
+      if (Array.isArray(_ad.keywords) && _ad.keywords.length) {
+        directKws = _ad.keywords.slice(0, 8).map(k => (typeof k === 'string' ? k : k.keyword || k.term || '').trim()).filter(Boolean);
+      }
+      if (!directKws.length && _im && Array.isArray(_im.keywords) && _im.keywords.length) {
+        directKws = _im.keywords.slice(0, 8).map(k => (typeof k === 'string' ? k : k.keyword || k.term || '').trim()).filter(Boolean);
+      }
+      // Also add competitor names as monitoring keywords
+      if (directKws.length < 4 && Array.isArray(_ad.competitors) && _ad.competitors.length) {
+        const compKws = _ad.competitors.slice(0, 4).map(c => c.name || c.domain || '').filter(Boolean);
+        directKws = [...new Set([...directKws, ...compKws])].slice(0, 8);
+      }
+      if (directKws.length) {
+        const inp = document.getElementById('twKw');
+        if (inp) inp.value = directKws.join(', ');
+        showToast('✅ ' + directKws.length + ' keywords pulled from your analysis');
+        return;
+      }
+      // Step 2: ask AI to suggest based on brand
+      const brand = (document.getElementById('twBrand') || {}).value || _ad.brandName || '';
+      if (!brand) { showToast('⚠ Enter a brand first'); return; }
+      const r = await fetch('/api/ai-quick', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ prompt: `Brand: ${brand}\n\nSuggest 5-6 short Twitter/X search keywords or hashtags to monitor brand mentions, product discussions, and competitor comparisons for this brand. Return them as a comma-separated list only, no explanation.` })
+      });
+      const txt = await r.text();
+      let j = null; try { j = txt ? JSON.parse(txt) : null; } catch {}
+      const kws = ((j && (j.text || j.answer || j.result)) || '').toString().trim().replace(/^["']|["']$/g,'').split('\n')[0].slice(0, 200);
+      if (kws) {
+        const inp = document.getElementById('twKw');
+        if (inp) inp.value = kws;
+        showToast('✅ AI keyword suggestions loaded');
+      } else {
+        showToast('⚠ No keyword suggestions returned — type manually');
+      }
+    } catch (e) { showToast('❌ ' + e.message); }
+    finally { btn.innerHTML = orig; btn.disabled = false; }
+  };
   document.getElementById('twGo').addEventListener('click', async () => {
     const brand = document.getElementById('twBrand').value.trim();
     const keywords = document.getElementById('twKw').value.split(',').map(s => s.trim()).filter(Boolean);
