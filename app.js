@@ -26553,7 +26553,17 @@ window._trSuggestCat = async function() {
 // ── 🤖 AI Suggest: keywords for the chosen category
 window._trSuggestKw = async function() {
   const btn = document.getElementById('trKwSuggestBtn'); if (!btn) return;
-  const cat = document.getElementById('trCat').value.trim();
+  let cat = document.getElementById('trCat').value.trim();
+  if (!cat) {
+    // auto-fill from picker dropdown
+    const pick = document.getElementById('trCatPick');
+    if (pick && pick.value) { cat = pick.value; const i = document.getElementById('trCat'); if (i) i.value = cat; }
+  }
+  if (!cat) {
+    // fall back to stored brand domain
+    const stored = (localStorage.getItem('ig-domain') || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0];
+    if (stored) { cat = stored; const i = document.getElementById('trCat'); if (i) i.value = cat; }
+  }
   if (!cat) return showToast('❌ Type or suggest a category first');
   const orig = btn.innerHTML; btn.innerHTML = '⏳…'; btn.disabled = true;
 
@@ -26630,7 +26640,12 @@ window.buildSovTracker = async function() {
   try {
     const t = await fetch('/api/sov/targets').then(x=>x.json());
     const targets = t.targets || [];
-    const lastTarget = window._sovTarget || (targets[0]?.target_brand || '');
+    const _myDomainRaw = ((window.analysisData && window.analysisData.url) || localStorage.getItem('ig-domain') || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+    const _myRoot = _myDomainRaw.split('.')[0];
+    const _preferredTarget = _myRoot
+      ? (targets.find(t => { const tn = t.target_brand.toLowerCase(); return tn === _myDomainRaw || tn.includes(_myRoot) || _myDomainRaw.includes(tn.split('.')[0]); })?.target_brand || '')
+      : '';
+    const lastTarget = window._sovTarget || _preferredTarget || (targets[0]?.target_brand || '');
     wrap.innerHTML = `
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">
         <label title="Pick a competitor brand whose media-mention share you want to chart over time. Each entry here was added via Crisis Radar and has been snapshotted every 6 hours.">
@@ -26695,11 +26710,14 @@ window._sovLoad = async function() {
       data: { labels: labels.map(l => new Date(l).toLocaleDateString(undefined,{month:'short',day:'numeric',hour:'2-digit'})), datasets },
       options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{position:'bottom'} }, scales:{ y:{ stacked:true, beginAtZero:true, title:{display:true, text:'Mentions per snapshot'} } }, elements:{ point:{ radius: 2 } } },
     });
+    const _sovMyDomain = ((window.analysisData && window.analysisData.url) || localStorage.getItem('ig-domain') || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0].toLowerCase();
+    const _sovMyRoot   = _sovMyDomain.split('.')[0];
+    const _sovIsYou = (brand) => { if (!_sovMyRoot) return brand === target; const bn = brand.toLowerCase().replace(/^www\./,''); return bn === _sovMyDomain || (_sovMyRoot.length >= 3 && (bn.includes(_sovMyRoot) || _sovMyRoot.includes(bn.split('.')[0]))); };
     const tbl = document.getElementById('sovTable');
     tbl.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px"><div style="font-family:Sora,sans-serif;font-weight:800;margin-bottom:10px">Share of Voice (${days}d)</div>
       <table style="width:100%;border-collapse:collapse;font-size:0.86rem"><thead style="background:#F9FAFB;color:#6B7280;text-transform:uppercase;font-size:0.62rem"><tr><th style="padding:8px 10px;text-align:left">Brand</th><th style="padding:8px;text-align:right">Mentions</th><th style="padding:8px;text-align:right">Share</th><th style="padding:8px"></th></tr></thead>
       <tbody>${r.sov.map((s, i)=>`<tr style="border-top:1px solid #F3F4F6">
-        <td style="padding:8px 10px;font-weight:700"><span style="display:inline-block;width:12px;height:12px;background:${_SOV_PALETTE[i%_SOV_PALETTE.length]};border-radius:3px;margin-right:6px;vertical-align:middle"></span>${_escapeHtml(s.brand)}${s.brand===target?' <span style="background:#0891B2;color:#fff;font-size:0.6rem;padding:1px 5px;border-radius:4px;margin-left:4px">YOU</span>':''}</td>
+        <td style="padding:8px 10px;font-weight:700"><span style="display:inline-block;width:12px;height:12px;background:${_SOV_PALETTE[i%_SOV_PALETTE.length]};border-radius:3px;margin-right:6px;vertical-align:middle"></span>${_escapeHtml(s.brand)}${_sovIsYou(s.brand)?' <span style="background:#0891B2;color:#fff;font-size:0.6rem;padding:1px 5px;border-radius:4px;margin-left:4px">YOU</span>':''}</td>
         <td style="padding:8px;text-align:right;font-variant-numeric:tabular-nums">${s.total}</td>
         <td style="padding:8px;text-align:right;font-weight:800;color:${s.brand===target?'#0891B2':'#0A1628'}">${(s.share*100).toFixed(1)}%</td>
         <td style="padding:4px 10px"><div style="background:#F3F4F6;border-radius:3px;height:8px;width:160px;margin-left:auto"><div style="background:${_SOV_PALETTE[i%_SOV_PALETTE.length]};height:100%;border-radius:3px;width:${(s.share*100).toFixed(1)}%"></div></div></td>
