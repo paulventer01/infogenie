@@ -6574,6 +6574,36 @@ function generateCampaignRecs(industry, competitors, url) {
   ];
 }
 
+// ── View Campaign — navigates to Campaigns page and expands the card ─────────
+window.openViewCampaignModal = function(record) {
+  if (!record) return;
+  // Find the index of this record in the launched campaigns list
+  const idx = (window._launchedCampaigns || []).findIndex(c => c.id === record.id);
+  // Navigate to campaigns page (buildCampaigns re-renders the launched section)
+  navigateTo('campaigns');
+  // After navigation re-renders, scroll to and expand the card
+  setTimeout(() => {
+    const section = document.getElementById('launched-campaigns-section');
+    if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (idx >= 0) {
+      const body = document.getElementById(`lc-body-${idx}`);
+      const btn  = body?.previousElementSibling?.querySelector('button') ||
+                   document.querySelector(`#lc-card-${idx} button`);
+      if (body && body.style.display === 'none') {
+        body.style.display = 'block';
+        if (btn) btn.textContent = '▲ Collapse';
+      }
+      const card = document.getElementById(`lc-card-${idx}`);
+      if (card) {
+        setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+        card.style.outline = '2.5px solid #00C9C8';
+        card.style.boxShadow = '0 0 0 4px rgba(0,201,200,0.18)';
+        setTimeout(() => { card.style.outline = ''; card.style.boxShadow = ''; }, 2500);
+      }
+    }
+  }, 350);
+};
+
 // ===== BUILD RESULTS =====
 function buildResults() {
   const wrap = document.getElementById('resultsWrap');
@@ -7356,35 +7386,8 @@ function buildKPITracker() {
 // ===== BUILD AUDIENCE + CREATIVE → moved to public/js/ig_core_views.js =====
 // (buildAudience/targetAudience + buildCreative/buildCompetitorVsCards/generateCreatives/renderCreativeChart + audience-panel/creative helpers showAudiencePanel/showVsAudiencePanel/buildAudiencePanelHtml/initAudiencePanel/toggleSegment/activateTargeting; attached to window there).
 
-// ── View Campaign — navigates to Campaigns page and expands the card ─────────
-window.openViewCampaignModal = function(record) {
-  if (!record) return;
-  // Find the index of this record in the launched campaigns list
-  const idx = (window._launchedCampaigns || []).findIndex(c => c.id === record.id);
-  // Navigate to campaigns page (buildCampaigns re-renders the launched section)
-  navigateTo('campaigns');
-  // After navigation re-renders, scroll to and expand the card
-  setTimeout(() => {
-    const section = document.getElementById('launched-campaigns-section');
-    if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    if (idx >= 0) {
-      const body = document.getElementById(`lc-body-${idx}`);
-      const btn  = body?.previousElementSibling?.querySelector('button') ||
-                   document.querySelector(`#lc-card-${idx} button`);
-      if (body && body.style.display === 'none') {
-        body.style.display = 'block';
-        if (btn) btn.textContent = '▲ Collapse';
-      }
-      const card = document.getElementById(`lc-card-${idx}`);
-      if (card) {
-        setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
-        card.style.outline = '2.5px solid #00C9C8';
-        card.style.boxShadow = '0 0 0 4px rgba(0,201,200,0.18)';
-        setTimeout(() => { card.style.outline = ''; card.style.boxShadow = ''; }, 2500);
-      }
-    }
-  }, 350);
-};
+// ── View Campaign helper → moved up to the Campaigns view-builder block (after generateCampaignRecs). ─────────
+// (window.openViewCampaignModal now sits with buildCampaigns and related campaign code.)
 
 // (launchVsCampaign/launchCreativeCampaign/filterCreativeCards/regenCreatives/copyCreative → moved to public/js/ig_core_views.js — see Audience+Creative note above).
 
