@@ -5831,8 +5831,10 @@ p, span, label, td, li {
         base dark rules that themselves used !important (so the
         light override must also use !important to win).
 
-   Runs automatically via `npm run lint` (combined with lint:fabrication).
-   Also available standalone: `npm run lint:css-important`.
+   Runs automatically via `npm run lint` (lint:fabrication + lint:css,
+   which covers both lint:css-important and lint:css-specificity).
+   Standalone: `npm run lint:css-important` · `npm run lint:css-specificity`
+   · or both CSS checks together: `npm run lint:css`.
    ============================================================ */
 
 [data-theme="light"] .theme-toggle .theme-icon-dark  { display: none; }
