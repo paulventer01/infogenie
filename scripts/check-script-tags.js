@@ -28,9 +28,87 @@ const INDEX_HTML = path.join(repoRoot, 'index.html');
 // the bare filename and ignoring any cache-busting ?v=... query string.
 const SCRIPT_SRC_RE = /<script[^>]*\bsrc=["']\/public\/js\/([^"'?]+)(?:\?[^"']*)?["'][^>]*>/gi;
 
+// Matches ANY local <script src="...js"> tag (not just /public/js/), capturing
+// the full path so we can compute the exact load order including app.js itself.
+// External (http/https) and inline scripts are ignored.
+const ANY_LOCAL_SCRIPT_SRC_RE = /<script[^>]*\bsrc=["'](\/[^"']+?\.js)(?:\?[^"']*)?["'][^>]*>/gi;
+
 // Files in public/js/ that are NOT runtime modules and so are not expected to
 // have a <script> tag (docs, etc.).
 const NON_MODULE_FILES = new Set(['README.md']);
+
+// ── LOAD-ORDER CONSTRAINTS ────────────────────────────────────────────────
+// Some extracted modules read another script's window.* export AT LOAD TIME
+// (top-level, not inside an event handler / builder) to monkeypatch or wrap it.
+// These wraps are defensive: if the predecessor hasn't loaded yet the captured
+// value is undefined and the wrap SILENTLY does nothing — no console error, the
+// feature just never wires up. A future reorder of the <script> tags in
+// index.html would break the feature with zero signal. Each entry below pins a
+// `dependent` module to load strictly AFTER its `predecessor`, and this is
+// asserted against the real index.html order in `npm run lint` + node --test.
+//
+// `predecessor` may be a /public/js/ module OR `app.js` (the monolith), since
+// some wraps target functions still defined in app.js.
+const LOAD_ORDER_CONSTRAINTS = [
+  {
+    dependent: 'ig_content_pro.js',
+    predecessor: 'ig_settings.js',
+    symbol: 'window.buildSettings',
+    reason:
+      'ig_content_pro.js wraps window.buildSettings at load time to inject the ' +
+      'WordPress settings card; ig_settings.js must define buildSettings first.',
+  },
+  {
+    dependent: 'ig_creative_suite.js',
+    predecessor: 'app.js',
+    symbol: 'window._ccGo',
+    reason:
+      'ig_creative_suite.js wraps window._ccGo at load time to pass the selected ' +
+      'language; app.js must define _ccGo first.',
+  },
+];
+
+// Returns the ordered list of local script basenames as they appear in
+// index.html (e.g. ['data.js', 'app.js', 'ig_settings.js', ...]).
+function scriptLoadOrder(html) {
+  html = html == null ? fs.readFileSync(INDEX_HTML, 'utf8') : html;
+  const order = [];
+  const re = new RegExp(ANY_LOCAL_SCRIPT_SRC_RE.source, 'gi');
+  let m;
+  while ((m = re.exec(html)) !== null) order.push(path.basename(m[1]));
+  return order;
+}
+
+// Verifies every LOAD_ORDER_CONSTRAINTS entry holds against index.html.
+// A violation is either:
+//   - 'missing': the dependent or predecessor has no <script> tag at all, or
+//   - 'out-of-order': the predecessor loads AFTER (or at the same index as) the
+//     dependent.
+function checkLoadOrder(html) {
+  const order = scriptLoadOrder(html);
+  const idx = (name) => order.indexOf(name);
+  const violations = [];
+  for (const c of LOAD_ORDER_CONSTRAINTS) {
+    const di = idx(c.dependent);
+    const pi = idx(c.predecessor);
+    if (di === -1) {
+      violations.push({ ...c, kind: 'missing', detail: `${c.dependent} is not wired into index.html` });
+      continue;
+    }
+    if (pi === -1) {
+      violations.push({ ...c, kind: 'missing', detail: `${c.predecessor} is not wired into index.html` });
+      continue;
+    }
+    if (pi >= di) {
+      violations.push({
+        ...c,
+        kind: 'out-of-order',
+        detail: `${c.predecessor} (position ${pi}) must load BEFORE ${c.dependent} (position ${di})`,
+      });
+    }
+  }
+  return { order, violations, constraints: LOAD_ORDER_CONSTRAINTS };
+}
 
 function check() {
   // 1. Every ig_*.js (and any other .js) module that lives on disk.
@@ -62,12 +140,20 @@ function check() {
   return { diskFiles, referenced, orphans, dangling, duplicates };
 }
 
-module.exports = { check, SCRIPT_SRC_RE, NON_MODULE_FILES };
+module.exports = {
+  check,
+  checkLoadOrder,
+  scriptLoadOrder,
+  SCRIPT_SRC_RE,
+  NON_MODULE_FILES,
+  LOAD_ORDER_CONSTRAINTS,
+};
 
 if (require.main === module) {
   const { diskFiles, referenced, orphans, dangling, duplicates } = check();
+  const { violations: orderViolations } = checkLoadOrder();
   console.log(
-    `[script-tag-lint] ${diskFiles.length} module(s) on disk, ${referenced.length} <script> tag(s) in index.html.`,
+    `[script-tag-lint] ${diskFiles.length} module(s) on disk, ${referenced.length} <script> tag(s) in index.html, ${LOAD_ORDER_CONSTRAINTS.length} load-order constraint(s).`,
   );
 
   const problems = [];
@@ -87,6 +173,18 @@ if (require.main === module) {
     problems.push(
       `${duplicates.length} DUPLICATE <script> tag(s) (same file wired more than once):\n` +
         duplicates.map((f) => `      ✗ /public/js/${f}`).join('\n'),
+    );
+  }
+  if (orderViolations.length) {
+    problems.push(
+      `${orderViolations.length} LOAD-ORDER violation(s) (a module that wraps another's window.* at load time loads too early):\n` +
+        orderViolations
+          .map(
+            (v) =>
+              `      ✗ ${v.detail}\n` +
+              `        ↳ ${v.dependent} reads ${v.symbol} at load time. ${v.reason}`,
+          )
+          .join('\n'),
     );
   }
 

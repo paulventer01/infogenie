@@ -765,6 +765,11 @@
   };
 
   // ── On navigation to settings (integrations tab), inject WP card ──────
+  // ⚠ LOAD ORDER: reads window.buildSettings (defined in ig_settings.js) at
+  // load time. ig_settings.js MUST load before this module in index.html.
+  // Enforced by scripts/check-script-tags.js (LOAD_ORDER_CONSTRAINTS) +
+  // test/script-tag-wiring.test.js. If ig_settings.js loads later, this wrap
+  // silently no-ops and the WordPress settings card never appears (no error).
   const _origBuildSettings = window.buildSettings;
   if (typeof _origBuildSettings === 'function') {
     window.buildSettings = function (...args) {

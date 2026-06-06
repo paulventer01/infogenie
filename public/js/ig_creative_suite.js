@@ -516,6 +516,10 @@ window._csInjectLanguageSelectors = function() {
 };
 
 // Patch _ccGo to pass language
+// ⚠ LOAD ORDER: reads window._ccGo (defined in app.js) at load time. app.js
+// MUST load before this module. Enforced by scripts/check-script-tags.js
+// (LOAD_ORDER_CONSTRAINTS) + test/script-tag-wiring.test.js. If app.js loads
+// later, this wrap silently no-ops with no console error.
 (function() {
   const _origCcGo = window._ccGo;
   if (!_origCcGo) return;
