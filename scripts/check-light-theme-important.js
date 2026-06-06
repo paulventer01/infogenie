@@ -71,6 +71,7 @@ function check() {
   let blockHasStyleAttr = false;
   let blockIsLintOk = false;
   let blockOpenLine = -1;
+  let blockSelector = '';
 
   for (let i = sectionStart; i < lines.length; i++) {
     const stripped = lines[i].trim();
@@ -89,6 +90,7 @@ function check() {
         // lint-ok-important can appear in the opening-brace line (use raw source)
         blockIsLintOk = rawLines[i].includes(LINT_OK_MARKER);
         blockOpenLine = i + 1;
+        blockSelector = fullSel;
         inBlock = true;
         selectorBuf = '';
 
@@ -105,6 +107,8 @@ function check() {
               line: i + 1,
               content: rawLines[i].trim(),
               selector: fullSel.slice(-120),
+              reason:
+                '!important is redundant — the [data-theme="light"] attribute selector already beats plain class selectors by specificity',
             });
           }
         }
@@ -129,6 +133,9 @@ function check() {
             line: i + 1,
             content: rawLines[i].trim(),
             blockLine: blockOpenLine,
+            selector: blockSelector.slice(-120),
+            reason:
+              '!important is redundant — the [data-theme="light"] attribute selector already beats plain class selectors by specificity',
           });
         }
       }
@@ -157,6 +164,7 @@ if (require.main === module) {
     const loc = f.blockLine ? `block opened at L${f.blockLine}, property at L${f.line}` : `L${f.line}`;
     console.error(`  ✗ ${loc}: ${(f.content || '').slice(0, 100)}`);
     if (f.selector) console.error(`    selector: ${f.selector}`);
+    if (f.reason) console.error(`    why: ${f.reason}`);
   }
   console.error('\n  Fix: remove !important (the [data-theme="light"] selector already wins by specificity).');
   console.error('  If !important is genuinely required, add a /* lint-ok-important: <reason> */ comment');

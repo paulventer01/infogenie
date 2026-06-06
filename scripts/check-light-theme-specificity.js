@@ -118,6 +118,7 @@ function check() {
                 selectorLine: i + 1,
                 depth,
                 selector: part.length > 120 ? part.slice(0, 117) + '…' : part,
+                reason: `selector chains ${depth} compound parts (max ${MAX_DEPTH}) — deep chains inflate specificity, forcing future overrides to match the chain or add !important`,
               });
             }
           }
@@ -166,6 +167,7 @@ if (require.main === module) {
   );
   for (const f of flagged) {
     console.error(`  ✗ L${f.selectorLine} (depth ${f.depth}): ${f.selector}`);
+    if (f.reason) console.error(`    why: ${f.reason}`);
   }
   console.error(
     `\n  Fix: flatten the selector — [data-theme="light"] already beats plain class selectors.`
