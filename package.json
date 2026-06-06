@@ -10,7 +10,8 @@
     "lint:fabrication": "node scripts/check-fabrication-markers.js",
     "lint:css-important": "node scripts/check-light-theme-important.js",
     "lint:css-specificity": "node scripts/check-light-theme-specificity.js",
-    "lint": "npm run lint:fabrication && npm run lint:css-important"
+    "lint:css": "npm run lint:css-important && npm run lint:css-specificity",
+    "lint": "npm run lint:fabrication && npm run lint:css"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.89.0",
