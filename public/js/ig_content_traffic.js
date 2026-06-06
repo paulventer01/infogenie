@@ -4,6 +4,7 @@
  * loaded after app.js in index.html. Public entries: window.buildContentScore,
  * window.buildAiTrafficMonitor, window.buildVisLeaderboard.
  * ========================================================================== */
+(function () {
 
 // ============================================================================
 // T39-A — Content Score Auto-Optimize
@@ -341,3 +342,5 @@ window.buildVisLeaderboard = function() {
   document.getElementById('vlLoad').addEventListener('click', _vlLoad);
   _vlLoad();
 };
+
+})();

@@ -16,6 +16,7 @@
 //   • Shared globals (showToast, navigateTo, analysisData, Chart, dripAction …)
 //     are defined in app.js and are available here at call time.
 // ============================================================================
+(function () {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // AGENCY HUB — Multi-client management, white-label reporting, scheduled sends
@@ -1653,3 +1654,5 @@ window.refreshDripStatus = async function() {
 window.buildAgency       = buildAgency;
 window.buildAutomations  = buildAutomations;
 window.buildReEngagement = buildReEngagement;
+
+})();

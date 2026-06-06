@@ -6,6 +6,7 @@
 //                      / buildLocalSeo / buildSocialTags
 // Moved verbatim — see public/js/README.md and appjs-split-convention.md.
 // ============================================================================
+(function () {
 // ============================================================================
 // Local numeric helper (mirrors ig_intel_pack_a.js — not exposed on window)
 // ============================================================================
@@ -1918,3 +1919,5 @@ window.buildSocialTags = function() {
   });
   loadList();
 };
+
+})();

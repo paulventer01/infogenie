@@ -6,6 +6,7 @@
    T63: E-commerce Product Video
    T64: Brand Deal Pipeline
    ===================================================================== */
+(function () {
 
 /* ── shared utils ── */
 function _csEsc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -889,3 +890,5 @@ window._dealDoPitch = function(id) {
 </div>`;
   }).catch(() => { resultEl.innerHTML = `<div class="ig-alert ig-alert-error">Generation failed.</div>`; });
 };
+
+})();

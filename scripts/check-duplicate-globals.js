@@ -56,10 +56,6 @@ const ALLOWLIST = new Map([
     'Intentional load-time override: ig_creative_suite.js re-defines window._ccGo (originally defined in app.js) to inject the selected language before delegating. Pinned by LOAD_ORDER_CONSTRAINTS in scripts/check-script-tags.js so the wrap always loads after app.js.'],
   ['buildSettings',
     'Intentional load-time wrap: ig_content_pro.js wraps window.buildSettings (defined in ig_settings.js) to inject the WordPress settings card. Pinned by LOAD_ORDER_CONSTRAINTS in scripts/check-script-tags.js so ig_settings.js loads first.'],
-  ['_csEsc',
-    'Harmless duplicate: ig_creative_suite.js and ig_creator_suite.js each carry an identical, file-self-contained HTML-escape helper. Both are non-IIFE files so the name leaks, but the implementations are identical (see .agents/memory/global-name-collisions.md).'],
-  ['_csPost',
-    'Harmless duplicate: ig_creative_suite.js and ig_creator_suite.js each carry an equivalent file-self-contained JSON-POST helper; both perform a session-cookie JSON POST (see .agents/memory/global-name-collisions.md).'],
 ]);
 
 // Browser-owned globals that are never feature exports. `window.onX = ...` event

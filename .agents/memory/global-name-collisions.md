@@ -21,10 +21,13 @@ the hard way:
   `analysisData`). Flagging those is noise — only a name holding a FUNCTION in
   two files is the silent-shadow hazard.
 - **IIFE-awareness is required.** Files that open with an IIFE scope their
-  top-level `function X` (NOT a leak → only `window.X` counts). Non-IIFE files
-  (e.g. ig_creative_suite/ig_creator_suite/ig_seo/ig_true_roas) DO leak every
-  top-level function. The IIFE bodies are NOT indented, so column-0 alone is a
-  false signal.
+  top-level `function X` (NOT a leak → only `window.X` counts). A non-IIFE file
+  DOES leak every top-level function. As of the namespace-leak cleanup, ALL
+  `public/js/*.js` modules are now IIFE-wrapped — when wrapping a previously
+  bare file, re-attach to `window` every top-level fn that is referenced by
+  another file OR used inside an inline `onclick=`/`on*=` handler string; truly
+  internal helpers (escapers, render/Html builders) stay file-local. The IIFE
+  bodies are NOT indented, so column-0 alone is a false signal.
 - **The scanner must be a real lexer.** Naive string-stripping breaks two ways:
   (1) regex literals contain quote chars (`/[&<>"']/g`, `/"/g`) that flip a
   flat scanner into a fake string state and silently blank the REAL defs after
@@ -69,8 +72,10 @@ all internal call sites within those files.
 
 ## Files confirmed in IIFEs (no global leak)
 
-`ig_growth_flywheel.js` and `ig_seo_roadmap.js` wrap everything in
-`(function(){...})()` — their `_esc` and `_nav` helpers are local.
+Every `public/js/*.js` module is IIFE-wrapped. `_csEsc`/`_csPost` (formerly
+allowlisted "harmless duplicate" leaks) are now file-local in both
+ig_creative_suite.js and ig_creator_suite.js, so they were removed from the
+duplicate-global lint ALLOWLIST.
 
 ## How to apply when extracting new code from app.js
 

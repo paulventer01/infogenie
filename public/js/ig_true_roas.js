@@ -3,6 +3,7 @@
  * Extracted verbatim from app.js (per public/js/README.md). Plain global script,
  * loaded after app.js in index.html. Public entry: window.buildTrueRoas / window._trState.
  * ========================================================================== */
+(function () {
 
 // =============================================================================
 // T36 — TRUE ROAS view (Conversions · Revenue Lag · Settings)
@@ -277,3 +278,13 @@ async function _trRunBudgetRecs() {
     status.innerHTML = `<span style="color:#059669">✓ Generated ${j.generated} recommendation${j.generated===1?'':'s'} (visible in Optimizer Decision Log)</span>`;
   } catch (e) { status.innerHTML = `<span style="color:#B91C1C">⚠️ ${_esc(e.message)}</span>`; }
 }
+
+// ── window exports (originals were bare top-level function declarations) ──────
+window.buildTrueRoas    = buildTrueRoas;
+window._trTab           = _trTab;
+window._trUpload        = _trUpload;
+window._trSync          = _trSync;
+window._trDelete        = _trDelete;
+window._trSaveSettings  = _trSaveSettings;
+window._trRunBudgetRecs = _trRunBudgetRecs;
+})();

@@ -22,6 +22,7 @@
 //     buildReEngagement, compROASIssues, _igLaunch …) are defined in app.js and
 //     are available here at call time.
 // ============================================================================
+(function () {
 
 window.dripAction = async function(id, action) {
   try {
@@ -458,3 +459,5 @@ window.baHandleFiles   = baHandleFiles;
 window.baPreview       = baPreview;
 window.baDelete        = baDelete;
 window.baRemoveBg      = baRemoveBg;
+
+})();

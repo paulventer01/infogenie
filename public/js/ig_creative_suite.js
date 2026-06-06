@@ -6,6 +6,7 @@
  * T54 — Daily Idea Swipe Feed
  * T55 — Multi-language generation (dropdown component)
  */
+(function () {
 
 /* ─────────────────────────────────────────────────────────────────────────────
    SHARED HELPERS
@@ -550,3 +551,5 @@ window._csBfObserver.observe(document.body, { childList:true, subtree:true });
 if (document.getElementById('brandFoundationWrap')?.children.length) {
   window._injectBrandScanner();
 }
+
+})();

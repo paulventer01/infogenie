@@ -3,6 +3,7 @@
 // T66 · Local Lead Finder       — Google Maps business leads via Apify
 // ─────────────────────────────────────────────────────────────────────────────
 
+(function () {
 function _apEsc(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -395,3 +396,5 @@ window._apPoll = function(runId, datasetId, mode, btn, statusEl, resEl, attempts
     }
   }, 8000);
 };
+
+})();
