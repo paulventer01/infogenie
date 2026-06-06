@@ -9,7 +9,34 @@ All `public/js/ig_*.js` scripts are plain `<script>` tags loaded after `app.js`
 in `index.html`. They share the **same global scope** — any top-level
 `function foo()` in a later script silently overwrites an earlier one.
 
-## Detection command
+## Automated lint (preferred)
+
+`scripts/check-duplicate-globals.js` (run by `npm run lint` + `node --test`,
+test in `test/duplicate-globals.test.js`) now catches this automatically. It
+flags any global **function** defined in both app.js and a public/js module, or
+in two modules, outside a documented `ALLOWLIST`. Key design choices, learned
+the hard way:
+- **Functions only, not all `window.X =`.** Modules legitimately read AND write
+  shared *state* left in app.js (`window._socialPosts`, `_contentTab`,
+  `analysisData`). Flagging those is noise — only a name holding a FUNCTION in
+  two files is the silent-shadow hazard.
+- **IIFE-awareness is required.** Files that open with an IIFE scope their
+  top-level `function X` (NOT a leak → only `window.X` counts). Non-IIFE files
+  (e.g. ig_creative_suite/ig_creator_suite/ig_seo/ig_true_roas) DO leak every
+  top-level function. The IIFE bodies are NOT indented, so column-0 alone is a
+  false signal.
+- **The scanner must be a real lexer.** Naive string-stripping breaks two ways:
+  (1) regex literals contain quote chars (`/[&<>"']/g`, `/"/g`) that flip a
+  flat scanner into a fake string state and silently blank the REAL defs after
+  them (false negative); (2) template literals with `${...}` and nested
+  backticks desync a flat state machine. The lint uses a mode-stack lexer with
+  regex-vs-division detection and `${}` brace tracking. Detection went from 181
+  to 463 globals after fixing this.
+- Allowlist currently: `_ccGo`/`buildSettings` (intentional load-time wraps,
+  also pinned by LOAD_ORDER_CONSTRAINTS in check-script-tags.js) and
+  `_csEsc`/`_csPost` (identical self-contained helper copies, below).
+
+## Manual detection command (quick, IIFE-blind)
 
 ```bash
 { grep -h "^function \|^async function " app.js public/js/*.js | \
