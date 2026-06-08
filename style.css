@@ -6035,16 +6035,16 @@ body,
 [data-theme="light"] .industry-field { color: #0A1628; }
 [data-theme="light"] .industry-field::placeholder { color: #CBD5E1; }
 [data-theme="light"] .industry-row-hint { color: var(--teal-dark); }
-[data-theme="light"] .examples-label { color: #94A3B8; }
-[data-theme="light"] .example-chip {
-  background: #F1F5F9;
-  border-color: #D1D9E6;
-  color: #374151;
+[data-theme="light"] .examples-label { color: #94A3B8 !important; } /* lint-ok-important: base .examples-label has no !important but .example-chip block at L4797 does — kept for parity */
+[data-theme="light"] .example-chip { /* lint-ok-important: base .example-chip (L4797) uses !important on all properties — override requires !important too */
+  background: #F1F5F9 !important;
+  border-color: #D1D9E6 !important;
+  color: #374151 !important;
 }
-[data-theme="light"] .example-chip:hover {
-  background: #E2E8F0;
-  border-color: #94A3B8;
-  color: #0A1628;
+[data-theme="light"] .example-chip:hover { /* lint-ok-important: base .example-chip (L4797) uses !important — override requires !important too */
+  background: #E2E8F0 !important;
+  border-color: #94A3B8 !important;
+  color: #0A1628 !important;
 }
 
 /* ── Hero stats bar ── */
@@ -6890,14 +6890,14 @@ h3:hover {
 }
 
 /* ── Platform trust strip — light mode visibility ── */
-[data-theme="light"] .ps-label {
-  color: #4A5670;
+[data-theme="light"] .ps-label { /* lint-ok-important: base .ps-label (L4840) uses !important on color — override requires !important too */
+  color: #4A5670 !important;
 }
-[data-theme="light"] .ps-platform {
-  color: #2A3654;
+[data-theme="light"] .ps-platform { /* lint-ok-important: base .ps-platform (L4854) uses !important on color — override requires !important too */
+  color: #2A3654 !important;
 }
-[data-theme="light"] .ps-dot {
-  background: rgba(10,22,40,.25);
+[data-theme="light"] .ps-dot { /* lint-ok-important: base .ps-dot (L4863) uses !important on background — override requires !important too */
+  background: rgba(10,22,40,.25) !important;
 }
 /* SVG icons that were filled white need a dark fill in light mode */
 [data-theme="light"] .ps-platform svg[fill="white"] path,
