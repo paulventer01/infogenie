@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.89.0",
+    "acorn": "^8.16.0",
     "bcryptjs": "^3.0.3",
     "connect-pg-simple": "^10.0.0",
     "drizzle-zod": "^0.8.3",
