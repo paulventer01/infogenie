@@ -506,7 +506,15 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
   async function render(){
     try {
       const me = await window._auth.refresh();
-      if (me) return;  // authenticated — marker synced, proceed
+      if (me) {
+        // The standalone /login page sets the server cookie but not the local
+        // `ig-current-user` marker, so the nav user-menu wiring (which gates on
+        // that marker) bailed before refresh() populated it. Re-run it now that
+        // the session is confirmed so the name pill + Log out button appear.
+        try { if (typeof window._wireNavUserMenu === 'function') window._wireNavUserMenu(); } catch(_){}
+        try { if (typeof window._restoreContent === 'function') window._restoreContent(); } catch(_){}
+        return;  // authenticated — marker synced, proceed
+      }
     } catch(e) {
       // Network failure talking to /me — fall through to the login redirect
       // rather than trusting a stale local marker.
@@ -606,8 +614,10 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
 
 // ── Wire up nav user menu (avatar pill + dropdown + logout) ───────────────────
 (function wireUserMenu(){
+  let wired = false;
   function init(){
     if (!window._auth || !window._auth.current()) return;
+    if (wired) return;
     const menu     = document.getElementById('navUserMenu');
     const btn      = document.getElementById('navUserBtn');
     const drop     = document.getElementById('navUserDropdown');
@@ -617,6 +627,7 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
     const emailEl  = document.getElementById('navUserEmail');
     const logout   = document.getElementById('navLogoutBtn');
     if (!menu || !btn) return;
+    wired = true;
     const p = window._auth.currentProfile() || { name:'User', email: window._auth.current() };
     if (!p.email) p.email = window._auth.current();
     const initial = (p.name || p.email || 'U').trim().charAt(0).toUpperCase();
@@ -662,6 +673,7 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
       }
     });
   }
+  window._wireNavUserMenu = init;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
@@ -677,8 +689,11 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
     _autoSeoSchedule:   'ig-autoseo-schedule'
   };
   // Restore on first chance (after auth wall is bypassed by an active user).
+  let restored = false;
   function restore(){
     if (!window._auth || !window._auth.current()) return;
+    if (restored) return;
+    restored = true;
     Object.entries(KEYS).forEach(([wkey, lsKey]) => {
       try {
         const raw = localStorage.getItem(lsKey);
@@ -711,6 +726,7 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
   setInterval(persist, 1500);
   window.addEventListener('beforeunload', persist);
   window._persistContent = persist;   // expose for explicit calls (e.g. after Analyse Now)
+  window._restoreContent = restore;   // re-run once the session is confirmed (standalone /login path)
 })();
 
 // ── Analytics (Amplitude + PostHog) ──────────────────────────────────────────
