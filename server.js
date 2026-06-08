@@ -17,6 +17,7 @@ const _platformKeys = require('./services/credentials/platform_keys');
 const _tenantSchema     = require('./services/tenants/schema');
 const _tenantMiddleware = require('./services/tenants/middleware');
 const _tenantRouter     = require('./services/tenants/api');
+const _permEnforce      = require('./services/tenants/permission_enforce');
 const _authGate         = require('./services/auth_gate');
 
 // ── Env-var name aliases ─────────────────────────────────────────────────────
@@ -398,6 +399,27 @@ app.use(async (req, res, next) => {
   if (req.user) return next();                      // session OR api-key principal
   res.status(401).json({ ok:false, error:'auth_required',
     hint:'Log in via POST /api/auth/login, or include INFOGENIE_API_KEY via Authorization: Bearer / X-InfoGenie-Key / ?key= (GET only).' });
+});
+
+// ── Role → permission matrix enforcement ────────────────────────────────────
+// The real server-side authorization boundary. Looks each authenticated /api/
+// request up in services/tenants/permission_matrix.js and enforces the mapped
+// permission via req.can() / req.permissions (set by loadTenantContext). Platform
+// owners/admins bypass. Mounted BEFORE the admin mount so the Admin Portal is
+// covered by the same single path. Rollout is staged via PERMISSION_ENFORCEMENT
+// (off | shadow | on — defaults to 'shadow', which logs would-be denials without
+// blocking so gaps surface before flipping to 'on').
+app.use(_permEnforce.enforceMatrix);
+
+// GET /api/_debug/permissions — owner-only observability for the permission
+// rollout: current mode, allow/deny/shadow/unmapped counters, would-be denials
+// per required key, and recent denial samples (actor id + route + key only —
+// never request bodies or secrets). Mirrors /api/_debug/multitenant.
+app.get('/api/_debug/permissions', (req, res) => {
+  if (!req.user || req.user.isOwner !== true) {
+    return res.status(403).json({ ok:false, error:'owner_only' });
+  }
+  res.json({ ok:true, ..._permEnforce.snapshot() });
 });
 
 // /api/admin/* — Admin Portal (workspaces, users, clients, data-mode, issues).

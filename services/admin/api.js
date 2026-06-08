@@ -25,18 +25,17 @@ const _dataMode = require('./data_mode');
 const _issues = require('./issues');
 const _audit = require('./audit');
 const _platformKeys = require('../credentials/platform_keys');
+const _permEnforce = require('../tenants/permission_enforce');
 
 const router = express.Router();
 
 function _err(res, code, msg) { return res.status(code).json({ ok: false, error: msg }); }
 
 // ── Gate: platform owner OR platform admin only ─────────────────────────────
-function _isPlatformAdmin(req) {
-  if (!req.user) return false;
-  if (req.user.isOwner === true) return true;
-  const k = req.platformRole && req.platformRole.key;
-  return k === 'platform_owner' || k === 'platform_admin';
-}
+// Single source of truth for "is this principal a platform admin?" lives in
+// services/tenants/permission_enforce — the same helper the global matrix
+// enforcer and bypass logic use, so there is ONE enforcement model.
+const _isPlatformAdmin = _permEnforce.isPlatformAdmin;
 router.use((req, res, next) => {
   if (!req.user) return _err(res, 401, 'auth_required');
   if (!_isPlatformAdmin(req)) return _err(res, 403, 'admin_only');
