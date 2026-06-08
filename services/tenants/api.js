@@ -15,6 +15,8 @@ const express = require('express');
 const _db = require('../../db');
 const { listPermissions, listByArea, SYSTEM_ROLES } = require('./permissions');
 const { _slugFromEmail, _uniqueSlug } = require('./schema');
+const { COMPONENT_MATRIX } = require('./permission_matrix');
+const { isPlatformAdmin } = require('./permission_enforce');
 
 const router = express.Router();
 
@@ -40,10 +42,23 @@ router.get('/me', async (req, res) => {
 });
 
 // ── GET /active — current tenant with full permission set ──────────────────
+// Also ships the component→permission matrix (COMPONENT_MATRIX) and a synchronous
+// isPlatformAdmin flag so the frontend can build/guard the navigation menu from
+// the user's real permissions without a second round-trip or a racy admin probe.
+// The server still independently enforces every /api request via enforceMatrix.
 router.get('/active', async (req, res) => {
   if (!_requireUser(req, res)) return;
+  const admin = isPlatformAdmin(req);
   if (!req.tenant) {
-    return res.json({ ok:true, tenant:null, role:null, permissions:[] });
+    return res.json({
+      ok: true,
+      tenant: null,
+      role: null,
+      platformRole: req.platformRole || null,
+      permissions: [],
+      isPlatformAdmin: admin,
+      componentMatrix: COMPONENT_MATRIX,
+    });
   }
   res.json({
     ok: true,
@@ -51,6 +66,8 @@ router.get('/active', async (req, res) => {
     role:   req.tenantRole,
     platformRole: req.platformRole,
     permissions: Array.from(req.permissions || []),
+    isPlatformAdmin: admin,
+    componentMatrix: COMPONENT_MATRIX,
   });
 });
 

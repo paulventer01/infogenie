@@ -2931,6 +2931,21 @@ function buildCreativeModal(camp, idx) {
 
 // ===== NAVIGATION =====
 function navigateTo(viewId, updateActive = true) {
+  // ── Permission guard (defense-in-depth; the server still enforces) ──────────
+  // Block switching to a view the signed-in role isn't granted and redirect to
+  // the first view they ARE permitted to see. Skipped until permissions have
+  // loaded (IGNavPerms.ready) so the synchronous initial nav isn't blocked, and
+  // skipped for the universal 'home' entry (never in the matrix → always allowed).
+  try {
+    if (window.IGNavPerms && window.IGNavPerms.ready && !window.IGNavPerms.can(viewId)) {
+      const dest = window.IGNavPerms.firstPermittedView(window.IGNavPerms.orderedNavViews());
+      if (dest && dest !== viewId) {
+        try { showToast('🔒 You don\'t have access to that — showing what you can use.'); } catch(_) {}
+        return navigateTo(dest, updateActive);
+      }
+      return; // nothing permitted to fall back to — stay put
+    }
+  } catch(_) {}
   // Breadcrumb for the watchdog: if the main thread stalls anywhere inside this
   // synchronous navigation (build dispatch, field-enhancer scan, etc.), the
   // beaconed STALL line will be tagged with the view we were switching to.
@@ -2950,6 +2965,7 @@ function navigateTo(viewId, updateActive = true) {
     target.classList.add('active');
   }
   currentView = viewId;
+  try { window.currentView = viewId; } catch(_) {}
   igTrack('Page Viewed', { page: viewId });
   if (updateActive) {
     // Mark the active dropdown item
@@ -3244,12 +3260,15 @@ function navigateTo(viewId, updateActive = true) {
     try { buildWorkspaces(); } catch(e) { console.warn('buildWorkspaces error:', e); }
   }
   if (viewId === 'admin') {
-    // Client-side gate: only platform owners/admins may reach the Admin portal.
-    // If the cached flag is unknown, verify on the fly; non-admins are bounced
-    // back to the dashboard (the server also hard-gates every /api/admin call).
+    // The synchronous permission guard at the top of navigateTo already bounced
+    // non-admins (once permissions loaded). This extra check only covers the
+    // narrow window before IGNavPerms.ready — the server hard-gates every
+    // /api/admin call regardless.
     (async () => {
-      let allowed = window._isPlatformAdmin;
-      if (allowed === undefined) { await _adminGateNav(); allowed = window._isPlatformAdmin; }
+      let allowed = window.IGNavPerms ? window.IGNavPerms.can('admin') : window._isPlatformAdmin;
+      if (!window.IGNavPerms || !window.IGNavPerms.ready) {
+        if (allowed === undefined) { await _adminGateNav(); allowed = window._isPlatformAdmin; }
+      }
       if (!allowed) { showToast('⚠️ Admin access only'); navigateTo('dashboard'); return; }
       try { buildAdmin(); } catch(e) { console.warn('buildAdmin error:', e); }
     })();
@@ -14199,6 +14218,10 @@ async function _adminFetch(path, opts) {
 }
 
 // Reveal the Admin nav link only for owners (UX gate; server enforces real gate).
+// Primary path: ig_navperms.js sets the link synchronously from the loaded
+// permission set (window.IGNavPerms.can('admin')) — no flash, no race. This
+// function remains as a manual/fallback probe only (e.g. if the permission fetch
+// failed); it no longer runs on a blind 1.5s timeout.
 async function _adminGateNav() {
   try {
     const me = await _adminFetch('/me');
@@ -14209,7 +14232,6 @@ async function _adminGateNav() {
     return me;
   } catch (_) { window._isPlatformAdmin = false; return null; }
 }
-document.addEventListener('DOMContentLoaded', () => { setTimeout(_adminGateNav, 1500); });
 
 // Cache the EFFECTIVE data mode (client → tenant → platform) for the signed-in
 // context so frontend-generated figures (e.g. data.js KPIs/trend estimates) can
