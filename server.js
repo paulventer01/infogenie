@@ -272,11 +272,26 @@ app.get(['/', '/index.html'], _serveIndexHtml);
 // hashed URL only appears when the bytes change, so this is always safe; HTML
 // (no-cache) and API responses (no-store, set by the global middleware) are
 // unaffected. See services/static_versioning.
-app.use(express.static(path.join(__dirname), {
+// express.static is mounted on the project ROOT, so without a guard every file
+// in the repo (server.js, db.js, services/**, package.json, docs/**, test/**,
+// working .txt notes, …) would be web-reachable by path. The static guard
+// restricts serving to an explicit allow-list of browser-facing assets; any
+// other path falls through to a 404 instead of leaking backend source.
+// See services/static_guard. (Distinct from the auth gate above, which hides
+// the app shell/bundle behind login; this stops NON-app files being served at
+// all.)
+const _staticGuard = require('./services/static_guard');
+const _serveStatic = express.static(path.join(__dirname), {
   etag: false,
   lastModified: false,
   setHeaders: _staticVersioning.setVersionedAssetHeaders,
-}));
+});
+app.use((req, res, next) => {
+  if ((req.method === 'GET' || req.method === 'HEAD') && _staticGuard.isPublicStaticAsset(req.path)) {
+    return _serveStatic(req, res, next);
+  }
+  return next();
+});
 
 // ── Auth gate for /api/* (production hardening) ──────────────────────────────
 // When INFOGENIE_API_KEY is set, all /api/* requests must include it via:

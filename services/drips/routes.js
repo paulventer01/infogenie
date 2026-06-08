@@ -527,6 +527,17 @@ app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
   // Studio Pack public renderers must reach their handlers (mounted later in this file)
   if (/^\/(book|lp|bio)\/[^\/]+$/.test(req.path)) return next();
+  // A request that targets a FILE (its last path segment carries an extension)
+  // and reached this SPA fallback was not matched by the static allow-list
+  // (services/static_guard), the /uploads mount, or any route — i.e. it is
+  // backend source or a missing file. Return 404 instead of serving the app
+  // shell, so server source never leaks via the catch-all (e.g. /server.js,
+  // /db.js, /services/**.js, /package.json, /docs/**.md, working *.txt notes).
+  // SPA client routes are extension-less, so they still fall through to the shell.
+  const lastSeg = req.path.split('/').pop() || '';
+  if (/\.[a-z0-9]+$/i.test(lastSeg)) {
+    return res.status(404).type('txt').send('Not found');
+  }
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 };
