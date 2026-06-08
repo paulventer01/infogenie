@@ -488,194 +488,31 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
     async logout(){
       try { await _authFetch('/api/auth/logout', { method:'POST', body:'{}' }); } catch(e){}
       this._clearSession();
-      location.reload();
+      // Server gates the shell now, so a reload would bounce to /login anyway —
+      // go there directly for an immediate, clean exit.
+      location.href = '/login';
     },
   };
 })();
 
-// ── Auth wall — block app until user signs up / logs in ───────────────────────
-(function authWall(){
+// ── Auth bootstrap — sync session marker; bounce to /login if signed out ──────
+(function authBootstrap(){
+  // The server now gates the app shell: logged-out visitors never receive this
+  // code (they get the standalone /login page instead). So there is no client
+  // overlay anymore. This bootstrap only reconciles the local "logged-in"
+  // marker with the server session via /me, and bounces to /login if the
+  // session turns out to be invalid (e.g. it expired between the shell load and
+  // this call, or a cross-device sign-out happened).
   async function render(){
-    // Source of truth = server session. Reconcile the local marker with /me
-    // before deciding whether to show the wall (catches expired sessions and
-    // cross-device sign-ins).
     try {
       const me = await window._auth.refresh();
-      if (me) return;  // authenticated, no wall
+      if (me) return;  // authenticated — marker synced, proceed
     } catch(e) {
-      // Network failure on /me — show the wall rather than trusting a stale
-      // local marker. A signed-out session must never see the app shell.
+      // Network failure talking to /me — fall through to the login redirect
+      // rather than trusting a stale local marker.
     }
-    if (document.getElementById('igAuthWall')) return;
-    const wall = document.createElement('div');
-    wall.id = 'igAuthWall';
-    wall.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(ellipse at top left,#0066FF22,transparent 60%),radial-gradient(ellipse at bottom right,#00C9C822,transparent 60%),#0A1628;backdrop-filter:blur(8px);font-family:Inter,-apple-system,sans-serif';
-    wall.innerHTML = `
-      <div style="width:100%;max-width:440px;background:#FFFFFF;border-radius:20px;box-shadow:0 30px 80px rgba(0,0,0,.4);overflow:hidden">
-        <div style="background:linear-gradient(135deg,#0066FF,#00C9C8);padding:28px 30px 22px;color:white;text-align:center">
-          <div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:8px">
-            <svg width="36" height="36" viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="rgba(255,255,255,.18)"/><path d="M13 20 Q20 10 27 20 Q20 30 13 20Z" fill="white" opacity=".95"/><circle cx="20" cy="20" r="4" fill="white"/></svg>
-            <span style="font-family:'Plus Jakarta Sans',sans-serif;font-size:1.5rem;font-weight:800;letter-spacing:-.02em">Info<span style="color:#A5F3FC">Genie</span></span>
-          </div>
-          <div style="font-size:.82rem;opacity:.92;font-weight:500">AI Marketing Intelligence — for your team</div>
-        </div>
-        <div style="padding:22px 28px 26px">
-          <div id="igAuthTabs" style="display:flex;gap:6px;background:#F3F4F6;border-radius:10px;padding:4px;margin-bottom:18px">
-            <button data-tab="login"  class="igAuthTab" style="flex:1;padding:9px 0;border:none;border-radius:7px;font-size:.83rem;font-weight:700;cursor:pointer;background:white;color:#0066FF;box-shadow:0 1px 3px rgba(0,0,0,.06)">Log In</button>
-            <button data-tab="signup" class="igAuthTab" style="flex:1;padding:9px 0;border:none;border-radius:7px;font-size:.83rem;font-weight:700;cursor:pointer;background:transparent;color:#6B7280">Create Account</button>
-          </div>
-
-          <div id="igSocialRow" style="display:none;margin-bottom:14px"></div>
-          <div id="igSocialDivider" style="display:none;align-items:center;gap:8px;margin:0 0 14px;color:#9CA3AF;font-size:.7rem;font-weight:600">
-            <div style="flex:1;height:1px;background:#E5E7EB"></div>
-            <span>or use email</span>
-            <div style="flex:1;height:1px;background:#E5E7EB"></div>
-          </div>
-          <form id="igAuthForm" autocomplete="on" onsubmit="return false">
-            <div id="igNameRow" style="display:none;margin-bottom:12px">
-              <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;margin-bottom:5px">Your name</label>
-              <input id="igName" type="text" placeholder="Jane Smith" autocomplete="name" style="width:100%;padding:11px 13px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:.88rem;outline:none;box-sizing:border-box" />
-            </div>
-            <div style="margin-bottom:12px">
-              <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;margin-bottom:5px">Email address</label>
-              <input id="igEmail" type="email" placeholder="you@company.com" autocomplete="email" style="width:100%;padding:11px 13px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:.88rem;outline:none;box-sizing:border-box" />
-            </div>
-            <div style="margin-bottom:14px">
-              <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;margin-bottom:5px">Password</label>
-              <input id="igPass" type="password" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding:11px 13px;border:1.5px solid #E5E7EB;border-radius:9px;font-size:.88rem;outline:none;box-sizing:border-box" />
-              <div id="igPassHint" style="display:none;font-size:.66rem;color:#6B7280;margin-top:4px">Min 8 characters. Hashed server-side with bcrypt.</div>
-            </div>
-            <div id="igAuthError" style="display:none;background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;padding:9px 12px;border-radius:8px;font-size:.74rem;font-weight:600;margin-bottom:12px"></div>
-            <div id="igAuthNotice" style="display:none;background:#ECFDF5;border:1px solid #6EE7B7;color:#065F46;padding:9px 12px;border-radius:8px;font-size:.74rem;font-weight:600;margin-bottom:12px"></div>
-            <button id="igAuthSubmit" type="submit" style="width:100%;padding:13px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:10px;font-size:.92rem;font-weight:800;color:white;cursor:pointer;box-shadow:0 6px 18px rgba(0,102,255,.32)">Log In →</button>
-            <div style="margin-top:12px;text-align:center">
-              <button id="igForgotBtn" type="button" style="background:none;border:none;color:#0066FF;font-size:.74rem;font-weight:700;cursor:pointer;padding:4px 6px">Forgot your password?</button>
-            </div>
-          </form>
-          <div style="margin-top:14px;text-align:center;font-size:.68rem;color:#9CA3AF">By continuing you agree that your settings & campaigns will be saved to this account.</div>
-        </div>
-      </div>`;
-    document.body.appendChild(wall);
-
-    let mode = 'login';
-    function setMode(m){
-      mode = m;
-      wall.querySelectorAll('.igAuthTab').forEach(b => {
-        const on = b.dataset.tab === m;
-        b.style.background = on ? 'white' : 'transparent';
-        b.style.color = on ? '#0066FF' : '#6B7280';
-        b.style.boxShadow = on ? '0 1px 3px rgba(0,0,0,.06)' : 'none';
-      });
-      document.getElementById('igNameRow').style.display = m === 'signup' ? 'block' : 'none';
-      document.getElementById('igPassHint').style.display = m === 'signup' ? 'block' : 'none';
-      document.getElementById('igAuthSubmit').textContent = m === 'signup' ? 'Create account →' : 'Log In →';
-      document.getElementById('igPass').setAttribute('autocomplete', m === 'signup' ? 'new-password' : 'current-password');
-      document.getElementById('igAuthError').style.display = 'none';
-      document.getElementById('igAuthNotice').style.display = 'none';
-    }
-    wall.querySelectorAll('.igAuthTab').forEach(b => b.addEventListener('click', () => setMode(b.dataset.tab)));
-
-    function showErr(msg){
-      const e = document.getElementById('igAuthError');
-      e.textContent = msg; e.style.display = 'block';
-      const n = document.getElementById('igAuthNotice'); if (n) n.style.display = 'none';
-    }
-    function showNotice(msg){
-      const n = document.getElementById('igAuthNotice');
-      n.textContent = msg; n.style.display = 'block';
-      const e = document.getElementById('igAuthError'); if (e) e.style.display = 'none';
-    }
-    function setBusy(b, label){
-      const btn = document.getElementById('igAuthSubmit');
-      btn.disabled = b;
-      btn.style.opacity = b ? '0.65' : '1';
-      btn.style.cursor = b ? 'wait' : 'pointer';
-      if (label) btn.textContent = label;
-    }
-
-    // ── Social login buttons ──────────────────────────────────────────────────
-    (async () => {
-      try {
-        const providers = await window._auth.listProviders();
-        const row = document.getElementById('igSocialRow');
-        const divider = document.getElementById('igSocialDivider');
-        const enabled = Object.entries(providers).filter(([_,v]) => v).map(([k]) => k);
-        if (!enabled.length || !row) return;
-        const PRETTY = { google:'Google', facebook:'Facebook', microsoft:'Microsoft' };
-        const ICONS = {
-          google:    '<svg width="16" height="16" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.49h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.63z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.8.54-1.84.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.96 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.17.28-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.46 3.44 1.35l2.58-2.58A9 9 0 0 0 9 0 9 9 0 0 0 .96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58z"/></svg>',
-          facebook:  '<svg width="16" height="16" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12a12 12 0 1 0-13.88 11.85v-8.38h-3.04V12h3.04V9.36c0-3 1.79-4.67 4.53-4.67 1.31 0 2.68.24 2.68.24v2.95h-1.51c-1.49 0-1.95.93-1.95 1.87V12h3.32l-.53 3.47h-2.79v8.38A12 12 0 0 0 24 12z"/></svg>',
-          microsoft: '<svg width="16" height="16" viewBox="0 0 23 23"><path fill="#F25022" d="M1 1h10v10H1z"/><path fill="#7FBA00" d="M12 1h10v10H12z"/><path fill="#00A4EF" d="M1 12h10v10H1z"/><path fill="#FFB900" d="M12 12h10v10H12z"/></svg>',
-        };
-        row.style.display = 'flex';
-        row.style.flexDirection = 'column';
-        row.style.gap = '8px';
-        row.innerHTML = enabled.map(p => `
-          <button type="button" data-provider="${p}" class="igSocialBtn" style="display:flex;align-items:center;justify-content:center;gap:9px;padding:10px 14px;background:white;border:1.5px solid #E5E7EB;border-radius:10px;font-size:.84rem;font-weight:700;color:#1F2937;cursor:pointer;transition:background .12s">
-            ${ICONS[p]||''}<span>Continue with ${PRETTY[p]||p}</span>
-          </button>`).join('');
-        divider.style.display = 'flex';
-        row.querySelectorAll('.igSocialBtn').forEach(b => {
-          b.addEventListener('mouseenter', () => b.style.background = '#F9FAFB');
-          b.addEventListener('mouseleave', () => b.style.background = 'white');
-          b.addEventListener('click', () => window._auth.socialStart(b.dataset.provider));
-        });
-      } catch(e) { /* social row optional */ }
-    })();
-
-    // ── Forgot password mini-flow ────────────────────────────────────────────
-    document.getElementById('igForgotBtn').addEventListener('click', async () => {
-      const email = (document.getElementById('igEmail').value || '').trim().toLowerCase();
-      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        return showErr('Type your email in the field above first, then click Forgot your password.');
-      }
-      const btn = document.getElementById('igForgotBtn');
-      const orig = btn.textContent;
-      btn.disabled = true; btn.textContent = 'Sending…';
-      try {
-        const r = await window._auth.requestReset(email);
-        if (r && r.error) showErr(r.error);
-        else showNotice('If that email is registered, a password-reset link is on its way. Check your inbox.');
-      } catch(e) { showErr('Network error — could not request reset.'); }
-      btn.disabled = false; btn.textContent = orig;
-    });
-
-    async function submit(){
-      const name  = (document.getElementById('igName') ? document.getElementById('igName').value : '').trim();
-      const email = (document.getElementById('igEmail').value || '').trim().toLowerCase();
-      const pass  = document.getElementById('igPass').value || '';
-
-      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showErr('Please enter a valid email address.');
-      if (!pass) return showErr('Please enter your password.');
-
-      if (mode === 'login') {
-        setBusy(true, 'Signing in…');
-        const r = await window._auth.login({ email, password: pass });
-        if (r.error) { setBusy(false, 'Log In →'); return showErr(r.error); }
-        location.reload();
-        return;
-      }
-      if (pass.length < 8) return showErr('Password must be at least 8 characters.');
-      setBusy(true, 'Creating account…');
-      const r = await window._auth.signup({ name, email, password: pass });
-      if (r.error) { setBusy(false, 'Create account →'); return showErr(r.error); }
-      // Auto-logged-in after signup; verification email goes out in background.
-      location.reload();
-    }
-    document.getElementById('igAuthSubmit').addEventListener('click', submit);
-    document.getElementById('igAuthForm').addEventListener('submit', e => { e.preventDefault(); submit(); });
-
-    // Default tab: signup-friendly when totally fresh, otherwise login
-    setMode(localStorage.getItem('ig-saw-login') ? 'login' : 'signup');
-    try { localStorage.setItem('ig-saw-login', '1'); } catch(e){}
-    setTimeout(() => { try { document.getElementById('igEmail').focus(); } catch(e){} }, 100);
-
-    // Friendly toasts when returning from the verification or OAuth flows
-    try {
-      const q = new URLSearchParams(location.search);
-      if (q.get('verified') === '1') showNotice('Email verified — you can log in now.');
-      if (q.get('social'))           showNotice('Signed in with ' + q.get('social') + ' — loading…');
-    } catch(e){}
+    location.href = '/login';
+    return;
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render);
   else render();
@@ -15294,6 +15131,17 @@ window._setActiveClient = function(id) {
       try {
         const ct = res.headers && res.headers.get && res.headers.get('content-type');
         const url = (typeof input === 'string') ? input : (input && input.url) || '';
+        // Session-expiry handling: a 401 from an app API means the session is no
+        // longer valid (expired or signed out elsewhere). Send the user to the
+        // standalone login page rather than leaving a broken/empty view. The
+        // auth endpoints themselves legitimately 401 (e.g. a bad login attempt),
+        // so they are excluded.
+        if (res.status === 401 && url.indexOf('/api/') !== -1 && url.indexOf('/api/auth/') === -1
+            && !/^https?:\/\//i.test(url) && !window._authRedirecting) {
+          window._authRedirecting = true;
+          try { window._auth && window._auth._clearSession && window._auth._clearSession(); } catch(_){}
+          location.href = '/login?expired=1';
+        }
         if (ct && ct.indexOf('application/json') !== -1 && url.indexOf('/api/') !== -1 && url.indexOf('/api/admin/') === -1) {
           res.clone().json().then(j => {
             if (!j || typeof j !== 'object') return;

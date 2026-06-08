@@ -3,3 +3,4 @@
 - [Global name collisions in public/js](global-name-collisions.md) — public/js files share the global scope with app.js; audit found real conflicts; pattern to check when extracting code.
 - [Load-order guard](load-order-guard.md) — script-tag wrap constraints are AST-discovered (acorn), not hand-listed; wrap vs define vs sentinel heuristic; don't re-add a manual list.
 - [Platform key tests](platform-key-tests.md) — admin Platform-APIs live tests; per-vendor probe quirks (Apollo/BuiltWith 200-on-bad-key, Cloudflare 400, Google no-param probe); test/testedBy/noTest registry flags.
+- [Portal auth gate](portal-auth-gate.md) — app shell+JS gated server-side (services/auth_gate deny-list); /login is the only thing anon visitors get; express.static still leaks raw server source.

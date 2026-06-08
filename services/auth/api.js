@@ -386,9 +386,10 @@ router.get('/verify-email/:token', async (req, res) => {
     const uid = await consumeToken(req.params.token, 'verify');
     if (!uid) return res.status(400).send(_simplePage('Verification link is invalid or has expired.', 'Try requesting a new verification email from your account menu.'));
     await markEmailVerified(uid);
-    // If a session is already active on this browser, fine. Either way, send
-    // them to /login? (or root) so the SPA picks them up.
-    res.redirect('/?verified=1');
+    // The verify link is usually opened while logged out, so send them to the
+    // standalone login page (which surfaces the "Email verified" notice). If a
+    // session is already active, /login just bounces them into the app.
+    res.redirect('/login?verified=1');
   } catch (e) {
     console.error('[auth/verify-email] error:', e);
     res.status(500).send(_simplePage('Server error verifying email.', e.message));

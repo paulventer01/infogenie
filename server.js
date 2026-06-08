@@ -17,6 +17,7 @@ const _platformKeys = require('./services/credentials/platform_keys');
 const _tenantSchema     = require('./services/tenants/schema');
 const _tenantMiddleware = require('./services/tenants/middleware');
 const _tenantRouter     = require('./services/tenants/api');
+const _authGate         = require('./services/auth_gate');
 
 // ── Env-var name aliases ─────────────────────────────────────────────────────
 // Some Replit Secrets were stored under the historical names below. The rest
@@ -227,6 +228,28 @@ const _DIAG_CAP_PREFIX = 'diag_capture:';
 const _DIAG_LATEST_KEY = 'diag_capture_latest';
 // Diagnostics capture routes → services/diag_capture/routes.js
 require('./services/diag_capture/routes')(app, { _DIAG_CAP_PREFIX, _DIAG_LATEST_KEY, _tkvCtx, _tkvRead, _tkvScope, _tkvWrite, express });
+
+// ── Standalone login page ────────────────────────────────────────────────────
+// Self-contained page (its own markup/styles/script — no app.js/data.js/public/js).
+// This is the ONLY thing a logged-out visitor ever receives. Registered before
+// the app-shell gate + express.static so it is always reachable. Authenticated
+// visitors who land here are bounced into the app.
+const _LOGIN_HTML_PATH = path.join(__dirname, 'login.html');
+app.get(['/login', '/login.html'], (req, res) => {
+  if (req.user) return res.redirect(302, '/');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(_LOGIN_HTML_PATH);
+});
+
+// ── App-shell auth gate ──────────────────────────────────────────────────────
+// Serve the app shell (index.html) and all app code ONLY to an authenticated
+// session; anonymous requests for those assets are redirected to /login so the
+// app's HTML/JS is never delivered to logged-out visitors. Mounted AFTER the
+// session middleware (req.user is populated) and BEFORE the index.html route +
+// express.static, so it wraps the versioned HTML serving rather than being
+// bypassed by it. See services/auth_gate.
+app.use(_authGate.appShellGate);
 
 // ── Auto cache-busting for index.html ───────────────────────────────────────
 // Serve index.html with every local .js/.css reference auto-versioned by its
