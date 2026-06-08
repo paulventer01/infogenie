@@ -14310,6 +14310,7 @@ function _adminRenderTabs() {
     { id:'clients',    label:'👤 Clients' },
     { id:'users',      label:'👥 Users & Roles' },
     { id:'platform-keys', label:'🔑 Platform APIs' },
+    { id:'permissions', label:'🧩 Permissions' },
     { id:'audit',      label:'📜 Audit Log' },
     { id:'issues',     label:'🚨 Issues' }
   ];
@@ -14338,6 +14339,7 @@ async function _adminRenderActive(force) {
     if (tab === 'clients')    return await _adminRenderClients(body, force);
     if (tab === 'users')      return await _adminRenderUsers(body);
     if (tab === 'platform-keys') return await _adminRenderPlatformKeys(body);
+    if (tab === 'permissions') return await _adminRenderPermissions(body);
     if (tab === 'audit')      return await _adminRenderAudit(body);
     if (tab === 'issues')     return await _adminRenderIssues(body);
   } catch (e) {
@@ -14686,6 +14688,78 @@ async function _adminRenderUsers(body) {
         <div style="font-size:12px;color:#64748B;line-height:1.4">${_esc(r.description||'')}</div>
       </div>`).join('')}
     </div>`;
+}
+
+async function _adminRenderPermissions(body) {
+  const d = await _adminFetch('/permissions-matrix');
+  const roles = d.roles || [];
+  const areas = d.areas || [];
+  const components = d.components || [];
+  // O(1) "does role hold permission" lookup.
+  const roleHas = roles.map(r => ({ role: r, set: new Set(r.permissions || []) }));
+
+  const roleHeaderCells = roleHas.map(({ role }) => `
+    <th title="${_esc(role.description || '')}" style="padding:9px 8px;text-align:center;font-size:11px;font-weight:700;color:#1E293B;border-left:1px solid #F1F5F9;white-space:nowrap;vertical-align:bottom">
+      ${_esc(role.name)}
+      <div style="font-size:9px;font-weight:600;color:#94A3B8;margin-top:2px">${_esc(role.scope)}</div>
+    </th>`).join('');
+
+  const areaBlocks = areas.map(a => {
+    const permRows = (a.permissions || []).map(p => {
+      const cells = roleHas.map(({ set }) => set.has(p.key)
+        ? '<td style="text-align:center;border-left:1px solid #F1F5F9;color:#15803D;font-weight:700">✓</td>'
+        : '<td style="text-align:center;border-left:1px solid #F1F5F9;color:#CBD5E1">—</td>').join('');
+      return `<tr style="border-top:1px solid #F1F5F9">
+        <td style="padding:8px 12px;position:sticky;left:0;background:#fff;z-index:1;min-width:240px">
+          <div style="font-size:12.5px;color:#1E293B;font-weight:600">${_esc(p.label)}</div>
+          <div style="font-size:10px;color:#94A3B8;font-family:ui-monospace,monospace">${_esc(p.key)}</div>
+        </td>
+        ${cells}
+      </tr>`;
+    }).join('');
+    return `<tr style="background:#F8FAFC"><td colspan="${roleHas.length + 1}" style="padding:7px 12px;position:sticky;left:0;background:#F8FAFC;font-size:11px;font-weight:800;color:#475569;letter-spacing:.04em;text-transform:uppercase">${_esc(a.area)}</td></tr>${permRows}`;
+  }).join('');
+
+  const matrix = `
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;overflow:auto;margin-bottom:26px;max-height:70vh">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead style="position:sticky;top:0;z-index:2"><tr style="background:#F1F5F9">
+          <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#64748B;position:sticky;left:0;background:#F1F5F9;z-index:3;min-width:240px">PERMISSION</th>
+          ${roleHeaderCells}
+        </tr></thead>
+        <tbody>${areaBlocks}</tbody>
+      </table>
+    </div>`;
+
+  const compRows = components.map(c => `
+    <tr style="border-top:1px solid #F1F5F9">
+      <td style="padding:8px 14px;color:#1E293B;font-weight:600;font-family:ui-monospace,monospace;font-size:12px">${_esc(c.view)}</td>
+      <td style="padding:8px 14px;color:#334155">${_esc(c.permissionLabel || '—')}</td>
+      <td style="padding:8px 14px;color:#94A3B8;font-family:ui-monospace,monospace;font-size:11px">${_esc(c.permission || '—')}</td>
+    </tr>`).join('');
+  const compTable = `
+    <div style="font-weight:800;color:#1E293B;margin:0 0 4px">Feature → permission reference (${components.length})</div>
+    <div style="font-size:12px;color:#94A3B8;margin-bottom:12px">Which permission each app screen requires — so you can answer "what does a Marketer actually see?".</div>
+    <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;overflow:auto;max-height:60vh">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead style="position:sticky;top:0;z-index:1"><tr style="background:#F8FAFC">
+          <th style="text-align:left;padding:9px 14px;color:#64748B;font-size:11px;font-weight:700">SCREEN (data-view)</th>
+          <th style="text-align:left;padding:9px 14px;color:#64748B;font-size:11px;font-weight:700">REQUIRED PERMISSION</th>
+          <th style="text-align:left;padding:9px 14px;color:#64748B;font-size:11px;font-weight:700">KEY</th>
+        </tr></thead>
+        <tbody>${compRows}</tbody>
+      </table>
+    </div>`;
+
+  body.innerHTML = `
+    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 16px;margin-bottom:18px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px">👁️</span>
+      <div style="font-size:12.5px;color:#1E3A8A;line-height:1.45"><strong>Read-only.</strong> This is a live view of the platform's role &amp; permission model, pulled straight from the source of truth. Editing roles or building custom roles isn't available here.</div>
+    </div>
+    <div style="font-weight:800;color:#1E293B;margin:0 0 4px">Roles × permissions</div>
+    <div style="font-size:12px;color:#94A3B8;margin-bottom:12px">✓ means the role grants that permission. Permissions are grouped by area; roles are columns.</div>
+    ${matrix}
+    ${compTable}`;
 }
 
 window._adminSetPlatformRole = async function(userId, roleKey) {

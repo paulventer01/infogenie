@@ -20,7 +20,8 @@
 
 const express = require('express');
 const _db = require('../../db');
-const { SYSTEM_ROLES } = require('../tenants/permissions');
+const { SYSTEM_ROLES, listByArea, listPermissions } = require('../tenants/permissions');
+const { COMPONENT_MATRIX } = require('../tenants/permission_matrix');
 const _dataMode = require('./data_mode');
 const _issues = require('./issues');
 const _audit = require('./audit');
@@ -135,6 +136,31 @@ router.get('/users', async (_req, res) => {
 
 router.get('/roles', (_req, res) => {
   res.json({ ok: true, roles: SYSTEM_ROLES.map(r => ({ key: r.key, scope: r.scope, name: r.name, description: r.description, permissionCount: r.permissions.length })) });
+});
+
+// ── Roles & Permissions matrix (read-only) ──────────────────────────────────
+// Surfaces the live permission model so an owner/admin can review, at a glance,
+// which system role grants which permission and which app screen requires what.
+// Pulled straight from the source of truth (SYSTEM_ROLES, the permission
+// catalog, and COMPONENT_MATRIX) — no hardcoded duplicate. View-only; the
+// router-level owner/admin gate above already restricts access (non-admins 403).
+router.get('/permissions-matrix', (_req, res) => {
+  try {
+    const roles = SYSTEM_ROLES.map(r => ({
+      key: r.key, scope: r.scope, name: r.name, description: r.description,
+      permissions: r.permissions.slice(),
+    }));
+    const byAreaRaw = listByArea();
+    const areas = Object.entries(byAreaRaw).map(([area, perms]) => ({
+      area,
+      permissions: perms.map(p => ({ key: p.key, label: p.label, scope: p.scope, area: p.area })),
+    }));
+    const labelByKey = Object.fromEntries(listPermissions().map(p => [p.key, p.label]));
+    const components = Object.entries(COMPONENT_MATRIX)
+      .map(([view, permission]) => ({ view, permission, permissionLabel: labelByKey[permission] || null }))
+      .sort((a, b) => a.view.localeCompare(b.view));
+    res.json({ ok: true, roles, areas, components });
+  } catch (e) { _err(res, 500, e.message); }
 });
 
 // ── Workspace membership management ─────────────────────────────────────────
