@@ -196,7 +196,12 @@
       }
       if (pass.length < 8) return showErr('Password must be at least 8 characters.');
       setBusy(true, 'Creating account…');
-      var s = await api('/api/auth/signup', { method:'POST', body: JSON.stringify({ name: name, email: email, password: pass }) });
+      // Forward the validated `next` so the verification email link returns the
+      // user to the same view once they confirm their address.
+      var dest = nextDest();
+      var body = { name: name, email: email, password: pass };
+      if (dest && dest !== '/') body.next = dest;
+      var s = await api('/api/auth/signup', { method:'POST', body: JSON.stringify(body) });
       if (s.error) { setBusy(false, 'Create account &rarr;'); return showErr(s.error); }
       window.location.href = nextDest();
     }

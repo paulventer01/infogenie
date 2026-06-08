@@ -460,8 +460,24 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
       this._clearSession();
       return null;
     },
+    // Same-origin relative path of the view the user is currently on, so the
+    // verification-email link can return them here. Mirrors the session-expiry
+    // `next` convention (`/?view=<view>`). Returns '' for the home dashboard.
+    _currentDest(){
+      try {
+        const cv = window.currentView;
+        if (cv && cv !== 'home') return '/?view=' + encodeURIComponent(cv);
+        const rel = (location.pathname || '/') + (location.search || '') + (location.hash || '');
+        if (rel && rel !== '/' && !/^\/login/i.test(rel) && rel.charAt(0) === '/'
+            && rel.charAt(1) !== '/' && rel.charAt(1) !== '\\') return rel;
+      } catch(_) {}
+      return '';
+    },
     async signup({name, email, password}){
-      const r = await _authFetch('/api/auth/signup', { method:'POST', body: JSON.stringify({ name, email, password }) });
+      const body = { name, email, password };
+      const next = this._currentDest();
+      if (next) body.next = next;
+      const r = await _authFetch('/api/auth/signup', { method:'POST', body: JSON.stringify(body) });
       if (r.error) return r;
       this._setSession(r.user);
       return { ok:true, user:r.user, verificationEmailSent: !!r.verificationEmailSent };
@@ -476,7 +492,8 @@ window._enrichWinLossWithHubSpot = async function(displayWinLoss, renderToken) {
       return _authFetch('/api/auth/request-reset', { method:'POST', body: JSON.stringify({ email }) });
     },
     async resendVerification(){
-      return _authFetch('/api/auth/resend-verification', { method:'POST', body: '{}' });
+      const next = this._currentDest();
+      return _authFetch('/api/auth/resend-verification', { method:'POST', body: JSON.stringify(next ? { next } : {}) });
     },
     async listProviders(){
       const r = await _authFetch('/api/auth/providers');

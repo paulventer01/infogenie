@@ -40,9 +40,15 @@ async function ensureAuthSchema() {
       purpose     TEXT NOT NULL,
       expires_at  TIMESTAMPTZ NOT NULL,
       created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-      consumed_at TIMESTAMPTZ
+      consumed_at TIMESTAMPTZ,
+      -- Same-origin relative path to return the user to after the token round-trip
+      -- (e.g. the view they were on when a verify email was issued mid-session).
+      -- Always validated server-side via _safeNext before it is stored or used.
+      next_dest   TEXT
     );
     CREATE INDEX IF NOT EXISTS email_tokens_user_idx ON email_tokens (user_id);
+    -- Backfill for deployments created before next_dest existed.
+    ALTER TABLE email_tokens ADD COLUMN IF NOT EXISTS next_dest TEXT;
 
     CREATE TABLE IF NOT EXISTS user_sessions (
       sid    VARCHAR NOT NULL COLLATE "default" PRIMARY KEY,

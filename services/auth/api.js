@@ -85,12 +85,16 @@ async function linkIdentity(userId, provider, providerUserId, email) {
     VALUES ($1,$2,$3,$4) ON CONFLICT (provider, provider_user_id) DO NOTHING`,
     [userId, provider, providerUserId, email || null]);
 }
-async function createToken(userId, purpose, ttlMin) {
+async function createToken(userId, purpose, ttlMin, nextDest) {
   const token = crypto.randomBytes(32).toString('hex');
   const exp = new Date(Date.now() + ttlMin * 60_000);
+  // Persist a same-origin return path so the post-token redirect can land the
+  // user back on the view they were on. Re-validated here (never trust caller).
+  const safe = _safeNext(nextDest);
+  const next = (safe && safe !== '/') ? safe : null;
   await _db.getPool().query(
-    'INSERT INTO email_tokens (token,user_id,purpose,expires_at) VALUES ($1,$2,$3,$4)',
-    [token, userId, purpose, exp]);
+    'INSERT INTO email_tokens (token,user_id,purpose,expires_at,next_dest) VALUES ($1,$2,$3,$4,$5)',
+    [token, userId, purpose, exp, next]);
   return token;
 }
 // Invite tokens are bound to a specific workspace so they only ever activate
@@ -114,8 +118,8 @@ async function consumeToken(token, purpose) {
   const r = await _db.getPool().query(
     `UPDATE email_tokens SET consumed_at = now()
      WHERE token=$1 AND purpose=$2 AND consumed_at IS NULL AND expires_at > now()
-     RETURNING user_id`, [token, purpose]);
-  return r.rows[0] ? r.rows[0].user_id : null;
+     RETURNING user_id, next_dest`, [token, purpose]);
+  return r.rows[0] || null;
 }
 
 // ── Public-user shape (never leak password_hash to clients) ─────────────────
@@ -341,7 +345,7 @@ router.post('/signup', async (req, res) => {
     // Send verification email (best-effort — don't fail signup if mail provider down)
     let mailed = false, mailError = null;
     try {
-      const token = await createToken(user.id, 'verify', VERIFY_TTL_MIN);
+      const token = await createToken(user.id, 'verify', VERIFY_TTL_MIN, (req.body || {}).next);
       const link = `${_publicBaseUrl(req)}/api/auth/verify-email/${token}`;
       const tpl = _verifyEmailTemplate(user.name, link);
       await _sendMail({ to: user.email, ...tpl });
@@ -393,13 +397,19 @@ router.post('/logout', (req, res) => {
 // GET /api/auth/verify-email/:token — completes verification, then redirects to app
 router.get('/verify-email/:token', async (req, res) => {
   try {
-    const uid = await consumeToken(req.params.token, 'verify');
-    if (!uid) return res.status(400).send(_simplePage('Verification link is invalid or has expired.', 'Try requesting a new verification email from your account menu.'));
-    await markEmailVerified(uid);
+    const row = await consumeToken(req.params.token, 'verify');
+    if (!row) return res.status(400).send(_simplePage('Verification link is invalid or has expired.', 'Try requesting a new verification email from your account menu.'));
+    await markEmailVerified(row.user_id);
     // The verify link is usually opened while logged out, so send them to the
     // standalone login page (which surfaces the "Email verified" notice). If a
     // session is already active, /login just bounces them into the app.
-    res.redirect('/login?verified=1');
+    // Carry the remembered same-origin destination (if any) so the user lands
+    // back on the view they were on, not the default dashboard. Re-validated
+    // through _safeNext as defence-in-depth before it reaches the redirect.
+    let dest = '/login?verified=1';
+    const next = _safeNext(row.next_dest);
+    if (next && next !== '/') dest += '&next=' + encodeURIComponent(next);
+    res.redirect(dest);
   } catch (e) {
     console.error('[auth/verify-email] error:', e);
     res.status(500).send(_simplePage('Server error verifying email.', e.message));
@@ -412,7 +422,7 @@ router.post('/resend-verification', async (req, res) => {
   try {
     if (!req.user) return _err(res, 401, 'Log in first.');
     if (req.user.emailVerified) return res.json({ ok:true, alreadyVerified:true });
-    const token = await createToken(req.user.id, 'verify', VERIFY_TTL_MIN);
+    const token = await createToken(req.user.id, 'verify', VERIFY_TTL_MIN, (req.body || {}).next);
     const link = `${_publicBaseUrl(req)}/api/auth/verify-email/${token}`;
     const tpl = _verifyEmailTemplate(req.user.name, link);
     await _sendMail({ to: req.user.email, ...tpl });
@@ -455,8 +465,9 @@ router.post('/reset-password/:token', async (req, res) => {
   try {
     const { password } = req.body || {};
     if (!password || password.length < 8) return _err(res, 400, 'Password must be at least 8 characters.');
-    const uid = await consumeToken(req.params.token, 'reset');
-    if (!uid) return _err(res, 400, 'Reset link is invalid or has expired. Request a new one.');
+    const row = await consumeToken(req.params.token, 'reset');
+    if (!row) return _err(res, 400, 'Reset link is invalid or has expired. Request a new one.');
+    const uid = row.user_id;
     await setUserPassword(uid, password);
     const user = await findUserById(uid);
     await _establishSession(req, user);

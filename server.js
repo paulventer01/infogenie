@@ -261,7 +261,14 @@ require('./services/diag_capture/routes')(app, { _DIAG_CAP_PREFIX, _DIAG_LATEST_
 // visitors who land here are bounced into the app.
 const _LOGIN_HTML_PATH = path.join(__dirname, 'login.html');
 app.get(['/login', '/login.html'], (req, res) => {
-  if (req.user) return res.redirect(302, '/');
+  if (req.user) {
+    // Already logged in (e.g. opening a verify-email link mid-session) — bounce
+    // straight into the app, honoring a same-origin `next` so the user lands
+    // back on the view they were on rather than the default dashboard. Validated
+    // via the shared open-redirect guard before it reaches the redirect.
+    const next = _authService.safeNext(req.query && req.query.next);
+    return res.redirect(302, next && next !== '/' ? next : '/');
+  }
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(_LOGIN_HTML_PATH);
