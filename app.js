@@ -14864,6 +14864,27 @@ async function _adminRenderPlatformKeys(body) {
     return `<span style="font-size:11px;font-weight:700;color:${color};background:${bg};padding:3px 10px;border-radius:99px">● ${label}</span>`;
   };
 
+  // Health dot reflecting the last live-test verdict (persisted server-side).
+  // ok→green, invalid→red, error→amber, unconfigured/never-tested→grey.
+  const healthDot = (it) => {
+    if (!it.testable) return '';
+    const lt = it.lastTest;
+    let color = '#CBD5E1', title = 'Never tested';
+    if (lt && lt.status) {
+      if (lt.status === 'ok') { color = '#22C55E'; title = 'Healthy'; }
+      else if (lt.status === 'invalid') { color = '#EF4444'; title = 'Key rejected'; }
+      else if (lt.status === 'unconfigured') { color = '#CBD5E1'; title = 'Not configured'; }
+      else { color = '#F59E0B'; title = 'Last test errored'; }
+      if (lt.testedAt) title += ' — tested ' + _relTimeAdmin(lt.testedAt);
+      if (lt.message) title += '\n' + lt.message;
+    }
+    const when = (lt && lt.testedAt) ? `<span style="font-size:11px;color:#94A3B8" id="ptestwhen-${_esc(it.key)}">${_esc(_relTimeAdmin(lt.testedAt))}</span>` : `<span style="font-size:11px;color:#94A3B8;font-style:italic" id="ptestwhen-${_esc(it.key)}">never tested</span>`;
+    return `<span title="${_esc(title)}" style="display:inline-flex;align-items:center;gap:5px">
+        <span id="phealth-${_esc(it.key)}" style="width:10px;height:10px;border-radius:99px;background:${color};display:inline-block;flex:0 0 auto"></span>
+        ${when}
+      </span>`;
+  };
+
   const card = (it) => {
     const ph = it.configured ? ('Current: ' + _esc(it.masked)) : (it.secret ? 'Not configured — paste a value to set' : 'Not configured');
     const testBtn = it.testable
@@ -14876,6 +14897,7 @@ async function _adminRenderPlatformKeys(body) {
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
           <span style="font-weight:700;color:#1E293B;font-size:14px">${_esc(it.label)}</span>
           ${pill(it)}
+          <span style="margin-left:auto">${healthDot(it)}</span>
         </div>
         <div style="font-size:12px;color:#64748B;margin-bottom:8px">${_esc(it.desc || '')}</div>
         <div style="font-size:11px;color:#94A3B8;font-family:monospace;margin-bottom:8px">${_esc(it.key)}</div>
@@ -14899,10 +14921,58 @@ async function _adminRenderPlatformKeys(body) {
 
   body.innerHTML = `
     <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:16px 18px;margin-bottom:18px">
-      <div style="font-weight:800;color:#1E293B;font-size:16px;margin-bottom:4px">🔑 Platform API Keys</div>
-      <div style="font-size:13px;color:#64748B;line-height:1.5">These are the API keys InfoGenie operates on behalf of <strong>every workspace</strong> — the AI models, data vendors, and shared infrastructure. They are platform-wide (not per-workspace). Saving a key here stores it encrypted and uses it immediately; leaving a field blank keeps the existing value.</div>
+      <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px">
+          <div style="font-weight:800;color:#1E293B;font-size:16px;margin-bottom:4px">🔑 Platform API Keys</div>
+          <div style="font-size:13px;color:#64748B;line-height:1.5">These are the API keys InfoGenie operates on behalf of <strong>every workspace</strong> — the AI models, data vendors, and shared infrastructure. They are platform-wide (not per-workspace). Saving a key here stores it encrypted and uses it immediately; leaving a field blank keeps the existing value.</div>
+          <div style="font-size:12px;color:#94A3B8;margin-top:8px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <span><span style="width:9px;height:9px;border-radius:99px;background:#22C55E;display:inline-block;margin-right:4px"></span>Healthy</span>
+            <span><span style="width:9px;height:9px;border-radius:99px;background:#EF4444;display:inline-block;margin-right:4px"></span>Rejected</span>
+            <span><span style="width:9px;height:9px;border-radius:99px;background:#F59E0B;display:inline-block;margin-right:4px"></span>Error</span>
+            <span><span style="width:9px;height:9px;border-radius:99px;background:#CBD5E1;display:inline-block;margin-right:4px"></span>Not tested</span>
+          </div>
+        </div>
+        <button onclick="_adminTestAllPlatformKeys()" id="ptest-all-btn" style="border:1px solid #CBD5E1;background:#fff;color:#334155;border-radius:8px;font-size:13px;padding:9px 16px;cursor:pointer;font-weight:700;white-space:nowrap">Test all</button>
+      </div>
     </div>
     ${groupHtml || '<div style="padding:24px;text-align:center;color:#64748B">No platform keys defined.</div>'}`;
+}
+
+// Relative-time formatter for the platform-key health dots (e.g. "5m ago").
+function _relTimeAdmin(iso) {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (!isFinite(t)) return '';
+  const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (s < 45) return 'just now';
+  if (s < 90) return '1m ago';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  const d = Math.floor(h / 24);
+  if (d < 30) return d + 'd ago';
+  const mo = Math.floor(d / 30);
+  if (mo < 12) return mo + 'mo ago';
+  return Math.floor(mo / 12) + 'y ago';
+}
+
+// Paint a key's health dot + relative-time label from a lastTest record without
+// re-rendering the whole tab.
+function _adminPaintHealthDot(key, lastTest) {
+  const dot = document.getElementById('phealth-' + key);
+  const when = document.getElementById('ptestwhen-' + key);
+  if (!dot) return;
+  let color = '#CBD5E1';
+  if (lastTest && lastTest.status === 'ok') color = '#22C55E';
+  else if (lastTest && lastTest.status === 'invalid') color = '#EF4444';
+  else if (lastTest && lastTest.status === 'unconfigured') color = '#CBD5E1';
+  else if (lastTest && lastTest.status) color = '#F59E0B';
+  dot.style.background = color;
+  if (when) {
+    when.style.fontStyle = 'normal';
+    when.textContent = (lastTest && lastTest.testedAt) ? _relTimeAdmin(lastTest.testedAt) : 'never tested';
+  }
 }
 
 window._adminSavePlatformKey = async function(key) {
@@ -14926,6 +14996,7 @@ window._adminTestPlatformKey = async function(key) {
   try {
     const r = await _adminFetch('/platform-keys/' + encodeURIComponent(key) + '/test', { method:'POST', body:{} });
     const res = r.result || {};
+    _adminPaintHealthDot(key, res.lastTest || res);
     if (msg) {
       const ok = res.status === 'ok';
       msg.style.color = ok ? '#15803D' : '#B91C1C';
@@ -14935,6 +15006,33 @@ window._adminTestPlatformKey = async function(key) {
     if (msg) { msg.style.color = '#B91C1C'; msg.textContent = '⚠️ ' + e.message; }
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Test'; }
+  }
+};
+
+// Run every testable platform key's check in one click and repaint all dots.
+window._adminTestAllPlatformKeys = async function() {
+  const btn = document.getElementById('ptest-all-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Testing all…'; }
+  try {
+    const r = await _adminFetch('/platform-keys/test-all', { method:'POST', body:{} });
+    const results = r.results || {};
+    let ok = 0, bad = 0;
+    Object.keys(results).forEach(key => {
+      const res = results[key] || {};
+      _adminPaintHealthDot(key, res.lastTest || res);
+      const m = document.getElementById('ptestmsg-' + key);
+      if (m) {
+        const good = res.status === 'ok';
+        m.style.color = good ? '#15803D' : '#B91C1C';
+        m.textContent = (good ? '✓ ' : '⚠️ ') + (res.message || (good ? 'OK' : 'Failed'));
+      }
+      if (res.status === 'ok') ok++; else bad++;
+    });
+    showToast(`✓ Tested ${ok + bad} key(s) — ${ok} healthy, ${bad} need attention`);
+  } catch (e) {
+    showToast('⚠️ ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Test all'; }
   }
 };
 

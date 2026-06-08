@@ -11,6 +11,7 @@
 //   • users, user_identities, email_tokens, user_sessions — cross-tenant auth
 //   • user_integrations  — per-user credential vault (not per-tenant)
 //   • platform_api_keys  — platform-owned API keys, shared across all tenants
+//   • platform_key_tests — last live-test verdict per platform key, platform-wide
 //   • kv_store           — handled separately via key prefixing
 //   • brand_foundation   — already migrated end-to-end as the proof case
 //

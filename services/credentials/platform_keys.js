@@ -74,6 +74,11 @@ function isPlatformKeyName(name) {
 // In-memory cache of DB-sourced values only (key_name -> plaintext value).
 const _cache = new Map();
 
+// In-memory cache of the last live-test verdict per key_name. Mirrors the
+// platform_key_tests table so the synchronous statusAll() can surface a health
+// dot without a DB round-trip. Shape: { status, message, testedAt(ISO), testedBy }.
+const _lastTestCache = new Map();
+
 // ── Schema ────────────────────────────────────────────────────────────────────
 async function ensurePlatformKeysSchema() {
   if (!_db.hasDb()) return;
@@ -85,6 +90,18 @@ async function ensurePlatformKeysSchema() {
       tag         BYTEA NOT NULL,
       updated_by  INTEGER,
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  // Last live-test result per key. Separate from platform_api_keys because a
+  // key may be configured via env only (no platform_api_keys row) yet still be
+  // testable, and we want its verdict to survive a reload regardless.
+  await _db.getPool().query(`
+    CREATE TABLE IF NOT EXISTS platform_key_tests (
+      key_name   TEXT PRIMARY KEY,
+      status     TEXT NOT NULL,
+      message    TEXT,
+      tested_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      tested_by  INTEGER
     )
   `);
 }
@@ -120,8 +137,50 @@ async function hydrate() {
   } catch (e) {
     console.warn('[platform-keys] hydrate failed:', e.message);
   }
+  // Load the last-test verdicts into the in-memory cache so the health dots
+  // render correctly on the first page load after a restart.
+  try {
+    const tr = await _db.getPool().query('SELECT key_name, status, message, tested_at, tested_by FROM platform_key_tests');
+    _lastTestCache.clear();
+    for (const row of tr.rows) {
+      if (!_byKey.has(row.key_name)) continue;
+      _lastTestCache.set(row.key_name, {
+        status: row.status,
+        message: row.message || '',
+        testedAt: row.tested_at ? new Date(row.tested_at).toISOString() : null,
+        testedBy: row.tested_by != null ? Number(row.tested_by) : null,
+      });
+    }
+  } catch (e) {
+    console.warn('[platform-keys] last-test hydrate failed:', e.message);
+  }
   console.log(`[platform-keys] hydrated ${n} key(s) from DB`);
   return n;
+}
+
+// Persist a test verdict (best-effort) and update the in-memory cache so the
+// next statusAll() reflects it immediately.
+async function _recordTest(keyName, result, actorId) {
+  const rec = {
+    status: result && result.status ? result.status : 'error',
+    message: (result && result.message) || '',
+    testedAt: new Date().toISOString(),
+    testedBy: Number.isInteger(actorId) ? actorId : null,
+  };
+  _lastTestCache.set(keyName, rec);
+  if (!_db.hasDb()) return rec;
+  try {
+    await _db.getPool().query(`
+      INSERT INTO platform_key_tests (key_name, status, message, tested_at, tested_by)
+      VALUES ($1,$2,$3, now(), $4)
+      ON CONFLICT (key_name) DO UPDATE
+        SET status=EXCLUDED.status, message=EXCLUDED.message,
+            tested_at=now(), tested_by=EXCLUDED.tested_by
+    `, [keyName, rec.status, rec.message.slice(0, 500), rec.testedBy]);
+  } catch (e) {
+    console.warn(`[platform-keys] record test failed for ${keyName}: ${e.message}`);
+  }
+  return rec;
 }
 
 // Resolve a single platform key: DB cache first, then env fallback.
@@ -197,6 +256,8 @@ function statusAll() {
       testable: !!entry.test,
       covered: !!entry.testedBy,
       noTest: !entry.test && !entry.testedBy,
+      // Last live-test verdict (null until first tested). Drives the health dot.
+      lastTest: _lastTestCache.get(entry.key) || null,
     });
   }
   return Object.entries(groups).map(([group, items]) => ({ group, items }));
@@ -219,7 +280,7 @@ const _UNCONF = (message) => ({ ok: false, status: 'unconfigured', message: mess
 const _HTTP = (svc, r) => ({ ok: false, status: 'error', message: svc + ' returned HTTP ' + r.status });
 async function _bodyText(r) { try { return await r.text(); } catch { return ''; } }
 
-async function testKey(keyName) {
+async function _runTest(keyName) {
   const entry = _byKey.get(keyName);
   if (!entry) return { ok: false, status: 'error', message: 'unknown key' };
   if (!entry.test) return { ok: false, status: 'error', message: 'no test available for this key' };
@@ -382,6 +443,29 @@ async function testKey(keyName) {
   }
 }
 
+// Run a single key's live test and persist the verdict (status + timestamp) so
+// it survives a reload and surfaces as a health dot in the admin UI.
+async function testKey(keyName, actorId) {
+  const result = await _runTest(keyName);
+  // Persist every verdict (ok/invalid/error/unconfigured) so the health dot
+  // always reflects the latest reality after a reload.
+  const rec = await _recordTest(keyName, result, actorId);
+  return { ...result, lastTest: rec };
+}
+
+// Run every testable key's check (sequentially to stay gentle on vendors) and
+// persist each verdict. Returns the per-key results keyed by key_name.
+async function testAll(actorId) {
+  const results = {};
+  for (const entry of REGISTRY) {
+    if (!entry.test) continue;
+    const result = await _runTest(entry.key);
+    await _recordTest(entry.key, result, actorId);
+    results[entry.key] = { ...result, lastTest: _lastTestCache.get(entry.key) || null };
+  }
+  return results;
+}
+
 function isKnownKey(keyName) { return _byKey.has(keyName); }
 
 module.exports = {
@@ -395,4 +479,5 @@ module.exports = {
   setPlatformKey,
   statusAll,
   testKey,
+  testAll,
 };

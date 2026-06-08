@@ -749,8 +749,17 @@ router.post('/platform-keys/:key/test', async (req, res) => {
   const keyName = String(req.params.key || '').trim();
   if (!_platformKeys.isKnownKey(keyName)) return _err(res, 404, 'unknown_key');
   try {
-    const r = await _platformKeys.testKey(keyName);
+    const r = await _platformKeys.testKey(keyName, req.user && req.user.id);
     res.json({ ok: true, result: r });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+// Run every testable platform key's live check and persist each verdict, so the
+// health dots refresh in one click instead of testing each key individually.
+router.post('/platform-keys/test-all', async (req, res) => {
+  try {
+    const results = await _platformKeys.testAll(req.user && req.user.id);
+    res.json({ ok: true, results, groups: _platformKeys.statusAll() });
   } catch (e) { _err(res, 500, e.message); }
 });
 
