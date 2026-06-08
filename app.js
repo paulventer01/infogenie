@@ -3329,7 +3329,7 @@ function navigateTo(viewId, updateActive = true) {
     try { initBrandAssets(); } catch(e) { console.warn('initBrandAssets error:', e); }
   }
   if (viewId === 'kpi-tracker') {
-    try { buildKPITracker(); } catch(e) { console.warn('buildKPITracker error:', e); }
+    Promise.resolve(buildKPITracker()).catch(e => console.warn('buildKPITracker error:', e));
   }
   if (viewId === 'csuite') {
     try { initCsuite(); } catch(e) { console.warn('initCsuite error:', e); }
@@ -7054,7 +7054,7 @@ function updateLeadCalc() {
 }
 
 // ===== KPI TRACKER =====
-function buildKPITracker() {
+async function buildKPITracker() {
   const wrap = document.getElementById('kpiTrackerWrap');
   if (!wrap) return;
 
@@ -7062,15 +7062,46 @@ function buildKPITracker() {
   const campaigns = window._launchedCampaigns || [];
   const industry  = analysisData && analysisData.industry ? analysisData.industry : null;
 
-  // ── Derive actuals from launched campaigns ──────────────────────────────
-  const avgRoas   = campaigns.length ? (campaigns.reduce((s,c)=>s+parseFloat(c.metrics.roas||0),0)/campaigns.length).toFixed(1) : null;
-  const avgCtr    = campaigns.length ? (campaigns.reduce((s,c)=>s+parseFloat((c.metrics.ctr||'0').replace('%','')),0)/campaigns.length).toFixed(1) : null;
-  const avgCpa    = campaigns.length ? Math.round(campaigns.reduce((s,c)=>s+parseInt((c.metrics.cpa||'$0').replace('$','')),0)/campaigns.length) : null;
-  const totalSpend= campaigns.reduce((s,c)=>s+c.metrics.spend,0);
-  const totalConv = campaigns.reduce((s,c)=>s+c.metrics.conversions,0);
-  const totalImpr = campaigns.reduce((s,c)=>s+c.metrics.impressions,0);
-  const totalBudget=campaigns.reduce((s,c)=>s+c.budget,0);
-  const avgConvR  = campaigns.length && totalImpr > 0 ? ((totalConv/totalImpr)*100).toFixed(2) : null;
+  // ── Derive actuals from locally-launched campaigns ──────────────────────
+  let avgRoas    = campaigns.length ? (campaigns.reduce((s,c)=>s+parseFloat(c.metrics.roas||0),0)/campaigns.length).toFixed(1) : null;
+  let avgCtr     = campaigns.length ? (campaigns.reduce((s,c)=>s+parseFloat((c.metrics.ctr||'0').replace('%','')),0)/campaigns.length).toFixed(1) : null;
+  let avgCpa     = campaigns.length ? Math.round(campaigns.reduce((s,c)=>s+parseInt((c.metrics.cpa||'$0').replace('$','')),0)/campaigns.length) : null;
+  let totalSpend = campaigns.reduce((s,c)=>s+c.metrics.spend,0);
+  let totalConv  = campaigns.reduce((s,c)=>s+c.metrics.conversions,0);
+  let totalImpr  = campaigns.reduce((s,c)=>s+c.metrics.impressions,0);
+  let totalBudget= campaigns.reduce((s,c)=>s+c.budget,0);
+  let avgConvR   = campaigns.length && totalImpr > 0 ? ((totalConv/totalImpr)*100).toFixed(2) : null;
+  let optCampCount = 0;
+
+  // ── Pull real ad-platform data from the optimizer (supplement local data) ─
+  if (!campaigns.length) {
+    try {
+      const _r = await fetch('/api/optimizer/campaigns', { signal: AbortSignal.timeout(8000) });
+      if (_r.ok) {
+        const _j = await _r.json();
+        if (_j.ok && Array.isArray(_j.campaigns)) {
+          const _active = _j.campaigns.filter(c => c.perf7d && Number(c.perf7d.spend) > 0);
+          if (_active.length) {
+            const _totSpend = _active.reduce((s,c)=>s+Number(c.perf7d.spend),0);
+            const _totRev   = _active.reduce((s,c)=>s+Number(c.perf7d.revenue),0);
+            const _totConv  = _active.reduce((s,c)=>s+Number(c.perf7d.conversions),0);
+            const _totClk   = _active.reduce((s,c)=>s+Number(c.perf7d.clicks),0);
+            const _totImpr  = _active.reduce((s,c)=>s+Number(c.perf7d.impressions),0);
+            const _totBudg7 = _active.reduce((s,c)=>s+Number(c.daily_budget||0),0) * 7;
+            optCampCount = _active.length;
+            avgRoas     = _totSpend > 0 ? (_totRev / _totSpend).toFixed(2) : null;
+            avgCtr      = _totImpr > 0  ? ((_totClk / _totImpr) * 100).toFixed(2) : null;
+            avgCpa      = _totConv > 0  ? Math.round(_totSpend / _totConv) : null;
+            avgConvR    = _totClk > 0   ? ((_totConv / _totClk) * 100).toFixed(2) : null;
+            totalSpend  = _totSpend;
+            totalConv   = _totConv;
+            totalImpr   = _totImpr;
+            totalBudget = _totBudg7;
+          }
+        }
+      }
+    } catch (_e) { /* silent — fall back to no-data state */ }
+  }
 
   // ── KPI definitions: {id, label, icon, target, actual, unit, higherIsBetter, whyMissed} ──
   const industryROAS = kpiData && kpiData.roas ? (parseFloat(kpiData.roas)*1.25).toFixed(1) : (industry ? (industry.avgROAS||3.5) : 3.5);
@@ -7156,7 +7187,7 @@ function buildKPITracker() {
     achieved: { label:'✅ Achieved',  bg:'#F0FDF4', border:'#86EFAC', color:'#15803D', dot:'#16A34A' },
     'at-risk':{ label:'⚠️ At Risk',   bg:'#FFFBEB', border:'#FCD34D', color:'#B45309', dot:'#D97706' },
     missed:   { label:'❌ Missed',    bg:'#FFF1F2', border:'#FCA5A5', color:'#B91C1C', dot:'#EF4444' },
-    pending:  { label:'⏳ No Data',   bg:'#F8FAFC', border:'#CBD5E1', color:'#64748B', dot:'#94A3B8' }
+    pending:  { label:'📊 No Data',   bg:'#F8FAFC', border:'#CBD5E1', color:'#64748B', dot:'#94A3B8' }
   };
 
   const allStatuses = kpiDefs.map(k=>getStatus(k));
@@ -7164,7 +7195,11 @@ function buildKPITracker() {
   const nAtRisk   = allStatuses.filter(s=>s==='at-risk').length;
   const nMissed   = allStatuses.filter(s=>s==='missed').length;
   const nPending  = allStatuses.filter(s=>s==='pending').length;
-  const hasAnyData = campaigns.length > 0 || kpiData;
+  const _totalCampCount = campaigns.length || optCampCount;
+  const hasAnyData = _totalCampCount > 0 || kpiData;
+  const _campLabel = optCampCount && !campaigns.length
+    ? `${optCampCount} tracked campaign${optCampCount!==1?'s':''} (optimizer)`
+    : `${campaigns.length} active campaign${campaigns.length!==1?'s':''}`;
 
   // ── Summary banner ───────────────────────────────────────────────────────
   const summaryHTML = `
@@ -7175,7 +7210,7 @@ function buildKPITracker() {
             ${hasAnyData ? `${nAchieved} of ${kpiDefs.length} KPIs Achieved` : 'Run an analysis & launch campaigns to see your KPI progress'}
           </div>
           <div style="font-size:0.8rem;color:rgba(255,255,255,.5)">
-            Based on ${campaigns.length} active campaign${campaigns.length!==1?'s':''} · ${analysisData ? analysisData.url : 'No analysis run yet'}
+            Based on ${_campLabel} · ${analysisData ? analysisData.url : 'No analysis run yet'}
           </div>
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap">
