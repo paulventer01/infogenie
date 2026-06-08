@@ -32,27 +32,27 @@ const REGISTRY = [
   // ── AI Models ──────────────────────────────────────────────────────────────
   { key: 'AI_INTEGRATIONS_OPENAI_API_KEY', group: 'AI Models', service: 'OpenAI', label: 'OpenAI API Key', desc: 'GPT-4o / GPT-4o-mini — ad copy, strategy, chat, DALL·E', secret: true, aliases: ['OPENAI_API_KEY'], test: 'openai', settingsIds: ['openai'] },
   { key: 'AI_INTEGRATIONS_ANTHROPIC_API_KEY', group: 'AI Models', service: 'Anthropic', label: 'Anthropic API Key', desc: 'Claude — deep competitive analysis & long-form strategy', secret: true, aliases: ['ANTHROPIC_API_KEY'], test: 'anthropic', settingsIds: ['anthropic'] },
-  { key: 'GEMINI_API_KEY', group: 'AI Models', service: 'Google Gemini', label: 'Gemini API Key', desc: 'Google Gemini — multimodal generation & analysis', secret: true, settingsIds: ['gemini'] },
-  { key: 'PERPLEXITY_API_KEY', group: 'AI Models', service: 'Perplexity', label: 'Perplexity API Key', desc: 'Perplexity — live web-grounded research', secret: true, settingsIds: ['perplexity'] },
+  { key: 'GEMINI_API_KEY', group: 'AI Models', service: 'Google Gemini', label: 'Gemini API Key', desc: 'Google Gemini — multimodal generation & analysis', secret: true, test: 'gemini', settingsIds: ['gemini'] },
+  { key: 'PERPLEXITY_API_KEY', group: 'AI Models', service: 'Perplexity', label: 'Perplexity API Key', desc: 'Perplexity — live web-grounded research', secret: true, test: 'perplexity', settingsIds: ['perplexity'] },
   { key: 'CLOUDFLARE_ACCOUNT_ID', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare Account ID', desc: 'Workers AI (Llama 3.1) — account identifier', secret: false, settingsIds: ['cloudflare'] },
-  { key: 'CLOUDFLARE_AI_TOKEN', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare AI Token', desc: 'Workers AI (Llama 3.1) — API token', secret: true, settingsIds: ['cloudflare'] },
+  { key: 'CLOUDFLARE_AI_TOKEN', group: 'AI Models', service: 'Cloudflare Workers AI', label: 'Cloudflare AI Token', desc: 'Workers AI (Llama 3.1) — API token', secret: true, test: 'cloudflare', settingsIds: ['cloudflare'] },
 
   // ── Data & Intelligence ─────────────────────────────────────────────────────
   { key: 'DATAFORSEO_LOGIN', group: 'Data & Intelligence', service: 'DataForSEO', label: 'DataForSEO Login', desc: 'SEO/SERP/keyword data — account login', secret: false, test: 'dataforseo', settingsIds: ['dataforseo', 'dataseo'] },
-  { key: 'DATAFORSEO_PASSWORD', group: 'Data & Intelligence', service: 'DataForSEO', label: 'DataForSEO Password', desc: 'SEO/SERP/keyword data — account password', secret: true, settingsIds: ['dataforseo', 'dataseo'] },
-  { key: 'FIRECRAWL_API_KEY', group: 'Data & Intelligence', service: 'Firecrawl', label: 'Firecrawl API Key', desc: 'Website crawling & scraping', secret: true, settingsIds: ['firecrawl'] },
-  { key: 'APOLLO_API_KEY', group: 'Data & Intelligence', service: 'Apollo', label: 'Apollo API Key', desc: 'B2B contact & company enrichment', secret: true, settingsIds: ['apollo'] },
+  { key: 'DATAFORSEO_PASSWORD', group: 'Data & Intelligence', service: 'DataForSEO', label: 'DataForSEO Password', desc: 'SEO/SERP/keyword data — account password', secret: true, testedBy: 'dataforseo', settingsIds: ['dataforseo', 'dataseo'] },
+  { key: 'FIRECRAWL_API_KEY', group: 'Data & Intelligence', service: 'Firecrawl', label: 'Firecrawl API Key', desc: 'Website crawling & scraping', secret: true, test: 'firecrawl', settingsIds: ['firecrawl'] },
+  { key: 'APOLLO_API_KEY', group: 'Data & Intelligence', service: 'Apollo', label: 'Apollo API Key', desc: 'B2B contact & company enrichment', secret: true, test: 'apollo', settingsIds: ['apollo'] },
   { key: 'ZERNIO_API_KEY', group: 'Data & Intelligence', service: 'Zernio', label: 'Zernio API Key', desc: 'Social publishing', secret: true, settingsIds: ['zernio'] },
-  { key: 'BUILTWITH_API_KEY', group: 'Data & Intelligence', service: 'BuiltWith', label: 'BuiltWith API Key', desc: 'Tech-stack detection', secret: true, settingsIds: ['builtwith'] },
-  { key: 'GOOGLE_PAGESPEED_API_KEY', group: 'Data & Intelligence', service: 'Google PageSpeed', label: 'PageSpeed API Key', desc: 'Core Web Vitals & page performance audits', secret: true, settingsIds: ['pagespeed', 'google_pagespeed'] },
-  { key: 'GOOGLE_SEARCH_API_KEY', group: 'Data & Intelligence', service: 'Google Search', label: 'Google Search API Key', desc: 'Custom Search / SERP visibility', secret: true, settingsIds: ['google_search'] },
+  { key: 'BUILTWITH_API_KEY', group: 'Data & Intelligence', service: 'BuiltWith', label: 'BuiltWith API Key', desc: 'Tech-stack detection', secret: true, test: 'builtwith', settingsIds: ['builtwith'] },
+  { key: 'GOOGLE_PAGESPEED_API_KEY', group: 'Data & Intelligence', service: 'Google PageSpeed', label: 'PageSpeed API Key', desc: 'Core Web Vitals & page performance audits', secret: true, test: 'pagespeed', settingsIds: ['pagespeed', 'google_pagespeed'] },
+  { key: 'GOOGLE_SEARCH_API_KEY', group: 'Data & Intelligence', service: 'Google Search', label: 'Google Search API Key', desc: 'Custom Search / SERP visibility', secret: true, test: 'google_search', settingsIds: ['google_search'] },
 
   // ── Infrastructure ──────────────────────────────────────────────────────────
   { key: 'RESEND_API_KEY', group: 'Infrastructure', service: 'Resend', label: 'Resend API Key', desc: 'Transactional & broadcast email', secret: true, test: 'resend', settingsIds: ['resend'] },
   { key: 'RESEND_WEBHOOK_SECRET', group: 'Infrastructure', service: 'Resend', label: 'Resend Webhook Secret', desc: 'Verifies inbound Resend webhooks', secret: true, settingsIds: ['resend'] },
   { key: 'RESEND_FROM_EMAIL', group: 'Infrastructure', service: 'Resend', label: 'Resend From Email', desc: 'Verified sender address (must be a verified Resend domain)', secret: false, settingsIds: ['resend'] },
-  { key: 'AMPLITUDE_API_KEY', group: 'Infrastructure', service: 'Amplitude', label: 'Amplitude API Key', desc: 'Product analytics ingestion', secret: true, settingsIds: ['amplitude'] },
-  { key: 'STRIPE_SECRET_KEY', group: 'Infrastructure', service: 'Stripe', label: 'Stripe Secret Key', desc: 'Billing & checkout', secret: true, settingsIds: ['stripe'] },
+  { key: 'AMPLITUDE_API_KEY', group: 'Infrastructure', service: 'Amplitude', label: 'Amplitude API Key', desc: 'Product analytics ingestion', secret: true, test: 'amplitude', settingsIds: ['amplitude'] },
+  { key: 'STRIPE_SECRET_KEY', group: 'Infrastructure', service: 'Stripe', label: 'Stripe Secret Key', desc: 'Billing & checkout', secret: true, test: 'stripe', settingsIds: ['stripe'] },
   { key: 'STRIPE_WEBHOOK_SECRET', group: 'Infrastructure', service: 'Stripe', label: 'Stripe Webhook Secret', desc: 'Verifies inbound Stripe webhooks', secret: true, settingsIds: ['stripe'] },
   { key: 'VAPID_PUBLIC_KEY', group: 'Infrastructure', service: 'Web Push (VAPID)', label: 'VAPID Public Key', desc: 'Web-push subscription public key', secret: false, settingsIds: ['vapid'] },
   { key: 'VAPID_PRIVATE_KEY', group: 'Infrastructure', service: 'Web Push (VAPID)', label: 'VAPID Private Key', desc: 'Web-push signing private key', secret: true, settingsIds: ['vapid'] },
@@ -190,13 +190,35 @@ function statusAll() {
       configured,
       source,
       masked: _mask(entry, value),
+      // testable: has its own live check → gets a Test button.
+      // covered:  validated as part of a sibling key's test (e.g. the password
+      //           checked by the login test) → no button, no "no test" marker.
+      // noTest:   genuinely has no cheap connectivity check → clearly labelled.
       testable: !!entry.test,
+      covered: !!entry.testedBy,
+      noTest: !entry.test && !entry.testedBy,
     });
   }
   return Object.entries(groups).map(([group, items]) => ({ group, items }));
 }
 
 // ── Live connectivity tests (best-effort) ──────────────────────────────────────
+// fetch() with an abort timeout so a hung vendor never blocks the admin UI.
+async function _fetchT(url, opts = {}, ms = 12000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
+  finally { clearTimeout(t); }
+}
+
+// Some vendors return HTTP 200 with an in-body error, or only reveal a bad key
+// via 401/403. These helpers keep the per-service logic below readable.
+const _OK = (message) => ({ ok: true, status: 'ok', message });
+const _BAD = (message) => ({ ok: false, status: 'invalid', message });
+const _UNCONF = (message) => ({ ok: false, status: 'unconfigured', message: message || 'No key configured' });
+const _HTTP = (svc, r) => ({ ok: false, status: 'error', message: svc + ' returned HTTP ' + r.status });
+async function _bodyText(r) { try { return await r.text(); } catch { return ''; } }
+
 async function testKey(keyName) {
   const entry = _byKey.get(keyName);
   if (!entry) return { ok: false, status: 'error', message: 'unknown key' };
@@ -204,39 +226,159 @@ async function testKey(keyName) {
   try {
     if (entry.test === 'openai') {
       const key = resolvePlatformKey('AI_INTEGRATIONS_OPENAI_API_KEY') || resolvePlatformKey('OPENAI_API_KEY');
-      if (!key) return { ok: false, status: 'unconfigured', message: 'No key configured' };
+      if (!key) return _UNCONF();
       const base = (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
-      const r = await fetch(base + '/models', { headers: { Authorization: 'Bearer ' + key } });
-      return r.ok ? { ok: true, status: 'ok', message: 'OpenAI reachable' }
-                  : { ok: false, status: 'error', message: 'OpenAI returned HTTP ' + r.status };
+      const r = await _fetchT(base + '/models', { headers: { Authorization: 'Bearer ' + key } });
+      if (r.ok) return _OK('OpenAI reachable');
+      if (r.status === 401 || r.status === 403) return _BAD('OpenAI rejected the key (HTTP ' + r.status + ')');
+      return _HTTP('OpenAI', r);
     }
     if (entry.test === 'anthropic') {
       const key = resolvePlatformKey('AI_INTEGRATIONS_ANTHROPIC_API_KEY') || resolvePlatformKey('ANTHROPIC_API_KEY');
-      if (!key) return { ok: false, status: 'unconfigured', message: 'No key configured' };
+      if (!key) return _UNCONF();
       const base = (process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/$/, '');
-      const r = await fetch(base + '/v1/models', { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' } });
-      return r.ok ? { ok: true, status: 'ok', message: 'Anthropic reachable' }
-                  : { ok: false, status: 'error', message: 'Anthropic returned HTTP ' + r.status };
+      const r = await _fetchT(base + '/v1/models', { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' } });
+      if (r.ok) return _OK('Anthropic reachable');
+      if (r.status === 401 || r.status === 403) return _BAD('Anthropic rejected the key (HTTP ' + r.status + ')');
+      return _HTTP('Anthropic', r);
     }
     if (entry.test === 'dataforseo') {
       const login = resolvePlatformKey('DATAFORSEO_LOGIN');
       const pass = resolvePlatformKey('DATAFORSEO_PASSWORD');
-      if (!login || !pass) return { ok: false, status: 'unconfigured', message: 'Login + password required' };
+      if (!login || !pass) return _UNCONF('Login + password required');
       const auth = Buffer.from(login + ':' + pass).toString('base64');
-      const r = await fetch('https://api.dataforseo.com/v3/appendix/user_data', { headers: { Authorization: 'Basic ' + auth } });
-      return r.ok ? { ok: true, status: 'ok', message: 'DataForSEO authenticated' }
-                  : { ok: false, status: 'error', message: 'DataForSEO returned HTTP ' + r.status };
+      const r = await _fetchT('https://api.dataforseo.com/v3/appendix/user_data', { headers: { Authorization: 'Basic ' + auth } });
+      if (r.ok) return _OK('DataForSEO authenticated');
+      if (r.status === 401 || r.status === 403) return _BAD('DataForSEO rejected the login/password (HTTP ' + r.status + ')');
+      return _HTTP('DataForSEO', r);
     }
     if (entry.test === 'resend') {
       const key = resolvePlatformKey('RESEND_API_KEY');
-      if (!key) return { ok: false, status: 'unconfigured', message: 'No key configured' };
-      const r = await fetch('https://api.resend.com/domains', { headers: { Authorization: 'Bearer ' + key } });
-      return r.ok ? { ok: true, status: 'ok', message: 'Resend authenticated' }
-                  : { ok: false, status: 'error', message: 'Resend returned HTTP ' + r.status };
+      if (!key) return _UNCONF();
+      const r = await _fetchT('https://api.resend.com/domains', { headers: { Authorization: 'Bearer ' + key } });
+      if (r.ok) return _OK('Resend authenticated');
+      if (r.status === 401 || r.status === 403) return _BAD('Resend rejected the key (HTTP ' + r.status + ')');
+      return _HTTP('Resend', r);
+    }
+    if (entry.test === 'gemini') {
+      const key = resolvePlatformKey('GEMINI_API_KEY');
+      if (!key) return _UNCONF();
+      const r = await _fetchT('https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key));
+      if (r.ok) return _OK('Gemini reachable');
+      if (r.status === 400 || r.status === 401 || r.status === 403) return _BAD('Gemini rejected the key (HTTP ' + r.status + ')');
+      return _HTTP('Gemini', r);
+    }
+    if (entry.test === 'perplexity') {
+      const key = resolvePlatformKey('PERPLEXITY_API_KEY');
+      if (!key) return _UNCONF();
+      // Auth probe: an empty body fails request validation (400) *after* the key
+      // is checked, so a bad key surfaces as 401/403 without spending tokens.
+      const r = await _fetchT('https://api.perplexity.ai/chat/completions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: '{}',
+      });
+      if (r.status === 401 || r.status === 403) return _BAD('Perplexity rejected the key (HTTP ' + r.status + ')');
+      if (r.ok || r.status === 400 || r.status === 422) return _OK('Perplexity authenticated');
+      return _HTTP('Perplexity', r);
+    }
+    if (entry.test === 'cloudflare') {
+      const token = resolvePlatformKey('CLOUDFLARE_AI_TOKEN');
+      if (!token) return _UNCONF('AI token required');
+      // Verifies the token is valid & active regardless of its scope. A malformed
+      // or unknown token is rejected with 400/401/403 (not just 401).
+      const r = await _fetchT('https://api.cloudflare.com/client/v4/user/tokens/verify', { headers: { Authorization: 'Bearer ' + token } });
+      if (r.ok) return _OK('Cloudflare token active');
+      if (r.status === 400 || r.status === 401 || r.status === 403) return _BAD('Cloudflare rejected the token (HTTP ' + r.status + ')');
+      return _HTTP('Cloudflare', r);
+    }
+    if (entry.test === 'firecrawl') {
+      const key = resolvePlatformKey('FIRECRAWL_API_KEY');
+      if (!key) return _UNCONF();
+      // Auth probe against the scrape endpoint with an empty body — a bad key is
+      // rejected (401/403) before any page is fetched, so no credits are spent.
+      const r = await _fetchT('https://api.firecrawl.dev/v1/scrape', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: '{}',
+      });
+      if (r.status === 401 || r.status === 403) return _BAD('Firecrawl rejected the key (HTTP ' + r.status + ')');
+      if (r.ok || r.status === 400 || r.status === 422) return _OK('Firecrawl authenticated');
+      return _HTTP('Firecrawl', r);
+    }
+    if (entry.test === 'apollo') {
+      const key = resolvePlatformKey('APOLLO_API_KEY');
+      if (!key) return _UNCONF();
+      // Apollo's health endpoint returns HTTP 200 even for a bad key — the truth
+      // is in the body: is_logged_in=false means the key was not accepted.
+      const r = await _fetchT('https://api.apollo.io/api/v1/auth/health', { headers: { 'X-Api-Key': key, Accept: 'application/json', 'Cache-Control': 'no-cache' } });
+      if (r.status === 401 || r.status === 403) return _BAD('Apollo rejected the key (HTTP ' + r.status + ')');
+      if (!r.ok) return _HTTP('Apollo', r);
+      let data = null; try { data = JSON.parse(await _bodyText(r)); } catch {}
+      if (data && data.is_logged_in === true) return _OK('Apollo authenticated');
+      return _BAD('Apollo rejected the key');
+    }
+    if (entry.test === 'builtwith') {
+      const key = resolvePlatformKey('BUILTWITH_API_KEY');
+      if (!key) return _UNCONF();
+      // BuiltWith returns HTTP 200 with an in-body Errors[] for a bad key.
+      const r = await _fetchT('https://api.builtwith.com/free1/api.json?KEY=' + encodeURIComponent(key) + '&LOOKUP=builtwith.com');
+      const txt = await _bodyText(r);
+      if (r.status === 401 || r.status === 403) return _BAD('BuiltWith rejected the key (HTTP ' + r.status + ')');
+      if (!r.ok) return _HTTP('BuiltWith', r);
+      let data = null; try { data = JSON.parse(txt); } catch {}
+      const errs = data && data.Errors;
+      if (Array.isArray(errs) && errs.length) {
+        const msg = (errs[0] && (errs[0].Message || errs[0].message)) || String(errs[0]);
+        return _BAD('BuiltWith: ' + msg);
+      }
+      return _OK('BuiltWith authenticated');
+    }
+    if (entry.test === 'pagespeed') {
+      const key = resolvePlatformKey('GOOGLE_PAGESPEED_API_KEY');
+      if (!key) return _UNCONF();
+      // No `url` param → request fails validation *before* running any audit, so
+      // a valid key returns "missing url" while a bad key returns "API key not valid".
+      const r = await _fetchT('https://www.googleapis.com/pagespeedonline/v5/runPagespeed?key=' + encodeURIComponent(key));
+      const txt = await _bodyText(r);
+      if (/api key not valid|api_key_invalid|keyinvalid/i.test(txt)) return _BAD('Google rejected the API key');
+      if (r.ok || r.status === 400) return _OK('PageSpeed key accepted');
+      if (r.status === 401 || r.status === 403) return _BAD('Google rejected the API key (HTTP ' + r.status + ')');
+      return _HTTP('PageSpeed', r);
+    }
+    if (entry.test === 'google_search') {
+      const key = resolvePlatformKey('GOOGLE_SEARCH_API_KEY');
+      if (!key) return _UNCONF();
+      // Same probe pattern: missing cx/q fails after the key is validated.
+      const r = await _fetchT('https://www.googleapis.com/customsearch/v1?key=' + encodeURIComponent(key));
+      const txt = await _bodyText(r);
+      if (/api key not valid|api_key_invalid|keyinvalid/i.test(txt)) return _BAD('Google rejected the API key');
+      if (r.ok || r.status === 400) return _OK('Google Search key accepted');
+      if (r.status === 401 || r.status === 403) return _BAD('Google rejected the API key (HTTP ' + r.status + ')');
+      return _HTTP('Google Search', r);
+    }
+    if (entry.test === 'amplitude') {
+      const key = resolvePlatformKey('AMPLITUDE_API_KEY');
+      if (!key) return _UNCONF();
+      // Empty events[] → 400 "missing required field" for a valid key, or an
+      // "Invalid API key" body for a bad one. No real events are ingested.
+      const r = await _fetchT('https://api2.amplitude.com/2/httpapi', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ api_key: key, events: [] }),
+      });
+      const txt = await _bodyText(r);
+      if (/invalid api key/i.test(txt)) return _BAD('Amplitude rejected the key');
+      if (r.status === 401 || r.status === 403) return _BAD('Amplitude rejected the key (HTTP ' + r.status + ')');
+      if (r.ok || r.status === 400) return _OK('Amplitude accepted the key');
+      return _HTTP('Amplitude', r);
+    }
+    if (entry.test === 'stripe') {
+      const key = resolvePlatformKey('STRIPE_SECRET_KEY');
+      if (!key) return _UNCONF();
+      const r = await _fetchT('https://api.stripe.com/v1/balance', { headers: { Authorization: 'Bearer ' + key } });
+      if (r.ok) return _OK('Stripe authenticated');
+      if (r.status === 401 || r.status === 403) return _BAD('Stripe rejected the key (HTTP ' + r.status + ')');
+      return _HTTP('Stripe', r);
     }
     return { ok: false, status: 'error', message: 'no test available for this key' };
   } catch (e) {
-    return { ok: false, status: 'error', message: e.message };
+    const aborted = e && (e.name === 'AbortError' || /abort/i.test(e.message || ''));
+    return { ok: false, status: 'error', message: aborted ? 'Test timed out' : (e.message || 'Test failed') };
   }
 }
 

@@ -14868,7 +14868,9 @@ async function _adminRenderPlatformKeys(body) {
     const ph = it.configured ? ('Current: ' + _esc(it.masked)) : (it.secret ? 'Not configured — paste a value to set' : 'Not configured');
     const testBtn = it.testable
       ? `<button onclick="_adminTestPlatformKey('${_esc(it.key)}')" id="ptest-${_esc(it.key)}" style="border:1px solid #CBD5E1;background:#fff;color:#334155;border-radius:8px;font-size:12px;padding:7px 12px;cursor:pointer;font-weight:600">Test</button>`
-      : '';
+      : (it.noTest
+          ? `<span title="No health endpoint to verify this value against" style="font-size:11px;color:#94A3B8;font-style:italic;padding:7px 4px">No test available</span>`
+          : '');
     return `
       <div style="border:1px solid #E2E8F0;border-radius:10px;padding:14px;background:#fff">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
