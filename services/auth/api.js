@@ -267,6 +267,16 @@ function _providerConfig(provider) {
 function _redirectUri(req, provider) {
   return `${_publicBaseUrl(req)}/api/auth/oauth/${provider}/callback`;
 }
+
+// Validate a post-login `next` destination. Mirrors login.html's nextDest():
+// only same-origin relative paths are accepted — anything else (protocol-relative
+// `//`, absolute URLs, backslash tricks) falls back to the home dashboard to
+// prevent open-redirects.
+function _safeNext(n) {
+  if (!n || typeof n !== 'string') return '/';
+  if (n.charAt(0) !== '/' || n.charAt(1) === '/' || n.charAt(1) === '\\') return '/';
+  return n;
+}
 async function _postForm(url, params) {
   const body = new URLSearchParams(params).toString();
   const r = await fetch(url, {
@@ -559,6 +569,10 @@ router.get('/oauth/:provider/start', (req, res) => {
   const state = crypto.randomBytes(16).toString('hex');
   req.session.oauthState = state;
   req.session.oauthProvider = provider;
+  // Remember where to land after the OAuth round-trip (set when the app
+  // redirected the user to /login?next=… on session-expiry). Validated here so
+  // the callback can trust it without re-checking.
+  req.session.oauthNext = _safeNext(req.query.next);
   const params = new URLSearchParams({
     client_id:      cfg.clientId,
     redirect_uri:   _redirectUri(req, provider),
@@ -585,6 +599,8 @@ router.get('/oauth/:provider/callback', async (req, res) => {
       return res.status(400).send(_simplePage('Invalid OAuth state. Please try again.'));
     }
     delete req.session.oauthState;
+    const nextDest = _safeNext(req.session && req.session.oauthNext);
+    if (req.session) delete req.session.oauthNext;
     const tokenResp = await _postForm(cfg.tokenUrl, {
       code, client_id: cfg.clientId, client_secret: cfg.clientSecret,
       redirect_uri: _redirectUri(req, provider),
@@ -615,7 +631,11 @@ router.get('/oauth/:provider/callback', async (req, res) => {
     }
     await _establishSession(req, user);
     await touchLastLogin(user.id);
-    res.redirect('/?social=' + encodeURIComponent(provider));
+    // Land the user back on the view they were using (carried via the OAuth
+    // round-trip through the session), keeping the `social=` marker so the app
+    // can show its "signed in with …" confirmation.
+    const sep = nextDest.indexOf('?') === -1 ? '?' : '&';
+    res.redirect(nextDest + sep + 'social=' + encodeURIComponent(provider));
   } catch (e) {
     console.error(`[auth/oauth/${provider}] error:`, e);
     res.status(500).send(_simplePage('Sign-in failed.', e.message));
@@ -643,4 +663,6 @@ module.exports = {
   // Invite flow helpers (used by the Admin Portal to send team invites)
   createToken, createInviteToken, sendMail: _sendMail, publicBaseUrl: _publicBaseUrl,
   inviteEmailTemplate: _inviteEmailTemplate,
+  // Exported for tests: same-origin `next` validation (open-redirect guard).
+  safeNext: _safeNext,
 };

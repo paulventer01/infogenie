@@ -152,7 +152,12 @@
         var btns = row.querySelectorAll('button');
         for (var j=0;j<btns.length;j++){
           btns[j].addEventListener('click', function(){
-            window.location.href = '/api/auth/oauth/' + encodeURIComponent(this.dataset.provider) + '/start';
+            // Forward the validated `next` destination so it survives the OAuth
+            // round-trip and the user lands back on the view they were using.
+            var dest = nextDest();
+            var url = '/api/auth/oauth/' + encodeURIComponent(this.dataset.provider) + '/start';
+            if (dest && dest !== '/') url += '?next=' + encodeURIComponent(dest);
+            window.location.href = url;
           });
         }
       } catch(e) { /* social row optional */ }
