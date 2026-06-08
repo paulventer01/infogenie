@@ -15162,7 +15162,30 @@ window._setActiveClient = function(id) {
             && !/^https?:\/\//i.test(url) && !window._authRedirecting) {
           window._authRedirecting = true;
           try { window._auth && window._auth._clearSession && window._auth._clearSession(); } catch(_){}
-          location.href = '/login?expired=1';
+          // Remember where the user was so the login page can send them back
+          // after re-auth (avoids an abrupt jump to the default dashboard).
+          // Prefer the active view; fall back to the current relative URL.
+          let next = '';
+          try {
+            const cv = window.currentView;
+            if (cv && cv !== 'home') {
+              next = '/?view=' + encodeURIComponent(cv);
+            } else {
+              const rel = (location.pathname || '/') + (location.search || '') + (location.hash || '');
+              if (rel && rel !== '/' && !/^\/login/i.test(rel)) next = rel;
+            }
+          } catch(_) {}
+          let dest = '/login?expired=1';
+          if (next) dest += '&next=' + encodeURIComponent(next);
+          // Show a brief, friendly notice before the hard redirect so the
+          // session-end doesn't feel like an abrupt, unexplained jump.
+          const _go = () => { location.href = dest; };
+          try {
+            if (typeof window.showToast === 'function') {
+              window.showToast('🔒 Your session ended — taking you to sign in…');
+              setTimeout(_go, 1400);
+            } else { _go(); }
+          } catch(_) { _go(); }
         }
         if (ct && ct.indexOf('application/json') !== -1 && url.indexOf('/api/') !== -1 && url.indexOf('/api/admin/') === -1) {
           res.clone().json().then(j => {
