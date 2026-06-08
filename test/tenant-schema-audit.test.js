@@ -34,6 +34,7 @@ const KNOWN_GLOBAL = new Set([
   'user_identities',   // OAuth identities (per user, not per tenant)
   'user_sessions',     // cross-tenant session store
   'user_integrations', // per-user credential vault
+  'platform_api_keys', // platform-owned API keys, shared across all tenants
 ]);
 
 // ── Tables whose tenant_id is intentionally NULLABLE ─────────────────────────

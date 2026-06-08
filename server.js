@@ -13,6 +13,7 @@ const Anthropic  = require('@anthropic-ai/sdk');
 const _authService = require('./services/auth/api');
 const _authSchema  = require('./services/auth/schema');
 const _credentialsVault = require('./services/credentials/vault');
+const _platformKeys = require('./services/credentials/platform_keys');
 const _tenantSchema     = require('./services/tenants/schema');
 const _tenantMiddleware = require('./services/tenants/middleware');
 const _tenantRouter     = require('./services/tenants/api');
@@ -29,14 +30,27 @@ if (!process.env.RAPIDAPI_KEY && process.env.RAPIDAPI_EMAIL_KEY) {
 }
 
 // ── Shared AI clients (used by all routes) ───────────────────────────────────
-const openai = new OpenAI({
+// `let` (not `const`) so they can be rebuilt after platform_keys.hydrate() pulls
+// an admin-managed OpenAI/Anthropic key out of the DB at boot. Route handlers
+// close over these bindings and call them lazily, so a rebuild is picked up.
+let openai = new OpenAI({
   apiKey:   process.env.AI_INTEGRATIONS_OPENAI_API_KEY || 'dummy',
   baseURL:  process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
-const anthropic = new Anthropic.default({
+let anthropic = new Anthropic.default({
   apiKey:   process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
   baseURL:  process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
 });
+function _rebuildAiClients() {
+  openai = new OpenAI({
+    apiKey:   process.env.AI_INTEGRATIONS_OPENAI_API_KEY || 'dummy',
+    baseURL:  process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
+  anthropic = new Anthropic.default({
+    apiKey:   process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+    baseURL:  process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+  });
+}
 
 // ── Retry-with-fallback helper for OpenAI chat completions ─────────────────
 // gpt-4o is occasionally returning empty 500s ("500 status code (no body)")
@@ -2367,6 +2381,17 @@ BOOT_TASKS.push(async () => {
           process.exit(1);
         }
       }
+      // Platform API keys (Task 136): create the platform_api_keys table, then
+      // overlay any admin-managed values onto process.env so the rest of the app
+      // (which reads process.env.X directly) transparently uses them. Finally
+      // rebuild the shared OpenAI/Anthropic clients in case their keys changed.
+      try {
+        await _platformKeys.ensurePlatformKeysSchema();
+        await _platformKeys.hydrate();
+        _rebuildAiClients();
+      } catch (e) {
+        console.error('[platform-keys] init failed:', e.message);
+      }
       // Multi-tenancy foundation (Phase 1): tenants + roles + memberships +
       // backfill of existing users into personal tenants. Additive only —
       // does not modify any existing table.
@@ -2900,6 +2925,15 @@ app.get('/api/ecom-video/veo-status', async (req, res) => {
 // ── Settings: simple API-key vault (tenant-scoped, Postgres kv_store) ─────
 // POST /api/settings/api-key  { platform, key }  → saves encrypted key
 // GET  /api/settings/api-key/:platform           → { ok, configured: bool }
+// Platform-owned API keys are managed only via the admin "Platform APIs" tab
+// (POST/GET /api/admin/platform-keys). Block non-admins from reading or writing
+// those key names through the tenant-scoped user settings vault (Task 136).
+function _settingsCallerIsPlatformAdmin(req) {
+  if (!req.user) return false;
+  if (req.user.isOwner === true) return true;
+  const k = req.platformRole && req.platformRole.key;
+  return k === 'platform_owner' || k === 'platform_admin';
+}
 app.post('/api/settings/api-key', async (req, res) => {
   try {
     if (!req.user) return res.status(401).json({ ok: false, error: 'Login required' });
@@ -2908,6 +2942,8 @@ app.post('/api/settings/api-key', async (req, res) => {
     const { platform, key } = req.body || {};
     if (!platform || typeof platform !== 'string' || !platform.trim())
       return res.status(400).json({ ok: false, error: 'platform required' });
+    if (_platformKeys.isPlatformKeyName(platform) && !_settingsCallerIsPlatformAdmin(req))
+      return res.status(403).json({ ok: false, error: 'platform_key_admin_only' });
     if (!key || typeof key !== 'string' || !key.trim())
       return res.status(400).json({ ok: false, error: 'key required' });
     const _vault = require('./services/credentials/vault');
@@ -2924,6 +2960,8 @@ app.get('/api/settings/api-key/:platform', async (req, res) => {
     if (!req.user) return res.status(401).json({ ok: false, error: 'Login required' });
     const tid = await _tkvCtx.resolveTenantId(req, { label: 'settings:get-api-key' });
     if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
+    if (_platformKeys.isPlatformKeyName(req.params.platform) && !_settingsCallerIsPlatformAdmin(req))
+      return res.status(403).json({ ok: false, error: 'platform_key_admin_only' });
     const _vault = require('./services/credentials/vault');
     const k = await _vault.getApiKey(tid, req.params.platform.toLowerCase().trim());
     res.json({ ok: true, configured: !!(k && k.trim()) });

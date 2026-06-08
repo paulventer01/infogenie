@@ -158,8 +158,8 @@ const INTEGRATIONS = {
   intelligence: {
     label: 'Intelligence APIs',
     icon: '🔍',
-    desc: 'Power InfoGenie\'s competitor analysis engine with the industry\'s best intelligence data sources — traffic estimates, keyword data, ad libraries, and tech stack detection.',
-    badge: '10 Sources',
+    desc: 'Connect your own competitive-intelligence subscriptions — traffic estimates, keyword data, backlinks, ad libraries, and brand monitoring.',
+    badge: '9 Sources',
     items: [
       {
         id: 'semrush', logo: '📊', name: 'Semrush API',
@@ -219,24 +219,6 @@ const INTEGRATIONS = {
         ]
       },
       {
-        id: 'builtwith', logo: '🔧', name: 'BuiltWith API',
-        tagline: 'Competitor tech stack, ad pixels & tracking detection',
-        authType: 'apikey',
-        placeholder: 'BuiltWith API Key',
-        unlocks: [
-          'Competitor technology stack detection (CMS, cart, analytics)',
-          'Ad pixel identification (Meta Pixel, Google Tag, etc.)',
-          'Email platform and CRM detection',
-          'Spend estimates based on tech usage patterns'
-        ],
-        steps: [
-          { text: 'Sign up at <a href="https://builtwith.com/plans" target="_blank">builtwith.com/plans</a> (API requires paid plan)' },
-          { text: 'Go to <strong>Account → API Access</strong>' },
-          { text: 'Copy your <strong>API Key</strong>' },
-          { text: 'Paste it above and click <strong>Test Connection</strong>' }
-        ]
-      },
-      {
         id: 'spyfu', logo: '🕵️', name: 'SpyFu API',
         tagline: 'Google Ads history, competitor keywords & ad copy spy',
         authType: 'apikey',
@@ -292,43 +274,6 @@ const INTEGRATIONS = {
           { text: 'Select the following permission: <code>ads_read</code> — this grants access to the Ad Library' },
           { text: 'Convert to a long-lived token: call <code>GET /oauth/access_token?grant_type=fb_exchange_token</code> with your short-lived token' },
           { text: 'Paste your long-lived token above and click <strong>Test Connection</strong> — InfoGenie will verify Ad Library access immediately' }
-        ]
-      },
-      {
-        id: 'dataforseo', logo: '📡', name: 'DataForSEO',
-        tagline: 'Live competitor ad spend, keyword data & SERP intelligence — powering InfoGenie\'s core analytics',
-        authType: 'apikey',
-        placeholder: 'DataForSEO Login:Password',
-        unlocks: [
-          '🔴 LIVE: Real competitor paid ad spend estimates updated daily',
-          'Domain rank overview with organic & paid traffic value per competitor',
-          'Keyword gap analysis with CPC and competition scores',
-          'SERP feature detection: ads, shopping, local packs per keyword'
-        ],
-        steps: [
-          { text: 'Sign up at <a href="https://dataforseo.com" target="_blank">dataforseo.com</a> — pay-as-you-go plans start from $0.0001/request' },
-          { text: 'After signup, your <strong>Login</strong> (email) and <strong>Password</strong> are your API credentials' },
-          { text: 'Enter them in the format <code>email@domain.com:YourPassword</code> above' },
-          { text: 'Click <strong>Test Connection</strong> — InfoGenie will immediately begin pulling live competitor data' }
-        ]
-      },
-      {
-        id: 'firecrawl', logo: '🔥', name: 'Firecrawl',
-        tagline: 'Headless-browser scraping that bypasses Cloudflare/Akamai bot walls',
-        authType: 'apikey',
-        placeholder: 'Firecrawl API Key (fc-...)',
-        unlocks: [
-          'Scrape competitor sites that block normal crawlers (403/429)',
-          'Auto-fallback for Page Audit when origin returns anti-bot blocks',
-          'LLM-friendly markdown extraction for AI Visibility ingestion',
-          'Structured metadata + clean HTML for content gap analysis'
-        ],
-        steps: [
-          { text: 'Sign up at <a href="https://firecrawl.dev" target="_blank">firecrawl.dev</a>' },
-          { text: 'Open <strong>Dashboard → API Keys</strong>' },
-          { text: 'Click <strong>Create API Key</strong> (key starts with <code>fc-</code>)' },
-          { text: 'In Replit Secrets, add <code>FIRECRAWL_API_KEY</code> with the value' },
-          { text: 'InfoGenie auto-detects it on next request — no restart needed' }
         ]
       },
       {
@@ -395,69 +340,9 @@ const INTEGRATIONS = {
   ai: {
     label: 'AI Models',
     icon: '🤖',
-    desc: 'Connect leading AI models to power InfoGenie\'s ad copy generation, strategic analysis, image creation, and conversational intelligence engine.',
-    badge: '11 Models',
+    desc: 'Connect your own AI model subscriptions for image, voice, video, and copy generation. InfoGenie\'s core GPT-4o, Claude, Gemini, and Perplexity intelligence is included on every plan — no key required.',
+    badge: '8 Models',
     items: [
-      {
-        id: 'openai', logo: '🟢', name: 'OpenAI — GPT-4o',
-        tagline: 'Ad copy generation, strategy analysis & conversational AI',
-        authType: 'apikey',
-        placeholder: 'OpenAI API Key (sk-proj-xxxx...)',
-        unlocks: [
-          'GPT-4o powers InfoGenie\'s ad copy and headline generation',
-          'Strategic competitor analysis and campaign recommendations',
-          'Conversational AI assistant for campaign building',
-          'DALL-E 3 image generation for ad creatives'
-        ],
-        steps: [
-          { text: 'Go to <a href="https://platform.openai.com" target="_blank">platform.openai.com</a> and sign in' },
-          { text: 'Navigate to <strong>API Keys</strong> in the left sidebar' },
-          { text: 'Click <strong>Create new secret key</strong> — give it a name like "InfoGenie"' },
-          { text: '<strong>Important:</strong> Copy the key immediately — it\'s only shown once' },
-          { text: 'Ensure you have a <strong>paid plan</strong> with GPT-4 access enabled' },
-          { text: 'Paste your key above and click <strong>Test Connection</strong>' }
-        ]
-      },
-      {
-        id: 'anthropic', logo: '🟣', name: 'Anthropic — Claude 3.5',
-        tagline: 'Deep competitive analysis, long-form strategy & reasoning',
-        authType: 'apikey',
-        placeholder: 'Anthropic API Key (sk-ant-xxxx...)',
-        unlocks: [
-          'Claude 3.5 Sonnet for nuanced competitor strategy reports',
-          'Long-form campaign strategy documents and briefs',
-          'Complex data analysis and market positioning insights',
-          'High-accuracy ad compliance checking'
-        ],
-        steps: [
-          { text: 'Go to <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> and sign in' },
-          { text: 'Navigate to <strong>API Keys</strong> in the sidebar' },
-          { text: 'Click <strong>Create Key</strong> and name it "InfoGenie"' },
-          { text: 'Copy the key immediately (starts with <code>sk-ant-</code>)' },
-          { text: 'Ensure your account has <strong>Claude 3.5 Sonnet</strong> access' },
-          { text: 'Paste your key above and click <strong>Test Connection</strong>' }
-        ]
-      },
-      {
-        id: 'gemini', logo: '🔵', name: 'Google Gemini',
-        tagline: 'Multimodal AI for visual ad analysis & video script generation',
-        authType: 'apikey',
-        placeholder: 'Google AI Studio API Key',
-        unlocks: [
-          'Gemini Pro Vision for competitor ad creative analysis',
-          'Video script generation for YouTube and TikTok campaigns',
-          'Multimodal competitor content analysis (text + images)',
-          'Google Workspace integration for report generation'
-        ],
-        steps: [
-          { text: 'Visit <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a>' },
-          { text: 'Click <strong>Get API key</strong> in the top navigation' },
-          { text: 'Create a new API key in a Google Cloud project' },
-          { text: 'Copy your API key' },
-          { text: 'Alternatively, enable Gemini API in <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a> for enterprise features' },
-          { text: 'Paste your key above and click <strong>Test Connection</strong>' }
-        ]
-      },
       {
         id: 'stability', logo: '🎨', name: 'Stability AI',
         tagline: 'Stable Diffusion for AI-generated ad images & visuals',
@@ -762,7 +647,7 @@ const INTEGRATIONS = {
     label: 'Analytics & Data',
     icon: '📈',
     desc: 'Connect analytics and data platforms to give InfoGenie complete visibility into your performance — enabling smarter competitor benchmarking and ROI attribution.',
-    badge: '9 Platforms',
+    badge: '8 Platforms',
     items: [
       {
         id: 'shopify', logo: '🛍️', name: 'Shopify Admin API',
@@ -912,25 +797,6 @@ const INTEGRATIONS = {
           { text: 'Give it the name "InfoGenie" and copy the token' },
           { text: 'Note your <strong>Site ID</strong> from the Hotjar dashboard' },
           { text: 'Paste your token above and click <strong>Test Connection</strong>' }
-        ]
-      },
-      {
-        id: 'amplitude', logo: '📉', name: 'Amplitude',
-        tagline: 'Product analytics, revenue insights & user journey mapping',
-        authType: 'apikey',
-        placeholder: 'Amplitude API Key:Secret Key',
-        unlocks: [
-          'User journey analysis from ad click to conversion',
-          'Revenue event tracking and LTV modelling',
-          'Behavioural cohort sync for precision retargeting',
-          'Predictive audience scoring for campaign optimisation'
-        ],
-        steps: [
-          { text: 'Go to <a href="https://app.amplitude.com" target="_blank">app.amplitude.com</a> → <strong>Settings → Projects</strong>' },
-          { text: 'Select your project and navigate to <strong>General → API Keys</strong>' },
-          { text: 'Copy both the <strong>API Key</strong> and <strong>Secret Key</strong>' },
-          { text: 'Enter them in format <code>APIKey:SecretKey</code> above' },
-          { text: 'Click <strong>Test Connection</strong>' }
         ]
       },
       {

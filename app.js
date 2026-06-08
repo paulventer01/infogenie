@@ -14417,6 +14417,7 @@ function _adminRenderTabs() {
     { id:'workspaces', label:'🏢 Workspaces' },
     { id:'clients',    label:'👤 Clients' },
     { id:'users',      label:'👥 Users & Roles' },
+    { id:'platform-keys', label:'🔑 Platform APIs' },
     { id:'audit',      label:'📜 Audit Log' },
     { id:'issues',     label:'🚨 Issues' }
   ];
@@ -14444,6 +14445,7 @@ async function _adminRenderActive(force) {
     if (tab === 'workspaces') return await _adminRenderWorkspaces(body);
     if (tab === 'clients')    return await _adminRenderClients(body, force);
     if (tab === 'users')      return await _adminRenderUsers(body);
+    if (tab === 'platform-keys') return await _adminRenderPlatformKeys(body);
     if (tab === 'audit')      return await _adminRenderAudit(body);
     if (tab === 'issues')     return await _adminRenderIssues(body);
   } catch (e) {
@@ -14841,6 +14843,97 @@ window._adminResendInvite = async function(tenantId, userId) {
     showToast(r.emailSent ? ('✓ Invite re-sent to ' + r.email) : ('Invite re-issued, but email failed: ' + (r.mailError || 'mail not configured')));
     _adminRenderActive(true);
   } catch (e) { showToast('⚠️ ' + (friendly[e.message] || e.message)); }
+};
+
+// ── Platform APIs tab ─────────────────────────────────────────────────────
+// Admin-only management of platform-owned API keys (the ones InfoGenie pays for
+// on behalf of every tenant). Values are never echoed back — the server returns
+// only a masked preview + configured/source. Saving stores an encrypted value
+// in platform_api_keys and overlays it onto the runtime env.
+async function _adminRenderPlatformKeys(body) {
+  const d = await _adminFetch('/platform-keys');
+  const groups = d.groups || [];
+  window._adminPlatformKeysCache = groups;
+
+  const pill = (it) => {
+    if (!it.configured) return '<span style="font-size:11px;font-weight:700;color:#94A3B8;background:#F1F5F9;padding:3px 10px;border-radius:99px">Not set</span>';
+    const isDb = it.source === 'db';
+    const color = isDb ? '#0F766E' : '#B45309';
+    const bg = isDb ? '#F0FDFA' : '#FFFBEB';
+    const label = isDb ? 'Saved' : 'From env';
+    return `<span style="font-size:11px;font-weight:700;color:${color};background:${bg};padding:3px 10px;border-radius:99px">● ${label}</span>`;
+  };
+
+  const card = (it) => {
+    const ph = it.configured ? ('Current: ' + _esc(it.masked)) : (it.secret ? 'Not configured — paste a value to set' : 'Not configured');
+    const testBtn = it.testable
+      ? `<button onclick="_adminTestPlatformKey('${_esc(it.key)}')" id="ptest-${_esc(it.key)}" style="border:1px solid #CBD5E1;background:#fff;color:#334155;border-radius:8px;font-size:12px;padding:7px 12px;cursor:pointer;font-weight:600">Test</button>`
+      : '';
+    return `
+      <div style="border:1px solid #E2E8F0;border-radius:10px;padding:14px;background:#fff">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span style="font-weight:700;color:#1E293B;font-size:14px">${_esc(it.label)}</span>
+          ${pill(it)}
+        </div>
+        <div style="font-size:12px;color:#64748B;margin-bottom:8px">${_esc(it.desc || '')}</div>
+        <div style="font-size:11px;color:#94A3B8;font-family:monospace;margin-bottom:8px">${_esc(it.key)}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="${it.secret ? 'password' : 'text'}" id="pk-${_esc(it.key)}" placeholder="${ph}" autocomplete="off"
+            style="flex:1;min-width:200px;padding:8px 10px;border:1px solid #CBD5E1;border-radius:8px;font-size:13px" />
+          <button onclick="_adminSavePlatformKey('${_esc(it.key)}')" style="border:1px solid #BBF7D0;background:#F0FDF4;color:#15803D;border-radius:8px;font-size:12px;padding:8px 14px;cursor:pointer;font-weight:700">Save</button>
+          ${testBtn}
+        </div>
+        <div id="ptestmsg-${_esc(it.key)}" style="font-size:12px;margin-top:6px"></div>
+      </div>`;
+  };
+
+  const groupHtml = groups.map(g => `
+    <div style="margin-bottom:22px">
+      <div style="font-weight:800;color:#1E293B;font-size:15px;margin-bottom:10px">${_esc(g.group)}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">
+        ${(g.items || []).map(card).join('')}
+      </div>
+    </div>`).join('');
+
+  body.innerHTML = `
+    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:16px 18px;margin-bottom:18px">
+      <div style="font-weight:800;color:#1E293B;font-size:16px;margin-bottom:4px">🔑 Platform API Keys</div>
+      <div style="font-size:13px;color:#64748B;line-height:1.5">These are the API keys InfoGenie operates on behalf of <strong>every workspace</strong> — the AI models, data vendors, and shared infrastructure. They are platform-wide (not per-workspace). Saving a key here stores it encrypted and uses it immediately; leaving a field blank keeps the existing value.</div>
+    </div>
+    ${groupHtml || '<div style="padding:24px;text-align:center;color:#64748B">No platform keys defined.</div>'}`;
+}
+
+window._adminSavePlatformKey = async function(key) {
+  const inp = document.getElementById('pk-' + key);
+  if (!inp) return;
+  const value = inp.value;
+  if (value === '') { showToast('⚠️ Enter a value to save'); return; }
+  try {
+    await _adminFetch('/platform-keys/' + encodeURIComponent(key), { method:'PUT', body:{ value } });
+    showToast('✓ Saved ' + key);
+    inp.value = '';
+    _adminRenderActive(true);
+  } catch (e) { showToast('⚠️ ' + e.message); }
+};
+
+window._adminTestPlatformKey = async function(key) {
+  const btn = document.getElementById('ptest-' + key);
+  const msg = document.getElementById('ptestmsg-' + key);
+  if (btn) { btn.disabled = true; btn.textContent = 'Testing…'; }
+  if (msg) { msg.textContent = ''; }
+  try {
+    const r = await _adminFetch('/platform-keys/' + encodeURIComponent(key) + '/test', { method:'POST', body:{} });
+    const res = r.result || {};
+    if (msg) {
+      const ok = res.status === 'ok';
+      msg.style.color = ok ? '#15803D' : '#B91C1C';
+      msg.textContent = (ok ? '✓ ' : '⚠️ ') + (res.message || (ok ? 'OK' : 'Failed'));
+    }
+  } catch (e) {
+    if (msg) { msg.style.color = '#B91C1C'; msg.textContent = '⚠️ ' + e.message; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Test'; }
+  }
 };
 
 // ── Audit Log tab ─────────────────────────────────────────────────────────

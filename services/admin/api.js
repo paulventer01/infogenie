@@ -24,6 +24,7 @@ const { SYSTEM_ROLES } = require('../tenants/permissions');
 const _dataMode = require('./data_mode');
 const _issues = require('./issues');
 const _audit = require('./audit');
+const _platformKeys = require('../credentials/platform_keys');
 
 const router = express.Router();
 
@@ -710,6 +711,47 @@ router.post('/issues/test', async (req, res) => {
     tenantId: req.tenant ? req.tenant.id : null,
   });
   res.json({ ok: r.ok, result: r });
+});
+
+// ── Platform API keys (Task 136) ────────────────────────────────────────────
+// Admin-only management of platform-owned keys (LLM providers, intel vendors,
+// shared infra). Stored encrypted in platform_api_keys (NOT tenant-scoped) and
+// overlaid onto process.env at runtime. Values are never echoed back — only a
+// masked preview + configured/source flags.
+router.get('/platform-keys', (_req, res) => {
+  try {
+    res.json({ ok: true, groups: _platformKeys.statusAll() });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+router.put('/platform-keys/:key', async (req, res) => {
+  const keyName = String(req.params.key || '').trim();
+  if (!_platformKeys.isKnownKey(keyName)) return _err(res, 404, 'unknown_key');
+  const value = (req.body && typeof req.body.value === 'string') ? req.body.value : '';
+  try {
+    const r = await _platformKeys.setPlatformKey(keyName, value, req.user && req.user.id);
+    // Audit — record WHO changed WHICH key, never the value itself.
+    await _audit.recordAudit({
+      action: 'platform_key_updated',
+      actorUserId: req.user && req.user.id,
+      actorEmail: req.user && req.user.email,
+      detail: keyName + (r.cleared ? ' (cleared)' : ' (set)'),
+    });
+    res.json({ ok: true, cleared: !!r.cleared, groups: _platformKeys.statusAll() });
+  } catch (e) {
+    if (e.code === 'no_master_key') return _err(res, 503, 'encryption_key_missing');
+    if (e.code === 'no_db') return _err(res, 503, 'db_unavailable');
+    _err(res, 500, e.message);
+  }
+});
+
+router.post('/platform-keys/:key/test', async (req, res) => {
+  const keyName = String(req.params.key || '').trim();
+  if (!_platformKeys.isKnownKey(keyName)) return _err(res, 404, 'unknown_key');
+  try {
+    const r = await _platformKeys.testKey(keyName);
+    res.json({ ok: true, result: r });
+  } catch (e) { _err(res, 500, e.message); }
 });
 
 module.exports = router;

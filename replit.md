@@ -97,6 +97,8 @@ Runs `lint:fabrication` (AI-placeholder markers) **and** `lint:css` (both CSS ch
 
 **Credential Vault** (`services/credentials/vault.js`): AES-256-GCM per-`(user_id, platform)` store. `resolveGoogleAdsCredentials(uid)` returns vault creds for that user or env-var fallback only for owners/cron. Smoke test: `GET /api/credentials/google-ads/test`.
 
+**Platform vs User keys** (`services/credentials/platform_keys.js`): Platform-owned API keys (the ones InfoGenie pays for on behalf of every tenant — OpenAI, Anthropic, Gemini, Perplexity, Cloudflare, DataForSEO, Firecrawl, Apollo, Zernio, BuiltWith, PageSpeed, Google Search, Resend, Amplitude, Stripe, VAPID) live in the **non-tenant-scoped** `platform_api_keys` table (`key_name` PK, encrypted via vault). At boot, `hydrate()` overlays DB values onto `process.env` (incl. aliases) so DB overrides env; `_rebuildAiClients()` then rebuilds the shared `openai`/`anthropic` clients. Managed admin-only via the **🔑 Platform APIs** tab → `GET/PUT /api/admin/platform-keys` (audit `platform_key_updated`, actor + key_name, never the value). These keys are purged from per-user Settings; non-admins hitting `/api/settings/api-key` for a blocklisted key get 403. User-managed integrations (their own Semrush/Shopify/etc. subscriptions) stay in the vault + user Settings.
+
 **Google Ads OAuth** (`services/google_ads_oauth/`): Per-user OAuth connect → vault. Redirect URI to whitelist: `${PUBLIC_URL}/api/integrations/google-ads/oauth/callback`.
 
 **AI Pattern** (all tiers): strict-JSON LLM prompt → `/^_DUMMY/i` key gate → template fallback → Postgres persist → `_escapeHtml`/`_safeUrl` frontend builder.

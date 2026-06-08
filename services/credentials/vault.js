@@ -392,6 +392,11 @@ module.exports = {
   ensureCredentialsSchema,
   assertBootRequirements,
   hasKey,
+  // Low-level AES-256-GCM helpers (used by platform_keys.js for its own table).
+  // _encrypt(plaintext) -> { ciphertext:Buffer, iv:Buffer, tag:Buffer }
+  // _decrypt(ciphertext, iv, tag) -> plaintext string
+  encryptString: _encrypt,
+  decryptString: _decrypt,
   hasCredentials,
   getCredentials,
   saveCredentials,
