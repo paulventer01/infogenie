@@ -84,6 +84,33 @@ function get(pathname) {
   });
 }
 
+// Recursively collect on-disk files under `absDir`, returning their URL paths
+// (relative to the project root, leading slash). Skips node_modules / VCS dirs.
+function collectFiles(absDir, urlPrefix, exts) {
+  const out = [];
+  let entries;
+  try { entries = fs.readdirSync(absDir, { withFileTypes: true }); }
+  catch { return out; }
+  for (const e of entries) {
+    if (e.name === 'node_modules' || e.name.startsWith('.git')) continue;
+    const abs = path.join(absDir, e.name);
+    const url = `${urlPrefix}/${e.name}`;
+    if (e.isDirectory()) out.push(...collectFiles(abs, url, exts));
+    else if (exts.some((x) => e.name.endsWith(x))) out.push(url);
+  }
+  return out;
+}
+
+// Pick up to `n` evenly-spread items so the HTTP sweep stays quick but covers
+// the whole tree (not just the first N alphabetical files).
+function sampleEvenly(arr, n) {
+  if (arr.length <= n) return arr.slice();
+  const step = arr.length / n;
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(arr[Math.floor(i * step)]);
+  return out;
+}
+
 // Backend source / configs / docs / tests / working notes — must be private.
 const PRIVATE = [
   '/server.js',
@@ -168,4 +195,88 @@ test('source guard: the SPA catch-all 404s file-looking paths instead of serving
   assert.ok(/status\(404\)/.test(catchAll), 'catch-all must return 404 for unmatched file requests');
   assert.ok(/\\\.\[a-z0-9\]\+\$/i.test(catchAll) || /\.\[a-z0-9\]\+\$/.test(catchAll),
     'catch-all must detect a file extension on the last path segment');
+});
+
+// ── Guard against NEW server files silently becoming downloadable ─────────────
+// The two checks above use fixed representative paths. This one enumerates REAL
+// backend files off disk (services/**, docs/**, test/**, root configs) so the
+// moment someone lands a new server file it is checked automatically — without
+// anyone remembering to extend a hardcoded list. Every discovered file must be
+// (a) classified private by the shipped allow-list and (b) actually 404 over
+// HTTP through the guard + SPA catch-all wired exactly as production.
+test('fs-scan: real on-disk backend files are private and 404 through the wired guard', async () => {
+  const backend = [
+    ...collectFiles(path.join(APP_ROOT, 'services'), '/services', ['.js', '.json']),
+    ...collectFiles(path.join(APP_ROOT, 'docs'), '/docs', ['.md']),
+    ...collectFiles(path.join(APP_ROOT, 'test'), '/test', ['.js']),
+    ...collectFiles(path.join(APP_ROOT, 'scripts'), '/scripts', ['.js']),
+  ];
+  // Root-level source/config that must never stream off disk.
+  const rootBackend = ['/package.json', '/package-lock.json', '/db.js', '/server.js', '/replit.md']
+    .filter((p) => fs.existsSync(path.join(APP_ROOT, p.slice(1))));
+
+  const all = [...backend, ...rootBackend];
+  assert.ok(backend.length > 5, `expected to discover backend source under services/ (found ${backend.length})`);
+
+  // None of the discovered backend files may be classified public. This is the
+  // check that fires if a future change widens PUBLIC_PREFIXES / PUBLIC_FILES to
+  // accidentally cover server source.
+  for (const p of all) {
+    assert.equal(staticGuard.isPublicStaticAsset(p), false, `backend file must be private: ${p}`);
+  }
+
+  // Exercise a representative spread over real HTTP: each must 404, never stream
+  // its bytes. Catches middleware reordering / a new bare static mount.
+  const sample = sampleEvenly(all, 30);
+  for (const p of sample) {
+    const r = await get(p);
+    assert.equal(r.status, 404, `backend file must 404 over HTTP: ${p} (got ${r.status})`);
+  }
+  // And confirm a sampled backend file truly leaks no source bytes.
+  const probe = await get('/services/static_guard/index.js');
+  assert.equal(probe.status, 404, 'static_guard source must not be served');
+  assert.ok(!/isPublicStaticAsset/.test(probe.body), 'static_guard source leaked over HTTP');
+});
+
+// Regression guard: the ROOT express.static must stay wrapped by the guard.
+// Someone re-adding a bare `app.use(express.static(__dirname))`, or invoking the
+// root static mount without first consulting isPublicStaticAsset, would silently
+// re-expose all server source — this test fails the moment that wiring breaks.
+test('source guard: every root express.static stays wrapped by isPublicStaticAsset', () => {
+  const src = fs.readFileSync(path.join(APP_ROOT, 'server.js'), 'utf8');
+  const ROOT = '(?:path\\.join\\(__dirname\\)|__dirname)';
+
+  // 1. No root express.static may be mounted directly via app.use(...) — with or
+  //    without a path prefix — because that serves files with no allow-list in
+  //    front of them. (e.g. `app.use(express.static(__dirname))` or
+  //    `app.use('/x', express.static(path.join(__dirname)))`.)
+  assert.ok(!new RegExp('app\\.use\\([^)]*express\\.static\\(\\s*' + ROOT + '\\s*[,)]').test(src),
+    'server.js must not app.use(express.static(<root>)) directly — that bypasses the guard');
+
+  // 2. Collect EVERY root express.static assigned to a variable. There must be at
+  //    least one (the guarded mount), and exactly one is expected — a second
+  //    parallel root mount is a red flag even before we check how it is used.
+  const declRe = new RegExp('(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*express\\.static\\(\\s*' + ROOT, 'g');
+  const rootVars = [];
+  let mm;
+  while ((mm = declRe.exec(src))) rootVars.push(mm[1]);
+  assert.ok(rootVars.length >= 1, 'server.js must declare a root express.static (assigned to a guarded var)');
+  assert.equal(rootVars.length, 1,
+    `expected exactly one root express.static declaration, found ${rootVars.length}: ${rootVars.join(', ')}`);
+
+  const gateIdx = src.indexOf('isPublicStaticAsset(req.path)');
+  assert.ok(gateIdx !== -1, 'guard must check isPublicStaticAsset(req.path) before serving');
+
+  // 3. For EACH root-static variable (catches the variable-indirection regression
+  //    `const leaked = express.static(__dirname); app.use(leaked);`):
+  //    - it must never be handed to app.use(...) directly, and
+  //    - it must be invoked to serve a request only AFTER the gate runs.
+  for (const v of rootVars) {
+    const esc = v.replace(/[$]/g, '\\$');
+    assert.ok(!new RegExp('app\\.use\\([^)]*\\b' + esc + '\\b').test(src),
+      `root static var ${v} must not be passed to app.use(...) directly — it must be invoked from inside the guard`);
+    const serveIdx = src.search(new RegExp('\\b' + esc + '\\s*\\(\\s*req'));
+    assert.ok(serveIdx !== -1, `root static var ${v} must be invoked as ${v}(req, res, next) inside the guard`);
+    assert.ok(gateIdx < serveIdx, `isPublicStaticAsset gate must run BEFORE ${v} serves the file`);
+  }
 });
