@@ -101,6 +101,7 @@ RESEND_FROM_EMAIL = "Suretrade <alerts@suretrade.co.za>"
 CLOUDFLARE_ACCOUNT_ID = "c2f9ef7fe4085804d71adfd0dec68a76"
 INFOGENIE_API_KEY = "1d988286a9fd4220552cb084e5f494bc743c1ad2660b27dd9143f64a29be4734"
 MULTITENANT_ENFORCEMENT = "on"
+PERMISSION_ENFORCEMENT = "on"
 
 [postMerge]
 path = "scripts/post-merge.sh"

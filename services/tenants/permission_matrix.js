@@ -30,18 +30,32 @@ const ROUTE_GROUPS = [
   // ── Platform / agency administration ──────────────────────────────────────
   { prefix: '/api/admin',                     view: 'platform.tenants.manage' },
   { prefix: '/api/white-label',               view: 'tenant.settings.manage' },
+  // Tenant context/session router (/me, /active, /switch, /roles, /permissions,
+  // self-serve create). These are bootstrap endpoints EVERY authenticated user
+  // must reach — and each carries its own internal guard (membership checks,
+  // self-serve-create is allowed by design) — so gate to the universally-held
+  // dashboard.view rather than a restrictive admin key (would 403 normal users).
+  { prefix: '/api/tenants',                   view: 'dashboard.view' },
 
   // ── Tenant integrations & credentials ─────────────────────────────────────
   { prefix: '/api/credentials',               view: 'tenant.credentials.manage' },
+  { prefix: '/api/integrations',              view: 'tenant.integrations.manage' },
   { prefix: '/api/integrations/google-ads',   view: 'tenant.integrations.manage' },
   { prefix: '/api/integrations/meta-ads',     view: 'tenant.integrations.manage' },
   { prefix: '/api/integrations/workspace',    view: 'tenant.integrations.manage' },
   { prefix: '/api/crm-sync',                  view: 'tenant.integrations.manage' },
   { prefix: '/api/hubspot-sync',              view: 'tenant.integrations.manage' },
   { prefix: '/api/canva',                     view: 'tenant.integrations.manage' },
+  { prefix: '/api/settings',                  view: 'tenant.credentials.manage' },
+  // Generic "send to Slack" notify utility — invoked from multiple feature
+  // surfaces (e.g. Mentions/Gaps), not integration config. Gate to the
+  // universally-held dashboard.view so it works for any authenticated user
+  // (the surfaces that expose the button already carry their own permission).
+  { prefix: '/api/slack',                     view: 'dashboard.view' },
 
   // ── Dashboard / analytics / reports ───────────────────────────────────────
   { prefix: '/api/web-analytics',             view: 'analytics.view', write: 'analytics.view' },
+  { prefix: '/api/attribution',               view: 'analytics.view' },
   { prefix: '/api/web-vitals',                view: 'analytics.view' },
   { prefix: '/api/heatmaps',                  view: 'analytics.view' },
   { prefix: '/api/scroll-tracker',            view: 'analytics.view' },
@@ -63,6 +77,8 @@ const ROUTE_GROUPS = [
   { prefix: '/api/battle-cards',              view: 'compete.battle_cards.view', write: 'compete.battle_cards.edit' },
   { prefix: '/api/sov',                       view: 'compete.competitors.view',  write: 'compete.competitors.manage' },
   { prefix: '/api/discovery',                 view: 'compete.competitors.view',  write: 'compete.competitors.manage' },
+  { prefix: '/api/competitor-spend',          view: 'compete.competitors.view',  write: 'compete.competitors.manage' },
+  { prefix: '/api/builtwith',                 view: 'compete.intel.view',        write: 'compete.intel.manage' },
   { prefix: '/api/trends',                    view: 'compete.intel.view',        write: 'compete.intel.manage' },
   { prefix: '/api/ad-library',                view: 'compete.ad_spy.view',       write: 'compete.ad_spy.manage' },
   { prefix: '/api/ad-swipe',                  view: 'compete.ad_spy.view',       write: 'compete.ad_spy.manage' },
@@ -92,6 +108,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/apify',                     view: 'compete.intel.view',        write: 'compete.intel.manage' },
 
   // ── Grow ──────────────────────────────────────────────────────────────────
+  { prefix: '/api/launch',                    view: 'grow.campaigns.view',     write: 'grow.campaigns.launch' },
   { prefix: '/api/optimizer',                 view: 'grow.optimizer.view',     write: 'grow.optimizer.control' },
   { prefix: '/api/landing-pages',             view: 'grow.landing_pages.view', write: 'grow.landing_pages.edit' },
   { prefix: '/api/site-builder',              view: 'grow.landing_pages.view', write: 'grow.landing_pages.edit' },
@@ -124,9 +141,12 @@ const ROUTE_GROUPS = [
   { prefix: '/api/lead-finder',               view: 'reach.leads.view',     write: 'reach.leads.manage' },
   { prefix: '/api/hunter',                    view: 'reach.leads.view',     write: 'reach.leads.manage' },
   { prefix: '/api/brand-deals',               view: 'reach.leads.view',     write: 'reach.leads.manage' },
+  { prefix: '/api/apollo',                    view: 'reach.leads.view',     write: 'reach.leads.manage' },
 
   // ── Creator Studio ────────────────────────────────────────────────────────
   { prefix: '/api/studio',                    view: 'creator.view', write: 'creator.edit' },
+  { prefix: '/api/ecom-video',                view: 'creator.view', write: 'creator.edit' },
+  { prefix: '/api/tools',                     view: 'creator.view', write: 'creator.edit' },
   { prefix: '/api/social-publisher',          view: 'creator.view', write: 'creator.publish' },
   { prefix: '/api/advocacy',                  view: 'creator.view', write: 'creator.publish' },
   { prefix: '/api/wordpress',                 view: 'creator.view', write: 'creator.publish' },
@@ -147,6 +167,7 @@ const ROUTE_GROUPS = [
 
   // ── SEO suite ─────────────────────────────────────────────────────────────
   { prefix: '/api/seo-auditor',               view: 'seo.view', write: 'seo.run' },
+  { prefix: '/api/page-audit',                view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/seo-crawler',               view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/seo-roadmap',               view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/seo-widget',                view: 'seo.view', write: 'seo.run' },
@@ -155,6 +176,7 @@ const ROUTE_GROUPS = [
   { prefix: '/api/serp-tracker',              view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/geo-audit',                 view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/ai-visibility',             view: 'seo.view', write: 'seo.run' },
+  { prefix: '/api/ai-visibility-coverage',    view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/ai-traffic',                view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/local-seo',                 view: 'seo.view', write: 'seo.run' },
   { prefix: '/api/content-score',             view: 'seo.view', write: 'seo.run' },
