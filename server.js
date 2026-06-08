@@ -20,6 +20,30 @@ const _tenantRouter     = require('./services/tenants/api');
 const _permEnforce      = require('./services/tenants/permission_enforce');
 const _authGate         = require('./services/auth_gate');
 
+// ── Global async safety net ──────────────────────────────────────────────────
+// Node 15+ crashes the whole process on any unhandled promise rejection. In a
+// long-running multi-user server a single stray async failure — e.g. a Resend
+// email send rejecting because the from-domain isn't verified, or a background
+// cron throwing — must NOT take the site down for everyone. An unhandled
+// *rejection* leaves the rest of the process intact, so we log it loudly (so the
+// underlying bug stays visible) and keep serving every other user.
+//
+// An uncaught *exception* is different: by the time it fires the process may be
+// in a corrupted state (half-mutated globals, broken invariants), so continuing
+// risks silent data corruption. We log it at fatal level and exit cleanly so the
+// supervisor restarts a fresh process — fail-fast, not swallow. Explicit boot
+// guards below already use process.exit(1) and are unaffected by these handlers.
+// Installed first, before any boot task or route, to cover the whole lifetime.
+process.on('unhandledRejection', (reason) => {
+  const msg = (reason && reason.stack) || (reason && reason.message) || String(reason);
+  console.error('[unhandledRejection] (kept alive)', msg);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException] FATAL — exiting for a clean restart:',
+    (err && err.stack) || (err && err.message) || String(err));
+  process.exit(1);
+});
+
 // ── Env-var name aliases ─────────────────────────────────────────────────────
 // Some Replit Secrets were stored under the historical names below. The rest
 // of the code reads the canonical names. Aliasing here keeps both working so
