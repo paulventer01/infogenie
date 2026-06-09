@@ -13,7 +13,7 @@ const __root_require__ = (p) =>
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
-  const { callDataForSEO } = ctx;
+  const { callDataForSEO, openaiChatWithRetry } = ctx;
 
 const COMPETITOR_DOMAINS = {
   ecommerce:  ['amazon.com', 'ebay.com', 'shopify.com', 'etsy.com', 'walmart.com', 'target.com', 'asos.com', 'zalando.com'],
@@ -662,6 +662,129 @@ app.post('/api/real-competitors', async (req, res) => {
   } catch(err) {
     console.error('/api/real-competitors error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/competitor-enrich ──────────────────────────────────────────────
+// Fetches REAL top organic keywords for each competitor (DataForSEO ranked_keywords/live)
+// then uses GPT-4o-mini to derive the audience segments they are winning.
+// Body: { competitors: string[], industry: string, yourDomain?: string, location?: string }
+app.post('/api/competitor-enrich', async (req, res) => {
+  const safetyTimer = setTimeout(() => {
+    if (!res.headersSent) res.status(504).json({ ok: false, error: 'timeout' });
+  }, 35000);
+  try {
+    const { competitors = [], industry = '', location = 'United States' } = req.body || {};
+    if (!Array.isArray(competitors) || !competitors.length) {
+      clearTimeout(safetyTimer);
+      return res.status(400).json({ ok: false, error: 'competitors[] required' });
+    }
+
+    const cleanDomains = competitors.slice(0, 6)
+      .map(d => String(d).replace(/^https?:\/\//,'').replace(/^www\./,'').toLowerCase().split('/')[0])
+      .filter(Boolean);
+
+    // ── Step 1: Fetch top organic keywords for each competitor in parallel ─────
+    const kwResults = await Promise.all(cleanDomains.map(async (domain) => {
+      try {
+        const task = { target: domain, language_name: 'English', limit: 20, load_rank_absolute: true, ignore_synonyms: true };
+        if (location && location !== 'Global') task.location_name = location;
+        const raw = await callDataForSEO('/v3/dataforseo_labs/google/ranked_keywords/live', [task], 15000);
+        const items = raw?.tasks?.[0]?.result?.[0]?.items || [];
+        const brandRoot = domain.split('.')[0].toLowerCase();
+        const keywords = items
+          .map(it => ({
+            kw:  (it.keyword_data?.keyword || '').trim(),
+            vol: it.keyword_data?.keyword_info?.search_volume || 0,
+            pos: it.ranked_serp_element?.serp_item?.rank_group || 99,
+          }))
+          .filter(k => k.kw && k.vol >= 50 && k.pos <= 20)
+          .filter(k => !(k.kw.toLowerCase().includes(brandRoot) && k.kw.split(' ').length <= 2))
+          .sort((a, b) => b.vol - a.vol)
+          .slice(0, 8)
+          .map(k => k.kw);
+        console.log(`[competitor-enrich] ${domain}: ${keywords.length} keywords from ${items.length} raw`);
+        return { domain, keywords };
+      } catch (e) {
+        console.warn(`[competitor-enrich] ranked_keywords failed for ${domain}:`, e.message);
+        return { domain, keywords: [] };
+      }
+    }));
+
+    // ── Step 2: One GPT-4o-mini call to derive audience segments ──────────────
+    const kwMap = {};
+    kwResults.forEach(({ domain, keywords }) => { if (keywords.length) kwMap[domain] = keywords; });
+
+    let audienceMap = {};
+    if (Object.keys(kwMap).length > 0 && openaiChatWithRetry) {
+      try {
+        const compLines = Object.entries(kwMap)
+          .map(([d, kws]) => `${d}: [${kws.slice(0, 8).map(k => `"${k}"`).join(', ')}]`)
+          .join('\n');
+        const prompt = `You are a senior digital marketing strategist.
+
+Industry: ${industry || 'General'}
+
+Below are real competitors and the top organic keywords they actually rank for on Google.
+Based on these keywords, identify exactly 3 "winning audience segments" that each competitor is targeting.
+Segments must be SPECIFIC to this industry — NOT generic labels like "General Users" or "All Customers".
+
+${compLines}
+
+Return ONLY valid JSON (no markdown, no comments):
+{
+  "audiences": {
+    "<domain>": [
+      { "label": "<2-4 word audience name>", "pct": <integer> },
+      { "label": "<2-4 word audience name>", "pct": <integer> },
+      { "label": "<2-4 word audience name>", "pct": <integer> }
+    ]
+  }
+}
+
+Rules:
+- Exactly 3 segments per competitor
+- Percentages must sum to 100
+- Infer from what the keywords reveal about who is searching for this competitor
+- Use industry-specific language (e.g. "Active Day Traders", "SMB Finance Teams", "First-Time Home Buyers")
+- Weight the largest audience group highest`;
+
+        const completion = await openaiChatWithRetry({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'You are a precise marketing analyst. Output strict JSON only, no markdown, no code fences.' },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.2,
+          max_tokens: 900,
+          response_format: { type: 'json_object' },
+        });
+        const raw = completion.choices?.[0]?.message?.content || '{}';
+        const parsed = JSON.parse(raw);
+        audienceMap = parsed.audiences || {};
+      } catch (e) {
+        console.warn('[competitor-enrich] AI audience derivation failed:', e.message);
+      }
+    }
+
+    // ── Step 3: Build and return enriched data ─────────────────────────────────
+    const enriched = {};
+    cleanDomains.forEach(domain => {
+      const entry = kwResults.find(r => r.domain === domain) || { keywords: [] };
+      const rawAuds = audienceMap[domain] || [];
+      const audiences = rawAuds.slice(0, 3).map(a => ({
+        label: String(a.label || '').trim().slice(0, 50),
+        pct:   Math.min(100, Math.max(1, parseInt(a.pct, 10) || 33)),
+      }));
+      enriched[domain] = { topKeywords: entry.keywords, audiences };
+    });
+
+    clearTimeout(safetyTimer);
+    res.json({ ok: true, enriched, source: 'dataforseo+ai' });
+  } catch (err) {
+    clearTimeout(safetyTimer);
+    console.error('/api/competitor-enrich error:', err.message);
+    if (!res.headersSent) res.status(500).json({ ok: false, error: err.message });
   }
 });
 

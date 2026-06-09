@@ -78,6 +78,8 @@ const ROUTE_GROUPS = [
   { prefix: '/api/sov',                       view: 'compete.competitors.view',  write: 'compete.competitors.manage' },
   { prefix: '/api/discovery',                 view: 'compete.competitors.view',  write: 'compete.competitors.manage' },
   { prefix: '/api/competitor-spend',          view: 'compete.competitors.view',  write: 'compete.competitors.manage' },
+  { prefix: '/api/competitor-enrich',         view: 'compete.competitors.view',  write: 'compete.competitors.manage' },
+  { prefix: '/api/real-competitors',          view: 'compete.competitors.view',  write: 'compete.competitors.manage' },
   { prefix: '/api/builtwith',                 view: 'compete.intel.view',        write: 'compete.intel.manage' },
   { prefix: '/api/trends',                    view: 'compete.intel.view',        write: 'compete.intel.manage' },
   { prefix: '/api/ad-library',                view: 'compete.ad_spy.view',       write: 'compete.ad_spy.manage' },

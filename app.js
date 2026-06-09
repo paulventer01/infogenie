@@ -4161,6 +4161,12 @@ async function runAnalysis(url, country, industryOverride) {
       enrichKPIsWithLiveData(cleanUrl, industryKey, country);
     } catch(e) { window.IGDiag && IGDiag.err('enrichKPIsWithLiveData error', e && e.message); }
   }, 2000);
+  setTimeout(() => {
+    try {
+      window.IGDiag && IGDiag.mark('enrichCompetitorKwAudiences: start');
+      enrichCompetitorKwAudiences(cleanUrl, industryKey, country);
+    } catch(e) { window.IGDiag && IGDiag.err('enrichCompetitorKwAudiences error', e && e.message); }
+  }, 5000);
 }
 
 // ── Real Competitor Data Enrichment ──────────────────────────────────────────
@@ -4220,6 +4226,62 @@ async function enrichWithRealCompetitorData(domain, industryKey, country) {
 
   } catch(err) {
     console.warn('Real competitor enrichment failed (non-fatal):', err.message);
+  }
+}
+
+// ── Competitor Keyword + Audience Enrichment ──────────────────────────────────
+// Calls /api/competitor-enrich to fetch REAL top organic keywords (DataForSEO
+// ranked_keywords) and AI-derived audience segments for each competitor.
+// Non-blocking — runs ~5s after analysis completes so the UI is already visible.
+async function enrichCompetitorKwAudiences(domain, industryKey, country) {
+  const location = country === 'United Kingdom' ? 'United Kingdom'
+    : country === 'Australia' ? 'Australia'
+    : country === 'Canada' ? 'Canada'
+    : 'United States';
+
+  try {
+    const compDomains = (analysisData.competitors || []).map(c => c.url).filter(Boolean).slice(0, 6);
+    if (!compDomains.length) return;
+
+    const res = await fetch('/api/competitor-enrich', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        competitors: compDomains,
+        industry: analysisData.industryName || industryKey || '',
+        yourDomain: domain,
+        location,
+      })
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.ok || !data.enriched) return;
+
+    let enriched = 0;
+    analysisData.competitors.forEach(comp => {
+      const compUrl = (comp.url || '').replace(/^www\./, '').toLowerCase();
+      const hit = data.enriched[compUrl] || data.enriched['www.' + compUrl];
+      if (!hit) return;
+      if (hit.topKeywords && hit.topKeywords.length > 0) {
+        comp.topKeywords = hit.topKeywords;
+        enriched++;
+      }
+      if (hit.audiences && hit.audiences.length > 0) {
+        comp.audiences = hit.audiences;
+      }
+    });
+
+    if (enriched > 0) {
+      console.log(`[kw-audience-enrich] ${enriched} competitors updated with real keywords + AI audiences`);
+      // Store for downstream use (keyword suggestions, battle plans, etc.)
+      analysisData.keywords = (analysisData.competitors || [])
+        .flatMap(c => c.topKeywords || [])
+        .filter((k, i, a) => k && a.indexOf(k) === i)
+        .slice(0, 30);
+      buildCompetitors();
+    }
+  } catch (err) {
+    console.warn('Competitor keyword/audience enrichment failed (non-fatal):', err.message);
   }
 }
 

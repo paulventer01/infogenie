@@ -1097,7 +1097,7 @@ async function callDataForSEO(endpoint, body, timeoutMs = 18000) {
 const INFO_SITE_PATTERN = /^(?:[a-z]{2}\.)?(investopedia|investing|forexbrokers|stockbrokers|bestbrokers|tradingpedia|brokersview|brokerchooser|brokernotes|comparison|comparis|nerdwallet|wisebread|smallworldfs|metatrader[0-9]?|tradingview|myfxbook|fxstreet|tradingeconomics|babypips|dailyfx|investorjunkie|fool|reuters|cnbc|bloomberg|forbes|nytimes|wsj|techcrunch|theverge|wired|mashable|venturebeat|crunchbase|g2|capterra|getapp|trustpilot|sitejabber|glassdoor|wikipedia)\.[a-z.]+$/i;
 
 // Keyword gap · domain · competitor metrics · SOV routes → services/competitor_metrics/routes.js
-require('./services/competitor_metrics/routes')(app, { callDataForSEO });
+require('./services/competitor_metrics/routes')(app, { callDataForSEO, openaiChatWithRetry });
 
 // ── RapidAPI helper ───────────────────────────────────────────────────────────
 
