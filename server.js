@@ -3435,10 +3435,12 @@ app.post('/api/apollo/enrich', async (req, res) => {
         signal: _apolloAc.signal,
       });
     } finally { clearTimeout(_apolloTm); }
+    if (r.status === 401 || r.status === 403) return res.json({ ok:false, error:'Apollo API key is invalid or expired — update it in Platform APIs settings.' });
     if (r.status === 422 || r.status === 404) return res.json({ ok:false, error:'No Apollo record found for this domain.' });
+    if (r.status === 429) return res.json({ ok:false, error:'Apollo API rate limit reached — try again in a few minutes.' });
     if (!r.ok) {
       const body = await r.text();
-      return res.status(r.status).json({ ok:false, error:`HTTP ${r.status}`, detail: body.slice(0, 500) });
+      return res.status(r.status).json({ ok:false, error:`Apollo API error (HTTP ${r.status})`, detail: body.slice(0, 500) });
     }
     const d = await r.json();
     const o = d?.organization || {};
