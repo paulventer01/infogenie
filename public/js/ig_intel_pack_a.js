@@ -2874,61 +2874,174 @@ window.buildJobBoardSpy = function() {
   window.IGDiag && IGDiag.log('buildJobBoardSpy: start');
   try { window.IGFields && IGFields.pause && IGFields.pause(); } catch(_) {}
   try {
-  // ── Build picker from last analysis (own brand + competitors) ──
-  const ownBrand = (window.analysisData && window.analysisData.brandName) || '';
+  const DEPTS = ['engineering','sales','marketing','product','design','ops','finance','hr','other'];
+  const DEPT_COLORS = { engineering:'#0066FF', sales:'#10B981', marketing:'#F59E0B', product:'#7C3AED', design:'#EC4899', ops:'#6B7280', finance:'#059669', hr:'#DC2626', other:'#9CA3AF' };
+
+  // ── Build company list from last analysis ──
+  const ownBrand = (window.analysisData && (window.analysisData.brandName || window.analysisData.companyName)) || '';
   const compNames = (window.analysisData && Array.isArray(window.analysisData.competitors))
     ? window.analysisData.competitors.map(c => c.name || c.domain).filter(Boolean).slice(0, 15)
     : [];
-  const pickerOpts = [
-    ownBrand ? `<option value="${_escapeHtml(ownBrand)}">${_escapeHtml(ownBrand)} (your brand)</option>` : '',
-    ...compNames.map(n => `<option value="${_escapeHtml(n)}">${_escapeHtml(n)}</option>`)
-  ].filter(Boolean).join('');
+  const allKnown = [ownBrand ? ownBrand + ' (your brand)' : '', ...compNames.map(n => n)].filter(Boolean);
+  // Store raw values separately
+  const allKnownValues = [ownBrand, ...compNames].filter(Boolean);
+
+  const checkboxRows = allKnownValues.map((v, i) =>
+    `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:0.84rem;color:#0A1628" onmouseover="this.style.background='#F3F4F6'" onmouseout="this.style.background=''">
+      <input type="checkbox" class="jb-cb" value="${_escapeHtml(v)}" style="width:15px;height:15px;accent-color:#0066FF;cursor:pointer" ${i === 0 ? 'checked' : ''}>
+      <span>${_escapeHtml(allKnown[i])}</span>
+    </label>`
+  ).join('');
+
   wrap.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
-      <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">COMPETITOR / COMPANY</label>
-      ${pickerOpts
-        ? `<select id="jbPick" onchange="window._jbPickChange()" style="width:100%;padding:8px 10px;border:1.5px solid #D1D5DB;border-radius:6px;font-size:0.82rem;background:#F9FAFB;margin-bottom:6px">
-             <option value="">— Pick a competitor you've analysed (or type manually below) —</option>
-             ${pickerOpts}
-           </select>`
-        : `<div style="font-size:0.72rem;color:#9CA3AF;margin-bottom:6px">💡 Run an analysis from the top-right <strong>+ Analyse</strong> button to unlock competitor pickers here.</div>`}
-      <input id="jbCo" placeholder="e.g. Stripe — or pick from list above" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.9rem;box-sizing:border-box">
-      <button id="jbGo" style="margin-top:10px;background:linear-gradient(135deg,#0F172A,#1E293B);color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:0.84rem;font-weight:800;cursor:pointer">💼 Scan Open Roles</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <label style="font-size:0.7rem;font-weight:700;color:#6B7280">COMPETITOR / COMPANY</label>
+        ${allKnownValues.length > 1 ? `<button id="jbSelectAll" onclick="window._jbToggleAll()" style="background:#EEF2FF;border:1px solid #C7D2FE;color:#4F46E5;padding:4px 12px;border-radius:6px;font-size:0.72rem;font-weight:700;cursor:pointer">☑ Select All</button>` : ''}
+      </div>
+      ${checkboxRows
+        ? `<div id="jbCbList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:2px;margin-bottom:10px;max-height:180px;overflow-y:auto;border:1px solid #E5E7EB;border-radius:6px;padding:4px">${checkboxRows}</div>`
+        : `<div style="font-size:0.72rem;color:#9CA3AF;margin-bottom:8px">💡 Run an analysis from the top-right <strong>+ Analyse</strong> button to unlock competitor pickers here.</div>`}
+      <input id="jbCo" placeholder="Or type any company name and click Scan" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;font-size:0.88rem;box-sizing:border-box;margin-bottom:10px">
+      <button id="jbGo" style="width:100%;background:linear-gradient(135deg,#0F172A,#1E293B);color:#fff;border:none;padding:11px 20px;border-radius:6px;font-size:0.86rem;font-weight:800;cursor:pointer">💼 Scan Open Roles</button>
     </div>
     <div id="jbOut"></div>
   `;
-  // Mirror picker → free-text input
-  window._jbPickChange = function() {
-    const s = document.getElementById('jbPick'); const i = document.getElementById('jbCo');
-    if (s && i && s.value) i.value = s.value;
+
+  // ── Select All / Deselect All toggle ──
+  let _jbAllSelected = false;
+  window._jbToggleAll = function() {
+    _jbAllSelected = !_jbAllSelected;
+    document.querySelectorAll('.jb-cb').forEach(cb => { cb.checked = _jbAllSelected; });
+    const btn = document.getElementById('jbSelectAll');
+    if (btn) btn.textContent = _jbAllSelected ? '☐ Deselect All' : '☑ Select All';
   };
-  document.getElementById('jbGo').addEventListener('click', async () => {
-    const company = document.getElementById('jbCo').value.trim();
-    const out = document.getElementById('jbOut');
-    if (!company) { out.innerHTML = '<div style="color:#991B1B">⚠ Company required</div>'; return; }
-    out.innerHTML = '<div style="color:#9CA3AF">⏳ Scanning LinkedIn / Indeed / careers page (20-40s)…</div>';
-    try {
-      const r = await fetch('/api/job-board-spy/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ company }) }).then(x => x.json());
-      if (!r.ok) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(r.error)}</div>`; return; }
+
+  // ── Scan single company and return data ──
+  async function _jbScanOne(company) {
+    const r = await fetch('/api/job-board-spy/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ company }) }).then(x => x.json());
+    return r;
+  }
+
+  // ── Render matrix table for multiple results ──
+  function _jbRenderMatrix(results) {
+    // results = [{company, total_jobs, by_dept, strategic_signals, jobs, ok, error}]
+    const rows = results.map(r => {
+      if (!r.ok) return `<tr><td style="padding:8px 12px;font-weight:700;color:#0A1628;white-space:nowrap">${_escapeHtml(r.company)}</td><td colspan="${DEPTS.length + 1}" style="padding:8px 12px;color:#B91C1C;font-size:0.8rem">${_escapeHtml(r.error||'Failed')}</td></tr>`;
       const dept = r.by_dept || {};
-      const deptColors = { engineering:'#0066FF', sales:'#10B981', marketing:'#F59E0B', product:'#7C3AED', design:'#EC4899', ops:'#6B7280', finance:'#059669', hr:'#DC2626', other:'#9CA3AF' };
-      out.innerHTML = `
-        <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:14px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <div><div style="font-size:1.8rem;font-weight:800;color:#0A1628">${_n(r.total_jobs)}</div><div style="font-size:0.74rem;color:#6B7280;font-weight:700">OPEN ROLES AT ${_escapeHtml(company.toUpperCase())}</div></div>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">${Object.entries(dept).map(([k,v]) => `<span style="background:${deptColors[String(k).toLowerCase()]||'#9CA3AF'};color:#fff;padding:4px 10px;border-radius:14px;font-size:0.74rem;font-weight:700;text-transform:capitalize">${_escapeHtml(String(k))}: ${_n(v)}</span>`).join('')}</div>
+      const total = r.total_jobs || 0;
+      const topSignal = (r.strategic_signals||[])[0] || '—';
+      return `<tr style="border-bottom:1px solid #F3F4F6" onmouseover="this.style.background='#F9FAFB'" onmouseout="this.style.background=''">
+        <td style="padding:8px 12px;font-weight:700;color:#0A1628;white-space:nowrap;font-size:0.84rem">${_escapeHtml(r.company)}</td>
+        <td style="padding:8px 12px;text-align:center;font-weight:800;font-size:1rem;color:#0A1628">${total}</td>
+        ${DEPTS.map(d => {
+          const v = parseInt(dept[d]||0);
+          const pct = total > 0 ? Math.round((v/total)*100) : 0;
+          return `<td style="padding:6px 10px;text-align:center">
+            ${v > 0 ? `<span style="background:${DEPT_COLORS[d]};color:#fff;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:700">${v}</span>` : `<span style="color:#D1D5DB;font-size:0.72rem">—</span>`}
+            ${v > 0 && total > 0 ? `<div style="font-size:0.6rem;color:#9CA3AF;margin-top:1px">${pct}%</div>` : ''}
+          </td>`;
+        }).join('')}
+        <td style="padding:8px 12px;font-size:0.73rem;color:#6B7280;max-width:260px">${_escapeHtml(topSignal.slice(0,120))}${topSignal.length > 120 ? '…' : ''}</td>
+      </tr>`;
+    }).join('');
+    return `
+      <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;margin-bottom:18px">
+        <div style="padding:14px 16px;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;gap:10px">
+          <span style="font-weight:800;color:#0A1628;font-size:0.92rem">📊 Hiring Matrix</span>
+          <span style="font-size:0.72rem;color:#6B7280">${results.length} companies · open roles by department</span>
         </div>
-        ${(r.strategic_signals||[]).length ? `<div style="background:linear-gradient(135deg,#FEF3C7,#FDE68A);border:1px solid #F59E0B;border-radius:12px;padding:14px 18px;margin-bottom:14px">
-          <h4 style="margin:0 0 8px;color:#92400E;font-size:0.92rem;font-weight:800">🎯 Strategic Signals</h4>
-          <ul style="margin:0;padding-left:20px;color:#78350F;font-size:0.84rem;line-height:1.6">${(r.strategic_signals||[]).map(s => `<li>${_escapeHtml(s)}</li>`).join('')}</ul>
-        </div>` : ''}
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px">${(r.jobs||[]).map(j => `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px">
-          <div style="font-weight:700;color:#0A1628;font-size:0.88rem">${j.url && _safeUrl(j.url) ? `<a href="${_safeUrl(j.url)}" target="_blank" rel="noopener" style="color:#0A1628;text-decoration:none">${_escapeHtml(j.title||'')}</a>` : _escapeHtml(j.title||'')}</div>
-          <div style="font-size:0.72rem;color:#6B7280;margin-top:3px">${_escapeHtml(j.department||'')} · ${_escapeHtml(j.seniority||'')} · ${_escapeHtml(j.location||'')} · ${_escapeHtml(j.posted||'')}</div>
-          ${j.summary ? `<div style="font-size:0.78rem;color:#374151;margin-top:5px;line-height:1.4">${_escapeHtml(j.summary)}</div>` : ''}
-        </div>`).join('')}</div>`;
-    } catch (e) { out.innerHTML = `<div style="color:#991B1B">Network error: ${_escapeHtml(e.message)}</div>`; }
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+            <thead>
+              <tr style="background:#F9FAFB">
+                <th style="padding:8px 12px;text-align:left;font-size:0.68rem;color:#6B7280;font-weight:700;white-space:nowrap">COMPANY</th>
+                <th style="padding:8px 12px;text-align:center;font-size:0.68rem;color:#6B7280;font-weight:700">TOTAL</th>
+                ${DEPTS.map(d => `<th style="padding:6px 10px;text-align:center;font-size:0.65rem;color:${DEPT_COLORS[d]};font-weight:700;text-transform:uppercase;white-space:nowrap">${d.slice(0,3).toUpperCase()}</th>`).join('')}
+                <th style="padding:8px 12px;text-align:left;font-size:0.68rem;color:#6B7280;font-weight:700">TOP SIGNAL</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  // ── Render detail card for one company ──
+  function _jbRenderCard(r) {
+    if (!r.ok) return `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px;margin-bottom:12px"><strong>${_escapeHtml(r.company)}</strong>: ${_escapeHtml(r.error)}</div>`;
+    const dept = r.by_dept || {};
+    return `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div><div style="font-size:1.5rem;font-weight:800;color:#0A1628">${_n(r.total_jobs)}</div><div style="font-size:0.72rem;color:#6B7280;font-weight:700">OPEN ROLES AT ${_escapeHtml((r.company||'').toUpperCase())}</div></div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${Object.entries(dept).map(([k,v]) => v > 0 ? `<span style="background:${DEPT_COLORS[String(k).toLowerCase()]||'#9CA3AF'};color:#fff;padding:3px 9px;border-radius:14px;font-size:0.72rem;font-weight:700;text-transform:capitalize">${_escapeHtml(String(k))}: ${_n(v)}</span>` : '').join('')}</div>
+      ${(r.strategic_signals||[]).length ? `<div style="background:linear-gradient(135deg,#FEF3C7,#FDE68A);border:1px solid #F59E0B;border-radius:8px;padding:12px 16px;margin-top:12px">
+        <div style="font-weight:800;color:#92400E;font-size:0.84rem;margin-bottom:6px">🎯 Strategic Signals</div>
+        <ul style="margin:0;padding-left:18px;color:#78350F;font-size:0.8rem;line-height:1.6">${(r.strategic_signals||[]).map(s => `<li>${_escapeHtml(s)}</li>`).join('')}</ul>
+      </div>` : ''}
+      ${(r.jobs||[]).length ? `<details style="margin-top:12px"><summary style="cursor:pointer;font-size:0.78rem;font-weight:700;color:#0066FF">▶ View ${(r.jobs||[]).length} open role(s)</summary>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px;margin-top:8px">${(r.jobs||[]).map(j => `<div style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;padding:10px 12px">
+          <div style="font-weight:700;color:#0A1628;font-size:0.84rem">${j.url && _safeUrl(j.url) ? `<a href="${_safeUrl(j.url)}" target="_blank" rel="noopener" style="color:#0A1628;text-decoration:none">${_escapeHtml(j.title||'')}</a>` : _escapeHtml(j.title||'')}</div>
+          <div style="font-size:0.7rem;color:#6B7280;margin-top:2px">${[j.department, j.seniority, j.location, j.posted].filter(Boolean).map(s=>_escapeHtml(s)).join(' · ')}</div>
+          ${j.summary ? `<div style="font-size:0.75rem;color:#374151;margin-top:4px;line-height:1.4">${_escapeHtml(j.summary)}</div>` : ''}
+        </div>`).join('')}</div>
+      </details>` : ''}
+    </div>`;
+  }
+
+  document.getElementById('jbGo').addEventListener('click', async () => {
+    const out = document.getElementById('jbOut');
+    // Collect checked companies
+    const checked = Array.from(document.querySelectorAll('.jb-cb:checked')).map(cb => cb.value.trim()).filter(Boolean);
+    // Also include manual text field if filled
+    const manual = (document.getElementById('jbCo').value || '').trim();
+    const toScan = [...new Set([...checked, ...(manual ? [manual] : [])])];
+    if (!toScan.length) { out.innerHTML = '<div style="background:#FEF3C7;color:#92400E;padding:12px;border-radius:8px">⚠ Select at least one company or type a name below.</div>'; return; }
+
+    // Progress display
+    const progRows = toScan.map(c => `<div id="jbProg_${_escapeHtml(c.replace(/\W/g,'_'))}" style="display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:0.82rem"><span style="display:inline-block;width:12px;height:12px;border:2px solid #E5E7EB;border-top-color:#0066FF;border-radius:50%;animation:jbSpin 0.8s linear infinite;flex-shrink:0"></span><span style="color:#0A1628;font-weight:600">${_escapeHtml(c)}</span><span style="color:#9CA3AF;font-size:0.72rem">scanning…</span></div>`).join('');
+    out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;padding:4px;margin-bottom:14px"><style>@keyframes jbSpin{to{transform:rotate(360deg)}}</style>${progRows}</div>`;
+
+    const btn = document.getElementById('jbGo');
+    btn.disabled = true; btn.textContent = '⏳ Scanning…';
+
+    // Scan all in parallel (max 3 concurrent to avoid Perplexity rate-limits)
+    const results = [];
+    const queue = [...toScan];
+    let qi = 0;
+    const workers = new Array(Math.min(3, toScan.length)).fill(0).map(async () => {
+      while (qi < toScan.length) {
+        const idx = qi++;
+        const company = toScan[idx];
+        const progId = 'jbProg_' + company.replace(/\W/g,'_');
+        try {
+          const r = await _jbScanOne(company);
+          results[idx] = { ...r, company };
+          const el = document.getElementById(progId);
+          if (el) el.innerHTML = `<span style="width:12px;height:12px;flex-shrink:0;text-align:center">✅</span><span style="color:#0A1628;font-weight:600">${_escapeHtml(company)}</span><span style="color:#15803D;font-size:0.72rem">${r.ok ? (r.total_jobs||0) + ' roles found' : _escapeHtml(r.error||'failed')}</span>`;
+        } catch(e) {
+          results[idx] = { ok:false, company, error: e.message };
+          const el = document.getElementById(progId);
+          if (el) el.innerHTML = `<span style="width:12px;height:12px;flex-shrink:0">❌</span><span style="color:#0A1628;font-weight:600">${_escapeHtml(company)}</span><span style="color:#B91C1C;font-size:0.72rem">${_escapeHtml(e.message)}</span>`;
+        }
+      }
+    });
+    await Promise.all(workers);
+
+    btn.disabled = false; btn.textContent = '💼 Scan Open Roles';
+
+    // Build output
+    const succeeded = results.filter(r => r && r.ok);
+    let html = '';
+    if (results.length > 1) {
+      // Matrix + individual cards
+      html += _jbRenderMatrix(results.filter(Boolean));
+      html += '<div style="margin-top:4px">' + results.filter(Boolean).map(r => _jbRenderCard(r)).join('') + '</div>';
+    } else if (results.length === 1) {
+      html = _jbRenderCard(results[0]);
+    }
+    out.innerHTML = html || '<div style="color:#9CA3AF">No results.</div>';
   });
   } finally {
     try {
