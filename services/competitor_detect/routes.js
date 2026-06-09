@@ -10,6 +10,28 @@ const __root_require__ = (p) =>
     ? require(__path__.resolve(__APP_ROOT__, p))
     : require(p);
 
+// Firecrawl fallback for bot-protected sites (Cloudflare, WAF, etc.).
+// Called only when direct fetch returns empty — costs one API credit per call.
+async function _firecrawlFetch(url, timeoutMs = 14000) {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key || /^_DUMMY/i.test(key)) return '';
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const r = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, formats: ['html', 'markdown'], onlyMainContent: false }),
+    });
+    clearTimeout(t);
+    if (!r.ok) return '';
+    const j = await r.json();
+    const content = (j.data || j);
+    return String(content.html || content.markdown || '').slice(0, 120000);
+  } catch (e) { return ''; }
+}
+
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
   const require = __root_require__;
@@ -60,7 +82,9 @@ app.post('/api/smart-detect', async (req, res) => {
       } catch (e) { return ''; }
     };
 
-    const html = await fetchPage(fetchUrl, 8000);
+    let html = await fetchPage(fetchUrl, 8000);
+    // If direct fetch was blocked (Cloudflare / WAF), try Firecrawl for the homepage.
+    if (!html) html = await _firecrawlFetch(fetchUrl, 14000);
     const subPaths = ['/about', '/about-us', '/products', '/services', '/solutions', '/what-we-do', '/company'];
     const subHtmls = await Promise.all(subPaths.map(p => fetchPage(fetchUrl + p, 5000)));
     const allHtml = [html, ...subHtmls].join('\n');
@@ -413,7 +437,7 @@ app.post('/api/competitor-deep-analysis', async (req, res) => {
     const cleanComp = String(competitorUrl).replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase();
     const cleanYou  = String(yourDomain || '').replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].trim().toLowerCase();
 
-    // Scrape competitor homepage
+    // Scrape competitor homepage; fall back to Firecrawl if Cloudflare/WAF blocks
     let html = '';
     try {
       const ctrl = new AbortController();
@@ -425,6 +449,7 @@ app.post('/api/competitor-deep-analysis', async (req, res) => {
       clearTimeout(t);
       if (r.ok) html = (await r.text()).slice(0, 70000);
     } catch (fe) { console.warn('comp-deep fetch failed:', fe.message); }
+    if (!html) html = (await _firecrawlFetch('https://' + cleanComp, 14000)).slice(0, 70000);
 
     const pick = (re) => { const m = html.match(re); return m ? m[1].trim() : ''; };
     const title    = pick(/<title[^>]*>([\s\S]*?)<\/title>/i);
