@@ -11,43 +11,86 @@ function _hasPerplexity() { const k = process.env.PERPLEXITY_API_KEY; return k &
 
 const PLATFORMS = ['trustpilot','g2','google','capterra','tripadvisor'];
 
+// Robust JSON extraction: finds the first complete balanced {...} object in text.
+// Handles markdown fences, prose before/after the JSON, and nested objects.
+function _extractJson(txt) {
+  // Strip markdown code fences first
+  const stripped = txt.replace(/```(?:json)?\s*([\s\S]*?)```/gi, '$1').trim();
+  // Find first '{' and walk to find its matching '}'
+  const sources = [stripped, txt];
+  for (const src of sources) {
+    const start = src.indexOf('{');
+    if (start === -1) continue;
+    let depth = 0;
+    for (let i = start; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') { depth--; if (depth === 0) { try { return JSON.parse(src.slice(start, i + 1)); } catch (_) { break; } } }
+    }
+  }
+  return null;
+}
+
+const PLATFORM_LABELS = {
+  trustpilot: 'Trustpilot (trustpilot.com)',
+  g2: 'G2 (g2.com)',
+  google: 'Google Maps / Google Business Profile',
+  capterra: 'Capterra (capterra.com)',
+  tripadvisor: 'TripAdvisor (tripadvisor.com)'
+};
+
 async function _scrapePlatform(brand, platform) {
   if (!_hasPerplexity()) return { error: 'PERPLEXITY_API_KEY required' };
-  const platformLabel = platform === 'g2' ? 'G2.com' : platform === 'google' ? 'Google Reviews/Maps' : platform === 'capterra' ? 'Capterra' : platform === 'tripadvisor' ? 'TripAdvisor' : 'Trustpilot';
-  const brandNote = brand.length <= 4 ? ` Note: "${brand}" may be a ticker symbol, abbreviation, or brand shorthand — search for the most prominent business entity (company or financial broker) using this name and return its reviews.` : '';
-  const prompt = `Search ${platformLabel} for the company "${brand}".${brandNote} Return strict JSON only:
-{
-  "found": true,
-  "avg_rating": 0.0-5.0,
-  "total_reviews": <integer>,
-  "reviews": [
-    {"author":"...","rating":1-5,"date":"YYYY-MM-DD or relative","title":"...","body":"...","sentiment":"positive|neutral|negative"}
-  ]
-}
-Return up to 8 most recent reviews. If nothing found on ${platformLabel}, return {"found":false}. Never invent.`;
+  const platformLabel = PLATFORM_LABELS[platform] || platform;
+  const brandNote = brand.length <= 4
+    ? ` Note: "${brand}" is likely a ticker symbol or brand shorthand — find the full company (e.g. financial broker or tech firm) using that name.`
+    : '';
+  const googleNote = platform === 'google'
+    ? ` Search Google Maps and Google Business Profile for the company listing. Look for the business page with star ratings and customer reviews.`
+    : '';
+  const prompt = `Search ${platformLabel} right now for customer reviews of the company called "${brand}".${brandNote}${googleNote}
+
+You MUST return ONLY a valid JSON object — no prose, no markdown, no explanation before or after. The JSON must be one of these two shapes:
+
+If reviews are found:
+{"found":true,"avg_rating":<number 0-5>,"total_reviews":<integer>,"reviews":[{"author":"<name>","rating":<1-5>,"date":"<YYYY-MM-DD or relative>","title":"<title or empty string>","body":"<review text>","sentiment":"positive|neutral|negative"}]}
+
+If NOT found on ${platformLabel}:
+{"found":false}
+
+Return up to 8 of the most recent reviews. Do not invent reviews — only include what you actually found on the platform.`;
+
   return await new Promise(resolve => {
-    const body = JSON.stringify({ model:'sonar', temperature:0.1, max_tokens:2000, messages:[{ role:'user', content: prompt }] });
+    const body = JSON.stringify({
+      model: 'sonar-pro',
+      temperature: 0.1,
+      max_tokens: 2500,
+      messages: [{ role: 'user', content: prompt }]
+    });
     const req = _https.request({
-      hostname:'api.perplexity.ai', path:'/chat/completions', method:'POST',
-      headers:{ 'Authorization':`Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type':'application/json', 'Content-Length':Buffer.byteLength(body) }
+      hostname: 'api.perplexity.ai', path: '/chat/completions', method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      }
     }, r => {
-      let d=''; r.on('data', c => d+=c);
+      let d = ''; r.on('data', c => d += c);
       r.on('end', () => {
         try {
           const j = JSON.parse(d);
+          if (j.error) { console.warn('[review-agg] perplexity api error:', j.error); return resolve({ error: String(j.error.message || j.error) }); }
           const txt = j?.choices?.[0]?.message?.content || '';
-          const m = txt.match(/\{[\s\S]*\}/);
-          // Distinguish parse/format failures from a genuine "not found" response.
-          // Only return {found:false} when the LLM explicitly said so; everything
-          // else (no JSON, malformed JSON) is a transient error — do NOT treat it
-          // as "no reviews" or it would falsely mark all tracked reviews as deleted.
-          if (!m) return resolve({ error: 'parse_failed' });
-          resolve(JSON.parse(m[0]));
-        } catch { resolve({ error: 'parse_failed' }); }
+          const parsed = _extractJson(txt);
+          if (!parsed) {
+            console.warn('[review-agg] parse_failed for', brand, 'on', platform, '— raw:', txt.slice(0, 300));
+            return resolve({ error: 'parse_failed' });
+          }
+          resolve(parsed);
+        } catch (e) { resolve({ error: 'parse_failed:' + e.message }); }
       });
     });
     req.on('error', e => resolve({ error: e.message }));
-    req.setTimeout(35000, () => { req.destroy(); resolve({ error: 'Perplexity timeout' }); });
+    req.setTimeout(40000, () => { req.destroy(); resolve({ error: 'Perplexity timeout' }); });
     req.write(body); req.end();
   });
 }
@@ -64,13 +107,10 @@ router.post('/scan', _safeAsync(async (req, res) => {
   const r = await _scrapePlatform(brand, platform);
   if (r.error) return _err(res, 502, r.error);
 
-  // Resolve tenant once, independently — snapshot diff must run for ALL scan outcomes,
-  // including found:false (empty array marks any previously-tracked reviews as deleted).
   let _scanTid = null;
   try { _scanTid = await _tenantCtx.resolveTenantId(req, { label: 'review_aggregator:scan' }); } catch(_) {}
 
   if (!r.found) {
-    // Still diff against snapshot — prior reviews for this brand/platform should become deleted
     if (_scanTid != null) _revMon.recordSnapshot(_scanTid, brand, platform, []).catch(() => {});
     return res.json({ ok:true, brand, platform, found:false, reviews: [] });
   }
@@ -81,31 +121,34 @@ router.post('/scan', _safeAsync(async (req, res) => {
   if (_db.hasDb && _db.hasDb() && _scanTid != null) {
     try {
       await _db.getPool().query(
-      `INSERT INTO review_aggregator_runs (tenant_id, brand, platform, avg_rating, total_reviews, pos_count, neu_count, neg_count, reviews) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [_scanTid, brand, platform, parseFloat(r.avg_rating)||null, parseInt(r.total_reviews,10)||reviews.length, counts.pos, counts.neu, counts.neg, JSON.stringify(reviews)]
-    ); } catch(_) {}
+        `INSERT INTO review_aggregator_runs (tenant_id, brand, platform, avg_rating, total_reviews, pos_count, neu_count, neg_count, reviews) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [_scanTid, brand, platform, parseFloat(r.avg_rating)||null, parseInt(r.total_reviews,10)||reviews.length, counts.pos, counts.neu, counts.neg, JSON.stringify(reviews)]
+      );
+    } catch(_) {}
   }
   res.json({ ok:true, brand, platform, found:true, avg_rating: r.avg_rating, total_reviews: r.total_reviews, counts, reviews });
-  // Fire-and-forget deleted-review snapshot diff — always runs after a successful scan
   if (_scanTid != null) {
     _revMon.recordSnapshot(_scanTid, brand, platform, reviews).catch(() => {});
   }
 }));
 
 router.post('/compare', _safeAsync(async (req, res) => {
-  const brands = Array.isArray(req.body?.brands) ? req.body.brands.slice(0, 4).map(b => String(b).trim().slice(0, 200)).filter(Boolean) : [];
+  const brands = Array.isArray(req.body?.brands)
+    ? req.body.brands.slice(0, 4).map(b => String(b).trim().slice(0, 200)).filter(Boolean)
+    : [];
   const platform = String(req.body?.platform || 'trustpilot').toLowerCase();
   if (brands.length < 2) return _err(res, 400, 'At least 2 brands required for comparison');
   if (!PLATFORMS.includes(platform)) return _err(res, 400, 'invalid platform');
   if (!_hasPerplexity()) return _err(res, 400, 'PERPLEXITY_API_KEY required');
 
-  const results = [];
-  for (const b of brands) {
-    const r = await _scrapePlatform(b, platform);
-    if (r.error || !r.found) { results.push({ brand: b, found:false }); continue; }
+  // Run all brands in parallel — each Perplexity call takes ~10-30s so serial = pain
+  const settled = await Promise.all(brands.map(b => _scrapePlatform(b, platform)));
+  const results = brands.map((b, i) => {
+    const r = settled[i];
+    if (r.error || !r.found) return { brand: b, found: false, _error: r.error || null };
     const revs = Array.isArray(r.reviews) ? r.reviews : [];
-    results.push({ brand: b, found:true, avg_rating: r.avg_rating, total_reviews: r.total_reviews, recent_count: revs.length });
-  }
+    return { brand: b, found: true, avg_rating: r.avg_rating, total_reviews: r.total_reviews, recent_count: revs.length };
+  });
   res.json({ ok:true, platform, results });
 }));
 
