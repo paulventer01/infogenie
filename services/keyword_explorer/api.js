@@ -8,7 +8,14 @@ async function _tid(req, label) {
   return await _tenantCtx.resolveTenantId(req, { label });
 }
 
-const COUNTRY_TO_LOC = { us:2840, gb:2826, ca:2124, au:2036, in:2356, de:2276, fr:2250, jp:2392, br:2076, mx:2484, za:2710, nl:2528, es:2724, it:2380, sg:2702 };
+const COUNTRY_TO_LOC = {
+  us:2840, gb:2826, ca:2124, au:2036, in:2356, de:2276, fr:2250, jp:2392, br:2076, mx:2484,
+  za:2710, nl:2528, es:2724, it:2380, sg:2702, ae:2784, ch:2756, se:2752, no:2578, dk:2208,
+  fi:2246, pl:2616, ru:2643, tr:2792, ar:2032, co:2170, cl:2152, nz:2554, ph:2608, id:2360,
+  my:2458, th:2764, kr:2410, cn:2156, hk:2344, tw:2158, eg:2818, ng:2566, ke:2404, gh:2288,
+  pk:2586, bd:2050, il:2376, sa:2682, at:2040, be:2056, pt:2620, cz:2203, ro:2642, hu:2348,
+  ie:2372, gr:2300
+};
 
 function _hasCreds() {
   const u = process.env.DATAFORSEO_LOGIN, p = process.env.DATAFORSEO_PASSWORD;
@@ -48,16 +55,25 @@ function _mapMetrics(m) {
 
 router.post('/explore', async (req, res) => {
   const seed = String(req.body?.seed || '').trim().slice(0, 80);
-  const country = String(req.body?.country || 'us').toLowerCase().slice(0, 5);
+  const country = String(req.body?.country || 'us').toLowerCase().slice(0, 6);
   const limit = Math.min(50, Math.max(5, parseInt(req.body?.limit, 10) || 25));
   if (!seed) return _err(res, 400, 'seed required');
-  const locCode = COUNTRY_TO_LOC[country] || 2840;
+  const isGlobal = country === 'global' || country === '';
+  const locCode = isGlobal ? null : (COUNTRY_TO_LOC[country] || 2840);
 
   if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', note:'Set DATAFORSEO_LOGIN + DATAFORSEO_PASSWORD for live keyword data.' });
 
+  // Build request bodies — omit location_code for global queries
+  const _overviewBody = isGlobal
+    ? [{ keywords:[seed], language_code:'en', include_serp_info:false }]
+    : [{ keywords:[seed], language_code:'en', location_code: locCode, include_serp_info:false }];
+  const _ideasBody = isGlobal
+    ? [{ keywords:[seed], language_code:'en', limit, order_by:['keyword_info.search_volume,desc'] }]
+    : [{ keywords:[seed], language_code:'en', location_code: locCode, limit, order_by:['keyword_info.search_volume,desc'] }];
+
   const [overview, ideas] = await Promise.all([
-    _dfsPost('/v3/dataforseo_labs/google/keyword_overview/live', [{ keywords:[seed], language_code:'en', location_code: locCode, include_serp_info:false }]),
-    _dfsPost('/v3/dataforseo_labs/google/keyword_ideas/live', [{ keywords:[seed], language_code:'en', location_code: locCode, limit, order_by:['keyword_info.search_volume,desc'] }]),
+    _dfsPost('/v3/dataforseo_labs/google/keyword_overview/live', _overviewBody),
+    _dfsPost('/v3/dataforseo_labs/google/keyword_ideas/live', _ideasBody),
   ]);
 
   const seedItem = overview?.tasks?.[0]?.result?.[0]?.items?.[0];

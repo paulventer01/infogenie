@@ -213,16 +213,119 @@ window._miLoad = async function() {
 // ── Tier 13 #2: Keyword Explorer ────────────────────────────────────
 window.buildKeywordExplorer = async function() {
   const el = document.getElementById('keWrap'); if (!el) return;
+  // Detect a good default country from analysisData if available
+  const _ad = window.analysisData || {};
+  const _defCty = (_ad.country_code || 'us').toLowerCase().slice(0,5);
   el.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:16px">
-      <div style="display:grid;grid-template-columns:2fr 90px 110px auto;gap:10px;align-items:end">
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Seed keyword</label><input id="keSeed" placeholder="running shoes" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Country</label><input id="keCty" value="us" maxlength="5" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
-        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Ideas</label><input id="keLim" type="number" value="25" min="5" max="50" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
-        <button onclick="_keGo()" style="padding:10px 18px;background:#8B5CF6;border:2px solid #8B5CF6;border-radius:8px;font-size:0.82rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🔬 Explore</button>
+      <div style="display:grid;grid-template-columns:1fr 200px 110px auto;gap:10px;align-items:end">
+        <div>
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px">
+            <label style="font-size:0.7rem;font-weight:700;color:#6B7280">Seed keyword</label>
+            <button onclick="_keAiSuggest()" id="keAiSuggestBtn" title="Fill from analysis keywords" style="padding:2px 9px;background:linear-gradient(135deg,#7C3AED,#A855F7);border:none;border-radius:6px;color:#fff;font-size:0.62rem;font-weight:700;cursor:pointer;line-height:1.6">✨ AI Suggest</button>
+          </div>
+          <input id="keSeed" placeholder="e.g. forex trading" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Country</label>
+          <select id="keCty" style="width:100%;padding:9px 10px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.84rem;background:#fff;cursor:pointer;box-sizing:border-box">
+            <option value="global">🌍 Global (all countries)</option>
+            <option value="us" ${_defCty==='us'?'selected':''}>🇺🇸 United States</option>
+            <option value="gb" ${_defCty==='gb'?'selected':''}>🇬🇧 United Kingdom</option>
+            <option value="au" ${_defCty==='au'?'selected':''}>🇦🇺 Australia</option>
+            <option value="ca" ${_defCty==='ca'?'selected':''}>🇨🇦 Canada</option>
+            <option value="de" ${_defCty==='de'?'selected':''}>🇩🇪 Germany</option>
+            <option value="fr" ${_defCty==='fr'?'selected':''}>🇫🇷 France</option>
+            <option value="es" ${_defCty==='es'?'selected':''}>🇪🇸 Spain</option>
+            <option value="it" ${_defCty==='it'?'selected':''}>🇮🇹 Italy</option>
+            <option value="nl" ${_defCty==='nl'?'selected':''}>🇳🇱 Netherlands</option>
+            <option value="be" ${_defCty==='be'?'selected':''}>🇧🇪 Belgium</option>
+            <option value="ch" ${_defCty==='ch'?'selected':''}>🇨🇭 Switzerland</option>
+            <option value="at" ${_defCty==='at'?'selected':''}>🇦🇹 Austria</option>
+            <option value="pt" ${_defCty==='pt'?'selected':''}>🇵🇹 Portugal</option>
+            <option value="se" ${_defCty==='se'?'selected':''}>🇸🇪 Sweden</option>
+            <option value="no" ${_defCty==='no'?'selected':''}>🇳🇴 Norway</option>
+            <option value="dk" ${_defCty==='dk'?'selected':''}>🇩🇰 Denmark</option>
+            <option value="fi" ${_defCty==='fi'?'selected':''}>🇫🇮 Finland</option>
+            <option value="ie" ${_defCty==='ie'?'selected':''}>🇮🇪 Ireland</option>
+            <option value="pl" ${_defCty==='pl'?'selected':''}>🇵🇱 Poland</option>
+            <option value="cz" ${_defCty==='cz'?'selected':''}>🇨🇿 Czech Republic</option>
+            <option value="ro" ${_defCty==='ro'?'selected':''}>🇷🇴 Romania</option>
+            <option value="hu" ${_defCty==='hu'?'selected':''}>🇭🇺 Hungary</option>
+            <option value="gr" ${_defCty==='gr'?'selected':''}>🇬🇷 Greece</option>
+            <option value="ru" ${_defCty==='ru'?'selected':''}>🇷🇺 Russia</option>
+            <option value="tr" ${_defCty==='tr'?'selected':''}>🇹🇷 Turkey</option>
+            <option value="in" ${_defCty==='in'?'selected':''}>🇮🇳 India</option>
+            <option value="cn" ${_defCty==='cn'?'selected':''}>🇨🇳 China</option>
+            <option value="jp" ${_defCty==='jp'?'selected':''}>🇯🇵 Japan</option>
+            <option value="kr" ${_defCty==='kr'?'selected':''}>🇰🇷 South Korea</option>
+            <option value="sg" ${_defCty==='sg'?'selected':''}>🇸🇬 Singapore</option>
+            <option value="hk" ${_defCty==='hk'?'selected':''}>🇭🇰 Hong Kong</option>
+            <option value="tw" ${_defCty==='tw'?'selected':''}>🇹🇼 Taiwan</option>
+            <option value="my" ${_defCty==='my'?'selected':''}>🇲🇾 Malaysia</option>
+            <option value="id" ${_defCty==='id'?'selected':''}>🇮🇩 Indonesia</option>
+            <option value="th" ${_defCty==='th'?'selected':''}>🇹🇭 Thailand</option>
+            <option value="ph" ${_defCty==='ph'?'selected':''}>🇵🇭 Philippines</option>
+            <option value="bd" ${_defCty==='bd'?'selected':''}>🇧🇩 Bangladesh</option>
+            <option value="pk" ${_defCty==='pk'?'selected':''}>🇵🇰 Pakistan</option>
+            <option value="br" ${_defCty==='br'?'selected':''}>🇧🇷 Brazil</option>
+            <option value="mx" ${_defCty==='mx'?'selected':''}>🇲🇽 Mexico</option>
+            <option value="ar" ${_defCty==='ar'?'selected':''}>🇦🇷 Argentina</option>
+            <option value="co" ${_defCty==='co'?'selected':''}>🇨🇴 Colombia</option>
+            <option value="cl" ${_defCty==='cl'?'selected':''}>🇨🇱 Chile</option>
+            <option value="nz" ${_defCty==='nz'?'selected':''}>🇳🇿 New Zealand</option>
+            <option value="za" ${_defCty==='za'?'selected':''}>🇿🇦 South Africa</option>
+            <option value="ng" ${_defCty==='ng'?'selected':''}>🇳🇬 Nigeria</option>
+            <option value="ke" ${_defCty==='ke'?'selected':''}>🇰🇪 Kenya</option>
+            <option value="gh" ${_defCty==='gh'?'selected':''}>🇬🇭 Ghana</option>
+            <option value="eg" ${_defCty==='eg'?'selected':''}>🇪🇬 Egypt</option>
+            <option value="sa" ${_defCty==='sa'?'selected':''}>🇸🇦 Saudi Arabia</option>
+            <option value="ae" ${_defCty==='ae'?'selected':''}>🇦🇪 UAE</option>
+            <option value="il" ${_defCty==='il'?'selected':''}>🇮🇱 Israel</option>
+          </select>
+        </div>
+        <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Ideas</label><input id="keLim" type="number" value="25" min="5" max="50" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;box-sizing:border-box"></div>
+        <button onclick="_keGo()" style="padding:10px 18px;background:#8B5CF6;border:2px solid #8B5CF6;border-radius:8px;font-size:0.82rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4);white-space:nowrap">🔬 Explore</button>
       </div>
     </div>
     <div id="keOut"></div>`;
+};
+
+// AI Suggest for Keyword Explorer — fills seed from analysis data
+window._keAiSuggest = function() {
+  const inp = document.getElementById('keSeed');
+  if (!inp) return;
+  const ad = window.analysisData || {};
+  const pool = [];
+
+  // 1. analysisData.keywords (from prior SEO/explorer runs)
+  if (Array.isArray(ad.keywords) && ad.keywords.length) {
+    ad.keywords.forEach(k => { const s = typeof k === 'string' ? k : (k && (k.keyword || k.term) || ''); if (s) pool.push(s); });
+  }
+  // 2. competitor topKeywords
+  if (!pool.length && Array.isArray(ad.competitors)) {
+    ad.competitors.forEach(c => {
+      if (Array.isArray(c.topKeywords)) c.topKeywords.forEach(k => { if (k) pool.push(k); });
+    });
+  }
+  // 3. brand domain as last resort
+  if (!pool.length) {
+    const domain = (ad.url || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0];
+    const seed = domain || ad.brand_name || '';
+    if (seed) pool.push(seed);
+  }
+
+  if (!pool.length) {
+    showToast('ℹ️ Run a website analysis first — AI Suggest will fill keywords from it');
+    return;
+  }
+
+  // Cycle through suggestions each click
+  window._keSuggestIdx = ((window._keSuggestIdx || 0) + 1) % Math.min(pool.length, 10);
+  const pick = pool[window._keSuggestIdx];
+  inp.value = pick;
+  inp.focus();
+  showToast('✅ "' + pick + '" filled from your analysis (' + Math.min(pool.length,10) + ' available — click again for next)');
 };
 window._keKD = function(kd) {
   if (kd === null || kd === undefined) return { label:'—', color:'#9CA3AF' };
@@ -245,7 +348,7 @@ window._keGo = async function() {
   out.innerHTML = `
     <div style="background:linear-gradient(135deg,#8B5CF6 0%,#6D28D9 100%);color:#fff;border-radius:12px;padding:16px 20px;margin-bottom:14px">
       <div style="font-weight:800;font-size:1.1rem">🔬 ${_escapeHtml(sm.keyword)}</div>
-      <div style="font-size:0.78rem;opacity:.9;margin-top:2px">${(country||'us').toUpperCase()} · ${sm.intent ? sm.intent + ' intent' : 'no intent data'}</div>
+      <div style="font-size:0.78rem;opacity:.9;margin-top:2px">${country==='global'?'🌍 Global':((country||'us').toUpperCase())} · ${sm.intent ? sm.intent + ' intent' : 'no intent data'}</div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px;margin-bottom:18px">
       ${tile('Search volume', (sm.search_volume||0).toLocaleString()+'/mo','#0EA5E9')}
