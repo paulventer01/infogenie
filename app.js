@@ -14731,6 +14731,26 @@ async function _adminRenderPermissions(body) {
       </table>
     </div>`;
 
+  // Stash the live model so the interactive "view as this role" preview can
+  // recompute accessible vs blocked screens client-side without another fetch.
+  // Map each permission key → its area so the preview can group screens.
+  const areaByPerm = {};
+  areas.forEach(a => (a.permissions || []).forEach(p => { areaByPerm[p.key] = a.area; }));
+  window._adminPermPreview = { roles, components, areaByPerm };
+
+  const roleOptions = roles.map((r, i) =>
+    `<option value="${_esc(r.key)}"${i === 0 ? ' selected' : ''}>${_esc(r.name)} · ${_esc(r.scope)}</option>`).join('');
+  const viewAsBlock = `
+    <div style="font-weight:800;color:#1E293B;margin:0 0 4px">View as this role</div>
+    <div style="font-size:12px;color:#94A3B8;margin-bottom:12px">Pick a role to see exactly which app screens it can open and which are blocked — the answer to "what does a Marketer see when they log in?" (read-only; no impersonation).</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <label style="font-size:12.5px;font-weight:700;color:#475569">Role</label>
+      <select id="adminRolePreviewSelect" onchange="_adminPreviewRole(this.value)" style="padding:8px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:13px;background:#fff;color:#1E293B;min-width:220px">
+        ${roleOptions}
+      </select>
+    </div>
+    <div id="adminRolePreviewBody"></div>`;
+
   const compRows = components.map(c => `
     <tr style="border-top:1px solid #F1F5F9">
       <td style="padding:8px 14px;color:#1E293B;font-weight:600;font-family:ui-monospace,monospace;font-size:12px">${_esc(c.view)}</td>
@@ -14759,8 +14779,70 @@ async function _adminRenderPermissions(body) {
     <div style="font-weight:800;color:#1E293B;margin:0 0 4px">Roles × permissions</div>
     <div style="font-size:12px;color:#94A3B8;margin-bottom:12px">✓ means the role grants that permission. Permissions are grouped by area; roles are columns.</div>
     ${matrix}
+    ${viewAsBlock}
+    <div style="height:26px"></div>
     ${compTable}`;
+
+  // Render the preview for the initially-selected role.
+  if (roles.length) _adminPreviewRole(roles[0].key);
 }
+
+// Interactive "view as this role" preview. Recomputes, from the cached live
+// model, exactly which app screens the chosen role can open vs. is blocked from
+// — derived from COMPONENT_MATRIX (screen → required permission) + the role's
+// permission set. Read-only; never changes session/impersonates.
+window._adminPreviewRole = function(roleKey) {
+  const data = window._adminPermPreview;
+  const host = document.getElementById('adminRolePreviewBody');
+  if (!data || !host) return;
+  const role = (data.roles || []).find(r => r.key === roleKey);
+  if (!role) { host.innerHTML = ''; return; }
+  const has = new Set(role.permissions || []);
+  const allowed = [], blocked = [];
+  (data.components || []).forEach(c => {
+    // A screen with no required permission is open to everyone.
+    const ok = !c.permission || has.has(c.permission);
+    (ok ? allowed : blocked).push(c);
+  });
+
+  const groupByArea = (list) => {
+    const m = {};
+    list.forEach(c => {
+      const area = (data.areaByPerm && data.areaByPerm[c.permission]) || 'Other';
+      (m[area] = m[area] || []).push(c);
+    });
+    return Object.keys(m).sort().map(area => ({ area, items: m[area].sort((a, b) => a.view.localeCompare(b.view)) }));
+  };
+
+  const renderColumn = (list, ok) => {
+    if (!list.length) return `<div style="font-size:12.5px;color:#94A3B8;padding:10px 14px">None.</div>`;
+    return groupByArea(list).map(g => `
+      <div style="padding:7px 14px;background:#F8FAFC;font-size:10.5px;font-weight:800;color:#475569;letter-spacing:.04em;text-transform:uppercase;border-top:1px solid #F1F5F9">${_esc(g.area)}</div>
+      ${g.items.map(c => `
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;border-top:1px solid #F1F5F9">
+          <span style="color:${ok ? '#15803D' : '#CBD5E1'};font-weight:700;flex-shrink:0">${ok ? '✓' : '✕'}</span>
+          <span style="font-family:ui-monospace,monospace;font-size:12px;color:#1E293B;font-weight:600">${_esc(c.view)}</span>
+          <span style="font-size:11px;color:#94A3B8;margin-left:auto;text-align:right">${_esc(c.permissionLabel || (c.permission ? c.permission : 'open to all'))}</span>
+        </div>`).join('')}`).join('');
+  };
+
+  host.innerHTML = `
+    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px 16px;margin-bottom:14px">
+      <div style="font-size:13.5px;font-weight:800;color:#1E293B">${_esc(role.name)} <span style="font-size:11px;font-weight:600;color:#94A3B8">· ${_esc(role.scope)}</span></div>
+      ${role.description ? `<div style="font-size:12px;color:#64748B;margin-top:3px">${_esc(role.description)}</div>` : ''}
+      <div style="font-size:12px;color:#475569;margin-top:6px"><strong style="color:#15803D">${allowed.length}</strong> screens accessible · <strong style="color:#B91C1C">${blocked.length}</strong> blocked</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+      <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;overflow:auto;max-height:60vh">
+        <div style="padding:9px 14px;background:#ECFDF5;font-size:12px;font-weight:800;color:#15803D;position:sticky;top:0;z-index:1">✓ Can access (${allowed.length})</div>
+        ${renderColumn(allowed, true)}
+      </div>
+      <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;overflow:auto;max-height:60vh">
+        <div style="padding:9px 14px;background:#FEF2F2;font-size:12px;font-weight:800;color:#B91C1C;position:sticky;top:0;z-index:1">✕ Blocked (${blocked.length})</div>
+        ${renderColumn(blocked, false)}
+      </div>
+    </div>`;
+};
 
 window._adminSetPlatformRole = async function(userId, roleKey) {
   try { await _adminFetch('/users/' + userId + '/platform-role', { method:'PATCH', body:{ roleKey } }); showToast('✓ Platform role updated'); _adminRenderActive(true); }
