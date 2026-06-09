@@ -6578,6 +6578,19 @@ h3:hover {
   color: #64748B !important;
 }
 
+/* Dark select/dropdown elements (#1A2E4A bg) — flip to light in light theme so text is readable */
+[data-theme="light"] select[style*="background:#1A2E4A"],
+[data-theme="light"] select[style*="background: #1A2E4A"] {
+  background: #F1F5F9 !important;
+  color: #0F172A !important;
+  border-color: #CBD5E1 !important;
+}
+[data-theme="light"] select[style*="background:#1A2E4A"] option,
+[data-theme="light"] select[style*="background: #1A2E4A"] option {
+  background: #FFFFFF;
+  color: #0F172A;
+}
+
 /* Budget/accent bars using 90deg dark gradient are intentionally dark in all themes — keep text white */
 [data-theme="light"] [style*="linear-gradient(90deg,#0A1628"] [style*="color:rgba(255,255,255"],
 [data-theme="light"] [style*="linear-gradient(90deg, #0A1628"] [style*="color:rgba(255,255,255"],
