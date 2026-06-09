@@ -14745,6 +14745,34 @@ async function _adminRenderPermissions(body) {
   });
   window._adminPermPreview = { roles, components, areaByPerm, viewLabel };
 
+  // Unmapped screens: nav views that have no COMPONENT_MATRIX entry.
+  // These silently become open to every role — surface them so an admin can
+  // decide whether they need a permission gate.
+  const mappedViews = new Set(components.map(c => c.view));
+  const unmappedViews = Object.entries(viewLabel)
+    .filter(([v]) => !mappedViews.has(v))
+    .sort(([a], [b]) => a.localeCompare(b));
+  const unmappedCallout = unmappedViews.length === 0
+    ? `<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;padding:12px 16px;margin-bottom:18px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">✅</span>
+        <div style="font-size:12.5px;color:#14532D;line-height:1.45"><strong>All nav screens are mapped.</strong> Every navigation screen has an entry in COMPONENT_MATRIX.</div>
+      </div>`
+    : `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:14px 16px;margin-bottom:18px">
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
+          <span style="font-size:18px;line-height:1.2">⚠️</span>
+          <div>
+            <div style="font-size:13px;font-weight:800;color:#92400E">${unmappedViews.length} unmapped screen${unmappedViews.length === 1 ? '' : 's'}</div>
+            <div style="font-size:12px;color:#78350F;margin-top:2px">These nav screens have no entry in COMPONENT_MATRIX and are visible to every role by default. Add them to the matrix if they should be gated.</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${unmappedViews.map(([v, lbl]) => `<span title="${_esc(v)}" style="display:inline-flex;flex-direction:column;padding:5px 10px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:7px">
+            <span style="font-size:12px;font-weight:700;color:#92400E">${_esc(lbl || v)}</span>
+            <span style="font-size:10px;color:#B45309;font-family:ui-monospace,monospace">${_esc(v)}</span>
+          </span>`).join('')}
+        </div>
+      </div>`;
+
   const roleOptions = roles.map((r, i) =>
     `<option value="${_esc(r.key)}"${i === 0 ? ' selected' : ''}>${_esc(r.name)} · ${_esc(r.scope)}</option>`).join('');
   const viewAsBlock = `
@@ -14789,6 +14817,7 @@ async function _adminRenderPermissions(body) {
       <span style="font-size:18px">👁️</span>
       <div style="font-size:12.5px;color:#1E3A8A;line-height:1.45"><strong>Read-only.</strong> This is a live view of the platform's role &amp; permission model, pulled straight from the source of truth. Editing roles or building custom roles isn't available here.</div>
     </div>
+    ${unmappedCallout}
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 4px">
       <div style="font-weight:800;color:#1E293B">Roles × permissions</div>
       <button onclick="_adminExportPermissions()" title="Download the role × permission grid and feature map as a CSV file" style="padding:6px 12px;background:#1E293B;border:1px solid #1E293B;border-radius:7px;font-size:12px;font-weight:700;color:#fff;cursor:pointer">⬇️ Download CSV</button>
