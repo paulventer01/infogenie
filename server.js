@@ -3425,10 +3425,17 @@ app.post('/api/apollo/enrich', async (req, res) => {
     if (!raw.includes('.')) return res.status(400).json({ ok:false, error:'valid domain required' });
 
     try { _chargeBudget('apollo', req.ip); } catch (e) { if (_send429IfBudget(res, e)) return; throw e; }
-    const r = await fetch(`https://api.apollo.io/api/v1/organizations/enrich?domain=${encodeURIComponent(raw)}`, {
-      method:'GET',
-      headers:{ 'X-Api-Key': key, 'Cache-Control':'no-cache', 'Accept':'application/json' }
-    });
+    const _apolloAc = new AbortController();
+    const _apolloTm = setTimeout(() => _apolloAc.abort(), 10000);
+    let r;
+    try {
+      r = await fetch(`https://api.apollo.io/api/v1/organizations/enrich?domain=${encodeURIComponent(raw)}`, {
+        method:'GET',
+        headers:{ 'X-Api-Key': key, 'Cache-Control':'no-cache', 'Accept':'application/json' },
+        signal: _apolloAc.signal,
+      });
+    } finally { clearTimeout(_apolloTm); }
+    if (r.status === 422 || r.status === 404) return res.json({ ok:false, error:'No Apollo record found for this domain.' });
     if (!r.ok) {
       const body = await r.text();
       return res.status(r.status).json({ ok:false, error:`HTTP ${r.status}`, detail: body.slice(0, 500) });
@@ -3456,7 +3463,10 @@ app.post('/api/apollo/enrich', async (req, res) => {
         techStack:   o.technology_names || [],
       }
     });
-  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+  } catch (e) {
+    if (e.name === 'AbortError') return res.status(504).json({ ok:false, error:'Apollo API timed out (10 s) — try again or check your API key.' });
+    res.status(500).json({ ok:false, error: e.message });
+  }
 });
 
 // ── BuiltWith API (detect competitors' tech stack) ───────────────────────────
@@ -3472,7 +3482,12 @@ app.post('/api/builtwith/lookup', async (req, res) => {
       .replace(/^https?:\/\//,'').replace(/\/.*$/,'');
     if (!domain || !domain.includes('.')) return res.status(400).json({ ok:false, error:'valid domain required' });
     try { _chargeBudget('builtwith', req.ip); } catch (e) { if (_send429IfBudget(res, e)) return; throw e; }
-    const r = await fetch(`https://api.builtwith.com/free1/api.json?KEY=${encodeURIComponent(key)}&LOOKUP=${encodeURIComponent(domain)}`);
+    const _bwAc = new AbortController();
+    const _bwTm = setTimeout(() => _bwAc.abort(), 10000);
+    let r;
+    try {
+      r = await fetch(`https://api.builtwith.com/free1/api.json?KEY=${encodeURIComponent(key)}&LOOKUP=${encodeURIComponent(domain)}`, { signal: _bwAc.signal });
+    } finally { clearTimeout(_bwTm); }
     if (!r.ok) {
       const body = await r.text();
       return res.status(r.status).json({ ok:false, error:`HTTP ${r.status}`, detail: body.slice(0, 500) });
@@ -3511,7 +3526,10 @@ app.post('/api/builtwith/lookup', async (req, res) => {
       categoryCount: categories.length,
       categories,
     });
-  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+  } catch (e) {
+    if (e.name === 'AbortError') return res.status(504).json({ ok:false, error:'BuiltWith API timed out (10 s) — try again.' });
+    res.status(500).json({ ok:false, error: e.message });
+  }
 });
 
 // Postgres / kv_store status ping.
