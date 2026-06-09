@@ -110,6 +110,7 @@ const ROUTE_GROUPS = [
   // ── Grow ──────────────────────────────────────────────────────────────────
   { prefix: '/api/launch',                    view: 'grow.campaigns.view',     write: 'grow.campaigns.launch' },
   { prefix: '/api/optimizer',                 view: 'grow.optimizer.view',     write: 'grow.optimizer.control' },
+  { prefix: '/api/kpi-analysis',              view: 'grow.optimizer.view',     write: 'grow.optimizer.control' },
   { prefix: '/api/landing-pages',             view: 'grow.landing_pages.view', write: 'grow.landing_pages.edit' },
   { prefix: '/api/site-builder',              view: 'grow.landing_pages.view', write: 'grow.landing_pages.edit' },
   { prefix: '/api/linksell',                  view: 'grow.landing_pages.view', write: 'grow.landing_pages.edit' },
