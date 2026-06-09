@@ -715,6 +715,50 @@ app.post('/api/competitor-enrich', async (req, res) => {
     const kwMap = {};
     kwResults.forEach(({ domain, keywords }) => { if (keywords.length) kwMap[domain] = keywords; });
 
+    // ── Step 1b: AI keyword fallback for any competitor DataForSEO didn't cover ─
+    const domainsNoKw = cleanDomains.filter(d => !kwMap[d]);
+    if (domainsNoKw.length > 0 && openaiChatWithRetry) {
+      try {
+        const fallbackCompletion = await openaiChatWithRetry({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: 'You are a senior SEO and digital marketing strategist. Output strict JSON only, no markdown, no code fences.' },
+            { role: 'user', content: `Industry: ${industry || 'General'}
+
+Generate the 7 most realistic non-branded organic search keywords for each competitor website listed below.
+Choose keywords with clear commercial or informational intent that match this competitor's likely business focus.
+Do NOT use the brand name or domain name as a keyword.
+
+Competitors: ${domainsNoKw.join(', ')}
+
+Return ONLY valid JSON:
+{
+  "keywords": {
+    "<domain>": ["keyword1","keyword2","keyword3","keyword4","keyword5","keyword6","keyword7"]
+  }
+}` },
+          ],
+          temperature: 0.25,
+          max_tokens: 700,
+          response_format: { type: 'json_object' },
+        });
+        const fbRaw  = fallbackCompletion.choices?.[0]?.message?.content || '{}';
+        const fbParsed = JSON.parse(fbRaw);
+        const aiKws = fbParsed.keywords || {};
+        domainsNoKw.forEach(d => {
+          const kws = (aiKws[d] || []).filter(k => typeof k === 'string' && k.trim()).slice(0, 7);
+          if (kws.length) {
+            kwMap[d] = kws;
+            const existing = kwResults.find(r => r.domain === d);
+            if (existing) existing.keywords = kws; else kwResults.push({ domain: d, keywords: kws });
+          }
+        });
+        console.log(`[competitor-enrich] AI keyword fallback covered ${domainsNoKw.length} domains`);
+      } catch (e) {
+        console.warn('[competitor-enrich] AI keyword fallback failed:', e.message);
+      }
+    }
+
     let audienceMap = {};
     if (Object.keys(kwMap).length > 0 && openaiChatWithRetry) {
       try {
@@ -725,7 +769,7 @@ app.post('/api/competitor-enrich', async (req, res) => {
 
 Industry: ${industry || 'General'}
 
-Below are real competitors and the top organic keywords they actually rank for on Google.
+Below are competitors and their top organic search keywords.
 Based on these keywords, identify exactly 3 "winning audience segments" that each competitor is targeting.
 Segments must be SPECIFIC to this industry — NOT generic labels like "General Users" or "All Customers".
 

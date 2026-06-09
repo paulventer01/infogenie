@@ -4305,11 +4305,12 @@ async function enrichCompetitorKwAudiences(domain, industryKey, country) {
       }
       if (hit.audiences && hit.audiences.length > 0) {
         comp.audiences = hit.audiences;
+        enriched++;
       }
     });
 
     if (enriched > 0) {
-      console.log(`[kw-audience-enrich] ${enriched} competitors updated with real keywords + AI audiences`);
+      console.log(`[kw-audience-enrich] ${enriched} competitor fields updated with keywords + AI audiences`);
       // Store for downstream use (keyword suggestions, battle plans, etc.)
       analysisData.keywords = (analysisData.competitors || [])
         .flatMap(c => c.topKeywords || [])
@@ -7795,10 +7796,10 @@ function openDifferentiatorModal(compName) {
             </div>
           `).join('')}
           <div class="budget-total-bar" style="background:linear-gradient(90deg,#0A1628,#0D2A5E);border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center">
-            <div class="budget-total-label" style="font-size:0.82rem;font-weight:700">Total Recommended Monthly Budget</div>
+            <div class="budget-total-label" style="font-size:0.82rem;font-weight:700;color:#fff">Total Recommended Monthly Budget</div>
             <div style="text-align:right">
               <div class="budget-total-amount" style="font-size:1rem;font-weight:800;color:#00E5FF">$8,500/mo</div>
-              <div class="budget-total-sub" style="font-size:0.7rem">Est. Revenue: $${Math.round(parseFloat(projectedROAS)*8500).toLocaleString()}/mo</div>
+              <div class="budget-total-sub" style="font-size:0.7rem;color:rgba(255,255,255,.72)">Est. Revenue: $${Math.round(parseFloat(projectedROAS)*8500).toLocaleString()}/mo</div>
             </div>
           </div>
         </div>
