@@ -3100,7 +3100,7 @@ app.use('/api/ab-designer',     _abdRouter);
 
 // ── Tier 8 ─────────────────────────────────────────────────────────────────
 const _vocSchema   = require('./services/voc/schema');
-const _vocRouter   = require('./services/voc/api');
+const _vocRouter   = require('./services/voc/api')({ callDataForSEO, openaiChatWithRetry });
 const _pwSchema    = require('./services/pricing_watch/schema');
 const _pwRouter    = require('./services/pricing_watch/api');
 app.use('/api/voc',            _vocRouter);
