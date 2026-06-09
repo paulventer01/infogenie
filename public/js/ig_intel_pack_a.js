@@ -215,117 +215,148 @@ window.buildKeywordExplorer = async function() {
   const el = document.getElementById('keWrap'); if (!el) return;
   // Detect a good default country from analysisData if available
   const _ad = window.analysisData || {};
-  const _defCty = (_ad.country_code || 'us').toLowerCase().slice(0,5);
+  const _defCty = (_ad.country_code || 'global').toLowerCase().slice(0,5);
+
+  const KE_COUNTRIES = [
+    ['global','🌍 Global (all countries)'],['us','🇺🇸 United States'],['gb','🇬🇧 United Kingdom'],
+    ['au','🇦🇺 Australia'],['ca','🇨🇦 Canada'],['de','🇩🇪 Germany'],['fr','🇫🇷 France'],
+    ['es','🇪🇸 Spain'],['it','🇮🇹 Italy'],['nl','🇳🇱 Netherlands'],['be','🇧🇪 Belgium'],
+    ['ch','🇨🇭 Switzerland'],['at','🇦🇹 Austria'],['pt','🇵🇹 Portugal'],['se','🇸🇪 Sweden'],
+    ['no','🇳🇴 Norway'],['dk','🇩🇰 Denmark'],['fi','🇫🇮 Finland'],['ie','🇮🇪 Ireland'],
+    ['pl','🇵🇱 Poland'],['cz','🇨🇿 Czech Republic'],['ro','🇷🇴 Romania'],['hu','🇭🇺 Hungary'],
+    ['gr','🇬🇷 Greece'],['ru','🇷🇺 Russia'],['tr','🇹🇷 Turkey'],['in','🇮🇳 India'],
+    ['cn','🇨🇳 China'],['jp','🇯🇵 Japan'],['kr','🇰🇷 South Korea'],['sg','🇸🇬 Singapore'],
+    ['hk','🇭🇰 Hong Kong'],['tw','🇹🇼 Taiwan'],['my','🇲🇾 Malaysia'],['id','🇮🇩 Indonesia'],
+    ['th','🇹🇭 Thailand'],['ph','🇵🇭 Philippines'],['bd','🇧🇩 Bangladesh'],['pk','🇵🇰 Pakistan'],
+    ['br','🇧🇷 Brazil'],['mx','🇲🇽 Mexico'],['ar','🇦🇷 Argentina'],['co','🇨🇴 Colombia'],
+    ['cl','🇨🇱 Chile'],['nz','🇳🇿 New Zealand'],['za','🇿🇦 South Africa'],['ng','🇳🇬 Nigeria'],
+    ['ke','🇰🇪 Kenya'],['gh','🇬🇭 Ghana'],['eg','🇪🇬 Egypt'],['sa','🇸🇦 Saudi Arabia'],
+    ['ae','🇦🇪 UAE'],['il','🇮🇱 Israel'],
+  ];
+  const _initEntry = KE_COUNTRIES.find(([v]) => v === _defCty) || KE_COUNTRIES[0];
+
   el.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:16px">
       <div style="display:grid;grid-template-columns:1fr 200px 110px auto;gap:10px;align-items:end">
-        <div>
+        <div style="position:relative">
           <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px">
             <label style="font-size:0.7rem;font-weight:700;color:#6B7280">Seed keyword</label>
-            <button onclick="_keAiSuggest()" id="keAiSuggestBtn" title="Fill from analysis keywords" style="padding:2px 9px;background:linear-gradient(135deg,#7C3AED,#A855F7);border:none;border-radius:6px;color:#fff;font-size:0.62rem;font-weight:700;cursor:pointer;line-height:1.6">✨ AI Suggest</button>
+            <button onclick="_keAiSuggest(event)" id="keAiSuggestBtn" title="Show keywords from your analysis" style="padding:2px 9px;background:linear-gradient(135deg,#7C3AED,#A855F7);border:none;border-radius:6px;color:#fff;font-size:0.62rem;font-weight:700;cursor:pointer;line-height:1.6">✨ AI Suggest</button>
           </div>
           <input id="keSeed" placeholder="e.g. forex trading" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;box-sizing:border-box">
+          <div id="keKwPicker" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1.5px solid #7C3AED;border-radius:10px;box-shadow:0 8px 28px rgba(124,58,237,.22);z-index:9999;padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-size:0.65rem;font-weight:700;color:#7C3AED;text-transform:uppercase;letter-spacing:.06em">Keywords from your analysis — click to use</span>
+              <span onclick="document.getElementById('keKwPicker').style.display='none'" style="cursor:pointer;color:#9CA3AF;font-size:0.85rem;line-height:1" title="Close">✕</span>
+            </div>
+            <div id="keKwPickerList" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+          </div>
         </div>
-        <div>
+        <div style="position:relative">
           <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Country</label>
-          <select id="keCty" style="width:100%;padding:9px 10px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.84rem;background:#fff;cursor:pointer;box-sizing:border-box">
-            <option value="global">🌍 Global (all countries)</option>
-            <option value="us" ${_defCty==='us'?'selected':''}>🇺🇸 United States</option>
-            <option value="gb" ${_defCty==='gb'?'selected':''}>🇬🇧 United Kingdom</option>
-            <option value="au" ${_defCty==='au'?'selected':''}>🇦🇺 Australia</option>
-            <option value="ca" ${_defCty==='ca'?'selected':''}>🇨🇦 Canada</option>
-            <option value="de" ${_defCty==='de'?'selected':''}>🇩🇪 Germany</option>
-            <option value="fr" ${_defCty==='fr'?'selected':''}>🇫🇷 France</option>
-            <option value="es" ${_defCty==='es'?'selected':''}>🇪🇸 Spain</option>
-            <option value="it" ${_defCty==='it'?'selected':''}>🇮🇹 Italy</option>
-            <option value="nl" ${_defCty==='nl'?'selected':''}>🇳🇱 Netherlands</option>
-            <option value="be" ${_defCty==='be'?'selected':''}>🇧🇪 Belgium</option>
-            <option value="ch" ${_defCty==='ch'?'selected':''}>🇨🇭 Switzerland</option>
-            <option value="at" ${_defCty==='at'?'selected':''}>🇦🇹 Austria</option>
-            <option value="pt" ${_defCty==='pt'?'selected':''}>🇵🇹 Portugal</option>
-            <option value="se" ${_defCty==='se'?'selected':''}>🇸🇪 Sweden</option>
-            <option value="no" ${_defCty==='no'?'selected':''}>🇳🇴 Norway</option>
-            <option value="dk" ${_defCty==='dk'?'selected':''}>🇩🇰 Denmark</option>
-            <option value="fi" ${_defCty==='fi'?'selected':''}>🇫🇮 Finland</option>
-            <option value="ie" ${_defCty==='ie'?'selected':''}>🇮🇪 Ireland</option>
-            <option value="pl" ${_defCty==='pl'?'selected':''}>🇵🇱 Poland</option>
-            <option value="cz" ${_defCty==='cz'?'selected':''}>🇨🇿 Czech Republic</option>
-            <option value="ro" ${_defCty==='ro'?'selected':''}>🇷🇴 Romania</option>
-            <option value="hu" ${_defCty==='hu'?'selected':''}>🇭🇺 Hungary</option>
-            <option value="gr" ${_defCty==='gr'?'selected':''}>🇬🇷 Greece</option>
-            <option value="ru" ${_defCty==='ru'?'selected':''}>🇷🇺 Russia</option>
-            <option value="tr" ${_defCty==='tr'?'selected':''}>🇹🇷 Turkey</option>
-            <option value="in" ${_defCty==='in'?'selected':''}>🇮🇳 India</option>
-            <option value="cn" ${_defCty==='cn'?'selected':''}>🇨🇳 China</option>
-            <option value="jp" ${_defCty==='jp'?'selected':''}>🇯🇵 Japan</option>
-            <option value="kr" ${_defCty==='kr'?'selected':''}>🇰🇷 South Korea</option>
-            <option value="sg" ${_defCty==='sg'?'selected':''}>🇸🇬 Singapore</option>
-            <option value="hk" ${_defCty==='hk'?'selected':''}>🇭🇰 Hong Kong</option>
-            <option value="tw" ${_defCty==='tw'?'selected':''}>🇹🇼 Taiwan</option>
-            <option value="my" ${_defCty==='my'?'selected':''}>🇲🇾 Malaysia</option>
-            <option value="id" ${_defCty==='id'?'selected':''}>🇮🇩 Indonesia</option>
-            <option value="th" ${_defCty==='th'?'selected':''}>🇹🇭 Thailand</option>
-            <option value="ph" ${_defCty==='ph'?'selected':''}>🇵🇭 Philippines</option>
-            <option value="bd" ${_defCty==='bd'?'selected':''}>🇧🇩 Bangladesh</option>
-            <option value="pk" ${_defCty==='pk'?'selected':''}>🇵🇰 Pakistan</option>
-            <option value="br" ${_defCty==='br'?'selected':''}>🇧🇷 Brazil</option>
-            <option value="mx" ${_defCty==='mx'?'selected':''}>🇲🇽 Mexico</option>
-            <option value="ar" ${_defCty==='ar'?'selected':''}>🇦🇷 Argentina</option>
-            <option value="co" ${_defCty==='co'?'selected':''}>🇨🇴 Colombia</option>
-            <option value="cl" ${_defCty==='cl'?'selected':''}>🇨🇱 Chile</option>
-            <option value="nz" ${_defCty==='nz'?'selected':''}>🇳🇿 New Zealand</option>
-            <option value="za" ${_defCty==='za'?'selected':''}>🇿🇦 South Africa</option>
-            <option value="ng" ${_defCty==='ng'?'selected':''}>🇳🇬 Nigeria</option>
-            <option value="ke" ${_defCty==='ke'?'selected':''}>🇰🇪 Kenya</option>
-            <option value="gh" ${_defCty==='gh'?'selected':''}>🇬🇭 Ghana</option>
-            <option value="eg" ${_defCty==='eg'?'selected':''}>🇪🇬 Egypt</option>
-            <option value="sa" ${_defCty==='sa'?'selected':''}>🇸🇦 Saudi Arabia</option>
-            <option value="ae" ${_defCty==='ae'?'selected':''}>🇦🇪 UAE</option>
-            <option value="il" ${_defCty==='il'?'selected':''}>🇮🇱 Israel</option>
-          </select>
+          <div id="keCtyBtn" onclick="_keCtyToggle(event)" style="width:100%;padding:9px 10px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.84rem;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none;box-sizing:border-box;gap:4px">
+            <span id="keCtyLabel">${_initEntry[1]}</span>
+            <span style="color:#9CA3AF;font-size:0.6rem;flex-shrink:0">▼</span>
+          </div>
+          <input type="hidden" id="keCty" value="${_initEntry[0]}">
+          <div id="keCtyMenu" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 3px);background:#fff;border:1.5px solid #D1D5DB;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.15);z-index:9999;max-height:300px;overflow-y:auto">
+            ${KE_COUNTRIES.map(([v,l]) => `<div onclick="_keCtyPick('${v}','${l.replace(/'/g,"\\'")}')" style="padding:8px 12px;font-size:0.82rem;cursor:pointer${v===_initEntry[0]?';background:#F5F3FF;font-weight:700':''}" onmouseover="this.style.background='#F5F3FF'" onmouseout="this.style.background='${v===_initEntry[0]?'#F5F3FF':''}';">${l}</div>`).join('')}
+          </div>
         </div>
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Ideas</label><input id="keLim" type="number" value="25" min="5" max="50" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;box-sizing:border-box"></div>
         <button onclick="_keGo()" style="padding:10px 18px;background:#8B5CF6;border:2px solid #8B5CF6;border-radius:8px;font-size:0.82rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4);white-space:nowrap">🔬 Explore</button>
       </div>
     </div>
     <div id="keOut"></div>`;
+
+  // Close both menus on outside click (self-removes when keWrap is rebuilt)
+  if (window._keOutsideHandler) document.removeEventListener('click', window._keOutsideHandler);
+  window._keOutsideHandler = function(e) {
+    const ctyBtn = document.getElementById('keCtyBtn');
+    const ctyMenu = document.getElementById('keCtyMenu');
+    const kwPicker = document.getElementById('keKwPicker');
+    const kwBtn = document.getElementById('keAiSuggestBtn');
+    if (!ctyBtn) { document.removeEventListener('click', window._keOutsideHandler); return; }
+    if (ctyMenu && !ctyBtn.parentElement.contains(e.target)) ctyMenu.style.display = 'none';
+    if (kwPicker && kwBtn && !kwBtn.contains(e.target) && !kwPicker.contains(e.target)) kwPicker.style.display = 'none';
+  };
+  document.addEventListener('click', window._keOutsideHandler);
 };
 
-// AI Suggest for Keyword Explorer — fills seed from analysis data
-window._keAiSuggest = function() {
-  const inp = document.getElementById('keSeed');
-  if (!inp) return;
+// AI Suggest for Keyword Explorer — shows a picker with all analysis keywords
+window._keAiSuggest = function(evt) {
+  if (evt) evt.stopPropagation();
+  const picker     = document.getElementById('keKwPicker');
+  const pickerList = document.getElementById('keKwPickerList');
+  if (!picker || !pickerList) return;
+
+  // If already open, close it
+  if (picker.style.display !== 'none') { picker.style.display = 'none'; return; }
+
   const ad = window.analysisData || {};
+  const seen = new Set();
   const pool = [];
 
-  // 1. analysisData.keywords (from prior SEO/explorer runs)
+  // 1. analysisData.keywords — populated by enrichCompetitorKwAudiences (~5s after analysis)
   if (Array.isArray(ad.keywords) && ad.keywords.length) {
-    ad.keywords.forEach(k => { const s = typeof k === 'string' ? k : (k && (k.keyword || k.term) || ''); if (s) pool.push(s); });
-  }
-  // 2. competitor topKeywords
-  if (!pool.length && Array.isArray(ad.competitors)) {
-    ad.competitors.forEach(c => {
-      if (Array.isArray(c.topKeywords)) c.topKeywords.forEach(k => { if (k) pool.push(k); });
+    ad.keywords.forEach(k => {
+      const s = typeof k === 'string' ? k : (k && (k.keyword || k.term) || '');
+      if (s && !seen.has(s.toLowerCase())) { seen.add(s.toLowerCase()); pool.push(s); }
     });
   }
-  // 3. brand domain as last resort
-  if (!pool.length) {
-    const domain = (ad.url || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0];
-    const seed = domain || ad.brand_name || '';
-    if (seed) pool.push(seed);
+  // 2. competitor topKeywords (also populated by enrichment)
+  if (Array.isArray(ad.competitors)) {
+    ad.competitors.forEach(c => {
+      if (Array.isArray(c.topKeywords)) c.topKeywords.forEach(k => {
+        if (k && !seen.has(k.toLowerCase())) { seen.add(k.toLowerCase()); pool.push(k); }
+      });
+    });
   }
 
   if (!pool.length) {
-    showToast('ℹ️ Run a website analysis first — AI Suggest will fill keywords from it');
+    // Fall back to domain/brand as single suggestion with explanatory message
+    const domain = (ad.url || '').replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0];
+    const seed = domain || ad.brand_name || '';
+    if (seed) {
+      pool.push(seed);
+      pickerList.innerHTML = `
+        <div style="width:100%;font-size:0.75rem;color:#6B7280;margin-bottom:8px">
+          No analysis keywords yet — run a website analysis to get real competitor keywords. Showing domain name as fallback:
+        </div>
+        <button onclick="document.getElementById('keSeed').value='${seed.replace(/'/g,"\\'")}';document.getElementById('keKwPicker').style.display='none';document.getElementById('keSeed').focus()" style="padding:5px 12px;background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:20px;font-size:0.76rem;font-weight:600;color:#5B21B6;cursor:pointer">${seed}</button>`;
+      picker.style.display = 'block';
+    } else {
+      showToast('ℹ️ Run a website analysis first — AI Suggest will populate keywords from it');
+    }
     return;
   }
 
-  // Cycle through suggestions each click
-  window._keSuggestIdx = ((window._keSuggestIdx || 0) + 1) % Math.min(pool.length, 10);
-  const pick = pool[window._keSuggestIdx];
-  inp.value = pick;
-  inp.focus();
-  showToast('✅ "' + pick + '" filled from your analysis (' + Math.min(pool.length,10) + ' available — click again for next)');
+  // Render clickable keyword chips — up to 24
+  pickerList.innerHTML = pool.slice(0, 24).map(kw =>
+    `<button onclick="document.getElementById('keSeed').value='${kw.replace(/'/g,"\\'")}';document.getElementById('keKwPicker').style.display='none';document.getElementById('keSeed').focus()" style="padding:5px 12px;background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:20px;font-size:0.76rem;font-weight:600;color:#5B21B6;cursor:pointer;white-space:nowrap" onmouseover="this.style.background='#EDE9FE';this.style.borderColor='#7C3AED'" onmouseout="this.style.background='#F5F3FF';this.style.borderColor='#DDD6FE'">${(window._escapeHtml||String)(kw)}</button>`
+  ).join('');
+
+  picker.style.display = 'block';
+};
+
+// Country dropdown helpers
+window._keCtyToggle = function(evt) {
+  if (evt) evt.stopPropagation();
+  const menu = document.getElementById('keCtyMenu');
+  if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+};
+window._keCtyPick = function(val, label) {
+  const hidden = document.getElementById('keCty');
+  const lbl    = document.getElementById('keCtyLabel');
+  const menu   = document.getElementById('keCtyMenu');
+  if (hidden) hidden.value = val;
+  if (lbl)    lbl.textContent = label;
+  if (menu)   menu.style.display = 'none';
+  // Highlight selected row
+  if (menu) menu.querySelectorAll('div').forEach(d => {
+    d.style.background = d.textContent.trim() === label ? '#F5F3FF' : '';
+    d.style.fontWeight = d.textContent.trim() === label ? '700' : '';
+  });
 };
 window._keKD = function(kd) {
   if (kd === null || kd === undefined) return { label:'—', color:'#9CA3AF' };
