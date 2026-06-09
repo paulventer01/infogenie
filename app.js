@@ -6640,6 +6640,22 @@ function buildResults() {
   const totalConv = camps.reduce((s,c) => s + (c.metrics.conversions || 0), 0);
   const totalImpressions = camps.reduce((s,c) => s + (c.metrics.impressions || 0), 0);
 
+  // ── Projected values from AI campaign recommendations when no real campaigns ──
+  // Ensures the dashboard always has useful numbers rather than all zeros/dashes.
+  const _recs = window._lastCampRecs || (analysisData ? generateCampaignRecs(analysisData.industry, analysisData.competitors, analysisData.url) : []);
+  const _parseBudgetStr = b => { const n = parseInt(String(b||'').replace(/[^0-9]/g,'')); return isFinite(n) && n > 0 ? n : 0; };
+  const projTotalBudget   = _recs.reduce((s,r) => s + _parseBudgetStr(r.budget), 0);
+  const projAvgROAS       = _recs.length > 0 ? (_recs.reduce((s,r) => s + parseFloat(r.estROAS||0), 0) / _recs.length).toFixed(1) : null;
+  const projImpressions   = projTotalBudget > 0 ? Math.round(projTotalBudget / 0.003) : 0;
+  const projConv          = projImpressions > 0 ? Math.round(projImpressions * 0.025) : 0;
+
+  // Use real campaign data when available; fall back to projections from analysis
+  const isProjected      = camps.length === 0 && _recs.length > 0;
+  const displayBudget    = totalBudget    > 0 ? totalBudget    : projTotalBudget;
+  const displayROAS      = avgROAS                             || projAvgROAS;
+  const displayConv      = totalConv      > 0 ? totalConv      : projConv;
+  const displayImpr      = totalImpressions > 0 ? totalImpressions : projImpressions;
+
   const statusColor = { active: '#10B981', paused: '#F59E0B', completed: '#6B7280', draft: '#0066FF' };
 
   if (camps.length === 0 && !analysisData) {
@@ -6697,18 +6713,21 @@ function buildResults() {
   wrap.innerHTML = `
     <!-- SUMMARY STATS -->
     <div data-results-section="stats" style="display:${rShow('stats')?'grid':'none'};grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:28px;padding-top:24px">
-      ${[
-        ['🚀 Campaigns Launched', camps.length, '#00C9C8', 'Total number of campaigns you have deployed through InfoGenie across all ad platforms.'],
-        ['💰 Total Budget/mo', camps.length > 0 ? '$'+totalBudget.toLocaleString() : '—', '#0066FF', 'Combined monthly advertising budget across all active campaigns. This is what you are committing to spend each month.'],
-        ['📈 Avg. ROAS', avgROAS ? avgROAS+'×' : '—', '#10B981', 'Average Return on Ad Spend across all campaigns — the blended revenue earned per $1 of total ad budget.'],
-        ['🎯 Total Conversions', totalConv > 0 ? totalConv.toLocaleString() : '—', '#F59E0B', 'Total completed goals (sign-ups, purchases, calls) driven by all InfoGenie campaigns combined.'],
-        ['👁 Impressions', totalImpressions > 0 ? (totalImpressions/1000).toFixed(0)+'K' : '—', '#7C3AED', 'Total number of times your ads have been shown across all platforms and campaigns.'],
-        ['⚡ AI Actions', allActions.length, '#00E5FF', 'Total automated and AI-assisted actions InfoGenie has taken: analyses run, campaigns built, audiences detected, and optimisations applied.']
-      ].map(([label, val, color, tip]) => `
-        <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.06)" title="${tip}">
-          <div style="font-size:1.4rem;font-weight:800;color:${color};font-family:Sora,sans-serif">${val}</div>
-          <div style="font-size:0.75rem;color:#6B7280;margin-top:4px;font-weight:500">${label}</div>
-        </div>`).join('')}
+      ${(()=>{
+        const p = isProjected ? ' <span style="font-size:0.6rem;font-weight:600;color:#9CA3AF;vertical-align:middle">(proj.)</span>' : '';
+        return [
+          ['🚀 Campaigns Launched', isProjected ? `${_recs.length} AI Ready` : String(camps.length), '#00C9C8', isProjected ? 'AI campaign plans ready to launch — run analysis and click Launch on any campaign card to make these live.' : 'Total number of campaigns you have deployed through InfoGenie across all ad platforms.'],
+          ['💰 Total Budget/mo', displayBudget > 0 ? '$'+displayBudget.toLocaleString()+p : '—', '#0066FF', isProjected ? 'Projected total monthly budget if all AI-recommended campaigns are launched.' : 'Combined monthly advertising budget across all active campaigns.'],
+          ['📈 Avg. ROAS', displayROAS ? displayROAS+'×'+p : '—', '#10B981', isProjected ? 'Projected average ROAS from your AI campaign recommendations based on competitor benchmarks.' : 'Average Return on Ad Spend across all campaigns — the blended revenue earned per $1 of total ad budget.'],
+          ['🎯 Total Conversions', displayConv > 0 ? displayConv.toLocaleString()+p : '—', '#F59E0B', isProjected ? 'Projected monthly conversions if recommended campaigns are launched at the suggested budgets.' : 'Total completed goals (sign-ups, purchases, calls) driven by all InfoGenie campaigns combined.'],
+          ['👁 Impressions', displayImpr > 0 ? (displayImpr>=1e6?(displayImpr/1e6).toFixed(1)+'M':(displayImpr/1e3).toFixed(0)+'K')+p : '—', '#7C3AED', isProjected ? 'Estimated monthly impressions based on recommended budgets and industry CPM benchmarks.' : 'Total number of times your ads have been shown across all platforms and campaigns.'],
+          ['⚡ AI Actions', String(allActions.length), '#00E5FF', 'Total automated and AI-assisted actions InfoGenie has taken: analyses run, campaigns built, audiences detected, and optimisations applied.']
+        ].map(([label, val, color, tip]) => `
+          <div style="background:white;border:1px solid #E2E8F0;border-radius:14px;padding:16px 18px;box-shadow:0 1px 4px rgba(0,0,0,.06)" title="${tip}">
+            <div style="font-size:1.4rem;font-weight:800;color:${color};font-family:Sora,sans-serif">${val}</div>
+            <div style="font-size:0.75rem;color:#6B7280;margin-top:4px;font-weight:500">${label}</div>
+          </div>`).join('');
+      })()}
     </div>
 
     <!-- LEAD REPORTING PANEL -->
@@ -6718,7 +6737,10 @@ function buildResults() {
           <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628">📋 Lead Reporting Dashboard</div>
           <div style="font-size:0.78rem;color:#6B7280;margin-top:3px">Log your messages, calls and InfoGenie calculates your cost-per-lead automatically</div>
         </div>
-        <button onclick="saveLeadData()" style="padding:9px 20px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">💾 Save Lead Data</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="loadLeadFromAnalysis()" style="padding:9px 16px;background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:9px;font-size:0.78rem;font-weight:700;color:#15803D;cursor:pointer">📥 Load Saved Data</button>
+          <button onclick="saveLeadData()" style="padding:9px 20px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:9px;font-size:0.78rem;font-weight:700;color:white;cursor:pointer">💾 Save Lead Data</button>
+        </div>
       </div>
 
       <!-- KPI Tiles Row -->
@@ -6728,9 +6750,10 @@ function buildResults() {
           const msgs   = ld.messages   || 0;
           const calls  = ld.calls      || 0;
           const total  = msgs + calls;
-          const cpl    = totalBudget > 0 && total > 0 ? '$'+(totalBudget/total).toFixed(2) : '—';
-          const cpm    = totalBudget > 0 && msgs  > 0 ? '$'+(totalBudget/msgs).toFixed(2)  : '—';
-          const cpc2   = totalBudget > 0 && calls > 0 ? '$'+(totalBudget/calls).toFixed(2) : '—';
+          const _budgetForCPL = ld.budget || displayBudget;
+          const cpl    = _budgetForCPL > 0 && total > 0 ? '$'+(_budgetForCPL/total).toFixed(2) : '—';
+          const cpm    = _budgetForCPL > 0 && msgs  > 0 ? '$'+(_budgetForCPL/msgs).toFixed(2)  : '—';
+          const cpc2   = _budgetForCPL > 0 && calls > 0 ? '$'+(_budgetForCPL/calls).toFixed(2) : '—';
           const convRate = total > 0 && totalConv > 0 ? ((totalConv/total)*100).toFixed(1)+'%' : '—';
           return [
             ['💬 Messages',      msgs,       '#0066FF', 'Total message enquiries received — WhatsApp, email, contact forms or DMs logged here.'],
@@ -6766,7 +6789,7 @@ function buildResults() {
         </div>
         <div>
           <label style="font-size:0.72rem;font-weight:700;color:#374151;display:block;margin-bottom:6px">💰 Monthly Ad Spend</label>
-          <input id="leadBudgetInput" type="number" min="0" placeholder="e.g. 3000" value="${(window._leadData||{}).budget||totalBudget||''}"
+          <input id="leadBudgetInput" type="number" min="0" placeholder="e.g. 3000" value="${(window._leadData||{}).budget||displayBudget||''}"
             style="width:100%;padding:9px 12px;border:1.5px solid #E5E7EB;border-radius:8px;font-size:0.88rem;color:#0A1628;font-weight:600;box-sizing:border-box"
             oninput="updateLeadCalc()">
           <div style="font-size:0.68rem;color:#9CA3AF;margin-top:4px">Leave blank to use total campaign budgets above</div>
@@ -6774,7 +6797,7 @@ function buildResults() {
         <div style="display:flex;flex-direction:column;justify-content:center;gap:6px">
           <div style="font-size:0.72rem;font-weight:700;color:#374151;margin-bottom:2px">⚡ Live CPL Preview</div>
           <div id="cplLivePreview" style="font-size:1.6rem;font-weight:800;color:#0066FF;font-family:Sora,sans-serif">
-            ${(()=>{const ld=window._leadData||{};const t=(ld.messages||0)+(ld.calls||0);const b=ld.budget||totalBudget;return t>0&&b>0?'$'+(b/t).toFixed(2):'—';})()}
+            ${(()=>{const ld=window._leadData||{};const t=(ld.messages||0)+(ld.calls||0);const b=ld.budget||displayBudget;return t>0&&b>0?'$'+(b/t).toFixed(2):'—';})()}
           </div>
           <div id="cplLiveLabel" style="font-size:0.68rem;color:#6B7280">Cost per lead (messages + calls)</div>
         </div>
@@ -7024,6 +7047,33 @@ function saveLeadData() {
   try { localStorage.setItem('ig_lead_data', JSON.stringify(window._leadData)); } catch(e) {}
   showToast('✅ Lead data saved!');
   buildResults(); // refresh tiles
+}
+
+// Populates lead reporting fields from analysis data / saved localStorage data.
+// Called by the "📥 Load Saved Data" button and automatically on page load.
+function loadLeadFromAnalysis() {
+  // 1. Restore any previously saved lead data from localStorage
+  const saved = (() => { try { const s = localStorage.getItem('ig_lead_data'); return s ? JSON.parse(s) : null; } catch(e) { return null; } })();
+  if (saved) window._leadData = saved;
+
+  // 2. Compute the recommended budget from analysis / launched campaigns
+  const launchedBudget = (window._launchedCampaigns || []).reduce((s,c) => s + c.budget, 0);
+  const recs = window._lastCampRecs || (window.analysisData ? generateCampaignRecs(analysisData.industry, analysisData.competitors, analysisData.url) : []);
+  const recsBudget = recs.reduce((s,r) => {
+    const n = parseInt(String(r.budget||'').replace(/[^0-9]/g,'')); return s + (isFinite(n) ? n : 0);
+  }, 0);
+  const autoBudget = launchedBudget || recsBudget;
+
+  const msgsEl   = document.getElementById('leadMsgsInput');
+  const callsEl  = document.getElementById('leadCallsInput');
+  const budgetEl = document.getElementById('leadBudgetInput');
+
+  if (msgsEl   && saved?.messages) msgsEl.value   = saved.messages;
+  if (callsEl  && saved?.calls)    callsEl.value   = saved.calls;
+  if (budgetEl) budgetEl.value = (saved?.budget) || autoBudget || '';
+
+  updateLeadCalc();
+  showToast('✅ Lead data loaded from analysis');
 }
 
 function updateLeadCalc() {
