@@ -23,6 +23,25 @@ const HARD_MAX_PAGES = 100;
 const HARD_TIMEOUT_MS = 5 * 60 * 1000;
 const CONCURRENCY = 4;
 
+// Firecrawl fallback for link-discovery on bot-protected sites.
+async function _firecrawlFetchLinks(url) {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key || /^_DUMMY/i.test(key)) return '';
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 18000);
+    const r = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST', signal: ctrl.signal,
+      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, formats: ['html'], onlyMainContent: false }),
+    });
+    clearTimeout(t);
+    if (!r.ok) return '';
+    const j = await r.json();
+    return String((j.data || j).html || '');
+  } catch (e) { return ''; }
+}
+
 function _fetchHtml(rawUrl, redirects = 0) {
   return new Promise(async resolve => {
     if (redirects > 4) return resolve({ ok: false, error: 'Too many redirects' });
@@ -107,8 +126,11 @@ async function _executeCrawl(runId, rootUrl, maxPages, tenantId) {
         // Discover new internal links from this page (only if we still need pages)
         if (results.length < maxPages) {
           const fetched = await _fetchHtml(url);
-          if (fetched.ok) {
-            const links = _extractLinks(fetched.html, url);
+          let linkHtml = fetched.ok ? fetched.html : '';
+          // Firecrawl fallback for link-discovery on bot-protected sites
+          if (!linkHtml) linkHtml = await _firecrawlFetchLinks(url);
+          if (linkHtml) {
+            const links = _extractLinks(linkHtml, url);
             for (const l of links) {
               if (!visited.has(l) && !queue.includes(l) && (results.length + queue.length) < maxPages * 3) queue.push(l);
             }

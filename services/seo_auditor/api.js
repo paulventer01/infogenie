@@ -15,6 +15,28 @@ function _safeAsync(h) {
   });
 }
 
+// Firecrawl fallback — used when direct _fetchHtml is blocked (Cloudflare/WAF).
+// Returns the same { ok, html, finalUrl, headers } shape as _fetchHtml.
+async function _firecrawlFetchHtml(url) {
+  const key = process.env.FIRECRAWL_API_KEY;
+  if (!key || /^_DUMMY/i.test(key)) return { ok: false, error: 'firecrawl_not_configured' };
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20000);
+    const r = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST', signal: ctrl.signal,
+      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, formats: ['html'], onlyMainContent: false }),
+    });
+    clearTimeout(t);
+    if (!r.ok) return { ok: false, error: `Firecrawl HTTP ${r.status}` };
+    const j = await r.json();
+    const html = String((j.data || j).html || '');
+    if (!html) return { ok: false, error: 'Firecrawl returned no HTML' };
+    return { ok: true, html: html.slice(0, 2 * 1024 * 1024), finalUrl: url, headers: {} };
+  } catch (e) { return { ok: false, error: 'Firecrawl: ' + e.message }; }
+}
+
 // Fetch HTML with redirect support, 10s timeout, 2MB cap, real browser UA.
 // SSRF-safe: every redirect target is re-validated through isUrlSafeToFetch
 // (DNS-resolves + rejects private/internal IPs) before the next hop is requested.
@@ -355,6 +377,8 @@ router.post('/audit', _safeAsync(async (req, res) => {
       const headlessAttempt = await _headless.fetchHtmlHeadless(url);
       if (headlessAttempt.ok) { fetched = headlessAttempt; renderMode = 'headless-auto'; }
     }
+    // Firecrawl fallback — handles Cloudflare/WAF-protected sites.
+    if (!fetched.ok) { fetched = await _firecrawlFetchHtml(url); renderMode = 'firecrawl'; }
   }
   if (!fetched.ok) return _err(res, 502, fetched.error);
 
@@ -427,6 +451,8 @@ async function runAudit(url, opts = {}) {
     fetched = await _headless.fetchHtmlHeadless(url);
   } else {
     fetched = await _fetchHtml(url);
+    // Firecrawl fallback — handles Cloudflare/WAF-protected sites.
+    if (!fetched.ok) fetched = await _firecrawlFetchHtml(url);
   }
   if (!fetched.ok) return { ok: false, error: fetched.error };
   const parsed = _parseAndScore(fetched.html, fetched.finalUrl, fetched.headers || {});
