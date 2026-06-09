@@ -41,7 +41,16 @@
   // analyse-now flow finishes, the next click already sees the new values.
   // ──────────────────────────────────────────────────────────────────────────
   function ad(){ return window.analysisData || {}; }
-  function getBrand(){ const a = ad(); return a.brandName || a.brand || ''; }
+  function getBrand(){
+    const a = ad();
+    if (a.brandName) return a.brandName;
+    if (a.brand) return a.brand;
+    if (a.companyName) return a.companyName;
+    // Derive from domain/url as a last resort (same logic as _alPopulateBrandPicker)
+    const dom = String(a.url || a.domain || '').replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].split('.')[0].trim();
+    if (dom) return dom.charAt(0).toUpperCase() + dom.slice(1);
+    return '';
+  }
   function getIndustry(){ const a = ad(); return (a.industry && (a.industry.name || a.industry)) || ''; }
   function getCompetitors(){
     const a = ad();
@@ -229,7 +238,11 @@
       const useBtn = btn('📊 Use my brand', { bg:'#EEF2FF', color:'#4F46E5', border:'#C7D2FE' });
       useBtn.addEventListener('click', () => {
         const b = getBrand();
-        if (!b) return (window.showToast || alert)('⚠ Run Analyse first to set your brand');
+        if (!b) {
+          if (window.showToast) window.showToast('No analysis yet — redirecting to + Analyse…');
+          if (window.navigateTo) { setTimeout(() => window.navigateTo('home'), 400); }
+          return;
+        }
         el.value = b; fireInput(el);
       });
       bar.appendChild(useBtn);

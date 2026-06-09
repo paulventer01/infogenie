@@ -1815,7 +1815,7 @@ window._alPopulateBrandPicker = function() {
       hint.textContent = `✓ Pre-filled from your latest analysis. Pick another brand or type your own.`;
     } else {
       hint.style.color = '#9CA3AF';
-      hint.textContent = `Run a competitor analysis from the home page to pre-fill brands here.`;
+      hint.innerHTML = `No analysis yet. <a href="#" onclick="if(window.navigateTo)window.navigateTo('home');return false;" style="color:#0066FF;font-weight:700;text-decoration:underline">→ Run + Analyse first</a> to auto-fill your brand &amp; competitors.`;
     }
   }
 };
