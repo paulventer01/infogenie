@@ -2221,10 +2221,32 @@ window.buildMapsIntel = async function() {
     btn.textContent = '🧠 AI Suggest'; btn.disabled = false;
   }
 
-  document.getElementById('miKwSuggest').addEventListener('click', () =>
-    _miAISuggest('miKeyword', 'miKwPills', 'miKwSuggest', 'Business category or keyword for local competitor research',
-      ['dentist', 'coffee shop', 'digital marketing agency', 'gym', 'accounting firm'])
-  );
+  document.getElementById('miKwSuggest').addEventListener('click', () => {
+    // Use keywords already identified in the analysis first — no AI call needed.
+    const ad = window.analysisData || {};
+    const fromAnalysis = Array.isArray(ad.keywords)
+      ? ad.keywords.map(k => typeof k === 'string' ? k : (k.keyword || k.term || '')).filter(Boolean).slice(0, 8)
+      : [];
+    // Also pull industry name as a useful seed
+    const industry = (ad.industry && (ad.industry.name || ad.industry)) || '';
+    const combined = [...new Set([...(industry ? [industry] : []), ...fromAnalysis])].slice(0, 8);
+
+    if (combined.length) {
+      // Show analysis keywords as clickable pills immediately — no API round-trip
+      const btn   = document.getElementById('miKwSuggest');
+      const pills = document.getElementById('miKwPills');
+      const inp   = document.getElementById('miKeyword');
+      pills.style.display = 'flex';
+      pills.innerHTML = combined.map(s => `<button data-sug="${_escapeHtml(String(s).slice(0,80))}" style="padding:4px 12px;background:#EDE9FE;color:#7C3AED;border:1px solid #DDD6FE;border-radius:12px;font-size:0.74rem;font-weight:700;cursor:pointer">${_escapeHtml(String(s).slice(0,80))}</button>`).join('');
+      pills.querySelectorAll('[data-sug]').forEach(p => {
+        p.addEventListener('click', () => { inp.value = p.dataset.sug; pills.style.display = 'none'; });
+      });
+    } else {
+      // No analysis data — fall back to AI-generated suggestions
+      _miAISuggest('miKeyword', 'miKwPills', 'miKwSuggest', 'Business category or keyword for local competitor research',
+        ['dentist', 'coffee shop', 'digital marketing agency', 'gym', 'accounting firm']);
+    }
+  });
   document.getElementById('miRgSuggest').addEventListener('click', () =>
     _miAISuggest('miRegion', 'miRgPills', 'miRgSuggest', 'Target city or region for local competitor research',
       ['Cape Town South Africa', 'London UK', 'Manhattan New York', 'Sydney Australia', 'Dubai UAE'])
