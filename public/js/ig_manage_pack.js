@@ -467,16 +467,25 @@
     const wrap = document.getElementById('questionMinerWrap'); if (!wrap) return;
     const esc = s => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const hdrs = (window.apiHeaders ? window.apiHeaders() : { 'Content-Type':'application/json' });
+
+    // Auto-fill seed from analysis data: prefer industry, fall back to brand name
+    const _ad = window.analysisData || {};
+    const _autoSeed = (typeof _ad.industry === 'string' ? _ad.industry : (_ad.industry && _ad.industry.name) || '')
+      || _ad.brandName || '';
+
     wrap.innerHTML = `
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px;display:flex;gap:10px;align-items:end;flex-wrap:wrap">
-        <div style="flex:1;min-width:240px"><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">SEED KEYWORD / TOPIC</label><input id="qmSeed" placeholder="e.g. solar panel installation" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box"></div>
+        <div style="flex:1;min-width:240px">
+          <label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:3px">SEED KEYWORD / TOPIC ${_autoSeed ? '<span style="color:#15803D;font-weight:600">(auto-filled from your analysis)</span>' : ''}</label>
+          <input id="qmSeed" value="${esc(_autoSeed)}" placeholder="e.g. solar panel installation" style="width:100%;padding:9px;border:1px solid #D1D5DB;border-radius:6px;box-sizing:border-box;background:${_autoSeed?'#F0FDF4':'#fff'}">
+        </div>
         <button id="qmGo" style="background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:0;padding:10px 22px;border-radius:7px;font-weight:800;cursor:pointer">🔎 Mine Questions</button>
       </div>
       <div id="qmOut"></div>`;
     document.getElementById('qmGo').addEventListener('click', async () => {
       const seed = document.getElementById('qmSeed').value.trim();
-      if (!seed) return;
       const out = document.getElementById('qmOut');
+      if (!seed) { out.innerHTML = '<div style="background:#FEF3C7;color:#92400E;padding:10px 14px;border-radius:8px">⚠️ Please enter a keyword or topic to mine questions for.</div>'; return; }
       out.innerHTML = '<div style="color:#9CA3AF">⏳ Asking Google what people ask…</div>';
       try {
         const r = await fetch('/api/question-miner/mine', { method:'POST', headers: hdrs, body: JSON.stringify({ seed }) });
