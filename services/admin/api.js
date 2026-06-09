@@ -163,6 +163,51 @@ router.get('/permissions-matrix', (_req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
+// ── Roles & permissions matrix CSV export ───────────────────────────────────
+// Streams the same live model as GET /permissions-matrix as a downloadable CSV
+// for offline access reviews / compliance attachments. Two sections in one file:
+//   1) ROLES × PERMISSIONS — one row per permission (grouped by area), one
+//      column per system role, "Yes" where the role grants it.
+//   2) FEATURE → PERMISSION MAP — one row per app screen and the permission it
+//      requires. Same owner/admin gate as the rest of /api/admin applies.
+router.get('/permissions-matrix/export', (_req, res) => {
+  try {
+    const roles = SYSTEM_ROLES.map(r => ({
+      key: r.key, scope: r.scope, name: r.name, permissions: new Set(r.permissions || []),
+    }));
+    const byAreaRaw = listByArea();
+    const labelByKey = Object.fromEntries(listPermissions().map(p => [p.key, p.label]));
+
+    const lines = [];
+    // Section 1 — roles × permissions grid.
+    const gridHeader = ['Area', 'Permission', 'Permission Key', ...roles.map(r => `${r.name} (${r.scope})`)];
+    lines.push('Roles × Permissions');
+    lines.push(gridHeader.map(_csvCell).join(','));
+    for (const [area, perms] of Object.entries(byAreaRaw)) {
+      for (const p of perms) {
+        const row = [area, p.label, p.key, ...roles.map(r => (r.permissions.has(p.key) ? 'Yes' : ''))];
+        lines.push(row.map(_csvCell).join(','));
+      }
+    }
+
+    // Section 2 — feature → permission map.
+    lines.push('');
+    lines.push('Feature → Permission Map');
+    lines.push(['Screen (data-view)', 'Required Permission', 'Permission Key'].map(_csvCell).join(','));
+    const components = Object.entries(COMPONENT_MATRIX)
+      .map(([view, permission]) => ({ view, permission, label: labelByKey[permission] || '' }))
+      .sort((a, b) => a.view.localeCompare(b.view));
+    for (const c of components) {
+      lines.push([c.view, c.label || '—', c.permission || '—'].map(_csvCell).join(','));
+    }
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="permissions-matrix-${stamp}.csv"`);
+    res.send('\uFEFF' + lines.join('\r\n') + '\r\n');
+  } catch (e) { _err(res, 500, e.message); }
+});
+
 // ── Workspace membership management ─────────────────────────────────────────
 // List the users in a workspace with their assigned role.
 router.get('/workspaces/:id/members', async (req, res) => {

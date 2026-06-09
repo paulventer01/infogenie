@@ -14776,7 +14776,10 @@ async function _adminRenderPermissions(body) {
       <span style="font-size:18px">👁️</span>
       <div style="font-size:12.5px;color:#1E3A8A;line-height:1.45"><strong>Read-only.</strong> This is a live view of the platform's role &amp; permission model, pulled straight from the source of truth. Editing roles or building custom roles isn't available here.</div>
     </div>
-    <div style="font-weight:800;color:#1E293B;margin:0 0 4px">Roles × permissions</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 4px">
+      <div style="font-weight:800;color:#1E293B">Roles × permissions</div>
+      <button onclick="_adminExportPermissions()" title="Download the role × permission grid and feature map as a CSV file" style="padding:6px 12px;background:#1E293B;border:1px solid #1E293B;border-radius:7px;font-size:12px;font-weight:700;color:#fff;cursor:pointer">⬇️ Download CSV</button>
+    </div>
     <div style="font-size:12px;color:#94A3B8;margin-bottom:12px">✓ means the role grants that permission. Permissions are grouped by area; roles are columns.</div>
     ${matrix}
     ${viewAsBlock}
@@ -14786,6 +14789,25 @@ async function _adminRenderPermissions(body) {
   // Render the preview for the initially-selected role.
   if (roles.length) _adminPreviewRole(roles[0].key);
 }
+
+// Download the live roles × permissions matrix (+ feature → permission map) as a
+// CSV. Uses fetch+blob (rather than a raw link) so the session cookie is sent
+// and server errors surface as a toast.
+window._adminExportPermissions = async function() {
+  try {
+    const r = await fetch('/api/admin/permissions-matrix/export', {
+      headers: { 'Accept': 'text/csv' }, credentials: 'same-origin' });
+    if (!r.ok) throw new Error('export failed (' + r.status + ')');
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'permissions-matrix-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('✓ Permissions matrix exported');
+  } catch (e) { showToast('⚠️ ' + e.message); }
+};
 
 // Interactive "view as this role" preview. Recomputes, from the cached live
 // model, exactly which app screens the chosen role can open vs. is blocked from
