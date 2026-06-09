@@ -3584,11 +3584,14 @@ Industry: ${industry || 'general'}
 DataForSEO signals: ${domainSignals ? JSON.stringify(domainSignals) : 'unavailable'}
 Known competitors: ${Array.isArray(competitors) && competitors.length ? competitors.slice(0,5).join(', ') : 'none provided'}`;
 
-    const gptRes = await openaiChatWithRetry([{ role: 'user', content: prompt }], {
-      model: 'gpt-4o-mini', response_format: { type: 'json_object' }, max_tokens: 400
+    const gptRes = await openaiChatWithRetry({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      max_tokens: 400
     });
     let kpis = {};
-    try { kpis = JSON.parse(gptRes); } catch (_) { kpis = {}; }
+    try { kpis = JSON.parse(gptRes.choices[0].message.content); } catch (_) { kpis = {}; }
 
     // Guard: ensure all keys are present and numeric
     const defaults = { roas:2.1, ctr:2.8, cpa:58, convRate:1.9, impressions:180000, spend:9500, conversions:160, qualityScore:6, budgetUtil:74 };
