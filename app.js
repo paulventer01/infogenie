@@ -14881,6 +14881,7 @@ async function _adminRenderPermissions(body) {
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 4px">
       <div style="font-weight:800;color:#1E293B">Roles × permissions</div>
       <button onclick="_adminExportPermissions()" title="Download the role × permission grid and feature map as a CSV file" style="padding:6px 12px;background:#1E293B;border:1px solid #1E293B;border-radius:7px;font-size:12px;font-weight:700;color:#fff;cursor:pointer">⬇️ Download CSV</button>
+      <button onclick="_adminExportPermissionsXlsx()" title="Download the role × permission grid and feature map as an Excel (.xlsx) workbook" style="padding:6px 12px;background:#217346;border:1px solid #217346;border-radius:7px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;margin-left:6px">⬇️ Download Excel</button>
     </div>
     <div style="font-size:12px;color:#94A3B8;margin-bottom:12px">✓ means the role grants that permission. Permissions are grouped by area; roles are columns.</div>
     ${matrix}
@@ -14908,6 +14909,25 @@ window._adminExportPermissions = async function() {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     showToast('✓ Permissions matrix exported');
+  } catch (e) { showToast('⚠️ ' + e.message); }
+};
+
+// Download the live roles × permissions matrix (+ feature → permission map) as
+// an Excel (.xlsx) workbook with two formatted worksheets.
+window._adminExportPermissionsXlsx = async function() {
+  try {
+    const r = await fetch('/api/admin/permissions-matrix/export.xlsx', {
+      headers: { 'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      credentials: 'same-origin' });
+    if (!r.ok) throw new Error('export failed (' + r.status + ')');
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'permissions-matrix-' + new Date().toISOString().slice(0, 10) + '.xlsx';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('✓ Permissions matrix exported as Excel');
   } catch (e) { showToast('⚠️ ' + e.message); }
 };
 

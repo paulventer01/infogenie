@@ -163,6 +163,104 @@ router.get('/permissions-matrix', (_req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
+// ── Roles & permissions matrix XLSX export ──────────────────────────────────
+// Produces an Excel workbook with two worksheets:
+//   Sheet 1 "Roles × Permissions" — same grid as the CSV section 1.
+//   Sheet 2 "Feature Permission Map" — same rows as the CSV section 2.
+// Same owner/admin gate as the rest of /api/admin applies.
+router.get('/permissions-matrix/export.xlsx', async (_req, res) => {
+  try {
+    const ExcelJS = require('exceljs');
+    const roles = SYSTEM_ROLES.map(r => ({
+      key: r.key, scope: r.scope, name: r.name, permissions: new Set(r.permissions || []),
+    }));
+    const byAreaRaw = listByArea();
+    const labelByKey = Object.fromEntries(listPermissions().map(p => [p.key, p.label]));
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'InfoGenie';
+    wb.created = new Date();
+
+    // ── Sheet 1: Roles × Permissions ─────────────────────────────────────────
+    const ws1 = wb.addWorksheet('Roles × Permissions');
+    const roleNames = roles.map(r => `${r.name} (${r.scope})`);
+    ws1.columns = [
+      { header: 'Area', key: 'area', width: 22 },
+      { header: 'Permission', key: 'label', width: 32 },
+      { header: 'Permission Key', key: 'key', width: 30 },
+      ...roles.map((r, i) => ({ header: roleNames[i], key: `role_${i}`, width: 18 })),
+    ];
+
+    // Style the header row.
+    const hdrFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+    const hdrFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+    ws1.getRow(1).eachCell(c => { c.fill = hdrFill; c.font = hdrFont; c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }; });
+    ws1.getRow(1).height = 28;
+
+    for (const [area, perms] of Object.entries(byAreaRaw)) {
+      // Area separator row.
+      const areaRow = ws1.addRow([area, '', '', ...roles.map(() => '')]);
+      areaRow.eachCell(c => {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+        c.font = { bold: true, color: { argb: 'FF475569' }, size: 9 };
+      });
+      for (const p of perms) {
+        const values = [area, p.label, p.key, ...roles.map(r => (r.permissions.has(p.key) ? 'Yes' : ''))];
+        const dataRow = ws1.addRow(values);
+        // Colour "Yes" cells green, blank cells light grey.
+        roles.forEach((_, i) => {
+          const cell = dataRow.getCell(4 + i);
+          if (cell.value === 'Yes') {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
+            cell.font = { bold: true, color: { argb: 'FF15803D' }, size: 10 };
+            cell.alignment = { horizontal: 'center' };
+          } else {
+            cell.font = { color: { argb: 'FFCBD5E1' }, size: 10 };
+            cell.alignment = { horizontal: 'center' };
+          }
+        });
+      }
+    }
+
+    // ── Sheet 2: Feature → Permission Map ────────────────────────────────────
+    const ws2 = wb.addWorksheet('Feature Permission Map');
+    ws2.columns = [
+      { header: 'Screen (data-view)', key: 'view', width: 36 },
+      { header: 'Required Permission', key: 'label', width: 36 },
+      { header: 'Permission Key', key: 'key', width: 34 },
+    ];
+    ws2.getRow(1).eachCell(c => { c.fill = hdrFill; c.font = hdrFont; c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }; });
+    ws2.getRow(1).height = 28;
+
+    const components = Object.entries(COMPONENT_MATRIX)
+      .map(([view, permission]) => ({ view, permission, label: labelByKey[permission] || '' }))
+      .sort((a, b) => a.view.localeCompare(b.view));
+    for (const c of components) {
+      ws2.addRow([c.view, c.label || '—', c.permission || '—']);
+    }
+
+    // Zebra stripe both sheets.
+    [ws1, ws2].forEach(ws => {
+      ws.eachRow((row, rowNum) => {
+        if (rowNum <= 1) return;
+        if (rowNum % 2 === 0) {
+          row.eachCell({ includeEmpty: true }, cell => {
+            if (!cell.fill || cell.fill.fgColor?.argb === 'FF000000' || !cell.fill.fgColor) {
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAFAFA' } };
+            }
+          });
+        }
+      });
+    });
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="permissions-matrix-${stamp}.xlsx"`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) { _err(res, 500, e.message); }
+});
+
 // ── Roles & permissions matrix CSV export ───────────────────────────────────
 // Streams the same live model as GET /permissions-matrix as a downloadable CSV
 // for offline access reviews / compliance attachments. Two sections in one file:
