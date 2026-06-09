@@ -14736,7 +14736,14 @@ async function _adminRenderPermissions(body) {
   // Map each permission key → its area so the preview can group screens.
   const areaByPerm = {};
   areas.forEach(a => (a.permissions || []).forEach(p => { areaByPerm[p.key] = a.area; }));
-  window._adminPermPreview = { roles, components, areaByPerm };
+  // Build view → human-readable label from the live nav links — single source of truth.
+  const viewLabel = {};
+  document.querySelectorAll('.nav-link[data-view]').forEach(el => {
+    const v = el.getAttribute('data-view');
+    const textEl = el.querySelector('.ndl-text');
+    if (v && textEl) viewLabel[v] = textEl.textContent.trim();
+  });
+  window._adminPermPreview = { roles, components, areaByPerm, viewLabel };
 
   const roleOptions = roles.map((r, i) =>
     `<option value="${_esc(r.key)}"${i === 0 ? ' selected' : ''}>${_esc(r.name)} · ${_esc(r.scope)}</option>`).join('');
@@ -14751,19 +14758,25 @@ async function _adminRenderPermissions(body) {
     </div>
     <div id="adminRolePreviewBody"></div>`;
 
-  const compRows = components.map(c => `
+  const compRows = components.map(c => {
+    const lbl = viewLabel[c.view] || '';
+    return `
     <tr style="border-top:1px solid #F1F5F9">
-      <td style="padding:8px 14px;color:#1E293B;font-weight:600;font-family:ui-monospace,monospace;font-size:12px">${_esc(c.view)}</td>
+      <td style="padding:8px 14px">
+        <div style="color:#1E293B;font-weight:600;font-size:12.5px">${_esc(lbl || c.view)}</div>
+        ${lbl ? `<div style="color:#94A3B8;font-family:ui-monospace,monospace;font-size:10px">${_esc(c.view)}</div>` : ''}
+      </td>
       <td style="padding:8px 14px;color:#334155">${_esc(c.permissionLabel || '—')}</td>
       <td style="padding:8px 14px;color:#94A3B8;font-family:ui-monospace,monospace;font-size:11px">${_esc(c.permission || '—')}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   const compTable = `
     <div style="font-weight:800;color:#1E293B;margin:0 0 4px">Feature → permission reference (${components.length})</div>
     <div style="font-size:12px;color:#94A3B8;margin-bottom:12px">Which permission each app screen requires — so you can answer "what does a Marketer actually see?".</div>
     <div style="background:white;border:1px solid #E2E8F0;border-radius:12px;overflow:auto;max-height:60vh">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead style="position:sticky;top:0;z-index:1"><tr style="background:#F8FAFC">
-          <th style="text-align:left;padding:9px 14px;color:#64748B;font-size:11px;font-weight:700">SCREEN (data-view)</th>
+          <th style="text-align:left;padding:9px 14px;color:#64748B;font-size:11px;font-weight:700">SCREEN</th>
           <th style="text-align:left;padding:9px 14px;color:#64748B;font-size:11px;font-weight:700">REQUIRED PERMISSION</th>
           <th style="text-align:left;padding:9px 14px;color:#64748B;font-size:11px;font-weight:700">KEY</th>
         </tr></thead>
@@ -14840,12 +14853,18 @@ window._adminPreviewRole = function(roleKey) {
     if (!list.length) return `<div style="font-size:12.5px;color:#94A3B8;padding:10px 14px">None.</div>`;
     return groupByArea(list).map(g => `
       <div style="padding:7px 14px;background:#F8FAFC;font-size:10.5px;font-weight:800;color:#475569;letter-spacing:.04em;text-transform:uppercase;border-top:1px solid #F1F5F9">${_esc(g.area)}</div>
-      ${g.items.map(c => `
+      ${g.items.map(c => {
+        const label = (data.viewLabel && data.viewLabel[c.view]) || '';
+        return `
         <div style="display:flex;align-items:center;gap:8px;padding:7px 14px;border-top:1px solid #F1F5F9">
           <span style="color:${ok ? '#15803D' : '#CBD5E1'};font-weight:700;flex-shrink:0">${ok ? '✓' : '✕'}</span>
-          <span style="font-family:ui-monospace,monospace;font-size:12px;color:#1E293B;font-weight:600">${_esc(c.view)}</span>
-          <span style="font-size:11px;color:#94A3B8;margin-left:auto;text-align:right">${_esc(c.permissionLabel || (c.permission ? c.permission : 'open to all'))}</span>
-        </div>`).join('')}`).join('');
+          <div style="min-width:0;flex:1">
+            <div style="font-size:12.5px;color:#1E293B;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_esc(label || c.view)}</div>
+            ${label ? `<div style="font-size:10px;color:#94A3B8;font-family:ui-monospace,monospace">${_esc(c.view)}</div>` : ''}
+          </div>
+          <span style="font-size:11px;color:#94A3B8;flex-shrink:0;text-align:right">${_esc(c.permissionLabel || (c.permission ? c.permission : 'open to all'))}</span>
+        </div>`;
+      }).join('')}`).join('');
   };
 
   host.innerHTML = `
