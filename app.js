@@ -3928,7 +3928,31 @@ async function runAnalysis(url, country, industryOverride) {
           if (topSpendN !== null) {
             row.budget = fmtMoney(topSpendN * split);
           } else {
-            row.budget = '—';
+            // Estimate the monthly budget required to achieve the shown CTR/ROAS
+            // using traffic × industry CPC × paid-traffic fraction.
+            const IND_CPC = { fintech:8, saas:5, ecommerce:1.5, travel:2.5, education:3,
+              marketing:4, crypto:6, realestate:5, legal:12, insurance:9, health:4,
+              automotive:3, retail:1.5, hospitality:2, fitness:2, software:5 };
+            const cpc = IND_CPC[industryKey] || 4;
+            const parseT = t => {
+              const s = String(t||'').replace(/[^0-9.KMkm]/g,'').toUpperCase();
+              const n = parseFloat(s);
+              if (!isFinite(n) || n <= 0) return 0;
+              if (s.includes('M')) return n * 1e6;
+              if (s.includes('K')) return n * 1e3;
+              return n;
+            };
+            const trafficN = parseT(c.traffic);
+            // Higher ROAS means the competitor is more efficient — they don't need
+            // as much paid traffic relative to organic; lower ROAS = more spend.
+            const roasN = topRoas || 2.5;
+            const paidFrac = roasN >= 4 ? 0.10 : roasN >= 3 ? 0.16 : 0.22;
+            const estTotal = trafficN * paidFrac * cpc;
+            if (estTotal >= 200) {
+              row.budget = '~' + fmtMoney(estTotal * split);
+            } else {
+              row.budget = '—';
+            }
           }
         });
       });
@@ -4205,6 +4229,19 @@ async function enrichWithRealCompetitorData(domain, industryKey, country) {
         comp._realKeywords = match.organicKeywordsFmt;
         comp._realDomainRank = match.domainRank;
         comp._dataSource   = 'DataForSEO';
+        // If DataForSEO has real paid-spend data, upgrade adSpend + campaign budgets
+        if (match.adSpendEst > 0 && (!comp.adSpend || comp.adSpend === '—')) {
+          const fmtSpend = n => n >= 1e6 ? '$'+(n/1e6).toFixed(1)+'M/mo'
+                              : n >= 1e3 ? '$'+(n/1e3).toFixed(0)+'K/mo'
+                              : '$'+Math.round(n)+'/mo';
+          comp.adSpend = fmtSpend(match.adSpendEst);
+          if (Array.isArray(comp.campaigns)) {
+            comp.campaigns.forEach((row, idx) => {
+              const split = row._split ?? (idx === 0 ? 0.6 : 0.4);
+              row.budget = fmtSpend(match.adSpendEst * split);
+            });
+          }
+        }
         enriched++;
       }
     });
