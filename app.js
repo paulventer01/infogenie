@@ -18043,6 +18043,10 @@ window.buildBattleCards = async function() {
           </div>
           ${(c.recent_moves||[]).length?`<div><div style="font-size:0.66rem;font-weight:800;color:#1E40AF;text-transform:uppercase;margin-bottom:4px">Recent moves</div>${(c.recent_moves||[]).map(s=>`<div style="font-size:0.74rem;color:#374151;padding:2px 0">→ ${_escapeHtml(s)}</div>`).join('')}</div>`:''}
           <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:7px;padding:10px"><div style="font-size:0.66rem;font-weight:800;color:#92400E;text-transform:uppercase;margin-bottom:5px">🎯 Counter-plays</div>${(c.counter_plays||[]).map(s=>`<div style="font-size:0.78rem;color:#78350F;padding:2px 0;font-weight:600">▸ ${_escapeHtml(s)}</div>`).join('')}</div>
+          <div style="display:flex;gap:7px;margin-top:4px">
+            <button onclick="_bcToBattlePlan(this)" data-comp="${_escapeHtml(c.competitor)}" data-dom="${_escapeHtml(c.domain||'')}" style="flex:1;padding:9px 12px;background:linear-gradient(135deg,#0A1628,#0D2A5E);color:#00C9C8;border:1px solid rgba(0,201,200,.35);border-radius:8px;font-size:0.78rem;font-weight:800;cursor:pointer;letter-spacing:.01em">⚔️ Build Battle Plan</button>
+            <button onclick="showCompanyIntel && showCompanyIntel('${_escapeHtml(c.domain||c.competitor)}')" style="padding:9px 13px;background:#F1F5F9;color:#0369A1;border:1px solid #CBD5E1;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer" title="Company Intel — Apollo profile + BuiltWith tech stack">🔍 Intel</button>
+          </div>
           <div style="font-size:0.66rem;color:#9CA3AF;text-align:right">Generated ${new Date(c.generated_at).toLocaleString()}</div>
         </div>`).join('')}</div>`;
   } catch (e) { wrap.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:16px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
@@ -18151,6 +18155,33 @@ window._bcDelete = async function(id) {
   if (!confirm('Delete this battle card?')) return;
   try { await fetch('/api/battle-cards/'+id, { method:'DELETE' }); showToast('🗑 Removed'); buildBattleCards(); }
   catch (e) { showToast('❌ ' + e.message); }
+};
+
+// Navigate from a Battle Card to the Battle Plan view, pre-selecting the
+// matching competitor if they're already in the current analysis.
+window._bcToBattlePlan = function(btn) {
+  const comp = (btn.getAttribute('data-comp') || '').toLowerCase().trim();
+  const dom  = (btn.getAttribute('data-dom')  || '').toLowerCase().trim();
+  const comps = (window.analysisData && Array.isArray(window.analysisData.competitors))
+    ? window.analysisData.competitors : [];
+  let idx = -1;
+  if (comps.length) {
+    idx = comps.findIndex(c => {
+      const n = (c.name || c.brand || '').toLowerCase().trim();
+      const d = (c.domain || c.url || '').toLowerCase()
+        .replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/.*$/,'').trim();
+      return n === comp || (dom && d === dom);
+    });
+  }
+  if (idx >= 0) {
+    window._bpIdx = idx;
+    navigateTo('battleplan');
+  } else {
+    navigateTo('battleplan');
+    setTimeout(() => showToast(
+      `ℹ️ Run an analysis on ${btn.getAttribute('data-comp') || 'this competitor'} first for a fully data-driven Battle Plan — showing your current default.`
+    ), 450);
+  }
 };
 
 // ── TRENDING TOPICS ────────────────────────────────────────────────────────
