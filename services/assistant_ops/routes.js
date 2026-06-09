@@ -304,9 +304,21 @@ app.post('/api/mentions', async (req, res) => {
       return res.status(503).json({ ok:false, error:'dataforseo-not-configured' });
     }
 
+    // When a brand name looks like a domain (e.g. "fxpro.com", "oanda.com"),
+    // Google News almost never contains the literal ".com" string in headlines.
+    // Strip the TLD and build a broader OR query so both forms are searched.
+    const _newsKeyword = (name) => {
+      const domainMatch = name.match(/^([a-z0-9](?:[a-z0-9\-]*[a-z0-9])?)\.(?:com|net|io|co|org|app|ai|gg|tv|uk|us|de|fr|au|za|biz|info|finance|trade|markets?|exchange|group|capital|pro|digital|media|online|agency|studio|tech|solutions|systems|software|services?|platform|global|world|international|inc|ltd|llc)(?:\.[a-z]{2})?$/i);
+      if (domainMatch) {
+        const base = domainMatch[1];
+        return `"${base}" OR "${name}"`;
+      }
+      return `"${name}"`;
+    };
+
     const fetchBrandNews = async (name) => {
       try {
-        const dfsParams = { keyword:`"${name}"`, language_code:'en', depth:20 };
+        const dfsParams = { keyword: _newsKeyword(name), language_code:'en', depth:20 };
         if (locCode != null) dfsParams.location_code = locCode;
         const raw = await callDataForSEO(
           '/v3/serp/google/news/live/advanced',
