@@ -3321,6 +3321,8 @@ body {
   transition: opacity 0.2s;
 }
 .btn-diff-launch:hover { opacity: 0.88; }
+.budget-total-bar .budget-total-label { color: #FFFFFF; }
+.budget-total-bar .budget-total-sub   { color: rgba(255,255,255,.65); }
 .diff-footer-note {
   display: flex;
   align-items: flex-start;
