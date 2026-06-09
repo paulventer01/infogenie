@@ -1959,16 +1959,21 @@ window._alAnalyzeCreative = async function(payload, cardId, btn) {
 window._alRunMulti = async function() {
   const brand = document.getElementById('alBrand').value.trim();
   const countriesRaw = document.getElementById('alCountry').value.trim();
-  const countries = countriesRaw ? countriesRaw.split(',').filter(Boolean) : ['US'];
+  const allCodes = countriesRaw ? countriesRaw.split(',').filter(Boolean) : ['US'];
   const out = document.getElementById('alOut');
   if (!brand) { out.innerHTML = '<div style="background:#FEE2E2;color:#991B1B;padding:12px;border-radius:8px">⚠ Brand required</div>'; return; }
-  if (!countries.length) { out.innerHTML = '<div style="background:#FEE2E2;color:#991B1B;padding:12px;border-radius:8px">⚠ Select at least one country</div>'; return; }
+  if (!allCodes.length) { out.innerHTML = '<div style="background:#FEE2E2;color:#991B1B;padding:12px;border-radius:8px">⚠ Select at least one country</div>'; return; }
   const selected = Array.from(document.querySelectorAll('.al-plat:checked')).map(cb => cb.value);
   if (!selected.length) { out.innerHTML = '<div style="background:#FEF3C7;color:#92400E;padding:12px;border-radius:8px">⚠ Select at least one platform</div>'; return; }
   const labels = { meta:'Meta Ad Library', google:'Google Ads Transparency Center', tiktok:'TikTok Ad Library', linkedin:'LinkedIn Ad Library', x:'X (Twitter) Ads Transparency' };
   const btn = document.getElementById('alRun');
   const origBtn = btn.innerHTML;
-  const countryLbl = countries.length === 1 ? countries[0] : `${countries.length} countries`;
+  // When 10+ countries are selected, collapse to a single worldwide search (one request
+  // per platform) instead of fanning out per country. The backend handles country:'ALL'
+  // as "worldwide (all countries)" for all platforms.
+  const useGlobal = allCodes.length >= 10;
+  const countries = useGlobal ? ['ALL'] : allCodes;
+  const countryLbl = useGlobal ? `All countries (${allCodes.length})` : allCodes.length === 1 ? allCodes[0] : `${allCodes.length} countries`;
   try { if (window.IGDiag) { IGDiag.setBreadcrumb && IGDiag.setBreadcrumb('ad-search:fetch ' + selected.join('+') + ' × ' + countryLbl); IGDiag.mark && IGDiag.mark('ad-search: run', selected.length + ' plat × ' + countryLbl); } } catch(_) {}
   btn.disabled = true; btn.innerHTML = `⏳ Searching ${selected.length} platform${selected.length>1?'s':''} × ${countryLbl}…`; btn.style.opacity = '0.7'; btn.style.cursor = 'wait';
   out.innerHTML = `<div id="alProgress" style="display:grid;gap:8px;margin-bottom:14px">${selected.map(p => `<div id="alProg_${p}" style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;font-size:0.82rem"><span style="display:inline-block;width:14px;height:14px;border:2px solid #E5E7EB;border-top-color:#0066FF;border-radius:50%;animation:alSpin 0.8s linear infinite"></span><span style="font-weight:700;color:#0A1628">${_escapeHtml(labels[p] || p)}</span><span style="color:#6B7280;font-size:0.74rem">searching ${_escapeHtml(countryLbl)}…</span></div>`).join('')}<style>@keyframes alSpin{to{transform:rotate(360deg)}}</style></div><div id="alResults" style="display:grid;gap:18px"></div>`;

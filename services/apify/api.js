@@ -82,7 +82,7 @@ router.post('/tiktok-organic', _safeAsync(async (req, res) => {
   if (!keyword) return _err(res, 400, 'keyword required');
   const run = await _startRun('clockworks~tiktok-scraper', {
     searchQueries: [String(keyword).slice(0, 100)],
-    searchSection: 'videos',
+    searchSection: '/video',
     maxVideos: Math.min(50, Math.max(5, parseInt(limit) || 20)),
     shouldDownloadCovers: false,
     shouldDownloadVideos: false,
