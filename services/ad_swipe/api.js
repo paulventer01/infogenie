@@ -139,6 +139,21 @@ router.post('/suggest-tags', _safe(async (req, res) => {
     return res.status(500).json({ ok:false, error:'DB query failed: '+e.message, suggestions: [], existing: [] });
   }
 
+  // Fallback tag list — used both when the swipe file is empty AND when AI
+  // generation fails for a non-empty file. Must be defined before either branch.
+  const starter = [
+    { tag:'social proof',   why:'Testimonials, reviews, customer counts.' },
+    { tag:'scarcity',       why:'Limited time / limited stock urgency.' },
+    { tag:'ugc video',      why:'User-generated short videos perform on Meta/TikTok.' },
+    { tag:'carousel',       why:'Multi-image swipe format.' },
+    { tag:'free trial',     why:'Frictionless trial offers.' },
+    { tag:'discount',       why:'Price-led promos.' },
+    { tag:'awareness',      why:'Top-of-funnel education.' },
+    { tag:'conversion',     why:'Bottom-of-funnel direct response.' },
+    { tag:'problem solution', why:'Pain-point led copy.' },
+    { tag:'fomo',           why:'Fear-of-missing-out angles.' },
+  ];
+
   if (!items.length) {
     const brand = String(body.brand || '').slice(0, 80);
     const competitors = Array.isArray(body.competitors) ? body.competitors.slice(0, 8).map(s=>String(s).slice(0,60)) : [];
@@ -153,18 +168,6 @@ router.post('/suggest-tags', _safe(async (req, res) => {
         .filter(s => s.tag && s.tag.length >= 2);
       return res.json({ ok:true, suggestions: clean, existing: [], source:'brand_context', note:'Swipe file is empty — these are starter tags. Save some ads and click 🤖 AI Suggest again for tags tailored to your library.' });
     }
-    const starter = [
-      { tag:'social proof',   why:'Testimonials, reviews, customer counts.' },
-      { tag:'scarcity',       why:'Limited time / limited stock urgency.' },
-      { tag:'ugc video',      why:'User-generated short videos perform on Meta/TikTok.' },
-      { tag:'carousel',       why:'Multi-image swipe format.' },
-      { tag:'free trial',     why:'Frictionless trial offers.' },
-      { tag:'discount',       why:'Price-led promos.' },
-      { tag:'awareness',      why:'Top-of-funnel education.' },
-      { tag:'conversion',     why:'Bottom-of-funnel direct response.' },
-      { tag:'problem solution', why:'Pain-point led copy.' },
-      { tag:'fomo',           why:'Fear-of-missing-out angles.' },
-    ];
     return res.json({ ok:true, suggestions: starter, existing: [], source:'starter', note:'Swipe file is empty + no AI key — starter tags shown. Save some ads and connect an LLM for tailored suggestions.' });
   }
 
