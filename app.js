@@ -6945,6 +6945,29 @@ function updateLeadCalc() {
 }
 
 // ===== KPI TRACKER =====
+
+// "Run KPI Analysis" button handler — refreshes KPI data in-place.
+// If no website has been analysed yet, prompts the user to run one first.
+window._runKPIAnalysis = async function(btn) {
+  const hasAnalysis = !!(window.analysisData && (analysisData.url || analysisData.brand_name));
+  if (!hasAnalysis) {
+    showToast('ℹ️ Run a website analysis first (click + Analyse), then come back to see your KPIs.');
+    return;
+  }
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analysing…'; }
+  try {
+    await buildKPITracker();
+    const wrap = document.getElementById('kpiTrackerWrap');
+    if (wrap) wrap.scrollIntoView({ behavior:'smooth', block:'start' });
+    showToast('✅ KPI analysis updated');
+  } catch (e) {
+    showToast('❌ ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
+};
+
 async function buildKPITracker() {
   const wrap = document.getElementById('kpiTrackerWrap');
   if (!wrap) return;

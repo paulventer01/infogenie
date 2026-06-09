@@ -3293,7 +3293,7 @@
         </div>
         <div class="vh-actions">
           <button class="btn-secondary" onclick="buildKPITracker()">↻ Refresh</button>
-          <button class="btn-primary" onclick="document.querySelector('.url-input')?.focus(); navigateTo('home')" style="white-space:nowrap">🔍 Run KPI Analysis</button>
+          <button class="btn-primary" id="runKpiAnalysisBtn" onclick="window._runKPIAnalysis(this)" style="white-space:nowrap">🔍 Run KPI Analysis</button>
         </div>
       </div>
     </div>
