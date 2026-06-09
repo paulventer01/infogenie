@@ -6957,10 +6957,28 @@ window._runKPIAnalysis = async function(btn) {
   const orig = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Analysing…'; }
   try {
-    await buildKPITracker();
-    const wrap = document.getElementById('kpiTrackerWrap');
-    if (wrap) wrap.scrollIntoView({ behavior:'smooth', block:'start' });
-    showToast('✅ KPI analysis updated');
+    const domain = (analysisData.url || '').replace(/^https?:\/\//,'').split('/')[0];
+    const brand  = analysisData.brand_name || domain;
+    const industry = (analysisData.industry && (analysisData.industry.name || analysisData.industry)) || '';
+    const competitors = (analysisData.competitors || []).slice(0,5)
+      .map(c => c.domain || c.name || c.url || '').filter(Boolean);
+
+    const r = await fetch('/api/kpi-analysis', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify({ domain, brand, industry, competitors }),
+      signal: AbortSignal.timeout(25000)
+    });
+    const j = await r.json();
+    if (j.ok && j.kpis) {
+      window._kpiActuals = j.kpis;
+      await buildKPITracker();
+      const wrap = document.getElementById('kpiTrackerWrap');
+      if (wrap) wrap.scrollIntoView({ behavior:'smooth', block:'start' });
+      showToast('✅ KPI analysis complete — AI-estimated from domain signals');
+    } else {
+      showToast('❌ ' + (j.error || 'KPI analysis failed'));
+    }
   } catch (e) {
     showToast('❌ ' + e.message);
   } finally {
@@ -7015,6 +7033,19 @@ async function buildKPITracker() {
         }
       }
     } catch (_e) { /* silent — fall back to no-data state */ }
+  }
+
+  // ── Fallback: AI-estimated actuals from _runKPIAnalysis ─────────────────
+  if (!avgRoas && !avgCtr && !avgCpa && window._kpiActuals) {
+    const est = window._kpiActuals;
+    avgRoas    = est.roas      ? String(parseFloat(est.roas).toFixed(2))      : null;
+    avgCtr     = est.ctr       ? String(parseFloat(est.ctr).toFixed(2))       : null;
+    avgCpa     = est.cpa       ? Math.round(est.cpa)                          : null;
+    avgConvR   = est.convRate  ? String(parseFloat(est.convRate).toFixed(2))  : null;
+    totalSpend = est.spend     || 0;
+    totalConv  = est.conversions || 0;
+    totalImpr  = est.impressions || 0;
+    totalBudget= est.budgetUtil ? Math.round((est.spend || 0) / (est.budgetUtil / 100)) : (est.spend || 0);
   }
 
   // ── KPI definitions: {id, label, icon, target, actual, unit, higherIsBetter, whyMissed} ──
@@ -7072,16 +7103,18 @@ async function buildKPITracker() {
     },
     {
       id:'conversions', label:'Total Conversions', icon:'🏆', category:'Revenue',
-      target: campaigns.length ? Math.round(totalBudget/35) : 0, actual: totalConv || null,
-      targetStr: campaigns.length ? Math.round(totalBudget/35).toString() : '—', actualStr: totalConv ? totalConv.toString() : null, unit:'', higherIsBetter:true,
+      target: (campaigns.length || window._kpiActuals) ? Math.round(totalBudget/35) : 0,
+      actual: totalConv || null,
+      targetStr: (campaigns.length || window._kpiActuals) ? Math.round(totalBudget/35).toString() : '—',
+      actualStr: totalConv ? totalConv.toLocaleString() : null, unit:'', higherIsBetter:true,
       benchmark:'Est. 1 conversion per $35 spend',
       whyMissed: 'Conversion volume is below target. This is a downstream effect of low CTR and high CPA — fewer clicks and lower conversion rates multiply to produce significantly fewer total conversions than projected.',
       howToFix: 'Fix CTR and conversion rate issues first (see above). Then increase budget on campaigns with ROAS > target to scale winning ad sets.'
     },
     {
       id:'qualityscore', label:'Ad Quality Score', icon:'⭐', category:'Quality',
-      target: 8, actual: campaigns.length ? 7 : null,
-      targetStr:'8/10', actualStr: campaigns.length ? '7/10' : null, unit:'/10', higherIsBetter:true,
+      target: 8, actual: campaigns.length ? 7 : (window._kpiActuals ? window._kpiActuals.qualityScore : null),
+      targetStr:'8/10', actualStr: campaigns.length ? '7/10' : (window._kpiActuals ? Math.round(window._kpiActuals.qualityScore)+'/10' : null), unit:'/10', higherIsBetter:true,
       benchmark:'Google target: 7+',
       whyMissed: 'Quality Score below 7 increases your CPCs by 16–50% and reduces ad eligibility. Low scores are caused by poor expected CTR, weak ad relevance, or landing page experience issues.',
       howToFix: 'Align keyword, ad copy, and landing page into tightly themed ad groups. Improve landing page load speed and relevance. Aim for Expected CTR of "Above Average".'
@@ -7110,10 +7143,13 @@ async function buildKPITracker() {
   const nMissed   = allStatuses.filter(s=>s==='missed').length;
   const nPending  = allStatuses.filter(s=>s==='pending').length;
   const _totalCampCount = campaigns.length || optCampCount;
-  const hasAnyData = _totalCampCount > 0 || kpiData;
+  const _hasAiEstimates = !!window._kpiActuals && !_totalCampCount;
+  const hasAnyData = _totalCampCount > 0 || kpiData || _hasAiEstimates;
   const _campLabel = optCampCount && !campaigns.length
     ? `${optCampCount} tracked campaign${optCampCount!==1?'s':''} (optimizer)`
-    : `${campaigns.length} active campaign${campaigns.length!==1?'s':''}`;
+    : _hasAiEstimates
+      ? 'AI-estimated from domain signals'
+      : `${campaigns.length} active campaign${campaigns.length!==1?'s':''}`;
 
   // ── Summary banner ───────────────────────────────────────────────────────
   const summaryHTML = `
@@ -7122,6 +7158,7 @@ async function buildKPITracker() {
         <div>
           <div style="font-family:Sora,sans-serif;font-size:1.1rem;font-weight:800;color:white;margin-bottom:4px">
             ${hasAnyData ? `${nAchieved} of ${kpiDefs.length} KPIs Achieved` : 'Run an analysis & launch campaigns to see your KPI progress'}
+            ${_hasAiEstimates ? '<span style="font-size:0.65rem;font-weight:500;background:rgba(139,92,246,.25);border:1px solid rgba(139,92,246,.4);border-radius:6px;padding:2px 7px;margin-left:8px;vertical-align:middle">✨ AI estimated</span>' : ''}
           </div>
           <div style="font-size:0.8rem;color:rgba(255,255,255,.5)">
             Based on ${_campLabel} · ${analysisData ? analysisData.url : 'No analysis run yet'}
