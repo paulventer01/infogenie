@@ -34,7 +34,7 @@ Runs `lint:fabrication` (AI-placeholder markers) **and** `lint:css` (both CSS ch
 |---|---|
 | `index.html` | SPA entry point |
 | `style.css` | All styling |
-| `app.js` | Frontend logic (~50k lines; being split per-feature into `public/js/`) |
+| `app.js` | Frontend logic (~23k lines; bulk of feature code extracted into `public/js/` modules — ~36k lines across 31 files) |
 | `public/js/<feature>.js` | Extracted per-feature view-builders (plain `<script>` + `window` globals; own `?v=`). See `public/js/README.md` |
 | `data.js` | Industry intelligence + competitor data |
 | `server.js` | Express server + API wiring |
