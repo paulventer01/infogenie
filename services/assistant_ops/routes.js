@@ -1715,7 +1715,7 @@ app.post('/api/content-gaps', async (req, res) => {
       ...competitors.map(_fetchSitemapSlugs)
     ]);
 
-    const youSummary = _slugSummaries(yourPages);
+    let youSummary = _slugSummaries(yourPages);
     const compSummary = competitors.map((c, i) => {
       const slugs = _slugSummaries(compPages[i]);
       return { domain: c, slugs, source: slugs.length ? 'sitemap' : null };
@@ -1726,11 +1726,25 @@ app.post('/api/content-gaps', async (req, res) => {
     // ranking URLs from DataForSEO and treat those as a proxy page list. Run
     // all fallbacks in parallel so we don't add serial latency.
     const needFallback = compSummary.filter(c => !c.slugs.length);
-    if (needFallback.length) {
-      console.log(`[content-gaps] sitemap blocked for ${needFallback.length} competitor(s) — trying DataForSEO fallback:`, needFallback.map(c=>c.domain).join(', '));
-      const fbResults = await Promise.all(needFallback.map(c => _fetchRankedPageUrls(c.domain)));
+    // Also apply the same fallback to your own domain if its sitemap is blocked.
+    const needYourFallback = !youSummary.length;
+    const fallbackPromises = [
+      ...(needYourFallback ? [_fetchRankedPageUrls(domain)] : [Promise.resolve([])]),
+      ...needFallback.map(c => _fetchRankedPageUrls(c.domain))
+    ];
+    if (needYourFallback || needFallback.length) {
+      const domainsBlocked = [...(needYourFallback ? [domain] : []), ...needFallback.map(c=>c.domain)];
+      console.log(`[content-gaps] sitemap blocked for ${domainsBlocked.length} domain(s) — trying DataForSEO fallback:`, domainsBlocked.join(', '));
+      const fbResults = await Promise.all(fallbackPromises);
+      if (needYourFallback) {
+        const slugs = _slugSummaries(fbResults[0]);
+        if (slugs.length) {
+          youSummary = slugs;
+          console.log(`[content-gaps] DFS fallback recovered ${slugs.length} pages for your domain ${domain}`);
+        }
+      }
       needFallback.forEach((c, i) => {
-        const slugs = _slugSummaries(fbResults[i]);
+        const slugs = _slugSummaries(fbResults[needYourFallback ? i + 1 : i]);
         if (slugs.length) {
           c.slugs = slugs;
           c.source = 'dataforseo-ranked';
@@ -1749,7 +1763,7 @@ app.post('/api/content-gaps', async (req, res) => {
       return res.status(404).json({
         ok:false, error:'sitemap-unavailable',
         detail: yourBlocked
-          ? `We couldn't read the sitemap for "${domain}" — the site is bot-protected (e.g. Cloudflare) or doesn't publish /sitemap.xml. Try the www. variant or a different subdomain.`
+          ? `We couldn't read the sitemap or ranked pages for "${domain}" — the site may be too new, bot-protected, or not indexed. Try the www. variant or enter your domain manually.`
           : `We couldn't read sitemaps for: ${blocked.join(', ')}. These sites are bot-protected or don't publish a sitemap. Remove them from the list and try again.`,
         blockedDomains: blocked,
         yourPages: youSummary.length,

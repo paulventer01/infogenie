@@ -8,16 +8,31 @@ function pool() { return _db.getPool(); }
 const PERPLEXITY_URL = 'https://api.perplexity.ai/chat/completions';
 const OPENAI_URL     = 'https://api.openai.com/v1/chat/completions';
 
-async function callPerplexity(messages, maxTokens = 2000) {
+function _extractJson(txt) {
+  const stripped = txt.replace(/```(?:json)?\s*([\s\S]*?)```/gi, '$1').trim();
+  for (const src of [stripped, txt]) {
+    const start = src.indexOf('{');
+    if (start === -1) continue;
+    let depth = 0;
+    for (let i = start; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') { depth--; if (depth === 0) { try { return JSON.parse(src.slice(start, i + 1)); } catch (_) { break; } } }
+    }
+  }
+  return null;
+}
+
+async function callPerplexity(messages, maxTokens = 2500) {
   const key = process.env.PERPLEXITY_API_KEY;
-  if (!key) return null;
+  if (!key || /^_DUMMY/i.test(key)) return null;
   const r = await fetch(PERPLEXITY_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model: 'sonar', messages, max_tokens: maxTokens })
+    body: JSON.stringify({ model: 'sonar-pro', messages, max_tokens: maxTokens })
   });
-  if (!r.ok) return null;
+  if (!r.ok) { console.warn('[media-intel] perplexity HTTP', r.status); return null; }
   const d = await r.json();
+  if (d.error) { console.warn('[media-intel] perplexity error:', d.error); return null; }
   return d.choices?.[0]?.message?.content || null;
 }
 
@@ -45,58 +60,28 @@ router.post('/scan', async (req, res) => {
   if (!brand) return res.status(400).json({ ok: false, error: 'brand required' });
 
   const allEntities = [brand, ...competitors].filter(Boolean).join(', ');
+  const coverageFields = `"${brand}": <0-100>${competitors.length ? ', ' + competitors.map(c => `"${c}": <0-100>`).join(', ') : ''}`;
 
-  const prompt = `You are a media intelligence analyst with access to real-time news and press coverage. 
+  const prompt = `You are a media intelligence analyst with access to real-time news and press coverage.
 Search for the latest news articles, press mentions, journalist coverage, and media stories about: ${allEntities}${industry ? ` in the ${industry} industry` : ''}.
 
-Return a JSON object with exactly this structure:
-{
-  "stories": [
-    {
-      "id": "unique_id",
-      "headline": "article headline",
-      "publication": "publication name",
-      "journalist": "journalist name or null",
-      "journalist_twitter": "@handle or null",
-      "url": "article url or null",
-      "summary": "1-2 sentence summary",
-      "entity_mentioned": "${brand} or competitor name",
-      "sentiment": "positive|neutral|negative",
-      "momentum": 1-100,
-      "published": "e.g. 2 hours ago, yesterday, 3 days ago",
-      "category": "product_launch|funding|controversy|partnership|hiring|award|regulation|market_trend"
-    }
-  ],
-  "rising_narratives": [
-    { "narrative": "short description", "momentum": 1-100, "opportunity": "pitch angle or response needed" }
-  ],
-  "journalist_watchlist": [
-    { "name": "journalist name", "publication": "outlet", "beat": "what they cover", "recent_angle": "what they've been writing about", "twitter": "@handle or null" }
-  ],
-  "coverage_score": { "${brand}": 0-100${competitors.length ? ', ' + competitors.map(c => `"${c}": 0-100`).join(', ') : ''} },
-  "media_opportunities": [
-    { "type": "pitch|response|newsjack|byline", "headline": "opportunity description", "outlet": "suggested outlet", "urgency": "now|this_week|this_month" }
-  ]
-}
+Return ONLY a valid JSON object — no prose, no markdown fences. Use this exact shape:
+{"stories":[{"id":"unique_id","headline":"article headline","publication":"publication name","journalist":"journalist name or null","journalist_twitter":"@handle or null","url":"article url or null","summary":"1-2 sentence summary","entity_mentioned":"${brand} or competitor name","sentiment":"positive|neutral|negative","momentum":<1-100>,"published":"e.g. 2 hours ago, yesterday, 3 days ago","category":"product_launch|funding|controversy|partnership|hiring|award|regulation|market_trend"}],"rising_narratives":[{"narrative":"short description","momentum":<1-100>,"opportunity":"pitch angle or response needed"}],"journalist_watchlist":[{"name":"journalist name","publication":"outlet","beat":"what they cover","recent_angle":"what they've been writing about","twitter":"@handle or null"}],"coverage_score":{${coverageFields}},"media_opportunities":[{"type":"pitch|response|newsjack|byline","headline":"opportunity description","outlet":"suggested outlet","urgency":"now|this_week|this_month"}]}
 
-Return 8-12 stories from the last 14 days. Be specific about publications (TechCrunch, Forbes, WSJ, etc) and realistic about coverage.`;
+Return 8-12 stories from the last 14 days. Be specific about real publications and realistic coverage. Only include real stories you can find.`;
 
   try {
     let raw = await callPerplexity([{ role: 'user', content: prompt }]);
     if (!raw) raw = await callOpenAI(prompt);
     if (!raw) return res.status(503).json({ ok: false, error: 'No AI provider available (PERPLEXITY_API_KEY required for best results)' });
 
-    let parsed;
-    try {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
-    } catch {
-      return res.status(500).json({ ok: false, error: 'AI returned invalid JSON' });
+    const parsed = _extractJson(raw);
+    if (!parsed) {
+      console.warn('[media-intel] parse_failed for', brand, '— raw:', raw.slice(0, 300));
+      return res.status(500).json({ ok: false, error: 'AI returned invalid JSON — please try again' });
     }
-
     if (!parsed.stories) return res.status(500).json({ ok: false, error: 'Unexpected response structure' });
 
-    // Persist to DB
     if (_db.hasDb()) {
       try {
         const tid = await _tenantCtx.resolveTenantId(req, { label: 'media_intel:scan' });
