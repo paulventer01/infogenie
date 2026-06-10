@@ -270,10 +270,10 @@ function buildPlanView(compName) {
           </div>
         `).join('')}
         <div style="background:linear-gradient(90deg,#0A1628,#0D2A5E);border-radius:12px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center">
-          <div style="font-size:0.85rem;font-weight:700;color:rgba(255,255,255,.8)">Total Recommended Monthly Budget</div>
+          <div style="font-size:0.85rem;font-weight:700;color:#fff">Total Recommended Monthly Budget</div>
           <div style="text-align:right">
             <div style="font-size:1.05rem;font-weight:800;color:#00E5FF">$8,500/mo</div>
-            <div style="font-size:0.72rem;color:rgba(255,255,255,.5)">Est. Revenue: $${Math.round(parseFloat(projectedROAS)*8500).toLocaleString()}/mo at ${projectedROAS}× ROAS</div>
+            <div style="font-size:0.72rem;color:#fff">Est. Revenue: $${Math.round(parseFloat(projectedROAS)*8500).toLocaleString()}/mo at ${projectedROAS}× ROAS</div>
           </div>
         </div>
       </div>

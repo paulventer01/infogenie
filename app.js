@@ -7799,7 +7799,7 @@ function openDifferentiatorModal(compName) {
             <div class="budget-total-label" style="font-size:0.82rem;font-weight:700;color:#fff">Total Recommended Monthly Budget</div>
             <div style="text-align:right">
               <div class="budget-total-amount" style="font-size:1rem;font-weight:800;color:#00E5FF">$8,500/mo</div>
-              <div class="budget-total-sub" style="font-size:0.7rem;color:rgba(255,255,255,.72)">Est. Revenue: $${Math.round(parseFloat(projectedROAS)*8500).toLocaleString()}/mo</div>
+              <div class="budget-total-sub" style="font-size:0.7rem;color:#fff">Est. Revenue: $${Math.round(parseFloat(projectedROAS)*8500).toLocaleString()}/mo</div>
             </div>
           </div>
         </div>
