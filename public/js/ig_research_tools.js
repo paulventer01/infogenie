@@ -634,7 +634,7 @@ function buildIntentMap() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
         <div>
           <label style="font-size:0.7rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block">Your brand / domain</label>
-          <input id="im-brand" type="text" value="${brand}" placeholder="cmtrading.com" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:0.85rem;color:#0A1628;outline:none">
+          <input id="im-brand" type="text" value="${brand}" placeholder="yourdomain.com" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1.5px solid #E2E8F0;border-radius:10px;font-size:0.85rem;color:#0A1628;outline:none">
         </div>
         <div>
           <label style="font-size:0.7rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block">Competitors (comma-separated)</label>
