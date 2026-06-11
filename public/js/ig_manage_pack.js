@@ -259,10 +259,29 @@
     const wrap = document.getElementById('askInfogenieWrap'); if (!wrap) return;
     const esc = s => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const hdrs = (window.apiHeaders ? window.apiHeaders() : { 'Content-Type':'application/json' });
+
+    const TYPE_LABELS = { campaign:'Campaigns', insight:'Ad Insights', lead:'Leads', mention:'Mentions', landing_page:'Landing Pages', content_calendar:'Content', brand_calendar:'Brand Calendar', budget:'Budget', booking:'Bookings', linksell:'Link-in-Bio', audience:'Audiences', task:'Tasks' };
+    const TYPE_ICONS  = { campaign:'📣', insight:'📊', lead:'👤', mention:'💬', landing_page:'🔗', content_calendar:'📅', brand_calendar:'🗓', budget:'💰', booking:'📆', linksell:'🔗', audience:'👥', task:'✅' };
+
+    // Load index status
+    let indexStatus = { indexed: 0, lastUpdated: null };
+    try { const s = await fetch('/api/platform-search/index-status', { headers: hdrs }).then(x=>x.json()); if (s.ok) indexStatus = s; } catch {}
+
+    const lastUpdStr = indexStatus.lastUpdated
+      ? new Date(indexStatus.lastUpdated).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})
+      : null;
+
     wrap.innerHTML = `
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="background:linear-gradient(135deg,#0066FF,#7C3AED);border-radius:8px;padding:5px 10px;font-size:0.7rem;font-weight:800;color:#fff;letter-spacing:.04em">⚡ SMART SEARCH</div>
+            <div style="font-size:0.75rem;color:#6B7280">${indexStatus.indexed > 0 ? `${indexStatus.indexed} indexed chunks${lastUpdStr ? ' · updated '+lastUpdStr : ''}` : 'Not yet indexed — will auto-index on first question'}</div>
+          </div>
+          <button id="aiReindex" style="background:#F3F4F6;border:1px solid #E5E7EB;color:#374151;padding:5px 11px;border-radius:7px;font-size:0.72rem;font-weight:700;cursor:pointer">🔄 Re-index data</button>
+        </div>
         <div style="display:flex;gap:8px">
-          <input id="aiQ" placeholder="e.g. Which campaign has the worst CPC this month? · Which leads are highest-scoring? · Are any mentions negative?" style="flex:1;padding:11px 14px;border:1px solid #D1D5DB;border-radius:7px;font-size:0.92rem">
+          <input id="aiQ" placeholder="e.g. Which campaign has the worst CPC? · Which leads should I call first? · Any negative mentions?" style="flex:1;padding:11px 14px;border:1px solid #D1D5DB;border-radius:7px;font-size:0.92rem">
           <button id="aiGo" style="background:linear-gradient(135deg,#0066FF,#7C3AED);color:#fff;border:0;padding:11px 22px;border-radius:7px;font-weight:800;cursor:pointer">Ask →</button>
         </div>
         <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
@@ -270,47 +289,69 @@
         </div>
       </div>
       <div id="aiOut"></div>`;
+
     document.querySelectorAll('.aiSugg').forEach(b => b.addEventListener('click', () => { document.getElementById('aiQ').value = b.textContent; document.getElementById('aiGo').click(); }));
+
+    document.getElementById('aiReindex').addEventListener('click', async () => {
+      const btn = document.getElementById('aiReindex');
+      btn.textContent = '⏳ Indexing…'; btn.disabled = true;
+      try {
+        const r = await fetch('/api/platform-search/reindex', { method:'POST', headers: hdrs }).then(x=>x.json());
+        if (r.ok) { showToast(`✅ Indexed ${r.chunks} chunks (${r.embedded} embedded)`); window.buildAskInfogenie(); }
+        else { showToast('⚠️ ' + (r.error||'Reindex failed')); btn.textContent = '🔄 Re-index data'; btn.disabled = false; }
+      } catch(e) { showToast('⚠️ ' + e.message); btn.textContent = '🔄 Re-index data'; btn.disabled = false; }
+    });
+
     document.getElementById('aiGo').addEventListener('click', async () => {
       const q = document.getElementById('aiQ').value.trim();
       if (!q) return;
       const out = document.getElementById('aiOut');
-      out.innerHTML = '<div style="color:#9CA3AF">⏳ Reading your platform data…</div>';
+      out.innerHTML = '<div style="color:#9CA3AF;display:flex;align-items:center;gap:8px"><span style="animation:spin 1s linear infinite;display:inline-block">⚙️</span> Searching your data semantically…</div>';
       try {
         const r = await fetch('/api/platform-search/ask', { method:'POST', headers: hdrs, body: JSON.stringify({ question: q }) });
         const j = await r.json();
         if (!j.ok) { out.innerHTML = '<div style="color:#DC2626">'+esc(j.error||'failed')+'</div>'; return; }
         const ansHtml = esc(j.answer).replace(/\n/g,'<br>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/^[-•]\s/gm,'• ');
+
+        const isVector = j.source === 'vector-retrieval';
+        const sourceBadge = isVector
+          ? `<span style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;padding:3px 8px;border-radius:12px;font-size:0.68rem;font-weight:700">⚡ Vector Search</span>`
+          : `<span style="background:#F3F4F6;color:#6B7280;border:1px solid #E5E7EB;padding:3px 8px;border-radius:12px;font-size:0.68rem;font-weight:700">💬 GPT snapshot</span>`;
+
+        const dataChips = (j.dataTypes||[]).length
+          ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">${(j.dataTypes||[]).map(t=>`<span style="background:#F0FDF4;color:#166534;border:1px solid #BBF7D0;padding:3px 8px;border-radius:10px;font-size:0.68rem;font-weight:600">${(TYPE_ICONS[t]||'')+(TYPE_LABELS[t]||t)}</span>`).join('')}</div>`
+          : '';
+
+        const autoIndexNote = j.autoIndexed
+          ? `<div style="background:#EFF6FF;border:1px solid #BFDBFE;color:#1D4ED8;padding:8px 12px;border-radius:7px;font-size:0.75rem;margin-bottom:10px">⚡ Your data was indexed automatically (${j.indexCount} chunks). Future questions will be faster.</div>`
+          : '';
+
+        const topScoreHtml = (j.topScores||[]).length && isVector
+          ? `<div style="margin-top:8px;font-size:0.68rem;color:#9CA3AF">Top matches: ${j.topScores.map(s=>`${(TYPE_ICONS[s.type]||'')}${(TYPE_LABELS[s.type]||s.type)} (${s.score}%)`).join(' · ')}</div>`
+          : '';
+
         let fallbackHtml = '';
         if (j.source === 'fallback' && j.context) {
           const t = j.context.totals || {};
-          const r = j.context.recent || {};
-          const sectionRows = (arr, cols) => (arr && arr.length)
-            ? `<table style="width:100%;border-collapse:collapse;font-size:0.8rem;margin-top:6px"><thead><tr>${cols.map(c=>'<th style="text-align:left;padding:6px 8px;background:#F9FAFB;color:#6B7280;font-weight:700;font-size:0.7rem;text-transform:uppercase">'+esc(c)+'</th>').join('')}</tr></thead><tbody>${arr.slice(0,8).map(row=>'<tr>'+cols.map(c=>'<td style="padding:6px 8px;border-top:1px solid #F3F4F6;color:#0A1628">'+esc(row[c]??'—')+'</td>').join('')+'</tr>').join('')}</tbody></table>`
-            : '<div style="color:#9CA3AF;font-size:0.8rem;padding:8px 0">No records yet.</div>';
-          const block = (title, arr, cols) => `<div style="margin-top:14px"><div style="font-weight:800;font-size:0.85rem;color:#0A1628;margin-bottom:4px">${esc(title)} <span style="color:#9CA3AF;font-weight:500">(${arr?arr.length:0})</span></div>${sectionRows(arr, cols)}</div>`;
           fallbackHtml = `
             <div style="background:#FEF3C7;border:1px solid #FBBF24;color:#92400E;padding:10px 14px;border-radius:8px;font-size:0.8rem;margin-bottom:14px">
-              💡 Add a real OpenAI key in Manage → AI Providers (or set <code>OPENAI_API_KEY</code>) to unlock natural-language answers. Showing your raw platform snapshot below.
+              💡 Add a real OpenAI key in Manage → AI Providers to unlock semantic search.
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:8px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
               ${[['Campaigns',t.campaigns],['Leads',t.leads],['Mentions',t.mentions],['Landing Pages',t.landingPages],['Bookings',t.bookings]].map(([k,v])=>`<div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px"><div style="font-size:0.7rem;color:#6B7280;text-transform:uppercase;font-weight:700">${esc(k)}</div><div style="font-size:1.6rem;font-weight:800;color:#0A1628">${v||0}</div></div>`).join('')}
-            </div>
-            ${block('Recent Campaigns', r.campaigns, ['name','platform','status','daily_budget'])}
-            ${block('Recent Leads', r.leads, ['name','email','source','score','status'])}
-            ${block('Recent Ad Insights', r.insights, ['campaign_name','platform','impressions','clicks','spend','conversions'])}
-            ${block('Recent Mentions', r.mentions, ['brand','source','sentiment','snippet'])}
-            ${block('Landing Pages', r.landingPages, ['slug','title','traffic_total','conv_total'])}
-            ${block('Bookings', r.bookings, ['customer_name','customer_email','slot_at','status'])}
-            ${block('Content Calendar', r.contentCalendar, ['title','channel','scheduled_for','status'])}
-            ${block('Budget Spend', r.budgetSpend, ['month','channel','amount'])}
-            ${block('Officer Tasks', r.officerTasks, ['officer','title','status'])}`;
+            </div>`;
         }
+
         out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px">
-          <div style="font-size:0.74rem;color:#6B7280;margin-bottom:8px">💬 Answer · source: <strong>${esc(j.source||'')}</strong></div>
-          <div style="font-size:0.95rem;line-height:1.55;color:#0A1628">${ansHtml}</div>
+          ${autoIndexNote}
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+            ${sourceBadge}
+            ${j.chunksUsed ? `<span style="font-size:0.7rem;color:#9CA3AF">Searched ${j.indexCount||0} chunks · used ${j.chunksUsed} most relevant</span>` : ''}
+          </div>
+          <div style="font-size:0.95rem;line-height:1.6;color:#0A1628">${ansHtml}</div>
+          ${dataChips}
+          ${topScoreHtml}
           ${fallbackHtml}
-          ${j.snapshotSizes ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid #F3F4F6;font-size:0.7rem;color:#9CA3AF">Snapshot scanned: ${Object.entries(j.snapshotSizes).map(([k,v])=>esc(k)+'='+v).join(' · ')}</div>` : ''}
         </div>`;
       } catch(e) { out.innerHTML = '<div style="color:#DC2626">'+esc(e.message)+'</div>'; }
     });
