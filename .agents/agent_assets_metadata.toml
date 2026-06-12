@@ -60,3 +60,9 @@ id = "JquzXjeZ0tHsoUVnniUhy"
 uri = "file://exports/InfoGenie_Business_Plan.pdf"
 type = "pdf"
 title = "InfoGenie Business Plan (PDF)"
+
+[[outputs]]
+id = "zXKqnFv8Ip8kahXq7sZ7_"
+uri = "file://docs/infogenie-features.md"
+type = "text"
+title = "InfoGenie — Complete Feature Guide"
