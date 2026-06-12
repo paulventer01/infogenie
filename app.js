@@ -19949,6 +19949,22 @@ window._dlvGo = async function() {
 window.buildLandingPages = function() {
   const el = document.getElementById('lpWrap'); if (!el) return;
   el.innerHTML = `
+    <div style="background:linear-gradient(135deg,#EEF2FF,#F0F9FF);border:1.5px solid #C7D2FE;border-radius:14px;padding:16px 20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="(function(b){var body=document.getElementById('lpResBody');body.style.display=body.style.display==='none'?'block':'none';b.textContent=body.style.display==='none'?'▼':'▲';})(this.querySelector('.lpResArr'))">
+        <div style="font-size:0.88rem;font-weight:700;color:#3730A3">🔍 Research Audience First <span style="font-size:0.72rem;font-weight:500;color:#6366F1;margin-left:6px">optional — AI analyses your market before building</span></div>
+        <span class="lpResArr" style="color:#6366F1;font-size:0.9rem">▼</span>
+      </div>
+      <div id="lpResBody" style="display:none;padding-top:14px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Product / Service</label>
+            <input id="lpResProduct" placeholder="e.g. HR software for SMBs" style="width:100%;padding:9px 12px;border:1px solid #C7D2FE;border-radius:8px;font-size:0.83rem;background:#fff"></div>
+          <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Target Market</label>
+            <input id="lpResMarket" placeholder="e.g. HR managers at 50-200 person companies" style="width:100%;padding:9px 12px;border:1px solid #C7D2FE;border-radius:8px;font-size:0.83rem;background:#fff"></div>
+        </div>
+        <button id="lpResBtn" onclick="window._lpRunResearch()" style="padding:9px 20px;background:#6366F1;border:none;border-radius:8px;font-size:0.82rem;font-weight:700;color:#fff;cursor:pointer">🔍 Research Audience</button>
+        <div id="lpResResult" style="margin-top:12px"></div>
+      </div>
+    </div>
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;margin-bottom:18px">
       <div style="display:grid;grid-template-columns:1fr 1fr 110px;gap:12px;margin-bottom:12px">
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brand (optional)</label><input id="lpBrand" placeholder="e.g. Nike" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
@@ -19957,19 +19973,73 @@ window.buildLandingPages = function() {
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Goal</label><input id="lpGoal" placeholder="e.g. drive 1000 signups in week 1" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
         <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Audience</label><input id="lpAud" placeholder="e.g. urban runners, 25-40" style="width:100%;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem"></div>
       </div>
-      <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brief (optional)</label>
+      <div><label style="display:block;font-size:0.7rem;font-weight:700;color:#6B7280;margin-bottom:4px">Brief (optional) <span id="lpResApplied" style="display:none;color:#16A34A;font-size:0.68rem;font-weight:600">✓ Research applied</span></label>
         <textarea id="lpBrief" rows="3" placeholder="Anything the page should mention — features, offer, deadline, USP." style="width:100%;padding:10px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.86rem;font-family:inherit;resize:vertical"></textarea></div>
       <button onclick="_lpGo()" style="margin-top:12px;padding:10px 22px;background:#14B8A6;border:2px solid #14B8A6;border-radius:8px;font-size:0.84rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">🎨 Generate Page</button>
     </div>
     <div id="lpOut"></div>`;
 };
+
+window._lpRunResearch = async function() {
+  const product = (document.getElementById('lpResProduct')||{}).value || '';
+  const market  = (document.getElementById('lpResMarket')||{}).value || '';
+  if (!product.trim()) return showToast('⚠️ Enter your product or service first');
+  const btn = document.getElementById('lpResBtn');
+  const result = document.getElementById('lpResResult');
+  btn.disabled = true; btn.textContent = '⏳ Researching…';
+  result.innerHTML = '<div style="color:#6366F1;font-size:0.8rem;padding:8px 0">Analysing your audience, pain points and language patterns…</div>';
+  try {
+    const r = await fetch('/api/landing-pages/research-audience', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ product, market, goal: (document.getElementById('lpGoal')||{}).value }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'research failed');
+    window._lpResearchData = r.research;
+    const res = r.research;
+    result.innerHTML = `
+<div style="background:#fff;border-radius:12px;border:1.5px solid #C7D2FE;padding:16px;margin-top:4px">
+  <div style="font-size:0.82rem;font-weight:700;color:#1E293B;margin-bottom:12px">✅ Audience Research Complete <span style="font-size:0.7rem;font-weight:500;color:#6366F1;margin-left:6px">${_escapeHtml(r.source)}</span></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:12px">
+    ${(res.segments||[]).map(s=>`<div style="background:#F8FAFC;border-radius:8px;padding:10px"><div style="font-size:0.72rem;font-weight:700;color:#6366F1;margin-bottom:3px">${_escapeHtml(s.name||'')}</div><div style="font-size:0.75rem;color:#475569">${_escapeHtml(s.demographics||'')}</div><div style="font-size:0.72rem;color:#94A3B8;margin-top:3px">${_escapeHtml(s.trigger||'')}</div></div>`).join('')}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+    <div><div style="font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:6px">TOP PAIN POINTS</div>
+      ${(res.pain_points||[]).slice(0,4).map(p=>`<div style="font-size:0.75rem;color:#475569;padding:4px 0;border-bottom:1px solid #F1F5F9">• ${_escapeHtml(p)}</div>`).join('')}</div>
+    <div><div style="font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:6px">HOOK ANGLES</div>
+      ${(res.hooks||[]).slice(0,4).map(h=>`<div style="font-size:0.75rem;color:#475569;padding:4px 0;border-bottom:1px solid #F1F5F9;font-style:italic">"${_escapeHtml(h)}"</div>`).join('')}</div>
+  </div>
+  <div style="margin-bottom:12px"><div style="font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:6px">POWER WORDS</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${(res.power_words||[]).map(w=>`<span style="background:#EEF2FF;color:#6366F1;padding:3px 8px;border-radius:5px;font-size:0.72rem;font-weight:600">${_escapeHtml(w)}</span>`).join('')}</div>
+  </div>
+  <button onclick="window._lpApplyResearch()" style="padding:8px 18px;background:#16A34A;border:none;border-radius:8px;font-size:0.8rem;font-weight:700;color:#fff;cursor:pointer">✅ Apply to Brief & Auto-fill</button>
+</div>`;
+  } catch (e) { result.innerHTML = `<div style="color:#EF4444;font-size:0.8rem">⚠️ ${_escapeHtml(e.message)}</div>`; }
+  btn.disabled = false; btn.textContent = '🔍 Research Audience';
+};
+
+window._lpApplyResearch = function() {
+  const res = window._lpResearchData; if (!res) return;
+  const brief = document.getElementById('lpBrief');
+  const aud   = document.getElementById('lpAud');
+  const painStr  = (res.pain_points||[]).slice(0,3).join('; ');
+  const hooksStr = (res.hooks||[]).slice(0,2).join('; ');
+  const wordsStr = (res.power_words||[]).join(', ');
+  const objStr   = (res.objections||[]).slice(0,2).map(o=>`"${o.objection}" → "${o.rebuttal}"`).join('. ');
+  if (aud && !aud.value) aud.value = (res.segments||[]).map(s=>s.name).join(', ');
+  if (brief) brief.value = `Pain points: ${painStr}. Hooks: ${hooksStr}. Power words: ${wordsStr}. Handle objections: ${objStr}`;
+  const applied = document.getElementById('lpResApplied');
+  if (applied) applied.style.display = 'inline';
+  const body = document.getElementById('lpResBody');
+  if (body) body.style.display = 'none';
+  showToast('✅ Research applied to brief');
+};
+
 window._lpGo = async function() {
-  const brand = (document.getElementById('lpBrand')||{}).value || '';
-  const title = (document.getElementById('lpTitle')||{}).value || '';
-  const goal = (document.getElementById('lpGoal')||{}).value || '';
+  const brand    = (document.getElementById('lpBrand')||{}).value || '';
+  const title    = (document.getElementById('lpTitle')||{}).value || '';
+  const goal     = (document.getElementById('lpGoal')||{}).value || '';
   const audience = (document.getElementById('lpAud')||{}).value || '';
-  const brief = (document.getElementById('lpBrief')||{}).value || '';
-  const accent = (document.getElementById('lpAccent')||{}).value || '#14B8A6';
+  const brief    = (document.getElementById('lpBrief')||{}).value || '';
+  const accent   = (document.getElementById('lpAccent')||{}).value || '#14B8A6';
   if (!title.trim()) return showToast('⚠️ Page title required');
   const out = document.getElementById('lpOut');
   out.innerHTML = `<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:20px;color:#6B7280">⏳ Drafting full landing page…</div>`;
@@ -19977,20 +20047,214 @@ window._lpGo = async function() {
     const r = await fetch('/api/landing-pages/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ brand, title, goal, audience, brief, accent }) }).then(x=>x.json());
     if (!r.ok) throw new Error(r.error||'failed');
     window._lpLastHtml = r.html;
+    window._lpLastId   = r.id || null;
+    const srcBadge = `<span style="background:${r.source==='openai'?'#14B8A6':'#9CA3AF'};color:#fff;padding:3px 9px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase;margin-left:8px">${_escapeHtml(r.source)}</span>`;
+    const publicUrl = r.id ? `${location.origin}/lp/${r.id}` : null;
     out.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-weight:800;color:#0A1628">🖼️ Live Preview <span style="background:${r.source==='openai'?'#14B8A6':'#9CA3AF'};color:#fff;padding:3px 9px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase;margin-left:8px">${_escapeHtml(r.source)}</span></div>
-        <div style="display:flex;gap:8px">
-          <button onclick="_lpDownload()" style="padding:8px 16px;background:#15803D;border:2px solid #15803D;border-radius:6px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">⬇️ Download HTML</button>
-          <button onclick="_lpCopyHtml()" style="padding:8px 16px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.78rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy HTML</button>
-          <button onclick="_lpOpenTab()" style="padding:8px 16px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.78rem;font-weight:700;color:#374151;cursor:pointer">↗️ Open</button>
-        </div>
+<div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden">
+  <div style="display:flex;border-bottom:2px solid #E2E8F0;background:#F8FAFC;padding:0 16px">
+    <button id="lpTabPreview" onclick="window._lpTab('preview')" style="padding:12px 16px;border:none;background:transparent;font-size:0.8rem;font-weight:700;color:#14B8A6;border-bottom:2px solid #14B8A6;margin-bottom:-2px;cursor:pointer">🖼️ Preview${srcBadge}</button>
+    <button id="lpTabAb" onclick="window._lpTab('ab')" style="padding:12px 16px;border:none;background:transparent;font-size:0.8rem;font-weight:600;color:#64748B;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer">🧪 A/B Test</button>
+    <button id="lpTabLeads" onclick="window._lpTab('leads')" style="padding:12px 16px;border:none;background:transparent;font-size:0.8rem;font-weight:600;color:#64748B;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer">📋 Leads</button>
+    <button id="lpTabAds" onclick="window._lpTab('ads')" style="padding:12px 16px;border:none;background:transparent;font-size:0.8rem;font-weight:600;color:#64748B;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer">📣 Ad Package</button>
+  </div>
+  <div id="lpPanelPreview" style="padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="font-weight:800;color:#0A1628">🖼️ Live Preview</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="_lpDownload()" style="padding:8px 14px;background:#15803D;border:2px solid #15803D;border-radius:6px;font-size:0.76rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.4)">⬇️ Download</button>
+        <button onclick="_lpCopyHtml()" style="padding:8px 14px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.76rem;font-weight:700;color:#374151;cursor:pointer">📋 Copy HTML</button>
+        <button onclick="_lpOpenTab()" style="padding:8px 14px;background:#fff;border:2px solid #D1D5DB;border-radius:6px;font-size:0.76rem;font-weight:700;color:#374151;cursor:pointer">↗️ Open</button>
+        ${publicUrl ? `<a href="${_escapeHtml(publicUrl)}" target="_blank" style="padding:8px 14px;background:#EFF6FF;border:2px solid #BFDBFE;border-radius:6px;font-size:0.76rem;font-weight:700;color:#1D4ED8;text-decoration:none">🌐 Public URL</a>` : ''}
       </div>
-      <iframe id="lpPreview" style="width:100%;height:720px;border:1px solid #E5E7EB;border-radius:12px;background:#fff" sandbox="allow-same-origin"></iframe>`;
+    </div>
+    <iframe id="lpPreview" style="width:100%;height:720px;border:1px solid #E5E7EB;border-radius:12px;background:#fff" sandbox="allow-same-origin allow-scripts"></iframe>
+  </div>
+  <div id="lpPanelAb" style="display:none;padding:20px">
+    <div style="margin-bottom:14px"><div style="font-weight:700;color:#1E293B;margin-bottom:4px">🧪 A/B Split Test</div>
+      <div style="font-size:0.8rem;color:#64748B">Generate an alternative variant with a different persuasion angle, then compare conversion rates.</div></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <select id="lpAbAngle" style="padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.82rem;background:#fff">
+        <option value="social-proof-heavy">Social Proof Heavy</option>
+        <option value="fear-based">Fear / Loss Aversion</option>
+        <option value="curiosity">Curiosity / Intrigue</option>
+        <option value="authority">Authority / Expert</option>
+        <option value="benefit-led">Pure Benefit Led</option>
+        <option value="urgency">Urgency / Scarcity</option>
+        <option value="storytelling">Storytelling / Narrative</option>
+      </select>
+      <button id="lpAbBtn" onclick="window._lpGenABVariant()" style="padding:9px 18px;background:#8B5CF6;border:none;border-radius:8px;font-size:0.82rem;font-weight:700;color:#fff;cursor:pointer">🧪 Generate Variant B</button>
+      ${r.id ? `<button onclick="window._lpLoadABResults()" style="padding:9px 14px;background:#F8FAFC;border:1px solid #D1D5DB;border-radius:8px;font-size:0.8rem;font-weight:600;color:#475569;cursor:pointer">📊 Refresh Stats</button>` : ''}
+    </div>
+    <div id="lpAbResult"></div>
+  </div>
+  <div id="lpPanelLeads" style="display:none;padding:20px">
+    <div style="margin-bottom:14px"><div style="font-weight:700;color:#1E293B;margin-bottom:4px">📋 Lead Analytics</div>
+      <div style="font-size:0.8rem;color:#64748B">Form submissions from your live page appear here. Set a webhook to pipe leads to HubSpot, Zapier, or any URL.</div></div>
+    ${r.id ? `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <input id="lpWebhookUrl" placeholder="https://hooks.zapier.com/..." style="flex:1;min-width:280px;padding:9px 12px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.82rem">
+      <button onclick="window._lpSetWebhook()" style="padding:9px 16px;background:#14B8A6;border:none;border-radius:8px;font-size:0.8rem;font-weight:700;color:#fff;cursor:pointer">💾 Save Webhook</button>
+    </div>
+    <button onclick="window._lpLoadLeads()" style="padding:8px 16px;background:#F8FAFC;border:1px solid #D1D5DB;border-radius:8px;font-size:0.8rem;font-weight:600;color:#475569;cursor:pointer;margin-bottom:14px">🔄 Load Leads</button>
+    <div id="lpLeadsResult"></div>` : '<div style="color:#94A3B8;font-size:0.84rem">Save this page first to enable lead capture.</div>'}
+  </div>
+  <div id="lpPanelAds" style="display:none;padding:20px">
+    <div style="margin-bottom:14px"><div style="font-weight:700;color:#1E293B;margin-bottom:4px">📣 Create Once, Publish Everywhere</div>
+      <div style="font-size:0.8rem;color:#64748B">Instantly generate matching ad copy for Meta, Google Display, and TikTok from this landing page.</div></div>
+    ${r.id ? `<button id="lpAdPkgBtn" onclick="window._lpGenAdPackage()" style="padding:10px 20px;background:linear-gradient(135deg,#6366F1,#8B5CF6);border:none;border-radius:8px;font-size:0.84rem;font-weight:700;color:#fff;cursor:pointer;margin-bottom:16px">📣 Generate Ad Package</button>` : '<div style="color:#94A3B8;font-size:0.84rem">Save this page first to generate ad assets.</div>'}
+    <div id="lpAdPkgResult"></div>
+  </div>
+</div>`;
     const iframe = document.getElementById('lpPreview');
-    iframe.srcdoc = r.html;
+    if (iframe) iframe.srcdoc = r.html;
   } catch (e) { out.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
 };
+
+window._lpTab = function(tab) {
+  ['preview','ab','leads','ads'].forEach(t => {
+    const key = t.charAt(0).toUpperCase() + t.slice(1);
+    const panel = document.getElementById('lpPanel' + key);
+    const btn   = document.getElementById('lpTab'   + key);
+    const active = t === tab;
+    if (panel) panel.style.display = active ? 'block' : 'none';
+    if (btn) { btn.style.color = active ? '#14B8A6' : '#64748B'; btn.style.borderBottom = active ? '2px solid #14B8A6' : '2px solid transparent'; btn.style.fontWeight = active ? '700' : '600'; }
+  });
+  if (tab === 'leads' && window._lpLastId) window._lpLoadLeads();
+  if (tab === 'ab'    && window._lpLastId) window._lpLoadABResults();
+};
+
+window._lpGenABVariant = async function() {
+  const id = window._lpLastId;
+  if (!id) return showToast('⚠️ Page must be saved to DB first (re-generate with a title)');
+  const angle  = (document.getElementById('lpAbAngle')||{}).value || 'social-proof-heavy';
+  const btn    = document.getElementById('lpAbBtn');
+  const result = document.getElementById('lpAbResult');
+  btn.disabled = true; btn.textContent = '⏳ Generating…';
+  result.innerHTML = '<div style="color:#8B5CF6;font-size:0.8rem;padding:8px 0">Generating alternative variant…</div>';
+  try {
+    const r = await fetch('/api/landing-pages/ab-variant', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ page_id: id, angle }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    window._lpVariantHtml = r.html;
+    result.innerHTML = `
+<div style="margin-bottom:14px"><span style="background:#EDE9FE;color:#6D28D9;padding:4px 10px;border-radius:6px;font-size:0.75rem;font-weight:700">✅ Variant B Generated — ${_escapeHtml(angle)} angle</span></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+  <div><div style="font-size:0.75rem;font-weight:700;color:#6B7280;margin-bottom:6px">VARIANT A — Original</div>
+    <iframe srcdoc="${_escapeHtml(window._lpLastHtml||'')}" style="width:100%;height:380px;border:1px solid #D1D5DB;border-radius:8px" sandbox="allow-same-origin allow-scripts"></iframe></div>
+  <div><div style="font-size:0.75rem;font-weight:700;color:#6B7280;margin-bottom:6px">VARIANT B — ${_escapeHtml(angle)}</div>
+    <iframe srcdoc="${_escapeHtml(r.html||'')}" style="width:100%;height:380px;border:1px solid #C4B5FD;border-radius:8px" sandbox="allow-same-origin allow-scripts"></iframe></div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+  <button onclick="window._lpLoadABResults()" style="padding:8px 14px;background:#F8FAFC;border:1px solid #D1D5DB;border-radius:7px;font-size:0.78rem;font-weight:600;color:#475569;cursor:pointer">📊 View Stats</button>
+  <button onclick="window._lpDownloadVariant()" style="padding:8px 14px;background:#F8FAFC;border:1px solid #D1D5DB;border-radius:7px;font-size:0.78rem;font-weight:600;color:#475569;cursor:pointer">⬇️ Download B</button>
+</div>
+<div id="lpAbStats"></div>`;
+  } catch (e) { result.innerHTML = `<div style="color:#EF4444;font-size:0.8rem">⚠️ ${_escapeHtml(e.message)}</div>`; }
+  btn.disabled = false; btn.textContent = '🧪 Generate Variant B';
+};
+
+window._lpLoadABResults = async function() {
+  const id = window._lpLastId; if (!id) return;
+  const el = document.getElementById('lpAbStats') || document.getElementById('lpAbResult');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/landing-pages/ab-results/' + id).then(x=>x.json());
+    if (!r.ok) return;
+    const a = r.a, b = r.b;
+    const winner = (a.views + b.views > 0) ? (parseFloat(b.cvr) > parseFloat(a.cvr) ? 'B' : 'A') : null;
+    el.innerHTML = `
+<div style="background:#fff;border:1.5px solid #E2E8F0;border-radius:12px;padding:16px">
+  <div style="font-size:0.85rem;font-weight:700;color:#1E293B;margin-bottom:12px">📊 A/B Results ${winner?`<span style="background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:5px;font-size:0.7rem;margin-left:8px">Variant ${_escapeHtml(winner)} winning</span>`:''}</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    ${[['A (Original)',a,'#14B8A6'],['B'+(document.getElementById('lpAbAngle')?(' — '+document.getElementById('lpAbAngle').value):''),b,'#8B5CF6']].map(([label,d,clr])=>`
+    <div style="background:#F8FAFC;border-radius:10px;padding:14px;border-left:4px solid ${clr}">
+      <div style="font-size:0.8rem;font-weight:700;color:${clr};margin-bottom:10px">${_escapeHtml(label)}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);text-align:center;gap:6px">
+        <div><div style="font-size:1.4rem;font-weight:800;color:#1E293B">${d.views||0}</div><div style="font-size:0.62rem;color:#94A3B8;font-weight:600">VIEWS</div></div>
+        <div><div style="font-size:1.4rem;font-weight:800;color:#1E293B">${d.conversions||0}</div><div style="font-size:0.62rem;color:#94A3B8;font-weight:600">LEADS</div></div>
+        <div><div style="font-size:1.4rem;font-weight:800;color:${clr}">${d.cvr||0}%</div><div style="font-size:0.62rem;color:#94A3B8;font-weight:600">CVR</div></div>
+      </div>
+    </div>`).join('')}
+  </div>
+</div>`;
+  } catch (e) { if (el) el.innerHTML = `<div style="color:#EF4444;font-size:0.8rem">⚠️ ${_escapeHtml(e.message)}</div>`; }
+};
+
+window._lpLoadLeads = async function() {
+  const id = window._lpLastId; if (!id) return;
+  const el = document.getElementById('lpLeadsResult'); if (!el) return;
+  el.innerHTML = '<div style="color:#64748B;font-size:0.8rem">Loading leads…</div>';
+  try {
+    const r = await fetch('/api/landing-pages/leads/' + id).then(x=>x.json());
+    if (!r.ok) { el.innerHTML = `<div style="color:#EF4444;font-size:0.8rem">⚠️ ${_escapeHtml(r.error||'error')}</div>`; return; }
+    el.innerHTML = `
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+  <div style="background:#F0FDF4;border-radius:10px;padding:14px;text-align:center"><div style="font-size:1.6rem;font-weight:800;color:#15803D">${r.total||0}</div><div style="font-size:0.7rem;color:#64748B;font-weight:600">TOTAL LEADS</div></div>
+  <div style="background:#EFF6FF;border-radius:10px;padding:14px;text-align:center"><div style="font-size:1.6rem;font-weight:800;color:#1D4ED8">${r.today||0}</div><div style="font-size:0.7rem;color:#64748B;font-weight:600">TODAY</div></div>
+  <div style="background:#F5F3FF;border-radius:10px;padding:14px;text-align:center"><div style="font-size:1.6rem;font-weight:800;color:#7C3AED">${(r.leads||[]).filter(l=>l.variant==='b').length}</div><div style="font-size:0.7rem;color:#64748B;font-weight:600">VARIANT B</div></div>
+</div>
+${r.leads && r.leads.length ? `<div style="background:#fff;border-radius:10px;border:1px solid #E2E8F0;overflow:hidden"><table style="width:100%;border-collapse:collapse">
+  <thead><tr style="background:#F8FAFC"><th style="padding:10px 12px;text-align:left;font-size:0.7rem;color:#64748B;font-weight:700">NAME</th><th style="padding:10px 12px;text-align:left;font-size:0.7rem;color:#64748B;font-weight:700">EMAIL</th><th style="padding:10px 12px;text-align:left;font-size:0.7rem;color:#64748B;font-weight:700">VARIANT</th><th style="padding:10px 12px;text-align:left;font-size:0.7rem;color:#64748B;font-weight:700">DATE</th></tr></thead>
+  <tbody>${(r.leads||[]).slice(0,50).map(l=>`<tr style="border-top:1px solid #F1F5F9"><td style="padding:9px 12px;font-size:0.8rem;color:#1E293B">${_escapeHtml(l.name||'—')}</td><td style="padding:9px 12px;font-size:0.8rem;color:#6366F1">${_escapeHtml(l.email||'—')}</td><td style="padding:9px 12px"><span style="background:${l.variant==='b'?'#EDE9FE':'#ECFDF5'};color:${l.variant==='b'?'#6D28D9':'#065F46'};padding:2px 7px;border-radius:4px;font-size:0.68rem;font-weight:700">${(l.variant||'a').toUpperCase()}</span></td><td style="padding:9px 12px;font-size:0.75rem;color:#94A3B8">${new Date(l.created_at).toLocaleDateString()}</td></tr>`).join('')}</tbody>
+</table></div>` : `<div style="text-align:center;padding:24px;color:#94A3B8;font-size:0.85rem">No leads yet. Share your <a href="/lp/${(window._lpLastId||'')}" target="_blank" style="color:#6366F1">public page URL</a> to start capturing leads.</div>`}`;
+  } catch (e) { el.innerHTML = `<div style="color:#EF4444;font-size:0.8rem">⚠️ ${_escapeHtml(e.message)}</div>`; }
+};
+
+window._lpSetWebhook = async function() {
+  const id = window._lpLastId; if (!id) return showToast('⚠️ Page must be saved first');
+  const url = (document.getElementById('lpWebhookUrl')||{}).value || '';
+  try {
+    const r = await fetch('/api/landing-pages/webhook/' + id, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ webhook_url: url }) }).then(x=>x.json());
+    if (r.ok) showToast('✅ Webhook saved'); else showToast('⚠️ ' + (r.error||'failed'));
+  } catch (e) { showToast('⚠️ ' + e.message); }
+};
+
+window._lpGenAdPackage = async function() {
+  const id = window._lpLastId; if (!id) return showToast('⚠️ Page must be saved first');
+  const btn    = document.getElementById('lpAdPkgBtn');
+  const result = document.getElementById('lpAdPkgResult');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
+  if (result) result.innerHTML = '<div style="color:#6366F1;font-size:0.8rem;padding:8px 0">Analysing landing page and generating ad copy for all platforms…</div>';
+  try {
+    const r = await fetch('/api/ad-creative/from-landing-page', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ page_id: id }) }).then(x=>x.json());
+    if (!r.ok) throw new Error(r.error||'failed');
+    const pIcons = { 'Meta (Facebook + Instagram)':'📘', 'Google Display':'🔷', 'TikTok':'🎵' };
+    result.innerHTML = `
+<div style="font-size:0.82rem;font-weight:700;color:#1E293B;margin-bottom:12px">✅ Ad Package Ready <span style="font-size:0.7rem;font-weight:500;color:#64748B">${_escapeHtml(r.source)} · 3 platforms</span></div>
+<div style="display:flex;flex-direction:column;gap:12px">
+${(r.packages||[]).map(pkg=>`<div style="background:#fff;border-radius:12px;border:1.5px solid #E2E8F0;padding:16px">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+    <span>${pIcons[pkg.platform]||'📢'}</span>
+    <div style="font-weight:700;color:#1E293B;font-size:0.88rem">${_escapeHtml(pkg.platform)}</div>
+    <div style="margin-left:auto;display:flex;gap:6px">${(pkg.formats||[]).map(f=>`<span style="background:#F1F5F9;color:#475569;padding:2px 7px;border-radius:4px;font-size:0.67rem;font-weight:600">${_escapeHtml(f)}</span>`).join('')}</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div><div style="font-size:0.67rem;font-weight:700;color:#94A3B8;margin-bottom:3px">HEADLINE</div>
+      <div style="font-size:0.82rem;color:#1E293B;font-weight:600">${_escapeHtml(pkg.headline||pkg.hook||'')}</div></div>
+    <div><div style="font-size:0.67rem;font-weight:700;color:#94A3B8;margin-bottom:3px">${pkg.platform==='TikTok'?'CONCEPT':'BODY COPY'}</div>
+      <div style="font-size:0.78rem;color:#475569">${_escapeHtml(pkg.primary_text||pkg.description||pkg.script_summary||'')}</div></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    ${pkg.cta_button?`<span style="background:#EFF6FF;color:#1D4ED8;padding:4px 10px;border-radius:6px;font-size:0.75rem;font-weight:700">CTA: ${_escapeHtml(pkg.cta_button)}</span>`:''}
+    <span style="font-size:0.73rem;color:#94A3B8;font-style:italic">${_escapeHtml(pkg.notes||'')}</span>
+    <button onclick="navigator.clipboard.writeText(${JSON.stringify(JSON.stringify({headline:pkg.headline||pkg.hook,body:pkg.primary_text||pkg.description||pkg.script_summary,cta:pkg.cta_button}))})" style="margin-left:auto;padding:5px 10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;font-size:0.72rem;font-weight:600;color:#475569;cursor:pointer">📋 Copy</button>
+  </div>
+  ${pkg.hashtags?.length?`<div style="margin-top:8px">${pkg.hashtags.map(h=>`<span style="color:#6366F1;font-size:0.72rem">#${_escapeHtml(h)} </span>`).join('')}</div>`:''}</div>`).join('')}
+</div>`;
+  } catch (e) { if (result) result.innerHTML = `<div style="color:#EF4444;font-size:0.8rem">⚠️ ${_escapeHtml(e.message)}</div>`; }
+  if (btn) { btn.disabled = false; btn.textContent = '📣 Generate Ad Package'; }
+};
+
+window._lpDownloadVariant = function() {
+  if (!window._lpVariantHtml) return;
+  const blob = new Blob([window._lpVariantHtml], { type:'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'landing-page-variant-b.html';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  showToast('✅ Downloaded Variant B');
+};
+
 window._lpCopyHtml = async function() {
   if (!window._lpLastHtml) return;
   try { await navigator.clipboard.writeText(window._lpLastHtml); showToast('✅ HTML copied'); }

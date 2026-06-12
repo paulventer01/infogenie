@@ -208,6 +208,214 @@ ${r.items.map(it => `
   };
 
   window._acLoadHistory();
+
+  // ── T68 Pre-launch Creative Scorer ───────────────────────────────────────
+  const _csScorerWrap = document.createElement('div');
+  _csScorerWrap.style.cssText = 'margin-top:28px';
+  _csScorerWrap.innerHTML = `
+<div style="background:#fff;border-radius:16px;border:1.5px solid #E2E8F0;padding:24px">
+  <div style="margin-bottom:18px">
+    <h3 style="font-size:1rem;font-weight:700;color:#1E293B;margin:0 0 4px">🎯 Pre-launch Creative Scorer</h3>
+    <div style="font-size:0.75rem;color:#64748B">Score your ad creative before you spend — predict CTR range, get a grade, and receive specific improvement tips.</div>
+  </div>
+  <div style="display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start">
+    <div>
+      <label style="font-size:0.72rem;font-weight:700;color:#64748B;display:block;margin-bottom:5px">HEADLINE TO SCORE</label>
+      <input id="csHeadline" placeholder="e.g. Stop wasting money on ads that don't convert" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.8rem;margin-bottom:10px">
+      <label style="font-size:0.72rem;font-weight:700;color:#64748B;display:block;margin-bottom:5px">BODY COPY (optional)</label>
+      <textarea id="csBody" rows="2" placeholder="Supporting message…" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.8rem;resize:vertical;margin-bottom:10px;font-family:inherit"></textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div>
+          <label style="font-size:0.72rem;font-weight:700;color:#64748B;display:block;margin-bottom:5px">CTA TEXT</label>
+          <input id="csCta" placeholder="e.g. Start Free Trial" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.8rem">
+        </div>
+        <div>
+          <label style="font-size:0.72rem;font-weight:700;color:#64748B;display:block;margin-bottom:5px">PLATFORM</label>
+          <select id="csPlatform" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.8rem;background:#fff">
+            <option value="facebook_ad">Facebook Ad</option>
+            <option value="instagram_post">Instagram</option>
+            <option value="google_display">Google Display</option>
+            <option value="tiktok">TikTok</option>
+            <option value="linkedin">LinkedIn</option>
+          </select>
+        </div>
+      </div>
+      <label style="font-size:0.72rem;font-weight:700;color:#64748B;display:block;margin-bottom:5px">VISUAL DESCRIPTION (optional)</label>
+      <input id="csVisual" placeholder="e.g. Happy professional at a clean desk" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.8rem;margin-bottom:14px">
+      <button id="csScoreBtn" onclick="window._csScore()" style="width:100%;padding:11px;background:linear-gradient(135deg,#F59E0B,#EF4444);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:#fff;cursor:pointer">🎯 Score This Creative</button>
+    </div>
+    <div id="csScoreResult">
+      <div style="background:#F8FAFC;border-radius:12px;padding:20px;text-align:center;color:#94A3B8">
+        <div style="font-size:2rem;margin-bottom:8px">🎯</div>
+        <div style="font-size:0.8rem">Enter your headline and click Score to get a pre-launch performance prediction.</div>
+      </div>
+    </div>
+  </div>
+</div>`;
+  wrap.appendChild(_csScorerWrap);
+
+  // ── T69 UGC Video Ad Script Generator ────────────────────────────────────
+  const _csUgcWrap = document.createElement('div');
+  _csUgcWrap.style.cssText = 'margin-top:24px';
+  _csUgcWrap.innerHTML = `
+<div style="background:#fff;border-radius:16px;border:1.5px solid #E2E8F0;padding:24px">
+  <div style="margin-bottom:18px">
+    <h3 style="font-size:1rem;font-weight:700;color:#1E293B;margin:0 0 4px">🎬 UGC Video Ad Script Generator</h3>
+    <div style="font-size:0.75rem;color:#64748B">Generate a complete timed UGC video script with scene directions, text overlays, post caption, and hashtags — ready for a creator brief.</div>
+  </div>
+  <div style="display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start">
+    <div>
+      <label style="font-size:0.72rem;font-weight:700;color:#64748B;display:block;margin-bottom:5px">PRODUCT / SERVICE</label>
+      <input id="ugcProduct" placeholder="e.g. AI email writing tool" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.8rem;margin-bottom:10px">
+      <label style="font-size:0.72rem;font-weight:700;color:#64748B;display:block;margin-bottom:5px">TARGET AUDIENCE</label>
+      <input id="ugcAudience" placeholder="e.g. busy founders, 30-45" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.8rem;margin-bottom:10px">
+      <label style="font-size:0.72rem;font-weight:700;color:#64748B;display:block;margin-bottom:5px">KEY BENEFIT</label>
+      <input id="ugcBenefit" placeholder="e.g. write cold emails 10x faster" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1.5px solid #E2E8F0;border-radius:9px;font-size:0.8rem;margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div>
+          <label style="font-size:0.72rem;font-weight:700;color:#64748B;display:block;margin-bottom:5px">HOOK TYPE</label>
+          <select id="ugcHookType" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.78rem;background:#fff">
+            <option value="problem-solution">Problem → Solution</option>
+            <option value="before-after">Before → After</option>
+            <option value="testimonial">Authentic Testimonial</option>
+            <option value="asmr">ASMR / Sensory</option>
+            <option value="trending-sound">Trending Sound Format</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:0.72rem;font-weight:700;color:#64748B;display:block;margin-bottom:5px">PLATFORM</label>
+          <select id="ugcPlatform" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.78rem;background:#fff">
+            <option value="instagram_reels">Instagram Reels</option>
+            <option value="tiktok">TikTok</option>
+            <option value="youtube_shorts">YouTube Shorts</option>
+            <option value="facebook_reels">Facebook Reels</option>
+          </select>
+        </div>
+      </div>
+      <label style="font-size:0.72rem;font-weight:700;color:#64748B;display:block;margin-bottom:5px">VIDEO DURATION</label>
+      <select id="ugcDuration" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.8rem;background:#fff;margin-bottom:14px">
+        <option value="15">15 seconds</option>
+        <option value="30" selected>30 seconds</option>
+        <option value="45">45 seconds</option>
+        <option value="60">60 seconds</option>
+      </select>
+      <button id="ugcBtn" onclick="window._ugcGenerate()" style="width:100%;padding:11px;background:linear-gradient(135deg,#EC4899,#8B5CF6);border:none;border-radius:10px;font-size:0.85rem;font-weight:700;color:#fff;cursor:pointer">🎬 Generate Script</button>
+    </div>
+    <div id="ugcResult">
+      <div style="background:#F8FAFC;border-radius:12px;padding:20px;text-align:center;color:#94A3B8">
+        <div style="font-size:2rem;margin-bottom:8px">🎬</div>
+        <div style="font-size:0.8rem">Fill in your product details and generate a complete UGC video script with timed scenes and creator directions.</div>
+      </div>
+    </div>
+  </div>
+</div>`;
+  wrap.appendChild(_csUgcWrap);
+
+  window._csScore = async () => {
+    const headline  = (document.getElementById('csHeadline')||{}).value || '';
+    const body_copy = (document.getElementById('csBody')||{}).value || '';
+    const cta_text  = (document.getElementById('csCta')||{}).value || '';
+    const platform  = (document.getElementById('csPlatform')||{}).value || 'facebook_ad';
+    const visual_desc = (document.getElementById('csVisual')||{}).value || '';
+    const btn    = document.getElementById('csScoreBtn');
+    const result = document.getElementById('csScoreResult');
+    if (!headline.trim()) { result.innerHTML = '<p style="color:#EF4444;font-size:0.8rem">Please enter a headline to score.</p>'; return; }
+    btn.disabled = true; btn.textContent = '⏳ Scoring…';
+    result.innerHTML = `<div style="background:#F8FAFC;border-radius:12px;padding:20px;text-align:center;color:#94A3B8"><div style="font-size:1.5rem;margin-bottom:8px">⏳</div><div style="font-size:0.8rem">Analysing your creative against real ad performance benchmarks…</div></div>`;
+    const r = await _csPost('/api/ad-creative/score', { headline, body_copy, cta_text, platform, visual_desc });
+    btn.disabled = false; btn.textContent = '🎯 Score This Creative';
+    if (!r.ok) { result.innerHTML = `<p style="color:#EF4444;font-size:0.8rem">Error: ${_csEsc(r.error||'scoring failed')}</p>`; return; }
+    const gradeColor = { A:'#15803D', B:'#1D4ED8', C:'#D97706', D:'#DC2626', F:'#7C3AED' };
+    const overallColor = r.overall >= 80 ? '#15803D' : r.overall >= 60 ? '#D97706' : '#DC2626';
+    const scoreBar = (val) => {
+      const pct = val * 10;
+      const col = val >= 8 ? '#15803D' : val >= 6 ? '#1D4ED8' : val >= 4 ? '#D97706' : '#DC2626';
+      return `<div style="background:#F1F5F9;border-radius:4px;height:6px;width:100%;margin-top:4px"><div style="width:${pct}%;height:100%;background:${col};border-radius:4px;transition:width .3s"></div></div>`;
+    };
+    const dims = r.scores || {};
+    result.innerHTML = `
+<div style="background:#fff;border-radius:12px;border:1.5px solid #E2E8F0;padding:20px">
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:18px;flex-wrap:wrap">
+    <div style="text-align:center">
+      <div style="font-size:2.5rem;font-weight:900;color:${overallColor};line-height:1">${r.overall||0}</div>
+      <div style="font-size:0.65rem;color:#94A3B8;font-weight:700">/ 100</div>
+    </div>
+    <div style="text-align:center">
+      <div style="font-size:2.2rem;font-weight:900;color:${gradeColor[r.grade]||'#64748B'};line-height:1">${_csEsc(r.grade||'C')}</div>
+      <div style="font-size:0.65rem;color:#94A3B8;font-weight:700">GRADE</div>
+    </div>
+    <div style="flex:1">
+      <div style="font-size:0.78rem;font-weight:600;color:#1E293B;margin-bottom:4px">${_csEsc(r.verdict||'')}</div>
+      <div style="font-size:0.72rem;color:#64748B">Predicted CTR: <strong style="color:#1D4ED8">${_csEsc(r.ctr_range?.low||'?')} – ${_csEsc(r.ctr_range?.high||'?')}</strong></div>
+    </div>
+    <div style="font-size:0.65rem;padding:3px 8px;background:${r.source==='openai'?'#D1FAE5':'#FEF3C7'};color:${r.source==='openai'?'#065F46':'#92400E'};border-radius:5px;font-weight:700">${_csEsc(r.source||'')}</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+    ${Object.entries({ hook_strength:'Hook Strength', cta_clarity:'CTA Clarity', urgency:'Urgency', emotional_resonance:'Emotional', relevance:'Relevance' }).map(([k,label])=>`
+    <div style="background:#F8FAFC;border-radius:8px;padding:10px">
+      <div style="display:flex;justify-content:space-between;font-size:0.72rem;font-weight:600;color:#475569">
+        <span>${label}</span><span style="font-weight:800;color:#1E293B">${dims[k]||0}/10</span>
+      </div>
+      ${scoreBar(dims[k]||0)}
+    </div>`).join('')}
+  </div>
+  ${r.tips?.length ? `<div><div style="font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:8px">IMPROVEMENT TIPS</div>
+  ${r.tips.slice(0,5).map(t=>`<div style="background:#FFF7ED;border-left:3px solid #F59E0B;border-radius:0 6px 6px 0;padding:8px 12px;margin-bottom:8px"><div style="font-size:0.7rem;font-weight:700;color:#92400E;margin-bottom:2px">${_csEsc(t.dimension||'').replace(/_/g,' ').toUpperCase()}</div><div style="font-size:0.77rem;color:#1E293B">${_csEsc(t.tip||'')}</div></div>`).join('')}
+  </div>` : ''}
+</div>`;
+  };
+
+  window._ugcGenerate = async () => {
+    const product   = (document.getElementById('ugcProduct')||{}).value || '';
+    const audience  = (document.getElementById('ugcAudience')||{}).value || '';
+    const benefit   = (document.getElementById('ugcBenefit')||{}).value || '';
+    const hook_type = (document.getElementById('ugcHookType')||{}).value || 'problem-solution';
+    const platform  = (document.getElementById('ugcPlatform')||{}).value || 'instagram_reels';
+    const duration  = (document.getElementById('ugcDuration')||{}).value || '30';
+    const btn    = document.getElementById('ugcBtn');
+    const result = document.getElementById('ugcResult');
+    if (!product.trim()) { result.innerHTML = '<p style="color:#EF4444;font-size:0.8rem">Please enter your product or service first.</p>'; return; }
+    btn.disabled = true; btn.textContent = '⏳ Writing…';
+    result.innerHTML = `<div style="background:#F8FAFC;border-radius:12px;padding:20px;text-align:center;color:#94A3B8"><div style="font-size:1.5rem;margin-bottom:8px">✍️</div><div style="font-size:0.8rem">Writing your UGC script with timed scenes and creator directions…</div></div>`;
+    const r = await _csPost('/api/ad-creative/ugc-script', { product, audience, benefit, hook_type, platform, duration });
+    btn.disabled = false; btn.textContent = '🎬 Generate Script';
+    if (!r.ok) { result.innerHTML = `<p style="color:#EF4444;font-size:0.8rem">Error: ${_csEsc(r.error||'generation failed')}</p>`; return; }
+    const typeColors = { hook:'#EF4444', problem:'#F59E0B', solution:'#3B82F6', proof:'#8B5CF6', cta:'#10B981' };
+    const typeEmoji  = { hook:'🎣', problem:'😤', solution:'✅', proof:'📊', cta:'👆' };
+    result.innerHTML = `
+<div style="background:#fff;border-radius:12px;border:1.5px solid #E2E8F0;padding:20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <div style="font-size:0.85rem;font-weight:700;color:#1E293B">✅ ${_csEsc(duration)}s UGC Script — ${_csEsc(platform.replace(/_/g,' '))}</div>
+    <div style="display:flex;gap:6px">
+      <span style="background:#FDF4FF;color:#7C3AED;padding:3px 8px;border-radius:5px;font-size:0.68rem;font-weight:700">${_csEsc(hook_type.replace(/-/g,' '))}</span>
+      <span style="background:${r.source==='openai'?'#D1FAE5':'#FEF3C7'};color:${r.source==='openai'?'#065F46':'#92400E'};padding:3px 8px;border-radius:5px;font-size:0.68rem;font-weight:700">${_csEsc(r.source||'')}</span>
+    </div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+    ${(r.scenes||[]).map(s=>`<div style="background:#F8FAFC;border-radius:10px;padding:12px;border-left:3px solid ${typeColors[s.type]||'#94A3B8'}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:0.7rem;font-weight:800;background:${typeColors[s.type]||'#94A3B8'}20;color:${typeColors[s.type]||'#94A3B8'};padding:2px 7px;border-radius:4px">${typeEmoji[s.type]||''} ${_csEsc(s.type||'').toUpperCase()}</span>
+        <span style="font-size:0.7rem;color:#94A3B8;font-weight:700">${_csEsc(s.timestamp||'')}</span>
+      </div>
+      <div style="font-size:0.88rem;font-weight:600;color:#1E293B;margin-bottom:6px">"${_csEsc(s.script||'')}"</div>
+      <div style="font-size:0.75rem;color:#64748B"><span style="font-weight:600">📷 Direction:</span> ${_csEsc(s.direction||'')}</div>
+      ${s.text_overlay ? `<div style="font-size:0.72rem;margin-top:4px"><span style="background:#1E293B;color:#fff;padding:2px 7px;border-radius:3px;font-weight:600;font-size:0.67rem">ON SCREEN:</span> <span style="color:#1E293B;font-weight:600;margin-left:4px">${_csEsc(s.text_overlay)}</span></div>` : ''}
+    </div>`).join('')}
+  </div>
+  ${r.caption ? `<div style="background:#F0FDF4;border-radius:10px;padding:12px;margin-bottom:12px">
+    <div style="font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:6px">POST CAPTION</div>
+    <div style="font-size:0.82rem;color:#1E293B">${_csEsc(r.caption)}</div>
+    ${r.hashtags?.length ? `<div style="margin-top:8px">${(r.hashtags||[]).map(h=>`<span style="color:#6366F1;font-size:0.72rem">#${_csEsc(h)} </span>`).join('')}</div>` : ''}
+  </div>` : ''}
+  ${r.creator_tips?.length ? `<div><div style="font-size:0.72rem;font-weight:700;color:#6B7280;margin-bottom:6px">CREATOR TIPS</div>
+    ${(r.creator_tips||[]).map(t=>`<div style="font-size:0.78rem;color:#475569;padding:4px 0;border-bottom:1px solid #F1F5F9">💡 ${_csEsc(t)}</div>`).join('')}
+  </div>` : ''}
+  <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+    <button onclick="navigator.clipboard.writeText(document.getElementById('ugcResult').innerText)" style="padding:8px 14px;background:#F1F5F9;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.75rem;font-weight:700;color:#475569;cursor:pointer">📋 Copy Script</button>
+    <button onclick="window._ugcGenerate()" style="padding:8px 14px;background:#F1F5F9;border:1.5px solid #E2E8F0;border-radius:8px;font-size:0.75rem;font-weight:700;color:#475569;cursor:pointer">🔄 Regenerate</button>
+  </div>
+</div>`;
+  };
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────

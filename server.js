@@ -356,6 +356,9 @@ const _AUTH_PUBLIC_API_PATHS = [
   /^\/api\/studio\/case-study\/[^\/]+\/page$/,       // public share page for case studies (HTML render)
   /^\/api\/scroll-tracker\/event$/,                  // public scroll-depth ingest from rendered pages (rate-limited)
   /^\/api\/site-search\/event$/,                     // public site-search ingest from rendered pages (rate-limited)
+  /^\/api\/landing-pages\/lead\/[^\/]+$/,            // T71 public lead capture (rate-limited)
+  /^\/api\/landing-pages\/ab-view\/[^\/]+$/,         // T70 A/B view tracking
+  /^\/api\/landing-pages\/ab-convert\/[^\/]+$/,      // T70 A/B conversion tracking
 ];
 
 // Lightweight in-memory per-IP rate limiter for public Studio Pack POSTs.
@@ -3114,6 +3117,29 @@ const _bfSchema    = require('./services/brand_foundation/schema');
 const _bfRouter    = require('./services/brand_foundation/api');
 app.use('/api/deliverability', _delivRouter);
 app.use('/api/landing-pages',  _lpRouter);
+
+// ── T70/T71 Public landing page serve (/lp/:id) ───────────────────────────
+app.get('/lp/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).send('<!DOCTYPE html><h1>Bad request</h1>');
+  if (!_db.hasDb()) return res.status(503).send('<!DOCTYPE html><h1>Service unavailable</h1>');
+  try {
+    const pr = await _db.getPool().query(`SELECT id, html, views, webhook_url FROM landing_pages WHERE id=$1`, [id]);
+    const page = pr.rows[0];
+    if (!page) return res.status(404).send('<!DOCTYPE html><h1>404 — Page not found</h1>');
+    const vr = await _db.getPool().query(`SELECT id, html FROM landing_page_ab_variants WHERE page_id=$1 ORDER BY created_at DESC LIMIT 1`, [id]);
+    const hasVariant = !!vr.rows[0];
+    const cookieName = 'lp_v_' + id;
+    let variant = req.cookies?.[cookieName];
+    if (!variant) variant = (hasVariant && Math.random() < 0.5) ? 'b' : 'a';
+    const useVariant = (variant === 'b' && hasVariant) ? 'b' : 'a';
+    const html = (useVariant === 'b') ? vr.rows[0].html : page.html;
+    res.cookie(cookieName, useVariant, { maxAge: 86400000, httpOnly: true, sameSite: 'lax' });
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('X-Frame-Options', 'SAMEORIGIN');
+    res.send(html);
+  } catch (e) { console.warn('[lp public]', e.message); res.status(500).send('<!DOCTYPE html><h1>Error</h1>'); }
+});
 app.use('/api/brand-foundation', _bfRouter);
 
 // ── Tier 10 ────────────────────────────────────────────────────────────────
