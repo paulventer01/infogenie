@@ -3109,6 +3109,27 @@ const _pwRouter    = require('./services/pricing_watch/api');
 app.use('/api/voc',            _vocRouter);
 app.use('/api/pricing-watch',  _pwRouter);
 
+// ── T73-T80 Intelligence Tools ────────────────────────────────────────────
+const _cmSchema        = require('./services/change_monitor/schema');
+const _cmRouter        = require('./services/change_monitor/api');
+const _crRouter        = require('./services/conversion_recovery/api');
+const _wxRouter        = require('./services/web_extractor/api');
+const _rsRouter        = require('./services/recipe_scraper/api');
+const _laRouter        = require('./services/lead_aggregator/api');
+const _dmRouter        = require('./services/dataset_market/api');
+const _mcRouter        = require('./services/model_compare/api');
+const _rtSchema        = require('./services/resilient_tracker/schema');
+const _rtRouter        = require('./services/resilient_tracker/api');
+app.use('/api/change-monitor',       _cmRouter);
+app.use('/api/conversion-recovery',  _crRouter);
+app.use('/api/web-extractor',        _wxRouter);
+app.use('/api/recipe-scraper',       _rsRouter);
+app.use('/api/lead-aggregator',      _laRouter);
+app.use('/api/dataset-market',       _dmRouter);
+app.use('/api/model-compare',        _mcRouter);
+app.use('/api/resilient-tracker',    _rtRouter);
+BOOT_TASKS.push(async () => { try { if (_db.hasDb()) { await _cmSchema.ensureChangeMonitorSchema(); await _rtSchema.ensureResilientTrackerSchema(); } } catch(e) { console.warn('[t73-t80] schema init failed:', e.message); } });
+
 // ── Tier 9 ─────────────────────────────────────────────────────────────────
 const _delivRouter = require('./services/deliverability/api');
 const _lpSchema    = require('./services/landing_pages/schema');

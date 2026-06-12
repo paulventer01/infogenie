@@ -3191,6 +3191,14 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'content-score')     { try { window.buildContentScore && window.buildContentScore(); }     catch(e) { console.warn('buildContentScore error:', e); } }
   if (viewId === 'ai-traffic')        { try { window.buildAiTrafficMonitor && window.buildAiTrafficMonitor(); } catch(e) { console.warn('buildAiTrafficMonitor error:', e); } }
   if (viewId === 'maps-intel')        { try { window.buildMapsIntel && window.buildMapsIntel(); }             catch(e) { console.warn('buildMapsIntel error:', e); } }
+  if (viewId === 'change-monitor')      { try { window.buildChangeMonitor && window.buildChangeMonitor(); }       catch(e) { console.warn('buildChangeMonitor error:', e); } }
+  if (viewId === 'web-extractor')       { try { window.buildWebExtractor && window.buildWebExtractor(); }         catch(e) { console.warn('buildWebExtractor error:', e); } }
+  if (viewId === 'recipe-scraper')      { try { window.buildRecipeScraper && window.buildRecipeScraper(); }       catch(e) { console.warn('buildRecipeScraper error:', e); } }
+  if (viewId === 'dataset-market')      { try { window.buildDatasetMarket && window.buildDatasetMarket(); }       catch(e) { console.warn('buildDatasetMarket error:', e); } }
+  if (viewId === 'resilient-tracker')   { try { window.buildResilientTracker && window.buildResilientTracker(); } catch(e) { console.warn('buildResilientTracker error:', e); } }
+  if (viewId === 'conversion-recovery') { try { window.buildConversionRecovery && window.buildConversionRecovery(); } catch(e) { console.warn('buildConversionRecovery error:', e); } }
+  if (viewId === 'lead-aggregator')     { try { window.buildLeadAggregator && window.buildLeadAggregator(); }     catch(e) { console.warn('buildLeadAggregator error:', e); } }
+  if (viewId === 'model-compare')       { try { window.buildModelCompare && window.buildModelCompare(); }         catch(e) { console.warn('buildModelCompare error:', e); } }
   if (viewId === 'creative-intel')   { try { window.buildCreativeIntel && window.buildCreativeIntel(); }      catch(e) { console.warn('buildCreativeIntel error:', e); } }
   if (viewId === 'hashtag-intel')     { try { window.buildHashtagIntel && window.buildHashtagIntel(); }       catch(e) { console.warn('buildHashtagIntel error:', e); } }
   if (viewId === 'vis-leaderboard')   { try { window.buildVisLeaderboard && window.buildVisLeaderboard(); }  catch(e) { console.warn('buildVisLeaderboard error:', e); } }
