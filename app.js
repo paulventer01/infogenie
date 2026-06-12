@@ -19955,7 +19955,7 @@ window._dlvGo = async function() {
 
 // ── Tier 9 #2: AI Landing Page Builder ────────────────────────────────────
 window.buildLandingPages = function() {
-  const el = document.getElementById('lpWrap'); if (!el) return;
+  const el = document.getElementById('landingPagesWrap'); if (!el) return;
   el.innerHTML = `
     <div style="background:linear-gradient(135deg,#EEF2FF,#F0F9FF);border:1.5px solid #C7D2FE;border-radius:14px;padding:16px 20px;margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="(function(b){var body=document.getElementById('lpResBody');body.style.display=body.style.display==='none'?'block':'none';b.textContent=body.style.display==='none'?'▼':'▲';})(this.querySelector('.lpResArr'))">
