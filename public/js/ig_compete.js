@@ -1131,6 +1131,9 @@ function buildIntelligence() {
 
   // ── Full HTML ──
   wrap.innerHTML = `
+    <!-- AI Competitor Recommendations (populated async after render) -->
+    <div id="ig-recs-wrap"></div>
+
     <!-- Live Data Banner (hidden until an integration is connected) -->
     <div class="intel-live-banner" id="intel-live-banner" style="display:none">
       <span class="ilb-dot"></span>
@@ -1437,7 +1440,26 @@ function buildIntelligence() {
       setTimeout(() => { try { fetchLiveKeywordGap(); } catch(e) { console.warn('auto kwgap fetch:', e); } }, 400);
       setTimeout(() => { try { _applyKwgapOutliers(); } catch(e) {} }, 200);
     }
+
+    // ── Autocomplete on domain input ──
+    try {
+      const kwInput = document.getElementById('kwgap-domain-input');
+      if (kwInput && window.igAttachAutocomplete) {
+        window.igAttachAutocomplete(kwInput, { type: 'competitor' });
+      }
+    } catch(e) { console.warn('igAttachAutocomplete:', e); }
   } catch(e) { console.warn('kwgap auto-prefill:', e); }
+
+  // ── AI Competitor Recommendations (async, non-blocking) ──
+  try {
+    const _recIndustryKey = analysisData ? analysisData.industryKey : null;
+    const _recComps = analysisData ? (analysisData.competitors || []).map(c => c.name).slice(0, 6) : [];
+    if (_recIndustryKey && window.igBuildRecommendations) {
+      setTimeout(() => {
+        try { window.igBuildRecommendations('ig-recs-wrap', _recIndustryKey, _recComps); } catch(e) {}
+      }, 600);
+    }
+  } catch(e) {}
 }
 
 // Expose modal openers globally + ensure top-stacking when shown

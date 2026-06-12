@@ -39,8 +39,56 @@ async function _ensureSchema() {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_psi_tenant ON platform_search_index(tenant_id)`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS usage_signals (
+      id           SERIAL PRIMARY KEY,
+      tenant_id    INTEGER NOT NULL,
+      item_type    TEXT NOT NULL,
+      item_key     TEXT NOT NULL,
+      count        INTEGER DEFAULT 1,
+      last_used_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_sig_uniq ON usage_signals(tenant_id, item_type, item_key)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_usage_sig_tenant ON usage_signals(tenant_id, item_type)`);
 }
 _ensureSchema().catch(e => console.warn('[platform-search] schema warn:', e.message));
+
+// ── Known-brand lookup table ──────────────────────────────────────────────────
+// Compact curated list spanning the industries InfoGenie covers, used as
+// autocomplete fallback when the tenant's own data has no matches.
+const _KNOWN_BRANDS = [
+  // Forex / CFD / Finance
+  { name:'XM', url:'xm.com' }, { name:'Plus500', url:'plus500.com' }, { name:'AvaTrade', url:'avatrade.com' },
+  { name:'OANDA', url:'oanda.com' }, { name:'Pepperstone', url:'pepperstone.com' }, { name:'IG', url:'ig.com' },
+  { name:'CMC Markets', url:'cmcmarkets.com' }, { name:'Saxo Bank', url:'home.saxo' }, { name:'IC Markets', url:'icmarkets.com' },
+  { name:'FXCM', url:'fxcm.com' }, { name:'Exness', url:'exness.com' }, { name:'FP Markets', url:'fpmarkets.com' },
+  { name:'Admirals', url:'admiralmarkets.com' }, { name:'Tickmill', url:'tickmill.com' }, { name:'Vantage', url:'vantagemarkets.com' },
+  // E-commerce / Retail
+  { name:'Amazon', url:'amazon.com' }, { name:'Shopify', url:'shopify.com' }, { name:'eBay', url:'ebay.com' },
+  { name:'Zalando', url:'zalando.com' }, { name:'ASOS', url:'asos.com' }, { name:'Etsy', url:'etsy.com' },
+  { name:'Wayfair', url:'wayfair.com' }, { name:'Target', url:'target.com' }, { name:'Walmart', url:'walmart.com' },
+  { name:'Zara', url:'zara.com' }, { name:'H&M', url:'hm.com' }, { name:'Shein', url:'shein.com' },
+  // SaaS / B2B
+  { name:'Salesforce', url:'salesforce.com' }, { name:'HubSpot', url:'hubspot.com' }, { name:'Mailchimp', url:'mailchimp.com' },
+  { name:'Klaviyo', url:'klaviyo.com' }, { name:'Marketo', url:'marketo.com' }, { name:'Zoho', url:'zoho.com' },
+  { name:'ActiveCampaign', url:'activecampaign.com' }, { name:'Intercom', url:'intercom.com' }, { name:'Drift', url:'drift.com' },
+  { name:'Zendesk', url:'zendesk.com' }, { name:'Freshworks', url:'freshworks.com' }, { name:'Monday.com', url:'monday.com' },
+  { name:'Notion', url:'notion.so' }, { name:'Airtable', url:'airtable.com' }, { name:'Asana', url:'asana.com' },
+  // Ad Tech / Marketing
+  { name:'Google', url:'google.com' }, { name:'Meta', url:'meta.com' }, { name:'TikTok', url:'tiktok.com' },
+  { name:'LinkedIn', url:'linkedin.com' }, { name:'Twitter/X', url:'x.com' }, { name:'Snapchat', url:'snapchat.com' },
+  { name:'Pinterest', url:'pinterest.com' }, { name:'YouTube', url:'youtube.com' }, { name:'SEMrush', url:'semrush.com' },
+  { name:'Ahrefs', url:'ahrefs.com' }, { name:'Moz', url:'moz.com' }, { name:'Sprinklr', url:'sprinklr.com' },
+  // Fintech
+  { name:'Stripe', url:'stripe.com' }, { name:'PayPal', url:'paypal.com' }, { name:'Square', url:'squareup.com' },
+  { name:'Revolut', url:'revolut.com' }, { name:'Wise', url:'wise.com' }, { name:'Robinhood', url:'robinhood.com' },
+  { name:'Coinbase', url:'coinbase.com' }, { name:'Binance', url:'binance.com' }, { name:'Klarna', url:'klarna.com' },
+  // Travel / Hospitality
+  { name:'Booking.com', url:'booking.com' }, { name:'Airbnb', url:'airbnb.com' }, { name:'Expedia', url:'expedia.com' },
+  { name:'TripAdvisor', url:'tripadvisor.com' }, { name:'Kayak', url:'kayak.com' }, { name:'Hotels.com', url:'hotels.com' },
+];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 async function _safeRows(sql, params = [], max = 8) {
@@ -384,6 +432,120 @@ router.get('/index-status', _safe(async (req, res) => {
 router.get('/snapshot', _safe(async (req, res) => {
   const ctx = await _buildContext(req);
   res.json({ ok: true, ...ctx });
+}));
+
+// ── GET /suggest?q=&type= — autocomplete with usage-boosted re-ranking ────────
+router.get('/suggest', _safe(async (req, res) => {
+  const q = String(req.query.q || '').trim().toLowerCase().slice(0, 80);
+  const type = String(req.query.type || 'competitor');
+  if (q.length < 2) return res.json({ ok: true, suggestions: [] });
+
+  const tid = _db.hasDb() ? await _tenantCtx.resolveTenantId(req, { label: 'platform_search:suggest' }) : null;
+
+  // 1. Load tenant's own tracked brands (crisis watchlist)
+  let tenantBrands = [];
+  if (tid && _db.hasDb()) {
+    try {
+      const r = await _db.getPool().query(
+        `SELECT brand AS name, brand AS url FROM crisis_watchlist WHERE tenant_id=$1 ORDER BY id DESC LIMIT 50`, [tid]
+      );
+      tenantBrands = r.rows.map(b => ({ name: b.name, url: b.url, icon: '⭐', source: 'tracked' }));
+    } catch {}
+  }
+
+  // 2. Merge tenant brands + known brands, deduplicate by url
+  const seen = new Set();
+  const pool = [...tenantBrands, ..._KNOWN_BRANDS.map(b => ({ ...b, icon: '🔍', source: 'known' }))].filter(b => {
+    const key = (b.url || b.name).toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  // 3. Filter by query
+  let matches = pool.filter(b =>
+    b.name.toLowerCase().includes(q) || (b.url || '').toLowerCase().includes(q)
+  );
+
+  // 4. Load usage signals and boost matches
+  if (tid && _db.hasDb() && matches.length) {
+    try {
+      const keys = matches.map(m => m.url || m.name);
+      const r = await _db.getPool().query(
+        `SELECT item_key, count FROM usage_signals WHERE tenant_id=$1 AND item_type=$2 AND item_key = ANY($3)`,
+        [tid, type, keys]
+      );
+      const usageMap = Object.fromEntries(r.rows.map(row => [row.item_key, parseInt(row.count)]));
+      matches = matches.map(m => ({ ...m, count: usageMap[m.url || m.name] || 0 }));
+      matches.sort((a, b) => b.count - a.count || (a.source === 'tracked' ? -1 : 1));
+    } catch {}
+  }
+
+  res.json({ ok: true, suggestions: matches.slice(0, 8) });
+}));
+
+// POST /track-usage — record a usage signal for re-ranking
+router.post('/track-usage', _safe(async (req, res) => {
+  const item_type = String(req.body?.item_type || '').trim().slice(0, 50);
+  const item_key  = String(req.body?.item_key  || '').trim().slice(0, 120);
+  if (!item_type || !item_key) return _err(res, 400, 'item_type and item_key required');
+  if (!_db.hasDb()) return res.json({ ok: true, skipped: true });
+
+  const tid = await _tenantCtx.resolveTenantId(req, { label: 'platform_search:track' });
+  if (!tid) return res.json({ ok: true, skipped: true });
+
+  await _db.getPool().query(
+    `INSERT INTO usage_signals (tenant_id, item_type, item_key, count, last_used_at)
+     VALUES ($1, $2, $3, 1, NOW())
+     ON CONFLICT (tenant_id, item_type, item_key) DO UPDATE
+     SET count = usage_signals.count + 1, last_used_at = NOW()`,
+    [tid, item_type, item_key]
+  );
+  res.json({ ok: true });
+}));
+
+// GET /recommend-competitors?industry=&current= — AI competitor suggestions
+router.get('/recommend-competitors', _safe(async (req, res) => {
+  const industry = String(req.query.industry || '').trim().slice(0, 80);
+  const current  = String(req.query.current  || '').trim().slice(0, 400);
+  if (!industry) return _err(res, 400, 'industry required');
+
+  if (!_hasOpenAI()) {
+    // Fallback: return a few known brands that don't match current
+    const currentLower = current.toLowerCase();
+    const fallback = _KNOWN_BRANDS
+      .filter(b => !currentLower.includes(b.name.toLowerCase()) && !currentLower.includes(b.url.toLowerCase()))
+      .slice(0, 5)
+      .map(b => ({ ...b, reason: 'Commonly tracked in this industry' }));
+    return res.json({ ok: true, recommendations: fallback, source: 'fallback' });
+  }
+
+  const prompt = [
+    `Industry: ${industry}`,
+    `Competitors the user already tracks: ${current || 'none'}`,
+    '',
+    'Suggest 4 additional competitors they might be missing. Return ONLY valid JSON:',
+    '{"recommendations":[{"name":"...","url":"example.com","reason":"One sentence why they\'re relevant"}]}',
+    'Rules: real companies, real domains, not already in the current list, relevant to the industry.',
+    'Keep each reason under 12 words.',
+  ].join('\n');
+
+  const raw = await _openaiChat([
+    { role: 'system', content: 'You are a competitive intelligence assistant. Return ONLY valid JSON, no markdown.' },
+    { role: 'user', content: prompt },
+  ], 400);
+
+  let recommendations = [];
+  try {
+    const parsed = JSON.parse((raw || '{}').replace(/```json|```/g, '').trim());
+    recommendations = (parsed.recommendations || []).slice(0, 5).map(r => ({
+      name:   String(r.name   || '').slice(0, 60),
+      url:    String(r.url    || '').slice(0, 80),
+      reason: String(r.reason || '').slice(0, 100),
+    })).filter(r => r.name && r.url);
+  } catch { recommendations = []; }
+
+  res.json({ ok: true, recommendations, source: 'gpt-4o-mini' });
 }));
 
 module.exports = router;

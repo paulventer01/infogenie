@@ -209,13 +209,13 @@ router.get('/orders/:slug', async (req, res) => {
 function _renderBio(page) {
   const c = _esc(page.primaryColor || '#0066FF');
   const links = (page.links || []).map(l => `
-    <a href="${_safeUrl(l.url)}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:12px;padding:16px 20px;background:white;border:1.5px solid #E5E7EB;border-radius:14px;text-decoration:none;color:#0F172A;font-weight:600;margin-bottom:12px;transition:all .15s" onmouseover="this.style.borderColor='${c}';this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='#E5E7EB';this.style.transform='translateY(0)'">
+    <a href="${_safeUrl(l.url)}" target="_blank" rel="noopener" class="ls-item" data-search-label="${_esc((l.label || '') + ' ' + (l.url || ''))}" style="display:flex;align-items:center;gap:12px;padding:16px 20px;background:white;border:1.5px solid #E5E7EB;border-radius:14px;text-decoration:none;color:#0F172A;font-weight:600;margin-bottom:12px;transition:all .15s" onmouseover="this.style.borderColor='${c}';this.style.transform='translateY(-1px)'" onmouseout="this.style.borderColor='#E5E7EB';this.style.transform='translateY(0)'">
       ${l.icon ? `<span style="font-size:20px">${_esc(l.icon)}</span>` : ''}
       <span style="flex:1">${_esc(l.label || '')}</span>
       <span style="color:${c}">→</span>
     </a>`).join('');
   const products = (page.products || []).map(p => `
-    <div style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:16px;margin-bottom:12px">
+    <div class="ls-item" data-search-label="${_esc((p.name || '') + ' ' + (p.description || ''))}" style="background:white;border:1px solid #E5E7EB;border-radius:14px;padding:16px;margin-bottom:12px">
       ${p.imageUrl ? `<img src="${_safeUrl(p.imageUrl)}" alt="${_esc(p.name)}" style="width:100%;height:160px;object-fit:cover;border-radius:10px;margin-bottom:12px">` : ''}
       <div style="font-weight:700;color:#0F172A;margin-bottom:4px">${_esc(p.name)}</div>
       ${p.description ? `<div style="font-size:13px;color:#64748B;margin-bottom:12px">${_esc(p.description)}</div>` : ''}
@@ -233,18 +233,46 @@ function _renderBio(page) {
       </form>
     </div>` : '';
 
+  const itemCount = (page.links || []).length + (page.products || []).length;
+  const searchBar = itemCount > 3 ? `
+    <div style="margin-bottom:20px">
+      <div style="position:relative">
+        <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:14px;pointer-events:none">🔍</span>
+        <input id="ls-search" type="search" placeholder="Search…" autocomplete="off" oninput="_lsFilter(this.value)"
+          style="width:100%;box-sizing:border-box;padding:12px 14px 12px 38px;border:1.5px solid #E5E7EB;border-radius:12px;font-size:14px;background:white;outline:none;transition:border-color .15s"
+          onfocus="this.style.borderColor='${c}'" onblur="this.style.borderColor='#E5E7EB'">
+      </div>
+      <div id="ls-no-results" style="display:none;text-align:center;color:#94A3B8;font-size:14px;padding:20px 0">No results found</div>
+    </div>` : '';
+
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${_esc(page.title || 'Link in bio')}</title>
-<style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(180deg,${c}15,${c}02 40%);min-height:100vh;color:#0F172A}</style>
+<style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(180deg,${c}15,${c}02 40%);min-height:100vh;color:#0F172A}#ls-search::placeholder{color:#94A3B8}</style>
 </head><body>
 <div style="max-width:520px;margin:0 auto;padding:48px 20px 64px">
   ${page.avatarUrl ? `<img src="${_safeUrl(page.avatarUrl)}" alt="" style="width:96px;height:96px;border-radius:50%;display:block;margin:0 auto 16px;border:3px solid white;box-shadow:0 4px 16px rgba(0,0,0,.08)">` : ''}
   <h1 style="text-align:center;font-size:24px;font-weight:800;margin:0 0 6px">${_esc(page.title || '')}</h1>
   <p style="text-align:center;color:#64748B;margin:0 0 32px">${_esc(page.bio || '')}</p>
+  ${searchBar}
   ${links}
-  ${products ? `<h2 style="font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#64748B;margin:32px 0 12px">Shop</h2>${products}` : ''}
+  ${products ? `<h2 id="ls-shop-header" style="font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#64748B;margin:32px 0 12px">Shop</h2>${products}` : ''}
   ${optin}
 </div>
 <script>
+function _lsFilter(q) {
+  var term = (q || '').trim().toLowerCase();
+  var items = document.querySelectorAll('.ls-item');
+  var visible = 0;
+  items.forEach(function(el) {
+    var label = (el.dataset.searchLabel || '').toLowerCase();
+    var show = !term || label.indexOf(term) !== -1;
+    el.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  var noRes = document.getElementById('ls-no-results');
+  if (noRes) noRes.style.display = (term && visible === 0) ? 'block' : 'none';
+  var shopHdr = document.getElementById('ls-shop-header');
+  if (shopHdr) shopHdr.style.display = (term && visible === 0) ? 'none' : '';
+}
 async function buy(id) {
   const email = prompt('Your email (optional):') || '';
   const r = await fetch('/api/linksell/checkout/${_esc(page.slug)}', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ productId:id, customerEmail: email }) });
