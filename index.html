@@ -294,6 +294,8 @@
           <a href="#" class="nav-link" data-view="ai-audit-suite"><span class="ndl-icon">🔬</span><span class="ndl-text">AI Audit Suite (deep)</span></a>
           <a href="#" class="nav-link" data-view="vis-leaderboard"><span class="ndl-icon">🏆</span><span class="ndl-text">Visibility Rank Table (Δ)</span></a>
           <a href="#" class="nav-link" onclick="event.preventDefault();openWpCredentialsModal()"><span class="ndl-icon">🟦</span><span class="ndl-text">Connect to WordPress</span></a>
+          <div class="nav-drop-header">5 · Build pages &amp; convert</div>
+          <a href="#" class="nav-link" data-view="landing-pages"><span class="ndl-icon">🚀</span><span class="ndl-text">AI Landing Pages (A/B · leads · ad package)</span></a>
           <a href="#" class="nav-drop-next" data-open-group="manage">Time to schedule, report &amp; <strong>Manage</strong> the team<span class="ndn-arrow">→</span></a>
         </div>
       </div>
@@ -1144,10 +1146,15 @@
 <!-- AD CREATIVE GENERATOR VIEW (T51) -->
 <div class="view hidden" id="view-ad-creative">
   <div class="view-header"><div class="container"><div class="vh-inner">
-    <div>
+    <div style="flex:1">
       <div class="breadcrumb"><span class="bc-group">Create</span> <span class="bc-sep">›</span> Ad Creative Generator</div>
       <h2 class="view-title">🎨 AI Ad Creative Generator</h2>
       <p class="view-sub">Generate professional ad images for any platform using DALL-E 3. Facebook ads, Instagram posts, Google Display banners, TikTok thumbnails and more — in any style.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+        <a href="#adCreativeGen" onclick="document.getElementById('adCreativeGen')?.scrollIntoView({behavior:'smooth'});return false;" style="padding:6px 14px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:20px;color:#fff;font-size:12px;font-weight:600;text-decoration:none">🎨 Image Generator ↓</a>
+        <a href="#csScorer" onclick="document.getElementById('csScorer')?.scrollIntoView({behavior:'smooth'});return false;" style="padding:6px 14px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:20px;color:#fff;font-size:12px;font-weight:600;text-decoration:none">🎯 Pre-launch Scorer ↓</a>
+        <a href="#ugcScripter" onclick="document.getElementById('ugcScripter')?.scrollIntoView({behavior:'smooth'});return false;" style="padding:6px 14px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:20px;color:#fff;font-size:12px;font-weight:600;text-decoration:none">🎬 UGC Script Generator ↓</a>
+      </div>
     </div>
   </div></div></div>
   <div class="container" id="adCreativeWrap" style="padding-top:24px;padding-bottom:56px"></div>
@@ -1359,9 +1366,9 @@
 <div class="view hidden" id="view-landing-pages">
   <div class="view-header"><div class="container"><div class="vh-inner">
     <div>
-      <div class="breadcrumb"><span class="bc-group">Plan</span> <span class="bc-sep">›</span> Landing Page Builder</div>
-      <h2 class="view-title">🎨 AI Landing Page Builder</h2>
-      <p class="view-sub">Brief in, full HTML landing page out — hero, features, how-it-works, testimonials, FAQs, final CTA. Live preview + one-click HTML download.</p>
+      <div class="breadcrumb"><span class="bc-group">Grow</span> <span class="bc-sep">›</span> AI Landing Pages</div>
+      <h2 class="view-title">🚀 AI Landing Page Builder</h2>
+      <p class="view-sub">Brief in, full HTML landing page out — hero, features, FAQs, final CTA. Includes <strong>🔍 Audience Research</strong> (T67), <strong>🧪 A/B Split Testing</strong> (T70), <strong>📋 Lead Capture &amp; Analytics</strong> (T71), and <strong>📣 Create Once Publish Everywhere</strong> (T72).</p>
     </div>
   </div></div></div>
   <div class="container" id="lpWrap" style="padding-top:24px;padding-bottom:56px"></div>
@@ -3551,7 +3558,7 @@
      one feature only re-downloads that file — with no manual version bump. -->
 <script src="/public/js/ig_settings.js?v=20260606SET1"></script>
 <script src="/public/js/ig_content_pro.js?v=20260604PRO1"></script>
-<script src="/public/js/ig_creative_suite.js?v=20260612CS2"></script>
+<script src="/public/js/ig_creative_suite.js?v=20260612CS3"></script>
 <script src="/public/js/ig_design_studio.js?v=20260605DS1"></script>
 <script src="/public/js/ig_creator_suite.js?v=20260606CS1"></script>
 <script src="/public/js/ig_studio.js"></script>

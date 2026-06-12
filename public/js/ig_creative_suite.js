@@ -59,7 +59,7 @@ window.buildAdCreative = function() {
   ];
 
   wrap.innerHTML = `
-<div style="display:grid;grid-template-columns:340px 1fr;gap:24px;align-items:start">
+<div id="adCreativeGen" style="display:grid;grid-template-columns:340px 1fr;gap:24px;align-items:start">
   <!-- LEFT: form -->
   <div style="background:#fff;border-radius:16px;border:1.5px solid #E2E8F0;padding:24px;position:sticky;top:80px">
     <h3 style="font-size:1rem;font-weight:700;color:#1E293B;margin:0 0 18px">🎨 Generate Ad Creative</h3>
@@ -213,7 +213,7 @@ ${r.items.map(it => `
   const _csScorerWrap = document.createElement('div');
   _csScorerWrap.style.cssText = 'margin-top:28px';
   _csScorerWrap.innerHTML = `
-<div style="background:#fff;border-radius:16px;border:1.5px solid #E2E8F0;padding:24px">
+<div id="csScorer" style="background:#fff;border-radius:16px;border:1.5px solid #E2E8F0;padding:24px">
   <div style="margin-bottom:18px">
     <h3 style="font-size:1rem;font-weight:700;color:#1E293B;margin:0 0 4px">🎯 Pre-launch Creative Scorer</h3>
     <div style="font-size:0.75rem;color:#64748B">Score your ad creative before you spend — predict CTR range, get a grade, and receive specific improvement tips.</div>
@@ -258,7 +258,7 @@ ${r.items.map(it => `
   const _csUgcWrap = document.createElement('div');
   _csUgcWrap.style.cssText = 'margin-top:24px';
   _csUgcWrap.innerHTML = `
-<div style="background:#fff;border-radius:16px;border:1.5px solid #E2E8F0;padding:24px">
+<div id="ugcScripter" style="background:#fff;border-radius:16px;border:1.5px solid #E2E8F0;padding:24px">
   <div style="margin-bottom:18px">
     <h3 style="font-size:1rem;font-weight:700;color:#1E293B;margin:0 0 4px">🎬 UGC Video Ad Script Generator</h3>
     <div style="font-size:0.75rem;color:#64748B">Generate a complete timed UGC video script with scene directions, text overlays, post caption, and hashtags — ready for a creator brief.</div>
