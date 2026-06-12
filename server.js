@@ -3130,6 +3130,35 @@ app.use('/api/model-compare',        _mcRouter);
 app.use('/api/resilient-tracker',    _rtRouter);
 BOOT_TASKS.push(async () => { try { if (_db.hasDb()) { await _cmSchema.ensureChangeMonitorSchema(); await _rtSchema.ensureResilientTrackerSchema(); } } catch(e) { console.warn('[t73-t80] schema init failed:', e.message); } });
 
+// ── Tier 89-94 ──────────────────────────────────────────────────────────────
+const _benchmarksSchema   = require('./services/benchmarks/schema');
+const _benchmarksRouter   = require('./services/benchmarks/api');
+const _mmmSchema          = require('./services/mmm/schema');
+const _mmmRouter          = require('./services/mmm/api');
+const _brandSafetySchema  = require('./services/brand_safety/schema');
+const _brandSafetyRouter  = require('./services/brand_safety/api');
+const _safeAgentSchema    = require('./services/safe_agent/schema');
+const _safeAgentRouter    = require('./services/safe_agent/api');
+const _provenanceSchema   = require('./services/data_provenance/schema');
+const _provenanceRouter   = require('./services/data_provenance/api');
+const _playbooksSchema    = require('./services/vertical_playbooks/schema');
+const _playbooksRouter    = require('./services/vertical_playbooks/api');
+app.use('/api/benchmarks',      _benchmarksRouter);
+app.use('/api/mmm',             _mmmRouter);
+app.use('/api/brand-safety',    _brandSafetyRouter);
+app.use('/api/safe-agent',      _safeAgentRouter);
+app.use('/api/data-provenance', _provenanceRouter);
+app.use('/api/playbooks',       _playbooksRouter);
+BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
+  await _benchmarksSchema.ensureBenchmarksSchema();
+  await _mmmSchema.ensureMmmSchema();
+  await _brandSafetySchema.ensureBrandSafetySchema();
+  await _safeAgentSchema.ensureSafeAgentSchema();
+  await _provenanceSchema.ensureDataProvenanceSchema();
+  await _playbooksSchema.ensureVerticalPlaybooksSchema();
+  console.log('[t89-t94] schemas ready');
+} } catch(e) { console.warn('[t89-t94] schema init failed:', e.message); } });
+
 // ── Tier 81-88 ──────────────────────────────────────────────────────────────
 const _warRoomSchema        = require('./services/war_room/schema');
 const _warRoomRouter        = require('./services/war_room/api');
