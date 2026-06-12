@@ -3130,6 +3130,60 @@ app.use('/api/model-compare',        _mcRouter);
 app.use('/api/resilient-tracker',    _rtRouter);
 BOOT_TASKS.push(async () => { try { if (_db.hasDb()) { await _cmSchema.ensureChangeMonitorSchema(); await _rtSchema.ensureResilientTrackerSchema(); } } catch(e) { console.warn('[t73-t80] schema init failed:', e.message); } });
 
+// ── Tier 81-88 ──────────────────────────────────────────────────────────────
+const _warRoomSchema        = require('./services/war_room/schema');
+const _warRoomRouter        = require('./services/war_room/api');
+const _revForecastSchema    = require('./services/revenue_forecast/schema');
+const _revForecastRouter    = require('./services/revenue_forecast/api');
+const _digitalTwinSchema    = require('./services/digital_twin/schema');
+const _digitalTwinRouter    = require('./services/digital_twin/api');
+const _acqEngineSchema      = require('./services/acquisition_engine/schema');
+const _acqEngineRouter      = require('./services/acquisition_engine/api');
+const _investorSchema       = require('./services/investor_mode/schema');
+const _investorRouter       = require('./services/investor_mode/api');
+const _bizScannerSchema     = require('./services/biz_scanner/schema');
+const _bizScannerRouter     = require('./services/biz_scanner/api');
+const _marketplaceSchema    = require('./services/marketplace/schema');
+const _marketplaceRouter    = require('./services/marketplace/api');
+const _autoOperatorSchema   = require('./services/auto_operator/schema');
+const _autoOperatorRouter   = require('./services/auto_operator/api');
+app.use('/api/war-room',          _warRoomRouter);
+app.use('/api/revenue-forecast',  _revForecastRouter);
+app.use('/api/digital-twin',      _digitalTwinRouter);
+app.use('/api/acquisition-engine',_acqEngineRouter);
+app.use('/api/investor-mode',     _investorRouter);
+app.use('/api/biz-scanner',       _bizScannerRouter);
+app.use('/api/marketplace',       _marketplaceRouter);
+app.use('/api/auto-operator',     _autoOperatorRouter);
+BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
+  await _warRoomSchema.ensureWarRoomSchema();
+  await _revForecastSchema.ensureRevenueForecastSchema();
+  await _digitalTwinSchema.ensureDigitalTwinSchema();
+  await _acqEngineSchema.ensureAcquisitionEngineSchema();
+  await _investorSchema.ensureInvestorModeSchema();
+  await _bizScannerSchema.ensureBizScannerSchema();
+  await _marketplaceSchema.ensureMarketplaceSchema();
+  await _autoOperatorSchema.ensureAutoOperatorSchema();
+  console.log('[t81-t88] schemas ready');
+} } catch(e) { console.warn('[t81-t88] schema init failed:', e.message); } });
+// Public investor portal (no auth required)
+app.get('/investor/:token', async (req, res) => {
+  const p = await _db.getPool();
+  const row = await p.query(`SELECT content,created_at FROM investor_reports WHERE portal_token=$1`, [req.params.token]);
+  if (!row.rows.length) return res.status(404).send('<h2>Report not found or link expired.</h2>');
+  const r = row.rows[0].content;
+  const co = r.company_name || 'Company';
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${co} — Investor Report</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#111}h1{font-size:2rem;margin-bottom:4px}.badge{display:inline-block;background:#f3f4f6;border-radius:6px;padding:4px 12px;font-size:.85rem;color:#6b7280;margin-bottom:32px}.metric-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;margin:24px 0}.metric-card{background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:16px}.metric-label{font-size:.75rem;color:#6b7280;text-transform:uppercase;letter-spacing:.05em}.metric-value{font-size:1.5rem;font-weight:700;margin:4px 0}.metric-trend-up{color:#10b981}.metric-trend-down{color:#ef4444}.metric-trend-flat{color:#6b7280}.section{margin:32px 0}.section h2{font-size:1.1rem;font-weight:600;border-bottom:1px solid #e5e7eb;padding-bottom:8px;margin-bottom:16px}ul{padding-left:20px}li{margin:6px 0}.footer{margin-top:48px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:.8rem;color:#9ca3af;text-align:center}</style></head><body>
+<h1>${co}</h1><div class="badge">Investor Report · ${new Date(row.rows[0].created_at).toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</div>
+<div class="section"><h2>Executive Summary</h2><p>${r.executive_summary||''}</p></div>
+<div class="metric-grid">${(r.headline_metrics||[]).map(m=>`<div class="metric-card"><div class="metric-label">${m.label}</div><div class="metric-value metric-trend-${m.trend||'flat'}">${m.value}</div>${m.change?'<div class="metric-label">'+m.change+'</div>':''}</div>`).join('')}</div>
+<div class="section"><h2>Highlights</h2><ul>${(r.highlights||[]).map(h=>`<li>${h}</li>`).join('')}</ul></div>
+<div class="section"><h2>Investor Narrative</h2><p>${r.investor_narrative||''}</p></div>
+${r.ask?`<div class="section"><h2>The Ask</h2><p>${r.ask}</p></div>`:''}
+<div class="footer">Generated by InfoGenie · Read-only investor view</div>
+</body></html>`);
+});
+
 // ── Tier 9 ─────────────────────────────────────────────────────────────────
 const _delivRouter = require('./services/deliverability/api');
 const _lpSchema    = require('./services/landing_pages/schema');
