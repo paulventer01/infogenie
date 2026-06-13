@@ -9,6 +9,9 @@
 
 import type { ComponentType } from "react";
 import SeoRoadmap from "@/components/features/reach/SeoRoadmap";
+import Deliverability from "@/components/features/reach/Deliverability";
+import WebVitals from "@/components/features/reach/WebVitals";
+import TechStack from "@/components/features/analyse/TechStack";
 import GrowthMethodology from "@/components/features/manage/GrowthMethodology";
 import WhiteLabel from "@/components/features/manage/WhiteLabel";
 import BulkReports from "@/components/features/manage/BulkReports";
@@ -20,6 +23,9 @@ import Playbook7Day from "@/components/features/manage/Playbook7Day";
 
 export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "seo-roadmap": SeoRoadmap,
+  deliverability: Deliverability,
+  "web-vitals": WebVitals,
+  "tech-stack": TechStack,
   "growth-methodology": GrowthMethodology,
   "white-label": WhiteLabel,
   "bulk-reports": BulkReports,

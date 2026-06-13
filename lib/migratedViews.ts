@@ -32,6 +32,14 @@ export interface MigratedView {
 
 export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "seo-roadmap", legacyModule: "ig_seo_roadmap.js" },
+  // deliverability / web-vitals / tech-stack builders all live INLINE in app.js
+  // (window.buildDeliverability, window.buildWebVitals, window.buildTechStack),
+  // so there is no dedicated public/js module to drop — legacyModule is null and
+  // suppression relies solely on stripping each `#view-<id>` div from the DEV
+  // replay shell.
+  { view: "deliverability", legacyModule: null },
+  { view: "web-vitals", legacyModule: null },
+  { view: "tech-stack", legacyModule: null },
   // The Manage-group panels below all live in SHARED public/js modules
   // (ig_seo.js, ig_manage_pack.js, ig_moat_features.js, ig_intelligence_tools.js)
   // — or inline in app.js — that still build many NOT-YET-migrated sibling
