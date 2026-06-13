@@ -15,6 +15,8 @@ import BulkReports from "@/components/features/manage/BulkReports";
 import ModelCompare from "@/components/features/manage/ModelCompare";
 import WebAnalytics from "@/components/features/manage/WebAnalytics";
 import VerticalPlaybooks from "@/components/features/manage/VerticalPlaybooks";
+import Flywheel from "@/components/features/manage/Flywheel";
+import Playbook7Day from "@/components/features/manage/Playbook7Day";
 
 export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "seo-roadmap": SeoRoadmap,
@@ -24,4 +26,6 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "model-compare": ModelCompare,
   "web-analytics": WebAnalytics,
   "vertical-playbooks": VerticalPlaybooks,
+  flywheel: Flywheel,
+  "playbook-7day": Playbook7Day,
 };

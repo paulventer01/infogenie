@@ -46,6 +46,11 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "model-compare", legacyModule: null },
   { view: "web-analytics", legacyModule: null },
   { view: "vertical-playbooks", legacyModule: null },
+  // flywheel has a DEDICATED module (ig_growth_flywheel.js) — safe to drop from
+  // the replay bundle. playbook-7day's builder lives inline in app.js (nothing
+  // to drop), so its suppression relies solely on stripping the `#view-*` div.
+  { view: "flywheel", legacyModule: "ig_growth_flywheel.js" },
+  { view: "playbook-7day", legacyModule: null },
 ];
 
 /** Set of view ids now rendered by React. */
