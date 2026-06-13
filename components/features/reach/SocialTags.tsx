@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
+import { useToast } from "@/hooks/useToast";
 
 interface Check {
   status: "pass" | "warn" | "fail";
@@ -59,6 +60,7 @@ const GRADE_COLOR: Record<string, string> = {
 };
 
 export default function SocialTags() {
+  const toast = useToast();
   const [url, setUrl] = useState("");
   const [headless, setHeadless] = useState(false);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -81,7 +83,7 @@ export default function SocialTags() {
 
   async function run() {
     if (!url.trim()) {
-      alert("Enter a URL.");
+      toast("⚠️ Enter a URL to audit.");
       return;
     }
     setRunning(true);

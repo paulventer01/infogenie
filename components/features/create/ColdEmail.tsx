@@ -14,6 +14,7 @@
 
 import { useEffect, useState } from "react";
 import { apiPost } from "@/lib/api";
+import { useToast } from "@/hooks/useToast";
 
 interface ColdEmailItem {
   step: number;
@@ -67,11 +68,8 @@ declare global {
   }
 }
 
-function toast(msg: string) {
-  if (typeof window !== "undefined" && window.showToast) window.showToast(msg);
-}
-
 export default function ColdEmail() {
+  const toast = useToast();
   const [brand, setBrand] = useState("");
   const [name, setName] = useState("");
   const [offer, setOffer] = useState("");
@@ -98,7 +96,7 @@ export default function ColdEmail() {
   }, []);
 
   async function generate() {
-    if (!offer.trim()) return toast('⚠️ "What you sell" required');
+    if (!offer.trim()) { toast('⚠️ "What you sell" required'); return; }
     setLoading(true);
     setError("");
     setEmails(null);
@@ -135,7 +133,7 @@ export default function ColdEmail() {
   }
 
   return (
-    <>
+    <div className="view-header-wrap">
       <div className="view-header">
         <div className="container">
           <div className="vh-inner">
@@ -511,6 +509,6 @@ export default function ColdEmail() {
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
