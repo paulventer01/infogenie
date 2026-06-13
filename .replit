@@ -37,13 +37,13 @@ args = "lint-css"
 name = "Start application"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "node server.js"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
 
 [[workflows.workflow]]
 name = "test"
@@ -85,6 +85,10 @@ externalPort = 80
 [[ports]]
 localPort = 5000
 externalPort = 5000
+
+[[ports]]
+localPort = 8000
+externalPort = 8000
 
 [agent]
 expertMode = true

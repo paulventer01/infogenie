@@ -5,3 +5,4 @@
 - [Platform key tests](platform-key-tests.md) — admin Platform-APIs live tests; per-vendor probe quirks (Apollo/BuiltWith 200-on-bad-key, Cloudflare 400, Google no-param probe); test/testedBy/noTest registry flags.
 - [Portal auth gate](portal-auth-gate.md) — app shell+JS gated server-side (services/auth_gate deny-list); /login is the only thing anon visitors get; express.static still leaks raw server source.
 - [Permission enforcement](permission-enforcement.md) — central route+component matrix (permission_matrix.js) + global enforceMatrix middleware; PERMISSION_ENFORCEMENT off/shadow/on (default shadow); owner-gate still masks non-owners.
+- [Next.js migration](nextjs-migration.md) — incremental front door: dev runs Next on 5000 + Express on 8000 (EXPRESS_PORT), prod still node server.js on 5000; proxy via next.config.ts; don't add (dashboard)/page.tsx (hijacks /).

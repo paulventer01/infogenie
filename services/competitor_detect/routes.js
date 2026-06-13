@@ -46,9 +46,12 @@ app.get('/api/db/status', async (_req, res) => {
   } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
 });
 
-// Port 5000 — Replit preview pane (webview)
-app.listen(5000, '0.0.0.0', () => {
-  console.log('InfoGenie listening on port 5000 (preview pane)');
+// Express preview listen. Defaults to 5000 (Replit webview) for production
+// `node server.js`. In dev, scripts/dev.js sets EXPRESS_PORT=8000 so Next.js
+// can own 5000 as the front door and proxy /api/* + the SPA back to Express.
+const __EXPRESS_PORT = Number(process.env.EXPRESS_PORT) || 5000;
+app.listen(__EXPRESS_PORT, '0.0.0.0', () => {
+  console.log(`InfoGenie listening on port ${__EXPRESS_PORT} (preview pane)`);
   startMsg();
 });
 

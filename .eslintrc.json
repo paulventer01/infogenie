@@ -1,0 +1,17 @@
+{
+  "extends": "next/core-web-vitals",
+  "ignorePatterns": [
+    "node_modules/**",
+    ".next/**",
+    "app.js",
+    "data.js",
+    "db.js",
+    "server.js",
+    "ig_*.js",
+    "public/**",
+    "services/**",
+    "scripts/**",
+    "test/**",
+    "backups/**"
+  ]
+}
