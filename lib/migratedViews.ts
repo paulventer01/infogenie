@@ -59,6 +59,46 @@ export const MIGRATED_VIEWS: MigratedView[] = [
   // to drop), so its suppression relies solely on stripping the `#view-*` div.
   { view: "flywheel", legacyModule: "ig_growth_flywheel.js" },
   { view: "playbook-7day", legacyModule: null },
+  // ── Remainder of the Manage group (Phase 3 batch 2) ──────────────────────
+  // Every panel below either lives inline in app.js or in a SHARED public/js
+  // module (ig_manage_pack.js, ig_reach_automation.js, ig_mentions_gaps.js,
+  // ig_intel_pack_a/b.js, ig_advanced_features.js, ig_moat_features.js,
+  // ig_content_traffic.js, ig_creator_suite.js, ig_journey_omnichannel.js,
+  // ig_csuite.js, ig_settings.js) that still builds NOT-YET-migrated non-Manage
+  // sibling views. Per the shared-module rule, legacyModule stays `null`:
+  // suppression relies solely on stripping the `#view-<id>` div (every builder
+  // early-returns when its target div/wrap is gone).
+  { view: "new-project", legacyModule: null },
+  { view: "master-calendar", legacyModule: null },
+  { view: "brand-calendar", legacyModule: null },
+  { view: "launches", legacyModule: null },
+  { view: "ai-traffic", legacyModule: null },
+  { view: "heatmaps", legacyModule: null },
+  { view: "budget-board", legacyModule: null },
+  { view: "ask-infogenie", legacyModule: null },
+  { view: "agent-goals", legacyModule: null },
+  { view: "ai-providers", legacyModule: null },
+  { view: "meeting-notes", legacyModule: null },
+  { view: "team-meetings", legacyModule: null },
+  { view: "infographics", legacyModule: null },
+  { view: "reengage", legacyModule: null },
+  { view: "automations", legacyModule: null },
+  { view: "employee-advocacy", legacyModule: null },
+  { view: "signal-triggers", legacyModule: null },
+  { view: "stakeholders", legacyModule: null },
+  { view: "results", legacyModule: null },
+  { view: "weekly-report", legacyModule: null },
+  { view: "cross-channel", legacyModule: null },
+  { view: "csuite", legacyModule: null },
+  { view: "investor-mode", legacyModule: null },
+  { view: "agency", legacyModule: null },
+  { view: "marketplace", legacyModule: null },
+  { view: "workspaces", legacyModule: null },
+  { view: "admin", legacyModule: null },
+  { view: "technical-suite", legacyModule: null },
+  { view: "brand-safety", legacyModule: null },
+  { view: "data-provenance", legacyModule: null },
+  { view: "settings", legacyModule: null },
 ];
 
 /** Set of view ids now rendered by React. */
