@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import styles from "../../../styles/auth.module.css";
 
 export default function ResetPasswordPage() {
@@ -117,9 +118,9 @@ export default function ResetPasswordPage() {
             {busy ? "Saving…" : "Set new password →"}
           </button>
         </form>
-        <a className={styles.back} href="/">
+        <Link className={styles.back} href="/">
           ← Back to InfoGenie
-        </a>
+        </Link>
       </div>
     </div>
   );

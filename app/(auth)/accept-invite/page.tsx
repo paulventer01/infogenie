@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import styles from "../../../styles/auth.module.css";
 
 interface Invite {
@@ -185,9 +186,9 @@ export default function AcceptInvitePage() {
             {busy ? "Saving…" : "Accept & create account →"}
           </button>
         </form>
-        <a className={styles.back} href="/">
+        <Link className={styles.back} href="/">
           ← Back to InfoGenie
-        </a>
+        </Link>
       </div>
     </div>
   );
