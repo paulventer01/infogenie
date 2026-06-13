@@ -109,7 +109,21 @@ router.post('/execute/:id', async (req, res) => {
   const p = await _db.getPool();
   const r = await p.query(`UPDATE budget_arb_history SET is_executed=TRUE, executed_at=NOW() WHERE id=$1 AND tenant_id=$2 RETURNING *`, [req.params.id, tid]);
   if (!r.rows.length) return res.status(404).json({ ok: false, error: 'not found' });
-  res.json({ ok: true, record: r.rows[0] });
+  const rec = r.rows[0];
+  try {
+    const { logAction } = require('../roi_ledger/logger');
+    const shifted = parseFloat(rec.total_shifted) || 0;
+    const uplift  = parseFloat(rec.projected_roas_uplift) || 0;
+    await logAction(tid, {
+      action_type:     'budget_shifted',
+      module:          'budget_arbitrage',
+      title:           `Shifted $${shifted.toFixed(0)} across platforms`,
+      description:     `Intraday budget arbitrage applied. Projected ROAS uplift: +${uplift}%.`,
+      estimated_value: +(shifted * (uplift / 100)).toFixed(2),
+      metadata:        { history_id: rec.id, total_shifted: shifted, projected_roas_uplift: uplift },
+    });
+  } catch (e) {}
+  res.json({ ok: true, record: rec });
 });
 
 router.get('/history', async (req, res) => {

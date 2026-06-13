@@ -101,7 +101,20 @@ router.post('/resubmit/:id', async (req, res) => {
   const tid = await _tenantCtx.resolveTenantId(req, { label: 'self-healing:resubmit' });
   if (!tid) return res.status(400).json({ ok: false, error: 'no_tenant' });
   const p = await _db.getPool();
+  const fetch = await p.query(`SELECT * FROM ad_rejections WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
   await p.query(`UPDATE ad_rejections SET status='resubmitted', resolved_at=NOW() WHERE id=$1 AND tenant_id=$2`, [req.params.id, tid]);
+  try {
+    const { logAction } = require('../roi_ledger/logger');
+    const ad = fetch.rows[0] || {};
+    await logAction(tid, {
+      action_type:     'ad_healed',
+      module:          'self_healing',
+      title:           `Healed & resubmitted rejected ${ad.platform || ''} ad: "${(ad.ad_name || 'Ad').slice(0,50)}"`,
+      description:     `AI rewrote copy to comply with platform policy. Rejection: "${(ad.rejection_reason || '').slice(0,120)}"`,
+      estimated_value: 185,
+      metadata:        { rejection_id: req.params.id, platform: ad.platform },
+    });
+  } catch (e) {}
   res.json({ ok: true });
 });
 

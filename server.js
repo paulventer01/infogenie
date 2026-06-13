@@ -3185,6 +3185,14 @@ BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
   await _dataProductsSchema.ensureDataProductsSchema();
   console.log('[t95-t101] schemas ready');
 } } catch(e) { console.warn('[t95-t101] schema init failed:', e.message); } });
+// ── ROI Ledger ───────────────────────────────────────────────────────────────
+const _roiLedgerSchema  = require('./services/roi_ledger/schema');
+const _roiLedgerRouter  = require('./services/roi_ledger/api');
+app.use('/api/roi-ledger', _roiLedgerRouter);
+BOOT_TASKS.push(async () => { try { if (_db.hasDb()) {
+  await _roiLedgerSchema.ensureRoiLedgerSchema();
+  console.log('[roi-ledger] schema ready');
+} } catch(e) { console.warn('[roi-ledger] schema init failed:', e.message); } });
 // ── Tier 102-111 ─────────────────────────────────────────────────────────────
 const _swarmSchema            = require('./services/agent_swarm/schema');
 const _swarmRouter            = require('./services/agent_swarm/api');

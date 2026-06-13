@@ -137,6 +137,17 @@ Return strict JSON: {"output":"...","action_taken":"...","next_recommendation":"
     [chain.length, summary, runId]
   );
   if (config) await p.query(`UPDATE swarm_configs SET run_count=run_count+1, last_run_at=NOW() WHERE id=$1`, [config.id]);
+  try {
+    const { logAction } = require('../roi_ledger/logger');
+    await logAction(tid, {
+      action_type:     'swarm_completed',
+      module:          'agent_swarm',
+      title:           `Agent swarm completed: ${event_type} (${chain.length} agents)`,
+      description:     summary,
+      estimated_value: chain.length * 65,
+      metadata:        { run_id: runId, event_type, steps: chain.length },
+    });
+  } catch (e) {}
 
   res.json({ ok: true, run_id: runId, steps: stepResults, summary });
 });
