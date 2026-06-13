@@ -48,6 +48,32 @@ See `nextjs-phase2-spa-shell.md` for the replay pattern (read index.html
 server-side, strip navbar+scripts, React-render the body, replay scripts in
 order then fire a synthetic DOMContentLoaded).
 
+## Phase 3 — feature panel extraction (shared foundation)
+
+The 176 view panels (legacy `app.js` + `public/js/ig_*.js`, ~50k lines) are
+being ported to `components/features/[group]/*.tsx` group-by-group (Manage →
+Grow → Reach → Create → Analyse). Step 1 (the prerequisite) is the shared
+foundation that panels import instead of `window.*`:
+`lib/utils.ts` (`escapeHtml`/`safeUrl`/`safeLLMJson`, mirroring `_escapeHtml`/
+`_safeUrl`), `lib/dom.ts` (`downloadBlob`/`copyToClipboard`), `lib/api.ts`
+(`apiFetch`/`apiGet…apiDelete`/`apiBlob` — same-origin, normalises both
+transport and `{ok:false}` app errors), `hooks/useToast.ts` (`showToast`
+reuses the legacy `#toast` node + `.toast`/`.hidden` CSS for identical look).
+
+**Why the legacy app.js utils are NOT deleted yet:** the un-migrated views
+still call them at runtime. Removing `_escapeHtml`/`_safeUrl`/`showToast` from
+`app.js` before every panel is ported would break the live SPA — defer that to
+Phase 4 cleanup once nothing depends on them.
+
+**Panel-render gotcha (unsolved until a group is actually ported):** a ported
+panel's Next page must render the React component AND suppress the legacy
+`#view-*` div (navigateTo shows/hides `.view` divs) or the content
+double-renders. Needs a migrated-view registry the page + SpaRouter consult.
+
+- The `lint` workflow flagging `services/revenue_forecast/api.js` (fabrication
+  marker) is **pre-existing and unrelated** to the Next.js migration (backend
+  service file, out of frontend scope).
+
 ## Constraints learned
 
 - **`concurrently` is firewall-blocked** (its `shell-quote` dep has a CVE). Use
