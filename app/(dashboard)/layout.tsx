@@ -5,6 +5,7 @@ import Navbar from "@/components/layout/Navbar";
 import LegacyBody from "@/components/layout/LegacyBody";
 import LegacyScripts from "@/components/layout/LegacyScripts";
 import SpaRouter from "@/components/layout/SpaRouter";
+import MigratedPanel from "@/components/layout/MigratedPanel";
 
 // Phase 2 dashboard shell. In DEV, Next owns `/` and every /<group>/<view>
 // route; this layout renders the React <Navbar/> plus the legacy SPA body and
@@ -29,6 +30,7 @@ export default async function DashboardLayout({
       <link rel="stylesheet" href="/style.css" />
       <Navbar />
       <LegacyBody />
+      <MigratedPanel />
       {children}
       <SpaRouter />
       <LegacyScripts scripts={scripts} />

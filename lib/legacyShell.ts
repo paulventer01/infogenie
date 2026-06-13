@@ -13,6 +13,7 @@
 // It uses `node:fs`, so it must only ever be imported from a Server Component.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { MIGRATED_VIEWS } from "@/lib/migratedViews";
 
 export type LegacyScript =
   | { type: "src"; src: string }
@@ -51,7 +52,53 @@ function parse(): LegacyShell {
   // 4. Drop all <script> tags — they're replayed in order by <LegacyScripts/>.
   bodyHtml = bodyHtml.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
 
-  return { bodyHtml, scripts };
+  // 5. Suppress panels that have been ported to native React (<MigratedPanel/>
+  //    renders them instead). For each migrated view we (a) remove its
+  //    `#view-<id>` div so the legacy panel can't double-render, and (b) drop its
+  //    `public/js` module from the replay bundle so it stops loading. index.html
+  //    and the module file stay untouched on disk — prod still serves them.
+  const migratedModules = new Set<string>();
+  for (const m of MIGRATED_VIEWS) {
+    bodyHtml = removeViewDiv(bodyHtml, m.view);
+    if (m.legacyModule) migratedModules.add(m.legacyModule);
+  }
+  const keptScripts = scripts.filter(
+    (s) =>
+      s.type !== "src" ||
+      ![...migratedModules].some((mod) => s.src.includes(mod)),
+  );
+
+  return { bodyHtml, scripts: keptScripts };
+}
+
+// Remove the `<div ... id="view-<id>">…</div>` element (with its full, possibly
+// deeply-nested body) from the markup. The legacy view divs are flat siblings,
+// but their content nests divs, so a naive non-greedy regex would stop at the
+// first `</div>`. Instead we locate the opening tag and walk forward counting
+// `<div`/`</div>` until the element closes. No-op if the view div isn't present.
+function removeViewDiv(html: string, viewId: string): string {
+  const marker = `id="view-${viewId}"`;
+  const markerIdx = html.indexOf(marker);
+  if (markerIdx === -1) return html;
+  const start = html.lastIndexOf("<div", markerIdx);
+  if (start === -1) return html;
+
+  const tagRe = /<div\b|<\/div>/gi;
+  tagRe.lastIndex = start;
+  let depth = 0;
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(html)) !== null) {
+    if (m[0].toLowerCase() === "</div>") {
+      depth--;
+      if (depth === 0) {
+        const end = tagRe.lastIndex;
+        return html.slice(0, start) + html.slice(end);
+      }
+    } else {
+      depth++;
+    }
+  }
+  return html; // unbalanced — leave untouched rather than corrupt the markup
 }
 
 // Re-read on every render in dev so edits to index.html are reflected without a
