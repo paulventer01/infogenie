@@ -123,8 +123,8 @@ const PRIVATE = [
   '/docs/tiers.md',
   '/test/static-source-leak.test.js',
   '/.agents/memory/MEMORY.md',
-  '/batch1.txt',
-  '/audit_index.txt',
+  '/scripts/dev.js',
+  '/next.config.ts',
 ];
 
 // Genuinely public browser assets — must stay reachable.
