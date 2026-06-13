@@ -9,7 +9,19 @@
 
 import type { ComponentType } from "react";
 import SeoRoadmap from "@/components/features/reach/SeoRoadmap";
+import GrowthMethodology from "@/components/features/manage/GrowthMethodology";
+import WhiteLabel from "@/components/features/manage/WhiteLabel";
+import BulkReports from "@/components/features/manage/BulkReports";
+import ModelCompare from "@/components/features/manage/ModelCompare";
+import WebAnalytics from "@/components/features/manage/WebAnalytics";
+import VerticalPlaybooks from "@/components/features/manage/VerticalPlaybooks";
 
 export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "seo-roadmap": SeoRoadmap,
+  "growth-methodology": GrowthMethodology,
+  "white-label": WhiteLabel,
+  "bulk-reports": BulkReports,
+  "model-compare": ModelCompare,
+  "web-analytics": WebAnalytics,
+  "vertical-playbooks": VerticalPlaybooks,
 };

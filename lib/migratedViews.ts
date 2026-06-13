@@ -32,6 +32,20 @@ export interface MigratedView {
 
 export const MIGRATED_VIEWS: MigratedView[] = [
   { view: "seo-roadmap", legacyModule: "ig_seo_roadmap.js" },
+  // The Manage-group panels below all live in SHARED public/js modules
+  // (ig_seo.js, ig_manage_pack.js, ig_moat_features.js, ig_intelligence_tools.js)
+  // — or inline in app.js — that still build many NOT-YET-migrated sibling
+  // views. Dropping the whole module would break those siblings, so legacyModule
+  // stays `null` here: suppression relies solely on stripping the `#view-<id>`
+  // div (every builder early-returns when its target div/wrap is gone). Only a
+  // panel whose module is dedicated to migrated views (like the pilot's
+  // ig_seo_roadmap.js) may drop its module.
+  { view: "growth-methodology", legacyModule: null },
+  { view: "white-label", legacyModule: null },
+  { view: "bulk-reports", legacyModule: null },
+  { view: "model-compare", legacyModule: null },
+  { view: "web-analytics", legacyModule: null },
+  { view: "vertical-playbooks", legacyModule: null },
 ];
 
 /** Set of view ids now rendered by React. */

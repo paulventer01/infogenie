@@ -28,6 +28,15 @@ Full how-to lives in `docs/react-panel-migration.md`; this is the durable why.
   prod front door. The `navigateTo` build call is already null-guarded so a
   removed module won't throw.
 
+- **`legacyModule` must be `null` for any panel whose builder lives in a SHARED
+  `public/js` module** (e.g. ig_seo.js, ig_manage_pack.js, ig_moat_features.js,
+  ig_intelligence_tools.js) or inline in app.js. Those modules still build many
+  not-yet-migrated sibling views, so dropping the whole module would break them.
+  Suppression then relies SOLELY on stripping the `#view-<id>` div — which works
+  because every legacy builder early-returns when its target div/wrap is missing.
+  Only a panel with a DEDICATED module (like the pilot's ig_seo_roadmap.js) may
+  set `legacyModule` to drop it.
+
 **Why registry-driven + dev-only suppression:** lets panels migrate one at a time
 with zero prod regression; flipping prod later makes deletion a mechanical step.
 
