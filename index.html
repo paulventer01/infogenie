@@ -92,6 +92,8 @@
           <a href="#" class="nav-link" data-view="war-room"><span class="ndl-icon">⚔️</span><span class="ndl-text">AI Competitor War Room</span></a>
           <a href="#" class="nav-link" data-view="biz-scanner"><span class="ndl-icon">🔭</span><span class="ndl-text">Business Acquisition Scanner</span></a>
           <a href="#" class="nav-link" data-view="benchmarks"><span class="ndl-icon">📊</span><span class="ndl-text">Benchmark Intelligence (vs network)</span></a>
+          <a href="#" class="nav-link" data-view="ai-answer-sov"><span class="ndl-icon">🧠</span><span class="ndl-text">AI Answer SOV (citation tracking)</span></a>
+          <a href="#" class="nav-link" data-view="data-products"><span class="ndl-icon">📦</span><span class="ndl-text">Proprietary Data Products</span></a>
           <div class="nav-drop-header">3 · Spy on what they're doing</div>
           <a href="#" class="nav-link" data-view="ad-library"><span class="ndl-icon">🕵️</span><span class="ndl-text">Ad Library Spy</span></a>
           <a href="#" class="nav-link" data-view="organic-social"><span class="ndl-icon">📱</span><span class="ndl-text">Organic Social Monitor</span></a>
@@ -252,7 +254,9 @@
           <a href="#" class="nav-link" data-view="deliverability"><span class="ndl-icon">✉️</span><span class="ndl-text">Email Deliverability Audit</span></a>
           <a href="#" class="nav-link" data-view="seo-tasks"><span class="ndl-icon">📋</span><span class="ndl-text">SEO Task Manager</span></a>
           <a href="#" class="nav-link" data-view="seo-widget"><span class="ndl-icon">🧩</span><span class="ndl-text">Embeddable Lead-Gen Widget</span></a>
-          <div class="nav-drop-header">6 · Handle replies &amp; alerts</div>
+          <div class="nav-drop-header">6 · First-party data spine</div>
+          <a href="#" class="nav-link" data-view="identity-spine"><span class="ndl-icon">🪪</span><span class="ndl-text">Identity Spine (CDP · LTV · propensity)</span></a>
+          <div class="nav-drop-header">7 · Handle replies &amp; alerts</div>
           <a href="#" class="nav-link" data-view="unified-inbox"><span class="ndl-icon">📬</span><span class="ndl-text">Unified Inbox</span></a>
           <a href="#" class="nav-link" data-view="alert-routing"><span class="ndl-icon">🔔</span><span class="ndl-text">Alert Routing</span></a>
           <a href="#" class="nav-link" data-view="digest"><span class="ndl-icon">🌅</span><span class="ndl-text">Daily Digest Email</span></a>
@@ -305,6 +309,8 @@
           <a href="#" class="nav-link" onclick="event.preventDefault();openWpCredentialsModal()"><span class="ndl-icon">🟦</span><span class="ndl-text">Connect to WordPress</span></a>
           <div class="nav-drop-header">5 · Build pages &amp; convert</div>
           <a href="#" class="nav-link" data-view="landing-pages"><span class="ndl-icon">🚀</span><span class="ndl-text">AI Landing Pages (A/B · leads · ad package)</span></a>
+          <div class="nav-drop-header">6 · Test &amp; measure incrementally</div>
+          <a href="#" class="nav-link" data-view="experiment-suite"><span class="ndl-icon">🧬</span><span class="ndl-text">Experiment Suite (geo-lift · holdout · creative)</span></a>
           <a href="#" class="nav-drop-next" data-open-group="manage">Time to schedule, report &amp; <strong>Manage</strong> the team<span class="ndn-arrow">→</span></a>
         </div>
       </div>
@@ -354,7 +360,11 @@
           <a href="#" class="nav-link" data-view="investor-mode"><span class="ndl-icon">📈</span><span class="ndl-text">Investor Mode (portal + forecasts)</span></a>
           <a href="#" class="nav-link" data-view="white-label"><span class="ndl-icon">🎨</span><span class="ndl-text">White-Label Reports</span></a>
           <a href="#" class="nav-link" data-view="bulk-reports"><span class="ndl-icon">📦</span><span class="ndl-text">Bulk Reporting (multi-client)</span></a>
-          <div class="nav-drop-header">7 · Account &amp; admin</div>
+          <div class="nav-drop-header">8 · Intelligence &amp; governance</div>
+          <a href="#" class="nav-link" data-view="decision-engine"><span class="ndl-icon">🧭</span><span class="ndl-text">Decision Engine (what to do next)</span></a>
+          <a href="#" class="nav-link" data-view="approval-workflows"><span class="ndl-icon">✅</span><span class="ndl-text">Approval Workflows (govern AI actions)</span></a>
+          <a href="#" class="nav-link" data-view="revenue-intel"><span class="ndl-icon">💼</span><span class="ndl-text">Revenue Intelligence (pipeline · intent)</span></a>
+          <div class="nav-drop-header">9 · Account &amp; admin</div>
           <a href="#" class="nav-link" data-view="agency"><span class="ndl-icon">🏢</span><span class="ndl-text">Agency Workspace</span></a>
           <a href="#" class="nav-link" data-view="marketplace"><span class="ndl-icon">🛍️</span><span class="ndl-text">AI Marketing Marketplace</span></a>
           <a href="#" class="nav-link" data-view="workspaces"><span class="ndl-icon">👥</span><span class="ndl-text">Workspaces &amp; Team</span></a>
@@ -3607,6 +3617,7 @@
 <script src="/public/js/ig_intelligence_tools.js?v=20260612IT1"></script>
 <script src="/public/js/ig_advanced_features.js?v=20260612AF1"></script>
 <script src="/public/js/ig_moat_features.js?v=20260612MF1"></script>
+<script src="/public/js/ig_strategic_features.js?v=20260613SF1"></script>
 <script src="/public/js/ig_core_views.js?v=20260609CV2"></script>
 <script src="/ig_field_enhancer.js?v=20260609FE1"></script>
 <script src="/ig_diag.js"></script>
@@ -3648,6 +3659,13 @@
 <div class="view hidden" id="view-safe-agent"></div>
 <div class="view hidden" id="view-data-provenance"></div>
 <div class="view hidden" id="view-vertical-playbooks"></div>
+<div class="view hidden" id="view-decision-engine"></div>
+<div class="view hidden" id="view-experiment-suite"></div>
+<div class="view hidden" id="view-identity-spine"></div>
+<div class="view hidden" id="view-approval-workflows"></div>
+<div class="view hidden" id="view-ai-answer-sov"></div>
+<div class="view hidden" id="view-revenue-intel"></div>
+<div class="view hidden" id="view-data-products"></div>
 
 <!-- ─── Onboarding Wizard (first-run) + Global Tour Button ─── -->
 <style>
