@@ -31,13 +31,22 @@ shifts Express to an internal port and Next proxies to it.
 same-origin keeps the `infogenie.sid` session cookie working. Target is
 `EXPRESS_PROXY_TARGET` (set by `scripts/dev.js`, defaults to localhost:8000).
 
-## Route-group rule (don't hijack `/`)
+## Route-group rule (`/` ownership flips by phase)
 
-The dashboard route group `app/(dashboard)/` must NOT contain a `page.tsx`
-until the dashboard is actually migrated — a route-group `page.tsx` resolves to
-`/` and would shadow the Express SPA (the fallback rewrite only fires when no
-Next route matches). A `layout.tsx` alone is safe (no route without a page).
-Skeleton folders use `.gitkeep`, not placeholder pages.
+A route-group `page.tsx` resolves to `/` and shadows the Express SPA (the
+fallback rewrite only fires when no Next route matches). In **Phase 1** this was
+forbidden — `app/(dashboard)/` had only a `layout.tsx`, folders were `.gitkeep`.
+In **Phase 2 (dev) Next deliberately owns `/`**: `app/(dashboard)/page.tsx`
+(home) + per-group `<group>/[[...slug]]/page.tsx` claim every dashboard URL.
+**Why this is safe for prod:** Express's `/` index.html route is gated behind
+`NEXT_FRONT_DOOR=1` (set only by `scripts/dev.js`); plain `node server.js`
+(prod) has no flag, keeps serving the SPA at `/`, and never runs Next at all.
+
+## Phase 2 — Next renders the legacy SPA shell (dev)
+
+See `nextjs-phase2-spa-shell.md` for the replay pattern (read index.html
+server-side, strip navbar+scripts, React-render the body, replay scripts in
+order then fire a synthetic DOMContentLoaded).
 
 ## Constraints learned
 

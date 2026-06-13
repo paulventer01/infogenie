@@ -55,7 +55,11 @@ function run(name, command, args, extraEnv) {
 process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
-run("express", "node", ["server.js"], { EXPRESS_PORT });
+// NEXT_FRONT_DOOR tells Express that Next.js owns `/` (the SPA shell). Express
+// still serves /index.html, all assets and the /api/* surface, but stops
+// serving the legacy SPA at the root so Next's dashboard shell is authoritative
+// in dev. Prod (plain `node server.js`, no flag) keeps serving index.html at /.
+run("express", "node", ["server.js"], { EXPRESS_PORT, NEXT_FRONT_DOOR: "1" });
 run("next", nextBin, ["dev", "-p", NEXT_PORT], {
   EXPRESS_PROXY_TARGET: `http://localhost:${EXPRESS_PORT}`,
 });

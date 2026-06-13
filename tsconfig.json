@@ -28,6 +28,7 @@
     "hooks/**/*.tsx",
     "lib/**/*.ts",
     "types/**/*.ts",
+    "middleware.ts",
     "next.config.ts",
     ".next/types/**/*.ts"
   ],

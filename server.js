@@ -295,7 +295,12 @@ const _serveIndexHtml = _staticVersioning.serveVersionedHtml(
   path.join(__dirname, 'index.html'),
   __dirname,
 );
-app.get(['/', '/index.html'], _serveIndexHtml);
+// When Next.js is the dev front door (NEXT_FRONT_DOOR=1, set by scripts/dev.js),
+// Next owns `/` and renders the React dashboard shell, so Express must NOT serve
+// the legacy SPA at the root. It still serves /index.html (and all assets/APIs)
+// for the proxy. In prod (no flag) Express serves the SPA at `/` as before.
+const _indexRoutes = process.env.NEXT_FRONT_DOOR === '1' ? ['/index.html'] : ['/', '/index.html'];
+app.get(_indexRoutes, _serveIndexHtml);
 
 // Fingerprinted static assets (.js/.css carrying a content-hash `?v=`) are
 // served `public, max-age=31536000, immutable` via setHeaders so returning
