@@ -58,3 +58,18 @@ out/
 # ── Test / coverage ──────────────────────────────────────────
 coverage/
 .nyc_output/
+
+# ── Root-level scratch / code-extraction note files ──────────
+# Throwaway staging copies from past code-extraction efforts (duplicated
+# snippets of code that already lives in app.js / index.html / public/js).
+# Scoped to the project root (leading /) so legitimate .txt files elsewhere
+# (and robots.txt) are unaffected.
+/module*.txt
+/m[0-9]*.txt
+/batch[0-9]*.txt
+/views.txt
+/views_full.txt
+/navigateTo.txt
+/navigateTo_full.txt
+/disp.txt
+/audit_index.txt
