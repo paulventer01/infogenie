@@ -610,7 +610,7 @@ function CEOReport({ d, rm, period, setPeriod }: ReportProps) {
       >
         <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.88rem", fontWeight: 800, color: "#0A1628" }}>
           CEO Dashboard{" "}
-          <span style={{ fontSize: "0.72rem", fontWeight: 400, color: "#6B7280" }}>
+          <span suppressHydrationWarning style={{ fontSize: "0.72rem", fontWeight: 400, color: "#6B7280" }}>
             · Generated {new Date().toLocaleDateString()}
           </span>
         </div>
@@ -864,7 +864,7 @@ function CMOReport({ d, rm, period, setPeriod }: ReportProps) {
       >
         <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.88rem", fontWeight: 800, color: "#0A1628" }}>
           CMO Dashboard{" "}
-          <span style={{ fontSize: "0.72rem", fontWeight: 400, color: "#6B7280" }}>
+          <span suppressHydrationWarning style={{ fontSize: "0.72rem", fontWeight: 400, color: "#6B7280" }}>
             · {new Date().toLocaleDateString()}
           </span>
         </div>
@@ -1049,7 +1049,7 @@ function CFOReport({ d, rm, period, setPeriod }: ReportProps) {
       >
         <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.88rem", fontWeight: 800, color: "#0A1628" }}>
           CFO Dashboard{" "}
-          <span style={{ fontSize: "0.72rem", fontWeight: 400, color: "#6B7280" }}>
+          <span suppressHydrationWarning style={{ fontSize: "0.72rem", fontWeight: 400, color: "#6B7280" }}>
             · {new Date().toLocaleDateString()}
           </span>
         </div>
@@ -1243,7 +1243,7 @@ function COOReport({ d, rm, period, setPeriod }: ReportProps) {
       >
         <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.88rem", fontWeight: 800, color: "#0A1628" }}>
           COO Dashboard{" "}
-          <span style={{ fontSize: "0.72rem", fontWeight: 400, color: "#6B7280" }}>
+          <span suppressHydrationWarning style={{ fontSize: "0.72rem", fontWeight: 400, color: "#6B7280" }}>
             · {new Date().toLocaleDateString()}
           </span>
         </div>

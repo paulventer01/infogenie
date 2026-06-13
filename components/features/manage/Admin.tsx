@@ -1350,7 +1350,7 @@ function PlatformKeysTab() {
                       {it.testable && (
                         <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5 }}>
                           <span style={{ width: 10, height: 10, borderRadius: 99, background: healthColor(lt?.status), display: "inline-block", flex: "0 0 auto" }} />
-                          <span style={{ fontSize: 11, color: "#94A3B8", fontStyle: lt?.testedAt ? "normal" : "italic" }}>
+                          <span suppressHydrationWarning style={{ fontSize: 11, color: "#94A3B8", fontStyle: lt?.testedAt ? "normal" : "italic" }}>
                             {lt?.testedAt ? relTime(lt.testedAt) : "never tested"}
                           </span>
                         </span>

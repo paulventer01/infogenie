@@ -48,3 +48,6 @@ path segment to a `data-view`).
 **Why:** rebuilding 200+ panels in React up-front is infeasible; replaying the
 legacy bundle behind a React shell migrates the chrome first with zero feature
 regression, panel-by-panel migration can follow.
+
+## Hydration mismatches in migrated components
+Migrated React panels must never render `new Date().toLocale*()`, `Date.now()`, or other server/client-divergent values directly in JSX or in `useState`/`useMemo` initializers — server (Node) locale/time differs from the browser, producing different HTML and a hydration crash. Fix: add `suppressHydrationWarning` to the exact element for display-only timestamps, or move the value to a `useEffect` that runs after mount for `useState` seeds. The root `<html>` in `app/layout.tsx` carries `suppressHydrationWarning` because the pre-hydration themeInit script sets `data-theme`.

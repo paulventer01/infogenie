@@ -676,15 +676,17 @@ function TemplatesModal({ onClose }: { onClose: () => void }) {
 
 function BulkModal({ onClose }: { onClose: () => void }) {
   const [templates, setTemplates] = useState<WaTemplate[]>([]);
-  const [campName, setCampName] = useState(
-    `Campaign ${new Date().toLocaleDateString()}`,
-  );
+  const [campName, setCampName] = useState("Campaign");
   const [tplId, setTplId] = useState("");
   const [recText, setRecText] = useState("");
   const [out, setOut] = useState<{ kind: "ok" | "err"; text: string } | null>(
     null,
   );
   const [campaigns, setCampaigns] = useState<WaCampaign[] | null>(null);
+
+  useEffect(() => {
+    setCampName(`Campaign ${new Date().toLocaleDateString()}`);
+  }, []);
 
   const reloadCamps = useCallback(async () => {
     const r = await apiGet<{ ok: boolean; campaigns?: WaCampaign[] }>(

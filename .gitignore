@@ -73,3 +73,4 @@ coverage/
 /navigateTo_full.txt
 /disp.txt
 /audit_index.txt
+tsconfig.tsbuildinfo

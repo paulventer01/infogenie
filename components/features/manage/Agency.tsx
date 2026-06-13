@@ -413,11 +413,11 @@ export default function Agency() {
             <div style={{ background: `linear-gradient(135deg,${brand.color},${brand.color}CC)`, padding: "20px 22px" }}>
               <div style={{ fontSize: "0.6rem", fontWeight: 700, color: "rgba(255,255,255,.6)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 4 }}>{brand.name}</div>
               <div style={{ fontSize: "1rem", fontWeight: 800, color: "white", marginBottom: 2 }}>Monthly Performance Report</div>
-              <div style={{ fontSize: "0.7rem", color: "rgba(255,255,255,.7)" }}>Prepared for [Client Name] · {new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</div>
+              <div suppressHydrationWarning style={{ fontSize: "0.7rem", color: "rgba(255,255,255,.7)" }}>Prepared for [Client Name] · {new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</div>
             </div>
             <div style={{ padding: "16px 18px", fontSize: "0.72rem", color: "#374151", lineHeight: 1.7 }}>
               <div style={{ fontWeight: 700, color: "#0A1628", marginBottom: 6 }}>📋 Executive Summary</div>
-              <div style={{ color: "#6B7280", marginBottom: 12 }}>This report covers campaign performance, competitor intelligence, social metrics, and strategic recommendations for the period ending {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long" })}.</div>
+              <div suppressHydrationWarning style={{ color: "#6B7280", marginBottom: 12 }}>This report covers campaign performance, competitor intelligence, social metrics, and strategic recommendations for the period ending {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long" })}.</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 12 }}>
                 {([["Total Reach", "84,200"], ["Ad Spend", "$4,500"], ["ROAS", "3.8×"], ["Engagement", "4.2%"]] as const).map(([l, v]) => (
                   <div key={l} style={{ background: "#F8FAFC", borderRadius: 7, padding: "8px 10px" }}>
@@ -558,7 +558,7 @@ function ReportPreview({ report, clientName, brand, onClose }: { report: AgencyR
           <button onClick={onClose} style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,.2)", border: "none", borderRadius: "50%", width: 32, height: 32, color: "white", cursor: "pointer", fontSize: "1.1rem" }}>✕</button>
           <div style={{ fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", opacity: 0.65, marginBottom: 8 }}>{brand.name}</div>
           <h1 style={{ fontSize: "1.8rem", margin: "0 0 4px", fontWeight: 800 }}>Performance Report</h1>
-          <p style={{ margin: 0, opacity: 0.75, fontSize: "0.85rem" }}>Prepared for <strong>{clientName}</strong> · {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
+          <p suppressHydrationWarning style={{ margin: 0, opacity: 0.75, fontSize: "0.85rem" }}>Prepared for <strong>{clientName}</strong> · {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
         </div>
         <div style={{ maxWidth: 900, margin: "0 auto", padding: "36px 48px" }}>
           <ReportSection title="📋 Executive Summary" color={brand.color}>
