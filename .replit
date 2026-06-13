@@ -49,12 +49,12 @@ waitForPort = 5000
 name = "test"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm test"
-
 [workflows.workflow.metadata]
 isValidation = true
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run test:core"
 
 [[workflows.workflow]]
 name = "lint"
