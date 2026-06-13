@@ -51,6 +51,162 @@ import TechnicalSuite from "@/components/features/manage/TechnicalSuite";
 import BrandSafety from "@/components/features/manage/BrandSafety";
 import DataProvenance from "@/components/features/manage/DataProvenance";
 import Settings from "@/components/features/manage/Settings";
+import Dashboard from "@/components/features/analyse/Dashboard";
+import Roadmap from "@/components/features/analyse/Roadmap";
+import Competitors from "@/components/features/analyse/Competitors";
+import BattleCards from "@/components/features/analyse/BattleCards";
+import Battleplan from "@/components/features/analyse/Battleplan";
+import Intelligence from "@/components/features/analyse/Intelligence";
+import WarRoom from "@/components/features/analyse/WarRoom";
+import BizScanner from "@/components/features/analyse/BizScanner";
+import Benchmarks from "@/components/features/analyse/Benchmarks";
+import AdLibrary from "@/components/features/analyse/AdLibrary";
+import OrganicSocial from "@/components/features/analyse/OrganicSocial";
+import LinkedinAds from "@/components/features/analyse/LinkedinAds";
+import AdSwipe from "@/components/features/analyse/AdSwipe";
+import PricingWatch from "@/components/features/analyse/PricingWatch";
+import JobBoardSpy from "@/components/features/analyse/JobBoardSpy";
+import MapsIntel from "@/components/features/analyse/MapsIntel";
+import ChangeMonitor from "@/components/features/analyse/ChangeMonitor";
+import WebExtractor from "@/components/features/analyse/WebExtractor";
+import RecipeScraper from "@/components/features/analyse/RecipeScraper";
+import DatasetMarket from "@/components/features/analyse/DatasetMarket";
+import ResilientTracker from "@/components/features/analyse/ResilientTracker";
+import SovTracker from "@/components/features/analyse/SovTracker";
+import TrendingTopics from "@/components/features/analyse/TrendingTopics";
+import CrisisRadar from "@/components/features/analyse/CrisisRadar";
+import IcpStudio from "@/components/features/analyse/IcpStudio";
+import Voc from "@/components/features/analyse/Voc";
+import ReviewAggregator from "@/components/features/analyse/ReviewAggregator";
+import Glassdoor from "@/components/features/analyse/Glassdoor";
+import Mentions from "@/components/features/analyse/Mentions";
+import Reddit from "@/components/features/analyse/Reddit";
+import RedditPulse from "@/components/features/analyse/RedditPulse";
+import TwitterPulse from "@/components/features/analyse/TwitterPulse";
+import YoutubeMonitor from "@/components/features/analyse/YoutubeMonitor";
+import YtCommentMiner from "@/components/features/analyse/YtCommentMiner";
+import PodcastMonitor from "@/components/features/analyse/PodcastMonitor";
+import QuoraMining from "@/components/features/analyse/QuoraMining";
+import NewsletterTracker from "@/components/features/analyse/NewsletterTracker";
+import KeywordExplorer from "@/components/features/analyse/KeywordExplorer";
+import QuestionMiner from "@/components/features/analyse/QuestionMiner";
+import SocialListening from "@/components/features/analyse/SocialListening";
+import MediaIntel from "@/components/features/analyse/MediaIntel";
+import KeywordMap from "@/components/features/analyse/KeywordMap";
+import IntentMap from "@/components/features/analyse/IntentMap";
+import ContentGaps from "@/components/features/analyse/ContentGaps";
+import Serp from "@/components/features/analyse/Serp";
+import SerpTracker from "@/components/features/analyse/SerpTracker";
+import Backlinks from "@/components/features/analyse/Backlinks";
+import BacklinkMonitor from "@/components/features/analyse/BacklinkMonitor";
+import LinkProspector from "@/components/features/analyse/LinkProspector";
+import BrandAssets from "@/components/features/create/BrandAssets";
+import Templates from "@/components/features/create/Templates";
+import Studio from "@/components/features/create/Studio";
+import Content from "@/components/features/create/Content";
+import HeadlineTester from "@/components/features/create/HeadlineTester";
+import PressRelease from "@/components/features/create/PressRelease";
+import ColdEmail from "@/components/features/create/ColdEmail";
+import EmailPersonalizer from "@/components/features/create/EmailPersonalizer";
+import EmailBroadcast from "@/components/features/create/EmailBroadcast";
+import Whatsapp from "@/components/features/create/Whatsapp";
+import VoiceCaller from "@/components/features/create/VoiceCaller";
+import ReplyAssistant from "@/components/features/create/ReplyAssistant";
+import Localization from "@/components/features/create/Localization";
+import Creative from "@/components/features/create/Creative";
+import SmartCreative from "@/components/features/create/SmartCreative";
+import Carousel from "@/components/features/create/Carousel";
+import Canva from "@/components/features/create/Canva";
+import UgcAvatars from "@/components/features/create/UgcAvatars";
+import VideoScript from "@/components/features/create/VideoScript";
+import Voiceover from "@/components/features/create/Voiceover";
+import CreativeIntel from "@/components/features/create/CreativeIntel";
+import LandingBuilder from "@/components/features/create/LandingBuilder";
+import SiteBuilder from "@/components/features/create/SiteBuilder";
+import Linksell from "@/components/features/create/Linksell";
+import SchemaGenerator from "@/components/features/create/SchemaGenerator";
+import ChatbotBuilder from "@/components/features/create/ChatbotBuilder";
+import Campaigns from "@/components/features/create/Campaigns";
+import ContentCalendar from "@/components/features/create/ContentCalendar";
+import ContentModes from "@/components/features/create/ContentModes";
+import ContentAutopilot from "@/components/features/create/ContentAutopilot";
+import AdCreative from "@/components/features/create/AdCreative";
+import IdeaFeed from "@/components/features/create/IdeaFeed";
+import PitchDeck from "@/components/features/create/PitchDeck";
+import Wireframe from "@/components/features/create/Wireframe";
+import Accessibility from "@/components/features/create/Accessibility";
+import PersonaStudio from "@/components/features/create/PersonaStudio";
+import EcomVideo from "@/components/features/create/EcomVideo";
+import BrandDeals from "@/components/features/create/BrandDeals";
+import Social from "@/components/features/create/Social";
+import Audience from "@/components/features/reach/Audience";
+import Lookalike from "@/components/features/reach/Lookalike";
+import AudiencesDynamic from "@/components/features/reach/AudiencesDynamic";
+import JourneyBuilder from "@/components/features/reach/JourneyBuilder";
+import Omnichannel from "@/components/features/reach/Omnichannel";
+import LeadFinder from "@/components/features/reach/LeadFinder";
+import LocalLeads from "@/components/features/reach/LocalLeads";
+import LeadAggregator from "@/components/features/reach/LeadAggregator";
+import AcquisitionEngine from "@/components/features/reach/AcquisitionEngine";
+import Bookings from "@/components/features/reach/Bookings";
+import LeadQualifier from "@/components/features/reach/LeadQualifier";
+import HubspotSync from "@/components/features/reach/HubspotSync";
+import CrmSync from "@/components/features/reach/CrmSync";
+import Hunter from "@/components/features/reach/Hunter";
+import Advertise from "@/components/features/reach/Advertise";
+import ImportCampaigns from "@/components/features/reach/ImportCampaigns";
+import OptFolders from "@/components/features/reach/OptFolders";
+import AbDesigner from "@/components/features/reach/AbDesigner";
+import ConversionBoosters from "@/components/features/reach/ConversionBoosters";
+import SocialPublisher from "@/components/features/reach/SocialPublisher";
+import Discovery from "@/components/features/reach/Discovery";
+import Influencers from "@/components/features/reach/Influencers";
+import TiktokDownloader from "@/components/features/reach/TiktokDownloader";
+import HashtagIntel from "@/components/features/reach/HashtagIntel";
+import SearchIntel from "@/components/features/reach/SearchIntel";
+import GeoAudit from "@/components/features/reach/GeoAudit";
+import LocalSeo from "@/components/features/reach/LocalSeo";
+import SeoAuditor from "@/components/features/reach/SeoAuditor";
+import ContentScore from "@/components/features/reach/ContentScore";
+import SeoCrawler from "@/components/features/reach/SeoCrawler";
+import SocialTags from "@/components/features/reach/SocialTags";
+import SeoTasks from "@/components/features/reach/SeoTasks";
+import SeoWidget from "@/components/features/reach/SeoWidget";
+import UnifiedInbox from "@/components/features/reach/UnifiedInbox";
+import AlertRouting from "@/components/features/reach/AlertRouting";
+import Digest from "@/components/features/reach/Digest";
+import Goals from "@/components/features/grow/Goals";
+import KpiTracker from "@/components/features/grow/KpiTracker";
+import ActionCenter from "@/components/features/grow/ActionCenter";
+import MetaInsights from "@/components/features/grow/MetaInsights";
+import GoogleAdsInsights from "@/components/features/grow/GoogleAdsInsights";
+import TiktokAdsInsights from "@/components/features/grow/TiktokAdsInsights";
+import SocialAnalytics from "@/components/features/grow/SocialAnalytics";
+import PostPerformance from "@/components/features/grow/PostPerformance";
+import Optimizer from "@/components/features/grow/Optimizer";
+import AutoOperator from "@/components/features/grow/AutoOperator";
+import SafeAgent from "@/components/features/grow/SafeAgent";
+import AnalyticsHub from "@/components/features/grow/AnalyticsHub";
+import AmplitudeAgents from "@/components/features/grow/AmplitudeAgents";
+import BlendedPerf from "@/components/features/grow/BlendedPerf";
+import Attribution from "@/components/features/grow/Attribution";
+import TrueRoas from "@/components/features/grow/TrueRoas";
+import Iroas from "@/components/features/grow/Iroas";
+import ConversionRecovery from "@/components/features/grow/ConversionRecovery";
+import ChurnScorer from "@/components/features/grow/ChurnScorer";
+import RevenueForecast from "@/components/features/grow/RevenueForecast";
+import DigitalTwin from "@/components/features/grow/DigitalTwin";
+import Mmm from "@/components/features/grow/Mmm";
+import Autoseo from "@/components/features/grow/Autoseo";
+import Contentscorer from "@/components/features/grow/Contentscorer";
+import LinkSuggester from "@/components/features/grow/LinkSuggester";
+import CroLab from "@/components/features/grow/CroLab";
+import AiAuditSuite from "@/components/features/grow/AiAuditSuite";
+import VisLeaderboard from "@/components/features/grow/VisLeaderboard";
+import LandingPages from "@/components/features/grow/LandingPages";
+import AiTeam from "@/components/features/aiteam/AiTeam";
+import FinanceOfficer from "@/components/features/aiteam/FinanceOfficer";
+import OpsOfficer from "@/components/features/aiteam/OpsOfficer";
 
 export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "seo-roadmap": SeoRoadmap,
@@ -97,4 +253,161 @@ export const MIGRATED_COMPONENTS: Record<string, ComponentType> = {
   "brand-safety": BrandSafety,
   "data-provenance": DataProvenance,
   settings: Settings,
+  // ── Phase 3 batch 3: Analyse / Create / Reach / Grow / AI Team groups ──
+  "dashboard": Dashboard,
+  "roadmap": Roadmap,
+  "competitors": Competitors,
+  "battle-cards": BattleCards,
+  "battleplan": Battleplan,
+  "intelligence": Intelligence,
+  "war-room": WarRoom,
+  "biz-scanner": BizScanner,
+  "benchmarks": Benchmarks,
+  "ad-library": AdLibrary,
+  "organic-social": OrganicSocial,
+  "linkedin-ads": LinkedinAds,
+  "ad-swipe": AdSwipe,
+  "pricing-watch": PricingWatch,
+  "job-board-spy": JobBoardSpy,
+  "maps-intel": MapsIntel,
+  "change-monitor": ChangeMonitor,
+  "web-extractor": WebExtractor,
+  "recipe-scraper": RecipeScraper,
+  "dataset-market": DatasetMarket,
+  "resilient-tracker": ResilientTracker,
+  "sov-tracker": SovTracker,
+  "trending-topics": TrendingTopics,
+  "crisis-radar": CrisisRadar,
+  "icp-studio": IcpStudio,
+  "voc": Voc,
+  "review-aggregator": ReviewAggregator,
+  "glassdoor": Glassdoor,
+  "mentions": Mentions,
+  "reddit": Reddit,
+  "reddit-pulse": RedditPulse,
+  "twitter-pulse": TwitterPulse,
+  "youtube-monitor": YoutubeMonitor,
+  "yt-comment-miner": YtCommentMiner,
+  "podcast-monitor": PodcastMonitor,
+  "quora-mining": QuoraMining,
+  "newsletter-tracker": NewsletterTracker,
+  "keyword-explorer": KeywordExplorer,
+  "question-miner": QuestionMiner,
+  "social-listening": SocialListening,
+  "media-intel": MediaIntel,
+  "keyword-map": KeywordMap,
+  "intent-map": IntentMap,
+  "content-gaps": ContentGaps,
+  "serp": Serp,
+  "serp-tracker": SerpTracker,
+  "backlinks": Backlinks,
+  "backlink-monitor": BacklinkMonitor,
+  "link-prospector": LinkProspector,
+  "brand-assets": BrandAssets,
+  "templates": Templates,
+  "studio": Studio,
+  "content": Content,
+  "headline-tester": HeadlineTester,
+  "press-release": PressRelease,
+  "cold-email": ColdEmail,
+  "email-personalizer": EmailPersonalizer,
+  "email-broadcast": EmailBroadcast,
+  "whatsapp": Whatsapp,
+  "voice-caller": VoiceCaller,
+  "reply-assistant": ReplyAssistant,
+  "localization": Localization,
+  "creative": Creative,
+  "smart-creative": SmartCreative,
+  "carousel": Carousel,
+  "canva": Canva,
+  "ugc-avatars": UgcAvatars,
+  "video-script": VideoScript,
+  "voiceover": Voiceover,
+  "creative-intel": CreativeIntel,
+  "landing-builder": LandingBuilder,
+  "site-builder": SiteBuilder,
+  "linksell": Linksell,
+  "schema-generator": SchemaGenerator,
+  "chatbot-builder": ChatbotBuilder,
+  "campaigns": Campaigns,
+  "content-calendar": ContentCalendar,
+  "content-modes": ContentModes,
+  "content-autopilot": ContentAutopilot,
+  "ad-creative": AdCreative,
+  "idea-feed": IdeaFeed,
+  "pitch-deck": PitchDeck,
+  "wireframe": Wireframe,
+  "accessibility": Accessibility,
+  "persona-studio": PersonaStudio,
+  "ecom-video": EcomVideo,
+  "brand-deals": BrandDeals,
+  "social": Social,
+  "audience": Audience,
+  "lookalike": Lookalike,
+  "audiences-dynamic": AudiencesDynamic,
+  "journey-builder": JourneyBuilder,
+  "omnichannel": Omnichannel,
+  "lead-finder": LeadFinder,
+  "local-leads": LocalLeads,
+  "lead-aggregator": LeadAggregator,
+  "acquisition-engine": AcquisitionEngine,
+  "bookings": Bookings,
+  "lead-qualifier": LeadQualifier,
+  "hubspot-sync": HubspotSync,
+  "crm-sync": CrmSync,
+  "hunter": Hunter,
+  "advertise": Advertise,
+  "import-campaigns": ImportCampaigns,
+  "opt-folders": OptFolders,
+  "ab-designer": AbDesigner,
+  "conversion-boosters": ConversionBoosters,
+  "social-publisher": SocialPublisher,
+  "discovery": Discovery,
+  "influencers": Influencers,
+  "tiktok-downloader": TiktokDownloader,
+  "hashtag-intel": HashtagIntel,
+  "search-intel": SearchIntel,
+  "geo-audit": GeoAudit,
+  "local-seo": LocalSeo,
+  "seo-auditor": SeoAuditor,
+  "content-score": ContentScore,
+  "seo-crawler": SeoCrawler,
+  "social-tags": SocialTags,
+  "seo-tasks": SeoTasks,
+  "seo-widget": SeoWidget,
+  "unified-inbox": UnifiedInbox,
+  "alert-routing": AlertRouting,
+  "digest": Digest,
+  "goals": Goals,
+  "kpi-tracker": KpiTracker,
+  "action-center": ActionCenter,
+  "meta-insights": MetaInsights,
+  "google-ads-insights": GoogleAdsInsights,
+  "tiktok-ads-insights": TiktokAdsInsights,
+  "social-analytics": SocialAnalytics,
+  "post-performance": PostPerformance,
+  "optimizer": Optimizer,
+  "auto-operator": AutoOperator,
+  "safe-agent": SafeAgent,
+  "analytics-hub": AnalyticsHub,
+  "amplitude-agents": AmplitudeAgents,
+  "blended-perf": BlendedPerf,
+  "attribution": Attribution,
+  "true-roas": TrueRoas,
+  "iroas": Iroas,
+  "conversion-recovery": ConversionRecovery,
+  "churn-scorer": ChurnScorer,
+  "revenue-forecast": RevenueForecast,
+  "digital-twin": DigitalTwin,
+  "mmm": Mmm,
+  "autoseo": Autoseo,
+  "contentscorer": Contentscorer,
+  "link-suggester": LinkSuggester,
+  "cro-lab": CroLab,
+  "ai-audit-suite": AiAuditSuite,
+  "vis-leaderboard": VisLeaderboard,
+  "landing-pages": LandingPages,
+  "ai-team": AiTeam,
+  "finance-officer": FinanceOfficer,
+  "ops-officer": OpsOfficer,
 };

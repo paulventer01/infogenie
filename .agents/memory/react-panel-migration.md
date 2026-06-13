@@ -40,12 +40,33 @@ Full how-to lives in `docs/react-panel-migration.md`; this is the durable why.
 **Why registry-driven + dev-only suppression:** lets panels migrate one at a time
 with zero prod regression; flipping prod later makes deletion a mechanical step.
 
+## Two port-time TypeScript/ESLint traps (cost a build cycle each)
+- **Custom API response interfaces must carry `error?: string` (and `ok`).**
+  `apiGet<T>`/`apiPost<T>` return your `T` as-is; if you type `apiGet<CallsResponse>`
+  and then read `r.error`, TS errors unless `CallsResponse` declares `error?`. For
+  a custom **helper** constrained `<T extends ApiResult>` (e.g. a wrapper like
+  Studio's `sGet`), pass `MyType & ApiResult` — the bare `MyType & { ok: boolean }`
+  fails the `ApiResult` index-signature constraint.
+- **Never name a non-hook helper `useX`.** ESLint `react-hooks/rules-of-hooks`
+  treats any `use`-prefixed function as a hook and errors when it's called inside a
+  callback/JSX handler. Name plain helpers `applyX`/`pickX` instead.
+
 ## Verify
 `npx tsc --noEmit` + `npm run build:next` ("Compiled successfully" — note the
 build's lint step fails on PRE-EXISTING `<a>`-vs-`<Link>` errors in the Phase 1
 auth pages `accept-invite`/`reset-password`, unrelated to panel work). Dashboard
-routes require the `infogenie.sid` cookie, so an unauthenticated screenshot 307s
-to `/login` — that's correct, not a failure.
+routes require the `infogenie.sid` cookie, so an unauthenticated screenshot/curl
+307s to `/login` — that's correct, not a failure.
 
-Pilot: `seo-roadmap` (Reach) → `components/features/reach/SeoRoadmap.tsx`,
-API `GET`/`POST /api/seo-roadmap/progress`.
+## Status
+Pilot: `seo-roadmap` (Reach). Manage group (42) done in batch 2. **Batch 3 ported
+ALL remaining groups — Analyse, Create, Reach, Grow, AI Team (156 panels)** — so
+every nav panel now has a React component in `components/features/<group>/`
+(folders: analyse/create/reach/grow/aiteam/manage) and `registry.tsx` +
+`migratedViews.ts` carry 199 entries. New entries all use `legacyModule: null`
+(shared/inline builders). Component naming = PascalCase of the view id.
+Bulk-port method: per-batch subagents create ONLY component files + a manifest;
+main agent generates registry/migratedViews centrally from a master view→component
+map. Subagents on big panels (studio/content/dashboard) time out at the
+StartToClose limit — keep batches to 1–2 complex panels; files written before the
+timeout still land, so re-audit disk and re-dispatch only the missing.
