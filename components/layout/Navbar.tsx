@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { NAV_GROUPS, viewToPath, type NavItem } from "@/lib/viewRoutes";
 import NavGroup from "./NavGroup";
+import AccountMenu from "./AccountMenu";
 
 const LOGO_SVG =
   '<svg width="32" height="32" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="20" fill="url(#logoGrad)"/><path d="M13 20 Q20 10 27 20 Q20 30 13 20Z" fill="white" opacity="0.9"/><circle cx="20" cy="20" r="4" fill="white"/><defs><linearGradient id="logoGrad" x1="0" y1="0" x2="40" y2="40"><stop offset="0%" stop-color="#00C9C8"/><stop offset="100%" stop-color="#0066FF"/></linearGradient></defs></svg>';
@@ -101,111 +102,7 @@ export default function Navbar() {
                   '<span class="alerts-bell-badge" id="alertsBellBadge" style="display:none">0</span>',
               }}
             />
-            <div id="navUserMenu" style={{ position: "relative", display: "none" }}>
-              <button
-                id="navUserBtn"
-                title="Account"
-                aria-label="Account menu"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "6px 10px",
-                  background: "linear-gradient(135deg,#0066FF,#00C9C8)",
-                  border: "none",
-                  borderRadius: "20px",
-                  color: "white",
-                  fontSize: ".74rem",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  boxShadow: "0 2px 8px rgba(0,102,255,.25)",
-                }}
-              >
-                <span
-                  id="navUserAvatar"
-                  style={{
-                    width: "22px",
-                    height: "22px",
-                    borderRadius: "50%",
-                    background: "rgba(255,255,255,.25)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: ".72rem",
-                    fontWeight: 800,
-                  }}
-                >
-                  U
-                </span>
-                <span
-                  id="navUserName"
-                  style={{
-                    maxWidth: "120px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  User
-                </span>
-                <span style={{ fontSize: ".6rem", opacity: 0.8 }}>▾</span>
-              </button>
-              <div
-                id="navUserDropdown"
-                style={{
-                  display: "none",
-                  position: "absolute",
-                  right: 0,
-                  top: "calc(100% + 8px)",
-                  minWidth: "220px",
-                  background: "white",
-                  border: "1px solid #E5E7EB",
-                  borderRadius: "12px",
-                  boxShadow: "0 12px 28px rgba(0,0,0,.14)",
-                  padding: "10px",
-                  zIndex: 9999,
-                }}
-              >
-                <div
-                  style={{
-                    padding: "10px 12px",
-                    borderBottom: "1px solid #F3F4F6",
-                    marginBottom: "6px",
-                  }}
-                >
-                  <div
-                    id="navUserNameFull"
-                    style={{ fontSize: ".82rem", fontWeight: 800, color: "#111827" }}
-                  />
-                  <div
-                    id="navUserEmail"
-                    style={{
-                      fontSize: ".7rem",
-                      color: "#6B7280",
-                      marginTop: "2px",
-                      wordBreak: "break-all",
-                    }}
-                  />
-                </div>
-                <button
-                  id="navLogoutBtn"
-                  style={{
-                    width: "100%",
-                    padding: "9px 12px",
-                    background: "#FEF2F2",
-                    border: "1px solid #FECACA",
-                    borderRadius: "8px",
-                    fontSize: ".78rem",
-                    fontWeight: 700,
-                    color: "#B91C1C",
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
-                >
-                  ↩ Log out
-                </button>
-              </div>
-            </div>
+            <AccountMenu />
             <a
               href="/manual/download"
               className="nav-manual-btn"

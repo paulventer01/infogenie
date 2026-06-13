@@ -17,5 +17,9 @@ declare global {
     // Legacy-shell boot coordination (set by <LegacyScripts/>).
     __igLegacyBooted?: boolean;
     __igLegacyReady?: boolean;
+    // Persists in-memory SPA content (social posts, campaigns…) before logout.
+    _persistContent?: () => void;
+    // Legacy auth client (app.js) — only `_clearSession` is used by React.
+    _auth?: { _clearSession?: () => void };
   }
 }
