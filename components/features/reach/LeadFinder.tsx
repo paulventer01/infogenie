@@ -7,8 +7,10 @@
 // (`POST /api/lead-finder/search`) and exports matched leads to CSV client-side.
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiPost } from "@/lib/api";
 import { useToast } from "@/hooks/useToast";
+import { goToView } from "@/lib/nav";
 
 const SENIORITIES = ["c_suite", "vp", "director", "head", "manager", "senior"];
 
@@ -46,6 +48,7 @@ function safeUrl(u?: string): string {
 
 export default function LeadFinder() {
   const toast = useToast();
+  const router = useRouter();
   const [titles, setTitles] = useState("");
   const [seniorities, setSeniorities] = useState<string[]>([]);
   const [locations, setLocations] = useState("");
@@ -97,6 +100,16 @@ export default function LeadFinder() {
       setStatus("error");
       setMessage(e instanceof Error ? e.message : "error");
     }
+  }
+
+  function sendToColdEmail(l: Lead) {
+    const pain = [l.company_industry, l.title].filter(Boolean).join(" / ");
+    (window as Window & typeof globalThis & { _cePreset?: { target_company?: string; target_role?: string; target_pain?: string } | null })._cePreset = {
+      target_company: l.company || "",
+      target_role: l.title || "",
+      target_pain: pain,
+    };
+    goToView(router, "cold-email");
   }
 
   function exportCsv() {
@@ -314,7 +327,7 @@ export default function LeadFinder() {
                         <span style={{ background: "#FEF3C7", color: "#92400E", padding: "2px 7px", borderRadius: 4 }}>{l.email_status}</span>
                       ) : null}
                     </div>
-                    <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
+                    <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {l.linkedin_url && (
                         <a href={safeUrl(l.linkedin_url)} target="_blank" rel="noopener noreferrer" style={{ padding: "5px 10px", background: "#0A66C2", color: "#fff", borderRadius: 5, fontSize: "0.72rem", fontWeight: 700, textDecoration: "none" }}>
                           in LinkedIn
@@ -330,6 +343,12 @@ export default function LeadFinder() {
                           🌐 Site
                         </a>
                       )}
+                      <button
+                        onClick={() => sendToColdEmail(l)}
+                        style={{ padding: "5px 10px", background: "#EDE9FE", border: "1.5px solid #6366F1", color: "#4F46E5", borderRadius: 5, fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}
+                      >
+                        ✉ Write cold email
+                      </button>
                     </div>
                   </div>
                 ))}
