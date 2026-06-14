@@ -28,6 +28,17 @@ interface Summary {
   platforms?: string[];
 }
 
+interface Tags {
+  ogTitle?: string;
+  ogDesc?: string;
+  ogImage?: string;
+  ogType?: string;
+  ogUrl?: string;
+  twCard?: string;
+  twImage?: string;
+  twTitle?: string;
+}
+
 interface RunResult {
   ok: boolean;
   error?: string;
@@ -35,6 +46,7 @@ interface RunResult {
   grade: string;
   score: number;
   summary?: Summary;
+  tags?: Tags;
   checks?: Check[];
 }
 
@@ -99,6 +111,154 @@ export default function SocialTags() {
     loadList();
   }
 
+  function renderSharePreviews(r: RunResult) {
+    const t = r.tags || {};
+    const pageHost = (() => { try { return new URL(r.url).hostname.replace(/^www\./, ""); } catch { return r.url; } })();
+    const ogImg = t.ogImage || "";
+    const ogTitle = t.ogTitle || "";
+    const ogDesc = t.ogDesc || "";
+    const twImg = t.twImage || ogImg;
+    const twTitle = t.twTitle || ogTitle;
+    const twDesc = ogDesc;
+    const twCard = t.twCard || "";
+    const isLargeCard = !twCard || twCard === "summary_large_image" || twCard === "app";
+
+    const imgPlaceholder = (
+      <div
+        style={{
+          background: "#f1f5f9",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#94a3b8",
+          fontSize: "0.8rem",
+          fontStyle: "italic",
+        }}
+      >
+        No image
+      </div>
+    );
+
+    return (
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, marginBottom: 12, fontSize: "0.9rem", color: "#475569", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          Share previews
+        </div>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+
+          {/* Facebook / LinkedIn OG card */}
+          <div style={{ flex: "1 1 280px", maxWidth: 420 }}>
+            <div style={{ fontSize: "0.78rem", color: "#64748b", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: "1rem" }}>𝑓</span> Facebook / LinkedIn
+            </div>
+            <div
+              style={{
+                border: "1px solid #d9d9d9",
+                borderRadius: 8,
+                overflow: "hidden",
+                background: "#fff",
+                fontFamily: "Helvetica Neue, Arial, sans-serif",
+              }}
+            >
+              <div style={{ width: "100%", aspectRatio: "1200/630", position: "relative", background: "#f1f5f9" }}>
+                {ogImg ? (
+                  <img
+                    src={ogImg}
+                    alt="OG preview"
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                  />
+                ) : imgPlaceholder}
+              </div>
+              <div style={{ padding: "10px 12px 12px", borderTop: "1px solid #e4e4e4", background: "#f2f3f5" }}>
+                <div style={{ fontSize: "0.7rem", color: "#606770", textTransform: "uppercase", marginBottom: 3 }}>{pageHost}</div>
+                <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#1c1e21", lineHeight: 1.3, marginBottom: 4 }}>
+                  {ogTitle || <em style={{ color: "#94a3b8" }}>No og:title</em>}
+                </div>
+                <div style={{ fontSize: "0.82rem", color: "#606770", lineHeight: 1.4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>
+                  {ogDesc || <em style={{ color: "#94a3b8" }}>No og:description</em>}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* X / Twitter card */}
+          <div style={{ flex: "1 1 280px", maxWidth: 420 }}>
+            <div style={{ fontSize: "0.78rem", color: "#64748b", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: "1rem" }}>𝕏</span> X / Twitter
+              {twCard && (
+                <span style={{ background: "#f1f5f9", borderRadius: 4, padding: "1px 6px", fontSize: "0.72rem", color: "#64748b" }}>
+                  {twCard}
+                </span>
+              )}
+            </div>
+            <div
+              style={{
+                border: "1px solid #cfd9de",
+                borderRadius: 16,
+                overflow: "hidden",
+                background: "#fff",
+                fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+              }}
+            >
+              {isLargeCard ? (
+                <>
+                  <div style={{ width: "100%", aspectRatio: "2/1", position: "relative", background: "#f7f9f9" }}>
+                    {twImg ? (
+                      <img
+                        src={twImg}
+                        alt="Twitter card preview"
+                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                      />
+                    ) : imgPlaceholder}
+                  </div>
+                  <div style={{ padding: "10px 14px 12px" }}>
+                    <div style={{ fontSize: "0.78rem", color: "#536471", marginBottom: 2 }}>{pageHost}</div>
+                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f1419", lineHeight: 1.3 }}>
+                      {twTitle || <em style={{ color: "#94a3b8" }}>No title</em>}
+                    </div>
+                    {twDesc && (
+                      <div style={{ fontSize: "0.82rem", color: "#536471", marginTop: 2, lineHeight: 1.4 }}>
+                        {twDesc.length > 120 ? twDesc.slice(0, 120) + "…" : twDesc}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                /* summary card — thumbnail left */
+                <div style={{ display: "flex", gap: 0 }}>
+                  <div style={{ width: 120, minHeight: 120, flexShrink: 0, background: "#f7f9f9" }}>
+                    {twImg ? (
+                      <img
+                        src={twImg}
+                        alt="Twitter summary card"
+                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                      />
+                    ) : imgPlaceholder}
+                  </div>
+                  <div style={{ padding: "10px 14px", flex: 1 }}>
+                    <div style={{ fontSize: "0.78rem", color: "#536471", marginBottom: 2 }}>{pageHost}</div>
+                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#0f1419", lineHeight: 1.3 }}>
+                      {twTitle || <em style={{ color: "#94a3b8" }}>No title</em>}
+                    </div>
+                    {twDesc && (
+                      <div style={{ fontSize: "0.82rem", color: "#536471", marginTop: 2, lineHeight: 1.4 }}>
+                        {twDesc.length > 80 ? twDesc.slice(0, 80) + "…" : twDesc}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
   function renderResult(r: RunResult) {
     const gradeColor = GRADE_COLOR[r.grade] || "#64748b";
     const ord: Record<string, number> = { fail: 0, warn: 1, pass: 2 };
@@ -134,6 +294,7 @@ export default function SocialTags() {
             </div>
           </div>
         </div>
+        {renderSharePreviews(r)}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {sortedChecks.map((c, i) => {
             const sColor = c.status === "pass" ? "#16a34a" : c.status === "warn" ? "#ca8a04" : "#dc2626";

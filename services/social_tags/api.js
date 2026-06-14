@@ -146,7 +146,7 @@ function _runChecks(html, finalUrl) {
   if (hasSameAs) C('sameas_schema', 'Organization sameAs links in schema', 'pass', 4, 'sameAs array detected in JSON-LD.', '');
   else C('sameas_schema', 'Organization sameAs links in schema', 'warn', 4, 'No sameAs[] in JSON-LD.', 'In your Organization schema (T25), add a sameAs[] array listing all your social profile URLs. Tells Google these accounts belong to your brand → richer Knowledge Panel.');
 
-  return { checks, ogImage, twCard, hasPixel, hasGA4: hasGA4 || hasGTM, platforms: platforms.map(p => p.name) };
+  return { checks, ogTitle, ogDesc, ogImage, ogType, ogUrl, twCard, twImage, twTitle, hasPixel, hasGA4: hasGA4 || hasGTM, platforms: platforms.map(p => p.name) };
 }
 
 async function _runSocialTags(url, opts = {}) {
@@ -164,6 +164,8 @@ async function _runSocialTags(url, opts = {}) {
   const grade  = score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F';
   return {
     ok: true, url: fetched.finalUrl, score, grade,
+    tags: { ogTitle: r.ogTitle, ogDesc: r.ogDesc, ogImage: r.ogImage, ogType: r.ogType, ogUrl: r.ogUrl,
+            twCard: r.twCard, twImage: r.twImage, twTitle: r.twTitle },
     summary: { ogImage: !!r.ogImage, twCard: r.twCard, hasPixel: r.hasPixel, hasGA4: r.hasGA4, platforms: r.platforms,
       passed: r.checks.filter(c => c.status === 'pass').length,
       warned: r.checks.filter(c => c.status === 'warn').length,
