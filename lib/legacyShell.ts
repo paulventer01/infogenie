@@ -27,11 +27,18 @@ export interface LegacyShell {
 function parse(): LegacyShell {
   const html = readFileSync(join(process.cwd(), "index.html"), "utf8");
 
-  // 1. Collect every <script> (head + body) in document order.
+  // 1. Collect every <script> (head + body) in document order. We tokenize on
+  //    HTML comments OR <script> tags so a `<script>` *mention* inside a comment
+  //    (e.g. the "Plain <script>, load AFTER app.js" note before the public/js
+  //    modules) isn't mistaken for a real opening tag. Previously the bare script
+  //    regex matched that text, then ran its non-greedy body to the next real
+  //    </script> — swallowing the comment tail *and* the following real script
+  //    into a bogus inline blob that threw a SyntaxError when replayed.
   const scripts: LegacyScript[] = [];
-  const scriptRe = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  const tokenRe = /<!--[\s\S]*?-->|<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
   let m: RegExpExecArray | null;
-  while ((m = scriptRe.exec(html)) !== null) {
+  while ((m = tokenRe.exec(html)) !== null) {
+    if (m[0].slice(0, 4) === "<!--") continue; // HTML comment — not a script
     const attrs = m[1] || "";
     const inner = m[2] || "";
     const srcMatch = attrs.match(/\bsrc\s*=\s*["']([^"']+)["']/i);
@@ -50,7 +57,13 @@ function parse(): LegacyShell {
   bodyHtml = bodyHtml.replace(/<nav\b[^>]*id="navbar"[\s\S]*?<\/nav>/i, "");
 
   // 4. Drop all <script> tags — they're replayed in order by <LegacyScripts/>.
-  bodyHtml = bodyHtml.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+  //    Comment-aware (same reason as step 1): keep HTML comments intact and only
+  //    strip real <script> elements, so a `<script>` mention inside a comment
+  //    can't make the strip over-match and corrupt the surrounding markup.
+  bodyHtml = bodyHtml.replace(
+    /<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?<\/script>/gi,
+    (tok) => (tok.slice(0, 4) === "<!--" ? tok : ""),
+  );
 
   // 5. Suppress panels that have been ported to native React (<MigratedPanel/>
   //    renders them instead). For each migrated view we (a) remove its

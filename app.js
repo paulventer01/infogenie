@@ -9422,13 +9422,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
   
-  // Re-run button
-  document.getElementById('reRunBtn').addEventListener('click', () => {
+  // Re-run button (absent when the dashboard view is rendered natively by React)
+  const reRunBtn = document.getElementById('reRunBtn');
+  if (reRunBtn) reRunBtn.addEventListener('click', () => {
     navigateTo('home');
   });
   
-  // View all competitors
-  document.getElementById('viewAllCompBtn').addEventListener('click', () => {
+  // View all competitors (absent when the dashboard view is rendered by React)
+  const viewAllCompBtn = document.getElementById('viewAllCompBtn');
+  if (viewAllCompBtn) viewAllCompBtn.addEventListener('click', () => {
     navigateTo('competitors');
   });
 
@@ -9437,8 +9439,9 @@ document.addEventListener('DOMContentLoaded', () => {
     navigateTo('competitors');
   });
   
-  // Launch campaign button (header) — opens Campaign Launch Brief for top recommended campaign
-  document.getElementById('launchCampaignBtn').addEventListener('click', () => {
+  // Launch campaign button (header; absent when the campaigns view is rendered by React)
+  const launchCampaignBtn = document.getElementById('launchCampaignBtn');
+  if (launchCampaignBtn) launchCampaignBtn.addEventListener('click', () => {
     if (typeof window._igLaunch === 'function' && window._lastCampRecs && window._lastCampRecs.length) {
       window._igLaunch(0);
       return;
@@ -9451,13 +9454,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   
-  // Auto-target audience
-  document.getElementById('autoTargetBtn').addEventListener('click', () => {
+  // Auto-target audience (absent when the audience view is rendered by React)
+  const autoTargetBtn = document.getElementById('autoTargetBtn');
+  if (autoTargetBtn) autoTargetBtn.addEventListener('click', () => {
     showToast('🎯 InfoGenie is targeting all high-performing audience segments automatically — campaigns launching...');
   });
   
-  // Generate more creatives — cycles through creative batches
-  document.getElementById('generateMoreBtn').addEventListener('click', () => {
+  // Generate more creatives — cycles through creative batches (absent when the creative view is rendered by React)
+  const generateMoreBtnEl = document.getElementById('generateMoreBtn');
+  if (generateMoreBtnEl) generateMoreBtnEl.addEventListener('click', () => {
     if (!analysisData) {
       showToast('⚠️ Run an analysis first to generate creatives');
       return;
