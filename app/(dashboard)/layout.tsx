@@ -26,8 +26,17 @@ export default async function DashboardLayout({
 
   return (
     <>
-      {/* Legacy stylesheet (served by Express via the next.config fallback). */}
-      <link rel="stylesheet" href="/style.css" />
+      {/*
+        Legacy stylesheet (served by Express via the next.config fallback).
+        `precedence` makes React treat it as a managed stylesheet *resource*: it
+        is hoisted into <head> — identically on the server and the client — and
+        first paint is blocked until it loads. Without `precedence` React leaves
+        it as a plain in-body <link>, which (a) paints the shell unstyled and
+        then restyles once /style.css arrives (the visible flash/redraw) and
+        (b) is the in-body-vs-hoisted discrepancy that surfaced as a hydration
+        mismatch. Hoisting it as a resource fixes both at the root.
+      */}
+      <link rel="stylesheet" href="/style.css" precedence="default" />
       <Navbar />
       <LegacyBody />
       <MigratedPanel />
