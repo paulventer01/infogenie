@@ -35,6 +35,33 @@ interface GenerateResult {
 
 const TONES = ["direct", "warm", "consultative", "witty", "executive", "curious"];
 
+const LS_KEY = "ce_sender_v1";
+function loadSender(): { brand: string; name: string; offer: string } | null {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === "object" && parsed !== null) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
+function saveSender(brand: string, name: string, offer: string) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({ brand, name, offer }));
+  } catch {
+    // ignore quota errors
+  }
+}
+function clearSender() {
+  try {
+    localStorage.removeItem(LS_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 const labelStyle: React.CSSProperties = {
   display: "block",
   fontSize: "0.7rem",
@@ -83,8 +110,16 @@ export default function ColdEmail() {
   const [emails, setEmails] = useState<ColdEmailItem[] | null>(null);
   const [resultTone, setResultTone] = useState("");
   const [source, setSource] = useState("");
+  const [hasSaved, setHasSaved] = useState(false);
 
   useEffect(() => {
+    const saved = loadSender();
+    if (saved) {
+      if (saved.brand) setBrand(saved.brand);
+      if (saved.name) setName(saved.name);
+      if (saved.offer) setOffer(saved.offer);
+      setHasSaved(true);
+    }
     if (typeof window !== "undefined" && window._cePreset) {
       const p = window._cePreset;
       window._cePreset = null;
@@ -118,6 +153,17 @@ export default function ColdEmail() {
     setEmails(r.emails);
     setResultTone(r.tone || "");
     setSource(r.source || "");
+    saveSender(brand.trim(), name.trim(), offer.trim());
+    setHasSaved(true);
+  }
+
+  function handleClearSaved() {
+    clearSender();
+    setBrand("");
+    setName("");
+    setOffer("");
+    setHasSaved(false);
+    toast("🗑️ Saved sender details cleared");
   }
 
   async function copyEmail(step: number) {
@@ -163,6 +209,36 @@ export default function ColdEmail() {
             marginBottom: 18,
           }}
         >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 8,
+            }}
+          >
+            <span
+              style={{ fontSize: "0.72rem", fontWeight: 700, color: "#6B7280" }}
+            >
+              YOUR DETAILS
+            </span>
+            {hasSaved && (
+              <button
+                onClick={handleClearSaved}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: "0.72rem",
+                  color: "#9CA3AF",
+                  padding: 0,
+                  textDecoration: "underline",
+                }}
+              >
+                clear saved details
+              </button>
+            )}
+          </div>
           <div
             style={{
               display: "grid",
