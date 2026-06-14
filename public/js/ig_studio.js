@@ -72,6 +72,7 @@
     { id:'linksell',  icon:'🔗', title:'Link-in-Bio + Sell', desc:'Public bio page with links, lead opt-in, and Stripe checkout.',  action:()=>navigateTo('linksell') },
   ];
   window.buildStudio = function(){
+    if(!document.getElementById('view-studio')) return;
     const tiles = TILES.map(t=>`
       <button class="studio-tile" data-id="${t.id}" style="text-align:left;background:white;border:1.5px solid #E5E7EB;border-radius:14px;padding:24px;cursor:pointer;transition:all .15s;font-family:inherit">
         <div style="font-size:36px;margin-bottom:12px">${t.icon}</div>
@@ -713,6 +714,7 @@
 
   // ── 6. WHATSAPP CHANNEL view ──────────────────────────────────────────────
   window.buildWhatsApp = async function(){
+    if(!document.getElementById('view-whatsapp')) return;
     const v=_shell('whatsapp','💬 WhatsApp Channel','Send and receive WhatsApp messages via Meta Cloud API.',`
       <div id="wa-status" style="margin-bottom:16px"></div>
       <div style="display:grid;grid-template-columns:300px 1fr;gap:16px;min-height:500px">
@@ -835,6 +837,7 @@
 
   // ── 7. AI VOICE CALLER view ───────────────────────────────────────────────
   window.buildVoiceCaller = async function(){
+    if(!document.getElementById('view-voice-caller')) return;
     _shell('voice-caller','📞 AI Voice Caller','Outbound voice agent + inbound AI receptionist, powered by Vapi.ai.',`
       <div id="vc-status" style="margin-bottom:16px"></div>
       <div style="background:white;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:16px">
@@ -916,6 +919,7 @@
 
   // ── 8. BOOKINGS view ──────────────────────────────────────────────────────
   window.buildBookings = async function(){
+    if(!document.getElementById('view-bookings')) return;
     const slug='default';
     _shell('bookings','📅 Bookings','Configure your availability and share a public booking page.',`
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -951,6 +955,7 @@
 
   // ── 9. SITE BUILDER view ──────────────────────────────────────────────────
   window.buildSiteBuilder = async function(){
+    if(!document.getElementById('view-site-builder')) return;
     _shell('site-builder','🧱 Landing Page Builder','Generate full landing pages from a brief — published instantly.',`
       <div style="background:white;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:16px">
         <h3 style="margin:0 0 12px">Generate a new page</h3>
@@ -1007,6 +1012,7 @@
 
   // ── 10. LINK-IN-BIO view ──────────────────────────────────────────────────
   window.buildLinksell = async function(){
+    if(!document.getElementById('view-linksell')) return;
     const slug='me';
     _shell('linksell','🔗 Link-in-Bio + Checkout','Public bio page with links, lead opt-in and Stripe checkout.',`
       <div style="background:#F0F9FF;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px">Public link: <a href="/bio/${slug}" target="_blank" style="color:#0066FF;font-weight:600">${location.origin}/bio/${slug}</a></div>

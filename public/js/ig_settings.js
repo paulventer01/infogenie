@@ -980,6 +980,7 @@ const INTEGRATIONS = {
 
 function buildSettings() {
   const wrap = document.getElementById('settingsWrap');
+  if (!wrap) return;
   const cats = Object.entries(INTEGRATIONS);
   const firstKey = cats[0][0];
 

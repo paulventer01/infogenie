@@ -5026,6 +5026,7 @@ window.copyYourSwot = copyYourSwot;
 // ===== BUILD CAMPAIGNS =====
 function buildCampaigns() {
   const wrap = document.getElementById('campaignsWrap');
+  if (!wrap) return;
   if (!analysisData) {
     wrap.innerHTML = `
       <div style="text-align:center; padding:60px 24px">

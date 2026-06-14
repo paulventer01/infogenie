@@ -826,6 +826,7 @@ function buildCompCard(c, cardIdx = 0) {
 // BUILD INTELLIGENCE HUB
 // ===================================================
 function buildIntelligence() {
+  if (!document.getElementById('intelligenceWrap')) return;
   const industryKey = analysisData ? analysisData.industryKey : 'marketing';
   const intel = INTELLIGENCE_DB[industryKey] || INTELLIGENCE_DB['marketing'];
   const analysisDomain = analysisData ? analysisData.url : 'yourdomain.com';
