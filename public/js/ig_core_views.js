@@ -65,6 +65,12 @@ window._loadDashboardDiag = async function _loadDashboardDiag(domain) {
 };
 
 function buildDashboard() {
+  // ── React-owned view guard ────────────────────────────────────────────────
+  // Under the Next.js front door, dashboard is in MIGRATED_VIEWS so its legacy
+  // `#view-dashboard` panel (and every target below — #dashTitle, #kpiGrid …)
+  // is stripped from the shell. Bail out instead of dereferencing missing
+  // elements. In production (vanilla SPA) the panel is present and this no-ops.
+  if (!document.getElementById('dashTitle')) return;
   // ── Tear-down between Analyse runs ────────────────────────────────────────
   // Destroy every chart instance this build will recreate so old chart
   // objects, resize listeners and animation frames don't accumulate across
@@ -1634,6 +1640,9 @@ async function generateRedditReply() {
 // ═══════════════════ AUDIENCE + CREATIVE ═══════════════════
 // ===== BUILD AUDIENCE =====
 function buildAudience() {
+  // React owns this view under the Next.js front door — its `#audienceWrap`
+  // target is stripped from the shell. No-op when absent; runs normally in prod.
+  if (!document.getElementById('audienceWrap')) return;
   const { competitors, industry } = analysisData;
   
   // Aggregate all audiences across competitors
@@ -1957,6 +1966,9 @@ function targetAudience(label) {
 // ===================================================
 
 function buildCreative() {
+  // React owns this view under the Next.js front door — its `#creativeWrap`
+  // target is stripped from the shell. No-op when absent; runs normally in prod.
+  if (!document.getElementById('creativeWrap')) return;
   const { url, industry, competitors } = analysisData;
   const wrap = document.getElementById('creativeWrap');
   const domainName = url.split('.')[0];
@@ -2074,8 +2086,18 @@ function buildCompetitorVsCards(industry, competitors, domainName) {
     if (!comp || !comp.campaigns || !comp.campaigns[0]) return '';
     const campaign = comp.campaigns[0];
     const imp = improvements[i] || improvements[0];
-    const ourCTR = (parseFloat(campaign.ctr) + parseFloat(imp.ctrBoost)).toFixed(1) + '%';
-    const ourROAS = (campaign.roas + parseFloat(imp.roasBoost)).toFixed(1) + '×';
+    // campaign.ctr / campaign.roas can be the placeholder '—' (or null) when a
+    // competitor has no metrics. Coerce to a number first and only do the
+    // arithmetic when it's finite — otherwise '—' + number would stringify and
+    // crash on .toFixed. Render a graceful '—' when the base value is missing.
+    const baseCtr = parseFloat(campaign.ctr);
+    const baseRoas = parseFloat(campaign.roas);
+    const ourCTR = Number.isFinite(baseCtr)
+      ? (baseCtr + parseFloat(imp.ctrBoost)).toFixed(1) + '%'
+      : '—';
+    const ourROAS = Number.isFinite(baseRoas)
+      ? (baseRoas + parseFloat(imp.roasBoost)).toFixed(1) + '×'
+      : '—';
     const panelId = `vs-panel-${i}`;
     const vsAudiences = comp.audiences || [];
 

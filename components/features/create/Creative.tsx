@@ -433,10 +433,18 @@ function buildVsCards(
     if (!comp || !comp.campaigns || !comp.campaigns[0]) return;
     const campaign = comp.campaigns[0];
     const imp = improvements[i] || improvements[0];
-    const ourCTR =
-      (parseFloat(campaign.ctr) + parseFloat(imp.ctrBoost)).toFixed(1) + "%";
-    const ourROAS =
-      (campaign.roas + parseFloat(imp.roasBoost)).toFixed(1) + "×";
+    // campaign.ctr / campaign.roas can be the placeholder '—' (or null) when a
+    // competitor has no metrics. Coerce to a number first and only do the
+    // arithmetic when it's finite — otherwise '—' + number would stringify and
+    // crash on .toFixed. Render a graceful '—' when the base value is missing.
+    const baseCtr = parseFloat(String(campaign.ctr));
+    const baseRoas = parseFloat(String(campaign.roas));
+    const ourCTR = Number.isFinite(baseCtr)
+      ? (baseCtr + parseFloat(imp.ctrBoost)).toFixed(1) + "%"
+      : "—";
+    const ourROAS = Number.isFinite(baseRoas)
+      ? (baseRoas + parseFloat(imp.roasBoost)).toFixed(1) + "×"
+      : "—";
     cards.push({
       key: `vs-panel-${i}`,
       compName: comp.name,

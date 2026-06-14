@@ -24,6 +24,10 @@
 
 // ===== BUILD COMPETITORS =====
 function buildCompetitors() {
+  // React owns this view under the Next.js front door — its `#view-competitors`
+  // panel (incl. #compFilterSel / #competitorCardsWrap) is stripped from the
+  // shell. No-op when absent; runs normally in prod's vanilla SPA.
+  if (!document.getElementById('compFilterSel')) return;
   const { competitors } = analysisData;
   
   // Populate filter select
