@@ -82,14 +82,18 @@ Channels: ${channels.length ? channels.join(', ') : 'mixed (Google + Meta)'}`;
 
   const raw = await _openai([{role:'system',content:sys},{role:'user',content:userMsg}]);
   let results = _template(inputs);
-  if (raw) { try { results = JSON.parse(raw); } catch {} }
+  let source = 'template';
+  if (raw) { try { results = JSON.parse(raw); source = 'ai'; } catch {} }
+  // Honesty marker: a template-derived forecast is a synthetic estimate, not a
+  // measured projection — tag it so strict data-mode can withhold/badge it.
+  if (source === 'template') { results.source = 'template'; results._estimated = true; }
 
   const p = await _db.getPool();
   const ins = await p.query(
     `INSERT INTO revenue_forecasts(tenant_id,scenario_name,inputs,results) VALUES($1,$2,$3,$4) RETURNING id,created_at`,
     [tid, scenario_name, JSON.stringify(inputs), JSON.stringify(results)]
   );
-  res.json({ ok:true, id:ins.rows[0].id, scenario_name, inputs, results, created_at:ins.rows[0].created_at });
+  res.json({ ok:true, id:ins.rows[0].id, scenario_name, inputs, results, source, created_at:ins.rows[0].created_at });
 });
 
 router.get('/history', async (req, res) => {
