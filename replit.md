@@ -4,17 +4,18 @@ AI-powered marketing intelligence and campaign automation platform — competito
 
 ## Run
 
-**Production:**
+**Production (Next.js is the front door — `npm start`):**
 
 ```
-node server.js   # (npm start)
+npm run build:next   # build the React/Next output (.next)
+npm start            # → scripts/start.js
 ```
 
-Express listens on port 5000 (preview) and 80 (external). PostgreSQL via `DATABASE_URL`. JSON files in `data/` auto-migrate to `kv_store` at boot.
+`scripts/start.js` is the prod mirror of `scripts/dev.js`: it spawns **Express on internal port 8000** (`EXPRESS_PORT=8000`, `NODE_ENV=production`, `NEXT_FRONT_DOOR=1`) and runs **`next start` on the public port** (`PORT`||5000, `NODE_ENV=production`) with `EXPRESS_PROXY_TARGET` pointed at the internal Express. Next owns the React dashboard + auth pages; everything else (the whole `/api/*` surface, `/index.html`, all legacy assets, `/style.css`, `public/js/*`, `/uploads`) is proxied to Express via `next.config.ts`. Single same-origin so the `infogenie.sid` cookie keeps working across the boundary. If either process dies the launcher tears the other down and exits non-zero so the platform restarts cleanly. Deployment is **vm** (always-running — crons/optimizer/journey ticks + in-memory state); `.replit` build=`npm run build:next`, run=`npm start`. `CREDENTIAL_ENCRYPTION_KEY` is **required** to boot in production. `start:express` keeps the old `node server.js` path for one-off use. Express still listens on 80 (external) via the deploy proxy. PostgreSQL via `DATABASE_URL`. JSON files in `data/` auto-migrate to `kv_store` at boot.
 
 **Dev (Next.js front door — `npm run dev`):**
 
-`scripts/dev.js` spawns Express on internal port **8000** (`EXPRESS_PORT=8000`) and **Next.js (App Router, TS) on port 5000** (the Replit webview). Next owns the new auth pages (`/login`, `/reset-password`, `/accept-invite`) and proxies everything else — the legacy SPA at `/`, all static assets, and the whole `/api/*` surface — back to Express via rewrites in `next.config.ts`. Single same-origin so the `infogenie.sid` cookie keeps working. `npm run build:next` / `npm run lint:next` for the Next layer. The migration is incremental: the vanilla-JS SPA is untouched and still served by Express. Dashboard route-group skeleton (`app/(dashboard)/…`) is wired up in Phase 2 — it deliberately has **no** `page.tsx` yet so `/` still falls through to the Express SPA.
+`scripts/dev.js` spawns Express on internal port **8000** (`EXPRESS_PORT=8000`) and **Next.js (App Router, TS) on port 5000** (the Replit webview). Next owns the new auth pages (`/login`, `/reset-password`, `/accept-invite`) and proxies everything else — the legacy SPA at `/`, all static assets, and the whole `/api/*` surface — back to Express via rewrites in `next.config.ts`. Single same-origin so the `infogenie.sid` cookie keeps working. `npm run build:next` / `npm run lint:next` for the Next layer. Note: `next dev` and `next start` cannot share the `.next` dir, so don't run the dev workflow while exercising the prod launcher locally. The migration is complete: every dashboard view is ported to React (`lib/migratedViews.ts` + `components/features/registry.tsx`), but the legacy vanilla-JS SPA (`index.html`/`app.js`/`public/js/*`) is intentionally kept on disk — Express still serves it behind the cutover until removal is done as a separate cleanup task.
 
 ## Lint
 

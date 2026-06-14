@@ -4,7 +4,9 @@
   "description": "AI Autonomous Marketing Intelligence Platform",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node scripts/start.js",
+    "start:express": "node server.js",
+    "build": "next build",
     "dev": "node scripts/dev.js",
     "dev:express": "node server.js",
     "dev:next": "next dev -p 5000",
