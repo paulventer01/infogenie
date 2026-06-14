@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { pathToViewId } from "@/lib/viewRoutes";
 import { MIGRATED_COMPONENTS } from "@/components/features/registry";
@@ -17,9 +18,19 @@ import { MIGRATED_COMPONENTS } from "@/components/features/registry";
 // visible panel for that route.
 export default function MigratedPanel() {
   const pathname = usePathname();
+  // Feature panels render client-only: the server (and the initial client
+  // render) emit nothing, then we swap in the real component after mount. This
+  // is intentional — these panels are behind auth and load all their data
+  // client-side, so SSR adds no value, and rendering them only after hydration
+  // eliminates an entire class of hydration mismatches (locale-formatted dates,
+  // Date.now()/Math.random(), window/localStorage reads) without having to
+  // audit every one of the 200+ ported components individually.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const view = pathToViewId(pathname);
   const Cmp = view ? MIGRATED_COMPONENTS[view] : undefined;
-  if (!view || !Cmp) return null;
+  if (!mounted || !view || !Cmp) return null;
   return (
     <div id="ig-react-panel" data-react-view={view}>
       <Cmp />
