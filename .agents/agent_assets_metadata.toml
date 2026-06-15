@@ -72,3 +72,9 @@ id = "3HDvoKWluIq_gQs-_1oAM"
 uri = "file://docs/infogenie-features.txt"
 type = "text"
 title = "InfoGenie — Complete Feature Guide"
+
+[[outputs]]
+id = "EAsdue38NJkp_7qONehhQ"
+uri = "file://public/infogenie-features.md"
+type = "text"
+title = "InfoGenie — Complete Feature Guide"
