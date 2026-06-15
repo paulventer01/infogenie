@@ -10,4 +10,5 @@
 - [Next.js Phase 2 SPA shell](nextjs-phase2-spa-shell.md) — Next renders legacy SPA: read index.html server-side, strip navbar+scripts, React navbar mirrors legacy DOM, replay scripts then fire synthetic DOMContentLoaded.
 - [Test suite force-exit](test-suite-force-exit.md) — npm test needs `--test-force-exit` or it passes-but-hangs (open DB handles), making task validation loop forever at RUNNING.
 - [React panel migration](react-panel-migration.md) — Phase 3 registry-driven port of one #view-* panel to React; dev-shell-only suppression, DON'T delete legacy files (prod has no Next yet).
+- [Hydration dev transients](hydration-dev-transients.md) — recurring "hydration crash" on Next dev front door = HMR/Fast-Refresh transient on stale tab, not a shell bug; triage via timestamp-vs-restart before editing.
 - [Migrated builder coverage test](migrated-builder-coverage-test.md) — fleet-wide stripped-DOM crash guard; async builders REJECT (await them), don't eval app.js wholesale, parse navigateTo dispatch for view→builder.
