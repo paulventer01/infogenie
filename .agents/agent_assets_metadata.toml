@@ -78,3 +78,9 @@ id = "EAsdue38NJkp_7qONehhQ"
 uri = "file://public/infogenie-features.md"
 type = "text"
 title = "InfoGenie — Complete Feature Guide"
+
+[[outputs]]
+id = "rzXeTFFD4jvP8KCw4XmFi"
+uri = "file://public/infogenie-integrations.md"
+type = "text"
+title = "InfoGenie — API, LLM & Token Status"
