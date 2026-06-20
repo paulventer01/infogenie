@@ -41,7 +41,7 @@ async function _classifySentiment(posts) {
   const sample = posts.slice(0, 30).map((p, i) => `${i}. ${p.title}${p.selftext ? ' — ' + p.selftext.slice(0, 120) : ''}`).join('\n');
   return await new Promise(resolve => {
     const body = JSON.stringify({
-      model:'gpt-4o-mini', temperature:0.1, max_tokens:1000,
+      model:'gpt-5-mini', temperature:0.1, max_tokens:1000,
       response_format: { type:'json_object' },
       messages:[
         { role:'system', content:'Classify each Reddit post sentiment about the target brand as "positive", "neutral", or "negative". Reply strict JSON only: {"sentiments":["positive","neutral",...]} — array length must equal input count.' },
@@ -222,7 +222,7 @@ router.post('/generate-reply', _safeAsync(async (req, res) => {
   ].filter(Boolean).join('\n');
 
   const bodyStr = JSON.stringify({
-    model: 'gpt-4o-mini', temperature: 0.7, max_tokens: 400,
+    model: 'gpt-5-mini', temperature: 0.7, max_tokens: 400,
     response_format: { type: 'json_object' },
     messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
   });

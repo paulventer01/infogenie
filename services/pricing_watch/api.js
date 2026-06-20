@@ -40,7 +40,7 @@ async function _aiExtractPrice({ markdown, label }) {
 - If you cannot reliably find a price, return null for it.`;
   const user = `Page label: ${label || 'product page'}\n\nMarkdown:\n${(markdown || '').slice(0, 6000)}\n\nExtract now.`;
   const body = JSON.stringify({
-    model:'gpt-4o-mini',
+    model:'gpt-5-mini',
     messages:[{role:'system',content:sys},{role:'user',content:user}],
     response_format:{ type:'json_object' }, temperature:0.1, max_tokens:400,
   });

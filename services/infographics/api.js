@@ -5,6 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const _https = require('https');
+const { normalizeChatParams } = require('../ai_compat');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 
@@ -53,7 +54,7 @@ function _hasOpenAI() {
 
 async function _openaiJSON(messages, maxTokens = 1200) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-  const body = JSON.stringify({ model: 'gpt-4o-mini', messages, temperature: 0.6, max_tokens: maxTokens, response_format: { type: 'json_object' } });
+  const body = JSON.stringify(normalizeChatParams({ model: 'gpt-5-mini', messages, temperature: 0.6, max_tokens: maxTokens, response_format: { type: 'json_object' } }));
   return await new Promise(resolve => {
     const req = _https.request({
       hostname: 'api.openai.com', path: '/v1/chat/completions', method: 'POST',

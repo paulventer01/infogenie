@@ -74,7 +74,7 @@ User metrics: ${JSON.stringify(your_metrics||{})}
 Network medians: ${JSON.stringify(Object.fromEntries(Object.entries(benchmarks).map(([k,v])=>[k,v.median])))}
 Identify where the user is above/below median, explain what it means, and give 3 specific improvement actions.
 Return strict JSON: {"insights":[{"metric":"...","status":"above|below|on_par","gap_pct":0,"takeaway":"...","action":"..."}],"summary":"...","biggest_opportunity":"..."}`;
-    const r = await openai.chat.completions.create({ model:'gpt-4o-mini', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
+    const r = await openai.chat.completions.create({ model:'gpt-5-mini', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed.insights?.[0]?._DUMMY) ai_insights = parsed;
   } catch(e) {

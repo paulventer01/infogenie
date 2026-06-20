@@ -72,7 +72,7 @@ Score each contact. Channels available: ${[...new Set(profiles.rows.map(p=>p.sou
 Contacts: ${JSON.stringify(profiles.rows.map(p=>({id:p.id,email:p.email,company:p.company,stage:p.lifecycle_stage,channels:p.source_channels})))}
 For each, assign: ltv_score (0-10000 USD estimated lifetime value), propensity_score (0-100 purchase likelihood %), lifecycle_stage, next_best_action.
 Return strict JSON: {"scores":[{"id":1,"ltv_score":0,"propensity_score":0,"lifecycle_stage":"...","next_best_action":"..."}]}`;
-    const r = await openai.chat.completions.create({ model:'gpt-4o-mini', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
+    const r = await openai.chat.completions.create({ model:'gpt-5-mini', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed.scores?.[0]?._DUMMY) aiScores = parsed.scores;
   } catch(e) {}

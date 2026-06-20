@@ -27,7 +27,7 @@ Reply strict JSON only:
 }`;
   return await new Promise(resolve => {
     const body = JSON.stringify({
-      model:'gpt-4o-mini', temperature:0.6, max_tokens:1800,
+      model:'gpt-5-mini', temperature:0.6, max_tokens:1800,
       response_format:{ type:'json_object' },
       messages:[{ role:'system', content: sys }, { role:'user', content: user }]
     });

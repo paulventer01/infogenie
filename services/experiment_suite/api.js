@@ -62,7 +62,7 @@ router.post('/:id/analyse', async (req, res) => {
 Experiment: ${JSON.stringify({ name:e.name, type:e.type, hypothesis:e.hypothesis, control:e.control_group, variant:e.variant_group, channels:e.channels, lift_pct:e.lift_pct, confidence_pct:e.confidence_pct, p_value:e.p_value, outcome:e.outcome })}
 Provide: statistical interpretation, whether result is significant (p<0.05), practical significance vs statistical significance, recommended next action, and institutional learning to carry forward.
 Return strict JSON: {"verdict":"significant|not_significant|inconclusive","interpretation":"...","practical_significance":"...","next_action":"...","institutional_learning":"...","confidence_level":"high|medium|low","repeat_recommended":true}`;
-    const r = await openai.chat.completions.create({ model:'gpt-4o-mini', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
+    const r = await openai.chat.completions.create({ model:'gpt-5-mini', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed._DUMMY) analysis = parsed;
   } catch(e2) {}

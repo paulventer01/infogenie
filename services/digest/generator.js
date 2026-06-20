@@ -81,7 +81,7 @@ async function _aiSummary(stats) {
 - recommended_actions: 3-5 concrete next steps the marketing team should take today.
 Be specific, grounded in the data, no fluff or filler.`;
   const body = JSON.stringify({
-    model: 'gpt-4o-mini',
+    model: 'gpt-5-mini',
     messages: [
       { role: 'system', content: sys },
       { role: 'user', content: `Brand: ${stats.brand}\nWindow: last 24h\n\nData:\n${JSON.stringify(stats, null, 2)}` },

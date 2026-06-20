@@ -110,7 +110,7 @@ router.post('/:id/run', async (req, res) => {
     const step = { node_type: node.type, label: node.label || node.type, status: 'skipped', output: null };
     try {
       if (node.type === 'action_ai_generate') {
-        const r = await openai.chat.completions.create({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: node.config?.prompt || 'Generate marketing content' }] });
+        const r = await openai.chat.completions.create({ model: 'gpt-5-mini', messages: [{ role: 'user', content: node.config?.prompt || 'Generate marketing content' }] });
         step.output = r.choices[0].message.content;
         step.status = 'completed';
       } else if (node.type === 'action_http_webhook' && node.config?.url) {

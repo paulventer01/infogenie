@@ -44,7 +44,7 @@ function _openAICall(messages) {
   return new Promise(resolve => {
     const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
     const body = JSON.stringify({
-      model: 'gpt-4o-mini', temperature: 0.3, max_tokens: 3500,
+      model: 'gpt-5-mini', temperature: 0.3, max_tokens: 3500,
       response_format: { type: 'json_object' },
       messages
     });

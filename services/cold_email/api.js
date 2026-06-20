@@ -23,7 +23,7 @@ Hard rules:
 - days_after_prev: 0 for step 1, then 3-5 days between each.`;
   const user = `Sender brand: ${payload.sender_brand||'(unspecified)'}\nSender name: ${payload.sender_name||'a rep'}\nWhat we sell / offer: ${payload.sender_offer||'(unspecified)'}\nTarget company: ${payload.target_company||'(any)'}\nTarget role: ${payload.target_role||'decision maker'}\nTarget pain / trigger: ${payload.target_pain||'(unspecified)'}\nTone: ${payload.tone}\nSteps: ${payload.steps}\nDraft now.`;
   const body = JSON.stringify({
-    model:'gpt-4o-mini',
+    model:'gpt-5-mini',
     messages:[{role:'system',content:sys},{role:'user',content:user}],
     response_format:{type:'json_object'}, temperature:0.7, max_tokens:2200,
   });

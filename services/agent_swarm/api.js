@@ -111,7 +111,7 @@ Previous steps: ${JSON.stringify(stepResults)}
 Your task: ${step.step_name}
 Execute your role and return a concrete output. Be specific and actionable.
 Return strict JSON: {"output":"...","action_taken":"...","next_recommendation":"...","confidence_pct":80}`;
-      const r = await openai.chat.completions.create({ model: 'gpt-4o-mini', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
+      const r = await openai.chat.completions.create({ model: 'gpt-5-mini', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
       const parsed = JSON.parse(r.choices[0].message.content);
       output = parsed.output || '';
       stepResults.push({ step: step.step_name, agent: step.agent_type, result: parsed });
@@ -128,7 +128,7 @@ Return strict JSON: {"output":"...","action_taken":"...","next_recommendation":"
 
   let summary = `Swarm completed ${chain.length} agent steps for ${event_type} event.`;
   try {
-    const sr = await openai.chat.completions.create({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: `Summarise in 1 sentence what this agent swarm accomplished: ${JSON.stringify(stepResults)}` }] });
+    const sr = await openai.chat.completions.create({ model: 'gpt-5-mini', messages: [{ role: 'user', content: `Summarise in 1 sentence what this agent swarm accomplished: ${JSON.stringify(stepResults)}` }] });
     summary = sr.choices[0].message.content || summary;
   } catch (e) {}
 

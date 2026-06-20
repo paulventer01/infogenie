@@ -720,7 +720,7 @@ app.post('/api/competitor-enrich', async (req, res) => {
     if (domainsNoKw.length > 0 && openaiChatWithRetry) {
       try {
         const fallbackCompletion = await openaiChatWithRetry({
-          model: 'gpt-4o-mini',
+          model: 'gpt-5-mini',
           messages: [
             { role: 'system', content: 'You are a senior SEO and digital marketing strategist. Output strict JSON only, no markdown, no code fences.' },
             { role: 'user', content: `Industry: ${industry || 'General'}
@@ -794,7 +794,7 @@ Rules:
 - Weight the largest audience group highest`;
 
         const completion = await openaiChatWithRetry({
-          model: 'gpt-4o-mini',
+          model: 'gpt-5-mini',
           messages: [
             { role: 'system', content: 'You are a precise marketing analyst. Output strict JSON only, no markdown, no code fences.' },
             { role: 'user', content: prompt },

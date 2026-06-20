@@ -1,11 +1,12 @@
 const express = require('express');
 const _https  = require('https');
+const { normalizeChatParams } = require('../ai_compat');
 const router  = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
 
 const MODELS = {
   'gpt-4o':        { provider:'openai',    label:'GPT-4o',              color:'#10A37F' },
-  'gpt-4o-mini':   { provider:'openai',    label:'GPT-4o mini',         color:'#10A37F' },
+  'gpt-5-mini':   { provider:'openai',    label:'GPT-5 mini',          color:'#10A37F' },
   'claude-3-5-sonnet-20241022': { provider:'anthropic', label:'Claude 3.5 Sonnet', color:'#D97706' },
   'claude-3-haiku-20240307':    { provider:'anthropic', label:'Claude 3 Haiku',    color:'#D97706' },
   'gemini-1.5-flash':           { provider:'google',    label:'Gemini 1.5 Flash',  color:'#4285F4' },
@@ -16,7 +17,7 @@ const MODELS = {
 function _callOpenAI(model, messages, max_tokens) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return Promise.resolve(null);
-  const body = JSON.stringify({ model, messages, temperature:0.7, max_tokens: max_tokens||800 });
+  const body = JSON.stringify(normalizeChatParams({ model, messages, temperature:0.7, max_tokens: max_tokens||800 }));
   const start = Date.now();
   return new Promise(resolve => {
     const req = _https.request({ hostname:'api.openai.com', path:'/v1/chat/completions', method:'POST', headers:{ 'Authorization':'Bearer '+key, 'Content-Type':'application/json', 'Content-Length':Buffer.byteLength(body) } }, r => {
@@ -65,7 +66,7 @@ Score each dimension 1-10. Be objective and specific.`;
   const user = `Task type: ${task_type}\nOriginal prompt: ${prompt.slice(0,300)}\n\nModel outputs:\n${resultsText}`;
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return null;
-  const body = JSON.stringify({ model:'gpt-4o-mini', messages:[{role:'system',content:sys},{role:'user',content:user}], response_format:{type:'json_object'}, temperature:0.3, max_tokens:600 });
+  const body = JSON.stringify(normalizeChatParams({ model:'gpt-5-mini', messages:[{role:'system',content:sys},{role:'user',content:user}], response_format:{type:'json_object'}, temperature:0.3, max_tokens:600 }));
   return new Promise(resolve => {
     const req = _https.request({ hostname:'api.openai.com', path:'/v1/chat/completions', method:'POST', headers:{ 'Authorization':'Bearer '+key, 'Content-Type':'application/json', 'Content-Length':Buffer.byteLength(body) } }, r => {
       let d=''; r.on('data',c=>d+=c); r.on('end',()=>{ try { const j=JSON.parse(d); resolve(JSON.parse(j.choices[0].message.content)); } catch { resolve(null); } });
@@ -85,7 +86,7 @@ router.get('/models', (req, res) => {
 });
 
 router.post('/run', async (req, res) => {
-  const { prompt, task_type='general', models:selectedModels=['gpt-4o-mini','claude-3-haiku-20240307','gemini-1.5-flash'], max_tokens=600, system_prompt='' } = req.body || {};
+  const { prompt, task_type='general', models:selectedModels=['gpt-5-mini','claude-3-haiku-20240307','gemini-1.5-flash'], max_tokens=600, system_prompt='' } = req.body || {};
   if (!prompt || prompt.trim().length < 5) return _err(res,400,'prompt_required');
   const messages = system_prompt ? [{role:'system',content:system_prompt},{role:'user',content:prompt}] : [{role:'user',content:prompt}];
   const tasks = (selectedModels||[]).slice(0,5).map(async modelId => {

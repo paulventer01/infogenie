@@ -56,7 +56,7 @@ async function _ai(prompt, opts = {}) {
   if (HAS_OPENAI) {
     try {
       const r = await openai.chat.completions.create({
-        model: opts.model || 'gpt-4o-mini',
+        model: opts.model || 'gpt-5-mini',
         messages: [{ role:'system', content: sys }, { role:'user', content: prompt }],
         response_format: { type: 'json_object' },
         temperature, max_tokens,

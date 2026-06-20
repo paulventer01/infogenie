@@ -23,7 +23,7 @@ Each list item is a single short line (max 140 chars). Counter_plays must be con
   const user = `Competitor: ${competitor}\nDomain: ${domain || 'unknown'}\nOur brand: ${brand || 'unspecified'}\nExtra context: ${context || 'none'}\n\nWrite the battle card.`;
   try {
     const resp = await _openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       messages: [{ role:'system', content: sys }, { role:'user', content: user }],
       response_format: { type:'json_object' },
       temperature: 0.4, max_tokens: 900,
@@ -70,7 +70,7 @@ router.post('/suggest-context', async (req, res) => {
   const user = `Competitor: ${competitor}\nDomain: ${domain || 'unknown'}\nOur brand: ${brand || 'unspecified'}\n\nSuggest the extra context.`;
   try {
     const resp = await _openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       messages: [{ role:'system', content: sys }, { role:'user', content: user }],
       response_format: { type:'json_object' },
       temperature: 0.4, max_tokens: 400,

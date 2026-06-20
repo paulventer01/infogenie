@@ -18724,7 +18724,7 @@ window._sovAISuggest = async function() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         messages: [{
           role: 'user',
           content: `I am reviewing Share of Voice data for "${myDomain}". The following competitor brands are being tracked: ${brands.join(', ')}. Which single brand from this list is the most strategically important to monitor for share of voice against ${myDomain}? Consider factors like market overlap, brand similarity, and competitive threat. Reply with ONLY the exact brand string from the list — no explanation, no punctuation, just the domain.`
@@ -20794,7 +20794,7 @@ window._stKwSuggest = async function() {
   try {
     const r = await fetch('/api/openai', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ model:'gpt-4o-mini', messages:[{ role:'user',
+      body: JSON.stringify({ model:'gpt-5-mini', messages:[{ role:'user',
         content:`Suggest one high-value SEO keyword to track in Google SERP rankings for the website "${domain}". Reply with ONLY the keyword phrase — no explanation, no quotes.`
       }]})
     }).then(x => x.json());

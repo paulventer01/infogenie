@@ -302,7 +302,7 @@ Closes the offline-revenue blind spot. Recommendation-only — never auto-applie
 - **Service**: `services/carousel/{schema,api}.js`
 - **Storage**: `carousels` table.
 - **Structures**: 4 STRUCTURES = pure-info / storytelling / problem-solution / listicle. Each has a 10-slot 10-slide template following the **Hook → Context → Value → Action** framework.
-- **AI**: OpenAI gpt-4o-mini strict-JSON with `/^_DUMMY/i` key gate + template fallback.
+- **AI**: OpenAI gpt-5-mini strict-JSON with `/^_DUMMY/i` key gate + template fallback.
 - **Routes**: `/structures`, `/generate`, `/list`, `/:id`, `DELETE /:id`.
 - **UI**: `/#carousel` under Create nav with structure picker, brand-voice/audience inputs, 10 colour-graded slide cards, "📋 Copy all" + "📤 Open Social Publisher" + "📅 Add to Calendar" handoffs, recent-history list.
 - **Pairs with**: Reddit Pulse "💡 Discover Questions Customers Ask" panel which calls `POST /api/reddit-pulse/discover-questions` (pure Reddit search across 4 query variants `?` / `how to` / `best` / `help`, question-title filter, scored by upvotes+comments×2). "→ Make Carousel" button pre-fills the topic field.

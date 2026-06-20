@@ -32,7 +32,7 @@ Today's date: ${new Date().toISOString().slice(0,10)}
 
 Draft the calendar now.`;
   const body = JSON.stringify({
-    model:'gpt-4o-mini',
+    model:'gpt-5-mini',
     messages: [{ role:'system', content: sys }, { role:'user', content: user }],
     response_format: { type:'json_object' },
     temperature: 0.7, max_tokens: 3500,

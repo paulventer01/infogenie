@@ -74,7 +74,7 @@ async function getPulseHistory(seed, limit = 12, tenantId = null) {
 }
 
 // ── Image / logo recognition (Tier 1 #3) ───────────────────────────────────
-// Calls OpenAI vision (gpt-4o-mini) to extract visible brands/logos/objects
+// Calls OpenAI vision (gpt-5-mini) to extract visible brands/logos/objects
 // from an image URL and caches the result. The frontend wires this into the
 // existing mention tracker so the user finds brand appearances even when
 // nobody @-mentions them.
@@ -91,7 +91,7 @@ async function analyzeImage(sourceUrl, force = false, tenantId = null) {
     hostname:'api.openai.com', path:'/v1/chat/completions', method:'POST',
     headers:{ 'Authorization':'Bearer '+key, 'Content-Type':'application/json' },
   }, {
-    model:'gpt-4o-mini',
+    model:'gpt-5-mini',
     messages:[{
       role:'user',
       content:[

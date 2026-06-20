@@ -236,7 +236,7 @@ export default function SovTracker() {
     const dom = myDomain() || "your brand";
     setAiBusy(true);
     const r = await apiPost<OpenAiResp>("/api/openai", {
-      model: "gpt-4o-mini",
+      model: "gpt-5-mini",
       messages: [
         {
           role: "user",

@@ -256,7 +256,7 @@ Available capability areas: drip campaigns, Amplitude product-analytics agents, 
     let summary = '';
     try {
       const second = await openaiChatWithRetry({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         messages: [
           { role:'system', content:'Summarise the tool result for the user in 1-3 sentences. Speak directly to them. If the result contains an error, explain what went wrong and suggest a next step.' },
           { role:'user',   content:`User said: "${command}"\n\nTool: ${toolName}\nArgs: ${JSON.stringify(toolArgs)}\nResult: ${JSON.stringify(toolResult).slice(0, 4000)}` },
@@ -376,7 +376,7 @@ app.post('/api/mentions', async (req, res) => {
     let sentMap = {};
     try {
       const completion = await openaiChatWithRetry({
-        model:'gpt-4o-mini',
+        model:'gpt-5-mini',
         messages:[
           { role:'system', content:'You are a media sentiment analyst. For each news mention, classify sentiment toward the named brand as exactly one of: "positive", "neutral", "negative". Be conservative — pure factual reporting is neutral; only mark positive/negative when the article frames the brand favourably/unfavourably. Output strict JSON: { "results": [{ "i": 0, "sentiment": "positive", "score": 0.85, "reason": "one short line" }] }. Score is your confidence 0-1.' },
           { role:'user', content: JSON.stringify(sentInput).slice(0, 12000) }
@@ -1785,7 +1785,7 @@ app.post('/api/content-gaps', async (req, res) => {
     }
 
     const completion = await openaiChatWithRetry({
-      model:'gpt-4o-mini',
+      model:'gpt-5-mini',
       messages:[
         { role:'system', content:`You are an SEO content strategist. You receive page-slug lists from a target domain and competitors. Identify the top 8 topic clusters competitors cover that the target does NOT cover (or covers thinly). Output strict JSON: { "gaps": [{ "topic": "...", "rationale": "what evidence in competitor slugs supports this", "suggested_angle": "one specific content angle the target should take", "competitors_covering": ["competitor1.com"], "priority": 1-10 }] }. Be specific — name the actual topic, never generic categories like "blog posts" or "guides". Skip topics already in the target's slugs. Priority 10 = highest opportunity.` },
         { role:'user', content: JSON.stringify({ target:{ domain, slugs:youSummary }, competitors:compSummary }).slice(0, 14000) }
@@ -1905,7 +1905,7 @@ app.get('/api/cross-channel-report', async (req, res) => {
     const livePaid = paidChannels.filter(c => c.ok);
     try {
       const completion = await openaiChatWithRetry({
-        model:'gpt-4o-mini',
+        model:'gpt-5-mini',
         messages:[
           { role:'system', content:'You are a CMO advisor writing a 3-4 sentence executive summary of cross-channel performance. Identify the strongest channel, the weakest, and one concrete next-step recommendation. Be direct, no fluff. Cite which channels are reporting; reference organic visibility or earned media if present.' },
           { role:'user', content: JSON.stringify({

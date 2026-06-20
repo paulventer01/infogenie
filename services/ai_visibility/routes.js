@@ -416,7 +416,7 @@ app.post('/api/ai-visibility-sentiment', async (req, res) => {
 
 Description to grade:
 """${a.text}"""`;
-        const c = await openai.chat.completions.create({ model:'gpt-4o-mini', max_tokens:400, messages:[{ role:'user', content:gp }], response_format:{ type:'json_object' } });
+        const c = await openai.chat.completions.create({ model:'gpt-5-mini', max_tokens:400, messages:[{ role:'user', content:gp }], response_format:{ type:'json_object' } });
         const j = JSON.parse(c.choices?.[0]?.message?.content || '{}');
         return { ...a, sentiment:j.sentiment||'neutral', score:Number(j.score)||0, positives:j.positives||[], negatives:j.negatives||[], narrativeGap:j.narrativeGap||null };
       } catch (e) {

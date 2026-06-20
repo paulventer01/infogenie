@@ -32,7 +32,7 @@ async function _extractIssues(markdown, archiveUrl) {
   const prompt = `From this newsletter archive page (${archiveUrl}), extract the most recent 10 newsletter issues. For each return: subject (exact subject line), sent_date (if shown, ISO or "X days ago"), preview (1 sentence if available), url (link to issue if available). Reply strict JSON: {"issues":[{...}]}. Never invent.\n\nPage content:\n${markdown}`;
   return await new Promise(resolve => {
     const body = JSON.stringify({
-      model:'gpt-4o-mini', temperature:0.1, max_tokens:1500,
+      model:'gpt-5-mini', temperature:0.1, max_tokens:1500,
       response_format:{ type:'json_object' },
       messages:[{ role:'system', content:'You extract structured data from newsletter archive pages. Strict JSON only.' },
                 { role:'user', content: prompt }]

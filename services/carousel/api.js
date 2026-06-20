@@ -87,7 +87,7 @@ function _openaiChat(messages, opts = {}) {
   return new Promise((resolve, reject) => {
     const k = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
     const body = JSON.stringify({
-      model: opts.model || 'gpt-4o-mini',
+      model: opts.model || 'gpt-5-mini',
       messages,
       temperature: opts.temperature ?? 0.7,
       response_format: { type: 'json_object' },

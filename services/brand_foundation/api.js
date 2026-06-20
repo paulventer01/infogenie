@@ -142,7 +142,7 @@ async function _openai(messages, maxTokens=900) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return null;
   const body = JSON.stringify({
-    model:'gpt-4o-mini', messages, response_format:{type:'json_object'},
+    model:'gpt-5-mini', messages, response_format:{type:'json_object'},
     temperature:0.7, max_tokens:maxTokens,
   });
   return await new Promise(resolve => {

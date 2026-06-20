@@ -160,7 +160,7 @@ async function _generateRSACopy({ campaignName, oldHeadlines, oldDescriptions, b
     const sys = 'You are a senior Google Ads RSA copywriter. Output ONLY valid JSON: {"headlines":[5 strings, each ≤30 chars],"descriptions":[2 strings, each ≤90 chars]}. Each headline must be a different angle. Use a clearly different overall tone from the old copy.';
     const user = `Campaign: ${campaignName}\nBrand context: ${brandHint || '(none)'}\nOld headlines that fatigued: ${(oldHeadlines||[]).slice(0,5).join(' | ') || '(none)'}\nOld descriptions that fatigued: ${(oldDescriptions||[]).slice(0,2).join(' | ') || '(none)'}\n\nWrite fresh copy that re-hooks the audience.`;
     const r = await _openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       messages: [{ role:'system', content: sys }, { role:'user', content: user }],
       response_format: { type: 'json_object' },
       max_tokens: 400,

@@ -38,7 +38,7 @@ Generate ${count} script variants. Reply strict JSON:
 Body should be 4-8 short lines, each <12 words. Each line needs spoken text + bold on-screen text + production cue.`;
   return await new Promise(resolve => {
     const body = JSON.stringify({
-      model:'gpt-4o-mini', temperature:0.7, max_tokens:2200,
+      model:'gpt-5-mini', temperature:0.7, max_tokens:2200,
       response_format:{ type:'json_object' },
       messages:[{ role:'system', content: sys }, { role:'user', content: user }]
     });

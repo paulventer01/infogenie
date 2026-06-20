@@ -183,7 +183,7 @@ router.post('/ai-generate', async (req, res) => {
   if (!HAS_OPENAI) return _err(res, 500, 'OpenAI key not configured');
   try {
     const r = await openai.chat.completions.create({
-      model: 'gpt-4o-mini', response_format:{ type:'json_object' }, max_tokens: 2000,
+      model: 'gpt-5-mini', response_format:{ type:'json_object' }, max_tokens: 2000,
       messages: [
         { role:'system', content:`You build conversion-optimised landing pages. Return strict JSON matching this schema:
 {

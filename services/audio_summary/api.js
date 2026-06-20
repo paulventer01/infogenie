@@ -22,7 +22,7 @@ async function _summariseForAudio(title, text) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return null;
   const body = JSON.stringify({
-    model: 'gpt-4o-mini',
+    model: 'gpt-5-mini',
     messages: [{
       role: 'system',
       content: `You are a podcast script writer. Convert the provided article into a natural spoken-word audio summary of approximately 250-300 words. 

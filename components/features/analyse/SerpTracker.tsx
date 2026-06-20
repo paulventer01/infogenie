@@ -175,7 +175,7 @@ export default function SerpTracker() {
     setSuggesting(true);
     try {
       const r = await apiPost<OpenAiResult>("/api/openai", {
-        model: "gpt-4o-mini",
+        model: "gpt-5-mini",
         messages: [
           {
             role: "user",

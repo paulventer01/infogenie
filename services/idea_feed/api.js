@@ -25,7 +25,7 @@ async function _generateIdeas(brandCtx, brand, count = 20) {
   const today = new Date().toISOString().slice(0, 10);
 
   const body = JSON.stringify({
-    model: 'gpt-4o-mini',
+    model: 'gpt-5-mini',
     messages: [
       { role: 'system', content: `${brandCtx ? brandCtx + '\n\n' : ''}You are a senior social media strategist. Generate ${count} fresh content ideas for ${brand || 'the brand'}. Use a variety of content angles from this list: ${angleList}. Return strict JSON:
 {"ideas":[{"angle":"<one of the angles above>","headline":"<scroll-stopping headline, max 10 words>","copy":"<full post copy, 40-80 words, immediately usable, no placeholders>","channel":"<one of: instagram|tiktok|linkedin|x|facebook|youtube|blog|email>","hashtags":["#tag1","#tag2","#tag3"],"cta":"<clear call-to-action>","visual_concept":"<1-sentence image/video direction>"}]}

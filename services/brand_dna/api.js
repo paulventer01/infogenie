@@ -159,7 +159,7 @@ BRAND DNA: voice=${profile.brand_voice}, tone=${profile.tone_descriptors}, style
 CONTENT TO SCORE: "${content}"
 Score on-brand compliance 0-100. Identify specific issues and improvements.
 Return strict JSON: {"score":0,"grade":"A|B|C|D|F","on_brand_elements":["..."],"off_brand_elements":["..."],"banned_phrases_found":["..."],"rewritten_version":"...","improvement_tips":["..."]}`;
-    const r = await openai.chat.completions.create({ model: 'gpt-4o-mini', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
+    const r = await openai.chat.completions.create({ model: 'gpt-5-mini', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed._DUMMY) scoring = parsed;
   } catch (e) {}

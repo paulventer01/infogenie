@@ -13,7 +13,7 @@ function _openAICall(system, user) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return Promise.resolve(null);
   const body = JSON.stringify({
-    model: 'gpt-4o-mini',
+    model: 'gpt-5-mini',
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     response_format: { type: 'json_object' },
     temperature: 0.7, max_tokens: 4000,

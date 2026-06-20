@@ -25,6 +25,7 @@ const FILES = [
   'test/migrated-builders-safety.test.js',
   'test/migrated-builders-coverage.test.js',
   'test/layout-fonts-guard.test.js',
+  'test/gpt5-param-compat.test.js',
 ];
 
 const QUIESCE_MS = 6000; // once tests have printed, this much silence => done

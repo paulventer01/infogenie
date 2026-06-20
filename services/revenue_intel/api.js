@@ -76,7 +76,7 @@ router.post('/score-account', async (req, res) => {
 Account: ${JSON.stringify(acc.rows[0])}
 Recent signals: ${JSON.stringify(signals.rows)}
 Return strict JSON: {"intent_score":0,"engagement_score":0,"pipeline_stage":"...","recommended_play":"...","outreach_angle":"...","buying_committee_size":0,"urgency":"high|medium|low","deal_probability_pct":0,"recommended_actions":["..."]}`;
-    const r = await openai.chat.completions.create({ model:'gpt-4o-mini', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
+    const r = await openai.chat.completions.create({ model:'gpt-5-mini', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed._DUMMY) scoring = parsed;
   } catch(e) {}

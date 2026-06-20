@@ -805,7 +805,7 @@ app.post('/api/templates/recommend', async (req, res) => {
         const promptCtx = `Domain: ${domain || 'unknown'}\nBrand: ${brand || 'unknown'}\nSector: ${sector || 'unknown'}\nTarget keyword: ${keyword || 'unknown'}`;
         const tplList = templates.map(t => `${t.id}. [${t.type}] ${t.title} — ${t.tagline}`).join('\n');
         const completion = await openaiChatWithRetry({
-          model: 'gpt-4o-mini',
+          model: 'gpt-5-mini',
           messages: [
             { role:'system', content:'You are a senior marketing strategist. Score each template 0-100 for fit to the user\'s domain, sector and target keyword. Reply with ONLY a JSON array of objects {"id": string, "score": number 0-100, "rationale": string ≤120 chars}. No prose.' },
             { role:'user', content:`${promptCtx}\n\nTemplates:\n${tplList}\n\nReturn JSON array now.` }
@@ -833,8 +833,8 @@ app.post('/api/templates/recommend', async (req, res) => {
               recommendations.push({ id: t.id, score: _deterministicScore(t), rationale: 'Deterministic fallback score (model omitted this template).' });
             }
           }
-          dataSource = 'openai_gpt-4o-mini';
-          dataOrigin = `OpenAI gpt-4o-mini ranked ${recommendations.length} templates against domain "${domain}" / sector "${sector}" / keyword "${keyword}"`;
+          dataSource = 'openai_gpt-5-mini';
+          dataOrigin = `OpenAI gpt-5-mini ranked ${recommendations.length} templates against domain "${domain}" / sector "${sector}" / keyword "${keyword}"`;
           confidence = 'high';
         }
       } catch (e) {

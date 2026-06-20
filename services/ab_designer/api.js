@@ -30,7 +30,7 @@ ${original}
 """
 Design ${count} variants now (including original as A).`;
   const body = JSON.stringify({
-    model:'gpt-4o-mini',
+    model:'gpt-5-mini',
     messages: [{ role:'system', content: sys }, { role:'user', content: user }],
     response_format: { type:'json_object' },
     temperature: 0.75, max_tokens: 2000,

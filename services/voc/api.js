@@ -64,7 +64,7 @@ Rules:
 - top_quotes: 2-3 short, real-feeling quotes drawn from the actual snippets.
 - recommended_action must be specific (not "do better"); cite the kind of fix (product, comms, support, pricing).`;
     const completion = await openaiChatWithRetry({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       messages: [{ role:'system', content: sys }, { role:'user', content: `Brand: ${brand}\nMentions (${mentions.length}):\n${sample}\n\nCluster now.` }],
       response_format: { type:'json_object' },
       temperature: 0.4,

@@ -10,6 +10,7 @@
 // briefs so the user can close them.
 const _db = require('../../db');
 const _https = require('https');
+const { normalizeChatParams } = require('../ai_compat');
 
 const OPENAI_KEY    = () => process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
 const ANTHROPIC_KEY = () => process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
@@ -40,7 +41,7 @@ async function _callOpenAI(query) {
   const r = await _httpJson({
     hostname:'api.openai.com', path:'/v1/chat/completions', method:'POST',
     headers:{ 'Authorization':'Bearer '+OPENAI_KEY(), 'Content-Type':'application/json' },
-  }, { model:'gpt-4o-mini', messages:[{role:'user', content: PROMPT_PREFIX(query)}], temperature:0.4, max_tokens:400 });
+  }, normalizeChatParams({ model:'gpt-5-mini', messages:[{role:'user', content: PROMPT_PREFIX(query)}], temperature:0.4, max_tokens:400 }));
   if (r.status !== 200) return { error: r.json?.error?.message || ('openai '+r.status) };
   return { text: r.json?.choices?.[0]?.message?.content || '', tokens: r.json?.usage?.total_tokens || 0, citations: [] };
 }
@@ -240,12 +241,12 @@ Examples for an email marketing SaaS:
     const r = await _httpJson({
       hostname:'api.openai.com', path:'/v1/chat/completions', method:'POST',
       headers:{ 'Authorization':'Bearer '+OPENAI_KEY(), 'Content-Type':'application/json' },
-    }, {
-      model:'gpt-4o-mini',
+    }, normalizeChatParams({
+      model:'gpt-5-mini',
       messages:[ { role:'system', content: sys }, { role:'user', content: user } ],
       temperature:0.6, max_tokens:260,
       response_format:{ type:'json_object' }
-    });
+    }));
     if (r.status !== 200) return { ok:false, error: r.json?.error?.message || ('openai '+r.status), prompts: _fallbackPrompts(brand) };
     const raw = r.json?.choices?.[0]?.message?.content || '{}';
     let parsed = {}; try { parsed = JSON.parse(raw); } catch {}

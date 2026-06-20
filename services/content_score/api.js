@@ -244,7 +244,7 @@ function _gptFix(subscore, detail, keyword, pageTitle, maxTokens = 350) {
     const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
     if (!key || /^_DUMMY/i.test(key)) return resolve({ ok: false, suggestion: null });
     const body = JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       temperature: 0.4,
       max_tokens: maxTokens,
       response_format: { type: 'json_object' },

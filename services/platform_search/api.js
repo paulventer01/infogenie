@@ -10,6 +10,7 @@
 const express = require('express');
 const router = express.Router();
 const _https = require('https');
+const { normalizeChatParams } = require('../ai_compat');
 const _db = require('../../db');
 const _tenantCtx = require('../tenants/context');
 
@@ -109,7 +110,7 @@ async function _safeCount(sql, params = []) {
 // ── OpenAI helpers ────────────────────────────────────────────────────────────
 async function _openaiPost(path, body) {
   const key = _openAIKey();
-  const payload = JSON.stringify(body);
+  const payload = JSON.stringify(normalizeChatParams(body));
   return new Promise(resolve => {
     const req = _https.request({
       hostname: 'api.openai.com', path, method: 'POST',
@@ -131,7 +132,7 @@ async function _embed(text) {
 }
 
 async function _openaiChat(messages, maxTokens = 700) {
-  const r = await _openaiPost('/v1/chat/completions', { model: 'gpt-4o-mini', messages, temperature: 0.3, max_tokens: maxTokens });
+  const r = await _openaiPost('/v1/chat/completions', { model: 'gpt-5-mini', messages, temperature: 0.3, max_tokens: maxTokens });
   return r?.choices?.[0]?.message?.content || null;
 }
 
@@ -362,7 +363,7 @@ router.post('/ask', _safe(async (req, res) => {
   const queryVec = await _embed(q);
 
   let chunks = [];
-  let source = 'gpt-4o-mini';
+  let source = 'gpt-5-mini';
 
   if (queryVec && indexCount > 0 && pool && tid) {
     try {
@@ -379,7 +380,7 @@ router.post('/ask', _safe(async (req, res) => {
     // Fallback: build snapshot context
     const ctx = await _buildContext(req);
     contextBlock = JSON.stringify(ctx).slice(0, 12000);
-    source = 'gpt-4o-mini';
+    source = 'gpt-5-mini';
   }
 
   const sys = [
@@ -545,7 +546,7 @@ router.get('/recommend-competitors', _safe(async (req, res) => {
     })).filter(r => r.name && r.url);
   } catch { recommendations = []; }
 
-  res.json({ ok: true, recommendations, source: 'gpt-4o-mini' });
+  res.json({ ok: true, recommendations, source: 'gpt-5-mini' });
 }));
 
 module.exports = router;

@@ -97,7 +97,7 @@ async function _generateCopy({ campaignName, oldHeadline, oldBody, brandHint }) 
     const sys = 'You are a senior direct-response copywriter. Output ONLY valid JSON: {"headline":"...","body":"...","cta":"SHOP_NOW|LEARN_MORE|SIGN_UP|GET_OFFER"}. Headline ≤40 chars. Body ≤125 chars. Use a clearly different angle from the old creative.';
     const user = `Campaign: ${campaignName}\nBrand context: ${brandHint || '(none)'}\nOld headline that fatigued: ${oldHeadline || '(none)'}\nOld body that fatigued: ${oldBody || '(none)'}\n\nWrite a fresh angle that re-hooks the audience.`;
     const r = await _openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       messages: [{ role:'system', content: sys }, { role:'user', content: user }],
       response_format: { type: 'json_object' },
       max_tokens: 250,

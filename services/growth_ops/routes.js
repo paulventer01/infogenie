@@ -151,7 +151,7 @@ app.post('/api/goals/suggest', async (req, res) => {
         ? `Suggest a realistic but ambitious TARGET VALUE for this metric. Return JSON: { "value": <number>, "reason": "<one short sentence>" }.\nMetric: ${meta.label}\nUnit: ${meta.unit || '(count)'}\nDirection: ${meta.direction === 'gte' ? 'higher is better' : 'lower is better'}\nCurrent value: ${current == null ? 'unknown' : current}\nGuidance: aim for a meaningful but achievable improvement over current (typically 15-30%); if current is unknown, propose a sensible industry benchmark.`
         : `Suggest a short, human-friendly LABEL (max 6 words) for a goal tracking this metric. Return JSON: { "label": "<text>", "reason": "<one short sentence>" }.\nMetric: ${meta.label}\nUnit: ${meta.unit || '(count)'}\nCurrent value: ${current == null ? 'unknown' : current}\nGuidance: include the time horizon (e.g. Q-prefix or "next 90 days") and the business intent ("acquisition", "retention", "efficiency").`;
       const completion = await openaiChatWithRetry({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         messages: [
           { role: 'system', content: sys },
           { role: 'user', content: userMsg },

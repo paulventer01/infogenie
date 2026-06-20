@@ -77,7 +77,7 @@ router.post('/call', async (req, res) => {
   const assistant = {
     name: `IG ${goal} agent`,
     firstMessage: `Hi${leadName ? ' ' + leadName : ''}, this is an automated call from InfoGenie. Do you have a quick minute?`,
-    model: { provider:'openai', model:'gpt-4o-mini', messages: [
+    model: { provider:'openai', model:'gpt-5-mini', messages: [
       { role:'system', content: `You are a friendly, concise voice agent calling on behalf of the user's business.
 Goal of this call: ${goal}.
 Script & objectives:
@@ -148,7 +148,7 @@ function _buildInboundAssistant(cfg) {
   return {
     name: 'IG inbound receptionist',
     firstMessage: cfg.greeting,
-    model: { provider: 'openai', model: 'gpt-4o-mini', messages: [{ role: 'system', content: sys }] },
+    model: { provider: 'openai', model: 'gpt-5-mini', messages: [{ role: 'system', content: sys }] },
     voice: { provider: '11labs', voiceId: cfg.voice || 'jennifer' },
     transcriber: { provider: 'deepgram', model: 'nova-2', language: 'en' },
     serverUrl: `${process.env.PUBLIC_URL || `https://${process.env.REPL_SLUG || 'app'}.replit.app`}/api/voice-caller/webhook`,

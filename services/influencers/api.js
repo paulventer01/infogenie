@@ -180,7 +180,7 @@ router.post('/:id/draft-email', async (req, res) => {
     const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
     if (key && !/^_DUMMY/i.test(key)) {
       const body = JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         messages: [
           { role: 'system', content: `You write short, ${tone} influencer outreach emails. Output strict JSON: {"subject":"...","body":"..."} — body has 2-3 short paragraphs, no markdown, ends with a clear ask.` },
           { role: 'user', content: `Influencer: @${inf.handle} (${inf.platform}, ${inf.followers} followers, niche: ${inf.niche || 'unknown'}). Brand: ${brand}. Product: ${product}. Goal: open a paid collaboration conversation.` },

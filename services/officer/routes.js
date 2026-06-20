@@ -175,7 +175,7 @@ Rules:
     let aiResult = null;
     try {
       const completion = await openaiChatWithRetry({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         messages: [
           { role:'system', content: `You are the ${roleSpec.title}. Output strict JSON only — no prose, no markdown. Be specific and quantitative.` },
           { role:'user',   content: prompt },
@@ -248,7 +248,7 @@ app.post('/api/officer/tasks', async (req, res) => {
       try {
         const completion = await Promise.race([
           openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: 'gpt-5-mini',
             response_format: { type: 'json_object' },
             max_tokens: 700,
             temperature: 0.4,
@@ -481,7 +481,7 @@ Return ONLY this JSON:
       try {
         const completion = await Promise.race([
           openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: 'gpt-5-mini',
             response_format: { type: 'json_object' },
             max_tokens: 1800, temperature: 0.3,
             messages: [
@@ -558,7 +558,7 @@ Return ONLY this JSON:
       try {
         const completion = await Promise.race([
           openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: 'gpt-5-mini',
             response_format: { type: 'json_object' },
             max_tokens: 1600, temperature: 0.6,
             messages: [
@@ -678,7 +678,7 @@ async function _generateOfficerReportInternal(role, title, tasks, tid = null) {
     try {
       const completion = await Promise.race([
         openai.chat.completions.create({
-          model: 'gpt-4o-mini', response_format: { type: 'json_object' },
+          model: 'gpt-5-mini', response_format: { type: 'json_object' },
           max_tokens: 1800, temperature: 0.3,
           messages: [
             { role:'system', content:`You are the AI ${title}. Output strict JSON only. Be honest about what was and was not done.` },
@@ -1003,7 +1003,7 @@ async function _runAutonomousMeeting({ manualTrigger = false, tenantId = null } 
     try {
       const completion = await Promise.race([
         openai.chat.completions.create({
-          model: 'gpt-4o-mini', response_format: { type: 'json_object' },
+          model: 'gpt-5-mini', response_format: { type: 'json_object' },
           max_tokens: 1800, temperature: 0.6,
           messages: [
             { role:'system', content:'You are a precise meeting secretary. Output strict JSON only.' },

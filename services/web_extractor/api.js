@@ -1,5 +1,6 @@
 const express = require('express');
 const _https  = require('https');
+const { normalizeChatParams } = require('../ai_compat');
 const _url    = require('url');
 const _dns    = require('dns').promises;
 const router  = express.Router();
@@ -8,7 +9,7 @@ function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg });
 function _openai(messages, opts = {}) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return Promise.resolve(null);
-  const body = JSON.stringify({ model: opts.model || 'gpt-4o-mini', messages, response_format: opts.json ? { type:'json_object' } : undefined, temperature: 0.2, max_tokens: opts.max_tokens || 2000 });
+  const body = JSON.stringify(normalizeChatParams({ model: opts.model || 'gpt-5-mini', messages, response_format: opts.json ? { type:'json_object' } : undefined, temperature: 0.2, max_tokens: opts.max_tokens || 2000 }));
   return new Promise(resolve => {
     const req = _https.request({ hostname:'api.openai.com', path:'/v1/chat/completions', method:'POST', headers:{ 'Authorization':'Bearer '+key, 'Content-Type':'application/json', 'Content-Length':Buffer.byteLength(body) } }, r => {
       let d=''; r.on('data',c=>d+=c); r.on('end',()=>{ try { if (r.statusCode!==200) return resolve(null); const j=JSON.parse(d); resolve(j.choices[0].message.content); } catch { resolve(null); } });

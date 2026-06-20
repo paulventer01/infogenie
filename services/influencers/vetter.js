@@ -80,7 +80,7 @@ Scoring guide:
   const r = await _post('api.openai.com', '/v1/chat/completions',
     { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     JSON.stringify({
-      model: 'gpt-4o-mini', temperature: 0.1, max_tokens: 700,
+      model: 'gpt-5-mini', temperature: 0.1, max_tokens: 700,
       response_format: { type: 'json_object' },
       messages: [{ role: 'system', content: sysMsg }, { role: 'user', content: userMsg }]
     })

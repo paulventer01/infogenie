@@ -36,7 +36,7 @@ Generate a website chatbot config. Reply strict JSON:
 Generate 8-15 FAQ entries based on the description. Cover pricing, product, support, onboarding at minimum. Never invent specific numbers, plan names or features that contradict the description.`;
   return await new Promise(resolve => {
     const body = JSON.stringify({
-      model:'gpt-4o-mini', temperature:0.4, max_tokens:2500,
+      model:'gpt-5-mini', temperature:0.4, max_tokens:2500,
       response_format:{ type:'json_object' },
       messages:[{ role:'system', content: sys }, { role:'user', content: user }]
     });

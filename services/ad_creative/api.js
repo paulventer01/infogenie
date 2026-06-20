@@ -17,7 +17,7 @@ function _openai(messages, opts = {}) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return Promise.resolve(null);
   const body = JSON.stringify({
-    model: opts.model || 'gpt-4o-mini',
+    model: opts.model || 'gpt-5-mini',
     messages,
     response_format: opts.json ? { type:'json_object' } : undefined,
     temperature: opts.temperature ?? 0.7,

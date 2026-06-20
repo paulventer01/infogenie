@@ -25,7 +25,7 @@ Reply strict JSON:
 Heuristics: low engagement (<1 login/wk = +30), declining usage (-MoM = +25), open support tickets unresolved >7d (+20), no recent purchase >90d (+15), NPS <=6 (+15), feature adoption <30% (+10), tenure <90d AND low engagement (+15).`;
   return await new Promise(resolve => {
     const body = JSON.stringify({
-      model:'gpt-4o-mini', temperature:0.2, max_tokens:600,
+      model:'gpt-5-mini', temperature:0.2, max_tokens:600,
       response_format:{ type:'json_object' },
       messages:[{ role:'system', content: sys }, { role:'user', content: user }]
     });

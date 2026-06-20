@@ -10,6 +10,14 @@ const expressSession = require('express-session');
 const PgSession = require('connect-pg-simple')(expressSession);
 const OpenAI    = require('openai');
 const Anthropic  = require('@anthropic-ai/sdk');
+// GPT-5 family params differ from GPT-4o (max_completion_tokens, fixed temperature,
+// reasoning budget). Patch the shared OpenAI SDK once so every chat.completions.create
+// across all services normalizes gpt-5* params transparently. See services/ai_compat.js.
+const _aiCompat = require('./services/ai_compat');
+_aiCompat.patchOpenAI(OpenAI);
+// Also intercept raw fetch/https POSTs to /chat/completions (the many non-SDK
+// helpers) so gpt-5* bodies are normalized regardless of transport.
+_aiCompat.patchHttp();
 const _authService = require('./services/auth/api');
 const _authSchema  = require('./services/auth/schema');
 const _credentialsVault = require('./services/credentials/vault');
@@ -99,12 +107,12 @@ function _rebuildAiClients() {
 // gpt-4o is occasionally returning empty 500s ("500 status code (no body)")
 // from the upstream proxy. Wrapping every call gives us:
 //   1. Two retries on the requested model with short back-off
-//   2. Automatic fallback to gpt-4o-mini (which uses different infra and is
+//   2. Automatic fallback to gpt-5-mini (which uses different infra and is
 //      usually available when gpt-4o is degraded)
 // Returns the same shape as openai.chat.completions.create — throws if every
 // attempt fails so callers can branch into deterministic fallbacks.
 async function openaiChatWithRetry(params, opts = {}) {
-  const { fallbackModel = 'gpt-4o-mini', retries = 2 } = opts;
+  const { fallbackModel = 'gpt-5-mini', retries = 2 } = opts;
   const primary = params.model;
   let primaryErr = null;        // preserve original cause for diagnostics
   let lastTransient = false;
@@ -1013,7 +1021,7 @@ app.post('/api/competitor-spend', async (req, res) => {
         return `${i+1}. ${r.domain}${brand ? ` (${brand})` : ''}`;
       }).join('\n');
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         max_tokens: 600,
         temperature: 0.2,
         response_format: { type: 'json_object' },
@@ -3823,7 +3831,7 @@ DataForSEO signals: ${domainSignals ? JSON.stringify(domainSignals) : 'unavailab
 Known competitors: ${Array.isArray(competitors) && competitors.length ? competitors.slice(0,5).join(', ') : 'none provided'}`;
 
     const gptRes = await openaiChatWithRetry({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       max_tokens: 400

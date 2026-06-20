@@ -57,7 +57,7 @@ Rules:
 
   return await new Promise(resolve => {
     const body = JSON.stringify({
-      model: 'gpt-4o-mini', temperature: 0.4, max_tokens: 600,
+      model: 'gpt-5-mini', temperature: 0.4, max_tokens: 600,
       response_format: { type: 'json_object' },
       messages: [{ role:'system', content: system }, { role:'user', content: userMsg }]
     });

@@ -306,7 +306,7 @@ Model identity: you are ${modelName}. Output strict JSON only.`;
       response_format: { type: 'json_object' },
       temperature: 0.15,
       max_tokens: 2400
-    }, { fallbackModel: 'gpt-4o-mini', retries: 1 })
+    }, { fallbackModel: 'gpt-5-mini', retries: 1 })
       .then(c => JSON.parse(c.choices?.[0]?.message?.content || '{}'))
       .catch(e => { console.log('[ai-validate-metrics] GPT-4o failed:', e.status || '', e.message); return null; });
 

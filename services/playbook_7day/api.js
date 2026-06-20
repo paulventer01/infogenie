@@ -208,7 +208,7 @@ Return ONLY this strict JSON:
 Return 3-5 actions. Be specific to the snapshot — if a number is 0, recommend the activity that fixes it. Never invent data.`;
       try {
         const r = await _openai.chat.completions.create({
-          model: 'gpt-4o-mini', response_format: { type: 'json_object' },
+          model: 'gpt-5-mini', response_format: { type: 'json_object' },
           max_tokens: 900, temperature: 0.4,
           messages: [
             { role: 'system', content: 'You are a strict-JSON marketing strategist. Output only valid JSON matching the requested schema.' },

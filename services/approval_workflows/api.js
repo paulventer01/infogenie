@@ -67,7 +67,7 @@ Description: ${description||''}
 Budget impact: ${budget_impact ? '$'+budget_impact : 'unknown'}
 Channel: ${channel||'unknown'}
 Return strict JSON: {"expected_outcome":"...","confidence_pct":0,"best_case":"...","worst_case":"...","risk_factors":["..."],"reversible":true,"simulation_verdict":"safe|caution|high_risk"}`;
-    const r = await openai.chat.completions.create({ model:'gpt-4o-mini', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
+    const r = await openai.chat.completions.create({ model:'gpt-5-mini', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed._DUMMY) simulation = parsed;
   } catch(e) {}
