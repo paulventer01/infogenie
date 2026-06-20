@@ -12,3 +12,4 @@
 - [React panel migration](react-panel-migration.md) — Phase 3 registry-driven port of one #view-* panel to React; dev-shell-only suppression, DON'T delete legacy files (prod has no Next yet).
 - [Hydration dev transients](hydration-dev-transients.md) — recurring "hydration crash" on Next dev front door = HMR/Fast-Refresh transient on stale tab, not a shell bug; triage via timestamp-vs-restart before editing.
 - [Migrated builder coverage test](migrated-builder-coverage-test.md) — fleet-wide stripped-DOM crash guard; async builders REJECT (await them), don't eval app.js wholesale, parse navigateTo dispatch for view→builder.
+- [Root-layout head hydration](nextjs-head-hydration.md) — keep root <head> free of hand-authored reconciled children (proxy injects devtools script); fonts via next/font + CSS-var-with-literal-fallback so legacy Express path still resolves.

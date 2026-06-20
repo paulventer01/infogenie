@@ -74,7 +74,7 @@
 html { min-height: 100%; width: 100%; scroll-behavior: smooth; }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-inter, 'Inter'), -apple-system, BlinkMacSystemFont, sans-serif;
   background: #0A1628;
   color: var(--text-primary);
   min-height: 100vh;
@@ -316,7 +316,7 @@ body {
   color: white;
   font-size: 0.9375rem;
   padding: 14px 14px;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   letter-spacing: 0.01em;
 }
 .url-field::placeholder { color: rgba(255,255,255,.25); }
@@ -330,7 +330,7 @@ body {
   outline: none;
   cursor: pointer;
   min-width: 155px;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: border-color 0.2s;
 }
 .country-select:focus { border-color: rgba(0,201,200,.4); }
@@ -349,7 +349,7 @@ body {
   gap: 8px;
   transition: all 0.25s;
   white-space: nowrap;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   letter-spacing: 0.01em;
   box-shadow: 0 4px 20px rgba(0,201,200,.3), 0 1px 0 rgba(255,255,255,.15) inset;
   position: relative;
@@ -389,7 +389,7 @@ body {
   outline: none;
   color: white;
   font-size: 0.85rem;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   min-width: 0;
 }
 .industry-field::placeholder { color: rgba(255,255,255,.28); }
@@ -417,7 +417,7 @@ body {
   font-size: 0.8125rem;
   cursor: pointer;
   transition: all 0.2s;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
 }
 .example-chip:hover { background: rgba(0,201,200,.15); border-color: var(--teal); color: var(--teal); }
 
@@ -584,7 +584,7 @@ body {
   font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.2s;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
 }
 .btn-price:hover { border-color: var(--teal); color: var(--teal); }
 .btn-price-featured {
@@ -780,7 +780,7 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
 }
 .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
 .btn-secondary {
@@ -793,7 +793,7 @@ body {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
 }
 .btn-secondary:hover { background: rgba(255,255,255,.12); }
 .btn-link {
@@ -805,7 +805,7 @@ body {
   cursor: pointer;
   padding: 0;
   text-decoration: none;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
 }
 .btn-link:hover { color: var(--cyan); }
 .filter-sel {
@@ -817,7 +817,7 @@ body {
   padding: 9px 14px;
   outline: none;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
 }
 .filter-sel option { background: var(--navy-2); }
 
@@ -1219,7 +1219,7 @@ body {
   font-size: 0.74rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: opacity 0.2s;
   white-space: nowrap;
   text-align: center;
@@ -1238,7 +1238,7 @@ body {
   font-size: 0.74rem;
   font-weight: 600;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: all 0.2s;
   white-space: nowrap;
   text-align: center;
@@ -1291,7 +1291,7 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
 }
 .aud-target-btn:hover { opacity: 0.9; }
 
@@ -1314,7 +1314,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: all 0.2s;
 }
 .pf-btn:hover { border-color: var(--teal); color: var(--teal-dark); }
@@ -1329,7 +1329,7 @@ body {
   font-size: 0.875rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1420,7 +1420,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1436,7 +1436,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: opacity 0.2s;
 }
 .btn-vs-launch:hover { opacity: 0.85; }
@@ -1449,7 +1449,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: all 0.2s;
 }
 .btn-vs-copy:hover { border-color: var(--teal); color: var(--teal); }
@@ -1502,7 +1502,7 @@ body {
   width: 26px; height: 26px;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
 }
 .atp-close:hover { background: rgba(255,255,255,.2); color: white; }
 .atp-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
@@ -1544,7 +1544,7 @@ body {
   font-size: 0.875rem;
   color: var(--navy);
   outline: none;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   width: 110px;
   transition: border-color 0.2s;
 }
@@ -1559,7 +1559,7 @@ body {
   cursor: pointer;
   background: #FFFFFF !important;
   color: #334155 !important;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: all 0.15s;
   text-shadow: none !important;
   -webkit-text-fill-color: #334155 !important;
@@ -1582,7 +1582,7 @@ body {
   font-size: 0.9375rem;
   font-weight: 800;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1639,7 +1639,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: all 0.2s;
 }
 .btn-creative-use:hover { opacity: 0.9; }
@@ -1651,7 +1651,7 @@ body {
   padding: 9px 14px;
   font-size: 0.8125rem;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: all 0.2s;
 }
 .btn-creative-copy:hover { background: var(--gray-200); }
@@ -1713,7 +1713,7 @@ body {
   color: var(--navy);
   cursor: pointer;
   transition: all 0.2s;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   white-space: nowrap;
 }
 .btn-connect:hover { border-color: var(--teal); color: var(--teal); }
@@ -1735,7 +1735,7 @@ body {
   color: var(--navy);
   outline: none;
   transition: border-color 0.2s;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
 }
 .sf-input:focus, .sf-select:focus { border-color: var(--teal); }
 .sf-save {
@@ -1749,7 +1749,7 @@ body {
   cursor: pointer;
   align-self: flex-start;
   transition: all 0.2s;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
 }
 .sf-save:hover { opacity: 0.9; }
 .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); }
@@ -1829,7 +1829,7 @@ body {
   font-size: 0.875rem;
   color: var(--navy);
   outline: none;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: border-color 0.2s;
 }
 .modal-inp:focus { border-color: var(--teal); }
@@ -2039,7 +2039,7 @@ body {
   font-weight: 600;
   padding: 6px 12px;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -2099,7 +2099,7 @@ body {
   font-size: 0.75rem;
   padding: 3px 9px;
   cursor: pointer;
-  font-family: 'Inter',sans-serif;
+  font-family: var(--font-inter, 'Inter'),sans-serif;
   transition: all 0.15s;
 }
 .docs-code-copy:hover { background: rgba(255,255,255,.12); color: #94A3B8; }
@@ -2290,7 +2290,7 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   white-space: nowrap;
 }
 .stab:hover { background: var(--gray-100); color: var(--navy); }
@@ -2467,7 +2467,7 @@ body {
   transition: border-color 0.2s;
 }
 .api-key-inp:focus { border-color: var(--teal); }
-.api-key-inp::placeholder { font-family: 'Inter', sans-serif; letter-spacing: normal; color: var(--gray-300); }
+.api-key-inp::placeholder { font-family: var(--font-inter, 'Inter'), sans-serif; letter-spacing: normal; color: var(--gray-300); }
 .btn-test {
   background: var(--gray-100);
   border: 1.5px solid var(--border);
@@ -2477,7 +2477,7 @@ body {
   font-weight: 600;
   color: var(--gray-600);
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: all 0.2s;
   white-space: nowrap;
 }
@@ -2493,7 +2493,7 @@ body {
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: all 0.2s;
   text-align: center;
 }
@@ -2512,7 +2512,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: all 0.2s;
   white-space: nowrap;
 }
@@ -2529,7 +2529,7 @@ body {
   font-size: 0.875rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: all 0.2s;
   display: flex;
   align-items: center;
@@ -2764,7 +2764,7 @@ body {
   font-size: 0.75rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   white-space: nowrap;
   transition: opacity 0.2s;
 }
@@ -2801,7 +2801,7 @@ body {
   padding: 10px 14px;
   border: 1.5px solid var(--border);
   border-radius: 10px;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   font-size: 0.875rem;
   color: var(--navy);
   background: white;
@@ -2814,7 +2814,7 @@ body {
   padding: 10px 14px;
   border: 1.5px solid var(--border);
   border-radius: 10px;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   font-size: 0.875rem;
   color: var(--navy);
   background: white;
@@ -2829,7 +2829,7 @@ body {
   border: none;
   border-radius: 10px;
   color: white;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   font-size: 0.875rem;
   font-weight: 700;
   cursor: pointer;
@@ -2923,7 +2923,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: opacity 0.2s;
 }
 .btn-signal-counter:hover { opacity: 0.85; }
@@ -2936,7 +2936,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: opacity 0.2s;
 }
 .btn-signal-attack:hover { opacity: 0.88; }
@@ -2986,7 +2986,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   white-space: nowrap;
   transition: all 0.2s;
 }
@@ -3073,7 +3073,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: opacity 0.2s;
   /* Bulletproof clickability — guarantee nothing overlays the button and
      pointer events always reach it (safety against parent CSS rules
@@ -3149,7 +3149,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: all 0.2s;
   margin-top: auto;
 }
@@ -3170,7 +3170,7 @@ body {
   font-size: 0.8125rem;
   font-weight: 700;
   cursor: default;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   margin-top: auto;
 }
 @media (max-width: 640px) { .plan-cards-row { grid-template-columns: 1fr; } }
@@ -3218,7 +3218,7 @@ body {
   font-size: 0.9rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: opacity 0.2s;
 }
 .btn-attack-activate:hover { opacity: 0.88; }
@@ -3233,7 +3233,7 @@ body {
   font-weight: 600;
   color: var(--gray-400);
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: all 0.2s;
 }
 .btn-attack-cancel:hover { background: var(--gray-50); color: var(--gray-600); }
@@ -3317,7 +3317,7 @@ body {
   font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: opacity 0.2s;
 }
 .btn-diff-launch:hover { opacity: 0.88; }
@@ -3371,7 +3371,7 @@ body {
   padding: 5px 14px;
   cursor: pointer;
   white-space: nowrap;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: background 0.2s, border-color 0.2s, color 0.2s;
   flex-shrink: 0;
 }
@@ -3435,7 +3435,7 @@ body {
   border-radius: 20px;
   padding: 4px 14px;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: background .18s;
 }
 .ilb-manage:hover { background: rgba(0,201,200,.1); }
@@ -3563,7 +3563,7 @@ body {
   font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: opacity .2s;
 }
 .btn-qcc-launch:hover { opacity: .88; }
@@ -3577,7 +3577,7 @@ body {
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   transition: all .2s;
 }
 .btn-qcc-discard:hover { background: #FEF2F2; color: #991B1B; border-color: #FECACA; }
@@ -3780,7 +3780,7 @@ input:focus, textarea:focus, select:focus {
   background: linear-gradient(135deg, #0D1F3C, #0F2A4A);
   color: rgba(255,255,255,.93);
   font-size: 0.72rem;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-inter, 'Inter'), sans-serif;
   font-weight: 500;
   line-height: 1.5;
   padding: 8px 12px;
@@ -3812,7 +3812,7 @@ input:focus, textarea:focus, select:focus {
 
 /* ─── Typography overhaul ─── */
 body {
-  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), var(--font-inter, 'Inter'), -apple-system, sans-serif !important;
   background: #F2F5FA !important;
 }
 
@@ -3829,7 +3829,7 @@ body {
 .module-card h3,
 .price-name,
 h1, h2, h3 {
-  font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif !important;
+  font-family: 'Space Grotesk', var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
 }
 
 /* ─── Navbar 3.0 — Two-row sticky navbar ─────────────────────────────── */
@@ -3931,7 +3931,7 @@ h1, h2, h3 {
   flex-shrink: 0;
   white-space: nowrap;
   letter-spacing: 0;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
   color: rgba(255,255,255,.65);
   transition: color .15s, background .15s;
   text-decoration: none;
@@ -3971,7 +3971,7 @@ h1, h2, h3 {
   padding: 0 3px 0 8px;
   flex-shrink: 0;
   align-self: center;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
   white-space: nowrap;
   pointer-events: none;
   user-select: none;
@@ -3997,7 +3997,7 @@ h1, h2, h3 {
 }
 
 .nav-plan-badge {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   font-size: 0.65rem !important;
   padding: 3px 10px !important;
   background: linear-gradient(135deg, rgba(0,201,200,.25), rgba(0,102,255,.2)) !important;
@@ -4008,7 +4008,7 @@ h1, h2, h3 {
 .btn-nav-analyse {
   font-size: 0.72rem !important;
   padding: 6px 14px !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
 }
 
 /* ─── Hero 3.0 — vivid, dramatic, fresh ─── */
@@ -4067,7 +4067,7 @@ h1, h2, h3 {
   background: rgba(0,216,215,.08) !important;
   border: 1px solid rgba(0,216,215,.35) !important;
   color: #5EECEC !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   font-size: 0.72rem !important;
   font-weight: 700 !important;
   padding: 7px 20px !important;
@@ -4149,7 +4149,7 @@ h1, h2, h3 {
   color: rgba(255,255,255,.55) !important;
   font-size: 0.8rem !important;
   margin-bottom: 16px !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
 }
 
 .url-field-wrap {
@@ -4165,7 +4165,7 @@ h1, h2, h3 {
 }
 
 .url-field {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   font-size: 0.9375rem !important;
 }
 
@@ -4173,13 +4173,13 @@ h1, h2, h3 {
   background: rgba(255,255,255,.06) !important;
   border: 1px solid rgba(255,255,255,.1) !important;
   border-radius: 10px !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
 }
 
 .btn-analyse {
   background: linear-gradient(135deg, #00D8D7 0%, #0070FF 100%) !important;
   border-radius: 10px !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   font-size: 0.9rem !important;
   font-weight: 700 !important;
   letter-spacing: 0.01em !important;
@@ -4192,11 +4192,11 @@ h1, h2, h3 {
 }
 
 .industry-field {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
 }
 
 .example-chip {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   font-size: 0.76rem !important;
   background: rgba(255,255,255,.05) !important;
   border: 1px solid rgba(255,255,255,.1) !important;
@@ -4219,7 +4219,7 @@ h1, h2, h3 {
 
 .stat-lbl {
   font-size: 0.72rem !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   font-weight: 500 !important;
   letter-spacing: 0.02em !important;
 }
@@ -4252,13 +4252,13 @@ body.dashboard-active,
 }
 
 .view-sub {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   color: #FFFFFF !important;
   opacity: .95;
 }
 
 .breadcrumb {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   font-size: 0.65rem !important;
   letter-spacing: 0.12em !important;
 }
@@ -4269,7 +4269,7 @@ body.dashboard-active,
   border-radius: 14px !important;
   border: 1px solid #E8EEF8 !important;
   box-shadow: 0 1px 3px rgba(10,20,50,.06), 0 6px 20px rgba(10,20,50,.06) !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
 }
 
 .kpi-value {
@@ -4279,7 +4279,7 @@ body.dashboard-active,
 }
 
 .kpi-label {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   font-size: 0.68rem !important;
   letter-spacing: 0.09em !important;
 }
@@ -4338,7 +4338,7 @@ body.dashboard-active,
   border: 1px solid #E8EEF8 !important;
   border-radius: 16px !important;
   box-shadow: 0 1px 3px rgba(10,20,50,.06), 0 6px 20px rgba(10,20,50,.06) !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
 }
 
 .module-card h3 {
@@ -4348,7 +4348,7 @@ body.dashboard-active,
 }
 
 .module-card p {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   color: #607090 !important;
 }
 
@@ -4359,14 +4359,14 @@ body.dashboard-active,
 
 /* ─── Primary/secondary buttons 3.0 ─── */
 .btn-primary {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   font-weight: 700 !important;
   letter-spacing: 0.01em !important;
   border-radius: 9px !important;
 }
 
 .btn-secondary {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
 }
 
 /* ─── Pricing cards 3.0 ─── */
@@ -4375,7 +4375,7 @@ body.dashboard-active,
   border: 1px solid #E8EEF8 !important;
   border-radius: 18px !important;
   box-shadow: 0 1px 3px rgba(10,20,50,.06), 0 8px 28px rgba(10,20,50,.06) !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
 }
 
 .price-popular {
@@ -4409,7 +4409,7 @@ body.dashboard-active,
   border: 1px solid rgba(0,216,215,.15) !important;
   border-radius: 20px !important;
   box-shadow: 0 40px 120px rgba(0,0,0,.7) !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
 }
 
 .loading-brand {
@@ -4428,7 +4428,7 @@ body.dashboard-active,
 }
 
 .section-sub {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   color: #5A7090 !important;
 }
 
@@ -4442,13 +4442,13 @@ body.dashboard-active,
 
 /* ─── Toast / notification refinement ─── */
 .toast, .notification {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   border-radius: 12px !important;
 }
 
 /* ─── General text refinement ─── */
 p, span, label, td, li {
-  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), var(--font-inter, 'Inter'), sans-serif;
 }
 
 /* ─── Scrollbar ─── */
@@ -4499,7 +4499,7 @@ p, span, label, td, li {
   cursor: pointer !important;
   padding: 0 16px !important;
   height: 100% !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   font-size: 0.78rem !important;
   font-weight: 600 !important;
   color: rgba(255,255,255,.5) !important;
@@ -4656,7 +4656,7 @@ p, span, label, td, li {
   gap: 0 !important;
   padding: 0 !important;
   border-radius: 9px !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   font-size: 0.82rem !important;
   font-weight: 500 !important;
   color: rgba(255,255,255,.62) !important;
@@ -4809,7 +4809,7 @@ p, span, label, td, li {
   font-weight: 500 !important;
   cursor: pointer !important;
   transition: all .15s !important;
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
 }
 .example-chip:hover {
   background: rgba(0,201,200,.12) !important;
@@ -4885,7 +4885,7 @@ p, span, label, td, li {
 .hero-stat:first-child { padding-left: 0 !important; }
 .hero-stat:last-child  { border-right: none !important; }
 .stat-num {
-  font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif !important;
+  font-family: 'Space Grotesk', var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
   font-size: 1.65rem !important;
   font-weight: 800 !important;
   color: #fff !important;
@@ -5002,7 +5002,7 @@ p, span, label, td, li {
   outline: none;
   color: white;
   font-size: 0.9rem;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
   width: 100%;
 }
 .serp-search-input::placeholder { color: rgba(255,255,255,.3); }
@@ -5027,7 +5027,7 @@ p, span, label, td, li {
   padding: 8px 18px;
   font-size: 0.82rem;
   font-weight: 700;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
   cursor: pointer;
   transition: opacity .15s, transform .15s;
 }
@@ -5052,7 +5052,7 @@ p, span, label, td, li {
   padding: 4px 12px;
   cursor: pointer;
   transition: background .15s, border-color .15s;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
 }
 .serp-chip:hover { background: rgba(0,201,200,.16); border-color: rgba(0,201,200,.4); }
 
@@ -5217,7 +5217,7 @@ p, span, label, td, li {
   margin: 0 4px 6px 0;
   cursor: pointer;
   transition: background .15s, border-color .15s;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
 }
 .serp-related-chip:hover { background: rgba(0,201,200,.1); border-color: rgba(0,201,200,.3); color: #00C9C8; }
 
@@ -5251,7 +5251,7 @@ p, span, label, td, li {
   padding: 5px 14px;
   cursor: pointer;
   transition: all .15s;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
 }
 .ba-tag:hover, .ba-tag.active {
   background: rgba(0,201,200,.15);
@@ -5267,7 +5267,7 @@ p, span, label, td, li {
   padding: 7px 14px;
   outline: none;
   width: 200px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
   transition: border-color .15s;
 }
 .ba-search:focus { border-color: rgba(0,201,200,.4); }
@@ -5440,7 +5440,7 @@ p, span, label, td, li {
   font-size: 0.68rem;
   font-weight: 700;
   cursor: pointer;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
   transition: opacity .15s;
 }
 .ba-card-btn:hover { opacity: .8; }
@@ -5514,7 +5514,7 @@ p, span, label, td, li {
 .cs-role-btn {
   padding:6px 16px; border-radius:8px; border:none; font-size:0.75rem; font-weight:800;
   cursor:pointer; color:#FFFFFF; background:transparent;
-  font-family:'Plus Jakarta Sans',sans-serif; transition:all .15s;
+  font-family:var(--font-jakarta, 'Plus Jakarta Sans'),sans-serif; transition:all .15s;
   text-shadow: 0 1px 2px rgba(0,0,0,0.25);
 }
 .cs-role-btn.active { background:linear-gradient(135deg,#7C3AED,#4F46E5); color:#FFFFFF; box-shadow:0 2px 8px rgba(124,58,237,.45); text-shadow:none; }
@@ -5614,7 +5614,7 @@ p, span, label, td, li {
   font-weight: 600;
   color: #00C9C8;
   cursor: pointer;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
   transition: all .15s;
 }
 .mc-toggle-btn:hover {
@@ -5649,7 +5649,7 @@ p, span, label, td, li {
   font-weight: 700;
   color: white;
   cursor: pointer;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
   transition: all .15s;
   box-shadow: 0 2px 10px rgba(0,102,255,.3);
 }
@@ -5705,7 +5705,7 @@ p, span, label, td, li {
   padding: 9px 12px;
   font-size: 0.82rem;
   color: white;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
 }
 .mc-input::placeholder { color: rgba(255,255,255,.3); }
 
@@ -5718,7 +5718,7 @@ p, span, label, td, li {
   padding: 0 16px;
   cursor: pointer;
   height: 100%;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
   transition: background .15s;
   white-space: nowrap;
   align-self: stretch;
@@ -5780,7 +5780,7 @@ p, span, label, td, li {
   font-weight: 700;
   color: #93C5FD;
   cursor: pointer;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif;
   transition: all .15s;
   white-space: nowrap;
 }

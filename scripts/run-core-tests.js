@@ -24,6 +24,7 @@ const FILES = [
   'test/data-mode-charts.test.js',
   'test/migrated-builders-safety.test.js',
   'test/migrated-builders-coverage.test.js',
+  'test/layout-fonts-guard.test.js',
 ];
 
 const QUIESCE_MS = 6000; // once tests have printed, this much silence => done
