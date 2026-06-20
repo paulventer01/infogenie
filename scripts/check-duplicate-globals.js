@@ -56,6 +56,8 @@ const ALLOWLIST = new Map([
     'Intentional load-time override: ig_creative_suite.js re-defines window._ccGo (originally defined in app.js) to inject the selected language before delegating. Pinned by LOAD_ORDER_CONSTRAINTS in scripts/check-script-tags.js so the wrap always loads after app.js.'],
   ['buildSettings',
     'Intentional load-time wrap: ig_content_pro.js wraps window.buildSettings (defined in ig_settings.js) to inject the WordPress settings card. Pinned by LOAD_ORDER_CONSTRAINTS in scripts/check-script-tags.js so ig_settings.js loads first.'],
+  ['navigateTo',
+    'Intentional load-time decorator chain: navigateTo is defined in app.js and each of ig_advanced_features.js, ig_agentic_suite.js, ig_moat_features.js and ig_strategic_features.js re-wraps window.navigateTo (capturing _origNav = window.navigateTo, delegating to it, then registering its own feature view-builders). Each wrap must reuse the same global name so the chain composes; renaming would break the delegation. The cross-file wraps load AFTER app.js (auto-discovered as load-order constraints by scripts/check-script-tags.js).'],
 ]);
 
 // Browser-owned globals that are never feature exports. `window.onX = ...` event
