@@ -60,7 +60,7 @@ ${extra ? `Additional context: ${extra}` : ''}
 Build the full ${num_slides || 12}-slide deck now.`;
 
   const body = JSON.stringify({
-    model: 'gpt-4o',
+    model: 'gpt-5',
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     response_format: { type: 'json_object' },
     temperature: 0.7,

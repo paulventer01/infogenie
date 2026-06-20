@@ -36,7 +36,7 @@ Generate 8 ranked marketing recommendations across different categories (budget,
 Each must have a specific action, expected impact with numbers, confidence %, cost estimate, and time-to-result.
 Rank by priority_score (0-100). Categories: ${CATEGORIES.join(', ')}.
 Return strict JSON: {"recommendations":[{"category":"...","title":"...","recommendation":"...","expected_impact":"e.g. +12% ROAS in 3 weeks","confidence_pct":75,"cost_estimate":"$0 - no spend required","time_to_result":"2-3 weeks","priority_score":88,"data_sources":"optimizer + competitive data"}],"summary":"...","top_opportunity":"..."}`;
-    const r = await openai.chat.completions.create({ model:'gpt-4o', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
+    const r = await openai.chat.completions.create({ model:'gpt-5', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed.recommendations?.[0]?._DUMMY) recommendations = parsed;
   } catch(e) {}

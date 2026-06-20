@@ -226,7 +226,7 @@ app.post('/api/assistant/command', async (req, res) => {
 Available capability areas: drip campaigns, Amplitude product-analytics agents, blended ad performance/CAC, goals CRUD.`;
   try {
     const first = await openaiChatWithRetry({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [
         { role:'system', content: sysPrompt },
         { role:'user',   content: command + (confirm ? '\n\n[User has explicitly confirmed any destructive action.]' : '') },

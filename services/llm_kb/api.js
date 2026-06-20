@@ -68,7 +68,7 @@ For each entry, write content specifically designed for LLM citation:
 - Use natural language that mirrors how humans ask questions in LLMs
 
 Return strict JSON: {"entries":[{"entry_type":"...","title":"...","content":"...","seo_keywords":"..."}]}`;
-    const r = await openai.chat.completions.create({ model: 'gpt-4o', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
+    const r = await openai.chat.completions.create({ model: 'gpt-5', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed.entries?.[0]?._DUMMY) entries = parsed.entries;
   } catch (e) {}

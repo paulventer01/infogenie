@@ -52,7 +52,7 @@ Return strict JSON:
   "rewritten_version": "...",
   "summary": "..."
 }`;
-    const r = await openai.chat.completions.create({ model:'gpt-4o', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}], max_tokens:1800 });
+    const r = await openai.chat.completions.create({ model:'gpt-5', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}], max_tokens:1800 });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (parsed.flags?.[0]?._DUMMY) throw new Error('dummy');
     results = parsed;

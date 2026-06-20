@@ -161,7 +161,7 @@ Description: "${description}"
 
 Build a practical workflow with 3-6 nodes. Each node should have a type, label, and config object.
 Return strict JSON: {"name":"...","trigger_type":"...","trigger_config":{},"nodes":[{"type":"...","label":"...","config":{}}],"description":"...","estimated_time_to_complete":"..."}`;
-    const r = await openai.chat.completions.create({ model: 'gpt-4o', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
+    const r = await openai.chat.completions.create({ model: 'gpt-5', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed._DUMMY) built = parsed;
   } catch (e) {}

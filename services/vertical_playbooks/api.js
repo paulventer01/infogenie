@@ -165,7 +165,7 @@ Return strict JSON matching this structure:
   "benchmarks":{"key_metric_1":0},
   "phases":[{"week":"1-2","title":"...","tasks":["..."]}]
 }`;
-    const r = await openai.chat.completions.create({ model:'gpt-4o', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}], max_tokens:1500 });
+    const r = await openai.chat.completions.create({ model:'gpt-5', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}], max_tokens:1500 });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (parsed.phases?.[0]?.tasks?.[0]?._DUMMY) throw new Error('dummy');
     content = parsed;

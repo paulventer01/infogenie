@@ -86,7 +86,7 @@ Budget: $${c.budget} | Projected reach: ${(c.projected_reach || 0).toLocaleStrin
 
 ${isAudio ? 'Include: 30-second script, host-read version, sound design notes, call-to-action phrase.' : 'Include: 30-second TV script (scene-by-scene), visual direction, voiceover copy, end card, brand recall technique.'}
 Return strict JSON: {"headline":"...","tagline":"...","script":"...","visual_direction":"...","voiceover":"...","cta":"...","production_notes":"...","brand_recall_technique":"...","audience_hook":"..."}`;
-    const r = await openai.chat.completions.create({ model: 'gpt-4o', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
+    const r = await openai.chat.completions.create({ model: 'gpt-5', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed._DUMMY) brief = parsed;
   } catch (e) {}

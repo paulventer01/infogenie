@@ -10,7 +10,7 @@ async function _tid(req, label) { return _tenantCtx.resolveTenantId(req, { label
 function _openai(messages, opts={}) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return Promise.resolve(null);
-  const body = JSON.stringify({ model:'gpt-4o', messages, response_format:{ type:'json_object' }, temperature:0.2, max_tokens: opts.max_tokens||3000 });
+  const body = JSON.stringify({ model:'gpt-5', messages, response_format:{ type:'json_object' }, temperature:0.2, max_tokens: opts.max_tokens||3000 });
   return new Promise(resolve => {
     const req = _https.request({ hostname:'api.openai.com', path:'/v1/chat/completions', method:'POST', headers:{ 'Authorization':'Bearer '+key, 'Content-Type':'application/json', 'Content-Length':Buffer.byteLength(body) }}, r => {
       let d=''; r.on('data',c=>d+=c); r.on('end',()=>{ try { if(r.statusCode!==200) return resolve(null); const j=JSON.parse(d); resolve(j.choices[0].message.content); } catch { resolve(null); } });

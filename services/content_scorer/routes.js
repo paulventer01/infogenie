@@ -120,7 +120,7 @@ async function _runScoreForCountry({ keyword, target, country, countryCode }) {
     ].join('\n');
     try {
       const r = await openaiChatWithRetry({
-        model:'gpt-4o',
+        model:'gpt-5',
         response_format:{ type:'json_object' },
         messages:[{ role:'system', content: sys }, { role:'user', content: userPrompt }],
         temperature: 0.3,

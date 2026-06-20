@@ -50,7 +50,7 @@ app.post('/api/ai-visibility-accuracy', async (req, res) => {
 
     const probes = {};
     probes.chatgpt = async () => {
-      const c = await openai.chat.completions.create({ model:'gpt-4o', max_tokens:380, messages:[{ role:'user', content:factQ }] });
+      const c = await openai.chat.completions.create({ model:'gpt-5', max_tokens:380, messages:[{ role:'user', content:factQ }] });
       return c.choices?.[0]?.message?.content?.trim() || '';
     };
     probes.claude = async () => {
@@ -113,7 +113,7 @@ Rules:
 - If the source text is empty, return accuracy ~50 and put almost everything in unverifiable.`;
 
         const g = await openai.chat.completions.create({
-          model: 'gpt-4o',
+          model: 'gpt-5',
           max_tokens: 600,
           temperature: 0.1,
           response_format: { type:'json_object' },
@@ -162,7 +162,7 @@ Rules:
 function buildModelProbes() {
   const probes = {};
   probes.chatgpt = async (q, maxTokens=700) => {
-    const c = await openai.chat.completions.create({ model:'gpt-4o', max_tokens:maxTokens, messages:[{ role:'user', content:q }] });
+    const c = await openai.chat.completions.create({ model:'gpt-5', max_tokens:maxTokens, messages:[{ role:'user', content:q }] });
     return c.choices?.[0]?.message?.content?.trim() || '';
   };
   probes.claude = async (q, maxTokens=700) => {
@@ -370,7 +370,7 @@ Return ONLY strict JSON:
  "agreementScore": 0
 }
 agreementScore is 0-100 (how well the models agree on this brand's identity).`;
-        const c = await openai.chat.completions.create({ model:'gpt-4o', max_tokens:900, messages:[{ role:'user', content:consolidationPrompt }], response_format:{ type:'json_object' } });
+        const c = await openai.chat.completions.create({ model:'gpt-5', max_tokens:900, messages:[{ role:'user', content:consolidationPrompt }], response_format:{ type:'json_object' } });
         const j = JSON.parse(c.choices?.[0]?.message?.content || '{}');
         consolidated = j.consolidated || null;
         inconsistencies = Array.isArray(j.inconsistencies) ? j.inconsistencies : [];

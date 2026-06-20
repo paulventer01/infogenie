@@ -86,7 +86,7 @@ router.post('/:id/generate-pitch', async (req, res) => {
     const { pitch_type = 'initial' } = req.body;
 
     const completion = await _oa().chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{
         role: 'user',
         content: `Write a ${pitch_type === 'counter' ? 'counter-offer' : pitch_type === 'follow_up' ? 'follow-up' : 'initial pitch'} email for this influencer brand deal:
@@ -114,7 +114,7 @@ Return JSON: {"subject":"...","body":"...","tone":"...","key_points":["..."]}`
         source: 'template'
       };
     }
-    res.json({ pitch: result, source: result.source || 'gpt-4o' });
+    res.json({ pitch: result, source: result.source || 'gpt-5' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

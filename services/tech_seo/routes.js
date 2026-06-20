@@ -41,7 +41,7 @@ Return a JSON object with an "emails" array of 3 objects with fields: subject, b
 Return ONLY valid JSON.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 1400,
       temperature: 0.6,
@@ -80,7 +80,7 @@ Provide:
 Return a JSON object. Return ONLY valid JSON.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 1200,
       temperature: 0.4,

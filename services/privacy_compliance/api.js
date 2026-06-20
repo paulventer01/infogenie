@@ -139,7 +139,7 @@ Sample data fields: ${JSON.stringify(sample_data || {})}
 
 Assess: GDPR/CCPA consent requirements, CAN-SPAM compliance for email, TCPA for SMS/phone, data retention policies, right-to-erasure readiness, breach notification requirements.
 Return strict JSON: {"overall_risk":"low|medium|high|critical","compliant_jurisdictions":["..."],"non_compliant_areas":["..."],"required_actions":[{"action":"...","jurisdiction":"...","urgency":"immediate|30_days|90_days","description":"..."}],"best_practices":["..."],"estimated_compliance_score":0,"summary":"..."}`;
-    const r = await openai.chat.completions.create({ model: 'gpt-4o', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
+    const r = await openai.chat.completions.create({ model: 'gpt-5', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed._DUMMY) audit = parsed;
   } catch (e) {}

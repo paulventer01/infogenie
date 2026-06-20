@@ -66,7 +66,7 @@ Extract:
 9. Colour of language (what emotions the brand language evokes)
 
 Return strict JSON: {"brand_voice":"...","tone_descriptors":["..."],"writing_style":"...","banned_phrases":["..."],"sentence_length":"short|medium|long","example_headlines":["..."],"example_hooks":["..."],"example_ctas":["..."],"colour_of_language":"...","profile_summary":"..."}`;
-    const r = await openai.chat.completions.create({ model: 'gpt-4o', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
+    const r = await openai.chat.completions.create({ model: 'gpt-5', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed._DUMMY) profile = parsed;
   } catch (e) {}
@@ -124,7 +124,7 @@ CRITICAL: Write in the brand's exact voice. Do not use banned phrases: ${profile
 Follow sentence length preference: ${profile?.sentence_length || 'medium'}.
 
 Return strict JSON: {"variants":[{"content":"...","headline":"...","hook":"...","cta":"..."}]}`;
-    const r = await openai.chat.completions.create({ model: 'gpt-4o', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
+    const r = await openai.chat.completions.create({ model: 'gpt-5', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed.variants?.[0]?._DUMMY) generated = parsed.variants;
   } catch (e) {}

@@ -73,7 +73,7 @@ Return ONLY the complete HTML — no markdown code fences, no explanation.`;
   // OpenAI fallback
   const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   const body = JSON.stringify({
-    model: 'gpt-4o',
+    model: 'gpt-5',
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     temperature: 0.4,
     max_tokens: 5000,

@@ -606,10 +606,10 @@ window.buildDataProvenance = function(){
 
   window._dpLogDemo = async function(){
     await _api('POST','/api/data-provenance/bulk-log',{ records:[
-      { insight_key:'competitor_cpa', insight_label:'Competitor CPA Estimate', source_type:'ai_generated', source_name:'GPT-4o', is_ai_estimated:true, ai_model:'gpt-4o', freshness_hours:24 },
+      { insight_key:'competitor_cpa', insight_label:'Competitor CPA Estimate', source_type:'ai_generated', source_name:'GPT-4o', is_ai_estimated:true, ai_model:'gpt-5', freshness_hours:24 },
       { insight_key:'organic_traffic', insight_label:'Monthly Organic Traffic', source_type:'api', source_name:'DataForSEO', source_url:'https://dataforseo.com', is_ai_estimated:false, freshness_hours:72 },
       { insight_key:'ad_ctr', insight_label:'Ad Click-Through Rate', source_type:'third_party', source_name:'Meta Ads API', is_ai_estimated:false, freshness_hours:1 },
-      { insight_key:'revenue_forecast', insight_label:'90-Day Revenue Forecast', source_type:'ai_generated', source_name:'InfoGenie MMM', is_ai_estimated:true, ai_model:'gpt-4o', freshness_hours:168 },
+      { insight_key:'revenue_forecast', insight_label:'90-Day Revenue Forecast', source_type:'ai_generated', source_name:'InfoGenie MMM', is_ai_estimated:true, ai_model:'gpt-5', freshness_hours:168 },
     ]});
     window._dpLoad();
   };

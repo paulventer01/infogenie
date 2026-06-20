@@ -67,7 +67,7 @@ Return strict JSON: {
   "best_send_time": "...",
   "personalisation_tips": ["..."]
 }`;
-    const r = await openai.chat.completions.create({ model: 'gpt-4o', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
+    const r = await openai.chat.completions.create({ model: 'gpt-5', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed._DUMMY) generated = parsed;
   } catch (e) {}

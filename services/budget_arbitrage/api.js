@@ -77,7 +77,7 @@ Return strict JSON: {
   "urgency": "immediate|today|this_week",
   "risk_level": "low|medium|high"
 }`;
-    const r = await openai.chat.completions.create({ model: 'gpt-4o', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
+    const r = await openai.chat.completions.create({ model: 'gpt-5', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed._DUMMY) analysis = parsed;
   } catch (e) {}

@@ -406,7 +406,7 @@ Return JSON: { "captions": [ { "objection": "...", "caption": "..." }, ... ] }`;
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        model:'gpt-4o',
+        model:'gpt-5',
         messages:[
           {role:'system', content:'You are a senior social media copywriter who specialises in objection-handling content. Return JSON only.'},
           {role:'user',   content:userPrompt}
@@ -493,7 +493,7 @@ Rules:
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        model:'gpt-4o',
+        model:'gpt-5',
         messages:[
           {role:'system', content:'You are a senior B2C/B2B email copywriter. Return JSON only.'},
           {role:'user',   content:userPrompt}

@@ -83,7 +83,7 @@ async function _amplitudeDashboardSessionsFallback(auth, res) {
     let insights = null;
     try {
       const completion = await openaiChatWithRetry({
-        model: 'gpt-4o',
+        model: 'gpt-5',
         response_format: { type: 'json_object' },
         messages: [
           { role:'system', content:'You are a senior product analyst. Given Amplitude session-length data over the last 14 days (last7 vs prev7), surface the most important trends and hypotheses. Respond ONLY with JSON: { "summary": string, "trends": [{ "event": string, "direction": "up"|"down"|"flat", "wowPct": number, "note": string }], "anomalies": [{ "event": string, "severity": "low"|"medium"|"high", "note": string }], "hypotheses": [{ "title": string, "reasoning": string, "test": string }] }.' },
@@ -167,7 +167,7 @@ app.post('/api/amplitude/dashboard-agent', async (req, res) => {
     try {
       const compact = valid.map(e => ({ event:e.event, total:e.total, last7:e.last7, prev7:e.prev7, wowPct:e.wowPct }));
       const completion = await openaiChatWithRetry({
-        model: 'gpt-4o',
+        model: 'gpt-5',
         response_format: { type: 'json_object' },
         messages: [
           { role:'system', content:'You are a senior product analyst. Given Amplitude event volume data (last 14 days, comparing the most recent 7d vs prior 7d), surface the most important trends, anomalies, and root-cause hypotheses. Respond ONLY with JSON: { "summary": string, "trends": [{ "event": string, "direction": "up"|"down"|"flat", "wowPct": number, "note": string }], "anomalies": [{ "event": string, "severity": "low"|"medium"|"high", "note": string }], "hypotheses": [{ "title": string, "reasoning": string, "test": string }] }. Keep prose tight and actionable.' },
@@ -238,7 +238,7 @@ app.post('/api/amplitude/replay-agent', async (req, res) => {
     let insights = null;
     try {
       const completion = await openaiChatWithRetry({
-        model: 'gpt-4o',
+        model: 'gpt-5',
         response_format: { type: 'json_object' },
         messages: [
           { role:'system', content:'You are a UX researcher analysing a product funnel built from Amplitude event data. Identify where users struggle, hypothesise WHY, and recommend session-replay queries to validate. Respond ONLY with JSON: { "summary": string, "biggestDropOff": { "step": string, "dropPct": number, "interpretation": string }, "frictionHypotheses": [{ "hypothesis": string, "evidence": string, "replayQuery": string }], "playlistIdeas": [{ "name": string, "filter": string, "whyItMatters": string }] }. Replay queries should be human-readable filter descriptions like "Users who triggered checkout_started but did not trigger purchase_completed within 5 minutes".' },
@@ -301,7 +301,7 @@ app.post('/api/amplitude/feedback-agent', async (req, res) => {
     let insights = null;
     try {
       const completion = await openaiChatWithRetry({
-        model: 'gpt-4o',
+        model: 'gpt-5',
         response_format: { type: 'json_object' },
         messages: [
           { role:'system', content:'You are a product manager triaging customer feedback signals. Given a list of feedback-shaped Amplitude events and their 30-day volumes, infer what customers are saying and recommend product changes. Respond ONLY with JSON: { "summary": string, "requests": [{ "title": string, "volume": "low"|"medium"|"high", "rationale": string }], "bugs": [{ "title": string, "severity": "low"|"medium"|"high", "rationale": string }], "praises": [{ "title": string, "rationale": string }], "recommendations": [{ "title": string, "impact": "low"|"medium"|"high", "effort": "low"|"medium"|"high", "next_step": string }] }. Use the event names as evidence — they describe what users did. Be concrete, not generic.' },
@@ -379,7 +379,7 @@ AUTHORITATIVE SOURCE (${cleanDomain}):
 """${sourceText}"""`;
 
     const c = await openai.chat.completions.create({
-      model: 'gpt-4o', max_tokens: 1400,
+      model: 'gpt-5', max_tokens: 1400,
       messages: [{ role:'user', content: prompt }],
       response_format: { type:'json_object' },
     });
@@ -437,7 +437,7 @@ ORIGINAL ARTICLE HTML:
 """${html}"""`;
 
     const c = await openai.chat.completions.create({
-      model: 'gpt-4o', max_tokens: 4000,
+      model: 'gpt-5', max_tokens: 4000,
       messages: [{ role:'user', content: prompt }],
       response_format: { type:'json_object' },
     });

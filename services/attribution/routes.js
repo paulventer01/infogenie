@@ -349,7 +349,7 @@ app.post('/api/lookalike/generate', async (req, res) => {
       `Be specific and concrete. Use real platform-recognised category names where possible (e.g. Meta detailed targeting names like "Engaged shoppers", "Online shopping").`,
     ].filter(Boolean).join('\n');
     const r = await openaiChatWithRetry({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [
         { role:'system', content: sys },
         { role:'user',   content: userPrompt },

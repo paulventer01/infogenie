@@ -50,7 +50,7 @@ Return strict JSON:
   "recommendation": "approve|review|reject",
   "recommendation_reason": "..."
 }`;
-    const r = await openai.chat.completions.create({ model:'gpt-4o', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}], max_tokens:2000 });
+    const r = await openai.chat.completions.create({ model:'gpt-5', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}], max_tokens:2000 });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (parsed.proposal?.actions?.[0]?._DUMMY) throw new Error('dummy');
     proposal = parsed.proposal || {};

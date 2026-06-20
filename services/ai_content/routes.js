@@ -79,7 +79,7 @@ Structure your response EXACTLY as plain text (no markdown headers, use emoji bu
 4. [Week 4 action]
 
 Keep the entire response under 350 words. Be specific and actionable.`;
-    const completion = await openai.chat.completions.create({ model:'gpt-4o', messages:[{ role:'user', content:prompt }], max_tokens:500 });
+    const completion = await openai.chat.completions.create({ model:'gpt-5', messages:[{ role:'user', content:prompt }], max_tokens:500 });
     const audit = completion.choices[0]?.message?.content?.trim() || '';
     res.json({ audit });
   } catch(err) {
@@ -124,7 +124,7 @@ Format as plain text (no markdown, use emoji bullets). Structure EXACTLY as belo
 ⭐ BRAND VISIBILITY SCORE: [X/100] — [1-line explanation]
 
 Keep the entire response under 420 words. Be specific and actionable.`;
-    const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], max_tokens: 620 });
+    const completion = await openai.chat.completions.create({ model: 'gpt-5', messages: [{ role: 'user', content: prompt }], max_tokens: 620 });
     const report = completion.choices[0]?.message?.content?.trim() || '';
     res.json({ report });
   } catch(err) {
@@ -249,7 +249,7 @@ WORD COUNT TARGET
 [recommended length]
 
 Keep the total response under 500 words. Be specific, not generic.`;
-    const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: prompt }], max_tokens: 700 });
+    const completion = await openai.chat.completions.create({ model: 'gpt-5', messages: [{ role: 'user', content: prompt }], max_tokens: 700 });
     const brief = completion.choices[0]?.message?.content?.trim() || '';
     res.json({ brief });
   } catch(err) {
@@ -265,7 +265,7 @@ app.post('/api/ai-social-caption', async (req, res) => {
       { role:'system', content:'You are an expert social media copywriter. Write engaging, platform-optimised social media captions that drive engagement. Never mention competitor brand names. Return only the caption text.' },
       { role:'user', content: prompt || `Write an engaging social media caption for ${domain} in the ${industry} industry. Platforms: ${platforms.join(', ')||'Instagram'}. Use relevant emojis, a clear call-to-action, under 200 words.` }
     ];
-    const completion = await openai.chat.completions.create({ model:'gpt-4o', messages: msgs, max_tokens: 350 });
+    const completion = await openai.chat.completions.create({ model:'gpt-5', messages: msgs, max_tokens: 350 });
     const caption = completion.choices[0]?.message?.content?.trim() || '';
     res.json({ caption });
   } catch(err) {
@@ -292,7 +292,7 @@ Return a JSON object with exactly these keys:
 Make KPIs realistic for the industry and budget. Use authoritative, professional tone. Return valid JSON only.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o', max_tokens: 700,
+      model: 'gpt-5', max_tokens: 700,
       messages: [
         { role: 'system', content: 'You are a professional marketing report writer. Return valid JSON only, no markdown fences.' },
         { role: 'user', content: prompt }
@@ -332,7 +332,7 @@ Be specific, direct, and tactical. Include:
 
 Keep it under 200 words. Return only the strategy text, no headings.`;
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o', max_tokens: 350,
+        model: 'gpt-5', max_tokens: 350,
         messages: [
           { role: 'system', content: 'You are a strategic marketing consultant specialising in competitive re-engagement. Be specific and actionable.' },
           { role: 'user', content: prompt }
@@ -394,7 +394,7 @@ CRITICAL Rules — DO NOT VIOLATE:
 Return valid JSON only.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o', max_tokens: 700,
+      model: 'gpt-5', max_tokens: 700,
       messages: [
         { role: 'system', content: 'You are an expert re-engagement copywriter. Return valid JSON only, no markdown code fences.' },
         { role: 'user', content: prompt }
@@ -477,7 +477,7 @@ IMPORTANT: ${baseInstruction}${prefillSuffix}`;
     // ── Run GPT-4o and Claude Sonnet in parallel ─────────────────────────────
     const [gptResult, claudeResult] = await Promise.allSettled([
       openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-5',
         messages: [{ role: 'user', content: gptPrompt }],
         max_tokens: 1600,
         response_format: { type: 'json_object' }
@@ -691,7 +691,7 @@ Return ONLY this JSON (no markdown, no explanation):
     if (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) {
       const [gptResult, claudeResult] = await Promise.allSettled([
         openai.chat.completions.create({
-          model: 'gpt-4o',
+          model: 'gpt-5',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user',   content: userPrompt }
@@ -938,7 +938,7 @@ Return ONLY this exact JSON structure:
     if (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) {
       try {
         const completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
+          model: 'gpt-5',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user',   content: userPrompt }
@@ -1396,7 +1396,7 @@ Requirements:
 Return ONLY the complete HTML — no markdown, no explanation, just the raw HTML starting with <!DOCTYPE html>.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 4000,
       temperature: 0.7
@@ -1449,7 +1449,7 @@ Requirements:
 Return ONLY the article HTML content, no markdown, no explanation.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 3000,
       temperature: 0.6
@@ -1483,7 +1483,7 @@ Cover the full buyer journey from awareness to decision.
 Return a JSON object with a "topics" array of ${count} objects. Return ONLY valid JSON.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 4000,
       temperature: 0.6,
@@ -1517,7 +1517,7 @@ Return a JSON array of 8 objects with fields: site, url, dr, type, angle, diffic
 Return ONLY valid JSON, no markdown.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 1200,
       temperature: 0.5,
@@ -1572,7 +1572,7 @@ Mix of: long-tail (3-5 words, difficulty < 30), medium (difficulty 30-60), and 2
 Return a JSON object with a "keywords" array. Return ONLY valid JSON.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 1500,
       temperature: 0.4,

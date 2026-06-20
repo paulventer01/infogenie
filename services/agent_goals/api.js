@@ -31,7 +31,7 @@ router.post('/', async (req, res) => {
     if (!title) return res.status(400).json({ error: 'title required' });
 
     const completion = await _oa().chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{
         role: 'user',
         content: `You are an autonomous AI marketing agent. A user has set this marketing goal:
@@ -141,7 +141,7 @@ router.post('/:id/evaluate', async (req, res) => {
     const pendingTasks = tasks.filter(t => t.status !== 'done');
 
     const completion = await _oa().chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{
         role: 'user',
         content: `You are an AI marketing agent judge. Evaluate progress toward this goal:
@@ -168,7 +168,7 @@ Return JSON: {"on_track":true,"grade":"A|B|C|D|F","assessment":"...","priority_n
       `UPDATE agent_goals SET last_evaluation=$1, updated_at=now() WHERE id=$2`,
       [JSON.stringify({ ...evaluation, evaluated_at: new Date().toISOString() }), g.id]
     );
-    res.json({ evaluation, goal_id: g.id, source: 'gpt-4o' });
+    res.json({ evaluation, goal_id: g.id, source: 'gpt-5' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

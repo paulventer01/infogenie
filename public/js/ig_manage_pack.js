@@ -565,7 +565,7 @@
       { name:'OpenRouter',         base_url:'https://openrouter.ai/api/v1',   model:'meta-llama/llama-3.1-70b-instruct' },
       { name:'Together AI',        base_url:'https://api.together.xyz/v1',    model:'meta-llama/Llama-3-70b-chat-hf' },
       { name:'Ollama (local)',     base_url:'http://localhost:11434/v1',      model:'llama3.1' },
-      { name:'Azure OpenAI',       base_url:'https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT',  model:'gpt-4o' }
+      { name:'Azure OpenAI',       base_url:'https://YOUR-RESOURCE.openai.azure.com/openai/deployments/YOUR-DEPLOYMENT',  model:'gpt-5' }
     ];
 
     async function load(){

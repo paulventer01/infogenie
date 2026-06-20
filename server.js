@@ -1220,7 +1220,7 @@ app.post('/api/ai-visibility-coverage', async (req, res) => {
     // Probes for each connected model. Returns a function (q) => Promise<{cited, snippet, error?}>.
     const probes = {};
     probes.chatgpt = async (q) => {
-      const c = await openai.chat.completions.create({ model:'gpt-4o', max_tokens:160, messages:[{ role:'user', content:q }] });
+      const c = await openai.chat.completions.create({ model:'gpt-5', max_tokens:160, messages:[{ role:'user', content:q }] });
       const t = c.choices?.[0]?.message?.content?.trim() || '';
       return { cited: detectMention(t), snippet: t.slice(0,260) };
     };
@@ -2913,7 +2913,7 @@ app.post('/api/ecom-video/generate', async (req, res) => {
     if (!product_name) return res.status(400).json({ error: 'product_name required' });
 
     const completion = await oa.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{
         role: 'user',
         content: `You are a world-class e-commerce video director. Create a compelling product video storyboard for:
@@ -2951,7 +2951,7 @@ Return JSON: {"title":"...","duration_seconds":30,"hook":"...","scenes":[{"scene
         source: 'template'
       };
     }
-    res.json({ storyboard: result, source: result.source || 'gpt-4o' });
+    res.json({ storyboard: result, source: result.source || 'gpt-5' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

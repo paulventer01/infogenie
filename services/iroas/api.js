@@ -99,7 +99,7 @@ router.post('/saturation', async (req, res) => {
     const { channels, monthly_budget, industry } = req.body;
 
     const completion = await _oa().chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{
         role: 'user',
         content: `You are a media mix modeling expert. Analyze budget saturation curves for these ad channels: ${(channels||['meta','google','tiktok']).join(', ')}.
@@ -124,7 +124,7 @@ Use realistic numbers for the industry. iROAS typically starts high and tapers a
         source: 'template'
       };
     }
-    res.json({ ...result, source: result.source || 'gpt-4o' });
+    res.json({ ...result, source: result.source || 'gpt-5' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -141,7 +141,7 @@ router.post('/tests/:id/interpret', async (req, res) => {
     if (!c) return res.status(400).json({ error: 'insufficient_data' });
 
     const completion = await _oa().chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{
         role: 'user',
         content: `Interpret this iROAS holdout test result for a marketer:
@@ -161,7 +161,7 @@ Return JSON: {"verdict":"positive|neutral|negative","headline":"...","analysis":
     if (result._DUMMY || !result.headline) {
       result = { verdict: c.iroas >= 1 ? 'positive' : 'negative', headline: c.iroas >= 1 ? 'Campaign is generating true incremental lift' : 'Campaign is not driving incremental revenue', analysis: `Your reported ROAS of ${c.reported_roas}x overstates true performance. Actual incremental ROAS is ${c.iroas}x.`, actions: ['Review creative quality', 'Narrow audience targeting', 'Run a follow-on test with fresh creative'] };
     }
-    res.json({ interpretation: result, computed: c, source: 'gpt-4o' });
+    res.json({ interpretation: result, computed: c, source: 'gpt-5' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

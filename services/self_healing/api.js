@@ -71,7 +71,7 @@ Rules:
 - For ${r.platform}, be especially careful about: ${(COMMON_POLICIES[r.platform] || []).join(', ')}
 
 Return strict JSON: {"healed_headline":"...","healed_copy":"...","heal_strategy":"...","policy_fixes":["..."],"confidence_pct":0,"changes_made":["..."]}`;
-    const resp = await openai.chat.completions.create({ model: 'gpt-4o', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
+    const resp = await openai.chat.completions.create({ model: 'gpt-5', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] });
     const parsed = JSON.parse(resp.choices[0].message.content);
     if (!parsed._DUMMY) healed = parsed;
   } catch (e) {}

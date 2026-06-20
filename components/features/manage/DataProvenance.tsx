@@ -40,7 +40,7 @@ const DEMO_RECORDS = [
     source_type: "ai_generated",
     source_name: "GPT-4o",
     is_ai_estimated: true,
-    ai_model: "gpt-4o",
+    ai_model: "gpt-5",
     freshness_hours: 24,
   },
   {
@@ -66,7 +66,7 @@ const DEMO_RECORDS = [
     source_type: "ai_generated",
     source_name: "InfoGenie MMM",
     is_ai_estimated: true,
-    ai_model: "gpt-4o",
+    ai_model: "gpt-5",
     freshness_hours: 168,
   },
 ];

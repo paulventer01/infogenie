@@ -120,7 +120,7 @@ Write only as this character — never break character. Respond with valid JSON 
       : `Create a ${content_type} about ${p.niche}. Include: caption text, 5 hashtags, a CTA. JSON: {"caption":"...","hashtags":["..."],"cta":"..."}`;
 
     const completion = await _oa().chat.completions.create({
-      model: 'gpt-4o', messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+      model: 'gpt-5', messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
       response_format: { type: 'json_object' }, max_tokens: 600
     });
 
@@ -146,7 +146,7 @@ router.post('/ai-build', async (req, res) => {
     if (!niche) return res.status(400).json({ error: 'niche required' });
 
     const completion = await _oa().chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{
         role: 'user',
         content: `Design a compelling AI influencer persona for the ${niche} niche.
@@ -165,7 +165,7 @@ Return valid JSON with exactly these fields:
         appearance_prompt: `A stylish ${niche} influencer with natural features`, personality: 'confident, authentic, inspiring',
         content_voice: 'casual but aspirational', posting_style: 'daily lifestyle + weekly brand deals' };
     }
-    res.json({ suggestion: result, source: 'gpt-4o' });
+    res.json({ suggestion: result, source: 'gpt-5' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

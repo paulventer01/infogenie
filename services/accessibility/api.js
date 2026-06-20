@@ -90,7 +90,7 @@ Return up to 15 most impactful issues. Be specific about which elements are affe
   const userContent = `URL: ${url}\n\nPre-scan findings:\n${basicIssues.map(i => `- ${i}`).join('\n')}\n\nHTML (truncated to key sections):\n${html.slice(0, 25000)}`;
 
   const body = JSON.stringify({
-    model: 'gpt-4o',
+    model: 'gpt-5',
     messages: [{ role: 'system', content: system }, { role: 'user', content: userContent }],
     response_format: { type: 'json_object' },
     temperature: 0.2,

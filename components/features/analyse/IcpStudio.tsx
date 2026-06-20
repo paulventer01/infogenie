@@ -408,7 +408,7 @@ Return JSON: { "captions": [ { "objection": "...", "caption": "..." }, ... ] }`;
       const data = await apiFetch<OpenAiResponse>("/api/openai", {
         method: "POST",
         body: JSON.stringify({
-          model: "gpt-4o",
+          model: "gpt-5",
           messages: [
             {
               role: "system",
@@ -502,7 +502,7 @@ Rules:
       const data = await apiFetch<OpenAiResponse>("/api/openai", {
         method: "POST",
         body: JSON.stringify({
-          model: "gpt-4o",
+          model: "gpt-5",
           messages: [
             {
               role: "system",

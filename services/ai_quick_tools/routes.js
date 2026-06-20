@@ -86,7 +86,7 @@ app.post('/api/ai-forecast', async (req, res) => {
     if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) throw new Error('openai key not configured');
     const completion = await Promise.race([
       openai.chat.completions.create({
-        model: 'gpt-4o', response_format: { type: 'json_object' }, max_tokens: 1000,
+        model: 'gpt-5', response_format: { type: 'json_object' }, max_tokens: 1000,
         messages: [
           { role: 'system', content: 'You are a senior performance marketing analyst. Return ONLY valid JSON, no markdown.' },
           { role: 'user', content: `Generate a realistic 90-day WEEKLY revenue forecast for a ${industry} company (${domain}). Current ROAS: ${currentROAS}×, weekly ad budget: ~$${Math.round((monthlyBudget||5000)/4.33)}, monthly traffic: ${trafficMo}.
@@ -125,7 +125,7 @@ app.post('/api/budget-efficiency', async (req, res) => {
   const { industry = 'marketing', competitors = [], monthlyBudget = 5000 } = req.body;
   try {
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o', response_format: { type: 'json_object' }, max_tokens: 600,
+      model: 'gpt-5', response_format: { type: 'json_object' }, max_tokens: 600,
       messages: [
         { role: 'system', content: 'Return ONLY valid JSON, no markdown.' },
         { role: 'user', content: `Score budget efficiency for 5 ad channels for a ${industry} business with $${monthlyBudget}/mo budget vs competitors: ${competitors.slice(0,4).join(', ')}.
@@ -218,7 +218,7 @@ Return ONLY this JSON shape:
   if (okKey && !/^_DUMMY/i.test(okKey)) tasks.push((async () => {
     try {
       const c = await openai.chat.completions.create({
-        model: 'gpt-4o', response_format: { type: 'json_object' },
+        model: 'gpt-5', response_format: { type: 'json_object' },
         max_tokens: 700, temperature: 0.75,
         messages: [{ role:'system', content:systemPrompt }, { role:'user', content:userPrompt }],
       });

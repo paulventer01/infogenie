@@ -198,7 +198,7 @@ CRITICAL RULES for "competitors" — accuracy matters more than completeness:
     let aiResult = null;
     try {
       const completion = await openaiChatWithRetry({
-        model: 'gpt-4o',
+        model: 'gpt-5',
         messages: [
           { role: 'system', content: 'You are a precise market-research analyst. Output strict JSON only — no markdown fences, no prose. Always identify the specific sub-niche, not just the broad industry. When in doubt about a candidate competitor, EXCLUDE it — accuracy beats completeness.' },
           { role: 'user', content: prompt },
@@ -376,7 +376,7 @@ CRITICAL RULES — accuracy beats completeness:
     let aiResult = null;
     try {
       const completion = await openaiChatWithRetry({
-        model: 'gpt-4o',
+        model: 'gpt-5',
         messages: [
           { role: 'system', content: 'You are a precise market-research analyst with encyclopedic knowledge of real-world companies in every sub-niche. Output strict JSON only — no markdown, no prose. Always pick competitors operating in the user\'s EXACT sub-niche, never just the broad industry. When in doubt about a candidate, EXCLUDE it — accuracy beats completeness.' },
           { role: 'user', content: prompt },
@@ -525,7 +525,7 @@ CRITICAL: Be SPECIFIC. Quote real words from the scrape. Name ${competitorName} 
     let aiResult = null;
     try {
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-5',
         messages: [
           { role: 'system', content: 'You are a precise competitive-intelligence analyst. Output strict JSON. Always be specific to the named competitor and the operator\'s industry — never generic.' },
           { role: 'user', content: prompt },

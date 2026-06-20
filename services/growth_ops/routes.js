@@ -237,7 +237,7 @@ app.get('/api/goals/check', async (req, res) => {
     if (offTrack.length > 0) {
       try {
         const completion = await openaiChatWithRetry({
-          model: 'gpt-4o',
+          model: 'gpt-5',
           messages: [
             { role:'system', content:'You are a marketing performance analyst. For each off-track or at-risk goal below, give one root-cause hypothesis (1 sentence) and one specific corrective action a marketer can take in InfoGenie (1 sentence). Return JSON: { "byGoalId": { "<id>": { "hypothesis": string, "action": string } } }' },
             { role:'user', content: `Goals:\n${JSON.stringify(offTrack.map(g => ({
@@ -314,7 +314,7 @@ Return ONLY valid JSON in this exact shape:
     let qualification;
     try {
       const completion = await openaiChatWithRetry({
-        model: 'gpt-4o',
+        model: 'gpt-5',
         messages: [
           { role:'system', content: sysPrompt },
           { role:'user',   content: userPrompt },
@@ -516,7 +516,7 @@ Body should be plain text under 100 words, second-person, no emojis unless they 
     let parsed;
     try {
       const completion = await openaiChatWithRetry({
-        model: 'gpt-4o',
+        model: 'gpt-5',
         messages: [
           { role:'system', content: sysPrompt },
           { role:'user',   content: 'Generate the 3 variants now.' },

@@ -47,7 +47,7 @@ Return strict JSON:
   "top_recommendation": "...",
   "budget_to_shift": [{"from":"...","to":"...","amount":0,"why":"..."}]
 }`;
-    const r = await openai.chat.completions.create({ model:'gpt-4o', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}], max_tokens:2000 });
+    const r = await openai.chat.completions.create({ model:'gpt-5', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}], max_tokens:2000 });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (parsed.recommended_allocation?.[0]?._DUMMY) throw new Error('dummy');
     results = parsed;

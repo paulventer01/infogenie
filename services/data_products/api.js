@@ -100,7 +100,7 @@ Focus: ${focus||'trends, competitor moves, pricing shifts, hiring intent, conten
 Each signal should be specific, actionable, and confidence-scored.
 Types: competitor_move, pricing_shift, hiring_intent, content_theme, channel_trend, offer_trend, technology_shift, audience_shift
 Return strict JSON: {"signals":[{"signal_type":"...","title":"...","description":"...","category":"...","confidence_score":0,"source":"market intelligence"}]}`;
-    const r = await openai.chat.completions.create({ model:'gpt-4o', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
+    const r = await openai.chat.completions.create({ model:'gpt-5', response_format:{type:'json_object'}, messages:[{role:'user',content:prompt}] });
     const parsed = JSON.parse(r.choices[0].message.content);
     if (!parsed.signals?.[0]?._DUMMY) signals = parsed.signals;
   } catch(e) {}

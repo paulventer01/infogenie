@@ -340,7 +340,7 @@ Make titles highly specific and realistic — they should mention real concerns,
 
       const callAI = async () => {
         const completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
+          model: 'gpt-5',
           messages: [{ role: 'user', content: prompt }],
           max_tokens: 1200,
           response_format: { type: 'json_object' }
@@ -407,7 +407,7 @@ Return JSON: { "scores": [...${hnPosts.length} items...] }
 Each item: { "relevance": 0-100, "sentiment": "positive"|"neutral"|"negative", "urgency": "critical"|"high"|"medium"|"low", "serpLikely": false, "opportunity": "one concrete engagement tip" }`;
 
         const completion = await openai.chat.completions.create({
-          model: 'gpt-4o', messages: [{ role: 'user', content: scorePrompt }],
+          model: 'gpt-5', messages: [{ role: 'user', content: scorePrompt }],
           max_tokens: 900, response_format: { type: 'json_object' }
         });
         const raw = completion.choices[0]?.message?.content || '{}';
@@ -460,7 +460,7 @@ Write a genuine, helpful Reddit reply that:
 Return JSON only: { "reply": "...", "tone_note": "brief note on how this matches brand voice" }`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o', messages: [{ role: 'user', content: prompt }],
+      model: 'gpt-5', messages: [{ role: 'user', content: prompt }],
       max_tokens: 400, response_format: { type: 'json_object' }
     });
     const raw = completion.choices[0]?.message?.content || '{}';
@@ -482,7 +482,7 @@ app.post('/api/reddit-autofill', async (req, res) => {
 
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{
         role: 'user',
         content: `You are a marketing intelligence expert. Given the domain "${domain}", identify:
@@ -520,7 +520,7 @@ app.post('/api/reddit-studio-suggest', async (req, res) => {
     if (!domain) return res.json({ persona: '', titles: [], error: 'Missing domain' });
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{
         role: 'user',
         content: `You are a Reddit marketing strategist. The brand is "${domain}".
@@ -561,7 +561,7 @@ app.post('/api/seed-topic-suggest', async (req, res) => {
     if (!domain && !industry) return res.json({ topics: [], error: 'Missing domain/industry' });
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{
         role: 'user',
         content: `You are a topical-SEO strategist. Brand: "${domain || '(unspecified)'}". Industry: "${industry || '(unspecified)'}". Competitors: ${competitors || '(none provided)'}.
@@ -925,7 +925,7 @@ Return JSON exactly in this shape:
 Be ruthless and specific. Score intentMatchScore HIGH (80-100) only if the brand's likely current site clearly serves the intent; LOW (0-40) if there's a clear mismatch. Mark competitorGap=true when this is a keyword the brand is likely NOT ranking for but a competitor is. Keep all sentences under 18 words.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -1054,7 +1054,7 @@ Rules:
 - pageStrengthScore reflects how well the existing page (URL/title/desc) already serves the chosen primary.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -1218,7 +1218,7 @@ Return JSON exactly in this shape:
   "budget": "budget band as a short phrase (e.g. £500–£2,000/mo)"
 }`;
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{ role:'system', content: systemPrompt }, { role:'user', content: userPrompt }],
       max_tokens: 600,
       temperature: 0.6,
@@ -1279,7 +1279,7 @@ Rules:
 - No duplicates across the three lists.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{ role:'system', content: systemPrompt }, { role:'user', content: userPrompt }],
       max_tokens: 1200,
       temperature: 0.5,
@@ -1308,7 +1308,7 @@ app.post('/api/ai-channel-ad', async (req, res) => {
 Goal: ${goal}. Target audience: ${audience}. Daily budget: $${budget}.
 Return JSON: { "headline": "...", "body": "...", "cta": "...", "hashtags": "..." }
 Headline: 5-10 words. Body: 1-3 sentences. CTA: 3-5 words. Hashtags: 3-5 relevant (for social platforms).`;
-    const completion = await openai.chat.completions.create({ model:'gpt-4o', messages:[{role:'system',content:systemPrompt},{role:'user',content:userPrompt}], max_tokens:300, response_format:{type:'json_object'} });
+    const completion = await openai.chat.completions.create({ model:'gpt-5', messages:[{role:'system',content:systemPrompt},{role:'user',content:userPrompt}], max_tokens:300, response_format:{type:'json_object'} });
     const ad = JSON.parse(completion.choices[0]?.message?.content||'{}');
     res.json({ ad });
   } catch(err) {
@@ -1343,7 +1343,7 @@ Return ONLY raw JSON: {
 }`;
 
     const [gptResult, claudeResult] = await Promise.allSettled([
-      openai.chat.completions.create({ model:'gpt-4o', messages:[{role:'system',content:systemPrompt},{role:'user',content:gptPrompt}], max_tokens:700, response_format:{type:'json_object'} }),
+      openai.chat.completions.create({ model:'gpt-5', messages:[{role:'system',content:systemPrompt},{role:'user',content:gptPrompt}], max_tokens:700, response_format:{type:'json_object'} }),
       anthropic.messages.create({ model:'claude-sonnet-4-6', max_tokens:350, messages:[{role:'user', content:claudePrompt}] })
     ]);
 
@@ -1407,7 +1407,7 @@ app.post('/api/ai-visibility-multi', async (req, res) => {
     const chatgptP = (async () => {
       try {
         const c = await openai.chat.completions.create({
-          model: 'gpt-4o', max_tokens: 180,
+          model: 'gpt-5', max_tokens: 180,
           messages: [{ role: 'user', content: queryQ }],
         });
         const text = c.choices?.[0]?.message?.content?.trim() || '';

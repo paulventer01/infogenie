@@ -301,7 +301,7 @@ Model identity: you are ${modelName}. Output strict JSON only.`;
     // afterward. This dual-LLM approach catches single-model hallucinations
     // and gives us a confidence boost when both agree on a number.
     const gptPromise = openaiChatWithRetry({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [{ role: 'user', content: buildPrompt('GPT-4o') }],
       response_format: { type: 'json_object' },
       temperature: 0.15,
@@ -503,7 +503,7 @@ Model identity: you are ${modelName}. Output strict JSON only.`;
       results: consensus,
       count: consensus.length,
       models: {
-        gpt: gptResult ? 'gpt-4o' : 'failed',
+        gpt: gptResult ? 'gpt-5' : 'failed',
         claude: claudeResult ? 'claude-sonnet-4-6' : 'failed'
       }
     });

@@ -17,7 +17,7 @@ const PACKS = [
 function _openai(messages, opts = {}) {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return Promise.resolve(null);
-  const body = JSON.stringify({ model: opts.model || 'gpt-4o', messages, response_format: opts.json ? { type:'json_object' } : undefined, temperature: 0.4, max_tokens: opts.max_tokens || 3000 });
+  const body = JSON.stringify({ model: opts.model || 'gpt-5', messages, response_format: opts.json ? { type:'json_object' } : undefined, temperature: 0.4, max_tokens: opts.max_tokens || 3000 });
   return new Promise(resolve => {
     const req = _https.request({ hostname:'api.openai.com', path:'/v1/chat/completions', method:'POST', headers:{ 'Authorization':'Bearer '+key, 'Content-Type':'application/json', 'Content-Length':Buffer.byteLength(body) } }, r => {
       let d=''; r.on('data',c=>d+=c); r.on('end',()=>{ try { if (r.statusCode!==200) return resolve(null); const j=JSON.parse(d); resolve(j.choices[0].message.content); } catch { resolve(null); } });
@@ -39,7 +39,7 @@ router.post('/generate', async (req, res) => {
 {"title":"<dataset title>","subtitle":"<1-line description>","generated_at":"${new Date().toISOString()}","industry":"${industry}","region":"${region}","columns":${JSON.stringify(pack.fields)},"rows":[<objects with keys matching columns — at least 8 rows>],"key_takeaways":["<insight 1>","<insight 2>","<insight 3>"],"disclaimer":"This data is AI-generated for research purposes. Verify key figures before business decisions."}
 Be specific with real company names, real numbers, and accurate market data. Use current knowledge.`;
   const user = `Generate a "${pack.label}" dataset for the ${industry} industry in ${region}. ${compStr}\n\nColumns needed: ${pack.fields.join(', ')}\n\nReturn at least 8 data rows, 3 key takeaways.`;
-  const raw = await _openai([{role:'system',content:sys},{role:'user',content:user}], { json:true, model:'gpt-4o', max_tokens:3000 });
+  const raw = await _openai([{role:'system',content:sys},{role:'user',content:user}], { json:true, model:'gpt-5', max_tokens:3000 });
   if (!raw) {
     return res.json({ ok:true, source:'template', title:`${pack.label} — ${industry}`, subtitle:pack.description, columns:pack.fields, rows:[{ [pack.fields[0]]:'Sample data — AI unavailable. Configure OpenAI API key to generate real datasets.' }], key_takeaways:['AI provider unavailable','Configure OPENAI_API_KEY to generate datasets'], disclaimer:'Sample placeholder data.' });
   }
