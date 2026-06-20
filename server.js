@@ -19,6 +19,17 @@ const _tenantMiddleware = require('./services/tenants/middleware');
 const _tenantRouter     = require('./services/tenants/api');
 const _permEnforce      = require('./services/tenants/permission_enforce');
 const _authGate         = require('./services/auth_gate');
+const _runtimeFlags     = require('./services/runtime_flags');
+
+// Background work — port binding, the drip cron tick below, the register-time
+// crons in services/officer + services/assistant_ops routes, and the BOOT_TASKS
+// schema-ensure runner — must run ONLY when this file is the process entry point
+// (`node server.js`, used by scripts/dev.js + scripts/start.js). When server.js
+// is required as a module — the test harness calling buildApp() — this stays off
+// so importing the app binds no port and starts no timers/crons. Set BEFORE the
+// process-level handlers and any route module so every guard downstream reads
+// the right value.
+_runtimeFlags.setBackground(require.main === module);
 
 // ── Global async safety net ──────────────────────────────────────────────────
 // Node 15+ crashes the whole process on any unhandled promise rejection. In a
@@ -34,15 +45,21 @@ const _authGate         = require('./services/auth_gate');
 // supervisor restarts a fresh process — fail-fast, not swallow. Explicit boot
 // guards below already use process.exit(1) and are unaffected by these handlers.
 // Installed first, before any boot task or route, to cover the whole lifetime.
-process.on('unhandledRejection', (reason) => {
-  const msg = (reason && reason.stack) || (reason && reason.message) || String(reason);
-  console.error('[unhandledRejection] (kept alive)', msg);
-});
-process.on('uncaughtException', (err) => {
-  console.error('[uncaughtException] FATAL — exiting for a clean restart:',
-    (err && err.stack) || (err && err.message) || String(err));
-  process.exit(1);
-});
+// Only the live server installs these process-level handlers; when the app is
+// merely imported for tests (build-only mode) we leave the test runner's own
+// lifecycle untouched — in particular the uncaughtException → process.exit(1)
+// must never fire inside a test process.
+if (_runtimeFlags.backgroundEnabled()) {
+  process.on('unhandledRejection', (reason) => {
+    const msg = (reason && reason.stack) || (reason && reason.message) || String(reason);
+    console.error('[unhandledRejection] (kept alive)', msg);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[uncaughtException] FATAL — exiting for a clean restart:',
+      (err && err.stack) || (err && err.message) || String(err));
+    process.exit(1);
+  });
+}
 
 // ── Env-var name aliases ─────────────────────────────────────────────────────
 // Some Replit Secrets were stored under the historical names below. The rest
@@ -1587,9 +1604,12 @@ async function _dripTickInner(tid) {
 }
 
 // Tick every 60 seconds. Errors in the engine should never crash the server.
-setInterval(() => { _dripTick().catch(e => console.error('[drip] tick error:', e.message)); }, 60_000);
-// Also fire once 5 seconds after boot so freshly-enrolled day-0 sends go out.
-setTimeout(() => { _dripTick().catch(()=>{}); }, 5_000);
+// Guarded so importing the app for tests (buildApp) starts no timers.
+if (_runtimeFlags.backgroundEnabled()) {
+  setInterval(() => { _dripTick().catch(e => console.error('[drip] tick error:', e.message)); }, 60_000);
+  // Also fire once 5 seconds after boot so freshly-enrolled day-0 sends go out.
+  setTimeout(() => { _dripTick().catch(()=>{}); }, 5_000);
+}
 
 // ── POST /api/drips/enroll ────────────────────────────────────────────────
 // body: { contacts:[{email, name?}], sequence:[{day, channel, msg, label, subject?}],
@@ -4194,3 +4214,14 @@ async function _firecrawlGetHtml(url, timeoutMs = 12000) {
 // ─── Profound (LLM brand-mention tracker) ───────────────────────────────────
 // Profound · Shopify · AppsFlyer routes → services/external_connectors/routes.js
 require('./services/external_connectors/routes')(app, { _missingCreds });
+
+// ── App builder export (for the test harness) ────────────────────────────────
+// server.js builds and wires the Express `app` above at require time. Because
+// the background guard (set near the top from require.main===module) is off when
+// this file is required as a module, importing it binds no port and starts no
+// timers/crons — requiring it is side-effect-free beyond constructing `app`.
+// buildApp() hands that fully-configured app (full middleware chain, auth routes
+// and matrix enforcement included) to test/helpers/app.js so the harness no
+// longer hand-rebuilds the middleware chain. It returns the singleton app.
+function buildApp() { return app; }
+module.exports = { app, buildApp };

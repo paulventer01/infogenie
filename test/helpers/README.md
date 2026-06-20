@@ -47,31 +47,35 @@ npm run test:integration      # node --test --test-force-exit test/integration/
 (`--test-force-exit` is required — open DB pool handles otherwise keep the
 runner alive after the tests pass. See `.agents/memory/test-suite-force-exit.md`.)
 
-## Why a hand-built app (and not `require('../server')`)
+## The app comes straight from `server.js` (`buildApp()`)
 
-`server.js` does **not** export its Express `app`, and requiring it is unsafe:
-at load time it runs the `BOOT_TASKS` schema-ensures, starts the drip
-`setInterval`, and — via `services/competitor_detect/routes.js` — calls
-`app.listen()` on the internal port. So the harness composes the **same
-middleware chain** from the real modules in the same order `server.js` uses:
+The harness uses the **real** Express app. `server.js` exports `buildApp()` and,
+crucially, gates all of its background work behind a runtime flag set from
+`require.main === module` (see `services/runtime_flags.js`). When `server.js` is
+*required* (as the harness does) rather than run directly, that flag is off, so:
+
+- no port is bound (the listens in `services/competitor_detect` +
+  `services/external_connectors` are skipped),
+- no timers start (the drip tick and the `services/officer` /
+  `services/assistant_ops` register-time crons are skipped),
+- the `BOOT_TASKS` schema-ensure / `start*Cron()` runner does not run.
+
+Requiring `server.js` is therefore side-effect-free beyond constructing `app`,
+so `bootApp()`/`buildApp()` hand back the production middleware chain:
 
 ```
 express.json (rawBody) → express-session → loadUserFromSession →
 loadTenantContext → /api/auth → /api/tenants → api-key gate (+ tenant
-injection) → enforceMatrix → [your feature routers]
+injection) → enforceMatrix → every feature router → [your mounted probes]
 ```
 
 This keeps auth, tenant scoping (`MULTITENANT_ENFORCEMENT`) and permission
-enforcement (`PERMISSION_ENFORCEMENT`) behaving as they do in production.
-
-### Known missing seam
-
-`server.js` exports neither `app` nor an app-factory, and binds a port at
-require-time. If product code is ever refactored to export a `buildApp()` that
-doesn't listen or start crons, this harness should switch to it instead of
-duplicating the middleware order. Until then the duplication in
-`test/helpers/app.js` is deliberate and must be kept in sync with `server.js`
-(the api-key gate and middleware order in particular).
+enforcement (`PERMISSION_ENFORCEMENT`) identical to production — no hand-rebuilt
+chain to drift out of sync. `server.js` builds a single `app` at require time, so
+`buildApp()` returns that singleton; `opts.mount(app)` appends routers/probes
+**after** every server route (where a feature router would sit relative to the
+gate). The old `opts.enforceMatrix` / `opts.includeAuthRoutes` toggles are gone —
+the real app always includes both.
 
 ## API
 
@@ -82,11 +86,14 @@ project keys always win. Requiring the harness loads this first.
 
 ### `bootApp(opts) → { app, server, port, baseUrl, close() }`
 Boots the app on an ephemeral port (`listen(0)`).
-- `opts.mount(app)` — mount your feature routers (runs after the api-key gate +
-  `enforceMatrix`, like `server.js`).
-- `opts.enforceMatrix` (default `true`) — include the real permission gate.
-- `opts.includeAuthRoutes` (default `true`) — mount `/api/auth` + `/api/tenants`.
+- `opts.mount(app)` — append your feature routers/probes; they run after the
+  api-key gate + `enforceMatrix` and after every server route, exactly like a
+  feature router in `server.js`.
 - `close()` — stop the server; call in `t.after(...)`.
+
+The app is the real one from `server.js` — `/api/auth`, `/api/tenants` and
+`enforceMatrix` are always present (the old `opts.enforceMatrix` /
+`opts.includeAuthRoutes` toggles no longer exist).
 
 ### `request(baseUrl, method, path, opts) → { status, headers, json, text, cookies }`
 One HTTP call. `json` is `null` for non-JSON bodies.

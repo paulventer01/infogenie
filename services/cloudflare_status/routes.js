@@ -9,6 +9,11 @@ const __root_require__ = (p) =>
   (typeof p === 'string' && (p.startsWith('./') || p.startsWith('../')))
     ? require(__path__.resolve(__APP_ROOT__, p))
     : require(p);
+// Module-scope (real node require) so it resolves correctly even though `require`
+// is rebased to __root_require__ inside register(). Gates the BOOT_TASKS runner
+// (schema-ensures + start*Cron() kicks) on whether this is the live server
+// process (off when required for tests).
+const _runtimeFlags = require('../runtime_flags');
 
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
@@ -107,11 +112,16 @@ BOOT_TASKS.push(async () => {
 // `_db.hasDb()` guard and try/catch logging, so this loop only sequences them;
 // a belt-and-suspenders catch here ensures one task's unexpected throw can never
 // abort the rest of boot.
-(async () => {
-  for (const _bootTask of BOOT_TASKS) {
-    try { await _bootTask(); } catch (e) { console.error('[boot] task failed:', e && e.message); }
-  }
-})();
+// Only the live server runs the boot tasks (schema-ensures + start*Cron() kicks).
+// Required as a module for tests (buildApp) this is skipped, so requiring the app
+// starts no crons and touches no schema.
+if (_runtimeFlags.backgroundEnabled()) {
+  (async () => {
+    for (const _bootTask of BOOT_TASKS) {
+      try { await _bootTask(); } catch (e) { console.error('[boot] task failed:', e && e.message); }
+    }
+  })();
+}
 
 // Cloudflare Workers AI status ping (used by frontend to show provider state).
 app.get('/api/cloudflare/status', (_req, res) => {

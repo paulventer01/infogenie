@@ -9,6 +9,11 @@ const __root_require__ = (p) =>
   (typeof p === 'string' && (p.startsWith('./') || p.startsWith('../')))
     ? require(__path__.resolve(__APP_ROOT__, p))
     : require(p);
+// Module-scope (real node require) so it resolves correctly even though `require`
+// is rebased to __root_require__ inside register(). Gates the register-time crons
+// and one-time boot migration below on whether this is the live server process
+// (off when required for tests).
+const _runtimeFlags = require('../runtime_flags');
 
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
@@ -782,8 +787,11 @@ async function _runCreditCheckCron() {
     await _runCreditCheck(tid);
   } catch (e) { console.warn('credit check failed:', e.message); }
 }
-setTimeout(() => { _runCreditCheckCron(); }, 8000);
-setInterval(() => { _runCreditCheckCron(); }, 6 * 60 * 60 * 1000);
+// Live server only; skipped when required as a module for tests (buildApp).
+if (_runtimeFlags.backgroundEnabled()) {
+  setTimeout(() => { _runCreditCheckCron(); }, 8000);
+  setInterval(() => { _runCreditCheckCron(); }, 6 * 60 * 60 * 1000);
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // STAKEHOLDER DISTRIBUTION (Feature 5 — auto-emails on critical alerts)
@@ -1529,13 +1537,17 @@ async function _sweepLaunchesForTenant(tid) {
   }
 }
 // Kick off the sweeper. 60s cadence is plenty given the 5-minute reminder windows above.
-setInterval(_sweepLaunches, 60 * 1000);
-// Run once on boot to catch reminders that became due while the server was down
-setTimeout(_sweepLaunches, 5 * 1000);
+// Live server only; skipped when required as a module for tests (buildApp).
+if (_runtimeFlags.backgroundEnabled()) {
+  setInterval(_sweepLaunches, 60 * 1000);
+  // Run once on boot to catch reminders that became due while the server was down
+  setTimeout(_sweepLaunches, 5 * 1000);
+}
 
 // One-time boot migration (deferred 9s so the tenants/users schema is ready and
 // getDefaultTenantId() resolves — otherwise it returns null this early and every
-// step skips).
+// step skips). Live server only; skipped when required as a module for tests.
+if (_runtimeFlags.backgroundEnabled()) {
 setTimeout(async () => {
   // Diag captures live on disk as data/diag-captures/<slug>.json — a directory,
   // never copied into kv by the (now-removed) legacy flat-file boot migration.
@@ -1570,6 +1582,7 @@ setTimeout(async () => {
     }
   } catch (e) { console.warn('[kv_scope] diag-captures boot migration', e.message); }
 }, 9000);
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // AI CONTENT-GAP IDEATION (Feature 3)

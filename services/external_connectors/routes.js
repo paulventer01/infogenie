@@ -9,6 +9,10 @@ const __root_require__ = (p) =>
   (typeof p === 'string' && (p.startsWith('./') || p.startsWith('../')))
     ? require(__path__.resolve(__APP_ROOT__, p))
     : require(p);
+// Module-scope (real node require) so it resolves correctly even though `require`
+// is rebased to __root_require__ inside register(). Gates the port-80 listen on
+// whether this is the live server process (off when required for tests).
+const _runtimeFlags = require('../runtime_flags');
 
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
@@ -92,11 +96,14 @@ app.get('/api/appsflyer/installs', async (req, res) => {
   } catch (err) { res.status(500).json({ ok:false, error: err.message }); }
 });
 
-// Port 80 — external URL (*.spock.replit.dev / new tab)
-app.listen(80, '0.0.0.0', () => {
-  console.log('InfoGenie listening on port 80 (external URL)');
-}).on('error', (err) => {
-  // Port 80 may be unavailable in some environments; non-fatal
-  console.warn(`Port 80 unavailable (${err.code}) — external URL will use port 5000`);
-});
+// Port 80 — external URL (*.spock.replit.dev / new tab). Only the live server
+// binds it; required as a module for tests (buildApp) this is skipped.
+if (_runtimeFlags.backgroundEnabled()) {
+  app.listen(80, '0.0.0.0', () => {
+    console.log('InfoGenie listening on port 80 (external URL)');
+  }).on('error', (err) => {
+    // Port 80 may be unavailable in some environments; non-fatal
+    console.warn(`Port 80 unavailable (${err.code}) — external URL will use port 5000`);
+  });
+}
 };

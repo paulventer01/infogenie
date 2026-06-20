@@ -9,6 +9,10 @@ const __root_require__ = (p) =>
   (typeof p === 'string' && (p.startsWith('./') || p.startsWith('../')))
     ? require(__path__.resolve(__APP_ROOT__, p))
     : require(p);
+// Module-scope (real node require) so it resolves correctly even though `require`
+// is rebased to __root_require__ inside register(). Gates the register-time crons
+// below on whether this is the live server process (off when required for tests).
+const _runtimeFlags = require('../runtime_flags');
 
 module.exports = function register(app, ctx) {
   const __dirname = __APP_ROOT__;
@@ -837,11 +841,15 @@ async function _autoReportTickGuarded() {
 }
 global._serverStartedAt = global._serverStartedAt || new Date().toISOString();
 const _autoReportTickGuardedInstrumented = async () => { global._lastAutoTickAt = Date.now(); return _autoReportTickGuarded(); };
-setInterval(_autoReportTickGuardedInstrumented, 60 * 1000);
-// Also run once shortly after boot so a server that was down across the
-// scheduled window catches up immediately on restart instead of waiting
-// up to a minute.
-setTimeout(_autoReportTickGuardedInstrumented, 8000);
+// Only the live server runs these crons; required as a module for tests
+// (buildApp) they are skipped so importing the app starts no timers.
+if (_runtimeFlags.backgroundEnabled()) {
+  setInterval(_autoReportTickGuardedInstrumented, 60 * 1000);
+  // Also run once shortly after boot so a server that was down across the
+  // scheduled window catches up immediately on restart instead of waiting
+  // up to a minute.
+  setTimeout(_autoReportTickGuardedInstrumented, 8000);
+}
 
 // ── Autonomous Officer Meetings ───────────────────────────────────────────
 // The AI Team self-schedules cross-functional meetings on a recurring cadence
@@ -867,13 +875,16 @@ const _AUTOMTG_DEFAULTS = { enabled:false, frequency:'weekly', dayOfWeek:1, hour
 // callers migrate the same base, second is a no-op (destination already set).
 // Deferred 9s so the tenants/users schema is ready and getDefaultTenantId()
 // resolves (otherwise it returns null this early and every migration skips).
-setTimeout(async () => {
-  try {
-    for (const base of [_TASKS_KEY, _AVATAR_KEY, _MEETINGS_KEY, _AUTOREPORT_KEY, _AUTOREPORT_HISTORY_KEY, _AUTOMTG_KEY]) {
-      await _officerScope.migrateGlobalSingleton(base, base);
-    }
-  } catch (e) { console.warn('[officer] boot migration', e.message); }
-}, 9000);
+// Live server only; skipped when required as a module for tests (buildApp).
+if (_runtimeFlags.backgroundEnabled()) {
+  setTimeout(async () => {
+    try {
+      for (const base of [_TASKS_KEY, _AVATAR_KEY, _MEETINGS_KEY, _AUTOREPORT_KEY, _AUTOREPORT_HISTORY_KEY, _AUTOMTG_KEY]) {
+        await _officerScope.migrateGlobalSingleton(base, base);
+      }
+    } catch (e) { console.warn('[officer] boot migration', e.message); }
+  }, 9000);
+}
 
 app.get('/api/officer/auto-meetings', async (req, res) => {
   try {
@@ -1063,8 +1074,11 @@ async function _autoMeetingTickGuarded() {
   catch (e) { console.warn('[auto-meeting tick]', e.message); }
   finally { _autoMeetingTickInFlight = false; }
 }
-setInterval(_autoMeetingTickGuarded, 60 * 1000);
-setTimeout(_autoMeetingTickGuarded, 12000);
+// Live server only; skipped when required as a module for tests (buildApp).
+if (_runtimeFlags.backgroundEnabled()) {
+  setInterval(_autoMeetingTickGuarded, 60 * 1000);
+  setTimeout(_autoMeetingTickGuarded, 12000);
+}
 
 app.delete('/api/officer/meetings/:id', async (req, res) => {
   try {

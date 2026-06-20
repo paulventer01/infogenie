@@ -9,6 +9,10 @@ const __root_require__ = (p) =>
   (typeof p === 'string' && (p.startsWith('./') || p.startsWith('../')))
     ? require(__path__.resolve(__APP_ROOT__, p))
     : require(p);
+// Module-scope (real node require) so it resolves correctly even though `require`
+// is rebased to __root_require__ inside register(). Gates register-time side
+// effects (the port listen) on whether this is the live server process.
+const _runtimeFlags = require('../runtime_flags');
 
 // Firecrawl fallback for bot-protected sites (Cloudflare, WAF, etc.).
 // Called only when direct fetch returns empty — costs one API credit per call.
@@ -50,10 +54,14 @@ app.get('/api/db/status', async (_req, res) => {
 // `node server.js`. In dev, scripts/dev.js sets EXPRESS_PORT=8000 so Next.js
 // can own 5000 as the front door and proxy /api/* + the SPA back to Express.
 const __EXPRESS_PORT = Number(process.env.EXPRESS_PORT) || 5000;
-app.listen(__EXPRESS_PORT, '0.0.0.0', () => {
-  console.log(`InfoGenie listening on port ${__EXPRESS_PORT} (preview pane)`);
-  startMsg();
-});
+// Only bind a port when this is the live server process. Required as a module
+// for tests (buildApp) this is off, so requiring the app never grabs a port.
+if (_runtimeFlags.backgroundEnabled()) {
+  app.listen(__EXPRESS_PORT, '0.0.0.0', () => {
+    console.log(`InfoGenie listening on port ${__EXPRESS_PORT} (preview pane)`);
+    startMsg();
+  });
+}
 
 // ── POST /api/smart-detect ────────────────────────────────────────────────────
 // Scrapes the user's website and uses AI to detect industry + real competitors.

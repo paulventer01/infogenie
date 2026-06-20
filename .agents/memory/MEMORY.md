@@ -9,6 +9,7 @@
 - [Next.js production cutover](nextjs-production-cutover.md) — prod now `npm start`→scripts/start.js (Next start on public port + Express internal w/ NEXT_FRONT_DOOR); deploy=vm; CREDENTIAL_ENCRYPTION_KEY required; next dev/start can't share .next.
 - [Next.js Phase 2 SPA shell](nextjs-phase2-spa-shell.md) — Next renders legacy SPA: read index.html server-side, strip navbar+scripts, React navbar mirrors legacy DOM, replay scripts then fire synthetic DOMContentLoaded.
 - [Test suite force-exit](test-suite-force-exit.md) — npm test needs `--test-force-exit` or it passes-but-hangs (open DB handles), making task validation loop forever at RUNNING.
+- [buildApp test seam](buildapp-test-seam.md) — server.js exports buildApp()+app gated by runtime_flags.backgroundEnabled() (require.main===module); any new register-time listen/cron/boot-migration MUST be guarded or it fires under test require.
 - [React panel migration](react-panel-migration.md) — Phase 3 registry-driven port of one #view-* panel to React; dev-shell-only suppression, DON'T delete legacy files (prod has no Next yet).
 - [Hydration dev transients](hydration-dev-transients.md) — recurring "hydration crash" on Next dev front door = HMR/Fast-Refresh transient on stale tab, not a shell bug; triage via timestamp-vs-restart before editing.
 - [Migrated builder coverage test](migrated-builder-coverage-test.md) — fleet-wide stripped-DOM crash guard; async builders REJECT (await them), don't eval app.js wholesale, parse navigateTo dispatch for view→builder.
