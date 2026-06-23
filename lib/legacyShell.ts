@@ -65,7 +65,16 @@ function parse(): LegacyShell {
     (tok) => (tok.slice(0, 4) === "<!--" ? tok : ""),
   );
 
-  // 5. Suppress panels that have been ported to native React (<MigratedPanel/>
+  // 5. Normalise whitespace so the server-rendered string matches what the
+  //    browser returns from element.innerHTML during React hydration. The nav
+  //    strip above leaves the surrounding newlines in place, which can produce
+  //    runs of 3-4 consecutive \n. The browser's HTML serialiser collapses
+  //    those runs differently (e.g. 4→3), causing a deterministic hydration
+  //    mismatch. Capping at two consecutive newlines is safe: ≥2 blank lines
+  //    in HTML markup render identically, and scripts are already stripped.
+  bodyHtml = bodyHtml.replace(/\n[ \t]*\n([ \t]*\n)+/g, "\n\n");
+
+  // 6. Suppress panels that have been ported to native React (<MigratedPanel/>
   //    renders them instead). For each migrated view we (a) remove its
   //    `#view-<id>` div so the legacy panel can't double-render, and (b) drop its
   //    `public/js` module from the replay bundle so it stops loading. index.html
