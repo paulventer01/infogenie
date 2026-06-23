@@ -27,12 +27,33 @@ async function _ensureSchema() {
 }
 _ensureSchema().catch(()=>{});
 
-async function _youtube({ country }) {
+const _YT_CATEGORY_MAP = {
+  'film':        1,  'movies':      1,  'film & animation': 1,
+  'autos':       2,  'vehicles':    2,  'cars':              2,
+  'music':      10,
+  'pets':       15,  'animals':    15,
+  'sports':     17,
+  'travel':     19,
+  'gaming':     20,  'games':      20,  'video games':       20,
+  'bloggers':   22,  'people':     22,  'vlogging':          22,
+  'comedy':     23,  'humor':      23,
+  'entertainment': 24,
+  'news':       25,  'politics':   25,
+  'howto':      26,  'style':      26,  'how to':            26,  'diy':        26,
+  'education':  27,  'learning':   27,
+  'science':    28,  'technology': 28,  'tech':              28,
+  'nonprofits': 29,  'activism':   29,
+};
+
+async function _youtube({ country, category }) {
   const key = process.env.YOUTUBE_DATA_API_KEY || process.env.GOOGLE_SEARCH_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return null;
   const regionCode = (country && country !== 'ALL') ? country.slice(0, 2).toUpperCase() : 'US';
-  const url = 'https://www.googleapis.com/youtube/v3/videos?part=snippet%2Cstatistics&chart=mostPopular&maxResults=10&regionCode=' +
+  const catKey = (category || '').toLowerCase().trim();
+  const videoCategoryId = _YT_CATEGORY_MAP[catKey];
+  let url = 'https://www.googleapis.com/youtube/v3/videos?part=snippet%2Cstatistics&chart=mostPopular&maxResults=10&regionCode=' +
     encodeURIComponent(regionCode) + '&key=' + encodeURIComponent(key);
+  if (videoCategoryId) url += '&videoCategoryId=' + videoCategoryId;
   return await new Promise(resolve => {
     const req = _https.request(url, { method: 'GET' }, r => {
       let d = ''; r.on('data', c => d += c); r.on('end', () => {
@@ -105,7 +126,7 @@ router.post('/detect', async (req, res) => {
     let source = 'perplexity';
 
     if (platform === 'youtube') {
-      topics = await _youtube({ country });
+      topics = await _youtube({ country, category });
       if (topics && topics.length) {
         source = 'youtube';
       } else {
