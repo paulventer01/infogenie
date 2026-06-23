@@ -11,6 +11,7 @@ export default function LegacyBody() {
     <div
       id="ig-legacy-root"
       style={{ display: "contents" }}
+      suppressHydrationWarning
       dangerouslySetInnerHTML={{ __html: bodyHtml }}
     />
   );

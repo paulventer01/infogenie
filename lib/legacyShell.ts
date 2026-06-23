@@ -11,6 +11,7 @@
 //                   order, so the client loader can re-execute them faithfully.
 //
 // It uses `node:fs`, so it must only ever be imported from a Server Component.
+import { cache } from "react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MIGRATED_VIEWS } from "@/lib/migratedViews";
@@ -126,6 +127,13 @@ function removeViewDiv(html: string, viewId: string): string {
 // Re-read on every render in dev so edits to index.html are reflected without a
 // server restart. This shell is dev-only (prod is served by Express), so the
 // per-request parse cost is irrelevant.
-export function getLegacyShell(): LegacyShell {
-  return parse();
-}
+//
+// Wrapped with React cache() so all Server Component calls within the same
+// request share one parse() result. Without this, DashboardLayout (scripts)
+// and LegacyBody (bodyHtml) each call parse() independently. In Next.js 15's
+// App Router the SSR stream and the RSC Flight payload are generated in
+// separate passes — if those two readFileSync + regex runs differ by even one
+// character (e.g. an in-flight HMR write), the __html prop in the Flight
+// payload won't match the innerHTML already in the SSR DOM, producing a
+// deterministic hydration mismatch on every hard refresh.
+export const getLegacyShell: () => LegacyShell = cache(parse);
