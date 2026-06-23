@@ -12,7 +12,7 @@
 //   GET  /api/safe-agent/proposals
 // Reuses legacy CSS classes (ig-card, form-group, form-control, btn).
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 
 interface ProposalAction {
@@ -94,6 +94,8 @@ export default function SafeAgent() {
   const [obj, setObj] = useState("");
   const [ctx, setCtx] = useState("");
   const [guardrail, setGuardrail] = useState("");
+  const objRef = useRef<HTMLTextAreaElement>(null);
+  const ctxRef = useRef<HTMLTextAreaElement>(null);
   const [proposing, setProposing] = useState(false);
   const [detail, setDetail] = useState<ProposalDetail | null>(null);
   const [proposals, setProposals] = useState<ProposalListItem[]>([]);
@@ -108,13 +110,17 @@ export default function SafeAgent() {
   }, [loadProposals]);
 
   const propose = async () => {
-    const objective = obj.trim();
+    // Fall back to the DOM value in case AI Suggest wrote directly to the
+    // textarea without triggering React's onChange (direct .value assignment
+    // bypasses synthetic events).
+    const objective = obj.trim() || (objRef.current?.value ?? "").trim();
     if (!objective) {
       window.alert("Enter an objective.");
       return;
     }
+    const rawCtx = ctx || (ctxRef.current?.value ?? "");
     const context: Record<string, string> = {};
-    ctx.split("\n").forEach((line) => {
+    rawCtx.split("\n").forEach((line) => {
       const [k, ...vs] = line.split(":");
       if (k && vs.length) context[k.trim()] = vs.join(":").trim();
     });
@@ -285,11 +291,11 @@ export default function SafeAgent() {
             <h3 style={{ fontWeight: 600, marginBottom: 16 }}>New Proposal</h3>
             <div className="form-group">
               <label>Objective</label>
-              <textarea className="form-control" rows={3} placeholder="e.g. Improve ROAS from 1.8x to 2.5x across all paid channels while keeping CAC below $300" value={obj} onChange={(e) => setObj(e.target.value)} />
+              <textarea ref={objRef} className="form-control" rows={3} placeholder="e.g. Improve ROAS from 1.8x to 2.5x across all paid channels while keeping CAC below $300" value={obj} onChange={(e) => setObj(e.target.value)} />
             </div>
             <div className="form-group">
               <label>Business Context (optional)</label>
-              <textarea className="form-control" rows={2} placeholder={"Monthly budget: $40k\nMain channels: Google, Meta\nCurrent ROAS: 1.8x"} value={ctx} onChange={(e) => setCtx(e.target.value)} />
+              <textarea ref={ctxRef} className="form-control" rows={2} placeholder={"Monthly budget: $40k\nMain channels: Google, Meta\nCurrent ROAS: 1.8x"} value={ctx} onChange={(e) => setCtx(e.target.value)} />
             </div>
             <div className="form-group">
               <label>Budget Guardrail (max spend this agent may propose, $)</label>
