@@ -936,7 +936,11 @@ export default function TrendingTopics() {
                   gap: 14,
                 }}
               >
-                {result.topics.map((t, i) => {
+                {(() => {
+                  const maxHashtagViews = result.topics
+                    .filter((t) => t.type === "hashtag" && (t.viewCount || 0) > 0)
+                    .reduce((m, t) => Math.max(m, t.viewCount || 0), 0);
+                  return result.topics.map((t, i) => {
                   const isHashtag = t.type === "hashtag";
                   const isVideo = t.type === "video";
                   const accentColor = isHashtag
@@ -1048,25 +1052,63 @@ export default function TrendingTopics() {
                           </span>
                         )}
                       </div>
-                      {/* View count pill for hashtags */}
-                      {isHashtag && t.viewCount && t.viewCount > 0 && (
-                        <div style={{ marginBottom: 6 }}>
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                              background: "#FDF2F8",
-                              border: "1px solid #FBCFE8",
-                              borderRadius: 20,
-                              padding: "2px 10px",
-                              fontSize: "0.72rem",
-                              fontWeight: 700,
-                              color: "#BE185D",
-                            }}
-                          >
-                            👁 {Number(t.viewCount).toLocaleString()} views
-                          </span>
+                      {/* View count pill + trend-strength bar — always rendered for hashtag cards */}
+                      {isHashtag && (
+                        <div style={{ marginBottom: 8 }}>
+                          {t.viewCount && t.viewCount > 0 && (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                                background: "#FDF2F8",
+                                border: "1px solid #FBCFE8",
+                                borderRadius: 20,
+                                padding: "2px 10px",
+                                fontSize: "0.72rem",
+                                fontWeight: 700,
+                                color: "#BE185D",
+                              }}
+                            >
+                              👁 {Number(t.viewCount).toLocaleString()} views
+                            </span>
+                          )}
+                          {/* Trend-strength bar — proportional when data exists, muted stub when not */}
+                          {(() => {
+                            const hasViews = maxHashtagViews > 0 && (t.viewCount || 0) > 0;
+                            const pct = hasViews
+                              ? Math.max(4, Math.round(((t.viewCount || 0) / maxHashtagViews) * 100))
+                              : 0;
+                            const tooltip = hasViews
+                              ? `Trend strength: ${Math.round(((t.viewCount || 0) / maxHashtagViews) * 100)}% of top hashtag`
+                              : "Trend strength: no view data";
+                            return (
+                              <div style={{ marginTop: t.viewCount && t.viewCount > 0 ? 6 : 0 }}>
+                                <div
+                                  title={tooltip}
+                                  style={{
+                                    width: "100%",
+                                    height: 5,
+                                    background: hasViews ? "#FCE7F3" : "#F3F4F6",
+                                    borderRadius: 99,
+                                    overflow: "hidden",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      width: `${pct}%`,
+                                      height: "100%",
+                                      background: hasViews
+                                        ? "linear-gradient(90deg,#E9065E,#FB7185)"
+                                        : "#E5E7EB",
+                                      borderRadius: 99,
+                                      transition: "width 0.4s ease",
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
                       <div
@@ -1100,7 +1142,8 @@ export default function TrendingTopics() {
                       )}
                     </div>
                   );
-                })}
+                  });
+                })()}
               </div>
             </>
           )}
