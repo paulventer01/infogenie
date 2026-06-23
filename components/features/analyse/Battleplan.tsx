@@ -563,18 +563,18 @@ export default function Battleplan() {
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 28px" }}>
         {/* Priority Summary Banner */}
         <div style={{ background: "linear-gradient(135deg,rgba(239,68,68,.1),rgba(220,38,38,.04))", border: "1px solid rgba(239,68,68,.18)", borderRadius: 14, padding: "16px 20px", marginBottom: 24 }}>
-          <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.88rem", fontWeight: 800, color: "white", marginBottom: 10 }}>🎯 Top Priority Actions vs {c.name}</div>
+          <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.88rem", fontWeight: 800, color: "#1E293B", marginBottom: 10 }}>🎯 Top Priority Actions vs {c.name}</div>
           {topRows.length > 0 ? (
             topRows.map((s, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-                <span style={{ fontSize: "0.62rem", fontWeight: 800, padding: "2px 8px", borderRadius: 5, flexShrink: 0, background: i === 0 ? "#FEE2E2" : "rgba(255,255,255,.1)", color: i === 0 ? "#EF4444" : "rgba(255,255,255,.6)" }}>
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(239,68,68,.12)" }}>
+                <span style={{ fontSize: "0.62rem", fontWeight: 800, padding: "2px 8px", borderRadius: 5, flexShrink: 0, background: i === 0 ? "#FEE2E2" : "rgba(239,68,68,.12)", color: i === 0 ? "#EF4444" : "#B91C1C" }}>
                   #{i + 1}
                 </span>
-                <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,.8)", lineHeight: 1.45 }}>{s}</div>
+                <div style={{ fontSize: "0.8rem", color: "#374151", lineHeight: 1.45 }}>{s}</div>
               </div>
             ))
           ) : (
-            <div style={{ color: "rgba(255,255,255,.4)", fontSize: "0.82rem" }}>Run analysis for full recommendations</div>
+            <div style={{ color: "#9CA3AF", fontSize: "0.82rem" }}>Run analysis for full recommendations</div>
           )}
         </div>
 
