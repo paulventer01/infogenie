@@ -119,7 +119,7 @@ export default function Optimizer() {
   );
 
   return (
-    <div className="view">
+    <div>
       <div className="intel-header" style={{ background: "linear-gradient(110deg,#0F172A 0%,#1E40AF 50%,#0066FF 100%)" }}>
         <div className="breadcrumb">
           <span className="bc-group" style={{ opacity: 0.85 }}>Grow</span>{" "}
