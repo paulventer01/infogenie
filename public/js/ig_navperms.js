@@ -183,17 +183,17 @@
   }
   NP.applyToMenu = applyToMenu;
 
-  // Decide the default landing once permissions load. app.js fires a synchronous
-  // navigateTo('home') at startup (before this fetch resolves); 'home' is the
-  // generic marketing landing and is unmapped (always "allowed"), so we must
-  // actively move the user onto the FIRST view their role permits — that is the
-  // required default landing. We also redirect if they're parked on any view
-  // they may not see. We do NOT touch a user who has already chosen a permitted
-  // app view before perms loaded (so we don't yank them back to a default).
+  // Guard the current view once permissions load. The home page ('home', and the
+  // unset startup state app.js fires before this fetch resolves) is the generic
+  // marketing landing where users intentionally go to run a new analysis — it is
+  // always permitted, so we must NEVER auto-redirect away from it. The perms
+  // fetch (/api/tenants/active) can take 10–15s, so a delayed unsolicited
+  // redirect off home is disorienting and feels like a bug. We only redirect a
+  // user who is parked on a view they genuinely lack permission to see.
   function enforceLanding() {
     const cur = window.currentView;
-    const onStartupLanding = (!cur || cur === 'home');
-    if (!onStartupLanding && NP.can(cur)) return;
+    if (!cur || cur === 'home') return;
+    if (NP.can(cur)) return;
     const dest = NP.firstPermittedView(orderedNavViews());
     if (dest && dest !== cur && typeof window.navigateTo === 'function') {
       try { window.navigateTo(dest); } catch (_) {}
