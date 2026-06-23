@@ -41,6 +41,7 @@ interface Topic {
   title?: string;
   why?: string;
   sources?: string[];
+  thumbnail?: string;
 }
 interface HistoryRun {
   topics?: Topic[];
@@ -608,6 +609,20 @@ export default function TrendingTopics() {
                       padding: "14px 16px",
                     }}
                   >
+                    {result.source === "youtube" && t.thumbnail && (
+                      <img
+                        src={t.thumbnail}
+                        alt={t.title || "YouTube thumbnail"}
+                        style={{
+                          width: "100%",
+                          aspectRatio: "16/9",
+                          objectFit: "cover",
+                          borderRadius: 6,
+                          marginBottom: 10,
+                          display: "block",
+                        }}
+                      />
+                    )}
                     <div
                       style={{
                         display: "flex",

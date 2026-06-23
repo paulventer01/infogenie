@@ -175,7 +175,9 @@ async function _youtube({ country, category }) {
             ].filter(Boolean).join(' · ') || 'Trending on YouTube';
             const videoId = item.id;
             const sources = videoId ? [`https://www.youtube.com/watch?v=${videoId}`] : [];
-            return { title, why, sources };
+            const thumbs = snippet.thumbnails || {};
+            const thumbnail = (thumbs.medium || thumbs.high || thumbs.default || {}).url || null;
+            return { title, why, sources, thumbnail };
           });
           if (!topics.length) return resolve(null);
           const categoryLabel = videoCategoryId ? (_YT_CATEGORY_LABELS[videoCategoryId] || null) : null;

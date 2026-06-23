@@ -18704,7 +18704,7 @@ function _trRender(topics, source, category) {
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px">
       ${(topics||[]).map((t,i)=>`<div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid ${i<3?'#B91C1C':i<6?'#F59E0B':'#9CA3AF'};border-radius:10px;padding:14px 16px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        ${source==='youtube'&&t.thumbnail?`<img src="${t.thumbnail}" alt="${_escapeHtml(t.title||'')}" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;margin-bottom:10px;display:block">`:''}\n        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
           <div style="font-weight:800;color:#0A1628;font-size:0.95rem">#${i+1}. ${_escapeHtml(t.title||'')}</div>
           ${source==='youtube'?`<span style="background:#FF0000;color:#fff;font-size:0.55rem;font-weight:800;padding:2px 6px;border-radius:4px;white-space:nowrap;margin-left:6px;flex-shrink:0">▶ YouTube</span>`:''}
         </div>
