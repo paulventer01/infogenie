@@ -1,9 +1,50 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Component, type ErrorInfo, type ReactNode, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { pathToViewId } from "@/lib/viewRoutes";
 import { MIGRATED_COMPONENTS } from "@/components/features/registry";
+
+class PanelErrorBoundary extends Component<
+  { children: ReactNode; view: string },
+  { error: Error | null }
+> {
+  constructor(props: { children: ReactNode; view: string }) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("[MigratedPanel] component crash in view=" + this.props.view, error, info);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div
+          style={{
+            padding: "40px 24px",
+            textAlign: "center",
+            color: "#6b7280",
+          }}
+        >
+          <div style={{ fontSize: "2rem", marginBottom: 8 }}>⚠️</div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            This panel encountered an error
+          </div>
+          <div style={{ fontSize: ".85rem" }}>
+            Try refreshing the page. If it keeps happening, check the browser console for details.
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Renders the native React panel for the currently-routed view, if it has been
 // migrated. Mounted once in the dashboard layout, it resolves the active view
@@ -33,7 +74,9 @@ export default function MigratedPanel() {
   if (!mounted || !view || !Cmp) return null;
   return (
     <div id="ig-react-panel" data-react-view={view}>
-      <Cmp />
+      <PanelErrorBoundary view={view}>
+        <Cmp />
+      </PanelErrorBoundary>
     </div>
   );
 }

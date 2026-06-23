@@ -110,19 +110,16 @@ function VerdictBadge({ v }: { v?: string }) {
 export default function BrandSafety() {
   const [checkType, setCheckType] = useState(CHECK_TYPES[0][0]);
   const [vertical, setVertical] = useState(VERTICALS[0][0]);
-  const [jurs, setJurs] = useState<Set<string>>(new Set(["ftc"]));
+  const [jurs, setJurs] = useState<string[]>(["ftc"]);
   const [content, setContent] = useState("");
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<BSResults | null>(null);
   const [history, setHistory] = useState<BSHistItem[]>([]);
 
   function toggleJur(k: string) {
-    setJurs((prev) => {
-      const next = new Set(prev);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
-      return next;
-    });
+    setJurs((prev) =>
+      prev.includes(k) ? prev.filter((j) => j !== k) : [...prev, k],
+    );
   }
 
   async function loadHistory() {
@@ -140,7 +137,7 @@ export default function BrandSafety() {
       alert("Paste some content to audit.");
       return;
     }
-    const selected = [...jurs];
+    const selected = jurs;
     if (!selected.length) {
       alert("Select at least one jurisdiction.");
       return;
@@ -390,7 +387,7 @@ export default function BrandSafety() {
                   fontSize: ".85rem",
                 }}
               >
-                <input type="checkbox" checked={jurs.has(k)} onChange={() => toggleJur(k)} />
+                <input type="checkbox" checked={jurs.includes(k)} onChange={() => toggleJur(k)} />
                 {l}
               </label>
             ))}
