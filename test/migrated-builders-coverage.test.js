@@ -168,6 +168,18 @@ function makeHarness() {
   return { win, loadErrors };
 }
 
+// ── Floor constant: minimum number of migrated view-builder pairs the harness
+// must resolve and test. Raise this whenever new screens are added so the guard
+// stays tight. The staleness check below will fail if this value drifts more
+// than MAX_BUILDER_FLOOR_DRIFT below the live resolved count, printing the exact
+// value you need to set it to. ────────────────────────────────────────────────
+const MIN_COVERED_BUILDERS = 178;
+
+// Maximum allowed gap between MIN_COVERED_BUILDERS and the live resolved count
+// before the staleness check fires. Keeps the floor within ~5 builders of
+// reality as new screens land. ────────────────────────────────────────────────
+const MAX_BUILDER_FLOOR_DRIFT = 5;
+
 // ── Wire it all together at module load so tests register synchronously. ─────
 const VIEW_IDS = migratedViewIds();
 const BUILDER_MAP = dispatchBuilderMap();
@@ -216,11 +228,28 @@ test('harness: every dispatch-mapped migrated builder resolves to a function', (
 });
 
 test('harness: covers a substantial share of the migrated fleet', () => {
-  // Guards against a silently-broken parser resolving nothing. There are ~180
+  // Guards against a silently-broken parser resolving nothing. There are ~180+
   // migrated views; the bulk have a dedicated dispatch builder.
   assert.ok(
-    resolved.length >= 150,
-    `expected >=150 migrated builders under test, got ${resolved.length}`,
+    resolved.length >= MIN_COVERED_BUILDERS,
+    `expected >=${MIN_COVERED_BUILDERS} migrated builders under test, got ${resolved.length}`,
+  );
+});
+
+test('harness: MIN_COVERED_BUILDERS floor is not stale', () => {
+  // Fails when new screens have been added and resolved by the harness but
+  // MIN_COVERED_BUILDERS has not been raised to match. Keeps the floor within
+  // MAX_BUILDER_FLOOR_DRIFT builders of the live resolved count so the guard
+  // stays meaningful as the feature surface grows.
+  //
+  // If this test fails, update MIN_COVERED_BUILDERS in this file to the value
+  // printed below (it must stay <= resolved.length so the fleet check passes).
+  const drift = resolved.length - MIN_COVERED_BUILDERS;
+  assert.ok(
+    drift <= MAX_BUILDER_FLOOR_DRIFT,
+    `MIN_COVERED_BUILDERS (${MIN_COVERED_BUILDERS}) is ${drift} below the live ` +
+      `resolved count (${resolved.length}), which exceeds the allowed drift of ` +
+      `${MAX_BUILDER_FLOOR_DRIFT}. Update MIN_COVERED_BUILDERS to ${resolved.length}.`,
   );
 });
 
