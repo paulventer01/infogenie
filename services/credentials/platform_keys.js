@@ -43,6 +43,7 @@ const REGISTRY = [
   { key: 'FIRECRAWL_API_KEY', group: 'Data & Intelligence', service: 'Firecrawl', label: 'Firecrawl API Key', desc: 'Website crawling & scraping', secret: true, test: 'firecrawl', settingsIds: ['firecrawl'] },
   { key: 'APOLLO_API_KEY', group: 'Data & Intelligence', service: 'Apollo', label: 'Apollo API Key', desc: 'B2B contact & company enrichment', secret: true, test: 'apollo', settingsIds: ['apollo'] },
   { key: 'ZERNIO_API_KEY', group: 'Data & Intelligence', service: 'Zernio', label: 'Zernio API Key', desc: 'Social publishing', secret: true, settingsIds: ['zernio'] },
+  { key: 'MODASH_API_KEY', group: 'Data & Intelligence', service: 'Modash', label: 'Modash API Key', desc: 'Influencer Discovery — real follower counts, engagement rates & audience-quality scores (IG/TikTok/YouTube)', secret: true, test: 'modash', settingsIds: ['modash'] },
   { key: 'BUILTWITH_API_KEY', group: 'Data & Intelligence', service: 'BuiltWith', label: 'BuiltWith API Key', desc: 'Tech-stack detection', secret: true, test: 'builtwith', settingsIds: ['builtwith'] },
   { key: 'GOOGLE_PAGESPEED_API_KEY', group: 'Data & Intelligence', service: 'Google PageSpeed', label: 'PageSpeed API Key', desc: 'Core Web Vitals & page performance audits', secret: true, test: 'pagespeed', settingsIds: ['pagespeed', 'google_pagespeed'] },
   { key: 'GOOGLE_SEARCH_API_KEY', group: 'Data & Intelligence', service: 'Google Search', label: 'Google Search API Key', desc: 'Custom Search / SERP visibility', secret: true, test: 'google_search', settingsIds: ['google_search'] },
@@ -374,6 +375,21 @@ async function _runTest(keyName) {
       let data = null; try { data = JSON.parse(await _bodyText(r)); } catch {}
       if (data && data.is_logged_in === true) return _OK('Apollo authenticated');
       return _BAD('Apollo rejected the key');
+    }
+    if (entry.test === 'modash') {
+      const key = resolvePlatformKey('MODASH_API_KEY');
+      if (!key) return _UNCONF();
+      // Probe: search with an empty filter, limit=1. A bad/missing key returns
+      // 401 before any data is consumed; a valid key returns 200 or 400 (if the
+      // filter is malformed for this plan). Either non-401 response means auth ok.
+      const r = await _fetchT('https://api.modash.io/v1/instagram/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+        body: JSON.stringify({ filter: {}, paging: { limit: 1 } }),
+      });
+      if (r.status === 401 || r.status === 403) return _BAD('Modash rejected the key (HTTP ' + r.status + ')');
+      if (r.ok || r.status === 400 || r.status === 422) return _OK('Modash authenticated');
+      return _HTTP('Modash', r);
     }
     if (entry.test === 'builtwith') {
       const key = resolvePlatformKey('BUILTWITH_API_KEY');

@@ -21,6 +21,7 @@ interface Creator {
   niche?: string;
   reason?: string;
   sources?: string[];
+  audienceQuality?: number | null;
 }
 
 interface DiscoveryResult {
@@ -38,6 +39,24 @@ function safeUrl(u?: string): string {
     return "#";
   }
 }
+
+const SOURCE_META: Record<string, { label: string; bg: string; title: string }> = {
+  modash: {
+    label: "Source: Modash",
+    bg: "#047857",
+    title: "Authoritative data — real follower counts & engagement rates from Modash",
+  },
+  perplexity: {
+    label: "Source: Perplexity (estimated)",
+    bg: "#7C3AED",
+    title: "AI-estimated via Perplexity live web search — add a Modash key for authoritative figures",
+  },
+  template: {
+    label: "No data source",
+    bg: "#9CA3AF",
+    title: "No API key configured — add Modash (Platform APIs) for real data",
+  },
+};
 
 export default function Discovery() {
   const [niche, setNiche] = useState("");
@@ -108,6 +127,9 @@ export default function Discovery() {
     marginBottom: 3,
   };
 
+  const srcKey = result?.source || "template";
+  const srcMeta = SOURCE_META[srcKey] || { label: srcKey, bg: "#9CA3AF", title: "" };
+
   return (
     <div className="view-header-wrap">
       <div className="view-header">
@@ -119,8 +141,8 @@ export default function Discovery() {
               </div>
               <h2 className="view-title">🔭 Influencer Discovery</h2>
               <p className="view-sub">
-                Find real, currently-active creators in any niche via live web search. One click adds them straight
-                into your Influencer CRM.
+                Find real, currently-active creators in any niche. Powered by Modash when configured for authoritative
+                data — falls back to Perplexity web search. One click adds them straight into your Influencer CRM.
               </p>
             </div>
           </div>
@@ -190,7 +212,7 @@ export default function Discovery() {
 
         <div>
           {loading && (
-            <div style={{ textAlign: "center", padding: 40, color: "#6B7280" }}>⏳ Searching live web (~15-30s)…</div>
+            <div style={{ textAlign: "center", padding: 40, color: "#6B7280" }}>⏳ Searching…</div>
           )}
           {errorMsg && (
             <div style={{ background: "#FEE2E2", color: "#B91C1C", padding: 14, borderRadius: 10 }}>{errorMsg}</div>
@@ -202,17 +224,19 @@ export default function Discovery() {
                   Found {(result.creators || []).length} in <span style={{ color: "#0891B2" }}>{searchedNiche}</span>
                 </div>
                 <span
+                  title={srcMeta.title}
                   style={{
-                    background: result.source === "perplexity" ? "#7C3AED" : "#9CA3AF",
+                    background: srcMeta.bg,
                     color: "#fff",
                     padding: "3px 9px",
                     borderRadius: 5,
                     fontSize: "0.62rem",
                     fontWeight: 800,
                     textTransform: "uppercase",
+                    cursor: "default",
                   }}
                 >
-                  {result.source}
+                  {srcMeta.label}
                 </span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(360px,1fr))", gap: 14 }}>
@@ -243,10 +267,17 @@ export default function Discovery() {
                         <div style={{ fontSize: "0.66rem", color: "#6B7280" }}>followers</div>
                       </div>
                     </div>
-                    <div style={{ fontSize: "0.78rem", color: "#374151", lineHeight: 1.45 }}>{c.reason || ""}</div>
-                    <div style={{ display: "flex", gap: 10, fontSize: "0.7rem", color: "#6B7280" }}>
+                    {c.reason ? (
+                      <div style={{ fontSize: "0.78rem", color: "#374151", lineHeight: 1.45 }}>{c.reason}</div>
+                    ) : null}
+                    <div style={{ display: "flex", gap: 10, fontSize: "0.7rem", color: "#6B7280", flexWrap: "wrap" }}>
                       <span>📊 {((c.engagement || 0) * 100).toFixed(1)}% engagement</span>
-                      <span>🏷 {c.niche}</span>
+                      {c.niche && <span>🏷 {c.niche}</span>}
+                      {c.audienceQuality != null && (
+                        <span title="Audience quality score from Modash (0–1; higher = more authentic)">
+                          🛡 {(c.audienceQuality * 100).toFixed(0)}% authentic audience
+                        </span>
+                      )}
                     </div>
                     {(c.sources || []).length ? (
                       <div style={{ fontSize: "0.66rem" }}>
