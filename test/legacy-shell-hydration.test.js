@@ -282,7 +282,7 @@ test('getLegacyShell().bodyHtml contains multiple class="view" panels', () => {
 // Update MIN_VIEW_PANEL_COUNT after an intentional batch removal; keep the
 // value at (new total − 20) so there is still a meaningful floor.
 
-const MIN_VIEW_PANEL_COUNT = 200;
+const MIN_VIEW_PANEL_COUNT = 203;
 
 test(`getLegacyShell().bodyHtml contains at least ${MIN_VIEW_PANEL_COUNT} id="view-*" panels (bulk-removal guard)`, () => {
   const { bodyHtml } = getLegacyShell();
@@ -296,5 +296,31 @@ test(`getLegacyShell().bodyHtml contains at least ${MIN_VIEW_PANEL_COUNT} id="vi
       'accidentally removed a large block of view panels. If panels were intentionally ' +
       'removed in bulk, update MIN_VIEW_PANEL_COUNT in test/legacy-shell-hydration.test.js ' +
       'to (new total − 20).',
+  );
+});
+
+// ── Floor-staleness guard ─────────────────────────────────────────────────────
+//
+// Whenever a developer adds panels in bulk to index.html the constant above
+// can drift more than 20 below the live count, silently weakening the guard.
+// This test catches that drift automatically: if the live count in index.html
+// exceeds MIN_VIEW_PANEL_COUNT by more than 20, the test fails and tells the
+// developer to bump the constant.
+//
+// How to fix: set MIN_VIEW_PANEL_COUNT to (liveCount − 20).
+
+test('MIN_VIEW_PANEL_COUNT floor is within 20 of the live id="view-*" count in index.html', () => {
+  const indexHtml = fs.readFileSync(
+    path.join(__dirname, '..', 'index.html'),
+    'utf8',
+  );
+  const liveCount = (indexHtml.match(/\bid="view-[^"]+"/g) || []).length;
+  const gap = liveCount - MIN_VIEW_PANEL_COUNT;
+  assert.ok(
+    gap <= 20,
+    `MIN_VIEW_PANEL_COUNT (${MIN_VIEW_PANEL_COUNT}) is ${gap} below the current live count ` +
+      `of ${liveCount} id="view-*" panels in index.html (limit: 20). ` +
+      `Bump MIN_VIEW_PANEL_COUNT to ${liveCount - 20} in ` +
+      'test/legacy-shell-hydration.test.js to keep the bulk-removal guard meaningful.',
   );
 });
