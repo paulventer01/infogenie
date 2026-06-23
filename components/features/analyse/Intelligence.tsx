@@ -74,6 +74,40 @@ interface SovRow {
   color: string;
 }
 
+const SOV_CIRCUMFERENCE = 2 * Math.PI * 70; // r=70
+
+function SovDonut({ rows }: { rows: SovRow[] }) {
+  let cum = 0;
+  const youRow = rows.find((r) => r.name === "You");
+  return (
+    <div style={{ position: "relative", width: 148, height: 148, flexShrink: 0 }}>
+      <svg viewBox="0 0 200 200" width="148" height="148">
+        {rows.map((s, i) => {
+          const len = (s.share / 100) * SOV_CIRCUMFERENCE;
+          const off = cum;
+          cum += len;
+          return (
+            <circle
+              key={i}
+              cx="100" cy="100" r="70"
+              fill="none"
+              stroke={s.color}
+              strokeWidth="32"
+              strokeDasharray={`${len} ${SOV_CIRCUMFERENCE - len}`}
+              strokeDashoffset={-off}
+              style={{ transform: "rotate(-90deg)", transformOrigin: "100px 100px" }}
+            />
+          );
+        })}
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+        <div style={{ fontSize: "1.4rem", fontWeight: 800, color: "#0F172A", lineHeight: 1 }}>{youRow?.share ?? 0}%</div>
+        <div style={{ fontSize: "0.58rem", color: "#9CA3AF", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 3 }}>Your Share</div>
+      </div>
+    </div>
+  );
+}
+
 const SOV_PALETTE = [
   "#0066FF", "#00C9C8", "#6366F1", "#F59E0B", "#10B981",
   "#EF4444", "#8B5CF6", "#EC4899", "#F97316", "#14B8A6",
@@ -175,64 +209,69 @@ export default function Intelligence() {
                 ))}
               </div>
               <div className="sov-charts-col">
-                <div style={{ display: "grid", gap: 8 }}>
-                  {barRows.map((s) => (
-                    <div
-                      key={s.name}
-                      style={{ display: "flex", alignItems: "center", gap: 10 }}
-                    >
-                      <div
-                        style={{
-                          width: 96,
-                          fontSize: "0.72rem",
-                          fontWeight: 700,
-                          color: s.name === "You" ? "#00C9C8" : "#374151",
-                          textAlign: "right",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {s.name}
-                      </div>
-                      <div
-                        style={{
-                          flex: 1,
-                          background: "rgba(0,0,0,.05)",
-                          borderRadius: 5,
-                          height: 14,
-                          overflow: "hidden",
-                        }}
-                      >
+                <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {barRows.map((s) => (
                         <div
-                          style={{
-                            width: `${maxBar ? (s.share / (maxBar + 5)) * 100 : 0}%`,
-                            height: "100%",
-                            background: s.name === "You" ? "#00C9C8" : s.color,
-                            borderRadius: 5,
-                          }}
-                        />
-                      </div>
-                      <div
-                        style={{
-                          width: 38,
-                          fontSize: "0.72rem",
-                          color: "#9CA3AF",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {s.share}%
-                      </div>
+                          key={s.name}
+                          style={{ display: "flex", alignItems: "center", gap: 10 }}
+                        >
+                          <div
+                            style={{
+                              width: 96,
+                              fontSize: "0.72rem",
+                              fontWeight: 700,
+                              color: s.name === "You" ? "#00C9C8" : "#374151",
+                              textAlign: "right",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {s.name}
+                          </div>
+                          <div
+                            style={{
+                              flex: 1,
+                              background: "rgba(0,0,0,.05)",
+                              borderRadius: 5,
+                              height: 14,
+                              overflow: "hidden",
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: `${maxBar ? (s.share / (maxBar + 5)) * 100 : 0}%`,
+                                height: "100%",
+                                background: s.name === "You" ? "#00C9C8" : s.color,
+                                borderRadius: 5,
+                              }}
+                            />
+                          </div>
+                          <div
+                            style={{
+                              width: 38,
+                              fontSize: "0.72rem",
+                              color: "#9CA3AF",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {s.share}%
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-                <div
-                  style={{
-                    marginTop: 10,
-                    fontSize: "0.72rem",
-                    color: "#9CA3AF",
-                  }}
-                >
-                  Estimated from your analysed competitors&apos; traffic — not a
-                  verified live measurement.
+                    <div
+                      style={{
+                        marginTop: 10,
+                        fontSize: "0.72rem",
+                        color: "#9CA3AF",
+                      }}
+                    >
+                      Estimated from your analysed competitors&apos; traffic — not a
+                      verified live measurement.
+                    </div>
+                  </div>
+                  <SovDonut rows={sov} />
                 </div>
               </div>
             </div>
