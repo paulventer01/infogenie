@@ -381,4 +381,5 @@ router.get('/history', async (req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
+router._tiktokHashtags = _tiktokHashtags; // exported for unit testing
 module.exports = router;
