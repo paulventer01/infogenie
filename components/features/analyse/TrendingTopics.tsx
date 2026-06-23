@@ -46,6 +46,7 @@ interface HistoryRun {
   topics?: Topic[];
   source?: string;
   category?: string;
+  category_label?: string;
 }
 interface HistoryResp {
   ok?: boolean;
@@ -145,6 +146,7 @@ export default function TrendingTopics() {
         topics: last.topics || [],
         source: last.source || "",
         category: last.category || "",
+        categoryLabel: last.category_label || undefined,
       });
   }, []);
 
