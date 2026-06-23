@@ -15,3 +15,4 @@
 - [Migrated builder coverage test](migrated-builder-coverage-test.md) — fleet-wide stripped-DOM crash guard; async builders REJECT (await them), don't eval app.js wholesale, parse navigateTo dispatch for view→builder.
 - [gpt-5 modelfarm compat](gpt5-modelfarm-compat.md) — gpt-5* reasoning models need max_completion_tokens, no temp/top_p, reasoning_effort:'minimal'; normalization centralized via SDK patch + global fetch/http intercept (ai_compat.js), not per call site.
 - [Root-layout head hydration](nextjs-head-hydration.md) — keep root <head> free of hand-authored reconciled children (proxy injects devtools script); fonts via next/font + CSS-var-with-literal-fallback so legacy Express path still resolves.
+- [Legacy↔React nav bridge](legacy-react-nav-bridge.md) — migrated views blank out after legacy navigateTo() (div stripped, URL never moves); two-way bridge (SpaRouter + LegacyNavBridge via ig:spa-navigate) + reactive globals via custom events.

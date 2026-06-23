@@ -2996,6 +2996,16 @@ function navigateTo(viewId, updateActive = true) {
     target.classList.remove('hidden');
     target.style.display = 'block';
     target.classList.add('active');
+  } else {
+    // No legacy `#view-<id>` div — under the Next.js dev shell this view has
+    // been ported to React and its div is stripped from the replay shell. Bridge
+    // the navigation to the Next router so <MigratedPanel/> mounts the React
+    // panel for this view. <LegacyNavBridge/> (mounted in the dashboard layout)
+    // listens for this event and pushes the canonical URL. Where no bridge is
+    // mounted (e.g. legacy-only contexts) this is a harmless no-op event.
+    try {
+      document.dispatchEvent(new CustomEvent('ig:spa-navigate', { detail: { view: viewId } }));
+    } catch(_) {}
   }
   currentView = viewId;
   try { window.currentView = viewId; } catch(_) {}
@@ -4106,6 +4116,14 @@ async function runAnalysis(url, country, industryOverride) {
   // builders and enrichments are well past done in the happy case.
   setTimeout(() => { try { window.IGDiag && IGDiag.stopHeartbeat && IGDiag.stopHeartbeat(); } catch(_) {} }, 15000);
   navigateTo('dashboard');
+  // Tell any already-mounted React Dashboard panel (Next.js dev shell) that a
+  // fresh analysis payload is on `window.analysisData`. On first analyse the
+  // panel mounts via the nav bridge and reads the data through its initializer;
+  // on a re-run while it's already mounted, the URL doesn't change so it won't
+  // remount — this event makes it re-read and refresh the report.
+  try {
+    document.dispatchEvent(new CustomEvent('ig:analysis-ready', { detail: { url: cleanUrl } }));
+  } catch(_) {}
   showToast(`✅ Analysis complete for ${cleanUrl} — ${selectedComps.length} competitors analysed in ${industry.name}`);
 
   // Build the landing view (dashboard) immediately and defer all other views

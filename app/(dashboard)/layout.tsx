@@ -5,6 +5,7 @@ import Navbar from "@/components/layout/Navbar";
 import LegacyBody from "@/components/layout/LegacyBody";
 import LegacyScripts from "@/components/layout/LegacyScripts";
 import SpaRouter from "@/components/layout/SpaRouter";
+import LegacyNavBridge from "@/components/layout/LegacyNavBridge";
 import MigratedPanel from "@/components/layout/MigratedPanel";
 
 // Phase 2 dashboard shell. In DEV, Next owns `/` and every /<group>/<view>
@@ -42,6 +43,7 @@ export default async function DashboardLayout({
       <MigratedPanel />
       {children}
       <SpaRouter />
+      <LegacyNavBridge />
       <LegacyScripts scripts={scripts} />
     </>
   );

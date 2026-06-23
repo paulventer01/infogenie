@@ -153,7 +153,17 @@ interface Milestone {
 
 export default function Dashboard() {
   const router = useRouter();
-  const ad = useMemo(getAnalysisData, []);
+  // Read the post-analyse payload reactively. `window.analysisData` is set by
+  // app.js just before it navigates here, so the first mount picks it up via the
+  // lazy initializer. When the user re-runs Analyse while this panel is already
+  // mounted, app.js fires `ig:analysis-ready`; we re-read so the report (charts,
+  // tables, live panels) refreshes instead of showing the previous run.
+  const [ad, setAd] = useState<AnalysisData | null>(getAnalysisData);
+  useEffect(() => {
+    const onReady = () => setAd(getAnalysisData());
+    document.addEventListener("ig:analysis-ready", onReady);
+    return () => document.removeEventListener("ig:analysis-ready", onReady);
+  }, []);
   const competitors = useMemo(() => (ad && Array.isArray(ad.competitors) ? ad.competitors : []), [ad]);
   const hasData = !!(ad && ad.websiteKPIs && competitors.length > 0);
 
