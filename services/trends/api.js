@@ -27,22 +27,102 @@ async function _ensureSchema() {
 }
 _ensureSchema().catch(()=>{});
 
+// YouTube video category ID map.
+// Authoritative source: https://developers.google.com/youtube/v3/docs/videoCategories/list
+// Retrieve the live list: GET https://www.googleapis.com/youtube/v3/videoCategories?part=snippet&regionCode=US&key=YOUR_KEY
+//
+// IMPORTANT — region restrictions:
+//   • IDs 1–10 are the core global set but their exact assignment can vary by region
+//     (e.g. "Music" is 10 globally but may map differently in some locales).
+//   • IDs 30–44 are film/show sub-categories that YouTube only returns for certain
+//     regions (primarily the US). Pass a specific regionCode when using them.
+//   • IDs 3–9, 11–14, 16, 21 are either retired or never publicly assignable;
+//     they are intentionally omitted.
+//
+// To keep this map accurate: query the videoCategories API with the target
+// regionCode and reconcile any new or removed entries.
 const _YT_CATEGORY_MAP = {
-  'film':        1,  'movies':      1,  'film & animation': 1,
-  'autos':       2,  'vehicles':    2,  'cars':              2,
-  'music':      10,
-  'pets':       15,  'animals':    15,
-  'sports':     17,
-  'travel':     19,
-  'gaming':     20,  'games':      20,  'video games':       20,
-  'bloggers':   22,  'people':     22,  'vlogging':          22,
-  'comedy':     23,  'humor':      23,
-  'entertainment': 24,
-  'news':       25,  'politics':   25,
-  'howto':      26,  'style':      26,  'how to':            26,  'diy':        26,
-  'education':  27,  'learning':   27,
-  'science':    28,  'technology': 28,  'tech':              28,
-  'nonprofits': 29,  'activism':   29,
+  // ── Core global categories ────────────────────────────────────────────────
+  'film':              1,  'films':           1,  'movies':            1,
+  'animation':         1,  'film & animation':1,  'animated':          1,
+
+  'autos':             2,  'vehicles':        2,  'cars':              2,
+  'automobile':        2,  'automotive':      2,  'autos & vehicles':  2,
+  'driving':           2,  'motorcycles':     2,
+
+  'music':            10,  'songs':          10,  'k-pop':            10,
+  'kpop':             10,  'pop':            10,  'hip hop':          10,
+  'rap':              10,  'rock':           10,  'indie':            10,
+  'classical':        10,  'jazz':           10,  'edm':              10,
+  'country music':    10,  'r&b':            10,  'covers':           10,
+
+  'pets':             15,  'animals':        15,  'pets & animals':   15,
+  'dogs':             15,  'cats':           15,  'wildlife':         15,
+  'nature':           15,
+
+  'sports':           17,  'fitness':        17,  'workout':          17,
+  'exercise':         17,  'gym':            17,  'football':         17,
+  'soccer':           17,  'basketball':     17,  'baseball':         17,
+  'tennis':           17,  'golf':           17,  'esports':          17,
+  'athletics':        17,
+
+  'travel':           19,  'events':         19,  'travel & events':  19,
+  'tourism':          19,  'adventure':      19,  'vlogs':            19,
+  'destinations':     19,
+
+  'gaming':           20,  'games':          20,  'video games':      20,
+  'game':             20,  'playthrough':    20,  'let\'s play':      20,
+  'minecraft':        20,  'fortnite':       20,  'roblox':           20,
+
+  'people':           22,  'bloggers':       22,  'vlogging':         22,
+  'people & blogs':   22,  'lifestyle':      22,  'daily vlog':       22,
+  'personal':         22,  'family':         22,
+
+  'comedy':           23,  'humor':          23,  'funny':            23,
+  'sketches':         23,  'stand-up':       23,  'parody':           23,
+  'memes':            23,
+
+  'entertainment':    24,  'variety':        24,  'celebrity':        24,
+  'reality tv':       24,  'talk show':      24,
+
+  'news':             25,  'politics':       25,  'news & politics':  25,
+  'current events':   25,  'world news':     25,  'political':        25,
+
+  'howto':            26,  'style':          26,  'how to':           26,
+  'diy':              26,  'howto & style':  26,  'tutorials':        26,
+  'fashion':          26,  'beauty':         26,  'makeup':           26,
+  'cooking':          26,  'recipes':        26,  'crafts':           26,
+  'home improvement': 26,
+
+  'education':        27,  'learning':       27,  'educational':      27,
+  'school':           27,  'academic':       27,  'explainer':        27,
+  'documentary':      27,
+
+  'science':          28,  'technology':     28,  'tech':             28,
+  'science & technology': 28, 'stem':        28,  'engineering':      28,
+  'programming':      28,  'coding':         28,  'ai':               28,
+  'space':            28,  'physics':        28,  'biology':          28,
+
+  'nonprofits':       29,  'activism':       29,  'nonprofits & activism': 29,
+  'charity':          29,  'social causes':  29,  'volunteering':     29,
+
+  // ── Film/show sub-categories (region-restricted — primarily US) ──────────
+  // Use regionCode=US when querying with these IDs.
+  'short movies':     30,  'short films':    30,
+  'anime':            31,  'manga':          31,
+  'action':           32,  'action & adventure': 32,
+  'classics':         33,  'classic films':  33,
+  'comedy films':     34,
+  'documentaries':    35,
+  'drama':            36,  'drama films':    36,
+  'family films':     37,
+  'foreign':          38,  'foreign films':  38,  'subtitled':        38,
+  'horror':           39,  'scary':          39,
+  'sci-fi':           40,  'science fiction':40,  'fantasy':          40,
+  'thriller':         41,  'suspense':       41,
+  'shorts':           42,
+  'shows':            43,  'tv shows':       43,  'series':           43,
+  'trailers':         44,  'movie trailers': 44,
 };
 
 async function _youtube({ country, category }) {
