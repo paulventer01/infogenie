@@ -205,8 +205,8 @@ export default function Roadmap() {
               <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
                 <span style={{ fontSize: "1.4rem" }}>🗺️</span>
                 <div>
-                  <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>Your 90-Day Marketing Roadmap</div>
-                  <div style={{ fontSize: "0.78rem", opacity: 0.7, marginTop: 2 }}>
+                  <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#fff" }}>Your 90-Day Marketing Roadmap</div>
+                  <div style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.85)", marginTop: 2 }}>
                     Click each task — InfoGenie does the actual work.
                   </div>
                 </div>
@@ -215,15 +215,15 @@ export default function Roadmap() {
                 </button>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                <div style={{ fontSize: "2.4rem", fontWeight: 800, lineHeight: 1 }}>
+                <div style={{ fontSize: "2.4rem", fontWeight: 800, lineHeight: 1, color: "#fff" }}>
                   {done}
-                  <span style={{ opacity: 0.5, fontSize: "1.4rem" }}>/{total}</span>
+                  <span style={{ color: "rgba(255,255,255,0.7)", fontSize: "1.4rem" }}>/{total}</span>
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ background: "rgba(255,255,255,.1)", borderRadius: 999, height: 14, overflow: "hidden" }}>
                     <div style={{ background: "linear-gradient(90deg,#34D399,#0066FF)", width: `${pct}%`, height: "100%", transition: "width .4s" }} />
                   </div>
-                  <div style={{ fontSize: "0.74rem", opacity: 0.65, marginTop: 6 }}>{pct}% complete</div>
+                  <div style={{ fontSize: "0.74rem", color: "rgba(255,255,255,0.85)", marginTop: 6 }}>{pct}% complete</div>
                 </div>
               </div>
             </div>
