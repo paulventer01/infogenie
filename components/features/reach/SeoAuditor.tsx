@@ -72,6 +72,23 @@ function n(x: unknown, d = 0): number {
   return Number.isFinite(v) ? Math.round(v) : d;
 }
 
+// Reads the user's own URL from window.analysisData (set after Analyse Now).
+function getOwnUrl(): string {
+  const a = (window as unknown as { analysisData?: Record<string, unknown> })
+    .analysisData;
+  return String(a?.url || "").trim();
+}
+
+// Returns competitor URLs in order, pulling .url first then .domain then .name.
+function getCompetitorUrls(): string[] {
+  const a = (window as unknown as { analysisData?: Record<string, unknown> })
+    .analysisData;
+  const comps = (a?.competitors as Array<Record<string, unknown>> | undefined) || [];
+  return comps
+    .map((c) => String(c.url || c.domain || c.name || "").trim())
+    .filter(Boolean);
+}
+
 export default function SeoAuditor() {
   const [url, setUrl] = useState("");
   const [result, setResult] = useState<AuditResult | null>(null);
@@ -79,6 +96,8 @@ export default function SeoAuditor() {
   const [error, setError] = useState("");
   const [importLabel, setImportLabel] = useState("📋 Add to Task Manager");
   const [importing, setImporting] = useState(false);
+  // Tracks which AI Suggest slot we'll fill next: 0 = own URL, 1+ = competitors.
+  const [suggestIdx, setSuggestIdx] = useState(0);
 
   // The legacy crawler sets `window._seoAuditorPrefill` then routes here.
   useEffect(() => {
@@ -90,6 +109,19 @@ export default function SeoAuditor() {
         undefined;
     }
   }, []);
+
+  function aiSuggest() {
+    const ownUrl = getOwnUrl();
+    const compUrls = getCompetitorUrls();
+    // Build the full cycle: own site first, then each competitor in order.
+    const slots = [ownUrl, ...compUrls].filter(Boolean);
+    if (!slots.length) return; // nothing analysed yet — do nothing
+    const idx = suggestIdx % slots.length;
+    let picked = slots[idx];
+    if (!/^https?:\/\//i.test(picked)) picked = "https://" + picked;
+    setUrl(picked);
+    setSuggestIdx(idx + 1);
+  }
 
   async function run() {
     let u = url.trim();
@@ -177,17 +209,49 @@ export default function SeoAuditor() {
             }}
           >
             <div>
-              <label
+              <div
                 style={{
-                  display: "block",
-                  fontSize: "0.7rem",
-                  fontWeight: 700,
-                  color: "#6B7280",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
                   marginBottom: 3,
                 }}
               >
-                URL TO AUDIT
-              </label>
+                <label
+                  style={{
+                    fontSize: "0.7rem",
+                    fontWeight: 700,
+                    color: "#6B7280",
+                  }}
+                >
+                  URL TO AUDIT
+                </label>
+                <button
+                  type="button"
+                  onClick={aiSuggest}
+                  title={
+                    suggestIdx === 0
+                      ? "Fill with your site URL"
+                      : suggestIdx === 1
+                        ? "Fill with a competitor URL"
+                        : `Cycle to next competitor (${suggestIdx} of ${[getOwnUrl(), ...getCompetitorUrls()].filter(Boolean).length})`
+                  }
+                  style={{
+                    background: "linear-gradient(135deg,#7C3AED,#0066FF)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 4,
+                    padding: "2px 8px",
+                    fontSize: "0.65rem",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    letterSpacing: 0.3,
+                    lineHeight: "18px",
+                  }}
+                >
+                  🧠 AI Suggest
+                </button>
+              </div>
               <input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
