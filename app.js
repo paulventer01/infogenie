@@ -15756,7 +15756,7 @@ function renderForecastSavingsWidget() {
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <div style="background:rgba(16,185,129,.18);border:1px solid rgba(16,185,129,.4);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-size:10px;opacity:.85;letter-spacing:.05em">SAVINGS (AI)</div><div style="font-size:18px;font-weight:800;color:#10B981">$${savings.toLocaleString()}</div></div>
-          <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-size:10px;opacity:.85;letter-spacing:.05em">AUTO-FIXES</div><div style="font-size:18px;font-weight:800">${interventions}</div></div>
+          <button onclick="window._showAutoFixes()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.28);border-radius:8px;padding:8px 14px;text-align:center;cursor:pointer;color:inherit;font-family:inherit;transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.18)'" onmouseout="this.style.background='rgba(255,255,255,.08)'" title="Click to see all auto-fixes applied"><div style="font-size:10px;opacity:.85;letter-spacing:.05em">AUTO-FIXES</div><div style="font-size:18px;font-weight:800">${interventions}</div><div style="font-size:9px;opacity:.6;margin-top:1px">View log ↗</div></button>
           <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:8px 14px;text-align:center"><div style="font-size:10px;opacity:.85;letter-spacing:.05em">ACTUAL SPEND</div><div style="font-size:18px;font-weight:800">$${totalAct.toLocaleString()}</div></div>
         </div>
       </div>
@@ -15772,6 +15772,94 @@ function renderForecastSavingsWidget() {
     </div>`;
 }
 window.renderForecastSavingsWidget = renderForecastSavingsWidget;
+
+// ── Auto-Fixes modal ─────────────────────────────────────────────────────────
+// Fetches the real optimizer action log and renders it in a slide-in modal.
+const _ACTION_META = {
+  pause:          { icon:'⏸', label:'Campaign Paused',     color:'#EF4444' },
+  scale_budget:   { icon:'💰', label:'Budget Adjusted',     color:'#F59E0B' },
+  bid_change:     { icon:'🎯', label:'Bid Changed',         color:'#6366F1' },
+  creative_refresh:{ icon:'🎨', label:'Creative Refreshed', color:'#8B5CF6' },
+  reallocate:     { icon:'🔄', label:'Budget Reallocated',  color:'#0EA5E9' },
+  daypart:        { icon:'🕐', label:'Dayparting Applied',  color:'#14B8A6' },
+  fatigue_pause:  { icon:'😴', label:'Fatigue Pause',       color:'#F97316' },
+};
+function _fmtActionType(t) {
+  const m = _ACTION_META[t];
+  if (m) return `<span style="color:${m.color}">${m.icon}</span> ${m.label}`;
+  const pretty = (t || 'Unknown').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  return `<span style="color:#6B7280">⚙</span> ${pretty}`;
+}
+function _fmtRelTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const diff = Math.floor((Date.now() - d) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  return `${Math.floor(diff/86400)}d ago`;
+}
+window._showAutoFixes = async function() {
+  // Remove any existing instance
+  const existing = document.getElementById('_autoFixesModal');
+  if (existing) { existing.remove(); return; }
+
+  const overlay = document.createElement('div');
+  overlay.id = '_autoFixesModal';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-start;justify-content:flex-end;padding:60px 24px 24px;pointer-events:none';
+
+  const panel = document.createElement('div');
+  panel.style.cssText = 'background:#0F172A;border:1px solid rgba(255,255,255,.12);border-radius:14px;width:440px;max-height:70vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.55);pointer-events:all;animation:_afSlide .2s ease';
+  panel.innerHTML = `
+    <style>@keyframes _afSlide{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:none}}</style>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.08)">
+      <div>
+        <div style="font-size:13px;font-weight:800;color:#fff;letter-spacing:.02em">⚙ Auto-Fix Log</div>
+        <div style="font-size:11px;color:#94A3B8;margin-top:1px">Actions applied by the AI Optimizer</div>
+      </div>
+      <button onclick="document.getElementById('_autoFixesModal').remove()" style="background:rgba(255,255,255,.08);border:none;border-radius:6px;color:#94A3B8;font-size:16px;cursor:pointer;padding:4px 8px;line-height:1">✕</button>
+    </div>
+    <div id="_afBody" style="overflow-y:auto;flex:1;padding:12px 18px">
+      <div style="color:#64748B;font-size:13px;padding:20px 0;text-align:center">⏳ Loading…</div>
+    </div>`;
+
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  const body = panel.querySelector('#_afBody');
+  try {
+    const r = await fetch('/api/optimizer/actions?limit=50', { credentials:'include' });
+    const j = await r.json();
+    const actions = j.actions || [];
+    if (!actions.length) {
+      body.innerHTML = `<div style="text-align:center;padding:28px 0">
+        <div style="font-size:28px;margin-bottom:8px">🤖</div>
+        <div style="color:#64748B;font-size:13px">No auto-fixes recorded yet.<br>Enable the AI Optimizer to start applying rules.</div>
+      </div>`;
+      return;
+    }
+    body.innerHTML = actions.map(a => {
+      const before = a.before_value && typeof a.before_value === 'object' ? JSON.stringify(a.before_value).replace(/[{}\"]/g,'').slice(0,60) : '';
+      const after  = a.after_value  && typeof a.after_value  === 'object' ? JSON.stringify(a.after_value).replace(/[{}\"]/g,'').slice(0,60) : '';
+      const appliedBadge = a.applied
+        ? `<span style="background:rgba(16,185,129,.18);color:#10B981;border-radius:4px;font-size:9px;font-weight:700;padding:1px 5px">APPLIED</span>`
+        : `<span style="background:rgba(241,245,249,.08);color:#64748B;border-radius:4px;font-size:9px;font-weight:700;padding:1px 5px">DRY RUN</span>`;
+      return `<div style="border-bottom:1px solid rgba(255,255,255,.06);padding:10px 0">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px">
+          <span style="font-size:12px;font-weight:700;color:#E2E8F0">${_fmtActionType(a.action_type)}</span>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">${appliedBadge}<span style="font-size:10px;color:#475569">${_fmtRelTime(a.created_at)}</span></div>
+        </div>
+        ${a.campaign_name ? `<div style="font-size:11px;color:#64748B;margin-bottom:2px">📢 ${_esc(a.campaign_name)}${a.platform ? ' · '+a.platform : ''}</div>` : ''}
+        ${a.reason ? `<div style="font-size:11px;color:#94A3B8;margin-bottom:2px">${_esc(a.reason)}</div>` : ''}
+        ${(before || after) ? `<div style="font-size:10px;color:#475569;font-family:monospace;background:rgba(255,255,255,.04);border-radius:4px;padding:4px 6px;margin-top:3px">${before ? 'Before: '+before : ''}${before&&after?' → ':''}${after ? 'After: '+after : ''}</div>` : ''}
+        ${a.apply_error ? `<div style="font-size:10px;color:#F87171;margin-top:2px">⚠ ${_esc(a.apply_error)}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    body.innerHTML = `<div style="color:#F87171;font-size:13px;padding:16px 0;text-align:center">Failed to load auto-fix log.<br>${_esc(String(e.message||e))}</div>`;
+  }
+};
 
 
 // ── Manual screenshot helper: auto-navigates to a view from URL ──
