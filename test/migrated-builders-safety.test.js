@@ -75,6 +75,54 @@ const BUILDER_GUARDS = [
   { file: 'public/js/ig_core_views.js', fn: 'buildCreative', rootId: 'creativeWrap' },
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Part 0 — staleness guard: the four named builders must still exist in both
+// their source files and the navigateTo() dispatch in app.js.
+// If a builder is renamed or replaced, this test fails and names the missing
+// entry so BUILDER_GUARDS can be updated to match.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Returns the set of all builder function names referenced in the navigateTo()
+// dispatch region of app.js. buildDashboard is added unconditionally because
+// the coverage test's dispatchBuilderMap() hard-codes it as a special case
+// (it is pre-built in a background queue rather than called directly).
+function liveDispatchBuilders() {
+  const src = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  const navStart = src.indexOf('function navigateTo(');
+  const navEnd = src.indexOf('// Show/hide navbar for home vs app', navStart);
+  if (navStart === -1 || navEnd === -1) return null; // unparseable — skip dispatch half
+  const region = src.slice(navStart, navEnd);
+  const names = new Set();
+  for (const m of region.matchAll(/_lazyBuild\('[^']+',\s*(\w+)\)/g)) names.add(m[1]);
+  for (const m of region.matchAll(/window\.(\w+)\s*&&/g)) names.add(m[1]);
+  for (const m of region.matchAll(/\b((?:build|init|render)\w+)\s*\(/g)) names.add(m[1]);
+  names.add('buildDashboard'); // special-cased in the coverage suite's dispatchBuilderMap
+  return names;
+}
+
+test('BUILDER_GUARDS: all named builders still exist in their source file and the dispatch map', () => {
+  const dispatch = liveDispatchBuilders();
+  for (const { file, fn } of BUILDER_GUARDS) {
+    // 1. The source file must still define the function.
+    const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    const re = new RegExp('function\\s+' + fn + '\\s*\\(');
+    assert.ok(
+      re.test(src),
+      `BUILDER_GUARDS is stale: function ${fn} no longer found in ${file}. ` +
+        `Update BUILDER_GUARDS to match the current builder name in that file.`,
+    );
+    // 2. The builder must still be referenced in the navigateTo() dispatch
+    //    (or be the special-cased buildDashboard). Skip if app.js is unparseable.
+    if (dispatch !== null) {
+      assert.ok(
+        dispatch.has(fn),
+        `BUILDER_GUARDS is stale: ${fn} is no longer referenced in the app.js ` +
+          `navigateTo() dispatch. Update BUILDER_GUARDS to match the current builder name.`,
+      );
+    }
+  }
+});
+
 let win;
 
 before(() => {
