@@ -42,6 +42,8 @@ interface Topic {
   why?: string;
   sources?: string[];
   thumbnail?: string;
+  type?: "hashtag" | "video";
+  viewCount?: number;
 }
 interface HistoryRun {
   topics?: Topic[];
@@ -560,7 +562,7 @@ export default function TrendingTopics() {
               {platform === "youtube"
                 ? "⏳ Fetching YouTube trending videos…"
                 : platform === "tiktok"
-                  ? "⏳ Fetching TikTok trending videos…"
+                  ? "⏳ Fetching TikTok trending hashtags & videos…"
                   : "⏳ Searching live web…"}
             </div>
           )}
@@ -604,35 +606,105 @@ export default function TrendingTopics() {
                   )}{" "}
                   · {result.topics.length} topics
                 </div>
-                <span
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  {result.source === "tiktok" && result.topics.some(t => t.type === "hashtag") && (
+                    <span
+                      style={{
+                        background: "#E9065E",
+                        color: "#fff",
+                        padding: "3px 9px",
+                        borderRadius: 5,
+                        fontSize: "0.62rem",
+                        fontWeight: 800,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      # Hashtag Feed
+                    </span>
+                  )}
+                  {result.source === "tiktok" && result.topics.some(t => t.type === "video") && (
+                    <span
+                      style={{
+                        background: "#010101",
+                        color: "#fff",
+                        padding: "3px 9px",
+                        borderRadius: 5,
+                        fontSize: "0.62rem",
+                        fontWeight: 800,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      🎵 Videos
+                    </span>
+                  )}
+                  {result.source !== "tiktok" && (
+                    <span
+                      style={{
+                        background:
+                          result.source === "perplexity"
+                            ? "#7C3AED"
+                            : result.source === "youtube"
+                              ? "#FF0000"
+                              : "#9CA3AF",
+                        color: "#fff",
+                        padding: "3px 9px",
+                        borderRadius: 5,
+                        fontSize: "0.62rem",
+                        fontWeight: 800,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {result.source === "youtube"
+                        ? result.categoryLabel
+                          ? `▶ YouTube Trending · ${result.categoryLabel}`
+                          : "▶ YouTube"
+                        : result.source === "perplexity"
+                          ? "Perplexity"
+                          : result.source}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Section header when TikTok returns both hashtags and videos */}
+              {result.source === "tiktok" && result.topics.some(t => t.type === "hashtag") && result.topics.some(t => t.type === "video") && (
+                <div
                   style={{
-                    background:
-                      result.source === "perplexity"
-                        ? "#7C3AED"
-                        : result.source === "youtube"
-                          ? "#FF0000"
-                          : result.source === "tiktok"
-                            ? "#010101"
-                            : "#9CA3AF",
-                    color: "#fff",
-                    padding: "3px 9px",
-                    borderRadius: 5,
-                    fontSize: "0.62rem",
-                    fontWeight: 800,
-                    textTransform: "uppercase",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 10,
+                    fontSize: "0.72rem",
+                    color: "#6B7280",
+                    fontWeight: 700,
                   }}
                 >
-                  {result.source === "youtube"
-                    ? result.categoryLabel
-                      ? `▶ YouTube Trending · ${result.categoryLabel}`
-                      : "▶ YouTube"
-                    : result.source === "tiktok"
-                      ? "🎵 TikTok"
-                      : result.source === "perplexity"
-                        ? "Perplexity"
-                        : result.source}
-                </span>
-              </div>
+                  <span
+                    style={{
+                      background: "#FFF0F6",
+                      color: "#E9065E",
+                      border: "1px solid #FBCFE8",
+                      padding: "2px 8px",
+                      borderRadius: 4,
+                    }}
+                  >
+                    # Trending Hashtags
+                  </span>
+                  <span style={{ color: "#D1D5DB" }}>shown first · then</span>
+                  <span
+                    style={{
+                      background: "#F3F4F6",
+                      color: "#374151",
+                      border: "1px solid #E5E7EB",
+                      padding: "2px 8px",
+                      borderRadius: 4,
+                    }}
+                  >
+                    🎵 Trending Videos
+                  </span>
+                </div>
+              )}
+
               <div
                 style={{
                   display: "grid",
@@ -640,114 +712,165 @@ export default function TrendingTopics() {
                   gap: 14,
                 }}
               >
-                {result.topics.map((t, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      background: "#fff",
-                      border: "1px solid #E5E7EB",
-                      borderLeft: `4px solid ${i < 3 ? "#B91C1C" : i < 6 ? "#F59E0B" : "#9CA3AF"}`,
-                      borderRadius: 10,
-                      padding: "14px 16px",
-                    }}
-                  >
-                    {result.source === "youtube" && t.thumbnail && (
-                      <img
-                        src={t.thumbnail}
-                        alt={t.title || "YouTube thumbnail"}
-                        style={{
-                          width: "100%",
-                          aspectRatio: "16/9",
-                          objectFit: "cover",
-                          borderRadius: 6,
-                          marginBottom: 10,
-                          display: "block",
-                        }}
-                      />
-                    )}
+                {result.topics.map((t, i) => {
+                  const isHashtag = t.type === "hashtag";
+                  const isVideo = t.type === "video";
+                  const accentColor = isHashtag
+                    ? "#E9065E"
+                    : i < 3 ? "#B91C1C" : i < 6 ? "#F59E0B" : "#9CA3AF";
+                  const cardBg = isHashtag ? "#FFF8FA" : "#fff";
+                  return (
                     <div
+                      key={i}
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        marginBottom: 6,
+                        background: cardBg,
+                        border: `1px solid ${isHashtag ? "#FBCFE8" : "#E5E7EB"}`,
+                        borderLeft: `4px solid ${accentColor}`,
+                        borderRadius: 10,
+                        padding: "14px 16px",
                       }}
                     >
+                      {result.source === "youtube" && t.thumbnail && (
+                        <img
+                          src={t.thumbnail}
+                          alt={t.title || "YouTube thumbnail"}
+                          style={{
+                            width: "100%",
+                            aspectRatio: "16/9",
+                            objectFit: "cover",
+                            borderRadius: 6,
+                            marginBottom: 10,
+                            display: "block",
+                          }}
+                        />
+                      )}
                       <div
                         style={{
-                          fontWeight: 800,
-                          color: "#0A1628",
-                          fontSize: "0.95rem",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          marginBottom: 6,
                         }}
                       >
-                        #{i + 1}. {t.title || ""}
-                      </div>
-                      {result.source === "youtube" && (
-                        <span
+                        <div
                           style={{
-                            background: "#FF0000",
-                            color: "#fff",
-                            fontSize: "0.55rem",
                             fontWeight: 800,
-                            padding: "2px 6px",
-                            borderRadius: 4,
-                            whiteSpace: "nowrap",
-                            marginLeft: 6,
-                            flexShrink: 0,
+                            color: isHashtag ? "#E9065E" : "#0A1628",
+                            fontSize: isHashtag ? "1.05rem" : "0.95rem",
+                            letterSpacing: isHashtag ? "-0.01em" : undefined,
                           }}
                         >
-                          ▶ YouTube
-                        </span>
-                      )}
-                      {result.source === "tiktok" && (
-                        <span
-                          style={{
-                            background: "#010101",
-                            color: "#fff",
-                            fontSize: "0.55rem",
-                            fontWeight: 800,
-                            padding: "2px 6px",
-                            borderRadius: 4,
-                            whiteSpace: "nowrap",
-                            marginLeft: 6,
-                            flexShrink: 0,
-                          }}
-                        >
-                          🎵 TikTok
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "0.8rem",
-                        color: "#374151",
-                        marginBottom: 8,
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      {t.why || ""}
-                    </div>
-                    {(t.sources || []).length > 0 && (
-                      <div style={{ fontSize: "0.7rem", color: "#6B7280" }}>
-                        {(t.sources || []).slice(0, 3).map((u, j) => (
-                          <a
-                            key={j}
-                            href={safeUrl(u)}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          {isHashtag ? (
+                            <span>{t.title || ""}</span>
+                          ) : (
+                            <span>#{i + 1}. {t.title || ""}</span>
+                          )}
+                        </div>
+                        {isHashtag && (
+                          <span
                             style={{
-                              color: "#7C3AED",
-                              display: "block",
-                              marginTop: 2,
+                              background: "#E9065E",
+                              color: "#fff",
+                              fontSize: "0.55rem",
+                              fontWeight: 800,
+                              padding: "2px 6px",
+                              borderRadius: 4,
+                              whiteSpace: "nowrap",
+                              marginLeft: 6,
+                              flexShrink: 0,
                             }}
                           >
-                            {u.replace(/^https?:\/\//, "").slice(0, 60)}
-                          </a>
-                        ))}
+                            # Hashtag
+                          </span>
+                        )}
+                        {isVideo && (
+                          <span
+                            style={{
+                              background: "#010101",
+                              color: "#fff",
+                              fontSize: "0.55rem",
+                              fontWeight: 800,
+                              padding: "2px 6px",
+                              borderRadius: 4,
+                              whiteSpace: "nowrap",
+                              marginLeft: 6,
+                              flexShrink: 0,
+                            }}
+                          >
+                            🎵 Video
+                          </span>
+                        )}
+                        {result.source === "youtube" && (
+                          <span
+                            style={{
+                              background: "#FF0000",
+                              color: "#fff",
+                              fontSize: "0.55rem",
+                              fontWeight: 800,
+                              padding: "2px 6px",
+                              borderRadius: 4,
+                              whiteSpace: "nowrap",
+                              marginLeft: 6,
+                              flexShrink: 0,
+                            }}
+                          >
+                            ▶ YouTube
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+                      {/* View count pill for hashtags */}
+                      {isHashtag && t.viewCount && t.viewCount > 0 && (
+                        <div style={{ marginBottom: 6 }}>
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              background: "#FDF2F8",
+                              border: "1px solid #FBCFE8",
+                              borderRadius: 20,
+                              padding: "2px 10px",
+                              fontSize: "0.72rem",
+                              fontWeight: 700,
+                              color: "#BE185D",
+                            }}
+                          >
+                            👁 {Number(t.viewCount).toLocaleString()} views
+                          </span>
+                        </div>
+                      )}
+                      <div
+                        style={{
+                          fontSize: "0.8rem",
+                          color: "#374151",
+                          marginBottom: 8,
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {t.why || ""}
+                      </div>
+                      {(t.sources || []).length > 0 && (
+                        <div style={{ fontSize: "0.7rem", color: "#6B7280" }}>
+                          {(t.sources || []).slice(0, 3).map((u, j) => (
+                            <a
+                              key={j}
+                              href={safeUrl(u)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                color: isHashtag ? "#E9065E" : "#7C3AED",
+                                display: "block",
+                                marginTop: 2,
+                              }}
+                            >
+                              {u.replace(/^https?:\/\//, "").slice(0, 60)}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </>
           )}

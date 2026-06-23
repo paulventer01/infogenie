@@ -191,7 +191,51 @@ async function _youtube({ country, category }) {
   });
 }
 
-async function _tiktok({ category, keywords }) {
+async function _tiktokHashtags({ country }) {
+  const rapidKey = process.env.TIKTOK_RAPIDAPI_KEY;
+  if (!rapidKey || /^_DUMMY/i.test(rapidKey)) return null;
+  const region = (country && country !== 'ALL') ? country.slice(0, 2).toUpperCase() : 'US';
+  const url = 'https://tiktok-scraper7.p.rapidapi.com/trending/hashtag?region=' + encodeURIComponent(region) + '&count=20';
+  return await new Promise(resolve => {
+    const req = _https.request(url, {
+      method: 'GET',
+      headers: {
+        'X-RapidAPI-Key': rapidKey,
+        'X-RapidAPI-Host': 'tiktok-scraper7.p.rapidapi.com',
+      },
+    }, r => {
+      let d = ''; r.on('data', c => d += c); r.on('end', () => {
+        try {
+          if (r.statusCode !== 200) return resolve(null);
+          const j = JSON.parse(d);
+          // Response shape variants across API versions
+          const raw = Array.isArray(j.data) ? j.data
+            : Array.isArray(j.result) ? j.result
+            : Array.isArray(j.hashtags) ? j.hashtags
+            : null;
+          if (!raw || !raw.length) return resolve(null);
+          const topics = raw.slice(0, 15).map(item => {
+            // Normalise across response shape variants
+            const tag = item.hashtagName || item.name || item.title || item.tag || '';
+            if (!tag) return null;
+            const views = item.viewCount || item.view_count || item.videoCount || item.video_count || 0;
+            const viewStr = views ? Number(views).toLocaleString() : null;
+            const title = '#' + tag.replace(/^#/, '');
+            const why = viewStr ? `${viewStr} views` : 'Trending hashtag on TikTok';
+            const sources = [`https://www.tiktok.com/tag/${encodeURIComponent(tag.replace(/^#/, ''))}`];
+            return { title, why, sources, type: 'hashtag', viewCount: views || 0 };
+          }).filter(Boolean);
+          resolve(topics.length ? topics : null);
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(20000, () => { req.destroy(); resolve(null); });
+    req.end();
+  });
+}
+
+async function _tiktok({ category, keywords, country }) {
   const rapidKey = process.env.TIKTOK_RAPIDAPI_KEY;
   if (!rapidKey || /^_DUMMY/i.test(rapidKey)) return null;
   const kwStr = [category, ...(keywords || [])].filter(Boolean).slice(0, 3).join(' ');
@@ -224,7 +268,7 @@ async function _tiktok({ category, keywords }) {
             const videoId = item.id || item.video?.id;
             const webUrl = item.webVideoUrl || item.video?.webVideoUrl || '';
             const sources = webUrl ? [webUrl] : (videoId ? [`https://www.tiktok.com/@${author || 'tiktok'}/video/${videoId}`] : []);
-            return { title: title.slice(0, 120), why, sources };
+            return { title: title.slice(0, 120), why, sources, type: 'video' };
           });
           resolve(topics.length ? topics : null);
         } catch { resolve(null); }
@@ -286,8 +330,17 @@ router.post('/detect', async (req, res) => {
         topics = await _perplexity({ category, keywords, country });
       }
     } else if (platform === 'tiktok') {
-      topics = await _tiktok({ category, keywords });
-      if (topics && topics.length) {
+      // Fetch hashtag trending feed and video trending feed in parallel
+      const [hashtagTopics, videoTopics] = await Promise.all([
+        _tiktokHashtags({ country }),
+        _tiktok({ category, keywords, country }),
+      ]);
+      if ((hashtagTopics && hashtagTopics.length) || (videoTopics && videoTopics.length)) {
+        // Interleave: hashtags first (strategic signal), then videos
+        topics = [
+          ...(hashtagTopics || []),
+          ...(videoTopics || []),
+        ];
         source = 'tiktok';
       } else {
         topics = await _perplexity({ category, keywords, country });
