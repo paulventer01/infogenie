@@ -29,6 +29,7 @@ const FILES = [
   'test/legacy-shell-hydration.test.js',
   'test/tiktok-trending-fallback.test.js',
   'test/youtube-trending-fallback.test.js',
+  'test/trends-template-fallback.test.js',
 ];
 
 const QUIESCE_MS = 6000; // once tests have printed, this much silence => done
