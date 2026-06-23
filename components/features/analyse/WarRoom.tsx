@@ -48,7 +48,7 @@ interface HistoryRun {
   id: string;
   competitor: string;
   confidence: number;
-  prediction: string;
+  prediction: Prediction | string;
   created_at: string;
 }
 interface HistoryResult {
@@ -300,7 +300,9 @@ export default function WarRoom() {
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 700, color: "#0A1628" }}>{h.competitor}</div>
                   <div style={{ fontSize: "0.78rem", color: "#6B7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {h.prediction}
+                    {typeof h.prediction === "object" && h.prediction !== null
+                      ? (h.prediction as Prediction).prediction
+                      : String(h.prediction || "")}
                   </div>
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
