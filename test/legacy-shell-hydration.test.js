@@ -185,3 +185,88 @@ test('getLegacyShell().bodyHtml contains no runs of 3 or more consecutive newlin
       'React reports a hydration mismatch.',
   );
 });
+
+// ── Structural landmark tests ─────────────────────────────────────────────────
+//
+// These guard against two failure modes:
+//   A. A future edit to index.html removes or renames a structural landmark →
+//      the assertion for that landmark fails.
+//   B. The strip regex in parse() is accidentally widened (e.g. the navbar
+//      pattern matches more than just the nav) → landmarks inside the over-
+//      matched region disappear and their assertions fail.
+//
+// All tests read index.html through the REAL parse() pipeline so they exercise
+// the same code path as the production Next.js shell.
+
+test('getLegacyShell().bodyHtml does not contain the legacy navbar (id="navbar")', () => {
+  const { bodyHtml } = getLegacyShell();
+
+  assert.ok(
+    !bodyHtml.includes('id="navbar"'),
+    'getLegacyShell().bodyHtml still contains id="navbar" — the navbar strip ' +
+      'in parse() must remove <nav id="navbar">…</nav> so the React <Navbar/> ' +
+      'can render in its place without a duplicate.',
+  );
+});
+
+test('getLegacyShell().bodyHtml contains no real <script> elements (all stripped)', () => {
+  const { bodyHtml } = getLegacyShell();
+
+  // HTML comments are intentionally preserved by parse() (they are not scripts),
+  // so a bare /<script\b/ check would false-positive on comments that mention
+  // "<script>" as text (e.g. the "Plain <script>, load AFTER app.js" comment in
+  // index.html). Strip comments first, then assert no real script element remains.
+  const withoutComments = bodyHtml.replace(/<!--[\s\S]*?-->/g, '');
+
+  assert.ok(
+    !/<script\b/i.test(withoutComments),
+    'getLegacyShell().bodyHtml contains a real <script> element outside of an ' +
+      'HTML comment — parse() must strip every <script> element so <LegacyScripts/> ' +
+      'can replay them in order without double-execution.',
+  );
+});
+
+test('getLegacyShell().bodyHtml contains id="view-home" (homepage panel)', () => {
+  const { bodyHtml } = getLegacyShell();
+
+  assert.ok(
+    bodyHtml.includes('id="view-home"'),
+    'getLegacyShell().bodyHtml is missing id="view-home" — this landmark is the ' +
+      'root panel of the SPA homepage and must survive the navbar/script strip. ' +
+      'Either index.html no longer contains this div, or the strip regex has ' +
+      'been accidentally widened.',
+  );
+});
+
+test('getLegacyShell().bodyHtml contains id="view-dashboard" (dashboard panel)', () => {
+  const { bodyHtml } = getLegacyShell();
+
+  assert.ok(
+    bodyHtml.includes('id="view-dashboard"'),
+    'getLegacyShell().bodyHtml is missing id="view-dashboard" — the main ' +
+      'intelligence-report panel must survive the strip so the SPA can render it.',
+  );
+});
+
+test('getLegacyShell().bodyHtml contains id="loadingOverlay" (loading overlay)', () => {
+  const { bodyHtml } = getLegacyShell();
+
+  assert.ok(
+    bodyHtml.includes('id="loadingOverlay"'),
+    'getLegacyShell().bodyHtml is missing id="loadingOverlay" — the loading ' +
+      'overlay element must survive the strip; removing it breaks the analysis ' +
+      'progress indicator for all users.',
+  );
+});
+
+test('getLegacyShell().bodyHtml contains multiple class="view" panels', () => {
+  const { bodyHtml } = getLegacyShell();
+
+  const matches = bodyHtml.match(/class="view(?:\s[^"]*)?"/g) || [];
+  assert.ok(
+    matches.length >= 10,
+    `getLegacyShell().bodyHtml contains only ${matches.length} class="view" ` +
+      'element(s) — expected at least 10. The SPA has dozens of view panels; ' +
+      'if most are missing the strip regex has over-matched and removed them.',
+  );
+});
