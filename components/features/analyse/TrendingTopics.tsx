@@ -731,18 +731,24 @@ export default function TrendingTopics() {
                       }}
                     >
                       {result.source === "youtube" && t.thumbnail && (
-                        <img
-                          src={t.thumbnail}
-                          alt={t.title || "YouTube thumbnail"}
-                          style={{
-                            width: "100%",
-                            aspectRatio: "16/9",
-                            objectFit: "cover",
-                            borderRadius: 6,
-                            marginBottom: 10,
-                            display: "block",
-                          }}
-                        />
+                        <a
+                          href={safeUrl(t.sources?.[0] || "")}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ display: "block", marginBottom: 10 }}
+                        >
+                          <img
+                            src={t.thumbnail}
+                            alt={t.title || "YouTube thumbnail"}
+                            style={{
+                              width: "100%",
+                              aspectRatio: "16/9",
+                              objectFit: "cover",
+                              borderRadius: 6,
+                              display: "block",
+                            }}
+                          />
+                        </a>
                       )}
                       <div
                         style={{
