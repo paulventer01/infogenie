@@ -538,17 +538,10 @@ export default function TrendingTopics() {
             >
               <span style={{ fontSize: "1rem" }}>ℹ️</span>
               <span>
-                <strong>YouTube Data API key required.</strong> Add your{" "}
-                <code
-                  style={{
-                    background: "#FEF3C7",
-                    padding: "1px 4px",
-                    borderRadius: 3,
-                  }}
-                >
-                  YOUTUBE_API_KEY
-                </code>{" "}
-                in Settings → API Keys to fetch live YouTube trending results.
+                <strong>YouTube Data API key required.</strong> Go to{" "}
+                <strong>Settings → Integrations → Intelligence APIs</strong>{" "}
+                and connect your <strong>YouTube Data API</strong> key to fetch
+                live trending results.
               </span>
             </div>
           )}

@@ -223,8 +223,29 @@ const INTEGRATIONS: IntegrationsMap = {
     label: "Intelligence APIs",
     icon: "🔍",
     desc: "Connect your own competitive-intelligence subscriptions — traffic estimates, keyword data, backlinks, ad libraries, and brand monitoring.",
-    badge: "9 Sources",
+    badge: "10 Sources",
     items: [
+      {
+        id: "youtube-data", logo: "▶️", name: "YouTube Data API",
+        tagline: "Live trending videos by category, country & topic — powers Trending Topics",
+        authType: "apikey",
+        vaultSave: true,
+        placeholder: "YouTube Data API Key (AIza...)",
+        unlocks: [
+          "🔴 LIVE: Trending YouTube videos by category and country updated in real time",
+          "View counts, channel names, and direct video links for each trending result",
+          "Category-mapped trending (Music, Gaming, Sports, Tech, and 25+ more)",
+          "Replaces AI-estimated trends with real YouTube chart data",
+        ],
+        steps: [
+          { text: 'Go to <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a> and sign in' },
+          { text: "Create or select a project, then navigate to <strong>APIs & Services → Library</strong>" },
+          { text: "Search for <strong>YouTube Data API v3</strong> and click <strong>Enable</strong>" },
+          { text: "Go to <strong>APIs & Services → Credentials</strong> and click <strong>+ Create Credentials → API Key</strong>" },
+          { text: "Copy the generated key and paste it above, then click <strong>Connect</strong>" },
+          { text: "Optional: restrict the key to the <strong>YouTube Data API v3</strong> for security" },
+        ],
+      },
       {
         id: "semrush", logo: "📊", name: "Semrush API",
         tagline: "Keyword rankings, PPC data, backlinks & competitor analysis",
@@ -1043,6 +1064,7 @@ const INTEGRATIONS: IntegrationsMap = {
 };
 
 const API_DETAILS: Record<string, ApiDetails> = {
+  "youtube-data": { baseUrl: "https://www.googleapis.com/youtube/v3", rateLimits: "10,000 units/day (free tier); each videos.list costs 1 unit", plans: "Free — requires Google Cloud project with YouTube Data API v3 enabled", errorCodes: [["403 quotaExceeded", "Daily quota exhausted — check Google Cloud Console quotas"], ["400 keyInvalid", "API key is invalid or not enabled for YouTube Data API v3"], ["403 accessNotConfigured", "YouTube Data API v3 not enabled — go to API Library and enable it"], ["400 regionNotSupported", "Region code not supported — try a different country"]] },
   "google-ads": { baseUrl: "https://googleads.googleapis.com/v16", rateLimits: "10,000 req/day per customer", plans: "Active Google Ads account + API access approval", errorCodes: [["UNAUTHENTICATED", "OAuth token expired — re-authenticate"], ["INVALID_ARGUMENT", "Check field names match Google Ads API spec"], ["RESOURCE_EXHAUSTED", "Daily quota exceeded — reduce request volume"], ["NOT_FOUND", "Customer ID or campaign ID does not exist"]] },
   "meta-ads": { baseUrl: "https://graph.facebook.com/v19.0", rateLimits: "200 calls/hour per ad account", plans: "Active Meta Business Manager + Marketing API access", errorCodes: [["190", "Access token expired — reconnect via OAuth"], ["100", "Invalid parameter — check field names"], ["17", "API rate limit hit — wait 1 hour"], ["803", "Ad account ID format must be act_XXXXXXX"]] },
   "tiktok-ads": { baseUrl: "https://business-api.tiktok.com/open_api/v1.3", rateLimits: "1,000 req/min (campaign), 100 req/min (reporting)", plans: "TikTok for Business account + approved API access", errorCodes: [["40100", "Access token invalid — regenerate in developer portal"], ["40002", "Missing required parameter"], ["50002", "Service temporarily unavailable — retry with exponential back-off"]] },
@@ -1161,6 +1183,11 @@ interface MetaGraphResponse {
 }
 
 const API_VALIDATORS: Record<string, Validator> = {
+  "youtube-data": (key) => {
+    if (!key.startsWith("AIza")) return rej('Invalid format — YouTube Data API keys start with "AIza"');
+    if (key.length < 39) return rej("Key too short — YouTube Data API keys are 39 characters. Check you copied it in full.");
+    return fmtOk("Key format looks correct — actual validity will be confirmed when the YouTube platform is selected in Trending Topics.");
+  },
   mistral: async (key) => {
     if (key.length < 32) return rej("Key too short — Mistral API keys are 32 characters");
     if (!/^[A-Za-z0-9]+$/.test(key)) return rej("Invalid characters — Mistral keys are alphanumeric only");

@@ -5,6 +5,7 @@ const _db = require('../../db');
 const _https = require('https');
 const _tenantCtx = require('../tenants/context');
 const _tenantMig = require('../tenants/migration');
+const _vault = require('../credentials/vault');
 
 const router = express.Router();
 function _err(res, code, msg) { res.status(code).json({ ok:false, error: msg }); }
@@ -146,8 +147,8 @@ const _YT_CATEGORY_LABELS = {
   29: 'Nonprofits & Activism',
 };
 
-async function _youtube({ country, category }) {
-  const key = process.env.YOUTUBE_DATA_API_KEY || process.env.GOOGLE_SEARCH_API_KEY;
+async function _youtube({ country, category, key: _injectedKey }) {
+  const key = _injectedKey || process.env.YOUTUBE_DATA_API_KEY || process.env.GOOGLE_SEARCH_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return null;
   const regionCode = (country && country !== 'ALL') ? country.slice(0, 2).toUpperCase() : 'US';
   const catKey = (category || '').toLowerCase().trim();
@@ -321,7 +322,12 @@ router.post('/detect', async (req, res) => {
     let categoryLabel = null;
 
     if (platform === 'youtube') {
-      const ytResult = await _youtube({ country, category });
+      let _ytKey = null;
+      try {
+        const _ytTid = await _tenantCtx.resolveTenantId(req, { label:'trends:youtube-key' });
+        if (_ytTid) _ytKey = await _vault.getApiKey(_ytTid, 'youtube-data');
+      } catch {}
+      const ytResult = await _youtube({ country, category, key: _ytKey || undefined });
       if (ytResult && ytResult.topics && ytResult.topics.length) {
         topics = ytResult.topics;
         categoryLabel = ytResult.categoryLabel || null;
