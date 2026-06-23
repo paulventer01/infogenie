@@ -46,11 +46,13 @@ interface Topic {
   viewCount?: number;
 }
 interface HistoryRun {
+  id?: number;
   topics?: Topic[];
   source?: string;
   category?: string;
   category_label?: string;
   country?: string;
+  ran_at?: string;
 }
 interface HistoryResp {
   ok?: boolean;
@@ -107,12 +109,43 @@ function safeUrl(u: string): string {
   return /^https?:\/\//i.test(s) ? s : "#";
 }
 
+function fmtDate(iso: string | undefined): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function sourceBadgeColor(source: string | undefined): string {
+  if (source === "perplexity") return "#7C3AED";
+  if (source === "youtube") return "#FF0000";
+  if (source === "template") return "#9CA3AF";
+  return "#6B7280";
+}
+
+function sourceBadgeLabel(run: HistoryRun): string {
+  if (run.source === "youtube") {
+    return run.category_label ? `▶ ${run.category_label}` : "▶ YouTube";
+  }
+  if (run.source === "perplexity") return "Perplexity";
+  return run.source || "unknown";
+}
+
 interface RenderState {
   topics: Topic[];
   source: string;
   category: string;
   categoryLabel?: string;
   country?: string;
+  historyId?: number;
 }
 
 export default function TrendingTopics() {
@@ -139,26 +172,48 @@ export default function TrendingTopics() {
   const [catBusy, setCatBusy] = useState(false);
   const [kwBusy, setKwBusy] = useState(false);
 
+  const [historyRuns, setHistoryRuns] = useState<HistoryRun[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
   useEffect(() => {
     setCat(brand);
   }, [brand]);
 
   const loadHistory = useCallback(async () => {
     const h = await apiGet<HistoryResp>("/api/trends/history");
-    const last = (h.runs || [])[0];
-    if (last)
+    const runs = h.runs || [];
+    setHistoryRuns(runs);
+    const last = runs[0];
+    if (last) {
       setResult({
         topics: last.topics || [],
         source: last.source || "",
         category: last.category || "",
         categoryLabel: last.category_label || undefined,
-        country: last.country || undefined,
+        country: last.country || "ALL",
+        historyId: last.id,
       });
+    }
   }, []);
 
   useEffect(() => {
     loadHistory();
   }, [loadHistory]);
+
+  function loadRun(run: HistoryRun) {
+    const runCountry = run.country || "ALL";
+    setCountry(runCountry);
+    setResult({
+      topics: run.topics || [],
+      source: run.source || "",
+      category: run.category || "",
+      categoryLabel: run.category_label || undefined,
+      country: runCountry,
+      historyId: run.id,
+    });
+    setStatus("idle");
+    setHistoryOpen(false);
+  }
 
   function onPickChange(v: string) {
     setPick(v);
@@ -281,12 +336,17 @@ export default function TrendingTopics() {
       setErrMsg(r.error || "failed");
       return;
     }
+    // Refresh the history list so the new run appears, then sync historyId
+    const h = await apiGet<HistoryResp>("/api/trends/history");
+    const freshRuns = h.runs || [];
+    setHistoryRuns(freshRuns);
     setResult({
       topics: r.topics || [],
       source: r.source || "",
       category: r.category || category,
       categoryLabel: r.categoryLabel,
       country: country.trim() || "ALL",
+      historyId: freshRuns[0]?.id,
     });
     setStatus("idle");
   }
@@ -547,6 +607,164 @@ export default function TrendingTopics() {
           )}
         </div>
 
+        {/* History panel */}
+        {historyRuns.length > 0 && (
+          <div
+            style={{
+              border: "1px solid #E5E7EB",
+              borderRadius: 10,
+              marginBottom: 18,
+              overflow: "hidden",
+              background: "#fff",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setHistoryOpen((o) => !o)}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "10px 16px",
+                background: "none",
+                border: 0,
+                cursor: "pointer",
+                fontFamily: "Sora,sans-serif",
+                fontWeight: 700,
+                fontSize: "0.82rem",
+                color: "#374151",
+                textAlign: "left",
+              }}
+            >
+              <span>
+                🕓 Scan History{" "}
+                <span
+                  style={{
+                    background: "#F3F4F6",
+                    color: "#6B7280",
+                    borderRadius: 10,
+                    padding: "1px 7px",
+                    fontSize: "0.72rem",
+                    fontWeight: 700,
+                    marginLeft: 4,
+                  }}
+                >
+                  {historyRuns.length}
+                </span>
+              </span>
+              <span style={{ fontSize: "0.7rem", color: "#9CA3AF" }}>
+                {historyOpen ? "▲ collapse" : "▼ expand"}
+              </span>
+            </button>
+            {historyOpen && (
+              <div
+                style={{
+                  borderTop: "1px solid #F3F4F6",
+                  maxHeight: 280,
+                  overflowY: "auto",
+                }}
+              >
+                {historyRuns.map((run, idx) => {
+                  const isActive = result?.historyId != null && result.historyId === run.id;
+                  return (
+                    <button
+                      key={run.id ?? idx}
+                      type="button"
+                      onClick={() => loadRun(run)}
+                      style={{
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "9px 16px",
+                        background: isActive ? "#F5F3FF" : "transparent",
+                        border: 0,
+                        borderBottom: "1px solid #F9FAFB",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        transition: "background 0.1s",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isActive)
+                          (e.currentTarget as HTMLButtonElement).style.background = "#F9FAFB";
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive)
+                          (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                      }}
+                    >
+                      <span
+                        style={{
+                          background: sourceBadgeColor(run.source),
+                          color: "#fff",
+                          padding: "2px 6px",
+                          borderRadius: 4,
+                          fontSize: "0.55rem",
+                          fontWeight: 800,
+                          textTransform: "uppercase",
+                          whiteSpace: "nowrap",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {sourceBadgeLabel(run)}
+                      </span>
+                      <span
+                        style={{
+                          fontWeight: isActive ? 700 : 500,
+                          fontSize: "0.8rem",
+                          color: isActive ? "#7C3AED" : "#111827",
+                          flex: 1,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {run.category || "—"}
+                      </span>
+                      {run.country && run.country !== "ALL" && (
+                        <span
+                          style={{
+                            fontSize: "0.68rem",
+                            color: "#9CA3AF",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {run.country}
+                        </span>
+                      )}
+                      <span
+                        style={{
+                          fontSize: "0.68rem",
+                          color: "#9CA3AF",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {fmtDate(run.ran_at)}
+                      </span>
+                      {idx === 0 && (
+                        <span
+                          style={{
+                            background: "#D1FAE5",
+                            color: "#065F46",
+                            borderRadius: 4,
+                            padding: "1px 6px",
+                            fontSize: "0.55rem",
+                            fontWeight: 800,
+                            flexShrink: 0,
+                          }}
+                        >
+                          latest
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         <div>
           {status === "loading" && (
             <div
@@ -600,6 +818,20 @@ export default function TrendingTopics() {
                   · {result.topics.length} topics
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  {result.country && result.country !== "ALL" && (
+                    <span
+                      style={{
+                        background: "#F3F4F6",
+                        color: "#374151",
+                        padding: "3px 8px",
+                        borderRadius: 5,
+                        fontSize: "0.62rem",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {result.country}
+                    </span>
+                  )}
                   {result.source === "tiktok" && result.topics.some(t => t.type === "hashtag") && (
                     <span
                       style={{
@@ -697,7 +929,6 @@ export default function TrendingTopics() {
                   </span>
                 </div>
               )}
-
               <div
                 style={{
                   display: "grid",
