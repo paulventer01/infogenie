@@ -515,6 +515,37 @@ export default function TrendingTopics() {
               🔥 Detect
             </button>
           </div>
+          {platform === "youtube" && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "8px 12px",
+                background: "#FFF7ED",
+                border: "1px solid #FED7AA",
+                borderRadius: 8,
+                fontSize: "0.74rem",
+                color: "#92400E",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span style={{ fontSize: "1rem" }}>ℹ️</span>
+              <span>
+                <strong>YouTube Data API key required.</strong> Add your{" "}
+                <code
+                  style={{
+                    background: "#FEF3C7",
+                    padding: "1px 4px",
+                    borderRadius: 3,
+                  }}
+                >
+                  YOUTUBE_API_KEY
+                </code>{" "}
+                in Settings → API Keys to fetch live YouTube trending results.
+              </span>
+            </div>
+          )}
         </div>
 
         <div>
