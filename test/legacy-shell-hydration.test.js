@@ -270,3 +270,31 @@ test('getLegacyShell().bodyHtml contains multiple class="view" panels', () => {
       'if most are missing the strip regex has over-matched and removed them.',
   );
 });
+
+// ── Bulk-removal guard ────────────────────────────────────────────────────────
+//
+// index.html currently contains 223 elements with id="view-*". This test
+// catches accidental bulk removal — e.g. a merge that replaces index.html with
+// an older version, or a refactor that collapses many view panels — while
+// allowing deliberate single-panel removals without needing to update the
+// constant every time.
+//
+// Update MIN_VIEW_PANEL_COUNT after an intentional batch removal; keep the
+// value at (new total − 20) so there is still a meaningful floor.
+
+const MIN_VIEW_PANEL_COUNT = 200;
+
+test(`getLegacyShell().bodyHtml contains at least ${MIN_VIEW_PANEL_COUNT} id="view-*" panels (bulk-removal guard)`, () => {
+  const { bodyHtml } = getLegacyShell();
+
+  const matches = bodyHtml.match(/\bid="view-[^"]+"/g) || [];
+  assert.ok(
+    matches.length >= MIN_VIEW_PANEL_COUNT,
+    `getLegacyShell().bodyHtml contains only ${matches.length} id="view-*" panel(s) — ` +
+      `expected at least ${MIN_VIEW_PANEL_COUNT}. ` +
+      'This likely means index.html was replaced with an older copy, or a refactor ' +
+      'accidentally removed a large block of view panels. If panels were intentionally ' +
+      'removed in bulk, update MIN_VIEW_PANEL_COUNT in test/legacy-shell-hydration.test.js ' +
+      'to (new total − 20).',
+  );
+});
