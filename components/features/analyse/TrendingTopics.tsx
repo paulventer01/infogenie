@@ -869,6 +869,32 @@ export default function TrendingTopics() {
                 </div>
               </div>
 
+              {/* Placeholder notice — shown when API falls back to template data */}
+              {result.source === "template" && (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    alignItems: "flex-start",
+                    background: "#FFFBEB",
+                    border: "1.5px solid #FCD34D",
+                    borderRadius: 10,
+                    padding: "12px 16px",
+                    marginBottom: 16,
+                  }}
+                >
+                  <span style={{ fontSize: "1.25rem", lineHeight: 1, flexShrink: 0 }}>⚠️</span>
+                  <div style={{ fontSize: "0.8rem", color: "#92400E", lineHeight: 1.5 }}>
+                    <strong>These are placeholder topics, not live data.</strong> No Perplexity
+                    API key is configured, so InfoGenie fell back to a built-in template instead
+                    of running a live web search.{" "}
+                    To see real trending results, go to{" "}
+                    <strong>Settings → Integrations → Intelligence APIs</strong> and add your{" "}
+                    <strong>Perplexity API key</strong>, then re-run the scan.
+                  </div>
+                </div>
+              )}
+
               {/* Section header when TikTok returns both hashtags and videos */}
               {result.source === "tiktok" && result.topics.some(t => t.type === "hashtag") && result.topics.some(t => t.type === "video") && (
                 <div
