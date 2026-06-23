@@ -358,8 +358,8 @@ router.post('/detect', async (req, res) => {
     if (!topics || !topics.length) {
       source = 'template';
       topics = [
-        { title:'Connect Perplexity API key for live trending topics', why:'Perplexity provides real-time web search; without a key we can only show this placeholder.', sources:[] },
-        { title:`Generic trend: AI in ${category}`, why:'AI integrations and copilots are top-of-mind across most categories in 2025-2026.', sources:[] },
+        { title:`Connect Perplexity API key for live ${category} trends`, why:`Perplexity provides real-time web search for ${category}; without a key we can only show this placeholder.`, sources:[] },
+        { title:`AI adoption is accelerating in ${category}`, why:`AI-powered tools and copilots are reshaping ${category} workflows — one of the top cross-industry trends in 2025-2026.`, sources:[] },
       ];
     }
     if (_db.hasDb()) {
