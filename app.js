@@ -18566,7 +18566,7 @@ window.buildTrendingTopics = async function() {
   wrap.innerHTML = `
     <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:18px;margin-bottom:18px">
       <div style="font-family:Sora,sans-serif;font-weight:800;font-size:1rem;margin-bottom:12px">What's hot in your category?</div>
-      <div style="display:grid;grid-template-columns:1.5fr 2fr 170px auto;gap:10px;align-items:end">
+      <div style="display:grid;grid-template-columns:1.5fr 2fr 130px 130px auto;gap:10px;align-items:end">
         <div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
             <div style="font-size:0.66rem;font-weight:700;color:#6B7280">Category *</div>
@@ -18585,6 +18585,12 @@ window.buildTrendingTopics = async function() {
         <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Country</div>
           <select id="trCountry" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem">
             ${COUNTRIES.map(([c,l]) => `<option value="${c}" ${c==='ALL'?'selected':''}>${l}</option>`).join('')}
+          </select>
+        </label>
+        <label><div style="font-size:0.66rem;font-weight:700;color:#6B7280;margin-bottom:3px">Platform</div>
+          <select id="trPlatform" style="width:100%;padding:8px 10px;border:1.5px solid #E5E7EB;border-radius:6px;font-size:0.82rem">
+            <option value="">🌐 All Web</option>
+            <option value="youtube">▶️ YouTube</option>
           </select>
         </label>
         <button onclick="_trDetect()" style="padding:9px 18px;background:#B91C1C;border:2px solid #B91C1C;border-radius:6px;font-size:0.78rem;font-weight:800;color:#fff;-webkit-text-fill-color:#fff;cursor:pointer;text-shadow:0 1px 2px rgba(0,0,0,.5)">🔥 Detect</button>
@@ -18677,9 +18683,14 @@ window._trDetect = async function() {
   if (!category) return showToast('❌ Category required');
   const keywords = document.getElementById('trKw').value.split(',').map(s=>s.trim()).filter(Boolean);
   const country = document.getElementById('trCountry').value.trim() || 'ALL';
-  document.getElementById('trResults').innerHTML = `<div style="text-align:center;padding:40px;color:#6B7280">⏳ Searching live web…</div>`;
+  const platformEl = document.getElementById('trPlatform');
+  const platform = platformEl ? platformEl.value : '';
+  const loadingMsg = platform === 'youtube' ? '⏳ Fetching YouTube trending videos…' : '⏳ Searching live web…';
+  document.getElementById('trResults').innerHTML = `<div style="text-align:center;padding:40px;color:#6B7280">${loadingMsg}</div>`;
   try {
-    const r = await fetch('/api/trends/detect', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ category, keywords, country }) }).then(x=>x.json());
+    const body = { category, keywords, country };
+    if (platform) body.platform = platform;
+    const r = await fetch('/api/trends/detect', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(x=>x.json());
     if (!r.ok) throw new Error(r.error);
     _trRender(r.topics, r.source, r.category);
   } catch (e) { document.getElementById('trResults').innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(e.message)}</div>`; }
@@ -18689,11 +18700,14 @@ function _trRender(topics, source, category) {
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div style="font-family:Sora,sans-serif;font-weight:800;font-size:0.95rem">🔥 Trending in <span style="color:#B91C1C">${_escapeHtml(category)}</span> · ${(topics||[]).length} topics</div>
-      <span style="background:${source==='perplexity'?'#7C3AED':'#9CA3AF'};color:#fff;padding:3px 9px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase">${_escapeHtml(source)}</span>
+      <span style="background:${source==='youtube'?'#FF0000':source==='perplexity'?'#7C3AED':'#9CA3AF'};color:#fff;padding:3px 9px;border-radius:5px;font-size:0.62rem;font-weight:800;text-transform:uppercase">${source==='youtube'?'▶ YouTube':_escapeHtml(source)}</span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px">
       ${(topics||[]).map((t,i)=>`<div style="background:#fff;border:1px solid #E5E7EB;border-left:4px solid ${i<3?'#B91C1C':i<6?'#F59E0B':'#9CA3AF'};border-radius:10px;padding:14px 16px">
-        <div style="font-weight:800;color:#0A1628;font-size:0.95rem;margin-bottom:6px">#${i+1}. ${_escapeHtml(t.title||'')}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+          <div style="font-weight:800;color:#0A1628;font-size:0.95rem">#${i+1}. ${_escapeHtml(t.title||'')}</div>
+          ${source==='youtube'?`<span style="background:#FF0000;color:#fff;font-size:0.55rem;font-weight:800;padding:2px 6px;border-radius:4px;white-space:nowrap;margin-left:6px;flex-shrink:0">▶ YouTube</span>`:''}
+        </div>
         <div style="font-size:0.8rem;color:#374151;margin-bottom:8px;line-height:1.5">${_escapeHtml(t.why||'')}</div>
         ${(t.sources||[]).length?`<div style="font-size:0.7rem;color:#6B7280">${(t.sources||[]).slice(0,3).map(u=>`<a href="${_escapeHtml(_safeUrl(u))}" target="_blank" rel="noopener noreferrer" style="color:#7C3AED;display:block;margin-top:2px">${_escapeHtml(u.replace(/^https?:\/\//,'').slice(0,60))}</a>`).join('')}</div>`:''}
       </div>`).join('')}

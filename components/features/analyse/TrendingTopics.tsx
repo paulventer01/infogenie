@@ -5,7 +5,7 @@
 // `#view-trending-topics` in index.html). Detects what's spiking in a category
 // via live web search against the existing Express API:
 //   GET  /api/trends/history
-//   POST /api/trends/detect   { category, keywords, country }
+//   POST /api/trends/detect   { category, keywords, country, platform }
 //   POST /api/ai-quick        { prompt }   (AI Suggest helpers)
 // Pre-fills the category/competitor picker from the legacy `window.analysisData`
 // global set by the SPA competitor analysis.
@@ -124,6 +124,7 @@ export default function TrendingTopics() {
   const [cat, setCat] = useState("");
   const [kw, setKw] = useState("");
   const [country, setCountry] = useState("ALL");
+  const [platform, setPlatform] = useState("");
   const [result, setResult] = useState<RenderState | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errMsg, setErrMsg] = useState("");
@@ -258,11 +259,13 @@ export default function TrendingTopics() {
       .filter(Boolean);
     setStatus("loading");
     setErrMsg("");
-    const r = await apiPost<DetectResp>("/api/trends/detect", {
+    const body: Record<string, unknown> = {
       category,
       keywords,
       country: country.trim() || "ALL",
-    });
+    };
+    if (platform) body.platform = platform;
+    const r = await apiPost<DetectResp>("/api/trends/detect", body);
     if (!r.ok) {
       setStatus("error");
       setErrMsg(r.error || "failed");
@@ -343,7 +346,7 @@ export default function TrendingTopics() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1.5fr 2fr 170px auto",
+              gridTemplateColumns: "1.5fr 2fr 130px 130px auto",
               gap: 10,
               alignItems: "end",
             }}
@@ -466,6 +469,26 @@ export default function TrendingTopics() {
                 ))}
               </select>
             </label>
+            <label>
+              <div
+                style={{
+                  fontSize: "0.66rem",
+                  fontWeight: 700,
+                  color: "#6B7280",
+                  marginBottom: 3,
+                }}
+              >
+                Platform
+              </div>
+              <select
+                value={platform}
+                onChange={(e) => setPlatform(e.target.value)}
+                style={input}
+              >
+                <option value="">🌐 All Web</option>
+                <option value="youtube">▶️ YouTube</option>
+              </select>
+            </label>
             <button
               onClick={detect}
               disabled={status === "loading"}
@@ -492,7 +515,9 @@ export default function TrendingTopics() {
             <div
               style={{ textAlign: "center", padding: 40, color: "#6B7280" }}
             >
-              ⏳ Searching live web…
+              {platform === "youtube"
+                ? "⏳ Fetching YouTube trending videos…"
+                : "⏳ Searching live web…"}
             </div>
           )}
           {status === "error" && (
@@ -531,7 +556,11 @@ export default function TrendingTopics() {
                 <span
                   style={{
                     background:
-                      result.source === "perplexity" ? "#7C3AED" : "#9CA3AF",
+                      result.source === "perplexity"
+                        ? "#7C3AED"
+                        : result.source === "youtube"
+                          ? "#FF0000"
+                          : "#9CA3AF",
                     color: "#fff",
                     padding: "3px 9px",
                     borderRadius: 5,
@@ -540,7 +569,11 @@ export default function TrendingTopics() {
                     textTransform: "uppercase",
                   }}
                 >
-                  {result.source}
+                  {result.source === "youtube"
+                    ? "▶ YouTube"
+                    : result.source === "perplexity"
+                      ? "Perplexity"
+                      : result.source}
                 </span>
               </div>
               <div
@@ -563,13 +596,38 @@ export default function TrendingTopics() {
                   >
                     <div
                       style={{
-                        fontWeight: 800,
-                        color: "#0A1628",
-                        fontSize: "0.95rem",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
                         marginBottom: 6,
                       }}
                     >
-                      #{i + 1}. {t.title || ""}
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          color: "#0A1628",
+                          fontSize: "0.95rem",
+                        }}
+                      >
+                        #{i + 1}. {t.title || ""}
+                      </div>
+                      {result.source === "youtube" && (
+                        <span
+                          style={{
+                            background: "#FF0000",
+                            color: "#fff",
+                            fontSize: "0.55rem",
+                            fontWeight: 800,
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            whiteSpace: "nowrap",
+                            marginLeft: 6,
+                            flexShrink: 0,
+                          }}
+                        >
+                          ▶ YouTube
+                        </span>
+                      )}
                     </div>
                     <div
                       style={{
