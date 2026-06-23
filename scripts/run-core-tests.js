@@ -27,6 +27,7 @@ const FILES = [
   'test/layout-fonts-guard.test.js',
   'test/gpt5-param-compat.test.js',
   'test/legacy-shell-hydration.test.js',
+  'test/tiktok-trending-fallback.test.js',
 ];
 
 const QUIESCE_MS = 6000; // once tests have printed, this much silence => done
