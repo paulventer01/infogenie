@@ -58,6 +58,7 @@ interface DetectResp {
   topics?: Topic[];
   source?: string;
   category?: string;
+  categoryLabel?: string;
 }
 interface AiQuickResp {
   text?: string;
@@ -105,6 +106,7 @@ interface RenderState {
   topics: Topic[];
   source: string;
   category: string;
+  categoryLabel?: string;
 }
 
 export default function TrendingTopics() {
@@ -275,6 +277,7 @@ export default function TrendingTopics() {
       topics: r.topics || [],
       source: r.source || "",
       category: r.category || category,
+      categoryLabel: r.categoryLabel,
     });
     setStatus("idle");
   }
@@ -570,7 +573,9 @@ export default function TrendingTopics() {
                   }}
                 >
                   {result.source === "youtube"
-                    ? "▶ YouTube"
+                    ? result.categoryLabel
+                      ? `▶ YouTube Trending · ${result.categoryLabel}`
+                      : "▶ YouTube"
                     : result.source === "perplexity"
                       ? "Perplexity"
                       : result.source}

@@ -125,6 +125,24 @@ const _YT_CATEGORY_MAP = {
   'trailers':         44,  'movie trailers': 44,
 };
 
+const _YT_CATEGORY_LABELS = {
+   1: 'Film & Animation',
+   2: 'Autos & Vehicles',
+  10: 'Music',
+  15: 'Pets & Animals',
+  17: 'Sports',
+  19: 'Travel & Events',
+  20: 'Gaming',
+  22: 'People & Blogs',
+  23: 'Comedy',
+  24: 'Entertainment',
+  25: 'News & Politics',
+  26: 'How-to & Style',
+  27: 'Education',
+  28: 'Science & Technology',
+  29: 'Nonprofits & Activism',
+};
+
 async function _youtube({ country, category }) {
   const key = process.env.YOUTUBE_DATA_API_KEY || process.env.GOOGLE_SEARCH_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return null;
@@ -156,7 +174,9 @@ async function _youtube({ country, category }) {
             const sources = videoId ? [`https://www.youtube.com/watch?v=${videoId}`] : [];
             return { title, why, sources };
           });
-          resolve(topics.length ? topics : null);
+          if (!topics.length) return resolve(null);
+          const categoryLabel = videoCategoryId ? (_YT_CATEGORY_LABELS[videoCategoryId] || null) : null;
+          resolve({ topics, categoryLabel });
         } catch { resolve(null); }
       });
     });
@@ -204,10 +224,13 @@ router.post('/detect', async (req, res) => {
   try {
     let topics = null;
     let source = 'perplexity';
+    let categoryLabel = null;
 
     if (platform === 'youtube') {
-      topics = await _youtube({ country, category });
-      if (topics && topics.length) {
+      const ytResult = await _youtube({ country, category });
+      if (ytResult && ytResult.topics && ytResult.topics.length) {
+        topics = ytResult.topics;
+        categoryLabel = ytResult.categoryLabel || null;
         source = 'youtube';
       } else {
         topics = await _perplexity({ category, keywords, country });
@@ -230,7 +253,7 @@ router.post('/detect', async (req, res) => {
           [tid, category, JSON.stringify(keywords), country, JSON.stringify(topics), source]);
       } catch {}
     }
-    res.json({ ok:true, source, category, country, topics });
+    res.json({ ok:true, source, category, country, topics, ...(categoryLabel ? { categoryLabel } : {}) });
   } catch (e) { _err(res, 500, e.message); }
 });
 
