@@ -48,6 +48,7 @@ interface HistoryRun {
   source?: string;
   category?: string;
   category_label?: string;
+  country?: string;
 }
 interface HistoryResp {
   ok?: boolean;
@@ -109,6 +110,7 @@ interface RenderState {
   source: string;
   category: string;
   categoryLabel?: string;
+  country?: string;
 }
 
 export default function TrendingTopics() {
@@ -148,6 +150,7 @@ export default function TrendingTopics() {
         source: last.source || "",
         category: last.category || "",
         categoryLabel: last.category_label || undefined,
+        country: last.country || undefined,
       });
   }, []);
 
@@ -281,6 +284,7 @@ export default function TrendingTopics() {
       source: r.source || "",
       category: r.category || category,
       categoryLabel: r.categoryLabel,
+      country: country.trim() || "ALL",
     });
     setStatus("idle");
   }
@@ -590,8 +594,15 @@ export default function TrendingTopics() {
                   }}
                 >
                   🔥 Trending in{" "}
-                  <span style={{ color: "#B91C1C" }}>{result.category}</span> ·{" "}
-                  {result.topics.length} topics
+                  <span style={{ color: "#B91C1C" }}>{result.category}</span>
+                  {result.country && result.country !== "ALL" && (
+                    <>
+                      {" "}
+                      ·{" "}
+                      <span style={{ color: "#6B7280" }}>{result.country}</span>
+                    </>
+                  )}{" "}
+                  · {result.topics.length} topics
                 </div>
                 <span
                   style={{
