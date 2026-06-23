@@ -27,6 +27,44 @@ async function _ensureSchema() {
 }
 _ensureSchema().catch(()=>{});
 
+async function _youtube({ country }) {
+  const key = process.env.YOUTUBE_DATA_API_KEY || process.env.GOOGLE_SEARCH_API_KEY;
+  if (!key || /^_DUMMY/i.test(key)) return null;
+  const regionCode = (country && country !== 'ALL') ? country.slice(0, 2).toUpperCase() : 'US';
+  const url = 'https://www.googleapis.com/youtube/v3/videos?part=snippet%2Cstatistics&chart=mostPopular&maxResults=10&regionCode=' +
+    encodeURIComponent(regionCode) + '&key=' + encodeURIComponent(key);
+  return await new Promise(resolve => {
+    const req = _https.request(url, { method: 'GET' }, r => {
+      let d = ''; r.on('data', c => d += c); r.on('end', () => {
+        try {
+          if (r.statusCode !== 200) return resolve(null);
+          const j = JSON.parse(d);
+          const items = j.items;
+          if (!Array.isArray(items) || !items.length) return resolve(null);
+          const topics = items.map(item => {
+            const snippet = item.snippet || {};
+            const stats = item.statistics || {};
+            const title = snippet.title || 'Untitled';
+            const channel = snippet.channelTitle || '';
+            const views = stats.viewCount ? Number(stats.viewCount).toLocaleString() : null;
+            const why = [
+              channel ? `By ${channel}` : '',
+              views ? `${views} views` : '',
+            ].filter(Boolean).join(' · ') || 'Trending on YouTube';
+            const videoId = item.id;
+            const sources = videoId ? [`https://www.youtube.com/watch?v=${videoId}`] : [];
+            return { title, why, sources };
+          });
+          resolve(topics.length ? topics : null);
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(20000, () => { req.destroy(); resolve(null); });
+    req.end();
+  });
+}
+
 async function _perplexity({ category, keywords, country }) {
   const key = process.env.PERPLEXITY_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return null;
@@ -61,9 +99,22 @@ router.post('/detect', async (req, res) => {
   if (!category) return _err(res, 400, 'category required');
   const keywords = (Array.isArray(req.body?.keywords) ? req.body.keywords : []).map(s => String(s).slice(0, 60)).filter(Boolean).slice(0, 8);
   const country = req.body?.country ? String(req.body.country).slice(0, 16) : 'US';
+  const platform = req.body?.platform ? String(req.body.platform).trim().toLowerCase() : '';
   try {
-    let topics = await _perplexity({ category, keywords, country });
+    let topics = null;
     let source = 'perplexity';
+
+    if (platform === 'youtube') {
+      topics = await _youtube({ country });
+      if (topics && topics.length) {
+        source = 'youtube';
+      } else {
+        topics = await _perplexity({ category, keywords, country });
+      }
+    } else {
+      topics = await _perplexity({ category, keywords, country });
+    }
+
     if (!topics || !topics.length) {
       source = 'template';
       topics = [

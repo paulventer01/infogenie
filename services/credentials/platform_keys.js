@@ -47,6 +47,7 @@ const REGISTRY = [
   { key: 'BUILTWITH_API_KEY', group: 'Data & Intelligence', service: 'BuiltWith', label: 'BuiltWith API Key', desc: 'Tech-stack detection', secret: true, test: 'builtwith', settingsIds: ['builtwith'] },
   { key: 'GOOGLE_PAGESPEED_API_KEY', group: 'Data & Intelligence', service: 'Google PageSpeed', label: 'PageSpeed API Key', desc: 'Core Web Vitals & page performance audits', secret: true, test: 'pagespeed', settingsIds: ['pagespeed', 'google_pagespeed'] },
   { key: 'GOOGLE_SEARCH_API_KEY', group: 'Data & Intelligence', service: 'Google Search', label: 'Google Search API Key', desc: 'Custom Search / SERP visibility', secret: true, test: 'google_search', settingsIds: ['google_search'] },
+  { key: 'YOUTUBE_DATA_API_KEY', group: 'Data & Intelligence', service: 'YouTube Data', label: 'YouTube Data API Key', desc: 'YouTube trending videos (chart=mostPopular) for Trending Topics', secret: true, test: 'youtube_data', settingsIds: ['youtube_data'] },
 
   // ── Infrastructure ──────────────────────────────────────────────────────────
   { key: 'RESEND_API_KEY', group: 'Infrastructure', service: 'Resend', label: 'Resend API Key', desc: 'Transactional & broadcast email', secret: true, test: 'resend', settingsIds: ['resend'] },
@@ -429,6 +430,18 @@ async function _runTest(keyName) {
       if (r.ok || r.status === 400) return _OK('Google Search key accepted');
       if (r.status === 401 || r.status === 403) return _BAD('Google rejected the API key (HTTP ' + r.status + ')');
       return _HTTP('Google Search', r);
+    }
+    if (entry.test === 'youtube_data') {
+      const key = resolvePlatformKey('YOUTUBE_DATA_API_KEY');
+      if (!key) return _UNCONF();
+      // Probe: videoCategories list with a known regionCode. A bad key is
+      // rejected (400 "API key not valid") before any quota is consumed.
+      const r = await _fetchT('https://www.googleapis.com/youtube/v3/videoCategories?part=snippet&regionCode=US&key=' + encodeURIComponent(key));
+      const txt = await _bodyText(r);
+      if (/api key not valid|api_key_invalid|keyinvalid/i.test(txt)) return _BAD('YouTube Data API rejected the key');
+      if (r.ok) return _OK('YouTube Data API key accepted');
+      if (r.status === 400 || r.status === 401 || r.status === 403) return _BAD('YouTube Data API rejected the key (HTTP ' + r.status + ')');
+      return _HTTP('YouTube Data API', r);
     }
     if (entry.test === 'amplitude') {
       const key = resolvePlatformKey('AMPLITUDE_API_KEY');
