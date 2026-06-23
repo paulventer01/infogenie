@@ -145,7 +145,6 @@ interface RenderState {
   category: string;
   categoryLabel?: string;
   country?: string;
-  historyId?: number;
 }
 
 export default function TrendingTopics() {
@@ -171,9 +170,8 @@ export default function TrendingTopics() {
   const [errMsg, setErrMsg] = useState("");
   const [catBusy, setCatBusy] = useState(false);
   const [kwBusy, setKwBusy] = useState(false);
-
   const [historyRuns, setHistoryRuns] = useState<HistoryRun[]>([]);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [activeRunId, setActiveRunId] = useState<number | null>(null);
 
   useEffect(() => {
     setCat(brand);
@@ -185,35 +183,33 @@ export default function TrendingTopics() {
     setHistoryRuns(runs);
     const last = runs[0];
     if (last) {
+      setActiveRunId(last.id ?? null);
       setResult({
         topics: last.topics || [],
         source: last.source || "",
         category: last.category || "",
         categoryLabel: last.category_label || undefined,
         country: last.country || "ALL",
-        historyId: last.id,
       });
     }
   }, []);
 
-  useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
-
-  function loadRun(run: HistoryRun) {
-    const runCountry = run.country || "ALL";
-    setCountry(runCountry);
+  function selectHistoryRun(run: HistoryRun) {
+    setActiveRunId(run.id ?? null);
     setResult({
       topics: run.topics || [],
       source: run.source || "",
       category: run.category || "",
       categoryLabel: run.category_label || undefined,
-      country: runCountry,
-      historyId: run.id,
+      country: run.country || undefined,
     });
     setStatus("idle");
-    setHistoryOpen(false);
+    setErrMsg("");
   }
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   function onPickChange(v: string) {
     setPick(v);
@@ -336,19 +332,19 @@ export default function TrendingTopics() {
       setErrMsg(r.error || "failed");
       return;
     }
-    // Refresh the history list so the new run appears, then sync historyId
-    const h = await apiGet<HistoryResp>("/api/trends/history");
-    const freshRuns = h.runs || [];
-    setHistoryRuns(freshRuns);
     setResult({
       topics: r.topics || [],
       source: r.source || "",
       category: r.category || category,
       categoryLabel: r.categoryLabel,
       country: country.trim() || "ALL",
-      historyId: freshRuns[0]?.id,
     });
     setStatus("idle");
+    // Reload history so the new run appears in the sidebar
+    const h = await apiGet<HistoryResp>("/api/trends/history");
+    const runs = h.runs || [];
+    setHistoryRuns(runs);
+    if (runs[0]) setActiveRunId(runs[0].id ?? null);
   }
 
   const pickerOpts = [
@@ -607,165 +603,147 @@ export default function TrendingTopics() {
           )}
         </div>
 
-        {/* History panel */}
-        {historyRuns.length > 0 && (
-          <div
-            style={{
-              border: "1px solid #E5E7EB",
-              borderRadius: 10,
-              marginBottom: 18,
-              overflow: "hidden",
-              background: "#fff",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setHistoryOpen((o) => !o)}
+        <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+          {/* History sidebar */}
+          {historyRuns.length > 1 && (
+            <div
               style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "10px 16px",
-                background: "none",
-                border: 0,
-                cursor: "pointer",
-                fontFamily: "Sora,sans-serif",
-                fontWeight: 700,
-                fontSize: "0.82rem",
-                color: "#374151",
-                textAlign: "left",
+                width: 210,
+                flexShrink: 0,
+                background: "#fff",
+                border: "1px solid #E5E7EB",
+                borderRadius: 12,
+                overflow: "hidden",
               }}
             >
-              <span>
-                🕓 Scan History{" "}
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderBottom: "1px solid #F3F4F6",
+                  fontFamily: "Sora,sans-serif",
+                  fontWeight: 800,
+                  fontSize: "0.75rem",
+                  color: "#374151",
+                  background: "#F9FAFB",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span>🕑</span> Past Scans
                 <span
                   style={{
-                    background: "#F3F4F6",
+                    marginLeft: "auto",
+                    background: "#E5E7EB",
                     color: "#6B7280",
                     borderRadius: 10,
-                    padding: "1px 7px",
-                    fontSize: "0.72rem",
+                    padding: "1px 6px",
+                    fontSize: "0.65rem",
                     fontWeight: 700,
-                    marginLeft: 4,
                   }}
                 >
                   {historyRuns.length}
                 </span>
-              </span>
-              <span style={{ fontSize: "0.7rem", color: "#9CA3AF" }}>
-                {historyOpen ? "▲ collapse" : "▼ expand"}
-              </span>
-            </button>
-            {historyOpen && (
-              <div
-                style={{
-                  borderTop: "1px solid #F3F4F6",
-                  maxHeight: 280,
-                  overflowY: "auto",
-                }}
-              >
+              </div>
+              <div style={{ maxHeight: 520, overflowY: "auto" }}>
                 {historyRuns.map((run, idx) => {
-                  const isActive = result?.historyId != null && result.historyId === run.id;
+                  const isActive = run.id != null ? run.id === activeRunId : false;
                   return (
                     <button
-                      key={run.id ?? idx}
+                      key={run.id ?? run.ran_at ?? idx}
                       type="button"
-                      onClick={() => loadRun(run)}
+                      onClick={() => selectHistoryRun(run)}
                       style={{
+                        display: "block",
                         width: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "9px 16px",
-                        background: isActive ? "#F5F3FF" : "transparent",
-                        border: 0,
-                        borderBottom: "1px solid #F9FAFB",
-                        cursor: "pointer",
                         textAlign: "left",
+                        background: isActive ? "#F5F3FF" : "transparent",
+                        border: "none",
+                        borderLeft: isActive ? "3px solid #7C3AED" : "3px solid transparent",
+                        borderBottom: "1px solid #F3F4F6",
+                        padding: "9px 12px",
+                        cursor: "pointer",
                         transition: "background 0.1s",
                       }}
-                      onMouseEnter={(e) => {
-                        if (!isActive)
-                          (e.currentTarget as HTMLButtonElement).style.background = "#F9FAFB";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isActive)
-                          (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-                      }}
                     >
-                      <span
+                      <div
                         style={{
-                          background: sourceBadgeColor(run.source),
-                          color: "#fff",
-                          padding: "2px 6px",
-                          borderRadius: 4,
-                          fontSize: "0.55rem",
-                          fontWeight: 800,
-                          textTransform: "uppercase",
-                          whiteSpace: "nowrap",
-                          flexShrink: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 5,
+                          marginBottom: 3,
                         }}
                       >
-                        {sourceBadgeLabel(run)}
-                      </span>
-                      <span
+                        <span
+                          style={{
+                            background: sourceBadgeColor(run.source),
+                            color: "#fff",
+                            borderRadius: 4,
+                            padding: "1px 5px",
+                            fontSize: "0.55rem",
+                            fontWeight: 800,
+                            textTransform: "uppercase",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {sourceBadgeLabel(run)}
+                        </span>
+                        {run.country && run.country !== "ALL" && (
+                          <span
+                            style={{
+                              fontSize: "0.6rem",
+                              color: "#9CA3AF",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {run.country}
+                          </span>
+                        )}
+                        {idx === 0 && (
+                          <span
+                            style={{
+                              marginLeft: "auto",
+                              background: "#D1FAE5",
+                              color: "#065F46",
+                              borderRadius: 4,
+                              padding: "1px 5px",
+                              fontSize: "0.55rem",
+                              fontWeight: 800,
+                              flexShrink: 0,
+                            }}
+                          >
+                            latest
+                          </span>
+                        )}
+                      </div>
+                      <div
                         style={{
-                          fontWeight: isActive ? 700 : 500,
-                          fontSize: "0.8rem",
-                          color: isActive ? "#7C3AED" : "#111827",
-                          flex: 1,
+                          fontSize: "0.75rem",
+                          fontWeight: isActive ? 700 : 600,
+                          color: isActive ? "#5B21B6" : "#111827",
+                          lineHeight: 1.3,
+                          marginBottom: 2,
                           overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
                         }}
                       >
                         {run.category || "—"}
-                      </span>
-                      {run.country && run.country !== "ALL" && (
-                        <span
-                          style={{
-                            fontSize: "0.68rem",
-                            color: "#9CA3AF",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {run.country}
-                        </span>
-                      )}
-                      <span
-                        style={{
-                          fontSize: "0.68rem",
-                          color: "#9CA3AF",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {fmtDate(run.ran_at)}
-                      </span>
-                      {idx === 0 && (
-                        <span
-                          style={{
-                            background: "#D1FAE5",
-                            color: "#065F46",
-                            borderRadius: 4,
-                            padding: "1px 6px",
-                            fontSize: "0.55rem",
-                            fontWeight: 800,
-                            flexShrink: 0,
-                          }}
-                        >
-                          latest
-                        </span>
+                      </div>
+                      {run.ran_at && (
+                        <div style={{ fontSize: "0.62rem", color: "#9CA3AF" }}>
+                          {fmtDate(run.ran_at)}
+                        </div>
                       )}
                     </button>
                   );
                 })}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        <div>
+          <div style={{ flex: 1, minWidth: 0 }}>
           {status === "loading" && (
             <div
               style={{ textAlign: "center", padding: 40, color: "#6B7280" }}
@@ -1147,6 +1125,7 @@ export default function TrendingTopics() {
               </div>
             </>
           )}
+          </div>
         </div>
       </div>
     </div>
