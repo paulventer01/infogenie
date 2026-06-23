@@ -620,15 +620,15 @@ export default function Battleplan() {
         <div style={{ marginTop: 24, background: "linear-gradient(135deg,rgba(0,201,200,.1),rgba(0,102,255,.06))", border: "1px solid rgba(0,201,200,.2)", borderRadius: 14, padding: "20px 24px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
             <div>
-              <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.95rem", fontWeight: 800, color: "white", marginBottom: 4 }}>🚀 Launch Full Attack Plan</div>
-              <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,.55)" }}>
+              <div style={{ fontFamily: "Sora,sans-serif", fontSize: "0.95rem", fontWeight: 800, color: "#0F172A", marginBottom: 4 }}>🚀 Launch Full Attack Plan</div>
+              <div style={{ fontSize: "0.8rem", color: "#475569" }}>
                 GPT-4 generates a complete 8-week strategy — keywords, channels, content, budget &amp; weekly milestones
               </div>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 200 }}>
-              <label style={{ fontSize: "0.68rem", fontWeight: 700, color: "rgba(255,255,255,.5)", textTransform: "uppercase", letterSpacing: ".07em" }}>Select Competitor</label>
+              <label style={{ fontSize: "0.68rem", fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".07em" }}>Select Competitor</label>
               <select
                 id="attackPlanCompSelect"
                 defaultValue={String(idx)}
