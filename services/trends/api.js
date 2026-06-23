@@ -359,6 +359,11 @@ router.post('/detect', async (req, res) => {
     if (_db.hasDb()) {
       try {
         const tid = await _tenantCtx.resolveTenantId(req, { label:'trends:detect' });
+        // topics is stored as full JSONB including the `thumbnail` field set by _youtube().
+        // This guarantees history loads (GET /history → last.topics) also carry thumbnails
+        // for YouTube runs.  Older rows that pre-date the thumbnail field are safe: both
+        // the React render (t.thumbnail &&) and the legacy _trRender (t.thumbnail?) guard
+        // against a missing/null value and simply skip the <img>.
         await _db.getPool().query(`INSERT INTO trend_runs (tenant_id, category, keywords, country, topics, source, category_label) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
           [tid, category, JSON.stringify(keywords), country, JSON.stringify(topics), source, categoryLabel || null]);
       } catch {}
