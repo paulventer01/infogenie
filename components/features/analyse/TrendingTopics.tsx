@@ -492,6 +492,7 @@ export default function TrendingTopics() {
               >
                 <option value="">🌐 All Web</option>
                 <option value="youtube">▶️ YouTube</option>
+                <option value="tiktok">🎵 TikTok</option>
               </select>
             </label>
             <button
@@ -522,7 +523,9 @@ export default function TrendingTopics() {
             >
               {platform === "youtube"
                 ? "⏳ Fetching YouTube trending videos…"
-                : "⏳ Searching live web…"}
+                : platform === "tiktok"
+                  ? "⏳ Fetching TikTok trending videos…"
+                  : "⏳ Searching live web…"}
             </div>
           )}
           {status === "error" && (
@@ -565,7 +568,9 @@ export default function TrendingTopics() {
                         ? "#7C3AED"
                         : result.source === "youtube"
                           ? "#FF0000"
-                          : "#9CA3AF",
+                          : result.source === "tiktok"
+                            ? "#010101"
+                            : "#9CA3AF",
                     color: "#fff",
                     padding: "3px 9px",
                     borderRadius: 5,
@@ -578,9 +583,11 @@ export default function TrendingTopics() {
                     ? result.categoryLabel
                       ? `▶ YouTube Trending · ${result.categoryLabel}`
                       : "▶ YouTube"
-                    : result.source === "perplexity"
-                      ? "Perplexity"
-                      : result.source}
+                    : result.source === "tiktok"
+                      ? "🎵 TikTok"
+                      : result.source === "perplexity"
+                        ? "Perplexity"
+                        : result.source}
                 </span>
               </div>
               <div
@@ -633,6 +640,23 @@ export default function TrendingTopics() {
                           }}
                         >
                           ▶ YouTube
+                        </span>
+                      )}
+                      {result.source === "tiktok" && (
+                        <span
+                          style={{
+                            background: "#010101",
+                            color: "#fff",
+                            fontSize: "0.55rem",
+                            fontWeight: 800,
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            whiteSpace: "nowrap",
+                            marginLeft: 6,
+                            flexShrink: 0,
+                          }}
+                        >
+                          🎵 TikTok
                         </span>
                       )}
                     </div>

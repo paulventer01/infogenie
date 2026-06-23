@@ -189,6 +189,51 @@ async function _youtube({ country, category }) {
   });
 }
 
+async function _tiktok({ category, keywords }) {
+  const rapidKey = process.env.TIKTOK_RAPIDAPI_KEY;
+  if (!rapidKey || /^_DUMMY/i.test(rapidKey)) return null;
+  const kwStr = [category, ...(keywords || [])].filter(Boolean).slice(0, 3).join(' ');
+  const url = 'https://tiktok-scraper7.p.rapidapi.com/trending/feed?region=US&count=10' +
+    (kwStr ? '&keywords=' + encodeURIComponent(kwStr) : '');
+  return await new Promise(resolve => {
+    const req = _https.request(url, {
+      method: 'GET',
+      headers: {
+        'X-RapidAPI-Key': rapidKey,
+        'X-RapidAPI-Host': 'tiktok-scraper7.p.rapidapi.com',
+      },
+    }, r => {
+      let d = ''; r.on('data', c => d += c); r.on('end', () => {
+        try {
+          if (r.statusCode !== 200) return resolve(null);
+          const j = JSON.parse(d);
+          const items = Array.isArray(j.data) ? j.data : (Array.isArray(j.result) ? j.result : null);
+          if (!items || !items.length) return resolve(null);
+          const topics = items.slice(0, 10).map(item => {
+            const title = item.title || item.desc || item.text || 'Untitled';
+            const author = item.author?.nickname || item.authorMeta?.name || '';
+            const plays = item.playCount || item.stats?.playCount;
+            const likes = item.diggCount || item.stats?.diggCount;
+            const why = [
+              author ? `By @${author}` : '',
+              plays ? `${Number(plays).toLocaleString()} plays` : '',
+              likes ? `${Number(likes).toLocaleString()} likes` : '',
+            ].filter(Boolean).join(' · ') || 'Trending on TikTok';
+            const videoId = item.id || item.video?.id;
+            const webUrl = item.webVideoUrl || item.video?.webVideoUrl || '';
+            const sources = webUrl ? [webUrl] : (videoId ? [`https://www.tiktok.com/@${author || 'tiktok'}/video/${videoId}`] : []);
+            return { title: title.slice(0, 120), why, sources };
+          });
+          resolve(topics.length ? topics : null);
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(20000, () => { req.destroy(); resolve(null); });
+    req.end();
+  });
+}
+
 async function _perplexity({ category, keywords, country }) {
   const key = process.env.PERPLEXITY_API_KEY;
   if (!key || /^_DUMMY/i.test(key)) return null;
@@ -235,6 +280,13 @@ router.post('/detect', async (req, res) => {
         topics = ytResult.topics;
         categoryLabel = ytResult.categoryLabel || null;
         source = 'youtube';
+      } else {
+        topics = await _perplexity({ category, keywords, country });
+      }
+    } else if (platform === 'tiktok') {
+      topics = await _tiktok({ category, keywords });
+      if (topics && topics.length) {
+        source = 'tiktok';
       } else {
         topics = await _perplexity({ category, keywords, country });
       }
