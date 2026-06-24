@@ -306,22 +306,23 @@ export default function TrendingTopics() {
   async function deleteRun(id: number | undefined) {
     if (id == null || deletingId != null) return;
     setDeletingId(id);
-    const wasActive = activeRunId === id;
+    const deletedIdx = historyRuns.findIndex((r) => r.id === id);
+    const deletedRun = deletedIdx >= 0 ? historyRuns[deletedIdx] : undefined;
+    const wasActive = !!deletedRun && result?.historyKey === runKey(deletedRun, deletedIdx);
     const updated = historyRuns.filter((r) => r.id !== id);
     setHistoryRuns(updated);
     if (wasActive) {
       const next = updated[0];
       if (next) {
-        setActiveRunId(next.id ?? null);
         setResult({
           topics: next.topics || [],
           source: next.source || "",
           category: next.category || "",
           categoryLabel: next.category_label || undefined,
           country: next.country || undefined,
+          historyKey: runKey(next, 0),
         });
       } else {
-        setActiveRunId(null);
         setResult(null);
       }
     }

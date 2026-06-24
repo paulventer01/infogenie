@@ -64,8 +64,10 @@ export default function Competitors() {
       key={id}
       style={{ background: "#FFFFFF", border: "1px solid rgba(255,255,255,.6)", borderRadius: 14, padding: "14px 20px", textAlign: "center", minWidth, boxShadow: "0 2px 6px rgba(15,30,61,.12)" }}
     >
-      <div style={{ fontSize: "1.5rem", fontWeight: 900, color: "#0A1628", lineHeight: 1.1 }}>{value}</div>
-      <div style={{ fontSize: "0.78rem", fontWeight: 800, color: "#0A1628", marginTop: 6, letterSpacing: ".02em", whiteSpace: "nowrap" }}>{label}</div>
+      {/* IDs contain "compHero" so the blanket .comp-hero * { color:#fff } rule in
+          style.css excludes them via [id*="compHero"] — keeps dark text on white bg */}
+      <div id={`compHero${id}Val`} style={{ fontSize: "1.5rem", fontWeight: 900, color: "#0A1628", lineHeight: 1.1 }}>{value}</div>
+      <div id={`compHero${id}Label`} style={{ fontSize: "0.78rem", fontWeight: 800, color: "#0A1628", marginTop: 6, letterSpacing: ".02em", whiteSpace: "nowrap" }}>{label}</div>
     </div>
   );
 
