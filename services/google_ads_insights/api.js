@@ -113,9 +113,11 @@ router.post('/test', async (req, res) => {
   res.json({ ok: true, account: { id: row.id, name: row.descriptiveName, currency: row.currencyCode, timezone: row.timeZone } });
 });
 
+const _NO_CREDS_NOTE = 'Google Ads not connected — add your credentials in Settings → Integrations → Google Ads.';
+
 router.get('/account-summary', async (req, res) => {
   const c = await _getCreds(req);
-  if (!c.ok) return res.json({ ok:true, source:'placeholder', note: c.error });
+  if (!c.ok) return res.json({ ok:true, source:'placeholder', note: _NO_CREDS_NOTE });
   const dp = _preset(req);
   const q = `SELECT metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.ctr, metrics.average_cpc, metrics.average_cpm, metrics.conversions, metrics.conversions_value FROM customer WHERE segments.date DURING ${dp}`;
   const r = await _gaQuery(c.creds, q);
@@ -140,7 +142,7 @@ router.get('/account-summary', async (req, res) => {
 
 router.get('/campaigns', async (req, res) => {
   const c = await _getCreds(req);
-  if (!c.ok) return res.json({ ok:true, source:'placeholder', campaigns:[], note: c.error });
+  if (!c.ok) return res.json({ ok:true, source:'placeholder', campaigns:[], note: _NO_CREDS_NOTE });
   const dp = _preset(req);
   const q = `SELECT campaign.id, campaign.name, campaign.status, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.ctr, metrics.average_cpc, metrics.conversions, metrics.conversions_value FROM campaign WHERE segments.date DURING ${dp} ORDER BY metrics.cost_micros DESC LIMIT 50`;
   const r = await _gaQuery(c.creds, q);
@@ -164,7 +166,7 @@ router.get('/campaigns', async (req, res) => {
 
 router.get('/top-ads', async (req, res) => {
   const c = await _getCreds(req);
-  if (!c.ok) return res.json({ ok:true, source:'placeholder', ads:[], note: c.error });
+  if (!c.ok) return res.json({ ok:true, source:'placeholder', ads:[], note: _NO_CREDS_NOTE });
   const dp = _preset(req);
   const q = `SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group.name, campaign.name, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.ctr, metrics.conversions FROM ad_group_ad WHERE segments.date DURING ${dp} ORDER BY metrics.ctr DESC LIMIT 25`;
   const r = await _gaQuery(c.creds, q);
