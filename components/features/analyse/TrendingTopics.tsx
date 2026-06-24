@@ -133,10 +133,10 @@ function topicCountBadge(count: number): { bg: string; color: string } {
 
 function SidebarSparkline({
   runs,
-  activeRunId,
+  activeHistoryKey,
 }: {
   runs: HistoryRun[];
-  activeRunId: number | null;
+  activeHistoryKey: string | null;
 }) {
   if (runs.length < 2) return null;
   const ordered = [...runs].reverse();
@@ -173,9 +173,9 @@ function SidebarSparkline({
           const barH = Math.max(3, Math.round((count / max) * (H - 4)));
           const x = i * (barW + gap);
           const y = H - barH;
-          const isActive = run.id != null && run.id === activeRunId;
+          const isActive = runKey(run, ordered.length - 1 - i) === activeHistoryKey;
           return (
-            <g key={run.id ?? run.ran_at ?? i}>
+            <g key={runKey(run, ordered.length - 1 - i)}>
               <title>{`${run.category || "scan"}: ${count} topic${count !== 1 ? "s" : ""}`}</title>
               <rect
                 x={x}
@@ -218,6 +218,13 @@ interface RenderState {
   category: string;
   categoryLabel?: string;
   country?: string;
+  historyKey?: string;
+}
+
+function runKey(run: HistoryRun, idx: number): string {
+  if (run.id != null) return `id:${run.id}`;
+  if (run.ran_at) return `ts:${run.ran_at}`;
+  return `idx:${idx}`;
 }
 
 export default function TrendingTopics() {
@@ -255,7 +262,6 @@ export default function TrendingTopics() {
   }, [platform]);
 
   const [historyRuns, setHistoryRuns] = useState<HistoryRun[]>([]);
-  const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [hoveredRunId, setHoveredRunId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [tiktokFilter, setTiktokFilter] = useState<"all" | "hashtag" | "video">("all");
@@ -270,25 +276,27 @@ export default function TrendingTopics() {
     setHistoryRuns(runs);
     const last = runs[0];
     if (last) {
-      setActiveRunId(last.id ?? null);
       setResult({
         topics: last.topics || [],
         source: last.source || "",
         category: last.category || "",
         categoryLabel: last.category_label || undefined,
         country: last.country || "ALL",
+        historyKey: runKey(last, 0),
       });
     }
   }, []);
 
-  function selectHistoryRun(run: HistoryRun) {
-    setActiveRunId(run.id ?? null);
+  function selectHistoryRun(run: HistoryRun, idx: number) {
+    const runCountry = run.country || "ALL";
+    setCountry(runCountry);
     setResult({
       topics: run.topics || [],
       source: run.source || "",
       category: run.category || "",
       categoryLabel: run.category_label || undefined,
-      country: run.country || undefined,
+      country: runCountry,
+      historyKey: runKey(run, idx),
     });
     setStatus("idle");
     setErrMsg("");
@@ -462,7 +470,7 @@ export default function TrendingTopics() {
     const h = await apiGet<HistoryResp>("/api/trends/history");
     const runs = h.runs || [];
     setHistoryRuns(runs);
-    if (runs[0]) setActiveRunId(runs[0].id ?? null);
+    if (runs[0]) setResult((prev) => (prev ? { ...prev, historyKey: runKey(runs[0], 0) } : prev));
   }
 
   const pickerOpts = [
@@ -763,22 +771,23 @@ export default function TrendingTopics() {
                   {historyRuns.length}
                 </span>
               </div>
-              <SidebarSparkline runs={historyRuns} activeRunId={activeRunId} />
+              <SidebarSparkline runs={historyRuns} activeHistoryKey={result?.historyKey ?? null} />
               <div style={{ maxHeight: 480, overflowY: "auto" }}>
                 {historyRuns.map((run, idx) => {
-                  const isActive = run.id != null ? run.id === activeRunId : false;
+                  const key = runKey(run, idx);
+                  const isActive = !!result?.historyKey && result.historyKey === key;
                   const isHovered = run.id != null ? run.id === hoveredRunId : false;
                   const isDeleting = run.id != null ? run.id === deletingId : false;
                   return (
                     <div
-                      key={run.id ?? run.ran_at ?? idx}
+                      key={key}
                       style={{ position: "relative" }}
                       onMouseEnter={() => run.id != null && setHoveredRunId(run.id)}
                       onMouseLeave={() => setHoveredRunId(null)}
                     >
                       <button
                         type="button"
-                        onClick={() => selectHistoryRun(run)}
+                        onClick={() => selectHistoryRun(run, idx)}
                         style={{
                           display: "block",
                           width: "100%",
