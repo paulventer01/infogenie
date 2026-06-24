@@ -124,6 +124,79 @@ function fmtDate(iso: string | undefined): string {
   }
 }
 
+function topicCountBadge(count: number): { bg: string; color: string } {
+  if (count >= 10) return { bg: "#D1FAE5", color: "#065F46" };
+  if (count >= 5) return { bg: "#DBEAFE", color: "#1E3A8A" };
+  if (count > 0) return { bg: "#F3F4F6", color: "#374151" };
+  return { bg: "#FEF3C7", color: "#92400E" };
+}
+
+function SidebarSparkline({
+  runs,
+  activeRunId,
+}: {
+  runs: HistoryRun[];
+  activeRunId: number | null;
+}) {
+  if (runs.length < 2) return null;
+  const ordered = [...runs].reverse();
+  const counts = ordered.map((r) => (r.topics || []).length);
+  const max = Math.max(...counts, 1);
+  const W = 182;
+  const H = 32;
+  const barW = Math.max(4, Math.floor((W - (counts.length - 1) * 2) / counts.length));
+  const gap = counts.length > 1 ? (W - barW * counts.length) / (counts.length - 1) : 0;
+
+  return (
+    <div
+      style={{
+        padding: "8px 12px 2px",
+        borderBottom: "1px solid #F3F4F6",
+      }}
+      title="Topic count per scan (oldest → newest)"
+    >
+      <div
+        style={{
+          fontSize: "0.58rem",
+          fontWeight: 700,
+          color: "#9CA3AF",
+          marginBottom: 4,
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+        }}
+      >
+        Topics per scan
+      </div>
+      <svg width={W} height={H} style={{ display: "block", overflow: "visible" }}>
+        {ordered.map((run, i) => {
+          const count = counts[i];
+          const barH = Math.max(3, Math.round((count / max) * (H - 4)));
+          const x = i * (barW + gap);
+          const y = H - barH;
+          const isActive = run.id != null && run.id === activeRunId;
+          return (
+            <g key={run.id ?? run.ran_at ?? i}>
+              <title>{`${run.category || "scan"}: ${count} topic${count !== 1 ? "s" : ""}`}</title>
+              <rect
+                x={x}
+                y={y}
+                width={barW}
+                height={barH}
+                rx={2}
+                fill={isActive ? "#7C3AED" : count === 0 ? "#E5E7EB" : "#C4B5FD"}
+                opacity={isActive ? 1 : 0.75}
+              />
+              {isActive && (
+                <rect x={x} y={H + 2} width={barW} height={2} rx={1} fill="#7C3AED" />
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 function sourceBadgeColor(source: string | undefined): string {
   if (source === "perplexity") return "#7C3AED";
   if (source === "youtube") return "#FF0000";
@@ -645,7 +718,8 @@ export default function TrendingTopics() {
                   {historyRuns.length}
                 </span>
               </div>
-              <div style={{ maxHeight: 520, overflowY: "auto" }}>
+              <SidebarSparkline runs={historyRuns} activeRunId={activeRunId} />
+              <div style={{ maxHeight: 480, overflowY: "auto" }}>
                 {historyRuns.map((run, idx) => {
                   const isActive = run.id != null ? run.id === activeRunId : false;
                   return (
@@ -731,11 +805,43 @@ export default function TrendingTopics() {
                       >
                         {run.category || "—"}
                       </div>
-                      {run.ran_at && (
-                        <div style={{ fontSize: "0.62rem", color: "#9CA3AF" }}>
-                          {fmtDate(run.ran_at)}
-                        </div>
-                      )}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginTop: 3,
+                        }}
+                      >
+                        {run.ran_at ? (
+                          <div style={{ fontSize: "0.62rem", color: "#9CA3AF" }}>
+                            {fmtDate(run.ran_at)}
+                          </div>
+                        ) : (
+                          <span />
+                        )}
+                        {(() => {
+                          const count = (run.topics || []).length;
+                          const { bg, color } = topicCountBadge(count);
+                          return (
+                            <span
+                              title={`${count} topic${count !== 1 ? "s" : ""} returned`}
+                              style={{
+                                background: bg,
+                                color,
+                                borderRadius: 10,
+                                padding: "1px 6px",
+                                fontSize: "0.6rem",
+                                fontWeight: 700,
+                                whiteSpace: "nowrap",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {count} topic{count !== 1 ? "s" : ""}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </button>
                   );
                 })}
