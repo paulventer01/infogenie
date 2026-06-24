@@ -574,8 +574,33 @@ function _attributionHtml(j) {
     if (j.conversionSource !== 'amplitude') items.push(`<li>Using ad-platform-reported conversions. Configure <b>Amplitude</b> conversion events for ground-truth measurement.</li>`);
     warnings = `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:14px;padding:16px;margin-top:18px"><div style="font-weight:800;color:#92400E;font-size:0.9rem;margin-bottom:8px">⚙️ Setup checks</div><ul style="margin:0;padding-left:18px;color:#78350F;font-size:0.82rem;line-height:1.7">${items.join('')}</ul></div>`;
   }
+  const totalChannels = channelDefs.length;
+  let connectionBanner = '';
+  if (okCount === 0) {
+    connectionBanner = `
+      <a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="display:flex;align-items:center;gap:12px;background:#FEF2F2;border:1.5px solid #FECACA;border-radius:12px;padding:13px 18px;margin-bottom:18px;color:#991B1B;text-decoration:none;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background='#FEF2F2'">
+        <span style="font-size:1.15rem;flex-shrink:0">⚠️</span>
+        <div style="flex:1">
+          <span style="font-weight:800;font-size:0.9rem">0 of ${totalChannels} ad platforms connected</span>
+          <span style="font-size:0.8rem;opacity:.85;margin-left:8px">No live data — connect platforms to see attribution &amp; ROI.</span>
+        </div>
+        <span style="font-size:0.78rem;font-weight:700;white-space:nowrap;text-decoration:underline">Settings → Integrations →</span>
+      </a>`;
+  } else if (okCount < totalChannels) {
+    const missingNames = channelDefs.filter(d => !j.channels?.[d.key]?.ok).map(d => d.name).join(', ');
+    connectionBanner = `
+      <a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="display:flex;align-items:center;gap:12px;background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:12px;padding:13px 18px;margin-bottom:18px;color:#92400E;text-decoration:none;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#FEF3C7'" onmouseout="this.style.background='#FFFBEB'">
+        <span style="font-size:1.15rem;flex-shrink:0">🟡</span>
+        <div style="flex:1">
+          <span style="font-weight:800;font-size:0.9rem">${okCount} of ${totalChannels} ad platforms connected</span>
+          <span style="font-size:0.8rem;opacity:.85;margin-left:8px">Missing: ${missingNames}</span>
+        </div>
+        <span style="font-size:0.78rem;font-weight:700;white-space:nowrap;text-decoration:underline">Settings → Integrations →</span>
+      </a>`;
+  }
   return `
     ${hero}
+    ${connectionBanner}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">${channelCards}</div>
     ${allocBar}
     ${rec}
