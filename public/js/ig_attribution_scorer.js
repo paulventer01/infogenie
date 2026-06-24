@@ -96,28 +96,28 @@ function _blendedHtml(j) {
         <div style="margin-left:auto;font-size:0.74rem;opacity:.7">Last ${Number(j.days) || 0} days · ${okCount}/3 channels live</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:18px">
-        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px">
-          <div style="font-size:0.7rem;opacity:.7;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Total Ad Spend</div>
-          <div style="font-size:1.95rem;font-weight:800;line-height:1.1">${fmtMoney(j.totalSpend)}</div>
+        <div style="background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:14px;padding:18px">
+          <div style="font-size:0.7rem;color:rgba(255,255,255,.85);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Total Ad Spend</div>
+          <div style="font-size:1.95rem;font-weight:800;line-height:1.1;color:#ffffff">${fmtMoney(j.totalSpend)}</div>
         </div>
-        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px">
-          <div style="font-size:0.7rem;opacity:.7;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">MER</div>
-          <div style="font-size:1.95rem;font-weight:800;line-height:1.1">${j.mer != null ? j.mer.toFixed(1) + '%' : '—'}</div>
-          <div style="font-size:0.66rem;opacity:.6;margin-top:4px">Revenue ÷ Spend</div>
+        <div style="background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:14px;padding:18px">
+          <div style="font-size:0.7rem;color:rgba(255,255,255,.85);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">MER</div>
+          <div style="font-size:1.95rem;font-weight:800;line-height:1.1;color:#ffffff">${j.mer != null ? j.mer.toFixed(1) + '%' : '—'}</div>
+          <div style="font-size:0.66rem;color:rgba(255,255,255,.7);margin-top:4px">Revenue ÷ Spend</div>
         </div>
-        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px">
-          <div style="font-size:0.7rem;opacity:.7;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">LTV/CAC</div>
-          <div style="font-size:1.95rem;font-weight:800;line-height:1.1">${j.ltvCac != null ? j.ltvCac.toFixed(2) : '—'}</div>
-          <div style="font-size:0.66rem;opacity:.6;margin-top:4px">${j.cac != null ? 'CAC ' + fmtMoney(j.cac) : 'No CAC yet'}${j.ltvAssumed != null ? ' · LTV assumed ' + fmtMoney(j.ltvAssumed) : ''}</div>
+        <div style="background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:14px;padding:18px">
+          <div style="font-size:0.7rem;color:rgba(255,255,255,.85);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">LTV/CAC</div>
+          <div style="font-size:1.95rem;font-weight:800;line-height:1.1;color:#ffffff">${j.ltvCac != null ? j.ltvCac.toFixed(2) : '—'}</div>
+          <div style="font-size:0.66rem;color:rgba(255,255,255,.7);margin-top:4px">${j.cac != null ? 'CAC ' + fmtMoney(j.cac) : 'No CAC yet'}${j.ltvAssumed != null ? ' · LTV assumed ' + fmtMoney(j.ltvAssumed) : ''}</div>
         </div>
-        <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px">
-          <div style="font-size:0.7rem;opacity:.7;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Net Sales</div>
-          <div style="font-size:1.95rem;font-weight:800;line-height:1.1">${j.netSales != null ? fmtMoney(j.netSales) : '—'}</div>
-          <div style="font-size:0.66rem;opacity:.6;margin-top:4px">Revenue minus ad spend</div>
+        <div style="background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);border-radius:14px;padding:18px">
+          <div style="font-size:0.7rem;color:rgba(255,255,255,.85);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px">Net Sales</div>
+          <div style="font-size:1.95rem;font-weight:800;line-height:1.1;color:#ffffff">${j.netSales != null ? fmtMoney(j.netSales) : '—'}</div>
+          <div style="font-size:0.66rem;color:rgba(255,255,255,.7);margin-top:4px">Revenue minus ad spend</div>
         </div>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:14px;font-size:0.72rem;opacity:.75">
-        <span><b>Customers:</b> ${fmtNum(j.customers)} <span style="opacity:.7">(${esc(j.customerSource)})</span></span>
+      <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:14px;font-size:0.72rem;color:rgba(255,255,255,.85)">
+        <span><b>Customers:</b> ${fmtNum(j.customers)} <span style="color:rgba(255,255,255,.65)">(${esc(j.customerSource)})</span></span>
         <span><b>Total Revenue:</b> ${j.totalRevenue ? fmtMoney(j.totalRevenue) : '—'}</span>
         <span><b>Reported ROAS:</b> ${j.roas != null ? j.roas.toFixed(2) + '×' : '—'}</span>
         <span id="trueRoasInline" data-days="${Number(j.days)||30}" style="color:#A7F3D0">⏳ Loading True ROAS…</span>
