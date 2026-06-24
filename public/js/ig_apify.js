@@ -62,8 +62,9 @@ function _orgDefaultKeyword() {
 
 window.buildOrganic = function() {
   const wrap = document.getElementById('organicWrap');
-  if (!wrap || wrap._built) return;
-  wrap._built = true;
+  const _V = 'AP2';
+  if (!wrap || wrap._igBuilt === _V) return;
+  wrap._igBuilt = _V;
 
   wrap.innerHTML = `
 <div style="background:linear-gradient(135deg,#0D1F35 0%,#091628 100%);border-radius:16px;padding:28px 32px;margin-bottom:24px;border:1px solid rgba(0,201,200,0.15);box-shadow:0 8px 32px rgba(0,0,0,0.3);position:relative;overflow:hidden">
@@ -225,8 +226,9 @@ window._orgExport = function() {
 
 window.buildLocalLeads = function() {
   const wrap = document.getElementById('localLeadsWrap');
-  if (!wrap || wrap._built) return;
-  wrap._built = true;
+  const _V = 'AP2';
+  if (!wrap || wrap._igBuilt === _V) return;
+  wrap._igBuilt = _V;
   wrap.innerHTML = `
 <div style="background:linear-gradient(135deg,#0D1F35 0%,#091628 100%);border-radius:16px;padding:28px 32px;margin-bottom:24px;border:1px solid rgba(0,201,200,0.15);box-shadow:0 8px 32px rgba(0,0,0,0.3);position:relative;overflow:hidden">
   <div style="position:absolute;top:0;right:0;width:200px;height:200px;background:radial-gradient(circle,rgba(0,201,200,0.07) 0%,transparent 70%);pointer-events:none"></div>
