@@ -3941,10 +3941,10 @@ function _tiktokAdvertiserId() {
 
 async function _fetchMetaSpend(days = 30, userId = null) {
   const _r = await _credentialsVault.resolveMetaAdsCredentials(userId);
-  if (!_r.ok) return { ok:false, channel:'meta', error:'not-configured' };
+  if (!_r.ok) return { ok:false, source:'placeholder', channel:'meta', error:'not-configured', note:'Connect Meta Ads in Settings → Integrations to see live data.' };
   const rawAccountId = _cleanSecret(_r.creds.adAccountId);
   const accessToken  = _cleanSecret(_r.creds.accessToken);
-  if (!rawAccountId || !accessToken) return { ok:false, channel:'meta', error:'not-configured' };
+  if (!rawAccountId || !accessToken) return { ok:false, source:'placeholder', channel:'meta', error:'not-configured', note:'Connect Meta Ads in Settings → Integrations to see live data.' };
   // Account IDs are numeric; allow optional act_ prefix and strip stray chars
   const numericId = _digitsOnly(rawAccountId);
   const accountId = numericId || rawAccountId;
@@ -3973,7 +3973,7 @@ async function _fetchMetaSpend(days = 30, userId = null) {
 
 async function _fetchGoogleAdsSpend(days = 30, userId = null) {
   const _r = await _credentialsVault.resolveGoogleAdsCredentials(userId);
-  if (!_r.ok) return { ok:false, channel:'google', error:'not-configured' };
+  if (!_r.ok) return { ok:false, source:'placeholder', channel:'google', error:'not-configured', note:'Connect Google Ads in Settings → Integrations to see live data.' };
   const devToken     = _cleanSecret(_r.creds.devToken);
   const clientId     = _cleanSecret(_r.creds.clientId);
   const clientSecret = _cleanSecret(_r.creds.clientSecret);
@@ -3981,7 +3981,7 @@ async function _fetchGoogleAdsSpend(days = 30, userId = null) {
   const customerId   = _digitsOnly(_cleanSecret(_r.creds.customerId));
   const loginCustomerId = _r.creds.loginCustomerId ? _digitsOnly(_cleanSecret(_r.creds.loginCustomerId)) : '';
   if (!devToken || !refreshToken || !customerId || !clientId || !clientSecret) {
-    return { ok:false, channel:'google', error:'not-configured' };
+    return { ok:false, source:'placeholder', channel:'google', error:'not-configured', note:'Connect Google Ads in Settings → Integrations to see live data.' };
   }
   try {
     const tokRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -4030,7 +4030,7 @@ async function _fetchGoogleAdsSpend(days = 30, userId = null) {
 async function _fetchTikTokSpend(days = 30) {
   const advertiserId = _tiktokAdvertiserId();
   const accessToken  = _cleanSecret(process.env.TIKTOK_ACCESS_TOKEN);
-  if (!advertiserId || !accessToken) return { ok:false, channel:'tiktok', error:'not-configured' };
+  if (!advertiserId || !accessToken) return { ok:false, source:'placeholder', channel:'tiktok', error:'not-configured', note:'Connect TikTok Ads in Settings → Integrations to see live data.' };
   try {
     const since = new Date(Date.now() - days*86400000).toISOString().slice(0,10);
     const until = new Date().toISOString().slice(0,10);
@@ -4064,7 +4064,7 @@ async function _fetchMicrosoftSpend(days = 30) {
                 'MICROSOFT_ADS_REFRESH_TOKEN','MICROSOFT_ADS_CUSTOMER_ID','MICROSOFT_ADS_ACCOUNT_ID'];
   for (const k of need) {
     const v = _cleanSecret(process.env[k]);
-    if (!v) return { ok:false, channel:'microsoft', error:'not-configured' };
+    if (!v) return { ok:false, source:'placeholder', channel:'microsoft', error:'not-configured', note:'Connect Microsoft Ads in Settings → Integrations to see live data.' };
   }
   try {
     // 1) OAuth — refresh access token

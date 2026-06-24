@@ -773,7 +773,15 @@ function renderCrossChannel(d) {
     if (!c.ok) {
       const platformKey = /meta|facebook/i.test(c.name) ? 'meta'
                         : /google/i.test(c.name) ? 'google'
-                        : /tiktok/i.test(c.name) ? 'tiktok' : '';
+                        : /tiktok/i.test(c.name) ? 'tiktok'
+                        : /microsoft|bing/i.test(c.name) ? 'microsoft' : '';
+      if (c.source === 'placeholder') {
+        const noteText = _esc(c.note || `${c.name} is not connected.`);
+        return `<div class="ccr-channel ccr-channel-off">
+          <div class="ccr-ch-head"><span class="ccr-ch-icon">${_esc(c.icon || '')}</span><span>${_esc(c.name)}</span></div>
+          <div style="background:#FEF3C7;color:#92400E;padding:10px 12px;border-radius:8px;border:1px solid #FDE68A;font-size:0.76rem;margin-top:8px;line-height:1.5">⚠️ <strong>${noteText}</strong><br><a href="#" onclick="navigateTo('settings');return false;" style="color:#92400E;font-weight:700;text-decoration:underline">Go to Settings → Integrations →</a></div>
+        </div>`;
+      }
       const connectBtn = platformKey
         ? `<button onclick="showAdPlatformSetup('${platformKey}')" style="margin-top:8px;padding:7px 14px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:8px;font-size:0.72rem;font-weight:700;color:white;cursor:pointer;width:100%">🔌 Connect now</button>`
         : '';
