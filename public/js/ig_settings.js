@@ -1134,6 +1134,10 @@ function buildSettings() {
       </div>
     </div>
   `;
+  if (window._pendingSettingsTab) {
+    switchSettingsTab(window._pendingSettingsTab);
+    window._pendingSettingsTab = null;
+  }
   restoreConnectedStates();
   autoDetectServerIntegrations();
   // Check real API health asynchronously

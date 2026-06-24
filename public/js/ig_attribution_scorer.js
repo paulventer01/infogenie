@@ -168,7 +168,7 @@ function _blendedHtml(j) {
               ${fixSecrets.length ? `
                 <div style="font-size:0.7rem;color:#64748B;margin-bottom:6px"><strong>Secrets to update:</strong> ${fixSecrets.map(s => `<code style="background:#F1F5F9;padding:1px 6px;border-radius:4px;font-size:0.72rem">${esc(s)}</code>`).join(' ')}</div>
               ` : ''}
-              <button type="button" onclick="navigateTo&&navigateTo('settings');showToast&&showToast('Open Secrets to update ${esc(c.name)} credentials, then click Refresh')" style="margin-top:6px;background:white;color:#0EA5E9;border:1.5px solid #0EA5E9;padding:7px 14px;border-radius:8px;font-size:0.76rem;font-weight:700;cursor:pointer">⚙️ Open Settings</button>
+              <button type="button" onclick="navigateTo&&(window._pendingSettingsTab='platforms',navigateTo('settings'));showToast&&showToast('Open Secrets to update ${esc(c.name)} credentials, then click Refresh')" style="margin-top:6px;background:white;color:#0EA5E9;border:1.5px solid #0EA5E9;padding:7px 14px;border-radius:8px;font-size:0.76rem;font-weight:700;cursor:pointer">⚙️ Open Settings</button>
               <button type="button" onclick="loadBlendedPerf&&loadBlendedPerf()" style="margin-top:6px;margin-left:6px;background:#F0F9FF;color:#0369A1;border:1px solid #BAE6FD;padding:7px 14px;border-radius:8px;font-size:0.76rem;font-weight:700;cursor:pointer">🔄 Retry</button>
             </div>`;
         }
@@ -528,7 +528,7 @@ function _attributionHtml(j) {
           </div>
           <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;font-size:0.78rem;color:#92400E;line-height:1.5">
             ⚠️ <strong>${noticeText}</strong><br>
-            <a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="color:#92400E;font-weight:700;text-decoration:underline">Go to Settings → Integrations →</a>
+            <a href="#" onclick="navigateTo&&(window._pendingSettingsTab='platforms',navigateTo('settings'));return false;" style="color:#92400E;font-weight:700;text-decoration:underline">Go to Settings → Integrations →</a>
           </div>
         </div>`;
     }
@@ -603,7 +603,7 @@ function _attributionHtml(j) {
   let connectionBanner = '';
   if (okCount === 0) {
     connectionBanner = `
-      <a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="display:flex;align-items:center;gap:12px;background:#FEF2F2;border:1.5px solid #FECACA;border-radius:12px;padding:13px 18px;margin-bottom:18px;color:#991B1B;text-decoration:none;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background='#FEF2F2'">
+      <a href="#" onclick="navigateTo&&(window._pendingSettingsTab='platforms',navigateTo('settings'));return false;" style="display:flex;align-items:center;gap:12px;background:#FEF2F2;border:1.5px solid #FECACA;border-radius:12px;padding:13px 18px;margin-bottom:18px;color:#991B1B;text-decoration:none;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background='#FEF2F2'">
         <span style="font-size:1.15rem;flex-shrink:0">⚠️</span>
         <div style="flex:1">
           <span style="font-weight:800;font-size:0.9rem">0 of ${totalChannels} ad platforms connected</span>
@@ -614,7 +614,7 @@ function _attributionHtml(j) {
   } else if (okCount < totalChannels) {
     const missingNames = channelDefs.filter(d => !j.channels?.[d.key]?.ok).map(d => d.name).join(', ');
     connectionBanner = `
-      <a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="display:flex;align-items:center;gap:12px;background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:12px;padding:13px 18px;margin-bottom:18px;color:#92400E;text-decoration:none;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#FEF3C7'" onmouseout="this.style.background='#FFFBEB'">
+      <a href="#" onclick="navigateTo&&(window._pendingSettingsTab='platforms',navigateTo('settings'));return false;" style="display:flex;align-items:center;gap:12px;background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:12px;padding:13px 18px;margin-bottom:18px;color:#92400E;text-decoration:none;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#FEF3C7'" onmouseout="this.style.background='#FFFBEB'">
         <span style="font-size:1.15rem;flex-shrink:0">🟡</span>
         <div style="flex:1">
           <span style="font-weight:800;font-size:0.9rem">${okCount} of ${totalChannels} ad platforms connected</span>
@@ -992,7 +992,7 @@ function _cohortHtml(j) {
     `<div style="display:flex;align-items:flex-start;gap:10px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;font-size:0.78rem;color:#92400E;line-height:1.5">
       <span style="font-size:1rem">${d.icon}</span>
       <div>⚠️ <strong>${esc(d.name)} is not connected</strong> — cohort data for this channel will be missing.<br>
-      <a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="color:#92400E;font-weight:700;text-decoration:underline">Go to Settings → Integrations →</a></div>
+      <a href="#" onclick="navigateTo&&(window._pendingSettingsTab='platforms',navigateTo('settings'));return false;" style="color:#92400E;font-weight:700;text-decoration:underline">Go to Settings → Integrations →</a></div>
     </div>`
   ).join('') : '';
   return `
@@ -1097,7 +1097,7 @@ function _forecastHtml(j) {
     `<div style="display:flex;align-items:flex-start;gap:10px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;font-size:0.78rem;color:#92400E;line-height:1.5">
       <span style="font-size:1rem">${d.icon}</span>
       <div>⚠️ <strong>${esc(d.name)} is not connected</strong> — its spend is excluded from this forecast.<br>
-      <a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="color:#92400E;font-weight:700;text-decoration:underline">Go to Settings → Integrations →</a></div>
+      <a href="#" onclick="navigateTo&&(window._pendingSettingsTab='platforms',navigateTo('settings'));return false;" style="color:#92400E;font-weight:700;text-decoration:underline">Go to Settings → Integrations →</a></div>
     </div>`
   ).join('') : '';
   return `
