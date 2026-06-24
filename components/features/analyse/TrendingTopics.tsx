@@ -1044,7 +1044,7 @@ export default function TrendingTopics() {
                         >
                           {run.category || "—"}
                         </div>
-                        {isPinned && run.pin_label && (
+                        {isPinned && (run.pin_label || isHovered) && (
                           <div
                             style={{
                               display: "flex",
@@ -1053,25 +1053,27 @@ export default function TrendingTopics() {
                               marginBottom: 2,
                             }}
                           >
-                            <span
-                              style={{
-                                fontSize: "0.62rem",
-                                color: "#92400E",
-                                background: "#FEF3C7",
-                                borderRadius: 4,
-                                padding: "1px 5px",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                minWidth: 0,
-                              }}
-                            >
-                              {run.pin_label}
-                            </span>
+                            {run.pin_label && (
+                              <span
+                                style={{
+                                  fontSize: "0.62rem",
+                                  color: "#92400E",
+                                  background: "#FEF3C7",
+                                  borderRadius: 4,
+                                  padding: "1px 5px",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  minWidth: 0,
+                                }}
+                              >
+                                {run.pin_label}
+                              </span>
+                            )}
                             {isHovered && (
                               <button
                                 type="button"
-                                title="Edit pin label"
+                                title={run.pin_label ? "Edit pin label" : "Add pin label"}
                                 onClick={(e) => startPin(e, run)}
                                 style={{
                                   background: "transparent",
