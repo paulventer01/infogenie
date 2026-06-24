@@ -1183,10 +1183,19 @@ interface MetaGraphResponse {
 }
 
 const API_VALIDATORS: Record<string, Validator> = {
-  "youtube-data": (key) => {
+  "youtube-data": async (key) => {
     if (!key.startsWith("AIza")) return rej('Invalid format — YouTube Data API keys start with "AIza"');
     if (key.length < 39) return rej("Key too short — YouTube Data API keys are 39 characters. Check you copied it in full.");
-    return fmtOk("Key format looks correct — actual validity will be confirmed when the YouTube platform is selected in Trending Topics.");
+    try {
+      const r = await fetch(`/api/settings/api-key/youtube-data/test?key=${encodeURIComponent(key)}`);
+      const data = (await r.json()) as { ok: boolean; status?: string; message?: string; error?: string };
+      if (!r.ok) return unv(data.error || "Could not reach the test endpoint");
+      if (data.status === "verified") return ok(data.message || "YouTube Data API key confirmed live — connection active");
+      if (data.status === "rejected") return rej(data.message || "YouTube rejected this key");
+      return unv(data.message || "Could not verify the key — check your internet connection");
+    } catch {
+      return unv("Could not reach the YouTube API test endpoint — check your connection");
+    }
   },
   mistral: async (key) => {
     if (key.length < 32) return rej("Key too short — Mistral API keys are 32 characters");

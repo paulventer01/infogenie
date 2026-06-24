@@ -3097,6 +3097,59 @@ app.get('/api/settings/api-key/:platform', async (req, res) => {
   }
 });
 
+// GET /api/settings/api-key/youtube-data/test?key=<api_key>
+// Performs a live probe against the YouTube Data API v3 using the supplied key.
+// Returns { ok, status: "verified"|"rejected"|"error", message }.
+app.get('/api/settings/api-key/youtube-data/test', async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ ok: false, error: 'Login required' });
+    const key = (req.query.key || '').trim();
+    if (!key) return res.status(400).json({ ok: false, error: 'key query param required' });
+    const _https = require('https');
+    const url = `https://www.googleapis.com/youtube/v3/videoCategories?part=snippet&regionCode=US&key=${encodeURIComponent(key)}`;
+    const result = await new Promise((resolve) => {
+      const req2 = _https.get(url, (r) => {
+        let body = '';
+        r.on('data', (c) => { body += c; });
+        r.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            if (r.statusCode === 200 && data.items && data.items.length > 0) {
+              resolve({ status: 'verified', message: 'YouTube Data API key confirmed live — connection active' });
+            } else if (r.statusCode === 400 && data.error) {
+              const reason = (data.error.errors && data.error.errors[0] && data.error.errors[0].reason) || '';
+              if (reason === 'keyInvalid') {
+                resolve({ status: 'rejected', message: 'YouTube rejected this key — it is invalid or not enabled for YouTube Data API v3' });
+              } else {
+                resolve({ status: 'rejected', message: `YouTube returned an error: ${data.error.message || 'bad request'}` });
+              }
+            } else if (r.statusCode === 403 && data.error) {
+              const reason = (data.error.errors && data.error.errors[0] && data.error.errors[0].reason) || '';
+              if (reason === 'accessNotConfigured') {
+                resolve({ status: 'rejected', message: 'YouTube Data API v3 is not enabled — go to your Google Cloud Console API Library and enable it' });
+              } else if (reason === 'quotaExceeded') {
+                resolve({ status: 'rejected', message: 'Daily quota exceeded — check your Google Cloud Console quotas' });
+              } else {
+                resolve({ status: 'rejected', message: `YouTube API access denied: ${data.error.message || 'forbidden'}` });
+              }
+            } else {
+              resolve({ status: 'rejected', message: `YouTube returned HTTP ${r.statusCode} — check the key is correct and the API is enabled` });
+            }
+          } catch {
+            resolve({ status: 'error', message: 'Could not parse YouTube API response' });
+          }
+        });
+      });
+      req2.on('error', (e) => resolve({ status: 'error', message: `Network error reaching YouTube API: ${e.message}` }));
+      req2.setTimeout(8000, () => { req2.destroy(); resolve({ status: 'error', message: 'YouTube API request timed out' }); });
+    });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[youtube-data-test]', e.message);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ── T65-T66: Apify — Organic Social Monitor · Local Lead Finder ──────────
 const _apifyRouter = require('./services/apify/api');
 app.use('/api/apify', _apifyRouter);
