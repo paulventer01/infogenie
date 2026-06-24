@@ -1047,18 +1047,49 @@ export default function TrendingTopics() {
                         {isPinned && run.pin_label && (
                           <div
                             style={{
-                              fontSize: "0.62rem",
-                              color: "#92400E",
-                              background: "#FEF3C7",
-                              borderRadius: 4,
-                              padding: "1px 5px",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 3,
                               marginBottom: 2,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
                             }}
                           >
-                            {run.pin_label}
+                            <span
+                              style={{
+                                fontSize: "0.62rem",
+                                color: "#92400E",
+                                background: "#FEF3C7",
+                                borderRadius: 4,
+                                padding: "1px 5px",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                minWidth: 0,
+                              }}
+                            >
+                              {run.pin_label}
+                            </span>
+                            {isHovered && (
+                              <button
+                                type="button"
+                                title="Edit pin label"
+                                onClick={(e) => startPin(e, run)}
+                                style={{
+                                  background: "transparent",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  padding: "0 2px",
+                                  lineHeight: 1,
+                                  fontSize: "0.65rem",
+                                  color: "#92400E",
+                                  flexShrink: 0,
+                                  opacity: 0.7,
+                                }}
+                                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
+                                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = "0.7"; }}
+                              >
+                                ✏
+                              </button>
+                            )}
                           </div>
                         )}
                         <div
