@@ -850,6 +850,38 @@ export default function TrendingTopics() {
                           >
                             {sourceBadgeLabel(run)}
                           </span>
+                          {run.requested_platform === "youtube" && (
+                            <span
+                              style={{
+                                background: "#FF0000",
+                                color: "#fff",
+                                borderRadius: 4,
+                                padding: "1px 5px",
+                                fontSize: "0.55rem",
+                                fontWeight: 800,
+                                whiteSpace: "nowrap",
+                              }}
+                              title="YouTube scan"
+                            >
+                              ▶ YouTube
+                            </span>
+                          )}
+                          {run.requested_platform === "tiktok" && (
+                            <span
+                              style={{
+                                background: "#010101",
+                                color: "#fff",
+                                borderRadius: 4,
+                                padding: "1px 5px",
+                                fontSize: "0.55rem",
+                                fontWeight: 800,
+                                whiteSpace: "nowrap",
+                              }}
+                              title="TikTok scan"
+                            >
+                              🎵 TikTok
+                            </span>
+                          )}
                           {run.country && run.country !== "ALL" && (
                             <span
                               style={{
