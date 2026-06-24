@@ -112,7 +112,7 @@ function _num(v, kind = 'float') {
 }
 
 router.get('/account-summary', async (req, res) => {
-  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', note:'Set TIKTOK_ACCESS_TOKEN + TIKTOK_ADVERTISER_ID to see live insights.' });
+  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', note:'Connect TikTok Ads in Settings → Integrations to see live insights.' });
   const dp = String(req.query.date_preset || 'last_30d');
   const r = await _report('AUCTION_ADVERTISER', dp, ['advertiser_id']);
   if (!r.ok) return _err(res, 400, _friendly(r.error));
@@ -135,7 +135,7 @@ router.get('/account-summary', async (req, res) => {
 });
 
 router.get('/campaigns', async (req, res) => {
-  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', campaigns:[], note:'Set TIKTOK_ACCESS_TOKEN + TIKTOK_ADVERTISER_ID for live campaigns.' });
+  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', campaigns:[], note:'Connect TikTok Ads in Settings → Integrations for live campaigns.' });
   const dp = String(req.query.date_preset || 'last_30d');
   const r = await _report('AUCTION_CAMPAIGN', dp, ['campaign_id'], ['campaign_name']);
   if (!r.ok) return _err(res, 400, _friendly(r.error));
@@ -156,7 +156,7 @@ router.get('/campaigns', async (req, res) => {
 });
 
 router.get('/top-ads', async (req, res) => {
-  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', ads:[], note:'Set TIKTOK_ACCESS_TOKEN + TIKTOK_ADVERTISER_ID for top ads.' });
+  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', ads:[], note:'Connect TikTok Ads in Settings → Integrations for top ads.' });
   const dp = String(req.query.date_preset || 'last_30d');
   const r = await _report('AUCTION_AD', dp, ['ad_id'], ['ad_name','campaign_name']);
   if (!r.ok) return _err(res, 400, _friendly(r.error));

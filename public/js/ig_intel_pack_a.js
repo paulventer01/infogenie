@@ -569,7 +569,7 @@ window._ttiLoad = async function() {
   ]);
 
   if (sumEl) {
-    if (s.note) sumEl.innerHTML = `<div style="background:#FEF3C7;color:#92400E;padding:14px;border-radius:10px;border:1px solid #FDE68A">${_escapeHtml(s.note)}</div>`;
+    if (s.source === 'placeholder') sumEl.innerHTML = `<div style="background:#FEF3C7;color:#92400E;padding:14px;border-radius:10px;border:1px solid #FDE68A">⚠️ <strong>${_escapeHtml(s.note||'TikTok Ads not connected.')}</strong> <a href="#" onclick="navigateTo('settings');return false;" style="color:#92400E;font-weight:700;text-decoration:underline">Go to Settings → Integrations →</a></div>`;
     else if (!s.ok) sumEl.innerHTML = `<div style="background:#FEE2E2;color:#B91C1C;padding:14px;border-radius:10px">${_escapeHtml(s.error||'failed')}</div>`;
     else {
       const m = s.summary;
@@ -592,7 +592,8 @@ window._ttiLoad = async function() {
 
   const ce = document.getElementById('ttiCamps');
   if (ce) {
-    if (!c.ok || c.note || !c.campaigns?.length) ce.innerHTML = `<h3 style="margin:18px 0 10px;color:#0A1628">Campaigns</h3><div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">${_escapeHtml(c.note||'No campaign data for this period.')}</div>`;
+    if (c.source === 'placeholder') ce.innerHTML = '';
+    else if (!c.ok || !c.campaigns?.length) ce.innerHTML = `<h3 style="margin:18px 0 10px;color:#0A1628">Campaigns</h3><div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:10px;padding:24px;text-align:center;color:#6B7280">${_escapeHtml(c.note||'No campaign data for this period.')}</div>`;
     else ce.innerHTML = `<h3 style="margin:18px 0 10px;color:#0A1628">Campaigns (${c.campaigns.length})</h3>
       <div style="background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;font-size:0.82rem;min-width:780px">
