@@ -258,6 +258,7 @@ export default function TrendingTopics() {
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [hoveredRunId, setHoveredRunId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [tiktokFilter, setTiktokFilter] = useState<"all" | "hashtag" | "video">("all");
 
   useEffect(() => {
     setCat(brand);
@@ -455,6 +456,7 @@ export default function TrendingTopics() {
       categoryLabel: r.categoryLabel,
       country: country.trim() || "ALL",
     });
+    setTiktokFilter("all");
     setStatus("idle");
     // Reload history so the new run appears in the sidebar
     const h = await apiGet<HistoryResp>("/api/trends/history");
@@ -962,7 +964,16 @@ export default function TrendingTopics() {
               {errMsg}
             </div>
           )}
-          {status === "idle" && result && (
+          {status === "idle" && result && (() => {
+            const hasBoth =
+              result.source === "tiktok" &&
+              result.topics.some((t) => t.type === "hashtag") &&
+              result.topics.some((t) => t.type === "video");
+            const filteredTopics =
+              hasBoth && tiktokFilter !== "all"
+                ? result.topics.filter((t) => t.type === tiktokFilter)
+                : result.topics;
+            return (
             <>
               <div
                 style={{
@@ -988,7 +999,7 @@ export default function TrendingTopics() {
                       <span style={{ color: "#6B7280" }}>{result.country}</span>
                     </>
                   )}{" "}
-                  · {result.topics.length} topics
+                  · {filteredTopics.length} topics
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                   {result.country && result.country !== "ALL" && (
@@ -1090,42 +1101,62 @@ export default function TrendingTopics() {
                 </div>
               )}
 
-              {/* Section header when TikTok returns both hashtags and videos */}
-              {result.source === "tiktok" && result.topics.some(t => t.type === "hashtag") && result.topics.some(t => t.type === "video") && (
+              {/* Segmented filter — only when TikTok returns both hashtags and videos */}
+              {hasBoth && (
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 8,
-                    marginBottom: 10,
-                    fontSize: "0.72rem",
-                    color: "#6B7280",
-                    fontWeight: 700,
+                    gap: 0,
+                    marginBottom: 14,
+                    background: "#F3F4F6",
+                    borderRadius: 8,
+                    padding: 3,
+                    width: "fit-content",
                   }}
                 >
-                  <span
-                    style={{
-                      background: "#FFF0F6",
-                      color: "#E9065E",
-                      border: "1px solid #FBCFE8",
-                      padding: "2px 8px",
-                      borderRadius: 4,
-                    }}
-                  >
-                    # Trending Hashtags
-                  </span>
-                  <span style={{ color: "#D1D5DB" }}>shown first · then</span>
-                  <span
-                    style={{
-                      background: "#F3F4F6",
-                      color: "#374151",
-                      border: "1px solid #E5E7EB",
-                      padding: "2px 8px",
-                      borderRadius: 4,
-                    }}
-                  >
-                    🎵 Trending Videos
-                  </span>
+                  {(
+                    [
+                      { key: "all", label: "All" },
+                      { key: "hashtag", label: "# Hashtags only" },
+                      { key: "video", label: "🎵 Videos only" },
+                    ] as { key: "all" | "hashtag" | "video"; label: string }[]
+                  ).map(({ key, label }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setTiktokFilter(key)}
+                      style={{
+                        padding: "5px 14px",
+                        borderRadius: 6,
+                        border: "none",
+                        fontSize: "0.74rem",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        background:
+                          tiktokFilter === key
+                            ? key === "hashtag"
+                              ? "#E9065E"
+                              : key === "video"
+                                ? "#010101"
+                                : "#fff"
+                            : "transparent",
+                        color:
+                          tiktokFilter === key
+                            ? key === "all"
+                              ? "#0A1628"
+                              : "#fff"
+                            : "#6B7280",
+                        boxShadow:
+                          tiktokFilter === key
+                            ? "0 1px 3px rgba(0,0,0,0.15)"
+                            : "none",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
               )}
               <div
@@ -1136,14 +1167,14 @@ export default function TrendingTopics() {
                 }}
               >
                 {(() => {
-                  const maxHashtagViews = result.topics
+                  const maxHashtagViews = filteredTopics
                     .filter((t) => t.type === "hashtag" && (t.viewCount || 0) > 0)
                     .reduce((m, t) => Math.max(m, t.viewCount || 0), 0);
                   const sortedTopics = [
-                    ...result.topics
+                    ...filteredTopics
                       .filter((t) => t.type === "hashtag")
                       .sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0)),
-                    ...result.topics.filter((t) => t.type !== "hashtag"),
+                    ...filteredTopics.filter((t) => t.type !== "hashtag"),
                   ];
                   const hashtagCount = sortedTopics.filter((t) => t.type === "hashtag").length;
                   return sortedTopics.map((t, i) => {
@@ -1366,7 +1397,8 @@ export default function TrendingTopics() {
                 })()}
               </div>
             </>
-          )}
+            );
+          })()}
           </div>
         </div>
       </div>
