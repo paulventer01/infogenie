@@ -223,6 +223,7 @@ interface RenderState {
   country?: string;
   historyKey?: string;
   requestedPlatform?: string;
+  pin_label?: string | null;
 }
 
 function runKey(run: HistoryRun, idx: number): string {
@@ -272,6 +273,7 @@ export default function TrendingTopics() {
   const [labelingId, setLabelingId] = useState<number | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
   const [pinnedOnly, setPinnedOnly] = useState(false);
+  const [labelIsEdit, setLabelIsEdit] = useState(false);
 
   useEffect(() => {
     setCat(brand);
@@ -291,6 +293,7 @@ export default function TrendingTopics() {
         country: last.country || "ALL",
         historyKey: runKey(last, 0),
         requestedPlatform: last.requested_platform || undefined,
+        pin_label: last.pin_label,
       });
     }
   }, []);
@@ -306,6 +309,7 @@ export default function TrendingTopics() {
       country: runCountry,
       historyKey: runKey(run, idx),
       requestedPlatform: run.requested_platform || undefined,
+      pin_label: run.pin_label,
     });
     setStatus("idle");
     setErrMsg("");
@@ -346,9 +350,12 @@ export default function TrendingTopics() {
     e.stopPropagation();
     if (run.id == null) return;
     if (run.pinned) {
-      void doTogglePin(run, null);
+      setLabelDraft(run.pin_label || "");
+      setLabelIsEdit(true);
+      setLabelingId(run.id);
     } else {
       setLabelDraft(run.pin_label || "");
+      setLabelIsEdit(false);
       setLabelingId(run.id);
     }
   }
@@ -375,6 +382,23 @@ export default function TrendingTopics() {
 
   function confirmPin(run: HistoryRun) {
     void doTogglePin(run, labelDraft.trim());
+  }
+
+  async function doUpdateLabel(run: HistoryRun, newLabel: string) {
+    if (run.id == null) return;
+    const trimmed = newLabel.trim();
+    setHistoryRuns((prev) =>
+      prev.map((r) => r.id === run.id ? { ...r, pin_label: trimmed || null } : r)
+    );
+    setLabelingId(null);
+    const resp = await apiPatch<{ ok?: boolean }>(`/api/trends/history/${run.id}/pin`, {
+      label: trimmed,
+      labelOnly: true,
+    });
+    if (!resp.ok) {
+      await loadHistory();
+      toast("⚠ Could not update label — please try again");
+    }
   }
 
   useEffect(() => {
@@ -859,8 +883,39 @@ export default function TrendingTopics() {
                 );
               })()}
               <SidebarSparkline runs={historyRuns} activeHistoryKey={result?.historyKey ?? null} />
+              <div
+                style={{
+                  padding: "6px 14px",
+                  borderBottom: "1px solid #F3F4F6",
+                  background: "#F9FAFB",
+                  display: "flex",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <button
+                  onClick={() => setPinnedOnly(!pinnedOnly)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    background: pinnedOnly ? "#FDF2F8" : "transparent",
+                    border: `1px solid ${pinnedOnly ? "#F9A8D4" : "#E5E7EB"}`,
+                    borderRadius: 6,
+                    padding: "2px 8px",
+                    fontSize: "0.64rem",
+                    fontWeight: 700,
+                    color: pinnedOnly ? "#BE185D" : "#6B7280",
+                    cursor: "pointer",
+                    transition: "all 0.1s",
+                  }}
+                >
+                  ⭐ Pinned
+                </button>
+              </div>
               <div style={{ maxHeight: 480, overflowY: "auto" }}>
-                {(pinnedOnly && historyRuns.some((r) => r.pinned) ? historyRuns.filter((r) => r.pinned) : historyRuns).map((run, idx) => {
+                {historyRuns
+                  .filter((run) => !pinnedOnly || run.pinned)
+                  .map((run, idx) => {
                   const key = runKey(run, idx);
                   const isActive = !!result?.historyKey && result.historyKey === key;
                   const isHovered = run.id != null ? run.id === hoveredRunId : false;
@@ -1075,7 +1130,7 @@ export default function TrendingTopics() {
                           ⭐
                         </button>
                       )}
-                      {/* Inline label input — shown when pinning */}
+                      {/* Inline label input — shown when pinning or editing label */}
                       {labelingId === run.id && (
                         <div
                           onClick={(e) => e.stopPropagation()}
@@ -1086,14 +1141,14 @@ export default function TrendingTopics() {
                             right: 0,
                             zIndex: 20,
                             background: "#fff",
-                            border: "1.5px solid #7C3AED",
+                            border: `1.5px solid ${labelIsEdit ? "#F59E0B" : "#7C3AED"}`,
                             borderRadius: 8,
                             boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
                             padding: "10px 10px 8px",
                           }}
                         >
                           <div style={{ fontSize: "0.64rem", fontWeight: 700, color: "#6B7280", marginBottom: 5 }}>
-                            Add a label (optional)
+                            {labelIsEdit ? "Edit pin label" : "Add a label (optional)"}
                           </div>
                           <input
                             autoFocus
@@ -1101,7 +1156,11 @@ export default function TrendingTopics() {
                             value={labelDraft}
                             onChange={(e) => setLabelDraft(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") { e.preventDefault(); confirmPin(run); }
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                if (labelIsEdit) { void doUpdateLabel(run, labelDraft); }
+                                else { confirmPin(run); }
+                              }
                               if (e.key === "Escape") { e.preventDefault(); setLabelingId(null); }
                             }}
                             placeholder="e.g. Q3 benchmark, pre-launch watch…"
@@ -1116,6 +1175,24 @@ export default function TrendingTopics() {
                             }}
                           />
                           <div style={{ display: "flex", gap: 5, marginTop: 6, justifyContent: "flex-end" }}>
+                            {labelIsEdit && (
+                              <button
+                                type="button"
+                                onClick={() => { void doTogglePin(run, null); }}
+                                style={{
+                                  padding: "3px 8px",
+                                  background: "transparent",
+                                  border: "1px solid #FCA5A5",
+                                  borderRadius: 5,
+                                  fontSize: "0.65rem",
+                                  cursor: "pointer",
+                                  color: "#B91C1C",
+                                  marginRight: "auto",
+                                }}
+                              >
+                                Unpin
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => setLabelingId(null)}
@@ -1131,22 +1208,41 @@ export default function TrendingTopics() {
                             >
                               Cancel
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => confirmPin(run)}
-                              style={{
-                                padding: "3px 10px",
-                                background: "#7C3AED",
-                                border: "none",
-                                borderRadius: 5,
-                                fontSize: "0.65rem",
-                                fontWeight: 700,
-                                cursor: "pointer",
-                                color: "#fff",
-                              }}
-                            >
-                              📌 Pin
-                            </button>
+                            {labelIsEdit ? (
+                              <button
+                                type="button"
+                                onClick={() => { void doUpdateLabel(run, labelDraft); }}
+                                style={{
+                                  padding: "3px 10px",
+                                  background: "#F59E0B",
+                                  border: "none",
+                                  borderRadius: 5,
+                                  fontSize: "0.65rem",
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  color: "#fff",
+                                }}
+                              >
+                                ✏ Save label
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => confirmPin(run)}
+                                style={{
+                                  padding: "3px 10px",
+                                  background: "#7C3AED",
+                                  border: "none",
+                                  borderRadius: 5,
+                                  fontSize: "0.65rem",
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  color: "#fff",
+                                }}
+                              >
+                                📌 Pin
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}

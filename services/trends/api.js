@@ -418,12 +418,21 @@ router.patch('/history/:id/pin', async (req, res) => {
   if (!id || id < 1) return _err(res, 400, 'invalid id');
   const rawLabel = req.body?.label;
   const label = rawLabel != null ? String(rawLabel).trim().slice(0, 80) : null;
+  const labelOnly = req.body?.labelOnly === true;
   try {
     const tid = await _tenantCtx.resolveTenantId(req, { label:'trends:pin' });
     const check = await _db.getPool().query(
       `SELECT id, pinned FROM trend_runs WHERE id=$1 AND tenant_id=$2`, [id, tid]
     );
     if (!check.rows.length) return _err(res, 404, 'not found');
+    if (labelOnly) {
+      if (!check.rows[0].pinned) return _err(res, 400, 'not pinned — cannot update label on an unpinned scan');
+      await _db.getPool().query(
+        `UPDATE trend_runs SET pin_label=$1 WHERE id=$2 AND tenant_id=$3`,
+        [label || null, id, tid]
+      );
+      return res.json({ ok:true, id, pinned: true, pin_label: label || null });
+    }
     const newPinned = !check.rows[0].pinned;
     if (newPinned) {
       await _db.getPool().query(
