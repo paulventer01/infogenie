@@ -168,7 +168,7 @@ router.post('/test', async (req, res) => {
 });
 
 router.get('/account-summary', async (req, res) => {
-  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', note:'Set MICROSOFT_ADS_* secrets to see live Bing Ads insights.' });
+  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', note:'Microsoft Ads not connected. Add your credentials via Settings → Integrations.' });
   const days = Math.max(1, Math.min(90, parseInt(req.query.days, 10) || 30));
   try {
     const r = await _runReport({
@@ -197,7 +197,7 @@ router.get('/account-summary', async (req, res) => {
 });
 
 router.get('/campaigns', async (req, res) => {
-  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', campaigns:[], note:'Set MICROSOFT_ADS_* secrets for live Bing Ads campaigns.' });
+  if (!_hasCreds()) return res.json({ ok:true, source:'placeholder', campaigns:[], note:'Microsoft Ads not connected. Add your credentials via Settings → Integrations.' });
   const days = Math.max(7, Math.min(90, parseInt(req.query.days, 10) || 30));
   try {
     const r = await _runReport({

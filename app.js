@@ -3140,6 +3140,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'meta-insights')        { try { window.buildMetaInsights && window.buildMetaInsights(); }        catch(e) { console.warn('buildMetaInsights error:', e); } }
   if (viewId === 'google-ads-insights')  { try { window.buildGoogleAdsInsights && window.buildGoogleAdsInsights(); }   catch(e) { console.warn('buildGoogleAdsInsights error:', e); } }
   if (viewId === 'tiktok-ads-insights')  { try { window.buildTiktokAdsInsights && window.buildTiktokAdsInsights(); }   catch(e) { console.warn('buildTiktokAdsInsights error:', e); } }
+  if (viewId === 'microsoft-ads-insights') { try { window.buildMicrosoftAdsInsights && window.buildMicrosoftAdsInsights(); } catch(e) { console.warn('buildMicrosoftAdsInsights error:', e); } }
   if (viewId === 'social-publisher')     { try { window.buildSocialPublisher && window.buildSocialPublisher(); }      catch(e) { console.warn('buildSocialPublisher error:', e); } }
   if (viewId === 'email-personalizer')   { try { window.buildEmailPersonalizer && window.buildEmailPersonalizer(); }    catch(e) { console.warn('buildEmailPersonalizer error:', e); } }
   if (viewId === 'youtube-monitor')      { try { window.buildYoutubeMonitor && window.buildYoutubeMonitor(); }       catch(e) { console.warn('buildYoutubeMonitor error:', e); } }
