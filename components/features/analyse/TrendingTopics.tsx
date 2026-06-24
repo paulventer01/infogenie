@@ -1085,10 +1085,10 @@ export default function TrendingTopics() {
                                 + label
                               </span>
                             )}
-                            {isHovered && run.pin_label && (
+                            {run.pin_label && (
                               <button
                                 type="button"
-                                title={run.pin_label ? "Edit pin label" : "Add pin label"}
+                                title="Edit pin label"
                                 onClick={(e) => startPin(e, run)}
                                 style={{
                                   background: "transparent",
@@ -1099,10 +1099,11 @@ export default function TrendingTopics() {
                                   fontSize: "0.65rem",
                                   color: "#92400E",
                                   flexShrink: 0,
-                                  opacity: 0.7,
+                                  opacity: isHovered ? 0.9 : 0.3,
+                                  transition: "opacity 0.15s",
                                 }}
                                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
-                                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = "0.7"; }}
+                                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = isHovered ? "0.9" : "0.3"; }}
                               >
                                 ✏
                               </button>
