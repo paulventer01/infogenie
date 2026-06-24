@@ -29,6 +29,9 @@ async function _ensureSchema() {
     ALTER TABLE trend_runs ADD COLUMN IF NOT EXISTS category_label TEXT;
     ALTER TABLE trend_runs ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE;
   `);
+  await _db.getPool().query(`
+    ALTER TABLE trend_runs ADD COLUMN IF NOT EXISTS requested_platform TEXT;
+  `);
 }
 _ensureSchema().catch(()=>{});
 
@@ -371,8 +374,8 @@ router.post('/detect', async (req, res) => {
         // for YouTube runs.  Older rows that pre-date the thumbnail field are safe: both
         // the React render (t.thumbnail &&) and the legacy _trRender (t.thumbnail?) guard
         // against a missing/null value and simply skip the <img>.
-        await _db.getPool().query(`INSERT INTO trend_runs (tenant_id, category, keywords, country, topics, source, category_label) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-          [tid, category, JSON.stringify(keywords), country, JSON.stringify(topics), source, categoryLabel || null]);
+        await _db.getPool().query(`INSERT INTO trend_runs (tenant_id, category, keywords, country, topics, source, category_label, requested_platform) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [tid, category, JSON.stringify(keywords), country, JSON.stringify(topics), source, categoryLabel || null, platform || null]);
       } catch {}
     }
     res.json({ ok:true, source, category, country, topics, ...(categoryLabel ? { categoryLabel } : {}) });
@@ -384,7 +387,7 @@ router.get('/history', async (req, res) => {
   try {
     const tid = await _tenantCtx.resolveTenantId(req, { label:'trends:history' });
     const r = await _db.getPool().query(
-      `SELECT id, category, keywords, country, topics, source, category_label, ran_at, pinned
+      `SELECT id, category, keywords, country, topics, source, category_label, requested_platform, ran_at, pinned
        FROM trend_runs WHERE tenant_id=$1
        ORDER BY pinned DESC, ran_at DESC LIMIT 50`,
       [tid]

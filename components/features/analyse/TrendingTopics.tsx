@@ -52,6 +52,7 @@ interface HistoryRun {
   category?: string;
   category_label?: string;
   country?: string;
+  requested_platform?: string;
   ran_at?: string;
   pinned?: boolean;
 }
@@ -285,6 +286,7 @@ export default function TrendingTopics() {
         categoryLabel: last.category_label || undefined,
         country: last.country || "ALL",
         historyKey: runKey(last, 0),
+        requestedPlatform: last.requested_platform || undefined,
       });
     }
   }, []);
@@ -299,6 +301,7 @@ export default function TrendingTopics() {
       categoryLabel: run.category_label || undefined,
       country: runCountry,
       historyKey: runKey(run, idx),
+      requestedPlatform: run.requested_platform || undefined,
     });
     setStatus("idle");
     setErrMsg("");
