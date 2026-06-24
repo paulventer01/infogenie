@@ -4367,6 +4367,24 @@ body.dashboard-active,
 
 .btn-secondary {
   font-family: var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif !important;
+  background: #EFF4FF !important;
+  color: #0A1628 !important;
+  border: 1px solid #C5D3F0 !important;
+}
+.btn-secondary:hover {
+  background: #E2EBFF !important;
+  border-color: #A8C0E8 !important;
+}
+
+/* ─── Filter selects 3.0 (were white-on-dark, now dark-on-light) ─── */
+.filter-sel {
+  background: #FFFFFF !important;
+  color: #0A1628 !important;
+  border: 1px solid #D1DCF5 !important;
+}
+.filter-sel option {
+  background: #FFFFFF !important;
+  color: #0A1628 !important;
 }
 
 /* ─── Pricing cards 3.0 ─── */

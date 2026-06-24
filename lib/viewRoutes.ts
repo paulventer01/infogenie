@@ -214,11 +214,13 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "video-script", icon: "🎬", label: "Video Script Generator" },
           { view: "voiceover", icon: "🔊", label: "AI Voiceovers" },
           { view: "creative-intel", icon: "💡", label: "Creative Intel (what performs)" },
+          { view: "infographics", icon: "🖼️", label: "Infographic Generator" },
         ],
       },
       {
         header: "4 · Build pages & bots",
         items: [
+          { view: "landing-pages", icon: "🚀", label: "AI Landing Pages (A/B · leads · ad package)" },
           { view: "landing-builder", icon: "🌐", label: "Landing Page Builder" },
           { view: "site-builder", icon: "🧱", label: "Site Builder (multi-page)" },
           { view: "linksell", icon: "🛒", label: "Link-in-Bio + Stripe" },
@@ -237,11 +239,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "idea-feed", icon: "💡", label: "Idea Swipe Feed" },
           { view: "pitch-deck", icon: "📊", label: "Pitch Deck Builder" },
           { view: "wireframe", icon: "📐", label: "Wireframe Generator" },
-          { view: "accessibility", icon: "♿", label: "Accessibility Audit" },
+          { view: "ab-designer", icon: "🧪", label: "A/B Test Designer" },
           { view: "persona-studio", icon: "🎭", label: "AI Persona Studio" },
           { view: "ecom-video", icon: "🛒", label: "Product Video" },
-          { view: "brand-deals", icon: "🤝", label: "Brand Deal Pipeline" },
-          { view: "social", icon: "📅", label: "Social Calendar" },
         ],
       },
     ],
@@ -286,7 +286,6 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "advertise", icon: "📣", label: "Advertise Hub (Meta · Google · TikTok)" },
           { view: "import-campaigns", icon: "📥", label: "Import Existing Campaigns" },
           { view: "opt-folders", icon: "📁", label: "Campaign Folders" },
-          { view: "ab-designer", icon: "🧪", label: "A/B Test Designer" },
           { view: "conversion-boosters", icon: "⚡", label: "Conversion Boosters (popups)" },
         ],
       },
@@ -311,6 +310,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "seo-crawler", icon: "🕸️", label: "Full-Site SEO Crawler" },
           { view: "seo-roadmap", icon: "🗺️", label: "SEO Roadmap (9-step guide)" },
           { view: "web-vitals", icon: "⏱️", label: "Web Vitals (page speed)" },
+          { view: "accessibility", icon: "♿", label: "Accessibility Audit" },
           { view: "social-tags", icon: "🔖", label: "Social Tags Audit" },
           { view: "deliverability", icon: "✉️", label: "Email Deliverability Audit" },
           { view: "seo-tasks", icon: "📋", label: "SEO Task Manager" },
@@ -322,7 +322,6 @@ export const NAV_GROUPS: NavGroupDef[] = [
         items: [
           { view: "unified-inbox", icon: "📬", label: "Unified Inbox" },
           { view: "alert-routing", icon: "🔔", label: "Alert Routing" },
-          { view: "digest", icon: "🌅", label: "Daily Digest Email" },
         ],
       },
     ],
@@ -387,12 +386,6 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { action: "wpConnect", icon: "🟦", label: "Connect to WordPress" },
         ],
       },
-      {
-        header: "5 · Build pages & convert",
-        items: [
-          { view: "landing-pages", icon: "🚀", label: "AI Landing Pages (A/B · leads · ad package)" },
-        ],
-      },
     ],
     footer: {
       group: "manage",
@@ -412,6 +405,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "new-project", icon: "✨", label: "+ New Marketing Project" },
           { view: "master-calendar", icon: "🗓️", label: "Master Calendar (everything)" },
           { view: "brand-calendar", icon: "📅", label: "Brand Calendar (10 categories)" },
+          { view: "social", icon: "📅", label: "Social Calendar" },
           { view: "launches", icon: "🚀", label: "Product Launch Calendar" },
         ],
       },
@@ -442,7 +436,6 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "playbook-7day", icon: "📖", label: "7-Day Marketing Playbook" },
           { view: "growth-methodology", icon: "🎯", label: "Growth Methodology (5-stage)" },
           { view: "flywheel", icon: "🌀", label: "Performance Growth Flywheel" },
-          { view: "infographics", icon: "🖼️", label: "Infographic Generator" },
         ],
       },
       {
@@ -453,6 +446,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "employee-advocacy", icon: "📣", label: "Employee Advocacy" },
           { view: "signal-triggers", icon: "⚡", label: "Real-time Signal Triggers" },
           { view: "stakeholders", icon: "👤", label: "Stakeholders" },
+          { view: "brand-deals", icon: "🤝", label: "Brand Deal Pipeline" },
         ],
       },
       {
@@ -465,6 +459,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "investor-mode", icon: "📈", label: "Investor Mode (portal + forecasts)" },
           { view: "white-label", icon: "🎨", label: "White-Label Reports" },
           { view: "bulk-reports", icon: "📦", label: "Bulk Reporting (multi-client)" },
+          { view: "digest", icon: "🌅", label: "Daily Digest Email" },
         ],
       },
       {
