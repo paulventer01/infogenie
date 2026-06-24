@@ -197,14 +197,15 @@ test('dom: a restricted role\'s rendered menu omits disallowed items, sections, 
   assert.equal(NP.firstPermittedView(NP.orderedNavViews()), 'dashboard', 'default landing = first permitted');
 });
 
-test('dom: startup landing redirects off the generic home view to the first permitted view', () => {
+test('dom: enforceLanding does NOT redirect when currentView is "home"', () => {
   const dom = buildMenuDom();
   const NP = dom.window.IGNavPerms;
-  // Capture the redirect target the boot flow would navigate to.
   const calls = [];
   dom.window.navigateTo = (v) => { calls.push(v); dom.window.currentView = v; };
 
-  // Simulate app.js's synchronous startup nav, which fires before perms load.
+  // Home is the generic marketing landing — users intentionally land here to run
+  // a new analysis. Redirecting them away after the perms fetch resolves (~10-15s)
+  // would be disorienting and constitutes the bug Task #297 fixed.
   dom.window.currentView = 'home';
 
   NP.configure({
@@ -215,9 +216,27 @@ test('dom: startup landing redirects off the generic home view to the first perm
   NP.applyToMenu();
   NP.enforceLanding();
 
-  // The restricted user must be moved off 'home' onto their first permitted nav
-  // view (dashboard is first in DOM order and is permitted).
-  assert.deepEqual(calls, ['dashboard'], 'redirected from home to first permitted view');
+  assert.deepEqual(calls, [], 'no redirect — home is always permitted');
+});
+
+test('dom: enforceLanding does NOT redirect when currentView is unset', () => {
+  const dom = buildMenuDom();
+  const NP = dom.window.IGNavPerms;
+  const calls = [];
+  dom.window.navigateTo = (v) => { calls.push(v); dom.window.currentView = v; };
+
+  // app.js fires before the perms fetch resolves, so currentView may be
+  // undefined at the point enforceLanding() runs. Guard must be a no-op.
+  dom.window.currentView = undefined;
+
+  NP.configure({
+    permissions: VIEWER_PERMS,
+    componentMatrix: matrix.COMPONENT_MATRIX,
+    isPlatformAdmin: false,
+  });
+  NP.enforceLanding();
+
+  assert.deepEqual(calls, [], 'no redirect — unset currentView must not trigger a redirect');
 });
 
 test('dom: startup landing does NOT yank a user off a view they already chose', () => {
