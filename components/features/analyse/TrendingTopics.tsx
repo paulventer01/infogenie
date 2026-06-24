@@ -1193,11 +1193,11 @@ export default function TrendingTopics() {
                               ? `Trend strength: ${Math.round(((t.viewCount || 0) / maxHashtagViews) * 100)}% of top hashtag`
                               : "Trend strength: no view data";
                             return (
-                              <div style={{ marginTop: t.viewCount && t.viewCount > 0 ? 6 : 0 }}>
+                              <div style={{ marginTop: t.viewCount && t.viewCount > 0 ? 6 : 0, display: "flex", alignItems: "center", gap: 8 }}>
                                 <div
                                   title={tooltip}
                                   style={{
-                                    width: "100%",
+                                    flex: 1,
                                     height: 5,
                                     background: hasViews ? "#FCE7F3" : "#F3F4F6",
                                     borderRadius: 99,
@@ -1216,6 +1216,19 @@ export default function TrendingTopics() {
                                     }}
                                   />
                                 </div>
+                                {hasViews && (
+                                  <span
+                                    style={{
+                                      fontSize: "0.68rem",
+                                      fontWeight: 700,
+                                      color: "#BE185D",
+                                      whiteSpace: "nowrap",
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {Math.round(((t.viewCount || 0) / maxHashtagViews) * 100)}% trend strength
+                                  </span>
+                                )}
                               </div>
                             );
                           })()}
