@@ -387,6 +387,21 @@ router.get('/history', async (req, res) => {
   } catch (e) { _err(res, 500, e.message); }
 });
 
+router.delete('/history/:id', async (req, res) => {
+  if (!_db.hasDb()) return _err(res, 503, 'db not available');
+  const id = parseInt(req.params.id, 10);
+  if (!id || isNaN(id)) return _err(res, 400, 'invalid id');
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'trends:delete' });
+    const r = await _db.getPool().query(
+      'DELETE FROM trend_runs WHERE id=$1 AND tenant_id=$2 RETURNING id',
+      [id, tid]
+    );
+    if (!r.rowCount) return _err(res, 404, 'not found');
+    res.json({ ok:true });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
 router._tiktokHashtags = _tiktokHashtags; // exported for unit testing
 router._tiktok = _tiktok;               // exported for unit testing
 module.exports = router;

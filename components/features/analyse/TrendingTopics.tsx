@@ -13,7 +13,7 @@
 // See `docs/react-panel-migration.md` for the porting pattern.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
 
 const COUNTRIES: [string, string][] = [
   ["ALL", "🌍 Global / All countries"],
@@ -245,6 +245,8 @@ export default function TrendingTopics() {
   const [kwBusy, setKwBusy] = useState(false);
   const [historyRuns, setHistoryRuns] = useState<HistoryRun[]>([]);
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
+  const [hoveredRunId, setHoveredRunId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     setCat(brand);
@@ -278,6 +280,36 @@ export default function TrendingTopics() {
     });
     setStatus("idle");
     setErrMsg("");
+  }
+
+  async function deleteRun(id: number | undefined) {
+    if (id == null || deletingId != null) return;
+    setDeletingId(id);
+    const wasActive = activeRunId === id;
+    const updated = historyRuns.filter((r) => r.id !== id);
+    setHistoryRuns(updated);
+    if (wasActive) {
+      const next = updated[0];
+      if (next) {
+        setActiveRunId(next.id ?? null);
+        setResult({
+          topics: next.topics || [],
+          source: next.source || "",
+          category: next.category || "",
+          categoryLabel: next.category_label || undefined,
+          country: next.country || undefined,
+        });
+      } else {
+        setActiveRunId(null);
+        setResult(null);
+      }
+    }
+    const resp = await apiDelete(`/api/trends/history/${id}`);
+    if (!resp.ok) {
+      await loadHistory();
+      toast("⚠ Could not delete scan — please try again");
+    }
+    setDeletingId(null);
   }
 
   useEffect(() => {
@@ -722,127 +754,173 @@ export default function TrendingTopics() {
               <div style={{ maxHeight: 480, overflowY: "auto" }}>
                 {historyRuns.map((run, idx) => {
                   const isActive = run.id != null ? run.id === activeRunId : false;
+                  const isHovered = run.id != null ? run.id === hoveredRunId : false;
+                  const isDeleting = run.id != null ? run.id === deletingId : false;
                   return (
-                    <button
+                    <div
                       key={run.id ?? run.ran_at ?? idx}
-                      type="button"
-                      onClick={() => selectHistoryRun(run)}
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        textAlign: "left",
-                        background: isActive ? "#F5F3FF" : "transparent",
-                        border: "none",
-                        borderLeft: isActive ? "3px solid #7C3AED" : "3px solid transparent",
-                        borderBottom: "1px solid #F3F4F6",
-                        padding: "9px 12px",
-                        cursor: "pointer",
-                        transition: "background 0.1s",
-                      }}
+                      style={{ position: "relative" }}
+                      onMouseEnter={() => run.id != null && setHoveredRunId(run.id)}
+                      onMouseLeave={() => setHoveredRunId(null)}
                     >
-                      <div
+                      <button
+                        type="button"
+                        onClick={() => selectHistoryRun(run)}
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 5,
-                          marginBottom: 3,
+                          display: "block",
+                          width: "100%",
+                          textAlign: "left",
+                          background: isActive ? "#F5F3FF" : isHovered ? "#F9FAFB" : "transparent",
+                          border: "none",
+                          borderLeft: isActive ? "3px solid #7C3AED" : "3px solid transparent",
+                          borderBottom: "1px solid #F3F4F6",
+                          padding: "9px 32px 9px 12px",
+                          cursor: "pointer",
+                          transition: "background 0.1s",
                         }}
                       >
-                        <span
+                        <div
                           style={{
-                            background: sourceBadgeColor(run.source),
-                            color: "#fff",
-                            borderRadius: 4,
-                            padding: "1px 5px",
-                            fontSize: "0.55rem",
-                            fontWeight: 800,
-                            textTransform: "uppercase",
-                            whiteSpace: "nowrap",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 5,
+                            marginBottom: 3,
                           }}
                         >
-                          {sourceBadgeLabel(run)}
-                        </span>
-                        {run.country && run.country !== "ALL" && (
                           <span
                             style={{
-                              fontSize: "0.6rem",
-                              color: "#9CA3AF",
-                              fontWeight: 600,
-                            }}
-                          >
-                            {run.country}
-                          </span>
-                        )}
-                        {idx === 0 && (
-                          <span
-                            style={{
-                              marginLeft: "auto",
-                              background: "#D1FAE5",
-                              color: "#065F46",
+                              background: sourceBadgeColor(run.source),
+                              color: "#fff",
                               borderRadius: 4,
                               padding: "1px 5px",
                               fontSize: "0.55rem",
                               fontWeight: 800,
-                              flexShrink: 0,
+                              textTransform: "uppercase",
+                              whiteSpace: "nowrap",
                             }}
                           >
-                            latest
+                            {sourceBadgeLabel(run)}
                           </span>
-                        )}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          fontWeight: isActive ? 700 : 600,
-                          color: isActive ? "#5B21B6" : "#111827",
-                          lineHeight: 1.3,
-                          marginBottom: 2,
-                          overflow: "hidden",
-                          display: "-webkit-box",
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: "vertical",
-                        }}
-                      >
-                        {run.category || "—"}
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          marginTop: 3,
-                        }}
-                      >
-                        {run.ran_at ? (
-                          <div style={{ fontSize: "0.62rem", color: "#9CA3AF" }}>
-                            {fmtDate(run.ran_at)}
-                          </div>
-                        ) : (
-                          <span />
-                        )}
-                        {(() => {
-                          const count = (run.topics || []).length;
-                          const { bg, color } = topicCountBadge(count);
-                          return (
+                          {run.country && run.country !== "ALL" && (
                             <span
-                              title={`${count} topic${count !== 1 ? "s" : ""} returned`}
                               style={{
-                                background: bg,
-                                color,
-                                borderRadius: 10,
-                                padding: "1px 6px",
                                 fontSize: "0.6rem",
-                                fontWeight: 700,
-                                whiteSpace: "nowrap",
+                                color: "#9CA3AF",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {run.country}
+                            </span>
+                          )}
+                          {idx === 0 && (
+                            <span
+                              style={{
+                                marginLeft: "auto",
+                                background: "#D1FAE5",
+                                color: "#065F46",
+                                borderRadius: 4,
+                                padding: "1px 5px",
+                                fontSize: "0.55rem",
+                                fontWeight: 800,
                                 flexShrink: 0,
                               }}
                             >
-                              {count} topic{count !== 1 ? "s" : ""}
+                              latest
                             </span>
-                          );
-                        })()}
-                      </div>
-                    </button>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "0.75rem",
+                            fontWeight: isActive ? 700 : 600,
+                            color: isActive ? "#5B21B6" : "#111827",
+                            lineHeight: 1.3,
+                            marginBottom: 2,
+                            overflow: "hidden",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                          }}
+                        >
+                          {run.category || "—"}
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            marginTop: 3,
+                          }}
+                        >
+                          {run.ran_at ? (
+                            <div style={{ fontSize: "0.62rem", color: "#9CA3AF" }}>
+                              {fmtDate(run.ran_at)}
+                            </div>
+                          ) : (
+                            <span />
+                          )}
+                          {(() => {
+                            const count = (run.topics || []).length;
+                            const { bg, color } = topicCountBadge(count);
+                            return (
+                              <span
+                                title={`${count} topic${count !== 1 ? "s" : ""} returned`}
+                                style={{
+                                  background: bg,
+                                  color,
+                                  borderRadius: 10,
+                                  padding: "1px 6px",
+                                  fontSize: "0.6rem",
+                                  fontWeight: 700,
+                                  whiteSpace: "nowrap",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {count} topic{count !== 1 ? "s" : ""}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      </button>
+                      {(isHovered || isDeleting) && run.id != null && (
+                        <button
+                          type="button"
+                          title="Delete this scan"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteRun(run.id);
+                          }}
+                          disabled={isDeleting}
+                          style={{
+                            position: "absolute",
+                            top: "50%",
+                            right: 8,
+                            transform: "translateY(-50%)",
+                            background: "transparent",
+                            border: "none",
+                            cursor: isDeleting ? "default" : "pointer",
+                            color: "#9CA3AF",
+                            fontSize: "0.75rem",
+                            lineHeight: 1,
+                            padding: "2px 4px",
+                            borderRadius: 4,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.color = "#EF4444";
+                            (e.currentTarget as HTMLButtonElement).style.background = "#FEE2E2";
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.color = "#9CA3AF";
+                            (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                          }}
+                        >
+                          {isDeleting ? "…" : "✕"}
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>
