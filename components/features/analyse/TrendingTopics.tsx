@@ -1457,13 +1457,14 @@ export default function TrendingTopics() {
                   · {filteredTopics.length} topics
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  {result.pin_label && (() => {
+                  {(() => {
                     const panelRunId = result.historyKey?.startsWith("id:")
                       ? parseInt(result.historyKey.slice(3), 10)
                       : null;
                     const panelRun = panelRunId != null
                       ? historyRuns.find((r) => r.id === panelRunId)
                       : undefined;
+                    if (!panelRun?.pinned) return null;
                     function commitPanelLabel(draft: string) {
                       setPanelLabelEditing(false);
                       if (!panelRun) return;
@@ -1471,65 +1472,92 @@ export default function TrendingTopics() {
                       setResult((prev) => prev ? { ...prev, pin_label: trimmed || null } : prev);
                       void doUpdateLabel(panelRun, draft);
                     }
-                    return panelLabelEditing ? (
-                      <input
-                        autoFocus
-                        maxLength={80}
-                        value={panelLabelDraft}
-                        onChange={(e) => setPanelLabelDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            commitPanelLabel(panelLabelDraft);
-                          }
-                          if (e.key === "Escape") {
-                            e.preventDefault();
-                            setPanelLabelEditing(false);
-                          }
-                        }}
-                        onBlur={() => commitPanelLabel(panelLabelDraft)}
-                        style={{
-                          background: "#FEF3C7",
-                          color: "#92400E",
-                          border: "1.5px solid #F59E0B",
-                          borderRadius: 5,
-                          padding: "3px 9px",
-                          fontSize: "0.62rem",
-                          fontWeight: 700,
-                          maxWidth: 220,
-                          outline: "none",
-                          boxSizing: "border-box",
-                        }}
-                      />
-                    ) : (
+                    if (panelLabelEditing) {
+                      return (
+                        <input
+                          autoFocus
+                          maxLength={80}
+                          value={panelLabelDraft}
+                          onChange={(e) => setPanelLabelDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              commitPanelLabel(panelLabelDraft);
+                            }
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              setPanelLabelEditing(false);
+                            }
+                          }}
+                          onBlur={() => commitPanelLabel(panelLabelDraft)}
+                          style={{
+                            background: "#FEF3C7",
+                            color: "#92400E",
+                            border: "1.5px solid #F59E0B",
+                            borderRadius: 5,
+                            padding: "3px 9px",
+                            fontSize: "0.62rem",
+                            fontWeight: 700,
+                            maxWidth: 220,
+                            outline: "none",
+                            boxSizing: "border-box",
+                          }}
+                        />
+                      );
+                    }
+                    if (result.pin_label) {
+                      return (
+                        <span
+                          role="button"
+                          title="Click to rename label"
+                          onClick={() => {
+                            setPanelLabelDraft(result.pin_label ?? "");
+                            setPanelLabelEditing(true);
+                          }}
+                          style={{
+                            background: "#FEF3C7",
+                            color: "#92400E",
+                            border: "1px solid #FCD34D",
+                            padding: "3px 9px",
+                            borderRadius: 5,
+                            fontSize: "0.62rem",
+                            fontWeight: 700,
+                            maxWidth: 220,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            cursor: "text",
+                          }}
+                        >
+                          📌 {result.pin_label}
+                        </span>
+                      );
+                    }
+                    return (
                       <span
                         role="button"
-                        title="Click to rename"
+                        title="Add a label to this pinned run"
                         onMouseEnter={() => setHoveredLabelId(-1)}
                         onMouseLeave={() => setHoveredLabelId(null)}
                         onClick={() => {
-                          setPanelLabelDraft(result.pin_label ?? "");
+                          setPanelLabelDraft("");
                           setPanelLabelEditing(true);
                         }}
                         style={{
-                          background: "#FEF3C7",
-                          color: "#92400E",
-                          border: "1px solid #FCD34D",
+                          color: "#9CA3AF",
+                          border: "1px dashed #D1D5DB",
                           padding: "3px 9px",
                           borderRadius: 5,
                           fontSize: "0.62rem",
-                          fontWeight: 700,
-                          maxWidth: 220,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          cursor: "text",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          userSelect: "none",
                           outline: hoveredLabelId === -1 ? "2px solid #F59E0B" : "2px solid transparent",
                           outlineOffset: 1,
                           transition: "outline-color 0.15s ease",
                         }}
                       >
-                        📌 {result.pin_label}
+                        + label
                       </span>
                     );
                   })()}
