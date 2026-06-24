@@ -491,11 +491,20 @@ function _attributionHtml(j) {
   const channelCards = channelDefs.map(d => {
     const c = j.channels?.[d.key] || {};
     if (!c.ok) {
+      const noticeText = c.error === 'not-configured'
+        ? `${esc(d.name)} is not connected — add credentials to see ROI data for this channel.`
+        : esc(c.error || `${d.name} is not connected.`);
       return `
-        <div style="background:#FAFAFA;border:1.5px dashed #E5E7EB;border-radius:14px;padding:22px;color:#64748B">
-          <div style="font-size:1.5rem;margin-bottom:6px">${d.icon}</div>
-          <div style="font-weight:800;color:#0A1628;margin-bottom:4px">${esc(d.name)}</div>
-          <div style="font-size:0.78rem;color:#94A3B8">Not configured · ${esc(c.error || 'connect this platform to see ROI')}</div>
+        <div style="background:white;border:1.5px dashed #E5E7EB;border-radius:14px;padding:22px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <div style="width:36px;height:36px;border-radius:9px;background:${d.bg};display:flex;align-items:center;justify-content:center;font-size:1.2rem">${d.icon}</div>
+            <div style="font-weight:800;color:#0A1628;font-size:1rem">${esc(d.name)}</div>
+            <span style="margin-left:auto;font-size:0.66rem;font-weight:700;padding:3px 9px;border-radius:999px;background:#F1F5F9;color:#64748B;border:1px solid #E5E7EB">NOT CONNECTED</span>
+          </div>
+          <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;font-size:0.78rem;color:#92400E;line-height:1.5">
+            ⚠️ <strong>${noticeText}</strong><br>
+            <a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="color:#92400E;font-weight:700;text-decoration:underline">Go to Settings → Integrations →</a>
+          </div>
         </div>`;
     }
     const spendShare = (t.spend > 0) ? ((c.spend || 0) / t.spend * 100) : 0;
@@ -924,12 +933,25 @@ function _cohortHtml(j) {
       <td>${w.cac  != null ? fmt$(w.cac) : '—'}</td>
     </tr>`;
   }).join('');
+  const cohortDisconnected = [
+    { key:'meta',   name:'Meta Ads',   icon:'📘' },
+    { key:'google', name:'Google Ads', icon:'🔵' },
+    { key:'tiktok', name:'TikTok Ads', icon:'⚫' },
+  ].filter(d => j.channelStatus && j.channelStatus[d.key] === false);
+  const cohortNotices = cohortDisconnected.length ? cohortDisconnected.map(d =>
+    `<div style="display:flex;align-items:flex-start;gap:10px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;font-size:0.78rem;color:#92400E;line-height:1.5">
+      <span style="font-size:1rem">${d.icon}</span>
+      <div>⚠️ <strong>${esc(d.name)} is not connected</strong> — cohort data for this channel will be missing.<br>
+      <a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="color:#92400E;font-weight:700;text-decoration:underline">Go to Settings → Integrations →</a></div>
+    </div>`
+  ).join('') : '';
   return `
     <div style="background:linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%);border-radius:18px;padding:24px;color:white;margin-bottom:18px">
       <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;opacity:.85;font-weight:700">Weekly Cohorts · last ${j.days} days · ${j.weeks.length} cohorts · conversions from <b>${esc(j.conversionSource === 'amplitude' ? 'Amplitude (ground truth)' : 'ad-platform reported')}</b></div>
       <div style="font-size:1.4rem;font-weight:900;margin-top:6px">Acquisition cohort decay</div>
       <div style="font-size:.85rem;opacity:.85;margin-top:4px">Each row = a Monday-starting week. Spend bar shows the channel split. Compare weeks side-by-side to spot rising or falling efficiency.</div>
     </div>
+    ${cohortNotices ? `<div style="display:grid;gap:8px;margin-bottom:14px">${cohortNotices}</div>` : ''}
     ${headerTrend ? `<div style="background:white;border:1.5px solid #E5E7EB;border-radius:14px;padding:14px 18px;margin-bottom:14px">${headerTrend}</div>` : ''}
     <div style="background:white;border:1.5px solid #E5E7EB;border-radius:14px;padding:6px 8px;overflow-x:auto">
       <table class="cohort-table">
@@ -1016,12 +1038,25 @@ function _forecastHtml(j) {
         </div>
       </div>`;
   };
+  const fcDisconnected = [
+    { key:'meta',   name:'Meta Ads',   icon:'📘' },
+    { key:'google', name:'Google Ads', icon:'🔵' },
+    { key:'tiktok', name:'TikTok Ads', icon:'⚫' },
+  ].filter(d => j.channelStatus && j.channelStatus[d.key] === false);
+  const fcNotices = fcDisconnected.length ? fcDisconnected.map(d =>
+    `<div style="display:flex;align-items:flex-start;gap:10px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;font-size:0.78rem;color:#92400E;line-height:1.5">
+      <span style="font-size:1rem">${d.icon}</span>
+      <div>⚠️ <strong>${esc(d.name)} is not connected</strong> — its spend is excluded from this forecast.<br>
+      <a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="color:#92400E;font-weight:700;text-decoration:underline">Go to Settings → Integrations →</a></div>
+    </div>`
+  ).join('') : '';
   return `
     <div style="background:linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#4338CA 100%);border-radius:18px;padding:24px;color:white;margin-bottom:18px">
       <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;opacity:.85;font-weight:700">30-Day Forecast · trailing ${j.days} days of daily data · conversions from <b>${esc(j.conversionSource === 'amplitude' ? 'Amplitude' : 'ad platforms')}</b></div>
       <div style="font-size:1.4rem;font-weight:900;margin-top:6px">Where you're heading</div>
       <div style="font-size:.85rem;opacity:.85;margin-top:4px">Linear trend + EMA smoothing on your daily spend & conversions, projected forward 30 days. Use it to size next month's budget and spot where you'll land before you commit.</div>
     </div>
+    ${fcNotices ? `<div style="display:grid;gap:8px;margin-bottom:14px">${fcNotices}</div>` : ''}
     <div class="fc-summary">
       <div class="fc-card"><div class="fc-card-label">Avg daily spend (last ${j.days}d)</div><div class="fc-card-value">${fmt$(s.avgDailySpend)}</div><div class="fc-card-sub">Trend ${trendArrow(s.trendDirection)}</div></div>
       <div class="fc-card"><div class="fc-card-label">Avg daily conversions</div><div class="fc-card-value">${fmtN(s.avgDailyConversions)}</div><div class="fc-card-sub">Trend ${trendArrow(s.conversionsTrend)}</div></div>
