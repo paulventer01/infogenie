@@ -347,7 +347,7 @@ export default function Benchmarks() {
                                   {k.replace(/_/g, " ")}:{" "}
                                 </span>
                                 <span style={{ fontWeight: 600 }}>
-                                  {+(m.median as number).toFixed(2)}
+                                  {+Number(m.median).toFixed(2)}
                                 </span>{" "}
                                 <span style={{ color: "#9ca3af" }}>
                                   (n={m.sample_count})
@@ -466,13 +466,13 @@ function BenchmarkResult({ result }: { result: CompareResponse }) {
                     {yv != null ? yv : "—"}
                   </td>
                   <td style={{ padding: "8px 12px", color: "#6b7280" }}>
-                    {b.p25 != null ? +b.p25.toFixed(2) : "—"}
+                    {b.p25 != null ? +Number(b.p25).toFixed(2) : "—"}
                   </td>
                   <td style={{ padding: "8px 12px", fontWeight: 600 }}>
-                    {b.median != null ? +b.median.toFixed(2) : "—"}
+                    {b.median != null ? +Number(b.median).toFixed(2) : "—"}
                   </td>
                   <td style={{ padding: "8px 12px", color: "#6b7280" }}>
-                    {b.p75 != null ? +b.p75.toFixed(2) : "—"}
+                    {b.p75 != null ? +Number(b.p75).toFixed(2) : "—"}
                   </td>
                   <td style={{ padding: "8px 12px" }}>
                     <span style={{ color: col, fontWeight: 700 }}>
