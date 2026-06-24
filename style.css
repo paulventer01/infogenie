@@ -6972,11 +6972,19 @@ h3:hover {
 [data-theme="light"] [style*="rgba(0,201,200,.1),rgba(0,102,255,.06)"] label {
   color: #5A6B85 !important;
 }
-/* Secondary "Deep Intelligence" button on light bg */
-[data-theme="light"] [style*="rgba(0,201,200,.1),rgba(0,102,255,.06)"] button[style*="rgba(255,255,255,.08)"] {
+/* Secondary "Deep Intelligence" button — visible on any light bg regardless of
+   whether data-theme="light" is set. !important needed to beat the inline color:white
+   on the button element (inline styles win over stylesheet without !important). */
+[data-theme="light"] .bp-cta-secondary,
+:not([data-theme="dark"]) .bp-cta-secondary { /* lint-ok-important: overrides inline color:white on button — attribute selector alone cannot beat inline styles */
   background: #FFFFFF !important;
   border: 1px solid rgba(10,22,40,.15) !important;
   color: #0A1628 !important;
+}
+[data-theme="dark"] .bp-cta-secondary {
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.18);
+  color: white;
 }
 
 /* ── Reddit Intelligence sub-tabs — light mode visibility ── */
