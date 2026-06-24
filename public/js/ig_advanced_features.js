@@ -576,31 +576,74 @@ window._renderInvestorReport = _renderInvestorReport;
 window.buildBizscanner = function(){
   const el = document.getElementById('view-biz-scanner');
   if(!el) return;
+  // Guard: skip rebuild if form is already mounted — this preserves any value
+  // the user typed or AI Suggest filled in across navigations, instead of
+  // resetting back to the hardcoded default on every view re-entry.
+  if(document.getElementById('bs-run')){ _loadBSHistory(); return; }
+
+  const defaultIndustry = (function(){
+    const a = window.analysisData||{};
+    return (a.industry && (a.industry.name||a.industry)) || '';
+  })();
+
+  const iS = 'width:100%;padding:11px 14px;background:#0A1628;border:1.5px solid rgba(0,201,200,.25);border-radius:10px;font-size:0.875rem;font-weight:500;color:white;outline:none;box-sizing:border-box;font-family:inherit;color-scheme:dark';
+  const lS = 'display:block;font-size:0.7rem;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px';
+
   el.innerHTML = `
-<div class="view-header"><h2>🔭 Business Acquisition Scanner</h2><p class="view-sub">AI scans for struggling competitors, businesses for sale, growing sectors, and franchise opportunities — then scores each one.</p></div>
-<div class="ig-card" style="max-width:680px;margin-bottom:24px">
-  <div class="form-grid" style="grid-template-columns:1fr 1fr">
-    <div class="form-group"><label>Industry / Sector</label><input id="bs-ind" class="form-control" value="SaaS" /></div>
-    <div class="form-group"><label>Region</label><input id="bs-reg" class="form-control" value="United States" /></div>
-    <div class="form-group"><label>Scan Type</label><select id="bs-type" class="form-control">
-      <option value="all">Full Scan (all types)</option>
-      <option value="struggling">Struggling Competitors</option>
-      <option value="for_sale">Businesses for Sale</option>
-      <option value="growing">Fast-Growing Sectors</option>
-      <option value="franchise">Franchise Opportunities</option>
-    </select></div>
-    <div class="form-group"><label>Budget Range (optional)</label><input id="bs-budget" class="form-control" placeholder="e.g. $100K–$2M" /></div>
+<div style="background:linear-gradient(135deg,rgba(10,22,40,.97),rgba(30,58,138,.9));border-radius:16px;padding:24px 28px;margin-bottom:24px;position:relative;overflow:hidden">
+  <div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;background:radial-gradient(circle,rgba(0,201,200,.18),transparent 65%);pointer-events:none"></div>
+  <div style="font-family:Sora,sans-serif;font-size:1.45rem;font-weight:900;color:white;margin-bottom:6px">🔭 Business Acquisition Scanner</div>
+  <div style="color:#B8C6E3;font-size:0.875rem;max-width:620px;line-height:1.5">AI scans for struggling competitors, businesses for sale, growing sectors, and franchise opportunities — then scores each one.</div>
+</div>
+
+<div style="background:linear-gradient(150deg,#0D1F35,#091628);border:1px solid rgba(0,201,200,.2);border-radius:16px;padding:28px;margin-bottom:24px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px 24px;margin-bottom:24px">
+    <div>
+      <label style="${lS}">Industry / Sector</label>
+      <input id="bs-ind" style="${iS}" value="${_e(defaultIndustry)}" placeholder="e.g. SaaS, Forex, Healthcare" />
+    </div>
+    <div>
+      <label style="${lS}">Region</label>
+      <select id="bs-reg" style="${iS};cursor:pointer">
+        <option value="Global">🌐 Global / All Countries</option>
+        <option value="United States">🇺🇸 United States</option>
+        <option value="United Kingdom">🇬🇧 United Kingdom</option>
+        <option value="European Union">🇪🇺 European Union</option>
+        <option value="Australia">🇦🇺 Australia</option>
+        <option value="Canada">🇨🇦 Canada</option>
+        <option value="Germany">🇩🇪 Germany</option>
+        <option value="France">🇫🇷 France</option>
+        <option value="Singapore">🇸🇬 Singapore</option>
+        <option value="South Africa">🇿🇦 South Africa</option>
+        <option value="India">🇮🇳 India</option>
+        <option value="Brazil">🇧🇷 Brazil</option>
+      </select>
+    </div>
+    <div>
+      <label style="${lS}">Scan Type</label>
+      <select id="bs-type" style="${iS};cursor:pointer">
+        <option value="all">🔭 Full Scan (all types)</option>
+        <option value="struggling">⚠️ Struggling Competitors</option>
+        <option value="for_sale">🏷️ Businesses for Sale</option>
+        <option value="growing">📈 Fast-Growing Sectors</option>
+        <option value="franchise">🏪 Franchise Opportunities</option>
+      </select>
+    </div>
+    <div>
+      <label style="${lS}">Budget Range <span style="font-weight:400;text-transform:none;letter-spacing:0;opacity:.7">(optional)</span></label>
+      <input id="bs-budget" style="${iS}" placeholder="e.g. $100K–$2M" />
+    </div>
   </div>
-  <button id="bs-run" class="btn btn-primary" style="width:100%">🔭 Run Acquisition Scan</button>
+  <button id="bs-run" style="width:100%;padding:14px 24px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:12px;font-size:0.95rem;font-weight:800;color:white;cursor:pointer;box-shadow:0 4px 20px rgba(0,102,255,.35);letter-spacing:.03em;font-family:Sora,inherit">🔭 Run Acquisition Scan</button>
 </div>
 <div id="bs-result"></div>
 <div id="bs-history"></div>`;
 
   document.getElementById('bs-run').onclick = async function(){
-    this.disabled=true; this.textContent='Scanning market…';
+    this.disabled=true; this.textContent='⏳ Scanning market…';
     const d = await _api('POST','/api/biz-scanner/scan',{
       industry: document.getElementById('bs-ind').value||'SaaS',
-      region: document.getElementById('bs-reg').value||'United States',
+      region: document.getElementById('bs-reg').value||'Global',
       scan_type: document.getElementById('bs-type').value,
       budget_range: document.getElementById('bs-budget').value
     });
@@ -614,37 +657,41 @@ window.buildBizscanner = function(){
 
 function _renderBizScan(d){
   const r = d.results||{};
-  const catColour = { struggling:'#ef4444', for_sale:'#3b82f6', growing:'#10b981', franchise:'#f59e0b' };
+  const catColour = { struggling:'#EF4444', for_sale:'#3B82F6', growing:'#10B981', franchise:'#F59E0B' };
+  const catIcon   = { struggling:'⚠️', for_sale:'🏷️', growing:'📈', franchise:'🏪' };
   const el = document.getElementById('bs-result');
   el.innerHTML = `
-<div class="ig-card" style="margin-bottom:16px">
-  <div style="font-size:1rem;font-weight:600;margin-bottom:8px">Market Summary</div>
-  <p style="color:#374151">${_e(r.market_summary||'')}</p>
-  ${r.top_pick?`<div style="background:#f0fdf4;border-radius:8px;padding:10px;margin-top:8px"><span style="font-weight:600;color:#10b981">🏆 Top Pick: </span>${_e(r.top_pick)}</div>`:''}
+<div style="background:linear-gradient(135deg,rgba(16,185,129,.08),rgba(0,102,255,.04));border:1px solid rgba(16,185,129,.2);border-radius:14px;padding:20px 24px;margin-bottom:20px">
+  <div style="font-size:0.7rem;font-weight:800;color:#10B981;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">📊 Market Summary</div>
+  <p style="color:#E0E7FF;font-size:0.9rem;line-height:1.6;margin:0 0 ${r.top_pick?'14':'0'}px">${_e(r.market_summary||'')}</p>
+  ${r.top_pick?`<div style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px"><span style="font-size:1.2rem">🏆</span><div><div style="font-size:0.68rem;font-weight:700;color:#10B981;text-transform:uppercase;letter-spacing:.06em">Top Pick</div><div style="font-weight:700;color:white;margin-top:3px;font-size:0.9rem">${_e(r.top_pick)}</div></div></div>`:''}
 </div>
-<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:16px">
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;margin-bottom:20px">
   ${(r.opportunities||[]).map(o=>{
-    const col = catColour[o.category]||'#6b7280';
-    return `<div class="ig-card" style="border-top:3px solid ${col}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-        <div style="font-weight:700">${_e(o.name)}</div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-          ${_scoreRing(o.opportunity_score||0)}
-          <span style="font-size:.7rem;background:${col};color:#fff;border-radius:4px;padding:1px 6px">${_e(o.category||'').replace('_',' ')}</span>
+    const col = catColour[o.category]||'#6B7280';
+    const ico = catIcon[o.category]||'💡';
+    return `<div style="background:linear-gradient(150deg,#0D1F35,#091628);border:1px solid rgba(255,255,255,.07);border-top:3px solid ${col};border-radius:14px;padding:18px 20px;box-shadow:0 4px 16px rgba(0,0,0,.2)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+        <div style="flex:1;min-width:0;margin-right:10px">
+          <div style="font-weight:800;color:white;font-size:0.92rem;margin-bottom:6px">${_e(o.name)}</div>
+          <span style="font-size:0.63rem;background:${col}22;color:${col};border:1px solid ${col}55;border-radius:5px;padding:2px 8px;font-weight:700">${ico} ${_e(o.category||'').replace('_',' ').toUpperCase()}</span>
         </div>
+        ${_scoreRing(o.opportunity_score||0)}
       </div>
-      <div style="font-size:.8rem;color:#6b7280;margin-bottom:6px">${_e(o.estimated_value||'')}</div>
-      <p style="font-size:.85rem;color:#374151;margin-bottom:8px">${_e(o.why_interesting||'')}</p>
-      ${o.signals?.length?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">${o.signals.map(s=>`<span style="background:#f3f4f6;border-radius:4px;padding:2px 8px;font-size:.75rem">${_e(s)}</span>`).join('')}</div>`:''}
-      <div style="background:#eff6ff;border-radius:6px;padding:8px;font-size:.82rem">
-        <span style="color:#3b82f6;font-weight:600">Next step:</span> ${_e(o.action||'')}
+      <div style="font-size:0.78rem;color:rgba(0,201,200,.9);font-weight:700;margin-bottom:8px">${_e(o.estimated_value||'')}</div>
+      <p style="font-size:0.83rem;color:rgba(255,255,255,.7);line-height:1.55;margin:0 0 10px">${_e(o.why_interesting||'')}</p>
+      ${o.signals?.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">${o.signals.map(s=>`<span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:2px 8px;font-size:0.7rem;color:rgba(255,255,255,.65)">${_e(s)}</span>`).join('')}</div>`:''}
+      <div style="background:rgba(0,102,255,.12);border:1px solid rgba(0,102,255,.22);border-radius:8px;padding:10px 12px;font-size:0.8rem">
+        <span style="color:#60A5FA;font-weight:700">Next step: </span><span style="color:rgba(255,255,255,.8)">${_e(o.action||'')}</span>
       </div>
     </div>`;
   }).join('')}
 </div>
-${r.sector_trends?.length?`<div class="ig-card">
-  <div style="font-weight:600;margin-bottom:8px">Sector Trends</div>
-  <ul style="margin:0;padding-left:20px;color:#374151;font-size:.9rem">${r.sector_trends.map(t=>`<li>${_e(t)}</li>`).join('')}</ul>
+
+${r.sector_trends?.length?`<div style="background:linear-gradient(150deg,#0D1F35,#091628);border:1px solid rgba(0,201,200,.18);border-radius:14px;padding:20px 24px;margin-bottom:20px">
+  <div style="font-size:0.7rem;font-weight:800;color:rgba(0,201,200,.85);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">📈 Sector Trends</div>
+  <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px">${r.sector_trends.map(t=>`<li style="display:flex;align-items:flex-start;gap:8px;color:rgba(255,255,255,.8);font-size:0.875rem;line-height:1.5"><span style="color:#00C9C8;font-weight:800;flex-shrink:0">→</span>${_e(t)}</li>`).join('')}</ul>
 </div>`:''}`;
 }
 
@@ -652,14 +699,18 @@ async function _loadBSHistory(){
   const d = await _api('GET','/api/biz-scanner/history');
   const el = document.getElementById('bs-history');
   if(!el||!d.ok||!d.runs?.length) return;
-  el.innerHTML = `<h3 style="font-size:.9rem;font-weight:600;color:#6b7280;margin:16px 0 8px">Previous Scans</h3>
+  el.innerHTML = `
+<div style="font-size:0.7rem;font-weight:800;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;margin:8px 0 10px">Previous Scans</div>
 <div style="display:flex;flex-direction:column;gap:8px">${d.runs.map(r=>`
-  <div class="ig-card" style="padding:12px;cursor:pointer" onclick='_renderBizScan({results:${JSON.stringify(r.results)}})'>
-    <div style="display:flex;justify-content:space-between">
-      <span style="font-weight:600">${_e(r.industry)} · ${_e(r.region)}</span>
-      <span style="color:#6b7280;font-size:.8rem">${new Date(r.created_at).toLocaleDateString()}</span>
+  <div style="background:linear-gradient(150deg,#0D1F35,#091628);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px" onclick='_renderBizScan({results:${JSON.stringify(r.results)}})'>
+    <div>
+      <div style="font-weight:700;color:white;font-size:0.875rem;margin-bottom:3px">${_e(r.industry)} · ${_e(r.region)}</div>
+      <div style="font-size:0.78rem;color:rgba(0,201,200,.7)">${r.results?.opportunities?.length||0} opportunities found</div>
     </div>
-    <div style="font-size:.85rem;color:#374151;margin-top:2px">${r.results?.opportunities?.length||0} opportunities found</div>
+    <div style="text-align:right;flex-shrink:0">
+      <div style="font-size:0.75rem;color:rgba(255,255,255,.35)">${new Date(r.created_at).toLocaleDateString()}</div>
+      <div style="font-size:0.7rem;color:rgba(255,255,255,.25);margin-top:2px">click to view →</div>
+    </div>
   </div>`).join('')}</div>`;
 }
 window._renderBizScan = _renderBizScan;
