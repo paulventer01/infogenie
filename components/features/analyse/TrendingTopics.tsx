@@ -243,6 +243,17 @@ export default function TrendingTopics() {
   const [errMsg, setErrMsg] = useState("");
   const [catBusy, setCatBusy] = useState(false);
   const [kwBusy, setKwBusy] = useState(false);
+  const [ytKeyConfigured, setYtKeyConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (platform !== "youtube") return;
+    let cancelled = false;
+    apiGet<{ configured?: boolean }>("/api/settings/api-key/youtube-data")
+      .then((r) => { if (!cancelled) setYtKeyConfigured(r.configured === true); })
+      .catch(() => { if (!cancelled) setYtKeyConfigured(false); });
+    return () => { cancelled = true; };
+  }, [platform]);
+
   const [historyRuns, setHistoryRuns] = useState<HistoryRun[]>([]);
   const [activeRunId, setActiveRunId] = useState<number | null>(null);
   const [hoveredRunId, setHoveredRunId] = useState<number | null>(null);
@@ -682,7 +693,7 @@ export default function TrendingTopics() {
               🔥 Detect
             </button>
           </div>
-          {platform === "youtube" && (
+          {platform === "youtube" && ytKeyConfigured !== true && (
             <div
               style={{
                 marginTop: 10,
