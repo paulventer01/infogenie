@@ -1053,6 +1053,7 @@
           </div>
           <input type="month" id="bb_month" value="${_ymToday()}" style="padding:8px 12px;border:1px solid #BBF7D0;border-radius:8px;font-weight:600">
         </div>
+        <div id="bb_platform_notice" style="margin-bottom:16px"></div>
         <div id="bb_kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
           <div style="background:#fff;border:1px solid #BBF7D0;border-radius:12px;padding:18px">
@@ -1087,6 +1088,28 @@
 
     async function refresh(){
       const month = document.getElementById('bb_month').value;
+      // Show connect notices for any ad platform that isn't wired up yet
+      try {
+        const ps = await _f('/api/ad-platforms/status');
+        const missing = [
+          { key:'google',    name:'Google Ads',   icon:'🔵', connected: ps.googleAds },
+          { key:'meta',      name:'Meta Ads',     icon:'📘', connected: ps.meta      },
+          { key:'tiktok',    name:'TikTok Ads',   icon:'⚫', connected: ps.tiktok    },
+          { key:'microsoft', name:'Microsoft Ads',icon:'🟦', connected: ps.microsoft },
+        ].filter(p => !p.connected);
+        const noticeEl = document.getElementById('bb_platform_notice');
+        if (noticeEl) {
+          noticeEl.innerHTML = missing.length ? `
+            <div style="display:grid;gap:8px">
+              ${missing.map(p => `
+                <div style="display:flex;align-items:flex-start;gap:10px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;font-size:0.78rem;color:#92400E;line-height:1.5">
+                  <span style="font-size:1rem">${p.icon}</span>
+                  <div>⚠️ <strong>${_esc(p.name)} is not connected</strong> — connect it to auto-import spend data into the Budget Board.<br>
+                  <a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="color:#92400E;font-weight:700;text-decoration:underline">Go to Settings → Integrations →</a></div>
+                </div>`).join('')}
+            </div>` : '';
+        }
+      } catch (_e) {}
       const s = await _f('/api/budget/summary?month='+encodeURIComponent(month));
       const remaining = s.remaining_cents;
       const util = s.utilization_pct;

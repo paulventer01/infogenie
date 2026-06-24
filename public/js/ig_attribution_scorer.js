@@ -110,7 +110,7 @@ function _blendedHtml(j) {
           let headline, fixHint, fixSecrets;
           if (d.error === 'not-configured') {
             headline = 'Not connected';
-            fixHint  = 'Add the credentials below in Secrets to start pulling live data.';
+            fixHint  = 'Connect this platform to pull live spend and ROAS data.';
           } else if (c.key === 'meta' && (errStr.includes('oauth') || errStr.includes('access token') || errStr.includes('parse'))) {
             headline = 'Meta access token invalid or expired';
             fixHint  = 'Generate a fresh long-lived token in Meta Business Manager → System Users, then re-paste it. Make sure there are no quotes or trailing spaces.';
@@ -136,9 +136,9 @@ function _blendedHtml(j) {
                 <div style="font-weight:700;color:#0F172A">${esc(c.name)}</div>
                 <span style="margin-left:auto;font-size:0.66rem;font-weight:700;padding:3px 9px;border-radius:999px;background:#FEF2F2;color:#991B1B;border:1px solid #FECACA">NOT LIVE</span>
               </div>
-              <div style="font-size:0.82rem;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;margin-bottom:10px">
+              <div style="font-size:0.82rem;color:#92400E;background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;margin-bottom:10px">
                 <div style="font-weight:700;margin-bottom:4px">⚠️ ${esc(headline)}</div>
-                <div style="font-size:0.78rem;line-height:1.45">${esc(fixHint)}</div>
+                <div style="font-size:0.78rem;line-height:1.45">${esc(fixHint)}<br><a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="color:#92400E;font-weight:700;text-decoration:underline">Go to Settings → Integrations →</a></div>
               </div>
               ${fixSecrets.length ? `
                 <div style="font-size:0.7rem;color:#64748B;margin-bottom:6px"><strong>Secrets to update:</strong> ${fixSecrets.map(s => `<code style="background:#F1F5F9;padding:1px 6px;border-radius:4px;font-size:0.72rem">${esc(s)}</code>`).join(' ')}</div>
