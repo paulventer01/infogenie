@@ -13,7 +13,7 @@
 // See `docs/react-panel-migration.md` for the porting pattern.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 
 const COUNTRIES: [string, string][] = [
   ["ALL", "🌍 Global / All countries"],
@@ -53,6 +53,7 @@ interface HistoryRun {
   category_label?: string;
   country?: string;
   ran_at?: string;
+  pinned?: boolean;
 }
 interface HistoryResp {
   ok?: boolean;
@@ -334,10 +335,26 @@ export default function TrendingTopics() {
     setDeletingId(null);
   }
 
+  async function togglePin(e: React.MouseEvent, run: HistoryRun) {
+    e.stopPropagation();
+    if (run.id == null) return;
+    const optimisticRuns = historyRuns.map((r) =>
+      r.id === run.id ? { ...r, pinned: !r.pinned } : r
+    );
+    const sorted = [
+      ...optimisticRuns.filter((r) => r.pinned),
+      ...optimisticRuns.filter((r) => !r.pinned),
+    ];
+    setHistoryRuns(sorted);
+    const resp = await apiPatch<{ ok?: boolean; pinned?: boolean }>(`/api/trends/history/${run.id}/pin`);
+    if (!resp.ok) {
+      await loadHistory();
+    }
+  }
+
   useEffect(() => {
     loadHistory();
   }, [loadHistory]);
-
   function onPickChange(v: string) {
     setPick(v);
     if (v) setCat(v);
@@ -781,6 +798,7 @@ export default function TrendingTopics() {
                   const isActive = !!result?.historyKey && result.historyKey === key;
                   const isHovered = run.id != null ? run.id === hoveredRunId : false;
                   const isDeleting = run.id != null ? run.id === deletingId : false;
+                  const isPinned = !!run.pinned;
                   return (
                     <div
                       key={key}
@@ -795,11 +813,11 @@ export default function TrendingTopics() {
                           display: "block",
                           width: "100%",
                           textAlign: "left",
-                          background: isActive ? "#F5F3FF" : isHovered ? "#F9FAFB" : "transparent",
+                          background: isActive ? "#F5F3FF" : isPinned ? "#FFFBEB" : isHovered ? "#F9FAFB" : "transparent",
                           border: "none",
-                          borderLeft: isActive ? "3px solid #7C3AED" : "3px solid transparent",
+                          borderLeft: isActive ? "3px solid #7C3AED" : isPinned ? "3px solid #F59E0B" : "3px solid transparent",
                           borderBottom: "1px solid #F3F4F6",
-                          padding: "9px 32px 9px 12px",
+                          padding: "9px 56px 9px 12px",
                           cursor: "pointer",
                           transition: "background 0.1s",
                         }}
@@ -812,6 +830,9 @@ export default function TrendingTopics() {
                             marginBottom: 3,
                           }}
                         >
+                          {isPinned && (
+                            <span style={{ fontSize: "0.65rem", lineHeight: 1 }} title="Pinned">📌</span>
+                          )}
                           <span
                             style={{
                               background: sourceBadgeColor(run.source),
@@ -837,7 +858,7 @@ export default function TrendingTopics() {
                               {run.country}
                             </span>
                           )}
-                          {idx === 0 && (
+                          {idx === 0 && !isPinned && (
                             <span
                               style={{
                                 marginLeft: "auto",
@@ -907,6 +928,38 @@ export default function TrendingTopics() {
                           })()}
                         </div>
                       </button>
+                      {/* Star/pin button — always visible */}
+                      {run.id != null && (
+                        <button
+                          type="button"
+                          title={isPinned ? "Unpin this scan" : "Pin this scan"}
+                          onClick={(e) => togglePin(e, run)}
+                          style={{
+                            position: "absolute",
+                            top: "50%",
+                            right: 30,
+                            transform: "translateY(-50%)",
+                            background: "transparent",
+                            border: "none",
+                            cursor: "pointer",
+                            fontSize: "0.8rem",
+                            lineHeight: 1,
+                            padding: "2px 3px",
+                            borderRadius: 4,
+                            opacity: isPinned ? 1 : 0.3,
+                            transition: "opacity 0.15s",
+                          }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.opacity = "1";
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.opacity = isPinned ? "1" : "0.3";
+                          }}
+                        >
+                          ⭐
+                        </button>
+                      )}
+                      {/* Delete button — appears on hover */}
                       {(isHovered || isDeleting) && run.id != null && (
                         <button
                           type="button"

@@ -27,6 +27,7 @@ async function _ensureSchema() {
   await _tenantMig.addTenantIdColumn('trend_runs');
   await _db.getPool().query(`
     ALTER TABLE trend_runs ADD COLUMN IF NOT EXISTS category_label TEXT;
+    ALTER TABLE trend_runs ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 }
 _ensureSchema().catch(()=>{});
@@ -382,7 +383,12 @@ router.get('/history', async (req, res) => {
   if (!_db.hasDb()) return res.json({ ok:true, runs: [] });
   try {
     const tid = await _tenantCtx.resolveTenantId(req, { label:'trends:history' });
-    const r = await _db.getPool().query(`SELECT id, category, keywords, country, topics, source, category_label, ran_at FROM trend_runs WHERE tenant_id=$1 ORDER BY ran_at DESC LIMIT 50`, [tid]);
+    const r = await _db.getPool().query(
+      `SELECT id, category, keywords, country, topics, source, category_label, ran_at, pinned
+       FROM trend_runs WHERE tenant_id=$1
+       ORDER BY pinned DESC, ran_at DESC LIMIT 50`,
+      [tid]
+    );
     res.json({ ok:true, runs: r.rows });
   } catch (e) { _err(res, 500, e.message); }
 });
@@ -399,6 +405,24 @@ router.delete('/history/:id', async (req, res) => {
     );
     if (!r.rowCount) return _err(res, 404, 'not found');
     res.json({ ok:true });
+  } catch (e) { _err(res, 500, e.message); }
+});
+
+router.patch('/history/:id/pin', async (req, res) => {
+  if (!_db.hasDb()) return _err(res, 503, 'db unavailable');
+  const id = parseInt(req.params.id, 10);
+  if (!id || id < 1) return _err(res, 400, 'invalid id');
+  try {
+    const tid = await _tenantCtx.resolveTenantId(req, { label:'trends:pin' });
+    const check = await _db.getPool().query(
+      `SELECT id, pinned FROM trend_runs WHERE id=$1 AND tenant_id=$2`, [id, tid]
+    );
+    if (!check.rows.length) return _err(res, 404, 'not found');
+    const newPinned = !check.rows[0].pinned;
+    await _db.getPool().query(
+      `UPDATE trend_runs SET pinned=$1 WHERE id=$2 AND tenant_id=$3`, [newPinned, id, tid]
+    );
+    res.json({ ok:true, id, pinned: newPinned });
   } catch (e) { _err(res, 500, e.message); }
 });
 
