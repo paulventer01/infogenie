@@ -1044,7 +1044,7 @@ export default function TrendingTopics() {
                         >
                           {run.category || "—"}
                         </div>
-                        {isPinned && (run.pin_label || isHovered) && (
+                        {isPinned && (
                           <div
                             style={{
                               display: "flex",
@@ -1068,6 +1068,19 @@ export default function TrendingTopics() {
                                 }}
                               >
                                 {run.pin_label}
+                              </span>
+                            )}
+                            {!run.pin_label && !isHovered && (
+                              <span
+                                style={{
+                                  fontSize: "0.6rem",
+                                  color: "#D1D5DB",
+                                  letterSpacing: "0.01em",
+                                  userSelect: "none",
+                                  pointerEvents: "none",
+                                }}
+                              >
+                                + label
                               </span>
                             )}
                             {isHovered && (
