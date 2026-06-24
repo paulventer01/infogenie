@@ -340,13 +340,14 @@ export default function Benchmarks() {
                         >
                           {Object.entries(ms)
                             .slice(0, 4)
+                            .filter(([, m]) => m.median != null)
                             .map(([k, m]) => (
                               <div key={k}>
                                 <span style={{ color: "#6b7280" }}>
                                   {k.replace(/_/g, " ")}:{" "}
                                 </span>
                                 <span style={{ fontWeight: 600 }}>
-                                  {+m.median.toFixed(2)}
+                                  {+(m.median as number).toFixed(2)}
                                 </span>{" "}
                                 <span style={{ color: "#9ca3af" }}>
                                   (n={m.sample_count})
