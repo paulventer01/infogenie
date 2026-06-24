@@ -49,6 +49,19 @@ window.buildOrganic = function() {
   const wrap = document.getElementById('organicWrap');
   if (!wrap || wrap._built) return;
   wrap._built = true;
+
+  // Derive a sensible default keyword from the user's active analysis:
+  // brand name → company name → domain root (e.g. "cmtrading.com" → "cmtrading")
+  const _ad = window.analysisData || {};
+  const defaultKeyword = (function(){
+    if (_ad.brandName) return _ad.brandName;
+    if (_ad.brand && typeof _ad.brand === 'string') return _ad.brand;
+    if (_ad.companyName) return _ad.companyName;
+    const dom = String(_ad.url || _ad.domain || '')
+      .replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].split('.')[0].trim();
+    return dom ? dom.charAt(0).toUpperCase() + dom.slice(1) : '';
+  })();
+
   wrap.innerHTML = `
 <div class="ig-page-header" style="padding-bottom:0">
   <h1 style="margin-bottom:4px">📱 Organic Social Monitor</h1>
@@ -73,6 +86,17 @@ window.buildOrganic = function() {
   <div id="orgStatus" style="margin-top:10px"></div>
 </div>
 <div id="orgResults"></div>`;
+
+  // Pre-fill keyword from analysis data so the user can hit Search TikTok immediately.
+  // The field enhancer may also populate it via its brand auto-fill, but doing it
+  // here is more reliable since it runs synchronously after the DOM is inserted.
+  if (defaultKeyword) {
+    const kwEl = document.getElementById('orgKeyword');
+    if (kwEl && !kwEl.value) {
+      kwEl.value = defaultKeyword;
+      kwEl.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
 };
 
 window._orgRun = async function() {
