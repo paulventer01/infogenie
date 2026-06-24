@@ -271,6 +271,7 @@ export default function TrendingTopics() {
   const [tiktokFilter, setTiktokFilter] = useState<"all" | "hashtag" | "video">("all");
   const [labelingId, setLabelingId] = useState<number | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
+  const [pinnedOnly, setPinnedOnly] = useState(false);
 
   useEffect(() => {
     setCat(brand);
@@ -786,38 +787,80 @@ export default function TrendingTopics() {
                 overflow: "hidden",
               }}
             >
-              <div
-                style={{
-                  padding: "10px 14px",
-                  borderBottom: "1px solid #F3F4F6",
-                  fontFamily: "Sora,sans-serif",
-                  fontWeight: 800,
-                  fontSize: "0.75rem",
-                  color: "#374151",
-                  background: "#F9FAFB",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <span>🕑</span> Past Scans
-                <span
-                  style={{
-                    marginLeft: "auto",
-                    background: "#E5E7EB",
-                    color: "#6B7280",
-                    borderRadius: 10,
-                    padding: "1px 6px",
-                    fontSize: "0.65rem",
-                    fontWeight: 700,
-                  }}
-                >
-                  {historyRuns.length}
-                </span>
-              </div>
+              {(() => {
+                const pinnedCount = historyRuns.filter((r) => r.pinned).length;
+                return (
+                  <div
+                    style={{
+                      padding: "10px 14px",
+                      borderBottom: "1px solid #F3F4F6",
+                      fontFamily: "Sora,sans-serif",
+                      fontWeight: 800,
+                      fontSize: "0.75rem",
+                      color: "#374151",
+                      background: "#F9FAFB",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span>🕑</span> Past Scans
+                    <span
+                      style={{
+                        background: "#E5E7EB",
+                        color: "#6B7280",
+                        borderRadius: 10,
+                        padding: "1px 6px",
+                        fontSize: "0.65rem",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {historyRuns.length}
+                    </span>
+                    {pinnedCount > 0 && (
+                      <button
+                        type="button"
+                        title={pinnedOnly ? "Show all scans" : "Show pinned scans only"}
+                        onClick={() => setPinnedOnly((v) => !v)}
+                        style={{
+                          marginLeft: "auto",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 3,
+                          padding: "2px 7px",
+                          borderRadius: 10,
+                          border: pinnedOnly ? "1.5px solid #F59E0B" : "1.5px solid #E5E7EB",
+                          background: pinnedOnly ? "#FFFBEB" : "transparent",
+                          color: pinnedOnly ? "#92400E" : "#6B7280",
+                          fontSize: "0.65rem",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          transition: "all 0.15s",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        ⭐ Pinned
+                        <span
+                          style={{
+                            background: pinnedOnly ? "#F59E0B" : "#E5E7EB",
+                            color: pinnedOnly ? "#fff" : "#6B7280",
+                            borderRadius: 8,
+                            padding: "0px 5px",
+                            fontSize: "0.6rem",
+                            fontWeight: 800,
+                          }}
+                        >
+                          {pinnedCount}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               <SidebarSparkline runs={historyRuns} activeHistoryKey={result?.historyKey ?? null} />
               <div style={{ maxHeight: 480, overflowY: "auto" }}>
-                {historyRuns.map((run, idx) => {
+                {(pinnedOnly && historyRuns.some((r) => r.pinned) ? historyRuns.filter((r) => r.pinned) : historyRuns).map((run, idx) => {
                   const key = runKey(run, idx);
                   const isActive = !!result?.historyKey && result.historyKey === key;
                   const isHovered = run.id != null ? run.id === hoveredRunId : false;
