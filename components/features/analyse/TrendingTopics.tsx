@@ -1072,12 +1072,14 @@ export default function TrendingTopics() {
                             )}
                             {!run.pin_label && !isHovered && (
                               <span
+                                role="button"
+                                onClick={(e) => startPin(e, run)}
                                 style={{
                                   fontSize: "0.6rem",
                                   color: "#D1D5DB",
                                   letterSpacing: "0.01em",
                                   userSelect: "none",
-                                  pointerEvents: "none",
+                                  cursor: "pointer",
                                 }}
                               >
                                 + label
