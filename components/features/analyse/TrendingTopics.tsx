@@ -1070,7 +1070,7 @@ export default function TrendingTopics() {
                                 {run.pin_label}
                               </span>
                             )}
-                            {!run.pin_label && !isHovered && (
+                            {!run.pin_label && (
                               <span
                                 role="button"
                                 onClick={(e) => startPin(e, run)}
@@ -1085,7 +1085,7 @@ export default function TrendingTopics() {
                                 + label
                               </span>
                             )}
-                            {isHovered && (
+                            {isHovered && run.pin_label && (
                               <button
                                 type="button"
                                 title={run.pin_label ? "Edit pin label" : "Add pin label"}
