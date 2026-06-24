@@ -1197,7 +1197,7 @@ export default function TrendingTopics() {
                           }}
                         >
                           <div style={{ fontSize: "0.64rem", fontWeight: 700, color: "#6B7280", marginBottom: 5 }}>
-                            {labelIsEdit ? "Edit pin label" : "Add a label (optional)"}
+                            {labelIsEdit ? (labelDraft.trim() === "" ? "Clear to remove label" : "Edit pin label") : "Add a label (optional)"}
                           </div>
                           <input
                             autoFocus
@@ -1263,7 +1263,7 @@ export default function TrendingTopics() {
                                 onClick={() => { void doUpdateLabel(run, labelDraft); }}
                                 style={{
                                   padding: "3px 10px",
-                                  background: "#F59E0B",
+                                  background: labelDraft.trim() === "" ? "#EF4444" : "#F59E0B",
                                   border: "none",
                                   borderRadius: 5,
                                   fontSize: "0.65rem",
@@ -1272,7 +1272,7 @@ export default function TrendingTopics() {
                                   color: "#fff",
                                 }}
                               >
-                                ✏ Save label
+                                {labelDraft.trim() === "" ? "✕ Remove label" : "✏ Save label"}
                               </button>
                             ) : (
                               <button

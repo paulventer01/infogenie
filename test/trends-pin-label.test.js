@@ -144,3 +144,20 @@ test('labelOnly:true with a non-existent id returns 404', async () => {
   assert.strictEqual(res.status, 404, `expected 404, got ${res.status}: ${JSON.stringify(res.body)}`);
   assert.strictEqual(res.body.ok, false);
 });
+
+test('labelOnly:true with empty string clears the label without unpinning', async () => {
+  lastLabelUpdate = null;
+  ROWS[1].pinned = true;
+  ROWS[1].pin_label = 'Old label';
+
+  const res = await request('PATCH', '/api/trends/history/1/pin', { labelOnly: true, label: '' });
+
+  assert.strictEqual(res.status, 200, `expected 200, got ${res.status}: ${JSON.stringify(res.body)}`);
+  assert.strictEqual(res.body.ok, true);
+  assert.strictEqual(res.body.pinned, true,   'pin must stay pinned after clearing the label');
+  assert.strictEqual(res.body.pin_label, null, 'pin_label must be null after clearing');
+
+  assert.ok(lastLabelUpdate, 'UPDATE was executed');
+  assert.strictEqual(lastLabelUpdate.id, 1);
+  assert.strictEqual(lastLabelUpdate.pin_label, null, 'DB UPDATE must write null');
+});
