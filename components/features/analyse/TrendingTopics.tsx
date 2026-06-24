@@ -278,6 +278,7 @@ export default function TrendingTopics() {
   const [inlineEditDraft, setInlineEditDraft] = useState("");
   const [panelLabelEditing, setPanelLabelEditing] = useState(false);
   const [panelLabelDraft, setPanelLabelDraft] = useState("");
+  const [hoveredLabelId, setHoveredLabelId] = useState<number | null>(null);
 
   useEffect(() => {
     setCat(brand);
@@ -1096,7 +1097,9 @@ export default function TrendingTopics() {
                             {run.pin_label && inlineEditId !== run.id && (
                               <span
                                 role="button"
-                                title="Click to rename label"
+                                title="Click to rename"
+                                onMouseEnter={() => setHoveredLabelId(run.id ?? null)}
+                                onMouseLeave={() => setHoveredLabelId(null)}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setInlineEditId(run.id ?? null);
@@ -1113,6 +1116,9 @@ export default function TrendingTopics() {
                                   whiteSpace: "nowrap",
                                   minWidth: 0,
                                   cursor: "text",
+                                  outline: hoveredLabelId === run.id ? "2px solid #F59E0B" : "2px solid transparent",
+                                  outlineOffset: 1,
+                                  transition: "outline-color 0.15s ease",
                                 }}
                               >
                                 {run.pin_label}
@@ -1498,7 +1504,9 @@ export default function TrendingTopics() {
                     ) : (
                       <span
                         role="button"
-                        title="Click to rename label"
+                        title="Click to rename"
+                        onMouseEnter={() => setHoveredLabelId(-1)}
+                        onMouseLeave={() => setHoveredLabelId(null)}
                         onClick={() => {
                           setPanelLabelDraft(result.pin_label ?? "");
                           setPanelLabelEditing(true);
@@ -1516,6 +1524,9 @@ export default function TrendingTopics() {
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
                           cursor: "text",
+                          outline: hoveredLabelId === -1 ? "2px solid #F59E0B" : "2px solid transparent",
+                          outlineOffset: 1,
+                          transition: "outline-color 0.15s ease",
                         }}
                       >
                         📌 {result.pin_label}
