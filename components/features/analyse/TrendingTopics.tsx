@@ -13,6 +13,7 @@
 // See `docs/react-panel-migration.md` for the porting pattern.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import RenameChip from "@/components/ui/RenameChip";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 
 const COUNTRIES: [string, string][] = [
@@ -1095,34 +1096,13 @@ export default function TrendingTopics() {
                               />
                             )}
                             {run.pin_label && inlineEditId !== run.id && (
-                              <span
-                                role="button"
-                                title="Click to rename"
-                                onMouseEnter={() => setHoveredLabelId(run.id ?? null)}
-                                onMouseLeave={() => setHoveredLabelId(null)}
-                                onClick={(e) => {
-                                  e.stopPropagation();
+                              <RenameChip
+                                label={run.pin_label}
+                                onStartEdit={() => {
                                   setInlineEditId(run.id ?? null);
                                   setInlineEditDraft(run.pin_label ?? "");
                                 }}
-                                style={{
-                                  fontSize: "0.62rem",
-                                  color: "#92400E",
-                                  background: "#FEF3C7",
-                                  borderRadius: 4,
-                                  padding: "1px 5px",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                  minWidth: 0,
-                                  cursor: "text",
-                                  outline: hoveredLabelId === run.id ? "2px solid #F59E0B" : "2px solid transparent",
-                                  outlineOffset: 1,
-                                  transition: "outline-color 0.15s ease",
-                                }}
-                              >
-                                {run.pin_label}
-                              </span>
+                              />
                             )}
                             {!run.pin_label && (
                               <span
@@ -1507,30 +1487,22 @@ export default function TrendingTopics() {
                     }
                     if (result.pin_label) {
                       return (
-                        <span
-                          role="button"
+                        <RenameChip
+                          label={result.pin_label}
                           title="Click to rename label"
-                          onClick={() => {
+                          prefix="📌 "
+                          onStartEdit={() => {
                             setPanelLabelDraft(result.pin_label ?? "");
                             setPanelLabelEditing(true);
                           }}
                           style={{
-                            background: "#FEF3C7",
-                            color: "#92400E",
                             border: "1px solid #FCD34D",
                             padding: "3px 9px",
                             borderRadius: 5,
-                            fontSize: "0.62rem",
                             fontWeight: 700,
                             maxWidth: 220,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            cursor: "text",
                           }}
-                        >
-                          📌 {result.pin_label}
-                        </span>
+                        />
                       );
                     }
                     return (
