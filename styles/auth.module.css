@@ -10,8 +10,8 @@
   justify-content: center;
   padding: 20px;
   font-family: var(--font-inter, Inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: radial-gradient(ellipse at top left, #0066ff22, transparent 60%),
-    radial-gradient(ellipse at bottom right, #00c9c822, transparent 60%), #0a1628;
+  background: radial-gradient(ellipse at top left, #0066ff18, transparent 55%),
+    radial-gradient(ellipse at bottom right, #00c9c814, transparent 55%), #EFF4FF;
 }
 
 .card {

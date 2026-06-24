@@ -55,7 +55,109 @@ html {
 
 body {
   font-family: var(--font-inter, "Inter"), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: var(--navy);
-  color: var(--text-primary);
+  background: #EFF4FF;
+  color: #0A1628;
   min-height: 100vh;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   INFOGENIE BLUE THEME — React page overrides
+   All React component pages render on #EFF4FF light-blue bg.
+   These rules override the dark-mode defaults from style.css
+   that are replayed into the Next.js shell.
+   ══════════════════════════════════════════════════════════════ */
+
+:root {
+  --ig-primary:      #0066FF;
+  --ig-accent:       #00C9C8;
+  --ig-card-bg:      #FFFFFF;
+  --ig-card-border:  #D1DCF5;
+  --ig-page-bg:      #EFF4FF;
+  --ig-text:         #0A1628;
+  --ig-text-muted:   #6B88B0;
+}
+
+/* ── White cards with blue border ─── */
+.ig-card {
+  background: #FFFFFF !important;
+  border: 1px solid #D1DCF5 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 1px 4px rgba(10,31,78,.06), 0 4px 16px rgba(10,31,78,.06) !important;
+  color: #0A1628 !important;
+}
+.ig-card h1, .ig-card h2, .ig-card h3, .ig-card h4,
+.ig-card p, .ig-card span, .ig-card label,
+.ig-card td, .ig-card th, .ig-card li {
+  color: #0A1628;
+}
+
+/* ── Inputs ─── */
+.ig-input {
+  background: #FFFFFF !important;
+  border: 1.5px solid #D1DCF5 !important;
+  color: #0A1628 !important;
+  border-radius: 10px !important;
+}
+.ig-input::placeholder { color: #6B88B0 !important; }
+.ig-input:focus {
+  border-color: #0066FF !important;
+  box-shadow: 0 0 0 3px rgba(0,102,255,.12) !important;
+  outline: none !important;
+}
+
+/* ── Selects ─── */
+.ig-select {
+  background: #FFFFFF !important;
+  border: 1.5px solid #D1DCF5 !important;
+  color: #0A1628 !important;
+  border-radius: 10px !important;
+}
+.ig-select:focus {
+  border-color: #0066FF !important;
+  box-shadow: 0 0 0 3px rgba(0,102,255,.12) !important;
+  outline: none !important;
+}
+.ig-select option { background: #FFFFFF; color: #0A1628; }
+
+/* ── Labels ─── */
+.ig-label {
+  color: #0A1628 !important;
+  font-weight: 600 !important;
+}
+
+/* ── Secondary button — readable on light bg ─── */
+.btn-secondary {
+  background: #FFFFFF !important;
+  color: #0A1628 !important;
+  border: 1.5px solid #D1DCF5 !important;
+}
+.btn-secondary:hover {
+  background: #F0F5FF !important;
+  border-color: #0066FF !important;
+  color: #0066FF !important;
+}
+
+/* ── Filter selects ─── */
+.filter-sel {
+  background: #FFFFFF !important;
+  border: 1.5px solid #D1DCF5 !important;
+  color: #0A1628 !important;
+}
+.filter-sel option { background: #FFFFFF !important; color: #0A1628 !important; }
+
+/* ── Tables ─── */
+.ig-table th {
+  background: #F6FAFF !important;
+  color: #6B88B0 !important;
+  border-bottom: 1px solid #D1DCF5 !important;
+  font-weight: 700 !important;
+}
+.ig-table td {
+  color: #0A1628 !important;
+  border-bottom: 1px solid #EEF3FF !important;
+}
+.ig-table tr:hover td { background: #F6FAFF !important; }
+
+/* ── Scrollbar blue ─── */
+::-webkit-scrollbar-thumb { background: rgba(0,102,255,.2); }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,102,255,.45); }
