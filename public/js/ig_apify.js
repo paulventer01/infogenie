@@ -82,7 +82,7 @@ window.buildOrganic = function() {
   <div style="display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:end">
     <div>
       <label style="display:block;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:6px">Brand · Keyword · Hashtag</label>
-      <input id="orgKeyword" style="width:100%;box-sizing:border-box;background:#0A1628;border:1.5px solid rgba(0,201,200,0.3);border-radius:8px;padding:10px 14px;color:#fff;font-size:0.9rem;outline:none;transition:border-color 0.2s" placeholder="e.g. Nike, #CleanTok, Stanley Cup" onfocus="this.style.borderColor='rgba(0,201,200,0.7)'" onblur="this.style.borderColor='rgba(0,201,200,0.3)'">
+      <input id="orgKeyword" data-ig-skip style="width:100%;box-sizing:border-box;background:#0A1628;border:1.5px solid rgba(0,201,200,0.3);border-radius:8px;padding:10px 14px;color:#fff;font-size:0.9rem;outline:none;transition:border-color 0.2s" placeholder="e.g. Nike, #CleanTok, Stanley Cup" onfocus="this.style.borderColor='rgba(0,201,200,0.7)'" onblur="this.style.borderColor='rgba(0,201,200,0.3)'">
     </div>
     <div>
       <label style="display:block;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:6px">Results</label>
