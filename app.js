@@ -3180,7 +3180,7 @@ function navigateTo(viewId, updateActive = true) {
   if (viewId === 'agent-goals')          { try { window.buildAgentGoals      && window.buildAgentGoals();      } catch(e) { console.warn('buildAgentGoals error:', e); } }
   if (viewId === 'ecom-video')           { try { window.buildEcomVideo        && window.buildEcomVideo();        } catch(e) { console.warn('buildEcomVideo error:', e); } }
   if (viewId === 'brand-deals')          { try { window.buildBrandDeals      && window.buildBrandDeals();      } catch(e) { console.warn('buildBrandDeals error:', e); } }
-  if (viewId === 'organic-social')       { try { window.buildOrganic         && window.buildOrganic();          } catch(e) { console.warn('buildOrganic error:', e); } }
+  if (viewId === 'organic-social')       { try { window.buildOrganic         && window.buildOrganic();          } catch(e) { console.warn('buildOrganic error:', e); } try { window._orgAutoFillKeyword && window._orgAutoFillKeyword(); } catch(e) {} }
   if (viewId === 'local-leads')          { try { window.buildLocalLeads      && window.buildLocalLeads();       } catch(e) { console.warn('buildLocalLeads error:', e); } }
   if (viewId === 'flywheel')             { try { window.buildFlywheel        && window.buildFlywheel();         } catch(e) { console.warn('buildFlywheel error:', e); } }
   if (viewId === 'seo-roadmap')          { try { window.buildSeoRoadmap      && window.buildSeoRoadmap();       } catch(e) { console.warn('buildSeoRoadmap error:', e); } }

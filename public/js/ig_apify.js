@@ -14,31 +14,46 @@ function _apFmt(n) {
   return String(n);
 }
 function _apSpinner(msg) {
-  return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0">
-    <div style="width:16px;height:16px;border:2px solid var(--ig-primary,#667eea);border-top-color:transparent;border-radius:50%;animation:_apSpin 0.8s linear infinite;flex-shrink:0"></div>
-    <span style="font-size:0.85rem;color:var(--text-muted)">${_apEsc(msg)}</span>
+  return `<div style="display:flex;align-items:center;gap:10px;padding:12px 0">
+    <div style="width:16px;height:16px;border:2px solid #00C9C8;border-top-color:transparent;border-radius:50%;animation:_apSpin 0.8s linear infinite;flex-shrink:0"></div>
+    <span style="font-size:0.85rem;color:rgba(255,255,255,0.6)">${_apEsc(msg)}</span>
   </div><style>@keyframes _apSpin{to{transform:rotate(360deg)}}</style>`;
 }
 function _apAlert(msg, type) {
-  const colors = { error:'#FEE2E2:#991B1B', success:'#D1FAE5:#065F46', info:'#EFF6FF:#1E40AF' };
-  const [bg, fg] = (colors[type] || colors.info).split(':');
-  return `<div style="background:${bg};color:${fg};padding:10px 14px;border-radius:8px;font-size:0.84rem">${_apEsc(msg)}</div>`;
+  const map = {
+    error:   { bg:'rgba(220,38,38,0.15)',  border:'rgba(220,38,38,0.4)',   fg:'#FCA5A5' },
+    success: { bg:'rgba(16,185,129,0.15)', border:'rgba(16,185,129,0.4)',  fg:'#6EE7B7' },
+    info:    { bg:'rgba(0,102,255,0.15)',  border:'rgba(0,102,255,0.4)',   fg:'#93C5FD' }
+  };
+  const c = map[type] || map.info;
+  return `<div style="background:${c.bg};border:1px solid ${c.border};color:${c.fg};padding:10px 14px;border-radius:8px;font-size:0.84rem">${_apEsc(msg)}</div>`;
 }
 
 // ── No-key banner ─────────────────────────────────────────────────────────
 function _apNoKeyBanner(feature) {
-  return `<div style="background:linear-gradient(135deg,#EEF2FF,#F5F3FF);border:1px solid #C7D2FE;border-radius:12px;padding:24px;text-align:center;margin:16px 0">
-    <div style="font-size:2rem;margin-bottom:8px">🔑</div>
-    <div style="font-weight:700;font-size:1rem;color:#1E1B4B;margin-bottom:6px">APIFY_API_KEY required</div>
-    <div style="font-size:0.85rem;color:#6B7280;max-width:400px;margin:0 auto 16px">
+  return `<div style="background:linear-gradient(135deg,rgba(13,31,53,0.95),rgba(9,22,40,0.95));border:1px solid rgba(0,201,200,0.25);border-radius:14px;padding:32px;text-align:center;margin:16px 0">
+    <div style="font-size:2.4rem;margin-bottom:10px">🔑</div>
+    <div style="font-weight:800;font-size:1.1rem;color:#fff;margin-bottom:6px;font-family:'Sora',sans-serif">APIFY_API_KEY required</div>
+    <div style="font-size:0.85rem;color:rgba(255,255,255,0.5);max-width:400px;margin:0 auto 20px">
       ${_apEsc(feature)} uses Apify's web scraping platform. Add your free Apify API key to unlock it.
     </div>
     <a href="https://console.apify.com/sign-up" target="_blank" rel="noopener"
-       style="display:inline-block;padding:10px 22px;background:#667eea;color:#fff;border-radius:8px;font-weight:700;font-size:0.85rem;text-decoration:none">
+       style="display:inline-block;padding:11px 26px;background:linear-gradient(135deg,#0066FF,#00C9C8);color:#fff;border-radius:8px;font-weight:700;font-size:0.85rem;text-decoration:none;box-shadow:0 4px 14px rgba(0,102,255,0.35)">
       Get Free Apify Key →
     </a>
-    <div style="font-size:0.75rem;color:#9CA3AF;margin-top:10px">Then add it in <strong>Settings → Integrations → Apify</strong></div>
+    <div style="font-size:0.75rem;color:rgba(255,255,255,0.35);margin-top:12px">Then add it in <strong style="color:rgba(255,255,255,0.55)">Settings → Integrations → Apify</strong></div>
   </div>`;
+}
+
+// ── Shared helper: derive default keyword from analysis data ───────────────
+function _orgDefaultKeyword() {
+  const _ad = window.analysisData || {};
+  if (_ad.brandName) return _ad.brandName;
+  if (_ad.brand && typeof _ad.brand === 'string') return _ad.brand;
+  if (_ad.companyName) return _ad.companyName;
+  const dom = String(_ad.url || _ad.domain || '')
+    .replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].split('.')[0].trim();
+  return dom ? dom.charAt(0).toUpperCase() + dom.slice(1) : '';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -50,53 +65,56 @@ window.buildOrganic = function() {
   if (!wrap || wrap._built) return;
   wrap._built = true;
 
-  // Derive a sensible default keyword from the user's active analysis:
-  // brand name → company name → domain root (e.g. "cmtrading.com" → "cmtrading")
-  const _ad = window.analysisData || {};
-  const defaultKeyword = (function(){
-    if (_ad.brandName) return _ad.brandName;
-    if (_ad.brand && typeof _ad.brand === 'string') return _ad.brand;
-    if (_ad.companyName) return _ad.companyName;
-    const dom = String(_ad.url || _ad.domain || '')
-      .replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0].split('.')[0].trim();
-    return dom ? dom.charAt(0).toUpperCase() + dom.slice(1) : '';
-  })();
-
   wrap.innerHTML = `
-<div class="ig-page-header" style="padding-bottom:0">
-  <h1 style="margin-bottom:4px">📱 Organic Social Monitor</h1>
-  <p style="color:var(--text-muted)">Track any brand or keyword's organic TikTok content — views, engagement, top creators. Powered by Apify.</p>
-</div>
-<div class="ig-card" style="margin-bottom:20px">
-  <div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:end">
+<div style="background:linear-gradient(135deg,#0D1F35 0%,#091628 100%);border-radius:16px;padding:28px 32px;margin-bottom:24px;border:1px solid rgba(0,201,200,0.15);box-shadow:0 8px 32px rgba(0,0,0,0.3);position:relative;overflow:hidden">
+  <div style="position:absolute;top:0;right:0;width:220px;height:220px;background:radial-gradient(circle,rgba(255,0,80,0.08) 0%,transparent 70%);pointer-events:none"></div>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+    <div style="width:44px;height:44px;background:linear-gradient(135deg,#FF0050,#FF3B5C);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;box-shadow:0 4px 12px rgba(255,0,80,0.4);flex-shrink:0">📱</div>
     <div>
-      <label class="ig-label">Brand · Keyword · Hashtag</label>
-      <input id="orgKeyword" class="ig-input" placeholder="e.g. Nike, #CleanTok, Stanley Cup">
+      <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:2px">ANALYSE · ORGANIC SOCIAL MONITOR</div>
+      <h1 style="margin:0;font-size:1.5rem;font-weight:800;color:#fff;font-family:'Sora',sans-serif;line-height:1.2">Organic Social Monitor</h1>
+    </div>
+  </div>
+  <p style="margin:8px 0 0 56px;font-size:0.88rem;color:rgba(255,255,255,0.5);line-height:1.5">Track any brand or keyword's organic TikTok content — views, engagement, top creators. Powered by Apify.</p>
+</div>
+
+<div style="background:linear-gradient(135deg,#0D1F35 0%,#091628 100%);border:1px solid rgba(0,201,200,0.2);border-radius:14px;padding:24px;margin-bottom:20px;box-shadow:0 4px 20px rgba(0,0,0,0.25)">
+  <div style="display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:end">
+    <div>
+      <label style="display:block;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:6px">Brand · Keyword · Hashtag</label>
+      <input id="orgKeyword" style="width:100%;box-sizing:border-box;background:#0A1628;border:1.5px solid rgba(0,201,200,0.3);border-radius:8px;padding:10px 14px;color:#fff;font-size:0.9rem;outline:none;transition:border-color 0.2s" placeholder="e.g. Nike, #CleanTok, Stanley Cup" onfocus="this.style.borderColor='rgba(0,201,200,0.7)'" onblur="this.style.borderColor='rgba(0,201,200,0.3)'">
     </div>
     <div>
-      <label class="ig-label">Results</label>
-      <select id="orgLimit" class="ig-select">
+      <label style="display:block;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:6px">Results</label>
+      <select id="orgLimit" style="background:#0A1628;border:1.5px solid rgba(0,201,200,0.3);border-radius:8px;padding:10px 14px;color:#fff;font-size:0.88rem;cursor:pointer;color-scheme:dark;outline:none">
         <option value="10">10 videos</option>
         <option value="20" selected>20 videos</option>
         <option value="30">30 videos</option>
       </select>
     </div>
-    <button id="orgRunBtn" class="btn btn-primary" onclick="window._orgRun()">🔍 Search TikTok</button>
+    <button id="orgRunBtn" onclick="window._orgRun()" style="background:linear-gradient(135deg,#FF0050,#FF3B5C);color:#fff;border:none;border-radius:8px;padding:10px 22px;font-weight:700;font-size:0.88rem;cursor:pointer;display:flex;align-items:center;gap:7px;box-shadow:0 4px 14px rgba(255,0,80,0.35);transition:opacity 0.2s;white-space:nowrap" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
+      <span style="font-size:1rem">🔍</span> Search TikTok
+    </button>
   </div>
-  <div id="orgStatus" style="margin-top:10px"></div>
+  <div id="orgStatus" style="margin-top:12px"></div>
 </div>
 <div id="orgResults"></div>`;
 
-  // Pre-fill keyword from analysis data so the user can hit Search TikTok immediately.
-  // The field enhancer may also populate it via its brand auto-fill, but doing it
-  // here is more reliable since it runs synchronously after the DOM is inserted.
-  if (defaultKeyword) {
-    const kwEl = document.getElementById('orgKeyword');
-    if (kwEl && !kwEl.value) {
-      kwEl.value = defaultKeyword;
-      kwEl.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-  }
+  // Pre-fill keyword — runs synchronously at build time.
+  // _orgAutoFillKeyword is also called on every navigation so it re-checks
+  // even if analysisData wasn't available when the view was first built.
+  window._orgAutoFillKeyword();
+};
+
+// Called on every navigation to organic-social (from app.js).
+// Safe to call multiple times — only fills if the field is still empty.
+window._orgAutoFillKeyword = function() {
+  const kwEl = document.getElementById('orgKeyword');
+  if (!kwEl || kwEl.value.trim()) return;
+  const kw = _orgDefaultKeyword();
+  if (!kw) return;
+  kwEl.value = kw;
+  kwEl.dispatchEvent(new Event('input', { bubbles: true }));
 };
 
 window._orgRun = async function() {
@@ -108,7 +126,7 @@ window._orgRun = async function() {
   if (!keyword) { if (statusEl) statusEl.innerHTML = _apAlert('Enter a keyword or hashtag', 'error'); return; }
   if (statusEl) statusEl.innerHTML = _apSpinner('Starting Apify TikTok Scraper…');
   if (resEl)    resEl.innerHTML = '';
-  if (btn)      { btn.disabled = true; btn.textContent = '⏳ Starting…'; }
+  if (btn)      { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '<span>⏳</span> Starting…'; }
   try {
     const d = await fetch('/api/apify/tiktok-organic', {
       method: 'POST', credentials: 'same-origin',
@@ -119,14 +137,14 @@ window._orgRun = async function() {
       if (statusEl) statusEl.innerHTML = d.error?.includes('APIFY_API_KEY')
         ? _apNoKeyBanner('Organic Social Monitor')
         : _apAlert(d.error || 'Failed to start', 'error');
-      if (btn) { btn.disabled = false; btn.textContent = '🔍 Search TikTok'; }
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span>🔍</span> Search TikTok'; }
       return;
     }
     if (statusEl) statusEl.innerHTML = _apSpinner('TikTok scrape running… checking every 8s (usually 30-90s)');
     window._apPoll(d.run_id, d.dataset_id, 'organic', btn, statusEl, resEl, 0, keyword, limit);
   } catch (e) {
     if (statusEl) statusEl.innerHTML = _apAlert('Request failed: ' + e.message, 'error');
-    if (btn) { btn.disabled = false; btn.textContent = '🔍 Search TikTok'; }
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span>🔍</span> Search TikTok'; }
   }
 };
 
@@ -138,7 +156,6 @@ function _renderOrganic(items, keyword) {
   window._orgLastKeyword = keyword;
   const totalViews = items.reduce((a, v) => a + (parseInt(v.playCount) || 0), 0);
   const avgLikes   = Math.round(items.reduce((a, v) => a + (parseInt(v.diggCount) || 0), 0) / items.length);
-  const topVideo   = items.reduce((best, v) => (parseInt(v.playCount)||0) > (parseInt(best.playCount)||0) ? v : best, items[0]);
   const cards = items.map((v, i) => {
     const views    = parseInt(v.playCount)    || 0;
     const likes    = parseInt(v.diggCount)    || 0;
@@ -148,32 +165,35 @@ function _renderOrganic(items, keyword) {
     const desc     = (v.text || v.description || '').slice(0, 220);
     const url      = v.webVideoUrl || v.videoUrl || '';
     const er       = views > 0 ? ((likes / views) * 100).toFixed(2) + '%' : '—';
+    const erNum    = parseFloat(er) || 0;
     const isTop    = i === 0 && views > 0;
-    return `<div style="background:var(--bg-card,#fff);border:1px solid ${isTop?'#667eea':'#E5E7EB'};border-radius:10px;padding:14px;position:relative">
-      ${isTop?'<div style="position:absolute;top:10px;right:10px;background:#667eea;color:#fff;font-size:0.65rem;font-weight:800;padding:2px 7px;border-radius:10px">👑 TOP</div>':''}
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <div style="width:32px;height:32px;background:linear-gradient(135deg,#E21221,#FF0050);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.75rem;font-weight:700;flex-shrink:0">${_apEsc(author.slice(0,2).toUpperCase())}</div>
-        <div style="font-weight:700;font-size:0.85rem;color:#1E1B4B">@${_apEsc(author)}</div>
-        ${url ? `<a href="${_apEsc(url)}" target="_blank" rel="noopener" style="margin-left:auto;font-size:0.72rem;color:#FF0050;font-weight:700;text-decoration:none;white-space:nowrap">▶ Watch →</a>` : ''}
+    const erColor  = erNum > 2 ? '#34D399' : erNum > 0.5 ? '#FBBF24' : '#F87171';
+    return `<div style="background:linear-gradient(135deg,#0D1F35,#091628);border:1px solid ${isTop?'rgba(255,0,80,0.5)':'rgba(0,201,200,0.18)'};border-radius:12px;padding:16px;position:relative;transition:border-color 0.2s" onmouseover="this.style.borderColor='${isTop?'rgba(255,0,80,0.8)':'rgba(0,201,200,0.45)'}'" onmouseout="this.style.borderColor='${isTop?'rgba(255,0,80,0.5)':'rgba(0,201,200,0.18)'}'">
+      ${isTop?'<div style="position:absolute;top:12px;right:12px;background:linear-gradient(135deg,#FF0050,#FF3B5C);color:#fff;font-size:0.6rem;font-weight:800;padding:3px 8px;border-radius:20px;letter-spacing:0.05em">👑 TOP</div>':''}
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px">
+        <div style="width:34px;height:34px;background:linear-gradient(135deg,#E21221,#FF0050);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.75rem;font-weight:800;flex-shrink:0">${_apEsc(author.slice(0,2).toUpperCase())}</div>
+        <div style="font-weight:700;font-size:0.85rem;color:#fff">@${_apEsc(author)}</div>
+        ${url ? `<a href="${_apEsc(url)}" target="_blank" rel="noopener" style="margin-left:auto;font-size:0.7rem;color:#FF0050;font-weight:800;text-decoration:none;white-space:nowrap;background:rgba(255,0,80,0.1);padding:3px 9px;border-radius:20px;border:1px solid rgba(255,0,80,0.3)">▶ Watch</a>` : ''}
       </div>
-      <div style="font-size:0.79rem;color:#374151;line-height:1.5;margin-bottom:10px;min-height:36px">${_apEsc(desc)}</div>
+      <div style="font-size:0.79rem;color:rgba(255,255,255,0.6);line-height:1.55;margin-bottom:12px;min-height:36px">${_apEsc(desc)}</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;font-size:0.7rem;text-align:center">
-        ${[['👁',_apFmt(views),'Views'],['❤️',_apFmt(likes),'Likes'],['💬',_apFmt(comments),'Comments'],['📤',_apFmt(shares),'Shares']].map(([ic,val,lbl])=>
-          `<div style="background:#F9FAFB;border-radius:6px;padding:5px 3px"><div style="font-size:0.95rem">${ic}</div><div style="font-weight:700;color:#0A1628;font-size:0.78rem">${val}</div><div style="color:#9CA3AF">${lbl}</div></div>`
+        ${[['👁',_apFmt(views),'Views'],['❤️',_apFmt(likes),'Likes'],['💬',_apFmt(comments),'Cmts'],['📤',_apFmt(shares),'Shares']].map(([ic,val,lbl])=>
+          `<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:7px;padding:6px 3px"><div style="font-size:0.9rem;margin-bottom:2px">${ic}</div><div style="font-weight:800;color:#fff;font-size:0.77rem">${val}</div><div style="color:rgba(255,255,255,0.35);font-size:0.62rem">${lbl}</div></div>`
         ).join('')}
       </div>
-      <div style="margin-top:8px;font-size:0.72rem;color:#6B7280">ER: <strong style="color:${parseFloat(er)>2?'#16a34a':parseFloat(er)>0.5?'#d97706':'#dc2626'}">${er}</strong></div>
+      <div style="margin-top:9px;font-size:0.72rem;color:rgba(255,255,255,0.4)">Engagement: <strong style="color:${erColor}">${er}</strong></div>
     </div>`;
   }).join('');
+
   el.innerHTML = `
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
-  ${[['📹',items.length + ' Videos','Found'],['👁',_apFmt(totalViews),'Total Views'],['❤️',_apFmt(avgLikes)+' avg','Likes/Video']].map(([ic,v,l])=>
-    `<div style="background:var(--bg-card,#fff);border:1px solid #E5E7EB;border-radius:10px;padding:14px;text-align:center"><div style="font-size:1.4rem">${ic}</div><div style="font-weight:800;font-size:1.1rem;color:#0A1628">${v}</div><div style="font-size:0.72rem;color:#9CA3AF">${l}</div></div>`
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
+  ${[['📹',items.length + ' Videos','Scraped'],['👁',_apFmt(totalViews),'Total Views'],['❤️',_apFmt(avgLikes)+' avg','Likes/Video']].map(([ic,v,l])=>
+    `<div style="background:linear-gradient(135deg,#0D1F35,#091628);border:1px solid rgba(0,201,200,0.18);border-radius:12px;padding:16px;text-align:center"><div style="font-size:1.5rem;margin-bottom:4px">${ic}</div><div style="font-weight:800;font-size:1.15rem;color:#fff;font-family:'Sora',sans-serif">${v}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-top:2px">${l}</div></div>`
   ).join('')}
 </div>
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-  <div style="font-weight:700;color:#0A1628">TikTok results for "<span style="color:#667eea">${_apEsc(keyword)}</span>"</div>
-  <button onclick="window._orgExport()" class="btn btn-secondary" style="font-size:0.78rem">⬇ Export CSV</button>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+  <div style="font-weight:700;color:#fff;font-size:0.95rem;font-family:'Sora',sans-serif">TikTok results for "<span style="color:#FF0050">${_apEsc(keyword)}</span>"</div>
+  <button onclick="window._orgExport()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);border-radius:8px;padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.06)'">⬇ Export CSV</button>
 </div>
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px">${cards}</div>`;
 }
@@ -208,31 +228,41 @@ window.buildLocalLeads = function() {
   if (!wrap || wrap._built) return;
   wrap._built = true;
   wrap.innerHTML = `
-<div class="ig-page-header" style="padding-bottom:0">
-  <h1 style="margin-bottom:4px">📍 Local Lead Finder</h1>
-  <p style="color:var(--text-muted)">Pull live business leads from Google Maps — name, address, phone, website, rating, hours. Export to CSV or push to HubSpot.</p>
+<div style="background:linear-gradient(135deg,#0D1F35 0%,#091628 100%);border-radius:16px;padding:28px 32px;margin-bottom:24px;border:1px solid rgba(0,201,200,0.15);box-shadow:0 8px 32px rgba(0,0,0,0.3);position:relative;overflow:hidden">
+  <div style="position:absolute;top:0;right:0;width:200px;height:200px;background:radial-gradient(circle,rgba(0,201,200,0.07) 0%,transparent 70%);pointer-events:none"></div>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+    <div style="width:44px;height:44px;background:linear-gradient(135deg,#0066FF,#00C9C8);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;box-shadow:0 4px 12px rgba(0,102,255,0.4);flex-shrink:0">📍</div>
+    <div>
+      <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:2px">ANALYSE · LOCAL LEAD FINDER</div>
+      <h1 style="margin:0;font-size:1.5rem;font-weight:800;color:#fff;font-family:'Sora',sans-serif;line-height:1.2">Local Lead Finder</h1>
+    </div>
+  </div>
+  <p style="margin:8px 0 0 56px;font-size:0.88rem;color:rgba(255,255,255,0.5);line-height:1.5">Pull live business leads from Google Maps — name, address, phone, website, rating, hours. Export to CSV or push to HubSpot.</p>
 </div>
-<div class="ig-card" style="margin-bottom:20px">
-  <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:10px;align-items:end">
+
+<div style="background:linear-gradient(135deg,#0D1F35 0%,#091628 100%);border:1px solid rgba(0,201,200,0.2);border-radius:14px;padding:24px;margin-bottom:20px;box-shadow:0 4px 20px rgba(0,0,0,0.25)">
+  <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:14px;align-items:end">
     <div>
-      <label class="ig-label">Business Category</label>
-      <input id="llCat" class="ig-input" placeholder="e.g. dentists, gyms, coffee shops">
+      <label style="display:block;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:6px">Business Category</label>
+      <input id="llCat" style="width:100%;box-sizing:border-box;background:#0A1628;border:1.5px solid rgba(0,201,200,0.3);border-radius:8px;padding:10px 14px;color:#fff;font-size:0.9rem;outline:none;transition:border-color 0.2s" placeholder="e.g. dentists, gyms, coffee shops" onfocus="this.style.borderColor='rgba(0,201,200,0.7)'" onblur="this.style.borderColor='rgba(0,201,200,0.3)'">
     </div>
     <div>
-      <label class="ig-label">Location</label>
-      <input id="llLoc" class="ig-input" placeholder="e.g. Miami FL, London UK, Toronto">
+      <label style="display:block;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:6px">Location</label>
+      <input id="llLoc" style="width:100%;box-sizing:border-box;background:#0A1628;border:1.5px solid rgba(0,201,200,0.3);border-radius:8px;padding:10px 14px;color:#fff;font-size:0.9rem;outline:none;transition:border-color 0.2s" placeholder="e.g. Miami FL, London UK, Toronto" onfocus="this.style.borderColor='rgba(0,201,200,0.7)'" onblur="this.style.borderColor='rgba(0,201,200,0.3)'">
     </div>
     <div>
-      <label class="ig-label">Limit</label>
-      <select id="llLimit" class="ig-select">
+      <label style="display:block;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:6px">Limit</label>
+      <select id="llLimit" style="background:#0A1628;border:1.5px solid rgba(0,201,200,0.3);border-radius:8px;padding:10px 14px;color:#fff;font-size:0.88rem;cursor:pointer;color-scheme:dark;outline:none">
         <option value="10">10</option>
         <option value="20" selected>20</option>
         <option value="30">30</option>
       </select>
     </div>
-    <button id="llRunBtn" class="btn btn-primary" onclick="window._llRun()">🗺 Find Leads</button>
+    <button id="llRunBtn" onclick="window._llRun()" style="background:linear-gradient(135deg,#0066FF,#00C9C8);color:#fff;border:none;border-radius:8px;padding:10px 22px;font-weight:700;font-size:0.88rem;cursor:pointer;display:flex;align-items:center;gap:7px;box-shadow:0 4px 14px rgba(0,102,255,0.35);transition:opacity 0.2s;white-space:nowrap" onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
+      <span style="font-size:1rem">🗺</span> Find Leads
+    </button>
   </div>
-  <div id="llStatus" style="margin-top:10px"></div>
+  <div id="llStatus" style="margin-top:12px"></div>
 </div>
 <div id="llResults"></div>`;
 };
@@ -248,7 +278,7 @@ window._llRun = async function() {
   const query = `${cat} in ${loc}`;
   if (statusEl) statusEl.innerHTML = _apSpinner(`Starting Google Maps scrape for "${query}"…`);
   if (resEl)    resEl.innerHTML = '';
-  if (btn)      { btn.disabled = true; btn.textContent = '⏳ Starting…'; }
+  if (btn)      { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '<span>⏳</span> Starting…'; }
   try {
     const d = await fetch('/api/apify/maps-leads', {
       method: 'POST', credentials: 'same-origin',
@@ -259,14 +289,14 @@ window._llRun = async function() {
       if (statusEl) statusEl.innerHTML = d.error?.includes('APIFY_API_KEY')
         ? _apNoKeyBanner('Local Lead Finder')
         : _apAlert(d.error || 'Failed to start', 'error');
-      if (btn) { btn.disabled = false; btn.textContent = '🗺 Find Leads'; }
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span>🗺</span> Find Leads'; }
       return;
     }
     if (statusEl) statusEl.innerHTML = _apSpinner('Maps scrape running… checking every 8s (usually 45-120s)');
     window._apPoll(d.run_id, d.dataset_id, 'leads', btn, statusEl, resEl, 0, query, limit);
   } catch (e) {
     if (statusEl) statusEl.innerHTML = _apAlert('Request failed: ' + e.message, 'error');
-    if (btn) { btn.disabled = false; btn.textContent = '🗺 Find Leads'; }
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<span>🗺</span> Find Leads'; }
   }
 };
 
@@ -283,7 +313,7 @@ function _renderLeads(items, query) {
   window._llLastQuery = query;
   const withPhone   = items.filter(b => b.phone || b.phoneUnformatted).length;
   const withWebsite = items.filter(b => b.website).length;
-  const avgRating   = items.reduce((a, b) => a + (parseFloat(b.totalScore) || 0), 0) / items.length;
+  const avgRating   = (items.reduce((a, b) => a + (parseFloat(b.totalScore) || 0), 0) / items.length).toFixed(1);
   const cards = items.map(b => {
     const name    = b.title || b.name || '';
     const addr    = b.address || b.vicinity || '';
@@ -294,32 +324,32 @@ function _renderLeads(items, query) {
     const cat     = (Array.isArray(b.categories) ? b.categories[0] : b.categoryName) || '';
     const hours   = b.openingHours?.join(', ') || '';
     const mapUrl  = b.url || '';
-    return `<div style="background:var(--bg-card,#fff);border:1px solid #E5E7EB;border-radius:10px;padding:14px">
-      <div style="font-weight:700;font-size:0.9rem;color:#1E1B4B;margin-bottom:2px">${_apEsc(name)}</div>
-      ${cat ? `<div style="font-size:0.7rem;color:#9CA3AF;margin-bottom:6px;text-transform:capitalize">${_apEsc(cat)}</div>` : ''}
-      ${rating ? `<div style="color:#F59E0B;font-size:0.82rem;margin-bottom:5px" title="${rating.toFixed(1)} stars, ${reviews} reviews">${_llStars(rating)} <span style="color:#6B7280;font-size:0.72rem">${rating.toFixed(1)} (${_apFmt(reviews)})</span></div>` : ''}
-      ${addr    ? `<div style="font-size:0.78rem;color:#374151;margin-bottom:3px">📍 ${_apEsc(addr)}</div>` : ''}
-      ${phone   ? `<div style="font-size:0.78rem;color:#374151;margin-bottom:3px">📞 <a href="tel:${_apEsc(phone)}" style="color:#0066FF">${_apEsc(phone)}</a></div>` : ''}
-      ${website ? `<div style="font-size:0.78rem;margin-bottom:6px">🌐 <a href="${_apEsc(website)}" target="_blank" rel="noopener" style="color:#0066FF">${_apEsc(website.replace(/^https?:\/\//,'').slice(0,38))}</a></div>` : ''}
-      ${hours   ? `<div style="font-size:0.7rem;color:#9CA3AF;margin-bottom:8px" title="${_apEsc(hours)}">🕐 ${_apEsc(hours.slice(0,60))}${hours.length>60?'…':''}</div>` : ''}
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-        ${mapUrl  ? `<a href="${_apEsc(mapUrl)}" target="_blank" rel="noopener" class="btn btn-secondary" style="font-size:0.7rem;padding:4px 10px">🗺 Maps</a>` : ''}
-        ${website ? `<a href="${_apEsc(website)}" target="_blank" rel="noopener" class="btn btn-secondary" style="font-size:0.7rem;padding:4px 10px">🌐 Site</a>` : ''}
-        <button onclick='window._llCopyLead(${JSON.stringify({name,addr,phone,website}).replace(/'/g,"&#39;")})' class="btn btn-secondary" style="font-size:0.7rem;padding:4px 10px">📋 Copy</button>
+    return `<div style="background:linear-gradient(135deg,#0D1F35,#091628);border:1px solid rgba(0,201,200,0.18);border-radius:12px;padding:16px;transition:border-color 0.2s" onmouseover="this.style.borderColor='rgba(0,201,200,0.45)'" onmouseout="this.style.borderColor='rgba(0,201,200,0.18)'">
+      <div style="font-weight:800;font-size:0.9rem;color:#fff;margin-bottom:2px;font-family:'Sora',sans-serif">${_apEsc(name)}</div>
+      ${cat ? `<div style="font-size:0.68rem;color:rgba(0,201,200,0.8);margin-bottom:8px;text-transform:capitalize;font-weight:600">${_apEsc(cat)}</div>` : ''}
+      ${rating ? `<div style="color:#FBBF24;font-size:0.82rem;margin-bottom:7px" title="${rating.toFixed(1)} stars, ${reviews} reviews">${_llStars(rating)} <span style="color:rgba(255,255,255,0.4);font-size:0.72rem">${rating.toFixed(1)} (${_apFmt(reviews)})</span></div>` : ''}
+      ${addr    ? `<div style="font-size:0.79rem;color:rgba(255,255,255,0.6);margin-bottom:4px">📍 ${_apEsc(addr)}</div>` : ''}
+      ${phone   ? `<div style="font-size:0.79rem;color:rgba(255,255,255,0.6);margin-bottom:4px">📞 <a href="tel:${_apEsc(phone)}" style="color:#60A5FA;text-decoration:none">${_apEsc(phone)}</a></div>` : ''}
+      ${website ? `<div style="font-size:0.79rem;margin-bottom:6px">🌐 <a href="${_apEsc(website)}" target="_blank" rel="noopener" style="color:#60A5FA;text-decoration:none">${_apEsc(website.replace(/^https?:\/\//,'').slice(0,38))}</a></div>` : ''}
+      ${hours   ? `<div style="font-size:0.68rem;color:rgba(255,255,255,0.35);margin-bottom:10px" title="${_apEsc(hours)}">🕐 ${_apEsc(hours.slice(0,60))}${hours.length>60?'…':''}</div>` : ''}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+        ${mapUrl  ? `<a href="${_apEsc(mapUrl)}" target="_blank" rel="noopener" style="font-size:0.7rem;padding:5px 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);border-radius:6px;text-decoration:none;font-weight:600">🗺 Maps</a>` : ''}
+        ${website ? `<a href="${_apEsc(website)}" target="_blank" rel="noopener" style="font-size:0.7rem;padding:5px 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);border-radius:6px;text-decoration:none;font-weight:600">🌐 Site</a>` : ''}
+        <button onclick='window._llCopyLead(${JSON.stringify({name,addr,phone,website}).replace(/'/g,"&#39;")})' style="font-size:0.7rem;padding:5px 10px;background:rgba(0,201,200,0.1);border:1px solid rgba(0,201,200,0.3);color:#00C9C8;border-radius:6px;cursor:pointer;font-weight:600">📋 Copy</button>
       </div>
     </div>`;
   }).join('');
   el.innerHTML = `
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
   ${[['📍',items.length + ' Businesses','Found'],['📞',withPhone + ' / ' + items.length,'With Phone'],['🌐',withWebsite + ' / ' + items.length,'With Website']].map(([ic,v,l])=>
-    `<div style="background:var(--bg-card,#fff);border:1px solid #E5E7EB;border-radius:10px;padding:14px;text-align:center"><div style="font-size:1.4rem">${ic}</div><div style="font-weight:800;font-size:1.05rem;color:#0A1628">${v}</div><div style="font-size:0.72rem;color:#9CA3AF">${l}</div></div>`
+    `<div style="background:linear-gradient(135deg,#0D1F35,#091628);border:1px solid rgba(0,201,200,0.18);border-radius:12px;padding:16px;text-align:center"><div style="font-size:1.5rem;margin-bottom:4px">${ic}</div><div style="font-weight:800;font-size:1.1rem;color:#fff;font-family:'Sora',sans-serif">${v}</div><div style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-top:2px">${l}</div></div>`
   ).join('')}
 </div>
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-  <div style="font-weight:700;color:#0A1628">Results for "<span style="color:#667eea">${_apEsc(query)}</span>"</div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+  <div style="font-weight:700;color:#fff;font-size:0.95rem;font-family:'Sora',sans-serif">Results for "<span style="color:#00C9C8">${_apEsc(query)}</span>"</div>
   <div style="display:flex;gap:8px">
-    <button onclick="window._llExport()" class="btn btn-secondary" style="font-size:0.78rem">⬇ Export CSV</button>
-    <button onclick="window._llPushHubSpot()" class="btn btn-secondary" style="font-size:0.78rem">→ HubSpot</button>
+    <button onclick="window._llExport()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);border-radius:8px;padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.06)'">⬇ Export CSV</button>
+    <button onclick="window._llPushHubSpot()" style="background:rgba(255,127,0,0.1);border:1px solid rgba(255,127,0,0.3);color:#FB923C;border-radius:8px;padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer" onmouseover="this.style.background='rgba(255,127,0,0.18)'" onmouseout="this.style.background='rgba(255,127,0,0.1)'">→ HubSpot</button>
   </div>
 </div>
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:12px">${cards}</div>`;
@@ -373,7 +403,7 @@ window._llPushHubSpot = async function() {
       if (r.ok) ok++; else fail++;
     } catch (_) { fail++; }
   }
-  if (btn) { btn.disabled = false; btn.textContent = '→ HubSpot'; }
+  if (btn) { btn.disabled = false; btn.innerHTML = '→ HubSpot'; }
   const statusEl = document.getElementById('llStatus');
   if (statusEl) statusEl.innerHTML = _apAlert(`Pushed to HubSpot: ${ok} companies created${fail?' · '+fail+' failed':''}`, ok > 0 ? 'success' : 'error');
 };
@@ -384,10 +414,12 @@ window._llPushHubSpot = async function() {
 
 window._apPoll = function(runId, datasetId, mode, btn, statusEl, resEl, attempts, query, limit) {
   const MAX      = 40; // 40 × 8s = ~5.5 min
-  const btnLabel = mode === 'organic' ? '🔍 Search TikTok' : '🗺 Find Leads';
+  const btnLabel = mode === 'organic'
+    ? '<span>🔍</span> Search TikTok'
+    : '<span>🗺</span> Find Leads';
   if (attempts >= MAX) {
     if (statusEl) statusEl.innerHTML = _apAlert('Apify timed out — the scraper took too long. Try a smaller result count.', 'error');
-    if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = btnLabel; }
     return;
   }
   setTimeout(async () => {
@@ -396,12 +428,12 @@ window._apPoll = function(runId, datasetId, mode, btn, statusEl, resEl, attempts
       const d   = await fetch(url, { credentials: 'same-origin' }).then(r => r.json());
       if (d.error) {
         if (statusEl) statusEl.innerHTML = _apAlert(d.error, 'error');
-        if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = btnLabel; }
         return;
       }
       if (d.status === 'failed') {
         if (statusEl) statusEl.innerHTML = _apAlert('Scrape failed: ' + (d.error || 'unknown'), 'error');
-        if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = btnLabel; }
         return;
       }
       if (d.status === 'pending') {
@@ -411,12 +443,12 @@ window._apPoll = function(runId, datasetId, mode, btn, statusEl, resEl, attempts
       }
       // Complete
       if (statusEl) statusEl.innerHTML = _apAlert(`✓ Scraped ${(d.items||[]).length} results`, 'success');
-      if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = btnLabel; }
       if (mode === 'organic') _renderOrganic(d.items || [], query || '');
       else                    _renderLeads(d.items || [], query || '');
     } catch (e) {
       if (statusEl) statusEl.innerHTML = _apAlert('Poll error: ' + e.message, 'error');
-      if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = btnLabel; }
     }
   }, 8000);
 };
