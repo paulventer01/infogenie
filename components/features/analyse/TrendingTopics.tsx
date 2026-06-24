@@ -276,6 +276,8 @@ export default function TrendingTopics() {
   const [labelIsEdit, setLabelIsEdit] = useState(false);
   const [inlineEditId, setInlineEditId] = useState<number | null>(null);
   const [inlineEditDraft, setInlineEditDraft] = useState("");
+  const [panelLabelEditing, setPanelLabelEditing] = useState(false);
+  const [panelLabelDraft, setPanelLabelDraft] = useState("");
 
   useEffect(() => {
     setCat(brand);
@@ -1449,26 +1451,77 @@ export default function TrendingTopics() {
                   · {filteredTopics.length} topics
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  {result.pin_label && (
-                    <span
-                      style={{
-                        background: "#FEF3C7",
-                        color: "#92400E",
-                        border: "1px solid #FCD34D",
-                        padding: "3px 9px",
-                        borderRadius: 5,
-                        fontSize: "0.62rem",
-                        fontWeight: 700,
-                        maxWidth: 220,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                      title={result.pin_label}
-                    >
-                      📌 {result.pin_label}
-                    </span>
-                  )}
+                  {result.pin_label && (() => {
+                    const panelRunId = result.historyKey?.startsWith("id:")
+                      ? parseInt(result.historyKey.slice(3), 10)
+                      : null;
+                    const panelRun = panelRunId != null
+                      ? historyRuns.find((r) => r.id === panelRunId)
+                      : undefined;
+                    function commitPanelLabel(draft: string) {
+                      setPanelLabelEditing(false);
+                      if (!panelRun) return;
+                      const trimmed = draft.trim();
+                      setResult((prev) => prev ? { ...prev, pin_label: trimmed || null } : prev);
+                      void doUpdateLabel(panelRun, draft);
+                    }
+                    return panelLabelEditing ? (
+                      <input
+                        autoFocus
+                        maxLength={80}
+                        value={panelLabelDraft}
+                        onChange={(e) => setPanelLabelDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            commitPanelLabel(panelLabelDraft);
+                          }
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            setPanelLabelEditing(false);
+                          }
+                        }}
+                        onBlur={() => commitPanelLabel(panelLabelDraft)}
+                        style={{
+                          background: "#FEF3C7",
+                          color: "#92400E",
+                          border: "1.5px solid #F59E0B",
+                          borderRadius: 5,
+                          padding: "3px 9px",
+                          fontSize: "0.62rem",
+                          fontWeight: 700,
+                          maxWidth: 220,
+                          outline: "none",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    ) : (
+                      <span
+                        role="button"
+                        title="Click to rename label"
+                        onClick={() => {
+                          setPanelLabelDraft(result.pin_label ?? "");
+                          setPanelLabelEditing(true);
+                        }}
+                        style={{
+                          background: "#FEF3C7",
+                          color: "#92400E",
+                          border: "1px solid #FCD34D",
+                          padding: "3px 9px",
+                          borderRadius: 5,
+                          fontSize: "0.62rem",
+                          fontWeight: 700,
+                          maxWidth: 220,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          cursor: "text",
+                        }}
+                      >
+                        📌 {result.pin_label}
+                      </span>
+                    );
+                  })()}
                   {result.country && result.country !== "ALL" && (
                     <span
                       style={{
