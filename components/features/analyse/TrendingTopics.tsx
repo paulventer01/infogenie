@@ -1050,12 +1050,20 @@ export default function TrendingTopics() {
                   const maxHashtagViews = result.topics
                     .filter((t) => t.type === "hashtag" && (t.viewCount || 0) > 0)
                     .reduce((m, t) => Math.max(m, t.viewCount || 0), 0);
-                  return result.topics.map((t, i) => {
+                  const sortedTopics = [
+                    ...result.topics
+                      .filter((t) => t.type === "hashtag")
+                      .sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0)),
+                    ...result.topics.filter((t) => t.type !== "hashtag"),
+                  ];
+                  const hashtagCount = sortedTopics.filter((t) => t.type === "hashtag").length;
+                  return sortedTopics.map((t, i) => {
                   const isHashtag = t.type === "hashtag";
                   const isVideo = t.type === "video";
+                  const videoIdx = isVideo ? i - hashtagCount : i;
                   const accentColor = isHashtag
                     ? "#E9065E"
-                    : i < 3 ? "#B91C1C" : i < 6 ? "#F59E0B" : "#9CA3AF";
+                    : videoIdx < 3 ? "#B91C1C" : videoIdx < 6 ? "#F59E0B" : "#9CA3AF";
                   const cardBg = isHashtag ? "#FFF8FA" : "#fff";
                   return (
                     <div
