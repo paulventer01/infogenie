@@ -55,6 +55,7 @@ interface HistoryRun {
   requested_platform?: string;
   ran_at?: string;
   pinned?: boolean;
+  pin_label?: string | null;
 }
 interface HistoryResp {
   ok?: boolean;
@@ -268,6 +269,8 @@ export default function TrendingTopics() {
   const [hoveredRunId, setHoveredRunId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [tiktokFilter, setTiktokFilter] = useState<"all" | "hashtag" | "video">("all");
+  const [labelingId, setLabelingId] = useState<number | null>(null);
+  const [labelDraft, setLabelDraft] = useState("");
 
   useEffect(() => {
     setCat(brand);
@@ -338,21 +341,39 @@ export default function TrendingTopics() {
     setDeletingId(null);
   }
 
-  async function togglePin(e: React.MouseEvent, run: HistoryRun) {
+  function startPin(e: React.MouseEvent, run: HistoryRun) {
     e.stopPropagation();
     if (run.id == null) return;
+    if (run.pinned) {
+      void doTogglePin(run, null);
+    } else {
+      setLabelDraft(run.pin_label || "");
+      setLabelingId(run.id);
+    }
+  }
+
+  async function doTogglePin(run: HistoryRun, label: string | null) {
+    if (run.id == null) return;
     const optimisticRuns = historyRuns.map((r) =>
-      r.id === run.id ? { ...r, pinned: !r.pinned } : r
+      r.id === run.id
+        ? { ...r, pinned: !r.pinned, pin_label: !r.pinned ? label : null }
+        : r
     );
     const sorted = [
       ...optimisticRuns.filter((r) => r.pinned),
       ...optimisticRuns.filter((r) => !r.pinned),
     ];
     setHistoryRuns(sorted);
-    const resp = await apiPatch<{ ok?: boolean; pinned?: boolean }>(`/api/trends/history/${run.id}/pin`);
+    setLabelingId(null);
+    const body = label != null ? { label } : {};
+    const resp = await apiPatch<{ ok?: boolean; pinned?: boolean }>(`/api/trends/history/${run.id}/pin`, body);
     if (!resp.ok) {
       await loadHistory();
     }
+  }
+
+  function confirmPin(run: HistoryRun) {
+    void doTogglePin(run, labelDraft.trim());
   }
 
   useEffect(() => {
@@ -834,7 +855,7 @@ export default function TrendingTopics() {
                           }}
                         >
                           {isPinned && (
-                            <span style={{ fontSize: "0.65rem", lineHeight: 1 }} title="Pinned">📌</span>
+                            <span style={{ fontSize: "0.65rem", lineHeight: 1 }} title={run.pin_label ? `Pinned · ${run.pin_label}` : "Pinned"}>📌</span>
                           )}
                           <span
                             style={{
@@ -925,6 +946,23 @@ export default function TrendingTopics() {
                         >
                           {run.category || "—"}
                         </div>
+                        {isPinned && run.pin_label && (
+                          <div
+                            style={{
+                              fontSize: "0.62rem",
+                              color: "#92400E",
+                              background: "#FEF3C7",
+                              borderRadius: 4,
+                              padding: "1px 5px",
+                              marginBottom: 2,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {run.pin_label}
+                          </div>
+                        )}
                         <div
                           style={{
                             display: "flex",
@@ -968,7 +1006,7 @@ export default function TrendingTopics() {
                         <button
                           type="button"
                           title={isPinned ? "Unpin this scan" : "Pin this scan"}
-                          onClick={(e) => togglePin(e, run)}
+                          onClick={(e) => startPin(e, run)}
                           style={{
                             position: "absolute",
                             top: "50%",
@@ -993,6 +1031,81 @@ export default function TrendingTopics() {
                         >
                           ⭐
                         </button>
+                      )}
+                      {/* Inline label input — shown when pinning */}
+                      {labelingId === run.id && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            position: "absolute",
+                            top: "100%",
+                            left: 0,
+                            right: 0,
+                            zIndex: 20,
+                            background: "#fff",
+                            border: "1.5px solid #7C3AED",
+                            borderRadius: 8,
+                            boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                            padding: "10px 10px 8px",
+                          }}
+                        >
+                          <div style={{ fontSize: "0.64rem", fontWeight: 700, color: "#6B7280", marginBottom: 5 }}>
+                            Add a label (optional)
+                          </div>
+                          <input
+                            autoFocus
+                            maxLength={80}
+                            value={labelDraft}
+                            onChange={(e) => setLabelDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") { e.preventDefault(); confirmPin(run); }
+                              if (e.key === "Escape") { e.preventDefault(); setLabelingId(null); }
+                            }}
+                            placeholder="e.g. Q3 benchmark, pre-launch watch…"
+                            style={{
+                              width: "100%",
+                              padding: "5px 7px",
+                              border: "1px solid #E5E7EB",
+                              borderRadius: 5,
+                              fontSize: "0.72rem",
+                              boxSizing: "border-box",
+                              outline: "none",
+                            }}
+                          />
+                          <div style={{ display: "flex", gap: 5, marginTop: 6, justifyContent: "flex-end" }}>
+                            <button
+                              type="button"
+                              onClick={() => setLabelingId(null)}
+                              style={{
+                                padding: "3px 8px",
+                                background: "transparent",
+                                border: "1px solid #D1D5DB",
+                                borderRadius: 5,
+                                fontSize: "0.65rem",
+                                cursor: "pointer",
+                                color: "#6B7280",
+                              }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => confirmPin(run)}
+                              style={{
+                                padding: "3px 10px",
+                                background: "#7C3AED",
+                                border: "none",
+                                borderRadius: 5,
+                                fontSize: "0.65rem",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                color: "#fff",
+                              }}
+                            >
+                              📌 Pin
+                            </button>
+                          </div>
+                        </div>
                       )}
                       {/* Delete button — appears on hover */}
                       {(isHovered || isDeleting) && run.id != null && (

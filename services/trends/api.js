@@ -28,6 +28,7 @@ async function _ensureSchema() {
   await _db.getPool().query(`
     ALTER TABLE trend_runs ADD COLUMN IF NOT EXISTS category_label TEXT;
     ALTER TABLE trend_runs ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE trend_runs ADD COLUMN IF NOT EXISTS pin_label TEXT;
   `);
   await _db.getPool().query(`
     ALTER TABLE trend_runs ADD COLUMN IF NOT EXISTS requested_platform TEXT;
@@ -387,7 +388,7 @@ router.get('/history', async (req, res) => {
   try {
     const tid = await _tenantCtx.resolveTenantId(req, { label:'trends:history' });
     const r = await _db.getPool().query(
-      `SELECT id, category, keywords, country, topics, source, category_label, requested_platform, ran_at, pinned
+      `SELECT id, category, keywords, country, topics, source, category_label, requested_platform, ran_at, pinned, pin_label
        FROM trend_runs WHERE tenant_id=$1
        ORDER BY pinned DESC, ran_at DESC LIMIT 50`,
       [tid]
@@ -415,6 +416,8 @@ router.patch('/history/:id/pin', async (req, res) => {
   if (!_db.hasDb()) return _err(res, 503, 'db unavailable');
   const id = parseInt(req.params.id, 10);
   if (!id || id < 1) return _err(res, 400, 'invalid id');
+  const rawLabel = req.body?.label;
+  const label = rawLabel != null ? String(rawLabel).trim().slice(0, 80) : null;
   try {
     const tid = await _tenantCtx.resolveTenantId(req, { label:'trends:pin' });
     const check = await _db.getPool().query(
@@ -422,10 +425,18 @@ router.patch('/history/:id/pin', async (req, res) => {
     );
     if (!check.rows.length) return _err(res, 404, 'not found');
     const newPinned = !check.rows[0].pinned;
-    await _db.getPool().query(
-      `UPDATE trend_runs SET pinned=$1 WHERE id=$2 AND tenant_id=$3`, [newPinned, id, tid]
-    );
-    res.json({ ok:true, id, pinned: newPinned });
+    if (newPinned) {
+      await _db.getPool().query(
+        `UPDATE trend_runs SET pinned=$1, pin_label=$2 WHERE id=$3 AND tenant_id=$4`,
+        [true, label || null, id, tid]
+      );
+    } else {
+      await _db.getPool().query(
+        `UPDATE trend_runs SET pinned=$1, pin_label=NULL WHERE id=$2 AND tenant_id=$3`,
+        [false, id, tid]
+      );
+    }
+    res.json({ ok:true, id, pinned: newPinned, pin_label: newPinned ? (label || null) : null });
   } catch (e) { _err(res, 500, e.message); }
 });
 
