@@ -2034,7 +2034,7 @@ function buildBattlePlan() {
     </div>
 
     <!-- Selected Competitor Summary -->
-    <div style="background:rgba(0,201,200,.06);border-bottom:1px solid rgba(0,201,200,.12);padding:14px 28px">
+    <div class="bp-comp-summary" style="background:rgba(0,201,200,.06);border-bottom:1px solid rgba(0,201,200,.12);padding:14px 28px">
       <div style="max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
         <div style="display:flex;align-items:center;gap:10px">
           <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#0066FF,#00C9C8);display:flex;align-items:center;justify-content:center;font-weight:900;color:white;font-size:0.9rem">${(c.logo||c.name[0]).toString()[0]}</div>
