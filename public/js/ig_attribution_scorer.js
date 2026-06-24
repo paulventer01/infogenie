@@ -59,6 +59,30 @@ function _blendedHtml(j) {
     { key:'tiktok', name:'TikTok Ads',   color:'#000000', icon:'⚫', data: j.channels.tiktok },
   ];
   const okCount = channels.filter(c => c.data.ok).length;
+  const totalChannels = channels.length;
+  let connectionBanner = '';
+  if (okCount === 0) {
+    connectionBanner = `
+      <a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="display:flex;align-items:center;gap:12px;background:#FEF2F2;border:1.5px solid #FECACA;border-radius:12px;padding:13px 18px;margin-bottom:18px;color:#991B1B;text-decoration:none;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background='#FEF2F2'">
+        <span style="font-size:1.15rem;flex-shrink:0">⚠️</span>
+        <div style="flex:1">
+          <span style="font-weight:800;font-size:0.9rem">0 of ${totalChannels} ad platforms connected</span>
+          <span style="font-size:0.8rem;opacity:.85;margin-left:8px">No live data — connect platforms to see blended performance.</span>
+        </div>
+        <span style="font-size:0.78rem;font-weight:700;white-space:nowrap;text-decoration:underline">Settings → Integrations →</span>
+      </a>`;
+  } else if (okCount < totalChannels) {
+    const missingNames = channels.filter(c => !c.data.ok).map(c => c.name).join(', ');
+    connectionBanner = `
+      <a href="#" onclick="navigateTo&&navigateTo('settings');return false;" style="display:flex;align-items:center;gap:12px;background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:12px;padding:13px 18px;margin-bottom:18px;color:#92400E;text-decoration:none;cursor:pointer;transition:background .15s" onmouseover="this.style.background='#FEF3C7'" onmouseout="this.style.background='#FFFBEB'">
+        <span style="font-size:1.15rem;flex-shrink:0">🟡</span>
+        <div style="flex:1">
+          <span style="font-weight:800;font-size:0.9rem">${okCount} of ${totalChannels} ad platforms connected</span>
+          <span style="font-size:0.8rem;opacity:.85;margin-left:8px">Missing: ${missingNames}</span>
+        </div>
+        <span style="font-size:0.78rem;font-weight:700;white-space:nowrap;text-decoration:underline">Settings → Integrations →</span>
+      </a>`;
+  }
   return `
     <!-- T34 — Madgicx-style Blended Summary hero. Platform pills above; the
          four CFO-glance metrics (Total Spend · MER · LTV/CAC · Net Sales)
@@ -100,6 +124,7 @@ function _blendedHtml(j) {
       </div>
     </div>
 
+    ${connectionBanner}
     <!-- Per-channel breakdown -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:22px">
       ${channels.map(c => {
