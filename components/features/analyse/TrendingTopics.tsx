@@ -1258,6 +1258,26 @@ export default function TrendingTopics() {
                   · {filteredTopics.length} topics
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  {result.pin_label && (
+                    <span
+                      style={{
+                        background: "#FEF3C7",
+                        color: "#92400E",
+                        border: "1px solid #FCD34D",
+                        padding: "3px 9px",
+                        borderRadius: 5,
+                        fontSize: "0.62rem",
+                        fontWeight: 700,
+                        maxWidth: 220,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={result.pin_label}
+                    >
+                      📌 {result.pin_label}
+                    </span>
+                  )}
                   {result.country && result.country !== "ALL" && (
                     <span
                       style={{
