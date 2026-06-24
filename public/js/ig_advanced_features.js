@@ -586,18 +586,29 @@ window.buildBizscanner = function(){
     return (a.industry && (a.industry.name||a.industry)) || '';
   })();
 
-  const iS = 'width:100%;padding:11px 14px;background:#0A1628;border:1.5px solid rgba(0,201,200,.25);border-radius:10px;font-size:0.875rem;font-weight:500;color:white;outline:none;box-sizing:border-box;font-family:inherit;color-scheme:dark';
-  const lS = 'display:block;font-size:0.7rem;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px';
+  const iS = 'width:100%;padding:11px 14px;background:#FFFFFF;border:1.5px solid #D1DCF5;border-radius:10px;font-size:0.875rem;font-weight:500;color:#0A1628;outline:none;box-sizing:border-box;font-family:inherit;transition:border-color .15s';
+  const lS = 'display:block;font-size:0.72rem;font-weight:700;color:#374B6E;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px';
 
   el.innerHTML = `
-<div style="background:linear-gradient(135deg,rgba(10,22,40,.97),rgba(30,58,138,.9));border-radius:16px;padding:24px 28px;margin-bottom:24px;position:relative;overflow:hidden">
-  <div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;background:radial-gradient(circle,rgba(0,201,200,.18),transparent 65%);pointer-events:none"></div>
-  <div style="font-family:Sora,sans-serif;font-size:1.45rem;font-weight:900;color:white;margin-bottom:6px">🔭 Business Acquisition Scanner</div>
-  <div style="color:#B8C6E3;font-size:0.875rem;max-width:620px;line-height:1.5">AI scans for struggling competitors, businesses for sale, growing sectors, and franchise opportunities — then scores each one.</div>
+<div style="background:linear-gradient(110deg,#1E40AF 0%,#2563EB 55%,#3B82F6 100%);border-radius:18px;padding:26px 32px;margin-bottom:24px;position:relative;overflow:hidden;box-shadow:0 8px 32px rgba(37,99,235,.22)">
+  <div style="position:absolute;top:-60px;right:-40px;width:240px;height:240px;background:radial-gradient(circle,rgba(255,255,255,.18),transparent 65%);pointer-events:none"></div>
+  <div style="position:absolute;bottom:-30px;left:30%;width:160px;height:160px;background:radial-gradient(circle,rgba(0,201,200,.2),transparent 65%);pointer-events:none"></div>
+  <div style="position:relative;z-index:1">
+    <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:20px;padding:4px 14px;font-size:0.67rem;font-weight:700;color:#BFDBFE;letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px">AI-POWERED · M&amp;A INTELLIGENCE</div>
+    <div style="font-family:Sora,sans-serif;font-size:1.6rem;font-weight:900;color:#FFFFFF;margin-bottom:8px;text-shadow:0 1px 3px rgba(10,20,60,.2)">🔭 Business Acquisition Scanner</div>
+    <div style="color:#BFDBFE;font-size:0.9rem;max-width:580px;line-height:1.55">Scans for struggling competitors, businesses for sale, fast-growing sectors, and franchise opportunities — then scores and ranks each one for you.</div>
+    <div style="display:flex;gap:20px;margin-top:16px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:6px;color:#E0EAFF;font-size:0.78rem;font-weight:600"><span style="width:20px;height:20px;background:rgba(255,255,255,.2);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:0.7rem">⚠️</span>Struggling Competitors</div>
+      <div style="display:flex;align-items:center;gap:6px;color:#E0EAFF;font-size:0.78rem;font-weight:600"><span style="width:20px;height:20px;background:rgba(255,255,255,.2);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:0.7rem">🏷️</span>Businesses for Sale</div>
+      <div style="display:flex;align-items:center;gap:6px;color:#E0EAFF;font-size:0.78rem;font-weight:600"><span style="width:20px;height:20px;background:rgba(255,255,255,.2);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:0.7rem">📈</span>Fast-Growing Sectors</div>
+      <div style="display:flex;align-items:center;gap:6px;color:#E0EAFF;font-size:0.78rem;font-weight:600"><span style="width:20px;height:20px;background:rgba(255,255,255,.2);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:0.7rem">🏪</span>Franchise Opportunities</div>
+    </div>
+  </div>
 </div>
 
-<div style="background:linear-gradient(150deg,#0D1F35,#091628);border:1px solid rgba(0,201,200,.2);border-radius:16px;padding:28px;margin-bottom:24px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px 24px;margin-bottom:24px">
+<div style="background:#FFFFFF;border:1.5px solid #E0EAFF;border-radius:18px;padding:28px 32px;margin-bottom:24px;box-shadow:0 4px 20px rgba(10,20,60,.07)">
+  <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:800;color:#0A1628;margin-bottom:20px;display:flex;align-items:center;gap:8px"><span style="width:28px;height:28px;background:linear-gradient(135deg,#0066FF,#00C9C8);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:0.8rem">🔍</span>Scan Parameters</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px 24px;margin-bottom:24px">
     <div>
       <label style="${lS}">Industry / Sector</label>
       <input id="bs-ind" style="${iS}" value="${_e(defaultIndustry)}" placeholder="e.g. SaaS, Forex, Healthcare" />
@@ -630,11 +641,15 @@ window.buildBizscanner = function(){
       </select>
     </div>
     <div>
-      <label style="${lS}">Budget Range <span style="font-weight:400;text-transform:none;letter-spacing:0;opacity:.7">(optional)</span></label>
+      <label style="${lS}">Budget Range <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#9BADC8">(optional)</span></label>
       <input id="bs-budget" style="${iS}" placeholder="e.g. $100K–$2M" />
     </div>
   </div>
-  <button id="bs-run" style="width:100%;padding:14px 24px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:12px;font-size:0.95rem;font-weight:800;color:white;cursor:pointer;box-shadow:0 4px 20px rgba(0,102,255,.35);letter-spacing:.03em;font-family:Sora,inherit">🔭 Run Acquisition Scan</button>
+  <button id="bs-run" style="width:100%;padding:15px 24px;background:linear-gradient(135deg,#0055DD,#0066FF,#00C9C8);border:none;border-radius:12px;font-size:1rem;font-weight:800;color:white;cursor:pointer;box-shadow:0 6px 24px rgba(0,102,255,.35);letter-spacing:.03em;font-family:Sora,inherit;transition:opacity .15s;position:relative;overflow:hidden">
+    <span style="position:absolute;top:0;left:-100%;width:60%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent);transform:skewX(-20deg);animation:bs-shimmer 2.5s ease-in-out infinite"></span>
+    🔭 Run Acquisition Scan
+  </button>
+  <style>@keyframes bs-shimmer{0%{left:-100%}60%,100%{left:150%}}</style>
 </div>
 <div id="bs-result"></div>
 <div id="bs-history"></div>`;
@@ -661,37 +676,37 @@ function _renderBizScan(d){
   const catIcon   = { struggling:'⚠️', for_sale:'🏷️', growing:'📈', franchise:'🏪' };
   const el = document.getElementById('bs-result');
   el.innerHTML = `
-<div style="background:linear-gradient(135deg,rgba(16,185,129,.08),rgba(0,102,255,.04));border:1px solid rgba(16,185,129,.2);border-radius:14px;padding:20px 24px;margin-bottom:20px">
-  <div style="font-size:0.7rem;font-weight:800;color:#10B981;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">📊 Market Summary</div>
-  <p style="color:#E0E7FF;font-size:0.9rem;line-height:1.6;margin:0 0 ${r.top_pick?'14':'0'}px">${_e(r.market_summary||'')}</p>
-  ${r.top_pick?`<div style="background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.25);border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px"><span style="font-size:1.2rem">🏆</span><div><div style="font-size:0.68rem;font-weight:700;color:#10B981;text-transform:uppercase;letter-spacing:.06em">Top Pick</div><div style="font-weight:700;color:white;margin-top:3px;font-size:0.9rem">${_e(r.top_pick)}</div></div></div>`:''}
+<div style="background:linear-gradient(135deg,#F0FDF9,#F8FFFC);border:1.5px solid #A7F3D0;border-left:4px solid #10B981;border-radius:14px;padding:20px 24px;margin-bottom:20px">
+  <div style="font-size:0.7rem;font-weight:800;color:#059669;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">📊 Market Summary</div>
+  <p style="color:#1A3A2A;font-size:0.9rem;line-height:1.6;margin:0 0 ${r.top_pick?'14':'0'}px">${_e(r.market_summary||'')}</p>
+  ${r.top_pick?`<div style="background:#D1FAE5;border:1px solid #6EE7B7;border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:10px"><span style="font-size:1.2rem">🏆</span><div><div style="font-size:0.68rem;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.06em">Top Pick</div><div style="font-weight:700;color:#0A1628;margin-top:3px;font-size:0.9rem">${_e(r.top_pick)}</div></div></div>`:''}
 </div>
 
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;margin-bottom:20px">
   ${(r.opportunities||[]).map(o=>{
     const col = catColour[o.category]||'#6B7280';
     const ico = catIcon[o.category]||'💡';
-    return `<div style="background:linear-gradient(150deg,#0D1F35,#091628);border:1px solid rgba(255,255,255,.07);border-top:3px solid ${col};border-radius:14px;padding:18px 20px;box-shadow:0 4px 16px rgba(0,0,0,.2)">
+    return `<div style="background:#FFFFFF;border:1.5px solid #E8EEF8;border-top:3px solid ${col};border-radius:14px;padding:18px 20px;box-shadow:0 4px 16px rgba(10,20,60,.07)">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
         <div style="flex:1;min-width:0;margin-right:10px">
-          <div style="font-weight:800;color:white;font-size:0.92rem;margin-bottom:6px">${_e(o.name)}</div>
-          <span style="font-size:0.63rem;background:${col}22;color:${col};border:1px solid ${col}55;border-radius:5px;padding:2px 8px;font-weight:700">${ico} ${_e(o.category||'').replace('_',' ').toUpperCase()}</span>
+          <div style="font-weight:800;color:#0A1628;font-size:0.92rem;margin-bottom:6px">${_e(o.name)}</div>
+          <span style="font-size:0.63rem;background:${col}18;color:${col};border:1px solid ${col}44;border-radius:5px;padding:2px 8px;font-weight:700">${ico} ${_e(o.category||'').replace('_',' ').toUpperCase()}</span>
         </div>
         ${_scoreRing(o.opportunity_score||0)}
       </div>
-      <div style="font-size:0.78rem;color:rgba(0,201,200,.9);font-weight:700;margin-bottom:8px">${_e(o.estimated_value||'')}</div>
-      <p style="font-size:0.83rem;color:rgba(255,255,255,.7);line-height:1.55;margin:0 0 10px">${_e(o.why_interesting||'')}</p>
-      ${o.signals?.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">${o.signals.map(s=>`<span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:5px;padding:2px 8px;font-size:0.7rem;color:rgba(255,255,255,.65)">${_e(s)}</span>`).join('')}</div>`:''}
-      <div style="background:rgba(0,102,255,.12);border:1px solid rgba(0,102,255,.22);border-radius:8px;padding:10px 12px;font-size:0.8rem">
-        <span style="color:#60A5FA;font-weight:700">Next step: </span><span style="color:rgba(255,255,255,.8)">${_e(o.action||'')}</span>
+      <div style="font-size:0.78rem;color:#0066FF;font-weight:700;margin-bottom:8px">${_e(o.estimated_value||'')}</div>
+      <p style="font-size:0.83rem;color:#374B6E;line-height:1.55;margin:0 0 10px">${_e(o.why_interesting||'')}</p>
+      ${o.signals?.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">${o.signals.map(s=>`<span style="background:#F0F4FF;border:1px solid #D1DCF5;border-radius:5px;padding:2px 8px;font-size:0.7rem;color:#374B6E">${_e(s)}</span>`).join('')}</div>`:''}
+      <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px;font-size:0.8rem">
+        <span style="color:#1D4ED8;font-weight:700">Next step: </span><span style="color:#374B6E">${_e(o.action||'')}</span>
       </div>
     </div>`;
   }).join('')}
 </div>
 
-${r.sector_trends?.length?`<div style="background:linear-gradient(150deg,#0D1F35,#091628);border:1px solid rgba(0,201,200,.18);border-radius:14px;padding:20px 24px;margin-bottom:20px">
-  <div style="font-size:0.7rem;font-weight:800;color:rgba(0,201,200,.85);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">📈 Sector Trends</div>
-  <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px">${r.sector_trends.map(t=>`<li style="display:flex;align-items:flex-start;gap:8px;color:rgba(255,255,255,.8);font-size:0.875rem;line-height:1.5"><span style="color:#00C9C8;font-weight:800;flex-shrink:0">→</span>${_e(t)}</li>`).join('')}</ul>
+${r.sector_trends?.length?`<div style="background:#FFFFFF;border:1.5px solid #D1DCF5;border-radius:14px;padding:20px 24px;margin-bottom:20px;box-shadow:0 2px 8px rgba(10,20,60,.06)">
+  <div style="font-size:0.7rem;font-weight:800;color:#0066FF;text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">📈 Sector Trends</div>
+  <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px">${r.sector_trends.map(t=>`<li style="display:flex;align-items:flex-start;gap:8px;color:#374B6E;font-size:0.875rem;line-height:1.5"><span style="color:#0066FF;font-weight:800;flex-shrink:0">→</span>${_e(t)}</li>`).join('')}</ul>
 </div>`:''}`;
 }
 
@@ -700,16 +715,16 @@ async function _loadBSHistory(){
   const el = document.getElementById('bs-history');
   if(!el||!d.ok||!d.runs?.length) return;
   el.innerHTML = `
-<div style="font-size:0.7rem;font-weight:800;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.07em;margin:8px 0 10px">Previous Scans</div>
+<div style="font-size:0.7rem;font-weight:800;color:#7A92B4;text-transform:uppercase;letter-spacing:.07em;margin:8px 0 10px">Previous Scans</div>
 <div style="display:flex;flex-direction:column;gap:8px">${d.runs.map(r=>`
-  <div style="background:linear-gradient(150deg,#0D1F35,#091628);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px" onclick='_renderBizScan({results:${JSON.stringify(r.results)}})'>
+  <div style="background:#FFFFFF;border:1.5px solid #E8EEF8;border-radius:12px;padding:14px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;transition:border-color .15s;box-shadow:0 1px 4px rgba(10,20,60,.05)" onclick='_renderBizScan({results:${JSON.stringify(r.results)}})'>
     <div>
-      <div style="font-weight:700;color:white;font-size:0.875rem;margin-bottom:3px">${_e(r.industry)} · ${_e(r.region)}</div>
-      <div style="font-size:0.78rem;color:rgba(0,201,200,.7)">${r.results?.opportunities?.length||0} opportunities found</div>
+      <div style="font-weight:700;color:#0A1628;font-size:0.875rem;margin-bottom:3px">${_e(r.industry)} · ${_e(r.region)}</div>
+      <div style="font-size:0.78rem;color:#0066FF">${r.results?.opportunities?.length||0} opportunities found</div>
     </div>
     <div style="text-align:right;flex-shrink:0">
-      <div style="font-size:0.75rem;color:rgba(255,255,255,.35)">${new Date(r.created_at).toLocaleDateString()}</div>
-      <div style="font-size:0.7rem;color:rgba(255,255,255,.25);margin-top:2px">click to view →</div>
+      <div style="font-size:0.75rem;color:#7A92B4">${new Date(r.created_at).toLocaleDateString()}</div>
+      <div style="font-size:0.7rem;color:#9BADC8;margin-top:2px">click to view →</div>
     </div>
   </div>`).join('')}</div>`;
 }
