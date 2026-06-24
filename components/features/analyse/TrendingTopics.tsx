@@ -274,6 +274,8 @@ export default function TrendingTopics() {
   const [labelDraft, setLabelDraft] = useState("");
   const [pinnedOnly, setPinnedOnly] = useState(false);
   const [labelIsEdit, setLabelIsEdit] = useState(false);
+  const [inlineEditId, setInlineEditId] = useState<number | null>(null);
+  const [inlineEditDraft, setInlineEditDraft] = useState("");
 
   useEffect(() => {
     setCat(brand);
@@ -1053,8 +1055,51 @@ export default function TrendingTopics() {
                               marginBottom: 2,
                             }}
                           >
-                            {run.pin_label && (
+                            {run.pin_label && inlineEditId === run.id && (
+                              <input
+                                autoFocus
+                                maxLength={80}
+                                value={inlineEditDraft}
+                                onChange={(e) => setInlineEditDraft(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    setInlineEditId(null);
+                                    void doUpdateLabel(run, inlineEditDraft);
+                                  }
+                                  if (e.key === "Escape") {
+                                    e.preventDefault();
+                                    setInlineEditId(null);
+                                  }
+                                }}
+                                onBlur={() => {
+                                  setInlineEditId(null);
+                                  void doUpdateLabel(run, inlineEditDraft);
+                                }}
+                                style={{
+                                  fontSize: "0.62rem",
+                                  color: "#92400E",
+                                  background: "#FEF3C7",
+                                  border: "1.5px solid #F59E0B",
+                                  borderRadius: 4,
+                                  padding: "1px 5px",
+                                  minWidth: 0,
+                                  width: "80px",
+                                  outline: "none",
+                                  boxSizing: "border-box",
+                                }}
+                              />
+                            )}
+                            {run.pin_label && inlineEditId !== run.id && (
                               <span
+                                role="button"
+                                title="Click to rename label"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setInlineEditId(run.id ?? null);
+                                  setInlineEditDraft(run.pin_label ?? "");
+                                }}
                                 style={{
                                   fontSize: "0.62rem",
                                   color: "#92400E",
@@ -1065,6 +1110,7 @@ export default function TrendingTopics() {
                                   textOverflow: "ellipsis",
                                   whiteSpace: "nowrap",
                                   minWidth: 0,
+                                  cursor: "text",
                                 }}
                               >
                                 {run.pin_label}
