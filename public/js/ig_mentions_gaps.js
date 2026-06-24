@@ -1458,8 +1458,16 @@ async function renderAdPlatformConnections() {
           <span style="color:${m.on?'#059669':'#9CA3AF'};font-weight:700">${label}</span>
         </button>`;
       }).join('')}
+      ${!allOn ? `<button id="ccrRecheck" onclick="recheckCrossChannelConnections()" style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#0066FF,#00C9C8);border:none;border-radius:999px;padding:7px 14px;font-size:0.74rem;font-weight:700;color:white;cursor:pointer;white-space:nowrap">↻ Re-check connections</button>` : ''}
     </div>
   `;
+}
+
+async function recheckCrossChannelConnections() {
+  const btn = document.getElementById('ccrRecheck');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Checking…'; }
+  await renderAdPlatformConnections();
+  await runCrossChannel();
 }
 
 function showAdPlatformSetup(key) {
@@ -2075,6 +2083,7 @@ window.t34FatigueRunNow = async function () {
     addWebhook, removeWebhook, toggleWebhook, testWebhook,
     buildLaunches, _formatCountdown, _renderLaunches, addLaunch, removeLaunch,
     showCompanyIntel, runCompanyIntel, testSlackWebhook,
-    renderAdPlatformConnections, showAdPlatformSetup, renderOptimizerDashboard,
+    renderAdPlatformConnections, showAdPlatformSetup, recheckCrossChannelConnections,
+    renderOptimizerDashboard,
   });
 })();
