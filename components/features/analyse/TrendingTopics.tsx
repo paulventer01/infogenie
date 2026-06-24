@@ -219,6 +219,7 @@ interface RenderState {
   categoryLabel?: string;
   country?: string;
   historyKey?: string;
+  requestedPlatform?: string;
 }
 
 function runKey(run: HistoryRun, idx: number): string {
@@ -463,6 +464,7 @@ export default function TrendingTopics() {
       category: r.category || category,
       categoryLabel: r.categoryLabel,
       country: country.trim() || "ALL",
+      requestedPlatform: platform || undefined,
     });
     setTiktokFilter("all");
     setStatus("idle");
@@ -1106,6 +1108,60 @@ export default function TrendingTopics() {
                     To see real trending results, go to{" "}
                     <strong>Settings → Integrations → Intelligence APIs</strong> and add your{" "}
                     <strong>Perplexity API key</strong>, then re-run the scan.
+                  </div>
+                </div>
+              )}
+
+              {/* YouTube fallback notice — shown when YouTube was requested but returned no live data */}
+              {result.requestedPlatform === "youtube" && result.source !== "youtube" && (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    alignItems: "flex-start",
+                    background: "#FFF1F1",
+                    border: "1.5px solid #FCA5A5",
+                    borderRadius: 10,
+                    padding: "12px 16px",
+                    marginBottom: 16,
+                  }}
+                >
+                  <span style={{ fontSize: "1.25rem", lineHeight: 1, flexShrink: 0 }}>▶️</span>
+                  <div style={{ fontSize: "0.8rem", color: "#991B1B", lineHeight: 1.5 }}>
+                    <strong>YouTube live data is unavailable for this scan.</strong> The YouTube
+                    Data API key is either missing or has exceeded its daily quota, so InfoGenie
+                    fell back to{" "}
+                    {result.source === "template" ? "placeholder topics" : "a Perplexity web search"} instead.{" "}
+                    To pull real YouTube trending videos, go to{" "}
+                    <strong>Settings → Integrations → Intelligence APIs</strong> and add your{" "}
+                    <strong>YouTube Data API key</strong>, then re-run the scan.
+                  </div>
+                </div>
+              )}
+
+              {/* TikTok fallback notice — shown when TikTok was requested but returned no live data */}
+              {result.requestedPlatform === "tiktok" && result.source !== "tiktok" && (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    alignItems: "flex-start",
+                    background: "#FFF1F1",
+                    border: "1.5px solid #FCA5A5",
+                    borderRadius: 10,
+                    padding: "12px 16px",
+                    marginBottom: 16,
+                  }}
+                >
+                  <span style={{ fontSize: "1.25rem", lineHeight: 1, flexShrink: 0 }}>🎵</span>
+                  <div style={{ fontSize: "0.8rem", color: "#991B1B", lineHeight: 1.5 }}>
+                    <strong>TikTok live data is unavailable for this scan.</strong> The TikTok
+                    RapidAPI key is either missing or returned no results, so InfoGenie fell back
+                    to{" "}
+                    {result.source === "template" ? "placeholder topics" : "a Perplexity web search"} instead.{" "}
+                    To pull real TikTok trending hashtags and videos, go to{" "}
+                    <strong>Settings → Integrations → Intelligence APIs</strong> and add your{" "}
+                    <strong>TikTok RapidAPI key</strong>, then re-run the scan.
                   </div>
                 </div>
               )}
