@@ -50,11 +50,11 @@ window.buildChangeMonitor = function() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Competitor URL to Watch</label>
-        <input id="cmUrl" type="url" placeholder="https://competitor.com/pricing" style="width:100%;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box">
+        <input id="cmUrl" data-ig-skip type="url" placeholder="https://competitor.com/pricing" style="width:100%;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box">
       </div>
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Label</label>
-        <input id="cmLabel" placeholder="Competitor Pricing Page" style="width:100%;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box">
+        <input id="cmLabel" data-ig-skip placeholder="Competitor Pricing Page" style="width:100%;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box">
       </div>
     </div>
     <div style="display:flex;gap:12px;margin-bottom:28px;align-items:center">
@@ -179,11 +179,11 @@ window.buildWebExtractor = function() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Target URL</label>
-        <input id="wxUrl" type="url" placeholder="https://example.com/pricing" style="width:100%;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box">
+        <input id="wxUrl" data-ig-skip type="url" placeholder="https://example.com/pricing" style="width:100%;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box">
       </div>
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">What to Extract (plain English)</label>
-        <input id="wxInstruction" placeholder="Extract all pricing tiers with their names and prices" style="width:100%;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box">
+        <input id="wxInstruction" data-ig-skip placeholder="Extract all pricing tiers with their names and prices" style="width:100%;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box">
       </div>
     </div>
     <div style="margin-bottom:16px">
@@ -321,11 +321,11 @@ window.buildResilientTracker = function() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">URL to Track</label>
-        <input id="rtUrl" type="url" placeholder="https://competitor.com/pricing" style="width:100%;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box">
+        <input id="rtUrl" data-ig-skip type="url" placeholder="https://competitor.com/pricing" style="width:100%;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box">
       </div>
       <div>
         <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">Label</label>
-        <input id="rtLabel" placeholder="Competitor Pricing" style="width:100%;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box">
+        <input id="rtLabel" data-ig-skip placeholder="Competitor Pricing" style="width:100%;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:14px;box-sizing:border-box">
       </div>
     </div>
     <div style="margin-bottom:16px">

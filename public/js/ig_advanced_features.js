@@ -41,7 +41,7 @@ window.buildWarRoom = function(){
 <div class="view-header"><h2>⚔️ AI Competitor War Room</h2><p class="view-sub">Cross-signal AI analysis that predicts your competitor's next strategic move — before they make it.</p></div>
 <div class="ig-card" style="max-width:680px;margin-bottom:24px">
   <div class="form-grid" style="grid-template-columns:1fr 1fr">
-    <div class="form-group"><label>Competitor Name</label><input id="wr-comp" class="form-control" placeholder="e.g. HubSpot" /></div>
+    <div class="form-group"><label>Competitor Name</label><input id="wr-comp" data-ig-skip class="form-control" placeholder="e.g. HubSpot" /></div>
     <div class="form-group"><label>Their Domain (optional)</label><input id="wr-domain" class="form-control" placeholder="e.g. hubspot.com" /></div>
   </div>
   <button id="wr-run" class="btn btn-primary" style="width:100%">🔍 Analyse & Predict Move</button>
@@ -473,7 +473,7 @@ window.buildInvestormode = function(){
   <div class="ig-card" style="flex:1;min-width:300px">
     <h3 style="font-weight:600;margin-bottom:16px">Generate Investor Report</h3>
     <div class="form-grid" style="grid-template-columns:1fr 1fr">
-      <div class="form-group"><label>Company Name</label><input id="im-co" class="form-control" placeholder="Acme Inc" /></div>
+      <div class="form-group"><label>Company Name</label><input id="im-co" data-ig-skip class="form-control" placeholder="Acme Inc" /></div>
       <div class="form-group"><label>Stage</label><select id="im-stage" class="form-control"><option>pre-seed</option><option>seed</option><option>series-a</option><option>series-b</option><option>growth</option></select></div>
       <div class="form-group"><label>MRR</label><input id="im-mrr" class="form-control" type="number" placeholder="50000" /></div>
       <div class="form-group"><label>ARR</label><input id="im-arr" class="form-control" type="number" placeholder="600000" /></div>

@@ -709,11 +709,11 @@ window.buildHunter = function() {
         <h3 style="margin:0 0 4px;font-size:1rem;font-weight:700;color:#111">Email Finder</h3>
         <p style="margin:0 0 18px;font-size:0.84rem;color:#6B7280">Know the name? Hunter will find their most likely email address.</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-          <input id="hFFirst" placeholder="First name" style="padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem">
-          <input id="hFLast"  placeholder="Last name"  style="padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem">
+          <input id="hFFirst" data-ig-skip placeholder="First name" style="padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem">
+          <input id="hFLast"  data-ig-skip placeholder="Last name"  style="padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem">
         </div>
         <div style="display:flex;gap:10px">
-          <input id="hFDomain" placeholder="company.com" style="flex:1;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem">
+          <input id="hFDomain" data-ig-skip placeholder="company.com" style="flex:1;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem">
           <button onclick="window._hunterFinder()" style="padding:10px 20px;background:#6C63FF;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Find Email</button>
         </div>
       </div>
@@ -995,7 +995,7 @@ window.buildCanvaLauncher = function() {
           <div>
             <label style="font-size:0.8rem;font-weight:700;color:#4C1D95;display:block;margin-bottom:6px">Or paste an image URL</label>
             <div style="display:flex;gap:8px">
-              <input id="rbgUrlInput" placeholder="https://example.com/product.jpg" style="flex:1;padding:9px 12px;border:1.5px solid #C4B5FD;border-radius:8px;font-size:0.82rem">
+              <input id="rbgUrlInput" data-ig-skip placeholder="https://example.com/product.jpg" style="flex:1;padding:9px 12px;border:1.5px solid #C4B5FD;border-radius:8px;font-size:0.82rem">
               <button onclick="window._rbgHandleUrl()" style="padding:9px 16px;background:#7B68EE;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;white-space:nowrap">Remove BG</button>
             </div>
           </div>
@@ -1395,7 +1395,7 @@ window.buildSocialListening = async function() {
       <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end">
         <div>
           <label style="font-size:0.75rem;font-weight:700;opacity:.75;display:block;margin-bottom:5px">YOUR BRAND</label>
-          <input id="slBrand" value="${_escapeHtml(savedBrand)}" placeholder="e.g. Acme Corp" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:0.85rem;background:rgba(255,255,255,.1);color:#fff">
+          <input id="slBrand" data-ig-skip value="${_escapeHtml(savedBrand)}" placeholder="e.g. Acme Corp" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:0.85rem;background:rgba(255,255,255,.1);color:#fff">
         </div>
         <div>
           <label style="font-size:0.75rem;font-weight:700;opacity:.75;display:block;margin-bottom:5px">KEYWORDS / COMPETITORS</label>
@@ -1496,7 +1496,7 @@ window.buildMediaIntel = async function() {
           <h3 style="margin:0 0 4px;font-size:1.05rem;font-weight:800">📰 Media Intel Scan</h3>
           <p style="margin:0 0 14px;font-size:0.8rem;opacity:.75">Journalists, rising stories &amp; PR opportunities</p>
           <label style="font-size:0.72rem;font-weight:700;opacity:.75;display:block;margin-bottom:4px">YOUR BRAND</label>
-          <input id="miBrand" value="${_escapeHtml(savedBrand)}" placeholder="e.g. Acme Corp" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:0.84rem;background:rgba(255,255,255,.1);color:#fff;margin-bottom:8px">
+          <input id="miBrand" data-ig-skip value="${_escapeHtml(savedBrand)}" placeholder="e.g. Acme Corp" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:0.84rem;background:rgba(255,255,255,.1);color:#fff;margin-bottom:8px">
           <label style="font-size:0.72rem;font-weight:700;opacity:.75;display:block;margin-bottom:4px">COMPETITORS (comma-separated)</label>
           <input id="miComps" placeholder="Competitor A, Competitor B" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid rgba(255,255,255,.2);border-radius:8px;font-size:0.84rem;background:rgba(255,255,255,.1);color:#fff;margin-bottom:8px">
           <label style="font-size:0.72rem;font-weight:700;opacity:.75;display:block;margin-bottom:4px">INDUSTRY</label>
