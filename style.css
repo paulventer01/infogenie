@@ -7017,9 +7017,9 @@ h3:hover {
 }
 
 /* ── Reddit Intelligence sub-tabs — light mode visibility ── */
-[data-theme="light"] [id^="rdttb-"] {
-  background: rgba(10,22,40,.04);
-  color: #4A5670;
+[data-theme="light"] [id^="rdttb-"] { /* lint-ok-important: beats inline color:rgba(255,255,255,.6) on each button */
+  background: rgba(10,22,40,.04) !important;
+  color: #4A5670 !important;
 }
 [data-theme="light"] [id^="rdttb-"][style*="rgba(255,100,0,.25)"],
 [data-theme="light"] [id^="rdttb-"]:hover { /* lint-ok-important: multi-selector — [style*=] variant needs !important to beat inline style; :hover variant overrides JS-applied inline style on sibling state */
@@ -7031,6 +7031,11 @@ h3:hover {
   background: rgba(255,100,0,.18) !important;
   color: #C2410C !important;
 }
+/* Tab bar wrapper — light bg so buttons are visible on white page */
+[data-theme="light"] #redditWrap [style*="rgba(255,255,255,.06)"][style*="border-radius:12px"] { /* lint-ok-important: beats inline rgba transparent bg */
+  background: #EFF4FF !important;
+  border-color: #D0DDEF !important;
+}
 /* Reddit panel shell + tab bar wrapper — repaint for light mode */
 [data-theme="light"] [id^="rdtpanel-"] {
   color: #2A3654;
@@ -7040,6 +7045,32 @@ h3:hover {
 [data-theme="light"] [id^="rdtpanel-"] [style*="rgba(255,255,255,.6)"],
 [data-theme="light"] [id^="rdtpanel-"] [style*="rgba(255,255,255,.65)"] {
   color: #4A5670 !important;
+}
+/* ── Reddit hero header — ensure title + sub remain white on the orange gradient ── */
+[data-theme="light"] #view-reddit .view-header .view-title,
+[data-theme="light"] #view-reddit .view-header .view-sub { /* lint-ok-important: beats [data-theme="light"] .view-header h2 {color:inherit} (0,2,1) — this selector is (0,3,0) */
+  color: #FFFFFF !important;
+  opacity: 1;
+}
+[data-theme="light"] #view-reddit .view-header .breadcrumb {
+  color: #FFD4C2;
+  opacity: 1;
+}
+/* Reddit config panel inputs + text — convert rgba-white styles to visible dark equivalents */
+[data-theme="light"] #redditWrap [style*="rgba(255,255,255,.06)"] {
+  background: #F8FAFF !important;
+  border-color: #D0DDEF !important;
+}
+[data-theme="light"] #redditWrap [style*="color:rgba(255,255,255,.4)"],
+[data-theme="light"] #redditWrap [style*="color:rgba(255,255,255,.5)"] {
+  color: #7A92B4 !important;
+}
+[data-theme="light"] #redditWrap input[style*="color:white"],
+[data-theme="light"] #redditWrap input[style*="color:#fff"] { /* lint-ok-important: beats inline color on dynamic inputs */
+  color: #0A1628 !important;
+}
+[data-theme="light"] #redditWrap [style*="font-family:Sora"][style*="color:white"] {
+  color: #0A1628 !important;
 }
 
 /* ── AutoSEO Pro — light mode visibility ── */
