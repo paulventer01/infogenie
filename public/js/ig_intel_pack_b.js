@@ -839,7 +839,7 @@ window.buildLinkedinAds = function() {
         <div style="background:#fff;border:1px solid #E5E7EB;border-radius:12px;padding:24px">
           <h3 style="margin:0 0 4px;font-size:1rem;font-weight:700;color:#111">Research Competitor LinkedIn Ads</h3>
           <p style="margin:0 0 16px;font-size:0.83rem;color:#6B7280">AI-powered research against the LinkedIn Ad Library — ad formats, copy themes, targeting signals, budget tier and gaps to exploit.</p>
-          <input id="ladCompany"  placeholder="Company name (e.g. HubSpot)" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem;margin-bottom:10px">
+          <input id="ladCompany" data-ig-skip placeholder="Company name or domain (e.g. hubspot.com)" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem;margin-bottom:10px">
           <input id="ladIndustry" placeholder="Industry (optional)" style="width:100%;box-sizing:border-box;padding:10px 14px;border:1px solid #D1D5DB;border-radius:8px;font-size:0.9rem;margin-bottom:14px">
           <div style="display:flex;gap:10px">
             <button onclick="window._ladSearch()" style="flex:1;padding:11px;background:#0077B5;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">🔍 Research Ads</button>
