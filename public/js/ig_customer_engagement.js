@@ -1122,16 +1122,13 @@ window.initAssetComments = function (assetType, assetId, mountEl) {
     ev.preventDefault();
   }, true);
 
-  // Patch navigateTo if present
+  // Patch navigateTo: call _origNav first so app.js handles view show/hide
+  // (it uses style.display, not just CSS classes), then run the CE builder
+  // on top to populate the panel — same pattern as ig_strategic_features.js.
   const _origNav = window.navigateTo;
   window.navigateTo = function(view, ...rest) {
-    if (_tryNav(view)) {
-      document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
-      const target = document.getElementById('view-' + view);
-      if (target) target.classList.remove('hidden');
-      return;
-    }
     if (typeof _origNav === 'function') _origNav.call(this, view, ...rest);
+    _tryNav(view);
   };
 })();
 
