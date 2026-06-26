@@ -172,6 +172,57 @@ window.buildExperimentSuite = async function() {
 
   loadExps();
 
+  // ── F07: Statistical A/B Confidence Calculator ───────────────────────────
+  const confCard = document.createElement('div');
+  confCard.className = 'ig-card';
+  confCard.style.cssText = 'margin-top:24px;';
+  confCard.innerHTML = `
+    <h3 style="margin:0 0 14px;font-size:1rem">📊 A/B Statistical Confidence Calculator</h3>
+    <p style="margin:0 0 14px;font-size:0.83rem;color:var(--text-muted)">Enter raw counts for control and variant to get a two-proportion z-test with significance verdict, lift %, and recommended sample size.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      <div>
+        <div style="font-weight:700;font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Control</div>
+        <label class="ig-label">Visitors (N)</label><input id="ab-ctrl-n" class="ig-input" type="number" min="1" placeholder="e.g. 5000" style="margin-bottom:6px">
+        <label class="ig-label">Conversions</label><input id="ab-ctrl-conv" class="ig-input" type="number" min="0" placeholder="e.g. 210">
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Variant</div>
+        <label class="ig-label">Visitors (N)</label><input id="ab-var-n" class="ig-input" type="number" min="1" placeholder="e.g. 5000" style="margin-bottom:6px">
+        <label class="ig-label">Conversions</label><input id="ab-var-conv" class="ig-input" type="number" min="0" placeholder="e.g. 258">
+      </div>
+    </div>
+    <button id="ab-calc-btn" class="ig-btn ig-btn-primary" style="margin-bottom:16px">⚡ Calculate Significance</button>
+    <div id="ab-result"></div>`;
+  el.querySelector('.ig-panel').appendChild(confCard);
+
+  confCard.querySelector('#ab-calc-btn').addEventListener('click', async () => {
+    const ctrl_n = +confCard.querySelector('#ab-ctrl-n').value;
+    const ctrl_conv = +confCard.querySelector('#ab-ctrl-conv').value;
+    const var_n = +confCard.querySelector('#ab-var-n').value;
+    const var_conv = +confCard.querySelector('#ab-var-conv').value;
+    if (!ctrl_n || !var_n) { _toast('Enter visitor counts for both groups','error'); return; }
+    const data = await _post('/experiments/confidence', {
+      control_n: ctrl_n, control_conversions: ctrl_conv,
+      variant_n: var_n, variant_conversions: var_conv
+    });
+    const res = confCard.querySelector('#ab-result');
+    if (!data.ok) { res.innerHTML = `<div style="color:#ef4444;font-size:0.85rem">${_esc(data.error||'Error')}</div>`; return; }
+    const r = data;
+    const verdictColor = r.verdict === 'significant' ? '#22c55e' : r.verdict === 'trending' ? '#f59e0b' : '#ef4444';
+    res.innerHTML = `
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div style="margin-bottom:10px;font-size:0.95rem;color:${verdictColor};font-weight:700">${_esc(r.interpretation||'')}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;font-size:0.82rem">
+          <div class="ig-stat-card"><div class="ig-stat-num" style="color:${verdictColor}">${r.confidence_pct}%</div><div class="ig-stat-label">Confidence</div></div>
+          <div class="ig-stat-card"><div class="ig-stat-num">${r.p_value}</div><div class="ig-stat-label">p-value</div></div>
+          ${r.lift_pct!=null?`<div class="ig-stat-card"><div class="ig-stat-num" style="color:${r.lift_pct>=0?'#22c55e':'#ef4444'}">${r.lift_pct>=0?'+':''}${r.lift_pct}%</div><div class="ig-stat-label">Lift</div></div>`:''}
+          <div class="ig-stat-card"><div class="ig-stat-num">${(r.control_rate_pct??0).toFixed(2)}%</div><div class="ig-stat-label">Control CVR</div></div>
+          <div class="ig-stat-card"><div class="ig-stat-num">${(r.variant_rate_pct??0).toFixed(2)}%</div><div class="ig-stat-label">Variant CVR</div></div>
+          ${r.recommended_n?`<div class="ig-stat-card"><div class="ig-stat-num">${r.recommended_n.toLocaleString()}</div><div class="ig-stat-label">Rec. Sample / arm</div></div>`:''}
+        </div>
+      </div>`;
+  });
+
   document.getElementById('es-new-btn').addEventListener('click',()=>{ document.getElementById('es-form').style.display='block'; });
   document.getElementById('es-cancel-btn').addEventListener('click',()=>{ document.getElementById('es-form').style.display='none'; });
   document.getElementById('es-refresh-btn').addEventListener('click',loadExps);

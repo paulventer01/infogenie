@@ -678,13 +678,417 @@ window.buildMcpServer = function () {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   F03 — Smart Send Time Optimizer
+   ════════════════════════════════════════════════════════════════════════ */
+window.buildSmartSend = function () {
+  const el = document.getElementById('view-smart-send');
+  if (!el) return;
+  el.innerHTML = `
+<div class="view-header">
+  <h2>⏰ Smart Send Time Optimizer</h2>
+  <p class="view-sub">Analyse your contacts' engagement history and recommend the optimal UTC send hour per contact — powered by real open/click data.</p>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1100px">
+  <div class="ig-card">
+    <h3 style="margin:0 0 14px;font-size:1rem">Contact Emails</h3>
+    <p style="font-size:0.82rem;color:#6b7280;margin:0 0 10px">One email per line.</p>
+    <textarea id="ss-contacts" class="form-control" rows="6" placeholder="alice@example.com&#10;bob@example.com&#10;carol@example.com"></textarea>
+    <h3 style="margin:18px 0 10px;font-size:1rem">Engagement History (JSON)</h3>
+    <p style="font-size:0.82rem;color:#6b7280;margin:0 0 10px">Array of <code>{"email","opened_at","clicked_at"}</code> records. Leave blank to use population-level defaults.</p>
+    <textarea id="ss-history" class="form-control" rows="5" placeholder='[{"email":"alice@example.com","opened_at":"2026-06-01T09:15:00Z"},{"email":"alice@example.com","clicked_at":"2026-06-03T08:45:00Z"}]'></textarea>
+    <button id="ss-run" class="btn btn-primary" style="margin-top:14px;width:100%">⚡ Calculate Best Send Times</button>
+  </div>
+  <div class="ig-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h3 style="margin:0;font-size:1rem">Recommendations</h3>
+      <span id="ss-pop-best" style="font-size:0.82rem;color:#6b7280"></span>
+    </div>
+    <div id="ss-results">${_empty('Enter contacts and click Calculate.')}</div>
+  </div>
+</div>`;
+
+  document.getElementById('ss-run').onclick = async () => {
+    const raw = document.getElementById('ss-contacts').value.trim();
+    const contacts = raw.split('\n').map(e => e.trim()).filter(Boolean).map(e => ({ email: e }));
+    if (!contacts.length) { _toast('Enter at least one email.', 'error'); return; }
+    let history = [];
+    const hRaw = document.getElementById('ss-history').value.trim();
+    if (hRaw) { try { history = JSON.parse(hRaw); } catch (_) { _toast('History JSON is invalid.', 'error'); return; } }
+    const btn = document.getElementById('ss-run');
+    btn.disabled = true; btn.textContent = '⏳ Calculating…';
+    const d = await _api('POST', '/api/drips/smart-send-time', { contacts, history });
+    btn.disabled = false; btn.textContent = '⚡ Calculate Best Send Times';
+    if (!d.ok) { _toast(d.error || 'Error', 'error'); return; }
+    document.getElementById('ss-pop-best').textContent = `Population best: ${d.population_best_time}`;
+    const rows = d.recommendations || [];
+    document.getElementById('ss-results').innerHTML = rows.length ? `
+      <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+        <thead><tr style="border-bottom:2px solid #e2e8f0">
+          <th style="text-align:left;padding:6px 8px">Email</th>
+          <th style="text-align:center;padding:6px 8px">Best Hour (UTC)</th>
+          <th style="text-align:center;padding:6px 8px">Confidence</th>
+          <th style="text-align:center;padding:6px 8px">Signals</th>
+        </tr></thead>
+        <tbody>${rows.map(r => `<tr style="border-bottom:1px solid #f1f5f9">
+          <td style="padding:6px 8px">${_e(r.email)}</td>
+          <td style="text-align:center;font-weight:700;color:#6366f1">${_e(r.preferred_send_time)}</td>
+          <td style="text-align:center">${_badge(r.confidence, r.confidence === 'personalized' ? '#10b981' : '#94a3b8')}</td>
+          <td style="text-align:center;color:#6b7280">${r.signals_used}</td>
+        </tr>`).join('')}</tbody>
+      </table>` : _empty('No results.');
+  };
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   F08 — AI Segment Suggestions
+   ════════════════════════════════════════════════════════════════════════ */
+window.buildAiSegments = function () {
+  const el = document.getElementById('view-ai-segments');
+  if (!el) return;
+  el.innerHTML = `
+<div class="view-header">
+  <h2>🧠 AI Segment Suggestions</h2>
+  <p class="view-sub">Let AI analyse your existing audiences and propose new high-value segments you haven't thought of yet.</p>
+</div>
+<div style="max-width:900px">
+  <div class="ig-card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <p style="margin:0;font-size:0.88rem;color:#374151">AI reviews your existing segments and suggests 5 complementary audiences with rationale and rule templates.</p>
+      <button id="ais-run" class="btn btn-primary" style="padding:10px 22px;white-space:nowrap">🤖 Suggest Segments</button>
+    </div>
+    <div id="ais-loading" style="display:none">${_spinner()}</div>
+  </div>
+  <div id="ais-results"></div>
+</div>`;
+
+  document.getElementById('ais-run').onclick = async () => {
+    const btn = document.getElementById('ais-run');
+    btn.disabled = true; btn.textContent = '⏳ Analysing…';
+    document.getElementById('ais-loading').style.display = 'block';
+    document.getElementById('ais-results').innerHTML = '';
+    const d = await _api('POST', '/api/audiences/ai-suggest', {});
+    btn.disabled = false; btn.textContent = '🤖 Suggest Segments';
+    document.getElementById('ais-loading').style.display = 'none';
+    if (!d.ok) { _toast(d.error || 'Error', 'error'); return; }
+    const suggs = d.suggestions || [];
+    if (!suggs.length) { document.getElementById('ais-results').innerHTML = _empty('No suggestions returned.'); return; }
+    document.getElementById('ais-results').innerHTML = suggs.map((s, i) => `
+      <div class="ig-card" style="margin-bottom:12px;border-left:4px solid #6366f1">
+        <div style="display:flex;align-items:start;gap:12px">
+          <div style="font-size:1.5rem">${['🎯','👥','💡','🔥','⭐'][i] || '📌'}</div>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px">${_e(s.name)}</div>
+            <div style="font-size:0.85rem;color:#374151;margin-bottom:6px">${_e(s.description)}</div>
+            <div style="font-size:0.8rem;color:#6b7280;font-style:italic;margin-bottom:8px">💡 ${_e(s.rationale)}</div>
+            ${s.rules?.conditions?.length ? `<div style="font-size:0.78rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-family:monospace">${JSON.stringify(s.rules, null, 2).slice(0,200)}</div>` : ''}
+          </div>
+        </div>
+      </div>`).join('');
+  };
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   F02 — Audience → Ad Platform Sync
+   ════════════════════════════════════════════════════════════════════════ */
+window.buildAudienceAdSync = function () {
+  const el = document.getElementById('view-audience-ad-sync');
+  if (!el) return;
+  el.innerHTML = `
+<div class="view-header">
+  <h2>📡 Audience → Ad Platform Sync</h2>
+  <p class="view-sub">Push your InfoGenie segments directly to Meta Custom Audiences or Google Customer Match for paid retargeting.</p>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1100px">
+  <div class="ig-card">
+    <h3 style="margin:0 0 14px;font-size:1rem">Sync a Segment</h3>
+    <div class="form-group">
+      <label>Segment ID</label>
+      <input id="ads-seg-id" class="form-control" placeholder="e.g. 42 — get IDs from Dynamic Audiences">
+    </div>
+    <div class="form-group">
+      <label>Platform</label>
+      <select id="ads-platform" class="form-control">
+        <option value="meta">Meta (Facebook / Instagram)</option>
+        <option value="google">Google Customer Match</option>
+      </select>
+    </div>
+    <button id="ads-sync" class="btn btn-primary" style="width:100%;margin-top:8px">🚀 Sync to Ad Platform</button>
+    <div id="ads-result" style="margin-top:14px"></div>
+  </div>
+  <div class="ig-card">
+    <h3 style="margin:0 0 14px;font-size:1rem">Sync Status</h3>
+    <div class="form-group">
+      <label>Check Segment ID</label>
+      <input id="ads-status-id" class="form-control" placeholder="Segment ID">
+    </div>
+    <button id="ads-status-btn" style="padding:8px 18px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.85rem">🔍 Check Status</button>
+    <div id="ads-status-result" style="margin-top:14px">${_empty('Enter a segment ID to check sync status.')}</div>
+  </div>
+</div>`;
+
+  document.getElementById('ads-sync').onclick = async () => {
+    const segId = document.getElementById('ads-seg-id').value.trim();
+    const platform = document.getElementById('ads-platform').value;
+    if (!segId) { _toast('Enter a segment ID.', 'error'); return; }
+    const btn = document.getElementById('ads-sync');
+    btn.disabled = true; btn.textContent = '⏳ Syncing…';
+    const d = await _api('POST', `/api/audiences/${segId}/sync-ads`, { platform });
+    btn.disabled = false; btn.textContent = '🚀 Sync to Ad Platform';
+    const out = document.getElementById('ads-result');
+    if (d.ok) {
+      out.innerHTML = `<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px">
+        <div style="font-weight:700;color:#15803d;margin-bottom:8px">✅ Sync Complete</div>
+        <div style="font-size:0.85rem;color:#374151">${_e(d.note || `${d.synced} contacts pushed to ${platform}`)}</div>
+        ${d.audience_name ? `<div style="font-size:0.82rem;color:#6b7280;margin-top:4px">Audience: <strong>${_e(d.audience_name)}</strong></div>` : ''}
+        ${d.instructions ? `<div style="font-size:0.8rem;color:#6b7280;margin-top:8px;font-style:italic">${_e(d.instructions)}</div>` : ''}
+      </div>`;
+      _toast('Sync complete!');
+    } else {
+      out.innerHTML = `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px;color:#b91c1c;font-size:0.85rem">⚠️ ${_e(d.error || 'Sync failed')}</div>`;
+    }
+  };
+
+  document.getElementById('ads-status-btn').onclick = async () => {
+    const segId = document.getElementById('ads-status-id').value.trim();
+    if (!segId) { _toast('Enter a segment ID.', 'error'); return; }
+    const d = await _api('GET', `/api/audiences/${segId}/sync-ads`);
+    const out = document.getElementById('ads-status-result');
+    if (!d.ok) { out.innerHTML = `<div style="color:#b91c1c;font-size:0.85rem">⚠️ ${_e(d.error || 'Error')}</div>`; return; }
+    out.innerHTML = `<div style="font-size:0.85rem">
+      <div style="margin-bottom:6px"><strong>${d.member_count || 0}</strong> members eligible for sync</div>
+      <div style="color:#6b7280">Meta creds: ${d.meta_configured ? '✅ Configured' : '❌ Not configured'}</div>
+      <div style="color:#6b7280">Google creds: ${d.google_configured ? '✅ Configured' : '❌ Not configured'}</div>
+    </div>`;
+  };
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   F12 — AI Campaign Translator
+   ════════════════════════════════════════════════════════════════════════ */
+window.buildTranslation = function () {
+  const el = document.getElementById('view-translate');
+  if (!el) return;
+  el.innerHTML = `
+<div class="view-header">
+  <h2>🌍 AI Campaign Translator</h2>
+  <p class="view-sub">Translate an entire drip sequence to any language while preserving your brand voice, placeholders, and formatting.</p>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1200px">
+  <div>
+    <div class="ig-card" style="margin-bottom:16px">
+      <h3 style="margin:0 0 14px;font-size:1rem">Source Sequence</h3>
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <div class="form-group" style="flex:1;margin:0"><label>Target Language</label><input id="tr-lang" class="form-control" placeholder="e.g. Spanish, French, German, Japanese"></div>
+        <div class="form-group" style="flex:1;margin:0"><label>Brand Name</label><input id="tr-brand" class="form-control" placeholder="Your brand name"></div>
+      </div>
+      <div id="tr-steps"></div>
+      <button id="tr-add-step" style="margin-top:8px;padding:7px 16px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:7px;cursor:pointer;font-weight:600;font-size:0.85rem">+ Add Email Step</button>
+      <button id="tr-translate" class="btn btn-primary" style="margin-top:12px;width:100%">🌍 Translate All Steps</button>
+    </div>
+  </div>
+  <div>
+    <div class="ig-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <h3 style="margin:0;font-size:1rem">Translated Sequence</h3>
+        <button id="tr-copy" style="padding:5px 12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-size:0.82rem" disabled>📋 Copy JSON</button>
+      </div>
+      <div id="tr-results">${_empty('Paste your drip steps on the left and click Translate.')}</div>
+    </div>
+  </div>
+</div>`;
+
+  const steps = [{ subject: '', body: '' }];
+  let lastTranslated = null;
+
+  function _renderSteps() {
+    document.getElementById('tr-steps').innerHTML = steps.map((s, i) => `
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <span style="font-weight:700;font-size:0.82rem;color:#374151">Step ${i + 1}</span>
+          ${i > 0 ? `<button data-del-step="${i}" style="padding:2px 8px;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;cursor:pointer;font-size:0.78rem">✕</button>` : ''}
+        </div>
+        <input data-si="${i}" data-sk="subject" value="${_e(s.subject)}" placeholder="Subject line…" class="form-control" style="margin-bottom:6px;font-size:0.85rem">
+        <textarea data-si="${i}" data-sk="body" rows="3" placeholder="Email body…" class="form-control" style="font-size:0.85rem">${_e(s.body)}</textarea>
+      </div>`).join('');
+    document.querySelectorAll('[data-si]').forEach(el => {
+      el.oninput = () => { steps[+el.dataset.si][el.dataset.sk] = el.value; };
+    });
+    document.querySelectorAll('[data-del-step]').forEach(b => {
+      b.onclick = () => { steps.splice(+b.dataset.delStep, 1); _renderSteps(); };
+    });
+  }
+  _renderSteps();
+
+  document.getElementById('tr-add-step').onclick = () => { steps.push({ subject: '', body: '' }); _renderSteps(); };
+
+  document.getElementById('tr-translate').onclick = async () => {
+    const lang = document.getElementById('tr-lang').value.trim();
+    if (!lang) { _toast('Enter a target language.', 'error'); return; }
+    const seq = steps.filter(s => s.subject || s.body);
+    if (!seq.length) { _toast('Add at least one step with content.', 'error'); return; }
+    const btn = document.getElementById('tr-translate');
+    btn.disabled = true; btn.textContent = '⏳ Translating…';
+    const d = await _api('POST', '/api/drips/translate', { sequence: seq, target_language: lang, brand_name: document.getElementById('tr-brand').value.trim() });
+    btn.disabled = false; btn.textContent = '🌍 Translate All Steps';
+    if (!d.ok) { _toast(d.error || 'Translation failed', 'error'); return; }
+    lastTranslated = d.translated_sequence;
+    document.getElementById('tr-copy').disabled = false;
+    document.getElementById('tr-results').innerHTML = (d.translated_sequence || []).map((s, i) => `
+      <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:10px">
+        <div style="font-weight:700;font-size:0.82rem;color:#374151;margin-bottom:6px">Step ${i + 1} → ${_e(d.target_language)}</div>
+        <div style="font-size:0.85rem;font-weight:600;color:#6366f1;margin-bottom:4px">${_e(s.subject)}</div>
+        <div style="font-size:0.83rem;color:#374151;white-space:pre-wrap">${_e(s.body)}</div>
+      </div>`).join('');
+    _toast(`${d.step_count} steps translated to ${d.target_language}!`);
+  };
+
+  document.getElementById('tr-copy').onclick = () => {
+    if (!lastTranslated) return;
+    navigator.clipboard.writeText(JSON.stringify(lastTranslated, null, 2)).then(() => _toast('Copied!'));
+  };
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   F09 — Inbox Placement Monitor
+   ════════════════════════════════════════════════════════════════════════ */
+window.buildInboxMonitor = function () {
+  const el = document.getElementById('view-inbox-monitor');
+  if (!el) return;
+  el.innerHTML = `
+<div class="view-header">
+  <h2>📬 Inbox Placement Monitor</h2>
+  <p class="view-sub">Analyse a campaign's inbox placement across major providers (Gmail, Outlook, Yahoo) and get AI-powered deliverability recommendations.</p>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1100px">
+  <div class="ig-card">
+    <h3 style="margin:0 0 14px;font-size:1rem">Analyse Campaign</h3>
+    <div class="form-group"><label>Campaign ID</label><input id="im-camp-id" class="form-control" placeholder="e.g. 42"></div>
+    <div class="form-group"><label>From Address</label><input id="im-from" class="form-control" placeholder="hello@yourdomain.com" type="email"></div>
+    <div class="form-group"><label>Subject Line</label><input id="im-subject" class="form-control" placeholder="Your email subject…"></div>
+    <div class="form-group"><label>Sample Send Volume</label><input id="im-volume" class="form-control" placeholder="e.g. 5000" type="number"></div>
+    <button id="im-run" class="btn btn-primary" style="width:100%">🔍 Analyse Placement</button>
+  </div>
+  <div class="ig-card">
+    <h3 style="margin:0 0 14px;font-size:1rem">Results</h3>
+    <div id="im-results">${_empty('Fill in campaign details and click Analyse.')}</div>
+  </div>
+</div>`;
+
+  document.getElementById('im-run').onclick = async () => {
+    const campaign_id = document.getElementById('im-camp-id').value.trim();
+    const from_address = document.getElementById('im-from').value.trim();
+    const subject = document.getElementById('im-subject').value.trim();
+    const volume = parseInt(document.getElementById('im-volume').value) || 0;
+    if (!from_address) { _toast('Enter a from address.', 'error'); return; }
+    const btn = document.getElementById('im-run');
+    btn.disabled = true; btn.textContent = '⏳ Analysing…';
+    const d = await _api('POST', '/api/deliverability/campaign-monitor', { campaign_id, from_address, subject, volume });
+    btn.disabled = false; btn.textContent = '🔍 Analyse Placement';
+    const out = document.getElementById('im-results');
+    if (!d.ok) { out.innerHTML = `<div style="color:#b91c1c;font-size:0.85rem">⚠️ ${_e(d.error || 'Error')}</div>`; return; }
+    const placement = d.placement || {};
+    const score = d.score ?? d.deliverability_score ?? '—';
+    const scoreColor = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
+    out.innerHTML = `
+      <div style="text-align:center;margin-bottom:16px">
+        <div style="font-size:2.5rem;font-weight:900;color:${scoreColor}">${score}</div>
+        <div style="font-size:0.82rem;color:#6b7280">Deliverability Score</div>
+      </div>
+      ${Object.entries(placement).length ? `
+        <div style="margin-bottom:14px">
+          <div style="font-weight:700;font-size:0.85rem;margin-bottom:8px">Placement by Provider</div>
+          ${Object.entries(placement).map(([prov, pct]) => `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:0.82rem">
+              <span style="width:80px">${_e(prov)}</span>
+              <div style="flex:1;background:#f1f5f9;border-radius:4px;height:8px">
+                <div style="width:${Math.min(100, Math.round(pct))}%;height:100%;background:${pct > 70 ? '#10b981' : pct > 40 ? '#f59e0b' : '#ef4444'};border-radius:4px"></div>
+              </div>
+              <span style="font-weight:600">${Math.round(pct)}%</span>
+            </div>`).join('')}
+        </div>` : ''}
+      ${d.issues?.length ? `<div style="margin-bottom:12px"><div style="font-weight:700;font-size:0.85rem;margin-bottom:6px">⚠️ Issues Detected</div>${d.issues.map(i => `<div style="font-size:0.82rem;color:#dc2626;margin-bottom:3px">• ${_e(i)}</div>`).join('')}</div>` : ''}
+      ${d.recommendations?.length ? `<div><div style="font-weight:700;font-size:0.85rem;margin-bottom:6px">✅ Recommendations</div>${d.recommendations.map(r => `<div style="font-size:0.82rem;color:#15803d;margin-bottom:3px">• ${_e(r)}</div>`).join('')}</div>` : ''}`;
+  };
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   F13 — Asset Comments Widget
+   ════════════════════════════════════════════════════════════════════════ */
+window.initAssetComments = function (assetType, assetId, mountEl) {
+  if (!mountEl) return;
+  const REACTIONS = ['👍', '❤️', '🎉', '🚀', '✅'];
+  mountEl.innerHTML = `
+    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px;background:#fff">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h4 style="margin:0;font-size:0.92rem">💬 Comments</h4>
+        <button id="ac-refresh" style="padding:4px 10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:5px;cursor:pointer;font-size:0.78rem">🔄</button>
+      </div>
+      <div id="ac-list" style="max-height:320px;overflow-y:auto;margin-bottom:12px">${_spinner()}</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <textarea id="ac-body" class="form-control" rows="2" placeholder="Add a comment…" style="font-size:0.83rem"></textarea>
+        <button id="ac-post" class="btn btn-primary" style="padding:7px 16px;font-size:0.85rem;align-self:flex-end">Post</button>
+      </div>
+    </div>`;
+
+  async function _load() {
+    const d = await _api('GET', `/api/comments?asset_type=${encodeURIComponent(assetType)}&asset_id=${encodeURIComponent(assetId)}`);
+    const list = mountEl.querySelector('#ac-list');
+    if (!d.ok || !d.comments?.length) { list.innerHTML = _empty('No comments yet. Be the first!'); return; }
+    list.innerHTML = d.comments.map(c => `
+      <div data-cid="${c.id}" style="border-bottom:1px solid #f1f5f9;padding:8px 0">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+          <span style="font-weight:700;font-size:0.82rem">${_e(c.author_name || c.author_email || 'Team member')}</span>
+          <span style="font-size:0.74rem;color:#94a3b8">${new Date(c.created_at).toLocaleString()}</span>
+          ${c.edited_at ? '<span style="font-size:0.72rem;color:#94a3b8">(edited)</span>' : ''}
+        </div>
+        <div style="font-size:0.85rem;color:#374151;margin-bottom:5px">${_e(c.body)}</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          ${REACTIONS.map(emoji => {
+            const cnt = c.reactions?.[emoji] || 0;
+            return `<button data-react="${emoji}" data-rcid="${c.id}" style="padding:2px 6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;cursor:pointer;font-size:0.78rem">${emoji}${cnt > 0 ? ` ${cnt}` : ''}</button>`;
+          }).join('')}
+          <button data-del-c="${c.id}" style="margin-left:auto;padding:2px 6px;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;cursor:pointer;font-size:0.75rem">Delete</button>
+        </div>
+      </div>`).join('');
+    list.querySelectorAll('[data-react]').forEach(btn => {
+      btn.onclick = async () => {
+        await _api('POST', `/api/comments/${btn.dataset.rcid}/react`, { emoji: btn.dataset.react });
+        _load();
+      };
+    });
+    list.querySelectorAll('[data-del-c]').forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm('Delete this comment?')) return;
+        const r = await _api('DELETE', `/api/comments/${btn.dataset.delC}`);
+        if (r.ok) _load(); else _toast(r.error || 'Error', 'error');
+      };
+    });
+  }
+
+  mountEl.querySelector('#ac-post').onclick = async () => {
+    const body = mountEl.querySelector('#ac-body').value.trim();
+    if (!body) return;
+    const r = await _api('POST', '/api/comments', { asset_type: assetType, asset_id: String(assetId), body });
+    if (r.ok) { mountEl.querySelector('#ac-body').value = ''; _load(); }
+    else _toast(r.error || 'Error', 'error');
+  };
+  mountEl.querySelector('#ac-refresh').onclick = _load;
+  _load();
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
    Register view builders with the SPA router
    ════════════════════════════════════════════════════════════════════════ */
 (function _registerViews() {
   const MAP = {
-    'surveys':      window.buildSurveys,
-    'email-designer': window.buildEmailDesigner,
-    'mcp-server':   window.buildMcpServer,
+    'surveys':           window.buildSurveys,
+    'email-designer':    window.buildEmailDesigner,
+    'mcp-server':        window.buildMcpServer,
+    'smart-send':        window.buildSmartSend,
+    'ai-segments':       window.buildAiSegments,
+    'audience-ad-sync':  window.buildAudienceAdSync,
+    'translate':         window.buildTranslation,
+    'inbox-monitor':     window.buildInboxMonitor,
   };
 
   // Hook into the SPA navigation event emitted by ig_journey_omnichannel and

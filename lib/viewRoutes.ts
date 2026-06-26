@@ -265,7 +265,11 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "journey-builder", icon: "🛤️", label: "Customer Journey Builder" },
           { view: "surveys", icon: "📋", label: "In-App Survey Builder" },
           { view: "email-designer", icon: "🎨", label: "Visual Email Designer" },
+          { view: "ai-segments", icon: "🧠", label: "AI Segment Suggestions" },
+          { view: "audience-ad-sync", icon: "📡", label: "Audience → Ad Platform Sync (Meta / Google)" },
           { view: "omnichannel", icon: "📡", label: "Omnichannel Composer (Email · SMS · WhatsApp · Voice · Push)" },
+          { view: "smart-send", icon: "⏰", label: "Smart Send Time Optimizer" },
+          { view: "translate", icon: "🌍", label: "AI Campaign Translator" },
         ],
       },
       {
@@ -331,6 +335,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
         items: [
           { view: "unified-inbox", icon: "📬", label: "Unified Inbox" },
           { view: "alert-routing", icon: "🔔", label: "Alert Routing" },
+          { view: "inbox-monitor", icon: "📬", label: "Inbox Placement Monitor" },
         ],
       },
     ],
