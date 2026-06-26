@@ -263,6 +263,8 @@ export const NAV_GROUPS: NavGroupDef[] = [
           { view: "lookalike", icon: "👥", label: "Lookalike Audiences" },
           { view: "audiences-dynamic", icon: "🔄", label: "Dynamic Audiences (live)" },
           { view: "journey-builder", icon: "🛤️", label: "Customer Journey Builder" },
+          { view: "surveys", icon: "📋", label: "In-App Survey Builder" },
+          { view: "email-designer", icon: "🎨", label: "Visual Email Designer" },
           { view: "omnichannel", icon: "📡", label: "Omnichannel Composer (Email · SMS · WhatsApp · Voice · Push)" },
         ],
       },
@@ -318,7 +320,14 @@ export const NAV_GROUPS: NavGroupDef[] = [
         ],
       },
       {
-        header: "6 · Handle replies & alerts",
+        header: "6 · First-party data spine",
+        items: [
+          { view: "identity-spine", icon: "🪪", label: "Identity Spine (CDP · LTV · propensity)" },
+          { view: "mcp-server", icon: "🔌", label: "MCP Server (AI tool integrations)" },
+        ],
+      },
+      {
+        header: "7 · Handle replies & alerts",
         items: [
           { view: "unified-inbox", icon: "📬", label: "Unified Inbox" },
           { view: "alert-routing", icon: "🔔", label: "Alert Routing" },
